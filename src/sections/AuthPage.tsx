@@ -8,7 +8,7 @@ import { Eye, EyeOff, ArrowLeft, Loader2, Mail, Lock } from 'lucide-react';
 
 interface AuthPageProps {
   userRole: 'student' | 'teacher' | null;
-  onLogin: (email: string, password: string) => void;
+  onLogin: (email: string, password: string, role?: 'student' | 'teacher' | null) => void;
   onBack: () => void;
   isLoading: boolean;
   error?: string | null;
@@ -24,7 +24,7 @@ export default function AuthPage({ userRole, onLogin, onBack, isLoading, error }
 
   const handleLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onLogin(loginEmail, loginPassword);
+    onLogin(loginEmail, loginPassword, userRole);
   };
 
   return (

@@ -352,6 +352,29 @@ export interface AppStore {
 const STORE_DIR = path.join(process.cwd(), ".origin-dev");
 const STORE_PATH = path.join(STORE_DIR, "server-store.json");
 
+type SeedUserConfig = {
+  id: string;
+  name: string;
+  email: string;
+  password: string;
+  role: UserRole;
+  studentClass?: string | null;
+  fieldOfInterest?: string | null;
+  referralSource?: string | null;
+  avatar?: string | null;
+  streak?: number;
+  totalStudyTime?: number;
+  joinedAt?: string;
+  isPremium?: boolean;
+  premiumExpiry?: string | null;
+  isOnboarded?: boolean;
+  selectedCourse?: string | null;
+  isDropper?: boolean;
+  yearsOfExperience?: string | null;
+  subjects?: string[];
+  studentCapacity?: string | null;
+};
+
 type SeedQuestion = Question & {
   correctOptions?: number[];
   tolerance?: number;
@@ -426,57 +449,142 @@ function normalizeSubject(subject: string | undefined): string {
   return lower;
 }
 
-function buildSeedStore(): AppStore {
-  const userId = "user_student_demo";
-  const teacherId = "user_teacher_demo";
-  const joinedAt = nowIso();
+function createSeedUser(config: SeedUserConfig): StoredUser {
+  return {
+    id: config.id,
+    name: config.name,
+    email: config.email,
+    password: config.password,
+    role: config.role,
+    studentClass: config.studentClass ?? null,
+    fieldOfInterest: config.fieldOfInterest ?? null,
+    referralSource: config.referralSource ?? "codex",
+    avatar: config.avatar ?? null,
+    streak: config.streak ?? 0,
+    totalStudyTime: config.totalStudyTime ?? 0,
+    joinedAt: config.joinedAt ?? nowIso(),
+    isPremium: config.isPremium ?? false,
+    premiumExpiry: config.premiumExpiry ?? null,
+    isOnboarded: config.isOnboarded ?? true,
+    selectedCourse: config.selectedCourse ?? null,
+    isDropper: config.isDropper ?? false,
+    yearsOfExperience: config.yearsOfExperience ?? null,
+    subjects: config.subjects ?? [],
+    studentCapacity: config.studentCapacity ?? null,
+  };
+}
 
-  const users: StoredUser[] = [
-    {
-      id: userId,
+function buildSeedUsers(joinedAt: string): StoredUser[] {
+  return [
+    createSeedUser({
+      id: "user_student_demo",
       name: "Demo Learner",
       email: "student@origin.test",
       password: "password123",
       role: "student",
       studentClass: "11",
       fieldOfInterest: "Engineering",
-      referralSource: "codex",
-      avatar: null,
       streak: 5,
       totalStudyTime: 420,
       joinedAt,
-      isPremium: false,
-      premiumExpiry: null,
       isOnboarded: true,
       selectedCourse: "JEE Main + Advanced",
-      isDropper: false,
-      yearsOfExperience: null,
       subjects: ["Physics", "Chemistry", "Mathematics"],
-      studentCapacity: null,
-    },
-    {
-      id: teacherId,
+    }),
+    createSeedUser({
+      id: "user_teacher_demo",
       name: "Demo Teacher",
       email: "teacher@origin.test",
       password: "password123",
       role: "teacher",
-      studentClass: null,
-      fieldOfInterest: null,
-      referralSource: "codex",
-      avatar: null,
       streak: 3,
       totalStudyTime: 120,
       joinedAt,
       isPremium: true,
-      premiumExpiry: null,
       isOnboarded: true,
-      selectedCourse: null,
-      isDropper: false,
       yearsOfExperience: "5+",
       subjects: ["Physics"],
       studentCapacity: "50",
-    },
+    }),
+    createSeedUser({
+      id: "user_student_ayush",
+      name: "Ayush Student",
+      email: "ayushzz0306@gmail.com",
+      password: "Ap@1234",
+      role: "student",
+      studentClass: "12",
+      fieldOfInterest: "Engineering",
+      joinedAt,
+      selectedCourse: "JEE Main + Advanced",
+      subjects: ["Physics", "Chemistry", "Mathematics"],
+    }),
+    createSeedUser({
+      id: "user_teacher_ayush",
+      name: "Ayush Teacher",
+      email: "ayushzz0306@gmail.com",
+      password: "Ap@1234",
+      role: "teacher",
+      joinedAt,
+      yearsOfExperience: "3+",
+      subjects: ["Physics", "Chemistry"],
+      studentCapacity: "100",
+    }),
+    createSeedUser({
+      id: "user_student_tohin",
+      name: "Tohin Student",
+      email: "tohin1400@gmail.com",
+      password: "123456",
+      role: "student",
+      studentClass: "12",
+      fieldOfInterest: "Engineering",
+      joinedAt,
+      selectedCourse: "JEE Main + Advanced",
+      subjects: ["Physics", "Chemistry", "Mathematics"],
+    }),
+    createSeedUser({
+      id: "user_teacher_tohin",
+      name: "Tohin Teacher",
+      email: "tohin1400@gmail.com",
+      password: "123456",
+      role: "teacher",
+      joinedAt,
+      yearsOfExperience: "4+",
+      subjects: ["Mathematics"],
+      studentCapacity: "75",
+    }),
   ];
+}
+
+function ensureSeedUsers(store: AppStore): boolean {
+  let changed = false;
+  const joinedAt = nowIso();
+
+  for (const seedUser of buildSeedUsers(joinedAt)) {
+    const existing = store.users.find(
+      (entry) => entry.email.toLowerCase() === seedUser.email.toLowerCase() && entry.role === seedUser.role,
+    );
+
+    if (!existing) {
+      store.users.push(seedUser);
+      changed = true;
+      continue;
+    }
+
+    if (existing.password !== seedUser.password) {
+      existing.password = seedUser.password;
+      changed = true;
+    }
+  }
+
+  return changed;
+}
+
+function buildSeedStore(): AppStore {
+  const userId = "user_student_demo";
+  const teacherId = "user_teacher_demo";
+  const joinedAt = nowIso();
+
+  const users = buildSeedUsers(joinedAt);
 
   const streaks: StoredStreakData[] = [
     {
@@ -809,7 +917,11 @@ function ensureStoreFile(): void {
 
 export function readStore(): AppStore {
   ensureStoreFile();
-  return JSON.parse(fs.readFileSync(STORE_PATH, "utf8")) as AppStore;
+  const store = JSON.parse(fs.readFileSync(STORE_PATH, "utf8")) as AppStore;
+  if (ensureSeedUsers(store)) {
+    fs.writeFileSync(STORE_PATH, JSON.stringify(store, null, 2), "utf8");
+  }
+  return store;
 }
 
 export function writeStore(store: AppStore): void {

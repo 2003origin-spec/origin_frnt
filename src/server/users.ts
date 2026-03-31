@@ -136,16 +136,30 @@ function serializePomodoro(session: {
 async function handleLogin(payload: UserPayload) {
   const email = asString(payload.email)?.trim().toLowerCase();
   const password = asString(payload.password);
+  const requestedRole = asString(payload.role)?.trim().toLowerCase();
+  const role =
+    requestedRole === "student" || requestedRole === "teacher" || requestedRole === "admin"
+      ? requestedRole
+      : null;
 
   if (!email || !password) {
     return badRequest('Must include "email" and "password".');
   }
 
   return withStore((store) => {
-    const user = store.users.find((entry) => entry.email.toLowerCase() === email && entry.password === password);
-    if (!user) {
+    const matchingUsers = store.users.filter(
+      (entry) => entry.email.toLowerCase() === email && entry.password === password,
+    );
+    const eligibleUsers = role ? matchingUsers.filter((entry) => entry.role === role) : matchingUsers;
+
+    if (!eligibleUsers.length) {
       return badRequest("Invalid email or password.");
     }
+    if (!role && eligibleUsers.length > 1) {
+      return badRequest("Multiple accounts use this email. Please select Student or Teacher before logging in.");
+    }
+
+    const user = eligibleUsers[0];
 
     const session = createAuthSession(store, user.id);
     const userData = serializeUser(store, user.id);

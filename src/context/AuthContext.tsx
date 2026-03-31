@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { toast } from 'sonner';
-import type { User, StreakData, Task, ViewState } from '@/types';
+import type { User, StreakData, Task } from '@/types';
 import { apiCall } from '@/lib/api';
 
 interface AuthContextType {
@@ -13,7 +13,7 @@ interface AuthContextType {
   isLoading: boolean;
   authError: string | null;
   tasks: Task[];
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string, role?: 'student' | 'teacher' | null) => Promise<void>;
   logout: () => void;
   refreshUser: () => Promise<void>;
   addTask: (text: string, due: string) => void;
@@ -97,13 +97,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [pathname, router]);
 
-  const login = async (email: string, password: string) => {
+  const login = async (email: string, password: string, role?: 'student' | 'teacher' | null) => {
     setIsLoading(true);
     setAuthError(null);
     try {
       const response = await apiCall('/users/login/', {
         method: 'POST',
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, ...(role ? { role } : {}) }),
       });
 
       localStorage.setItem('origin_access_token', response.access);
@@ -119,9 +119,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         router.push('/dashboard');
       }
       toast.success('Welcome back to ORIGIN!');
-    } catch (error: any) {
-      setAuthError(error.message || 'Login failed');
-      toast.error(error.message || 'Login failed');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Login failed';
+      setAuthError(message);
+      toast.error(message);
     } finally {
       setIsLoading(false);
     }
