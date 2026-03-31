@@ -59,6 +59,10 @@ function normalizeTags(tags: string | string[] | null | undefined): string[] {
     return [];
 }
 
+function normalizeSubject(value: string | null | undefined): string {
+    return (value ?? '').trim().toLowerCase();
+}
+
 interface UserStats {
     rank: number | null;
     accuracy: number;
@@ -127,7 +131,9 @@ export default function OGCodeList({ onSelectQuestion, user }: OGCodeListProps) 
     const filteredQuestions = questions.filter(q => {
         const matchesSearch = (q.text || q.title || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
             normalizeTags(q.tags).some(t => t.toLowerCase().includes(searchQuery.toLowerCase()));
-        const matchesSubject = activeSubject === 'All Topics' || q.subject === activeSubject;
+        const matchesSubject =
+            activeSubject === 'All Topics' ||
+            normalizeSubject(q.subject) === normalizeSubject(activeSubject);
         
         const qDifficulty = q.difficulty?.toLowerCase();
         const matchesDifficulty = activeDifficulty === 'All' || qDifficulty === activeDifficulty.toLowerCase();
