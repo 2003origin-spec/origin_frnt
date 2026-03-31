@@ -1,0 +1,188 @@
+import type { NextRequest } from "next/server";
+
+import { requireUserFromRequest } from "@/server/auth";
+import {
+  type CustomTestPayload,
+  createCustomTest,
+  getChallengeOfTheDay,
+  getFocusAreas,
+  getOgcodeLeaderboard,
+  getOgcodeSubjectRanks,
+  getOgcodeUserStats,
+  getPracticeQuestionDetail,
+  getSingleResult,
+  getTestDetail,
+  listPracticeQuestions,
+  listTestResults,
+  listTests,
+  type PracticeSubmissionPayload,
+  submitPracticeQuestion,
+  type TestSubmissionPayload,
+  submitTest,
+  type UpdateOgcodeLocationPayload,
+  updateOgcodeLocation,
+} from "@/server/assessments";
+import { badRequest, created, getSlugSegments, methodNotAllowed, notFound, ok, parseJsonBody, unauthorized } from "@/server/http";
+import { readStore, withStore } from "@/server/store";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+function authUser(request: Request) {
+  const store = readStore();
+  const user = requireUserFromRequest(store, request);
+  if (!user) {
+    return null;
+  }
+  return { store, user };
+}
+
+type RouteContext = {
+  params: Promise<{ slug?: string[] }>;
+};
+
+export async function GET(request: NextRequest, context: RouteContext) {
+  const auth = authUser(request);
+  if (!auth) {
+    return unauthorized();
+  }
+
+  const { store, user } = auth;
+  const params = await context.params;
+  const slug = getSlugSegments(params);
+  const [root, first, second] = slug;
+
+  try {
+    if (root === "tests" && !first) {
+      return ok(listTests(store, user));
+    }
+
+    if (root === "tests" && first && !second) {
+      return ok(getTestDetail(store, user, first));
+    }
+
+    if (root === "tests" && first && second === "results") {
+      return ok(listTestResults(store, user, first));
+    }
+
+    if (root === "results" && first) {
+      return ok(getSingleResult(store, user, first));
+    }
+
+    if (root === "practice" && !first) {
+      const url = new URL(request.url);
+      return ok(
+        listPracticeQuestions(store, user, {
+          subject: url.searchParams.get("subject"),
+          difficulty: url.searchParams.get("difficulty"),
+          type: url.searchParams.get("type"),
+        }),
+      );
+    }
+
+    if (root === "practice" && first && !second) {
+      return ok(getPracticeQuestionDetail(store, user, first));
+    }
+
+    if (root === "ogcode" && first === "questions") {
+      return ok(listPracticeQuestions(store, user, {}));
+    }
+
+    if (root === "ogcode" && first === "challenge") {
+      return ok(getChallengeOfTheDay(store, user));
+    }
+
+    if (root === "ogcode" && first === "user-stats") {
+      return ok(getOgcodeUserStats(store, user));
+    }
+
+    if (root === "ogcode" && first === "leaderboard" && second === "subjects") {
+      return ok(getOgcodeSubjectRanks(store, user));
+    }
+
+    if (root === "ogcode" && first === "stats") {
+      return ok(getOgcodeSubjectRanks(store, user));
+    }
+
+    if (root === "ogcode" && first === "leaderboard") {
+      const url = new URL(request.url);
+      return ok(getOgcodeLeaderboard(store, user, url.searchParams.get("subject")));
+    }
+
+    if (root === "focus-areas") {
+      return ok(getFocusAreas(store, user));
+    }
+  } catch (error) {
+    return notFound(error instanceof Error ? error.message : "Not found.");
+  }
+
+  return notFound();
+}
+
+export async function POST(request: NextRequest, context: RouteContext) {
+  const params = await context.params;
+  const slug = getSlugSegments(params);
+  const [root, first, second] = slug;
+
+  const auth = authUser(request);
+  if (!auth) {
+    return unauthorized();
+  }
+
+  try {
+    if (root === "tests" && first === "custom") {
+      const body = await parseJsonBody<CustomTestPayload>(request);
+      const response = withStore((store) => {
+        const user = requireUserFromRequest(store, request);
+        if (!user) {
+          throw new Error("Authentication credentials were not provided.");
+        }
+        return createCustomTest(store, user, body);
+      });
+      return created(response);
+    }
+
+    if (root === "tests" && first && second === "submit") {
+      const body = await parseJsonBody<TestSubmissionPayload>(request);
+      const response = withStore((store) => {
+        const user = requireUserFromRequest(store, request);
+        if (!user) {
+          throw new Error("Authentication credentials were not provided.");
+        }
+        return submitTest(store, user, first, body);
+      });
+      return created(response);
+    }
+
+    if (root === "practice" && first && second === "submit") {
+      const body = await parseJsonBody<PracticeSubmissionPayload>(request);
+      const response = withStore((store) => {
+        const user = requireUserFromRequest(store, request);
+        if (!user) {
+          throw new Error("Authentication credentials were not provided.");
+        }
+        return submitPracticeQuestion(store, user, first, body);
+      });
+      return ok(response);
+    }
+
+    if (root === "ogcode" && first === "location") {
+      const body = await parseJsonBody<UpdateOgcodeLocationPayload>(request);
+      const response = withStore((store) => {
+        const user = requireUserFromRequest(store, request);
+        if (!user) {
+          throw new Error("Authentication credentials were not provided.");
+        }
+        return updateOgcodeLocation(store, user, body);
+      });
+      return ok(response);
+    }
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("not provided")) {
+      return unauthorized(error.message);
+    }
+    return badRequest(error instanceof Error ? error.message : "Invalid request.");
+  }
+
+  return methodNotAllowed();
+}

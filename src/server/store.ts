@@ -1,0 +1,839 @@
+import fs from "node:fs";
+import path from "node:path";
+import { randomUUID } from "node:crypto";
+
+import {
+  dppQuestions,
+  mockBooks,
+  mockBookmarks,
+  mockDoubtSessions,
+  mockLeaderboard,
+  mockLibraryUserSet,
+  mockNotes,
+  mockQuestions,
+  mockTestResult,
+  mockTests,
+} from "@/data/mockData";
+import { ncertBooksData } from "@/data/ncertBooks";
+import type { Question } from "@/types";
+
+export type UserRole = "student" | "teacher" | "admin";
+export type QuestionType = "mcq" | "msq" | "numerical" | "matrix_match" | "subjective";
+export type DifficultyLevel = "easy" | "medium" | "hard" | "insane";
+
+export interface StoredUser {
+  id: string;
+  name: string;
+  email: string;
+  password: string;
+  role: UserRole;
+  studentClass: string | null;
+  fieldOfInterest: string | null;
+  referralSource: string | null;
+  avatar: string | null;
+  streak: number;
+  totalStudyTime: number;
+  joinedAt: string;
+  isPremium: boolean;
+  premiumExpiry: string | null;
+  isOnboarded: boolean;
+  selectedCourse: string | null;
+  isDropper: boolean;
+  yearsOfExperience: string | null;
+  subjects: string[];
+  studentCapacity: string | null;
+}
+
+export interface StoredStreakData {
+  userId: string;
+  currentStreak: number;
+  longestStreak: number;
+  lastStudyDate: string | null;
+  weeklyData: boolean[];
+}
+
+export interface StoredDailyActivity {
+  userId: string;
+  date: string;
+  questionsPracticed: number;
+  webpageTime: number;
+  practiceTime: number;
+  pomodoroTime: number;
+}
+
+export interface StoredDailySubjectActivity {
+  userId: string;
+  date: string;
+  subject: string;
+  timeSpent: number;
+}
+
+export interface StoredPomodoroSession {
+  id: string;
+  userId: string;
+  startTime: string;
+  endTime: string | null;
+  duration: number;
+  mode: "focus" | "shortBreak" | "longBreak";
+  breakReason: string | null;
+  interruptionCount: number;
+  isCompleted: boolean;
+}
+
+export interface StoredUserScore {
+  userId: string;
+  totalPoints: number;
+  currentTier: string;
+  lastUpdated: string;
+}
+
+export interface StoredPointLog {
+  id: string;
+  userId: string;
+  points: number;
+  activityType: string;
+  description: string;
+  timestamp: string;
+  referenceId: string | null;
+}
+
+export interface StoredMatrixData {
+  column_a: string[];
+  column_b: string[];
+  correct_pairs: number[][];
+}
+
+export interface StoredQuestion {
+  id: string;
+  text: string;
+  options: string[] | null;
+  correctOption: number | null;
+  correctOptions: number[] | null;
+  answerText: string | null;
+  tolerance: number | null;
+  matrixData: StoredMatrixData | null;
+  explanation: string;
+  hint: string | null;
+  subject: string;
+  chapter: string;
+  concept: string;
+  difficulty: DifficultyLevel;
+  image: string | null;
+  tags: string[] | string | null;
+  questionType: QuestionType;
+  acceptanceRate: number;
+  totalCorrect: number;
+  frequency: number;
+  isChallengeOfTheDay: boolean;
+}
+
+export interface StoredTest {
+  id: string;
+  title: string;
+  description: string;
+  subject: string;
+  chapter: string | null;
+  difficulty: DifficultyLevel;
+  duration: number;
+  totalQuestions: number;
+  isPremium: boolean;
+  questionIds: string[];
+  createdBy: string | null;
+}
+
+export interface StoredUserAnswer {
+  questionId: string;
+  selectedOption: number | null;
+  selectedOptions: number[] | null;
+  matrixPairs: number[][] | null;
+  answerText: string | null;
+  timeSpent: number;
+  isMarkedForReview: boolean;
+}
+
+export interface StoredTestResult {
+  id: string;
+  userId: string;
+  testId: string;
+  score: number;
+  percentage: number;
+  correctAnswers: number;
+  wrongAnswers: number;
+  unattempted: number;
+  timeTaken: number;
+  weakAreas: Array<{ topic: string; accuracy: number }>;
+  strongAreas: Array<{ topic: string; accuracy: number }>;
+  aiAnalysis: {
+    summary: string;
+    mistakes: Array<{
+      questionId: string;
+      concept: string;
+      error: string;
+      explanation: string;
+      howToApproach: string;
+    }>;
+    recommendations: string[];
+    dppGenerated: boolean;
+  };
+  subjectStats: Record<
+    string,
+    {
+      score: number;
+      total_marks: number;
+      correct: number;
+      incorrect: number;
+      unattempted: number;
+      total_qs: number;
+      accuracy: number;
+      time_spent_correct: number;
+      time_spent_incorrect: number;
+      time_spent_unattempted: number;
+      total_time_spent: number;
+    }
+  >;
+  isMalpractice: boolean;
+  createdAt: string;
+  answers: StoredUserAnswer[];
+}
+
+export interface StoredPracticeAttempt {
+  id: string;
+  userId: string;
+  questionId: string;
+  isCorrect: boolean;
+  timeSpent: number;
+  selectedOptions: number[] | null;
+  matrixPairs: number[][] | null;
+  answerSubmitted: string | null;
+  createdAt: string;
+}
+
+export interface StoredDpp {
+  id: string;
+  userId: string;
+  title: string;
+  subject: string;
+  questionIds: string[];
+  generatedFrom: string[];
+  completed: boolean;
+  createdAt: string;
+}
+
+export interface StoredAssignment {
+  id: string;
+  userId: string;
+  title: string;
+  subject: string;
+  questionIds: string[];
+  completed: boolean;
+  dueDate: string | null;
+  createdAt: string;
+}
+
+export interface StoredSubjectRank {
+  userId: string;
+  subject: string;
+  questionsSolved: number;
+  rankScore: number;
+  latitude: number | null;
+  longitude: number | null;
+  locationShared: boolean;
+  updatedAt: string;
+}
+
+export interface StoredBookChapter {
+  id: string;
+  title: string;
+  pages: number;
+  pdfFile: string | null;
+}
+
+export interface StoredBook {
+  id: string;
+  title: string;
+  bookClass: string;
+  subject: string;
+  coverImage: string;
+  basePath: string | null;
+  chapters: StoredBookChapter[];
+}
+
+export interface StoredNote {
+  id: string;
+  userId: string;
+  bookId: string;
+  chapterId: string | null;
+  pageNumber: number | null;
+  content: string;
+  color: string;
+  createdAt: string;
+  updatedAt: string;
+  tags: string[];
+}
+
+export interface StoredBookmark {
+  id: string;
+  userId: string;
+  bookId: string;
+  pageNumber: number;
+  title: string;
+  createdAt: string;
+}
+
+export interface StoredSavedBook {
+  id: string;
+  userId: string;
+  bookId: string;
+  createdAt: string;
+}
+
+export interface StoredChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  image: string | null;
+  metadata: Record<string, unknown>;
+  timestamp: string;
+}
+
+export interface StoredDoubtSession {
+  id: string;
+  userId: string;
+  title: string;
+  subject: string;
+  activeConcept: string | null;
+  createdAt: string;
+  updatedAt: string;
+  messages: StoredChatMessage[];
+}
+
+export interface StoredAuthSession {
+  accessToken: string;
+  refreshToken: string;
+  userId: string;
+  createdAt: string;
+}
+
+export interface LeaderboardSeedEntry {
+  rank: number;
+  userId: string;
+  name: string;
+  avatar?: string;
+  score: number;
+  studyTime: number;
+  location?: string;
+  isLive: boolean;
+}
+
+export interface AppStore {
+  users: StoredUser[];
+  streaks: StoredStreakData[];
+  dailyActivities: StoredDailyActivity[];
+  dailySubjectActivities: StoredDailySubjectActivity[];
+  pomodoroSessions: StoredPomodoroSession[];
+  userScores: StoredUserScore[];
+  pointLogs: StoredPointLog[];
+  questions: StoredQuestion[];
+  tests: StoredTest[];
+  testResults: StoredTestResult[];
+  practiceAttempts: StoredPracticeAttempt[];
+  dpps: StoredDpp[];
+  assignments: StoredAssignment[];
+  subjectRanks: StoredSubjectRank[];
+  books: StoredBook[];
+  notes: StoredNote[];
+  bookmarks: StoredBookmark[];
+  savedBooks: StoredSavedBook[];
+  doubtSessions: StoredDoubtSession[];
+  authSessions: StoredAuthSession[];
+  leaderboardSeed: LeaderboardSeedEntry[];
+}
+
+const STORE_DIR = path.join(process.cwd(), ".origin-dev");
+const STORE_PATH = path.join(STORE_DIR, "server-store.json");
+
+type SeedQuestion = Question & {
+  correctOptions?: number[];
+  tolerance?: number;
+  acceptance_rate?: number;
+  acceptanceRate?: number;
+  totalCorrect?: number;
+  frequency?: number;
+};
+
+function jsonClone<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function nowIso(): string {
+  return new Date().toISOString();
+}
+
+function toStoredQuestion(question: SeedQuestion): StoredQuestion {
+  return {
+    id: String(question.id),
+    text: question.text,
+    options: question.options ?? null,
+    correctOption: question.correctOption ?? null,
+    correctOptions: question.correctOptions ?? null,
+    answerText: question.answerText ?? null,
+    tolerance: typeof question.tolerance === "number" ? question.tolerance : null,
+    matrixData: question.matrixData ?? null,
+    explanation: question.explanation,
+    hint: question.hint ?? null,
+    subject: normalizeSubject(question.subject),
+    chapter: question.chapter,
+    concept: question.concept,
+    difficulty: normalizeDifficulty(question.difficulty),
+    image: question.image ?? null,
+    tags: question.tags ?? null,
+    questionType: normalizeQuestionType(question.questionType),
+    acceptanceRate: Number(question.acceptance_rate ?? question.acceptanceRate ?? 0),
+    totalCorrect: Number(question.totalCorrect ?? 0),
+    frequency: Number(question.frequency ?? 0),
+    isChallengeOfTheDay: false,
+  };
+}
+
+function normalizeDifficulty(value: string | undefined): DifficultyLevel {
+  if (value === "easy" || value === "medium" || value === "hard" || value === "insane") {
+    return value;
+  }
+  return "medium";
+}
+
+function normalizeQuestionType(value: string | undefined): QuestionType {
+  if (
+    value === "mcq" ||
+    value === "msq" ||
+    value === "numerical" ||
+    value === "matrix_match" ||
+    value === "subjective"
+  ) {
+    return value;
+  }
+  return "mcq";
+}
+
+function normalizeSubject(subject: string | undefined): string {
+  if (!subject) {
+    return "physics";
+  }
+  const lower = subject.toLowerCase();
+  if (lower === "maths") {
+    return "mathematics";
+  }
+  return lower;
+}
+
+function buildSeedStore(): AppStore {
+  const userId = "user_student_demo";
+  const teacherId = "user_teacher_demo";
+  const joinedAt = nowIso();
+
+  const users: StoredUser[] = [
+    {
+      id: userId,
+      name: "Demo Learner",
+      email: "student@origin.test",
+      password: "password123",
+      role: "student",
+      studentClass: "11",
+      fieldOfInterest: "Engineering",
+      referralSource: "codex",
+      avatar: null,
+      streak: 5,
+      totalStudyTime: 420,
+      joinedAt,
+      isPremium: false,
+      premiumExpiry: null,
+      isOnboarded: true,
+      selectedCourse: "JEE Main + Advanced",
+      isDropper: false,
+      yearsOfExperience: null,
+      subjects: ["Physics", "Chemistry", "Mathematics"],
+      studentCapacity: null,
+    },
+    {
+      id: teacherId,
+      name: "Demo Teacher",
+      email: "teacher@origin.test",
+      password: "password123",
+      role: "teacher",
+      studentClass: null,
+      fieldOfInterest: null,
+      referralSource: "codex",
+      avatar: null,
+      streak: 3,
+      totalStudyTime: 120,
+      joinedAt,
+      isPremium: true,
+      premiumExpiry: null,
+      isOnboarded: true,
+      selectedCourse: null,
+      isDropper: false,
+      yearsOfExperience: "5+",
+      subjects: ["Physics"],
+      studentCapacity: "50",
+    },
+  ];
+
+  const streaks: StoredStreakData[] = [
+    {
+      userId,
+      currentStreak: 5,
+      longestStreak: 12,
+      lastStudyDate: new Date().toISOString().slice(0, 10),
+      weeklyData: [true, true, true, true, true, false, false],
+    },
+    {
+      userId: teacherId,
+      currentStreak: 3,
+      longestStreak: 7,
+      lastStudyDate: new Date().toISOString().slice(0, 10),
+      weeklyData: [false, true, false, true, true, false, true],
+    },
+  ];
+
+  const questionsMap = new Map<string, StoredQuestion>();
+  [...mockQuestions, ...dppQuestions].forEach((question) => {
+    questionsMap.set(String(question.id), toStoredQuestion(question));
+  });
+
+  const challengeQuestion = questionsMap.get("10");
+  if (challengeQuestion) {
+    challengeQuestion.isChallengeOfTheDay = true;
+  }
+
+  const tests: StoredTest[] = mockTests.map((test) => ({
+    id: String(test.id),
+    title: test.title,
+    description: test.description,
+    subject: normalizeSubject(test.subject),
+    chapter: test.chapter ?? null,
+    difficulty: normalizeDifficulty(test.difficulty),
+    duration: test.duration,
+    totalQuestions: test.totalQuestions,
+    isPremium: Boolean(test.isPremium),
+    questionIds: test.questions.map((question) => String(question.id)),
+    createdBy: null,
+  }));
+
+  const testResults: StoredTestResult[] = [
+    {
+      id: "result_seed_1",
+      userId,
+      testId: String(mockTestResult.testId),
+      score: mockTestResult.score,
+      percentage: mockTestResult.percentage ?? 75,
+      correctAnswers: mockTestResult.correctAnswers,
+      wrongAnswers: mockTestResult.wrongAnswers,
+      unattempted: mockTestResult.unattempted,
+      timeTaken: mockTestResult.timeTaken,
+      weakAreas: jsonClone(mockTestResult.weakAreas),
+      strongAreas: jsonClone(mockTestResult.strongAreas),
+      aiAnalysis: jsonClone(mockTestResult.aiAnalysis),
+      subjectStats: jsonClone(mockTestResult.subjectStats ?? {}),
+      isMalpractice: Boolean(mockTestResult.isMalpractice),
+      createdAt: nowIso(),
+      answers: mockTestResult.answers.map((answer) => ({
+        questionId: String(answer.questionId),
+        selectedOption: answer.selectedOption ?? null,
+        selectedOptions: answer.selectedOptions ?? null,
+        matrixPairs: answer.matrixPairs ?? null,
+        answerText: answer.answerText ?? null,
+        timeSpent: answer.timeSpent,
+        isMarkedForReview: answer.isMarkedForReview,
+      })),
+    },
+  ];
+
+  const practiceAttempts: StoredPracticeAttempt[] = [
+    {
+      id: "practice_seed_1",
+      userId,
+      questionId: "1",
+      isCorrect: true,
+      timeSpent: 90,
+      selectedOptions: null,
+      matrixPairs: null,
+      answerSubmitted: "0",
+      createdAt: nowIso(),
+    },
+    {
+      id: "practice_seed_2",
+      userId,
+      questionId: "3",
+      isCorrect: true,
+      timeSpent: 70,
+      selectedOptions: null,
+      matrixPairs: null,
+      answerSubmitted: "1",
+      createdAt: nowIso(),
+    },
+  ];
+
+  const booksMap = new Map<string, StoredBook>();
+  mockBooks.forEach((book) => {
+    booksMap.set(book.id, {
+      id: book.id,
+      title: book.title,
+      bookClass: book.bookClass,
+      subject: book.subject,
+      coverImage: book.coverImage,
+      basePath: book.basePath ?? null,
+      chapters: (book.chapters ?? []).map((chapter) => ({
+        id: chapter.id,
+        title: chapter.title,
+        pages: chapter.pages,
+        pdfFile: chapter.pdfFile ?? null,
+      })),
+    });
+  });
+  ncertBooksData.forEach((book) => {
+    if (!booksMap.has(book.id)) {
+      booksMap.set(book.id, {
+        id: book.id,
+        title: book.title,
+        bookClass: book.bookClass,
+        subject: book.subject,
+        coverImage: "",
+        basePath: book.basePath ?? null,
+        chapters: (book.chapters ?? []).map((chapter, index) => ({
+          id: chapter.id,
+          title: chapter.title,
+          pages: index + 1,
+          pdfFile: chapter.pdfFile ?? null,
+        })),
+      });
+    }
+  });
+
+  const notes: StoredNote[] = mockNotes.map((note) => ({
+    id: String(note.id),
+    userId,
+    bookId: note.bookId,
+    chapterId: note.chapterId ?? null,
+    pageNumber: note.pageNumber ?? null,
+    content: note.content,
+    color: note.color,
+    createdAt: new Date(note.createdAt).toISOString(),
+    updatedAt: new Date(note.updatedAt).toISOString(),
+    tags: note.tags,
+  }));
+
+  const bookmarks: StoredBookmark[] = mockBookmarks.map((bookmark) => ({
+    id: String(bookmark.id),
+    userId,
+    bookId: bookmark.bookId,
+    pageNumber: bookmark.pageNumber,
+    title: bookmark.title,
+    createdAt: new Date(bookmark.createdAt).toISOString(),
+  }));
+
+  const savedBooks: StoredSavedBook[] = mockLibraryUserSet.map((bookId, index) => ({
+    id: `saved_book_${index + 1}`,
+    userId,
+    bookId,
+    createdAt: nowIso(),
+  }));
+
+  const doubtSessions: StoredDoubtSession[] = mockDoubtSessions.map((session) => ({
+    id: String(session.id),
+    userId,
+    title: session.title,
+    subject: session.subject ?? "Physics",
+    activeConcept: session.activeConcept ?? "Circular Motion",
+    createdAt: new Date(session.createdAt).toISOString(),
+    updatedAt: new Date(session.updatedAt).toISOString(),
+    messages: session.messages.map((message) => ({
+      id: String(message.id),
+      role: message.role,
+      content: message.content,
+      image: message.image ?? null,
+      metadata: jsonClone(message.metadata ?? {}),
+      timestamp: new Date(message.timestamp).toISOString(),
+    })),
+  }));
+
+  const pointLogs: StoredPointLog[] = [
+    {
+      id: "point_log_seed_1",
+      userId,
+      points: 55,
+      activityType: "practice",
+      description: "Solved hard Physics question",
+      timestamp: nowIso(),
+      referenceId: "10",
+    },
+    {
+      id: "point_log_seed_2",
+      userId,
+      points: 20,
+      activityType: "pomodoro",
+      description: "Completed focus session",
+      timestamp: nowIso(),
+      referenceId: "pomodoro_seed_1",
+    },
+  ];
+
+  const userScores: StoredUserScore[] = [
+    {
+      userId,
+      totalPoints: 1280,
+      currentTier: "Expert",
+      lastUpdated: nowIso(),
+    },
+    {
+      userId: teacherId,
+      totalPoints: 600,
+      currentTier: "Advanced",
+      lastUpdated: nowIso(),
+    },
+  ];
+
+  const dailyActivities: StoredDailyActivity[] = [
+    {
+      userId,
+      date: new Date().toISOString().slice(0, 10),
+      questionsPracticed: 6,
+      webpageTime: 2100,
+      practiceTime: 1200,
+      pomodoroTime: 1500,
+    },
+  ];
+
+  const dailySubjectActivities: StoredDailySubjectActivity[] = [
+    {
+      userId,
+      date: new Date().toISOString().slice(0, 10),
+      subject: "Physics",
+      timeSpent: 1800,
+    },
+  ];
+
+  const pomodoroSessions: StoredPomodoroSession[] = [
+    {
+      id: "pomodoro_seed_1",
+      userId,
+      startTime: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+      endTime: new Date().toISOString(),
+      duration: 25 * 60,
+      mode: "focus",
+      breakReason: null,
+      interruptionCount: 0,
+      isCompleted: true,
+    },
+  ];
+
+  const subjectRanks: StoredSubjectRank[] = [
+    {
+      userId,
+      subject: "Physics",
+      questionsSolved: 3,
+      rankScore: 85,
+      latitude: null,
+      longitude: null,
+      locationShared: false,
+      updatedAt: nowIso(),
+    },
+    {
+      userId,
+      subject: "Chemistry",
+      questionsSolved: 1,
+      rankScore: 25,
+      latitude: null,
+      longitude: null,
+      locationShared: false,
+      updatedAt: nowIso(),
+    },
+  ];
+
+  const dpps: StoredDpp[] = [
+    {
+      id: "dpp_seed_1",
+      userId,
+      title: "Redox Recovery Set",
+      subject: "chemistry",
+      questionIds: dppQuestions.map((question) => String(question.id)),
+      generatedFrom: ["Redox Reactions", "Equilibrium"],
+      completed: false,
+      createdAt: nowIso(),
+    },
+  ];
+
+  const leaderboardSeed = mockLeaderboard.map((entry) => ({
+    rank: entry.rank,
+    userId: entry.userId,
+    name: entry.name,
+    avatar: entry.avatar,
+    score: entry.score,
+    studyTime: entry.studyTime,
+    location: entry.location,
+    isLive: entry.isLive,
+  }));
+
+  return {
+    users,
+    streaks,
+    dailyActivities,
+    dailySubjectActivities,
+    pomodoroSessions,
+    userScores,
+    pointLogs,
+    questions: [...questionsMap.values()],
+    tests,
+    testResults,
+    practiceAttempts,
+    dpps,
+    assignments: [],
+    subjectRanks,
+    books: [...booksMap.values()],
+    notes,
+    bookmarks,
+    savedBooks,
+    doubtSessions,
+    authSessions: [],
+    leaderboardSeed,
+  };
+}
+
+function ensureStoreFile(): void {
+  if (!fs.existsSync(STORE_DIR)) {
+    fs.mkdirSync(STORE_DIR, { recursive: true });
+  }
+  if (!fs.existsSync(STORE_PATH)) {
+    fs.writeFileSync(STORE_PATH, JSON.stringify(buildSeedStore(), null, 2), "utf8");
+  }
+}
+
+export function readStore(): AppStore {
+  ensureStoreFile();
+  return JSON.parse(fs.readFileSync(STORE_PATH, "utf8")) as AppStore;
+}
+
+export function writeStore(store: AppStore): void {
+  ensureStoreFile();
+  fs.writeFileSync(STORE_PATH, JSON.stringify(store, null, 2), "utf8");
+}
+
+export function withStore<T>(mutate: (store: AppStore) => T): T {
+  const store = readStore();
+  const result = mutate(store);
+  writeStore(store);
+  return result;
+}
+
+export function resetStore(): AppStore {
+  const fresh = buildSeedStore();
+  writeStore(fresh);
+  return fresh;
+}
+
+export function createId(prefix: string): string {
+  return `${prefix}_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
+}
+
+export function cloneStore<T>(value: T): T {
+  return jsonClone(value);
+}
