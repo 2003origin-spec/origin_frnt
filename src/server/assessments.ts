@@ -405,6 +405,80 @@ function extractSemanticTokens(value: string | null | undefined): string[] {
     .filter((token): token is string => Boolean(token));
 }
 
+function normalizeFormulaComponent(token: string): string | null {
+  if (!token) {
+    return null;
+  }
+  if (/^[=+\-*/^]$/.test(token)) {
+    return token;
+  }
+
+  if (/^[-+]?\d*\.?\d+(?:e[-+]?\d+)?$/.test(token)) {
+    const numeric = Number(token);
+    return Number.isFinite(numeric) ? String(numeric) : token;
+  }
+
+  const squashed = token.replace(/_/g, "");
+  const aliased = TOKEN_ALIASES.get(squashed) ?? token;
+  return aliased || null;
+}
+
+function extractFormulaComponents(value: string | null | undefined): string[] {
+  return normalizeFreeText(value)
+    .split(" ")
+    .map((token) => token.trim())
+    .filter(Boolean)
+    .map(normalizeFormulaComponent)
+    .filter((token): token is string => Boolean(token));
+}
+
+function formulaComponentWeight(token: string): number {
+  if (/^[=+\-*/^]$/.test(token)) {
+    return 1.2;
+  }
+  if (/^[-+]?\d/.test(token)) {
+    return 1.1;
+  }
+  if (FORMULA_SIGNAL_TOKENS.has(token)) {
+    return 1.4;
+  }
+  if (token.length === 1) {
+    return 1;
+  }
+  return 1.15;
+}
+
+function weightedMultisetCoverage(expectedTokens: string[], submittedTokens: string[]) {
+  const submittedCounts = new Map<string, number>();
+  submittedTokens.forEach((token) => {
+    submittedCounts.set(token, (submittedCounts.get(token) ?? 0) + 1);
+  });
+
+  let totalWeight = 0;
+  let matchedWeight = 0;
+  const matchedTerms: string[] = [];
+  const missingTerms: string[] = [];
+
+  expectedTokens.forEach((token) => {
+    const weight = formulaComponentWeight(token);
+    totalWeight += weight;
+    const count = submittedCounts.get(token) ?? 0;
+    if (count > 0) {
+      matchedWeight += weight;
+      matchedTerms.push(token);
+      submittedCounts.set(token, count - 1);
+    } else {
+      missingTerms.push(token);
+    }
+  });
+
+  return {
+    score: totalWeight > 0 ? matchedWeight / totalWeight : 0,
+    matchedTerms,
+    missingTerms,
+  };
+}
+
 function semanticTokenWeight(token: string): number {
   if (/^[-+]?\d/.test(token)) {
     return 2.5;
@@ -528,6 +602,7 @@ function buildSemanticVariants(expectedValue: string | null | undefined): string
   if (!raw) {
     return [];
   }
+  const formulaHeavy = isFormulaHeavy(raw);
 
   const variants = new Map<string, { source: "raw" | "context" | "alternative" | "equals"; density: number }>();
   const addVariant = (candidate: string, source: "raw" | "context" | "alternative" | "equals") => {
@@ -540,20 +615,22 @@ function buildSemanticVariants(expectedValue: string | null | undefined): string
   };
 
   addVariant(raw, "raw");
-  const withoutParenthetical = raw.replace(/\([^)]*\)/g, " ").replace(/\s+/g, " ").trim();
-  if (withoutParenthetical && withoutParenthetical !== raw) {
-    addVariant(withoutParenthetical, "context");
-  }
-
-  [...raw.matchAll(/\(([^)]*)\)/g)].forEach((match) => {
-    addVariant(match[1], "context");
-    if (match[1].includes(":")) {
-      addVariant(match[1].split(":").slice(1).join(":").trim(), "context");
+  if (!formulaHeavy) {
+    const withoutParenthetical = raw.replace(/\([^)]*\)/g, " ").replace(/\s+/g, " ").trim();
+    if (withoutParenthetical && withoutParenthetical !== raw) {
+      addVariant(withoutParenthetical, "context");
     }
-  });
 
-  if (raw.includes(":")) {
-    addVariant(raw.split(":").slice(1).join(":").trim(), "context");
+    [...raw.matchAll(/\(([^)]*)\)/g)].forEach((match) => {
+      addVariant(match[1], "context");
+      if (match[1].includes(":")) {
+        addVariant(match[1].split(":").slice(1).join(":").trim(), "context");
+      }
+    });
+
+    if (raw.includes(":")) {
+      addVariant(raw.split(":").slice(1).join(":").trim(), "context");
+    }
   }
 
   const pending = [...variants.keys()];
@@ -625,22 +702,32 @@ function evaluateSubjectiveVariant(
   const formulaScore = diceSimilarity(expectedVariant, submittedValue ?? "");
   const contextScore = contextCoverage(question, submittedTokens);
   const formulaHeavy = isFormulaHeavy(expectedVariant);
+  const formulaStructure = formulaHeavy
+    ? weightedMultisetCoverage(
+        extractFormulaComponents(expectedVariant),
+        extractFormulaComponents(submittedValue),
+      )
+    : null;
 
   const components: Array<[number, number]> = formulaHeavy
     ? [
-        [coverage.score, 0.4],
-        [formulaScore, 0.4],
+        [coverage.score, 0.25],
+        [formulaScore, 0.25],
       ]
     : [
         [coverage.score, 0.58],
         [formulaScore, 0.22],
       ];
 
+  if (formulaStructure) {
+    components.push([formulaStructure.score, 0.3]);
+  }
+
   if (numericComparison.score !== null) {
-    components.push([numericComparison.score, formulaHeavy ? 0.2 : 0.14]);
+    components.push([numericComparison.score, formulaHeavy ? 0.14 : 0.14]);
   }
   if (contextScore > 0) {
-    components.push([Math.min(contextScore, 0.8), formulaHeavy ? 0.05 : 0.06]);
+    components.push([Math.min(contextScore, 0.8), formulaHeavy ? 0.06 : 0.06]);
   }
 
   const totalWeight = components.reduce((sum, [, weight]) => sum + weight, 0);
@@ -696,6 +783,10 @@ function evaluateSubjectiveVariant(
 
   if (formulaHeavy && criticalCoverage.score < 0.55) {
     score = Math.min(score, threshold - (criticalCoverage.score < 0.25 ? 0.18 : 0.08));
+  }
+
+  if (formulaHeavy && formulaStructure && formulaStructure.score < 0.88) {
+    score = Math.min(score, threshold - (formulaStructure.score < 0.72 ? 0.2 : 0.1));
   }
 
   score = clamp01(score);
