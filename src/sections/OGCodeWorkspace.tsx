@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from 'react';
 import {
     ArrowLeft, Play, Clock, Loader2, CheckCircle2,
     XCircle, RotateCcw, Trophy, X, HelpCircle
@@ -65,6 +65,312 @@ const SPEED_BAND_LABELS = {
     deliberate: 'Deliberate',
     slow: 'Slow',
 } as const;
+
+const LATEX_COMMAND_MAP: Record<string, string> = {
+    alpha: 'α',
+    beta: 'β',
+    gamma: 'γ',
+    delta: 'δ',
+    epsilon: 'ε',
+    theta: 'θ',
+    lambda: 'λ',
+    mu: 'μ',
+    pi: 'π',
+    rho: 'ρ',
+    sigma: 'σ',
+    phi: 'φ',
+    omega: 'ω',
+    times: '×',
+    cdot: '·',
+    pm: '±',
+    mp: '∓',
+    leq: '≤',
+    geq: '≥',
+    neq: '≠',
+    infty: '∞',
+};
+
+const SUPERSCRIPT_DIGITS: Record<string, string> = {
+    '0': '⁰',
+    '1': '¹',
+    '2': '²',
+    '3': '³',
+    '4': '⁴',
+    '5': '⁵',
+    '6': '⁶',
+    '7': '⁷',
+    '8': '⁸',
+    '9': '⁹',
+    '+': '⁺',
+    '-': '⁻',
+    '=': '⁼',
+    '(': '⁽',
+    ')': '⁾',
+    n: 'ⁿ',
+    i: 'ⁱ',
+};
+
+const SUBSCRIPT_DIGITS: Record<string, string> = {
+    '0': '₀',
+    '1': '₁',
+    '2': '₂',
+    '3': '₃',
+    '4': '₄',
+    '5': '₅',
+    '6': '₆',
+    '7': '₇',
+    '8': '₈',
+    '9': '₉',
+    '+': '₊',
+    '-': '₋',
+    '=': '₌',
+    '(': '₍',
+    ')': '₎',
+};
+
+function mapDecoratedText(value: string, alphabet: Record<string, string>): string {
+    return Array.from(value).map((char) => alphabet[char] ?? char).join('');
+}
+
+function extractBalancedSegment(value: string, startIndex: number, openChar: string, closeChar: string) {
+    if (value[startIndex] !== openChar) {
+        return null;
+    }
+
+    let depth = 0;
+    let cursor = startIndex;
+    for (; cursor < value.length; cursor += 1) {
+        const current = value[cursor];
+        if (current === openChar) {
+            depth += 1;
+        } else if (current === closeChar) {
+            depth -= 1;
+            if (depth === 0) {
+                return {
+                    content: value.slice(startIndex + 1, cursor),
+                    endIndex: cursor,
+                };
+            }
+        }
+    }
+
+    return null;
+}
+
+function replaceFractions(value: string): string {
+    let output = '';
+    let cursor = 0;
+
+    while (cursor < value.length) {
+        if (value.startsWith('\\frac', cursor)) {
+            let nextCursor = cursor + 5;
+            while (value[nextCursor] === ' ') {
+                nextCursor += 1;
+            }
+
+            const numerator = extractBalancedSegment(value, nextCursor, '{', '}');
+            if (!numerator) {
+                output += value[cursor];
+                cursor += 1;
+                continue;
+            }
+
+            nextCursor = numerator.endIndex + 1;
+            while (value[nextCursor] === ' ') {
+                nextCursor += 1;
+            }
+
+            const denominator = extractBalancedSegment(value, nextCursor, '{', '}');
+            if (!denominator) {
+                output += value[cursor];
+                cursor += 1;
+                continue;
+            }
+
+            output += `(${formatMathExpression(numerator.content)})/(${formatMathExpression(denominator.content)})`;
+            cursor = denominator.endIndex + 1;
+            continue;
+        }
+
+        output += value[cursor];
+        cursor += 1;
+    }
+
+    return output;
+}
+
+function replaceSquareRoots(value: string): string {
+    let output = '';
+    let cursor = 0;
+
+    while (cursor < value.length) {
+        if (value.startsWith('\\sqrt', cursor) || value[cursor] === '√') {
+            cursor += value.startsWith('\\sqrt', cursor) ? 5 : 1;
+            while (value[cursor] === ' ') {
+                cursor += 1;
+            }
+
+            if (value[cursor] === '{' || value[cursor] === '(') {
+                const openChar = value[cursor];
+                const closeChar = openChar === '{' ? '}' : ')';
+                const segment = extractBalancedSegment(value, cursor, openChar, closeChar);
+                if (segment) {
+                    output += `√(${formatMathExpression(segment.content)})`;
+                    cursor = segment.endIndex + 1;
+                    continue;
+                }
+            }
+
+            const tokenMatch = value.slice(cursor).match(/^[a-zA-Z0-9.]+/);
+            if (tokenMatch) {
+                output += `√(${tokenMatch[0]})`;
+                cursor += tokenMatch[0].length;
+                continue;
+            }
+
+            output += '√';
+            continue;
+        }
+
+        output += value[cursor];
+        cursor += 1;
+    }
+
+    return output;
+}
+
+function formatMathExpression(input: string | null | undefined): string {
+    let value = String(input ?? '').trim();
+    if (!value) {
+        return '';
+    }
+
+    value = value
+        .replace(/\\left|\\right/g, '')
+        .replace(/\\,/g, ' ')
+        .replace(/\\\\/g, ' ')
+        .replace(/[\u2212\u2013\u2014]/g, '-');
+
+    value = replaceFractions(value);
+    value = replaceSquareRoots(value);
+
+    value = value.replace(/\\text\s*{([^{}]+)}/g, '$1');
+
+    Object.entries(LATEX_COMMAND_MAP).forEach(([command, symbol]) => {
+        value = value.replace(new RegExp(`\\\\${command}\\b`, 'g'), symbol);
+    });
+
+    value = value
+        .replace(/\^\{([^{}]+)\}/g, (_match, exponent: string) => mapDecoratedText(exponent, SUPERSCRIPT_DIGITS))
+        .replace(/_\{([^{}]+)\}/g, (_match, subscript: string) => mapDecoratedText(subscript, SUBSCRIPT_DIGITS))
+        .replace(/\^([a-zA-Z0-9+\-()=]+)/g, (_match, exponent: string) => mapDecoratedText(exponent, SUPERSCRIPT_DIGITS))
+        .replace(/_([a-zA-Z0-9+\-()=]+)/g, (_match, subscript: string) => mapDecoratedText(subscript, SUBSCRIPT_DIGITS))
+        .replace(/[{}]/g, '')
+        .replace(/\s+/g, ' ')
+        .replace(/\(\s+/g, '(')
+        .replace(/\s+\)/g, ')')
+        .trim();
+
+    return value;
+}
+
+function hasMathMarkup(value: string | null | undefined): boolean {
+    const text = String(value ?? '');
+    return /\\\(|\\\)|\\[a-zA-Z]+|√|[\^_]/.test(text);
+}
+
+function renderInlineSegments(value: string, keyPrefix: string): ReactNode[] {
+    const content = value.replace(/\*\*/g, '').trim();
+    if (!content) {
+        return [];
+    }
+
+    const pattern = /\\\((.+?)\\\)/g;
+    const nodes: ReactNode[] = [];
+    let cursor = 0;
+    let segmentIndex = 0;
+
+    for (const match of content.matchAll(pattern)) {
+        const matchIndex = match.index ?? 0;
+        const textPart = content.slice(cursor, matchIndex);
+        if (textPart) {
+            nodes.push(<span key={`${keyPrefix}-text-${segmentIndex}`}>{textPart}</span>);
+            segmentIndex += 1;
+        }
+
+        nodes.push(
+            <span
+                key={`${keyPrefix}-math-${segmentIndex}`}
+                className="inline-flex rounded-md border border-blue-500/20 bg-blue-500/10 px-2 py-0.5 font-mono text-[0.95em] text-blue-100"
+            >
+                {formatMathExpression(match[1])}
+            </span>,
+        );
+        segmentIndex += 1;
+        cursor = matchIndex + match[0].length;
+    }
+
+    const trailingText = content.slice(cursor);
+    if (trailingText) {
+        nodes.push(<span key={`${keyPrefix}-tail-${segmentIndex}`}>{trailingText}</span>);
+    }
+
+    return nodes;
+}
+
+function renderFormattedExplanation(content: string | null | undefined): ReactNode {
+    const lines = String(content ?? '').split('\n');
+
+    return (
+        <div className="space-y-3">
+            {lines.map((rawLine, index) => {
+                const line = rawLine.trim();
+                if (!line) {
+                    return <div key={`space-${index}`} className="h-1" />;
+                }
+
+                const headingMatch = line.match(/^\*\*(.+)\*\*$/);
+                if (headingMatch) {
+                    return (
+                        <div key={`heading-${index}`} className="pt-1">
+                            <h4 className="text-sm font-black uppercase tracking-wide text-slate-100">
+                                {headingMatch[1]}
+                            </h4>
+                        </div>
+                    );
+                }
+
+                const bulletMatch = line.match(/^- (.+)$/);
+                if (bulletMatch) {
+                    return (
+                        <div key={`bullet-${index}`} className="flex gap-2 text-sm leading-relaxed text-slate-300">
+                            <span className="mt-[2px] text-slate-500">•</span>
+                            <div className="flex-1">{renderInlineSegments(bulletMatch[1], `bullet-${index}`)}</div>
+                        </div>
+                    );
+                }
+
+                const blockMathMatch = line.match(/^\\\((.+)\\\)$/);
+                if (blockMathMatch) {
+                    return (
+                        <div
+                            key={`math-${index}`}
+                            className="rounded-xl border border-blue-500/20 bg-blue-500/10 px-4 py-3 font-mono text-sm text-blue-100"
+                        >
+                            {formatMathExpression(blockMathMatch[1])}
+                        </div>
+                    );
+                }
+
+                return (
+                    <p key={`line-${index}`} className="text-sm leading-relaxed text-slate-300">
+                        {renderInlineSegments(line, `line-${index}`)}
+                    </p>
+                );
+            })}
+        </div>
+    );
+}
 
 export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, setTimeMode, user }: OGCodeWorkspaceProps) {
     const [question, setQuestion] = useState<PracticeQuestion | null>(null);
@@ -450,9 +756,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                             <p className="text-xs font-bold text-emerald-500 uppercase tracking-widest mb-2 flex items-center gap-2">
                                                 <Trophy className="w-4 h-4" /> Solution
                                             </p>
-                                            <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-line">
-                                                {result.explanation}
-                                            </p>
+                                            {renderFormattedExplanation(result.explanation)}
                                         </div>
                                     )
                                 ) : (
@@ -497,17 +801,21 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                                 {result.correctAnswerText && (
                                                     <div className="rounded-xl border border-blue-500/15 bg-blue-500/5 px-4 py-3">
                                                         <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Stored Answer</p>
-                                                        <p className="text-sm text-slate-100 leading-relaxed whitespace-pre-line font-medium">
-                                                            {result.correctAnswerText}
-                                                        </p>
+                                                        {hasMathMarkup(result.correctAnswerText) ? (
+                                                            <div className="rounded-lg border border-blue-500/15 bg-black/20 px-3 py-2 font-mono text-base text-blue-100">
+                                                                {formatMathExpression(result.correctAnswerText)}
+                                                            </div>
+                                                        ) : (
+                                                            <p className="text-sm text-slate-100 leading-relaxed whitespace-pre-line font-medium">
+                                                                {result.correctAnswerText}
+                                                            </p>
+                                                        )}
                                                     </div>
                                                 )}
                                                 {result.explanation && (
                                                     <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
                                                         <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Reference Explanation</p>
-                                                        <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-line">
-                                                            {result.explanation}
-                                                        </p>
+                                                        {renderFormattedExplanation(result.explanation)}
                                                     </div>
                                                 )}
                                             </div>
