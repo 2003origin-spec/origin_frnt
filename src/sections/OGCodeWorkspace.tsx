@@ -77,6 +77,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
     const [selectedOptions, setSelectedOptions] = useState<number[]>([]);
     const [matrixPairs, setMatrixPairs] = useState<number[][]>([]);
     const [showHint, setShowHint] = useState(false);
+    const [showSolution, setShowSolution] = useState(false);
     const [answerInput, setAnswerInput] = useState('');
 
     const [elapsed, setElapsed] = useState(0);
@@ -137,6 +138,8 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
 
         setIsSubmitting(true);
         try {
+            setShowHint(false);
+            setShowSolution(false);
             const res = await apiCall(`/assessments/practice/${question.id}/submit/`, {
                 method: 'POST',
                 body: JSON.stringify(payload),
@@ -159,6 +162,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
     const handleTryAgain = () => {
         setResult(null);
         setShowHint(false);
+        setShowSolution(false);
         // Resume timer
         timerRef.current = setInterval(() => {
             setElapsed(e => e + 1);
@@ -452,15 +456,29 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                         </div>
                                     )
                                 ) : (
-                                    question.hint && (
-                                        !showHint ? (
-                                            <button 
-                                                onClick={() => setShowHint(true)}
-                                                className="w-full py-3 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 rounded-xl text-amber-500 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all mt-2 group"
-                                            >
-                                                <HelpCircle className="w-3.5 h-3.5 group-hover:rotate-12 transition-transform" /> Need a Hint?
-                                            </button>
-                                        ) : (
+                                    <div className="space-y-4 mt-2">
+                                        {(question.hint || result.correctAnswerText || result.explanation) && (
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                {question.hint && !showHint && (
+                                                    <button 
+                                                        onClick={() => setShowHint(true)}
+                                                        className="w-full py-3 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 rounded-xl text-amber-500 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all group"
+                                                    >
+                                                        <HelpCircle className="w-3.5 h-3.5 group-hover:rotate-12 transition-transform" /> Need a Hint?
+                                                    </button>
+                                                )}
+                                                {(result.correctAnswerText || result.explanation) && !showSolution && (
+                                                    <button
+                                                        onClick={() => setShowSolution(true)}
+                                                        className="w-full py-3 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 rounded-xl text-blue-400 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all"
+                                                    >
+                                                        <Trophy className="w-3.5 h-3.5" /> See Full Solution
+                                                    </button>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {showHint && question.hint && (
                                             <div className="pt-4 border-t border-white/5 animate-in fade-in zoom-in-95 duration-300">
                                                 <p className="text-xs font-bold text-amber-500 uppercase tracking-widest mb-2 flex items-center gap-2">
                                                     <HelpCircle className="w-3.5 h-3.5" /> Hint
@@ -469,8 +487,32 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                                     {question.hint}
                                                 </p>
                                             </div>
-                                        )
-                                    )
+                                        )}
+
+                                        {showSolution && (result.correctAnswerText || result.explanation) && (
+                                            <div className="pt-4 border-t border-white/5 animate-in fade-in zoom-in-95 duration-300 space-y-3">
+                                                <p className="text-xs font-bold text-blue-400 uppercase tracking-widest mb-2 flex items-center gap-2">
+                                                    <Trophy className="w-3.5 h-3.5" /> Full Solution
+                                                </p>
+                                                {result.correctAnswerText && (
+                                                    <div className="rounded-xl border border-blue-500/15 bg-blue-500/5 px-4 py-3">
+                                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Stored Answer</p>
+                                                        <p className="text-sm text-slate-100 leading-relaxed whitespace-pre-line font-medium">
+                                                            {result.correctAnswerText}
+                                                        </p>
+                                                    </div>
+                                                )}
+                                                {result.explanation && (
+                                                    <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
+                                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Reference Explanation</p>
+                                                        <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-line">
+                                                            {result.explanation}
+                                                        </p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
                                 )}
 
                                 <div className="flex gap-3 mt-6">
