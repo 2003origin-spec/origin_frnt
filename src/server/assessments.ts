@@ -85,6 +85,15 @@ type GradeResult = {
   info: Record<string, unknown>;
 };
 
+type SubjectiveMatch = {
+  isCorrect: boolean;
+  score: number;
+  threshold: number;
+  matchedTerms: string[];
+  missingTerms: string[];
+  matchMethod: "exact" | "formula" | "semantic";
+};
+
 function normalizeSubject(subject: string): string {
   return subject.toLowerCase();
 }
@@ -100,16 +109,242 @@ function sortedNumbers(values: number[] | undefined | null): number[] {
   return [...(values ?? [])].sort((left, right) => left - right);
 }
 
-function normalizeFreeText(value: string | null | undefined): string {
-  return String(value ?? "")
+const SUPERSCRIPT_MAP = new Map<string, string>([
+  ["\u2070", "0"],
+  ["\u00b9", "1"],
+  ["\u00b2", "2"],
+  ["\u00b3", "3"],
+  ["\u2074", "4"],
+  ["\u2075", "5"],
+  ["\u2076", "6"],
+  ["\u2077", "7"],
+  ["\u2078", "8"],
+  ["\u2079", "9"],
+  ["\u207b", "-"],
+  ["\u207a", "+"],
+]);
+
+const GREEK_SYMBOL_MAP = new Map<string, string>([
+  ["\u0391", "alpha"],
+  ["\u03b1", "alpha"],
+  ["\u0392", "beta"],
+  ["\u03b2", "beta"],
+  ["\u0393", "gamma"],
+  ["\u03b3", "gamma"],
+  ["\u0394", "delta"],
+  ["\u03b4", "delta"],
+  ["\u0395", "epsilon"],
+  ["\u03b5", "epsilon"],
+  ["\u0396", "zeta"],
+  ["\u03b6", "zeta"],
+  ["\u0397", "eta"],
+  ["\u03b7", "eta"],
+  ["\u0398", "theta"],
+  ["\u03b8", "theta"],
+  ["\u039b", "lambda"],
+  ["\u03bb", "lambda"],
+  ["\u039c", "mu"],
+  ["\u03bc", "mu"],
+  ["\u03a0", "pi"],
+  ["\u03c0", "pi"],
+  ["\u03a1", "rho"],
+  ["\u03c1", "rho"],
+  ["\u03a3", "sigma"],
+  ["\u03c3", "sigma"],
+  ["\u03c2", "sigma"],
+  ["\u03a4", "tau"],
+  ["\u03c4", "tau"],
+  ["\u03a6", "phi"],
+  ["\u03c6", "phi"],
+  ["\u03a9", "omega"],
+  ["\u03c9", "omega"],
+]);
+
+const WORD_NUMBER_MAP = new Map<string, string>([
+  ["zero", "0"],
+  ["one", "1"],
+  ["two", "2"],
+  ["three", "3"],
+  ["four", "4"],
+  ["five", "5"],
+  ["six", "6"],
+  ["seven", "7"],
+  ["eight", "8"],
+  ["nine", "9"],
+  ["ten", "10"],
+]);
+
+const STOPWORDS = new Set([
+  "a",
+  "all",
+  "an",
+  "and",
+  "approximately",
+  "approx",
+  "are",
+  "as",
+  "at",
+  "be",
+  "by",
+  "concept",
+  "dependent",
+  "does",
+  "equals",
+  "explained",
+  "for",
+  "from",
+  "has",
+  "have",
+  "hence",
+  "if",
+  "in",
+  "is",
+  "it",
+  "its",
+  "of",
+  "on",
+  "or",
+  "same",
+  "that",
+  "the",
+  "their",
+  "they",
+  "then",
+  "therefore",
+  "this",
+  "to",
+  "value",
+  "which",
+  "will",
+  "with",
+]);
+
+const TOKEN_ALIASES = new Map<string, string>([
+  ["acts", "act"],
+  ["acting", "act"],
+  ["behaves", "behave"],
+  ["behaving", "behave"],
+  ["degrees", "degree"],
+  ["sec", "second"],
+  ["seconds", "second"],
+  ["approximate", "approx"],
+  ["approximation", "approx"],
+  ["speed", "velocity"],
+  ["velocities", "velocity"],
+  ["accelerations", "acceleration"],
+  ["opencircuit", "open_circuit"],
+  ["shortcircuit", "short_circuit"],
+  ["taninverse", "arctan"],
+  ["arctangent", "arctan"],
+  ["sininverse", "arcsin"],
+  ["arcsine", "arcsin"],
+  ["cosinverse", "arccos"],
+  ["arccosine", "arccos"],
+]);
+
+const FORMULA_SIGNAL_TOKENS = new Set([
+  "sin",
+  "cos",
+  "tan",
+  "arcsin",
+  "arccos",
+  "arctan",
+  "sqrt",
+  "log",
+  "ln",
+  "pi",
+  "infinity",
+]);
+
+function replaceMappedSymbols(value: string, replacements: Map<string, string>): string {
+  return Array.from(value, (character) => replacements.get(character) ?? character).join("");
+}
+
+function replaceSuperscripts(value: string): string {
+  return replaceMappedSymbols(value, SUPERSCRIPT_MAP);
+}
+
+function replaceGreekLetters(value: string): string {
+  return replaceMappedSymbols(value, GREEK_SYMBOL_MAP);
+}
+
+function normalizeEquationText(value: string | null | undefined): string {
+  let normalized = replaceGreekLetters(replaceSuperscripts(String(value ?? "").normalize("NFKC")));
+  normalized = normalized.replace(/[\u2212\u2013\u2014]/g, "-");
+
+  for (const [word, numeric] of WORD_NUMBER_MAP.entries()) {
+    normalized = normalized.replace(new RegExp(`\\b${word}\\b`, "gi"), ` ${numeric} `);
+  }
+
+  normalized = normalized
+    .replace(/\\frac\s*{([^{}]+)}\s*{([^{}]+)}/g, " $1 / $2 ")
+    .replace(/\\sqrt\s*{([^{}]+)}/g, " sqrt $1 ")
+    .replace(/\\(?:times|cdot)/g, " x ")
+    .replace(/\\(?:infty|infinity)/g, " infinity ")
+    .replace(/\\tan\s*\^\s*\{\s*-?1\s*\}/g, " arctan ")
+    .replace(/\\sin\s*\^\s*\{\s*-?1\s*\}/g, " arcsin ")
+    .replace(/\\cos\s*\^\s*\{\s*-?1\s*\}/g, " arccos ")
+    .replace(/\btan\s*\^\s*-?1\b/gi, " arctan ")
+    .replace(/\bsin\s*\^\s*-?1\b/gi, " arcsin ")
+    .replace(/\bcos\s*\^\s*-?1\b/gi, " arccos ")
+    .replace(/\btan\s*-\s*1\b/gi, " arctan ")
+    .replace(/\bsin\s*-\s*1\b/gi, " arcsin ")
+    .replace(/\bcos\s*-\s*1\b/gi, " arccos ")
+    .replace(/\bshort[\s-]*circuit\b/gi, " short_circuit ")
+    .replace(/\bopen[\s-]*circuit\b/gi, " open_circuit ")
+    .replace(/∞/g, " infinity ")
+    .replace(/π/gi, " pi ")
+    .replace(/[μµ]/g, " micro ")
+    .replace(/[Ωω]/g, " ohm ")
+    .replace(/°/g, " degree ")
+    .replace(/×/g, " x ")
+    .replace(/·/g, " ")
+    .replace(/\b(\d+(?:\.\d+)?)\s*sec\b/gi, "$1 second ")
+    .replace(/\b(\d+(?:\.\d+)?)\s*s\b/gi, "$1 second ")
+    .replace(/\b(\d+(?:\.\d+)?)\s*cm\b/gi, "$1 centimeter ")
+    .replace(/\b(\d+(?:\.\d+)?)\s*mm\b/gi, "$1 millimeter ")
+    .replace(/\b(\d+(?:\.\d+)?)\s*kg\b/gi, "$1 kilogram ")
+    .replace(/\b(\d+(?:\.\d+)?)\s*m\/s\b/gi, "$1 meter_per_second ")
+    .replace(/\b(\d+(?:\.\d+)?)\s*m\/s\^?2\b/gi, "$1 meter_per_second_square ")
+    .replace(/\b(\d+(?:\.\d+)?)\s*eV\b/g, "$1 electronvolt ")
+    .replace(/[{}[\]()]/g, " ")
+    .replace(/_/g, "")
+    .replace(/([=:+\-*/^,;])/g, " $1 ")
+    .replace(/[^\p{L}\p{N}_.%/+^=\-\s]/gu, " ")
     .toLowerCase()
-    .replace(/[^\p{L}\p{N}.\-+/%\s]/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
+
+  return normalized;
+}
+
+function normalizeFreeText(value: string | null | undefined): string {
+  return normalizeEquationText(value);
+}
+
+function compactSemanticText(value: string | null | undefined): string {
+  return normalizeFreeText(value).replace(/\s+/g, "");
+}
+
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value));
+}
+
+function getSemanticBand(score: number, threshold: number): "strong_match" | "accepted_match" | "near_match" | "weak_match" {
+  if (score >= threshold + 0.12) {
+    return "strong_match";
+  }
+  if (score >= threshold) {
+    return "accepted_match";
+  }
+  if (score >= threshold - 0.08) {
+    return "near_match";
+  }
+  return "weak_match";
 }
 
 function extractNumericValues(value: string | null | undefined): number[] {
-  const matches = String(value ?? "")
+  const matches = normalizeFreeText(value)
     .replace(/,/g, "")
     .match(/[-+]?\d*\.?\d+(?:e[-+]?\d+)?/gi);
 
@@ -118,52 +353,401 @@ function extractNumericValues(value: string | null | undefined): number[] {
     .filter((entry) => Number.isFinite(entry));
 }
 
-function tokenOverlapScore(expected: string, submitted: string): number {
-  const expectedTokens = new Set(expected.split(" ").filter(Boolean));
-  const submittedTokens = new Set(submitted.split(" ").filter(Boolean));
-  if (!expectedTokens.size || !submittedTokens.size) {
-    return 0;
+function stemToken(token: string): string {
+  if (token.endsWith("ies") && token.length > 4) {
+    return `${token.slice(0, -3)}y`;
+  }
+  if (token.endsWith("ing") && token.length > 5) {
+    return token.slice(0, -3);
+  }
+  if (token.endsWith("ed") && token.length > 4) {
+    return token.slice(0, -2);
+  }
+  if (token.endsWith("es") && token.length > 4 && !token.endsWith("ses")) {
+    return token.slice(0, -2);
+  }
+  if (token.endsWith("s") && token.length > 3 && !token.endsWith("ss")) {
+    return token.slice(0, -1);
+  }
+  return token;
+}
+
+function canonicalizeToken(token: string): string | null {
+  if (!token) {
+    return null;
+  }
+
+  if (/^[-+]?\d*\.?\d+(?:e[-+]?\d+)?$/.test(token)) {
+    const numeric = Number(token);
+    return Number.isFinite(numeric) ? String(numeric) : token;
+  }
+
+  const squashed = token.replace(/_/g, "");
+  const aliased = TOKEN_ALIASES.get(squashed) ?? token;
+  const stemmed = stemToken(aliased);
+  if (STOPWORDS.has(stemmed)) {
+    return null;
+  }
+  if (stemmed.length <= 1 && !/^\d+$/.test(stemmed)) {
+    return null;
+  }
+  return stemmed;
+}
+
+function extractSemanticTokens(value: string | null | undefined): string[] {
+  return normalizeFreeText(value)
+    .split(" ")
+    .map((token) => token.replace(/[^a-z0-9_.]/g, ""))
+    .map(canonicalizeToken)
+    .filter((token): token is string => Boolean(token));
+}
+
+function semanticTokenWeight(token: string): number {
+  if (/^[-+]?\d/.test(token)) {
+    return 2.5;
+  }
+  if (token.includes("_")) {
+    return 1.8;
+  }
+  if (token.length >= 8) {
+    return 1.5;
+  }
+  if (token.length >= 5) {
+    return 1.2;
+  }
+  return 1;
+}
+
+function isCriticalSemanticToken(token: string): boolean {
+  if (FORMULA_SIGNAL_TOKENS.has(token)) {
+    return true;
+  }
+  return !/^\d/.test(token) && token.length >= 5;
+}
+
+function weightedCoverage(expectedTokens: string[], submittedTokens: string[]) {
+  const submittedSet = new Set(submittedTokens);
+  const uniqueExpected = [...new Set(expectedTokens)];
+  let totalWeight = 0;
+  let matchedWeight = 0;
+  const matchedTerms: string[] = [];
+  const missingTerms: string[] = [];
+
+  uniqueExpected.forEach((token) => {
+    const weight = semanticTokenWeight(token);
+    totalWeight += weight;
+    if (submittedSet.has(token)) {
+      matchedWeight += weight;
+      matchedTerms.push(token);
+    } else {
+      missingTerms.push(token);
+    }
+  });
+
+  return {
+    score: totalWeight > 0 ? matchedWeight / totalWeight : 0,
+    matchedTerms,
+    missingTerms,
+  };
+}
+
+function buildCharNgrams(value: string, size = 3): Set<string> {
+  const compact = compactSemanticText(value);
+  if (!compact) {
+    return new Set();
+  }
+  if (compact.length <= size) {
+    return new Set([compact]);
+  }
+
+  const grams = new Set<string>();
+  for (let index = 0; index <= compact.length - size; index += 1) {
+    grams.add(compact.slice(index, index + size));
+  }
+  return grams;
+}
+
+function diceSimilarity(left: string, right: string): number {
+  const leftGrams = buildCharNgrams(left);
+  const rightGrams = buildCharNgrams(right);
+  if (!leftGrams.size || !rightGrams.size) {
+    return leftGrams.size === rightGrams.size ? 1 : 0;
   }
 
   let overlap = 0;
-  expectedTokens.forEach((token) => {
-    if (submittedTokens.has(token)) {
+  leftGrams.forEach((gram) => {
+    if (rightGrams.has(gram)) {
       overlap += 1;
     }
   });
 
-  return overlap / expectedTokens.size;
+  return (2 * overlap) / (leftGrams.size + rightGrams.size);
 }
 
-function answersMatchAsText(expectedValue: string | null | undefined, submittedValue: string | null | undefined): boolean {
-  const expected = normalizeFreeText(expectedValue);
-  const submitted = normalizeFreeText(submittedValue);
-  if (!expected || !submitted) {
-    return false;
+type NumericComparison = {
+  score: number | null;
+  conflicting: boolean;
+};
+
+function compareNumericSignals(expectedValue: string | null | undefined, submittedValue: string | null | undefined): NumericComparison {
+  const expectedNumbers = extractNumericValues(expectedValue);
+  if (!expectedNumbers.length) {
+    return { score: null, conflicting: false };
   }
 
-  if (expected === submitted) {
-    return true;
+  const submittedNumbers = extractNumericValues(submittedValue);
+  if (!submittedNumbers.length) {
+    return { score: 0, conflicting: false };
   }
 
-  const expectedNumbers = extractNumericValues(expected);
-  const submittedNumbers = extractNumericValues(submitted);
-  if (expectedNumbers.length && submittedNumbers.length) {
-    const tolerance = Math.max(Math.abs(expectedNumbers[0]) * 0.01, 0.001);
-    const numbersMatch =
-      expectedNumbers.length === submittedNumbers.length &&
-      expectedNumbers.every((entry, index) => Math.abs(entry - submittedNumbers[index]) <= tolerance);
+  const usedIndices = new Set<number>();
+  let matched = 0;
 
-    if (numbersMatch) {
-      return true;
+  expectedNumbers.forEach((expected) => {
+    const tolerance = Math.max(Math.abs(expected) * 0.02, 0.01);
+    const matchIndex = submittedNumbers.findIndex(
+      (submitted, index) => !usedIndices.has(index) && Math.abs(submitted - expected) <= tolerance,
+    );
+    if (matchIndex >= 0) {
+      matched += 1;
+      usedIndices.add(matchIndex);
     }
+  });
+
+  return {
+    score: matched / expectedNumbers.length,
+    conflicting: matched === 0 && submittedNumbers.length > 0,
+  };
+}
+
+function buildSemanticVariants(expectedValue: string | null | undefined): string[] {
+  const raw = String(expectedValue ?? "").trim();
+  if (!raw) {
+    return [];
   }
 
-  if ((submitted.includes(expected) || expected.includes(submitted)) && Math.min(expected.length, submitted.length) >= 8) {
-    return true;
+  const variants = new Map<string, { source: "raw" | "context" | "alternative" | "equals"; density: number }>();
+  const addVariant = (candidate: string, source: "raw" | "context" | "alternative" | "equals") => {
+    const trimmed = candidate.replace(/\s+/g, " ").trim();
+    if (!trimmed) {
+      return;
+    }
+    const density = extractSemanticTokens(trimmed).length + extractNumericValues(trimmed).length;
+    variants.set(trimmed, { source, density });
+  };
+
+  addVariant(raw, "raw");
+  const withoutParenthetical = raw.replace(/\([^)]*\)/g, " ").replace(/\s+/g, " ").trim();
+  if (withoutParenthetical && withoutParenthetical !== raw) {
+    addVariant(withoutParenthetical, "context");
   }
 
-  return tokenOverlapScore(expected, submitted) >= 0.8;
+  [...raw.matchAll(/\(([^)]*)\)/g)].forEach((match) => {
+    addVariant(match[1], "context");
+    if (match[1].includes(":")) {
+      addVariant(match[1].split(":").slice(1).join(":").trim(), "context");
+    }
+  });
+
+  if (raw.includes(":")) {
+    addVariant(raw.split(":").slice(1).join(":").trim(), "context");
+  }
+
+  const pending = [...variants.keys()];
+  pending.forEach((candidate) => {
+    if (candidate.includes("=")) {
+      addVariant(candidate.split("=").slice(1).join("=").trim(), "equals");
+    }
+    if (/\bor\b/i.test(candidate)) {
+      candidate
+        .split(/\bor\b/i)
+        .map((part) => part.trim())
+        .filter(Boolean)
+        .forEach((part) => addVariant(part, "alternative"));
+    }
+  });
+
+  const rawDensity = variants.get(raw)?.density ?? 0;
+  return [...variants.entries()]
+    .filter(([, meta]) => {
+      if (meta.source === "raw" || meta.source === "alternative" || meta.source === "equals") {
+        return true;
+      }
+      return meta.density >= Math.max(2, Math.ceil(rawDensity * 0.5));
+    })
+    .map(([candidate]) => candidate);
+}
+
+function contextCoverage(question: StoredQuestion, submittedTokens: string[]): number {
+  const contextReference = `${question.concept ?? ""} ${String(question.explanation ?? "").split(/[.?!]/)[0] ?? ""}`;
+  const contextTokens = extractSemanticTokens(contextReference).slice(0, 8);
+  if (!contextTokens.length) {
+    return 0;
+  }
+  return weightedCoverage(contextTokens, submittedTokens).score;
+}
+
+function isFormulaHeavy(value: string): boolean {
+  return /[=\\/^*+\-]|arctan|arcsin|arccos|sqrt|pi|infinity|short_circuit|open_circuit/.test(
+    normalizeFreeText(value),
+  );
+}
+
+function evaluateSubjectiveVariant(
+  question: StoredQuestion,
+  expectedVariant: string,
+  submittedValue: string | null | undefined,
+): SubjectiveMatch {
+  if (!compactSemanticText(submittedValue)) {
+    return {
+      isCorrect: false,
+      score: 0,
+      threshold: 1,
+      matchedTerms: [],
+      missingTerms: extractSemanticTokens(expectedVariant),
+      matchMethod: "semantic",
+    };
+  }
+
+  const submittedTokens = extractSemanticTokens(submittedValue);
+  const expectedTokens = extractSemanticTokens(expectedVariant);
+  const coverage = weightedCoverage(expectedTokens, submittedTokens);
+  const criticalExpectedTokens = expectedTokens.filter(isCriticalSemanticToken);
+  const criticalCoverage = weightedCoverage(criticalExpectedTokens, submittedTokens);
+  const nonNumericCriticalCoverage = weightedCoverage(
+    criticalExpectedTokens.filter((token) => !/^\d/.test(token)),
+    submittedTokens,
+  );
+  const numericComparison = compareNumericSignals(expectedVariant, submittedValue);
+  const formulaScore = diceSimilarity(expectedVariant, submittedValue ?? "");
+  const contextScore = contextCoverage(question, submittedTokens);
+  const formulaHeavy = isFormulaHeavy(expectedVariant);
+
+  const components: Array<[number, number]> = formulaHeavy
+    ? [
+        [coverage.score, 0.4],
+        [formulaScore, 0.4],
+      ]
+    : [
+        [coverage.score, 0.58],
+        [formulaScore, 0.22],
+      ];
+
+  if (numericComparison.score !== null) {
+    components.push([numericComparison.score, formulaHeavy ? 0.2 : 0.14]);
+  }
+  if (contextScore > 0) {
+    components.push([Math.min(contextScore, 0.8), formulaHeavy ? 0.05 : 0.06]);
+  }
+
+  const totalWeight = components.reduce((sum, [, weight]) => sum + weight, 0);
+  let score =
+    totalWeight > 0
+      ? components.reduce((sum, [value, weight]) => sum + value * weight, 0) / totalWeight
+      : 0;
+
+  const semanticDensity = Math.max(expectedTokens.length, extractNumericValues(expectedVariant).length);
+  let threshold = formulaHeavy ? 0.68 : 0.72;
+  if (semanticDensity >= 5) {
+    threshold -= 0.06;
+  } else if (semanticDensity <= 2) {
+    threshold += 0.08;
+  }
+
+  const exactCompactMatch = compactSemanticText(expectedVariant) === compactSemanticText(submittedValue);
+  if (exactCompactMatch) {
+    return {
+      isCorrect: true,
+      score: 1,
+      threshold,
+      matchedTerms: coverage.matchedTerms,
+      missingTerms: coverage.missingTerms,
+      matchMethod: "exact",
+    };
+  }
+
+  if (coverage.score >= 0.95 || formulaScore >= 0.94) {
+    score = Math.max(score, threshold);
+  }
+
+  if (
+    nonNumericCriticalCoverage.score === 1 &&
+    nonNumericCriticalCoverage.matchedTerms.length > 0 &&
+    (numericComparison.score === 1 || formulaScore >= 0.55)
+  ) {
+    score = Math.max(score, threshold);
+  }
+
+  if (
+    numericComparison.score === 1 &&
+    (formulaScore >= 0.55 || coverage.score >= 0.6) &&
+    (!formulaHeavy || criticalCoverage.score >= 0.8)
+  ) {
+    score = Math.max(score, threshold);
+  }
+
+  if (numericComparison.conflicting && coverage.score < 0.85 && formulaScore < 0.85) {
+    score = Math.min(score, threshold - 0.15);
+  }
+
+  if (formulaHeavy && criticalCoverage.score < 0.55) {
+    score = Math.min(score, threshold - (criticalCoverage.score < 0.25 ? 0.18 : 0.08));
+  }
+
+  score = clamp01(score);
+  threshold = clamp01(threshold);
+
+  const matchMethod: SubjectiveMatch["matchMethod"] =
+    formulaScore >= coverage.score + 0.12 ? "formula" : "semantic";
+
+  return {
+    isCorrect: score >= threshold,
+    score,
+    threshold,
+    matchedTerms: coverage.matchedTerms,
+    missingTerms: coverage.missingTerms,
+    matchMethod,
+  };
+}
+
+function answersMatchAsText(question: StoredQuestion, submittedValue: string | null | undefined): SubjectiveMatch {
+  if (!String(submittedValue ?? "").trim()) {
+    return {
+      isCorrect: false,
+      score: 0,
+      threshold: 1,
+      matchedTerms: [],
+      missingTerms: [],
+      matchMethod: "semantic",
+    };
+  }
+
+  const variants = buildSemanticVariants(question.answerText);
+  if (!variants.length) {
+    return {
+      isCorrect: false,
+      score: 0,
+      threshold: 1,
+      matchedTerms: [],
+      missingTerms: [],
+      matchMethod: "semantic",
+    };
+  }
+
+  return variants.reduce<SubjectiveMatch>((best, variant) => {
+    const current = evaluateSubjectiveVariant(question, variant, submittedValue);
+    if (current.score > best.score) {
+      return current;
+    }
+    return best;
+  }, {
+    isCorrect: false,
+    score: 0,
+    threshold: 1,
+    matchedTerms: [],
+    missingTerms: [],
+    matchMethod: "semantic",
+  });
 }
 
 function normalizeAnswer(payload: QuestionAnswerPayload | PracticeSubmissionPayload): StoredUserAnswer {
@@ -273,13 +857,42 @@ function gradeAnswer(question: StoredQuestion, answer: StoredUserAnswer): GradeR
     };
   }
 
-  const isCorrect = answersMatchAsText(question.answerText, answer.answerText);
+  const semanticMatch = answersMatchAsText(question, answer.answerText);
+  const semanticBand = getSemanticBand(semanticMatch.score, semanticMatch.threshold);
+  const normalizedSemanticRatio = clamp01(
+    semanticMatch.threshold > 0 ? semanticMatch.score / semanticMatch.threshold : semanticMatch.score,
+  );
+  const creditAwarded = semanticMatch.isCorrect
+    ? 1
+    : Number(
+        (
+          semanticBand === "near_match"
+            ? normalizedSemanticRatio * 0.4
+            : semanticBand === "weak_match"
+              ? normalizedSemanticRatio * 0.15
+              : 0
+        ).toFixed(3),
+      );
   return {
-    isCorrect,
+    isCorrect: semanticMatch.isCorrect,
     info: {
       correctAnswerText: question.answerText,
       correct_answer_text: question.answerText,
       explanation: question.explanation,
+      semanticScore: Number(semanticMatch.score.toFixed(3)),
+      semantic_score: Number(semanticMatch.score.toFixed(3)),
+      semanticThreshold: Number(semanticMatch.threshold.toFixed(3)),
+      semantic_threshold: Number(semanticMatch.threshold.toFixed(3)),
+      semanticBand,
+      semantic_band: semanticBand,
+      creditAwarded,
+      credit_awarded: creditAwarded,
+      matchMethod: semanticMatch.matchMethod,
+      match_method: semanticMatch.matchMethod,
+      matchedTerms: semanticMatch.matchedTerms,
+      matched_terms: semanticMatch.matchedTerms,
+      missingTerms: semanticMatch.missingTerms,
+      missing_terms: semanticMatch.missingTerms,
     },
   };
 }
