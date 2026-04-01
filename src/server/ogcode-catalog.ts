@@ -1,0 +1,414 @@
+import type { DifficultyLevel, QuestionType, StoredQuestion } from "@/server/store";
+
+import { getOgcodePostgresPool, isOgcodePostgresConfigured } from "@/server/postgres";
+
+type CatalogFilters = {
+  subject?: string | null;
+  difficulty?: string | null;
+  type?: string | null;
+};
+
+type CatalogRow = {
+  id: string;
+  source_index: number;
+  text: string;
+  options: string[] | null;
+  correct_option: number | null;
+  correct_options: number[] | null;
+  answer_text: string | null;
+  tolerance: number | null;
+  matrix_data: { column_a: string[]; column_b: string[]; correct_pairs: number[][] } | null;
+  explanation: string;
+  hint: string | null;
+  subject: string;
+  chapter: string;
+  concept: string;
+  difficulty: string;
+  image: string | null;
+  tags: string[] | string | null;
+  question_type: string;
+  acceptance_rate: number | string | null;
+  total_correct: number | string | null;
+  frequency: number | string | null;
+  is_challenge_of_day: boolean;
+};
+
+const CREATE_TABLE_SQL = `
+  CREATE TABLE IF NOT EXISTS ogcode_questions (
+    id TEXT PRIMARY KEY,
+    source_index INTEGER NOT NULL UNIQUE,
+    text TEXT NOT NULL,
+    options JSONB,
+    correct_option INTEGER,
+    correct_options JSONB,
+    answer_text TEXT,
+    tolerance DOUBLE PRECISION,
+    matrix_data JSONB,
+    explanation TEXT NOT NULL,
+    hint TEXT,
+    subject TEXT NOT NULL,
+    chapter TEXT NOT NULL,
+    concept TEXT NOT NULL,
+    difficulty TEXT NOT NULL,
+    image TEXT,
+    tags JSONB NOT NULL DEFAULT '[]'::jsonb,
+    question_type TEXT NOT NULL,
+    acceptance_rate DOUBLE PRECISION NOT NULL DEFAULT 0,
+    total_correct INTEGER NOT NULL DEFAULT 0,
+    frequency INTEGER NOT NULL DEFAULT 0,
+    is_challenge_of_day BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+
+  CREATE INDEX IF NOT EXISTS ogcode_questions_subject_idx ON ogcode_questions (subject);
+  CREATE INDEX IF NOT EXISTS ogcode_questions_difficulty_idx ON ogcode_questions (difficulty);
+  CREATE INDEX IF NOT EXISTS ogcode_questions_question_type_idx ON ogcode_questions (question_type);
+`;
+
+let schemaReady: Promise<void> | null = null;
+
+function normalizeDifficulty(value: string): DifficultyLevel {
+  if (value === "easy" || value === "medium" || value === "hard" || value === "insane") {
+    return value;
+  }
+  return "medium";
+}
+
+function normalizeQuestionType(value: string): QuestionType {
+  if (
+    value === "mcq" ||
+    value === "msq" ||
+    value === "numerical" ||
+    value === "matrix_match" ||
+    value === "subjective"
+  ) {
+    return value;
+  }
+  return "subjective";
+}
+
+function normalizeSubject(value: string | null | undefined): string {
+  const subject = String(value ?? "physics").trim().toLowerCase();
+  if (subject === "maths") {
+    return "mathematics";
+  }
+  return subject || "physics";
+}
+
+function toTextArray(value: unknown): string[] | null {
+  if (!value) {
+    return null;
+  }
+  if (Array.isArray(value)) {
+    return value.map((entry) => String(entry));
+  }
+  if (typeof value === "string") {
+    return value
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+  }
+  return null;
+}
+
+function toNumberArray(value: unknown): number[] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+  const numbers = value
+    .map((entry) => Number(entry))
+    .filter((entry) => Number.isFinite(entry));
+  return numbers.length ? numbers : null;
+}
+
+function mapCatalogRow(row: CatalogRow): StoredQuestion {
+  return {
+    id: row.id,
+    text: row.text,
+    options: toTextArray(row.options),
+    correctOption: row.correct_option == null ? null : Number(row.correct_option),
+    correctOptions: toNumberArray(row.correct_options),
+    answerText: row.answer_text ?? null,
+    tolerance: row.tolerance == null ? null : Number(row.tolerance),
+    matrixData: row.matrix_data ?? null,
+    explanation: row.explanation,
+    hint: row.hint ?? null,
+    subject: normalizeSubject(row.subject),
+    chapter: row.chapter,
+    concept: row.concept,
+    difficulty: normalizeDifficulty(String(row.difficulty)),
+    image: row.image ?? null,
+    tags: Array.isArray(row.tags) ? row.tags.map((entry) => String(entry)) : row.tags ?? null,
+    questionType: normalizeQuestionType(String(row.question_type)),
+    acceptanceRate: Number(row.acceptance_rate ?? 0),
+    totalCorrect: Number(row.total_correct ?? 0),
+    frequency: Number(row.frequency ?? 0),
+    isChallengeOfTheDay: Boolean(row.is_challenge_of_day),
+  };
+}
+
+async function ensureCatalogSchema(): Promise<void> {
+  const pool = getOgcodePostgresPool();
+  if (!pool) {
+    return;
+  }
+
+  if (!schemaReady) {
+    schemaReady = pool.query(CREATE_TABLE_SQL).then(() => undefined).catch((error) => {
+      schemaReady = null;
+      throw error;
+    });
+  }
+
+  await schemaReady;
+}
+
+function buildFilterClause(filters: CatalogFilters) {
+  const clauses: string[] = [];
+  const values: string[] = [];
+
+  if (filters.subject) {
+    values.push(normalizeSubject(filters.subject));
+    clauses.push(`subject = $${values.length}`);
+  }
+
+  if (filters.difficulty) {
+    values.push(String(filters.difficulty).trim().toLowerCase());
+    clauses.push(`difficulty = $${values.length}`);
+  }
+
+  if (filters.type) {
+    values.push(String(filters.type).trim().toLowerCase());
+    clauses.push(`question_type = $${values.length}`);
+  }
+
+  return {
+    sql: clauses.length ? `WHERE ${clauses.join(" AND ")}` : "",
+    values,
+  };
+}
+
+export function isOgcodeCatalogAvailable(): boolean {
+  return isOgcodePostgresConfigured();
+}
+
+export async function listOgcodeCatalogQuestions(filters: CatalogFilters = {}): Promise<StoredQuestion[]> {
+  const pool = getOgcodePostgresPool();
+  if (!pool) {
+    return [];
+  }
+
+  await ensureCatalogSchema();
+  const { sql, values } = buildFilterClause(filters);
+  const result = await pool.query<CatalogRow>(
+    `
+      SELECT
+        id,
+        source_index,
+        text,
+        options,
+        correct_option,
+        correct_options,
+        answer_text,
+        tolerance,
+        matrix_data,
+        explanation,
+        hint,
+        subject,
+        chapter,
+        concept,
+        difficulty,
+        image,
+        tags,
+        question_type,
+        acceptance_rate,
+        total_correct,
+        frequency,
+        is_challenge_of_day
+      FROM ogcode_questions
+      ${sql}
+      ORDER BY source_index ASC
+    `,
+    values,
+  );
+
+  return result.rows.map(mapCatalogRow);
+}
+
+export async function getOgcodeCatalogQuestionById(questionId: string): Promise<StoredQuestion | null> {
+  const pool = getOgcodePostgresPool();
+  if (!pool) {
+    return null;
+  }
+
+  await ensureCatalogSchema();
+  const result = await pool.query<CatalogRow>(
+    `
+      SELECT
+        id,
+        source_index,
+        text,
+        options,
+        correct_option,
+        correct_options,
+        answer_text,
+        tolerance,
+        matrix_data,
+        explanation,
+        hint,
+        subject,
+        chapter,
+        concept,
+        difficulty,
+        image,
+        tags,
+        question_type,
+        acceptance_rate,
+        total_correct,
+        frequency,
+        is_challenge_of_day
+      FROM ogcode_questions
+      WHERE id = $1
+      LIMIT 1
+    `,
+    [questionId],
+  );
+
+  return result.rows[0] ? mapCatalogRow(result.rows[0]) : null;
+}
+
+export async function getOgcodeCatalogQuestionMap(questionIds: string[]): Promise<Map<string, StoredQuestion>> {
+  const pool = getOgcodePostgresPool();
+  if (!pool || !questionIds.length) {
+    return new Map();
+  }
+
+  await ensureCatalogSchema();
+  const uniqueIds = [...new Set(questionIds)];
+  const result = await pool.query<CatalogRow>(
+    `
+      SELECT
+        id,
+        source_index,
+        text,
+        options,
+        correct_option,
+        correct_options,
+        answer_text,
+        tolerance,
+        matrix_data,
+        explanation,
+        hint,
+        subject,
+        chapter,
+        concept,
+        difficulty,
+        image,
+        tags,
+        question_type,
+        acceptance_rate,
+        total_correct,
+        frequency,
+        is_challenge_of_day
+      FROM ogcode_questions
+      WHERE id = ANY($1::text[])
+    `,
+    [uniqueIds],
+  );
+
+  return new Map<string, StoredQuestion>(
+    result.rows.map((row: CatalogRow) => [row.id, mapCatalogRow(row)]),
+  );
+}
+
+export async function getOgcodeCatalogCounts() {
+  const pool = getOgcodePostgresPool();
+  if (!pool) {
+    return { total: 0, bySubject: {} as Record<string, number> };
+  }
+
+  await ensureCatalogSchema();
+  const result = await pool.query<{ subject: string; total: number | string }>(
+    `
+      SELECT subject, COUNT(*)::int AS total
+      FROM ogcode_questions
+      GROUP BY subject
+    `,
+  );
+
+  const bySubject: Record<string, number> = {};
+  let total = 0;
+  result.rows.forEach((row: { subject: string; total: number | string }) => {
+    const count = Number(row.total ?? 0);
+    bySubject[normalizeSubject(row.subject)] = count;
+    total += count;
+  });
+
+  return { total, bySubject };
+}
+
+export async function getOgcodeChallengeQuestion(): Promise<StoredQuestion | null> {
+  const pool = getOgcodePostgresPool();
+  if (!pool) {
+    return null;
+  }
+
+  await ensureCatalogSchema();
+  const result = await pool.query<CatalogRow>(
+    `
+      SELECT
+        id,
+        source_index,
+        text,
+        options,
+        correct_option,
+        correct_options,
+        answer_text,
+        tolerance,
+        matrix_data,
+        explanation,
+        hint,
+        subject,
+        chapter,
+        concept,
+        difficulty,
+        image,
+        tags,
+        question_type,
+        acceptance_rate,
+        total_correct,
+        frequency,
+        is_challenge_of_day
+      FROM ogcode_questions
+      ORDER BY is_challenge_of_day DESC, CASE difficulty WHEN 'hard' THEN 0 WHEN 'medium' THEN 1 WHEN 'easy' THEN 2 ELSE 3 END, source_index ASC
+      LIMIT 1
+    `,
+  );
+
+  return result.rows[0] ? mapCatalogRow(result.rows[0]) : null;
+}
+
+export async function incrementOgcodeCatalogQuestionStats(questionId: string, isCorrect: boolean): Promise<void> {
+  const pool = getOgcodePostgresPool();
+  if (!pool) {
+    return;
+  }
+
+  await ensureCatalogSchema();
+  await pool.query(
+    `
+      UPDATE ogcode_questions
+      SET
+        frequency = frequency + 1,
+        total_correct = total_correct + CASE WHEN $2 THEN 1 ELSE 0 END,
+        acceptance_rate = CASE
+          WHEN frequency + 1 > 0 THEN
+            ((total_correct + CASE WHEN $2 THEN 1 ELSE 0 END)::double precision / (frequency + 1)::double precision) * 100
+          ELSE 0
+        END
+      WHERE id = $1
+    `,
+    [questionId, isCorrect],
+  );
+}

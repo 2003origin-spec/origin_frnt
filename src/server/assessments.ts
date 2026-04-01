@@ -7,6 +7,13 @@ import {
   updateUserStudyTime,
   awardPoints,
 } from "@/server/gamification";
+import {
+  getOgcodeCatalogQuestionById,
+  getOgcodeCatalogQuestionMap,
+  getOgcodeChallengeQuestion,
+  incrementOgcodeCatalogQuestionStats,
+  listOgcodeCatalogQuestions,
+} from "@/server/ogcode-catalog";
 import type {
   AppStore,
   DifficultyLevel,
@@ -93,6 +100,72 @@ function sortedNumbers(values: number[] | undefined | null): number[] {
   return [...(values ?? [])].sort((left, right) => left - right);
 }
 
+function normalizeFreeText(value: string | null | undefined): string {
+  return String(value ?? "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}.\-+/%\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractNumericValues(value: string | null | undefined): number[] {
+  const matches = String(value ?? "")
+    .replace(/,/g, "")
+    .match(/[-+]?\d*\.?\d+(?:e[-+]?\d+)?/gi);
+
+  return (matches ?? [])
+    .map((entry) => Number(entry))
+    .filter((entry) => Number.isFinite(entry));
+}
+
+function tokenOverlapScore(expected: string, submitted: string): number {
+  const expectedTokens = new Set(expected.split(" ").filter(Boolean));
+  const submittedTokens = new Set(submitted.split(" ").filter(Boolean));
+  if (!expectedTokens.size || !submittedTokens.size) {
+    return 0;
+  }
+
+  let overlap = 0;
+  expectedTokens.forEach((token) => {
+    if (submittedTokens.has(token)) {
+      overlap += 1;
+    }
+  });
+
+  return overlap / expectedTokens.size;
+}
+
+function answersMatchAsText(expectedValue: string | null | undefined, submittedValue: string | null | undefined): boolean {
+  const expected = normalizeFreeText(expectedValue);
+  const submitted = normalizeFreeText(submittedValue);
+  if (!expected || !submitted) {
+    return false;
+  }
+
+  if (expected === submitted) {
+    return true;
+  }
+
+  const expectedNumbers = extractNumericValues(expected);
+  const submittedNumbers = extractNumericValues(submitted);
+  if (expectedNumbers.length && submittedNumbers.length) {
+    const tolerance = Math.max(Math.abs(expectedNumbers[0]) * 0.01, 0.001);
+    const numbersMatch =
+      expectedNumbers.length === submittedNumbers.length &&
+      expectedNumbers.every((entry, index) => Math.abs(entry - submittedNumbers[index]) <= tolerance);
+
+    if (numbersMatch) {
+      return true;
+    }
+  }
+
+  if ((submitted.includes(expected) || expected.includes(submitted)) && Math.min(expected.length, submitted.length) >= 8) {
+    return true;
+  }
+
+  return tokenOverlapScore(expected, submitted) >= 0.8;
+}
+
 function normalizeAnswer(payload: QuestionAnswerPayload | PracticeSubmissionPayload): StoredUserAnswer {
   return {
     questionId: String(
@@ -164,15 +237,13 @@ function gradeAnswer(question: StoredQuestion, answer: StoredUserAnswer): GradeR
   }
 
   if (question.questionType === "numerical") {
-    let isCorrect = false;
-    try {
-      const submitted = Number(answer.answerText);
-      const expected = Number(question.answerText ?? 0);
-      const tolerance = question.tolerance ?? 0;
-      isCorrect = Number.isFinite(submitted) && Math.abs(submitted - expected) <= tolerance;
-    } catch {
-      isCorrect = false;
-    }
+    const submitted = extractNumericValues(answer.answerText)[0];
+    const expected = extractNumericValues(question.answerText)[0];
+    const tolerance = question.tolerance ?? Math.max(Math.abs(expected ?? 0) * 0.01, 0.001);
+    const isCorrect =
+      Number.isFinite(submitted) &&
+      Number.isFinite(expected) &&
+      Math.abs((submitted ?? 0) - (expected ?? 0)) <= tolerance;
     return {
       isCorrect,
       info: {
@@ -202,9 +273,7 @@ function gradeAnswer(question: StoredQuestion, answer: StoredUserAnswer): GradeR
     };
   }
 
-  const expectedAnswer = String(question.answerText ?? "").trim().toLowerCase();
-  const submittedAnswer = String(answer.answerText ?? "").trim().toLowerCase();
-  const isCorrect = Boolean(submittedAnswer) && submittedAnswer === expectedAnswer;
+  const isCorrect = answersMatchAsText(question.answerText, answer.answerText);
   return {
     isCorrect,
     info: {
@@ -221,6 +290,67 @@ function questionById(store: AppStore, questionId: string): StoredQuestion {
     throw new Error(`Question ${questionId} was not found.`);
   }
   return question;
+}
+
+type ResolvedQuestion = {
+  question: StoredQuestion;
+  source: "store" | "catalog";
+};
+
+async function resolvePracticeQuestion(store: AppStore, questionId: string): Promise<ResolvedQuestion> {
+  const fromStore = store.questions.find((entry) => entry.id === questionId);
+  if (fromStore) {
+    return { question: fromStore, source: "store" };
+  }
+
+  const fromCatalog = await getOgcodeCatalogQuestionById(questionId);
+  if (fromCatalog) {
+    return { question: fromCatalog, source: "catalog" };
+  }
+
+  throw new Error(`Question ${questionId} was not found.`);
+}
+
+async function getOgcodeQuestionBank(store: AppStore): Promise<StoredQuestion[]> {
+  try {
+    const catalogQuestions = await listOgcodeCatalogQuestions();
+    if (!catalogQuestions.length) {
+      return store.questions;
+    }
+
+    const questionsById = new Map<string, StoredQuestion>();
+    store.questions.forEach((question) => {
+      questionsById.set(question.id, question);
+    });
+    catalogQuestions.forEach((question) => {
+      questionsById.set(question.id, question);
+    });
+
+    return [...questionsById.values()];
+  } catch {
+    return store.questions;
+  }
+}
+
+async function buildQuestionLookup(store: AppStore, questionIds: string[]): Promise<Map<string, StoredQuestion>> {
+  const lookup = new Map<string, StoredQuestion>();
+
+  questionIds.forEach((questionId) => {
+    const question = store.questions.find((entry) => entry.id === questionId);
+    if (question) {
+      lookup.set(questionId, question);
+    }
+  });
+
+  const missingIds = questionIds.filter((questionId) => !lookup.has(questionId));
+  if (missingIds.length) {
+    const catalogLookup = await getOgcodeCatalogQuestionMap(missingIds);
+    catalogLookup.forEach((question, questionId) => {
+      lookup.set(questionId, question);
+    });
+  }
+
+  return lookup;
 }
 
 function testById(store: AppStore, testId: string): StoredTest {
@@ -613,8 +743,25 @@ export function listPracticeQuestions(
     .map((question) => serializeQuestion(store, user.id, question, true));
 }
 
-export function getPracticeQuestionDetail(store: AppStore, user: StoredUser, questionId: string) {
-  return serializeQuestion(store, user.id, questionById(store, questionId), true);
+export async function listOgcodeQuestions(
+  store: AppStore,
+  user: StoredUser,
+  filters: { subject?: string | null; difficulty?: string | null; type?: string | null },
+) {
+  const questions = await getOgcodeQuestionBank(store);
+  return questions
+    .filter((question) => {
+      const matchesSubject = !filters.subject || question.subject === normalizeSubject(filters.subject);
+      const matchesDifficulty = !filters.difficulty || question.difficulty === normalizeDifficulty(filters.difficulty);
+      const matchesType = !filters.type || question.questionType === filters.type;
+      return matchesSubject && matchesDifficulty && matchesType;
+    })
+    .map((question) => serializeQuestion(store, user.id, question, false));
+}
+
+export async function getPracticeQuestionDetail(store: AppStore, user: StoredUser, questionId: string) {
+  const resolved = await resolvePracticeQuestion(store, questionId);
+  return serializeQuestion(store, user.id, resolved.question, false);
 }
 
 function getOrCreateSubjectRank(store: AppStore, userId: string, subject: string): StoredSubjectRank {
@@ -635,13 +782,14 @@ function getOrCreateSubjectRank(store: AppStore, userId: string, subject: string
   return entry;
 }
 
-export function submitPracticeQuestion(
+export async function submitPracticeQuestion(
   store: AppStore,
   user: StoredUser,
   questionId: string,
   payload: PracticeSubmissionPayload,
 ) {
-  const question = questionById(store, questionId);
+  const resolved = await resolvePracticeQuestion(store, questionId);
+  const question = resolved.question;
   const answer = normalizeAnswer(payload);
   answer.questionId = question.id;
   const { isCorrect, info } = gradeAnswer(question, answer);
@@ -667,11 +815,19 @@ export function submitPracticeQuestion(
     createdAt: new Date().toISOString(),
   });
 
-  question.frequency += 1;
-  if (isCorrect) {
-    question.totalCorrect += 1;
+  if (resolved.source === "store") {
+    question.frequency += 1;
+    if (isCorrect) {
+      question.totalCorrect += 1;
+    }
+    question.acceptanceRate = question.frequency > 0 ? (question.totalCorrect / question.frequency) * 100 : 0;
+  } else {
+    try {
+      await incrementOgcodeCatalogQuestionStats(question.id, isCorrect);
+    } catch {
+      // Keep the attempt flow working even when the catalog DB is temporarily unavailable.
+    }
   }
-  question.acceptanceRate = question.frequency > 0 ? (question.totalCorrect / question.frequency) * 100 : 0;
 
   const dailyActivity = getOrCreateDailyActivity(store, user.id);
   if (!attemptedBefore) {
@@ -704,7 +860,7 @@ export function submitPracticeQuestion(
   };
 }
 
-export function getOgcodeUserStats(store: AppStore, user: StoredUser) {
+export async function getOgcodeUserStats(store: AppStore, user: StoredUser) {
   const attempts = store.practiceAttempts.filter((attempt) => attempt.userId === user.id);
   const totalAttempts = attempts.length;
   const correctAttempts = attempts.filter((attempt) => attempt.isCorrect).length;
@@ -712,11 +868,11 @@ export function getOgcodeUserStats(store: AppStore, user: StoredUser) {
     attempts.filter((attempt) => attempt.isCorrect).map((attempt) => attempt.questionId),
   ).size;
   const attemptedCount = new Set(attempts.map((attempt) => attempt.questionId)).size;
-  const totalQuestions = store.questions.length;
+  const totalQuestions = (await getOgcodeQuestionBank(store)).length;
   const accuracy = totalAttempts > 0 ? Math.round((correctAttempts / totalAttempts) * 100) : 0;
   const syllabusCoverage = totalQuestions > 0 ? Math.round((attemptedCount / totalQuestions) * 100) : 0;
 
-  const leaderboard = buildLeaderboardEntries(store, user, null);
+  const leaderboard = await buildLeaderboardEntries(store, user, null);
   const myRank = leaderboard.find((entry) => entry.isMe)?.rank ?? null;
 
   return {
@@ -749,7 +905,11 @@ export function getOgcodeSubjectRanks(store: AppStore, user: StoredUser) {
   return rows;
 }
 
-function buildLeaderboardEntries(store: AppStore, user: StoredUser, subject: string | null) {
+async function buildLeaderboardEntries(store: AppStore, user: StoredUser, subject: string | null) {
+  const attemptedQuestions = await buildQuestionLookup(
+    store,
+    store.practiceAttempts.filter((attempt) => attempt.userId === user.id).map((attempt) => attempt.questionId),
+  );
   const currentUserAttempts = store.practiceAttempts.filter((attempt) => {
     if (attempt.userId !== user.id || !attempt.isCorrect) {
       return false;
@@ -757,7 +917,7 @@ function buildLeaderboardEntries(store: AppStore, user: StoredUser, subject: str
     if (!subject) {
       return true;
     }
-    return questionById(store, attempt.questionId).subject === subject;
+    return attemptedQuestions.get(attempt.questionId)?.subject === subject;
   });
   const uniqueSolved = new Set(currentUserAttempts.map((attempt) => attempt.questionId)).size;
   const dailyAnalytics = buildTimeAnalytics(store, user.id);
@@ -805,8 +965,8 @@ function buildLeaderboardEntries(store: AppStore, user: StoredUser, subject: str
   return entries;
 }
 
-export function getOgcodeLeaderboard(store: AppStore, user: StoredUser, subject: string | null) {
-  const entries = buildLeaderboardEntries(store, user, subject);
+export async function getOgcodeLeaderboard(store: AppStore, user: StoredUser, subject: string | null) {
+  const entries = await buildLeaderboardEntries(store, user, subject);
   return {
     leaderboard: entries.slice(0, 20),
     myRank: entries.find((entry) => entry.isMe)?.rank ?? null,
@@ -835,7 +995,7 @@ export function updateOgcodeLocation(
   return { status: "updated" };
 }
 
-export function getFocusAreas(store: AppStore, user: StoredUser) {
+export async function getFocusAreas(store: AppStore, user: StoredUser) {
   const attemptedQuestionIds = new Set<string>();
   store.practiceAttempts
     .filter((attempt) => attempt.userId === user.id)
@@ -846,13 +1006,24 @@ export function getFocusAreas(store: AppStore, user: StoredUser) {
     .forEach((answer) => attemptedQuestionIds.add(answer.questionId));
 
   const subjects = ["physics", "chemistry", "mathematics", "biology"];
+  const questionBank = await getOgcodeQuestionBank(store);
+  const attemptedLookup = await buildQuestionLookup(store, [...attemptedQuestionIds]);
+  const attemptedBySubject: Record<string, number> = {};
+  const totalBySubject = questionBank.reduce<Record<string, number>>((accumulator, question) => {
+    accumulator[question.subject] = (accumulator[question.subject] ?? 0) + 1;
+    return accumulator;
+  }, {});
+
+  attemptedLookup.forEach((question, questionId) => {
+    if (attemptedQuestionIds.has(questionId)) {
+      attemptedBySubject[question.subject] = (attemptedBySubject[question.subject] ?? 0) + 1;
+    }
+  });
 
   return subjects
     .map((subject) => {
-      const totalQuestions = store.questions.filter((question) => question.subject === subject).length;
-      const attemptedInSubject = store.questions.filter(
-        (question) => question.subject === subject && attemptedQuestionIds.has(question.id),
-      ).length;
+      const totalQuestions = totalBySubject[subject] ?? 0;
+      const attemptedInSubject = attemptedBySubject[subject] ?? 0;
       const questionsLeft = Math.max(0, totalQuestions - attemptedInSubject);
       const dppsPending = store.dpps.filter(
         (dpp) => dpp.userId === user.id && dpp.subject === subject && !dpp.completed,
@@ -877,12 +1048,18 @@ export function getFocusAreas(store: AppStore, user: StoredUser) {
     .sort((left, right) => right.score - left.score);
 }
 
-export function getChallengeOfTheDay(store: AppStore, user: StoredUser) {
-  const challenge = store.questions.find((question) => question.isChallengeOfTheDay) ?? store.questions[0];
+export async function getChallengeOfTheDay(store: AppStore, user: StoredUser) {
+  let challenge = null;
+  try {
+    challenge = await getOgcodeChallengeQuestion();
+  } catch {
+    challenge = null;
+  }
+  challenge = challenge ?? store.questions.find((question) => question.isChallengeOfTheDay) ?? store.questions[0];
   if (!challenge) {
     throw new Error("No challenge of the day set.");
   }
-  const data = serializeQuestion(store, user.id, challenge, true);
+  const data = serializeQuestion(store, user.id, challenge, false);
   return {
     ...data,
     isSolved: store.practiceAttempts.some(

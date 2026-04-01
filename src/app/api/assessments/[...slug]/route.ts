@@ -7,6 +7,7 @@ import {
   getChallengeOfTheDay,
   getFocusAreas,
   getOgcodeLeaderboard,
+  listOgcodeQuestions,
   getOgcodeSubjectRanks,
   getOgcodeUserStats,
   getPracticeQuestionDetail,
@@ -23,7 +24,7 @@ import {
   updateOgcodeLocation,
 } from "@/server/assessments";
 import { badRequest, created, getSlugSegments, methodNotAllowed, notFound, ok, parseJsonBody, unauthorized } from "@/server/http";
-import { readStore, withStore } from "@/server/store";
+import { readStore, withStore, withStoreAsync } from "@/server/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -81,19 +82,26 @@ export async function GET(request: NextRequest, context: RouteContext) {
     }
 
     if (root === "practice" && first && !second) {
-      return ok(getPracticeQuestionDetail(store, user, first));
+      return ok(await getPracticeQuestionDetail(store, user, first));
     }
 
     if (root === "ogcode" && first === "questions") {
-      return ok(listPracticeQuestions(store, user, {}));
+      const url = new URL(request.url);
+      return ok(
+        await listOgcodeQuestions(store, user, {
+          subject: url.searchParams.get("subject"),
+          difficulty: url.searchParams.get("difficulty"),
+          type: url.searchParams.get("type"),
+        }),
+      );
     }
 
     if (root === "ogcode" && first === "challenge") {
-      return ok(getChallengeOfTheDay(store, user));
+      return ok(await getChallengeOfTheDay(store, user));
     }
 
     if (root === "ogcode" && first === "user-stats") {
-      return ok(getOgcodeUserStats(store, user));
+      return ok(await getOgcodeUserStats(store, user));
     }
 
     if (root === "ogcode" && first === "leaderboard" && second === "subjects") {
@@ -106,11 +114,11 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
     if (root === "ogcode" && first === "leaderboard") {
       const url = new URL(request.url);
-      return ok(getOgcodeLeaderboard(store, user, url.searchParams.get("subject")));
+      return ok(await getOgcodeLeaderboard(store, user, url.searchParams.get("subject")));
     }
 
     if (root === "focus-areas") {
-      return ok(getFocusAreas(store, user));
+      return ok(await getFocusAreas(store, user));
     }
   } catch (error) {
     return notFound(error instanceof Error ? error.message : "Not found.");
@@ -156,7 +164,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     if (root === "practice" && first && second === "submit") {
       const body = await parseJsonBody<PracticeSubmissionPayload>(request);
-      const response = withStore((store) => {
+      const response = await withStoreAsync(async (store) => {
         const user = requireUserFromRequest(store, request);
         if (!user) {
           throw new Error("Authentication credentials were not provided.");

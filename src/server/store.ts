@@ -936,6 +936,13 @@ export function withStore<T>(mutate: (store: AppStore) => T): T {
   return result;
 }
 
+export async function withStoreAsync<T>(mutate: (store: AppStore) => Promise<T>): Promise<T> {
+  const store = readStore();
+  const result = await mutate(store);
+  writeStore(store);
+  return result;
+}
+
 export function resetStore(): AppStore {
   const fresh = buildSeedStore();
   writeStore(fresh);
