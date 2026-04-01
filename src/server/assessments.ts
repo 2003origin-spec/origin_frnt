@@ -279,6 +279,9 @@ function normalizeEquationText(value: string | null | undefined): string {
   normalized = normalized
     .replace(/\\frac\s*{([^{}]+)}\s*{([^{}]+)}/g, " $1 / $2 ")
     .replace(/\\sqrt\s*{([^{}]+)}/g, " sqrt $1 ")
+    .replace(/√\s*\(([^()]*)\)/g, " sqrt $1 ")
+    .replace(/√\s*{([^{}]+)}/g, " sqrt $1 ")
+    .replace(/√\s*([a-zA-Z0-9.]+)/g, " sqrt $1 ")
     .replace(/\\(?:times|cdot)/g, " x ")
     .replace(/\\(?:infty|infinity)/g, " infinity ")
     .replace(/\\tan\s*\^\s*\{\s*-?1\s*\}/g, " arctan ")
