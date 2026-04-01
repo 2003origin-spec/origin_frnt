@@ -27,6 +27,87 @@ export const DIFFICULTY_POINTS: Record<string, number> = {
   insane: 100,
 };
 
+export type TimedPracticeScore = {
+  basePoints: number;
+  maxPoints: number;
+  pointsAwarded: number;
+  resultScore: number;
+  targetTimeSeconds: number;
+  timeSpentSeconds: number;
+  speedMultiplier: number;
+  speedBand: "blazing" | "fast" | "steady" | "deliberate" | "slow";
+};
+
+const PRACTICE_TARGET_SECONDS: Record<string, number> = {
+  easy: 45,
+  medium: 90,
+  hard: 180,
+  insane: 300,
+};
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
+}
+
+function getPracticeSpeedMultiplier(timeRatio: number): number {
+  if (timeRatio <= 0.5) {
+    return 1.35;
+  }
+  if (timeRatio <= 1) {
+    return 1.35 - ((timeRatio - 0.5) / 0.5) * 0.35;
+  }
+  if (timeRatio <= 1.75) {
+    return 1 - ((timeRatio - 1) / 0.75) * 0.3;
+  }
+  return 0.55;
+}
+
+function getPracticeSpeedBand(timeRatio: number): TimedPracticeScore["speedBand"] {
+  if (timeRatio <= 0.5) {
+    return "blazing";
+  }
+  if (timeRatio <= 0.85) {
+    return "fast";
+  }
+  if (timeRatio <= 1.2) {
+    return "steady";
+  }
+  if (timeRatio <= 1.75) {
+    return "deliberate";
+  }
+  return "slow";
+}
+
+export function calculateTimedPracticeScore(
+  difficulty: string,
+  timeSpentSeconds: number,
+  options: { isCorrect: boolean; alreadySolved?: boolean } = { isCorrect: false },
+): TimedPracticeScore {
+  const basePoints = DIFFICULTY_POINTS[difficulty] ?? DIFFICULTY_POINTS.medium;
+  const targetTimeSeconds = PRACTICE_TARGET_SECONDS[difficulty] ?? PRACTICE_TARGET_SECONDS.medium;
+  const safeTimeSpentSeconds = Math.max(1, Math.round(timeSpentSeconds || targetTimeSeconds));
+  const timeRatio = safeTimeSpentSeconds / targetTimeSeconds;
+  const speedMultiplier = Number(clamp(getPracticeSpeedMultiplier(timeRatio), 0.55, 1.35).toFixed(3));
+  const speedBand = getPracticeSpeedBand(timeRatio);
+  const maxPoints = Math.round(basePoints * 1.35) + 5;
+
+  const resultScore = options.isCorrect
+    ? Math.max(5, Math.round(basePoints * speedMultiplier) + 5)
+    : 0;
+  const pointsAwarded = options.isCorrect && !options.alreadySolved ? resultScore : 0;
+
+  return {
+    basePoints,
+    maxPoints,
+    pointsAwarded,
+    resultScore,
+    targetTimeSeconds,
+    timeSpentSeconds: safeTimeSpentSeconds,
+    speedMultiplier,
+    speedBand,
+  };
+}
+
 function todayString(): string {
   return new Date().toISOString().slice(0, 10);
 }

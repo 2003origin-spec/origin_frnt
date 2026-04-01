@@ -18,12 +18,38 @@ interface OGCodeWorkspaceProps {
 
 interface SubmitResult {
     isCorrect: boolean;
+    already_solved?: boolean;
     correctOption?: number;
     correctOptions?: number[];
     correctPairs?: number[][];
     correctAnswerText?: string;
     explanation?: string;
+    resultScore?: number;
+    maxPoints?: number;
+    pointsAwarded?: number;
+    basePoints?: number;
+    timeSpentSeconds?: number;
+    targetTimeSeconds?: number;
+    speedMultiplier?: number;
+    speedBand?: 'blazing' | 'fast' | 'steady' | 'deliberate' | 'slow';
 }
+
+type SubmitPayload = {
+    timeSpent: number;
+    selectedOption?: number | null;
+    selectedOptions?: number[];
+    matrixPairs?: number[][];
+    answerText?: string;
+};
+
+type PracticeQuestionApi = PracticeQuestion & {
+    question_type?: PracticeQuestion['questionType'];
+    matrix_data?: PracticeQuestion['matrixData'] | string;
+};
+
+type SubmitResultApi = SubmitResult & {
+    correct_pairs?: number[][];
+};
 
 const DIFFICULTY_CONFIG = {
     easy: { label: 'Easy', color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
@@ -31,6 +57,14 @@ const DIFFICULTY_CONFIG = {
     hard: { label: 'Hard', color: 'text-rose-400', bg: 'bg-rose-500/10' },
     insane: { label: 'Insane', color: 'text-purple-400', bg: 'bg-purple-500/10' },
 };
+
+const SPEED_BAND_LABELS = {
+    blazing: 'Blazing',
+    fast: 'Fast',
+    steady: 'Steady',
+    deliberate: 'Deliberate',
+    slow: 'Slow',
+} as const;
 
 export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, setTimeMode, user }: OGCodeWorkspaceProps) {
     const [question, setQuestion] = useState<PracticeQuestion | null>(null);
@@ -93,7 +127,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
     const doSubmit = useCallback(async () => {
         if (!question || result || isSubmitting) return;
 
-        let payload: any = { timeSpent: elapsed };
+        const payload: SubmitPayload = { timeSpent: elapsed };
         const qType = question.questionType ?? 'mcq';
 
         if (qType === 'mcq') payload.selectedOption = selectedOption;
@@ -115,7 +149,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
             if (res.isCorrect && !res.already_solved) {
                 onRefreshUser?.();
             }
-        } catch (err) {
+        } catch {
             toast.error('Submission failed.');
         } finally {
             setIsSubmitting(false);
@@ -146,22 +180,23 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
     if (!question) return null;
 
     // 1. SAFE NORMALIZATION: Handle both camelCase and snake_case from backend
-    const rawType = (question as any).question_type || (question as any).questionType;
+    const apiQuestion = question as PracticeQuestionApi;
+    const rawType = apiQuestion.question_type || apiQuestion.questionType;
     const qType: string = rawType?.toLowerCase() || 'mcq';
     
     // Safely get matrix data, handling both naming conventions and possible stringified JSON
-    let mDataRaw = question.matrixData || (question as any).matrix_data;
-    let mData: any = null;
+    const mDataRaw = apiQuestion.matrixData || apiQuestion.matrix_data;
+    let mData: PracticeQuestion['matrixData'] | null = null;
     if (mDataRaw) {
         try {
-            mData = typeof mDataRaw === 'string' ? JSON.parse(mDataRaw) : mDataRaw;
+            mData = typeof mDataRaw === 'string' ? JSON.parse(mDataRaw) as PracticeQuestion['matrixData'] : mDataRaw;
         } catch (e) {
             console.error('Failed to parse matrix data:', e);
         }
     }
     
-    const colA = mData?.column_a || mData?.columnA || [];
-    const colB = mData?.column_b || mData?.columnB || [];
+    const colA = mData?.column_a || [];
+    const colB = mData?.column_b || [];
     
     // Normalize difficulty
     const diffKey = (question.difficulty || 'medium').toLowerCase();
@@ -292,9 +327,10 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                                     </div>
                                                 </div>
                                                 <div className="flex flex-wrap gap-3 pt-2">
-                                                    {(colB).map((_: any, idxB: number) => {
+                                                    {(colB).map((_itemB: string, idxB: number) => {
                                                         const isSelected = matrixPairs.some(p => p[0] === idxA && p[1] === idxB);
-                                                        const resPairs = (result?.correctPairs || (result as any)?.correct_pairs) as number[][] | undefined;
+                                                        const resultWithSnakeCase = result as SubmitResultApi | null;
+                                                        const resPairs = result?.correctPairs || resultWithSnakeCase?.correct_pairs;
                                                         const isCorrect = result?.isCorrect && resPairs?.some(p => p[0] === idxA && p[1] === idxB);
 
                                                         return (
@@ -337,7 +373,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                         placeholder={qType === 'numerical' ? "Enter value..." : "Type answer..."}
                                     />
                                     {result && !result.isCorrect && result.correctAnswerText && (
-                                        <p className="text-xs text-rose-400 text-center">Incorrect. The value you entered doesn't match the expected answer.</p>
+                                        <p className="text-xs text-rose-400 text-center">Incorrect. The value you entered doesn&apos;t match the expected answer.</p>
                                     )}
                                 </div>
                             )}
@@ -374,6 +410,33 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                             {result.isCorrect ? 'Correct Answer' : 'Incorrect Answer'}
                                         </h3>
                                         <p className="text-xs text-slate-500">Time spent: {Math.floor(elapsed / 60)}m {elapsed % 60}s</p>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+                                    <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
+                                        <p className="text-[10px] uppercase tracking-widest text-slate-500">Result Score</p>
+                                        <p className="text-lg font-black text-slate-100">
+                                            {result.resultScore ?? 0}
+                                            <span className="ml-1 text-xs font-medium text-slate-500">/ {result.maxPoints ?? result.basePoints ?? 0}</span>
+                                        </p>
+                                    </div>
+                                    <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
+                                        <p className="text-[10px] uppercase tracking-widest text-slate-500">Points Earned</p>
+                                        <p className={`text-lg font-black ${result.pointsAwarded ? 'text-amber-400' : 'text-slate-400'}`}>
+                                            +{result.pointsAwarded ?? 0}
+                                        </p>
+                                    </div>
+                                    <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
+                                        <p className="text-[10px] uppercase tracking-widest text-slate-500">Speed Rating</p>
+                                        <p className="text-lg font-black text-slate-100">
+                                            {result.speedBand ? SPEED_BAND_LABELS[result.speedBand] : 'Recorded'}
+                                        </p>
+                                        {typeof result.targetTimeSeconds === 'number' && (
+                                            <p className="text-[11px] text-slate-500">
+                                                Target {Math.floor(result.targetTimeSeconds / 60)}m {result.targetTimeSeconds % 60}s
+                                            </p>
+                                        )}
                                     </div>
                                 </div>
 

@@ -1,7 +1,7 @@
 import {
   buildPointsSummary,
   buildTimeAnalytics,
-  DIFFICULTY_POINTS,
+  calculateTimedPracticeScore,
   getOrCreateDailyActivity,
   updateUserStreak,
   updateUserStudyTime,
@@ -1413,6 +1413,10 @@ export async function submitPracticeQuestion(
   const solvedBefore = store.practiceAttempts.some(
     (attempt) => attempt.userId === user.id && attempt.questionId === question.id && attempt.isCorrect,
   );
+  const practiceScore = calculateTimedPracticeScore(question.difficulty, answer.timeSpent, {
+    isCorrect,
+    alreadySolved: solvedBefore,
+  });
 
   store.practiceAttempts.unshift({
     id: createId("practice"),
@@ -1449,19 +1453,18 @@ export async function submitPracticeQuestion(
   }
 
   if (isCorrect && !solvedBefore) {
-    const basePoints = DIFFICULTY_POINTS[question.difficulty] ?? 10;
     awardPoints(
       store,
       user.id,
-      basePoints + 5,
+      practiceScore.pointsAwarded,
       "practice",
-      `Solved ${question.difficulty} ${question.subject} question: ${question.id}`,
+      `Solved ${question.difficulty} ${question.subject} question in ${practiceScore.timeSpentSeconds}s (${practiceScore.speedBand})`,
       question.id,
     );
 
     const subjectRank = getOrCreateSubjectRank(store, user.id, question.subject);
     subjectRank.questionsSolved += 1;
-    subjectRank.rankScore += basePoints;
+    subjectRank.rankScore += practiceScore.pointsAwarded;
     subjectRank.updatedAt = new Date().toISOString();
   }
 
@@ -1469,6 +1472,22 @@ export async function submitPracticeQuestion(
     isCorrect,
     is_correct: isCorrect,
     already_solved: solvedBefore,
+    resultScore: practiceScore.resultScore,
+    result_score: practiceScore.resultScore,
+    pointsAwarded: practiceScore.pointsAwarded,
+    points_awarded: practiceScore.pointsAwarded,
+    basePoints: practiceScore.basePoints,
+    base_points: practiceScore.basePoints,
+    maxPoints: practiceScore.maxPoints,
+    max_points: practiceScore.maxPoints,
+    timeSpentSeconds: practiceScore.timeSpentSeconds,
+    time_spent_seconds: practiceScore.timeSpentSeconds,
+    targetTimeSeconds: practiceScore.targetTimeSeconds,
+    target_time_seconds: practiceScore.targetTimeSeconds,
+    speedMultiplier: practiceScore.speedMultiplier,
+    speed_multiplier: practiceScore.speedMultiplier,
+    speedBand: practiceScore.speedBand,
+    speed_band: practiceScore.speedBand,
     ...info,
   };
 }
