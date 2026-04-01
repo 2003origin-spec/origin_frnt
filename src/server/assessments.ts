@@ -674,6 +674,7 @@ function evaluateSubjectiveVariant(
   }
 
   if (
+    !formulaHeavy &&
     nonNumericCriticalCoverage.score === 1 &&
     nonNumericCriticalCoverage.matchedTerms.length > 0 &&
     (numericComparison.score === 1 || formulaScore >= 0.55)
