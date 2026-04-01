@@ -1,4 +1,4 @@
-import type { DifficultyLevel, QuestionType, StoredQuestion } from "@/server/store";
+import type { DifficultyLevel, QuestionType, StoredAnswerSpec, StoredQuestion } from "@/server/store";
 
 import { getOgcodePostgresPool, isOgcodePostgresConfigured } from "@/server/postgres";
 
@@ -16,6 +16,7 @@ type CatalogRow = {
   correct_option: number | null;
   correct_options: number[] | null;
   answer_text: string | null;
+  answer_spec: StoredAnswerSpec | null;
   tolerance: number | null;
   matrix_data: { column_a: string[]; column_b: string[]; correct_pairs: number[][] } | null;
   explanation: string;
@@ -42,6 +43,7 @@ const CREATE_TABLE_SQL = `
     correct_option INTEGER,
     correct_options JSONB,
     answer_text TEXT,
+    answer_spec JSONB,
     tolerance DOUBLE PRECISION,
     matrix_data JSONB,
     explanation TEXT NOT NULL,
@@ -64,6 +66,7 @@ const CREATE_TABLE_SQL = `
   CREATE INDEX IF NOT EXISTS ogcode_questions_subject_idx ON ogcode_questions (subject);
   CREATE INDEX IF NOT EXISTS ogcode_questions_difficulty_idx ON ogcode_questions (difficulty);
   CREATE INDEX IF NOT EXISTS ogcode_questions_question_type_idx ON ogcode_questions (question_type);
+  ALTER TABLE ogcode_questions ADD COLUMN IF NOT EXISTS answer_spec JSONB;
 `;
 
 let schemaReady: Promise<void> | null = null;
@@ -130,6 +133,7 @@ function mapCatalogRow(row: CatalogRow): StoredQuestion {
     correctOption: row.correct_option == null ? null : Number(row.correct_option),
     correctOptions: toNumberArray(row.correct_options),
     answerText: row.answer_text ?? null,
+    answerSpec: row.answer_spec ?? null,
     tolerance: row.tolerance == null ? null : Number(row.tolerance),
     matrixData: row.matrix_data ?? null,
     explanation: row.explanation,
@@ -211,6 +215,7 @@ export async function listOgcodeCatalogQuestions(filters: CatalogFilters = {}): 
         correct_option,
         correct_options,
         answer_text,
+        answer_spec,
         tolerance,
         matrix_data,
         explanation,
@@ -253,6 +258,7 @@ export async function getOgcodeCatalogQuestionById(questionId: string): Promise<
         correct_option,
         correct_options,
         answer_text,
+        answer_spec,
         tolerance,
         matrix_data,
         explanation,
@@ -296,6 +302,7 @@ export async function getOgcodeCatalogQuestionMap(questionIds: string[]): Promis
         correct_option,
         correct_options,
         answer_text,
+        answer_spec,
         tolerance,
         matrix_data,
         explanation,
@@ -365,6 +372,7 @@ export async function getOgcodeChallengeQuestion(): Promise<StoredQuestion | nul
         correct_option,
         correct_options,
         answer_text,
+        answer_spec,
         tolerance,
         matrix_data,
         explanation,

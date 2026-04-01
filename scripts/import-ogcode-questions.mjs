@@ -15,6 +15,7 @@ const CREATE_TABLE_SQL = `
     correct_option INTEGER,
     correct_options JSONB,
     answer_text TEXT,
+    answer_spec JSONB,
     tolerance DOUBLE PRECISION,
     matrix_data JSONB,
     explanation TEXT NOT NULL,
@@ -37,6 +38,7 @@ const CREATE_TABLE_SQL = `
   CREATE INDEX IF NOT EXISTS ogcode_questions_subject_idx ON ogcode_questions (subject);
   CREATE INDEX IF NOT EXISTS ogcode_questions_difficulty_idx ON ogcode_questions (difficulty);
   CREATE INDEX IF NOT EXISTS ogcode_questions_question_type_idx ON ogcode_questions (question_type);
+  ALTER TABLE ogcode_questions ADD COLUMN IF NOT EXISTS answer_spec JSONB;
 `;
 
 function parseArgs(argv) {
@@ -93,6 +95,63 @@ function normalizeDifficulty(value) {
   return "medium";
 }
 
+function deriveSymbolAssumptions(answer) {
+  const symbols = [...new Set((String(answer ?? "").match(/\b[a-z]\b/g) ?? []).map((entry) => entry.trim()))];
+  if (!symbols.length) {
+    return null;
+  }
+  return Object.fromEntries(symbols.map((symbol) => [symbol, "positive"]));
+}
+
+function deriveAnswerSpec(answer, questionType, tolerance) {
+  const value = String(answer ?? "").trim();
+  if (!value) {
+    return null;
+  }
+
+  if (questionType === "numerical") {
+    const unitMatch = value.match(/^[-+]?\d*\.?\d+(?:e[-+]?\d+)?\s*([a-zA-Z%°/^\-]+)$/);
+    if (unitMatch?.[1]) {
+      return {
+        gradingMode: "numerical_with_units",
+        expectedValue: value,
+        acceptedUnits: [unitMatch[1]],
+        tolerance,
+        metadata: { source: "ogcode-importer" },
+      };
+    }
+
+    return {
+      gradingMode: "numerical",
+      expectedValue: value,
+      tolerance,
+      metadata: { source: "ogcode-importer" },
+    };
+  }
+
+  const targetMatch = value.match(/^\s*([a-zA-Z]+)\s*=/);
+  const formulaLike = /[=\\/^*+\-]|√|sqrt|sin|cos|tan|log|ln/.test(value);
+
+  if (formulaLike) {
+    return {
+      gradingMode: targetMatch ? "equation" : "symbolic_expression",
+      expectedValue: value,
+      acceptedForms: [value],
+      targetVariable: targetMatch ? targetMatch[1] : null,
+      allowRhsOnly: Boolean(targetMatch),
+      tolerance,
+      symbolAssumptions: deriveSymbolAssumptions(value),
+      metadata: { source: "ogcode-importer" },
+    };
+  }
+
+  return {
+    gradingMode: "subjective_text",
+    expectedValue: value,
+    metadata: { source: "ogcode-importer" },
+  };
+}
+
 function buildSeedRows(rawQuestions) {
   const hardQuestionIndex = rawQuestions.findIndex(
     (question) => normalizeDifficulty(question.Difficulty_Level) === "hard",
@@ -101,6 +160,7 @@ function buildSeedRows(rawQuestions) {
   return rawQuestions.map((question, index) => {
     const answer = String(question.Answer ?? "").trim();
     const questionType = isNumericalAnswer(answer) ? "numerical" : "subjective";
+    const tolerance = questionType === "numerical" ? deriveTolerance(answer) : null;
 
     return {
       id: `ogcode_pg_${String(index + 1).padStart(4, "0")}`,
@@ -110,7 +170,8 @@ function buildSeedRows(rawQuestions) {
       correct_option: null,
       correct_options: null,
       answer_text: answer || null,
-      tolerance: questionType === "numerical" ? deriveTolerance(answer) : null,
+      answer_spec: deriveAnswerSpec(answer, questionType, tolerance),
+      tolerance,
       matrix_data: null,
       explanation: String(question.Detailed_Explanation ?? "").trim() || "Explanation unavailable.",
       hint: String(question.Hint ?? "").trim() || null,
@@ -206,6 +267,7 @@ async function main() {
             correct_option,
             correct_options,
             answer_text,
+            answer_spec,
             tolerance,
             matrix_data,
             explanation,
@@ -224,7 +286,7 @@ async function main() {
             updated_at
           )
           VALUES (
-            $1, $2, $3, $4::jsonb, $5, $6::jsonb, $7, $8, $9::jsonb, $10, $11, $12, $13, $14, $15, $16, $17::jsonb, $18, $19, $20, $21, $22, NOW()
+            $1, $2, $3, $4::jsonb, $5, $6::jsonb, $7, $8::jsonb, $9, $10::jsonb, $11, $12, $13, $14, $15, $16, $17, $18::jsonb, $19, $20, $21, $22, $23, NOW()
           )
           ON CONFLICT (id) DO UPDATE SET
             source_index = EXCLUDED.source_index,
@@ -233,6 +295,7 @@ async function main() {
             correct_option = EXCLUDED.correct_option,
             correct_options = EXCLUDED.correct_options,
             answer_text = EXCLUDED.answer_text,
+            answer_spec = EXCLUDED.answer_spec,
             tolerance = EXCLUDED.tolerance,
             matrix_data = EXCLUDED.matrix_data,
             explanation = EXCLUDED.explanation,
@@ -255,6 +318,7 @@ async function main() {
           row.correct_option,
           JSON.stringify(row.correct_options),
           row.answer_text,
+          JSON.stringify(row.answer_spec),
           row.tolerance,
           JSON.stringify(row.matrix_data),
           row.explanation,

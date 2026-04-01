@@ -103,6 +103,18 @@ export interface StoredMatrixData {
   correct_pairs: number[][];
 }
 
+export interface StoredAnswerSpec {
+  gradingMode: "mcq" | "msq" | "matrix_match" | "numerical" | "numerical_with_units" | "symbolic_expression" | "equation" | "subjective_text";
+  expectedValue?: string | null;
+  acceptedForms?: string[] | null;
+  targetVariable?: string | null;
+  allowRhsOnly?: boolean;
+  acceptedUnits?: string[] | null;
+  tolerance?: number | null;
+  symbolAssumptions?: Record<string, string> | null;
+  metadata?: Record<string, unknown> | null;
+}
+
 export interface StoredQuestion {
   id: string;
   text: string;
@@ -114,6 +126,7 @@ export interface StoredQuestion {
   matrixData: StoredMatrixData | null;
   explanation: string;
   hint: string | null;
+  answerSpec?: StoredAnswerSpec | null;
   subject: string;
   chapter: string;
   concept: string;

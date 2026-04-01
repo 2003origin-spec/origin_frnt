@@ -14,6 +14,7 @@ import {
   incrementOgcodeCatalogQuestionStats,
   listOgcodeCatalogQuestions,
 } from "@/server/ogcode-catalog";
+import { gradePracticeAnswerWithService } from "@/server/grader-client";
 import type {
   AppStore,
   DifficultyLevel,
@@ -1020,6 +1021,18 @@ function gradeAnswer(question: StoredQuestion, answer: StoredUserAnswer): GradeR
   };
 }
 
+async function gradePracticeAnswer(
+  question: StoredQuestion,
+  answer: StoredUserAnswer,
+  userId: string,
+): Promise<GradeResult> {
+  const remoteGrade = await gradePracticeAnswerWithService(question, answer, userId);
+  if (remoteGrade) {
+    return remoteGrade;
+  }
+  return gradeAnswer(question, answer);
+}
+
 function questionById(store: AppStore, questionId: string): StoredQuestion {
   const question = store.questions.find((entry) => entry.id === questionId);
   if (!question) {
@@ -1528,7 +1541,7 @@ export async function submitPracticeQuestion(
   const question = resolved.question;
   const answer = normalizeAnswer(payload);
   answer.questionId = question.id;
-  const { isCorrect, info } = gradeAnswer(question, answer);
+  const { isCorrect, info } = await gradePracticeAnswer(question, answer, user.id);
 
   const attemptedBefore = store.practiceAttempts.some(
     (attempt) => attempt.userId === user.id && attempt.questionId === question.id,
