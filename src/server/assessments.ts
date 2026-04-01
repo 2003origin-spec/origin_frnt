@@ -448,6 +448,28 @@ function formulaComponentWeight(token: string): number {
   return 1.15;
 }
 
+function isOperatorToken(token: string): boolean {
+  return /^[=+\-*/^]$/.test(token);
+}
+
+function isMalformedFormulaComponents(tokens: string[]): boolean {
+  if (!tokens.length) {
+    return true;
+  }
+
+  if (isOperatorToken(tokens[0]) || isOperatorToken(tokens[tokens.length - 1])) {
+    return true;
+  }
+
+  for (let index = 1; index < tokens.length; index += 1) {
+    if (isOperatorToken(tokens[index - 1]) && isOperatorToken(tokens[index])) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function weightedMultisetCoverage(expectedTokens: string[], submittedTokens: string[]) {
   const submittedCounts = new Map<string, number>();
   submittedTokens.forEach((token) => {
@@ -702,12 +724,14 @@ function evaluateSubjectiveVariant(
   const formulaScore = diceSimilarity(expectedVariant, submittedValue ?? "");
   const contextScore = contextCoverage(question, submittedTokens);
   const formulaHeavy = isFormulaHeavy(expectedVariant);
+  const submittedFormulaComponents = formulaHeavy ? extractFormulaComponents(submittedValue) : [];
   const formulaStructure = formulaHeavy
     ? weightedMultisetCoverage(
         extractFormulaComponents(expectedVariant),
-        extractFormulaComponents(submittedValue),
+        submittedFormulaComponents,
       )
     : null;
+  const malformedFormula = formulaHeavy && isMalformedFormulaComponents(submittedFormulaComponents);
 
   const components: Array<[number, number]> = formulaHeavy
     ? [
@@ -787,6 +811,10 @@ function evaluateSubjectiveVariant(
 
   if (formulaHeavy && formulaStructure && formulaStructure.score < 0.88) {
     score = Math.min(score, threshold - (formulaStructure.score < 0.72 ? 0.2 : 0.1));
+  }
+
+  if (malformedFormula) {
+    score = Math.min(score, threshold - 0.28);
   }
 
   score = clamp01(score);
