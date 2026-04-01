@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: origin_v1_ogcode_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: origin
+      POSTGRES_PASSWORD: origin123
+      POSTGRES_DB: origin_v1_ogcode
+    ports:
+      - "54329:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U origin -d origin_v1_ogcode"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    volumes:
+      - origin_v1_ogcode_pgdata:/var/lib/postgresql/data
+
+volumes:
+  origin_v1_ogcode_pgdata:

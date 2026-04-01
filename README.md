@@ -20,6 +20,30 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Local Postgres For OGCode
+
+This repo includes a dedicated local Postgres setup for the OGCode question bank.
+
+1. Copy the env example:
+
+```bash
+cp .env.example .env.local
+```
+
+2. Start Postgres:
+
+```bash
+npm run db:up
+```
+
+3. Import the OGCode bank:
+
+```bash
+npm run ogcode:import:replace
+```
+
+The app reads the catalog from `OGCODE_DATABASE_URL` when it is present. The Docker setup exposes Postgres on `127.0.0.1:54329` and keeps data in the `origin_v1_ogcode_pgdata` Docker volume.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:
