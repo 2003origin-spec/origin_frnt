@@ -3,6 +3,7 @@
 import React from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
+import type { ViewState } from '@/types';
 import Navbar from './Navbar';
 import FloatingChat from './FloatingChat';
 import { useTheme } from 'next-themes';
@@ -48,6 +49,7 @@ export default function ClientShell({ children }: { children: React.ReactNode })
 
   const noNavbarPaths = ['/', '/auth', '/onboarding', '/role-selection', '/explore'];
   const isSpecialPath = pathname.startsWith('/tests/') || pathname.startsWith('/ogcode/');
+  const navbarTheme = theme === 'light' || theme === 'system' ? theme : 'dark';
   
   const showNavbar = user && user.role === 'student' && !isNavigationLocked && !noNavbarPaths.includes(pathname) && !isSpecialPath;
 
@@ -56,11 +58,11 @@ export default function ClientShell({ children }: { children: React.ReactNode })
       {mounted && showNavbar && (
         <Navbar
           user={user}
-          currentView={pathname.replace('/', '') as any}
+          currentView={pathname.replace('/', '') as ViewState}
           onNavigate={handleNavigate}
           onLogout={logout}
-          theme={theme as any}
-          setTheme={setTheme as any}
+          theme={navbarTheme}
+          setTheme={setTheme}
         />
       )}
       <main className={`flex-1 flex flex-col ${showNavbar ? 'pt-[92px]' : ''}`}>
@@ -77,7 +79,7 @@ export default function ClientShell({ children }: { children: React.ReactNode })
           </motion.div>
         </AnimatePresence>
       </main>
-      {user && <FloatingChat />}
+      {user && pathname !== '/doubt-solver' && <FloatingChat />}
     </div>
   );
 }

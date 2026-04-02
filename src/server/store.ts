@@ -320,6 +320,41 @@ export interface StoredDoubtSession {
   messages: StoredChatMessage[];
 }
 
+export interface StoredOriginAiReminder {
+  id: string;
+  userId: string;
+  kind: "dpp" | "revision" | "assignment" | "habit";
+  title: string;
+  message: string;
+  priority: "high" | "medium" | "low";
+  sourceId: string | null;
+  createdAt: string;
+}
+
+export interface StoredOriginAiProfileMemory {
+  userId: string;
+  preferredName: string | null;
+  identitySummary: string | null;
+  pinnedFacts: string[];
+  lastWeakTopics: string[];
+  lastTestResultId: string | null;
+  lastVisitedPath: string | null;
+  reminderDigest: string[];
+  updatedAt: string;
+}
+
+export interface StoredOriginAiSession {
+  id: string;
+  userId: string;
+  title: string;
+  summary: string | null;
+  lastPathname: string | null;
+  lastPageKind: string | null;
+  createdAt: string;
+  updatedAt: string;
+  messages: StoredChatMessage[];
+}
+
 export interface StoredAuthSession {
   accessToken: string;
   refreshToken: string;
@@ -358,6 +393,9 @@ export interface AppStore {
   bookmarks: StoredBookmark[];
   savedBooks: StoredSavedBook[];
   doubtSessions: StoredDoubtSession[];
+  originAiProfiles: StoredOriginAiProfileMemory[];
+  originAiSessions: StoredOriginAiSession[];
+  originAiReminders: StoredOriginAiReminder[];
   authSessions: StoredAuthSession[];
   leaderboardSeed: LeaderboardSeedEntry[];
 }
@@ -914,9 +952,29 @@ function buildSeedStore(): AppStore {
     bookmarks,
     savedBooks,
     doubtSessions,
+    originAiProfiles: [],
+    originAiSessions: [],
+    originAiReminders: [],
     authSessions: [],
     leaderboardSeed,
   };
+}
+
+function ensureOriginAiCollections(store: AppStore): boolean {
+  let changed = false;
+  if (!Array.isArray((store as Partial<AppStore>).originAiProfiles)) {
+    store.originAiProfiles = [];
+    changed = true;
+  }
+  if (!Array.isArray((store as Partial<AppStore>).originAiSessions)) {
+    store.originAiSessions = [];
+    changed = true;
+  }
+  if (!Array.isArray((store as Partial<AppStore>).originAiReminders)) {
+    store.originAiReminders = [];
+    changed = true;
+  }
+  return changed;
 }
 
 function ensureStoreFile(): void {
@@ -931,7 +989,8 @@ function ensureStoreFile(): void {
 export function readStore(): AppStore {
   ensureStoreFile();
   const store = JSON.parse(fs.readFileSync(STORE_PATH, "utf8")) as AppStore;
-  if (ensureSeedUsers(store)) {
+  const changed = ensureSeedUsers(store) || ensureOriginAiCollections(store);
+  if (changed) {
     fs.writeFileSync(STORE_PATH, JSON.stringify(store, null, 2), "utf8");
   }
   return store;
