@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import {
@@ -18,7 +18,7 @@ interface OGCodeListProps {
 }
 
 const SUBJECTS = [
-    { name: 'All Topics', icon: <Brain className="w-4 h-4" /> },
+    { name: 'Subject', icon: <Brain className="w-4 h-4" /> },
     { name: 'Physics', icon: <Atom className="w-4 h-4" /> },
     { name: 'Chemistry', icon: <Beaker className="w-4 h-4" /> },
     { name: 'Mathematics', icon: <Calculator className="w-4 h-4" /> },
@@ -78,32 +78,35 @@ export default function OGCodeList({ onSelectQuestion, user }: OGCodeListProps) 
     const [loading, setLoading] = useState(true);
     const [userStats, setUserStats] = useState<UserStats | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
-    const [activeSubject, setActiveSubject] = useState('All Topics');
+    const [activeSubject, setActiveSubject] = useState('Subject');
     const [timeRange, setTimeRange] = useState<'daily' | 'weekly' | 'monthly'>('weekly');
     
     const [activeDifficulty, setActiveDifficulty] = useState('All');
     const [activeStatus, setActiveStatus] = useState('All');
-    const [openDropdown, setOpenDropdown] = useState<'difficulty' | 'status' | null>(null);
+    const [selectedChapters, setSelectedChapters] = useState<string[]>([]);
+    const [openDropdown, setOpenDropdown] = useState<'difficulty' | 'status' | 'subject' | null>(null);
     const [isStatsExpanded, setIsStatsExpanded] = useState(false);
+    const [isChaptersExpanded, setIsChaptersExpanded] = useState(true);
 
     // Refs for click-outside detection
     const statsRef = useRef<HTMLDivElement>(null);
 
+    // Combined click-outside detection for stats and dropdowns
     useEffect(() => {
         function handleClickOutside(event: MouseEvent) {
+            // Stats dropdown
             if (statsRef.current && !statsRef.current.contains(event.target as Node)) {
                 setIsStatsExpanded(false);
             }
+            // General filter dropdowns
+            const filterContainer = document.getElementById('filter-area');
+            if (filterContainer && !filterContainer.contains(event.target as Node)) {
+                setOpenDropdown(null);
+            }
         }
-        if (isStatsExpanded) {
-            document.addEventListener("mousedown", handleClickOutside);
-        } else {
-            document.removeEventListener("mousedown", handleClickOutside);
-        }
-        return () => {
-            document.removeEventListener("mousedown", handleClickOutside);
-        };
-    }, [isStatsExpanded]);
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -128,12 +131,39 @@ export default function OGCodeList({ onSelectQuestion, user }: OGCodeListProps) 
         fetchData();
     }, [fetchData]);
 
+    // Extract unique chapters based on active subject
+    const availableChapters = useMemo(() => {
+        const subjectQuestions = questions.filter(q => 
+            activeSubject === 'Subject' || normalizeSubject(q.subject) === normalizeSubject(activeSubject)
+        );
+        const chapters = new Set(subjectQuestions.map(q => q.chapter || 'Foundations'));
+        return Array.from(chapters).sort();
+    }, [questions, activeSubject]);
+
+    // Reset selected chapters when subject changes
+    useEffect(() => {
+        setSelectedChapters([]);
+    }, [activeSubject]);
+
+    const toggleChapter = (chapter: string) => {
+        setSelectedChapters(prev => 
+            prev.includes(chapter) 
+                ? prev.filter(c => c !== chapter) 
+                : [...prev, chapter]
+        );
+    };
+
     const filteredQuestions = questions.filter(q => {
         const matchesSearch = (q.text || q.title || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
             normalizeTags(q.tags).some(t => t.toLowerCase().includes(searchQuery.toLowerCase()));
+        
         const matchesSubject =
-            activeSubject === 'All Topics' ||
+            activeSubject === 'Subject' ||
             normalizeSubject(q.subject) === normalizeSubject(activeSubject);
+        
+        const matchesChapter = 
+            selectedChapters.length === 0 || 
+            selectedChapters.includes(q.chapter || 'Foundations');
         
         const qDifficulty = q.difficulty?.toLowerCase();
         const matchesDifficulty = activeDifficulty === 'All' || qDifficulty === activeDifficulty.toLowerCase();
@@ -141,7 +171,7 @@ export default function OGCodeList({ onSelectQuestion, user }: OGCodeListProps) 
         const isSolved = q.status === 'solved' || q.isSolved;
         const matchesStatus = activeStatus === 'All' || (activeStatus === 'Solved' ? isSolved : !isSolved);
             
-        return matchesSearch && matchesSubject && matchesDifficulty && matchesStatus;
+        return matchesSearch && matchesSubject && matchesChapter && matchesDifficulty && matchesStatus;
     });
 
     const solvedCount = userStats?.solvedCount ?? questions.filter(q => q.status === 'solved' || q.isSolved).length;
@@ -309,20 +339,124 @@ export default function OGCodeList({ onSelectQuestion, user }: OGCodeListProps) 
 
                     {/* Filter & Table Area */}
                     <div className="space-y-6">
-                        <div className="flex flex-wrap gap-3">
-                            {SUBJECTS.map((sub, idx) => (
-                                <button
-                                    key={idx}
-                                    onClick={() => setActiveSubject(sub.name)}
-                                    className={cn(
-                                        "flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-200",
-                                        activeSubject === sub.name ? "bg-white text-slate-900 shadow-md" : "bg-slate-100/50 dark:bg-white/5 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-white/10"
-                                    )}
-                                >
-                                    <span className={cn(activeSubject === sub.name ? "text-blue-500" : "text-slate-400")}>{sub.icon}</span>
-                                    {sub.name}
-                                </button>
-                            ))}
+                        {/* Enhanced Subject & Chapter Filter */}
+                        <div id="filter-area" className="space-y-4 bg-slate-50/50 dark:bg-white/[0.02] border border-slate-200 dark:border-white/5 rounded-2xl p-5 backdrop-blur-sm relative z-[60]">
+                            <div className="flex flex-wrap items-center gap-4">
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-zinc-500 ml-1">Major Subject</label>
+                                    <div className="relative">
+                                        <button 
+                                            onClick={() => setOpenDropdown(openDropdown === 'subject' ? null : 'subject')}
+                                            className={cn(
+                                                "min-w-[200px] flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl border bg-white dark:bg-zinc-900 transition-all shadow-sm",
+                                                activeSubject !== 'Subject' ? "border-blue-500/50 ring-1 ring-blue-500/20" : "border-slate-200 dark:border-white/10"
+                                            )}
+                                        >
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-blue-500">{SUBJECTS.find(s => s.name === activeSubject)?.icon}</span>
+                                                <span className="text-[13px] font-bold text-slate-800 dark:text-white">{activeSubject}</span>
+                                            </div>
+                                            <ChevronRight className={cn("w-4 h-4 transition-transform", openDropdown === 'subject' ? "-rotate-90" : "rotate-90")} />
+                                        </button>
+                                        
+                                        <AnimatePresence>
+                                            {openDropdown === 'subject' && (
+                                                <motion.div 
+                                                    initial={{ opacity: 0, y: 10 }} 
+                                                    animate={{ opacity: 1, y: 0 }}
+                                                    exit={{ opacity: 0, y: 10 }}
+                                                    className="absolute top-full mt-2 left-0 w-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-white/10 rounded-xl shadow-2xl z-[60] overflow-hidden"
+                                                >
+                                                    {SUBJECTS.map((sub, idx) => (
+                                                        <button
+                                                            key={idx}
+                                                            onClick={() => {
+                                                                setActiveSubject(sub.name);
+                                                                setOpenDropdown(null);
+                                                            }}
+                                                            className={cn(
+                                                                "w-full flex items-center gap-3 px-4 py-3 text-left text-[13px] transition-colors hover:bg-slate-50 dark:hover:bg-white/5",
+                                                                activeSubject === sub.name ? "text-blue-500 font-bold bg-blue-500/5" : "text-slate-600 dark:text-slate-300"
+                                                            )}
+                                                        >
+                                                            <span className={cn(activeSubject === sub.name ? "text-blue-500" : "text-slate-400")}>{sub.icon}</span>
+                                                            {sub.name}
+                                                        </button>
+                                                    ))}
+                                                </motion.div>
+                                            )}
+                                        </AnimatePresence>
+                                    </div>
+                                </div>
+
+                                {activeSubject !== 'Subject' && (
+                                    <motion.div 
+                                        initial={{ opacity: 0, width: 0 }}
+                                        animate={{ opacity: 1, width: 'auto' }}
+                                        className="flex-1 space-y-1.5 min-w-[300px]"
+                                    >
+                                        <div className="flex items-center justify-between ml-1">
+                                            <div className="flex items-center gap-2">
+                                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-zinc-500">Target Chapters</label>
+                                                <span className="px-1.5 py-0.5 rounded-md bg-blue-500/10 text-blue-500 text-[8px] font-black uppercase tracking-tighter">Multi-select</span>
+                                            </div>
+                                            <button 
+                                                onClick={() => setSelectedChapters([])}
+                                                className="text-[9px] font-black uppercase text-blue-500 hover:text-blue-600 transition-colors"
+                                                disabled={selectedChapters.length === 0}
+                                            >
+                                                Clear All
+                                            </button>
+                                        </div>
+                                        <div className="flex flex-wrap gap-2 max-h-[120px] overflow-y-auto pr-2 custom-scrollbar p-1">
+                                            {availableChapters.length > 0 ? (
+                                                availableChapters.map((chapter) => (
+                                                    <button
+                                                        key={chapter}
+                                                        onClick={() => toggleChapter(chapter)}
+                                                        className={cn(
+                                                            "flex items-center gap-2 px-3 py-1.5 rounded-lg border text-[11px] font-bold transition-all",
+                                                            selectedChapters.includes(chapter)
+                                                                ? "bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-500/20"
+                                                                : "bg-white dark:bg-zinc-800 border-slate-200 dark:border-white/10 text-slate-600 dark:text-zinc-400 hover:border-blue-500/30"
+                                                        )}
+                                                    >
+                                                        <div className={cn(
+                                                            "w-3 h-3 rounded-sm border flex items-center justify-center transition-colors",
+                                                            selectedChapters.includes(chapter) ? "bg-white border-white" : "border-slate-300 dark:border-zinc-600"
+                                                        )}>
+                                                            {selectedChapters.includes(chapter) && <div className="w-1.5 h-1.5 bg-blue-600 rounded-[1px]" />}
+                                                        </div>
+                                                        {chapter}
+                                                    </button>
+                                                ))
+                                            ) : (
+                                                <div className="text-[11px] font-medium text-slate-400 italic py-2">No chapters found for this subject.</div>
+                                            )}
+                                        </div>
+                                    </motion.div>
+                                )}
+
+                                {selectedChapters.length > 0 && (
+                                    <motion.div 
+                                        initial={{ opacity: 0, scale: 0.9 }}
+                                        animate={{ opacity: 1, scale: 1 }}
+                                        className="flex items-end pb-1"
+                                    >
+                                        <button 
+                                            onClick={() => {
+                                                const tableEl = document.querySelector('table');
+                                                tableEl?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                                toast.success(`Filters applied for ${selectedChapters.length} chapters`);
+                                            }}
+                                            className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-black uppercase tracking-widest rounded-xl shadow-lg shadow-blue-500/25 transition-all flex items-center gap-2 group"
+                                        >
+                                            Proceed to Arena
+                                            <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                                        </button>
+                                    </motion.div>
+                                )}
+                            </div>
                         </div>
 
                         <div className="flex flex-wrap items-center gap-3 py-2">
@@ -402,7 +536,7 @@ export default function OGCodeList({ onSelectQuestion, user }: OGCodeListProps) 
                 </div>
             </div>
 
-            {openDropdown && <div className="fixed inset-0 z-40 bg-transparent" onClick={() => setOpenDropdown(null)} />}
+            {/* Overlay removed in favor of id-based click-outside */}
             <style dangerouslySetInnerHTML={{ __html: `.hide-scrollbar::-webkit-scrollbar { display: none; } .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }` }} />
         </div>
     );
