@@ -38,11 +38,30 @@ export type OriginAiPageKind =
 
 export type OriginAiPolicyMode = "normal" | "hint_only" | "answer_blocked";
 
+interface OriginAiVisibleQuestionContext {
+  id: string;
+  number: number;
+  title: string;
+  chapter?: string | null;
+  concept?: string | null;
+  difficulty?: string | null;
+  subject?: string | null;
+  tags?: string[];
+  isSolved?: boolean;
+}
+
 export interface OriginAiPageContextInput {
   pathname?: string | null;
   pageKind?: OriginAiPageKind | null;
   testId?: string | null;
   questionId?: string | null;
+  searchQuery?: string | null;
+  activeSubject?: string | null;
+  activeDifficulty?: string | null;
+  activeStatus?: string | null;
+  selectedChapters?: string[] | null;
+  totalVisibleQuestions?: number | null;
+  visibleQuestions?: OriginAiVisibleQuestionContext[] | null;
 }
 
 interface OriginAiResolvedPageContext {
@@ -55,6 +74,13 @@ interface OriginAiResolvedPageContext {
   chapter: string | null;
   concept: string | null;
   hint: string | null;
+  searchQuery: string | null;
+  activeSubject: string | null;
+  activeDifficulty: string | null;
+  activeStatus: string | null;
+  selectedChapters: string[];
+  totalVisibleQuestions: number | null;
+  visibleQuestions: OriginAiVisibleQuestionContext[];
 }
 
 interface OriginAiPolicy {
@@ -218,6 +244,13 @@ async function resolvePageContext(
     chapter: null,
     concept: null,
     hint: null,
+    searchQuery: input?.searchQuery?.trim() || null,
+    activeSubject: input?.activeSubject?.trim() || null,
+    activeDifficulty: input?.activeDifficulty?.trim() || null,
+    activeStatus: input?.activeStatus?.trim() || null,
+    selectedChapters: input?.selectedChapters?.filter(Boolean) ?? [],
+    totalVisibleQuestions: input?.totalVisibleQuestions ?? null,
+    visibleQuestions: input?.visibleQuestions?.slice(0, 40) ?? [],
   };
 
   try {
@@ -297,13 +330,25 @@ function getOrCreateProfileMemory(store: AppStore, user: StoredUser): StoredOrig
   return memory;
 }
 
-function getOrCreateMentorSession(store: AppStore, user: StoredUser): StoredOriginAiSession {
-  let session = store.originAiSessions.find((entry) => entry.userId === user.id);
+function resolveBrowserSessionId(request: Request, user: StoredUser): string {
+  const raw = request.headers.get("x-origin-ai-session-id")?.trim();
+  if (raw) {
+    return raw.slice(0, 128);
+  }
+
+  return `legacy-origin-ai-session-${user.id}`;
+}
+
+function getOrCreateMentorSession(store: AppStore, user: StoredUser, browserSessionId: string): StoredOriginAiSession {
+  let session = store.originAiSessions.find(
+    (entry) => entry.userId === user.id && entry.browserSessionId === browserSessionId,
+  );
   if (!session) {
     const timestamp = nowIso();
     session = {
       id: createId("origin_ai"),
       userId: user.id,
+      browserSessionId,
       title: "Origin AI Mentor",
       summary: "Persistent mentor chat for study guidance and revision planning.",
       lastPathname: null,
@@ -527,6 +572,22 @@ function buildSystemInstruction(
     pageContext.chapter ? `- Chapter: ${pageContext.chapter}` : "- Chapter: unavailable",
     pageContext.concept ? `- Concept: ${pageContext.concept}` : "- Concept: unavailable",
     pageContext.hint ? `- Hint allowed on this page: ${pageContext.hint}` : "- Hint allowed on this page: unavailable",
+    pageContext.searchQuery ? `- Search query: ${pageContext.searchQuery}` : "- Search query: none",
+    pageContext.activeSubject ? `- Active subject filter: ${pageContext.activeSubject}` : "- Active subject filter: none",
+    pageContext.activeDifficulty ? `- Active difficulty filter: ${pageContext.activeDifficulty}` : "- Active difficulty filter: none",
+    pageContext.activeStatus ? `- Active status filter: ${pageContext.activeStatus}` : "- Active status filter: none",
+    pageContext.selectedChapters.length > 0
+      ? `- Selected chapters: ${pageContext.selectedChapters.join(", ")}`
+      : "- Selected chapters: none",
+    pageContext.totalVisibleQuestions !== null
+      ? `- Visible question count: ${pageContext.totalVisibleQuestions}`
+      : "- Visible question count: unavailable",
+    pageContext.visibleQuestions.length > 0
+      ? `- Visible questions:\n${pageContext.visibleQuestions
+          .slice(0, 12)
+          .map((question) => `  - #${question.number}: ${question.title} | ${question.chapter ?? "Unknown chapter"} | ${question.concept ?? "Unknown concept"} | ${question.difficulty ?? "unknown"} | solved=${question.isSolved ? "yes" : "no"}`)
+          .join("\n")}`
+      : "- Visible questions: unavailable",
     "## Page Policy",
     `- Mode: ${pagePolicy.mode}`,
     `- Reason: ${pagePolicy.reason}`,
@@ -570,7 +631,404 @@ function buildHintOnlyReply(
   ].join("\n\n");
 }
 
+const QUESTION_INTENT_STOPWORDS = new Set([
+  "which",
+  "what",
+  "should",
+  "start",
+  "with",
+  "question",
+  "questions",
+  "number",
+  "give",
+  "show",
+  "best",
+  "first",
+  "from",
+  "into",
+  "that",
+  "this",
+  "would",
+  "like",
+  "please",
+  "need",
+  "want",
+  "about",
+  "inside",
+  "there",
+  "their",
+  "them",
+  "have",
+]);
+
+const QUESTION_FOLLOW_UP_TOKENS = new Set([
+  "hard",
+  "harder",
+  "easy",
+  "easier",
+  "medium",
+  "another",
+  "next",
+  "more",
+  "same",
+  "similar",
+  "else",
+  "different",
+  "tough",
+  "tougher",
+  "advanced",
+  "challenging",
+  "one",
+  "ones",
+]);
+
+type OgcodeDifficultyPreference = "easy" | "medium" | "hard" | null;
+
+interface OgcodeConversationAnchor {
+  tokens: string[];
+  label: string | null;
+  questionNumber: number | null;
+}
+
+interface OgcodeIndexReply {
+  content: string;
+  metadata: Record<string, unknown>;
+}
+
+function tokenizeStudyQuery(text: string): string[] {
+  return (text.toLowerCase().match(/[a-z0-9]+/g) ?? []).filter(
+    (token) => token.length > 2 && !QUESTION_INTENT_STOPWORDS.has(token),
+  );
+}
+
+function uniqueTokens(tokens: string[]): string[] {
+  return [...new Set(tokens.filter(Boolean))];
+}
+
+function tokenizeTopicQuery(text: string): string[] {
+  return uniqueTokens(
+    tokenizeStudyQuery(text).filter((token) => !QUESTION_FOLLOW_UP_TOKENS.has(token)),
+  );
+}
+
+function parseOgcodeDifficultyPreference(text: string): OgcodeDifficultyPreference {
+  const normalized = text.toLowerCase();
+  if (/\b(hard|harder|tough|tougher|advanced|challenging)\b/.test(normalized)) {
+    return "hard";
+  }
+  if (/\b(easy|easier|simpler|basic|light)\b/.test(normalized)) {
+    return "easy";
+  }
+  if (/\bmedium|moderate|balanced\b/.test(normalized)) {
+    return "medium";
+  }
+  return null;
+}
+
+function isOgcodeRecommendationRequest(text: string): boolean {
+  return /(which|what|give|show|start|begin|pick|question|number|solve|another|next|hard|harder|easy|easier|medium|tough|challenging)/i.test(
+    text,
+  );
+}
+
+function isOgcodeAlternativeRequest(text: string): boolean {
+  return /\b(another|next|else|different|instead|more|harder|easier|similar)\b/i.test(text);
+}
+
+function readOgcodeAnchorFromMetadata(message: StoredChatMessage): OgcodeConversationAnchor | null {
+  const recommendation =
+    message.metadata && typeof message.metadata === "object"
+      ? (message.metadata.ogcodeRecommendation as Record<string, unknown> | undefined)
+      : undefined;
+
+  if (!recommendation || typeof recommendation !== "object") {
+    return null;
+  }
+
+  const rawTokens = Array.isArray(recommendation.anchorTokens) ? recommendation.anchorTokens : [];
+  const tokens = uniqueTokens(
+    rawTokens.filter((token): token is string => typeof token === "string").map((token) => token.toLowerCase()),
+  );
+  const label = typeof recommendation.anchorLabel === "string" ? recommendation.anchorLabel : null;
+  const questionNumber =
+    typeof recommendation.questionNumber === "number" ? recommendation.questionNumber : null;
+
+  if (tokens.length === 0 && !label && questionNumber === null) {
+    return null;
+  }
+
+  return {
+    tokens,
+    label,
+    questionNumber,
+  };
+}
+
+function inferOgcodeAnchorFromSession(
+  session: StoredOriginAiSession,
+  userMessage: string,
+  pageContext: OriginAiResolvedPageContext,
+): OgcodeConversationAnchor | null {
+  const previousMessages = [...session.messages];
+  const latest = previousMessages.at(-1);
+  if (latest?.role === "user" && latest.content.trim() === userMessage.trim()) {
+    previousMessages.pop();
+  }
+
+  for (let index = previousMessages.length - 1; index >= 0; index -= 1) {
+    const message = previousMessages[index];
+    if (message.role === "assistant") {
+      const anchored = readOgcodeAnchorFromMetadata(message);
+      if (anchored) {
+        return anchored;
+      }
+      continue;
+    }
+
+    const tokens = tokenizeTopicQuery(message.content);
+    if (tokens.length > 0) {
+      return {
+        tokens,
+        label: null,
+        questionNumber: null,
+      };
+    }
+  }
+
+  const fallbackTokens = uniqueTokens(
+    [
+      pageContext.activeSubject,
+      ...pageContext.selectedChapters,
+      pageContext.searchQuery ?? "",
+    ]
+      .flatMap((value) => tokenizeTopicQuery(value ?? ""))
+      .filter(Boolean),
+  );
+
+  if (fallbackTokens.length === 0) {
+    return null;
+  }
+
+  return {
+    tokens: fallbackTokens,
+    label: pageContext.selectedChapters[0] ?? pageContext.activeSubject ?? null,
+    questionNumber: null,
+  };
+}
+
+function difficultyWeight(value?: string | null): number {
+  switch ((value ?? "").toLowerCase()) {
+    case "easy":
+      return 1;
+    case "medium":
+      return 2;
+    case "hard":
+      return 3;
+    case "insane":
+      return 4;
+    default:
+      return 5;
+  }
+}
+
+function scoreVisibleQuestion(question: OriginAiVisibleQuestionContext, tokens: string[]): number {
+  const haystack = [
+    question.title,
+    question.chapter,
+    question.concept,
+    question.subject,
+    ...(question.tags ?? []),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  return tokens.reduce((score, token) => (haystack.includes(token) ? score + 1 : score), 0);
+}
+
+function scoreDifficultyPreference(
+  question: OriginAiVisibleQuestionContext,
+  preference: OgcodeDifficultyPreference,
+): number {
+  if (!preference) {
+    return 0;
+  }
+
+  const weight = difficultyWeight(question.difficulty);
+  switch (preference) {
+    case "hard":
+      return weight >= 3 ? 4 + weight : -(3 - weight);
+    case "medium":
+      return 4 - Math.abs(weight - 2);
+    case "easy":
+      return weight === 1 ? 5 : 3 - Math.abs(weight - 1);
+    default:
+      return 0;
+  }
+}
+
+function buildAnchorLabel(question: OriginAiVisibleQuestionContext, anchor: OgcodeConversationAnchor | null): string | null {
+  return (
+    anchor?.label ??
+    question.concept ??
+    question.chapter ??
+    question.subject ??
+    null
+  );
+}
+
+function buildOgcodeIndexReply(
+  session: StoredOriginAiSession,
+  pageContext: OriginAiResolvedPageContext,
+  memory: OriginAiMemoryPayload,
+  userMessage: string,
+): OgcodeIndexReply | null {
+  if (pageContext.pageKind !== "ogcode_index" || pageContext.visibleQuestions.length === 0) {
+    return null;
+  }
+
+  if (!isOgcodeRecommendationRequest(userMessage)) {
+    return null;
+  }
+
+  const explicitTokens = tokenizeTopicQuery(userMessage);
+  const anchor = explicitTokens.length > 0
+    ? {
+        tokens: explicitTokens,
+        label: null,
+        questionNumber: null,
+      }
+    : inferOgcodeAnchorFromSession(session, userMessage, pageContext);
+  const anchorTokens = anchor?.tokens ?? [];
+  const difficultyPreference = parseOgcodeDifficultyPreference(userMessage);
+  const wantsAlternative = isOgcodeAlternativeRequest(userMessage);
+
+  const ranked = pageContext.visibleQuestions
+    .map((question) => ({
+      question,
+      topicScore: scoreVisibleQuestion(question, anchorTokens),
+      difficultyScore: scoreDifficultyPreference(question, difficultyPreference),
+    }))
+    .sort((left, right) => {
+      if (right.topicScore !== left.topicScore) {
+        return right.topicScore - left.topicScore;
+      }
+
+      if (right.difficultyScore !== left.difficultyScore) {
+        return right.difficultyScore - left.difficultyScore;
+      }
+
+      if ((left.question.isSolved ? 1 : 0) !== (right.question.isSolved ? 1 : 0)) {
+        return (left.question.isSolved ? 1 : 0) - (right.question.isSolved ? 1 : 0);
+      }
+
+      if (difficultyWeight(left.question.difficulty) !== difficultyWeight(right.question.difficulty)) {
+        return difficultyWeight(left.question.difficulty) - difficultyWeight(right.question.difficulty);
+      }
+
+      return left.question.number - right.question.number;
+    });
+
+  const primary = ranked.find(({ question }) => !wantsAlternative || question.number !== anchor?.questionNumber)?.question
+    ?? ranked[0]?.question;
+  const topTopicScore = ranked[0]?.topicScore ?? 0;
+
+  if (explicitTokens.length > 0 && topTopicScore <= 0) {
+    const requestedTopic = explicitTokens.join(" ");
+    const filterSummary = [
+      pageContext.activeSubject ? pageContext.activeSubject : null,
+      pageContext.activeDifficulty ? `${pageContext.activeDifficulty} difficulty` : null,
+      pageContext.activeStatus ? `${pageContext.activeStatus} only` : null,
+      pageContext.selectedChapters.length > 0 ? pageContext.selectedChapters.join(", ") : null,
+      pageContext.searchQuery ? `search: "${pageContext.searchQuery}"` : null,
+    ]
+      .filter(Boolean)
+      .join(" • ");
+
+    return {
+      content: [
+        `I can’t see a visible OGCode question that clearly matches "${requestedTopic}" right now.`,
+        filterSummary
+          ? `Your current OGCode view is filtered as: ${filterSummary}.`
+          : "Your current OGCode view is broad enough that the topic signal is getting diluted.",
+        "Best move: set the subject or search to that topic first, then ask me again and I’ll point you to the exact question number instead of guessing.",
+      ].join("\n\n"),
+      metadata: {
+        source: "origin_ai_ogcode_index_router",
+        ogcodeRecommendation: {
+          questionId: null,
+          questionNumber: null,
+          anchorLabel: requestedTopic,
+          anchorTokens: explicitTokens,
+          difficultyPreference,
+          unmatchedTopic: true,
+        },
+      },
+    };
+  }
+
+  if (!primary) {
+    return null;
+  }
+
+  const backups = ranked
+    .slice(1, 3)
+    .map(({ question }) => `#${question.number} (${question.concept ?? question.chapter ?? question.title})`);
+
+  const filterSummary = [
+    pageContext.activeSubject ? pageContext.activeSubject : null,
+    pageContext.activeDifficulty ? `${pageContext.activeDifficulty} difficulty` : null,
+    pageContext.activeStatus ? `${pageContext.activeStatus} only` : null,
+    pageContext.selectedChapters.length > 0 ? pageContext.selectedChapters.join(", ") : null,
+    pageContext.searchQuery ? `search: "${pageContext.searchQuery}"` : null,
+  ]
+    .filter(Boolean)
+    .join(" • ");
+
+  const anchorLabel = buildAnchorLabel(primary, anchor);
+  const intro = difficultyPreference === "hard"
+    ? `For a harder pick${anchorLabel ? ` in ${anchorLabel}` : ""}, start with question #${primary.number}.`
+    : difficultyPreference === "easy"
+      ? `For an easier warm-up${anchorLabel ? ` in ${anchorLabel}` : ""}, start with question #${primary.number}.`
+      : difficultyPreference === "medium"
+        ? `For a balanced pick${anchorLabel ? ` in ${anchorLabel}` : ""}, start with question #${primary.number}.`
+        : anchorLabel && explicitTokens.length === 0
+          ? `Staying in ${anchorLabel}, start with question #${primary.number}.`
+          : `Start with question #${primary.number}.`;
+
+  const whyLine = anchorLabel
+    ? `Why this one: it keeps you inside ${anchorLabel} and lines up with ${primary.chapter ?? "the current chapter"} and ${primary.concept ?? "the current concept"}.`
+    : `Why this one: it sits in ${primary.chapter ?? "the current chapter"} and ${primary.concept ?? "the current concept"}, so it is the cleanest entry point from what you are seeing right now.`;
+
+  return {
+    content: [
+      intro,
+      `${primary.title}`,
+      whyLine,
+      filterSummary ? `I’m basing that on your current OGCode filters: ${filterSummary}.` : null,
+      backups.length > 0 ? `If that one feels too light or too noisy, go next to ${backups.join(" or ")}.` : null,
+      `Short version, ${memory.preferredName}: no guessing here, start with #${primary.number}.`,
+    ]
+      .filter(Boolean)
+      .join("\n\n"),
+    metadata: {
+      source: "origin_ai_ogcode_index_router",
+      ogcodeRecommendation: {
+        questionId: primary.id,
+        questionNumber: primary.number,
+        anchorLabel,
+        anchorTokens,
+        difficultyPreference,
+        chapter: primary.chapter ?? null,
+        concept: primary.concept ?? null,
+        subject: primary.subject ?? null,
+      },
+    },
+  };
+}
+
 function buildLocalMentorReply(
+  session: StoredOriginAiSession,
   memory: OriginAiMemoryPayload,
   reminders: StoredOriginAiReminder[],
   pageContext: OriginAiResolvedPageContext,
@@ -578,6 +1036,11 @@ function buildLocalMentorReply(
 ): string {
   const text = userMessage.toLowerCase();
   const weakTopics = memory.lastWeakTopics.slice(0, 3);
+  const ogcodeIndexReply = buildOgcodeIndexReply(session, pageContext, memory, userMessage);
+
+  if (ogcodeIndexReply) {
+    return ogcodeIndexReply.content;
+  }
 
   if (/(plan|schedule|what should i do|what now|priority)/.test(text)) {
     const todo = reminders.slice(0, 3).map((row, index) => `${index + 1}. ${row.title} - ${row.message}`);
@@ -665,6 +1128,16 @@ async function generateAssistantReply(
     };
   }
 
+  const ogcodeIndexReply = buildOgcodeIndexReply(session, pageContext, memory, userMessage);
+  if (ogcodeIndexReply) {
+    return {
+      content: ogcodeIndexReply.content,
+      provider: "local_context",
+      model: "ogcode_index_router",
+      metadata: ogcodeIndexReply.metadata,
+    };
+  }
+
   const history = session.messages.slice(-10).map((message) => ({
     role: message.role,
     content: message.content,
@@ -687,7 +1160,7 @@ async function generateAssistantReply(
   }
 
   return {
-    content: buildLocalMentorReply(memory, reminders, pageContext, userMessage),
+    content: buildLocalMentorReply(session, memory, reminders, pageContext, userMessage),
     provider: "local_fallback",
     model: "local-context-mentor",
     metadata: { source: "origin_ai_local_fallback" },
@@ -718,6 +1191,7 @@ export async function getOriginAiSnapshot(
   request: Request,
   input?: OriginAiPageContextInput | null,
 ): Promise<OriginAiSnapshotPayload> {
+  const browserSessionId = resolveBrowserSessionId(request, user);
   const pageContext = await resolvePageContext(store, user, request, input);
   const pagePolicy = resolvePagePolicy(pageContext);
   const latestResult = getLatestResult(store, user.id);
@@ -731,7 +1205,7 @@ export async function getOriginAiSnapshot(
     ...reminders,
   ];
 
-  const session = getOrCreateMentorSession(store, user);
+  const session = getOrCreateMentorSession(store, user, browserSessionId);
   session.lastPathname = pageContext.pathname;
   session.lastPageKind = pageContext.pageKind;
   ensureWelcomeTurn(session, user, memoryPayload, reminders, pagePolicy);
@@ -758,6 +1232,7 @@ export async function sendOriginAiMessage(
     return { error: "Message is required." };
   }
 
+  const browserSessionId = resolveBrowserSessionId(request, user);
   const pageContext = await resolvePageContext(store, user, request, input);
   const pagePolicy = resolvePagePolicy(pageContext);
   const latestResult = getLatestResult(store, user.id);
@@ -772,7 +1247,7 @@ export async function sendOriginAiMessage(
     ...reminders,
   ];
 
-  const session = getOrCreateMentorSession(store, user);
+  const session = getOrCreateMentorSession(store, user, browserSessionId);
   session.lastPathname = pageContext.pathname;
   session.lastPageKind = pageContext.pageKind;
 

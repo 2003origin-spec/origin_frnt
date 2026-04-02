@@ -28,16 +28,35 @@ const sessionQuerySchema = z.object({
   questionId: z.string().optional(),
 });
 
+const visibleQuestionSchema = z.object({
+  id: z.string(),
+  number: z.number().int().positive(),
+  title: z.string(),
+  chapter: z.string().nullable().optional(),
+  concept: z.string().nullable().optional(),
+  difficulty: z.string().nullable().optional(),
+  subject: z.string().nullable().optional(),
+  tags: z.array(z.string()).optional(),
+  isSolved: z.boolean().optional(),
+});
+
+const pageContextSchema = z.object({
+  pathname: z.string().optional(),
+  pageKind: z.string().optional(),
+  testId: z.string().optional(),
+  questionId: z.string().optional(),
+  searchQuery: z.string().nullable().optional(),
+  activeSubject: z.string().nullable().optional(),
+  activeDifficulty: z.string().nullable().optional(),
+  activeStatus: z.string().nullable().optional(),
+  selectedChapters: z.array(z.string()).optional(),
+  totalVisibleQuestions: z.number().int().nonnegative().nullable().optional(),
+  visibleQuestions: z.array(visibleQuestionSchema).max(40).optional(),
+});
+
 const messageBodySchema = z.object({
   message: z.string().trim().min(1),
-  pageContext: z
-    .object({
-      pathname: z.string().optional(),
-      pageKind: z.string().optional(),
-      testId: z.string().optional(),
-      questionId: z.string().optional(),
-    })
-    .optional(),
+  pageContext: pageContextSchema.optional(),
 });
 
 type RouteContext = {
@@ -49,12 +68,19 @@ async function resolveSlug(context: RouteContext): Promise<string[]> {
   return getSlugSegments(params);
 }
 
-function toPageContext(input?: z.infer<typeof sessionQuerySchema> | z.infer<typeof messageBodySchema>["pageContext"]): OriginAiPageContextInput {
+function toPageContext(input?: Partial<z.infer<typeof pageContextSchema>>): OriginAiPageContextInput {
   return {
     pathname: input?.pathname ?? null,
     pageKind: (input?.pageKind as OriginAiPageContextInput["pageKind"]) ?? null,
     testId: input?.testId ?? null,
     questionId: input?.questionId ?? null,
+    searchQuery: input?.searchQuery ?? null,
+    activeSubject: input?.activeSubject ?? null,
+    activeDifficulty: input?.activeDifficulty ?? null,
+    activeStatus: input?.activeStatus ?? null,
+    selectedChapters: input?.selectedChapters ?? null,
+    totalVisibleQuestions: input?.totalVisibleQuestions ?? null,
+    visibleQuestions: input?.visibleQuestions ?? null,
   };
 }
 

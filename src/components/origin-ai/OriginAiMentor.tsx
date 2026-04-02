@@ -1,16 +1,15 @@
 'use client';
 
 import React from 'react';
-import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Bot, Loader2, Send, Sparkles, TriangleAlert } from 'lucide-react';
+import { Loader2, Send, TriangleAlert } from 'lucide-react';
 
 import {
-  buildOriginAiPageContext,
   getOriginAiSession,
   sendOriginAiMessage,
 } from '@/features/origin-ai/client';
+import { useOriginAiPageContext } from '@/features/origin-ai/page-context-store';
 import { cn } from '@/lib/utils';
 import type { OriginAiSnapshot } from '@/types';
 import { Button } from '@/components/ui/button';
@@ -98,22 +97,29 @@ function MessageList({ snapshot }: { snapshot: OriginAiSnapshot }) {
             key={message.id}
             className={cn('flex', isAssistant ? 'justify-start' : 'justify-end')}
           >
-            <div
-              className={cn(
-                'max-w-[88%] rounded-3xl px-4 py-3 text-sm leading-7 shadow-lg',
-                isAssistant
-                  ? 'rounded-tl-md border border-white/10 bg-white/[0.05] text-slate-100'
-                  : 'rounded-tr-md bg-blue-600 text-white',
-              )}
-            >
-              <div className="whitespace-pre-wrap">{message.content}</div>
+            <div className={cn('flex max-w-[88%] gap-3', isAssistant ? 'flex-row' : 'flex-row-reverse')}>
+              {isAssistant ? (
+                <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-full border border-indigo-400/20 bg-indigo-900/30 p-1">
+                  <img src="/Dipraj-ChatBot.png" alt="Origin AI" className="h-full w-full object-contain" />
+                </div>
+              ) : null}
               <div
                 className={cn(
-                  'mt-2 text-[10px] uppercase tracking-[0.2em]',
-                  isAssistant ? 'text-slate-400' : 'text-blue-100/80',
+                  'rounded-3xl px-4 py-3 text-sm leading-7 shadow-lg',
+                  isAssistant
+                    ? 'rounded-tl-md border border-white/10 bg-white/[0.05] text-slate-100'
+                    : 'rounded-tr-md bg-blue-600 text-white',
                 )}
               >
-                {isAssistant ? 'Origin AI' : 'You'} · {formatRelativeTimestamp(message.timestamp)}
+                <div className="whitespace-pre-wrap">{message.content}</div>
+                <div
+                  className={cn(
+                    'mt-2 text-[10px] uppercase tracking-[0.2em]',
+                    isAssistant ? 'text-slate-400' : 'text-blue-100/80',
+                  )}
+                >
+                  {isAssistant ? 'Origin AI' : 'You'} · {formatRelativeTimestamp(message.timestamp)}
+                </div>
               </div>
             </div>
           </div>
@@ -130,8 +136,9 @@ export default function OriginAiMentor({ compact = false, onClose }: OriginAiMen
   const [isLoading, setIsLoading] = React.useState(true);
   const [isSending, setIsSending] = React.useState(false);
   const scrollAnchorRef = React.useRef<HTMLDivElement | null>(null);
+  const compactScrollRef = React.useRef<HTMLDivElement | null>(null);
 
-  const pageContext = React.useMemo(() => buildOriginAiPageContext(pathname || '/dashboard'), [pathname]);
+  const pageContext = useOriginAiPageContext(pathname || '/dashboard');
 
   const loadSnapshot = React.useCallback(async () => {
     setIsLoading(true);
@@ -153,6 +160,14 @@ export default function OriginAiMentor({ compact = false, onClose }: OriginAiMen
   React.useEffect(() => {
     scrollAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [snapshot, isSending]);
+
+  React.useEffect(() => {
+    if (!compact || !compactScrollRef.current) {
+      return;
+    }
+
+    compactScrollRef.current.scrollTop = compactScrollRef.current.scrollHeight;
+  }, [compact, snapshot, isSending]);
 
   const handleSend = async () => {
     const trimmed = message.trim();
@@ -176,24 +191,138 @@ export default function OriginAiMentor({ compact = false, onClose }: OriginAiMen
   };
 
   const shellClassName = compact
-    ? 'flex h-full flex-col rounded-[28px] border border-white/10 bg-[#07111f] text-white shadow-2xl'
-    : 'flex h-full min-h-[calc(100vh-7rem)] flex-col rounded-[32px] border border-white/10 bg-[#07111f] text-white shadow-[0_25px_80px_rgba(2,6,23,0.45)]';
+    ? 'flex h-full flex-col overflow-hidden rounded-[28px] border border-white/10 bg-[#07111f] text-white shadow-2xl'
+    : 'flex h-full min-h-[calc(100vh-7rem)] flex-col overflow-hidden rounded-[32px] border border-white/10 bg-[#07111f] text-white shadow-[0_25px_80px_rgba(2,6,23,0.45)]';
+
+  if (compact) {
+    return (
+      <div className={shellClassName}>
+        <div className="flex items-center justify-between border-b border-white/10 bg-indigo-900/30 px-4 py-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-white/20 bg-white/10 p-1">
+              <img src="/Dipraj-ChatBot.png" alt="Origin AI" className="h-full w-full object-contain drop-shadow-md" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h2 className="text-base font-semibold text-white">Origin AI</h2>
+                <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.25em] text-emerald-300">
+                  online
+                </span>
+              </div>
+              <p className="max-w-[12rem] truncate text-[11px] leading-4 text-slate-400">
+                Friendly mentor with page awareness and study memory.
+              </p>
+            </div>
+          </div>
+          {onClose ? (
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={onClose}
+              className="shrink-0 text-slate-300 hover:bg-white/10 hover:text-white"
+            >
+              Close
+            </Button>
+          ) : null}
+        </div>
+
+        <div className="shrink-0 space-y-2 border-b border-white/10 px-4 py-3">
+          {snapshot ? <PolicyBadge snapshot={snapshot} /> : null}
+          {snapshot ? (
+            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
+              <span className="rounded-full bg-white/5 px-2.5 py-1">
+                Page: {snapshot.pageContext.pageKind.replace(/_/g, ' ')}
+              </span>
+            </div>
+          ) : null}
+        </div>
+
+        <div
+          ref={compactScrollRef}
+          className="custom-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4"
+        >
+          {isLoading ? (
+            <div className="flex h-full min-h-[140px] items-center justify-center text-slate-400">
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Loading Origin AI...
+            </div>
+          ) : snapshot ? (
+            <MessageList snapshot={snapshot} />
+          ) : (
+            <div className="flex h-full min-h-[140px] items-center justify-center text-slate-400">
+              Origin AI could not load.
+            </div>
+          )}
+          <AnimatePresence>
+            {isSending ? (
+              <motion.div
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 12 }}
+                className="mt-4 flex justify-start"
+              >
+                <div className="rounded-3xl rounded-tl-md border border-white/10 bg-white/[0.05] px-4 py-3 text-sm text-slate-300">
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Thinking...
+                  </div>
+                </div>
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
+          <div ref={scrollAnchorRef} />
+        </div>
+
+        <div className="shrink-0 border-t border-white/10 bg-[#07111f] px-3 py-3">
+          <div className="flex min-w-0 items-end gap-2">
+            <textarea
+              value={message}
+              onChange={(event) => setMessage(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                  event.preventDefault();
+                  void handleSend();
+                }
+              }}
+              rows={1}
+              placeholder={
+                snapshot?.pagePolicy.mode === 'answer_blocked'
+                  ? 'Ask for strategy, not answers...'
+                  : snapshot?.pagePolicy.mode === 'hint_only'
+                    ? 'Ask for a hint or a concept nudge...'
+                    : 'Ask Origin AI anything about your studies...'
+              }
+              className="no-scrollbar min-w-0 flex-1 resize-none rounded-3xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm leading-6 text-white outline-none transition focus:border-blue-400/40 focus:bg-white/[0.05]"
+            />
+            <Button
+              type="button"
+              onClick={() => void handleSend()}
+              disabled={isSending || !message.trim()}
+              className="h-12 w-12 shrink-0 rounded-3xl bg-blue-600 px-0 py-0 text-white hover:bg-blue-500 disabled:opacity-50"
+            >
+              {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={shellClassName}>
-      <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
+      <div className={cn('flex items-center justify-between border-b border-white/10 bg-indigo-900/30', compact ? 'px-4 py-3' : 'px-5 py-4')}>
         <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-blue-400/30 bg-blue-500/10 text-blue-200">
-            <Bot className="h-5 w-5" />
+          <div className={cn('relative flex items-center justify-center overflow-hidden rounded-full border border-white/20 bg-white/10 p-1', compact ? 'h-10 w-10' : 'h-11 w-11')}>
+            <img src="/Dipraj-ChatBot.png" alt="Origin AI" className="h-full w-full object-contain drop-shadow-md" />
           </div>
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-base font-semibold text-white">Origin AI</h2>
               <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.25em] text-emerald-300">
-                live
+                online
               </span>
             </div>
-            <p className="text-xs text-slate-400">
+            <p className={cn('text-slate-400', compact ? 'max-w-[13rem] text-[11px] leading-4' : 'text-xs')}>
               Friendly mentor with page awareness, memory, and just enough sarcasm to be useful.
             </p>
           </div>
@@ -224,19 +353,19 @@ export default function OriginAiMentor({ compact = false, onClose }: OriginAiMen
 
       <div className={cn('grid flex-1 gap-0', compact ? 'grid-cols-1' : 'grid-cols-1 xl:grid-cols-[1.4fr_0.9fr]')}>
         <div className="flex min-h-0 flex-col">
-          <div className="space-y-3 border-b border-white/10 px-5 py-4">
+          <div className={cn('space-y-3 border-b border-white/10', compact ? 'px-4 py-3' : 'px-5 py-4')}>
             {snapshot ? <PolicyBadge snapshot={snapshot} /> : null}
             {snapshot ? (
               <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
                 <span className="rounded-full bg-white/5 px-2.5 py-1">
                   Page: {snapshot.pageContext.pageKind.replace(/_/g, ' ')}
                 </span>
-                {snapshot.memory.lastWeakTopics.length > 0 ? (
+                {!compact && snapshot.memory.lastWeakTopics.length > 0 ? (
                   <span className="rounded-full bg-white/5 px-2.5 py-1">
                     Weak topics: {snapshot.memory.lastWeakTopics.slice(0, 2).join(', ')}
                   </span>
                 ) : null}
-                {snapshot.memory.pendingDppCount > 0 ? (
+                {!compact && snapshot.memory.pendingDppCount > 0 ? (
                   <span className="rounded-full bg-white/5 px-2.5 py-1">
                     Pending DPPs: {snapshot.memory.pendingDppCount}
                   </span>
@@ -245,41 +374,76 @@ export default function OriginAiMentor({ compact = false, onClose }: OriginAiMen
             ) : null}
           </div>
 
-          <ScrollArea className="min-h-0 flex-1 px-5 py-5">
-            {isLoading ? (
-              <div className="flex h-full min-h-[240px] items-center justify-center text-slate-400">
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Loading Origin AI...
-              </div>
-            ) : snapshot ? (
-              <MessageList snapshot={snapshot} />
-            ) : (
-              <div className="flex h-full min-h-[240px] items-center justify-center text-slate-400">
-                Origin AI could not load.
-              </div>
-            )}
-            <AnimatePresence>
-              {isSending ? (
-                <motion.div
-                  initial={{ opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 12 }}
-                  className="mt-4 flex justify-start"
-                >
-                  <div className="rounded-3xl rounded-tl-md border border-white/10 bg-white/[0.05] px-4 py-3 text-sm text-slate-300">
-                    <div className="flex items-center gap-2">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Thinking...
+          {compact ? (
+            <div ref={compactScrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+              {isLoading ? (
+                <div className="flex h-full min-h-[160px] items-center justify-center text-slate-400">
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Loading Origin AI...
+                </div>
+              ) : snapshot ? (
+                <MessageList snapshot={snapshot} />
+              ) : (
+                <div className="flex h-full min-h-[160px] items-center justify-center text-slate-400">
+                  Origin AI could not load.
+                </div>
+              )}
+              <AnimatePresence>
+                {isSending ? (
+                  <motion.div
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 12 }}
+                    className="mt-4 flex justify-start"
+                  >
+                    <div className="rounded-3xl rounded-tl-md border border-white/10 bg-white/[0.05] px-4 py-3 text-sm text-slate-300">
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Thinking...
+                      </div>
                     </div>
-                  </div>
-                </motion.div>
-              ) : null}
-            </AnimatePresence>
-            <div ref={scrollAnchorRef} />
-          </ScrollArea>
+                  </motion.div>
+                ) : null}
+              </AnimatePresence>
+              <div ref={scrollAnchorRef} />
+            </div>
+          ) : (
+            <ScrollArea className="min-h-0 flex-1 px-5 py-5">
+              {isLoading ? (
+                <div className="flex h-full min-h-[240px] items-center justify-center text-slate-400">
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Loading Origin AI...
+                </div>
+              ) : snapshot ? (
+                <MessageList snapshot={snapshot} />
+              ) : (
+                <div className="flex h-full min-h-[240px] items-center justify-center text-slate-400">
+                  Origin AI could not load.
+                </div>
+              )}
+              <AnimatePresence>
+                {isSending ? (
+                  <motion.div
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 12 }}
+                    className="mt-4 flex justify-start"
+                  >
+                    <div className="rounded-3xl rounded-tl-md border border-white/10 bg-white/[0.05] px-4 py-3 text-sm text-slate-300">
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Thinking...
+                      </div>
+                    </div>
+                  </motion.div>
+                ) : null}
+              </AnimatePresence>
+              <div ref={scrollAnchorRef} />
+            </ScrollArea>
+          )}
 
-          <div className="border-t border-white/10 px-5 py-4">
-            <div className="flex gap-3">
+          <div className={cn('border-t border-white/10', compact ? 'px-3 py-3' : 'px-5 py-4')}>
+            <div className={cn('flex items-end', compact ? 'gap-2' : 'gap-3')}>
               <textarea
                 value={message}
                 onChange={(event) => setMessage(event.target.value)}
@@ -289,7 +453,7 @@ export default function OriginAiMentor({ compact = false, onClose }: OriginAiMen
                     void handleSend();
                   }
                 }}
-                rows={compact ? 2 : 3}
+                rows={compact ? 1 : 3}
                 placeholder={
                   snapshot?.pagePolicy.mode === 'answer_blocked'
                     ? 'Ask for strategy, not answers...'
@@ -297,31 +461,30 @@ export default function OriginAiMentor({ compact = false, onClose }: OriginAiMen
                       ? 'Ask for a hint or a concept nudge...'
                       : 'Ask Origin AI anything about your studies...'
                 }
-                className="min-h-[56px] flex-1 resize-none rounded-3xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-white outline-none transition focus:border-blue-400/40 focus:bg-white/[0.05]"
+                className={cn(
+                  'flex-1 resize-none rounded-3xl border border-white/10 bg-white/[0.03] px-4 text-sm text-white outline-none transition focus:border-blue-400/40 focus:bg-white/[0.05]',
+                  compact ? 'min-h-[48px] max-h-24 py-3 leading-6' : 'min-h-[56px] py-3',
+                )}
               />
               <Button
                 type="button"
                 onClick={() => void handleSend()}
                 disabled={isSending || !message.trim()}
-                className="h-auto rounded-3xl bg-blue-600 px-4 py-3 text-white hover:bg-blue-500 disabled:opacity-50"
+                className={cn(
+                  'rounded-3xl bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-50',
+                  compact ? 'h-12 w-12 shrink-0 px-0 py-0' : 'h-auto px-4 py-3',
+                )}
               >
                 {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               </Button>
             </div>
-            <div className="mt-3 flex items-center justify-between gap-3">
-              <p className="text-xs text-slate-500">
-                Origin AI knows your recent performance, pending DPPs, and the page you are on.
-              </p>
-              {compact ? (
-                <Link
-                  href="/doubt-solver"
-                  className="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-[0.2em] text-blue-300"
-                >
-                  <Sparkles className="h-3.5 w-3.5" />
-                  Open mentor desk
-                </Link>
-              ) : null}
-            </div>
+            {compact ? null : (
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <p className="text-xs text-slate-500">
+                  Origin AI knows your recent performance, pending DPPs, and the page you are on.
+                </p>
+              </div>
+            )}
           </div>
         </div>
 

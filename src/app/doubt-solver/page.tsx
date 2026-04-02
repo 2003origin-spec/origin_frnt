@@ -1,9 +1,12 @@
 'use client';
 
-import OriginAiMentor from '@/components/origin-ai/OriginAiMentor';
+import { useRouter } from 'next/navigation';
+
+import DoubtSolver from '@/sections/DoubtSolver';
 import { useAuth } from '@/context/AuthContext';
 
 export default function DoubtSolverPage() {
+  const router = useRouter();
   const { user } = useAuth();
 
   if (!user) {
@@ -11,8 +14,9 @@ export default function DoubtSolverPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#040b16] px-4 py-6 sm:px-6 lg:px-10">
-      <OriginAiMentor />
-    </div>
+    <DoubtSolver
+      user={user}
+      onBack={() => router.push('/dashboard')}
+    />
   );
 }

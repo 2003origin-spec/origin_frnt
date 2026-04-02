@@ -346,6 +346,7 @@ export interface StoredOriginAiProfileMemory {
 export interface StoredOriginAiSession {
   id: string;
   userId: string;
+  browserSessionId: string;
   title: string;
   summary: string | null;
   lastPathname: string | null;
@@ -969,6 +970,18 @@ function ensureOriginAiCollections(store: AppStore): boolean {
   if (!Array.isArray((store as Partial<AppStore>).originAiSessions)) {
     store.originAiSessions = [];
     changed = true;
+  } else {
+    store.originAiSessions = store.originAiSessions.map((session, index) => {
+      if (typeof session.browserSessionId === 'string' && session.browserSessionId.trim()) {
+        return session;
+      }
+
+      changed = true;
+      return {
+        ...session,
+        browserSessionId: `legacy-origin-ai-session-${session.userId}-${index}`,
+      };
+    });
   }
   if (!Array.isArray((store as Partial<AppStore>).originAiReminders)) {
     store.originAiReminders = [];

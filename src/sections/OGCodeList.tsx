@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { apiCall } from '@/lib/api';
 import type { PracticeQuestion, SubjectRank, User } from '@/types';
+import { usePublishOriginAiPageContext } from '@/features/origin-ai/page-context-store';
 import { toast } from 'sonner';
 
 interface OGCodeListProps {
@@ -45,6 +46,8 @@ const SUBJECT_COLORS: Record<string, string> = {
     Mathematics: 'text-indigo-500',
     Biology: 'text-emerald-500',
 };
+
+const ORIGIN_AI_VISIBLE_QUESTION_LIMIT = 40;
 
 function normalizeTags(tags: string | string[] | null | undefined): string[] {
     if (!tags) return [];
@@ -86,8 +89,6 @@ export default function OGCodeList({ onSelectQuestion, user }: OGCodeListProps) 
     const [selectedChapters, setSelectedChapters] = useState<string[]>([]);
     const [openDropdown, setOpenDropdown] = useState<'difficulty' | 'status' | 'subject' | null>(null);
     const [isStatsExpanded, setIsStatsExpanded] = useState(false);
-    const [isChaptersExpanded, setIsChaptersExpanded] = useState(true);
-
     // Refs for click-outside detection
     const statsRef = useRef<HTMLDivElement>(null);
 
@@ -173,6 +174,30 @@ export default function OGCodeList({ onSelectQuestion, user }: OGCodeListProps) 
             
         return matchesSearch && matchesSubject && matchesChapter && matchesDifficulty && matchesStatus;
     });
+
+    const originAiPageContext = useMemo(() => ({
+        pathname: '/ogcode',
+        pageKind: 'ogcode_index' as const,
+        searchQuery: searchQuery.trim() || null,
+        activeSubject: activeSubject === 'Subject' ? null : activeSubject,
+        activeDifficulty: activeDifficulty === 'All' ? null : activeDifficulty,
+        activeStatus: activeStatus === 'All' ? null : activeStatus,
+        selectedChapters,
+        totalVisibleQuestions: filteredQuestions.length,
+        visibleQuestions: filteredQuestions.slice(0, ORIGIN_AI_VISIBLE_QUESTION_LIMIT).map((question, index) => ({
+            id: question.id,
+            number: index + 1,
+            title: question.title || question.text,
+            chapter: question.chapter || 'Foundations',
+            concept: question.concept || null,
+            difficulty: question.difficulty || null,
+            subject: question.subject || null,
+            tags: normalizeTags(question.tags),
+            isSolved: question.status === 'solved' || question.isSolved,
+        })),
+    }), [activeDifficulty, activeStatus, activeSubject, filteredQuestions, searchQuery, selectedChapters]);
+
+    usePublishOriginAiPageContext(originAiPageContext);
 
     const solvedCount = userStats?.solvedCount ?? questions.filter(q => q.status === 'solved' || q.isSolved).length;
     const myRank = userStats?.rank;
@@ -287,11 +312,11 @@ export default function OGCodeList({ onSelectQuestion, user }: OGCodeListProps) 
                                                     Arena Rankings
                                                 </h3>
                                                 <div className="flex bg-slate-100 dark:bg-black/40 p-1 rounded-xl">
-                                                    {['daily', 'weekly'].map((r) => (
+                                                    {(['daily', 'weekly'] as const).map((r) => (
                                                         <button
                                                             key={r}
                                                             type="button"
-                                                            onClick={() => setTimeRange(r as any)}
+                                                            onClick={() => setTimeRange(r)}
                                                             className={cn(
                                                                 "px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer", 
                                                                 timeRange === r 

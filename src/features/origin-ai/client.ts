@@ -1,4 +1,5 @@
 import { apiCall } from '@/lib/api';
+import { getOriginAiBrowserSessionId } from '@/features/origin-ai/session';
 import type {
   ChatMessage,
   OriginAiPageKind,
@@ -6,6 +7,7 @@ import type {
   OriginAiReply,
   OriginAiSession,
   OriginAiSnapshot,
+  OriginAiVisibleQuestion,
 } from '@/types';
 
 type RawMessage = ChatMessage & {
@@ -39,6 +41,13 @@ export interface OriginAiClientPageContext {
   pageKind?: OriginAiPageKind;
   testId?: string | null;
   questionId?: string | null;
+  searchQuery?: string | null;
+  activeSubject?: string | null;
+  activeDifficulty?: string | null;
+  activeStatus?: string | null;
+  selectedChapters?: string[];
+  totalVisibleQuestions?: number | null;
+  visibleQuestions?: OriginAiVisibleQuestion[];
 }
 
 const normalizeMessage = (message: RawMessage): ChatMessage => ({
@@ -139,7 +148,11 @@ export function buildOriginAiPageContext(pathname: string): OriginAiClientPageCo
 }
 
 export async function getOriginAiSession(pageContext?: OriginAiClientPageContext): Promise<OriginAiSnapshot> {
-  const data = await apiCall(`/origin-ai/session${buildQuery(pageContext)}`);
+  const data = await apiCall(`/origin-ai/session${buildQuery(pageContext)}`, {
+    headers: {
+      'X-Origin-AI-Session-Id': getOriginAiBrowserSessionId(),
+    },
+  });
   return normalizeSnapshot(data as RawSnapshot);
 }
 
@@ -149,6 +162,9 @@ export async function sendOriginAiMessage(
 ): Promise<OriginAiReply> {
   const data = await apiCall('/origin-ai/session/message', {
     method: 'POST',
+    headers: {
+      'X-Origin-AI-Session-Id': getOriginAiBrowserSessionId(),
+    },
     body: JSON.stringify({
       message,
       pageContext,

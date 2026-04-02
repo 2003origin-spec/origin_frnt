@@ -5,6 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { toast } from 'sonner';
 import type { User, StreakData, Task } from '@/types';
 import { apiCall } from '@/lib/api';
+import { clearOriginAiBrowserSession } from '@/features/origin-ai/session';
 
 interface AuthContextType {
   user: User | null;
@@ -101,6 +102,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoading(true);
     setAuthError(null);
     try {
+      clearOriginAiBrowserSession();
       const response = await apiCall('/users/login/', {
         method: 'POST',
         body: JSON.stringify({ email, password, ...(role ? { role } : {}) }),
@@ -131,6 +133,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = () => {
     setUser(null);
     setUserRole(null);
+    clearOriginAiBrowserSession();
     localStorage.removeItem('origin_access_token');
     localStorage.removeItem('origin_refresh_token');
     router.push('/');

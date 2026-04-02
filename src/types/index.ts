@@ -232,6 +232,18 @@ export interface OriginAiMemory {
   lastTestSummary?: string | null;
 }
 
+export interface OriginAiVisibleQuestion {
+  id: string;
+  number: number;
+  title: string;
+  chapter?: string | null;
+  concept?: string | null;
+  difficulty?: string | null;
+  subject?: string | null;
+  tags?: string[];
+  isSolved?: boolean;
+}
+
 export interface OriginAiPageContext {
   pathname: string;
   pageKind: OriginAiPageKind;
@@ -242,6 +254,13 @@ export interface OriginAiPageContext {
   chapter?: string | null;
   concept?: string | null;
   hint?: string | null;
+  searchQuery?: string | null;
+  activeSubject?: string | null;
+  activeDifficulty?: string | null;
+  activeStatus?: string | null;
+  selectedChapters?: string[];
+  totalVisibleQuestions?: number | null;
+  visibleQuestions?: OriginAiVisibleQuestion[];
 }
 
 export interface OriginAiPagePolicy {

@@ -1,5 +1,5 @@
 'use client';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   ChevronLeft, Send, ImagePlus,
   X, Sparkles, Plus, Atom,
@@ -14,6 +14,8 @@ import {
   updateDoubtSessionTitle,
 } from '@/features/ai-solver/client';
 import { toast } from 'sonner';
+
+const SESSION_CACHE_KEY = 'doubt_sessions_cache';
 
 // Simple Markdown + LaTeX formatter for the UI
 const FormattedText = ({ text }: { text: string }) => {
@@ -35,11 +37,10 @@ interface DoubtSolverProps {
   user: User;
 }
 
-export default function DoubtSolver({ onBack, user: _user }: DoubtSolverProps) {
+export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
   const [sessions, setSessions] = useState<DoubtSession[]>([]);
   const [activeSession, setActiveSession] = useState<DoubtSession | null>(null);
-  const [viewMode, setViewMode] = useState<'selection' | 'chat' | 'comingSoon'>('selection');
-  const [selectedSubject, setSelectedSubject] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'selection' | 'chat'>('selection');
 
   const [message, setMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -52,16 +53,21 @@ export default function DoubtSolver({ onBack, user: _user }: DoubtSolverProps) {
   const [editingSidebarId, setEditingSidebarId] = useState<string | null>(null);
   const [sidebarEditValue, setSidebarEditValue] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const timerRef = useRef<any>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const sessionCacheKey = `${SESSION_CACHE_KEY}_${user.id}`;
 
-  const persistSessionCache = (nextSessions: DoubtSession[]) => {
-    const cacheData = nextSessions.map(({ messages, ...rest }) => rest);
+  const persistSessionCache = useCallback((nextSessions: DoubtSession[]) => {
+    const cacheData = nextSessions.map((session) => {
+      const { messages, ...rest } = session;
+      void messages;
+      return rest;
+    });
     try {
-      localStorage.setItem('doubt_sessions_cache', JSON.stringify(cacheData));
-    } catch (e) {
+      localStorage.setItem(sessionCacheKey, JSON.stringify(cacheData));
+    } catch {
       console.warn("Storage quota exceeded, cache not updated");
     }
-  };
+  }, [sessionCacheKey]);
 
   const mergeReplyIntoSession = (
     baseSession: DoubtSession | null,
@@ -117,7 +123,7 @@ export default function DoubtSolver({ onBack, user: _user }: DoubtSolverProps) {
 
   useEffect(() => {
     // Load from cache first
-    const cached = localStorage.getItem('doubt_sessions_cache');
+    const cached = localStorage.getItem(sessionCacheKey);
     if (cached) {
       try {
         setSessions(JSON.parse(cached));
@@ -136,7 +142,7 @@ export default function DoubtSolver({ onBack, user: _user }: DoubtSolverProps) {
       }
     };
     fetchSessions();
-  }, []);
+  }, [persistSessionCache, sessionCacheKey]);
 
   // Recording Timer
   useEffect(() => {
@@ -194,42 +200,24 @@ export default function DoubtSolver({ onBack, user: _user }: DoubtSolverProps) {
   };
 
   const createNewSession = async (title: string, subject?: string) => {
-    if (subject && subject !== 'Physics') {
-      setSelectedSubject(subject);
-      setViewMode('comingSoon');
-      return;
-    }
-
     try {
-      const newSession = await createDoubtSession({ title, subject: subject || 'Physics' });
+      const newSession = await createDoubtSession({ title, subject: subject || 'General' });
       setSessions(prev => {
-        const newSessions = [newSession, ...prev];
+        const existing = prev.some(session => session.id === newSession.id);
+        const newSessions = existing
+          ? prev.map(session => (session.id === newSession.id ? newSession : session))
+          : [newSession, ...prev];
         persistSessionCache(newSessions);
         return newSessions;
       });
       setActiveSession(newSession);
       setViewMode('chat');
-
-      // Send initial greeting message from AI
-      const subjectName = subject || 'Physics';
-      const greeting = `Hi ${_user.name.split(' ')[0]}! 👋\n\nI'm your AI mentor. Send me a problem from **${subjectName}** and we'll solve it together step-by-step.`;
-
-      setActiveSession({
-        ...newSession,
-        messages: [{
-          id: '1',
-          role: 'assistant',
-          content: greeting,
-          timestamp: new Date()
-        }]
-      });
-
     } catch (error) {
       console.error("Failed to create session", error);
     }
   };
 
-  const lastPhysicsSession = sessions.find(s => s.title.includes('Physics'));
+  const lastMentorSession = sessions[0];
 
   return (
     <div className="h-screen w-full bg-[#060D1A] text-white flex flex-col font-sans relative overflow-hidden">
@@ -294,7 +282,7 @@ export default function DoubtSolver({ onBack, user: _user }: DoubtSolverProps) {
                 onClick={() => activeSession && setIsEditingTitle(true)}
               >
                 <h1 className="text-xl font-bold text-white tracking-wide leading-none">
-                  {viewMode === 'chat' && activeSession ? activeSession.title : (viewMode === 'comingSoon' ? `${selectedSubject} Solver` : 'AI Explainer')}
+                  {viewMode === 'chat' && activeSession ? activeSession.title : 'AI Explainer'}
                 </h1>
                 {activeSession && (
                   <Sparkles className="w-3 h-3 text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -320,11 +308,9 @@ export default function DoubtSolver({ onBack, user: _user }: DoubtSolverProps) {
             onUpload={() => setShowImageUpload(true)}
             sessions={sessions}
             onSelectSession={setActiveSession}
-            lastPhysicsSession={lastPhysicsSession}
+            lastSession={lastMentorSession}
             onUpdateTitle={handleUpdateTitle}
           />
-        ) : viewMode === 'comingSoon' ? (
-          <ComingSoonView subject={selectedSubject || ''} onBack={() => setViewMode('selection')} />
         ) : (
           <div className="flex-1 flex overflow-hidden relative">
             {/* Sidebar (Desktop Only) */}
@@ -568,12 +554,12 @@ export default function DoubtSolver({ onBack, user: _user }: DoubtSolverProps) {
   );
 }
 
-function SelectionView({ onCreate, onUpload, sessions, onSelectSession, lastPhysicsSession, onUpdateTitle }: {
+function SelectionView({ onCreate, onUpload, sessions, onSelectSession, lastSession, onUpdateTitle }: {
   onCreate: (t: string, sub: string) => void,
   onUpload: () => void,
   sessions: DoubtSession[],
   onSelectSession: (s: DoubtSession) => void,
-  lastPhysicsSession?: DoubtSession,
+  lastSession?: DoubtSession,
   onUpdateTitle: (id: string, title: string) => Promise<void>
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -581,11 +567,11 @@ function SelectionView({ onCreate, onUpload, sessions, onSelectSession, lastPhys
 
   const quickTopics = [
     { name: 'Physics', icon: Atom, color: 'text-blue-400', desc: 'Active & Interactive' },
-    { name: 'Chemistry', icon: FlaskConical, color: 'text-emerald-400', desc: 'Coming Soon' },
-    { name: 'Mathematics', icon: Calculator, color: 'text-violet-400', desc: 'Coming Soon' },
+    { name: 'Chemistry', icon: FlaskConical, color: 'text-emerald-400', desc: 'Mentor Ready' },
+    { name: 'Mathematics', icon: Calculator, color: 'text-violet-400', desc: 'Mentor Ready' },
   ];
 
-  const handleStartEdit = (e: React.MouseEvent, s: DoubtSession) => {
+  const handleStartEdit = (e: React.MouseEvent<HTMLElement>, s: DoubtSession) => {
     e.stopPropagation();
     setEditingId(s.id);
     setEditValue(s.title);
@@ -608,12 +594,12 @@ function SelectionView({ onCreate, onUpload, sessions, onSelectSession, lastPhys
           <button onClick={() => onCreate('New Physics Session', 'Physics')} className="px-8 py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-bold transition-all shadow-xl shadow-blue-600/30 flex items-center gap-2">
             <Plus className="w-5 h-5" /> Start New Chat
           </button>
-          {lastPhysicsSession && (
+          {lastSession && (
             <button
-              onClick={() => onSelectSession(lastPhysicsSession)}
+              onClick={() => onSelectSession(lastSession)}
               className="px-8 py-4 bg-blue-600/10 hover:bg-blue-600/20 border border-blue-500/30 text-blue-400 rounded-2xl font-bold transition-all flex items-center gap-2"
             >
-              Continue with Physics
+              Continue last chat
             </button>
           )}
           <button onClick={onUpload} className="px-8 py-4 bg-white/5 hover:bg-white/10 border border-white/10 text-white rounded-2xl font-bold transition-all flex items-center gap-2">
@@ -653,7 +639,7 @@ function SelectionView({ onCreate, onUpload, sessions, onSelectSession, lastPhys
                 onClick={() => onSelectSession(s)}
                 onContextMenu={(e) => {
                   e.preventDefault();
-                  handleStartEdit(e as any, s);
+                  handleStartEdit(e, s);
                 }}
                 className="w-full p-5 rounded-[28px] bg-white/[0.02] border border-white/5 hover:bg-white/5 transition-all text-left flex items-center justify-between group cursor-pointer"
                 role="button"
@@ -702,32 +688,6 @@ function SelectionView({ onCreate, onUpload, sessions, onSelectSession, lastPhys
               </div>
             )}
           </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ComingSoonView({ subject, onBack }: { subject: string, onBack: () => void }) {
-  return (
-    <div className="flex-1 flex items-center justify-center p-6">
-      <div className="max-w-md w-full text-center space-y-6 animate-in fade-in zoom-in duration-500">
-        <div className="w-24 h-24 rounded-3xl bg-blue-600/10 border border-blue-500/20 flex items-center justify-center mx-auto mb-8 relative">
-          <Sparkles className="w-12 h-12 text-blue-500 animate-pulse" />
-          <div className="absolute -top-2 -right-2 px-2 py-1 bg-blue-600 text-[10px] font-black uppercase rounded-lg shadow-lg">SOON</div>
-        </div>
-        <h2 className="text-4xl font-black text-white tracking-tight">{subject} Solver</h2>
-        <p className="text-slate-400 text-lg leading-relaxed">
-          We're currently training our AI models for **{subject}** to ensure the highest accuracy for your complex problems.
-        </p>
-        <div className="pt-8">
-          <button
-            onClick={onBack}
-            className="px-8 py-4 bg-white/5 hover:bg-white/10 border border-white/10 text-white rounded-2xl font-bold transition-all flex items-center gap-2 mx-auto group"
-          >
-            <ChevronLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
-            Back to Selection
-          </button>
         </div>
       </div>
     </div>
