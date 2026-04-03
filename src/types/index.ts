@@ -2,7 +2,7 @@ export interface User {
   id: string;
   name: string;
   email: string;
-  role: 'student' | 'teacher';
+  role: 'student' | 'teacher' | 'admin';
   class?: '9' | '10' | '11' | '12' | 'dropper';
   fieldOfInterest?: string;
   referralSource?: string;
@@ -183,7 +183,7 @@ export interface ChatMessage {
   content: string;
   timestamp: Date;
   image?: string;
-  metadata?: Record<string, unknown>;
+  metadata?: Record<string, any>;
 }
 
 export interface DoubtSession {
@@ -194,104 +194,6 @@ export interface DoubtSession {
   messages: ChatMessage[];
   createdAt: Date;
   updatedAt: Date;
-}
-
-export type OriginAiPageKind =
-  | 'dashboard'
-  | 'dpp'
-  | 'test_active'
-  | 'test_result'
-  | 'tests_index'
-  | 'ogcode_question'
-  | 'ogcode_index'
-  | 'study_corner'
-  | 'pomodoro'
-  | 'profile'
-  | 'tasks'
-  | 'doubt_solver'
-  | 'unknown';
-
-export interface OriginAiReminder {
-  id: string;
-  kind: 'dpp' | 'revision' | 'assignment' | 'habit';
-  title: string;
-  message: string;
-  priority: 'high' | 'medium' | 'low';
-  sourceId?: string | null;
-  createdAt: Date;
-}
-
-export interface OriginAiMemory {
-  preferredName: string;
-  identitySummary: string;
-  pinnedFacts: string[];
-  lastWeakTopics: string[];
-  pendingDppCount: number;
-  pendingAssignmentCount: number;
-  currentStreak: number;
-  lastTestSummary?: string | null;
-}
-
-export interface OriginAiVisibleQuestion {
-  id: string;
-  number: number;
-  title: string;
-  chapter?: string | null;
-  concept?: string | null;
-  difficulty?: string | null;
-  subject?: string | null;
-  tags?: string[];
-  isSolved?: boolean;
-}
-
-export interface OriginAiPageContext {
-  pathname: string;
-  pageKind: OriginAiPageKind;
-  testId?: string | null;
-  questionId?: string | null;
-  title?: string | null;
-  subject?: string | null;
-  chapter?: string | null;
-  concept?: string | null;
-  hint?: string | null;
-  searchQuery?: string | null;
-  activeSubject?: string | null;
-  activeDifficulty?: string | null;
-  activeStatus?: string | null;
-  selectedChapters?: string[];
-  totalVisibleQuestions?: number | null;
-  visibleQuestions?: OriginAiVisibleQuestion[];
-}
-
-export interface OriginAiPagePolicy {
-  mode: 'normal' | 'hint_only' | 'answer_blocked';
-  title: string;
-  reason: string;
-}
-
-export interface OriginAiSession {
-  id: string;
-  title: string;
-  summary?: string | null;
-  lastPathname?: string | null;
-  lastPageKind?: string | null;
-  messages: ChatMessage[];
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export interface OriginAiSnapshot {
-  session: OriginAiSession;
-  memory: OriginAiMemory;
-  reminders: OriginAiReminder[];
-  pageContext: OriginAiPageContext;
-  pagePolicy: OriginAiPagePolicy;
-  provider: string;
-}
-
-export interface OriginAiReply extends OriginAiSnapshot {
-  userMessage: ChatMessage;
-  aiMessage: ChatMessage;
 }
 
 export interface PomodoroSession {

@@ -24,16 +24,18 @@ import {
     Moon,
     MessageSquare,
     Users,
-    Briefcase
+    Briefcase,
+    LogOut
 } from 'lucide-react';
 import type { User as UserType } from '@/types';
 
 interface TeacherProfileProps {
     user: UserType;
     onBack: () => void;
+    onLogout: () => void;
 }
 
-export default function TeacherProfile({ user, onBack }: TeacherProfileProps) {
+export default function TeacherProfile({ user, onBack, onLogout }: TeacherProfileProps) {
     const [isEditing, setIsEditing] = useState(false);
     const [darkMode, setDarkMode] = useState(false);
 
@@ -103,6 +105,14 @@ export default function TeacherProfile({ user, onBack }: TeacherProfileProps) {
                                 </button>
                                 <button className="p-2.5 rounded-full bg-white dark:bg-slate-900 text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 transition-all border border-slate-200 dark:border-slate-800">
                                     <Settings className="w-5 h-5" />
+                                </button>
+                                <div className="h-8 w-[1px] bg-slate-200 dark:bg-slate-800 mx-1" />
+                                <button
+                                    onClick={onLogout}
+                                    className="p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/50 transition-all border border-rose-100 dark:border-rose-900/30 shadow-sm group"
+                                    title="Logout"
+                                >
+                                    <LogOut className="w-5 h-5 group-hover:scale-110 transition-transform" />
                                 </button>
                             </div>
                         </div>
@@ -318,6 +328,22 @@ export default function TeacherProfile({ user, onBack }: TeacherProfileProps) {
                                                 <ChevronLeft className="w-5 h-5 text-slate-300 group-hover:text-[#3CACA3] group-hover:translate-x-1 rotate-180 transition-all" />
                                             </button>
                                         ))}
+
+                                        <div className="pt-4 border-t border-slate-100 dark:border-slate-800 mt-2">
+                                            <button
+                                                onClick={onLogout}
+                                                className="w-full flex items-center gap-5 p-4 rounded-2xl bg-rose-50/50 dark:bg-rose-950/10 hover:bg-rose-50 dark:hover:bg-rose-950/20 transition-all border border-rose-100/50 dark:border-rose-900/20 hover:border-rose-200 dark:hover:border-rose-800 group"
+                                            >
+                                                <div className="w-12 h-12 rounded-xl bg-rose-100 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 flex items-center justify-center flex-shrink-0 transition-transform group-hover:scale-110">
+                                                    <LogOut className="w-6 h-6" />
+                                                </div>
+                                                <div className="flex-1 text-left">
+                                                    <h4 className="font-black text-rose-600 dark:text-rose-400 leading-tight text-sm uppercase">Logout Session</h4>
+                                                    <p className="text-[11px] text-rose-500/70 dark:text-rose-400/50 mt-1 font-medium">Safely sign out from your professional account</p>
+                                                </div>
+                                                <ChevronLeft className="w-5 h-5 text-rose-300 group-hover:translate-x-1 rotate-180 transition-all" />
+                                            </button>
+                                        </div>
                                     </div>
                                 </CardContent>
                             </Card>

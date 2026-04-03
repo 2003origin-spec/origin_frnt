@@ -56,7 +56,9 @@ export default function Navbar({ user, currentView, onNavigate, onLogout, theme,
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    const navItems = [
+    const isTeacher = user.role?.toLowerCase() === 'teacher';
+    
+    const navItems = isTeacher ? [] : [
         { label: 'OGCode', icon: Code, view: 'ogcode' as ViewState },
         { label: 'AI Explainer', icon: () => <img src="/ai-bot.png" className="w-4 h-4 object-cover rounded-sm" />, view: 'doubt-solver' as ViewState },
         { label: 'Tests', icon: FileText, view: 'test-list' as ViewState },
@@ -79,129 +81,131 @@ export default function Navbar({ user, currentView, onNavigate, onLogout, theme,
                         {/* Logo */}
                         <div className="flex items-center gap-3">
                             <img
-                                src={user.role === 'student' ? '/origin-new.jpg' : '/O3-Origin-Logo.png'}
+                                src={user.role?.toLowerCase() === 'student' ? '/origin-new.jpg' : '/O3-Origin-Logo.png'}
                                 alt="ORIGIN"
                                 className="h-9 w-auto cursor-pointer"
                                 onClick={() => onNavigate('dashboard')}
                             />
                             <div className="hidden md:block h-6 w-[1px] bg-slate-200 dark:bg-slate-800 mx-2" />
-                            <nav className="hidden md:flex items-center gap-1 relative px-1 py-1 bg-black/5 dark:bg-white/5 rounded-xl border border-black/5 dark:border-white/5">
-                                {navItems.map((item) => {
-                                    const isActive = currentView === item.view ||
-                                        (item.view === 'ogcode' && currentView === 'ogcode-workspace');
-                                    const Icon = item.icon as any;
+                            {navItems.length > 0 && (
+                                <nav className="hidden md:flex items-center gap-1 relative px-1 py-1 bg-black/5 dark:bg-white/5 rounded-xl border border-black/5 dark:border-white/5">
+                                    {navItems.map((item) => {
+                                        const isActive = currentView === item.view ||
+                                            (item.view === 'ogcode' && currentView === 'ogcode-workspace');
+                                        const Icon = item.icon as any;
 
-                                    return (
-                                        <div
-                                            key={item.label}
-                                            className="relative"
-                                            onMouseEnter={() => {
-                                                setHoveredTab(item.label);
-                                                if (item.label === 'Explore') setShowExploreMenu(true);
-                                            }}
-                                            onMouseLeave={() => {
-                                                setHoveredTab(null);
-                                                if (item.label === 'Explore') setShowExploreMenu(false);
-                                            }}
-                                        >
-                                            <button
-                                                onClick={() => onNavigate(item.view)}
-                                                className={`relative px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-300 flex items-center gap-2 group z-10 ${isActive
-                                                    ? 'text-blue-600 dark:text-blue-400'
-                                                    : 'text-slate-600 dark:text-slate-400 hover:text-black dark:hover:text-white'
-                                                    }`}
+                                        return (
+                                            <div
+                                                key={item.label}
+                                                className="relative"
+                                                onMouseEnter={() => {
+                                                    setHoveredTab(item.label);
+                                                    if (item.label === 'Explore') setShowExploreMenu(true);
+                                                }}
+                                                onMouseLeave={() => {
+                                                    setHoveredTab(null);
+                                                    if (item.label === 'Explore') setShowExploreMenu(false);
+                                                }}
                                             >
-                                                {typeof Icon === 'function' ? <Icon /> : <Icon className={`w-4 h-4 transition-transform duration-300 ${isActive ? 'scale-110' : 'group-hover:scale-110'}`} />}
-                                                {item.label}
-                                            </button>
+                                                <button
+                                                    onClick={() => onNavigate(item.view)}
+                                                    className={`relative px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-300 flex items-center gap-2 group z-10 ${isActive
+                                                        ? 'text-blue-600 dark:text-blue-400'
+                                                        : 'text-slate-600 dark:text-slate-400 hover:text-black dark:hover:text-white'
+                                                        }`}
+                                                >
+                                                    {typeof Icon === 'function' ? <Icon /> : <Icon className={`w-4 h-4 transition-transform duration-300 ${isActive ? 'scale-110' : 'group-hover:scale-110'}`} />}
+                                                    {item.label}
+                                                </button>
 
-                                            {(hoveredTab === item.label) && (
-                                                <motion.div
-                                                    layoutId="nav-pill"
-                                                    className="absolute inset-0 bg-white dark:bg-zinc-800 shadow-sm rounded-lg z-0"
-                                                    initial={false}
-                                                    transition={{
-                                                        type: "spring",
-                                                        stiffness: 500,
-                                                        damping: 35
-                                                    }}
-                                                />
-                                            )}
+                                                {(hoveredTab === item.label) && (
+                                                    <motion.div
+                                                        layoutId="nav-pill"
+                                                        className="absolute inset-0 bg-white dark:bg-zinc-800 shadow-sm rounded-lg z-0"
+                                                        initial={false}
+                                                        transition={{
+                                                            type: "spring",
+                                                            stiffness: 500,
+                                                            damping: 35
+                                                        }}
+                                                    />
+                                                )}
 
-                                            {item.label === 'Explore' && (
-                                                <AnimatePresence>
-                                                    {showExploreMenu && (
-                                                        <motion.div
-                                                            initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                                                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                                                            exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                                                            transition={{ duration: 0.2, ease: "easeOut" }}
-                                                            className="absolute left-0 mt-3 w-80 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-2xl rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.2)] border border-slate-200/50 dark:border-zinc-800 p-2 z-50 origin-top-left"
-                                                        >
-                                                            <div className="px-3 py-2 mb-2">
-                                                                <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-zinc-500">Learning Hub</h3>
-                                                            </div>
-
-                                                            <motion.div 
-                                                                className="grid grid-cols-1 gap-1"
-                                                                initial="hidden"
-                                                                animate="show"
-                                                                variants={{
-                                                                    hidden: { opacity: 0 },
-                                                                    show: {
-                                                                        opacity: 1,
-                                                                        transition: { staggerChildren: 0.05 }
-                                                                    }
-                                                                }}
+                                                {item.label === 'Explore' && (
+                                                    <AnimatePresence>
+                                                        {showExploreMenu && (
+                                                            <motion.div
+                                                                initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                                                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                                                exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                                                                transition={{ duration: 0.2, ease: "easeOut" }}
+                                                                className="absolute left-0 mt-3 w-80 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-2xl rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.2)] border border-slate-200/50 dark:border-zinc-800 p-2 z-50 origin-top-left"
                                                             >
-                                                                {[
-                                                                    { label: 'Study Corner', icon: BookOpen, view: 'study-corner', desc: 'NCERT & Materials', color: 'text-blue-500' },
-                                                                    { label: 'Pomodoro', icon: Timer, view: 'pomodoro', desc: 'Focus timer', color: 'text-rose-500' },
-                                                                    { label: 'Leaderboard', icon: Trophy, view: 'leaderboard', desc: 'Global rankings', color: 'text-amber-500' }
-                                                                ].map((subItem) => (
-                                                                    <motion.button
-                                                                        key={subItem.label}
-                                                                        variants={{
-                                                                            hidden: { opacity: 0, x: -10 },
-                                                                            show: { opacity: 1, x: 0 }
-                                                                        }}
-                                                                        onClick={() => {
-                                                                            onNavigate(subItem.view as ViewState);
-                                                                            setShowExploreMenu(false);
-                                                                        }}
-                                                                        className="w-full flex items-center gap-4 px-3 py-2.5 rounded-xl hover:bg-slate-50 dark:hover:bg-zinc-800/50 transition-all group"
-                                                                    >
-                                                                        <div className={`w-10 h-10 rounded-lg bg-slate-100 dark:bg-zinc-800 flex items-center justify-center transition-transform group-hover:scale-110 ${subItem.color}`}>
-                                                                            <subItem.icon className="w-5 h-5" />
-                                                                        </div>
-                                                                        <div className="text-left flex-1">
-                                                                            <p className="text-sm font-bold text-black dark:text-white leading-none mb-1">{subItem.label}</p>
-                                                                            <p className="text-[10px] text-slate-500 dark:text-zinc-500">{subItem.desc}</p>
-                                                                        </div>
-                                                                        <ChevronRight className="w-4 h-4 text-slate-300 dark:text-zinc-700 group-hover:translate-x-1 transition-transform" />
-                                                                    </motion.button>
-                                                                ))}
-                                                            </motion.div>
+                                                                <div className="px-3 py-2 mb-2">
+                                                                    <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-zinc-500">Learning Hub</h3>
+                                                                </div>
 
-                                                            <div className="mt-2 pt-2 border-t border-slate-100 dark:border-zinc-800">
-                                                                <button
-                                                                    onClick={() => onNavigate('explore')}
-                                                                    className="w-full flex items-center justify-between px-3 py-2 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-colors group"
+                                                                <motion.div 
+                                                                    className="grid grid-cols-1 gap-1"
+                                                                    initial="hidden"
+                                                                    animate="show"
+                                                                    variants={{
+                                                                        hidden: { opacity: 0 },
+                                                                        show: {
+                                                                            opacity: 1,
+                                                                            transition: { staggerChildren: 0.05 }
+                                                                        }
+                                                                    }}
                                                                 >
-                                                                    <div className="flex items-center gap-2">
-                                                                        <span className="text-xs font-bold text-blue-600 dark:text-blue-400">View All Features</span>
-                                                                    </div>
-                                                                    <ArrowRight className="w-3.5 h-3.5 text-blue-400 opacity-0 group-hover:opacity-100 transition-all -translate-x-2 group-hover:translate-x-0" />
-                                                                </button>
-                                                            </div>
-                                                        </motion.div>
-                                                    )}
-                                                </AnimatePresence>
-                                            )}
-                                        </div>
-                                    );
-                                })}
-                            </nav>
+                                                                    {[
+                                                                        { label: 'Study Corner', icon: BookOpen, view: 'study-corner', desc: 'NCERT & Materials', color: 'text-blue-500' },
+                                                                        { label: 'Pomodoro', icon: Timer, view: 'pomodoro', desc: 'Focus timer', color: 'text-rose-500' },
+                                                                        { label: 'Leaderboard', icon: Trophy, view: 'leaderboard', desc: 'Global rankings', color: 'text-amber-500' }
+                                                                    ].map((subItem) => (
+                                                                        <motion.button
+                                                                            key={subItem.label}
+                                                                            variants={{
+                                                                                hidden: { opacity: 0, x: -10 },
+                                                                                show: { opacity: 1, x: 0 }
+                                                                            }}
+                                                                            onClick={() => {
+                                                                                onNavigate(subItem.view as ViewState);
+                                                                                setShowExploreMenu(false);
+                                                                            }}
+                                                                            className="w-full flex items-center gap-4 px-3 py-2.5 rounded-xl hover:bg-slate-50 dark:hover:bg-zinc-800/50 transition-all group"
+                                                                        >
+                                                                            <div className={`w-10 h-10 rounded-lg bg-slate-100 dark:bg-zinc-800 flex items-center justify-center transition-transform group-hover:scale-110 ${subItem.color}`}>
+                                                                                <subItem.icon className="w-5 h-5" />
+                                                                            </div>
+                                                                            <div className="text-left flex-1">
+                                                                                <p className="text-sm font-bold text-black dark:text-white leading-none mb-1">{subItem.label}</p>
+                                                                                <p className="text-[10px] text-slate-500 dark:text-zinc-500">{subItem.desc}</p>
+                                                                            </div>
+                                                                            <ChevronRight className="w-4 h-4 text-slate-300 dark:text-zinc-700 group-hover:translate-x-1 transition-transform" />
+                                                                        </motion.button>
+                                                                    ))}
+                                                                </motion.div>
+
+                                                                <div className="mt-2 pt-2 border-t border-slate-100 dark:border-zinc-800">
+                                                                    <button
+                                                                        onClick={() => onNavigate('explore')}
+                                                                        className="w-full flex items-center justify-between px-3 py-2 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-colors group"
+                                                                    >
+                                                                        <div className="flex items-center gap-2">
+                                                                            <span className="text-xs font-bold text-blue-600 dark:text-blue-400">View All Features</span>
+                                                                        </div>
+                                                                        <ArrowRight className="w-3.5 h-3.5 text-blue-400 opacity-0 group-hover:opacity-100 transition-all -translate-x-2 group-hover:translate-x-0" />
+                                                                    </button>
+                                                                </div>
+                                                            </motion.div>
+                                                        )}
+                                                    </AnimatePresence>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </nav>
+                            )}
                         </div>
 
                         {/* Center Welcome Message (Desktop) - REMOVED from main row */}
