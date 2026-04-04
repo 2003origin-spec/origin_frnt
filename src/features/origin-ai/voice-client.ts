@@ -17,6 +17,8 @@ type LiveSessionLike = {
   sendRealtimeInput: (params: {
     audio?: { data?: string; mimeType?: string };
     audioStreamEnd?: boolean;
+    activityStart?: Record<string, never>;
+    activityEnd?: Record<string, never>;
     text?: string;
   }) => void;
   close: () => void;
@@ -69,6 +71,7 @@ interface MicrophonePipeline {
   sourceNode: MediaStreamAudioSourceNode;
   processorNode: ScriptProcessorNode;
   sinkNode: GainNode;
+  finalizeActivity: () => void;
 }
 
 interface AudioPlayer {
@@ -81,7 +84,10 @@ interface AudioPlayer {
 const INPUT_SAMPLE_RATE = 16000;
 const DEFAULT_OUTPUT_SAMPLE_RATE = 24000;
 const PROCESSOR_BUFFER_SIZE = 2048;
-const BASE_SPEECH_RMS_THRESHOLD = 0.012;
+const USER_SPEECH_START_RMS_THRESHOLD = 0.018;
+const USER_SPEECH_ACTIVE_RMS_THRESHOLD = 0.01;
+const USER_SPEECH_START_CHUNKS_REQUIRED = 2;
+const USER_SPEECH_END_SILENCE_CHUNKS_REQUIRED = 6;
 const INTERRUPTION_SPEECH_RMS_THRESHOLD = 0.06;
 const INTERRUPTION_ACTIVE_CHUNKS_REQUIRED = 5;
 const INTERRUPTION_GRACE_PERIOD_MS = 900;
@@ -260,6 +266,7 @@ async function startMicrophonePipeline(
   liveSession: LiveSessionLike,
   isAssistantSpeaking: () => boolean,
   canInterruptAssistant: () => boolean,
+  onAssistantInterrupted: () => void,
 ): Promise<MicrophonePipeline> {
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: {
@@ -283,7 +290,9 @@ async function startMicrophonePipeline(
 
   const sinkNode = audioContext.createGain();
   sinkNode.gain.value = 0;
-  let activeInterruptChunks = 0;
+  let activeSpeechChunks = 0;
+  let activeSilenceChunks = 0;
+  let userSpeechActive = false;
 
   processorNode.onaudioprocess = (event) => {
     const channelData = event.inputBuffer.getChannelData(0);
@@ -294,34 +303,65 @@ async function startMicrophonePipeline(
     const rms = calculateRms(channelData);
     const assistantSpeaking = isAssistantSpeaking();
 
-    if (assistantSpeaking) {
-      if (!canInterruptAssistant()) {
-        activeInterruptChunks = 0;
+    if (!userSpeechActive) {
+      if (assistantSpeaking && !canInterruptAssistant()) {
+        activeSpeechChunks = 0;
         return;
       }
 
-      if (rms < INTERRUPTION_SPEECH_RMS_THRESHOLD) {
-        activeInterruptChunks = 0;
+      const startThreshold = assistantSpeaking
+        ? INTERRUPTION_SPEECH_RMS_THRESHOLD
+        : USER_SPEECH_START_RMS_THRESHOLD;
+      const startChunksRequired = assistantSpeaking
+        ? INTERRUPTION_ACTIVE_CHUNKS_REQUIRED
+        : USER_SPEECH_START_CHUNKS_REQUIRED;
+
+      if (rms < startThreshold) {
+        activeSpeechChunks = 0;
         return;
       }
 
-      activeInterruptChunks += 1;
-      if (activeInterruptChunks < INTERRUPTION_ACTIVE_CHUNKS_REQUIRED) {
+      activeSpeechChunks += 1;
+      if (activeSpeechChunks < startChunksRequired) {
         return;
       }
-    } else {
-      activeInterruptChunks = 0;
-      if (rms < BASE_SPEECH_RMS_THRESHOLD) {
-        return;
+
+      userSpeechActive = true;
+      activeSpeechChunks = 0;
+      activeSilenceChunks = 0;
+
+      if (assistantSpeaking) {
+        onAssistantInterrupted();
       }
+
+      liveSession.sendRealtimeInput({ activityStart: {} });
+      liveSession.sendRealtimeInput({
+        audio: {
+          data: float32ToBase64Pcm(channelData),
+          mimeType: `audio/pcm;rate=${INPUT_SAMPLE_RATE}`,
+        },
+      });
+      return;
     }
 
-    liveSession.sendRealtimeInput({
-      audio: {
-        data: float32ToBase64Pcm(channelData),
-        mimeType: `audio/pcm;rate=${INPUT_SAMPLE_RATE}`,
-      },
-    });
+    if (rms >= USER_SPEECH_ACTIVE_RMS_THRESHOLD) {
+      activeSilenceChunks = 0;
+      liveSession.sendRealtimeInput({
+        audio: {
+          data: float32ToBase64Pcm(channelData),
+          mimeType: `audio/pcm;rate=${INPUT_SAMPLE_RATE}`,
+        },
+      });
+      return;
+    }
+
+    activeSilenceChunks += 1;
+    if (activeSilenceChunks >= USER_SPEECH_END_SILENCE_CHUNKS_REQUIRED) {
+      liveSession.sendRealtimeInput({ activityEnd: {} });
+      userSpeechActive = false;
+      activeSpeechChunks = 0;
+      activeSilenceChunks = 0;
+    }
   };
 
   sourceNode.connect(processorNode);
@@ -334,6 +374,16 @@ async function startMicrophonePipeline(
     sourceNode,
     processorNode,
     sinkNode,
+    finalizeActivity: () => {
+      if (!userSpeechActive) {
+        return;
+      }
+
+      liveSession.sendRealtimeInput({ activityEnd: {} });
+      userSpeechActive = false;
+      activeSpeechChunks = 0;
+      activeSilenceChunks = 0;
+    },
   };
 }
 
@@ -454,6 +504,9 @@ export async function startOriginAiVoiceMode(
       },
     },
     realtimeInputConfig: {
+      automaticActivityDetection: {
+        disabled: true,
+      },
       activityHandling:
         bootstrap.voice.interruptionBehavior === 'NO_INTERRUPTION'
           ? ActivityHandling.NO_INTERRUPTION
@@ -591,6 +644,10 @@ export async function startOriginAiVoiceMode(
     liveSession,
     () => assistantTurnInProgress || audioPlayer.isPlaying(),
     () => Date.now() >= assistantInterruptionGraceUntil,
+    () => {
+      audioPlayer.interrupt();
+      assistantTurnInProgress = false;
+    },
   );
 
   return {
@@ -603,6 +660,7 @@ export async function startOriginAiVoiceMode(
       assistantTurnInProgress = false;
 
       try {
+        microphonePipeline?.finalizeActivity();
         liveSession.sendRealtimeInput({ audioStreamEnd: true });
       } catch {
         // ignore close race
