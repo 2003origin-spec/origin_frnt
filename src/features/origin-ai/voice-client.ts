@@ -306,6 +306,7 @@ export async function startOriginAiVoiceMode(
   let userTranscriptBuffer = '';
   let assistantTranscriptBuffer = '';
   let assistantTurnInProgress = false;
+  let sawOutputTranscriptForTurn = false;
   let pendingCommitCount = 0;
   let microphonePipeline: MicrophonePipeline | null = null;
 
@@ -371,12 +372,14 @@ export async function startOriginAiVoiceMode(
     const assistantTranscript = assistantTranscriptBuffer.trim();
 
     if (!userTranscript && !assistantTranscript) {
+      sawOutputTranscriptForTurn = false;
       maybeReturnToListening();
       return;
     }
 
     userTranscriptBuffer = '';
     assistantTranscriptBuffer = '';
+    sawOutputTranscriptForTurn = false;
     queueTurnCommit(userTranscript, assistantTranscript, interrupted);
   };
 
@@ -431,6 +434,7 @@ export async function startOriginAiVoiceMode(
         const outputTranscript = message.serverContent?.outputTranscription?.text?.trim();
         if (outputTranscript) {
           assistantTurnInProgress = true;
+          sawOutputTranscriptForTurn = true;
           assistantTranscriptBuffer = mergeTranscript(assistantTranscriptBuffer, outputTranscript);
           callbacks.onAssistantTranscript?.(assistantTranscriptBuffer);
           if (!audioPlayer.isPlaying()) {
@@ -449,7 +453,7 @@ export async function startOriginAiVoiceMode(
             });
           }
 
-          if (part.text?.trim()) {
+          if (part.text?.trim() && !sawOutputTranscriptForTurn) {
             assistantTurnInProgress = true;
             assistantTranscriptBuffer = mergeTranscript(assistantTranscriptBuffer, part.text);
             callbacks.onAssistantTranscript?.(assistantTranscriptBuffer);

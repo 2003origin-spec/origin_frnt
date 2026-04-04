@@ -38,6 +38,9 @@ export interface OriginAiLiveBootstrapResponse {
 const GEMINI_LIVE_API_VERSION = "v1alpha" as const;
 const DEFAULT_GEMINI_LIVE_MODEL = "gemini-2.5-flash-native-audio-preview-12-2025";
 const DEFAULT_GEMINI_LIVE_VOICE = "Charon";
+const NON_LATIN_VOICE_SCRIPT_REGEX = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\u0900-\u097F]/u;
+const META_VOICE_TRANSCRIPT_REGEX =
+  /(addressing the question|clarifying the query|acknowledging interruption|my focus is|i(?:'|’)ve understood|i plan to|i will now|constraints)/i;
 
 function isTruthyEnv(value: string | undefined): boolean {
   if (!value) {
@@ -192,6 +195,36 @@ export async function generateOriginAiProviderReply(
     return external;
   }
   return callGemini(payload);
+}
+
+export async function normalizeVoiceTranscriptForChat(
+  text: string,
+  role: "user" | "assistant",
+): Promise<string> {
+  const cleaned = text.replace(/\*\*/g, "").trim();
+  if (!cleaned) {
+    return "";
+  }
+
+  const needsRomanization = NON_LATIN_VOICE_SCRIPT_REGEX.test(cleaned);
+  const needsAssistantRewrite = role === "assistant" && META_VOICE_TRANSCRIPT_REGEX.test(cleaned);
+
+  if (!needsRomanization && !needsAssistantRewrite) {
+    return cleaned;
+  }
+
+  const prompt =
+    role === "assistant"
+      ? "Rewrite this spoken assistant transcript into a clean natural conversational reply. Remove internal planning, headings, meta analysis, and broken partial setup lines. Keep the meaning and guardrails. If the language is Hinglish, write it only in Roman script. Never use Devanagari, Urdu, or Arabic script. Return only the cleaned transcript."
+      : "Convert this spoken student transcript into natural Roman-script English or Hinglish only. Do not change the meaning. Keep question numbers, formulas, symbols, names, and technical terms intact. Never use Devanagari, Urdu, or Arabic script. Return only the cleaned Roman-script transcript.";
+
+  const rewritten = await callGemini({
+    systemInstruction: prompt,
+    conversation: [{ role: "user", content: cleaned }],
+    requestId: `voice_transcript_normalize_${role}_${Date.now()}`,
+  });
+
+  return rewritten?.content.trim() || cleaned;
 }
 
 export async function createOriginAiLiveBootstrap(

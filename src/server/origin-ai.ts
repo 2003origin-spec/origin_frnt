@@ -19,6 +19,7 @@ import {
 import {
   createOriginAiLiveBootstrap,
   generateOriginAiProviderReply,
+  normalizeVoiceTranscriptForChat,
   type OriginAiLiveBootstrapResponse,
   type OriginAiProviderRequest,
 } from "@/server/origin-ai-provider";
@@ -1408,13 +1409,25 @@ export async function commitOriginAiVoiceTurn(
   voiceTurn: OriginAiVoiceTurnInput,
   input?: OriginAiPageContextInput | null,
 ): Promise<OriginAiReplyPayload | { error: string }> {
-  const userTranscript = voiceTurn.userTranscript.trim();
-  const assistantTranscript = voiceTurn.assistantTranscript.trim();
+  const rawUserTranscript = voiceTurn.userTranscript.trim();
+  const rawAssistantTranscript = voiceTurn.assistantTranscript.trim();
 
-  if (!userTranscript) {
+  if (!rawUserTranscript) {
     return { error: "Voice transcript is required." };
   }
-  if (!assistantTranscript) {
+  if (!rawAssistantTranscript) {
+    return { error: "Origin AI reply transcript is required." };
+  }
+
+  const [userTranscript, assistantTranscript] = await Promise.all([
+    normalizeVoiceTranscriptForChat(rawUserTranscript, "user"),
+    normalizeVoiceTranscriptForChat(rawAssistantTranscript, "assistant"),
+  ]);
+
+  if (!userTranscript.trim()) {
+    return { error: "Voice transcript is required." };
+  }
+  if (!assistantTranscript.trim()) {
     return { error: "Origin AI reply transcript is required." };
   }
 
