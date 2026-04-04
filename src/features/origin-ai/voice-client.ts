@@ -81,6 +81,9 @@ interface AudioPlayer {
 const INPUT_SAMPLE_RATE = 16000;
 const DEFAULT_OUTPUT_SAMPLE_RATE = 24000;
 const PROCESSOR_BUFFER_SIZE = 2048;
+const BASE_SPEECH_RMS_THRESHOLD = 0.012;
+const INTERRUPTION_SPEECH_RMS_THRESHOLD = 0.03;
+const INTERRUPTION_ACTIVE_CHUNKS_REQUIRED = 2;
 
 function emitStatus(callbacks: OriginAiVoiceCallbacks, status: OriginAiVoiceStatus): void {
   callbacks.onStatusChange?.(status);
@@ -168,6 +171,20 @@ function mergeTranscript(previous: string, incoming: string): string {
   return `${previous} ${next}`.trim();
 }
 
+function calculateRms(input: Float32Array): number {
+  if (input.length === 0) {
+    return 0;
+  }
+
+  let sum = 0;
+  for (let index = 0; index < input.length; index += 1) {
+    const sample = input[index] ?? 0;
+    sum += sample * sample;
+  }
+
+  return Math.sqrt(sum / input.length);
+}
+
 function createAudioPlayer(callbacks: OriginAiVoiceCallbacks, onIdle: () => void): AudioPlayer {
   const AudioContextCtor = window.AudioContext;
   const audioContext = new AudioContextCtor();
@@ -238,7 +255,10 @@ function createAudioPlayer(callbacks: OriginAiVoiceCallbacks, onIdle: () => void
   };
 }
 
-async function startMicrophonePipeline(liveSession: LiveSessionLike): Promise<MicrophonePipeline> {
+async function startMicrophonePipeline(
+  liveSession: LiveSessionLike,
+  isAssistantSpeaking: () => boolean,
+): Promise<MicrophonePipeline> {
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: {
       channelCount: 1,
@@ -261,11 +281,32 @@ async function startMicrophonePipeline(liveSession: LiveSessionLike): Promise<Mi
 
   const sinkNode = audioContext.createGain();
   sinkNode.gain.value = 0;
+  let activeInterruptChunks = 0;
 
   processorNode.onaudioprocess = (event) => {
     const channelData = event.inputBuffer.getChannelData(0);
     if (!channelData || channelData.length === 0) {
       return;
+    }
+
+    const rms = calculateRms(channelData);
+    const assistantSpeaking = isAssistantSpeaking();
+
+    if (assistantSpeaking) {
+      if (rms < INTERRUPTION_SPEECH_RMS_THRESHOLD) {
+        activeInterruptChunks = 0;
+        return;
+      }
+
+      activeInterruptChunks += 1;
+      if (activeInterruptChunks < INTERRUPTION_ACTIVE_CHUNKS_REQUIRED) {
+        return;
+      }
+    } else {
+      activeInterruptChunks = 0;
+      if (rms < BASE_SPEECH_RMS_THRESHOLD) {
+        return;
+      }
     }
 
     liveSession.sendRealtimeInput({
@@ -528,7 +569,10 @@ export async function startOriginAiVoiceMode(
     });
   }
 
-  microphonePipeline = await startMicrophonePipeline(liveSession);
+  microphonePipeline = await startMicrophonePipeline(
+    liveSession,
+    () => assistantTurnInProgress || audioPlayer.isPlaying(),
+  );
 
   return {
     stop: async () => {
