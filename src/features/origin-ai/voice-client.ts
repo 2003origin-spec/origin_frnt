@@ -82,8 +82,9 @@ const INPUT_SAMPLE_RATE = 16000;
 const DEFAULT_OUTPUT_SAMPLE_RATE = 24000;
 const PROCESSOR_BUFFER_SIZE = 2048;
 const BASE_SPEECH_RMS_THRESHOLD = 0.012;
-const INTERRUPTION_SPEECH_RMS_THRESHOLD = 0.03;
-const INTERRUPTION_ACTIVE_CHUNKS_REQUIRED = 2;
+const INTERRUPTION_SPEECH_RMS_THRESHOLD = 0.06;
+const INTERRUPTION_ACTIVE_CHUNKS_REQUIRED = 5;
+const INTERRUPTION_GRACE_PERIOD_MS = 900;
 
 function emitStatus(callbacks: OriginAiVoiceCallbacks, status: OriginAiVoiceStatus): void {
   callbacks.onStatusChange?.(status);
@@ -258,6 +259,7 @@ function createAudioPlayer(callbacks: OriginAiVoiceCallbacks, onIdle: () => void
 async function startMicrophonePipeline(
   liveSession: LiveSessionLike,
   isAssistantSpeaking: () => boolean,
+  canInterruptAssistant: () => boolean,
 ): Promise<MicrophonePipeline> {
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: {
@@ -293,6 +295,11 @@ async function startMicrophonePipeline(
     const assistantSpeaking = isAssistantSpeaking();
 
     if (assistantSpeaking) {
+      if (!canInterruptAssistant()) {
+        activeInterruptChunks = 0;
+        return;
+      }
+
       if (rms < INTERRUPTION_SPEECH_RMS_THRESHOLD) {
         activeInterruptChunks = 0;
         return;
@@ -350,6 +357,7 @@ export async function startOriginAiVoiceMode(
   let sawOutputTranscriptForTurn = false;
   let pendingCommitCount = 0;
   let microphonePipeline: MicrophonePipeline | null = null;
+  let assistantInterruptionGraceUntil = 0;
 
   const maybeReturnToListening = () => {
     if (!isActive) {
@@ -364,10 +372,19 @@ export async function startOriginAiVoiceMode(
     if (pendingCommitCount > 0) {
       return;
     }
+    assistantInterruptionGraceUntil = 0;
     emitStatus(callbacks, 'listening');
   };
 
   const audioPlayer = createAudioPlayer(callbacks, maybeReturnToListening);
+
+  const markAssistantSpeaking = () => {
+    const wasSpeaking = assistantTurnInProgress || audioPlayer.isPlaying();
+    assistantTurnInProgress = true;
+    if (!wasSpeaking) {
+      assistantInterruptionGraceUntil = Date.now() + INTERRUPTION_GRACE_PERIOD_MS;
+    }
+  };
 
   const queueTurnCommit = (
     userTranscript: string,
@@ -421,6 +438,7 @@ export async function startOriginAiVoiceMode(
     userTranscriptBuffer = '';
     assistantTranscriptBuffer = '';
     sawOutputTranscriptForTurn = false;
+    assistantInterruptionGraceUntil = 0;
     queueTurnCommit(userTranscript, assistantTranscript, interrupted);
   };
 
@@ -474,7 +492,7 @@ export async function startOriginAiVoiceMode(
 
         const outputTranscript = message.serverContent?.outputTranscription?.text?.trim();
         if (outputTranscript) {
-          assistantTurnInProgress = true;
+          markAssistantSpeaking();
           sawOutputTranscriptForTurn = true;
           assistantTranscriptBuffer = mergeTranscript(assistantTranscriptBuffer, outputTranscript);
           callbacks.onAssistantTranscript?.(assistantTranscriptBuffer);
@@ -487,7 +505,7 @@ export async function startOriginAiVoiceMode(
         for (const part of parts) {
           const inlineData = part.inlineData;
           if (inlineData?.data?.trim()) {
-            assistantTurnInProgress = true;
+            markAssistantSpeaking();
             void audioPlayer.enqueue(inlineData.data, inlineData.mimeType ?? null).catch(() => {
               callbacks.onError?.('Origin AI audio playback failed.');
               emitStatus(callbacks, 'error');
@@ -495,7 +513,7 @@ export async function startOriginAiVoiceMode(
           }
 
           if (part.text?.trim() && !sawOutputTranscriptForTurn) {
-            assistantTurnInProgress = true;
+            markAssistantSpeaking();
             assistantTranscriptBuffer = mergeTranscript(assistantTranscriptBuffer, part.text);
             callbacks.onAssistantTranscript?.(assistantTranscriptBuffer);
           }
@@ -572,6 +590,7 @@ export async function startOriginAiVoiceMode(
   microphonePipeline = await startMicrophonePipeline(
     liveSession,
     () => assistantTurnInProgress || audioPlayer.isPlaying(),
+    () => Date.now() >= assistantInterruptionGraceUntil,
   );
 
   return {

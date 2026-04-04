@@ -40,7 +40,7 @@ const DEFAULT_GEMINI_LIVE_MODEL = "gemini-2.5-flash-native-audio-preview-12-2025
 const DEFAULT_GEMINI_LIVE_VOICE = "Charon";
 const NON_LATIN_VOICE_SCRIPT_REGEX = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\u0900-\u097F]/u;
 const META_VOICE_TRANSCRIPT_REGEX =
-  /(addressing the question|clarifying the query|acknowledging interruption|my focus is|i(?:'|’)ve understood|i plan to|i will now|constraints)/i;
+  /(^|[\r\n]+|\*\*)(analyzing the question|addressing the question|clarifying the query|acknowledging interruption|my focus is|my plan is|looks like it involves|i can see that(?: the)? user needs|i(?:'|’)ve understood|i plan to|i will now|i should give|i(?:'|’)ll start by|constraints)\b/i;
 
 function isTruthyEnv(value: string | undefined): boolean {
   if (!value) {
