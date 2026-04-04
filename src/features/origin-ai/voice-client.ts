@@ -84,13 +84,15 @@ interface AudioPlayer {
 const INPUT_SAMPLE_RATE = 16000;
 const DEFAULT_OUTPUT_SAMPLE_RATE = 24000;
 const PROCESSOR_BUFFER_SIZE = 2048;
-const USER_SPEECH_START_RMS_THRESHOLD = 0.018;
-const USER_SPEECH_ACTIVE_RMS_THRESHOLD = 0.01;
+const USER_SPEECH_START_RMS_THRESHOLD_MIN = 0.012;
+const USER_SPEECH_ACTIVE_RMS_THRESHOLD_MIN = 0.007;
 const USER_SPEECH_START_CHUNKS_REQUIRED = 2;
 const USER_SPEECH_END_SILENCE_CHUNKS_REQUIRED = 6;
-const INTERRUPTION_SPEECH_RMS_THRESHOLD = 0.06;
+const INTERRUPTION_SPEECH_RMS_THRESHOLD_MIN = 0.035;
 const INTERRUPTION_ACTIVE_CHUNKS_REQUIRED = 5;
 const INTERRUPTION_GRACE_PERIOD_MS = 900;
+const AMBIENT_RMS_INITIAL = 0.003;
+const AMBIENT_RMS_SMOOTHING = 0.08;
 
 function emitStatus(callbacks: OriginAiVoiceCallbacks, status: OriginAiVoiceStatus): void {
   callbacks.onStatusChange?.(status);
@@ -267,6 +269,7 @@ async function startMicrophonePipeline(
   isAssistantSpeaking: () => boolean,
   canInterruptAssistant: () => boolean,
   onAssistantInterrupted: () => void,
+  onUserTurnEnded: () => void,
 ): Promise<MicrophonePipeline> {
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: {
@@ -293,6 +296,7 @@ async function startMicrophonePipeline(
   let activeSpeechChunks = 0;
   let activeSilenceChunks = 0;
   let userSpeechActive = false;
+  let ambientRms = AMBIENT_RMS_INITIAL;
 
   processorNode.onaudioprocess = (event) => {
     const channelData = event.inputBuffer.getChannelData(0);
@@ -303,6 +307,10 @@ async function startMicrophonePipeline(
     const rms = calculateRms(channelData);
     const assistantSpeaking = isAssistantSpeaking();
 
+    if (!userSpeechActive && !assistantSpeaking) {
+      ambientRms = ambientRms * (1 - AMBIENT_RMS_SMOOTHING) + rms * AMBIENT_RMS_SMOOTHING;
+    }
+
     if (!userSpeechActive) {
       if (assistantSpeaking && !canInterruptAssistant()) {
         activeSpeechChunks = 0;
@@ -310,8 +318,8 @@ async function startMicrophonePipeline(
       }
 
       const startThreshold = assistantSpeaking
-        ? INTERRUPTION_SPEECH_RMS_THRESHOLD
-        : USER_SPEECH_START_RMS_THRESHOLD;
+        ? Math.max(INTERRUPTION_SPEECH_RMS_THRESHOLD_MIN, ambientRms * 5.5)
+        : Math.max(USER_SPEECH_START_RMS_THRESHOLD_MIN, ambientRms * 3.2);
       const startChunksRequired = assistantSpeaking
         ? INTERRUPTION_ACTIVE_CHUNKS_REQUIRED
         : USER_SPEECH_START_CHUNKS_REQUIRED;
@@ -344,7 +352,8 @@ async function startMicrophonePipeline(
       return;
     }
 
-    if (rms >= USER_SPEECH_ACTIVE_RMS_THRESHOLD) {
+    const activeSpeechThreshold = Math.max(USER_SPEECH_ACTIVE_RMS_THRESHOLD_MIN, ambientRms * 1.8);
+    if (rms >= activeSpeechThreshold) {
       activeSilenceChunks = 0;
       liveSession.sendRealtimeInput({
         audio: {
@@ -361,6 +370,7 @@ async function startMicrophonePipeline(
       userSpeechActive = false;
       activeSpeechChunks = 0;
       activeSilenceChunks = 0;
+      onUserTurnEnded();
     }
   };
 
@@ -383,6 +393,7 @@ async function startMicrophonePipeline(
       userSpeechActive = false;
       activeSpeechChunks = 0;
       activeSilenceChunks = 0;
+      onUserTurnEnded();
     },
   };
 }
@@ -652,6 +663,11 @@ export async function startOriginAiVoiceMode(
     () => {
       audioPlayer.interrupt();
       assistantTurnInProgress = false;
+    },
+    () => {
+      if (!assistantTurnInProgress && !audioPlayer.isPlaying()) {
+        emitStatus(callbacks, 'thinking');
+      }
     },
   );
 
