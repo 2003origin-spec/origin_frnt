@@ -38,7 +38,8 @@ export interface OriginAiLiveBootstrapResponse {
 const GEMINI_LIVE_API_VERSION = "v1alpha" as const;
 const DEFAULT_GEMINI_LIVE_MODEL = "gemini-2.5-flash-native-audio-preview-12-2025";
 const DEFAULT_GEMINI_LIVE_VOICE = "Charon";
-const NON_LATIN_VOICE_SCRIPT_REGEX = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\u0900-\u097F]/u;
+const NON_LATIN_VOICE_SCRIPT_REGEX =
+  /[\p{Script=Arabic}\p{Script=Devanagari}\p{Script=Bengali}\p{Script=Gurmukhi}\p{Script=Gujarati}\p{Script=Oriya}\p{Script=Tamil}\p{Script=Telugu}\p{Script=Kannada}\p{Script=Malayalam}\p{Script=Sinhala}\p{Script=Myanmar}\p{Script=Thai}\p{Script=Lao}\p{Script=Tibetan}\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
 const META_VOICE_TRANSCRIPT_REGEX =
   /(^|[\r\n]+|\*\*)(analyzing the question|addressing the question|clarifying the query|acknowledging interruption|my focus is|my plan is|looks like it involves|i can see that(?: the)? user needs|i(?:'|’)ve understood|i plan to|i will now|i should give|i(?:'|’)ll start by|constraints)\b/i;
 
@@ -215,8 +216,8 @@ export async function normalizeVoiceTranscriptForChat(
 
   const prompt =
     role === "assistant"
-      ? "Rewrite this spoken assistant transcript into a clean natural conversational reply. Remove internal planning, headings, meta analysis, and broken partial setup lines. Keep the meaning and guardrails. If the language is Hinglish, write it only in Roman script. Never use Devanagari, Urdu, or Arabic script. Return only the cleaned transcript."
-      : "Convert this spoken student transcript into natural Roman-script English or Hinglish only. Do not change the meaning. Keep question numbers, formulas, symbols, names, and technical terms intact. Never use Devanagari, Urdu, or Arabic script. Return only the cleaned Roman-script transcript.";
+      ? "Rewrite this spoken assistant transcript into a clean natural conversational reply. Remove internal planning, headings, meta analysis, and broken partial setup lines. Keep the meaning and guardrails. If the language is Hinglish, write it only in Roman script. Never use any non-Latin script, including Devanagari, Gujarati, Burmese, Thai, Urdu, or Arabic. Return only the cleaned transcript."
+      : "Convert this spoken student transcript into natural Roman-script English or Hinglish only. Do not change the meaning. Keep question numbers, formulas, symbols, names, and technical terms intact. Never use any non-Latin script, including Devanagari, Gujarati, Burmese, Thai, Urdu, or Arabic. Return only the cleaned Roman-script transcript.";
 
   const rewritten = await callGemini({
     systemInstruction: prompt,
@@ -237,7 +238,7 @@ export async function createOriginAiLiveBootstrap(
 
   const model = process.env.GEMINI_LIVE_MODEL?.trim() || DEFAULT_GEMINI_LIVE_MODEL;
   const voiceName = process.env.GEMINI_LIVE_VOICE_NAME?.trim() || DEFAULT_GEMINI_LIVE_VOICE;
-  const temperature = 0.55;
+  const temperature = 0.35;
   const maxOutputTokens = 520;
 
   try {
