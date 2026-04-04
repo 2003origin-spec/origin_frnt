@@ -624,38 +624,6 @@ export async function startOriginAiVoiceMode(
     },
   })) as LiveSessionLike;
 
-  if (bootstrap.conversationSeed.length > 0) {
-    liveSession.sendClientContent({
-      turns: [
-        {
-          role: 'user',
-          parts: [{ text: bootstrap.contextSeed }],
-        },
-      ],
-      turnComplete: false,
-    });
-  }
-
-  if (bootstrap.conversationSeed.length > 0) {
-    liveSession.sendClientContent({
-      turns: bootstrap.conversationSeed.map((turn) => ({
-        role: turn.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: turn.content }],
-      })),
-      turnComplete: false,
-    });
-  } else {
-    liveSession.sendClientContent({
-      turns: [
-        {
-          role: 'user',
-          parts: [{ text: bootstrap.contextSeed }],
-        },
-      ],
-      turnComplete: false,
-    });
-  }
-
   microphonePipeline = await startMicrophonePipeline(
     liveSession,
     () => assistantTurnInProgress || audioPlayer.isPlaying(),

@@ -548,6 +548,24 @@ function buildConversationSeed(session: StoredOriginAiSession): OriginAiVoiceCon
     }));
 }
 
+function buildVoiceConversationContext(turns: OriginAiVoiceConversationSeedTurn[]): string | null {
+  if (turns.length === 0) {
+    return null;
+  }
+
+  const transcript = turns
+    .slice(-8)
+    .map((turn) => `${turn.role === "assistant" ? "Origin AI" : "Student"}: ${turn.content}`)
+    .join("\n");
+
+  return [
+    "## Recent Conversation Context",
+    "Use this as recent session memory for continuity.",
+    "Do not quote it back unless relevant.",
+    transcript,
+  ].join("\n");
+}
+
 function buildVoiceContextSeed(
   memory: OriginAiMemoryPayload,
   reminders: StoredOriginAiReminder[],
@@ -1332,6 +1350,13 @@ export async function getOriginAiVoiceBootstrap(
   input?: OriginAiPageContextInput | null,
 ): Promise<OriginAiVoiceBootstrapPayload | { error: string }> {
   const runtime = await prepareOriginAiRuntime(store, user, request, input);
+  const contextSeed = buildVoiceContextSeed(
+    runtime.memoryPayload,
+    runtime.reminders,
+    runtime.pageContext,
+    runtime.pagePolicy,
+  );
+  const conversationSeed = buildConversationSeed(runtime.session);
   const voiceSystemInstruction = [
     buildSystemInstruction(
       user,
@@ -1356,6 +1381,9 @@ export async function getOriginAiVoiceBootstrap(
     "- If page policy is hint_only or answer_blocked, obey it in voice exactly as in text.",
     "- If the student interrupts you mid-explanation, stop cleanly, answer the interruption first, then ask whether they want to continue the previous thread.",
     "- Voice replies should feel conversational and interactive, not like a paragraph being read aloud.",
+    "## Live Screen Context",
+    contextSeed,
+    buildVoiceConversationContext(conversationSeed),
   ].join("\n");
   let voice: OriginAiLiveBootstrapResponse;
   try {
@@ -1377,13 +1405,8 @@ export async function getOriginAiVoiceBootstrap(
     provider: "voice_bootstrap",
     browserSessionId: runtime.browserSessionId,
     liveSystemInstruction: voice.authMode === "api_key" ? voiceSystemInstruction : null,
-    contextSeed: buildVoiceContextSeed(
-      runtime.memoryPayload,
-      runtime.reminders,
-      runtime.pageContext,
-      runtime.pagePolicy,
-    ),
-    conversationSeed: buildConversationSeed(runtime.session),
+    contextSeed,
+    conversationSeed,
     voice,
   };
 }
