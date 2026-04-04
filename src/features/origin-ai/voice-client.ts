@@ -508,7 +508,6 @@ export async function startOriginAiVoiceMode(
   const liveConfig: Record<string, unknown> = {
     responseModalities: bootstrap.voice.responseModalities as never,
     speechConfig: {
-      languageCode: 'en',
       voiceConfig: {
         prebuiltVoiceConfig: {
           voiceName: bootstrap.voice.voiceName,
