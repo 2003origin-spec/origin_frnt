@@ -183,7 +183,7 @@ export interface ChatMessage {
   content: string;
   timestamp: Date;
   image?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface DoubtSession {
@@ -315,3 +315,137 @@ export type ViewState =
   | 'explore'
   | 'tasks-goals'
   | 'prestige-milestones';
+
+export type OriginAiPageKind =
+  | 'dashboard'
+  | 'dpp'
+  | 'test_active'
+  | 'test_result'
+  | 'tests_index'
+  | 'ogcode_question'
+  | 'ogcode_index'
+  | 'study_corner'
+  | 'pomodoro'
+  | 'profile'
+  | 'tasks'
+  | 'doubt_solver'
+  | 'unknown';
+
+export type OriginAiPolicyMode = 'normal' | 'hint_only' | 'answer_blocked';
+
+export interface OriginAiVisibleQuestion {
+  id: string;
+  number: number;
+  title: string;
+  chapter?: string | null;
+  concept?: string | null;
+  difficulty?: string | null;
+  subject?: string | null;
+  tags?: string[];
+  isSolved?: boolean;
+}
+
+export interface OriginAiPageContext {
+  pathname: string;
+  pageKind: OriginAiPageKind;
+  testId: string | null;
+  questionId: string | null;
+  title: string | null;
+  subject: string | null;
+  chapter: string | null;
+  concept: string | null;
+  hint: string | null;
+  searchQuery: string | null;
+  activeSubject: string | null;
+  activeDifficulty: string | null;
+  activeStatus: string | null;
+  selectedChapters: string[];
+  totalVisibleQuestions: number | null;
+  visibleQuestions: OriginAiVisibleQuestion[];
+}
+
+export interface OriginAiPagePolicy {
+  mode: OriginAiPolicyMode;
+  title: string;
+  reason: string;
+}
+
+export interface OriginAiReminder {
+  id: string;
+  userId: string;
+  kind: 'dpp' | 'revision' | 'assignment' | 'habit';
+  title: string;
+  message: string;
+  priority: 'high' | 'medium' | 'low';
+  sourceId: string | null;
+  createdAt: Date;
+}
+
+export interface OriginAiMemory {
+  preferredName: string;
+  identitySummary: string;
+  pinnedFacts: string[];
+  lastWeakTopics: string[];
+  pendingDppCount: number;
+  pendingAssignmentCount: number;
+  currentStreak: number;
+  lastTestSummary: string | null;
+}
+
+export interface OriginAiSession {
+  id: string;
+  title: string;
+  summary: string | null;
+  lastPathname: string | null;
+  lastPageKind: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  messages: ChatMessage[];
+}
+
+export interface OriginAiSnapshot {
+  session: OriginAiSession;
+  memory: OriginAiMemory;
+  reminders: OriginAiReminder[];
+  pageContext: OriginAiPageContext;
+  pagePolicy: OriginAiPagePolicy;
+  provider: string;
+}
+
+export interface OriginAiReply extends OriginAiSnapshot {
+  userMessage: ChatMessage;
+  aiMessage: ChatMessage;
+}
+
+export interface OriginAiVoiceConversationTurn {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface OriginAiVoiceConfig {
+  transport: 'gemini_live';
+  provider: 'gemini';
+  token: string;
+  model: string;
+  apiVersion: 'v1alpha';
+  responseModalities: string[];
+  inputAudioTranscription: boolean;
+  sessionResumption: boolean;
+  temperature: number;
+  maxOutputTokens: number;
+}
+
+export interface OriginAiVoiceBootstrap extends OriginAiSnapshot {
+  browserSessionId: string;
+  conversationSeed: OriginAiVoiceConversationTurn[];
+  voice: OriginAiVoiceConfig;
+}
+
+export type OriginAiVoiceStatus =
+  | 'idle'
+  | 'bootstrapping'
+  | 'connecting'
+  | 'listening'
+  | 'thinking'
+  | 'speaking'
+  | 'error';

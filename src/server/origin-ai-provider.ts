@@ -1,3 +1,5 @@
+import { GoogleGenAI, Modality } from '@google/genai';
+
 export interface OriginAiProviderRequest {
   systemInstruction: string;
   conversation: Array<{ role: "user" | "assistant"; content: string }>;
@@ -10,6 +12,27 @@ export interface OriginAiProviderResponse {
   model: string;
   metadata?: Record<string, unknown>;
 }
+
+export interface OriginAiLiveBootstrapRequest {
+  systemInstruction: string;
+  requestId: string;
+}
+
+export interface OriginAiLiveBootstrapResponse {
+  token: string;
+  provider: "gemini";
+  transport: "gemini_live";
+  model: string;
+  apiVersion: "v1alpha";
+  responseModalities: string[];
+  inputAudioTranscription: boolean;
+  sessionResumption: boolean;
+  temperature: number;
+  maxOutputTokens: number;
+}
+
+const GEMINI_LIVE_API_VERSION = "v1alpha" as const;
+const DEFAULT_GEMINI_LIVE_MODEL = "gemini-live-2.5-flash-preview";
 
 function extractText(value: unknown): string {
   if (!value || typeof value !== "object") {
@@ -157,4 +180,71 @@ export async function generateOriginAiProviderReply(
     return external;
   }
   return callGemini(payload);
+}
+
+export async function createOriginAiLiveBootstrap(
+  payload: OriginAiLiveBootstrapRequest,
+): Promise<OriginAiLiveBootstrapResponse | null> {
+  const apiKey = process.env.GEMINI_API_KEY?.trim();
+  if (!apiKey) {
+    return null;
+  }
+
+  const model = process.env.GEMINI_LIVE_MODEL?.trim() || DEFAULT_GEMINI_LIVE_MODEL;
+  const temperature = 0.55;
+  const maxOutputTokens = 260;
+
+  try {
+    const client = new GoogleGenAI({
+      apiKey,
+      apiVersion: GEMINI_LIVE_API_VERSION,
+    });
+
+    const token = await client.authTokens.create({
+      config: {
+        uses: 1,
+        expireTime: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+        newSessionExpireTime: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+        liveConnectConstraints: {
+          model,
+          config: {
+            systemInstruction: payload.systemInstruction,
+            responseModalities: [Modality.TEXT],
+            inputAudioTranscription: {},
+            sessionResumption: {},
+            temperature,
+            maxOutputTokens,
+          },
+        },
+        lockAdditionalFields: [
+          "liveConnectConstraints.model",
+          "liveConnectConstraints.config.systemInstruction",
+          "liveConnectConstraints.config.responseModalities",
+          "liveConnectConstraints.config.inputAudioTranscription",
+          "liveConnectConstraints.config.sessionResumption",
+          "liveConnectConstraints.config.temperature",
+          "liveConnectConstraints.config.maxOutputTokens",
+        ],
+      },
+    });
+
+    if (!token.name?.trim()) {
+      return null;
+    }
+
+    return {
+      token: token.name,
+      provider: "gemini",
+      transport: "gemini_live",
+      model,
+      apiVersion: GEMINI_LIVE_API_VERSION,
+      responseModalities: [Modality.TEXT],
+      inputAudioTranscription: true,
+      sessionResumption: true,
+      temperature,
+      maxOutputTokens,
+    };
+  } catch {
+    return null;
+  }
 }

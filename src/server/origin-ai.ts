@@ -17,7 +17,9 @@ import {
   type StoredUser,
 } from "@/server/store";
 import {
+  createOriginAiLiveBootstrap,
   generateOriginAiProviderReply,
+  type OriginAiLiveBootstrapResponse,
   type OriginAiProviderRequest,
 } from "@/server/origin-ai-provider";
 
@@ -123,6 +125,17 @@ export interface OriginAiSnapshotPayload {
 export interface OriginAiReplyPayload extends OriginAiSnapshotPayload {
   userMessage: StoredChatMessage;
   aiMessage: StoredChatMessage;
+}
+
+export interface OriginAiVoiceConversationSeedTurn {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface OriginAiVoiceBootstrapPayload extends OriginAiSnapshotPayload {
+  browserSessionId: string;
+  conversationSeed: OriginAiVoiceConversationSeedTurn[];
+  voice: OriginAiLiveBootstrapResponse;
 }
 
 const PROMPT_CACHE = new Map<string, string>();
@@ -466,6 +479,54 @@ function buildMemoryPayload(
   };
 }
 
+interface OriginAiRuntimeState {
+  browserSessionId: string;
+  pageContext: OriginAiResolvedPageContext;
+  pagePolicy: OriginAiPolicy;
+  latestResult: StoredTestResult | null;
+  memoryRecord: StoredOriginAiProfileMemory;
+  memoryPayload: OriginAiMemoryPayload;
+  reminders: StoredOriginAiReminder[];
+  session: StoredOriginAiSession;
+}
+
+async function prepareOriginAiRuntime(
+  store: AppStore,
+  user: StoredUser,
+  request: Request,
+  input?: OriginAiPageContextInput | null,
+): Promise<OriginAiRuntimeState> {
+  const browserSessionId = resolveBrowserSessionId(request, user);
+  const pageContext = await resolvePageContext(store, user, request, input);
+  const pagePolicy = resolvePagePolicy(pageContext);
+  const latestResult = getLatestResult(store, user.id);
+  const memoryRecord = getOrCreateProfileMemory(store, user);
+  const reminders = buildReminders(store, user, latestResult);
+  syncProfileMemory(memoryRecord, user, latestResult, reminders, pageContext);
+  const memoryPayload = buildMemoryPayload(memoryRecord, user, latestResult, store);
+
+  store.originAiReminders = [
+    ...store.originAiReminders.filter((entry) => entry.userId !== user.id),
+    ...reminders,
+  ];
+
+  const session = getOrCreateMentorSession(store, user, browserSessionId);
+  session.lastPathname = pageContext.pathname;
+  session.lastPageKind = pageContext.pageKind;
+  ensureWelcomeTurn(session, user, memoryPayload, reminders, pagePolicy);
+
+  return {
+    browserSessionId,
+    pageContext,
+    pagePolicy,
+    latestResult,
+    memoryRecord,
+    memoryPayload,
+    reminders,
+    session,
+  };
+}
+
 function serializeSession(session: StoredOriginAiSession): OriginAiSessionPayload {
   return {
     id: session.id,
@@ -477,6 +538,17 @@ function serializeSession(session: StoredOriginAiSession): OriginAiSessionPayloa
     updatedAt: session.updatedAt,
     messages: [...session.messages].sort((left, right) => left.timestamp.localeCompare(right.timestamp)),
   };
+}
+
+function buildConversationSeed(session: StoredOriginAiSession): OriginAiVoiceConversationSeedTurn[] {
+  return [...session.messages]
+    .sort((left, right) => left.timestamp.localeCompare(right.timestamp))
+    .slice(-10)
+    .filter((message) => message.content.trim())
+    .map((message) => ({
+      role: message.role,
+      content: message.content.trim(),
+    }));
 }
 
 function buildWelcomeMessage(
@@ -1191,32 +1263,137 @@ export async function getOriginAiSnapshot(
   request: Request,
   input?: OriginAiPageContextInput | null,
 ): Promise<OriginAiSnapshotPayload> {
-  const browserSessionId = resolveBrowserSessionId(request, user);
-  const pageContext = await resolvePageContext(store, user, request, input);
-  const pagePolicy = resolvePagePolicy(pageContext);
-  const latestResult = getLatestResult(store, user.id);
-  const memory = getOrCreateProfileMemory(store, user);
-  const reminders = buildReminders(store, user, latestResult);
-  syncProfileMemory(memory, user, latestResult, reminders, pageContext);
-  const memoryPayload = buildMemoryPayload(memory, user, latestResult, store);
-
-  store.originAiReminders = [
-    ...store.originAiReminders.filter((entry) => entry.userId !== user.id),
-    ...reminders,
-  ];
-
-  const session = getOrCreateMentorSession(store, user, browserSessionId);
-  session.lastPathname = pageContext.pathname;
-  session.lastPageKind = pageContext.pageKind;
-  ensureWelcomeTurn(session, user, memoryPayload, reminders, pagePolicy);
+  const runtime = await prepareOriginAiRuntime(store, user, request, input);
 
   return {
-    session: serializeSession(session),
-    memory: memoryPayload,
-    reminders,
-    pageContext,
-    pagePolicy,
+    session: serializeSession(runtime.session),
+    memory: runtime.memoryPayload,
+    reminders: runtime.reminders,
+    pageContext: runtime.pageContext,
+    pagePolicy: runtime.pagePolicy,
     provider: "bootstrap",
+  };
+}
+
+export async function getOriginAiVoiceBootstrap(
+  store: AppStore,
+  user: StoredUser,
+  request: Request,
+  input?: OriginAiPageContextInput | null,
+): Promise<OriginAiVoiceBootstrapPayload | { error: string }> {
+  const runtime = await prepareOriginAiRuntime(store, user, request, input);
+  const voice = await createOriginAiLiveBootstrap({
+    systemInstruction: [
+      buildSystemInstruction(
+        user,
+        runtime.memoryPayload,
+        runtime.reminders,
+        runtime.pageContext,
+        runtime.pagePolicy,
+      ),
+      "## Voice Mode Addendum",
+      "- You are speaking, not writing.",
+      "- Keep replies concise by default: 1 to 3 short spoken sentences unless the student asks for depth.",
+      "- Sound like a warm, sharp mentor, not a narrator reading lecture notes.",
+      "- If page policy is hint_only or answer_blocked, obey it in voice exactly as in text.",
+    ].join("\n"),
+    requestId: createId("origin_ai_voice"),
+  });
+
+  if (!voice) {
+    return { error: "Origin AI voice mode is not configured yet." };
+  }
+
+  return {
+    session: serializeSession(runtime.session),
+    memory: runtime.memoryPayload,
+    reminders: runtime.reminders,
+    pageContext: runtime.pageContext,
+    pagePolicy: runtime.pagePolicy,
+    provider: "voice_bootstrap",
+    browserSessionId: runtime.browserSessionId,
+    conversationSeed: buildConversationSeed(runtime.session),
+    voice,
+  };
+}
+
+interface OriginAiVoiceTurnInput {
+  userTranscript: string;
+  assistantTranscript: string;
+  liveSessionId?: string | null;
+  responseId?: string | null;
+  model?: string | null;
+  transport?: "gemini_live";
+}
+
+export async function commitOriginAiVoiceTurn(
+  store: AppStore,
+  user: StoredUser,
+  request: Request,
+  voiceTurn: OriginAiVoiceTurnInput,
+  input?: OriginAiPageContextInput | null,
+): Promise<OriginAiReplyPayload | { error: string }> {
+  const userTranscript = voiceTurn.userTranscript.trim();
+  const assistantTranscript = voiceTurn.assistantTranscript.trim();
+
+  if (!userTranscript) {
+    return { error: "Voice transcript is required." };
+  }
+  if (!assistantTranscript) {
+    return { error: "Origin AI reply transcript is required." };
+  }
+
+  const runtime = await prepareOriginAiRuntime(store, user, request, input);
+  maybeUpdatePinnedFacts(runtime.memoryRecord, userTranscript);
+
+  const userMessage: StoredChatMessage = {
+    id: createId("origin_ai_msg"),
+    role: "user",
+    content: userTranscript,
+    image: null,
+    metadata: {
+      pathname: runtime.pageContext.pathname,
+      pageKind: runtime.pageContext.pageKind,
+      source: "origin_ai_voice",
+      transport: voiceTurn.transport ?? "gemini_live",
+      liveSessionId: voiceTurn.liveSessionId ?? null,
+      responseId: voiceTurn.responseId ?? null,
+    },
+    timestamp: nowIso(),
+  };
+
+  const aiMessage: StoredChatMessage = {
+    id: createId("origin_ai_msg"),
+    role: "assistant",
+    content: assistantTranscript,
+    image: null,
+    metadata: {
+      source: "origin_ai",
+      provider: "gemini",
+      model: voiceTurn.model ?? process.env.GEMINI_LIVE_MODEL?.trim() ?? "gemini-live-2.5-flash-preview",
+      pageKind: runtime.pageContext.pageKind,
+      policyMode: runtime.pagePolicy.mode,
+      transport: voiceTurn.transport ?? "gemini_live",
+      liveSessionId: voiceTurn.liveSessionId ?? null,
+      responseId: voiceTurn.responseId ?? null,
+      modality: "voice",
+    },
+    timestamp: nowIso(),
+  };
+
+  runtime.session.messages.push(userMessage, aiMessage);
+  runtime.session.updatedAt = nowIso();
+  maybeAwardOriginAiPoints(store, user, aiMessage.id);
+
+  return {
+    userMessage,
+    aiMessage,
+    session: serializeSession(runtime.session),
+    memory: buildMemoryPayload(runtime.memoryRecord, user, runtime.latestResult, store),
+    reminders: runtime.reminders,
+    pageContext: runtime.pageContext,
+    pagePolicy: runtime.pagePolicy,
+    provider: "gemini",
   };
 }
 
@@ -1231,25 +1408,8 @@ export async function sendOriginAiMessage(
   if (!trimmed) {
     return { error: "Message is required." };
   }
-
-  const browserSessionId = resolveBrowserSessionId(request, user);
-  const pageContext = await resolvePageContext(store, user, request, input);
-  const pagePolicy = resolvePagePolicy(pageContext);
-  const latestResult = getLatestResult(store, user.id);
-  const reminders = buildReminders(store, user, latestResult);
-  const memoryRecord = getOrCreateProfileMemory(store, user);
-  syncProfileMemory(memoryRecord, user, latestResult, reminders, pageContext);
-  maybeUpdatePinnedFacts(memoryRecord, trimmed);
-  const memoryPayload = buildMemoryPayload(memoryRecord, user, latestResult, store);
-
-  store.originAiReminders = [
-    ...store.originAiReminders.filter((entry) => entry.userId !== user.id),
-    ...reminders,
-  ];
-
-  const session = getOrCreateMentorSession(store, user, browserSessionId);
-  session.lastPathname = pageContext.pathname;
-  session.lastPageKind = pageContext.pageKind;
+  const runtime = await prepareOriginAiRuntime(store, user, request, input);
+  maybeUpdatePinnedFacts(runtime.memoryRecord, trimmed);
 
   const userMessage: StoredChatMessage = {
     id: createId("origin_ai_msg"),
@@ -1257,20 +1417,21 @@ export async function sendOriginAiMessage(
     content: trimmed,
     image: null,
     metadata: {
-      pathname: pageContext.pathname,
-      pageKind: pageContext.pageKind,
+      pathname: runtime.pageContext.pathname,
+      pageKind: runtime.pageContext.pageKind,
+      transport: "text_chat",
     },
     timestamp: nowIso(),
   };
-  session.messages.push(userMessage);
+  runtime.session.messages.push(userMessage);
 
   const assistantTurn = await generateAssistantReply(
     user,
-    session,
-    memoryPayload,
-    reminders,
-    pageContext,
-    pagePolicy,
+    runtime.session,
+    runtime.memoryPayload,
+    runtime.reminders,
+    runtime.pageContext,
+    runtime.pagePolicy,
     trimmed,
   );
 
@@ -1283,25 +1444,26 @@ export async function sendOriginAiMessage(
       source: "origin_ai",
       provider: assistantTurn.provider,
       model: assistantTurn.model,
-      pageKind: pageContext.pageKind,
-      policyMode: pagePolicy.mode,
+      pageKind: runtime.pageContext.pageKind,
+      policyMode: runtime.pagePolicy.mode,
+      transport: "text_chat",
       ...assistantTurn.metadata,
     },
     timestamp: nowIso(),
   };
 
-  session.messages.push(aiMessage);
-  session.updatedAt = nowIso();
+  runtime.session.messages.push(aiMessage);
+  runtime.session.updatedAt = nowIso();
   maybeAwardOriginAiPoints(store, user, aiMessage.id);
 
   return {
     userMessage,
     aiMessage,
-    session: serializeSession(session),
-    memory: buildMemoryPayload(memoryRecord, user, latestResult, store),
-    reminders,
-    pageContext,
-    pagePolicy,
+    session: serializeSession(runtime.session),
+    memory: buildMemoryPayload(runtime.memoryRecord, user, runtime.latestResult, store),
+    reminders: runtime.reminders,
+    pageContext: runtime.pageContext,
+    pagePolicy: runtime.pagePolicy,
     provider: assistantTurn.provider,
   };
 }

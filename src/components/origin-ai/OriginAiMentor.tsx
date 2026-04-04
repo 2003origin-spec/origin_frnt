@@ -3,15 +3,16 @@
 import React from 'react';
 import { usePathname } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Loader2, Send, TriangleAlert } from 'lucide-react';
+import { Loader2, Mic, Send, Square, TriangleAlert } from 'lucide-react';
 
 import {
   getOriginAiSession,
   sendOriginAiMessage,
 } from '@/features/origin-ai/client';
 import { useOriginAiPageContext } from '@/features/origin-ai/page-context-store';
+import { startOriginAiVoiceMode, type OriginAiVoiceController } from '@/features/origin-ai/voice-client';
 import { cn } from '@/lib/utils';
-import type { OriginAiSnapshot } from '@/types';
+import type { OriginAiSnapshot, OriginAiVoiceStatus } from '@/types';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from 'sonner';
@@ -129,14 +130,37 @@ function MessageList({ snapshot }: { snapshot: OriginAiSnapshot }) {
   );
 }
 
+function describeVoiceStatus(status: OriginAiVoiceStatus): string {
+  switch (status) {
+    case 'bootstrapping':
+      return 'Preparing your voice session...';
+    case 'connecting':
+      return 'Connecting to Origin AI voice...';
+    case 'listening':
+      return 'Listening. Speak naturally.';
+    case 'thinking':
+      return 'Thinking through the reply...';
+    case 'speaking':
+      return 'Speaking the reply back to you.';
+    case 'error':
+      return 'Voice mode hit a snag.';
+    default:
+      return '';
+  }
+}
+
 export default function OriginAiMentor({ compact = false, onClose }: OriginAiMentorProps) {
   const pathname = usePathname();
   const [snapshot, setSnapshot] = React.useState<OriginAiSnapshot | null>(null);
   const [message, setMessage] = React.useState('');
   const [isLoading, setIsLoading] = React.useState(true);
   const [isSending, setIsSending] = React.useState(false);
+  const [voiceStatus, setVoiceStatus] = React.useState<OriginAiVoiceStatus>('idle');
+  const [liveUserTranscript, setLiveUserTranscript] = React.useState('');
+  const [liveAssistantTranscript, setLiveAssistantTranscript] = React.useState('');
   const scrollAnchorRef = React.useRef<HTMLDivElement | null>(null);
   const compactScrollRef = React.useRef<HTMLDivElement | null>(null);
+  const voiceControllerRef = React.useRef<OriginAiVoiceController | null>(null);
 
   const pageContext = useOriginAiPageContext(pathname || '/dashboard');
 
@@ -169,6 +193,25 @@ export default function OriginAiMentor({ compact = false, onClose }: OriginAiMen
     compactScrollRef.current.scrollTop = compactScrollRef.current.scrollHeight;
   }, [compact, snapshot, isSending]);
 
+  React.useEffect(() => {
+    return () => {
+      void voiceControllerRef.current?.stop();
+      voiceControllerRef.current = null;
+    };
+  }, []);
+
+  React.useEffect(() => {
+    if (!voiceControllerRef.current) {
+      return;
+    }
+
+    void voiceControllerRef.current.stop();
+    voiceControllerRef.current = null;
+    setVoiceStatus('idle');
+    setLiveUserTranscript('');
+    setLiveAssistantTranscript('');
+  }, [pageContext.pathname, pageContext.pageKind]);
+
   const handleSend = async () => {
     const trimmed = message.trim();
     if (!trimmed) {
@@ -189,6 +232,52 @@ export default function OriginAiMentor({ compact = false, onClose }: OriginAiMen
       setIsSending(false);
     }
   };
+
+  const handleToggleVoice = async () => {
+    if (voiceControllerRef.current) {
+      await voiceControllerRef.current.stop();
+      voiceControllerRef.current = null;
+      setVoiceStatus('idle');
+      setLiveUserTranscript('');
+      setLiveAssistantTranscript('');
+      return;
+    }
+
+    try {
+      const controller = await startOriginAiVoiceMode(pageContext, {
+        onStatusChange: (status) => {
+          setVoiceStatus(status);
+          if (status === 'idle') {
+            setLiveUserTranscript('');
+            setLiveAssistantTranscript('');
+          }
+        },
+        onUserTranscript: (text) => {
+          setLiveUserTranscript(text);
+        },
+        onAssistantTranscript: (text) => {
+          setLiveAssistantTranscript(text);
+        },
+        onReplyCommitted: (reply) => {
+          setSnapshot(reply);
+          setLiveUserTranscript('');
+          setLiveAssistantTranscript('');
+        },
+        onError: (errorMessage) => {
+          toast.error(errorMessage);
+          setVoiceStatus('error');
+        },
+      });
+
+      voiceControllerRef.current = controller;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Origin AI voice mode could not start.');
+      setVoiceStatus('error');
+    }
+  };
+
+  const isVoiceActive = voiceStatus !== 'idle';
+  const voiceStatusText = describeVoiceStatus(voiceStatus);
 
   const shellClassName = compact
     ? 'flex h-full flex-col overflow-hidden rounded-[28px] border border-white/10 bg-[#07111f] text-white shadow-2xl'
@@ -274,6 +363,22 @@ export default function OriginAiMentor({ compact = false, onClose }: OriginAiMen
         </div>
 
         <div className="shrink-0 border-t border-white/10 bg-[#07111f] px-3 py-3">
+          {isVoiceActive ? (
+            <div className="mb-3 rounded-2xl border border-blue-400/20 bg-blue-500/10 px-3 py-2.5 text-xs text-slate-200">
+              <div className="flex items-center justify-between gap-3">
+                <div className="font-medium text-blue-100">{voiceStatusText}</div>
+                <span className="rounded-full bg-white/10 px-2 py-1 text-[10px] uppercase tracking-[0.2em] text-blue-100">
+                  {voiceStatus.replace(/_/g, ' ')}
+                </span>
+              </div>
+              {liveUserTranscript ? (
+                <p className="mt-2 line-clamp-2 text-slate-300">You: {liveUserTranscript}</p>
+              ) : null}
+              {liveAssistantTranscript ? (
+                <p className="mt-1 line-clamp-2 text-slate-400">Origin AI: {liveAssistantTranscript}</p>
+              ) : null}
+            </div>
+          ) : null}
           <div className="flex min-w-0 items-end gap-2">
             <textarea
               value={message}
@@ -294,6 +399,24 @@ export default function OriginAiMentor({ compact = false, onClose }: OriginAiMen
               }
               className="no-scrollbar min-w-0 flex-1 resize-none rounded-3xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm leading-6 text-white outline-none transition focus:border-blue-400/40 focus:bg-white/[0.05]"
             />
+            <Button
+              type="button"
+              onClick={() => void handleToggleVoice()}
+              className={cn(
+                'h-12 w-12 shrink-0 rounded-3xl px-0 py-0 text-white',
+                isVoiceActive
+                  ? 'border border-rose-400/40 bg-rose-500/20 hover:bg-rose-500/30'
+                  : 'border border-white/10 bg-white/[0.03] hover:bg-white/10',
+              )}
+            >
+              {voiceStatus === 'bootstrapping' || voiceStatus === 'connecting' ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : isVoiceActive ? (
+                <Square className="h-4 w-4" />
+              ) : (
+                <Mic className="h-4 w-4" />
+              )}
+            </Button>
             <Button
               type="button"
               onClick={() => void handleSend()}
@@ -443,6 +566,22 @@ export default function OriginAiMentor({ compact = false, onClose }: OriginAiMen
           )}
 
           <div className={cn('border-t border-white/10', compact ? 'px-3 py-3' : 'px-5 py-4')}>
+            {isVoiceActive ? (
+              <div className="mb-3 rounded-2xl border border-blue-400/20 bg-blue-500/10 px-3 py-2.5 text-xs text-slate-200">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="font-medium text-blue-100">{voiceStatusText}</div>
+                  <span className="rounded-full bg-white/10 px-2 py-1 text-[10px] uppercase tracking-[0.2em] text-blue-100">
+                    {voiceStatus.replace(/_/g, ' ')}
+                  </span>
+                </div>
+                {liveUserTranscript ? (
+                  <p className="mt-2 line-clamp-2 text-slate-300">You: {liveUserTranscript}</p>
+                ) : null}
+                {liveAssistantTranscript ? (
+                  <p className="mt-1 line-clamp-2 text-slate-400">Origin AI: {liveAssistantTranscript}</p>
+                ) : null}
+              </div>
+            ) : null}
             <div className={cn('flex items-end', compact ? 'gap-2' : 'gap-3')}>
               <textarea
                 value={message}
@@ -468,6 +607,25 @@ export default function OriginAiMentor({ compact = false, onClose }: OriginAiMen
               />
               <Button
                 type="button"
+                onClick={() => void handleToggleVoice()}
+                className={cn(
+                  'rounded-3xl text-white',
+                  isVoiceActive
+                    ? 'border border-rose-400/40 bg-rose-500/20 hover:bg-rose-500/30'
+                    : 'border border-white/10 bg-white/[0.03] hover:bg-white/10',
+                  compact ? 'h-12 w-12 shrink-0 px-0 py-0' : 'h-auto px-4 py-3',
+                )}
+              >
+                {voiceStatus === 'bootstrapping' || voiceStatus === 'connecting' ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : isVoiceActive ? (
+                  <Square className="h-4 w-4" />
+                ) : (
+                  <Mic className="h-4 w-4" />
+                )}
+              </Button>
+              <Button
+                type="button"
                 onClick={() => void handleSend()}
                 disabled={isSending || !message.trim()}
                 className={cn(
@@ -481,7 +639,7 @@ export default function OriginAiMentor({ compact = false, onClose }: OriginAiMen
             {compact ? null : (
               <div className="mt-3 flex items-center justify-between gap-3">
                 <p className="text-xs text-slate-500">
-                  Origin AI knows your recent performance, pending DPPs, and the page you are on.
+                  Origin AI knows your recent performance, pending DPPs, the page you are on, and now supports beta voice mode.
                 </p>
               </div>
             )}

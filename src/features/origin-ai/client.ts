@@ -7,6 +7,7 @@ import type {
   OriginAiReply,
   OriginAiSession,
   OriginAiSnapshot,
+  OriginAiVoiceBootstrap,
   OriginAiVisibleQuestion,
 } from '@/types';
 
@@ -34,6 +35,11 @@ type RawReply = Omit<OriginAiReply, 'session' | 'reminders' | 'userMessage' | 'a
   reminders: RawReminder[];
   userMessage: RawMessage;
   aiMessage: RawMessage;
+};
+
+type RawVoiceBootstrap = Omit<OriginAiVoiceBootstrap, 'session' | 'reminders'> & {
+  session: RawSession;
+  reminders: RawReminder[];
 };
 
 export interface OriginAiClientPageContext {
@@ -79,6 +85,12 @@ const normalizeReply = (reply: RawReply): OriginAiReply => ({
   reminders: reply.reminders.map(normalizeReminder),
   userMessage: normalizeMessage(reply.userMessage),
   aiMessage: normalizeMessage(reply.aiMessage),
+});
+
+const normalizeVoiceBootstrap = (bootstrap: RawVoiceBootstrap): OriginAiVoiceBootstrap => ({
+  ...bootstrap,
+  session: normalizeSession(bootstrap.session),
+  reminders: bootstrap.reminders.map(normalizeReminder),
 });
 
 function buildQuery(pageContext?: OriginAiClientPageContext): string {
@@ -168,6 +180,52 @@ export async function sendOriginAiMessage(
     body: JSON.stringify({
       message,
       pageContext,
+    }),
+  });
+
+  return normalizeReply(data as RawReply);
+}
+
+export async function getOriginAiVoiceBootstrap(
+  pageContext?: OriginAiClientPageContext,
+): Promise<OriginAiVoiceBootstrap> {
+  const data = await apiCall('/origin-ai/voice/bootstrap', {
+    method: 'POST',
+    headers: {
+      'X-Origin-AI-Session-Id': getOriginAiBrowserSessionId(),
+    },
+    body: JSON.stringify({
+      pageContext,
+    }),
+  });
+
+  return normalizeVoiceBootstrap(data as RawVoiceBootstrap);
+}
+
+export async function persistOriginAiVoiceTurn(
+  userTranscript: string,
+  assistantTranscript: string,
+  pageContext?: OriginAiClientPageContext,
+  liveMetadata?: {
+    liveSessionId?: string | null;
+    responseId?: string | null;
+    model?: string | null;
+    transport?: 'gemini_live';
+  },
+): Promise<OriginAiReply> {
+  const data = await apiCall('/origin-ai/voice/turn', {
+    method: 'POST',
+    headers: {
+      'X-Origin-AI-Session-Id': getOriginAiBrowserSessionId(),
+    },
+    body: JSON.stringify({
+      userTranscript,
+      assistantTranscript,
+      pageContext,
+      liveSessionId: liveMetadata?.liveSessionId ?? null,
+      responseId: liveMetadata?.responseId ?? null,
+      model: liveMetadata?.model ?? null,
+      transport: liveMetadata?.transport ?? 'gemini_live',
     }),
   });
 

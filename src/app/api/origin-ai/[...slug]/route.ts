@@ -3,7 +3,9 @@ import { z } from "zod";
 
 import { requireUserFromRequest } from "@/server/auth";
 import {
+  commitOriginAiVoiceTurn,
   getOriginAiSnapshot,
+  getOriginAiVoiceBootstrap,
   sendOriginAiMessage,
   type OriginAiPageContextInput,
 } from "@/server/origin-ai";
@@ -56,6 +58,20 @@ const pageContextSchema = z.object({
 
 const messageBodySchema = z.object({
   message: z.string().trim().min(1),
+  pageContext: pageContextSchema.optional(),
+});
+
+const voiceBootstrapBodySchema = z.object({
+  pageContext: pageContextSchema.optional(),
+});
+
+const voiceTurnBodySchema = z.object({
+  userTranscript: z.string().trim().min(1),
+  assistantTranscript: z.string().trim().min(1),
+  liveSessionId: z.string().trim().nullable().optional(),
+  responseId: z.string().trim().nullable().optional(),
+  model: z.string().trim().nullable().optional(),
+  transport: z.literal("gemini_live").optional(),
   pageContext: pageContextSchema.optional(),
 });
 
@@ -119,47 +135,130 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
 export async function POST(request: NextRequest, context: RouteContext) {
   const slug = await resolveSlug(context);
-  if (slug.length !== 2 || slug[0] !== "session" || slug[1] !== "message") {
-    return notFound();
-  }
 
   try {
     const body = await parseJsonBody(request);
-    const parsedBody = messageBodySchema.safeParse(body);
-    if (!parsedBody.success) {
-      return badRequest("Message is required.");
-    }
-
-    const result = await withStoreAsync(async (store) => {
-      const user = requireUserFromRequest(store, request);
-      if (!user) {
-        return { status: "unauthorized" as const };
+    if (slug.length === 2 && slug[0] === "session" && slug[1] === "message") {
+      const parsedBody = messageBodySchema.safeParse(body);
+      if (!parsedBody.success) {
+        return badRequest("Message is required.");
       }
 
-      const reply = await sendOriginAiMessage(
-        store,
-        user,
-        request,
-        parsedBody.data.message,
-        toPageContext(parsedBody.data.pageContext),
-      );
+      const result = await withStoreAsync(async (store) => {
+        const user = requireUserFromRequest(store, request);
+        if (!user) {
+          return { status: "unauthorized" as const };
+        }
 
-      if ("error" in reply) {
-        return { status: "error" as const, error: reply.error };
+        const reply = await sendOriginAiMessage(
+          store,
+          user,
+          request,
+          parsedBody.data.message,
+          toPageContext(parsedBody.data.pageContext),
+        );
+
+        if ("error" in reply) {
+          return { status: "error" as const, error: reply.error };
+        }
+
+        return { status: "created" as const, reply };
+      });
+
+      if (result.status === "unauthorized") {
+        return unauthorized();
       }
 
-      return { status: "created" as const, reply };
-    });
+      if (result.status === "error") {
+        return badRequest(result.error, { error: result.error });
+      }
 
-    if (result.status === "unauthorized") {
-      return unauthorized();
+      return created(result.reply);
     }
 
-    if (result.status === "error") {
-      return badRequest(result.error, { error: result.error });
+    if (slug.length === 2 && slug[0] === "voice" && slug[1] === "bootstrap") {
+      const parsedBody = voiceBootstrapBodySchema.safeParse(body);
+      if (!parsedBody.success) {
+        return badRequest("Invalid voice bootstrap payload.");
+      }
+
+      const result = await withStoreAsync(async (store) => {
+        const user = requireUserFromRequest(store, request);
+        if (!user) {
+          return { status: "unauthorized" as const };
+        }
+
+        const bootstrap = await getOriginAiVoiceBootstrap(
+          store,
+          user,
+          request,
+          toPageContext(parsedBody.data.pageContext),
+        );
+
+        if ("error" in bootstrap) {
+          return { status: "error" as const, error: bootstrap.error };
+        }
+
+        return { status: "ok" as const, bootstrap };
+      });
+
+      if (result.status === "unauthorized") {
+        return unauthorized();
+      }
+
+      if (result.status === "error") {
+        return badRequest(result.error, { error: result.error });
+      }
+
+      return ok(result.bootstrap);
     }
 
-    return created(result.reply);
+    if (slug.length === 2 && slug[0] === "voice" && slug[1] === "turn") {
+      const parsedBody = voiceTurnBodySchema.safeParse(body);
+      if (!parsedBody.success) {
+        return badRequest("Voice transcripts are required.");
+      }
+
+      const result = await withStoreAsync(async (store) => {
+        const user = requireUserFromRequest(store, request);
+        if (!user) {
+          return { status: "unauthorized" as const };
+        }
+
+        const reply = await commitOriginAiVoiceTurn(
+          store,
+          user,
+          request,
+          {
+            userTranscript: parsedBody.data.userTranscript,
+            assistantTranscript: parsedBody.data.assistantTranscript,
+            liveSessionId: parsedBody.data.liveSessionId ?? null,
+            responseId: parsedBody.data.responseId ?? null,
+            model: parsedBody.data.model ?? null,
+            transport: parsedBody.data.transport ?? "gemini_live",
+          },
+          toPageContext(parsedBody.data.pageContext),
+        );
+
+        if ("error" in reply) {
+          return { status: "error" as const, error: reply.error };
+        }
+
+        return { status: "created" as const, reply };
+      });
+
+      if (result.status === "unauthorized") {
+        return unauthorized();
+      }
+
+      if (result.status === "error") {
+        return badRequest(result.error, { error: result.error });
+      }
+
+      return created(result.reply);
+    }
+
+    return notFound();
   } catch {
     return badRequest("Invalid JSON payload.");
   }

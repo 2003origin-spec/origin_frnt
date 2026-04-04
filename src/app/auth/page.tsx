@@ -17,7 +17,13 @@ function AuthPageContent() {
 
   return (
     <AuthPage
-      userRole={user ? user.role : selectedRole ?? userRole}
+      userRole={
+        user
+          ? user.role === 'student' || user.role === 'teacher'
+            ? user.role
+            : null
+          : selectedRole ?? userRole
+      }
       onLogin={login}
       onBack={() => router.back()}
       isLoading={isLoading}
