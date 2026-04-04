@@ -425,6 +425,7 @@ export interface OriginAiVoiceConversationTurn {
 export interface OriginAiVoiceConfig {
   transport: 'gemini_live';
   provider: 'gemini';
+  authMode: 'ephemeral_token' | 'api_key';
   token: string;
   model: string;
   apiVersion: 'v1alpha';
@@ -440,6 +441,7 @@ export interface OriginAiVoiceConfig {
 
 export interface OriginAiVoiceBootstrap extends OriginAiSnapshot {
   browserSessionId: string;
+  contextSeed: string;
   conversationSeed: OriginAiVoiceConversationTurn[];
   voice: OriginAiVoiceConfig;
 }

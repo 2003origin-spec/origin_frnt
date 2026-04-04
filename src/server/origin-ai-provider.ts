@@ -22,6 +22,7 @@ export interface OriginAiLiveBootstrapResponse {
   token: string;
   provider: "gemini";
   transport: "gemini_live";
+  authMode: "ephemeral_token" | "api_key";
   model: string;
   apiVersion: "v1alpha";
   responseModalities: string[];
@@ -36,7 +37,14 @@ export interface OriginAiLiveBootstrapResponse {
 
 const GEMINI_LIVE_API_VERSION = "v1alpha" as const;
 const DEFAULT_GEMINI_LIVE_MODEL = "gemini-2.5-flash-native-audio-preview-12-2025";
-const DEFAULT_GEMINI_LIVE_VOICE = "Kore";
+const DEFAULT_GEMINI_LIVE_VOICE = "Charon";
+
+function isTruthyEnv(value: string | undefined): boolean {
+  if (!value) {
+    return false;
+  }
+  return ["1", "true", "yes", "on"].includes(value.trim().toLowerCase());
+}
 
 function extractText(value: unknown): string {
   if (!value || typeof value !== "object") {
@@ -188,10 +196,10 @@ export async function generateOriginAiProviderReply(
 
 export async function createOriginAiLiveBootstrap(
   payload: OriginAiLiveBootstrapRequest,
-): Promise<OriginAiLiveBootstrapResponse | null> {
+): Promise<OriginAiLiveBootstrapResponse> {
   const apiKey = process.env.GEMINI_API_KEY?.trim();
   if (!apiKey) {
-    return null;
+    throw new Error("Gemini API key is missing for voice mode.");
   }
 
   const model = process.env.GEMINI_LIVE_MODEL?.trim() || DEFAULT_GEMINI_LIVE_MODEL;
@@ -210,6 +218,9 @@ export async function createOriginAiLiveBootstrap(
         uses: 1,
         expireTime: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
         newSessionExpireTime: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+        httpOptions: {
+          apiVersion: GEMINI_LIVE_API_VERSION,
+        },
         liveConnectConstraints: {
           model,
           config: {
@@ -248,13 +259,14 @@ export async function createOriginAiLiveBootstrap(
     });
 
     if (!token.name?.trim()) {
-      return null;
+      throw new Error("Gemini did not return a valid ephemeral voice token.");
     }
 
     return {
       token: token.name,
       provider: "gemini",
       transport: "gemini_live",
+      authMode: "ephemeral_token",
       model,
       apiVersion: GEMINI_LIVE_API_VERSION,
       responseModalities: [Modality.AUDIO],
@@ -266,7 +278,31 @@ export async function createOriginAiLiveBootstrap(
       temperature,
       maxOutputTokens,
     };
-  } catch {
-    return null;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown Gemini Live bootstrap failure.";
+    const allowApiKeyFallback =
+      isTruthyEnv(process.env.ORIGIN_AI_VOICE_ALLOW_DIRECT_API_KEY_FALLBACK) ||
+      process.env.NODE_ENV !== "production";
+
+    if (allowApiKeyFallback) {
+      return {
+        token: apiKey,
+        provider: "gemini",
+        transport: "gemini_live",
+        authMode: "api_key",
+        model,
+        apiVersion: GEMINI_LIVE_API_VERSION,
+        responseModalities: [Modality.AUDIO],
+        voiceName,
+        inputAudioTranscription: true,
+        outputAudioTranscription: true,
+        sessionResumption: true,
+        interruptionBehavior: "START_OF_ACTIVITY_INTERRUPTS",
+        temperature,
+        maxOutputTokens,
+      };
+    }
+
+    throw new Error(`Gemini Live bootstrap failed: ${message}`);
   }
 }

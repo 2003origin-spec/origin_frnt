@@ -134,6 +134,7 @@ export interface OriginAiVoiceConversationSeedTurn {
 
 export interface OriginAiVoiceBootstrapPayload extends OriginAiSnapshotPayload {
   browserSessionId: string;
+  contextSeed: string;
   conversationSeed: OriginAiVoiceConversationSeedTurn[];
   voice: OriginAiLiveBootstrapResponse;
 }
@@ -549,6 +550,58 @@ function buildConversationSeed(session: StoredOriginAiSession): OriginAiVoiceCon
       role: message.role,
       content: message.content.trim(),
     }));
+}
+
+function buildVoiceContextSeed(
+  memory: OriginAiMemoryPayload,
+  reminders: StoredOriginAiReminder[],
+  pageContext: OriginAiResolvedPageContext,
+  pagePolicy: OriginAiPolicy,
+): string {
+  const visibleQuestions = pageContext.visibleQuestions
+    .slice(0, 12)
+    .map(
+      (question) =>
+        `#${question.number}: ${question.title} | ${question.subject ?? "Unknown subject"} | ${question.chapter ?? "Unknown chapter"} | ${question.concept ?? "Unknown concept"} | ${question.difficulty ?? "unknown"} | solved=${question.isSolved ? "yes" : "no"}`,
+    )
+    .join("\n");
+
+  const reminderSummary = reminders
+    .slice(0, 4)
+    .map((reminder) => `- ${reminder.title}: ${reminder.message}`)
+    .join("\n");
+
+  return [
+    "APP_CONTEXT_UPDATE",
+    "This is live app context, not a student utterance.",
+    "Use it as the current screen state for voice mode.",
+    `Student: ${memory.preferredName}`,
+    `Page kind: ${pageContext.pageKind}`,
+    `Pathname: ${pageContext.pathname}`,
+    `Policy mode: ${pagePolicy.mode}`,
+    `Policy reason: ${pagePolicy.reason}`,
+    pageContext.title ? `Current title/question: ${pageContext.title}` : null,
+    pageContext.subject ? `Subject: ${pageContext.subject}` : null,
+    pageContext.chapter ? `Chapter: ${pageContext.chapter}` : null,
+    pageContext.concept ? `Concept: ${pageContext.concept}` : null,
+    pageContext.searchQuery ? `Search query: ${pageContext.searchQuery}` : null,
+    pageContext.activeSubject ? `Active subject filter: ${pageContext.activeSubject}` : null,
+    pageContext.activeDifficulty ? `Active difficulty filter: ${pageContext.activeDifficulty}` : null,
+    pageContext.activeStatus ? `Active status filter: ${pageContext.activeStatus}` : null,
+    pageContext.selectedChapters.length > 0
+      ? `Selected chapters: ${pageContext.selectedChapters.join(", ")}`
+      : null,
+    pageContext.totalVisibleQuestions !== null
+      ? `Visible question count: ${pageContext.totalVisibleQuestions}`
+      : null,
+    visibleQuestions ? `Visible questions:\n${visibleQuestions}` : null,
+    memory.lastWeakTopics.length > 0 ? `Weak topics: ${memory.lastWeakTopics.join(", ")}` : null,
+    reminderSummary ? `Live reminders:\n${reminderSummary}` : null,
+    "If the student asks for a question recommendation, use the visible numbered questions above when available.",
+    "Do not claim you cannot see the current page if the context above contains the needed screen state.",
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 function buildWelcomeMessage(
@@ -1282,28 +1335,30 @@ export async function getOriginAiVoiceBootstrap(
   input?: OriginAiPageContextInput | null,
 ): Promise<OriginAiVoiceBootstrapPayload | { error: string }> {
   const runtime = await prepareOriginAiRuntime(store, user, request, input);
-  const voice = await createOriginAiLiveBootstrap({
-    systemInstruction: [
-      buildSystemInstruction(
-        user,
-        runtime.memoryPayload,
-        runtime.reminders,
-        runtime.pageContext,
-        runtime.pagePolicy,
-      ),
-      "## Voice Mode Addendum",
-      "- You are speaking, not writing.",
-      "- Keep replies concise by default: 1 to 3 short spoken sentences unless the student asks for depth.",
-      "- Sound like a warm, sharp mentor, not a narrator reading lecture notes.",
-      "- If page policy is hint_only or answer_blocked, obey it in voice exactly as in text.",
-      "- If the student interrupts you mid-explanation, stop cleanly, answer the interruption first, then ask whether they want to continue the previous thread.",
-      "- Voice replies should feel conversational and interactive, not like a paragraph being read aloud.",
-    ].join("\n"),
-    requestId: createId("origin_ai_voice"),
-  });
-
-  if (!voice) {
-    return { error: "Origin AI voice mode is not configured yet." };
+  let voice: OriginAiLiveBootstrapResponse;
+  try {
+    voice = await createOriginAiLiveBootstrap({
+      systemInstruction: [
+        buildSystemInstruction(
+          user,
+          runtime.memoryPayload,
+          runtime.reminders,
+          runtime.pageContext,
+          runtime.pagePolicy,
+        ),
+        "## Voice Mode Addendum",
+        "- You are speaking, not writing.",
+        "- Keep replies concise by default: 1 to 3 short spoken sentences unless the student asks for depth.",
+        "- Sound like a warm, sharp mentor, not a narrator reading lecture notes.",
+        "- If page policy is hint_only or answer_blocked, obey it in voice exactly as in text.",
+        "- If the student interrupts you mid-explanation, stop cleanly, answer the interruption first, then ask whether they want to continue the previous thread.",
+        "- Voice replies should feel conversational and interactive, not like a paragraph being read aloud.",
+      ].join("\n"),
+      requestId: createId("origin_ai_voice"),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Origin AI voice mode is not configured yet.";
+    return { error: message };
   }
 
   return {
@@ -1314,6 +1369,12 @@ export async function getOriginAiVoiceBootstrap(
     pagePolicy: runtime.pagePolicy,
     provider: "voice_bootstrap",
     browserSessionId: runtime.browserSessionId,
+    contextSeed: buildVoiceContextSeed(
+      runtime.memoryPayload,
+      runtime.reminders,
+      runtime.pageContext,
+      runtime.pagePolicy,
+    ),
     conversationSeed: buildConversationSeed(runtime.session),
     voice,
   };
