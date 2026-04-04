@@ -382,29 +382,35 @@ export async function startOriginAiVoiceMode(
 
   emitStatus(callbacks, 'connecting');
 
-  const liveSession = (await ai.live.connect({
-    model: bootstrap.voice.model,
-    config: {
-      responseModalities: bootstrap.voice.responseModalities as never,
-      speechConfig: {
-        voiceConfig: {
-          prebuiltVoiceConfig: {
-            voiceName: bootstrap.voice.voiceName,
-          },
+  const liveConfig: Record<string, unknown> = {
+    responseModalities: bootstrap.voice.responseModalities as never,
+    speechConfig: {
+      voiceConfig: {
+        prebuiltVoiceConfig: {
+          voiceName: bootstrap.voice.voiceName,
         },
       },
-      realtimeInputConfig: {
-        activityHandling:
-          bootstrap.voice.interruptionBehavior === 'NO_INTERRUPTION'
-            ? ActivityHandling.NO_INTERRUPTION
-            : ActivityHandling.START_OF_ACTIVITY_INTERRUPTS,
-      },
-      inputAudioTranscription: bootstrap.voice.inputAudioTranscription ? {} : undefined,
-      outputAudioTranscription: bootstrap.voice.outputAudioTranscription ? {} : undefined,
-      sessionResumption: bootstrap.voice.sessionResumption ? {} : undefined,
-      temperature: bootstrap.voice.temperature,
-      maxOutputTokens: bootstrap.voice.maxOutputTokens,
     },
+    realtimeInputConfig: {
+      activityHandling:
+        bootstrap.voice.interruptionBehavior === 'NO_INTERRUPTION'
+          ? ActivityHandling.NO_INTERRUPTION
+          : ActivityHandling.START_OF_ACTIVITY_INTERRUPTS,
+    },
+    inputAudioTranscription: bootstrap.voice.inputAudioTranscription ? {} : undefined,
+    outputAudioTranscription: bootstrap.voice.outputAudioTranscription ? {} : undefined,
+    sessionResumption: bootstrap.voice.sessionResumption ? {} : undefined,
+    temperature: bootstrap.voice.temperature,
+    maxOutputTokens: bootstrap.voice.maxOutputTokens,
+  };
+
+  if (bootstrap.voice.authMode === 'api_key' && bootstrap.liveSystemInstruction?.trim()) {
+    liveConfig.systemInstruction = bootstrap.liveSystemInstruction.trim();
+  }
+
+  const liveSession = (await ai.live.connect({
+    model: bootstrap.voice.model,
+    config: liveConfig,
     callbacks: {
       onopen: () => {
         emitStatus(callbacks, 'listening');

@@ -441,6 +441,7 @@ export interface OriginAiVoiceConfig {
 
 export interface OriginAiVoiceBootstrap extends OriginAiSnapshot {
   browserSessionId: string;
+  liveSystemInstruction?: string | null;
   contextSeed: string;
   conversationSeed: OriginAiVoiceConversationTurn[];
   voice: OriginAiVoiceConfig;

@@ -134,6 +134,7 @@ export interface OriginAiVoiceConversationSeedTurn {
 
 export interface OriginAiVoiceBootstrapPayload extends OriginAiSnapshotPayload {
   browserSessionId: string;
+  liveSystemInstruction?: string | null;
   contextSeed: string;
   conversationSeed: OriginAiVoiceConversationSeedTurn[];
   voice: OriginAiLiveBootstrapResponse;
@@ -599,6 +600,7 @@ function buildVoiceContextSeed(
     reminderSummary ? `Live reminders:\n${reminderSummary}` : null,
     "If the student asks for a question recommendation, use the visible numbered questions above when available.",
     "Do not claim you cannot see the current page if the context above contains the needed screen state.",
+    "If a current question/title/chapter/concept is present above, treat that as the screen currently in front of the student.",
   ]
     .filter(Boolean)
     .join("\n");
@@ -1335,29 +1337,33 @@ export async function getOriginAiVoiceBootstrap(
   input?: OriginAiPageContextInput | null,
 ): Promise<OriginAiVoiceBootstrapPayload | { error: string }> {
   const runtime = await prepareOriginAiRuntime(store, user, request, input);
+  const voiceSystemInstruction = [
+    buildSystemInstruction(
+      user,
+      runtime.memoryPayload,
+      runtime.reminders,
+      runtime.pageContext,
+      runtime.pagePolicy,
+    ),
+    "## Voice Mode Addendum",
+    "- You are speaking, not writing.",
+    "- Keep replies concise by default: 1 to 3 short spoken sentences unless the student asks for depth.",
+    "- Sound like a warm, sharp mentor, not a narrator reading lecture notes.",
+    "- Support both English and Hinglish in voice mode.",
+    "- If the student speaks in Hinglish, reply in natural Hinglish using Roman script only.",
+    "- Never use Devanagari or any other Indic script in voice transcripts.",
+    "- If the student speaks in English, reply in English unless they ask you to switch.",
+    "- Do not force Hinglish into every reply; mirror the student's language choice naturally.",
+    "- If the current screen context already includes a title, question, chapter, concept, or visible question list, do not say you cannot see the screen.",
+    "- Treat the provided page context as the student's live screen state.",
+    "- If page policy is hint_only or answer_blocked, obey it in voice exactly as in text.",
+    "- If the student interrupts you mid-explanation, stop cleanly, answer the interruption first, then ask whether they want to continue the previous thread.",
+    "- Voice replies should feel conversational and interactive, not like a paragraph being read aloud.",
+  ].join("\n");
   let voice: OriginAiLiveBootstrapResponse;
   try {
     voice = await createOriginAiLiveBootstrap({
-      systemInstruction: [
-        buildSystemInstruction(
-          user,
-          runtime.memoryPayload,
-          runtime.reminders,
-          runtime.pageContext,
-          runtime.pagePolicy,
-        ),
-      "## Voice Mode Addendum",
-      "- You are speaking, not writing.",
-      "- Keep replies concise by default: 1 to 3 short spoken sentences unless the student asks for depth.",
-      "- Sound like a warm, sharp mentor, not a narrator reading lecture notes.",
-      "- Support both English and Hinglish in voice mode.",
-      "- If the student speaks in Hinglish, reply in natural Hinglish using Roman script, not Devanagari.",
-      "- If the student speaks in English, reply in English unless they ask you to switch.",
-      "- Do not force Hinglish into every reply; mirror the student's language choice naturally.",
-      "- If page policy is hint_only or answer_blocked, obey it in voice exactly as in text.",
-      "- If the student interrupts you mid-explanation, stop cleanly, answer the interruption first, then ask whether they want to continue the previous thread.",
-      "- Voice replies should feel conversational and interactive, not like a paragraph being read aloud.",
-      ].join("\n"),
+      systemInstruction: voiceSystemInstruction,
       requestId: createId("origin_ai_voice"),
     });
   } catch (error) {
@@ -1373,6 +1379,7 @@ export async function getOriginAiVoiceBootstrap(
     pagePolicy: runtime.pagePolicy,
     provider: "voice_bootstrap",
     browserSessionId: runtime.browserSessionId,
+    liveSystemInstruction: voice.authMode === "api_key" ? voiceSystemInstruction : null,
     contextSeed: buildVoiceContextSeed(
       runtime.memoryPayload,
       runtime.reminders,
