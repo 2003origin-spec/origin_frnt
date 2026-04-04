@@ -38,6 +38,7 @@ export interface OriginAiLiveBootstrapResponse {
 const GEMINI_LIVE_API_VERSION = "v1alpha" as const;
 const DEFAULT_GEMINI_LIVE_MODEL = "gemini-2.5-flash-native-audio-preview-12-2025";
 const DEFAULT_GEMINI_LIVE_VOICE = "Charon";
+const DEFAULT_GEMINI_LIVE_LANGUAGE = "en";
 const NON_LATIN_VOICE_SCRIPT_REGEX = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\u0900-\u097F]/u;
 const META_VOICE_TRANSCRIPT_REGEX =
   /(^|[\r\n]+|\*\*)(analyzing the question|addressing the question|clarifying the query|acknowledging interruption|my focus is|my plan is|looks like it involves|i can see that(?: the)? user needs|i(?:'|’)ve understood|i plan to|i will now|i should give|i(?:'|’)ll start by|constraints)\b/i;
@@ -237,6 +238,7 @@ export async function createOriginAiLiveBootstrap(
 
   const model = process.env.GEMINI_LIVE_MODEL?.trim() || DEFAULT_GEMINI_LIVE_MODEL;
   const voiceName = process.env.GEMINI_LIVE_VOICE_NAME?.trim() || DEFAULT_GEMINI_LIVE_VOICE;
+  const languageCode = process.env.GEMINI_LIVE_LANGUAGE_CODE?.trim() || DEFAULT_GEMINI_LIVE_LANGUAGE;
   const temperature = 0.55;
   const maxOutputTokens = 260;
 
@@ -260,6 +262,7 @@ export async function createOriginAiLiveBootstrap(
             systemInstruction: payload.systemInstruction,
             responseModalities: [Modality.AUDIO],
             speechConfig: {
+              languageCode,
               voiceConfig: {
                 prebuiltVoiceConfig: {
                   voiceName,
@@ -267,11 +270,18 @@ export async function createOriginAiLiveBootstrap(
               },
             },
             realtimeInputConfig: {
+              automaticActivityDetection: {
+                disabled: true,
+              },
               activityHandling: ActivityHandling.START_OF_ACTIVITY_INTERRUPTS,
             },
             inputAudioTranscription: {},
             outputAudioTranscription: {},
             sessionResumption: {},
+            thinkingConfig: {
+              includeThoughts: false,
+              thinkingBudget: 0,
+            },
             temperature,
             maxOutputTokens,
           },
@@ -285,6 +295,7 @@ export async function createOriginAiLiveBootstrap(
           "liveConnectConstraints.config.inputAudioTranscription",
           "liveConnectConstraints.config.outputAudioTranscription",
           "liveConnectConstraints.config.sessionResumption",
+          "liveConnectConstraints.config.thinkingConfig",
           "liveConnectConstraints.config.temperature",
           "liveConnectConstraints.config.maxOutputTokens",
         ],

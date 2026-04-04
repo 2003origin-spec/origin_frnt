@@ -497,6 +497,7 @@ export async function startOriginAiVoiceMode(
   const liveConfig: Record<string, unknown> = {
     responseModalities: bootstrap.voice.responseModalities as never,
     speechConfig: {
+      languageCode: 'en',
       voiceConfig: {
         prebuiltVoiceConfig: {
           voiceName: bootstrap.voice.voiceName,
@@ -515,6 +516,10 @@ export async function startOriginAiVoiceMode(
     inputAudioTranscription: bootstrap.voice.inputAudioTranscription ? {} : undefined,
     outputAudioTranscription: bootstrap.voice.outputAudioTranscription ? {} : undefined,
     sessionResumption: bootstrap.voice.sessionResumption ? {} : undefined,
+    thinkingConfig: {
+      includeThoughts: false,
+      thinkingBudget: 0,
+    },
     temperature: bootstrap.voice.temperature,
     maxOutputTokens: bootstrap.voice.maxOutputTokens,
   };
