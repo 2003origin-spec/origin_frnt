@@ -76,6 +76,7 @@ const voiceTurnBodySchema = z.object({
   completionReason: z.enum(["turn_complete", "interrupted", "manual_stop", "unknown"]).optional(),
   assistantAudioChunkCount: z.number().int().nonnegative().optional(),
   assistantTranscriptChunkCount: z.number().int().nonnegative().optional(),
+  assistantTextPartChunkCount: z.number().int().nonnegative().optional(),
   hadOutputTranscript: z.boolean().optional(),
   pageContext: pageContextSchema.optional(),
 });
@@ -245,6 +246,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
             completionReason: parsedBody.data.completionReason ?? "unknown",
             assistantAudioChunkCount: parsedBody.data.assistantAudioChunkCount ?? 0,
             assistantTranscriptChunkCount: parsedBody.data.assistantTranscriptChunkCount ?? 0,
+            assistantTextPartChunkCount: parsedBody.data.assistantTextPartChunkCount ?? 0,
             hadOutputTranscript: parsedBody.data.hadOutputTranscript ?? false,
           },
           toPageContext(parsedBody.data.pageContext),

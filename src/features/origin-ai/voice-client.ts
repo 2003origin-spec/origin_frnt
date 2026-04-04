@@ -67,6 +67,14 @@ export interface OriginAiVoiceController {
 
 type VoiceTurnCompletionReason = 'turn_complete' | 'interrupted' | 'manual_stop' | 'unknown';
 
+interface CompletedVoiceTurnMetrics {
+  completionReason: VoiceTurnCompletionReason;
+  assistantAudioChunkCount: number;
+  assistantTranscriptChunkCount: number;
+  assistantTextPartChunkCount: number;
+  hadOutputTranscript: boolean;
+}
+
 interface MicrophonePipeline {
   stream: MediaStream;
   audioContext: AudioContextLike;
@@ -421,6 +429,7 @@ export async function startOriginAiVoiceMode(
   let assistantPlaybackHoldUntil = 0;
   let assistantAudioChunkCount = 0;
   let assistantTranscriptChunkCount = 0;
+  let assistantTextPartChunkCount = 0;
   let currentTurnCompletionReason: VoiceTurnCompletionReason = 'unknown';
 
   const maybeReturnToListening = () => {
@@ -454,7 +463,7 @@ export async function startOriginAiVoiceMode(
     userTranscript: string,
     assistantTranscript: string,
     interrupted: boolean,
-    completionReason: VoiceTurnCompletionReason,
+    metrics: CompletedVoiceTurnMetrics,
   ) => {
     if (!assistantTranscript.trim()) {
       maybeReturnToListening();
@@ -476,10 +485,11 @@ export async function startOriginAiVoiceMode(
             model: bootstrap.voice.model,
             transport: 'gemini_live',
             interrupted,
-            completionReason,
-            assistantAudioChunkCount,
-            assistantTranscriptChunkCount,
-            hadOutputTranscript: sawOutputTranscriptForTurn,
+            completionReason: metrics.completionReason,
+            assistantAudioChunkCount: metrics.assistantAudioChunkCount,
+            assistantTranscriptChunkCount: metrics.assistantTranscriptChunkCount,
+            assistantTextPartChunkCount: metrics.assistantTextPartChunkCount,
+            hadOutputTranscript: metrics.hadOutputTranscript,
           },
         );
         callbacks.onReplyCommitted?.(reply);
@@ -497,16 +507,20 @@ export async function startOriginAiVoiceMode(
   const flushTurn = (interrupted: boolean) => {
     const userTranscript = userTranscriptBuffer.trim();
     const assistantTranscript = assistantTranscriptBuffer.trim();
-    const completionReason = currentTurnCompletionReason;
-    const hadOutputTranscript = sawOutputTranscriptForTurn;
-    const completedAssistantAudioChunkCount = assistantAudioChunkCount;
-    const completedAssistantTranscriptChunkCount = assistantTranscriptChunkCount;
+    const metrics: CompletedVoiceTurnMetrics = {
+      completionReason: currentTurnCompletionReason,
+      hadOutputTranscript: sawOutputTranscriptForTurn,
+      assistantAudioChunkCount,
+      assistantTranscriptChunkCount,
+      assistantTextPartChunkCount,
+    };
 
     if (!userTranscript && !assistantTranscript) {
       sawOutputTranscriptForTurn = false;
       currentTurnCompletionReason = 'unknown';
       assistantAudioChunkCount = 0;
       assistantTranscriptChunkCount = 0;
+      assistantTextPartChunkCount = 0;
       maybeReturnToListening();
       return;
     }
@@ -518,16 +532,18 @@ export async function startOriginAiVoiceMode(
     currentTurnCompletionReason = 'unknown';
     assistantAudioChunkCount = 0;
     assistantTranscriptChunkCount = 0;
+    assistantTextPartChunkCount = 0;
     console.debug('[Origin AI Voice] commit', {
-      completionReason,
+      completionReason: metrics.completionReason,
       interrupted,
       userChars: userTranscript.length,
       assistantChars: assistantTranscript.length,
-      hadOutputTranscript,
-      assistantAudioChunkCount: completedAssistantAudioChunkCount,
-      assistantTranscriptChunkCount: completedAssistantTranscriptChunkCount,
+      hadOutputTranscript: metrics.hadOutputTranscript,
+      assistantAudioChunkCount: metrics.assistantAudioChunkCount,
+      assistantTranscriptChunkCount: metrics.assistantTranscriptChunkCount,
+      assistantTextPartChunkCount: metrics.assistantTextPartChunkCount,
     });
-    queueTurnCommit(userTranscript, assistantTranscript, interrupted, completionReason);
+    queueTurnCommit(userTranscript, assistantTranscript, interrupted, metrics);
   };
 
   emitStatus(callbacks, 'connecting');
@@ -611,6 +627,7 @@ export async function startOriginAiVoiceMode(
 
           if (part.text?.trim() && !sawOutputTranscriptForTurn) {
             markAssistantSpeaking();
+            assistantTextPartChunkCount += 1;
             assistantTranscriptBuffer = mergeTranscript(assistantTranscriptBuffer, part.text);
             callbacks.onAssistantTranscript?.(assistantTranscriptBuffer);
           }

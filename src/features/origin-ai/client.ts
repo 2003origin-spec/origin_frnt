@@ -215,6 +215,7 @@ export async function persistOriginAiVoiceTurn(
     completionReason?: 'turn_complete' | 'interrupted' | 'manual_stop' | 'unknown';
     assistantAudioChunkCount?: number;
     assistantTranscriptChunkCount?: number;
+    assistantTextPartChunkCount?: number;
     hadOutputTranscript?: boolean;
   },
 ): Promise<OriginAiReply> {
@@ -235,6 +236,7 @@ export async function persistOriginAiVoiceTurn(
       completionReason: liveMetadata?.completionReason ?? 'unknown',
       assistantAudioChunkCount: liveMetadata?.assistantAudioChunkCount ?? 0,
       assistantTranscriptChunkCount: liveMetadata?.assistantTranscriptChunkCount ?? 0,
+      assistantTextPartChunkCount: liveMetadata?.assistantTextPartChunkCount ?? 0,
       hadOutputTranscript: liveMetadata?.hadOutputTranscript ?? false,
     }),
   });

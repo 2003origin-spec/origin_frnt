@@ -1422,6 +1422,7 @@ interface OriginAiVoiceTurnInput {
   completionReason?: "turn_complete" | "interrupted" | "manual_stop" | "unknown";
   assistantAudioChunkCount?: number;
   assistantTranscriptChunkCount?: number;
+  assistantTextPartChunkCount?: number;
   hadOutputTranscript?: boolean;
 }
 
@@ -1473,6 +1474,7 @@ export async function commitOriginAiVoiceTurn(
       completionReason: voiceTurn.completionReason ?? "unknown",
       assistantAudioChunkCount: voiceTurn.assistantAudioChunkCount ?? 0,
       assistantTranscriptChunkCount: voiceTurn.assistantTranscriptChunkCount ?? 0,
+      assistantTextPartChunkCount: voiceTurn.assistantTextPartChunkCount ?? 0,
       hadOutputTranscript: voiceTurn.hadOutputTranscript ?? false,
     },
     timestamp: nowIso(),
@@ -1496,6 +1498,7 @@ export async function commitOriginAiVoiceTurn(
       completionReason: voiceTurn.completionReason ?? "unknown",
       assistantAudioChunkCount: voiceTurn.assistantAudioChunkCount ?? 0,
       assistantTranscriptChunkCount: voiceTurn.assistantTranscriptChunkCount ?? 0,
+      assistantTextPartChunkCount: voiceTurn.assistantTextPartChunkCount ?? 0,
       hadOutputTranscript: voiceTurn.hadOutputTranscript ?? false,
       modality: "voice",
     },
