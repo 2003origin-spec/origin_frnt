@@ -88,11 +88,9 @@ const USER_SPEECH_START_RMS_THRESHOLD_MIN = 0.012;
 const USER_SPEECH_ACTIVE_RMS_THRESHOLD_MIN = 0.007;
 const USER_SPEECH_START_CHUNKS_REQUIRED = 2;
 const USER_SPEECH_END_SILENCE_CHUNKS_REQUIRED = 6;
-const INTERRUPTION_SPEECH_RMS_THRESHOLD_MIN = 0.05;
-const INTERRUPTION_ACTIVE_CHUNKS_REQUIRED = 8;
-const INTERRUPTION_GRACE_PERIOD_MS = 1400;
 const AMBIENT_RMS_INITIAL = 0.003;
 const AMBIENT_RMS_SMOOTHING = 0.08;
+const ASSISTANT_PLAYBACK_GAP_GRACE_MS = 900;
 
 function emitStatus(callbacks: OriginAiVoiceCallbacks, status: OriginAiVoiceStatus): void {
   callbacks.onStatusChange?.(status);
@@ -267,7 +265,6 @@ function createAudioPlayer(callbacks: OriginAiVoiceCallbacks, onIdle: () => void
 async function startMicrophonePipeline(
   liveSession: LiveSessionLike,
   isAssistantSpeaking: () => boolean,
-  canInterruptAssistant: () => boolean,
   onUserTurnEnded: () => void,
 ): Promise<MicrophonePipeline> {
   const stream = await navigator.mediaDevices.getUserMedia({
@@ -307,22 +304,20 @@ async function startMicrophonePipeline(
     const rms = calculateRms(channelData);
     const assistantSpeaking = isAssistantSpeaking();
 
-    if (!userSpeechActive && !assistantSpeaking) {
+    if (assistantSpeaking) {
+      activeSpeechChunks = 0;
+      activeSilenceChunks = 0;
+      pendingSpeechAudioChunks = [];
+      return;
+    }
+
+    if (!userSpeechActive) {
       ambientRms = ambientRms * (1 - AMBIENT_RMS_SMOOTHING) + rms * AMBIENT_RMS_SMOOTHING;
     }
 
     if (!userSpeechActive) {
-      if (assistantSpeaking && !canInterruptAssistant()) {
-        activeSpeechChunks = 0;
-        return;
-      }
-
-      const startThreshold = assistantSpeaking
-        ? Math.max(INTERRUPTION_SPEECH_RMS_THRESHOLD_MIN, ambientRms * 5.5)
-        : Math.max(USER_SPEECH_START_RMS_THRESHOLD_MIN, ambientRms * 3.2);
-      const startChunksRequired = assistantSpeaking
-        ? INTERRUPTION_ACTIVE_CHUNKS_REQUIRED
-        : USER_SPEECH_START_CHUNKS_REQUIRED;
+      const startThreshold = Math.max(USER_SPEECH_START_RMS_THRESHOLD_MIN, ambientRms * 3.2);
+      const startChunksRequired = USER_SPEECH_START_CHUNKS_REQUIRED;
 
       if (rms < startThreshold) {
         activeSpeechChunks = 0;
@@ -421,7 +416,7 @@ export async function startOriginAiVoiceMode(
   let sawOutputTranscriptForTurn = false;
   let pendingCommitCount = 0;
   let microphonePipeline: MicrophonePipeline | null = null;
-  let assistantInterruptionGraceUntil = 0;
+  let assistantPlaybackHoldUntil = 0;
 
   const maybeReturnToListening = () => {
     if (!isActive) {
@@ -436,18 +431,18 @@ export async function startOriginAiVoiceMode(
     if (pendingCommitCount > 0) {
       return;
     }
-    assistantInterruptionGraceUntil = 0;
+    if (Date.now() < assistantPlaybackHoldUntil) {
+      window.setTimeout(maybeReturnToListening, assistantPlaybackHoldUntil - Date.now());
+      return;
+    }
     emitStatus(callbacks, 'listening');
   };
 
   const audioPlayer = createAudioPlayer(callbacks, maybeReturnToListening);
 
   const markAssistantSpeaking = () => {
-    const wasSpeaking = assistantTurnInProgress || audioPlayer.isPlaying();
     assistantTurnInProgress = true;
-    if (!wasSpeaking) {
-      assistantInterruptionGraceUntil = Date.now() + INTERRUPTION_GRACE_PERIOD_MS;
-    }
+    assistantPlaybackHoldUntil = Date.now() + ASSISTANT_PLAYBACK_GAP_GRACE_MS;
   };
 
   const queueTurnCommit = (
@@ -502,7 +497,7 @@ export async function startOriginAiVoiceMode(
     userTranscriptBuffer = '';
     assistantTranscriptBuffer = '';
     sawOutputTranscriptForTurn = false;
-    assistantInterruptionGraceUntil = 0;
+    assistantPlaybackHoldUntil = Date.now() + ASSISTANT_PLAYBACK_GAP_GRACE_MS;
     queueTurnCommit(userTranscript, assistantTranscript, interrupted);
   };
 
@@ -628,8 +623,10 @@ export async function startOriginAiVoiceMode(
 
   microphonePipeline = await startMicrophonePipeline(
     liveSession,
-    () => assistantTurnInProgress || audioPlayer.isPlaying(),
-    () => Date.now() >= assistantInterruptionGraceUntil,
+    () =>
+      assistantTurnInProgress ||
+      audioPlayer.isPlaying() ||
+      Date.now() < assistantPlaybackHoldUntil,
     () => {
       if (!assistantTurnInProgress && !audioPlayer.isPlaying()) {
         emitStatus(callbacks, 'thinking');

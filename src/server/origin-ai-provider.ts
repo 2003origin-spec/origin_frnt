@@ -270,7 +270,7 @@ export async function createOriginAiLiveBootstrap(
               automaticActivityDetection: {
                 disabled: true,
               },
-              activityHandling: ActivityHandling.START_OF_ACTIVITY_INTERRUPTS,
+              activityHandling: ActivityHandling.NO_INTERRUPTION,
             },
             inputAudioTranscription: {},
             outputAudioTranscription: {},
@@ -315,7 +315,7 @@ export async function createOriginAiLiveBootstrap(
       inputAudioTranscription: true,
       outputAudioTranscription: true,
       sessionResumption: true,
-      interruptionBehavior: "START_OF_ACTIVITY_INTERRUPTS",
+      interruptionBehavior: "NO_INTERRUPTION",
       temperature,
       maxOutputTokens,
     };
@@ -338,7 +338,7 @@ export async function createOriginAiLiveBootstrap(
         inputAudioTranscription: true,
         outputAudioTranscription: true,
         sessionResumption: true,
-        interruptionBehavior: "START_OF_ACTIVITY_INTERRUPTS",
+        interruptionBehavior: "NO_INTERRUPTION",
         temperature,
         maxOutputTokens,
       };
