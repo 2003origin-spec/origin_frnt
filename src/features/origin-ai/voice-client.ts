@@ -88,9 +88,9 @@ const USER_SPEECH_START_RMS_THRESHOLD_MIN = 0.012;
 const USER_SPEECH_ACTIVE_RMS_THRESHOLD_MIN = 0.007;
 const USER_SPEECH_START_CHUNKS_REQUIRED = 2;
 const USER_SPEECH_END_SILENCE_CHUNKS_REQUIRED = 6;
-const INTERRUPTION_SPEECH_RMS_THRESHOLD_MIN = 0.035;
-const INTERRUPTION_ACTIVE_CHUNKS_REQUIRED = 5;
-const INTERRUPTION_GRACE_PERIOD_MS = 900;
+const INTERRUPTION_SPEECH_RMS_THRESHOLD_MIN = 0.05;
+const INTERRUPTION_ACTIVE_CHUNKS_REQUIRED = 8;
+const INTERRUPTION_GRACE_PERIOD_MS = 1400;
 const AMBIENT_RMS_INITIAL = 0.003;
 const AMBIENT_RMS_SMOOTHING = 0.08;
 
@@ -268,7 +268,6 @@ async function startMicrophonePipeline(
   liveSession: LiveSessionLike,
   isAssistantSpeaking: () => boolean,
   canInterruptAssistant: () => boolean,
-  onAssistantInterrupted: () => void,
   onUserTurnEnded: () => void,
 ): Promise<MicrophonePipeline> {
   const stream = await navigator.mediaDevices.getUserMedia({
@@ -297,6 +296,7 @@ async function startMicrophonePipeline(
   let activeSilenceChunks = 0;
   let userSpeechActive = false;
   let ambientRms = AMBIENT_RMS_INITIAL;
+  let pendingSpeechAudioChunks: string[] = [];
 
   processorNode.onaudioprocess = (event) => {
     const channelData = event.inputBuffer.getChannelData(0);
@@ -326,10 +326,12 @@ async function startMicrophonePipeline(
 
       if (rms < startThreshold) {
         activeSpeechChunks = 0;
+        pendingSpeechAudioChunks = [];
         return;
       }
 
       activeSpeechChunks += 1;
+      pendingSpeechAudioChunks.push(float32ToBase64Pcm(channelData));
       if (activeSpeechChunks < startChunksRequired) {
         return;
       }
@@ -338,17 +340,16 @@ async function startMicrophonePipeline(
       activeSpeechChunks = 0;
       activeSilenceChunks = 0;
 
-      if (assistantSpeaking) {
-        onAssistantInterrupted();
-      }
-
       liveSession.sendRealtimeInput({ activityStart: {} });
-      liveSession.sendRealtimeInput({
-        audio: {
-          data: float32ToBase64Pcm(channelData),
-          mimeType: `audio/pcm;rate=${INPUT_SAMPLE_RATE}`,
-        },
-      });
+      for (const chunk of pendingSpeechAudioChunks) {
+        liveSession.sendRealtimeInput({
+          audio: {
+            data: chunk,
+            mimeType: `audio/pcm;rate=${INPUT_SAMPLE_RATE}`,
+          },
+        });
+      }
+      pendingSpeechAudioChunks = [];
       return;
     }
 
@@ -370,6 +371,7 @@ async function startMicrophonePipeline(
       userSpeechActive = false;
       activeSpeechChunks = 0;
       activeSilenceChunks = 0;
+      pendingSpeechAudioChunks = [];
       onUserTurnEnded();
     }
   };
@@ -393,6 +395,7 @@ async function startMicrophonePipeline(
       userSpeechActive = false;
       activeSpeechChunks = 0;
       activeSilenceChunks = 0;
+      pendingSpeechAudioChunks = [];
       onUserTurnEnded();
     },
   };
@@ -627,10 +630,6 @@ export async function startOriginAiVoiceMode(
     liveSession,
     () => assistantTurnInProgress || audioPlayer.isPlaying(),
     () => Date.now() >= assistantInterruptionGraceUntil,
-    () => {
-      audioPlayer.interrupt();
-      assistantTurnInProgress = false;
-    },
     () => {
       if (!assistantTurnInProgress && !audioPlayer.isPlaying()) {
         emitStatus(callbacks, 'thinking');
