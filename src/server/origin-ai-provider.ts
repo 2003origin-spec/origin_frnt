@@ -1,4 +1,4 @@
-import { GoogleGenAI, Modality } from '@google/genai';
+import { ActivityHandling, GoogleGenAI, Modality } from '@google/genai';
 
 export interface OriginAiProviderRequest {
   systemInstruction: string;
@@ -25,14 +25,18 @@ export interface OriginAiLiveBootstrapResponse {
   model: string;
   apiVersion: "v1alpha";
   responseModalities: string[];
+  voiceName: string;
   inputAudioTranscription: boolean;
+  outputAudioTranscription: boolean;
   sessionResumption: boolean;
+  interruptionBehavior: "START_OF_ACTIVITY_INTERRUPTS" | "NO_INTERRUPTION";
   temperature: number;
   maxOutputTokens: number;
 }
 
 const GEMINI_LIVE_API_VERSION = "v1alpha" as const;
-const DEFAULT_GEMINI_LIVE_MODEL = "gemini-live-2.5-flash-preview";
+const DEFAULT_GEMINI_LIVE_MODEL = "gemini-2.5-flash-native-audio-preview-12-2025";
+const DEFAULT_GEMINI_LIVE_VOICE = "Kore";
 
 function extractText(value: unknown): string {
   if (!value || typeof value !== "object") {
@@ -191,6 +195,7 @@ export async function createOriginAiLiveBootstrap(
   }
 
   const model = process.env.GEMINI_LIVE_MODEL?.trim() || DEFAULT_GEMINI_LIVE_MODEL;
+  const voiceName = process.env.GEMINI_LIVE_VOICE_NAME?.trim() || DEFAULT_GEMINI_LIVE_VOICE;
   const temperature = 0.55;
   const maxOutputTokens = 260;
 
@@ -209,8 +214,19 @@ export async function createOriginAiLiveBootstrap(
           model,
           config: {
             systemInstruction: payload.systemInstruction,
-            responseModalities: [Modality.TEXT],
+            responseModalities: [Modality.AUDIO],
+            speechConfig: {
+              voiceConfig: {
+                prebuiltVoiceConfig: {
+                  voiceName,
+                },
+              },
+            },
+            realtimeInputConfig: {
+              activityHandling: ActivityHandling.START_OF_ACTIVITY_INTERRUPTS,
+            },
             inputAudioTranscription: {},
+            outputAudioTranscription: {},
             sessionResumption: {},
             temperature,
             maxOutputTokens,
@@ -220,7 +236,10 @@ export async function createOriginAiLiveBootstrap(
           "liveConnectConstraints.model",
           "liveConnectConstraints.config.systemInstruction",
           "liveConnectConstraints.config.responseModalities",
+          "liveConnectConstraints.config.speechConfig",
+          "liveConnectConstraints.config.realtimeInputConfig",
           "liveConnectConstraints.config.inputAudioTranscription",
+          "liveConnectConstraints.config.outputAudioTranscription",
           "liveConnectConstraints.config.sessionResumption",
           "liveConnectConstraints.config.temperature",
           "liveConnectConstraints.config.maxOutputTokens",
@@ -238,9 +257,12 @@ export async function createOriginAiLiveBootstrap(
       transport: "gemini_live",
       model,
       apiVersion: GEMINI_LIVE_API_VERSION,
-      responseModalities: [Modality.TEXT],
+      responseModalities: [Modality.AUDIO],
+      voiceName,
       inputAudioTranscription: true,
+      outputAudioTranscription: true,
       sessionResumption: true,
+      interruptionBehavior: "START_OF_ACTIVITY_INTERRUPTS",
       temperature,
       maxOutputTokens,
     };

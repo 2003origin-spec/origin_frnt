@@ -429,8 +429,11 @@ export interface OriginAiVoiceConfig {
   model: string;
   apiVersion: 'v1alpha';
   responseModalities: string[];
+  voiceName: string;
   inputAudioTranscription: boolean;
+  outputAudioTranscription: boolean;
   sessionResumption: boolean;
+  interruptionBehavior: 'START_OF_ACTIVITY_INTERRUPTS' | 'NO_INTERRUPTION';
   temperature: number;
   maxOutputTokens: number;
 }

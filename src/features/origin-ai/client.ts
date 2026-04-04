@@ -211,6 +211,7 @@ export async function persistOriginAiVoiceTurn(
     responseId?: string | null;
     model?: string | null;
     transport?: 'gemini_live';
+    interrupted?: boolean;
   },
 ): Promise<OriginAiReply> {
   const data = await apiCall('/origin-ai/voice/turn', {
@@ -226,6 +227,7 @@ export async function persistOriginAiVoiceTurn(
       responseId: liveMetadata?.responseId ?? null,
       model: liveMetadata?.model ?? null,
       transport: liveMetadata?.transport ?? 'gemini_live',
+      interrupted: liveMetadata?.interrupted ?? false,
     }),
   });
 

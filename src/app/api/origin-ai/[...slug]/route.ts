@@ -72,6 +72,7 @@ const voiceTurnBodySchema = z.object({
   responseId: z.string().trim().nullable().optional(),
   model: z.string().trim().nullable().optional(),
   transport: z.literal("gemini_live").optional(),
+  interrupted: z.boolean().optional(),
   pageContext: pageContextSchema.optional(),
 });
 
@@ -236,6 +237,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
             responseId: parsedBody.data.responseId ?? null,
             model: parsedBody.data.model ?? null,
             transport: parsedBody.data.transport ?? "gemini_live",
+            interrupted: parsedBody.data.interrupted ?? false,
           },
           toPageContext(parsedBody.data.pageContext),
         );

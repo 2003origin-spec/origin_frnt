@@ -1296,6 +1296,8 @@ export async function getOriginAiVoiceBootstrap(
       "- Keep replies concise by default: 1 to 3 short spoken sentences unless the student asks for depth.",
       "- Sound like a warm, sharp mentor, not a narrator reading lecture notes.",
       "- If page policy is hint_only or answer_blocked, obey it in voice exactly as in text.",
+      "- If the student interrupts you mid-explanation, stop cleanly, answer the interruption first, then ask whether they want to continue the previous thread.",
+      "- Voice replies should feel conversational and interactive, not like a paragraph being read aloud.",
     ].join("\n"),
     requestId: createId("origin_ai_voice"),
   });
@@ -1324,6 +1326,7 @@ interface OriginAiVoiceTurnInput {
   responseId?: string | null;
   model?: string | null;
   transport?: "gemini_live";
+  interrupted?: boolean;
 }
 
 export async function commitOriginAiVoiceTurn(
@@ -1358,6 +1361,7 @@ export async function commitOriginAiVoiceTurn(
       transport: voiceTurn.transport ?? "gemini_live",
       liveSessionId: voiceTurn.liveSessionId ?? null,
       responseId: voiceTurn.responseId ?? null,
+      interrupted: voiceTurn.interrupted ?? false,
     },
     timestamp: nowIso(),
   };
@@ -1376,6 +1380,7 @@ export async function commitOriginAiVoiceTurn(
       transport: voiceTurn.transport ?? "gemini_live",
       liveSessionId: voiceTurn.liveSessionId ?? null,
       responseId: voiceTurn.responseId ?? null,
+      interrupted: voiceTurn.interrupted ?? false,
       modality: "voice",
     },
     timestamp: nowIso(),
