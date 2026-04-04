@@ -304,19 +304,13 @@ function resolvePagePolicy(pageContext: OriginAiResolvedPageContext): OriginAiPo
     };
   }
 
-  if (pageContext.pageKind === "ogcode_question") {
-    return {
-      mode: "hint_only",
-      title: "Hint Mode",
-      reason:
-        "You are attempting an OGCode question, so Origin AI will only provide hints, direction, and concept nudges, not the final answer.",
-    };
-  }
-
   return {
     mode: "normal",
     title: "Mentor Mode",
-    reason: "Origin AI can coach, explain, plan revision, and help with study strategy here.",
+    reason:
+      pageContext.pageKind === "ogcode_question"
+        ? "You are in OGCode practice mode, so Origin AI can coach, explain, and help you work through the current question like a mentor."
+        : "Origin AI can coach, explain, plan revision, and help with study strategy here.",
   };
 }
 
