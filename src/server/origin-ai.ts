@@ -1419,6 +1419,10 @@ interface OriginAiVoiceTurnInput {
   model?: string | null;
   transport?: "gemini_live";
   interrupted?: boolean;
+  completionReason?: "turn_complete" | "interrupted" | "manual_stop" | "unknown";
+  assistantAudioChunkCount?: number;
+  assistantTranscriptChunkCount?: number;
+  hadOutputTranscript?: boolean;
 }
 
 export async function commitOriginAiVoiceTurn(
@@ -1466,6 +1470,10 @@ export async function commitOriginAiVoiceTurn(
       liveSessionId: voiceTurn.liveSessionId ?? null,
       responseId: voiceTurn.responseId ?? null,
       interrupted: voiceTurn.interrupted ?? false,
+      completionReason: voiceTurn.completionReason ?? "unknown",
+      assistantAudioChunkCount: voiceTurn.assistantAudioChunkCount ?? 0,
+      assistantTranscriptChunkCount: voiceTurn.assistantTranscriptChunkCount ?? 0,
+      hadOutputTranscript: voiceTurn.hadOutputTranscript ?? false,
     },
     timestamp: nowIso(),
   };
@@ -1485,6 +1493,10 @@ export async function commitOriginAiVoiceTurn(
       liveSessionId: voiceTurn.liveSessionId ?? null,
       responseId: voiceTurn.responseId ?? null,
       interrupted: voiceTurn.interrupted ?? false,
+      completionReason: voiceTurn.completionReason ?? "unknown",
+      assistantAudioChunkCount: voiceTurn.assistantAudioChunkCount ?? 0,
+      assistantTranscriptChunkCount: voiceTurn.assistantTranscriptChunkCount ?? 0,
+      hadOutputTranscript: voiceTurn.hadOutputTranscript ?? false,
       modality: "voice",
     },
     timestamp: nowIso(),

@@ -212,6 +212,10 @@ export async function persistOriginAiVoiceTurn(
     model?: string | null;
     transport?: 'gemini_live';
     interrupted?: boolean;
+    completionReason?: 'turn_complete' | 'interrupted' | 'manual_stop' | 'unknown';
+    assistantAudioChunkCount?: number;
+    assistantTranscriptChunkCount?: number;
+    hadOutputTranscript?: boolean;
   },
 ): Promise<OriginAiReply> {
   const data = await apiCall('/origin-ai/voice/turn', {
@@ -228,6 +232,10 @@ export async function persistOriginAiVoiceTurn(
       model: liveMetadata?.model ?? null,
       transport: liveMetadata?.transport ?? 'gemini_live',
       interrupted: liveMetadata?.interrupted ?? false,
+      completionReason: liveMetadata?.completionReason ?? 'unknown',
+      assistantAudioChunkCount: liveMetadata?.assistantAudioChunkCount ?? 0,
+      assistantTranscriptChunkCount: liveMetadata?.assistantTranscriptChunkCount ?? 0,
+      hadOutputTranscript: liveMetadata?.hadOutputTranscript ?? false,
     }),
   });
 

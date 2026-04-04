@@ -73,6 +73,10 @@ const voiceTurnBodySchema = z.object({
   model: z.string().trim().nullable().optional(),
   transport: z.literal("gemini_live").optional(),
   interrupted: z.boolean().optional(),
+  completionReason: z.enum(["turn_complete", "interrupted", "manual_stop", "unknown"]).optional(),
+  assistantAudioChunkCount: z.number().int().nonnegative().optional(),
+  assistantTranscriptChunkCount: z.number().int().nonnegative().optional(),
+  hadOutputTranscript: z.boolean().optional(),
   pageContext: pageContextSchema.optional(),
 });
 
@@ -238,6 +242,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
             model: parsedBody.data.model ?? null,
             transport: parsedBody.data.transport ?? "gemini_live",
             interrupted: parsedBody.data.interrupted ?? false,
+            completionReason: parsedBody.data.completionReason ?? "unknown",
+            assistantAudioChunkCount: parsedBody.data.assistantAudioChunkCount ?? 0,
+            assistantTranscriptChunkCount: parsedBody.data.assistantTranscriptChunkCount ?? 0,
+            hadOutputTranscript: parsedBody.data.hadOutputTranscript ?? false,
           },
           toPageContext(parsedBody.data.pageContext),
         );

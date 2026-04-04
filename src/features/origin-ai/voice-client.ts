@@ -65,6 +65,8 @@ export interface OriginAiVoiceController {
   isActive: () => boolean;
 }
 
+type VoiceTurnCompletionReason = 'turn_complete' | 'interrupted' | 'manual_stop' | 'unknown';
+
 interface MicrophonePipeline {
   stream: MediaStream;
   audioContext: AudioContextLike;
@@ -417,6 +419,9 @@ export async function startOriginAiVoiceMode(
   let pendingCommitCount = 0;
   let microphonePipeline: MicrophonePipeline | null = null;
   let assistantPlaybackHoldUntil = 0;
+  let assistantAudioChunkCount = 0;
+  let assistantTranscriptChunkCount = 0;
+  let currentTurnCompletionReason: VoiceTurnCompletionReason = 'unknown';
 
   const maybeReturnToListening = () => {
     if (!isActive) {
@@ -449,6 +454,7 @@ export async function startOriginAiVoiceMode(
     userTranscript: string,
     assistantTranscript: string,
     interrupted: boolean,
+    completionReason: VoiceTurnCompletionReason,
   ) => {
     if (!assistantTranscript.trim()) {
       maybeReturnToListening();
@@ -470,6 +476,10 @@ export async function startOriginAiVoiceMode(
             model: bootstrap.voice.model,
             transport: 'gemini_live',
             interrupted,
+            completionReason,
+            assistantAudioChunkCount,
+            assistantTranscriptChunkCount,
+            hadOutputTranscript: sawOutputTranscriptForTurn,
           },
         );
         callbacks.onReplyCommitted?.(reply);
@@ -487,9 +497,16 @@ export async function startOriginAiVoiceMode(
   const flushTurn = (interrupted: boolean) => {
     const userTranscript = userTranscriptBuffer.trim();
     const assistantTranscript = assistantTranscriptBuffer.trim();
+    const completionReason = currentTurnCompletionReason;
+    const hadOutputTranscript = sawOutputTranscriptForTurn;
+    const completedAssistantAudioChunkCount = assistantAudioChunkCount;
+    const completedAssistantTranscriptChunkCount = assistantTranscriptChunkCount;
 
     if (!userTranscript && !assistantTranscript) {
       sawOutputTranscriptForTurn = false;
+      currentTurnCompletionReason = 'unknown';
+      assistantAudioChunkCount = 0;
+      assistantTranscriptChunkCount = 0;
       maybeReturnToListening();
       return;
     }
@@ -498,7 +515,19 @@ export async function startOriginAiVoiceMode(
     assistantTranscriptBuffer = '';
     sawOutputTranscriptForTurn = false;
     assistantPlaybackHoldUntil = Date.now() + ASSISTANT_PLAYBACK_GAP_GRACE_MS;
-    queueTurnCommit(userTranscript, assistantTranscript, interrupted);
+    currentTurnCompletionReason = 'unknown';
+    assistantAudioChunkCount = 0;
+    assistantTranscriptChunkCount = 0;
+    console.debug('[Origin AI Voice] commit', {
+      completionReason,
+      interrupted,
+      userChars: userTranscript.length,
+      assistantChars: assistantTranscript.length,
+      hadOutputTranscript,
+      assistantAudioChunkCount: completedAssistantAudioChunkCount,
+      assistantTranscriptChunkCount: completedAssistantTranscriptChunkCount,
+    });
+    queueTurnCommit(userTranscript, assistantTranscript, interrupted, completionReason);
   };
 
   emitStatus(callbacks, 'connecting');
@@ -560,6 +589,7 @@ export async function startOriginAiVoiceMode(
         if (outputTranscript) {
           markAssistantSpeaking();
           sawOutputTranscriptForTurn = true;
+          assistantTranscriptChunkCount += 1;
           assistantTranscriptBuffer = mergeTranscript(assistantTranscriptBuffer, outputTranscript);
           callbacks.onAssistantTranscript?.(assistantTranscriptBuffer);
           if (!audioPlayer.isPlaying()) {
@@ -572,6 +602,7 @@ export async function startOriginAiVoiceMode(
           const inlineData = part.inlineData;
           if (inlineData?.data?.trim()) {
             markAssistantSpeaking();
+            assistantAudioChunkCount += 1;
             void audioPlayer.enqueue(inlineData.data, inlineData.mimeType ?? null).catch(() => {
               callbacks.onError?.('Origin AI audio playback failed.');
               emitStatus(callbacks, 'error');
@@ -586,12 +617,14 @@ export async function startOriginAiVoiceMode(
         }
 
         if (message.serverContent?.interrupted) {
+          currentTurnCompletionReason = 'interrupted';
           audioPlayer.interrupt();
           assistantTurnInProgress = false;
           flushTurn(true);
         }
 
         if (message.serverContent?.turnComplete) {
+          currentTurnCompletionReason = 'turn_complete';
           assistantTurnInProgress = false;
           flushTurn(false);
         }
@@ -651,6 +684,7 @@ export async function startOriginAiVoiceMode(
       }
 
       audioPlayer.interrupt();
+      currentTurnCompletionReason = 'manual_stop';
       flushTurn(false);
 
       if (microphonePipeline) {
