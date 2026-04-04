@@ -238,7 +238,7 @@ export async function createOriginAiLiveBootstrap(
   const model = process.env.GEMINI_LIVE_MODEL?.trim() || DEFAULT_GEMINI_LIVE_MODEL;
   const voiceName = process.env.GEMINI_LIVE_VOICE_NAME?.trim() || DEFAULT_GEMINI_LIVE_VOICE;
   const temperature = 0.55;
-  const maxOutputTokens = 260;
+  const maxOutputTokens = 520;
 
   try {
     const client = new GoogleGenAI({
