@@ -1124,9 +1124,11 @@ export function serializeQuestion(
   question: StoredQuestion,
   includeCorrectFields = true,
 ) {
-  const isSolved = store.practiceAttempts.some(
-    (attempt) => attempt.userId === userId && attempt.questionId === question.id && attempt.isCorrect,
+  const attempts = store.practiceAttempts.filter(
+    (attempt) => attempt.userId === userId && attempt.questionId === question.id,
   );
+  const isSolved = attempts.some((attempt) => attempt.isCorrect);
+  const isAttempted = attempts.length > 0;
 
   const base = {
     id: question.id,
@@ -1155,8 +1157,11 @@ export function serializeQuestion(
     totalCorrect: question.totalCorrect,
     total_correct: question.totalCorrect,
     frequency: question.frequency,
+    attempted: isAttempted,
+    attemptCount: attempts.length,
+    attempt_count: attempts.length,
     isSolved: isSolved,
-    status: isSolved ? "solved" : "unattempted",
+    status: isSolved ? "solved" : isAttempted ? "attempted" : "unattempted",
   };
 
   return base;

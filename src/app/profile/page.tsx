@@ -6,7 +6,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 
 export default function ProfilePage() {
-  const { user, streakData } = useAuth();
+  const { user, streakData, logout } = useAuth();
   const router = useRouter();
 
   if (!user) return null;
@@ -16,6 +16,7 @@ export default function ProfilePage() {
       <TeacherProfile
         user={user}
         onBack={() => router.back()}
+        onLogout={logout}
       />
     );
   }

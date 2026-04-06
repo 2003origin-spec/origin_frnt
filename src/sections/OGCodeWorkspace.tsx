@@ -5,6 +5,7 @@ import {
     XCircle, RotateCcw, Trophy, X, HelpCircle
 } from 'lucide-react';
 import { apiCall } from '@/lib/api';
+import { usePublishOriginAiPageContext } from '@/features/origin-ai/page-context-store';
 import type { PracticeQuestion, User } from '@/types';
 import { toast } from 'sonner';
 
@@ -45,6 +46,10 @@ type SubmitPayload = {
 type PracticeQuestionApi = PracticeQuestion & {
     question_type?: PracticeQuestion['questionType'];
     matrix_data?: PracticeQuestion['matrixData'] | string;
+    explanation?: string;
+    answerText?: string;
+    attempted?: boolean;
+    attemptCount?: number;
 };
 
 type SubmitResultApi = SubmitResult & {
@@ -397,6 +402,36 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
         if (typeof question.tags === 'string') return question.tags.split(',').filter(Boolean);
         return [];
     }, [question?.tags]);
+
+    const originAiPageContext = useMemo(() => {
+        const attempted = Boolean(
+            result ||
+            question?.attempted ||
+            question?.attemptCount ||
+            question?.status === 'attempted' ||
+            question?.status === 'solved' ||
+            question?.isSolved,
+        );
+        const solved = Boolean(result?.isCorrect || question?.isSolved || question?.status === 'solved');
+
+        return {
+            pathname: typeof questionId === 'string' ? `/ogcode/${questionId}` : '/ogcode',
+            pageKind: 'ogcode_question' as const,
+            questionId: String(questionId),
+            questionTitle: question?.text ?? null,
+            questionHint: question?.hint ?? null,
+            questionSolution: result?.correctAnswerText ?? question?.answerText ?? null,
+            questionExplanation: result?.explanation ?? question?.explanation ?? null,
+            questionSubject: question?.subject ?? null,
+            questionChapter: question?.chapter ?? null,
+            questionConcept: question?.concept ?? null,
+            questionDifficulty: question?.difficulty ?? null,
+            questionAttempted: attempted,
+            questionSolved: solved,
+        };
+    }, [question, questionId, result]);
+
+    usePublishOriginAiPageContext(originAiPageContext);
 
     // 2. FETCH: Prevents infinite API loop
     const fetchQuestion = useCallback(async () => {

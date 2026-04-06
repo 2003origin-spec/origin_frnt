@@ -1,0 +1,157 @@
+'use client';
+
+import React from 'react';
+
+type Listener = (text: string | null) => void;
+type HighlightRect = {
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+};
+type HighlightSelection = {
+  text: string | null;
+  rect: HighlightRect | null;
+};
+type SelectionListener = (selection: HighlightSelection) => void;
+
+let currentHighlight: string | null = null;
+let currentHighlightRect: HighlightRect | null = null;
+const listeners = new Set<Listener>();
+const selectionListeners = new Set<SelectionListener>();
+
+function emitChange() {
+  listeners.forEach((listener) => listener(currentHighlight));
+  const selection = {
+    text: currentHighlight,
+    rect: currentHighlightRect,
+  };
+  selectionListeners.forEach((listener) => listener(selection));
+}
+
+function getSelectionRect(selection: Selection | null): HighlightRect | null {
+  if (!selection || selection.rangeCount === 0) {
+    return null;
+  }
+
+  const rect = selection.getRangeAt(0).getBoundingClientRect();
+  if (rect.width === 0 && rect.height === 0) {
+    return null;
+  }
+
+  return {
+    top: rect.top,
+    left: rect.left,
+    width: rect.width,
+    height: rect.height,
+  };
+}
+
+function handleSelectionChange() {
+  const selection = window.getSelection();
+  const text = selection?.toString().trim() || null;
+  if (!text) {
+    if (currentHighlightRect) {
+      currentHighlightRect = null;
+      emitChange();
+    }
+    return;
+  }
+
+  const anchorNode = selection?.anchorNode;
+  const anchorElement =
+    anchorNode instanceof Element ? anchorNode : anchorNode?.parentElement ?? null;
+
+  if (anchorElement?.closest('[data-origin-ai-root="true"]')) {
+    if (currentHighlightRect) {
+      currentHighlightRect = null;
+      emitChange();
+    }
+    return;
+  }
+
+  if (text !== currentHighlight) {
+    currentHighlight = text;
+    currentHighlightRect = getSelectionRect(selection);
+    emitChange();
+    return;
+  }
+
+  const rect = getSelectionRect(selection);
+  if (rect) {
+    currentHighlightRect = rect;
+    emitChange();
+  }
+}
+
+let isListening = false;
+
+export function startHighlightCapture(): void {
+  if (isListening) return;
+  isListening = true;
+  document.addEventListener('selectionchange', handleSelectionChange);
+}
+
+export function stopHighlightCapture(): void {
+  isListening = false;
+  document.removeEventListener('selectionchange', handleSelectionChange);
+  clearHighlightedText();
+}
+
+export function clearHighlightedText(): void {
+  currentHighlight = null;
+  currentHighlightRect = null;
+  emitChange();
+}
+
+export function getHighlightedText(): string | null {
+  return currentHighlight;
+}
+
+export function getHighlightedSelection(): HighlightSelection {
+  return {
+    text: currentHighlight,
+    rect: currentHighlightRect,
+  };
+}
+
+export function useHighlightedText(): string | null {
+  const [text, setText] = React.useState<string | null>(currentHighlight);
+
+  React.useEffect(() => {
+    startHighlightCapture();
+
+    const handler = (newText: string | null) => {
+      setText(newText);
+    };
+
+    listeners.add(handler);
+    return () => {
+      listeners.delete(handler);
+    };
+  }, []);
+
+  return text;
+}
+
+export function useHighlightedSelection(): HighlightSelection {
+  const [selection, setSelection] = React.useState<HighlightSelection>({
+    text: currentHighlight,
+    rect: currentHighlightRect,
+  });
+
+  React.useEffect(() => {
+    startHighlightCapture();
+
+    const handler = (nextSelection: HighlightSelection) => {
+      setSelection(nextSelection);
+    };
+
+    selectionListeners.add(handler);
+    return () => {
+      selectionListeners.delete(handler);
+    };
+  }, []);
+
+  return selection;
+}

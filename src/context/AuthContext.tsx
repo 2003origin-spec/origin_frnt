@@ -4,6 +4,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { useRouter, usePathname } from 'next/navigation';
 import { toast } from 'sonner';
 import type { User, StreakData, Task } from '@/types';
+import { clearOriginAiBrowserSession } from '@/features/origin-ai/session';
 import { apiCall } from '@/lib/api';
 
 interface AuthContextType {
@@ -106,6 +107,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         body: JSON.stringify({ email, password, ...(role ? { role } : {}) }),
       });
 
+      clearOriginAiBrowserSession();
       localStorage.setItem('origin_access_token', response.access);
       localStorage.setItem('origin_refresh_token', response.refresh);
 
@@ -131,6 +133,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = () => {
     setUser(null);
     setUserRole(null);
+    clearOriginAiBrowserSession();
     localStorage.removeItem('origin_access_token');
     localStorage.removeItem('origin_refresh_token');
     router.push('/');
