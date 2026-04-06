@@ -255,10 +255,10 @@ export default function StudyCorner({ user }: StudyCornerProps) {
     }, []) : [];
 
     const RecentNoteCard = ({ title, date }: any) => (
-        <div className="flex items-center justify-between p-4 rounded-2xl bg-white/5 border border-white/5 hover:bg-white/10 hover:border-indigo-500/30 transition-all duration-300 group cursor-pointer shadow-lg">
+        <div className="flex items-center justify-between p-4 rounded-2xl bg-card border border-border hover:bg-muted/50 hover:border-primary/30 transition-all duration-300 group cursor-pointer shadow-lg">
             <div className="flex-1 pr-4">
-                <p className="text-sm font-bold text-slate-100 group-hover:text-indigo-400 transition-colors line-clamp-1">{title}</p>
-                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mt-1">{date}</p>
+                <p className="text-sm font-bold text-foreground group-hover:text-primary transition-colors line-clamp-1">{title}</p>
+                <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mt-1">{date}</p>
             </div>
             <div className="relative shrink-0 w-12 h-16 bg-white rounded-md shadow-xl rotate-3 group-hover:rotate-6 transition-transform overflow-hidden flex flex-col p-2 gap-1.5 ring-2 ring-indigo-500/20 group-hover:ring-indigo-500/40">
                 <div className="absolute top-0 left-0 w-full h-1 bg-indigo-500/20"></div>
@@ -273,7 +273,7 @@ export default function StudyCorner({ user }: StudyCornerProps) {
     const FileGridItem = ({ item, onClick }: { item: any, onClick: () => void }) => (
         <div
             onClick={onClick}
-            className="aspect-square rounded-[2rem] bg-white/5 border border-white/10 flex flex-col items-center justify-center group cursor-pointer hover:border-indigo-500/50 transition-all hover:bg-indigo-500/5 shadow-inner relative overflow-hidden p-6"
+            className="aspect-square rounded-[2rem] bg-card border border-border flex flex-col items-center justify-center group cursor-pointer hover:border-primary/50 transition-all hover:bg-primary/5 shadow-inner relative overflow-hidden p-6"
         >
             <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
             <div className="relative transform group-hover:-translate-y-2 transition-transform duration-500 flex flex-col items-center text-center gap-4">
@@ -289,20 +289,20 @@ export default function StudyCorner({ user }: StudyCornerProps) {
                         ]}
                     />
                 ) : (
-                    <div className="p-3 rounded-2xl bg-[#030712]/40 ring-1 ring-white/10 group-hover:ring-indigo-500/40 transition-all shadow-xl mb-2">
-                        <FileText className="w-6 h-6 text-slate-400 group-hover:text-indigo-400 group-hover:drop-shadow-[0_0_12px_rgba(129,140,248,0.6)]" />
+                    <div className="p-3 rounded-2xl bg-background/40 ring-1 ring-border group-hover:ring-primary/40 transition-all shadow-xl mb-2">
+                        <FileText className="w-6 h-6 text-muted-foreground group-hover:text-primary group-hover:drop-shadow-[0_0_12px_rgba(129,140,248,0.6)]" />
                     </div>
                 )}
                 <div>
-                    <p className="text-[10px] font-black text-slate-200 uppercase tracking-widest line-clamp-1">{item.name}</p>
+                    <p className="text-[10px] font-black text-foreground uppercase tracking-widest line-clamp-1">{item.name}</p>
                     {item.type === 'file' && (
                         <div className="flex items-center justify-center gap-1.5 mt-1">
-                            <p className="text-[8px] text-slate-500 font-bold uppercase">Chapter</p>
-                            <ExternalLink className="w-2 h-2 text-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                            <p className="text-[8px] text-muted-foreground font-bold uppercase">Chapter</p>
+                            <ExternalLink className="w-2 h-2 text-primary opacity-0 group-hover:opacity-100 transition-opacity" />
                         </div>
                     )}
                 </div>
-                <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-indigo-500 rounded-full border-[2.5px] border-[#020617] scale-0 group-hover:scale-100 transition-transform shadow-lg shadow-indigo-500/50"></div>
+                <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-primary rounded-full border-[2.5px] border-background scale-0 group-hover:scale-100 transition-transform shadow-lg shadow-primary/50"></div>
             </div>
         </div>
     );
@@ -410,7 +410,7 @@ export default function StudyCorner({ user }: StudyCornerProps) {
     }
 
     return (
-        <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#020617] font-sans text-slate-900 dark:text-slate-50 transition-colors duration-300">
+        <div className="min-h-screen bg-background font-sans text-foreground transition-colors duration-300">
 
             <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-20">
 
@@ -422,7 +422,7 @@ export default function StudyCorner({ user }: StudyCornerProps) {
                         <div className="absolute top-1/2 -right-24 w-[500px] h-[500px] bg-violet-600/5 blur-[150px] rounded-full pointer-events-none"></div>
 
                         <header className="flex items-center justify-between relative z-10">
-                            <h2 className="text-5xl sm:text-7xl font-black tracking-tighter text-white drop-shadow-[0_10px_30px_rgba(99,102,241,0.3)]">
+                            <h2 className="text-5xl sm:text-7xl font-black tracking-tighter text-foreground drop-shadow-[0_10px_30px_rgba(99,102,241,0.3)]">
                                 MY STUDY DASHBOARD.
                             </h2>
                         </header>
@@ -430,9 +430,9 @@ export default function StudyCorner({ user }: StudyCornerProps) {
                         <div className="grid grid-cols-1 md:grid-cols-12 gap-8 lg:gap-10 pb-32 relative z-10">
 
                             {/* Left Panel: FOLDERS */}
-                            <div className="md:col-span-12 lg:col-span-3 rounded-[3rem] bg-[#030712]/50 backdrop-blur-3xl border border-white/10 p-10 shadow-2xl relative overflow-hidden group">
-                                <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-indigo-500/10 to-transparent pointer-events-none"></div>
-                                <h3 className="text-xs font-black text-indigo-400 tracking-[0.3em] uppercase mb-10 flex items-center gap-2.5">
+                            <div className="md:col-span-12 lg:col-span-3 rounded-[3rem] bg-card/50 backdrop-blur-3xl border border-border p-10 shadow-2xl relative overflow-hidden group">
+                                <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-primary/10 to-transparent pointer-events-none"></div>
+                                <h3 className="text-xs font-black text-primary tracking-[0.3em] uppercase mb-10 flex items-center gap-2.5">
                                     <LucideFolder className="w-5 h-5" /> Folders
                                 </h3>
 
@@ -442,32 +442,32 @@ export default function StudyCorner({ user }: StudyCornerProps) {
                                         return (
                                             <div key={i} className="space-y-4">
                                                 <div
-                                                    className={`flex items-center gap-4 cursor-pointer transition-all group/folder py-2 px-3 rounded-2xl ${isSelected ? 'bg-indigo-500/10 text-white border border-indigo-500/20 shadow-[0_0_20px_rgba(99,102,241,0.1)]' : 'text-slate-100 hover:text-white hover:bg-white/5 border border-transparent'}`}
+                                                    className={`flex items-center gap-4 cursor-pointer transition-all group/folder py-2 px-3 rounded-2xl ${isSelected ? 'bg-primary/10 text-foreground border border-primary/20 shadow-[0_0_20px_rgba(99,102,241,0.1)]' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50 border border-transparent'}`}
                                                     onClick={() => toggleFolder([i])}
                                                 >
                                                     <div className="shrink-0 transition-transform duration-300" style={{ transform: subject.isOpen ? 'rotate(180deg)' : 'rotate(0)' }}>
-                                                        <ChevronDown className={`w-4 h-4 transition-colors ${isSelected ? 'text-indigo-400' : 'text-indigo-500/40 group-hover/folder:text-indigo-400'}`} />
+                                                        <ChevronDown className={`w-4 h-4 transition-colors ${isSelected ? 'text-primary' : 'text-primary/40 group-hover/folder:text-primary'}`} />
                                                     </div>
-                                                    <div className={`p-2 rounded-xl transition-all ${isSelected ? 'bg-indigo-500 text-white shadow-[0_0_20px_rgba(99,102,241,0.4)] ring-2 ring-indigo-500/50 scale-110' : 'bg-indigo-500/20 text-indigo-400 shadow-[0_0_20px_rgba(99,102,241,0.2)] ring-1 ring-indigo-500/30 group-hover:scale-105'}`}>
+                                                    <div className={`p-2 rounded-xl transition-all ${isSelected ? 'bg-primary text-white shadow-[0_0_20px_rgba(99,102,241,0.4)] ring-2 ring-primary/50 scale-110' : 'bg-primary/20 text-primary shadow-[0_0_20px_rgba(99,102,241,0.2)] ring-1 ring-primary/30 group-hover:scale-105'}`}>
                                                         <LucideFolder className="w-5 h-5 fill-current" />
                                                     </div>
                                                     <span className={`text-sm tracking-tight transition-all ${isSelected ? 'font-black' : 'font-bold'}`}>{subject.name}</span>
                                                 </div>
 
                                                 {subject.isOpen && (
-                                                    <div className="pl-12 space-y-4 border-l-2 border-indigo-500/10 ml-[1.65rem] animate-in slide-in-from-top-2 duration-300">
+                                                    <div className="pl-12 space-y-4 border-l-2 border-primary/10 ml-[1.65rem] animate-in slide-in-from-top-2 duration-300">
                                                         {subject.children.map((cls: any, j: number) => {
                                                             const isSubSelected = selectedPath?.length === 2 && selectedPath[0] === i && selectedPath[1] === j;
                                                             return (
                                                                 <div key={j} className="space-y-3">
                                                                     <div
-                                                                        className={`flex items-center gap-4 cursor-pointer transition-all group/subfolder py-1.5 px-3 rounded-xl ${isSubSelected ? 'bg-indigo-500/5 text-indigo-400 border border-indigo-500/10' : 'text-slate-300 hover:text-indigo-400 hover:bg-white/5 border border-transparent'}`}
+                                                                        className={`flex items-center gap-4 cursor-pointer transition-all group/subfolder py-1.5 px-3 rounded-xl ${isSubSelected ? 'bg-primary/5 text-primary border border-primary/10' : 'text-muted-foreground hover:text-primary hover:bg-muted/50 border border-transparent'}`}
                                                                         onClick={() => toggleFolder([i, j])}
                                                                     >
                                                                         <div className="shrink-0 transition-transform duration-300" style={{ transform: cls.isOpen ? 'rotate(180deg)' : 'rotate(0)' }}>
                                                                             <ChevronDown className="w-3.5 h-3.5 opacity-50" />
                                                                         </div>
-                                                                        <Library className={`w-5 h-5 transition-colors ${isSubSelected ? 'text-indigo-400 shadow-[0_0_10px_rgba(99,102,241,0.3)]' : 'text-indigo-400/60 group-hover/subfolder:text-indigo-400'}`} />
+                                                                        <Library className={`w-5 h-5 transition-colors ${isSubSelected ? 'text-primary shadow-[0_0_10px_rgba(99,102,241,0.3)]' : 'text-primary/60 group-hover/subfolder:text-primary'}`} />
                                                                         <span className={`text-sm tracking-tight transition-all ${isSubSelected ? 'font-black' : 'font-bold'}`}>{cls.name}</span>
                                                                     </div>
                                                                 </div>
@@ -482,22 +482,22 @@ export default function StudyCorner({ user }: StudyCornerProps) {
                             </div>
 
                             {/* Middle Panel: MY NOTES & FILES */}
-                            <div className="md:col-span-8 lg:col-span-6 rounded-[3rem] bg-[#030712]/50 backdrop-blur-3xl border border-white/10 p-10 shadow-2xl relative group overflow-hidden">
-                                <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-indigo-500/10 to-transparent pointer-events-none"></div>
+                            <div className="md:col-span-8 lg:col-span-6 rounded-[3rem] bg-card/50 backdrop-blur-3xl border border-border p-10 shadow-2xl relative group overflow-hidden">
+                                <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-primary/10 to-transparent pointer-events-none"></div>
                                 <div className="flex items-center justify-between mb-12 relative z-10">
                                     <div className="flex flex-col gap-2">
-                                        <h3 className="text-xs font-black text-indigo-400 tracking-[0.3em] uppercase flex items-center gap-2.5">
+                                        <h3 className="text-xs font-black text-primary tracking-[0.3em] uppercase flex items-center gap-2.5">
                                             <FileText className="w-5 h-5" /> My Notes & Files
                                         </h3>
                                         {breadcrumbs.length > 0 && (
                                             <div className="flex items-center gap-2 text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1">
-                                                <button onClick={() => setSelectedPath(null)} className="hover:text-indigo-400 transition-colors">Root</button>
+                                                <button onClick={() => setSelectedPath(null)} className="hover:text-primary transition-colors">Root</button>
                                                 {breadcrumbs.map((b, idx) => (
                                                     <React.Fragment key={idx}>
                                                         <span className="opacity-30">/</span>
                                                         <button
                                                             onClick={() => setSelectedPath(selectedPath!.slice(0, idx + 1))}
-                                                            className="hover:text-indigo-400 transition-colors"
+                                                            className="hover:text-primary transition-colors"
                                                         >
                                                             {b.name}
                                                         </button>
@@ -506,7 +506,7 @@ export default function StudyCorner({ user }: StudyCornerProps) {
                                             </div>
                                         )}
                                     </div>
-                                    <button className="text-[10px] font-black text-white/30 hover:text-white transition-colors uppercase tracking-[0.2em] border-b border-white/10 pb-0.5">View All</button>
+                                    <button className="text-[10px] font-black text-foreground/30 hover:text-foreground transition-colors uppercase tracking-[0.2em] border-b border-border pb-0.5">View All</button>
                                 </div>
 
                                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-8 relative z-10 overflow-y-auto max-h-[600px] pr-2 custom-scrollbar">
@@ -524,13 +524,13 @@ export default function StudyCorner({ user }: StudyCornerProps) {
                                     />
                                 )) : (
                                         <div className="col-span-full py-20 text-center flex flex-col items-center justify-center">
-                                            <div className="w-24 h-24 bg-indigo-500/5 rounded-[2rem] flex items-center justify-center mb-8 border border-indigo-500/10 shadow-2xl animate-pulse">
-                                                <LucideFolder className="w-10 h-10 text-indigo-400/50" />
+                                            <div className="w-24 h-24 bg-primary/5 rounded-[2rem] flex items-center justify-center mb-8 border border-primary/10 shadow-2xl animate-pulse">
+                                                <LucideFolder className="w-10 h-10 text-primary/50" />
                                             </div>
-                                            <h4 className="text-xl font-black text-white mb-2 uppercase tracking-tighter">
+                                            <h4 className="text-xl font-black text-foreground mb-2 uppercase tracking-tighter">
                                                 {!selectedPath ? 'Select a Folder' : 'No Files Found'}
                                             </h4>
-                                            <p className="text-slate-500 text-sm font-bold uppercase tracking-widest max-w-[200px] mx-auto leading-relaxed">
+                                            <p className="text-muted-foreground text-sm font-bold uppercase tracking-widest max-w-[200px] mx-auto leading-relaxed">
                                                 {!selectedPath ? 'Choose a subject or class from the sidebar to view chapters.' : 'This category currently has no study materials.'}
                                             </p>
                                         </div>
@@ -541,9 +541,9 @@ export default function StudyCorner({ user }: StudyCornerProps) {
                             {/* Right Panel: Sidebar Widgets */}
                             <div className="md:col-span-4 lg:col-span-3 space-y-8">
                                 {/* Recent Notes */}
-                                <div className="rounded-[3rem] bg-[#030712]/50 backdrop-blur-3xl border border-white/10 p-10 shadow-2xl relative group overflow-hidden">
-                                    <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-violet-500/5 to-transparent pointer-events-none"></div>
-                                    <h3 className="text-xs font-black text-violet-400 tracking-[0.3em] uppercase mb-8 flex items-center gap-2.5">
+                                <div className="rounded-[3rem] bg-card/50 backdrop-blur-3xl border border-border p-10 shadow-2xl relative group overflow-hidden">
+                                    <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-primary/5 to-transparent pointer-events-none"></div>
+                                    <h3 className="text-xs font-black text-primary tracking-[0.3em] uppercase mb-8 flex items-center gap-2.5">
                                         <Clock className="w-5 h-5" /> Recent Activity
                                     </h3>
                                     <div className="space-y-5">
@@ -555,15 +555,15 @@ export default function StudyCorner({ user }: StudyCornerProps) {
                                             />
                                         ))}
                                         {aggregatedNotes.length === 0 && (
-                                            <p className="text-[10px] text-slate-500 font-bold uppercase text-center py-4">No recent notes</p>
+                                            <p className="text-[10px] text-muted-foreground font-bold uppercase text-center py-4">No recent notes</p>
                                         )}
                                     </div>
                                 </div>
 
                                 {/* Shared Files */}
-                                <div className="rounded-[3rem] bg-[#030712]/50 backdrop-blur-3xl border border-white/10 p-10 shadow-2xl relative group overflow-hidden">
-                                    <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-rose-500/5 to-transparent pointer-events-none"></div>
-                                    <h3 className="text-xs font-black text-rose-400 tracking-[0.3em] uppercase mb-8 flex items-center gap-2.5">
+                                <div className="rounded-[3rem] bg-card/50 backdrop-blur-3xl border border-border p-10 shadow-2xl relative group overflow-hidden">
+                                    <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-primary/5 to-transparent pointer-events-none"></div>
+                                    <h3 className="text-xs font-black text-primary tracking-[0.3em] uppercase mb-8 flex items-center gap-2.5">
                                         <Share2 className="w-5 h-5" /> Suggested Books
                                     </h3>
                                     <div className="space-y-4">
@@ -571,12 +571,12 @@ export default function StudyCorner({ user }: StudyCornerProps) {
                                             <div
                                                 key={idx}
                                                 onClick={() => setSelectedBook(book)}
-                                                className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-white/5 transition-colors cursor-pointer group"
+                                                className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-muted/50 transition-colors cursor-pointer group"
                                             >
-                                                <div className="p-2 rounded-lg bg-white/5 border border-white/10 group-hover:border-indigo-500/30 transition-colors">
-                                                    <BookOpen className="w-4 h-4 text-indigo-400" />
+                                                <div className="p-2 rounded-lg bg-muted border border-border group-hover:border-primary/30 transition-colors">
+                                                    <BookOpen className="w-4 h-4 text-primary" />
                                                 </div>
-                                                <span className="text-xs font-semibold text-slate-400 group-hover:text-slate-200 truncate transition-colors">{book.title}</span>
+                                                <span className="text-xs font-semibold text-muted-foreground group-hover:text-foreground truncate transition-colors">{book.title}</span>
                                             </div>
                                         ))}
                                     </div>
@@ -608,8 +608,8 @@ export default function StudyCorner({ user }: StudyCornerProps) {
 
                         <div className="mt-12">
                             <div className="flex items-center justify-between mb-8">
-                                <h3 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Trending in Class {user.class || '12'}</h3>
-                                <Button variant="ghost" className="text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30">View All</Button>
+                                <h3 className="text-2xl font-bold tracking-tight text-foreground">Trending in Class {user.class || '12'}</h3>
+                                <Button variant="ghost" className="text-primary hover:bg-primary/10">View All</Button>
                             </div>
                             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6 gap-y-10">
                                 {filteredBooks.map(book => renderBookCard(book, userLibrary.has(book.id)))}
@@ -623,15 +623,15 @@ export default function StudyCorner({ user }: StudyCornerProps) {
                     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                             <div>
-                                <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Your NCERT Collection</h2>
-                                <p className="text-sm text-slate-500">Manage and organize your study materials</p>
+                                <h2 className="text-2xl font-bold text-foreground">Your NCERT Collection</h2>
+                                <p className="text-sm text-neutral-500">Manage and organize your study materials</p>
                             </div>
                             <div className="flex items-center gap-2">
                                 <Button
                                     onClick={createFolder}
                                     variant="outline"
                                     size="sm"
-                                    className="rounded-xl border-indigo-500/20 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20"
+                                    className="rounded-xl border-primary/20 text-primary hover:bg-primary/5"
                                 >
                                     <FolderPlus className="w-4 h-4 mr-2" />
                                     New Folder
@@ -643,7 +643,7 @@ export default function StudyCorner({ user }: StudyCornerProps) {
                         <div className="flex items-center gap-3 overflow-x-auto no-scrollbar pb-2">
                             <button
                                 onClick={() => setSelectedFolder(null)}
-                                className={`px-4 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${!selectedFolder ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'bg-slate-100 dark:bg-slate-900 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-800'}`}
+                                className={`px-4 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${!selectedFolder ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}
                             >
                                 All Books
                             </button>
@@ -651,7 +651,7 @@ export default function StudyCorner({ user }: StudyCornerProps) {
                                 <button
                                     key={folder}
                                     onClick={() => setSelectedFolder(folder)}
-                                    className={`px-4 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap flex items-center gap-2 ${selectedFolder === folder ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' : 'bg-slate-100 dark:bg-slate-900 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-800'}`}
+                                    className={`px-4 py-2 rounded-xl text-sm font-bold transition-all whitespace-nowrap flex items-center gap-2 ${selectedFolder === folder ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}
                                 >
                                     <Library className="w-3.5 h-3.5" />
                                     {folder}
@@ -668,7 +668,7 @@ export default function StudyCorner({ user }: StudyCornerProps) {
                                         <div className="absolute top-2 left-2 z-20 opacity-0 group-hover/card:opacity-100 transition-opacity">
                                             <select
                                                 onChange={(e) => addBookToFolder(book.id, e.target.value)}
-                                                className="text-[10px] bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 font-bold outline-none shadow-xl cursor-pill"
+                                                className="text-[10px] bg-card/90 backdrop-blur-md border border-border rounded-lg px-2 py-1 font-bold outline-none shadow-xl cursor-pill text-foreground"
                                                 value={Object.keys(folders).find(f => folders[f].includes(book.id)) || ""}
                                             >
                                                 <option value="" disabled>Move to...</option>
@@ -681,20 +681,20 @@ export default function StudyCorner({ user }: StudyCornerProps) {
                                 ))}
                             </div>
                         ) : (
-                            <div className="text-center py-24 px-4 rounded-3xl border border-dashed border-slate-300 dark:border-slate-800 bg-white/50 dark:bg-slate-900/20 backdrop-blur-sm">
-                                <div className="w-24 h-24 mx-auto bg-slate-100 dark:bg-slate-800/50 rounded-full flex items-center justify-center mb-6 shadow-inner relative">
-                                    <Library className="w-10 h-10 text-slate-400 dark:text-slate-500" />
-                                    <div className="absolute -bottom-2 -right-2 w-8 h-8 bg-white dark:bg-slate-900 rounded-full flex items-center justify-center shadow-md">
+                            <div className="text-center py-24 px-4 rounded-3xl border border-dashed border-border bg-card/50 backdrop-blur-sm">
+                                <div className="w-24 h-24 mx-auto bg-muted rounded-full flex items-center justify-center mb-6 shadow-inner relative">
+                                    <Library className="w-10 h-10 text-muted-foreground" />
+                                    <div className="absolute -bottom-2 -right-2 w-8 h-8 bg-card rounded-full flex items-center justify-center shadow-md">
                                         <span className="text-lg">📚</span>
                                     </div>
                                 </div>
-                                <h3 className="text-2xl font-bold text-slate-900 dark:text-white mb-3 tracking-tight">Your library is empty</h3>
-                                <p className="text-slate-500 dark:text-slate-400 max-w-sm mx-auto mb-8 text-lg">
+                                <h3 className="text-2xl font-bold text-foreground mb-3 tracking-tight">Your library is empty</h3>
+                                <p className="text-muted-foreground max-w-sm mx-auto mb-8 text-lg">
                                     Curate your perfect study environment. Discover and add NCERT books to your collection to start reading.
                                 </p>
                                 <Button
                                     onClick={() => setActiveTab('discover')}
-                                    className="bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 rounded-xl px-8 h-12 text-md font-bold shadow-lg transition-all active:scale-95"
+                                    className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl px-8 h-12 text-md font-bold shadow-lg transition-all active:scale-95"
                                 >
                                     Browse Books
                                 </Button>
@@ -707,7 +707,7 @@ export default function StudyCorner({ user }: StudyCornerProps) {
                 {activeTab === 'ncert' && (
                     <NCERTCorner
                         onAddBook={handleAddNCERTBook}
-                        existingFolders={dashboardFolders.map(s => s.name)}
+                                        existingFolders={dashboardFolders.map(s => s.name)}
                     />
                 )}
 
@@ -715,25 +715,25 @@ export default function StudyCorner({ user }: StudyCornerProps) {
                 {activeTab === 'notes' && (
                     <div className="space-y-12 animate-in fade-in zoom-in-95 duration-700 pb-20">
                         {/* Immersive Header */}
-                        <div className="relative rounded-[3rem] overflow-hidden bg-[#030712]/50 backdrop-blur-3xl border border-white/10 px-12 py-16 flex items-center shadow-2xl relative">
-                            <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/10 via-transparent to-violet-500/5 pointer-events-none"></div>
+                        <div className="relative rounded-[3rem] overflow-hidden bg-card/50 backdrop-blur-3xl border border-border px-12 py-16 flex items-center shadow-2xl relative">
+                            <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-primary/5 pointer-events-none"></div>
                             <div className="relative z-10 w-full flex flex-col md:flex-row items-center justify-between gap-10">
                                 <div className="text-center md:text-left">
-                                    <h2 className="text-5xl font-black text-white mb-4 tracking-tighter drop-shadow-2xl uppercase">
-                                        Personal <span className="text-indigo-400">Study Hub.</span>
+                                    <h2 className="text-5xl font-black text-foreground mb-4 tracking-tighter drop-shadow-2xl uppercase">
+                                        Personal <span className="text-primary">Study Hub.</span>
                                     </h2>
-                                    <p className="text-slate-400 text-lg max-w-xl font-medium leading-relaxed">
+                                    <p className="text-muted-foreground text-lg max-w-xl font-medium leading-relaxed">
                                         Every highlight and thought you've captured across the NCERT library, indexed and ready for your next session.
                                     </p>
                                 </div>
                                 <div className="flex items-center gap-6">
-                                    <div className="px-8 py-6 rounded-[2.5rem] bg-indigo-500/10 border border-indigo-500/20 text-center ring-1 ring-indigo-500/10">
-                                        <p className="text-3xl font-black text-indigo-400 mb-1">{aggregatedNotes.length}</p>
-                                        <p className="text-[10px] font-black text-indigo-500/60 uppercase tracking-widest">Total Notes</p>
+                                    <div className="px-8 py-6 rounded-[2.5rem] bg-primary/10 border border-primary/20 text-center ring-1 ring-primary/10">
+                                        <p className="text-3xl font-black text-primary mb-1">{aggregatedNotes.length}</p>
+                                        <p className="text-[10px] font-black text-primary/60 uppercase tracking-widest">Total Notes</p>
                                     </div>
-                                    <div className="px-8 py-6 rounded-[2.5rem] bg-violet-500/10 border border-violet-500/20 text-center ring-1 ring-violet-500/10">
-                                        <p className="text-3xl font-black text-violet-400 mb-1">{likedBooks.size}</p>
-                                        <p className="text-[10px] font-black text-violet-500/60 uppercase tracking-widest">Favorites</p>
+                                    <div className="px-8 py-6 rounded-[2.5rem] bg-primary/10 border border-primary/20 text-center ring-1 ring-primary/10">
+                                        <p className="text-3xl font-black text-primary mb-1">{likedBooks.size}</p>
+                                        <p className="text-[10px] font-black text-primary/60 uppercase tracking-widest">Favorites</p>
                                     </div>
                                 </div>
                             </div>
@@ -742,8 +742,8 @@ export default function StudyCorner({ user }: StudyCornerProps) {
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-10">
                             {/* Intelligent Filters Sidebar */}
                             <div className="space-y-8">
-                                <div className="p-8 rounded-[2.5rem] bg-[#030712]/40 backdrop-blur-3xl border border-white/10 shadow-xl group">
-                                    <h4 className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.3em] mb-8 flex items-center gap-2">
+                                <div className="p-8 rounded-[2.5rem] bg-card/40 backdrop-blur-3xl border border-border shadow-xl group">
+                                    <h4 className="text-[10px] font-black text-primary uppercase tracking-[0.3em] mb-8 flex items-center gap-2">
                                         <Search className="w-4 h-4" /> Global Search
                                     </h4>
                                     <div className="relative">
@@ -751,20 +751,20 @@ export default function StudyCorner({ user }: StudyCornerProps) {
                                             placeholder="Keywords, topics..."
                                             value={searchQuery}
                                             onChange={(e) => setSearchQuery(e.target.value)}
-                                            className="w-full px-5 py-3.5 bg-white/5 border border-white/5 rounded-2xl text-xs text-white focus:outline-none focus:border-indigo-500/50 transition-all font-bold placeholder:text-slate-600 ring-1 ring-white/5"
+                                            className="w-full px-5 py-3.5 bg-background border border-border rounded-2xl text-xs text-foreground focus:outline-none focus:border-primary/50 transition-all font-bold placeholder:text-muted-foreground/50 ring-1 ring-border"
                                         />
                                     </div>
                                 </div>
 
-                                <div className="p-8 rounded-[2.5rem] bg-[#030712]/40 backdrop-blur-3xl border border-white/10 shadow-xl">
-                                    <h4 className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.3em] mb-8 flex items-center gap-2">
+                                <div className="p-8 rounded-[2.5rem] bg-card/40 backdrop-blur-3xl border border-border shadow-xl">
+                                    <h4 className="text-[10px] font-black text-primary uppercase tracking-[0.3em] mb-8 flex items-center gap-2">
                                         <LucideFolder className="w-4 h-4" /> Quick Filter
                                     </h4>
                                     <div className="space-y-3">
                                         {['All Brain-Bits', 'Recent Highlights', 'Notebook Entries', 'Board Specific'].map((cat, i) => (
                                             <button
                                                 key={i}
-                                                className={`w-full text-left px-5 py-3.5 text-[10px] font-black rounded-2xl transition-all uppercase tracking-widest ${i === 0 ? 'bg-indigo-600/20 text-indigo-400 ring-1 ring-indigo-600/30' : 'text-slate-500 hover:text-white hover:bg-white/5'}`}
+                                                className={`w-full text-left px-5 py-3.5 text-[10px] font-black rounded-2xl transition-all uppercase tracking-widest ${i === 0 ? 'bg-primary text-white shadow-lg shadow-primary/20 ring-1 ring-primary/30' : 'text-muted-foreground hover:text-foreground hover:bg-muted'}`}
                                             >
                                                 {cat}
                                             </button>
@@ -784,20 +784,20 @@ export default function StudyCorner({ user }: StudyCornerProps) {
                                         <div
                                             key={i}
                                             onClick={() => book && setSelectedBook(book)}
-                                            className="p-8 rounded-[2.5rem] bg-white/40 dark:bg-[#030712]/40 backdrop-blur-3xl border border-slate-200 dark:border-white/10 hover:border-indigo-500/50 transition-all group cursor-pointer relative overflow-hidden flex flex-col h-full"
+                                            className="p-8 rounded-[2.5rem] bg-card/40 backdrop-blur-3xl border border-border hover:border-primary/50 transition-all group cursor-pointer relative overflow-hidden flex flex-col h-full shadow-lg"
                                         >
-                                            <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                                            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
                                             <div className="relative z-10 flex flex-col h-full">
                                                 <div className="flex items-center justify-between mb-8">
-                                                    <div className="px-3 py-1.5 rounded-lg bg-indigo-500/20 text-indigo-400 text-[8px] font-black uppercase tracking-[0.2em] ring-1 ring-indigo-500/30">
+                                                    <div className="px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-[8px] font-black uppercase tracking-[0.2em] ring-1 ring-primary/30">
                                                         {note.type}
                                                     </div>
-                                                    <div className="text-[9px] font-black text-slate-600 uppercase tracking-[0.3em] flex items-center gap-1.5">
+                                                    <div className="text-[9px] font-black text-muted-foreground uppercase tracking-[0.3em] flex items-center gap-1.5">
                                                         <Clock className="w-3.5 h-3.5" /> Recent
                                                     </div>
                                                 </div>
 
-                                                <h5 className="text-md font-black text-slate-900 dark:text-white mb-4 tracking-tight group-hover:text-indigo-400 transition-colors uppercase">
+                                                <h5 className="text-md font-black text-foreground mb-4 tracking-tight group-hover:text-primary transition-colors uppercase">
                                                     {book?.title || "Quick Reflection"}
                                                 </h5>
 

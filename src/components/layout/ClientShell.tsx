@@ -13,7 +13,7 @@ export default function ClientShell({ children }: { children: React.ReactNode })
   const { user, logout, isNavigationLocked } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
-  const { theme, setTheme } = useTheme();
+  const { theme, resolvedTheme, setTheme } = useTheme();
   const [mounted, setMounted] = React.useState(false);
 
   React.useEffect(() => {
@@ -49,19 +49,21 @@ export default function ClientShell({ children }: { children: React.ReactNode })
 
   const noNavbarPaths = ['/', '/auth', '/onboarding', '/role-selection', '/explore'];
   const isSpecialPath = pathname.startsWith('/tests/') || pathname.startsWith('/ogcode/');
-  const navbarTheme = theme === 'light' || theme === 'system' ? theme : 'dark';
+  
+  // Use resolvedTheme if available to handle 'system' correctly
+  const currentTheme = (mounted ? resolvedTheme : theme) || 'dark';
   
   const showNavbar = user && user.role === 'student' && !isNavigationLocked && !noNavbarPaths.includes(pathname) && !isSpecialPath;
 
   return (
-    <div className="min-h-screen bg-white dark:bg-[#020617] text-slate-900 dark:text-slate-200 font-sans antialiased overflow-x-hidden relative flex flex-col transition-colors duration-300">
+    <div className="min-h-screen bg-background text-foreground font-sans antialiased overflow-x-hidden relative flex flex-col transition-colors duration-300">
       {mounted && showNavbar && (
         <Navbar
           user={user}
           currentView={pathname.replace('/', '') as ViewState}
           onNavigate={handleNavigate}
           onLogout={logout}
-          theme={navbarTheme}
+          theme={currentTheme as "dark" | "light" | "system"}
           setTheme={setTheme}
         />
       )}

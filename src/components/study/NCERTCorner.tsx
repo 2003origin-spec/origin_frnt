@@ -59,12 +59,11 @@ export default function NCERTCorner({ onAddBook, existingFolders }: NCERTCornerP
     };
 
     return (
-        <div className="flex flex-col h-[calc(100vh-120px)] bg-[#F1F3F4] dark:bg-[#020617] rounded-[2.5rem] overflow-hidden shadow-2xl transition-all duration-500 border border-white/10">
+        <div className="flex flex-col h-[calc(100vh-120px)] bg-background rounded-[2.5rem] overflow-hidden shadow-2xl transition-all duration-500 border border-border">
 
-            {/* 1. Official Header Style */}
             <div className="relative h-24 shrink-0 overflow-hidden">
                 {/* Background Image Mockup */}
-                <div className="absolute inset-0 bg-gradient-to-r from-orange-400/80 to-yellow-500/80 z-10"></div>
+                <div className="absolute inset-0 bg-gradient-to-r from-primary/80 to-primary/60 z-10"></div>
                 <img
                     src="https://images.unsplash.com/photo-1523050853064-909241584b80?auto=format&fit=crop&q=80&w=1200"
                     alt="Education"
@@ -77,20 +76,20 @@ export default function NCERTCorner({ onAddBook, existingFolders }: NCERTCornerP
                 </div>
             </div>
 
-            {/* 2. Selection Bar (Maroon Style) */}
-            <div className="bg-[#880E4F] p-4 flex flex-wrap items-center justify-center gap-3 shrink-0 z-30 shadow-lg border-y border-white/5">
+            {/* 2. Selection Bar */}
+            <div className="bg-primary p-4 flex flex-wrap items-center justify-center gap-3 shrink-0 z-30 shadow-lg border-y border-white/10">
                 <select
                     value={selectedClass}
-                    onChange={(e) => {
+                    onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
                         setSelectedClass(e.target.value);
                         setSelectedSubject('');
                         setSelectedBookId('');
                     }}
-                    className="h-10 px-3 rounded text-slate-800 text-xs font-bold border-none outline-none min-w-[150px] bg-white hover:bg-slate-50 transition-colors"
+                    className="h-10 px-3 rounded text-foreground text-xs font-bold border-none outline-none min-w-[150px] bg-background/90 hover:bg-background transition-colors"
                 >
-                    <option value="">..Select Class..</option>
+                    <option value="" className="text-foreground">..Select Class..</option>
                     {ncertClasses.map((c) => (
-                        <option key={c} value={c}>Class {c}</option>
+                        <option key={c} value={c} className="text-foreground">Class {c}</option>
                     ))}
                 </select>
 
@@ -101,11 +100,11 @@ export default function NCERTCorner({ onAddBook, existingFolders }: NCERTCornerP
                         setSelectedBookId('');
                     }}
                     disabled={!selectedClass}
-                    className="h-10 px-3 rounded text-slate-800 text-xs font-bold border-none outline-none min-w-[150px] bg-white disabled:opacity-50"
+                    className="h-10 px-3 rounded text-foreground text-xs font-bold border-none outline-none min-w-[150px] bg-background/90 hover:bg-background transition-colors disabled:opacity-50"
                 >
-                    <option value="">..Select Subject..</option>
+                    <option value="" className="text-foreground">..Select Subject..</option>
                     {subjects.map((s) => (
-                        <option key={s} value={s}>{s}</option>
+                        <option key={s} value={s} className="text-foreground">{s}</option>
                     ))}
                 </select>
 
@@ -113,18 +112,18 @@ export default function NCERTCorner({ onAddBook, existingFolders }: NCERTCornerP
                     value={selectedBookId}
                     onChange={(e) => setSelectedBookId(e.target.value)}
                     disabled={!selectedSubject}
-                    className="h-10 px-3 rounded text-slate-800 text-xs font-bold border-none outline-none min-w-[180px] bg-white disabled:opacity-50"
+                    className="h-10 px-3 rounded text-foreground text-xs font-bold border-none outline-none min-w-[180px] bg-background/90 hover:bg-background transition-colors disabled:opacity-50"
                 >
-                    <option value="">..Select Book Title..</option>
+                    <option value="" className="text-foreground">..Select Book Title..</option>
                     {books.map((b) => (
-                        <option key={b.id} value={b.id}>{b.title}</option>
+                        <option key={b.id} value={b.id} className="text-foreground">{b.title}</option>
                     ))}
                 </select>
 
                 <Button
                     onClick={handleGo}
                     disabled={!selectedBookId}
-                    className="h-10 px-6 bg-white hover:bg-slate-100 text-[#880E4F] font-black text-xs rounded transition-all active:scale-95 disabled:opacity-50 border border-[#880E4F]/20"
+                    className="h-10 px-6 bg-background hover:bg-background/90 text-primary font-black text-xs rounded transition-all active:scale-95 disabled:opacity-50 border border-white/20"
                 >
                     Go
                 </Button>
@@ -136,23 +135,23 @@ export default function NCERTCorner({ onAddBook, existingFolders }: NCERTCornerP
                 {viewingBook ? (
                     <>
                         {/* Sidebar: Chapter Links */}
-                        <div className="w-72 bg-[#EBEBEB] dark:bg-[#030712]/40 border-r border-[#D1D1D1] dark:border-white/5 overflow-y-auto shrink-0 custom-scrollbar">
+                        <div className="w-72 bg-muted/30 border-r border-border overflow-y-auto shrink-0 custom-scrollbar">
                             <div className="p-4">
-                                <h3 className="text-[#880E4F] dark:text-pink-400 font-black text-xs uppercase tracking-wider mb-4 border-b border-[#880E4F]/20 pb-2">
+                                <h3 className="text-primary font-black text-xs uppercase tracking-wider mb-4 border-b border-primary/20 pb-2">
                                     {viewingBook.title}
                                 </h3>
                                 <div className="space-y-1">
-                                    {viewingBook.chapters?.map((ch) => (
+                                    {viewingBook && viewingBook.chapters && viewingBook.chapters.map((ch) => (
                                         <button
                                             key={ch.id}
                                             onClick={() => setActiveChapterId(ch.id)}
                                             className={`w-full text-left px-3 py-2.5 text-[11px] font-bold transition-all flex items-center justify-between group rounded-md ${activeChapterId === ch.id
-                                                ? 'bg-[#880E4F] text-white shadow-md'
-                                                : 'text-[#880E4F] dark:text-slate-300 hover:bg-black/5 dark:hover:bg-white/5'
+                                                ? 'bg-primary text-primary-foreground shadow-md'
+                                                : 'text-foreground/80 hover:bg-primary/10 hover:text-primary'
                                                 }`}
                                         >
                                             <span className="truncate">{ch.title}</span>
-                                            <span className={`text-[9px] font-medium opacity-70 group-hover:opacity-100 italic transition-opacity ${activeChapterId === ch.id ? 'text-white' : 'text-[#880E4F] dark:text-slate-400'}`}>
+                                            <span className={`text-[9px] font-medium opacity-70 group-hover:opacity-100 italic transition-opacity ${activeChapterId === ch.id ? 'text-primary-foreground' : 'text-primary'}`}>
                                                 (Open)
                                             </span>
                                         </button>
@@ -160,7 +159,7 @@ export default function NCERTCorner({ onAddBook, existingFolders }: NCERTCornerP
 
                                     <button
                                         onClick={handleAddToLibrary}
-                                        className="w-full mt-6 py-3 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-[10px] uppercase tracking-widest transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2 border border-indigo-400/30"
+                                        className="w-full mt-6 py-3 px-4 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-black text-[10px] uppercase tracking-widest transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2 border border-primary-foreground/10"
                                     >
                                         {isAdded ? (
                                             <><CheckCircle2 className="w-4 h-4" /> Added to Study Corner</>
@@ -169,8 +168,8 @@ export default function NCERTCorner({ onAddBook, existingFolders }: NCERTCornerP
                                         )}
                                     </button>
                                 </div>
-                                <div className="mt-8 pt-4 border-t border-slate-300 dark:border-white/5">
-                                    <button className="text-[#880E4F] dark:text-pink-400 font-bold text-[10px] uppercase tracking-widest hover:underline flex items-center gap-2">
+                                <div className="mt-8 pt-4 border-t border-border">
+                                    <button className="text-primary font-bold text-[10px] uppercase tracking-widest hover:underline flex items-center gap-2">
                                         <Download className="w-3 h-3" /> Download complete book
                                     </button>
                                 </div>
@@ -178,7 +177,7 @@ export default function NCERTCorner({ onAddBook, existingFolders }: NCERTCornerP
                         </div>
 
                         {/* Unified Reader Integration */}
-                        <div className="flex-1 bg-white relative">
+                        <div className="flex-1 bg-background relative">
                             {viewingBook && activeChapterId && (
                                 <NCERTReader
                                     book={viewingBook as any}
@@ -190,36 +189,36 @@ export default function NCERTCorner({ onAddBook, existingFolders }: NCERTCornerP
                     </>
                 ) : (
                     <div className="flex-1 flex flex-col items-center justify-center p-20 text-center space-y-8 animate-in fade-in duration-1000">
-                        <div className="w-32 h-32 rounded-[2.5rem] bg-indigo-500/10 flex items-center justify-center border border-indigo-500/20 shadow-inner group">
-                            <PlusCircle className="w-16 h-16 text-indigo-400 group-hover:scale-110 transition-transform duration-500" />
+                        <div className="w-32 h-32 rounded-[2.5rem] bg-primary/5 flex items-center justify-center border border-primary/20 shadow-inner group">
+                            <PlusCircle className="w-16 h-16 text-primary group-hover:scale-110 transition-transform duration-500" />
                         </div>
                         <div className="max-w-md space-y-4">
-                            <h2 className="text-2xl font-black text-white uppercase tracking-tighter italic">Ready to Explore?</h2>
-                            <p className="text-slate-500 text-sm font-medium leading-relaxed">
+                            <h2 className="text-2xl font-black text-foreground uppercase tracking-tighter italic">Ready to Explore?</h2>
+                            <p className="text-muted-foreground text-sm font-medium leading-relaxed">
                                 Use the official NCERT selection panel above to find your textbooks. You can browse chapters, highlight key concepts, and sync everything directly to your Study Corner.
                             </p>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-2xl mt-8">
-                            <GlassSurface className="p-6 border-white/10 group cursor-pointer hover:border-indigo-500/40 transition-all">
+                            <GlassSurface className="p-6 border-border group cursor-pointer hover:border-primary/40 transition-all">
                                 <div className="flex items-center gap-4">
-                                    <div className="p-2 rounded-lg bg-indigo-500/20 text-indigo-400"><PlusCircle className="w-5 h-5" /></div>
+                                    <div className="p-2 rounded-lg bg-primary/20 text-primary"><PlusCircle className="w-5 h-5" /></div>
                                     <div className="text-left">
-                                        <span className="block text-xs font-black text-white uppercase tracking-wider">Storage Target</span>
-                                        <select className="bg-transparent text-[10px] text-slate-400 font-bold uppercase outline-none border-none cursor-pointer">
+                                        <span className="block text-xs font-black text-foreground uppercase tracking-wider">Storage Target</span>
+                                        <select className="bg-transparent text-[10px] text-muted-foreground font-bold uppercase outline-none border-none cursor-pointer">
                                             {existingFolders.map(f => (
-                                                <option key={f} value={f} className="bg-[#020617]">{f}</option>
+                                                <option key={f} value={f} className="bg-background">{f}</option>
                                             ))}
                                         </select>
                                     </div>
                                 </div>
                             </GlassSurface>
-                            <GlassSurface className="p-6 border-white/10 group cursor-pointer hover:border-amber-500/40 transition-all">
+                            <GlassSurface className="p-6 border-border group cursor-pointer hover:border-amber-500/40 transition-all">
                                 <div className="flex items-center gap-4">
                                     <div className="p-2 rounded-lg bg-amber-500/20 text-amber-400"><Save className="w-5 h-5" /></div>
                                     <div className="text-left">
-                                        <span className="block text-xs font-black text-white uppercase tracking-wider">Auto-Sync</span>
-                                        <span className="block text-[10px] text-slate-500 font-bold uppercase">Cloud persistence on</span>
+                                        <span className="block text-xs font-black text-foreground uppercase tracking-wider">Auto-Sync</span>
+                                        <span className="block text-[10px] text-muted-foreground font-bold uppercase">Cloud persistence on</span>
                                     </div>
                                 </div>
                             </GlassSurface>

@@ -88,12 +88,12 @@ export default function Dashboard({ user, onStartChallenge, setTimeMode, onNavig
   }, [setTimeMode]);
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-[#020617] font-sans selection:bg-indigo-100 selection:text-indigo-900 transition-colors duration-300 relative overflow-x-hidden">
+    <div className="min-h-screen bg-background font-sans selection:bg-indigo-100 selection:text-indigo-900 transition-colors duration-300 relative overflow-x-hidden">
       {/* Premium Background Decoration */}
-      <div className="fixed inset-0 z-0 pointer-events-none opacity-40 mix-blend-screen"
+      <div className="fixed inset-0 z-0 pointer-events-none opacity-40 mix-blend-multiply dark:mix-blend-screen"
         style={{
-          backgroundImage: `radial-gradient(circle at 80% 30%, rgba(29, 78, 216, 0.3) 0%, transparent 40%),
-                               radial-gradient(circle at 20% 70%, rgba(56, 189, 248, 0.15) 0%, transparent 40%)`
+          backgroundImage: `radial-gradient(circle at 80% 30%, rgba(29, 78, 216, 0.15) 0%, transparent 40%),
+                                radial-gradient(circle at 20% 70%, rgba(56, 189, 248, 0.1) 0%, transparent 40%)`
         }}>
         <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.05] mix-blend-overlay"></div>
       </div>

@@ -68,16 +68,16 @@ export function ChallengeCard({ user, onStartChallenge }: ChallengeCardProps) {
     const prevMonth = () => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1));
 
     return (
-        <Card className="border border-white/20 dark:border-slate-800 bg-white/40 dark:bg-slate-950/40 backdrop-blur-2xl relative flex flex-col group min-h-[400px]">
+        <Card className="border border-border bg-card/40 backdrop-blur-2xl relative flex flex-col group min-h-[400px]">
             {/* Header: Month Navigation */}
             <div className="flex items-center justify-between px-5 pt-5 pb-2">
                 <div>
-                    <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                    <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
                         Day {today.getDate()}
-                        <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium tracking-tight whitespace-nowrap">Daily Challenge</span>
+                        <span className="text-[10px] text-muted-foreground font-medium tracking-tight whitespace-nowrap">Daily Challenge</span>
                     </h3>
                 </div>
-                <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-900/50 rounded-lg p-0.5 border border-slate-200 dark:border-slate-800">
+                <div className="flex items-center gap-1.5 bg-muted rounded-lg p-0.5 border border-border">
                     <button onClick={prevMonth} className="p-1 hover:bg-white dark:hover:bg-slate-800 rounded-md text-slate-400 transition-colors">
                         <ChevronLeft className="w-3.5 h-3.5" />
                     </button>
@@ -114,7 +114,7 @@ export function ChallengeCard({ user, onStartChallenge }: ChallengeCardProps) {
                                 <div key={day} className="h-7 flex items-center justify-center relative group/day cursor-default">
                                     <div className={`
                                         w-6 h-6 flex items-center justify-center rounded-full text-[10px] transition-all
-                                        ${solved ? "ring-2 ring-emerald-500/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold" : "text-slate-600 dark:text-slate-400 font-medium hover:bg-slate-100 dark:hover:bg-slate-800"}
+                                        ${solved ? "ring-2 ring-emerald-500/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold" : "text-muted-foreground font-medium hover:bg-muted"}
                                         ${current && !solved ? "text-orange-500 dark:text-orange-400 font-black bg-orange-500/10 ring-1 ring-orange-500/50" : ""}
                                     `}>
                                         {solved ? <CheckCircle2 className="w-3.5 h-3.5" /> : day}
@@ -195,7 +195,7 @@ export function PastActivitiesCard({ user }: { user: User }) {
     const totalSecs = types.reduce((a, t) => a + t.secs, 0);
 
     return (
-        <Card className="border-0 shadow-lg shadow-blue-500/5 bg-white dark:bg-slate-900/60 backdrop-blur-xl relative overflow-hidden group ring-1 ring-slate-100 dark:ring-white/5">
+        <Card className="border-0 shadow-lg shadow-blue-500/5 bg-card backdrop-blur-xl relative overflow-hidden group ring-1 ring-border">
             <div className="absolute inset-0 bg-gradient-to-br from-blue-50/50 to-transparent dark:from-blue-900/10 pointer-events-none" />
 
             <CardContent className="relative z-10 p-5 flex flex-col gap-4">
@@ -206,13 +206,13 @@ export function PastActivitiesCard({ user }: { user: User }) {
                             <Clock className="w-5 h-5" />
                         </div>
                         <div>
-                            <h3 className="text-sm font-bold text-black dark:text-slate-100">Time Spent</h3>
-                            <p className="text-[10px] text-black/40 dark:text-slate-500 font-medium">Today — {toHM(totalSecs)} total</p>
+                            <h3 className="text-sm font-bold text-foreground">Time Spent</h3>
+                            <p className="text-[10px] text-muted-foreground font-medium">Today — {toHM(totalSecs)} total</p>
                         </div>
                     </div>
                     <div className="text-right">
-                        <p className="text-xl font-black text-black dark:text-white">{toHM(totalSecs)}</p>
-                        <p className="text-[9px] text-black/40 dark:text-slate-500 uppercase tracking-widest">This session</p>
+                        <p className="text-xl font-black text-foreground">{toHM(totalSecs)}</p>
+                        <p className="text-[9px] text-muted-foreground uppercase tracking-widest">This session</p>
                     </div>
                 </div>
 
@@ -332,7 +332,7 @@ export function TodoListCard({ tasks, onAddTask, onToggleTask, onRemoveTask, onV
     };
 
     return (
-        <Card className="border-0 shadow-xl shadow-slate-200/50 dark:shadow-slate-900/50 bg-white dark:bg-slate-900/60 backdrop-blur-xl h-full relative overflow-hidden flex flex-col ring-1 ring-slate-100 dark:ring-white/5">
+        <Card className="border-0 shadow-xl shadow-slate-200/50 dark:shadow-slate-900/50 bg-card backdrop-blur-xl h-full relative overflow-hidden flex flex-col ring-1 ring-border">
             {/* Soft decorative background */}
             <div className="absolute top-0 right-0 w-[40%] h-[40%] bg-gradient-to-bl from-indigo-50/50 to-transparent dark:from-indigo-900/20 pointer-events-none" />
 

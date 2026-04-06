@@ -57,10 +57,10 @@ type SubmitResultApi = SubmitResult & {
 };
 
 const DIFFICULTY_CONFIG = {
-    easy: { label: 'Easy', color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
-    medium: { label: 'Medium', color: 'text-amber-400', bg: 'bg-amber-500/10' },
-    hard: { label: 'Hard', color: 'text-rose-400', bg: 'bg-rose-500/10' },
-    insane: { label: 'Insane', color: 'text-purple-400', bg: 'bg-purple-500/10' },
+    easy: { label: 'Easy', color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-500/10' },
+    medium: { label: 'Medium', color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-500/10' },
+    hard: { label: 'Hard', color: 'text-rose-600 dark:text-rose-400', bg: 'bg-rose-500/10' },
+    insane: { label: 'Insane', color: 'text-purple-600 dark:text-purple-400', bg: 'bg-purple-500/10' },
 };
 
 const SPEED_BAND_LABELS = {
@@ -306,7 +306,7 @@ function renderInlineSegments(value: string, keyPrefix: string): ReactNode[] {
         nodes.push(
             <span
                 key={`${keyPrefix}-math-${segmentIndex}`}
-                className="inline-flex rounded-md border border-blue-500/20 bg-blue-500/10 px-2 py-0.5 font-mono text-[0.95em] text-blue-100"
+                className="inline-flex rounded-md border border-blue-500/20 bg-blue-500/10 px-2 py-0.5 font-mono text-[0.95em] text-blue-700 dark:text-blue-100"
             >
                 {formatMathExpression(match[1])}
             </span>,
@@ -338,7 +338,7 @@ function renderFormattedExplanation(content: string | null | undefined): ReactNo
                 if (headingMatch) {
                     return (
                         <div key={`heading-${index}`} className="pt-1">
-                            <h4 className="text-sm font-black uppercase tracking-wide text-slate-100">
+                            <h4 className="text-sm font-black uppercase tracking-wide text-foreground">
                                 {headingMatch[1]}
                             </h4>
                         </div>
@@ -348,8 +348,8 @@ function renderFormattedExplanation(content: string | null | undefined): ReactNo
                 const bulletMatch = line.match(/^- (.+)$/);
                 if (bulletMatch) {
                     return (
-                        <div key={`bullet-${index}`} className="flex gap-2 text-sm leading-relaxed text-slate-300">
-                            <span className="mt-[2px] text-slate-500">•</span>
+                        <div key={`bullet-${index}`} className="flex gap-2 text-sm leading-relaxed text-muted-foreground">
+                            <span className="mt-[2px] text-muted-foreground/60">•</span>
                             <div className="flex-1">{renderInlineSegments(bulletMatch[1], `bullet-${index}`)}</div>
                         </div>
                     );
@@ -360,7 +360,7 @@ function renderFormattedExplanation(content: string | null | undefined): ReactNo
                     return (
                         <div
                             key={`math-${index}`}
-                            className="rounded-xl border border-blue-500/20 bg-blue-500/10 px-4 py-3 font-mono text-sm text-blue-100"
+                            className="rounded-xl border border-blue-500/20 bg-blue-500/10 px-4 py-3 font-mono text-sm text-blue-700 dark:text-blue-100"
                         >
                             {formatMathExpression(blockMathMatch[1])}
                         </div>
@@ -368,7 +368,7 @@ function renderFormattedExplanation(content: string | null | undefined): ReactNo
                 }
 
                 return (
-                    <p key={`line-${index}`} className="text-sm leading-relaxed text-slate-300">
+                    <p key={`line-${index}`} className="text-sm leading-relaxed text-muted-foreground">
                         {renderInlineSegments(line, `line-${index}`)}
                     </p>
                 );
@@ -518,7 +518,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
     }, [question?.subject, setTimeMode]);
 
     if (isLoading) return (
-        <div className="min-h-screen bg-[#0d1117] flex items-center justify-center">
+        <div className="min-h-screen bg-background flex items-center justify-center">
             <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
         </div>
     );
@@ -548,10 +548,10 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
     const diff = DIFFICULTY_CONFIG[diffKey as keyof typeof DIFFICULTY_CONFIG] || DIFFICULTY_CONFIG.medium;
 
     return (
-        <div className="min-h-screen bg-[#0d1117] text-slate-100 flex flex-col font-sans">
+        <div className="min-h-screen bg-background text-foreground flex flex-col font-sans transition-colors duration-300">
             {/* Header */}
-            <div className="h-12 border-b border-white/[0.07] flex items-center justify-between px-4 bg-[#0d1117]">
-                <button onClick={onBack} className="p-1.5 hover:bg-white/5 rounded-lg transition-colors">
+            <div className="h-12 border-b border-border flex items-center justify-between px-4 bg-background">
+                <button onClick={onBack} className="p-1.5 hover:bg-accent rounded-lg transition-colors">
                     <ArrowLeft className="w-4 h-4" />
                 </button>
                 <div className="flex items-center gap-4">
@@ -559,7 +559,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                         <Trophy className="w-3.5 h-3.5" />
                         {user?.points || 0} PTS
                     </div>
-                    <div className="flex items-center gap-2 text-sm text-slate-400 font-mono">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground font-mono">
                         <Clock className="w-3.5 h-3.5" /> {Math.floor(elapsed / 60)}m {elapsed % 60}s
                     </div>
                 </div>
@@ -567,20 +567,20 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
 
             <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
                 {/* Left: Question Content */}
-                <div className="lg:w-1/2 p-6 overflow-y-auto border-r border-white/5">
+                <div className="lg:w-1/2 p-4 sm:p-6 overflow-y-auto border-r border-border bg-background">
                     <div className="space-y-4">
                         <div className="flex items-center gap-2">
-                            <span className="text-[10px] font-bold text-blue-400 px-2 py-1 bg-blue-500/10 rounded uppercase tracking-wider">
+                            <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 px-2 py-1 bg-blue-500/10 rounded uppercase tracking-wider">
                                 {question.subject}
                             </span>
                             <span className={`text-[10px] font-bold ${diff.color} px-2 py-1 ${diff.bg} rounded uppercase tracking-wider`}>
                                 {diff.label}
                             </span>
                         </div>
-                        <p className="text-lg leading-relaxed font-serif">{question.text}</p>
+                        <p className="text-lg leading-relaxed font-serif text-foreground">{question.text}</p>
                         <div className="flex flex-wrap gap-2 pt-4">
                             {safeTags.map((tag, i) => (
-                                <span key={i} className="text-[10px] px-2 py-0.5 bg-white/5 border border-white/10 rounded text-slate-500">
+                                <span key={i} className="text-[10px] px-2 py-0.5 bg-muted/50 border border-border rounded text-muted-foreground">
                                     {tag}
                                 </span>
                             ))}
@@ -589,7 +589,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                 </div>
 
                 {/* Right: Interaction and Results */}
-                <div className="lg:w-1/2 p-6 bg-slate-50 dark:bg-black border-l border-slate-200 dark:border-white/5 overflow-y-auto">
+                <div className="lg:w-1/2 p-4 sm:p-6 bg-muted/30 border-l border-border overflow-y-auto">
                     <div className="max-w-xl mx-auto space-y-6">
 
                         {/* 1. INPUT SECTION */}
@@ -600,12 +600,12 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                     disabled={!!result || isSubmitting}
                                     onClick={() => setSelectedOption(idx)}
                                     className={`w-full text-left p-4 rounded-xl border-2 transition-all font-serif
-                                        ${selectedOption === idx ? 'border-blue-500 bg-blue-50 dark:bg-blue-500/5' : 'border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.02]'}
+                                        ${selectedOption === idx ? 'border-primary bg-primary/5' : 'border-border bg-card hover:border-primary/30'}
                                         ${result?.isCorrect && result?.correctOption === idx ? 'border-emerald-500 bg-emerald-500/5 text-emerald-600 dark:text-emerald-400' : ''}
                                         ${result && !result.isCorrect && selectedOption === idx ? 'border-rose-500 bg-rose-500/5 text-rose-600 dark:text-rose-400' : ''}
                                     `}
                                 >
-                                    <span className="font-mono text-xs mr-3 opacity-50">({String.fromCharCode(65 + idx)})</span>
+                                    <span className="font-mono text-xs mr-3 opacity-50 dark:opacity-40">({String.fromCharCode(65 + idx)})</span>
                                     {opt}
                                 </button>
                             ))}
@@ -620,16 +620,16 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                         );
                                     }}
                                     className={`w-full text-left p-4 rounded-xl border-2 transition-all font-serif
-                                        ${selectedOptions.includes(idx) ? 'border-blue-500 bg-blue-50 dark:bg-blue-500/5' : 'border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.02]'}
+                                        ${selectedOptions.includes(idx) ? 'border-primary bg-primary/5' : 'border-border bg-card hover:border-primary/30'}
                                         ${result?.isCorrect && result?.correctOptions?.includes(idx) ? 'border-emerald-500 bg-emerald-500/5 text-emerald-600 dark:text-emerald-400' : ''}
                                         ${result && !result.isCorrect && selectedOptions.includes(idx) ? 'border-rose-500 bg-rose-500/5 text-rose-600 dark:text-rose-400' : ''}
                                     `}
                                 >
                                     <div className="flex items-center gap-3">
-                                        <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${selectedOptions.includes(idx) ? 'bg-blue-500 border-blue-500' : 'border-white/20'}`}>
+                                        <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${selectedOptions.includes(idx) ? 'bg-blue-500 border-blue-500' : 'border-input'}`}>
                                             {selectedOptions.includes(idx) && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
                                         </div>
-                                        <span className="font-mono text-xs opacity-50">({String.fromCharCode(65 + idx)})</span>
+                                        <span className="font-mono text-xs opacity-50 dark:opacity-40">({String.fromCharCode(65 + idx)})</span>
                                         {opt}
                                     </div>
                                 </button>
@@ -638,9 +638,9 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                             {qType === 'matrix_match' && mData && (
                                 <div className="space-y-6">
                                     {/* Column B Reference (New) */}
-                                    <div className="bg-white/[0.02] border border-white/5 rounded-2xl p-4">
+                                    <div className="bg-card border border-border rounded-2xl p-4 shadow-sm">
                                         <div className="flex items-center justify-between mb-4">
-                                            <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Column B Reference</h4>
+                                            <h4 className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Column B Reference</h4>
                                             <button 
                                                 onClick={() => setMatrixPairs([])}
                                                 className="text-[10px] font-black uppercase tracking-widest text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1.5 px-2 py-1 bg-blue-500/5 hover:bg-blue-500/10 rounded-md border border-blue-500/20"
@@ -650,11 +650,11 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                         </div>
                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                             {(colB).map((term: string, idx: number) => (
-                                                <div key={idx} className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-xl p-2.5">
-                                                    <span className="w-5 h-5 rounded-md bg-indigo-500/10 text-indigo-400 flex items-center justify-center text-[10px] font-bold shrink-0">
+                                                <div key={idx} className="flex items-center gap-2 bg-muted/50 border border-border rounded-xl p-2.5">
+                                                                    <span className="w-5 h-5 rounded-md bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center text-[10px] font-bold shrink-0">
                                                         {idx + 1}
                                                     </span>
-                                                    <span className="text-xs text-slate-300 truncate">{term}</span>
+                                                    <span className="text-xs text-muted-foreground truncate">{term}</span>
                                                 </div>
                                             ))}
                                         </div>
@@ -662,13 +662,13 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
 
                                     <div className="grid grid-cols-1 gap-4">
                                         {(colA).map((itemA: string, idxA: number) => (
-                                            <div key={idxA} className="p-5 rounded-2xl bg-white/[0.03] border border-white/5 space-y-4 hover:border-white/10 transition-colors shadow-sm">
+                                            <div key={idxA} className="p-5 rounded-2xl bg-card border border-border space-y-4 hover:border-primary/30 transition-colors shadow-sm">
                                                 <div className="flex items-center justify-between">
                                                     <div className="flex items-center gap-4">
-                                                        <span className="w-7 h-7 rounded-lg bg-white/10 text-slate-400 flex items-center justify-center text-[12px] font-black shrink-0 border border-white/5 shadow-inner">
+                                                        <span className="w-7 h-7 rounded-lg bg-muted/50 text-muted-foreground flex items-center justify-center text-[12px] font-black shrink-0 border border-border shadow-inner">
                                                             {String.fromCharCode(65 + idxA)}
                                                         </span>
-                                                        <span className="text-[15px] font-bold text-slate-200 tracking-tight leading-relaxed">{itemA}</span>
+                                                        <span className="text-[15px] font-bold text-foreground tracking-tight leading-relaxed">{itemA}</span>
                                                     </div>
                                                 </div>
                                                 <div className="flex flex-wrap gap-3 pt-2">
@@ -690,7 +690,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                                                     });
                                                                 }}
                                                                 className={`w-12 h-12 rounded-xl border text-[13px] font-black transition-all flex items-center justify-center shadow-sm
-                                                                    ${isSelected ? 'bg-blue-600 border-blue-600 text-white shadow-lg' : 'bg-white dark:bg-white/5 border-slate-200 dark:border-white/10 text-slate-400 dark:text-slate-500'}
+                                                                    ${isSelected ? 'bg-blue-600 border-blue-600 text-white shadow-lg' : 'bg-background border-border text-muted-foreground'}
                                                                     ${result?.isCorrect && isCorrect ? 'bg-emerald-500 border-emerald-500 text-white' : ''}
                                                                     ${result && !result.isCorrect && isSelected ? 'bg-rose-500 border-rose-500 text-white animate-pulse' : ''}
                                                                     hover:scale-105 active:scale-95 group/btn
@@ -714,11 +714,11 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                         disabled={!!result || isSubmitting}
                                         value={answerInput}
                                         onChange={(e) => setAnswerInput(e.target.value)}
-                                        className="w-full bg-white/5 border-2 border-white/10 p-5 rounded-2xl text-2xl text-center font-mono focus:border-blue-500 outline-none transition-all"
+                                        className="w-full bg-card border-2 border-border p-5 rounded-2xl text-2xl text-center font-mono focus:border-primary outline-none transition-all text-foreground shadow-inner"
                                         placeholder={qType === 'numerical' ? "Enter value..." : "Type answer..."}
                                     />
                                     {result && !result.isCorrect && result.correctAnswerText && (
-                                        <p className="text-xs text-rose-400 text-center">Incorrect. The value you entered doesn&apos;t match the expected answer.</p>
+                                        <p className="text-xs text-rose-500 dark:text-rose-400 text-center">Incorrect. The value you entered doesn&apos;t match the expected answer.</p>
                                     )}
                                 </div>
                             )}
@@ -754,31 +754,31 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                         <h3 className={`font-bold ${result.isCorrect ? 'text-emerald-400' : 'text-rose-400'}`}>
                                             {result.isCorrect ? 'Correct Answer' : 'Incorrect Answer'}
                                         </h3>
-                                        <p className="text-xs text-slate-500">Time spent: {Math.floor(elapsed / 60)}m {elapsed % 60}s</p>
+                                        <p className="text-xs text-muted-foreground/60">Time spent: {Math.floor(elapsed / 60)}m {elapsed % 60}s</p>
                                     </div>
                                 </div>
 
                                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
-                                    <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
-                                        <p className="text-[10px] uppercase tracking-widest text-slate-500">Result Score</p>
-                                        <p className="text-lg font-black text-slate-100">
+                                    <div className="rounded-xl border border-border bg-muted/30 px-3 py-2">
+                                        <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60">Result Score</p>
+                                        <p className="text-lg font-black text-foreground">
                                             {result.resultScore ?? 0}
-                                            <span className="ml-1 text-xs font-medium text-slate-500">/ {result.maxPoints ?? result.basePoints ?? 0}</span>
+                                            <span className="ml-1 text-xs font-medium text-muted-foreground/60">/ {result.maxPoints ?? result.basePoints ?? 0}</span>
                                         </p>
                                     </div>
-                                    <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
-                                        <p className="text-[10px] uppercase tracking-widest text-slate-500">Points Earned</p>
-                                        <p className={`text-lg font-black ${result.pointsAwarded ? 'text-amber-400' : 'text-slate-400'}`}>
+                                    <div className="rounded-xl border border-border bg-muted/30 px-3 py-2">
+                                        <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60">Points Earned</p>
+                                        <p className={`text-lg font-black ${result.pointsAwarded ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}>
                                             +{result.pointsAwarded ?? 0}
                                         </p>
                                     </div>
-                                    <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
-                                        <p className="text-[10px] uppercase tracking-widest text-slate-500">Speed Rating</p>
-                                        <p className="text-lg font-black text-slate-100">
+                                    <div className="rounded-xl border border-border bg-muted/30 px-3 py-2">
+                                        <p className="text-[10px] uppercase tracking-widest text-muted-foreground/60">Speed Rating</p>
+                                        <p className="text-lg font-black text-foreground">
                                             {result.speedBand ? SPEED_BAND_LABELS[result.speedBand] : 'Recorded'}
                                         </p>
                                         {typeof result.targetTimeSeconds === 'number' && (
-                                            <p className="text-[11px] text-slate-500">
+                                            <p className="text-[11px] text-muted-foreground/60">
                                                 Target {Math.floor(result.targetTimeSeconds / 60)}m {result.targetTimeSeconds % 60}s
                                             </p>
                                         )}
@@ -787,8 +787,8 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
 
                                 {result.isCorrect ? (
                                     result.explanation && (
-                                        <div className="pt-4 border-t border-white/5">
-                                            <p className="text-xs font-bold text-emerald-500 uppercase tracking-widest mb-2 flex items-center gap-2">
+                                        <div className="pt-4 border-t border-border">
+                                            <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest mb-2 flex items-center gap-2">
                                                 <Trophy className="w-4 h-4" /> Solution
                                             </p>
                                             {renderFormattedExplanation(result.explanation)}
@@ -818,38 +818,38 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                         )}
 
                                         {showHint && question.hint && (
-                                            <div className="pt-4 border-t border-white/5 animate-in fade-in zoom-in-95 duration-300">
+                                            <div className="pt-4 border-t border-border animate-in fade-in zoom-in-95 duration-300">
                                                 <p className="text-xs font-bold text-amber-500 uppercase tracking-widest mb-2 flex items-center gap-2">
                                                     <HelpCircle className="w-3.5 h-3.5" /> Hint
                                                 </p>
-                                                <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-line font-serif italic">
+                                                <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line font-serif italic">
                                                     {question.hint}
                                                 </p>
                                             </div>
                                         )}
 
                                         {showSolution && (result.correctAnswerText || result.explanation) && (
-                                            <div className="pt-4 border-t border-white/5 animate-in fade-in zoom-in-95 duration-300 space-y-3">
+                                            <div className="pt-4 border-t border-border animate-in fade-in zoom-in-95 duration-300 space-y-3">
                                                 <p className="text-xs font-bold text-blue-400 uppercase tracking-widest mb-2 flex items-center gap-2">
                                                     <Trophy className="w-3.5 h-3.5" /> Full Solution
                                                 </p>
                                                 {result.correctAnswerText && (
                                                     <div className="rounded-xl border border-blue-500/15 bg-blue-500/5 px-4 py-3">
-                                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Stored Answer</p>
+                                                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1">Stored Answer</p>
                                                         {hasMathMarkup(result.correctAnswerText) ? (
-                                                            <div className="rounded-lg border border-blue-500/15 bg-black/20 px-3 py-2 font-mono text-base text-blue-100">
+                                                            <div className="rounded-lg border border-border bg-muted/50 px-3 py-2 font-mono text-base text-foreground">
                                                                 {formatMathExpression(result.correctAnswerText)}
                                                             </div>
                                                         ) : (
-                                                            <p className="text-sm text-slate-100 leading-relaxed whitespace-pre-line font-medium">
+                                                            <p className="text-sm text-foreground leading-relaxed whitespace-pre-line font-medium">
                                                                 {result.correctAnswerText}
                                                             </p>
                                                         )}
                                                     </div>
                                                 )}
                                                 {result.explanation && (
-                                                    <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
-                                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Reference Explanation</p>
+                                                    <div className="rounded-xl border border-border bg-card/50 px-4 py-3">
+                                                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1">Reference Explanation</p>
                                                         {renderFormattedExplanation(result.explanation)}
                                                     </div>
                                                 )}
@@ -862,7 +862,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                     {!result.isCorrect && (
                                         <button
                                             onClick={handleTryAgain}
-                                            className="flex-1 py-3 bg-blue-600 hover:bg-blue-500 rounded-xl text-sm font-black flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-900/20 border border-blue-400/20"
+                                            className="flex-1 py-3 bg-blue-600 hover:bg-blue-500 rounded-xl text-sm font-black flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-500/20 border border-blue-400/20"
                                         >
                                             <RotateCcw className="w-4 h-4" />
                                             Try Again
@@ -870,7 +870,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                     )}
                                     <button
                                         onClick={onBack}
-                                        className={`py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm font-semibold transition-colors ${result.isCorrect ? 'w-full' : 'flex-1'}`}
+                                        className={`py-3 bg-muted hover:bg-muted/80 border border-border rounded-xl text-sm font-semibold transition-colors text-foreground ${result.isCorrect ? 'w-full' : 'flex-1'}`}
                                     >
                                         Return to Dashboard
                                     </button>

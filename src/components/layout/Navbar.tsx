@@ -70,9 +70,9 @@ export default function Navbar({ user, currentView, onNavigate, onLogout, theme,
     return (
         <div
             className={`fixed ${theme === 'dark'
-                    ? 'bg-zinc-950/80 border-zinc-800/50'
-                    : 'bg-white/80 border-slate-200/50'
-                } top-6 left-0 right-0 mx-auto z-50 shadow-[0_8px_32px_rgba(0,0,0,0.12)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.5)] backdrop-blur-xl border rounded-[2rem] pointer-events-auto max-w-7xl w-[95%] transition-all duration-300`}
+                    ? 'bg-zinc-950/80 border-zinc-800/50 shadow-[0_8px_32px_rgba(0,0,0,0.5)]'
+                    : 'bg-white/80 border-slate-200/50 shadow-[0_8px_32px_rgba(148,163,184,0.15)]'
+                } top-6 left-0 right-0 mx-auto z-50 backdrop-blur-xl border rounded-[2rem] pointer-events-auto max-w-7xl w-[95%] transition-all duration-300`}
         >
             <div className="w-full h-full flex items-center">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full">

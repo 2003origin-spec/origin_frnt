@@ -90,25 +90,25 @@ export default function Explore({ onNavigate }: ExploreProps) {
     };
 
     return (
-        <div className="min-h-screen pt-12 pb-24 px-4 sm:px-6 lg:px-8 bg-white dark:bg-[#020617]">
+        <div className="min-h-screen pt-12 pb-24 px-4 sm:px-6 lg:px-8 bg-background text-foreground transition-colors duration-300">
             {/* Header Section */}
             <div className="max-w-7xl mx-auto mb-16 relative">
-                <div className="absolute -top-24 -left-24 w-96 h-96 bg-blue-500/10 dark:bg-blue-500/5 rounded-full blur-[120px] pointer-events-none" />
-                <div className="absolute -top-12 -right-12 w-64 h-64 bg-cyan-500/10 dark:bg-cyan-500/5 rounded-full blur-[100px] pointer-events-none" />
+                <div className="absolute -top-24 -left-24 w-96 h-96 bg-primary/10 dark:bg-primary/5 rounded-full blur-[120px] pointer-events-none" />
+                <div className="absolute -top-12 -right-12 w-64 h-64 bg-secondary/10 dark:bg-secondary/5 rounded-full blur-[100px] pointer-events-none" />
 
                 <motion.div
                     initial={{ opacity: 0, y: -20 }}
                     animate={{ opacity: 1, y: 0 }}
                     className="relative z-10 text-center lg:text-left pt-10"
                 >
-                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/30 mb-6">
-                        <TrendingUp className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-600 dark:text-blue-400">Everything in one place</span>
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/5 border border-primary/10 dark:border-primary/20 mb-6">
+                        <TrendingUp className="w-4 h-4 text-primary" />
+                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-primary">Everything in one place</span>
                     </div>
-                    <h1 className="text-4xl lg:text-6xl font-black text-slate-900 dark:text-white tracking-tighter mb-4">
-                        Explore <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-blue-300">Origin</span>
+                    <h1 className="text-4xl lg:text-6xl font-black tracking-tighter mb-4">
+                        Explore <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-primary/60">Origin</span>
                     </h1>
-                    <p className="text-lg text-slate-600 dark:text-slate-400 max-w-2xl lg:ml-0 mx-auto leading-relaxed">
+                    <p className="text-lg text-muted-foreground max-w-2xl lg:ml-0 mx-auto leading-relaxed">
                         Access all your learning modules, assessments, and community features from this high-performance hub.
                     </p>
                 </motion.div>
@@ -130,7 +130,7 @@ export default function Explore({ onNavigate }: ExploreProps) {
                         onClick={() => onNavigate(card.view)}
                         className="group relative cursor-pointer"
                     >
-                        <div className="absolute inset-0 bg-gradient-to-br from-white to-slate-50 dark:from-[#0B1229] dark:to-[#070D1F] rounded-[2.5rem] border border-slate-200/60 dark:border-white/5 shadow-xl shadow-slate-200/20 dark:shadow-none transition-all duration-300 group-hover:border-blue-500/30 group-hover:shadow-2xl group-hover:shadow-blue-500/10" />
+                        <div className="absolute inset-0 bg-card rounded-[2.5rem] border border-border shadow-xl shadow-foreground/5 dark:shadow-none transition-all duration-300 group-hover:border-primary/30 group-hover:shadow-2xl group-hover:shadow-primary/10" />
 
                         <div className="relative p-10 flex flex-col h-full min-h-[320px]">
                             {/* Icon Box */}
@@ -140,19 +140,19 @@ export default function Explore({ onNavigate }: ExploreProps) {
 
                             <div className="flex-1">
                                 <div className="flex items-center justify-between mb-4">
-                                    <h3 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">{card.title}</h3>
+                                    <h3 className="text-2xl font-black tracking-tight">{card.title}</h3>
                                     <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                                        <ArrowRight className="w-6 h-6 text-blue-500" />
+                                        <ArrowRight className="w-6 h-6 text-primary" />
                                     </div>
                                 </div>
-                                <p className="text-slate-500 dark:text-slate-400 leading-relaxed font-medium">
+                                <p className="text-muted-foreground leading-relaxed font-medium">
                                     {card.description}
                                 </p>
                             </div>
 
-                            <div className="mt-8 pt-6 border-t border-slate-100 dark:border-white/5 flex items-center justify-between">
-                                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Status</span>
-                                <span className="text-xs font-bold text-blue-600 dark:text-blue-400">{card.stats}</span>
+                            <div className="mt-8 pt-6 border-t border-border flex items-center justify-between">
+                                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">Status</span>
+                                <span className="text-xs font-bold text-primary">{card.stats}</span>
                             </div>
                         </div>
                     </motion.div>

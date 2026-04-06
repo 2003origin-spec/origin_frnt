@@ -1,5 +1,6 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useTheme } from 'next-themes';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -37,8 +38,10 @@ interface ProfileProps {
 }
 
 export default function Profile({ user, streakData, onBack, onUpgrade }: ProfileProps) {
+  const { resolvedTheme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  const [darkMode, setDarkMode] = useState(false);
+
   const [editData, setEditData] = useState({
     name: user.name,
     class: user.class || '',
@@ -47,14 +50,16 @@ export default function Profile({ user, streakData, onBack, onUpgrade }: Profile
   });
   const [isLoading, setIsLoading] = useState(false);
 
+  // Avoid hydration mismatch
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const toggleDarkMode = () => {
-    setDarkMode(!darkMode);
-    if (!darkMode) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
+    setTheme(resolvedTheme === 'dark' ? 'light' : 'dark');
   };
+
+  if (!mounted) return null;
 
   const handleSave = async () => {
     setIsLoading(true);
@@ -88,7 +93,7 @@ export default function Profile({ user, streakData, onBack, onUpgrade }: Profile
   ];
 
   return (
-    <div className="min-h-screen bg-[#020617] text-slate-50 font-sans selection:bg-indigo-100 selection:text-indigo-900 transition-colors duration-300 relative overflow-x-hidden">
+    <div className="min-h-screen bg-background text-foreground font-sans selection:bg-primary/20 selection:text-primary transition-colors duration-300 relative overflow-x-hidden">
       {/* Premium Background Decoration */}
       <div className="fixed inset-0 z-0 pointer-events-none opacity-40 mix-blend-screen"
         style={{
@@ -100,27 +105,27 @@ export default function Profile({ user, streakData, onBack, onUpgrade }: Profile
 
       <div className="relative z-10 flex flex-col min-h-screen">
         {/* Header */}
-        <header className="sticky top-0 z-40 bg-[#020617]/40 dark:bg-slate-900/40 backdrop-blur-xl border-b border-slate-200/50 dark:border-white/5 transition-all">
+        <header className="sticky top-0 z-40 bg-background/60 backdrop-blur-xl border-b border-border transition-all">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex items-center justify-between h-20">
               <div className="flex items-center gap-4">
                 <button
                   onClick={onBack}
-                  className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800/50 text-slate-600 dark:text-slate-400 hover:bg-white dark:hover:bg-slate-800 hover:text-indigo-600 dark:hover:text-indigo-400 transition-all border border-transparent hover:border-slate-200 dark:hover:border-slate-700 shadow-sm"
+                  className="p-2.5 rounded-xl bg-secondary/50 text-muted-foreground hover:bg-secondary hover:text-primary transition-all border border-border shadow-sm"
                 >
                   <ChevronLeft className="w-5 h-5" />
                 </button>
-                <div className="h-8 w-[1px] bg-slate-200 dark:bg-slate-800 mx-1" />
-                <h1 className="text-xl font-black tracking-tight text-slate-800 dark:text-white">Profile Settings</h1>
+                <div className="h-8 w-[1px] bg-border mx-1" />
+                <h1 className="text-xl font-black tracking-tight">Profile Settings</h1>
               </div>
               <div className="flex items-center gap-3">
                 <button
                   onClick={toggleDarkMode}
-                  className="p-2.5 rounded-full bg-slate-100 dark:bg-slate-800/50 text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 transition-all"
+                  className="p-2.5 rounded-full bg-secondary/50 text-muted-foreground hover:text-foreground transition-all"
                 >
-                  {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+                  {resolvedTheme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
                 </button>
-                <button className="p-2.5 rounded-full bg-slate-100 dark:bg-slate-800/50 text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 transition-all">
+                <button className="p-2.5 rounded-full bg-secondary/50 text-muted-foreground hover:text-foreground transition-all">
                   <Settings className="w-5 h-5" />
                 </button>
               </div>
@@ -131,8 +136,8 @@ export default function Profile({ user, streakData, onBack, onUpgrade }: Profile
         {/* Main Content */}
         <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10 w-full mb-20">
           {/* Profile Header */}
-          <Card className="border-0 shadow-2xl shadow-indigo-500/5 bg-white dark:bg-slate-900/60 backdrop-blur-xl mb-10 relative overflow-hidden ring-1 ring-slate-100 dark:ring-white/5">
-            <div className="absolute inset-0 bg-gradient-to-br from-indigo-50/50 to-transparent dark:from-indigo-900/10 pointer-events-none" />
+          <Card className="border border-border shadow-2xl shadow-primary/5 bg-card backdrop-blur-xl mb-10 relative overflow-hidden ring-1 ring-border">
+            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent dark:from-primary/10 pointer-events-none" />
             <CardContent className="relative z-10 p-8 sm:p-10">
               <div className="flex flex-col sm:flex-row items-center gap-8">
                 {/* Avatar */}
@@ -151,7 +156,7 @@ export default function Profile({ user, streakData, onBack, onUpgrade }: Profile
                 {/* Info */}
                 <div className="flex-1 text-center sm:text-left">
                   <div className="flex items-center justify-center sm:justify-start gap-4 mb-3">
-                    <h2 className="text-3xl font-black text-slate-800 dark:text-white tracking-tight">{user.name}</h2>
+                    <h2 className="text-3xl font-black tracking-tight">{user.name}</h2>
                     {user.isPremium && (
                       <Badge className="bg-gradient-to-r from-amber-400 to-orange-500 text-white shadow-lg shadow-orange-500/20 border-0 h-6">
                         <Crown className="w-3 h-3 mr-1" />
@@ -159,7 +164,7 @@ export default function Profile({ user, streakData, onBack, onUpgrade }: Profile
                       </Badge>
                     )}
                   </div>
-                  <p className="text-slate-500 dark:text-slate-400 font-medium mb-5">{user.email}</p>
+                  <p className="text-muted-foreground font-medium mb-5">{user.email}</p>
 
                   <div className="flex flex-wrap justify-center sm:justify-start gap-3">
                     {isEditing ? (
@@ -246,8 +251,8 @@ export default function Profile({ user, streakData, onBack, onUpgrade }: Profile
                     onClick={() => isEditing ? handleSave() : setIsEditing(true)}
                     disabled={isLoading}
                     className={`rounded-xl px-6 h-11 font-bold transition-all shadow-sm ${isEditing
-                      ? "bg-indigo-600 hover:bg-indigo-500 text-white"
-                      : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700"
+                      ? "bg-primary hover:bg-primary/90 text-primary-foreground"
+                      : "border-border bg-card text-foreground hover:bg-secondary"
                       }`}
                   >
                     {isEditing ? (
@@ -282,15 +287,15 @@ export default function Profile({ user, streakData, onBack, onUpgrade }: Profile
               { label: 'Tests Taken', value: '24', icon: BookOpen, color: 'text-blue-500 shadow-blue-500/10' },
               { label: 'Study Hours', value: '156', icon: Clock, color: 'text-emerald-500 shadow-emerald-500/10' },
               { label: 'Current Streak', value: `${streakData.currentStreak} days`, icon: TrendingUp, color: 'text-orange-500 shadow-orange-500/10' },
-              { label: 'Global Rank', value: '#247', icon: Trophy, color: 'text-indigo-500 shadow-indigo-500/10' },
+              { label: 'Global Rank', value: '#247', icon: Trophy, color: 'text-primary shadow-primary/10' },
             ].map((stat, index) => (
-              <Card key={index} className="border-0 shadow-lg bg-white dark:bg-slate-900/60 backdrop-blur-xl ring-1 ring-slate-100 dark:ring-white/5 hover:scale-[1.02] transition-all group cursor-default">
+              <Card key={index} className="border border-border shadow-lg bg-card backdrop-blur-xl ring-1 ring-border hover:scale-[1.02] transition-all group cursor-default">
                 <CardContent className="p-6 text-center">
-                  <div className={`w-12 h-12 mx-auto rounded-2xl bg-slate-50 dark:bg-slate-800/50 flex items-center justify-center mb-3 shadow-sm group-hover:scale-110 transition-transform ${stat.color}`}>
+                  <div className={`w-12 h-12 mx-auto rounded-2xl bg-secondary/50 flex items-center justify-center mb-3 shadow-sm group-hover:scale-110 transition-transform ${stat.color}`}>
                     <stat.icon className="w-6 h-6" />
                   </div>
-                  <p className="text-2xl font-black text-slate-800 dark:text-white tracking-tight">{stat.value}</p>
-                  <p className="text-[10px] text-slate-500 dark:text-slate-400 font-bold uppercase tracking-widest mt-1">{stat.label}</p>
+                  <p className="text-2xl font-black tracking-tight">{stat.value}</p>
+                  <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mt-1">{stat.label}</p>
                 </CardContent>
               </Card>
             ))}
@@ -298,7 +303,7 @@ export default function Profile({ user, streakData, onBack, onUpgrade }: Profile
 
           {/* Tabs */}
           <Tabs defaultValue="progress" className="mb-10">
-            <TabsList className="bg-slate-100 dark:bg-slate-800/50 p-1.5 w-full h-14 rounded-2xl backdrop-blur-md">
+            <TabsList className="bg-secondary/50 p-1.5 w-full h-14 rounded-2xl backdrop-blur-md border border-border">
               {[
                 { value: 'progress', icon: TrendingUp, label: 'Progress' },
                 { value: 'photobooth', icon: Sparkles, label: 'AI Booth' },
@@ -308,7 +313,7 @@ export default function Profile({ user, streakData, onBack, onUpgrade }: Profile
                 <TabsTrigger
                   key={tab.value}
                   value={tab.value}
-                  className="flex-1 h-full rounded-xl data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:text-indigo-600 dark:data-[state=active]:text-indigo-400 data-[state=active]:shadow-lg text-slate-500 dark:text-slate-400 font-bold text-sm tracking-tight transition-all"
+                  className="flex-1 h-full rounded-xl data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-lg text-muted-foreground font-bold text-sm tracking-tight transition-all"
                 >
                   <tab.icon className="w-4 h-4 mr-2" />
                   {tab.label}
@@ -317,10 +322,10 @@ export default function Profile({ user, streakData, onBack, onUpgrade }: Profile
             </TabsList>
 
             <TabsContent value="progress" className="mt-8">
-              <Card className="border-0 shadow-xl bg-white dark:bg-slate-900/60 backdrop-blur-xl ring-1 ring-slate-100 dark:ring-white/5 overflow-hidden">
+              <Card className="border border-border shadow-xl bg-card backdrop-blur-xl ring-1 ring-border overflow-hidden">
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-lg font-black flex items-center gap-3 text-slate-800 dark:text-slate-100">
-                    <div className="w-1.5 h-6 bg-indigo-500 rounded-full" />
+                  <CardTitle className="text-lg font-black flex items-center gap-3">
+                    <div className="w-1.5 h-6 bg-primary rounded-full" />
                     Subject Performance
                   </CardTitle>
                 </CardHeader>
@@ -332,7 +337,7 @@ export default function Profile({ user, streakData, onBack, onUpgrade }: Profile
                           <span className="font-medium text-slate-900 dark:text-white">{subject.subject}</span>
                           <span className="text-sm text-slate-500 dark:text-slate-400">{subject.progress}%</span>
                         </div>
-                        <div className="h-3 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
+                        <div className="h-3 bg-secondary rounded-full overflow-hidden">
                           <div
                             className={`h-full ${subject.color} rounded-full transition-all duration-500`}
                             style={{ width: `${subject.progress}%` }}
@@ -342,12 +347,12 @@ export default function Profile({ user, streakData, onBack, onUpgrade }: Profile
                     ))}
                   </div>
 
-                  <div className="mt-8 p-8 rounded-2xl bg-gradient-to-br from-indigo-500/5 to-transparent dark:from-indigo-500/10 dark:to-slate-800/20 ring-1 ring-indigo-500/20">
-                    <h4 className="font-bold text-slate-800 dark:text-white mb-2">Overall Performance</h4>
+                  <div className="mt-8 p-8 rounded-2xl bg-gradient-to-br from-primary/5 to-transparent dark:from-primary/10 dark:to-secondary/20 ring-1 ring-primary/20">
+                    <h4 className="font-bold mb-2">Overall Performance</h4>
                     <div className="flex items-center gap-6">
                       <div className="w-24 h-24 relative flex-shrink-0">
                         <svg className="w-full h-full transform -rotate-90">
-                          <circle cx="48" cy="48" r="42" fill="none" stroke="currentColor" strokeWidth="8" className="text-slate-100 dark:text-slate-800" />
+                          <circle cx="48" cy="48" r="42" fill="none" stroke="currentColor" strokeWidth="8" className="text-secondary" />
                           <circle
                             cx="48"
                             cy="48"
@@ -360,20 +365,20 @@ export default function Profile({ user, streakData, onBack, onUpgrade }: Profile
                           />
                           <defs>
                             <linearGradient id="indigo-grad" x1="0%" y1="0%" x2="100%" y2="0%">
-                              <stop offset="0%" stopColor="#6366f1" />
-                              <stop offset="100%" stopColor="#8b5cf6" />
+                              <stop offset="0%" stopColor="hsl(var(--primary))" />
+                              <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity="0.8" />
                             </linearGradient>
                           </defs>
                         </svg>
                         <div className="absolute inset-0 flex flex-col items-center justify-center">
-                          <span className="text-2xl font-black text-indigo-600 dark:text-indigo-400">73%</span>
+                          <span className="text-2xl font-black text-primary">73%</span>
                         </div>
                       </div>
                       <div>
-                        <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed font-medium">You're doing great! Your performance is <span className="text-emerald-500 font-bold">15% higher</span> than last month. Keep it up!</p>
+                        <p className="text-sm text-muted-foreground leading-relaxed font-medium">You're doing great! Your performance is <span className="text-emerald-500 font-bold">15% higher</span> than last month. Keep it up!</p>
                         <Button
                           variant="ghost"
-                          className="text-indigo-600 dark:text-indigo-400 p-0 h-auto mt-2 font-bold hover:bg-transparent"
+                          className="text-primary p-0 h-auto mt-2 font-bold hover:bg-transparent"
                           onClick={onBack}
                         >
                           Continue Learning →
@@ -394,17 +399,17 @@ export default function Profile({ user, streakData, onBack, onUpgrade }: Profile
                 {achievements.map((achievement, index) => (
                   <Card
                     key={index}
-                    className={`border-0 shadow-lg ${achievement.unlocked ? 'bg-white dark:bg-slate-900/60' : 'bg-slate-50/50 dark:bg-slate-800/10 opacity-60'} backdrop-blur-xl ring-1 ring-slate-100 dark:ring-white/5 group transition-all`}
+                    className={`border border-border shadow-lg ${achievement.unlocked ? 'bg-card' : 'bg-muted/10 opacity-60'} backdrop-blur-xl ring-1 ring-border group transition-all`}
                   >
                     <CardContent className="p-8 text-center">
                       <div className={`w-16 h-16 mx-auto rounded-2xl flex items-center justify-center mb-4 transition-transform group-hover:scale-110 ${achievement.unlocked
-                        ? 'bg-gradient-to-br from-indigo-500 to-violet-600 shadow-lg shadow-indigo-500/20'
-                        : 'bg-slate-100 dark:bg-slate-800'
+                        ? 'bg-gradient-to-br from-primary to-primary/80 shadow-lg shadow-primary/20'
+                        : 'bg-secondary'
                         }`}>
-                        <achievement.icon className={`w-8 h-8 ${achievement.unlocked ? 'text-white' : 'text-slate-400 dark:text-slate-500'}`} />
+                        <achievement.icon className={`w-8 h-8 ${achievement.unlocked ? 'text-white' : 'text-muted-foreground'}`} />
                       </div>
-                      <h4 className="font-black text-slate-800 dark:text-white tracking-tight leading-tight mb-1">{achievement.name}</h4>
-                      <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">{achievement.description}</p>
+                      <h4 className="font-black tracking-tight leading-tight mb-1">{achievement.name}</h4>
+                      <p className="text-[10px] text-muted-foreground font-medium">{achievement.description}</p>
                       {achievement.unlocked && (
                         <Badge className="mt-4 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 border-0 font-bold text-[9px]">UNLOCKED</Badge>
                       )}
@@ -420,24 +425,24 @@ export default function Profile({ user, streakData, onBack, onUpgrade }: Profile
                   <div className="space-y-3">
                     {[
                       { icon: User, label: 'Personal Information', desc: 'Update your name, email, and bio', color: 'bg-blue-50 dark:bg-blue-900/20 text-blue-500' },
-                      { icon: Bell, label: 'Notifications', desc: 'Manage your alert preferences', color: 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-500' },
+                      { icon: Bell, label: 'Notifications', desc: 'Manage your alert preferences', color: 'bg-primary/5 text-primary' },
                       { icon: Shield, label: 'Privacy & Security', desc: 'Password, 2FA, and sessions', color: 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-500' }
                     ].map((item, idx) => (
-                      <button key={idx} className="w-full flex items-center gap-5 p-4 rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-all border border-transparent hover:border-slate-100 dark:hover:border-slate-700/50 group">
+                      <button key={idx} className="w-full flex items-center gap-5 p-4 rounded-2xl hover:bg-secondary transition-all border border-transparent hover:border-border group">
                         <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 transition-transform group-hover:scale-110 ${item.color}`}>
                           <item.icon className="w-6 h-6" />
                         </div>
                         <div className="flex-1 text-left">
-                          <h4 className="font-bold text-slate-800 dark:text-white leading-tight">{item.label}</h4>
-                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{item.desc}</p>
+                          <h4 className="font-bold leading-tight">{item.label}</h4>
+                          <p className="text-xs text-muted-foreground mt-0.5">{item.desc}</p>
                         </div>
-                        <ChevronLeft className="w-5 h-5 text-slate-300 group-hover:text-indigo-500 group-hover:translate-x-1 rotate-180 transition-all" />
+                        <ChevronLeft className="w-5 h-5 text-muted-foreground group-hover:text-primary group-hover:translate-x-1 rotate-180 transition-all" />
                       </button>
                     ))}
 
-                    <div className="pt-4 border-t border-slate-100 dark:border-slate-800 mt-2">
+                    <div className="pt-4 border-t border-border mt-2">
                       {!user.isPremium && (
-                        <div className="p-6 rounded-2xl bg-gradient-to-br from-indigo-600 to-violet-700 text-white shadow-xl shadow-indigo-500/20 relative overflow-hidden">
+                        <div className="p-6 rounded-2xl bg-gradient-to-br from-primary to-primary/80 text-primary-foreground shadow-xl shadow-primary/20 relative overflow-hidden">
                           <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-3xl -mr-16 -mt-16" />
                           <div className="flex items-center gap-4 mb-3 relative z-10">
                             <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-md">
@@ -445,12 +450,12 @@ export default function Profile({ user, streakData, onBack, onUpgrade }: Profile
                             </div>
                             <h4 className="font-black text-lg tracking-tight">Upgrade to ORIGIN Pro</h4>
                           </div>
-                          <p className="text-white/80 text-xs mb-5 font-medium leading-relaxed relative z-10">
+                          <p className="text-primary-foreground/80 text-xs mb-5 font-medium leading-relaxed relative z-10">
                             Unlock unlimited mock tests, deep performance analysis, and priority doubt resolution.
                           </p>
                           <Button
                             onClick={onUpgrade}
-                            className="w-full bg-white text-indigo-600 hover:bg-white/90 font-black h-11 rounded-xl shadow-lg relative z-10"
+                            className="w-full bg-background text-primary hover:bg-background/90 font-black h-11 rounded-xl shadow-lg relative z-10"
                           >
                             Unlock Premium Access
                           </Button>

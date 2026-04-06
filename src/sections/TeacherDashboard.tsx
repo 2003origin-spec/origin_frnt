@@ -110,35 +110,34 @@ export default function TeacherDashboard({ user }: { user: User }) {
     };
 
     return (
-        <div className="min-h-screen bg-[#F0F4F8] dark:bg-slate-950 font-sans text-slate-900 dark:text-slate-50 selection:bg-teal-100 selection:text-teal-900 transition-colors duration-300">
+        <div className="min-h-screen bg-background text-foreground transition-colors duration-300 selection:bg-primary/20 selection:text-primary font-sans">
 
             {/* Decorative Background */}
-            <div className="fixed inset-0 z-0 pointer-events-none opacity-40 dark:opacity-0 transition-opacity">
-                <div className="absolute top-[-10%] right-[-5%] w-[40%] h-[40%] bg-teal-200/30 rounded-full blur-[120px]" />
-                <div className="absolute bottom-[-10%] left-[-5%] w-[40%] h-[40%] bg-indigo-200/30 rounded-full blur-[120px]" />
+            <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
+                <div className="absolute top-[-10%] right-[-5%] w-[40%] h-[40%] bg-primary/10 rounded-full blur-[120px] animate-pulse" />
+                <div className="absolute bottom-[-10%] left-[-5%] w-[40%] h-[40%] bg-secondary/10 rounded-full blur-[120px] animate-pulse" />
             </div>
 
             <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 pb-20">
 
-                {/* Welcome Section */}
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
                     <div>
-                        <h1 className="text-3xl font-bold text-slate-900 dark:text-white">
-                            Hello, <span className="text-[#3CACA3]">{user.name.split(' ')[0]}</span> 👋
+                        <h1 className="text-4xl font-black tracking-tight">
+                            Hello, <span className="text-primary">{user.name.split(' ')[0]}</span> 👋
                         </h1>
-                        <p className="text-slate-600 dark:text-slate-400 mt-1">
-                            Here's what's happening in your classrooms today.
+                        <p className="text-muted-foreground mt-2 font-medium">
+                            Manage your classrooms and student performance with precision.
                         </p>
                     </div>
 
                     <Dialog open={iscreateClassOpen} onOpenChange={setIsCreateClassOpen}>
                         <DialogTrigger asChild>
-                            <Button className="bg-gradient-to-r from-[#3CACA3] to-[#2C8C85] hover:opacity-90 text-white shadow-lg shadow-teal-500/20 rounded-xl px-6">
-                                <Plus className="w-4 h-4 mr-2" />
+                            <Button className="bg-primary text-primary-foreground hover:scale-105 transition-all shadow-lg shadow-primary/20 rounded-xl px-8 h-12 font-black uppercase text-xs tracking-widest">
+                                <Plus className="w-4 h-4 mr-2 stroke-[3px]" />
                                 Create Classroom
                             </Button>
                         </DialogTrigger>
-                        <DialogContent className="sm:max-w-md bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-slate-200 dark:border-slate-800">
+                        <DialogContent className="sm:max-w-md bg-card backdrop-blur-xl border-border ring-1 ring-border shadow-2xl">
                             <DialogHeader>
                                 <DialogTitle>Create New Classroom</DialogTitle>
                                 <DialogDescription>Add a new class to organize your students.</DialogDescription>
@@ -174,23 +173,23 @@ export default function TeacherDashboard({ user }: { user: User }) {
                                         required
                                     />
                                 </div>
-                                <DialogFooter className="mt-6">
-                                    <Button type="submit" className="w-full bg-[#3CACA3] text-white hover:bg-[#2C8C85]">Create Class</Button>
+                                <DialogFooter className="mt-8">
+                                    <Button type="submit" className="w-full bg-primary text-primary-foreground font-black h-12 rounded-xl">Create Class</Button>
                                 </DialogFooter>
                             </form>
                         </DialogContent>
                     </Dialog>
                 </div>
 
-                <Tabs defaultValue="classrooms" className="w-full">
-                    <TabsList className="bg-white/60 dark:bg-slate-900/40 backdrop-blur-md p-1 mb-8 rounded-2xl w-full flex justify-start overflow-x-auto">
-                        <TabsTrigger value="classrooms" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#3CACA3] data-[state=active]:to-[#2C8C85] data-[state=active]:text-white rounded-xl px-6 py-2">
+                <Tabs defaultValue="classrooms" className="w-full relative z-10">
+                    <TabsList className="bg-card/40 border border-border/50 backdrop-blur-xl p-1.5 mb-10 rounded-2xl w-full flex justify-start h-14">
+                        <TabsTrigger value="classrooms" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-xl px-8 h-full font-black text-sm transition-all">
                             <LayoutDashboard className="w-4 h-4 mr-2" />
-                            Classrooms Overview
+                            Classrooms
                         </TabsTrigger>
-                        <TabsTrigger value="avatar" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#3CACA3] data-[state=active]:to-[#2C8C85] data-[state=active]:text-white rounded-xl px-6 py-2">
+                        <TabsTrigger value="avatar" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-xl px-8 h-full font-black text-sm transition-all">
                             <UserCircle className="w-4 h-4 mr-2" />
-                            Create your own avatar
+                            AI Avatar Creator
                         </TabsTrigger>
                     </TabsList>
 
@@ -203,13 +202,13 @@ export default function TeacherDashboard({ user }: { user: User }) {
                                 { label: 'Avg Attendance', value: '94%', icon: CheckCircle2, color: 'text-teal-500', bg: 'bg-teal-500/10' },
                                 { label: 'Pending Doubts', value: '12', icon: AlertCircle, color: 'text-rose-500', bg: 'bg-rose-500/10' },
                             ].map((stat, i) => (
-                                <Card key={i} className="border-0 shadow-sm bg-white/60 dark:bg-slate-900/40 backdrop-blur-md">
+                                <Card key={i} className="border border-border shadow-sm bg-card/60 backdrop-blur-xl hover:shadow-md transition-all">
                                     <CardContent className="p-6 flex items-center justify-between">
                                         <div>
-                                            <p className="text-sm font-medium text-slate-500 dark:text-slate-400">{stat.label}</p>
-                                            <h3 className="text-2xl font-bold text-slate-900 dark:text-white mt-1">{stat.value}</h3>
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1">{stat.label}</p>
+                                            <h3 className="text-3xl font-black tracking-tight">{stat.value}</h3>
                                         </div>
-                                        <div className={`p-3 rounded-xl ${stat.bg}`}>
+                                        <div className={`p-4 rounded-2xl ${stat.bg}`}>
                                             <stat.icon className={`w-6 h-6 ${stat.color}`} />
                                         </div>
                                     </CardContent>
@@ -218,45 +217,49 @@ export default function TeacherDashboard({ user }: { user: User }) {
                         </div>
 
                         {/* AI Insight Placeholder - Futuristic Element */}
-                        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-indigo-600 to-violet-600 p-1">
-                            <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 brightness-100 contrast-150"></div>
-                            <div className="relative bg-slate-950/20 backdrop-blur-sm p-6 rounded-xl flex items-center justify-between">
-                                <div className="flex items-start gap-4">
-                                    <div className="p-3 bg-white/10 rounded-xl backdrop-blur-md">
-                                        <SparklesIcon className="w-6 h-6 text-yellow-300" />
+                        <div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-r from-primary to-secondary p-[1px] shadow-2xl shadow-primary/20 group">
+                            <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-overlay"></div>
+                            <div className="relative bg-background/40 backdrop-blur-3xl p-8 rounded-[1.95rem] flex flex-col md:flex-row items-center justify-between gap-6 overflow-hidden">
+                                <div className="absolute top-0 right-0 w-64 h-64 bg-primary/20 rounded-full blur-[80px] -mr-32 -mt-32" />
+                                <div className="flex items-start gap-5 relative z-10">
+                                    <div className="p-4 bg-primary/10 rounded-2xl backdrop-blur-md ring-1 ring-primary/20">
+                                        <SparklesIcon className="w-8 h-8 text-primary" />
                                     </div>
                                     <div>
-                                        <h3 className="text-lg font-bold text-white mb-1">AI Class Insight</h3>
-                                        <p className="text-indigo-100 text-sm max-w-2xl leading-relaxed">
-                                            3 students in <span className="font-semibold text-white">Class 12 - Physics A</span> are showing a downward trend in mechanics scores.
-                                            Consider scheduling a remedial session for "Rotational Motion".
+                                        <h3 className="text-xl font-black tracking-tight mb-2">AI-Driven Insights</h3>
+                                        <p className="text-muted-foreground text-sm max-w-2xl leading-relaxed font-medium">
+                                            Predictive analysis: 3 students in <span className="font-black text-foreground">Class 12 - Physics A</span> are showing a downward trend in mechanics.
+                                            Scheduling a focus session for "Rotational Motion" is highly recommended.
                                         </p>
                                     </div>
                                 </div>
-                                <Button variant="secondary" className="hidden md:flex bg-white text-indigo-700 hover:bg-indigo-50 border-0">
-                                    View Analysis
+                                <Button variant="secondary" className="relative z-10 bg-primary text-primary-foreground px-8 h-12 rounded-xl font-black uppercase text-xs tracking-widest hover:scale-105 transition-all w-full md:w-auto">
+                                    Detailed Analysis
                                 </Button>
                             </div>
                         </div>
 
                         {/* Classrooms Grid */}
                         <div>
-                            <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-6 flex items-center gap-2">
-                                <GraduationCap className="w-5 h-5 text-[#3CACA3]" />
-                                Your Classrooms
+                            <h2 className="text-2xl font-black tracking-tight mb-8 flex items-center gap-3">
+                                <div className="w-2 h-8 bg-primary rounded-full" />
+                                My Active Classrooms
                             </h2>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                                 {classrooms.map((classroom) => (
-                                    <Card key={classroom.id} className="group border-0 shadow-lg shadow-slate-200/50 dark:shadow-none bg-white dark:bg-slate-900/60 backdrop-blur-xl relative overflow-hidden transition-all hover:scale-[1.02] hover:shadow-xl">
-                                        <div className="absolute top-0 left-0 w-1 h-full bg-[#3CACA3] group-hover:w-2 transition-all duration-300" />
+                                    <Card key={classroom.id} className="group border border-border shadow-xl bg-card transition-all hover:-translate-y-2 hover:shadow-2xl hover:shadow-primary/10 overflow-hidden rounded-[2rem] relative">
+                                        <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                                            <GraduationCap className="w-24 h-24 rotate-12" />
+                                        </div>
+                                        <div className="absolute top-0 left-0 w-2 h-full bg-primary" />
                                         <CardHeader className="pb-4">
                                             <div className="flex justify-between items-start">
                                                 <div>
-                                                    <Badge variant="outline" className="mb-2 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 font-normal">
+                                                    <Badge variant="secondary" className="mb-3 px-3 py-1 bg-primary/5 text-primary border-primary/20 font-black uppercase text-[10px] tracking-widest">
                                                         {classroom.subject}
                                                     </Badge>
-                                                    <CardTitle className="text-lg font-bold text-slate-900 dark:text-white leading-tight">
+                                                    <CardTitle className="text-xl font-black tracking-tight leading-tight">
                                                         {classroom.name}
                                                     </CardTitle>
                                                 </div>
@@ -264,21 +267,27 @@ export default function TeacherDashboard({ user }: { user: User }) {
                                                     <MoreVertical className="w-4 h-4" />
                                                 </Button>
                                             </div>
-                                            <CardDescription className="flex items-center gap-2 mt-2 text-slate-500 dark:text-slate-400 text-sm">
-                                                <Calendar className="w-4 h-4" />
+                                            <CardDescription className="flex items-center gap-2 mt-3 text-muted-foreground font-bold text-xs uppercase tracking-tighter">
+                                                <Calendar className="w-4 h-4 text-primary" />
                                                 {classroom.schedule}
                                             </CardDescription>
                                         </CardHeader>
 
                                         <CardContent>
-                                            <div className="flex items-center justify-between mb-6">
-                                                <div className="flex items-center gap-2">
-                                                    <Users className="w-4 h-4 text-[#3CACA3]" />
-                                                    <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{classroom.studentCount} Students</span>
+                                            <div className="flex items-center justify-between mb-8 pb-6 border-b border-border/50">
+                                                <div className="flex flex-col gap-1">
+                                                    <div className="flex items-center gap-2">
+                                                        <Users className="w-4 h-4 text-primary" />
+                                                        <span className="text-lg font-black tracking-tighter">{classroom.studentCount}</span>
+                                                    </div>
+                                                    <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Students</span>
                                                 </div>
-                                                <div className="flex items-center gap-2">
-                                                    <TrendingUp className="w-4 h-4 text-green-500" />
-                                                    <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{classroom.avgAttendance}% Att.</span>
+                                                <div className="flex flex-col gap-1 text-right">
+                                                    <div className="flex items-center gap-2 justify-end">
+                                                        <TrendingUp className="w-4 h-4 text-emerald-500" />
+                                                        <span className="text-lg font-black tracking-tighter text-emerald-500">{classroom.avgAttendance}%</span>
+                                                    </div>
+                                                    <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Attendance</span>
                                                 </div>
                                             </div>
 
@@ -288,8 +297,8 @@ export default function TeacherDashboard({ user }: { user: User }) {
                                                     if (open) setSelectedClassroom(classroom);
                                                 }}>
                                                     <DialogTrigger asChild>
-                                                        <Button variant="outline" className="flex-1 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 dark:text-slate-300">
-                                                            Add Student
+                                                        <Button variant="outline" className="flex-1 rounded-xl h-12 border-border bg-background hover:bg-muted font-bold text-xs uppercase tracking-widest">
+                                                            Invite
                                                         </Button>
                                                     </DialogTrigger>
                                                     <DialogContent className="sm:max-w-md bg-white dark:bg-slate-900 backdrop-blur-xl border-slate-200 dark:border-slate-800">
@@ -306,7 +315,7 @@ export default function TeacherDashboard({ user }: { user: User }) {
                                                                         value={inviteEmail}
                                                                         onChange={(e) => setInviteEmail(e.target.value)}
                                                                     />
-                                                                    <Button onClick={handleAddStudent} size="icon" className="bg-[#3CACA3] hover:bg-[#2C8C85]">
+                                                                    <Button onClick={handleAddStudent} size="icon" className="bg-primary text-primary-foreground hover:scale-105 transition-all">
                                                                         <Mail className="w-4 h-4" />
                                                                     </Button>
                                                                 </div>
@@ -333,7 +342,7 @@ export default function TeacherDashboard({ user }: { user: User }) {
                                                     </DialogContent>
                                                 </Dialog>
 
-                                                <Button className="flex-1 bg-[#3CACA3]/10 text-[#3CACA3] hover:bg-[#3CACA3]/20 border border-[#3CACA3]/20 shadow-none">
+                                                <Button className="flex-1 h-12 rounded-xl bg-primary/10 text-primary border border-primary/20 font-black uppercase text-xs tracking-widest hover:bg-primary hover:text-primary-foreground transition-all">
                                                     Manage
                                                 </Button>
                                             </div>
@@ -344,42 +353,43 @@ export default function TeacherDashboard({ user }: { user: User }) {
                                 {/* Empty State / Add New Card */}
                                 <button
                                     onClick={() => setIsCreateClassOpen(true)}
-                                    className="flex flex-col items-center justify-center h-full min-h-[220px] rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-800 text-slate-400 hover:text-[#3CACA3] hover:border-[#3CACA3]/50 hover:bg-[#3CACA3]/5 transition-all group"
+                                    className="flex flex-col items-center justify-center p-8 rounded-[2rem] border-2 border-dashed border-border text-muted-foreground hover:text-primary hover:border-primary/50 hover:bg-primary/5 transition-all group min-h-[300px]"
                                 >
-                                    <div className="p-4 rounded-full bg-slate-50 dark:bg-slate-900 group-hover:bg-[#3CACA3]/10 mb-4 transition-colors">
-                                        <Plus className="w-6 h-6" />
+                                    <div className="w-16 h-16 rounded-3xl bg-muted group-hover:bg-primary/10 flex items-center justify-center mb-6 transition-all group-hover:scale-110 group-hover:rotate-12">
+                                        <Plus className="w-8 h-8 stroke-[3px]" />
                                     </div>
-                                    <p className="font-medium text-sm">Create New Classroom</p>
+                                    <p className="font-black uppercase tracking-widest text-[10px]">Create New Classroom</p>
                                 </button>
                             </div>
                         </div>
                     </TabsContent>
 
-                    <TabsContent value="avatar">
-                        <Card className="border-0 shadow-lg shadow-slate-200/50 dark:shadow-none bg-white dark:bg-slate-900/60 backdrop-blur-xl">
-                            <CardContent className="p-12 text-center flex flex-col items-center justify-center min-h-[500px]">
-                                <div className="w-32 h-32 bg-gradient-to-br from-[#3CACA3] to-[#1E3A5F] rounded-full mb-8 flex items-center justify-center shadow-xl shadow-teal-500/20 relative overflow-hidden group border-4 border-white dark:border-slate-800">
-                                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <Camera className="w-8 h-8 text-white" />
+                    <TabsContent value="avatar" className="mt-0">
+                        <Card className="border border-border shadow-2xl bg-card rounded-[2.5rem] overflow-hidden relative">
+                            <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-5 mix-blend-overlay" />
+                            <CardContent className="p-16 text-center flex flex-col items-center justify-center min-h-[600px] relative z-10">
+                                <div className="w-40 h-40 bg-gradient-to-br from-primary to-secondary rounded-[2.5rem] mb-10 flex items-center justify-center shadow-2xl shadow-primary/30 relative overflow-hidden group border-4 border-background ring-2 ring-border">
+                                    <div className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all backdrop-blur-sm">
+                                        <Camera className="w-10 h-10 text-white" />
                                     </div>
-                                    <UserCircle className="w-16 h-16 text-white" />
+                                    <UserCircle className="w-20 h-20 text-primary-foreground" />
                                 </div>
-                                <h2 className="text-3xl font-bold text-slate-900 dark:text-white mb-4">Create Your Interactive AI Avatar</h2>
-                                <p className="text-slate-500 dark:text-slate-400 max-w-lg mx-auto mb-8 text-lg">
-                                    Make your virtual classroom more engaging. Upload a video of yourself or use your webcam to generate a lifelike AI avatar that can deliver lectures dynamically.
+                                <h1 className="text-4xl font-black tracking-tighter mb-6">Interactive <span className="text-primary italic">AI Teacher</span> Avatar</h1>
+                                <p className="text-muted-foreground max-w-xl mx-auto mb-10 text-lg font-medium leading-relaxed">
+                                    Revolutionize remote learning. Convert your recorded lectures into dynamic AI avatars that react to student questions in real-time.
                                 </p>
-                                <div className="flex flex-col sm:flex-row justify-center gap-4 w-full max-w-md mx-auto">
-                                    <Button className="flex-1 bg-gradient-to-r from-[#3CACA3] to-[#2C8C85] text-white hover:opacity-90 shadow-lg shadow-teal-500/20 py-6 text-base">
-                                        <Camera className="w-5 h-5 mr-2" />
-                                        Launch Creator Studio
+                                <div className="flex flex-col sm:flex-row justify-center gap-6 w-full max-w-lg mx-auto">
+                                    <Button className="flex-1 bg-primary text-primary-foreground h-16 rounded-2xl font-black uppercase tracking-widest text-xs hover:scale-105 transition-all shadow-xl shadow-primary/30">
+                                        <Camera className="w-5 h-5 mr-3 stroke-[3px]" />
+                                        Enter Creator Studio
                                     </Button>
-                                    <Button variant="outline" className="flex-1 py-6 text-base border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800">
-                                        Upload Video
+                                    <Button variant="outline" className="flex-1 h-16 rounded-2xl text-xs font-black uppercase tracking-widest border-border hover:bg-muted transition-all">
+                                        Access Library
                                     </Button>
                                 </div>
-                                <div className="mt-12 p-4 bg-teal-50 dark:bg-teal-900/20 rounded-xl border border-teal-100 dark:border-teal-900/50 inline-flex items-center gap-3">
-                                    <div className="w-2 h-2 rounded-full bg-teal-500 animate-pulse" />
-                                    <span className="text-teal-700 dark:text-teal-300 text-sm font-medium">Avatar Studio v2.0 is now live with improved lip-sync accuracy</span>
+                                <div className="mt-16 p-5 bg-primary/5 rounded-2xl border border-primary/10 inline-flex items-center gap-4 backdrop-blur-xl">
+                                    <div className="w-2.5 h-2.5 rounded-full bg-primary animate-ping" />
+                                    <span className="text-primary text-[10px] font-black uppercase tracking-widest">v2.4 Engine: Enhanced Real-time LipSync is active</span>
                                 </div>
                             </CardContent>
                         </Card>

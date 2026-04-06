@@ -237,55 +237,55 @@ export default function NCERTReader({ book, onBack, initialNotes = [], activeCha
     };
 
     return (
-        <div className={`flex flex-col h-screen bg-[#F8FAFC] dark:bg-[#060D1A] text-slate-900 dark:text-slate-200 font-sans transition-all duration-300 relative ${isFullscreen ? 'fixed inset-0 z-50' : ''}`}>
+        <div className={`flex flex-col h-screen bg-background text-foreground font-sans transition-all duration-300 relative ${isFullscreen ? 'fixed inset-0 z-50' : ''}`}>
 
             {/* ----- Header ----- */}
-            <header className="h-16 flex items-center justify-between px-4 sm:px-6 bg-white/80 dark:bg-[#030712]/50 backdrop-blur-xl border-b border-slate-200 dark:border-indigo-500/10 shadow-sm dark:shadow-[0_4px_30px_rgba(0,0,0,0.5)] z-20 shrink-0 transition-colors">
+            <header className="h-16 flex items-center justify-between px-4 sm:px-6 bg-background/80 backdrop-blur-xl border-b border-border shadow-sm z-20 shrink-0 transition-colors">
                 <div className="flex items-center gap-4">
                     <Button
                         variant="ghost"
                         size="icon"
                         onClick={onBack}
-                        className="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 rounded-full transition-colors"
+                        className="text-muted-foreground hover:text-foreground hover:bg-muted rounded-full transition-colors"
                     >
                         <ChevronLeft className="w-5 h-5" />
                     </Button>
                     <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-indigo-500/10 dark:bg-indigo-500/20 flex items-center justify-center border border-indigo-500/20 dark:border-indigo-500/30 shadow-sm dark:shadow-[0_0_15px_rgba(99,102,241,0.3)]">
-                            <BookOpen className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                        <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center border border-primary/20 shadow-sm">
+                            <BookOpen className="w-4 h-4 text-primary" />
                         </div>
                         <div>
-                            <h1 className="text-sm font-bold text-slate-900 dark:text-white tracking-wide">{book.title}</h1>
-                            <p className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold uppercase tracking-wider">{book.subject} • Class {book.bookClass}</p>
+                            <h1 className="text-sm font-bold text-foreground tracking-wide">{book.title}</h1>
+                            <p className="text-[10px] text-primary font-bold uppercase tracking-wider">{book.subject} • Class {book.bookClass}</p>
                         </div>
                     </div>
                 </div>
 
                 {/* Toolbar */}
-                <div className="flex items-center gap-1 p-1 rounded-full bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 shadow-inner">
+                <div className="flex items-center gap-1 p-1 rounded-full bg-muted border border-border shadow-inner">
                     <ToolbarButton
                         icon={Type}
                         active={activeTool === 'none'}
                         onClick={() => setActiveTool('none')}
                         tooltip="Select text / Scroll"
-                        activeBg="bg-white dark:bg-white/20"
-                        activeColor="text-indigo-600 dark:text-white"
+                        activeBg="bg-card"
+                        activeColor="text-primary"
                     />
-                    <div className="w-px h-5 bg-slate-300 dark:bg-white/10 mx-1"></div>
+                    <div className="w-px h-5 bg-border mx-1"></div>
                     <ToolbarButton
                         icon={Pencil}
                         active={activeTool === 'pen'}
                         onClick={() => setActiveTool('pen')}
-                        activeColor="text-blue-600 dark:text-blue-400"
-                        activeBg="bg-blue-100 dark:bg-blue-500/20"
+                        activeColor="text-blue-600"
+                        activeBg="bg-blue-100/50"
                         tooltip="Pen"
                     />
                     <ToolbarButton
                         icon={Highlighter}
                         active={activeTool === 'highlight'}
                         onClick={() => setActiveTool('highlight')}
-                        activeColor="text-amber-600 dark:text-yellow-400"
-                        activeBg="bg-amber-100 dark:bg-yellow-500/20"
+                        activeColor="text-amber-600"
+                        activeBg="bg-amber-100/50"
                         tooltip="Highlighter"
                     />
                     <ToolbarButton
@@ -294,8 +294,8 @@ export default function NCERTReader({ book, onBack, initialNotes = [], activeCha
                         onClick={() => setActiveTool('eraser')}
                         tooltip="Eraser"
                     />
-                    <div className="w-px h-5 bg-slate-300 dark:bg-white/10 mx-1"></div>
-                    <Button variant="ghost" size="icon" onClick={clearCanvas} className="w-8 h-8 rounded-full text-rose-500 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-500/10 hover:text-rose-600 dark:hover:text-rose-300">
+                    <div className="w-px h-5 bg-border mx-1"></div>
+                    <Button variant="ghost" size="icon" onClick={clearCanvas} className="w-8 h-8 rounded-full text-destructive hover:bg-destructive/10">
                         <X className="w-4 h-4" />
                     </Button>
                 </div>
@@ -303,7 +303,7 @@ export default function NCERTReader({ book, onBack, initialNotes = [], activeCha
                 <div className="flex items-center gap-3">
                     <Button
                         onClick={handleSave}
-                        className="bg-indigo-600 hover:bg-indigo-500 text-white rounded-full h-9 px-4 text-xs font-bold shadow-lg shadow-indigo-500/20 dark:shadow-[0_0_15px_rgba(99,102,241,0.4)] transition-all active:scale-95"
+                        className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-full h-9 px-4 text-xs font-bold shadow-lg shadow-primary/20 transition-all active:scale-95"
                     >
                         <Save className="w-4 h-4 mr-2" />
                         Sync Progress
@@ -312,7 +312,7 @@ export default function NCERTReader({ book, onBack, initialNotes = [], activeCha
                         variant="ghost"
                         size="icon"
                         onClick={() => setIsFullscreen(!isFullscreen)}
-                        className="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 rounded-full hidden sm:flex"
+                        className="text-muted-foreground hover:text-foreground hover:bg-muted rounded-full hidden sm:flex"
                     >
                         <Maximize2 className="w-4 h-4" />
                     </Button>
@@ -323,17 +323,17 @@ export default function NCERTReader({ book, onBack, initialNotes = [], activeCha
             <div className="flex-1 flex overflow-hidden">
 
                 {/* --- Left: Document Viewer --- */}
-                <div className="flex-1 relative flex flex-col bg-slate-200 dark:bg-[#0f1423] transition-colors">
+                <div className="flex-1 relative flex flex-col bg-muted/30 transition-colors">
 
                     {/* Chapter Tabs */}
-                    <div className="flex overflow-x-auto no-scrollbar bg-white/50 dark:bg-[#030712]/40 border-b border-slate-200 dark:border-white/5 py-2 px-4 gap-2 backdrop-blur-sm z-10 shrink-0">
+                    <div className="flex overflow-x-auto no-scrollbar bg-background/50 border-b border-border py-2 px-4 gap-2 backdrop-blur-sm z-10 shrink-0">
                         {book.chapters.map(ch => (
                             <button
                                 key={ch.id}
                                 onClick={() => setActiveChapter(ch.id)}
                                 className={`px-4 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${activeChapter === ch.id
-                                    ? 'bg-indigo-600 text-white dark:bg-indigo-500/20 dark:text-indigo-300 shadow-md dark:border dark:border-indigo-500/30'
-                                    : 'bg-white/80 dark:bg-white/5 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-transparent hover:bg-white dark:hover:bg-white/10 hover:text-indigo-600 dark:hover:text-slate-200'
+                                    ? 'bg-primary text-primary-foreground shadow-md'
+                                    : 'bg-background/80 text-muted-foreground border border-border hover:bg-background hover:text-primary'
                                     }`}
                             >
                                 {ch.title}
@@ -347,7 +347,7 @@ export default function NCERTReader({ book, onBack, initialNotes = [], activeCha
                         className="flex-1 overflow-y-auto relative flex justify-center p-4 sm:p-8 custom-scrollbar"
                     >
                         {/* The "Paper" Container */}
-                        <div className="w-full max-w-4xl min-h-[1200px] bg-white dark:bg-[#FAF9F6] rounded-sm shadow-2xl relative text-slate-900 mx-auto transition-transform origin-top">
+                        <div className="w-full max-w-4xl min-h-[1200px] bg-white dark:bg-white/95 rounded-sm shadow-2xl relative text-slate-900 mx-auto transition-transform origin-top">
 
                             {/* Text Content (Mock) */}
                             <div className="p-10 sm:p-16 max-w-3xl mx-auto select-auto">
@@ -407,32 +407,32 @@ export default function NCERTReader({ book, onBack, initialNotes = [], activeCha
                 </div>
 
                 {/* --- Right: Personal Notebook Sidebar --- */}
-                <div className="w-80 lg:w-96 bg-white dark:bg-[#030712]/80 backdrop-blur-xl border-l border-slate-200 dark:border-white/5 flex flex-col shrink-0 z-20 shadow-[-5px_0_15px_rgba(0,0,0,0.05)] dark:shadow-[-10px_0_30px_rgba(0,0,0,0.5)] transition-colors">
-                    <div className="h-14 flex items-center justify-between px-5 border-b border-slate-200 dark:border-white/5 bg-slate-50 dark:bg-transparent">
+                <div className="w-80 lg:w-96 bg-card backdrop-blur-xl border-l border-border flex flex-col shrink-0 z-20 shadow-[-5px_0_15px_rgba(0,0,0,0.05)] transition-colors">
+                    <div className="h-14 flex items-center justify-between px-5 border-b border-border bg-muted/50">
                         <div className="flex items-center gap-2">
-                            <PenTool className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                            <span className="font-bold text-sm tracking-wide text-slate-900 dark:text-white">Smart Notebook</span>
+                            <PenTool className="w-4 h-4 text-primary" />
+                            <span className="font-bold text-sm tracking-wide text-foreground">Smart Notebook</span>
                         </div>
-                        <Badge variant="outline" className="text-[10px] font-bold bg-indigo-500/5 text-indigo-600 dark:text-indigo-300 border-indigo-500/20">AUTO-SYNC</Badge>
+                        <Badge variant="outline" className="text-[10px] font-bold bg-primary/5 text-primary border-primary/20">AUTO-SYNC</Badge>
                     </div>
 
-                    <div className="p-4 border-b border-slate-200 dark:border-white/5 bg-slate-100/30 dark:bg-white/5">
+                    <div className="p-4 border-b border-border bg-muted/20">
                         <div className="relative group">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground group-focus-within:text-primary transition-colors" />
                             <Input
                                 placeholder="Search your notes..."
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
-                                className="w-full h-9 pl-9 bg-white dark:bg-[#060D1A] border-slate-200 dark:border-white/10 text-xs text-slate-700 dark:text-slate-300 rounded-xl focus-visible:ring-2 focus-visible:ring-indigo-500/20 dark:focus-visible:ring-indigo-500 transition-all font-medium"
+                                className="w-full h-9 pl-9 bg-background border-border text-xs text-foreground rounded-xl focus-visible:ring-2 focus-visible:ring-primary/20 transition-all font-medium"
                             />
                         </div>
                     </div>
 
-                    <div className="flex-1 p-5 overflow-y-auto bg-white dark:bg-transparent">
+                    <div className="flex-1 p-5 overflow-y-auto bg-card">
                         <textarea
                             value={markdownNote}
                             onChange={(e) => setMarkdownNote(e.target.value)}
-                            className="w-full h-full bg-transparent border-none resize-none focus:ring-0 text-slate-700 dark:text-slate-300 text-sm leading-relaxed font-sans placeholder-slate-400 outline-none"
+                            className="w-full h-full bg-transparent border-none resize-none focus:ring-0 text-foreground text-sm leading-relaxed font-sans placeholder:text-muted-foreground/50 outline-none"
                             placeholder="Type your notes here... Supports markdown formatting."
                         />
                     </div>
@@ -450,7 +450,7 @@ function ToolbarButton({ icon: Icon, active, onClick, activeColor, activeBg, too
             onClick={onClick}
             className={`w-9 h-9 rounded-full flex items-center justify-center transition-all duration-300 ${active
                 ? `${activeBg} ${activeColor} shadow-md scale-110`
-                : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-white/10'
+                : 'text-muted-foreground hover:text-foreground hover:bg-muted'
                 }`}
         >
             <Icon className={`w-4 h-4 ${active ? 'stroke-[2.5px]' : ''}`} />
