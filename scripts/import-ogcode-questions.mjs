@@ -5,7 +5,14 @@ import pg from "pg";
 
 const { Client } = pg;
 
-const DEFAULT_FILE = path.resolve(process.cwd(), "data/ogcode/extracted_questions.json");
+const DEFAULT_BANK_DIR = path.resolve(process.cwd(), "data/ogcode");
+const DEFAULT_BANKS = [
+  { subject: "physics", code: "phy", file: "extracted_phy_questions.json" },
+  { subject: "chemistry", code: "chem", file: "extracted_chem_questions.json" },
+  { subject: "mathematics", code: "math", file: "extracted_math_questions.json" },
+  { subject: "biology", code: "bio", file: "extracted_bio_questions.json" },
+];
+
 const CREATE_TABLE_SQL = `
   CREATE TABLE IF NOT EXISTS ogcode_questions (
     id TEXT PRIMARY KEY,
@@ -41,8 +48,77 @@ const CREATE_TABLE_SQL = `
   ALTER TABLE ogcode_questions ADD COLUMN IF NOT EXISTS answer_spec JSONB;
 `;
 
+function normalizeSubject(value) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (normalized === "phy" || normalized === "physics") {
+    return "physics";
+  }
+  if (normalized === "chem" || normalized === "chemistry") {
+    return "chemistry";
+  }
+  if (normalized === "math" || normalized === "maths" || normalized === "mathematics") {
+    return "mathematics";
+  }
+  if (normalized === "bio" || normalized === "biology") {
+    return "biology";
+  }
+  return null;
+}
+
+function subjectCodeFromSubject(subject) {
+  if (subject === "physics") {
+    return "phy";
+  }
+  if (subject === "chemistry") {
+    return "chem";
+  }
+  if (subject === "mathematics") {
+    return "math";
+  }
+  if (subject === "biology") {
+    return "bio";
+  }
+  return "gen";
+}
+
+function deriveSubjectFromFilePath(filePath) {
+  const name = path.basename(filePath).toLowerCase();
+  if (name.includes("phy") || name.includes("physics")) {
+    return "physics";
+  }
+  if (name.includes("chem") || name.includes("chemistry")) {
+    return "chemistry";
+  }
+  if (name.includes("math")) {
+    return "mathematics";
+  }
+  if (name.includes("bio") || name.includes("biology")) {
+    return "biology";
+  }
+  return null;
+}
+
+function parseSubjectFileArg(value) {
+  const trimmed = String(value ?? "").trim();
+  const separator = trimmed.includes("=") ? "=" : trimmed.includes(":") ? ":" : null;
+  if (!separator) {
+    throw new Error(`Invalid --subject-file value "${trimmed}". Use subject=path.`);
+  }
+
+  const [rawSubject, rawPath] = trimmed.split(separator);
+  const subject = normalizeSubject(rawSubject);
+  if (!subject) {
+    throw new Error(`Unsupported subject "${rawSubject}" in --subject-file argument.`);
+  }
+  if (!rawPath) {
+    throw new Error(`Missing file path in --subject-file value "${trimmed}".`);
+  }
+
+  return { subject, code: subjectCodeFromSubject(subject), file: path.resolve(rawPath.trim()) };
+}
+
 function parseArgs(argv) {
-  const args = { file: DEFAULT_FILE, dryRun: false, replace: false };
+  const args = { dryRun: false, replace: false, banks: [] };
 
   for (let index = 0; index < argv.length; index += 1) {
     const value = argv[index];
@@ -54,10 +130,37 @@ function parseArgs(argv) {
       args.replace = true;
       continue;
     }
-    if (value === "--file") {
-      args.file = path.resolve(argv[index + 1]);
+    if (value === "--subject-file") {
+      const subjectFileArg = argv[index + 1];
+      if (!subjectFileArg) {
+        throw new Error("Missing value for --subject-file.");
+      }
+      args.banks.push(parseSubjectFileArg(subjectFileArg));
       index += 1;
+      continue;
     }
+    if (value === "--file") {
+      const fileArg = argv[index + 1];
+      if (!fileArg) {
+        throw new Error("Missing value for --file.");
+      }
+      const file = path.resolve(fileArg);
+      const subject = deriveSubjectFromFilePath(file);
+      if (!subject) {
+        throw new Error(`Could not derive subject from file "${file}". Use --subject-file subject=path.`);
+      }
+      args.banks.push({ subject, code: subjectCodeFromSubject(subject), file });
+      index += 1;
+      continue;
+    }
+  }
+
+  if (!args.banks.length) {
+    args.banks = DEFAULT_BANKS.map((entry) => ({
+      subject: entry.subject,
+      code: entry.code,
+      file: path.join(DEFAULT_BANK_DIR, entry.file),
+    }));
   }
 
   return args;
@@ -131,7 +234,6 @@ function deriveAnswerSpec(answer, questionType, tolerance) {
 
   const targetMatch = value.match(/^\s*([a-zA-Z]+)\s*=/);
   const formulaLike = /[=\\/^*+\-]|√|sqrt|sin|cos|tan|log|ln/.test(value);
-
   if (formulaLike) {
     return {
       gradingMode: targetMatch ? "equation" : "symbolic_expression",
@@ -152,45 +254,78 @@ function deriveAnswerSpec(answer, questionType, tolerance) {
   };
 }
 
-function buildSeedRows(rawQuestions) {
+function normalizeOptionText(value) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/^[a-d]\s*[).:-]\s*/i, "")
+    .replace(/\s+/g, " ");
+}
+
+function findCorrectOptionIndex(options, answer) {
+  if (!options?.length) {
+    return null;
+  }
+
+  const answerNumber = Number(String(answer ?? "").trim());
+  if (Number.isInteger(answerNumber) && answerNumber >= 1 && answerNumber <= options.length) {
+    return answerNumber - 1;
+  }
+
+  const normalizedAnswer = normalizeOptionText(answer);
+  const matchedIndex = options.findIndex((option) => normalizeOptionText(option) === normalizedAnswer);
+  return matchedIndex >= 0 ? matchedIndex : null;
+}
+
+function normalizeOptions(rawOptions) {
+  if (!Array.isArray(rawOptions)) {
+    return null;
+  }
+  const normalized = rawOptions.map((entry) => String(entry ?? "").trim()).filter(Boolean);
+  return normalized.length ? normalized : null;
+}
+
+function buildSeedRowsForSubject(rawQuestions, subject, subjectCode) {
   const hardQuestionIndex = rawQuestions.findIndex(
     (question) => normalizeDifficulty(question.Difficulty_Level) === "hard",
   );
 
   return rawQuestions.map((question, index) => {
     const answer = String(question.Answer ?? "").trim();
-    const questionType = isNumericalAnswer(answer) ? "numerical" : "subjective";
-    const tolerance = questionType === "numerical" ? deriveTolerance(answer) : null;
+    const options = normalizeOptions(question.MCQ_Options);
+    const inferredQuestionType = options?.length ? "mcq" : isNumericalAnswer(answer) ? "numerical" : "subjective";
+    const tolerance = inferredQuestionType === "numerical" ? deriveTolerance(answer) : null;
+    const correctOption = inferredQuestionType === "mcq" ? findCorrectOptionIndex(options, answer) : null;
 
     return {
-      id: `ogcode_pg_${String(index + 1).padStart(4, "0")}`,
-      source_index: index + 1,
+      id: `ogcode_${subjectCode}_${String(index + 1).padStart(4, "0")}`,
+      source_index: 0,
       text: String(question.Question ?? "").trim(),
-      options: null,
-      correct_option: null,
+      options,
+      correct_option: correctOption,
       correct_options: null,
       answer_text: answer || null,
-      answer_spec: deriveAnswerSpec(answer, questionType, tolerance),
+      answer_spec: inferredQuestionType === "mcq" ? null : deriveAnswerSpec(answer, inferredQuestionType, tolerance),
       tolerance,
       matrix_data: null,
       explanation: String(question.Detailed_Explanation ?? "").trim() || "Explanation unavailable.",
       hint: String(question.Hint ?? "").trim() || null,
-      subject: "physics",
+      subject,
       chapter: String(question.Chapter ?? "General").trim() || "General",
       concept: String(question.Concept ?? "General Practice").trim() || "General Practice",
       difficulty: normalizeDifficulty(question.Difficulty_Level),
       image: null,
       tags: [
-        "physics",
+        subject,
         String(question.Chapter ?? "").trim(),
         String(question.Concept ?? "").trim(),
         normalizeDifficulty(question.Difficulty_Level),
       ].filter(Boolean),
-      question_type: questionType,
+      question_type: inferredQuestionType,
       acceptance_rate: 0,
       total_correct: 0,
       frequency: 0,
-      is_challenge_of_day: index === hardQuestionIndex,
+      _isSubjectChallengeCandidate: index === hardQuestionIndex,
     };
   });
 }
@@ -214,25 +349,62 @@ function getSslConfig(connectionString) {
   }
 }
 
+function loadQuestions(filePath) {
+  const rawFile = fs.readFileSync(filePath, "utf8");
+  const parsed = JSON.parse(rawFile);
+  return Array.isArray(parsed.questions) ? parsed.questions : [];
+}
+
+function summarizeRows(rows, banks) {
+  const summary = rows.reduce(
+    (accumulator, row) => {
+      accumulator.byDifficulty[row.difficulty] = (accumulator.byDifficulty[row.difficulty] ?? 0) + 1;
+      accumulator.byType[row.question_type] = (accumulator.byType[row.question_type] ?? 0) + 1;
+      accumulator.bySubject[row.subject] = (accumulator.bySubject[row.subject] ?? 0) + 1;
+      return accumulator;
+    },
+    {
+      bySubject: {},
+      byDifficulty: {},
+      byType: {},
+    },
+  );
+
+  return {
+    files: banks.map((entry) => ({ subject: entry.subject, file: entry.file })),
+    totals: summary,
+  };
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const rawFile = fs.readFileSync(args.file, "utf8");
-  const parsed = JSON.parse(rawFile);
-  const rawQuestions = Array.isArray(parsed.questions) ? parsed.questions : [];
 
-  if (!rawQuestions.length) {
-    throw new Error(`No questions found in ${args.file}`);
+  const rows = [];
+  for (const bank of args.banks) {
+    const rawQuestions = loadQuestions(bank.file);
+    if (!rawQuestions.length) {
+      throw new Error(`No questions found in ${bank.file}`);
+    }
+    rows.push(...buildSeedRowsForSubject(rawQuestions, bank.subject, bank.code));
   }
 
-  const rows = buildSeedRows(rawQuestions);
-  const summary = rows.reduce((accumulator, row) => {
-    accumulator[row.difficulty] = (accumulator[row.difficulty] ?? 0) + 1;
-    accumulator[row.question_type] = (accumulator[row.question_type] ?? 0) + 1;
-    return accumulator;
-  }, {});
+  if (!rows.length) {
+    throw new Error("No OGCode questions prepared.");
+  }
 
-  console.log(`Prepared ${rows.length} OGCode questions from ${args.file}`);
-  console.log(summary);
+  rows.forEach((row, index) => {
+    row.source_index = index + 1;
+    row.is_challenge_of_day = false;
+  });
+
+  const firstChallenge = rows.find((row) => row._isSubjectChallengeCandidate);
+  if (firstChallenge) {
+    firstChallenge.is_challenge_of_day = true;
+  }
+
+  const summary = summarizeRows(rows, args.banks);
+  console.log(`Prepared ${rows.length} OGCode questions from ${args.banks.length} source files`);
+  console.log(JSON.stringify(summary, null, 2));
 
   if (args.dryRun) {
     return;
