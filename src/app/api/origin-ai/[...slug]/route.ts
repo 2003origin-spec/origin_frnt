@@ -6,6 +6,8 @@ import {
   commitOriginAiVoiceTurn,
   getOriginAiSnapshot,
   getOriginAiVoiceBootstrap,
+  respondOriginAiVoiceTurn,
+  speakOriginAiVoiceText,
   sendOriginAiMessage,
   type OriginAiPageContextInput,
 } from "@/server/origin-ai";
@@ -18,10 +20,13 @@ import {
   parseJsonBody,
   unauthorized,
 } from "@/server/http";
-import { withStoreAsync } from "@/server/store";
+import { withStoreAsync, type StoredUser } from "@/server/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+const ORIGIN_AI_SERVICE_URL = process.env.ORIGIN_AI_SERVICE_URL || "";
+const ORIGIN_AI_SERVICE_TOKEN = process.env.ORIGIN_AI_SERVICE_TOKEN || "dev-origin-ai-token";
 
 const sessionQuerySchema = z.object({
   pathname: z.string().optional(),
@@ -47,6 +52,9 @@ const pageContextSchema = z.object({
   pageKind: z.string().optional(),
   testId: z.string().optional(),
   questionId: z.string().optional(),
+  questionHint: z.string().nullable().optional(),
+  questionSolution: z.string().nullable().optional(),
+  questionExplanation: z.string().nullable().optional(),
   searchQuery: z.string().nullable().optional(),
   activeSubject: z.string().nullable().optional(),
   activeDifficulty: z.string().nullable().optional(),
@@ -59,6 +67,7 @@ const pageContextSchema = z.object({
 const messageBodySchema = z.object({
   message: z.string().trim().min(1),
   pageContext: pageContextSchema.optional(),
+  highlightedText: z.string().nullable().optional(),
 });
 
 const voiceBootstrapBodySchema = z.object({
@@ -79,6 +88,19 @@ const voiceTurnBodySchema = z.object({
   assistantTextPartChunkCount: z.number().int().nonnegative().optional(),
   hadOutputTranscript: z.boolean().optional(),
   pageContext: pageContextSchema.optional(),
+});
+
+const voiceRespondBodySchema = z.object({
+  audioData: z.string().trim().min(1),
+  mimeType: z.string().trim().min(1),
+  voiceName: z.string().trim().nullable().optional(),
+  pageContext: pageContextSchema.optional(),
+  highlightedText: z.string().nullable().optional(),
+});
+
+const voiceSpeakBodySchema = z.object({
+  text: z.string().trim().min(1),
+  voiceName: z.string().trim().nullable().optional(),
 });
 
 type RouteContext = {
@@ -106,6 +128,58 @@ function toPageContext(input?: Partial<z.infer<typeof pageContextSchema>>): Orig
   };
 }
 
+/* --------------------------------------------------------------------------
+ * Proxy helper: forwards requests to the Origin AI Python microservice
+ * when ORIGIN_AI_SERVICE_URL is configured. Falls back to the in-app
+ * TypeScript implementation otherwise.
+ * ----------------------------------------------------------------------- */
+
+async function proxyToMicroservice(
+  method: string,
+  path: string,
+  body: unknown,
+  request: NextRequest,
+  user: StoredUser,
+): Promise<Response | null> {
+  if (!ORIGIN_AI_SERVICE_URL) {
+    return null; // fallback to in-app implementation
+  }
+
+  const browserSessionId = request.headers.get("X-Origin-AI-Session-Id") ?? "";
+
+  try {
+    const resp = await fetch(`${ORIGIN_AI_SERVICE_URL}${path}`, {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        "X-Service-Token": ORIGIN_AI_SERVICE_TOKEN,
+        "X-Origin-AI-Session-Id": browserSessionId,
+        "X-Origin-User-Id": user.id,
+        "X-Origin-User-Name": user.name,
+        "X-Origin-User-Email": user.email,
+        "X-Origin-User-Role": user.role,
+        "X-Origin-User-Streak": String(user.streak),
+        "X-Origin-User-Student-Class": user.studentClass ?? "",
+        "X-Origin-User-Selected-Course": user.selectedCourse ?? "",
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+
+    const data = await resp.json();
+    return new Response(JSON.stringify(data), {
+      status: resp.status,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch (err) {
+    console.error("[origin-ai proxy] microservice call failed, falling back:", err);
+    return null; // fallback to in-app implementation
+  }
+}
+
+async function resolveProxyUser(request: NextRequest): Promise<StoredUser | null> {
+  return withStoreAsync(async (store) => requireUserFromRequest(store, request));
+}
+
 export async function GET(request: NextRequest, context: RouteContext) {
   const slug = await resolveSlug(context);
   if (slug.length !== 1 || slug[0] !== "session") {
@@ -123,6 +197,22 @@ export async function GET(request: NextRequest, context: RouteContext) {
     return badRequest("Invalid Origin AI page context.");
   }
 
+  const proxyUser = await resolveProxyUser(request);
+  if (ORIGIN_AI_SERVICE_URL) {
+    if (!proxyUser) {
+      return unauthorized();
+    }
+    const proxyResp = await proxyToMicroservice(
+      "GET",
+      `/api/v1/chat/session?browserSessionId=${request.headers.get("X-Origin-AI-Session-Id") || ""}&pageKind=${parsedQuery.data.pageKind || "unknown"}`,
+      null,
+      request,
+      proxyUser,
+    );
+    if (proxyResp) return proxyResp;
+  }
+
+  // Fallback to in-app implementation
   const result = await withStoreAsync(async (store) => {
     const user = requireUserFromRequest(store, request);
     if (!user) {
@@ -144,12 +234,23 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
   try {
     const body = await parseJsonBody(request);
+
     if (slug.length === 2 && slug[0] === "session" && slug[1] === "message") {
       const parsedBody = messageBodySchema.safeParse(body);
       if (!parsedBody.success) {
         return badRequest("Message is required.");
       }
 
+      if (ORIGIN_AI_SERVICE_URL) {
+        const proxyUser = await resolveProxyUser(request);
+        if (!proxyUser) {
+          return unauthorized();
+        }
+        const proxyResp = await proxyToMicroservice("POST", "/api/v1/chat/message", parsedBody.data, request, proxyUser);
+        if (proxyResp) return proxyResp;
+      }
+
+      // Fallback
       const result = await withStoreAsync(async (store) => {
         const user = requireUserFromRequest(store, request);
         if (!user) {
@@ -188,6 +289,16 @@ export async function POST(request: NextRequest, context: RouteContext) {
         return badRequest("Invalid voice bootstrap payload.");
       }
 
+      if (ORIGIN_AI_SERVICE_URL) {
+        const proxyUser = await resolveProxyUser(request);
+        if (!proxyUser) {
+          return unauthorized();
+        }
+        const proxyResp = await proxyToMicroservice("POST", "/api/v1/voice/bootstrap", parsedBody.data, request, proxyUser);
+        if (proxyResp) return proxyResp;
+      }
+
+      // Fallback
       const result = await withStoreAsync(async (store) => {
         const user = requireUserFromRequest(store, request);
         if (!user) {
@@ -225,6 +336,16 @@ export async function POST(request: NextRequest, context: RouteContext) {
         return badRequest("Voice transcripts are required.");
       }
 
+      if (ORIGIN_AI_SERVICE_URL) {
+        const proxyUser = await resolveProxyUser(request);
+        if (!proxyUser) {
+          return unauthorized();
+        }
+        const proxyResp = await proxyToMicroservice("POST", "/api/v1/voice/respond", parsedBody.data, request, proxyUser);
+        if (proxyResp) return proxyResp;
+      }
+
+      // Fallback
       const result = await withStoreAsync(async (store) => {
         const user = requireUserFromRequest(store, request);
         if (!user) {
@@ -268,6 +389,95 @@ export async function POST(request: NextRequest, context: RouteContext) {
       }
 
       return created(result.reply);
+    }
+
+    if (slug.length === 2 && slug[0] === "voice" && slug[1] === "respond") {
+      const parsedBody = voiceRespondBodySchema.safeParse(body);
+      if (!parsedBody.success) {
+        return badRequest("Voice audio payload is required.");
+      }
+
+      if (ORIGIN_AI_SERVICE_URL) {
+        const proxyUser = await resolveProxyUser(request);
+        if (!proxyUser) {
+          return unauthorized();
+        }
+        const proxyResp = await proxyToMicroservice("POST", "/api/v1/voice/respond", parsedBody.data, request, proxyUser);
+        if (proxyResp) return proxyResp;
+      }
+
+      // Fallback
+      const result = await withStoreAsync(async (store) => {
+        const user = requireUserFromRequest(store, request);
+        if (!user) {
+          return { status: "unauthorized" as const };
+        }
+
+        const reply = await respondOriginAiVoiceTurn(
+          store,
+          user,
+          request,
+          {
+            audioData: parsedBody.data.audioData,
+            mimeType: parsedBody.data.mimeType,
+            voiceName: parsedBody.data.voiceName ?? null,
+          },
+          toPageContext(parsedBody.data.pageContext),
+        );
+
+        if ("error" in reply) {
+          return { status: "error" as const, error: reply.error };
+        }
+
+        return { status: "created" as const, reply };
+      });
+
+      if (result.status === "unauthorized") {
+        return unauthorized();
+      }
+
+      if (result.status === "error") {
+        return badRequest(result.error, { error: result.error });
+      }
+
+      return created(result.reply);
+    }
+
+    if (slug.length === 2 && slug[0] === "voice" && slug[1] === "speak") {
+      const parsedBody = voiceSpeakBodySchema.safeParse(body);
+      if (!parsedBody.success) {
+        return badRequest("Voice text payload is required.");
+      }
+
+      if (ORIGIN_AI_SERVICE_URL) {
+        const proxyUser = await resolveProxyUser(request);
+        if (!proxyUser) {
+          return unauthorized();
+        }
+        const proxyResp = await proxyToMicroservice("POST", "/api/v1/voice/speak", parsedBody.data, request, proxyUser);
+        if (proxyResp) return proxyResp;
+      }
+
+      // Fallback
+      const result = await withStoreAsync(async (store) => {
+        const user = requireUserFromRequest(store, request);
+        if (!user) {
+          return { status: "unauthorized" as const };
+        }
+
+        const reply = await speakOriginAiVoiceText({
+          text: parsedBody.data.text,
+          voiceName: parsedBody.data.voiceName ?? null,
+        });
+
+        return { status: "ok" as const, reply };
+      });
+
+      if (result.status === "unauthorized") {
+        return unauthorized();
+      }
+
+      return ok(result.reply);
     }
 
     return notFound();

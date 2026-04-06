@@ -20,8 +20,11 @@ import {
   createOriginAiLiveBootstrap,
   generateOriginAiProviderReply,
   normalizeVoiceTranscriptForChat,
+  synthesizeOriginAiVoiceAudioSegments,
+  transcribeOriginAiVoiceAudio,
   type OriginAiLiveBootstrapResponse,
   type OriginAiProviderRequest,
+  type OriginAiVoiceSynthesisResponse,
 } from "@/server/origin-ai-provider";
 
 export type OriginAiPageKind =
@@ -139,6 +142,19 @@ export interface OriginAiVoiceBootstrapPayload extends OriginAiSnapshotPayload {
   contextSeed: string;
   conversationSeed: OriginAiVoiceConversationSeedTurn[];
   voice: OriginAiLiveBootstrapResponse;
+}
+
+export interface OriginAiVoiceReplyPayload extends OriginAiReplyPayload {
+  userTranscript: string;
+  assistantTranscript: string;
+  voiceAudio: (OriginAiVoiceSynthesisResponse & { transport: "server_tts" }) | null;
+}
+
+export interface OriginAiVoiceSpeakPayload {
+  voiceAudio: (OriginAiVoiceSynthesisResponse & { transport: "server_tts" }) | null;
+  voiceAudioSegments: Array<OriginAiVoiceSynthesisResponse & { transport: "server_tts" }>;
+  fallbackText: string | null;
+  synthesisError?: string | null;
 }
 
 const PROMPT_CACHE = new Map<string, string>();
@@ -680,6 +696,7 @@ function buildSystemInstruction(
   reminders: StoredOriginAiReminder[],
   pageContext: OriginAiResolvedPageContext,
   pagePolicy: OriginAiPolicy,
+  options?: { transport?: "text_chat" | "voice_mode" },
 ): string {
   const soul = loadPromptDoc("SOUL.md");
   const agent = loadPromptDoc("AGENT.md");
@@ -691,6 +708,32 @@ function buildSystemInstruction(
   return [
     soul,
     agent,
+    ...(options?.transport === "voice_mode"
+      ? [
+          "## Voice Mode Addendum",
+          "- You are speaking, not writing.",
+          "- Keep replies concise for casual chat, but when the student asks to explain, solve, or teach a question, give a complete spoken explanation in one turn.",
+          "- For practice-question explanations, do not stop after only restating the givens or setting up variables. Finish the core explanation before ending the turn.",
+          "- A complete explanation can be longer: usually 5 to 10 short spoken sentences, or a clear step-by-step walkthrough if needed.",
+          "- When the student asks to explain the current OGCode question, do not switch into a Socratic checkpoint after step one. Complete the method first, then ask whether they want a recap or another version.",
+          "- Do not end a question explanation on a dangling prompt like 'ab?', 'toh?', 'is ka matlab?', or 'try karoge?' before the actual reasoning is complete.",
+          "- Sound like a warm, sharp mentor, not a narrator reading lecture notes.",
+          "- Support both English and Hinglish in voice mode.",
+          "- If the student speaks in Hinglish, reply in natural Hinglish using Roman script only.",
+          "- Never use Devanagari or any other Indic script in voice transcripts.",
+          "- If the student speaks in English, reply in English unless they ask you to switch.",
+          "- Do not force Hinglish into every reply; mirror the student's language choice naturally.",
+          "- If the current screen context already includes a title, question, chapter, concept, or visible question list, do not say you cannot see the screen.",
+          "- Treat the provided page context as the student's live screen state.",
+          "- Never say or transcript internal planning labels like 'Analyzing the Question', 'My plan is', 'I can see that the user needs', or similar hidden reasoning phrases.",
+          "- Start with the actual answer directly. Do not narrate your thinking process before answering.",
+          "- End only after a complete thought. Never stop in the middle of an explanation sentence unless the student actually interrupts you.",
+          "- On OGCode practice pages, if the student asks for an explanation, include the actual reasoning steps and the key equation flow before you stop.",
+          "- If page policy is hint_only or answer_blocked, obey it in voice exactly as in text.",
+          "- If the student interrupts you mid-explanation, stop cleanly, answer the interruption first, then ask whether they want to continue the previous thread.",
+          "- Voice replies should feel conversational and interactive, not like a paragraph being read aloud.",
+        ]
+      : []),
     "## Student Identity",
     `- Name: ${user.name}`,
     `- Role: ${user.role}`,
@@ -1249,6 +1292,7 @@ async function generateAssistantReply(
   pageContext: OriginAiResolvedPageContext,
   pagePolicy: OriginAiPolicy,
   userMessage: string,
+  transport: "text_chat" | "voice_mode" = "text_chat",
 ): Promise<{ content: string; provider: string; model: string; metadata: Record<string, unknown> }> {
   if (pagePolicy.mode === "answer_blocked") {
     return {
@@ -1285,8 +1329,11 @@ async function generateAssistantReply(
 
   const providerRequest: OriginAiProviderRequest = {
     requestId: createId("origin_ai_req"),
-    systemInstruction: buildSystemInstruction(user, memory, reminders, pageContext, pagePolicy),
+    systemInstruction: buildSystemInstruction(user, memory, reminders, pageContext, pagePolicy, {
+      transport,
+    }),
     conversation: [...history, { role: "user", content: userMessage }],
+    maxOutputTokens: transport === "voice_mode" ? 1100 : 700,
   };
 
   const providerReply = await generateOriginAiProviderReply(providerRequest);
@@ -1364,29 +1411,8 @@ export async function getOriginAiVoiceBootstrap(
       runtime.reminders,
       runtime.pageContext,
       runtime.pagePolicy,
+      { transport: "voice_mode" },
     ),
-    "## Voice Mode Addendum",
-    "- You are speaking, not writing.",
-    "- Keep replies concise for casual chat, but when the student asks to explain, solve, or teach a question, give a complete spoken explanation in one turn.",
-    "- For practice-question explanations, do not stop after only restating the givens or setting up variables. Finish the core explanation before ending the turn.",
-    "- A complete explanation can be longer: usually 5 to 10 short spoken sentences, or a clear step-by-step walkthrough if needed.",
-    "- When the student asks to explain the current OGCode question, do not switch into a Socratic checkpoint after step one. Complete the method first, then ask whether they want a recap or another version.",
-    "- Do not end a question explanation on a dangling prompt like 'ab?', 'toh?', 'is ka matlab?', or 'try karoge?' before the actual reasoning is complete.",
-    "- Sound like a warm, sharp mentor, not a narrator reading lecture notes.",
-    "- Support both English and Hinglish in voice mode.",
-    "- If the student speaks in Hinglish, reply in natural Hinglish using Roman script only.",
-    "- Never use Devanagari or any other Indic script in voice transcripts.",
-    "- If the student speaks in English, reply in English unless they ask you to switch.",
-    "- Do not force Hinglish into every reply; mirror the student's language choice naturally.",
-    "- If the current screen context already includes a title, question, chapter, concept, or visible question list, do not say you cannot see the screen.",
-    "- Treat the provided page context as the student's live screen state.",
-    "- Never say or transcript internal planning labels like 'Analyzing the Question', 'My plan is', 'I can see that the user needs', or similar hidden reasoning phrases.",
-    "- Start with the actual answer directly. Do not narrate your thinking process before answering.",
-    "- End only after a complete thought. Never stop in the middle of an explanation sentence unless the student actually interrupts you.",
-    "- On OGCode practice pages, if the student asks for an explanation, include the actual reasoning steps and the key equation flow before you stop.",
-    "- If page policy is hint_only or answer_blocked, obey it in voice exactly as in text.",
-    "- If the student interrupts you mid-explanation, stop cleanly, answer the interruption first, then ask whether they want to continue the previous thread.",
-    "- Voice replies should feel conversational and interactive, not like a paragraph being read aloud.",
     "## Live Screen Context",
     contextSeed,
     buildVoiceConversationContext(conversationSeed),
@@ -1410,7 +1436,7 @@ export async function getOriginAiVoiceBootstrap(
     pagePolicy: runtime.pagePolicy,
     provider: "voice_bootstrap",
     browserSessionId: runtime.browserSessionId,
-    liveSystemInstruction: voice.authMode === "api_key" ? voiceSystemInstruction : null,
+    liveSystemInstruction: voiceSystemInstruction,
     contextSeed,
     conversationSeed,
     voice,
@@ -1430,6 +1456,23 @@ interface OriginAiVoiceTurnInput {
   assistantTranscriptChunkCount?: number;
   assistantTextPartChunkCount?: number;
   hadOutputTranscript?: boolean;
+}
+
+interface OriginAiVoiceAudioInput {
+  audioData: string;
+  mimeType: string;
+  voiceName?: string | null;
+}
+
+interface OriginAiVoiceSpeakInput {
+  text: string;
+  voiceName?: string | null;
+}
+
+interface SendOriginAiMessageOptions {
+  transport?: "text_chat" | "voice_mode";
+  userMetadata?: Record<string, unknown>;
+  assistantMetadata?: Record<string, unknown>;
 }
 
 export async function commitOriginAiVoiceTurn(
@@ -1527,12 +1570,130 @@ export async function commitOriginAiVoiceTurn(
   };
 }
 
+export async function respondOriginAiVoiceTurn(
+  store: AppStore,
+  user: StoredUser,
+  request: Request,
+  voiceInput: OriginAiVoiceAudioInput,
+  input?: OriginAiPageContextInput | null,
+): Promise<OriginAiVoiceReplyPayload | { error: string }> {
+  const audioData = voiceInput.audioData.trim();
+  const mimeType = voiceInput.mimeType.trim();
+
+  if (!audioData) {
+    return { error: "Voice audio payload is required." };
+  }
+  if (!mimeType) {
+    return { error: "Voice audio mime type is required." };
+  }
+
+  let rawTranscript: string;
+  let transcriptionModel: string;
+
+  try {
+    const transcription = await transcribeOriginAiVoiceAudio(
+      audioData,
+      mimeType,
+      createId("origin_ai_voice_stt"),
+    );
+    rawTranscript = transcription.transcript;
+    transcriptionModel = transcription.model;
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "Origin AI could not transcribe the voice message.",
+    };
+  }
+
+  const userTranscript = await normalizeVoiceTranscriptForChat(rawTranscript, "user");
+  if (!userTranscript.trim()) {
+    return { error: "Origin AI could not understand the voice message clearly enough." };
+  }
+
+  const reply = await sendOriginAiMessage(
+    store,
+    user,
+    request,
+    userTranscript,
+    input,
+    {
+      transport: "voice_mode",
+      userMetadata: {
+        source: "origin_ai_voice",
+        modality: "voice",
+        audioMimeType: mimeType,
+        transcriptionModel,
+      },
+      assistantMetadata: {
+        modality: "voice",
+        transcriptionModel,
+      },
+    },
+  );
+
+  if ("error" in reply) {
+    return reply;
+  }
+
+  return {
+    ...reply,
+    userTranscript,
+    assistantTranscript: reply.aiMessage.content,
+    voiceAudio: null,
+  };
+}
+
+export async function speakOriginAiVoiceText(
+  voiceInput: OriginAiVoiceSpeakInput,
+): Promise<OriginAiVoiceSpeakPayload> {
+  const text = voiceInput.text.trim();
+  if (!text) {
+    return {
+      voiceAudio: null,
+      voiceAudioSegments: [],
+      fallbackText: null,
+      synthesisError: "Origin AI voice text is required.",
+    };
+  }
+
+  const requestId = createId("origin_ai_voice_tts");
+
+  try {
+    const audioSegments = await synthesizeOriginAiVoiceAudioSegments(
+      text,
+      requestId,
+      voiceInput.voiceName ?? null,
+    );
+    const transportedSegments = audioSegments.map((audio) => ({
+      ...audio,
+      transport: "server_tts" as const,
+    }));
+
+    return {
+      voiceAudio: transportedSegments[0] ?? null,
+      voiceAudioSegments: transportedSegments,
+      fallbackText: text,
+    };
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "Origin AI could not synthesize the voice reply.";
+    console.error(`[OriginAI TTS] speakOriginAiVoiceText failed (req=${requestId}): ${detail}`);
+    // Return a successful payload with no audio so the client can use
+    // browser speech fallback instead of receiving a 400.
+    return {
+      voiceAudio: null,
+      voiceAudioSegments: [],
+      fallbackText: text,
+      synthesisError: detail,
+    };
+  }
+}
+
 export async function sendOriginAiMessage(
   store: AppStore,
   user: StoredUser,
   request: Request,
   userContent: string,
   input?: OriginAiPageContextInput | null,
+  options?: SendOriginAiMessageOptions,
 ): Promise<OriginAiReplyPayload | { error: string }> {
   const trimmed = userContent.trim();
   if (!trimmed) {
@@ -1549,7 +1710,8 @@ export async function sendOriginAiMessage(
     metadata: {
       pathname: runtime.pageContext.pathname,
       pageKind: runtime.pageContext.pageKind,
-      transport: "text_chat",
+      transport: options?.transport ?? "text_chat",
+      ...options?.userMetadata,
     },
     timestamp: nowIso(),
   };
@@ -1563,6 +1725,7 @@ export async function sendOriginAiMessage(
     runtime.pageContext,
     runtime.pagePolicy,
     trimmed,
+    options?.transport ?? "text_chat",
   );
 
   const aiMessage: StoredChatMessage = {
@@ -1576,8 +1739,9 @@ export async function sendOriginAiMessage(
       model: assistantTurn.model,
       pageKind: runtime.pageContext.pageKind,
       policyMode: runtime.pagePolicy.mode,
-      transport: "text_chat",
+      transport: options?.transport ?? "text_chat",
       ...assistantTurn.metadata,
+      ...options?.assistantMetadata,
     },
     timestamp: nowIso(),
   };

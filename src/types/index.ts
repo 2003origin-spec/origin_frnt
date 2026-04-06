@@ -423,20 +423,11 @@ export interface OriginAiVoiceConversationTurn {
 }
 
 export interface OriginAiVoiceConfig {
-  transport: 'gemini_live';
+  transport: 'server_voice';
   provider: 'gemini';
-  authMode: 'ephemeral_token' | 'api_key';
-  token: string;
-  model: string;
-  apiVersion: 'v1alpha';
-  responseModalities: string[];
+  speechToTextModel: string;
+  textToSpeechModel: string;
   voiceName: string;
-  inputAudioTranscription: boolean;
-  outputAudioTranscription: boolean;
-  sessionResumption: boolean;
-  interruptionBehavior: 'START_OF_ACTIVITY_INTERRUPTS' | 'NO_INTERRUPTION';
-  temperature: number;
-  maxOutputTokens: number;
 }
 
 export interface OriginAiVoiceBootstrap extends OriginAiSnapshot {
@@ -445,6 +436,28 @@ export interface OriginAiVoiceBootstrap extends OriginAiSnapshot {
   contextSeed: string;
   conversationSeed: OriginAiVoiceConversationTurn[];
   voice: OriginAiVoiceConfig;
+}
+
+export interface OriginAiVoiceAudio {
+  data: string;
+  mimeType: string;
+  provider: 'gemini';
+  model: string;
+  voiceName: string;
+  transport: 'server_tts';
+}
+
+export interface OriginAiVoiceReply extends OriginAiReply {
+  userTranscript: string;
+  assistantTranscript: string;
+  voiceAudio: OriginAiVoiceAudio | null;
+}
+
+export interface OriginAiVoiceSpeakResponse {
+  voiceAudio: OriginAiVoiceAudio | null;
+  voiceAudioSegments: OriginAiVoiceAudio[];
+  fallbackText?: string | null;
+  synthesisError?: string | null;
 }
 
 export type OriginAiVoiceStatus =

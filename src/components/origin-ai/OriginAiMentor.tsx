@@ -10,6 +10,7 @@ import {
   sendOriginAiMessage,
 } from '@/features/origin-ai/client';
 import { useOriginAiPageContext } from '@/features/origin-ai/page-context-store';
+import { useHighlightedText } from '@/features/origin-ai/highlight-capture';
 import { startOriginAiVoiceMode, type OriginAiVoiceController } from '@/features/origin-ai/voice-client';
 import { cn } from '@/lib/utils';
 import type { OriginAiSnapshot, OriginAiVoiceStatus } from '@/types';
@@ -163,6 +164,7 @@ export default function OriginAiMentor({ compact = false, onClose }: OriginAiMen
   const voiceControllerRef = React.useRef<OriginAiVoiceController | null>(null);
 
   const pageContext = useOriginAiPageContext(pathname || '/dashboard');
+  const highlightedText = useHighlightedText();
 
   const loadSnapshot = React.useCallback(async () => {
     setIsLoading(true);
@@ -222,7 +224,7 @@ export default function OriginAiMentor({ compact = false, onClose }: OriginAiMen
     setIsSending(true);
 
     try {
-      const reply = await sendOriginAiMessage(trimmed, pageContext);
+      const reply = await sendOriginAiMessage(trimmed, pageContext, highlightedText);
       setSnapshot(reply);
     } catch (error) {
       console.error('Failed to send Origin AI message', error);
@@ -582,6 +584,12 @@ export default function OriginAiMentor({ compact = false, onClose }: OriginAiMen
                 ) : null}
               </div>
             ) : null}
+            {highlightedText ? (
+              <div className="mb-2 flex items-center gap-2 rounded-2xl border border-blue-400/20 bg-blue-500/10 px-3 py-2 text-xs text-blue-200">
+                <span className="shrink-0 font-semibold uppercase tracking-wider">Selected:</span>
+                <span className="line-clamp-1 opacity-80">{highlightedText}</span>
+              </div>
+            ) : null}
             <div className={cn('flex items-end', compact ? 'gap-2' : 'gap-3')}>
               <textarea
                 value={message}
@@ -594,11 +602,13 @@ export default function OriginAiMentor({ compact = false, onClose }: OriginAiMen
                 }}
                 rows={compact ? 1 : 3}
                 placeholder={
-                  snapshot?.pagePolicy.mode === 'answer_blocked'
-                    ? 'Ask for strategy, not answers...'
-                    : snapshot?.pagePolicy.mode === 'hint_only'
-                      ? 'Ask for a hint or a concept nudge...'
-                      : 'Ask Origin AI anything about your studies...'
+                  highlightedText
+                    ? 'Ask about the selected text...'
+                    : snapshot?.pagePolicy.mode === 'answer_blocked'
+                      ? 'Ask for strategy, not answers...'
+                      : snapshot?.pagePolicy.mode === 'hint_only'
+                        ? 'Ask for a hint or a concept nudge...'
+                        : 'Ask Origin AI anything about your studies...'
                 }
                 className={cn(
                   'flex-1 resize-none rounded-3xl border border-white/10 bg-white/[0.03] px-4 text-sm text-white outline-none transition focus:border-blue-400/40 focus:bg-white/[0.05]',

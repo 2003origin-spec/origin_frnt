@@ -1,28 +1,10 @@
-import { ActivityHandling, GoogleGenAI } from '@google/genai';
-
 import {
   getOriginAiVoiceBootstrap,
-  persistOriginAiVoiceTurn,
+  respondOriginAiVoiceAudio,
+  synthesizeOriginAiVoiceText,
   type OriginAiClientPageContext,
 } from '@/features/origin-ai/client';
 import type { OriginAiReply, OriginAiVoiceStatus } from '@/types';
-
-type LiveContentTurn = {
-  role: 'user' | 'model';
-  parts: Array<{ text: string }>;
-};
-
-type LiveSessionLike = {
-  sendClientContent: (params: { turns: LiveContentTurn[]; turnComplete?: boolean }) => void;
-  sendRealtimeInput: (params: {
-    audio?: { data?: string; mimeType?: string };
-    audioStreamEnd?: boolean;
-    activityStart?: Record<string, never>;
-    activityEnd?: Record<string, never>;
-    text?: string;
-  }) => void;
-  close: () => void;
-};
 
 type AudioContextLike = AudioContext & {
   createScriptProcessor?: (
@@ -30,26 +12,6 @@ type AudioContextLike = AudioContext & {
     inputChannels?: number,
     outputChannels?: number,
   ) => ScriptProcessorNode;
-};
-
-type LiveServerEventLike = {
-  setupComplete?: { sessionId?: string };
-  serverContent?: {
-    modelTurn?: {
-      parts?: Array<{
-        text?: string;
-        inlineData?: {
-          data?: string;
-          mimeType?: string;
-        };
-      }>;
-    };
-    inputTranscription?: { text?: string };
-    outputTranscription?: { text?: string };
-    turnComplete?: boolean;
-    interrupted?: boolean;
-    waitingForInput?: boolean;
-  };
 };
 
 export interface OriginAiVoiceCallbacks {
@@ -65,14 +27,9 @@ export interface OriginAiVoiceController {
   isActive: () => boolean;
 }
 
-type VoiceTurnCompletionReason = 'turn_complete' | 'interrupted' | 'manual_stop' | 'unknown';
-
-interface CompletedVoiceTurnMetrics {
-  completionReason: VoiceTurnCompletionReason;
-  assistantAudioChunkCount: number;
-  assistantTranscriptChunkCount: number;
-  assistantTextPartChunkCount: number;
-  hadOutputTranscript: boolean;
+interface CapturedVoiceTurn {
+  audioData: string;
+  mimeType: string;
 }
 
 interface MicrophonePipeline {
@@ -101,25 +58,27 @@ const USER_SPEECH_END_SILENCE_CHUNKS_REQUIRED = 10;
 const AMBIENT_RMS_INITIAL = 0.003;
 const AMBIENT_RMS_SMOOTHING = 0.08;
 const ASSISTANT_PLAYBACK_GAP_GRACE_MS = 900;
+const VOICE_RESPOND_TIMEOUT_MS = 25000;
+const VOICE_SPEAK_TIMEOUT_MS = 50000;
 
 function emitStatus(callbacks: OriginAiVoiceCallbacks, status: OriginAiVoiceStatus): void {
   callbacks.onStatusChange?.(status);
 }
 
-function float32ToBase64Pcm(input: Float32Array): string {
-  const pcm = new Int16Array(input.length);
-
-  for (let index = 0; index < input.length; index += 1) {
-    const sample = Math.max(-1, Math.min(1, input[index] ?? 0));
-    pcm[index] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
   }
-
-  const bytes = new Uint8Array(pcm.buffer);
-  let binary = '';
-  for (let index = 0; index < bytes.byteLength; index += 1) {
-    binary += String.fromCharCode(bytes[index] ?? 0);
-  }
-  return window.btoa(binary);
 }
 
 function base64ToBytes(base64Data: string): Uint8Array {
@@ -134,6 +93,67 @@ function base64ToBytes(base64Data: string): Uint8Array {
 function parseSampleRate(mimeType?: string | null): number {
   const match = mimeType?.match(/rate=(\d+)/i);
   return Number(match?.[1] || DEFAULT_OUTPUT_SAMPLE_RATE);
+}
+
+function float32ToInt16(input: Float32Array): Int16Array {
+  const pcm = new Int16Array(input.length);
+  for (let index = 0; index < input.length; index += 1) {
+    const sample = Math.max(-1, Math.min(1, input[index] ?? 0));
+    pcm[index] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
+  }
+  return pcm;
+}
+
+function encodePcmChunksToWavBase64(chunks: Int16Array[], sampleRate: number): string {
+  const totalSamples = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const dataSize = totalSamples * 2;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+  let offset = 0;
+
+  const writeString = (value: string) => {
+    for (let index = 0; index < value.length; index += 1) {
+      view.setUint8(offset, value.charCodeAt(index));
+      offset += 1;
+    }
+  };
+
+  writeString('RIFF');
+  view.setUint32(offset, 36 + dataSize, true);
+  offset += 4;
+  writeString('WAVE');
+  writeString('fmt ');
+  view.setUint32(offset, 16, true);
+  offset += 4;
+  view.setUint16(offset, 1, true);
+  offset += 2;
+  view.setUint16(offset, 1, true);
+  offset += 2;
+  view.setUint32(offset, sampleRate, true);
+  offset += 4;
+  view.setUint32(offset, sampleRate * 2, true);
+  offset += 4;
+  view.setUint16(offset, 2, true);
+  offset += 2;
+  view.setUint16(offset, 16, true);
+  offset += 2;
+  writeString('data');
+  view.setUint32(offset, dataSize, true);
+  offset += 4;
+
+  for (const chunk of chunks) {
+    for (let index = 0; index < chunk.length; index += 1) {
+      view.setInt16(offset, chunk[index] ?? 0, true);
+      offset += 2;
+    }
+  }
+
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  for (let index = 0; index < bytes.byteLength; index += 1) {
+    binary += String.fromCharCode(bytes[index] ?? 0);
+  }
+  return window.btoa(binary);
 }
 
 function pcmChunkToAudioBuffer(
@@ -168,24 +188,22 @@ function pcmChunkToAudioBuffer(
   return buffer;
 }
 
-function mergeTranscript(previous: string, incoming: string): string {
-  const next = incoming.trim();
-  if (!next) {
-    return previous;
+async function decodeAudioBuffer(
+  audioContext: AudioContext,
+  base64Data: string,
+  mimeType?: string | null,
+): Promise<AudioBuffer | null> {
+  if (!base64Data.trim()) {
+    return null;
   }
-  if (!previous) {
-    return next;
+
+  if (mimeType?.includes('audio/pcm')) {
+    return pcmChunkToAudioBuffer(audioContext, base64Data, parseSampleRate(mimeType));
   }
-  if (next.startsWith(previous)) {
-    return next;
-  }
-  if (previous.startsWith(next)) {
-    return previous;
-  }
-  if (previous.includes(next)) {
-    return previous;
-  }
-  return `${previous} ${next}`.trim();
+
+  const bytes = base64ToBytes(base64Data);
+  const arrayBuffer = Uint8Array.from(bytes).buffer;
+  return audioContext.decodeAudioData(arrayBuffer);
 }
 
 function calculateRms(input: Float32Array): number {
@@ -214,7 +232,7 @@ function createAudioPlayer(callbacks: OriginAiVoiceCallbacks, onIdle: () => void
 
   return {
     enqueue: async (base64Data: string, mimeType?: string | null) => {
-      const audioBuffer = pcmChunkToAudioBuffer(audioContext, base64Data, parseSampleRate(mimeType));
+      const audioBuffer = await decodeAudioBuffer(audioContext, base64Data, mimeType);
       if (!audioBuffer) {
         return;
       }
@@ -261,7 +279,7 @@ function createAudioPlayer(callbacks: OriginAiVoiceCallbacks, onIdle: () => void
         try {
           source.stop();
         } catch {
-          // already stopped
+          // ignore shutdown race
         }
         source.disconnect();
       }
@@ -272,10 +290,51 @@ function createAudioPlayer(callbacks: OriginAiVoiceCallbacks, onIdle: () => void
   };
 }
 
+function pickBrowserSpeechVoice(): SpeechSynthesisVoice | null {
+  if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
+    return null;
+  }
+
+  const voices = window.speechSynthesis.getVoices();
+  if (!voices.length) {
+    return null;
+  }
+
+  const preferredNames = ['daniel', 'aaron', 'alex', 'arthur', 'fred', 'google us english'];
+  const englishVoices = voices.filter((voice) => voice.lang.toLowerCase().startsWith('en'));
+  const preferred =
+    englishVoices.find((voice) =>
+      preferredNames.some((name) => voice.name.toLowerCase().includes(name)),
+    ) ?? englishVoices[0];
+
+  return preferred ?? voices[0] ?? null;
+}
+
+async function speakWithBrowserFallback(text: string): Promise<void> {
+  if (typeof window === 'undefined' || !('speechSynthesis' in window) || !('SpeechSynthesisUtterance' in window)) {
+    return;
+  }
+
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = 'en-US';
+  utterance.rate = 1.0;
+  utterance.pitch = 0.92;
+  const voice = pickBrowserSpeechVoice();
+  if (voice) {
+    utterance.voice = voice;
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    utterance.onend = () => resolve();
+    utterance.onerror = () => reject(new Error('Origin AI browser speech fallback failed.'));
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utterance);
+  });
+}
+
 async function startMicrophonePipeline(
-  liveSession: LiveSessionLike,
-  isAssistantSpeaking: () => boolean,
-  onUserTurnEnded: () => void,
+  isAssistantBusy: () => boolean,
+  onUserTurnEnded: (turn: CapturedVoiceTurn) => void,
 ): Promise<MicrophonePipeline> {
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: {
@@ -299,11 +358,37 @@ async function startMicrophonePipeline(
 
   const sinkNode = audioContext.createGain();
   sinkNode.gain.value = 0;
+
   let activeSpeechChunks = 0;
   let activeSilenceChunks = 0;
   let userSpeechActive = false;
   let ambientRms = AMBIENT_RMS_INITIAL;
-  let pendingSpeechAudioChunks: string[] = [];
+  let pendingSpeechChunks: Int16Array[] = [];
+  let capturedSpeechChunks: Int16Array[] = [];
+
+  const finishTurn = () => {
+    if (!userSpeechActive || capturedSpeechChunks.length === 0) {
+      userSpeechActive = false;
+      activeSpeechChunks = 0;
+      activeSilenceChunks = 0;
+      pendingSpeechChunks = [];
+      capturedSpeechChunks = [];
+      return;
+    }
+
+    const audioData = encodePcmChunksToWavBase64(capturedSpeechChunks, INPUT_SAMPLE_RATE);
+
+    userSpeechActive = false;
+    activeSpeechChunks = 0;
+    activeSilenceChunks = 0;
+    pendingSpeechChunks = [];
+    capturedSpeechChunks = [];
+
+    onUserTurnEnded({
+      audioData,
+      mimeType: 'audio/wav',
+    });
+  };
 
   processorNode.onaudioprocess = (event) => {
     const channelData = event.inputBuffer.getChannelData(0);
@@ -312,72 +397,52 @@ async function startMicrophonePipeline(
     }
 
     const rms = calculateRms(channelData);
-    const assistantSpeaking = isAssistantSpeaking();
+    const pcmChunk = float32ToInt16(channelData);
 
-    if (assistantSpeaking) {
-      activeSpeechChunks = 0;
-      activeSilenceChunks = 0;
-      pendingSpeechAudioChunks = [];
+    if (isAssistantBusy()) {
+      if (!userSpeechActive) {
+        activeSpeechChunks = 0;
+        activeSilenceChunks = 0;
+        pendingSpeechChunks = [];
+        capturedSpeechChunks = [];
+      }
       return;
     }
 
     if (!userSpeechActive) {
       ambientRms = ambientRms * (1 - AMBIENT_RMS_SMOOTHING) + rms * AMBIENT_RMS_SMOOTHING;
-    }
 
-    if (!userSpeechActive) {
       const startThreshold = Math.max(USER_SPEECH_START_RMS_THRESHOLD_MIN, ambientRms * 3.2);
-      const startChunksRequired = USER_SPEECH_START_CHUNKS_REQUIRED;
-
       if (rms < startThreshold) {
         activeSpeechChunks = 0;
-        pendingSpeechAudioChunks = [];
+        pendingSpeechChunks = [];
         return;
       }
 
       activeSpeechChunks += 1;
-      pendingSpeechAudioChunks.push(float32ToBase64Pcm(channelData));
-      if (activeSpeechChunks < startChunksRequired) {
+      pendingSpeechChunks.push(pcmChunk);
+      if (activeSpeechChunks < USER_SPEECH_START_CHUNKS_REQUIRED) {
         return;
       }
 
       userSpeechActive = true;
       activeSpeechChunks = 0;
       activeSilenceChunks = 0;
-
-      liveSession.sendRealtimeInput({ activityStart: {} });
-      for (const chunk of pendingSpeechAudioChunks) {
-        liveSession.sendRealtimeInput({
-          audio: {
-            data: chunk,
-            mimeType: `audio/pcm;rate=${INPUT_SAMPLE_RATE}`,
-          },
-        });
-      }
-      pendingSpeechAudioChunks = [];
+      capturedSpeechChunks = pendingSpeechChunks.slice();
+      pendingSpeechChunks = [];
       return;
     }
 
     const activeSpeechThreshold = Math.max(USER_SPEECH_ACTIVE_RMS_THRESHOLD_MIN, ambientRms * 1.8);
     if (rms >= activeSpeechThreshold) {
       activeSilenceChunks = 0;
-      liveSession.sendRealtimeInput({
-        audio: {
-          data: float32ToBase64Pcm(channelData),
-          mimeType: `audio/pcm;rate=${INPUT_SAMPLE_RATE}`,
-        },
-      });
+      capturedSpeechChunks.push(pcmChunk);
       return;
     }
 
     activeSilenceChunks += 1;
     if (activeSilenceChunks >= USER_SPEECH_END_SILENCE_CHUNKS_REQUIRED) {
-      liveSession.sendRealtimeInput({ activityEnd: {} });
-      userSpeechActive = false;
-      activeSpeechChunks = 0;
-      activeSilenceChunks = 0;
-      pendingSpeechAudioChunks = [];
-      onUserTurnEnded();
+      finishTurn();
     }
   };
 
@@ -391,18 +456,7 @@ async function startMicrophonePipeline(
     sourceNode,
     processorNode,
     sinkNode,
-    finalizeActivity: () => {
-      if (!userSpeechActive) {
-        return;
-      }
-
-      liveSession.sendRealtimeInput({ activityEnd: {} });
-      userSpeechActive = false;
-      activeSpeechChunks = 0;
-      activeSilenceChunks = 0;
-      pendingSpeechAudioChunks = [];
-      onUserTurnEnded();
-    },
+    finalizeActivity: finishTurn,
   };
 }
 
@@ -413,36 +467,23 @@ export async function startOriginAiVoiceMode(
   emitStatus(callbacks, 'bootstrapping');
   const bootstrap = await getOriginAiVoiceBootstrap(pageContext);
 
-  const ai = new GoogleGenAI({
-    apiKey: bootstrap.voice.token,
-    apiVersion: bootstrap.voice.apiVersion,
-  });
-
   let isActive = true;
-  let liveSessionId: string | null = null;
-  let userTranscriptBuffer = '';
-  let assistantTranscriptBuffer = '';
-  let assistantTurnInProgress = false;
-  let sawOutputTranscriptForTurn = false;
-  let pendingCommitCount = 0;
+  let isAwaitingResponse = false;
   let microphonePipeline: MicrophonePipeline | null = null;
   let assistantPlaybackHoldUntil = 0;
-  let assistantAudioChunkCount = 0;
-  let assistantTranscriptChunkCount = 0;
-  let assistantTextPartChunkCount = 0;
-  let currentTurnCompletionReason: VoiceTurnCompletionReason = 'unknown';
+  let isBrowserFallbackSpeaking = false;
 
   const maybeReturnToListening = () => {
     if (!isActive) {
       return;
     }
-    if (assistantTurnInProgress) {
+    if (isAwaitingResponse) {
       return;
     }
     if (audioPlayer.isPlaying()) {
       return;
     }
-    if (pendingCommitCount > 0) {
+    if (isBrowserFallbackSpeaking) {
       return;
     }
     if (Date.now() < assistantPlaybackHoldUntil) {
@@ -454,235 +495,112 @@ export async function startOriginAiVoiceMode(
 
   const audioPlayer = createAudioPlayer(callbacks, maybeReturnToListening);
 
-  const markAssistantSpeaking = () => {
-    assistantTurnInProgress = true;
-    assistantPlaybackHoldUntil = Date.now() + ASSISTANT_PLAYBACK_GAP_GRACE_MS;
-  };
-
-  const queueTurnCommit = (
-    userTranscript: string,
-    assistantTranscript: string,
-    interrupted: boolean,
-    metrics: CompletedVoiceTurnMetrics,
-  ) => {
-    if (!assistantTranscript.trim()) {
-      maybeReturnToListening();
-      return;
-    }
-
-    pendingCommitCount += 1;
-    callbacks.onUserTranscript?.(userTranscript);
-    callbacks.onAssistantTranscript?.(assistantTranscript);
-
-    void (async () => {
-      try {
-        const reply = await persistOriginAiVoiceTurn(
-          userTranscript,
-          assistantTranscript,
-          pageContext,
-          {
-            liveSessionId,
-            model: bootstrap.voice.model,
-            transport: 'gemini_live',
-            interrupted,
-            completionReason: metrics.completionReason,
-            assistantAudioChunkCount: metrics.assistantAudioChunkCount,
-            assistantTranscriptChunkCount: metrics.assistantTranscriptChunkCount,
-            assistantTextPartChunkCount: metrics.assistantTextPartChunkCount,
-            hadOutputTranscript: metrics.hadOutputTranscript,
-          },
-        );
-        callbacks.onReplyCommitted?.(reply);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Origin AI could not save the voice turn.';
-        callbacks.onError?.(message);
-        emitStatus(callbacks, 'error');
-      } finally {
-        pendingCommitCount = Math.max(0, pendingCommitCount - 1);
-        maybeReturnToListening();
-      }
-    })();
-  };
-
-  const flushTurn = (interrupted: boolean) => {
-    const userTranscript = userTranscriptBuffer.trim();
-    const assistantTranscript = assistantTranscriptBuffer.trim();
-    const metrics: CompletedVoiceTurnMetrics = {
-      completionReason: currentTurnCompletionReason,
-      hadOutputTranscript: sawOutputTranscriptForTurn,
-      assistantAudioChunkCount,
-      assistantTranscriptChunkCount,
-      assistantTextPartChunkCount,
-    };
-
-    if (!userTranscript && !assistantTranscript) {
-      sawOutputTranscriptForTurn = false;
-      currentTurnCompletionReason = 'unknown';
-      assistantAudioChunkCount = 0;
-      assistantTranscriptChunkCount = 0;
-      assistantTextPartChunkCount = 0;
-      maybeReturnToListening();
-      return;
-    }
-
-    userTranscriptBuffer = '';
-    assistantTranscriptBuffer = '';
-    sawOutputTranscriptForTurn = false;
-    assistantPlaybackHoldUntil = Date.now() + ASSISTANT_PLAYBACK_GAP_GRACE_MS;
-    currentTurnCompletionReason = 'unknown';
-    assistantAudioChunkCount = 0;
-    assistantTranscriptChunkCount = 0;
-    assistantTextPartChunkCount = 0;
-    console.debug('[Origin AI Voice] commit', {
-      completionReason: metrics.completionReason,
-      interrupted,
-      userChars: userTranscript.length,
-      assistantChars: assistantTranscript.length,
-      hadOutputTranscript: metrics.hadOutputTranscript,
-      assistantAudioChunkCount: metrics.assistantAudioChunkCount,
-      assistantTranscriptChunkCount: metrics.assistantTranscriptChunkCount,
-      assistantTextPartChunkCount: metrics.assistantTextPartChunkCount,
-    });
-    queueTurnCommit(userTranscript, assistantTranscript, interrupted, metrics);
-  };
-
   emitStatus(callbacks, 'connecting');
 
-  const liveConfig: Record<string, unknown> = {
-    responseModalities: bootstrap.voice.responseModalities as never,
-    speechConfig: {
-      voiceConfig: {
-        prebuiltVoiceConfig: {
-          voiceName: bootstrap.voice.voiceName,
-        },
-      },
-    },
-    realtimeInputConfig: {
-      automaticActivityDetection: {
-        disabled: true,
-      },
-      activityHandling:
-        bootstrap.voice.interruptionBehavior === 'NO_INTERRUPTION'
-          ? ActivityHandling.NO_INTERRUPTION
-          : ActivityHandling.START_OF_ACTIVITY_INTERRUPTS,
-    },
-    inputAudioTranscription: bootstrap.voice.inputAudioTranscription ? {} : undefined,
-    outputAudioTranscription: bootstrap.voice.outputAudioTranscription ? {} : undefined,
-    sessionResumption: bootstrap.voice.sessionResumption ? {} : undefined,
-    thinkingConfig: {
-      includeThoughts: false,
-      thinkingBudget: 0,
-    },
-    temperature: bootstrap.voice.temperature,
-    maxOutputTokens: bootstrap.voice.maxOutputTokens,
-  };
+  microphonePipeline = await startMicrophonePipeline(
+    () => isAwaitingResponse || audioPlayer.isPlaying() || Date.now() < assistantPlaybackHoldUntil,
+    (turn) => {
+      if (!isActive || isAwaitingResponse) {
+        return;
+      }
 
-  if (bootstrap.voice.authMode === 'api_key' && bootstrap.liveSystemInstruction?.trim()) {
-    liveConfig.systemInstruction = bootstrap.liveSystemInstruction.trim();
-  }
+      isAwaitingResponse = true;
+      emitStatus(callbacks, 'thinking');
 
-  const liveSession = (await ai.live.connect({
-    model: bootstrap.voice.model,
-    config: liveConfig,
-    callbacks: {
-      onopen: () => {
-        emitStatus(callbacks, 'listening');
-      },
-      onmessage: (event: unknown) => {
-        const message = event as LiveServerEventLike;
+      void (async () => {
+        try {
+          const reply = await withTimeout(
+            respondOriginAiVoiceAudio(
+              turn.audioData,
+              turn.mimeType,
+              pageContext,
+              bootstrap.voice.voiceName,
+            ),
+            VOICE_RESPOND_TIMEOUT_MS,
+            'Origin AI took too long to prepare the voice reply.',
+          );
 
-        if (message.setupComplete?.sessionId) {
-          liveSessionId = message.setupComplete.sessionId;
-        }
-
-        const inputTranscript = message.serverContent?.inputTranscription?.text?.trim();
-        if (inputTranscript) {
-          userTranscriptBuffer = mergeTranscript(userTranscriptBuffer, inputTranscript);
-          callbacks.onUserTranscript?.(userTranscriptBuffer);
-        }
-
-        const outputTranscript = message.serverContent?.outputTranscription?.text?.trim();
-        if (outputTranscript) {
-          markAssistantSpeaking();
-          sawOutputTranscriptForTurn = true;
-          assistantTranscriptChunkCount += 1;
-          assistantTranscriptBuffer = mergeTranscript(assistantTranscriptBuffer, outputTranscript);
-          callbacks.onAssistantTranscript?.(assistantTranscriptBuffer);
-          if (!audioPlayer.isPlaying()) {
-            emitStatus(callbacks, 'thinking');
-          }
-        }
-
-        const parts = message.serverContent?.modelTurn?.parts ?? [];
-        for (const part of parts) {
-          const inlineData = part.inlineData;
-          if (inlineData?.data?.trim()) {
-            markAssistantSpeaking();
-            assistantAudioChunkCount += 1;
-            void audioPlayer.enqueue(inlineData.data, inlineData.mimeType ?? null).catch(() => {
-              callbacks.onError?.('Origin AI audio playback failed.');
-              emitStatus(callbacks, 'error');
-            });
+          if (!isActive) {
+            return;
           }
 
-          if (part.text?.trim() && !sawOutputTranscriptForTurn) {
-            markAssistantSpeaking();
-            assistantTextPartChunkCount += 1;
-            assistantTranscriptBuffer = mergeTranscript(assistantTranscriptBuffer, part.text);
-            callbacks.onAssistantTranscript?.(assistantTranscriptBuffer);
+          callbacks.onUserTranscript?.(reply.userTranscript);
+          callbacks.onAssistantTranscript?.(reply.assistantTranscript);
+          callbacks.onReplyCommitted?.(reply);
+
+          // Text reply is ready — now synthesize audio in a separate step.
+          // Emit 'speaking' so the UI reflects that TTS is in progress
+          // instead of staying stuck on 'thinking'.
+          emitStatus(callbacks, 'speaking');
+
+          let voiceAudio = reply.voiceAudio;
+          let voiceAudioSegments = voiceAudio ? [voiceAudio] : [];
+          let fallbackText = reply.assistantTranscript;
+          if (!voiceAudio) {
+            try {
+              const speakResponse = await withTimeout(
+                synthesizeOriginAiVoiceText(reply.assistantTranscript, bootstrap.voice.voiceName),
+                VOICE_SPEAK_TIMEOUT_MS,
+                'Origin AI took too long to synthesize the spoken reply.',
+              );
+              voiceAudio = speakResponse.voiceAudio;
+              voiceAudioSegments =
+                speakResponse.voiceAudioSegments?.length > 0
+                  ? speakResponse.voiceAudioSegments
+                  : speakResponse.voiceAudio
+                    ? [speakResponse.voiceAudio]
+                    : [];
+              fallbackText = speakResponse.fallbackText ?? reply.assistantTranscript;
+              if (speakResponse.synthesisError) {
+                console.warn('[OriginAI Voice] TTS synthesis failed, will use browser fallback:', speakResponse.synthesisError);
+              }
+            } catch (speakErr) {
+              // TTS failed — the text reply is already committed via
+              // onReplyCommitted, so the user can still read it. Continue
+              // the conversation loop with browser speech fallback.
+              console.warn('[OriginAI Voice] TTS call failed, will use browser fallback:', speakErr);
+            }
           }
-        }
 
-        if (message.serverContent?.interrupted) {
-          currentTurnCompletionReason = 'interrupted';
-          audioPlayer.interrupt();
-          assistantTurnInProgress = false;
-          flushTurn(true);
-        }
+          if (!isActive) {
+            return;
+          }
 
-        if (message.serverContent?.turnComplete) {
-          currentTurnCompletionReason = 'turn_complete';
-          assistantTurnInProgress = false;
-          flushTurn(false);
-        }
-
-        if (message.serverContent?.waitingForInput) {
+          if (voiceAudioSegments.length > 0) {
+            assistantPlaybackHoldUntil = Date.now() + ASSISTANT_PLAYBACK_GAP_GRACE_MS;
+            for (const segment of voiceAudioSegments) {
+              await audioPlayer.enqueue(segment.data, segment.mimeType);
+            }
+          } else if (fallbackText.trim()) {
+            assistantPlaybackHoldUntil = Date.now() + ASSISTANT_PLAYBACK_GAP_GRACE_MS;
+            isBrowserFallbackSpeaking = true;
+            emitStatus(callbacks, 'speaking');
+            try {
+              await speakWithBrowserFallback(fallbackText);
+            } catch {
+              // Ignore fallback speech errors; the text reply is already visible.
+            } finally {
+              isBrowserFallbackSpeaking = false;
+            }
+          }
+          // If audio is unavailable, skip playback silently. The text
+          // reply was already committed and the loop will return to
+          // listening via the finally block below.
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : 'Origin AI voice mode could not finish the turn.';
+          callbacks.onError?.(message);
+          // Don't set status to 'error' permanently — let the finally
+          // block return to listening so the conversation can continue.
+        } finally {
+          isAwaitingResponse = false;
           maybeReturnToListening();
         }
-      },
-      onerror: (event: unknown) => {
-        const message =
-          event instanceof Error
-            ? event.message
-            : typeof event === 'object' &&
-                event &&
-                'message' in event &&
-                typeof (event as { message?: unknown }).message === 'string'
-              ? (event as { message: string }).message
-              : 'Origin AI voice mode hit a connection issue.';
-        callbacks.onError?.(message);
-        emitStatus(callbacks, 'error');
-      },
-      onclose: () => {
-        if (isActive) {
-          emitStatus(callbacks, 'idle');
-        }
-      },
-    },
-  })) as LiveSessionLike;
-
-  microphonePipeline = await startMicrophonePipeline(
-    liveSession,
-    () =>
-      assistantTurnInProgress ||
-      audioPlayer.isPlaying() ||
-      Date.now() < assistantPlaybackHoldUntil,
-    () => {
-      if (!assistantTurnInProgress && !audioPlayer.isPlaying()) {
-        emitStatus(callbacks, 'thinking');
-      }
+      })();
     },
   );
+
+  emitStatus(callbacks, 'listening');
 
   return {
     stop: async () => {
@@ -691,29 +609,32 @@ export async function startOriginAiVoiceMode(
       }
 
       isActive = false;
-      assistantTurnInProgress = false;
+      isAwaitingResponse = false;
 
       try {
-        microphonePipeline?.finalizeActivity();
-        liveSession.sendRealtimeInput({ audioStreamEnd: true });
+        audioPlayer.interrupt();
       } catch {
-        // ignore close race
+        // ignore shutdown race
       }
 
-      audioPlayer.interrupt();
-      currentTurnCompletionReason = 'manual_stop';
-      flushTurn(false);
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+      isBrowserFallbackSpeaking = false;
 
       if (microphonePipeline) {
-        microphonePipeline.processorNode.disconnect();
-        microphonePipeline.sourceNode.disconnect();
-        microphonePipeline.sinkNode.disconnect();
+        try {
+          microphonePipeline.processorNode.disconnect();
+          microphonePipeline.sourceNode.disconnect();
+          microphonePipeline.sinkNode.disconnect();
+        } catch {
+          // ignore shutdown race
+        }
         microphonePipeline.stream.getTracks().forEach((track) => track.stop());
         await microphonePipeline.audioContext.close();
       }
 
       await audioPlayer.close();
-      liveSession.close();
       emitStatus(callbacks, 'idle');
     },
     isActive: () => isActive,
