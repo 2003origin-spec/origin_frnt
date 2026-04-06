@@ -268,7 +268,7 @@ function findCorrectOptionIndex(options, answer) {
   }
 
   const answerNumber = Number(String(answer ?? "").trim());
-  if (Number.isFinite(answerNumber) && answerNumber >= 1 && answerNumber <= options.length) {
+  if (Number.isInteger(answerNumber) && answerNumber >= 1 && answerNumber <= options.length) {
     return answerNumber - 1;
   }
 
