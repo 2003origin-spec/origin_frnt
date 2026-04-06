@@ -33,6 +33,8 @@ const sessionQuerySchema = z.object({
   pageKind: z.string().optional(),
   testId: z.string().optional(),
   questionId: z.string().optional(),
+  questionAttempted: z.enum(["true", "false"]).optional(),
+  questionSolved: z.enum(["true", "false"]).optional(),
 });
 
 const visibleQuestionSchema = z.object({
@@ -52,9 +54,16 @@ const pageContextSchema = z.object({
   pageKind: z.string().optional(),
   testId: z.string().optional(),
   questionId: z.string().optional(),
+  questionTitle: z.string().nullable().optional(),
   questionHint: z.string().nullable().optional(),
   questionSolution: z.string().nullable().optional(),
   questionExplanation: z.string().nullable().optional(),
+  questionSubject: z.string().nullable().optional(),
+  questionChapter: z.string().nullable().optional(),
+  questionConcept: z.string().nullable().optional(),
+  questionDifficulty: z.string().nullable().optional(),
+  questionAttempted: z.boolean().nullable().optional(),
+  questionSolved: z.boolean().nullable().optional(),
   searchQuery: z.string().nullable().optional(),
   activeSubject: z.string().nullable().optional(),
   activeDifficulty: z.string().nullable().optional(),
@@ -103,6 +112,11 @@ const voiceSpeakBodySchema = z.object({
   voiceName: z.string().trim().nullable().optional(),
 });
 
+type PageContextLike = Partial<z.infer<typeof pageContextSchema>> & {
+  questionAttempted?: boolean | "true" | "false" | null;
+  questionSolved?: boolean | "true" | "false" | null;
+};
+
 type RouteContext = {
   params: Promise<{ slug?: string[] }>;
 };
@@ -112,12 +126,32 @@ async function resolveSlug(context: RouteContext): Promise<string[]> {
   return getSlugSegments(params);
 }
 
-function toPageContext(input?: Partial<z.infer<typeof pageContextSchema>>): OriginAiPageContextInput {
+function toBooleanFlag(value: boolean | "true" | "false" | null | undefined): boolean | null {
+  if (value === true || value === "true") {
+    return true;
+  }
+  if (value === false || value === "false") {
+    return false;
+  }
+  return null;
+}
+
+function toPageContext(input?: PageContextLike): OriginAiPageContextInput {
   return {
     pathname: input?.pathname ?? null,
     pageKind: (input?.pageKind as OriginAiPageContextInput["pageKind"]) ?? null,
     testId: input?.testId ?? null,
     questionId: input?.questionId ?? null,
+    questionTitle: input?.questionTitle ?? null,
+    questionHint: input?.questionHint ?? null,
+    questionSolution: input?.questionSolution ?? null,
+    questionExplanation: input?.questionExplanation ?? null,
+    questionSubject: input?.questionSubject ?? null,
+    questionChapter: input?.questionChapter ?? null,
+    questionConcept: input?.questionConcept ?? null,
+    questionDifficulty: input?.questionDifficulty ?? null,
+    questionAttempted: toBooleanFlag(input?.questionAttempted),
+    questionSolved: toBooleanFlag(input?.questionSolved),
     searchQuery: input?.searchQuery ?? null,
     activeSubject: input?.activeSubject ?? null,
     activeDifficulty: input?.activeDifficulty ?? null,
@@ -191,6 +225,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
     pageKind: request.nextUrl.searchParams.get("pageKind") ?? undefined,
     testId: request.nextUrl.searchParams.get("testId") ?? undefined,
     questionId: request.nextUrl.searchParams.get("questionId") ?? undefined,
+    questionAttempted: request.nextUrl.searchParams.get("questionAttempted") ?? undefined,
+    questionSolved: request.nextUrl.searchParams.get("questionSolved") ?? undefined,
   });
 
   if (!parsedQuery.success) {
@@ -204,7 +240,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     }
     const proxyResp = await proxyToMicroservice(
       "GET",
-      `/api/v1/chat/session?browserSessionId=${request.headers.get("X-Origin-AI-Session-Id") || ""}&pageKind=${parsedQuery.data.pageKind || "unknown"}`,
+      `/api/v1/chat/session?browserSessionId=${request.headers.get("X-Origin-AI-Session-Id") || ""}&pageKind=${parsedQuery.data.pageKind || "unknown"}${parsedQuery.data.questionId ? `&questionId=${encodeURIComponent(parsedQuery.data.questionId)}` : ""}${parsedQuery.data.questionAttempted ? `&questionAttempted=${parsedQuery.data.questionAttempted}` : ""}${parsedQuery.data.questionSolved ? `&questionSolved=${parsedQuery.data.questionSolved}` : ""}`,
       null,
       request,
       proxyUser,
@@ -218,7 +254,16 @@ export async function GET(request: NextRequest, context: RouteContext) {
     if (!user) {
       return { status: "unauthorized" as const };
     }
-    const snapshot = await getOriginAiSnapshot(store, user, request, toPageContext(parsedQuery.data));
+    const snapshot = await getOriginAiSnapshot(
+      store,
+      user,
+      request,
+      toPageContext({
+        ...parsedQuery.data,
+        questionAttempted: toBooleanFlag(parsedQuery.data.questionAttempted),
+        questionSolved: toBooleanFlag(parsedQuery.data.questionSolved),
+      }),
+    );
     return { status: "ok" as const, snapshot };
   });
 

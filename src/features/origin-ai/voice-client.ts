@@ -462,6 +462,7 @@ async function startMicrophonePipeline(
 
 export async function startOriginAiVoiceMode(
   pageContext: OriginAiClientPageContext | undefined,
+  getHighlightedText: () => string | null | undefined,
   callbacks: OriginAiVoiceCallbacks,
 ): Promise<OriginAiVoiceController> {
   emitStatus(callbacks, 'bootstrapping');
@@ -509,12 +510,14 @@ export async function startOriginAiVoiceMode(
 
       void (async () => {
         try {
+          const highlightedText = getHighlightedText();
           const reply = await withTimeout(
             respondOriginAiVoiceAudio(
               turn.audioData,
               turn.mimeType,
               pageContext,
               bootstrap.voice.voiceName,
+              highlightedText,
             ),
             VOICE_RESPOND_TIMEOUT_MS,
             'Origin AI took too long to prepare the voice reply.',

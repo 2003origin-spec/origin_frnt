@@ -3,14 +3,14 @@
 import React from 'react';
 import { usePathname } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Loader2, Mic, Send, Square, TriangleAlert } from 'lucide-react';
+import { Loader2, Mic, Send, Square, TriangleAlert, X } from 'lucide-react';
 
 import {
   getOriginAiSession,
   sendOriginAiMessage,
 } from '@/features/origin-ai/client';
 import { useOriginAiPageContext } from '@/features/origin-ai/page-context-store';
-import { useHighlightedText } from '@/features/origin-ai/highlight-capture';
+import { clearHighlightedText, getHighlightedText, useHighlightedText } from '@/features/origin-ai/highlight-capture';
 import { startOriginAiVoiceMode, type OriginAiVoiceController } from '@/features/origin-ai/voice-client';
 import { cn } from '@/lib/utils';
 import type { OriginAiSnapshot, OriginAiVoiceStatus } from '@/types';
@@ -21,6 +21,7 @@ import { toast } from 'sonner';
 interface OriginAiMentorProps {
   compact?: boolean;
   onClose?: () => void;
+  autoAskSelectionNonce?: number;
 }
 
 function formatRelativeTimestamp(date: Date): string {
@@ -150,7 +151,11 @@ function describeVoiceStatus(status: OriginAiVoiceStatus): string {
   }
 }
 
-export default function OriginAiMentor({ compact = false, onClose }: OriginAiMentorProps) {
+export default function OriginAiMentor({
+  compact = false,
+  onClose,
+  autoAskSelectionNonce = 0,
+}: OriginAiMentorProps) {
   const pathname = usePathname();
   const [snapshot, setSnapshot] = React.useState<OriginAiSnapshot | null>(null);
   const [message, setMessage] = React.useState('');
@@ -162,6 +167,8 @@ export default function OriginAiMentor({ compact = false, onClose }: OriginAiMen
   const scrollAnchorRef = React.useRef<HTMLDivElement | null>(null);
   const compactScrollRef = React.useRef<HTMLDivElement | null>(null);
   const voiceControllerRef = React.useRef<OriginAiVoiceController | null>(null);
+  const lastAutoAskedSelectionNonceRef = React.useRef(0);
+  const lastPageKeyRef = React.useRef<string | null>(null);
 
   const pageContext = useOriginAiPageContext(pathname || '/dashboard');
   const highlightedText = useHighlightedText();
@@ -203,6 +210,20 @@ export default function OriginAiMentor({ compact = false, onClose }: OriginAiMen
   }, []);
 
   React.useEffect(() => {
+    const pageKey = `${pageContext.pathname}|${pageContext.pageKind}|${pageContext.questionId ?? ''}`;
+
+    if (lastPageKeyRef.current === null) {
+      lastPageKeyRef.current = pageKey;
+      return;
+    }
+
+    if (lastPageKeyRef.current !== pageKey) {
+      clearHighlightedText();
+      lastPageKeyRef.current = pageKey;
+    }
+  }, [pageContext.pathname, pageContext.pageKind, pageContext.questionId]);
+
+  React.useEffect(() => {
     if (!voiceControllerRef.current) {
       return;
     }
@@ -214,9 +235,50 @@ export default function OriginAiMentor({ compact = false, onClose }: OriginAiMen
     setLiveAssistantTranscript('');
   }, [pageContext.pathname, pageContext.pageKind]);
 
+  React.useEffect(() => {
+    if (!autoAskSelectionNonce || autoAskSelectionNonce === lastAutoAskedSelectionNonceRef.current) {
+      return;
+    }
+
+    if (isLoading || isSending) {
+      return;
+    }
+
+    const selectedText = getHighlightedText()?.trim();
+    lastAutoAskedSelectionNonceRef.current = autoAskSelectionNonce;
+
+    if (!selectedText) {
+      return;
+    }
+
+    const sendSelectionPrompt = async () => {
+      setMessage('');
+      setIsSending(true);
+
+      try {
+        const reply = await sendOriginAiMessage(
+          'Explain the selected text in the current screen context.',
+          pageContext,
+          selectedText,
+        );
+        setSnapshot(reply);
+      } catch (error) {
+        console.error('Failed to send highlighted Origin AI prompt', error);
+        toast.error(error instanceof Error ? error.message : 'Origin AI could not explain the selected text');
+      } finally {
+        setIsSending(false);
+      }
+    };
+
+    void sendSelectionPrompt();
+  }, [autoAskSelectionNonce, isLoading, isSending, pageContext]);
+
   const handleSend = async () => {
     const trimmed = message.trim();
-    if (!trimmed) {
+    const outboundMessage =
+      trimmed || (highlightedText ? 'Explain the selected text in the current screen context.' : '');
+
+    if (!outboundMessage) {
       return;
     }
 
@@ -224,7 +286,7 @@ export default function OriginAiMentor({ compact = false, onClose }: OriginAiMen
     setIsSending(true);
 
     try {
-      const reply = await sendOriginAiMessage(trimmed, pageContext, highlightedText);
+      const reply = await sendOriginAiMessage(outboundMessage, pageContext, highlightedText);
       setSnapshot(reply);
     } catch (error) {
       console.error('Failed to send Origin AI message', error);
@@ -246,7 +308,7 @@ export default function OriginAiMentor({ compact = false, onClose }: OriginAiMen
     }
 
     try {
-      const controller = await startOriginAiVoiceMode(pageContext, {
+      const controller = await startOriginAiVoiceMode(pageContext, () => getHighlightedText(), {
         onStatusChange: (status) => {
           setVoiceStatus(status);
           if (status === 'idle') {
@@ -287,7 +349,7 @@ export default function OriginAiMentor({ compact = false, onClose }: OriginAiMen
 
   if (compact) {
     return (
-      <div className={shellClassName}>
+      <div className={shellClassName} data-origin-ai-root="true">
         <div className="flex items-center justify-between border-b border-white/10 bg-indigo-900/30 px-4 py-3">
           <div className="flex min-w-0 items-center gap-3">
             <div className="relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-white/20 bg-white/10 p-1">
@@ -381,6 +443,20 @@ export default function OriginAiMentor({ compact = false, onClose }: OriginAiMen
               ) : null}
             </div>
           ) : null}
+          {highlightedText ? (
+            <div className="mb-2 flex items-center gap-2 rounded-2xl border border-blue-400/20 bg-blue-500/10 px-3 py-2 text-xs text-blue-200">
+              <span className="shrink-0 font-semibold uppercase tracking-wider">Selected:</span>
+              <span className="line-clamp-1 flex-1 opacity-80">{highlightedText}</span>
+              <button
+                type="button"
+                onClick={() => clearHighlightedText()}
+                className="rounded-full p-1 text-blue-200/70 transition hover:bg-white/10 hover:text-white"
+                aria-label="Clear highlighted text"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ) : null}
           <div className="flex min-w-0 items-end gap-2">
             <textarea
               value={message}
@@ -393,11 +469,13 @@ export default function OriginAiMentor({ compact = false, onClose }: OriginAiMen
               }}
               rows={1}
               placeholder={
-                snapshot?.pagePolicy.mode === 'answer_blocked'
-                  ? 'Ask for strategy, not answers...'
-                  : snapshot?.pagePolicy.mode === 'hint_only'
-                    ? 'Ask for a hint or a concept nudge...'
-                    : 'Ask Origin AI anything about your studies...'
+                highlightedText
+                  ? 'Ask about the selected text...'
+                  : snapshot?.pagePolicy.mode === 'answer_blocked'
+                    ? 'Ask for strategy, not answers...'
+                    : snapshot?.pagePolicy.mode === 'hint_only'
+                      ? 'Ask for a hint or a concept nudge...'
+                      : 'Ask Origin AI anything about your studies...'
               }
               className="no-scrollbar min-w-0 flex-1 resize-none rounded-3xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm leading-6 text-white outline-none transition focus:border-blue-400/40 focus:bg-white/[0.05]"
             />
@@ -422,7 +500,7 @@ export default function OriginAiMentor({ compact = false, onClose }: OriginAiMen
             <Button
               type="button"
               onClick={() => void handleSend()}
-              disabled={isSending || !message.trim()}
+              disabled={isSending || (!message.trim() && !highlightedText)}
               className="h-12 w-12 shrink-0 rounded-3xl bg-blue-600 px-0 py-0 text-white hover:bg-blue-500 disabled:opacity-50"
             >
               {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
@@ -434,7 +512,7 @@ export default function OriginAiMentor({ compact = false, onClose }: OriginAiMen
   }
 
   return (
-    <div className={shellClassName}>
+    <div className={shellClassName} data-origin-ai-root="true">
       <div className={cn('flex items-center justify-between border-b border-white/10 bg-indigo-900/30', compact ? 'px-4 py-3' : 'px-5 py-4')}>
         <div className="flex items-center gap-3">
           <div className={cn('relative flex items-center justify-center overflow-hidden rounded-full border border-white/20 bg-white/10 p-1', compact ? 'h-10 w-10' : 'h-11 w-11')}>
@@ -587,7 +665,15 @@ export default function OriginAiMentor({ compact = false, onClose }: OriginAiMen
             {highlightedText ? (
               <div className="mb-2 flex items-center gap-2 rounded-2xl border border-blue-400/20 bg-blue-500/10 px-3 py-2 text-xs text-blue-200">
                 <span className="shrink-0 font-semibold uppercase tracking-wider">Selected:</span>
-                <span className="line-clamp-1 opacity-80">{highlightedText}</span>
+                <span className="line-clamp-1 flex-1 opacity-80">{highlightedText}</span>
+                <button
+                  type="button"
+                  onClick={() => clearHighlightedText()}
+                  className="rounded-full p-1 text-blue-200/70 transition hover:bg-white/10 hover:text-white"
+                  aria-label="Clear highlighted text"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
               </div>
             ) : null}
             <div className={cn('flex items-end', compact ? 'gap-2' : 'gap-3')}>
@@ -637,7 +723,7 @@ export default function OriginAiMentor({ compact = false, onClose }: OriginAiMen
               <Button
                 type="button"
                 onClick={() => void handleSend()}
-                disabled={isSending || !message.trim()}
+                disabled={isSending || (!message.trim() && !highlightedText)}
                 className={cn(
                   'rounded-3xl bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-50',
                   compact ? 'h-12 w-12 shrink-0 px-0 py-0' : 'h-auto px-4 py-3',

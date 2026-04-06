@@ -89,6 +89,8 @@ export interface PracticeQuestion {
   chapter: string;
   isSolved: boolean;
   status?: 'unattempted' | 'solved' | 'attempted';
+  attempted?: boolean;
+  attemptCount?: number;
   questionType: 'mcq' | 'msq' | 'numerical' | 'matrix_match' | 'subjective';
   options?: string[];
   correctOptions?: number[];
@@ -99,6 +101,8 @@ export interface PracticeQuestion {
   acceptance_rate?: number; // Backend uses snake_case in manual list construction
   frequency?: number;
   hint?: string;
+  explanation?: string;
+  answerText?: string;
 }
 
 export interface SubjectRank {
@@ -355,6 +359,8 @@ export interface OriginAiPageContext {
   chapter: string | null;
   concept: string | null;
   hint: string | null;
+  questionAttempted: boolean | null;
+  questionSolved: boolean | null;
   searchQuery: string | null;
   activeSubject: string | null;
   activeDifficulty: string | null;

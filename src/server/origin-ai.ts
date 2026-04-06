@@ -61,6 +61,16 @@ export interface OriginAiPageContextInput {
   pageKind?: OriginAiPageKind | null;
   testId?: string | null;
   questionId?: string | null;
+  questionTitle?: string | null;
+  questionHint?: string | null;
+  questionSolution?: string | null;
+  questionExplanation?: string | null;
+  questionSubject?: string | null;
+  questionChapter?: string | null;
+  questionConcept?: string | null;
+  questionDifficulty?: string | null;
+  questionAttempted?: boolean | null;
+  questionSolved?: boolean | null;
   searchQuery?: string | null;
   activeSubject?: string | null;
   activeDifficulty?: string | null;
@@ -80,6 +90,8 @@ interface OriginAiResolvedPageContext {
   chapter: string | null;
   concept: string | null;
   hint: string | null;
+  questionAttempted: boolean | null;
+  questionSolved: boolean | null;
   searchQuery: string | null;
   activeSubject: string | null;
   activeDifficulty: string | null;
@@ -271,11 +283,13 @@ async function resolvePageContext(
     pageKind,
     testId,
     questionId,
-    title: null,
-    subject: null,
-    chapter: null,
-    concept: null,
-    hint: null,
+    title: input?.questionTitle?.trim() || null,
+    subject: input?.questionSubject?.trim() || null,
+    chapter: input?.questionChapter?.trim() || null,
+    concept: input?.questionConcept?.trim() || null,
+    hint: input?.questionHint?.trim() || null,
+    questionAttempted: input?.questionAttempted ?? null,
+    questionSolved: input?.questionSolved ?? null,
     searchQuery: input?.searchQuery?.trim() || null,
     activeSubject: input?.activeSubject?.trim() || null,
     activeDifficulty: input?.activeDifficulty?.trim() || null,
@@ -288,11 +302,18 @@ async function resolvePageContext(
   try {
     if (pageKind === "ogcode_question" && questionId) {
       const question = await getPracticeQuestionDetail(store, user, questionId);
+      const attempts = store.practiceAttempts.filter(
+        (attempt) => attempt.userId === user.id && attempt.questionId === questionId,
+      );
       context.title = question.text;
       context.subject = question.subject ?? null;
       context.chapter = question.chapter ?? null;
       context.concept = question.concept ?? null;
       context.hint = question.hint ?? null;
+      context.questionAttempted = context.questionAttempted ?? (attempts.length > 0);
+      context.questionSolved =
+        context.questionSolved ??
+        (attempts.some((attempt) => attempt.isCorrect) || question.isSolved || question.status === "solved");
       return context;
     }
 
@@ -317,6 +338,15 @@ function resolvePagePolicy(pageContext: OriginAiResolvedPageContext): OriginAiPo
       title: "Integrity Mode",
       reason:
         "You are on a live test page, so Origin AI will not provide direct answers. It can help with time strategy, calming nerves, and what to review after submission.",
+    };
+  }
+
+  if (pageContext.pageKind === "ogcode_question" && !pageContext.questionAttempted) {
+    return {
+      mode: "hint_only",
+      title: "Hint Mode",
+      reason:
+        "You are on an OGCode practice question that has not been submitted yet, so Origin AI should coach with hints and concept nudges first. After you attempt it, Origin AI can switch into full mentor mode and explain the whole solution.",
     };
   }
 
@@ -614,6 +644,10 @@ function buildVoiceContextSeed(
     pageContext.subject ? `Subject: ${pageContext.subject}` : null,
     pageContext.chapter ? `Chapter: ${pageContext.chapter}` : null,
     pageContext.concept ? `Concept: ${pageContext.concept}` : null,
+    pageContext.questionAttempted !== null
+      ? `Question attempted: ${pageContext.questionAttempted ? "yes" : "no"}`
+      : null,
+    pageContext.questionSolved !== null ? `Question solved: ${pageContext.questionSolved ? "yes" : "no"}` : null,
     pageContext.searchQuery ? `Search query: ${pageContext.searchQuery}` : null,
     pageContext.activeSubject ? `Active subject filter: ${pageContext.activeSubject}` : null,
     pageContext.activeDifficulty ? `Active difficulty filter: ${pageContext.activeDifficulty}` : null,
@@ -755,6 +789,12 @@ function buildSystemInstruction(
     pageContext.chapter ? `- Chapter: ${pageContext.chapter}` : "- Chapter: unavailable",
     pageContext.concept ? `- Concept: ${pageContext.concept}` : "- Concept: unavailable",
     pageContext.hint ? `- Hint allowed on this page: ${pageContext.hint}` : "- Hint allowed on this page: unavailable",
+    pageContext.questionAttempted !== null
+      ? `- Question attempted: ${pageContext.questionAttempted ? "yes" : "no"}`
+      : "- Question attempted: unknown",
+    pageContext.questionSolved !== null
+      ? `- Question solved: ${pageContext.questionSolved ? "yes" : "no"}`
+      : "- Question solved: unknown",
     pageContext.searchQuery ? `- Search query: ${pageContext.searchQuery}` : "- Search query: none",
     pageContext.activeSubject ? `- Active subject filter: ${pageContext.activeSubject}` : "- Active subject filter: none",
     pageContext.activeDifficulty ? `- Active difficulty filter: ${pageContext.activeDifficulty}` : "- Active difficulty filter: none",

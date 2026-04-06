@@ -146,9 +146,16 @@ export interface OriginAiClientPageContext {
   pageKind?: OriginAiPageKind;
   testId?: string | null;
   questionId?: string | null;
+  questionTitle?: string | null;
   questionHint?: string | null;
   questionSolution?: string | null;
   questionExplanation?: string | null;
+  questionSubject?: string | null;
+  questionChapter?: string | null;
+  questionConcept?: string | null;
+  questionDifficulty?: string | null;
+  questionAttempted?: boolean | null;
+  questionSolved?: boolean | null;
   searchQuery?: string | null;
   activeSubject?: string | null;
   activeDifficulty?: string | null;
@@ -192,11 +199,13 @@ function buildFallbackPageContext(pageContext?: OriginAiClientPageContext): Orig
     pageKind: pageContext?.pageKind ?? 'unknown',
     testId: pageContext?.testId ?? null,
     questionId: pageContext?.questionId ?? null,
-    title: null,
-    subject: pageContext?.activeSubject ?? null,
-    chapter: null,
-    concept: null,
-    hint: null,
+    title: pageContext?.questionTitle ?? null,
+    subject: pageContext?.questionSubject ?? pageContext?.activeSubject ?? null,
+    chapter: pageContext?.questionChapter ?? null,
+    concept: pageContext?.questionConcept ?? null,
+    hint: pageContext?.questionHint ?? null,
+    questionAttempted: pageContext?.questionAttempted ?? null,
+    questionSolved: pageContext?.questionSolved ?? null,
     searchQuery: pageContext?.searchQuery ?? null,
     activeSubject: pageContext?.activeSubject ?? null,
     activeDifficulty: pageContext?.activeDifficulty ?? null,
@@ -401,6 +410,12 @@ function buildQuery(pageContext?: OriginAiClientPageContext): string {
   if (pageContext.pageKind) params.set('pageKind', pageContext.pageKind);
   if (pageContext.testId) params.set('testId', pageContext.testId);
   if (pageContext.questionId) params.set('questionId', pageContext.questionId);
+  if (typeof pageContext.questionAttempted === 'boolean') {
+    params.set('questionAttempted', pageContext.questionAttempted ? 'true' : 'false');
+  }
+  if (typeof pageContext.questionSolved === 'boolean') {
+    params.set('questionSolved', pageContext.questionSolved ? 'true' : 'false');
+  }
   const query = params.toString();
   return query ? `?${query}` : '';
 }
@@ -570,6 +585,7 @@ export async function respondOriginAiVoiceAudio(
   mimeType: string,
   pageContext?: OriginAiClientPageContext,
   voiceName?: string | null,
+  highlightedText?: string | null,
 ): Promise<OriginAiVoiceReply> {
   const data = await apiCall('/origin-ai/voice/respond', {
     method: 'POST',
@@ -581,6 +597,7 @@ export async function respondOriginAiVoiceAudio(
       mimeType,
       voiceName,
       pageContext,
+      highlightedText: highlightedText || null,
     }),
   });
 
