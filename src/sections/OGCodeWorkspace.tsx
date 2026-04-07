@@ -87,12 +87,17 @@ const LATEX_COMMAND_MAP: Record<string, string> = {
     omega: 'ω',
     times: '×',
     cdot: '·',
+    circ: '°',
     pm: '±',
     mp: '∓',
     leq: '≤',
     geq: '≥',
     neq: '≠',
     infty: '∞',
+    propto: '∝',
+    to: '→',
+    rightarrow: '→',
+    leftarrow: '←',
 };
 
 const SUPERSCRIPT_DIGITS: Record<string, string> = {
@@ -254,6 +259,8 @@ function formatMathExpression(input: string | null | undefined): string {
         .replace(/\\left|\\right/g, '')
         .replace(/\\,/g, ' ')
         .replace(/\\\\/g, ' ')
+        .replace(/\$\$/g, '')
+        .replace(/\$/g, '')
         .replace(/[\u2212\u2013\u2014]/g, '-');
 
     value = replaceFractions(value);
@@ -281,7 +288,35 @@ function formatMathExpression(input: string | null | undefined): string {
 
 function hasMathMarkup(value: string | null | undefined): boolean {
     const text = String(value ?? '');
-    return /\\\(|\\\)|\\[a-zA-Z]+|√|[\^_]/.test(text);
+    return /\\\(|\\\)|\\[a-zA-Z]+|√|[\^_$]/.test(text);
+}
+
+function isEquationHeavyLine(value: string): boolean {
+    const text = value.replace(/\*\*/g, '').trim();
+    if (!text) {
+        return false;
+    }
+
+    const latexSignalCount = [
+        /\\frac/g,
+        /\\sqrt/g,
+        /\\(?:tan|sin|cos|cot|sec|csc|log|ln)\b/g,
+        /\\(?:alpha|beta|gamma|delta|theta|lambda|mu|pi|sigma|phi|omega)\b/g,
+    ].reduce((count, pattern) => count + (text.match(pattern)?.length ?? 0), 0);
+
+    const symbolSignalCount = [
+        /=/g,
+        /→/g,
+        /∝/g,
+        /√/g,
+        /\//g,
+    ].reduce((count, pattern) => count + (text.match(pattern)?.length ?? 0), 0);
+
+    const startsLikeEquation = /^((\\)?(?:tan|sin|cos|cot|sec|csc|log|ln)\s*\(|[A-Za-zα-ωΑ-Ωβθλμπσφω][A-Za-z0-9_{}\\^()]*\s*=|[0-9(\\√])/i.test(text);
+    const hasEquationCore = /=/.test(text) || /\\frac|\\sqrt|\\(?:tan|sin|cos|cot|sec|csc)\b/.test(text);
+
+    return (hasEquationCore && (latexSignalCount + symbolSignalCount >= 2 || startsLikeEquation))
+        || (startsLikeEquation && latexSignalCount >= 1);
 }
 
 function renderInlineSegments(value: string, keyPrefix: string): ReactNode[] {
@@ -290,7 +325,7 @@ function renderInlineSegments(value: string, keyPrefix: string): ReactNode[] {
         return [];
     }
 
-    const pattern = /\\\((.+?)\\\)/g;
+    const pattern = /\\\((.+?)\\\)|\$\$(.+?)\$\$|\$(.+?)\$/g;
     const nodes: ReactNode[] = [];
     let cursor = 0;
     let segmentIndex = 0;
@@ -299,16 +334,21 @@ function renderInlineSegments(value: string, keyPrefix: string): ReactNode[] {
         const matchIndex = match.index ?? 0;
         const textPart = content.slice(cursor, matchIndex);
         if (textPart) {
-            nodes.push(<span key={`${keyPrefix}-text-${segmentIndex}`}>{textPart}</span>);
+            nodes.push(
+                <span key={`${keyPrefix}-text-${segmentIndex}`}>
+                    {hasMathMarkup(textPart) ? formatMathExpression(textPart) : textPart}
+                </span>,
+            );
             segmentIndex += 1;
         }
 
+        const mathContent = match[1] ?? match[2] ?? match[3] ?? '';
         nodes.push(
             <span
                 key={`${keyPrefix}-math-${segmentIndex}`}
                 className="inline-flex rounded-md border border-blue-500/20 bg-blue-500/10 px-2 py-0.5 font-mono text-[0.95em] text-blue-100"
             >
-                {formatMathExpression(match[1])}
+                {formatMathExpression(mathContent)}
             </span>,
         );
         segmentIndex += 1;
@@ -317,7 +357,11 @@ function renderInlineSegments(value: string, keyPrefix: string): ReactNode[] {
 
     const trailingText = content.slice(cursor);
     if (trailingText) {
-        nodes.push(<span key={`${keyPrefix}-tail-${segmentIndex}`}>{trailingText}</span>);
+        nodes.push(
+            <span key={`${keyPrefix}-tail-${segmentIndex}`}>
+                {hasMathMarkup(trailingText) ? formatMathExpression(trailingText) : trailingText}
+            </span>,
+        );
     }
 
     return nodes;
@@ -367,12 +411,45 @@ function renderFormattedExplanation(content: string | null | undefined): ReactNo
                     );
                 }
 
+                if (isEquationHeavyLine(line)) {
+                    return (
+                        <div
+                            key={`equation-${index}`}
+                            className="rounded-xl border border-blue-400/20 bg-gradient-to-r from-blue-500/12 via-blue-500/8 to-cyan-500/10 px-4 py-3 shadow-[0_0_0_1px_rgba(59,130,246,0.05)]"
+                        >
+                            <div className="text-[10px] font-black uppercase tracking-[0.24em] text-blue-300/80 mb-2">
+                                Key Equation
+                            </div>
+                            <div className="font-mono text-sm leading-relaxed text-blue-100">
+                                {renderInlineSegments(line, `equation-${index}`)}
+                            </div>
+                        </div>
+                    );
+                }
+
                 return (
                     <p key={`line-${index}`} className="text-sm leading-relaxed text-slate-300">
                         {renderInlineSegments(line, `line-${index}`)}
                     </p>
                 );
             })}
+        </div>
+    );
+}
+
+function renderQuestionText(content: string | null | undefined, keyPrefix: string): ReactNode {
+    const lines = String(content ?? '').split('\n').map((line) => line.trim()).filter(Boolean);
+    if (!lines.length) {
+        return null;
+    }
+
+    return (
+        <div className="space-y-2">
+            {lines.map((line, index) => (
+                <p key={`${keyPrefix}-${index}`} className="leading-relaxed">
+                    {renderInlineSegments(line, `${keyPrefix}-${index}`)}
+                </p>
+            ))}
         </div>
     );
 }
@@ -577,7 +654,9 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                 {diff.label}
                             </span>
                         </div>
-                        <p className="text-lg leading-relaxed font-serif">{question.text}</p>
+                        <div className="text-lg font-serif">
+                            {renderQuestionText(question.text, 'question-text')}
+                        </div>
                         <div className="flex flex-wrap gap-2 pt-4">
                             {safeTags.map((tag, i) => (
                                 <span key={i} className="text-[10px] px-2 py-0.5 bg-white/5 border border-white/10 rounded text-slate-500">
@@ -606,7 +685,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                     `}
                                 >
                                     <span className="font-mono text-xs mr-3 opacity-50">({String.fromCharCode(65 + idx)})</span>
-                                    {opt}
+                                    <span>{renderInlineSegments(String(opt), `mcq-option-${idx}`)}</span>
                                 </button>
                             ))}
 
@@ -630,7 +709,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                             {selectedOptions.includes(idx) && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
                                         </div>
                                         <span className="font-mono text-xs opacity-50">({String.fromCharCode(65 + idx)})</span>
-                                        {opt}
+                                        <span>{renderInlineSegments(String(opt), `msq-option-${idx}`)}</span>
                                     </div>
                                 </button>
                             ))}
