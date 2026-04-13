@@ -184,6 +184,7 @@ async function proxyToMicroservice(
   try {
     const resp = await fetch(`${ORIGIN_AI_SERVICE_URL}${path}`, {
       method,
+      cache: "no-store",
       headers: {
         "Content-Type": "application/json",
         "X-Service-Token": ORIGIN_AI_SERVICE_TOKEN,
@@ -308,6 +309,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
           request,
           parsedBody.data.message,
           toPageContext(parsedBody.data.pageContext),
+          { userMetadata: { highlightedText: parsedBody.data.highlightedText } },
         );
 
         if ("error" in reply) {
@@ -523,6 +525,14 @@ export async function POST(request: NextRequest, context: RouteContext) {
       }
 
       return ok(result.reply);
+    }
+
+    if (slug.length === 2 && slug[0] === "voice" && slug[1] === "token") {
+      const proxyUser = await resolveProxyUser(request);
+      if (!proxyUser) {
+        return unauthorized();
+      }
+      return ok({ token: `${ORIGIN_AI_SERVICE_TOKEN}|${proxyUser.id}` });
     }
 
     return notFound();
