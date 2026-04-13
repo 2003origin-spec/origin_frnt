@@ -1,4 +1,5 @@
 import { awardPoints } from "@/server/gamification";
+import { solveWithKnowledgeBase } from "@/server/ai-solver-kb";
 import {
   createId,
   type AppStore,
@@ -35,38 +36,6 @@ const GENERIC_SESSION_TITLES = new Set([
   "physics - image analysis",
 ]);
 
-const CONCEPT_KEYWORDS: Array<{ concept: string; keywords: string[] }> = [
-  { concept: "Energy Stored in a Capacitor", keywords: ["capacitor", "stored energy", "electric field"] },
-  { concept: "Newton's Laws of Motion", keywords: ["newton", "force", "acceleration"] },
-  { concept: "Circular Motion", keywords: ["circular", "centripetal", "radius"] },
-  { concept: "Redox Reactions", keywords: ["redox", "oxidation", "reduction"] },
-  { concept: "pH and Equilibrium", keywords: ["ph", "acid", "base", "equilibrium"] },
-  { concept: "Trigonometric Integration", keywords: ["integration", "sin", "cos", "integral"] },
-];
-
-const CONCEPT_EXPLAINERS: Record<string, string[]> = {
-  "Energy Stored in a Capacitor": [
-    "A capacitor stores energy in the electric field between its plates.",
-    "Use **U = (1/2) C V²** or **U = Q²/(2C)** depending on what is known.",
-    "Keep units consistent: `C` in farads, `V` in volts, result in joules.",
-  ],
-  "Newton's Laws of Motion": [
-    "Start with a force diagram before writing equations.",
-    "Then apply **F = m a** component-wise along chosen axes.",
-    "Check sign conventions before solving numerically.",
-  ],
-  "Circular Motion": [
-    "For circular motion, the acceleration toward center is **a = v² / r**.",
-    "Required inward force is **F = m v² / r**.",
-    "If the object leaves the curve, usually the inward-force condition failed.",
-  ],
-  "Redox Reactions": [
-    "Track oxidation number change first, then balance electrons.",
-    "Total electrons lost must equal total electrons gained.",
-    "Finally balance charge and atoms with `H+`, `OH-`, and `H2O` as needed.",
-  ],
-};
-
 function nowIso(): string {
   return new Date().toISOString();
 }
@@ -78,36 +47,6 @@ function normalizeText(value: string): string {
 function shouldAutoRenameSession(title: string): boolean {
   const normalized = normalizeText(title);
   return GENERIC_SESSION_TITLES.has(normalized) || normalized.startsWith("new physics");
-}
-
-function detectConcept(content: string, activeConcept: string | null): string | null {
-  const normalized = normalizeText(content);
-  if (!normalized) {
-    return activeConcept;
-  }
-
-  for (const rule of CONCEPT_KEYWORDS) {
-    if (rule.keywords.some((token) => normalized.includes(token))) {
-      return rule.concept;
-    }
-  }
-  return activeConcept;
-}
-
-function isFollowupQuery(content: string): boolean {
-  const normalized = normalizeText(content);
-  return [
-    "example",
-    "numerical",
-    "derive",
-    "derivation",
-    "mistake",
-    "trap",
-    "why",
-    "how",
-    "challenge",
-    "quiz",
-  ].some((token) => normalized.includes(token));
 }
 
 function extractSolverContent(value: unknown): string | null {
@@ -207,73 +146,13 @@ async function callExternalSolver(
 }
 
 function buildFallbackReply(session: StoredDoubtSession, input: AddMessageInput): SolverTurn {
-  const content = (input.content ?? "").trim();
-  const concept = detectConcept(content, session.activeConcept);
-
-  if (input.image && !content) {
-    return {
-      content:
-        "I received the image. For this version, please add the problem text or concept name so I can solve it reliably.\n\n<!-- step -->\n\nShare the key line from the question and I will continue immediately.",
-      metadata: {
-        persona: "Explainer",
-        source: "fallback_image_clarifier",
-        stage: "awaiting_problem_text",
-        llmCalled: false,
-      },
-      activeConcept: session.activeConcept,
-    };
-  }
-
-  if (!concept) {
-    const hints = CONCEPT_KEYWORDS.slice(0, 3).map((item) => item.concept).join(", ");
-    return {
-      content:
-        `I need the exact concept to give a precise solve.\n\n<!-- step -->\n\nTry one of: **${hints}**.\n\n<!-- step -->\n\nOr paste the exact formula/problem statement line.`,
-      metadata: {
-        persona: "Explainer",
-        source: "fallback_concept_clarifier",
-        stage: "awaiting_concept",
-        llmCalled: false,
-      },
-      activeConcept: null,
-    };
-  }
-
-  const explainers = CONCEPT_EXPLAINERS[concept] ?? [
-    `Let's break down **${concept}** carefully.`,
-    "Identify what is given, what is asked, and which governing relation applies.",
-    "Then solve step-by-step and validate units/signs at the end.",
-  ];
-
-  if (isFollowupQuery(content)) {
-    return {
-      content:
-        `Let's stay on **${concept}** and handle your follow-up.\n\n<!-- step -->\n\n${explainers[0]}\n\n<!-- step -->\n\n${explainers[1]}\n\n<!-- step -->\n\nQuick check: reply with the exact step where you still feel stuck.`,
-      metadata: {
-        persona: "Explainer",
-        source: "fallback_followup",
-        stage: "followup",
-        concept,
-        llmCalled: false,
-      },
-      activeConcept: concept,
-      suggestedTitle: `${session.subject} - ${concept}`,
-    };
-  }
-
-  return {
-    content:
-      `Let's solve **${concept}** the right way.\n\n<!-- step -->\n\n${explainers[0]}\n\n<!-- step -->\n\n${explainers[1]}\n\n<!-- step -->\n\n${explainers[2]}`,
-    metadata: {
-      persona: "Explainer",
-      source: "fallback_concept_explanation",
-      stage: "concept_explanation",
-      concept,
-      llmCalled: false,
-    },
-    activeConcept: concept,
-    suggestedTitle: `${session.subject} - ${concept}`,
-  };
+  return solveWithKnowledgeBase({
+    sessionTitle: session.title,
+    sessionSubject: session.subject,
+    activeConcept: session.activeConcept,
+    studentInput: (input.content ?? "").trim(),
+    image: input.image ?? null,
+  });
 }
 
 function toMessagePayload(message: StoredChatMessage) {
