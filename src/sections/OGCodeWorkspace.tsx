@@ -6,6 +6,13 @@ import {
 } from 'lucide-react';
 import { apiCall } from '@/lib/api';
 import { usePublishOriginAiPageContext } from '@/features/origin-ai/page-context-store';
+import {
+    formatMathExpression as sharedFormatMathExpression,
+    hasMathMarkup as sharedHasMathMarkup,
+    renderFormattedExplanation as sharedRenderFormattedExplanation,
+    renderInlineSegments as sharedRenderInlineSegments,
+    renderQuestionText as sharedRenderQuestionText,
+} from '@/lib/math-text';
 import type { PracticeQuestion, User } from '@/types';
 import { toast } from 'sonner';
 
@@ -250,45 +257,11 @@ function replaceSquareRoots(value: string): string {
 }
 
 function formatMathExpression(input: string | null | undefined): string {
-    let value = String(input ?? '').trim();
-    if (!value) {
-        return '';
-    }
-
-    value = value
-        .replace(/\\left|\\right/g, '')
-        .replace(/\\,/g, ' ')
-        .replace(/\\\\/g, ' ')
-        .replace(/\$\$/g, '')
-        .replace(/\$/g, '')
-        .replace(/[\u2212\u2013\u2014]/g, '-');
-
-    value = replaceFractions(value);
-    value = replaceSquareRoots(value);
-
-    value = value.replace(/\\text\s*{([^{}]+)}/g, '$1');
-
-    Object.entries(LATEX_COMMAND_MAP).forEach(([command, symbol]) => {
-        value = value.replace(new RegExp(`\\\\${command}\\b`, 'g'), symbol);
-    });
-
-    value = value
-        .replace(/\^\{([^{}]+)\}/g, (_match, exponent: string) => mapDecoratedText(exponent, SUPERSCRIPT_DIGITS))
-        .replace(/_\{([^{}]+)\}/g, (_match, subscript: string) => mapDecoratedText(subscript, SUBSCRIPT_DIGITS))
-        .replace(/\^([a-zA-Z0-9+\-()=]+)/g, (_match, exponent: string) => mapDecoratedText(exponent, SUPERSCRIPT_DIGITS))
-        .replace(/_([a-zA-Z0-9+\-()=]+)/g, (_match, subscript: string) => mapDecoratedText(subscript, SUBSCRIPT_DIGITS))
-        .replace(/[{}]/g, '')
-        .replace(/\s+/g, ' ')
-        .replace(/\(\s+/g, '(')
-        .replace(/\s+\)/g, ')')
-        .trim();
-
-    return value;
+    return sharedFormatMathExpression(input);
 }
 
 function hasMathMarkup(value: string | null | undefined): boolean {
-    const text = String(value ?? '');
-    return /\\\(|\\\)|\\[a-zA-Z]+|√|[\^_$]/.test(text);
+    return sharedHasMathMarkup(value);
 }
 
 function isEquationHeavyLine(value: string): boolean {
@@ -320,138 +293,15 @@ function isEquationHeavyLine(value: string): boolean {
 }
 
 function renderInlineSegments(value: string, keyPrefix: string): ReactNode[] {
-    const content = value.replace(/\*\*/g, '').trim();
-    if (!content) {
-        return [];
-    }
-
-    const pattern = /\\\((.+?)\\\)|\$\$(.+?)\$\$|\$(.+?)\$/g;
-    const nodes: ReactNode[] = [];
-    let cursor = 0;
-    let segmentIndex = 0;
-
-    for (const match of content.matchAll(pattern)) {
-        const matchIndex = match.index ?? 0;
-        const textPart = content.slice(cursor, matchIndex);
-        if (textPart) {
-            nodes.push(
-                <span key={`${keyPrefix}-text-${segmentIndex}`}>
-                    {hasMathMarkup(textPart) ? formatMathExpression(textPart) : textPart}
-                </span>,
-            );
-            segmentIndex += 1;
-        }
-
-        const mathContent = match[1] ?? match[2] ?? match[3] ?? '';
-        nodes.push(
-            <span
-                key={`${keyPrefix}-math-${segmentIndex}`}
-                className="inline-flex rounded-md border border-blue-500/20 bg-blue-500/10 px-2 py-0.5 font-mono text-[0.95em] text-blue-100"
-            >
-                {formatMathExpression(mathContent)}
-            </span>,
-        );
-        segmentIndex += 1;
-        cursor = matchIndex + match[0].length;
-    }
-
-    const trailingText = content.slice(cursor);
-    if (trailingText) {
-        nodes.push(
-            <span key={`${keyPrefix}-tail-${segmentIndex}`}>
-                {hasMathMarkup(trailingText) ? formatMathExpression(trailingText) : trailingText}
-            </span>,
-        );
-    }
-
-    return nodes;
+    return sharedRenderInlineSegments(value, keyPrefix);
 }
 
 function renderFormattedExplanation(content: string | null | undefined): ReactNode {
-    const lines = String(content ?? '').split('\n');
-
-    return (
-        <div className="space-y-3">
-            {lines.map((rawLine, index) => {
-                const line = rawLine.trim();
-                if (!line) {
-                    return <div key={`space-${index}`} className="h-1" />;
-                }
-
-                const headingMatch = line.match(/^\*\*(.+)\*\*$/);
-                if (headingMatch) {
-                    return (
-                        <div key={`heading-${index}`} className="pt-1">
-                            <h4 className="text-sm font-black uppercase tracking-wide text-slate-100">
-                                {headingMatch[1]}
-                            </h4>
-                        </div>
-                    );
-                }
-
-                const bulletMatch = line.match(/^- (.+)$/);
-                if (bulletMatch) {
-                    return (
-                        <div key={`bullet-${index}`} className="flex gap-2 text-sm leading-relaxed text-slate-300">
-                            <span className="mt-[2px] text-slate-500">•</span>
-                            <div className="flex-1">{renderInlineSegments(bulletMatch[1], `bullet-${index}`)}</div>
-                        </div>
-                    );
-                }
-
-                const blockMathMatch = line.match(/^\\\((.+)\\\)$/);
-                if (blockMathMatch) {
-                    return (
-                        <div
-                            key={`math-${index}`}
-                            className="rounded-xl border border-blue-500/20 bg-blue-500/10 px-4 py-3 font-mono text-sm text-blue-100"
-                        >
-                            {formatMathExpression(blockMathMatch[1])}
-                        </div>
-                    );
-                }
-
-                if (isEquationHeavyLine(line)) {
-                    return (
-                        <div
-                            key={`equation-${index}`}
-                            className="rounded-xl border border-blue-400/20 bg-gradient-to-r from-blue-500/12 via-blue-500/8 to-cyan-500/10 px-4 py-3 shadow-[0_0_0_1px_rgba(59,130,246,0.05)]"
-                        >
-                            <div className="text-[10px] font-black uppercase tracking-[0.24em] text-blue-300/80 mb-2">
-                                Key Equation
-                            </div>
-                            <div className="font-mono text-sm leading-relaxed text-blue-100">
-                                {renderInlineSegments(line, `equation-${index}`)}
-                            </div>
-                        </div>
-                    );
-                }
-
-                return (
-                    <p key={`line-${index}`} className="text-sm leading-relaxed text-slate-300">
-                        {renderInlineSegments(line, `line-${index}`)}
-                    </p>
-                );
-            })}
-        </div>
-    );
+    return sharedRenderFormattedExplanation(content);
 }
 
 function renderQuestionText(content: string | null | undefined, keyPrefix: string): ReactNode {
-    const lines = String(content ?? '').split('\n').map((line) => line.trim()).filter(Boolean);
-    if (!lines.length) {
-        return null;
-    }
-
-    return (
-        <div className="space-y-2">
-            {lines.map((line, index) => (
-                <p key={`${keyPrefix}-${index}`} className="leading-relaxed">
-                    {renderInlineSegments(line, `${keyPrefix}-${index}`)}
-                </p>
-            ))}
-        </div>
-    );
+    return sharedRenderQuestionText(content, keyPrefix);
 }
 
 export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, setTimeMode, user }: OGCodeWorkspaceProps) {
@@ -733,7 +583,9 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                                     <span className="w-5 h-5 rounded-md bg-indigo-500/10 text-indigo-400 flex items-center justify-center text-[10px] font-bold shrink-0">
                                                         {idx + 1}
                                                     </span>
-                                                    <span className="text-xs text-slate-300 truncate">{term}</span>
+                                                    <span className="text-xs text-slate-300 truncate">
+                                                        {renderInlineSegments(String(term), `matrix-term-${idx}`)}
+                                                    </span>
                                                 </div>
                                             ))}
                                         </div>
@@ -747,7 +599,9 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                                         <span className="w-7 h-7 rounded-lg bg-white/10 text-slate-400 flex items-center justify-center text-[12px] font-black shrink-0 border border-white/5 shadow-inner">
                                                             {String.fromCharCode(65 + idxA)}
                                                         </span>
-                                                        <span className="text-[15px] font-bold text-slate-200 tracking-tight leading-relaxed">{itemA}</span>
+                                                        <span className="text-[15px] font-bold text-slate-200 tracking-tight leading-relaxed">
+                                                            {renderInlineSegments(String(itemA), `matrix-item-${idxA}`)}
+                                                        </span>
                                                     </div>
                                                 </div>
                                                 <div className="flex flex-wrap gap-3 pt-2">
@@ -901,9 +755,9 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                                 <p className="text-xs font-bold text-amber-500 uppercase tracking-widest mb-2 flex items-center gap-2">
                                                     <HelpCircle className="w-3.5 h-3.5" /> Hint
                                                 </p>
-                                                <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-line font-serif italic">
-                                                    {question.hint}
-                                                </p>
+                                                <div className="text-sm text-slate-300 leading-relaxed whitespace-pre-line font-serif italic">
+                                                    {renderQuestionText(question.hint, 'hint-text')}
+                                                </div>
                                             </div>
                                         )}
 
@@ -920,9 +774,9 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                                                 {formatMathExpression(result.correctAnswerText)}
                                                             </div>
                                                         ) : (
-                                                            <p className="text-sm text-slate-100 leading-relaxed whitespace-pre-line font-medium">
-                                                                {result.correctAnswerText}
-                                                            </p>
+                                                            <div className="text-sm text-slate-100 leading-relaxed whitespace-pre-line font-medium">
+                                                                {renderQuestionText(result.correctAnswerText, 'correct-answer-text')}
+                                                            </div>
                                                         )}
                                                     </div>
                                                 )}

@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
+import { renderInlineSegments } from '@/lib/math-text';
 import {
     CheckCircle2, Code2, Search,
     Trophy, Zap, Flame, Brain, Circle,
@@ -546,7 +547,10 @@ export default function OGCodeList({ onSelectQuestion, user }: OGCodeListProps) 
                                             return (
                                                 <tr key={q.id} onClick={() => onSelectQuestion(q.id)} className={cn("group cursor-pointer transition-colors border-b last:border-0 border-slate-200 dark:border-white/5 hover:bg-slate-100 dark:hover:bg-white/[0.03]")}>
                                                     <td className="px-6 py-4">{(q.status === 'solved' || q.isSolved) ? <CheckCircle2 className="w-5 h-5 text-emerald-500" /> : <div className="w-5 h-1 bg-slate-300 dark:bg-slate-700/50 rounded-full" />}</td>
-                                                    <td className="px-6 py-4 font-black text-[14px] text-slate-800 dark:text-slate-200 group-hover:text-blue-500 transition-colors">{idx + 1}. {q.title || q.text}</td>
+                                                    <td className="px-6 py-4 font-black text-[14px] text-slate-800 dark:text-slate-200 group-hover:text-blue-500 transition-colors">
+                                                        <span className="mr-1">{idx + 1}.</span>
+                                                        {renderInlineSegments(String(q.title || q.text), `ogcode-row-${q.id}`)}
+                                                    </td>
                                                     <td className="px-6 py-4"><div className="space-y-0.5"><div className="text-[12px] font-black text-slate-700 dark:text-slate-300">{q.chapter || 'Foundations'}</div><div className="text-[10px] font-bold text-slate-500/80 uppercase tracking-wider">{q.concept || 'JEE Advanced'}</div></div></td>
                                                     <td className={cn("px-6 py-4 font-black text-[13px]", conf.darkText)}>{conf.label}</td>
                                                     <td className="px-6 py-4 text-right"><button className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-500/10 hover:bg-blue-600 hover:text-white text-blue-500 text-[11px] font-black uppercase tracking-wider transition-all group/btn shadow-sm">Attempt Now <ArrowRight className="w-3.5 h-3.5 group-hover/btn:translate-x-1 transition-transform" /></button></td>

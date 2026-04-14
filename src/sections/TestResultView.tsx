@@ -29,6 +29,7 @@ import {
   YAxis,
   CartesianGrid
 } from 'recharts';
+import { renderFormattedExplanation } from '@/lib/math-text';
 import type { TestResult } from '@/types';
 
 interface TestResultViewProps {
@@ -701,9 +702,9 @@ export default function TestResultView({
                           <BookOpen className="w-4 h-4 text-teal-500" />
                           Diagnostic Insight
                         </h4>
-                        <p className="text-slate-300 leading-relaxed font-medium">
-                          {result.aiAnalysis.mistakes[selectedMistake].explanation}
-                        </p>
+                        <div className="text-slate-300 leading-relaxed font-medium">
+                          {renderFormattedExplanation(result.aiAnalysis.mistakes[selectedMistake].explanation)}
+                        </div>
                       </div>
 
                       <div className="bg-teal-500/5 rounded-3xl p-8 border border-teal-500/10 relative">
@@ -711,9 +712,9 @@ export default function TestResultView({
                           <Target className="w-4 h-4 text-teal-500" />
                           Recommended strategy
                         </h4>
-                        <p className="text-slate-300 leading-relaxed font-medium">
-                          {result.aiAnalysis.mistakes[selectedMistake].howToApproach}
-                        </p>
+                        <div className="text-slate-300 leading-relaxed font-medium">
+                          {renderFormattedExplanation(result.aiAnalysis.mistakes[selectedMistake].howToApproach)}
+                        </div>
                       </div>
 
                       <div className="flex flex-wrap gap-4 pt-4">

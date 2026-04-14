@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Camera, AlertTriangle, ShieldCheck } from 'lucide-react';
 import type { Test, TestResult, UserAnswer } from '@/types';
 import { apiCall } from '@/lib/api';
+import { renderInlineSegments, renderQuestionText } from '@/lib/math-text';
 import { toast } from 'sonner';
 
 interface TestInterfaceProps {
@@ -459,9 +460,9 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
                 </div>
               )}
 
-              <p className="text-base text-gray-800 leading-relaxed font-serif mb-8 whitespace-pre-wrap">
-                {currentQuestion?.text}
-              </p>
+              <div className="text-base text-gray-800 leading-relaxed font-serif mb-8 whitespace-pre-wrap">
+                {renderQuestionText(currentQuestion?.text, 'test-question')}
+              </div>
 
               {(currentQuestion?.questionType === 'mcq' || !currentQuestion?.questionType) && (
                 <div className="space-y-4 font-serif text-base">
@@ -475,7 +476,7 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
                         className="mt-1.5 w-4 h-4"
                       />
                       <span>({idx + 1})</span>
-                      <span>{option}</span>
+                      <span>{renderInlineSegments(String(option), `test-mcq-option-${idx}`)}</span>
                     </label>
                   ))}
                 </div>
@@ -497,7 +498,9 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
                         className="mt-1.5 w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                       />
                       <span className="group-hover:text-blue-600 transition-colors">({idx + 1})</span>
-                      <span className="group-hover:text-blue-600 transition-colors">{option}</span>
+                      <span className="group-hover:text-blue-600 transition-colors">
+                        {renderInlineSegments(String(option), `test-msq-option-${idx}`)}
+                      </span>
                     </label>
                   ))}
                 </div>
@@ -516,7 +519,7 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
                           <span className="w-5 h-5 rounded bg-blue-50 text-blue-600 flex items-center justify-center text-[10px] font-bold shrink-0">
                             {idx + 1}
                           </span>
-                          <span className="text-xs text-gray-700">{term}</span>
+                          <span className="text-xs text-gray-700">{renderInlineSegments(String(term), `test-matrix-term-${idx}`)}</span>
                         </div>
                       ))}
                     </div>
@@ -529,7 +532,7 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
                           <span className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px] font-bold">
                             {String.fromCharCode(80 + idxA)}
                           </span>
-                          <span className="text-sm font-semibold text-gray-800">{itemA}</span>
+                          <span className="text-sm font-semibold text-gray-800">{renderInlineSegments(String(itemA), `test-matrix-item-${idxA}`)}</span>
                         </div>
                         <div className="flex flex-wrap gap-2">
                           {(currentQuestion as any).matrixData.column_b.map((_: any, idxB: number) => {
