@@ -15,6 +15,31 @@ import {
   listOgcodeCatalogQuestions,
 } from "@/server/ogcode-catalog";
 import { gradePracticeAnswerWithService } from "@/server/grader-client";
+import {
+  analyzeDppAttemptWithService,
+  analyzeSubmittedTestWithService,
+  generateCustomTestWithService,
+  type AnalyticsDppPlan,
+  type AnalyticsGradedAttempt,
+} from "@/server/analytics-client";
+import {
+  getAttemptedQuestionIdsForUser,
+  getDppPlanDetail,
+  getLatestDppAttemptForPlan,
+  getPersistedCustomTest,
+  getPersistedResultById,
+  getRecentWeakTopicsForUser,
+  listPendingDppPlans,
+  listPersistedCustomTests,
+  listPersistedTestResults,
+  persistDppAttemptResult,
+  persistGeneratedCustomTest,
+  persistTestAnalysisResult,
+  type PersistedCustomTestRecord,
+  type PersistedDppAttemptRecord,
+  type PersistedDppPlanRecord,
+  type PersistedTestResultRecord,
+} from "@/server/analytics-store";
 import type {
   AppStore,
   DifficultyLevel,
@@ -93,6 +118,15 @@ type SubjectiveMatch = {
   matchedTerms: string[];
   missingTerms: string[];
   matchMethod: "exact" | "formula" | "semantic";
+};
+
+type ReviewEntry = {
+  questionId: string;
+  concept: string;
+  status: "correct" | "incorrect";
+  error: string;
+  explanation: string;
+  howToApproach: string;
 };
 
 function normalizeSubject(subject: string): string {
@@ -1229,26 +1263,147 @@ export function serializeResult(result: StoredTestResult) {
   };
 }
 
-export function listTests(store: AppStore, user: StoredUser) {
+async function serializePersistedCustomTest(
+  store: AppStore,
+  userId: string,
+  test: PersistedCustomTestRecord,
+) {
+  const questionLookup = await buildQuestionLookup(store, test.questionIds);
+  const questions = test.questionIds
+    .map((questionId) => questionLookup.get(questionId))
+    .filter((question): question is StoredQuestion => Boolean(question))
+    .map((question) => serializeQuestion(store, userId, question, true));
+
+  return {
+    id: test.id,
+    title: test.title,
+    description: test.description,
+    subject: test.subject,
+    chapter: test.chapter ?? undefined,
+    difficulty: test.difficulty,
+    duration: test.durationMinutes,
+    totalQuestions: test.questionCount,
+    total_questions: test.questionCount,
+    isPremium: false,
+    is_premium: false,
+    questions,
+    attempted: test.attemptCount > 0,
+    score: test.averageScore,
+    attemptCount: test.attemptCount,
+    attempt_count: test.attemptCount,
+    allScores: test.allScores,
+    all_scores: test.allScores,
+    focusTopics: test.focusTopics,
+    focus_topics: test.focusTopics,
+    generationSummary: test.generationSummary,
+    generation_summary: test.generationSummary,
+    recommendedTimePerQuestionSeconds: test.recommendedTimePerQuestionSeconds,
+    recommended_time_per_question_seconds: test.recommendedTimePerQuestionSeconds,
+    createdAt: test.createdAt,
+    created_at: test.createdAt,
+  };
+}
+
+function serializePersistedResult(result: PersistedTestResultRecord) {
+  return {
+    id: result.id,
+    testId: result.testId,
+    test_id: result.testId,
+    score: result.score,
+    percentage: result.percentage,
+    correctAnswers: result.correctAnswers,
+    correct_answers: result.correctAnswers,
+    wrongAnswers: result.wrongAnswers,
+    wrong_answers: result.wrongAnswers,
+    unattempted: result.unattempted,
+    timeTaken: result.timeTaken,
+    time_taken: result.timeTaken,
+    answers: result.answers,
+    weakAreas: result.weakAreas,
+    weak_areas: result.weakAreas,
+    strongAreas: result.strongAreas,
+    strong_areas: result.strongAreas,
+    aiAnalysis: result.aiAnalysis,
+    ai_analysis: result.aiAnalysis,
+    subjectStats: result.subjectStats,
+    subject_stats: result.subjectStats,
+    isMalpractice: result.isMalpractice,
+    is_malpractice: result.isMalpractice,
+    createdAt: result.createdAt,
+    created_at: result.createdAt,
+  };
+}
+
+async function serializePersistedDppPlan(
+  store: AppStore,
+  userId: string,
+  plan: PersistedDppPlanRecord,
+  latestAttempt: PersistedDppAttemptRecord | null,
+) {
+  const lookup = await buildQuestionLookup(store, plan.questionIds);
+  const questions = plan.questionIds
+    .map((questionId) => lookup.get(questionId))
+    .filter((question): question is StoredQuestion => Boolean(question))
+    .map((question) => serializeQuestion(store, userId, question, true));
+
+  return {
+    id: plan.id,
+    title: plan.title,
+    subject: plan.subject,
+    summary: plan.summary,
+    questions,
+    generatedFrom: plan.generatedFrom,
+    generated_from: plan.generatedFrom,
+    createdAt: plan.createdAt,
+    created_at: plan.createdAt,
+    completed: plan.completed,
+    weakTopics: plan.weakTopics,
+    weak_topics: plan.weakTopics,
+    duration: plan.durationMinutes,
+    duration_minutes: plan.durationMinutes,
+    targetQuestionCount: plan.targetQuestionCount,
+    target_question_count: plan.targetQuestionCount,
+    sequence: plan.sequence,
+    latestAttempt: latestAttempt
+      ? {
+          id: latestAttempt.id,
+          summary: latestAttempt.summary,
+          recommendations: latestAttempt.recommendations,
+          resolvedTopics: latestAttempt.resolvedTopics,
+          resolved_topics: latestAttempt.resolvedTopics,
+          stillWeakTopics: latestAttempt.stillWeakTopics,
+          still_weak_topics: latestAttempt.stillWeakTopics,
+          progressScore: latestAttempt.progressScore,
+          progress_score: latestAttempt.progressScore,
+          completed: latestAttempt.completed,
+          createdAt: latestAttempt.createdAt,
+          created_at: latestAttempt.createdAt,
+        }
+      : null,
+  };
+}
+
+function listTestsFallback(store: AppStore, user: StoredUser) {
   return store.tests.map((test) => serializeTest(store, user.id, test));
 }
 
-export function getTestDetail(store: AppStore, user: StoredUser, testId: string) {
+function getTestDetailFallback(store: AppStore, user: StoredUser, testId: string) {
   return serializeTest(store, user.id, testById(store, testId));
 }
 
-export function createCustomTest(
+function createCustomTestFallback(
   store: AppStore,
   user: StoredUser,
   payload: CustomTestPayload,
 ) {
-  const subject = (payload.subject ?? "all").toLowerCase();
-  const difficulty = normalizeDifficulty(payload.difficulty ?? "medium");
+  const subject = (payload.subject ?? "mixed").toLowerCase();
+  const difficultyValue = (payload.difficulty ?? "medium").toLowerCase();
+  const difficulty = difficultyValue === "all" ? null : normalizeDifficulty(difficultyValue);
   const chapter = (payload.chapter ?? "").trim().toLowerCase();
   const questionCount = Math.max(1, Number(payload.question_count ?? 10));
 
   const candidates = store.questions.filter((question) => {
-    const matchesSubject = subject === "all" || question.subject === normalizeSubject(subject);
+    const matchesSubject = subject === "all" || subject === "mixed" || question.subject === normalizeSubject(subject);
     const matchesDifficulty = !difficulty || question.difficulty === difficulty;
     const matchesChapter = !chapter || question.chapter.toLowerCase().includes(chapter);
     return matchesSubject && matchesDifficulty && matchesChapter;
@@ -1261,11 +1416,11 @@ export function createCustomTest(
   const selected = candidates.slice(0, Math.min(questionCount, candidates.length));
   const newTest: StoredTest = {
     id: createId("test"),
-    title: `${subject === "all" ? "Mixed" : subject[0].toUpperCase() + subject.slice(1)} Custom Test`,
+    title: `${subject === "all" || subject === "mixed" ? "Mixed" : subject[0].toUpperCase() + subject.slice(1)} Custom Test`,
     description: chapter ? `Custom practice set focused on ${chapter}.` : "Custom practice set generated from the question bank.",
-    subject: subject === "all" ? "mixed" : normalizeSubject(subject),
+    subject: subject === "all" || subject === "mixed" ? "mixed" : normalizeSubject(subject),
     chapter: chapter || null,
-    difficulty,
+    difficulty: difficulty ?? "medium",
     duration: Math.max(10, selected.length * 3),
     totalQuestions: selected.length,
     isPremium: false,
@@ -1277,7 +1432,7 @@ export function createCustomTest(
   return serializeTest(store, user.id, newTest);
 }
 
-export function submitTest(store: AppStore, user: StoredUser, testId: string, payload: TestSubmissionPayload) {
+function submitTestFallback(store: AppStore, user: StoredUser, testId: string, payload: TestSubmissionPayload) {
   const test = testById(store, testId);
   const submittedAnswers = payload.answers ?? [];
   const answersMap = new Map<string, StoredUserAnswer>();
@@ -1401,22 +1556,28 @@ export function submitTest(store: AppStore, user: StoredUser, testId: string, pa
     };
   });
 
-  const mistakes = userAnswers.flatMap((answer) => {
+  const reviewEntries: ReviewEntry[] = userAnswers.flatMap((answer) => {
     const question = questionById(store, answer.questionId);
     const grade = gradeAnswer(question, answer);
-    if (grade.isCorrect || !hasResponse(answer)) {
+    if (!hasResponse(answer)) {
       return [];
     }
     return [
       {
         questionId: question.id,
         concept: question.concept,
-        error: "Conceptual / Calculation",
+        status: grade.isCorrect ? ("correct" as const) : ("incorrect" as const),
+        error: grade.isCorrect ? "Well Solved / Confirmed" : "Conceptual / Calculation",
         explanation: question.explanation,
-        howToApproach: `Review ${question.concept} and repeat ${question.difficulty} level problems.`,
+        howToApproach: grade.isCorrect
+          ? `Keep reinforcing ${question.concept} with one more ${question.difficulty} level problem to lock in the method.`
+          : `Review ${question.concept} and repeat ${question.difficulty} level problems.`,
       },
     ];
   });
+  const mistakes = reviewEntries
+    .filter((entry) => entry.status === "incorrect")
+    .map(({ status: _status, ...entry }) => entry);
 
   const aiSummary =
     correctAnswers > test.totalQuestions / 2
@@ -1441,6 +1602,7 @@ export function submitTest(store: AppStore, user: StoredUser, testId: string, pa
           ? `${aiSummary} Focus on ${weakAreas.slice(0, 2).map((row) => row.topic).join(", ")}.`
           : aiSummary,
       mistakes,
+      reviewEntries,
       recommendations: [
         `Review the ${mistakes.length} answered questions you missed.`,
         "Focus on accuracy before speed.",
@@ -1467,19 +1629,475 @@ export function submitTest(store: AppStore, user: StoredUser, testId: string, pa
   return serializeResult(result);
 }
 
-export function listTestResults(store: AppStore, user: StoredUser, testId: string) {
+function listTestResultsFallback(store: AppStore, user: StoredUser, testId: string) {
   return store.testResults
     .filter((result) => result.userId === user.id && result.testId === testId)
     .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
     .map(serializeResult);
 }
 
-export function getSingleResult(store: AppStore, user: StoredUser, resultId: string) {
+function getSingleResultFallback(store: AppStore, user: StoredUser, resultId: string) {
   const result = store.testResults.find((entry) => entry.id === resultId && entry.userId === user.id);
   if (!result) {
     throw new Error(`Result ${resultId} was not found.`);
   }
   return serializeResult(result);
+}
+
+async function buildAnalyticsAttempts(
+  store: AppStore,
+  questionIds: string[],
+  answersMap: Map<string, StoredUserAnswer>,
+) {
+  const questionLookup = await buildQuestionLookup(store, questionIds);
+  const gradedAttempts: AnalyticsGradedAttempt[] = [];
+  let correctAnswers = 0;
+  let wrongAnswers = 0;
+  let unattempted = 0;
+  let score = 0;
+  const userAnswers: StoredUserAnswer[] = [];
+  const subjectStats: Record<
+    string,
+    {
+      correct: number;
+      incorrect: number;
+      unattempted: number;
+      total: number;
+      timeCorrect: number;
+      timeIncorrect: number;
+      timeUnattempted: number;
+    }
+  > = {};
+
+  for (const questionId of questionIds) {
+    const question = questionLookup.get(questionId);
+    if (!question) {
+      continue;
+    }
+    const answer = answersMap.get(questionId) ?? {
+      questionId,
+      selectedOption: null,
+      selectedOptions: null,
+      matrixPairs: null,
+      answerText: null,
+      timeSpent: 0,
+      isMarkedForReview: false,
+    };
+
+    if (!subjectStats[question.subject]) {
+      subjectStats[question.subject] = {
+        correct: 0,
+        incorrect: 0,
+        unattempted: 0,
+        total: 0,
+        timeCorrect: 0,
+        timeIncorrect: 0,
+        timeUnattempted: 0,
+      };
+    }
+
+    subjectStats[question.subject].total += 1;
+    const answered = hasResponse(answer);
+    const { isCorrect } = gradeAnswer(question, answer);
+
+    if (isCorrect) {
+      correctAnswers += 1;
+      score += 4;
+      subjectStats[question.subject].correct += 1;
+      subjectStats[question.subject].timeCorrect += answer.timeSpent;
+      question.totalCorrect += 1;
+    } else if (answered) {
+      wrongAnswers += 1;
+      score -= 1;
+      subjectStats[question.subject].incorrect += 1;
+      subjectStats[question.subject].timeIncorrect += answer.timeSpent;
+    } else {
+      unattempted += 1;
+      subjectStats[question.subject].unattempted += 1;
+      subjectStats[question.subject].timeUnattempted += answer.timeSpent;
+    }
+
+    question.frequency += 1;
+    question.acceptanceRate = question.frequency > 0 ? (question.totalCorrect / question.frequency) * 100 : 0;
+
+    gradedAttempts.push({
+      question_id: question.id,
+      subject: question.subject,
+      chapter: question.chapter,
+      concept: question.concept,
+      difficulty: question.difficulty,
+      question_type: question.questionType,
+      answered,
+      is_correct: isCorrect,
+      time_spent_seconds: answer.timeSpent,
+    });
+    userAnswers.push(answer);
+  }
+
+  const finalSubjectStats: StoredTestResult["subjectStats"] = {};
+  Object.entries(subjectStats).forEach(([subject, stats]) => {
+    const subScore = stats.correct * 4 - stats.incorrect;
+    finalSubjectStats[subject] = {
+      score: subScore,
+      total_marks: stats.total * 4,
+      correct: stats.correct,
+      incorrect: stats.incorrect,
+      unattempted: stats.unattempted,
+      total_qs: stats.total,
+      accuracy:
+        stats.correct + stats.incorrect > 0
+          ? Math.round((stats.correct / (stats.correct + stats.incorrect)) * 100)
+          : 0,
+      time_spent_correct: stats.timeCorrect,
+      time_spent_incorrect: stats.timeIncorrect,
+      time_spent_unattempted: stats.timeUnattempted,
+      total_time_spent: stats.timeCorrect + stats.timeIncorrect + stats.timeUnattempted,
+    };
+  });
+
+  return {
+    gradedAttempts,
+    correctAnswers,
+    wrongAnswers,
+    unattempted,
+    score,
+    subjectStats: finalSubjectStats,
+    userAnswers,
+    questionLookup,
+  };
+}
+
+function buildMistakesFromAnswers(
+  questionLookup: Map<string, StoredQuestion>,
+  answers: StoredUserAnswer[],
+) {
+  return buildReviewEntriesFromAnswers(questionLookup, answers)
+    .filter((entry) => entry.status === "incorrect")
+    .map(({ status: _status, ...entry }) => entry);
+}
+
+function buildReviewEntriesFromAnswers(
+  questionLookup: Map<string, StoredQuestion>,
+  answers: StoredUserAnswer[],
+): ReviewEntry[] {
+  return answers.flatMap((answer) => {
+    const question = questionLookup.get(answer.questionId);
+    if (!question) {
+      return [];
+    }
+    const grade = gradeAnswer(question, answer);
+    if (!hasResponse(answer)) {
+      return [];
+    }
+    return [
+      {
+        questionId: question.id,
+        concept: question.concept,
+        status: grade.isCorrect ? ("correct" as const) : ("incorrect" as const),
+        error: grade.isCorrect ? "Well Solved / Confirmed" : "Conceptual / Calculation",
+        explanation: question.explanation,
+        howToApproach: grade.isCorrect
+          ? `Keep reinforcing ${question.concept} with one more ${question.difficulty} level problem to lock in the method.`
+          : `Review ${question.concept} and repeat ${question.difficulty} level problems.`,
+      },
+    ];
+  });
+}
+
+export async function listTests(store: AppStore, user: StoredUser) {
+  const seeded = listTestsFallback(store, user);
+  try {
+    const persisted = await listPersistedCustomTests(user.id);
+    const persistedSerialized = await Promise.all(
+      persisted.map((test) => serializePersistedCustomTest(store, user.id, test)),
+    );
+    const deduped = new Map<
+      string,
+      Awaited<ReturnType<typeof serializePersistedCustomTest>> | ReturnType<typeof serializeTest>
+    >();
+    for (const test of [...persistedSerialized, ...seeded]) {
+      deduped.set(test.id, test);
+    }
+    return [...deduped.values()];
+  } catch {
+    return seeded;
+  }
+}
+
+export async function getTestDetail(store: AppStore, user: StoredUser, testId: string) {
+  const seeded = store.tests.find((entry) => entry.id === testId);
+  if (seeded) {
+    return serializeTest(store, user.id, seeded);
+  }
+
+  const persisted = await getPersistedCustomTest(testId, user.id);
+  if (!persisted) {
+    throw new Error(`Test ${testId} was not found.`);
+  }
+  return serializePersistedCustomTest(store, user.id, persisted);
+}
+
+export async function createCustomTest(
+  store: AppStore,
+  user: StoredUser,
+  payload: CustomTestPayload,
+) {
+  try {
+    const subject = (payload.subject ?? "mixed").toLowerCase();
+    const difficultyValue = (payload.difficulty ?? "medium").toLowerCase();
+    const difficulty = difficultyValue === "all" ? null : normalizeDifficulty(difficultyValue);
+    const generatedId = createId("test");
+    const serviceResponse = await generateCustomTestWithService({
+      user_id: user.id,
+      subject: subject === "all" ? "mixed" : subject,
+      difficulty,
+      chapter: payload.chapter?.trim() || null,
+      question_count: Math.max(1, Number(payload.question_count ?? 10)),
+      recent_weak_topics: await getRecentWeakTopicsForUser(user.id),
+      attempted_question_ids: await getAttemptedQuestionIdsForUser(user.id),
+    });
+
+    if (!serviceResponse) {
+      return createCustomTestFallback(store, user, payload);
+    }
+
+    await persistGeneratedCustomTest({
+      id: generatedId,
+      userId: user.id,
+      subject: serviceResponse.subject,
+      chapter: serviceResponse.chapter ?? null,
+      difficulty: serviceResponse.difficulty,
+      title: serviceResponse.title,
+      description: serviceResponse.description,
+      questionIds: serviceResponse.question_ids,
+      durationMinutes: serviceResponse.duration_minutes,
+      focusTopics: serviceResponse.focus_topics,
+      generationSummary: serviceResponse.generation_summary,
+      recommendedTimePerQuestionSeconds: serviceResponse.recommended_time_per_question_seconds,
+    });
+
+    const latest = await getPersistedCustomTest(generatedId, user.id);
+    if (!latest) {
+      return createCustomTestFallback(store, user, payload);
+    }
+    return serializePersistedCustomTest(store, user.id, latest);
+  } catch {
+    return createCustomTestFallback(store, user, payload);
+  }
+}
+
+export async function submitTest(store: AppStore, user: StoredUser, testId: string, payload: TestSubmissionPayload) {
+  const seededTest = store.tests.find((entry) => entry.id === testId);
+  const persistedTest = seededTest ? null : await getPersistedCustomTest(testId, user.id);
+  if (!seededTest && !persistedTest) {
+    throw new Error(`Test ${testId} was not found.`);
+  }
+
+  const submittedAnswers = payload.answers ?? [];
+  const answersMap = new Map<string, StoredUserAnswer>();
+  submittedAnswers.forEach((rawAnswer) => {
+    const normalized = normalizeAnswer(rawAnswer);
+    if (normalized.questionId) {
+      answersMap.set(normalized.questionId, normalized);
+    }
+  });
+
+  const title = seededTest?.title ?? persistedTest!.title;
+  const subject = seededTest?.subject ?? persistedTest!.subject;
+  const chapter = seededTest?.chapter ?? persistedTest!.chapter ?? null;
+  const difficulty = seededTest?.difficulty ?? normalizeDifficulty(persistedTest!.difficulty);
+  const questionIds = seededTest?.questionIds ?? persistedTest!.questionIds;
+  const questionCount = questionIds.length;
+
+  const analytics = await buildAnalyticsAttempts(store, questionIds, answersMap);
+  const totalMarks = questionCount * 4;
+  const percentage = totalMarks > 0 ? Math.max(0, Math.round((analytics.score / totalMarks) * 100)) : 0;
+  const reviewEntries = buildReviewEntriesFromAnswers(analytics.questionLookup, analytics.userAnswers);
+  const mistakes = reviewEntries
+    .filter((entry) => entry.status === "incorrect")
+    .map(({ status: _status, ...entry }) => entry);
+
+  const aiSummary =
+    analytics.correctAnswers > questionCount / 2
+      ? "Good attempt!"
+      : "Needs improvement.";
+
+  try {
+    const response = await analyzeSubmittedTestWithService({
+      user_id: user.id,
+      test_id: testId,
+      title,
+      subject,
+      chapter,
+      difficulty,
+      question_count: questionCount,
+      time_taken_seconds: payload.timeTaken ?? payload.time_taken ?? 0,
+      graded_attempts: analytics.gradedAttempts,
+    });
+
+    if (!response) {
+      return submitTestFallback(store, user, testId, payload);
+    }
+
+    const persistedResult = await persistTestAnalysisResult({
+      userId: user.id,
+      testId,
+      title,
+      subject,
+      chapter,
+      difficulty,
+      questionCount,
+      timeTakenSeconds: payload.timeTaken ?? payload.time_taken ?? 0,
+      score: analytics.score,
+      percentage,
+      correctAnswers: analytics.correctAnswers,
+      wrongAnswers: analytics.wrongAnswers,
+      unattempted: analytics.unattempted,
+      totalMarks,
+      subjectStats: analytics.subjectStats,
+      answers: analytics.userAnswers,
+      weakAreas: response.weak_topics.map((topic) => ({ topic: topic.topic, accuracy: Math.round(topic.accuracy) })),
+      strongAreas: response.strong_topics.map((topic) => ({ topic: topic.topic, accuracy: Math.round(topic.accuracy) })),
+      aiAnalysis: {
+        summary: response.summary || `${aiSummary} Focus on ${response.weak_topics.slice(0, 2).map((row) => row.topic).join(", ")}.`,
+        mistakes,
+        reviewEntries,
+        recommendations: response.recommendations,
+        dppGenerated: response.dpp_plans.length > 0,
+      },
+      recommendations: response.recommendations,
+      analyticsContext: response.analytics_context,
+      weakTopics: response.weak_topics,
+      strongTopics: response.strong_topics,
+      dppPlans: response.dpp_plans,
+    });
+
+    updateUserStreak(store, user.id);
+    updateUserStudyTime(user, payload.timeTaken ?? payload.time_taken ?? 0);
+    const dailyActivity = getOrCreateDailyActivity(store, user.id);
+    dailyActivity.questionsPracticed += analytics.correctAnswers + analytics.wrongAnswers;
+    if (analytics.score > 0) {
+      awardPoints(store, user.id, analytics.score, "practice", `Completed test: ${title}`, persistedResult.id);
+    }
+
+    return serializePersistedResult(persistedResult);
+  } catch {
+    return submitTestFallback(store, user, testId, payload);
+  }
+}
+
+export async function listTestResults(store: AppStore, user: StoredUser, testId: string) {
+  try {
+    const persisted = await listPersistedTestResults(user.id, testId);
+    if (persisted.length > 0) {
+      return persisted.map(serializePersistedResult);
+    }
+  } catch {
+    // fall through
+  }
+  return listTestResultsFallback(store, user, testId);
+}
+
+export async function getSingleResult(store: AppStore, user: StoredUser, resultId: string) {
+  try {
+    const persisted = await getPersistedResultById(user.id, resultId);
+    if (persisted) {
+      return serializePersistedResult(persisted);
+    }
+  } catch {
+    // fall through
+  }
+  return getSingleResultFallback(store, user, resultId);
+}
+
+export async function listGeneratedDpps(store: AppStore, user: StoredUser) {
+  const plans = await listPendingDppPlans(user.id);
+  const withAttempts = await Promise.all(
+    plans.map(async (plan) => serializePersistedDppPlan(store, user.id, plan, await getLatestDppAttemptForPlan(user.id, plan.id))),
+  );
+  return withAttempts;
+}
+
+export async function getGeneratedDppDetail(store: AppStore, user: StoredUser, dppId: string) {
+  const plan = await getDppPlanDetail(user.id, dppId);
+  if (!plan) {
+    throw new Error(`DPP ${dppId} was not found.`);
+  }
+  const latestAttempt = await getLatestDppAttemptForPlan(user.id, dppId);
+  return serializePersistedDppPlan(store, user.id, plan, latestAttempt);
+}
+
+export async function submitGeneratedDpp(
+  store: AppStore,
+  user: StoredUser,
+  dppId: string,
+  payload: TestSubmissionPayload,
+) {
+  const plan = await getDppPlanDetail(user.id, dppId);
+  if (!plan) {
+    throw new Error(`DPP ${dppId} was not found.`);
+  }
+
+  const submittedAnswers = payload.answers ?? [];
+  const answersMap = new Map<string, StoredUserAnswer>();
+  submittedAnswers.forEach((rawAnswer) => {
+    const normalized = normalizeAnswer(rawAnswer);
+    if (normalized.questionId) {
+      answersMap.set(normalized.questionId, normalized);
+    }
+  });
+
+  const analytics = await buildAnalyticsAttempts(store, plan.questionIds, answersMap);
+  const response = await analyzeDppAttemptWithService({
+    user_id: user.id,
+    dpp_id: dppId,
+    title: plan.title,
+    source_test_result_id: plan.sourceTestResultId,
+    focus_topics: plan.weakTopics,
+    graded_attempts: analytics.gradedAttempts,
+    time_taken_seconds: payload.timeTaken ?? payload.time_taken ?? 0,
+  });
+
+  if (!response) {
+    throw new Error("DPP analytics service is unavailable.");
+  }
+
+  const persistedAttempt = await persistDppAttemptResult({
+    userId: user.id,
+    dppId,
+    title: plan.title,
+    sourceTestResultId: plan.sourceTestResultId,
+    focusTopics: plan.weakTopics,
+    timeTakenSeconds: payload.timeTaken ?? payload.time_taken ?? 0,
+    answers: analytics.userAnswers,
+    response,
+  });
+
+  updateUserStreak(store, user.id);
+  updateUserStudyTime(user, payload.timeTaken ?? payload.time_taken ?? 0);
+  const dailyActivity = getOrCreateDailyActivity(store, user.id);
+  dailyActivity.questionsPracticed += analytics.correctAnswers + analytics.wrongAnswers;
+  if (analytics.score > 0) {
+    awardPoints(store, user.id, analytics.score, "dpp", `Completed DPP: ${plan.title}`, persistedAttempt.id);
+  }
+
+  return {
+    id: persistedAttempt.id,
+    dppId: dppId,
+    dpp_id: dppId,
+    summary: persistedAttempt.summary,
+    recommendations: persistedAttempt.recommendations,
+    resolvedTopics: persistedAttempt.resolvedTopics,
+    resolved_topics: persistedAttempt.resolvedTopics,
+    stillWeakTopics: persistedAttempt.stillWeakTopics,
+    still_weak_topics: persistedAttempt.stillWeakTopics,
+    progressScore: persistedAttempt.progressScore,
+    progress_score: persistedAttempt.progressScore,
+    completed: persistedAttempt.completed,
+    createdAt: persistedAttempt.createdAt,
+    created_at: persistedAttempt.createdAt,
+    answers: persistedAttempt.answers,
+  };
 }
 
 export function listPracticeQuestions(

@@ -185,6 +185,14 @@ export interface StoredTestResult {
       explanation: string;
       howToApproach: string;
     }>;
+    reviewEntries?: Array<{
+      questionId: string;
+      concept: string;
+      status: "correct" | "incorrect";
+      error: string;
+      explanation: string;
+      howToApproach: string;
+    }>;
     recommendations: string[];
     dppGenerated: boolean;
   };

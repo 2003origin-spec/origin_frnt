@@ -190,7 +190,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
       </div>
 
       {/* Card Content */}
-      <div className="p-6 sm:p-10 flex flex-col justify-center items-start text-left flex-grow">
+      <div className="p-6 sm:p-10 flex flex-col justify-center items-start text-left h-full">
         <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-6 sm:mb-8 text-primary shadow-lg shadow-primary/5 shrink-0 ring-1 ring-primary/20">
           <feature.icon className="w-6 h-6 sm:w-8 sm:h-8" />
         </div>
@@ -528,7 +528,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
                       </div>
                     </Card>
                   ))}
-              </CardSwap>
+                </CardSwap>
             </div>
           )}
         </div>

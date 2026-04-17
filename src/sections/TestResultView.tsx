@@ -30,7 +30,7 @@ import {
   CartesianGrid
 } from 'recharts';
 import { renderFormattedExplanation } from '@/lib/math-text';
-import type { TestResult } from '@/types';
+import type { ReviewEntry, TestResult } from '@/types';
 
 interface TestResultViewProps {
   result: TestResult;
@@ -50,12 +50,71 @@ export default function TestResultView({
   showSummary = true
 }: TestResultViewProps) {
   const [selectedSubject, setSelectedSubject] = useState<'overall' | string>('overall');
-  const [selectedMistake, setSelectedMistake] = useState(0);
+  const [selectedReviewTab, setSelectedReviewTab] = useState<'analysis' | 'mistakes' | 'correct' | 'recommendations'>('analysis');
+  const [selectedReviewEntry, setSelectedReviewEntry] = useState(0);
 
   const subjects = useMemo(() => {
     if (!result || !result.subjectStats) return [];
     return Object.keys(result.subjectStats);
   }, [result]);
+
+  const reviewEntries = useMemo<ReviewEntry[]>(() => {
+    if (result.aiAnalysis?.reviewEntries?.length) {
+      return result.aiAnalysis.reviewEntries;
+    }
+
+    return (result.aiAnalysis?.mistakes ?? []).map((entry) => ({
+      ...entry,
+      status: 'incorrect' as const,
+    }));
+  }, [result.aiAnalysis?.mistakes, result.aiAnalysis?.reviewEntries]);
+
+  const mistakeEntries = useMemo(
+    () => reviewEntries.filter((entry) => entry.status === 'incorrect'),
+    [reviewEntries],
+  );
+
+  const correctEntries = useMemo(
+    () => reviewEntries.filter((entry) => entry.status === 'correct'),
+    [reviewEntries],
+  );
+
+  const activeReviewEntries = selectedReviewTab === 'correct' ? correctEntries : mistakeEntries;
+  const selectedReviewItem = activeReviewEntries[selectedReviewEntry] ?? null;
+
+  const overallTimeStats = useMemo(() => {
+    const fromSubjects = Object.values(result.subjectStats ?? {}).reduce(
+      (accumulator, stats) => {
+        accumulator.correct += stats.time_spent_correct ?? 0;
+        accumulator.incorrect += stats.time_spent_incorrect ?? 0;
+        accumulator.unattempted += stats.time_spent_unattempted ?? 0;
+        accumulator.total += stats.total_time_spent ?? 0;
+        return accumulator;
+      },
+      { correct: 0, incorrect: 0, unattempted: 0, total: 0 },
+    );
+
+    if (fromSubjects.total > 0) {
+      return fromSubjects;
+    }
+
+    const reviewStatusByQuestion = new Map(reviewEntries.map((entry) => [entry.questionId, entry.status]));
+    return (result.answers ?? []).reduce(
+      (accumulator, answer) => {
+        const status = reviewStatusByQuestion.get(answer.questionId);
+        if (status === 'correct') {
+          accumulator.correct += answer.timeSpent ?? 0;
+        } else if (status === 'incorrect') {
+          accumulator.incorrect += answer.timeSpent ?? 0;
+        } else {
+          accumulator.unattempted += answer.timeSpent ?? 0;
+        }
+        accumulator.total += answer.timeSpent ?? 0;
+        return accumulator;
+      },
+      { correct: 0, incorrect: 0, unattempted: 0, total: 0 },
+    );
+  }, [result.answers, result.subjectStats, reviewEntries]);
 
   const currentStats = useMemo(() => {
     if (selectedSubject === 'overall' || !result.subjectStats) {
@@ -68,10 +127,9 @@ export default function TestResultView({
         totalQs: (result.correctAnswers || 0) + (result.wrongAnswers || 0) + (result.unattempted || 0),
         accuracy: result.percentage || (result as any).accuracy || Math.round(((result.correctAnswers || 0) / (((result.correctAnswers || 0) + (result.wrongAnswers || 0)) || 1)) * 100) || 0,
         timeTaken: result.timeTaken || 0,
-        // Mocking quality of time for global if not provided, but usually we subtract from total
-        timeSpentCorrect: (result as any).timeSpentCorrect || 0,
-        timeSpentIncorrect: (result as any).timeSpentIncorrect || 0,
-        timeSpentUnattempted: (result as any).timeSpentUnattempted || 0,
+        timeSpentCorrect: overallTimeStats.correct,
+        timeSpentIncorrect: overallTimeStats.incorrect,
+        timeSpentUnattempted: overallTimeStats.unattempted,
       };
     }
     const stats = result.subjectStats[selectedSubject];
@@ -88,7 +146,7 @@ export default function TestResultView({
       timeSpentIncorrect: stats.time_spent_incorrect,
       timeSpentUnattempted: stats.time_spent_unattempted,
     };
-  }, [result, selectedSubject]);
+  }, [overallTimeStats.correct, overallTimeStats.incorrect, overallTimeStats.unattempted, result, selectedSubject]);
 
 
 
@@ -110,6 +168,28 @@ export default function TestResultView({
   const displayWeakAreas = useMemo(() => {
     return result.weakAreas || (result as any).weak_areas || [];
   }, [result]);
+
+  const subjectTimeBreakdown = useMemo(() => {
+    const entries = Object.entries(result.subjectStats ?? {});
+    if (entries.length === 0) {
+      return [];
+    }
+
+    const totalRecorded = entries.reduce((sum, [, stats]) => sum + (stats.total_time_spent ?? 0), 0);
+    if (totalRecorded > 0) {
+      return entries.map(([subject, stats]) => ({
+        name: subject,
+        time: stats.total_time_spent,
+      }));
+    }
+
+    const fallbackTotal = overallTimeStats.total > 0 ? overallTimeStats.total : result.timeTaken || 0;
+    const totalQuestions = entries.reduce((sum, [, stats]) => sum + (stats.total_qs ?? 0), 0) || 1;
+    return entries.map(([subject, stats]) => ({
+      name: subject,
+      time: Math.round((fallbackTotal * (stats.total_qs ?? 0)) / totalQuestions),
+    }));
+  }, [overallTimeStats.total, result.subjectStats, result.timeTaken]);
 
   return (
     <div className="min-h-screen bg-[#0F172A] text-slate-100 font-sans selection:bg-teal-500/30">
@@ -141,7 +221,21 @@ export default function TestResultView({
           
           {/* Action Buttons */}
           <div className="flex gap-2 pb-4">
-            <Button variant="secondary" className="flex-1 bg-white/10 hover:bg-white/15 text-blue-400 border-none rounded-xl h-10">
+            <Button
+              variant="secondary"
+              className="flex-1 bg-white/10 hover:bg-white/15 text-blue-400 border-none rounded-xl h-10"
+              onClick={() => {
+                if (mistakeEntries.length > 0) {
+                  setSelectedReviewTab('mistakes');
+                  setSelectedReviewEntry(0);
+                  return;
+                }
+                if (correctEntries.length > 0) {
+                  setSelectedReviewTab('correct');
+                  setSelectedReviewEntry(0);
+                }
+              }}
+            >
               View Solution
             </Button>
             <Button 
@@ -492,10 +586,9 @@ export default function TestResultView({
             <Card className="bg-[#1E293B]/40 backdrop-blur-xl border-white/10 rounded-[2.5rem] p-8 overflow-hidden">
               <div className="h-72 mt-4">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={Object.entries(result.subjectStats).map(([sub, stats]) => ({
-                    name: sub,
-                    time: stats.total_time_spent,
-                    color: sub.toLowerCase().includes('physics') ? '#f97316' : sub.toLowerCase().includes('chemistry') ? '#22c55e' : '#3b82f6'
+                  <BarChart data={subjectTimeBreakdown.map((entry) => ({
+                    ...entry,
+                    color: entry.name.toLowerCase().includes('physics') ? '#f97316' : entry.name.toLowerCase().includes('chemistry') ? '#22c55e' : '#3b82f6'
                   }))}>
                     <defs>
                       <linearGradient id="barGradientPhysics" x1="0" y1="0" x2="0" y2="1">
@@ -534,28 +627,26 @@ export default function TestResultView({
                       }} 
                     />
                     <Bar dataKey="time" radius={[12, 12, 0, 0]} barSize={50}>
-                      {
-                        Object.entries(result.subjectStats).map(([sub], index) => {
-                          const subLower = sub.toLowerCase();
+                      {subjectTimeBreakdown.map((entry, index) => {
+                          const subLower = entry.name.toLowerCase();
                           let fill = "url(#barGradientMath)";
                           if (subLower.includes('physics')) fill = "url(#barGradientPhysics)";
                           if (subLower.includes('chemistry')) fill = "url(#barGradientChemistry)";
                           return <Cell key={`cell-${index}`} fill={fill} />;
-                        })
-                      }
+                        })}
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
               </div>
 
               <div className="mt-10 grid grid-cols-1 sm:grid-cols-3 gap-6">
-                {Object.entries(result.subjectStats).map(([sub, stats]) => (
-                  <div key={sub} className="flex flex-col p-4 rounded-2xl bg-white/5 border border-white/5 hover:bg-white/10 transition-all">
+                {subjectTimeBreakdown.map(({ name, time }) => (
+                  <div key={name} className="flex flex-col p-4 rounded-2xl bg-white/5 border border-white/5 hover:bg-white/10 transition-all">
                     <div className="flex items-center gap-3 mb-2">
-                       <div className={`w-3 h-3 rounded-full ${sub.toLowerCase().includes('physics') ? 'bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.6)]' : sub.toLowerCase().includes('chemistry') ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]'}`} />
-                       <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest capitalize">{sub}</span>
+                       <div className={`w-3 h-3 rounded-full ${name.toLowerCase().includes('physics') ? 'bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.6)]' : name.toLowerCase().includes('chemistry') ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]'}`} />
+                       <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest capitalize">{name}</span>
                     </div>
-                    <span className="text-sm font-black text-white tracking-tight">{formatTimeDigital(stats.total_time_spent)}</span>
+                    <span className="text-sm font-black text-white tracking-tight">{formatTimeDigital(time)}</span>
                   </div>
                 ))}
               </div>
@@ -565,7 +656,14 @@ export default function TestResultView({
 
 
         {/* Detailed Analysis Tabs */}
-        <Tabs defaultValue="analysis" className="relative">
+        <Tabs
+          value={selectedReviewTab}
+          onValueChange={(value) => {
+            setSelectedReviewTab(value as 'analysis' | 'mistakes' | 'correct' | 'recommendations');
+            setSelectedReviewEntry(0);
+          }}
+          className="relative"
+        >
           <TabsList className="bg-[#1E293B]/40 backdrop-blur-lg border border-white/5 p-1 mb-6 rounded-2xl w-full flex overflow-x-auto no-scrollbar">
             <TabsTrigger value="analysis" className="flex-1 data-[state=active]:bg-teal-500 data-[state=active]:text-white rounded-xl transition-all font-bold py-3">
               <Sparkles className="w-4 h-4 mr-2" />
@@ -574,6 +672,10 @@ export default function TestResultView({
             <TabsTrigger value="mistakes" className="flex-1 data-[state=active]:bg-teal-500 data-[state=active]:text-white rounded-xl transition-all font-bold py-3">
               <AlertCircle className="w-4 h-4 mr-2" />
               Mistake Log
+            </TabsTrigger>
+            <TabsTrigger value="correct" className="flex-1 data-[state=active]:bg-teal-500 data-[state=active]:text-white rounded-xl transition-all font-bold py-3">
+              <CheckCircle2 className="w-4 h-4 mr-2" />
+              Correct Log
             </TabsTrigger>
             <TabsTrigger value="recommendations" className="flex-1 data-[state=active]:bg-teal-500 data-[state=active]:text-white rounded-xl transition-all font-bold py-3">
               <Target className="w-4 h-4 mr-2" />
@@ -648,29 +750,29 @@ export default function TestResultView({
             <div className="grid lg:grid-cols-3 gap-6">
               {/* Mistake List */}
               <div className="lg:col-span-1 space-y-3">
-                {result.aiAnalysis?.mistakes?.length > 0 ? (
-                  result.aiAnalysis.mistakes.map((mistake, index) => (
+                {mistakeEntries.length > 0 ? (
+                  mistakeEntries.map((mistake, index) => (
                     <button
                       key={index}
-                      onClick={() => setSelectedMistake(index)}
-                      className={`w-full p-5 rounded-2xl text-left transition-all border group relative overflow-hidden ${selectedMistake === index
+                      onClick={() => setSelectedReviewEntry(index)}
+                      className={`w-full p-5 rounded-2xl text-left transition-all border group relative overflow-hidden ${selectedReviewEntry === index
                         ? 'bg-teal-500/10 border-teal-500/50 shadow-lg shadow-teal-500/10'
                         : 'bg-[#1E293B]/40 backdrop-blur-md border-white/5 hover:bg-white/5'
                         }`}
                     >
                       <div className="flex items-center gap-4 relative z-10">
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${selectedMistake === index ? 'bg-teal-500 text-white' : 'bg-rose-500/10 text-rose-400'
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${selectedReviewEntry === index ? 'bg-teal-500 text-white' : 'bg-rose-500/10 text-rose-400'
                           }`}>
                           <AlertCircle className="w-5 h-5" />
                         </div>
                         <div>
-                          <p className={`font-black uppercase tracking-tighter text-sm ${selectedMistake === index ? 'text-teal-400' : 'text-slate-200'}`}>
+                          <p className={`font-black uppercase tracking-tighter text-sm ${selectedReviewEntry === index ? 'text-teal-400' : 'text-slate-200'}`}>
                             Question {index + 1}
                           </p>
                           <p className="text-xs text-slate-500 font-bold truncate max-w-[150px]">{mistake.concept}</p>
                         </div>
                       </div>
-                      {selectedMistake === index && <div className="absolute right-0 top-0 bottom-0 w-1 bg-teal-500" />}
+                      {selectedReviewEntry === index && <div className="absolute right-0 top-0 bottom-0 w-1 bg-teal-500" />}
                     </button>
                   ))
                 ) : (
@@ -684,15 +786,15 @@ export default function TestResultView({
               {/* Mistake Detail */}
               <Card className="lg:col-span-2 bg-[#1E293B]/40 backdrop-blur-xl border-white/10 rounded-[2rem] overflow-hidden group">
                 <CardContent className="p-10">
-                  {result.aiAnalysis?.mistakes?.[selectedMistake] ? (
+                  {selectedReviewItem ? (
                     <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
                       <div>
                         <Badge className="bg-rose-500/10 text-rose-400 border-rose-500/20 px-4 py-1.5 rounded-full font-black uppercase tracking-widest text-[10px] mb-4">
                           <XCircle className="w-3 h-3 mr-2" />
-                          Category: {result.aiAnalysis.mistakes[selectedMistake].error}
+                          Category: {selectedReviewItem.error}
                         </Badge>
                         <h3 className="text-3xl font-black text-white tracking-tight leading-tight">
-                          {result.aiAnalysis.mistakes[selectedMistake].concept}
+                          {selectedReviewItem.concept}
                         </h3>
                       </div>
 
@@ -703,7 +805,7 @@ export default function TestResultView({
                           Diagnostic Insight
                         </h4>
                         <div className="text-slate-300 leading-relaxed font-medium">
-                          {renderFormattedExplanation(result.aiAnalysis.mistakes[selectedMistake].explanation)}
+                          {renderFormattedExplanation(selectedReviewItem.explanation)}
                         </div>
                       </div>
 
@@ -713,7 +815,7 @@ export default function TestResultView({
                           Recommended strategy
                         </h4>
                         <div className="text-slate-300 leading-relaxed font-medium">
-                          {renderFormattedExplanation(result.aiAnalysis.mistakes[selectedMistake].howToApproach)}
+                          {renderFormattedExplanation(selectedReviewItem.howToApproach)}
                         </div>
                       </div>
 
@@ -734,6 +836,88 @@ export default function TestResultView({
                       <p className="text-lg font-bold text-white">Select a mistake to see deep analysis</p>
                     </div>
                   )}
+              </CardContent>
+            </Card>
+          </div>
+          </TabsContent>
+
+          <TabsContent value="correct">
+            <div className="grid lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-1 space-y-3">
+                {correctEntries.length > 0 ? (
+                  correctEntries.map((entry, index) => (
+                    <button
+                      key={`${entry.questionId}-${index}`}
+                      onClick={() => setSelectedReviewEntry(index)}
+                      className={`w-full p-5 rounded-2xl text-left transition-all border group relative overflow-hidden ${selectedReviewEntry === index
+                        ? 'bg-emerald-500/10 border-emerald-500/50 shadow-lg shadow-emerald-500/10'
+                        : 'bg-[#1E293B]/40 backdrop-blur-md border-white/5 hover:bg-white/5'
+                        }`}
+                    >
+                      <div className="flex items-center gap-4 relative z-10">
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${selectedReviewEntry === index ? 'bg-emerald-500 text-white' : 'bg-emerald-500/10 text-emerald-400'
+                          }`}>
+                          <CheckCircle2 className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <p className={`font-black uppercase tracking-tighter text-sm ${selectedReviewEntry === index ? 'text-emerald-400' : 'text-slate-200'}`}>
+                            Question {index + 1}
+                          </p>
+                          <p className="text-xs text-slate-500 font-bold truncate max-w-[150px]">{entry.concept}</p>
+                        </div>
+                      </div>
+                      {selectedReviewEntry === index && <div className="absolute right-0 top-0 bottom-0 w-1 bg-emerald-500" />}
+                    </button>
+                  ))
+                ) : (
+                  <div className="p-8 text-center bg-[#1E293B]/40 border border-white/5 rounded-2xl">
+                    <CheckCircle2 className="w-12 h-12 text-emerald-400 mx-auto mb-4 opacity-20" />
+                    <p className="text-sm text-slate-500 font-bold uppercase tracking-widest">No correct answers logged yet.</p>
+                  </div>
+                )}
+              </div>
+
+              <Card className="lg:col-span-2 bg-[#1E293B]/40 backdrop-blur-xl border-white/10 rounded-[2rem] overflow-hidden group">
+                <CardContent className="p-10">
+                  {selectedReviewItem ? (
+                    <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
+                      <div>
+                        <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 px-4 py-1.5 rounded-full font-black uppercase tracking-widest text-[10px] mb-4">
+                          <CheckCircle2 className="w-3 h-3 mr-2" />
+                          Verified / Solved
+                        </Badge>
+                        <h3 className="text-3xl font-black text-white tracking-tight leading-tight">
+                          {selectedReviewItem.concept}
+                        </h3>
+                      </div>
+
+                      <div className="bg-white/5 rounded-3xl p-8 border border-white/5 relative group/item">
+                        <div className="absolute -left-1 top-8 bottom-8 w-1 bg-emerald-500 rounded-full opacity-50" />
+                        <h4 className="font-black text-white text-xs uppercase tracking-[0.2em] mb-4 flex items-center gap-3">
+                          <BookOpen className="w-4 h-4 text-emerald-500" />
+                          Diagnostic Insight
+                        </h4>
+                        <div className="text-slate-300 leading-relaxed font-medium">
+                          {renderFormattedExplanation(selectedReviewItem.explanation)}
+                        </div>
+                      </div>
+
+                      <div className="bg-emerald-500/5 rounded-3xl p-8 border border-emerald-500/10 relative">
+                        <h4 className="font-black text-white text-xs uppercase tracking-[0.2em] mb-4 flex items-center gap-3">
+                          <Target className="w-4 h-4 text-emerald-500" />
+                          Why it worked
+                        </h4>
+                        <div className="text-slate-300 leading-relaxed font-medium">
+                          {renderFormattedExplanation(selectedReviewItem.howToApproach)}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="h-full flex flex-col items-center justify-center text-center space-y-4 opacity-50">
+                      <CheckCircle2 className="w-16 h-16 text-emerald-400" />
+                      <p className="text-lg font-bold text-white">Select a correct answer to review how it was solved</p>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </div>
@@ -751,7 +935,7 @@ export default function TestResultView({
                 </div>
 
                 <div className="space-y-4">
-                  {result.aiAnalysis.recommendations.map((rec, index) => (
+                  {(result.aiAnalysis?.recommendations ?? []).map((rec, index) => (
                     <div
                       key={index}
                       className="flex items-center gap-5 p-5 rounded-2xl bg-white/5 border border-white/5 hover:bg-white/10 hover:translate-x-1 transition-all group/item"
@@ -773,11 +957,11 @@ export default function TestResultView({
                     <div className="flex-1 text-center md:text-left">
                       <div className="flex items-center justify-center md:justify-start gap-3 mb-4">
                         <Badge className="bg-teal-500 text-white font-black px-3 py-1 rounded-lg text-[10px] uppercase tracking-widest shadow-lg shadow-teal-500/40">AI Generated</Badge>
-                        <h4 className="font-black text-white text-xl tracking-tight">Practice Engine Ready</h4>
+                        <h4 className="font-black text-white text-xl tracking-tight">Generated DPPs Ready</h4>
                       </div>
                       <p className="text-slate-400 font-medium">
-                        We've curated a hyper-personalized problem set strictly focused on your mistake patterns.
-                        Solve these to permanently eliminate weak spots.
+                        Three analytics-backed DPPs have already been generated from your weak topics.
+                        Open them in order to repair gaps first and reinforce them after.
                       </p>
                     </div>
                     <Button
@@ -785,7 +969,7 @@ export default function TestResultView({
                       className="bg-white text-[#0F172A] hover:bg-slate-200 font-black uppercase tracking-widest text-xs h-14 px-10 rounded-2xl shadow-xl transition-all hover:scale-105 active:scale-95 whitespace-nowrap"
                     >
                       <FileText className="w-4 h-4 mr-3" />
-                      Generate DPP
+                      Open DPPs
                     </Button>
                   </div>
                 </div>

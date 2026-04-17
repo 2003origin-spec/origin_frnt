@@ -48,7 +48,7 @@ export interface Test {
   id: string;
   title: string;
   description: string;
-  subject: 'physics' | 'chemistry' | 'mathematics' | 'mixed';
+  subject: 'physics' | 'chemistry' | 'mathematics' | 'biology' | 'mixed';
   chapter?: string;
   difficulty: 'easy' | 'medium' | 'hard';
   duration: number; // in minutes
@@ -160,6 +160,7 @@ export interface TestResult {
 export interface AIAnalysis {
   summary: string;
   mistakes: MistakeAnalysis[];
+  reviewEntries?: ReviewEntry[];
   recommendations: string[];
   dppGenerated: boolean;
 }
@@ -167,6 +168,15 @@ export interface AIAnalysis {
 export interface MistakeAnalysis {
   questionId: string;
   concept: string;
+  error: string;
+  explanation: string;
+  howToApproach: string;
+}
+
+export interface ReviewEntry {
+  questionId: string;
+  concept: string;
+  status: 'correct' | 'incorrect';
   error: string;
   explanation: string;
   howToApproach: string;

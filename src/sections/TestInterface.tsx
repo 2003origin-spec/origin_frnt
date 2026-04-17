@@ -3,9 +3,8 @@ import { useState, useEffect, useRef } from 'react';
 import { Camera, AlertTriangle, ShieldCheck } from 'lucide-react';
 import type { Test, TestResult, UserAnswer } from '@/types';
 import { apiCall } from '@/lib/api';
+import { renderInlineSegments, renderQuestionText } from '@/lib/math-text';
 import { toast } from 'sonner';
-import { useTheme } from 'next-themes';
-import { Sun, Moon } from 'lucide-react';
 
 interface TestInterfaceProps {
   test: Test;
@@ -17,13 +16,6 @@ interface TestInterfaceProps {
 type QuestionStatus = 'not_visited' | 'not_answered' | 'answered' | 'marked_review' | 'answered_marked';
 
 export default function TestInterface({ test, onComplete, onExit }: TestInterfaceProps) {
-  const { theme, setTheme, resolvedTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<UserAnswer[]>([]);
   const [timeRemaining, setTimeRemaining] = useState(test.duration * 60);
@@ -36,6 +28,7 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
   const [showMalpracticeWarning, setShowMalpracticeWarning] = useState(false);
   const [isMalpracticeTerminated, setIsMalpracticeTerminated] = useState(false);
   const malpracticeTimerRef = useRef<any>(null);
+  const questionStartedAtRef = useRef<number>(Date.now());
 
   // Proctoring setup
   useEffect(() => {
@@ -163,6 +156,7 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
       next[0] = true;
       return next;
     });
+    questionStartedAtRef.current = Date.now();
   }, [test.questions]);
 
   // Track if a question has been visited at all
@@ -236,7 +230,49 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
       setTempTextAnswer('');
     }
     markVisited(currentQuestionIndex);
+    questionStartedAtRef.current = Date.now();
   }, [currentQuestionIndex, answers]);
+
+  const getElapsedSeconds = () => Math.max(0, Math.round((Date.now() - questionStartedAtRef.current) / 1000));
+
+  const recordCurrentQuestionTime = () => {
+    const elapsedSeconds = getElapsedSeconds();
+    if (elapsedSeconds <= 0 || !answers[currentQuestionIndex]) {
+      questionStartedAtRef.current = Date.now();
+      return answers;
+    }
+
+    const updatedAnswers = [...answers];
+    updatedAnswers[currentQuestionIndex] = {
+      ...updatedAnswers[currentQuestionIndex],
+      timeSpent: (updatedAnswers[currentQuestionIndex].timeSpent ?? 0) + elapsedSeconds,
+    };
+    questionStartedAtRef.current = Date.now();
+    setAnswers(updatedAnswers);
+    return updatedAnswers;
+  };
+
+  const saveCurrentResponse = (isMarkedForReview: boolean) => {
+    const elapsedSeconds = getElapsedSeconds();
+    const updatedAnswers = [...answers];
+    updatedAnswers[currentQuestionIndex] = {
+      ...updatedAnswers[currentQuestionIndex],
+      selectedOption: tempSelection,
+      selectedOptions: tempSelections,
+      matrixPairs: tempMatrixPairs,
+      answerText: tempTextAnswer,
+      isMarkedForReview,
+      timeSpent: (updatedAnswers[currentQuestionIndex]?.timeSpent ?? 0) + elapsedSeconds,
+    };
+    questionStartedAtRef.current = Date.now();
+    setAnswers(updatedAnswers);
+    return updatedAnswers;
+  };
+
+  const navigateToQuestion = (nextIndex: number) => {
+    recordCurrentQuestionTime();
+    setCurrentQuestionIndex(nextIndex);
+  };
 
   const handleOptionSelect = (optionIndex: number) => {
     setTempSelection(optionIndex);
@@ -264,50 +300,23 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
   };
 
   const saveAndNext = () => {
-    const newAnswers = [...answers];
-    newAnswers[currentQuestionIndex] = {
-      ...newAnswers[currentQuestionIndex],
-      selectedOption: tempSelection,
-      selectedOptions: tempSelections,
-      matrixPairs: tempMatrixPairs,
-      answerText: tempTextAnswer,
-      isMarkedForReview: false
-    };
-    setAnswers(newAnswers);
+    saveCurrentResponse(false);
     if (currentQuestionIndex < test.totalQuestions - 1) {
-      setCurrentQuestionIndex(prev => prev + 1);
+      navigateToQuestion(currentQuestionIndex + 1);
     }
   };
 
   const saveAndMarkForReview = () => {
-    const newAnswers = [...answers];
-    newAnswers[currentQuestionIndex] = {
-      ...newAnswers[currentQuestionIndex],
-      selectedOption: tempSelection,
-      selectedOptions: tempSelections,
-      matrixPairs: tempMatrixPairs,
-      answerText: tempTextAnswer,
-      isMarkedForReview: true
-    };
-    setAnswers(newAnswers);
+    saveCurrentResponse(true);
     if (currentQuestionIndex < test.totalQuestions - 1) {
-      setCurrentQuestionIndex(prev => prev + 1);
+      navigateToQuestion(currentQuestionIndex + 1);
     }
   };
 
   const markForReviewAndNext = () => {
-    const newAnswers = [...answers];
-    newAnswers[currentQuestionIndex] = {
-      ...newAnswers[currentQuestionIndex],
-      selectedOption: tempSelection,
-      selectedOptions: tempSelections,
-      matrixPairs: tempMatrixPairs,
-      answerText: tempTextAnswer,
-      isMarkedForReview: true
-    };
-    setAnswers(newAnswers);
+    saveCurrentResponse(true);
     if (currentQuestionIndex < test.totalQuestions - 1) {
-      setCurrentQuestionIndex(prev => prev + 1);
+      navigateToQuestion(currentQuestionIndex + 1);
     }
   };
 
@@ -317,7 +326,8 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
 
     try {
       const isMalpractice = options?.malpractice || false;
-      const formattedAnswers = answers.filter(a =>
+      const answersWithCurrentTime = recordCurrentQuestionTime();
+      const formattedAnswers = answersWithCurrentTime.filter(a =>
         a.selectedOption !== null ||
         (a.selectedOptions && a.selectedOptions.length > 0) ||
         (a.matrixPairs && a.matrixPairs.length > 0) ||
@@ -370,20 +380,19 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
   });
 
   return (
-  return (
-    <div className="min-h-screen bg-background text-foreground font-sans text-sm selection:bg-blue-200/30 flex flex-col transition-colors duration-300">
+    <div className="min-h-screen bg-white text-black font-sans text-sm selection:bg-blue-200 flex flex-col">
 
       {/* 1. Top Header */}
-      <header className="flex items-center justify-between px-6 py-2 border-b border-border bg-card">
+      <header className="flex items-center justify-between px-6 py-2 border-b border-gray-300">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center cursor-pointer" onClick={() => { stopCamera(); onExit(); }}>
             <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center">
-              <div className="w-6 h-6 bg-orange-500 rounded-tr-xl rounded-bl-xl shadow-sm" style={{ clipPath: 'polygon(0% 100%, 100% 100%, 100% 0%)' }}></div>
+              <div className="w-6 h-6 bg-orange-500 rounded-tr-xl rounded-bl-xl" style={{ clipPath: 'polygon(0% 100%, 100% 100%, 100% 0%)' }}></div>
             </div>
           </div>
           <div>
-            <h1 className="text-xl font-bold text-blue-900 dark:text-blue-400 leading-tight">O3 ORIGIN TESTING AGENCY</h1>
-            <p className="text-xs text-green-700 dark:text-green-500 font-semibold italic">Excellence in Assessment</p>
+            <h1 className="text-xl font-bold text-blue-900 leading-tight">O3 ORIGIN TESTING AGENCY</h1>
+            <p className="text-xs text-green-700 font-semibold italic">Excellence in Assessment</p>
           </div>
         </div>
 
@@ -419,19 +428,10 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
             )}
           </div>
           <div className="flex flex-col gap-1">
-            <div className="flex"><span className="w-28 text-muted-foreground">Candidate Name :</span> <span className="text-orange-500 font-bold">[Your Name]</span></div>
-            <div className="flex"><span className="w-28 text-muted-foreground">Subject Name :</span> <span className="text-orange-500 font-bold">{test.title}</span></div>
-            <div className="flex"><span className="w-28 text-muted-foreground">Remaining Time :</span> <span className="bg-blue-600 text-white px-2 py-0.5 rounded text-xs shadow-sm font-mono">{formatTime(timeRemaining)}</span></div>
+            <div className="flex"><span className="w-28 text-gray-500">Candidate Name :</span> <span className="text-orange-500">[Your Name]</span></div>
+            <div className="flex"><span className="w-28 text-gray-500">Subject Name :</span> <span className="text-orange-500">{test.title}</span></div>
+            <div className="flex"><span className="w-28 text-gray-500">Remaining Time :</span> <span className="bg-blue-500 text-white px-2 py-0.5 rounded text-xs">{formatTime(timeRemaining)}</span></div>
           </div>
-          {mounted && (
-            <button
-              onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
-              className="p-2 hover:bg-accent rounded-full transition-colors text-muted-foreground hover:text-foreground border border-border"
-              aria-label="Toggle Theme"
-            >
-              {resolvedTheme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-            </button>
-          )}
         </div>
       </header>
 
@@ -457,9 +457,9 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
         <div className="flex-1 flex flex-col border-r border-gray-300 relative">
 
           {/* Question Header */}
-          <div className="flex justify-between items-center px-4 py-2 border-b border-border font-bold text-lg bg-card">
-            <span className="text-foreground">Question {currentQuestionIndex + 1}:</span>
-            <div className="w-6 h-6 bg-blue-600 rounded-full text-white flex items-center justify-center font-bold text-sm shadow-sm">&darr;</div>
+          <div className="flex justify-between items-center px-4 py-2 border-b border-gray-300 font-bold text-lg border-t-4 border-t-white">
+            <span>Question {currentQuestionIndex + 1}:</span>
+            <div className="w-6 h-6 bg-blue-600 rounded-full text-white flex items-center justify-center font-bold text-sm">&darr;</div>
           </div>
 
           {/* Question Text & Options */}
@@ -478,9 +478,9 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
                 </div>
               )}
 
-              <p className="text-base text-foreground leading-relaxed font-serif mb-8 whitespace-pre-wrap">
-                {currentQuestion?.text}
-              </p>
+              <div className="text-base text-gray-800 leading-relaxed font-serif mb-8 whitespace-pre-wrap">
+                {renderQuestionText(currentQuestion?.text, 'test-question')}
+              </div>
 
               {(currentQuestion?.questionType === 'mcq' || !currentQuestion?.questionType) && (
                 <div className="space-y-4 font-serif text-base">
@@ -494,7 +494,7 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
                         className="mt-1.5 w-4 h-4"
                       />
                       <span>({idx + 1})</span>
-                      <span>{option}</span>
+                      <span className="text-gray-800">{renderInlineSegments(String(option), `test-mcq-option-${idx}`, 'plain')}</span>
                     </label>
                   ))}
                 </div>
@@ -516,7 +516,9 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
                         className="mt-1.5 w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                       />
                       <span className="group-hover:text-blue-600 transition-colors">({idx + 1})</span>
-                      <span className="group-hover:text-blue-600 transition-colors">{option}</span>
+                      <span className="group-hover:text-blue-600 transition-colors">
+                        {renderInlineSegments(String(option), `test-msq-option-${idx}`, 'plain')}
+                      </span>
                     </label>
                   ))}
                 </div>
@@ -535,7 +537,7 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
                           <span className="w-5 h-5 rounded bg-blue-50 text-blue-600 flex items-center justify-center text-[10px] font-bold shrink-0">
                             {idx + 1}
                           </span>
-                          <span className="text-xs text-gray-700">{term}</span>
+                          <span className="text-xs text-gray-700">{renderInlineSegments(String(term), `test-matrix-term-${idx}`)}</span>
                         </div>
                       ))}
                     </div>
@@ -548,7 +550,7 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
                           <span className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px] font-bold">
                             {String.fromCharCode(80 + idxA)}
                           </span>
-                          <span className="text-sm font-semibold text-gray-800">{itemA}</span>
+                          <span className="text-sm font-semibold text-gray-800">{renderInlineSegments(String(itemA), `test-matrix-item-${idxA}`)}</span>
                         </div>
                         <div className="flex flex-wrap gap-2">
                           {(currentQuestion as any).matrixData.column_b.map((_: any, idxB: number) => {
@@ -623,12 +625,12 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
           <div className="bg-gray-100 border-t border-gray-300 px-4 py-3 flex justify-between items-center">
             <div className="flex gap-2">
               <button
-                onClick={() => setCurrentQuestionIndex(Math.max(0, currentQuestionIndex - 1))}
+                onClick={() => navigateToQuestion(Math.max(0, currentQuestionIndex - 1))}
                 className="bg-white border border-gray-300 text-gray-700 px-4 py-1 text-xs font-bold rounded-sm shadow-sm hover:bg-gray-50 uppercase"
                 disabled={currentQuestionIndex === 0}
               >&lt;&lt; BACK</button>
               <button
-                onClick={() => setCurrentQuestionIndex(Math.min(test.totalQuestions - 1, currentQuestionIndex + 1))}
+                onClick={() => navigateToQuestion(Math.min(test.totalQuestions - 1, currentQuestionIndex + 1))}
                 className="bg-white border border-gray-300 text-gray-700 px-4 py-1 text-xs font-bold rounded-sm shadow-sm hover:bg-gray-50 uppercase"
               >NEXT &gt;&gt;</button>
             </div>
@@ -638,11 +640,11 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
         </div>
 
         {/* Right Area - Palette */}
-        <div className="w-[320px] lg:w-[350px] bg-card border-l border-border flex flex-col pt-4">
+        <div className="w-[320px] lg:w-[350px] bg-white flex flex-col pt-4">
 
           {/* Legend */}
-          <div className="px-4 pb-4 border-b border-border">
-            <div className="grid grid-cols-2 gap-y-3 gap-x-2 text-[10px] text-foreground font-semibold mb-4">
+          <div className="px-4 pb-4 border-b border-gray-200">
+            <div className="grid grid-cols-2 gap-y-3 gap-x-2 text-[10px] text-gray-700 font-semibold mb-4">
 
               <div className="flex items-center gap-1.5">
                 <div className="w-8 h-7 bg-gray-200 border border-gray-300 rounded-sm flex items-center justify-center font-bold text-gray-500 relative">
@@ -711,7 +713,7 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
                 }
 
                 return (
-                  <button onClick={() => setCurrentQuestionIndex(i)} key={i} className={shapeClass}>
+                  <button onClick={() => navigateToQuestion(i)} key={i} className={shapeClass}>
                     {innerContent}
                   </button>
                 );

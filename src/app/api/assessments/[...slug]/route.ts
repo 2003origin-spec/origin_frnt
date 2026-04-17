@@ -4,10 +4,12 @@ import { requireUserFromRequest } from "@/server/auth";
 import {
   type CustomTestPayload,
   createCustomTest,
+  getGeneratedDppDetail,
   getChallengeOfTheDay,
   getFocusAreas,
   getOgcodeLeaderboard,
   listOgcodeQuestions,
+  listGeneratedDpps,
   getOgcodeSubjectRanks,
   getOgcodeUserStats,
   getPracticeQuestionDetail,
@@ -17,6 +19,7 @@ import {
   listTestResults,
   listTests,
   type PracticeSubmissionPayload,
+  submitGeneratedDpp,
   submitPracticeQuestion,
   type TestSubmissionPayload,
   submitTest,
@@ -55,19 +58,27 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
   try {
     if (root === "tests" && !first) {
-      return ok(listTests(store, user));
+      return ok(await listTests(store, user));
     }
 
     if (root === "tests" && first && !second) {
-      return ok(getTestDetail(store, user, first));
+      return ok(await getTestDetail(store, user, first));
     }
 
     if (root === "tests" && first && second === "results") {
-      return ok(listTestResults(store, user, first));
+      return ok(await listTestResults(store, user, first));
     }
 
     if (root === "results" && first) {
-      return ok(getSingleResult(store, user, first));
+      return ok(await getSingleResult(store, user, first));
+    }
+
+    if (root === "dpps" && !first) {
+      return ok(await listGeneratedDpps(store, user));
+    }
+
+    if (root === "dpps" && first && !second) {
+      return ok(await getGeneratedDppDetail(store, user, first));
     }
 
     if (root === "practice" && !first) {
@@ -140,7 +151,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
   try {
     if (root === "tests" && first === "custom") {
       const body = await parseJsonBody<CustomTestPayload>(request);
-      const response = withStore((store) => {
+      const response = await withStoreAsync(async (store) => {
         const user = requireUserFromRequest(store, request);
         if (!user) {
           throw new Error("Authentication credentials were not provided.");
@@ -152,12 +163,24 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     if (root === "tests" && first && second === "submit") {
       const body = await parseJsonBody<TestSubmissionPayload>(request);
-      const response = withStore((store) => {
+      const response = await withStoreAsync(async (store) => {
         const user = requireUserFromRequest(store, request);
         if (!user) {
           throw new Error("Authentication credentials were not provided.");
         }
         return submitTest(store, user, first, body);
+      });
+      return created(response);
+    }
+
+    if (root === "dpps" && first && second === "submit") {
+      const body = await parseJsonBody<TestSubmissionPayload>(request);
+      const response = await withStoreAsync(async (store) => {
+        const user = requireUserFromRequest(store, request);
+        if (!user) {
+          throw new Error("Authentication credentials were not provided.");
+        }
+        return submitGeneratedDpp(store, user, first, body);
       });
       return created(response);
     }

@@ -44,7 +44,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user }: 
 
   const [showCustomModal, setShowCustomModal] = useState(false);
   const [customTestConfig, setCustomTestConfig] = useState({
-    subject: 'all',
+    subject: 'mixed',
     difficulty: 'medium',
     chapter: '',
     question_count: 10
@@ -103,6 +103,8 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user }: 
         return <Flame className="w-5 h-5" />;
       case 'mathematics':
         return <Calculator className="w-5 h-5" />;
+      case 'biology':
+        return <BookOpen className="w-5 h-5" />;
       default:
         return <BookOpen className="w-5 h-5" />;
     }
@@ -116,6 +118,8 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user }: 
         return 'bg-green-100 text-green-600';
       case 'mathematics':
         return 'bg-purple-100 text-purple-600';
+      case 'biology':
+        return 'bg-emerald-100 text-emerald-600';
       default:
         return 'bg-amber-100 text-amber-600';
     }
@@ -198,6 +202,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user }: 
                     <option value="physics">Physics</option>
                     <option value="chemistry">Chemistry</option>
                     <option value="mathematics">Mathematics</option>
+                    <option value="biology">Biology</option>
                     <option value="mixed">Mixed</option>
                   </select>
                   <select
@@ -328,10 +333,11 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user }: 
                 onChange={(e) => setCustomTestConfig({ ...customTestConfig, subject: e.target.value })}
                 className="w-full px-3 py-2 rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#3CACA3]"
               >
-                <option value="all">All Subjects (Mixed)</option>
+                <option value="mixed">All Subjects (Mixed)</option>
                 <option value="physics">Physics</option>
                 <option value="chemistry">Chemistry</option>
                 <option value="mathematics">Mathematics</option>
+                <option value="biology">Biology</option>
               </select>
             </div>
             <div className="space-y-2">
@@ -364,7 +370,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user }: 
               <Slider
                 value={[customTestConfig.question_count]}
                 onValueChange={(val) => setCustomTestConfig({ ...customTestConfig, question_count: val[0] })}
-                max={50}
+                max={30}
                 min={5}
                 step={5}
                 className="py-2"

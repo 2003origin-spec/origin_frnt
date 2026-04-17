@@ -53,6 +53,29 @@ const SUPERSCRIPT_DIGITS: Record<string, string> = {
   ')': '⁾',
   n: 'ⁿ',
   i: 'ⁱ',
+  r: 'ʳ',
+  x: 'ˣ',
+  y: 'ʸ',
+  z: 'ᶻ',
+  a: 'ᵃ',
+  b: 'ᵇ',
+  c: 'ᶜ',
+  d: 'ᵈ',
+  e: 'ᵉ',
+  f: 'ᶠ',
+  g: 'ᵍ',
+  h: 'ʰ',
+  j: 'ʲ',
+  k: 'ᵏ',
+  l: 'ˡ',
+  m: 'ᵐ',
+  o: 'ᵒ',
+  p: 'ᵖ',
+  s: 'ˢ',
+  t: 'ᵗ',
+  u: 'ᵘ',
+  v: 'ᵛ',
+  w: 'ʷ',
 };
 
 const SUBSCRIPT_DIGITS: Record<string, string> = {
@@ -72,6 +95,22 @@ const SUBSCRIPT_DIGITS: Record<string, string> = {
   '(': '₍',
   ')': '₎',
   e: 'ₑ',
+  a: 'ₐ',
+  h: 'ₕ',
+  i: 'ᵢ',
+  j: 'ⱼ',
+  k: 'ₖ',
+  l: 'ₗ',
+  m: 'ₘ',
+  n: 'ₙ',
+  o: 'ₒ',
+  p: 'ₚ',
+  r: 'ᵣ',
+  s: 'ₛ',
+  t: 'ₜ',
+  u: 'ᵤ',
+  v: 'ᵥ',
+  x: 'ₓ',
 };
 
 function mapDecoratedText(value: string, alphabet: Record<string, string>): string {
@@ -191,6 +230,13 @@ function replaceSquareRoots(value: string): string {
   return output;
 }
 
+function repairPlainMathCommands(value: string): string {
+  return value
+    .replace(/\bsqrt\s*\(/g, '√(')
+    .replace(/\blog_\{?e\}?/g, 'logₑ')
+    .replace(/\^\s*circ\b/g, '°');
+}
+
 export function formatMathExpression(input: string | null | undefined): string {
   let value = String(input ?? '').trim();
   if (!value) {
@@ -198,11 +244,11 @@ export function formatMathExpression(input: string | null | undefined): string {
   }
 
   value = decodeEscapedUnicode(value)
+    .replace(/\\\\([A-Za-z])/g, '\\$1')
     .replace(/\\left|\\right/g, '')
     .replace(/\\,/g, ' ')
     .replace(/\\;/g, ' ')
     .replace(/\\!/g, '')
-    .replace(/\\\\/g, ' ')
     .replace(/\$\$/g, '')
     .replace(/\$/g, '')
     .replace(/[\u2212\u2013\u2014]/g, '-');
@@ -214,7 +260,10 @@ export function formatMathExpression(input: string | null | undefined): string {
     .replace(/\\text\s*{([^{}]+)}/g, '$1')
     .replace(/\\operatorname\s*{([^{}]+)}/g, '$1')
     .replace(/\\log_\{?e\}?/g, 'logₑ')
-    .replace(/\^\s*\\circ\b/g, '°');
+    .replace(/\blog_e\b/g, 'logₑ')
+    .replace(/\bsqrt\s*\(/g, '√(')
+    .replace(/\^\s*\\circ\b/g, '°')
+    .replace(/\^\s*circ\b/g, '°');
 
   Object.entries(LATEX_COMMAND_MAP).forEach(([command, symbol]) => {
     value = value.replace(new RegExp(`\\\\${command}\\b`, 'g'), symbol);
@@ -237,7 +286,7 @@ export function formatMathExpression(input: string | null | undefined): string {
     .replace(/\s+\)/g, ')')
     .trim();
 
-  return value;
+  return repairPlainMathCommands(value);
 }
 
 export function hasMathMarkup(value: string | null | undefined): boolean {
@@ -273,7 +322,13 @@ function isEquationHeavyLine(value: string): boolean {
     || (startsLikeEquation && latexSignalCount >= 1);
 }
 
-export function renderInlineSegments(value: string, keyPrefix: string): ReactNode[] {
+type InlineMathVariant = 'chip' | 'plain';
+
+export function renderInlineSegments(
+  value: string,
+  keyPrefix: string,
+  variant: InlineMathVariant = 'chip',
+): ReactNode[] {
   const content = value.replace(/\*\*/g, '').trim();
   if (!content) {
     return [];
@@ -300,7 +355,11 @@ export function renderInlineSegments(value: string, keyPrefix: string): ReactNod
     nodes.push(
       <span
         key={`${keyPrefix}-math-${segmentIndex}`}
-        className="inline-flex rounded-md border border-blue-500/20 bg-blue-500/10 px-2 py-0.5 font-mono text-[0.95em] text-blue-100"
+        className={
+          variant === 'plain'
+            ? 'inline font-mono text-[0.98em] text-current'
+            : 'inline-flex rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 font-mono text-[0.95em] text-blue-700 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-100'
+        }
       >
         {formatMathExpression(mathContent)}
       </span>,
