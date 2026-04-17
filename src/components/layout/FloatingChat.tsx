@@ -57,7 +57,7 @@ export default function FloatingChat() {
             exit={{ opacity: 0, scale: 0.92, y: 8 }}
             transition={{ duration: 0.16 }}
             onClick={() => openOriginAi({ autoAskSelection: true })}
-            className="fixed z-[70] flex items-center gap-1.5 rounded-full border border-indigo-400/15 bg-slate-950/96 px-2 py-1.5 text-white shadow-[0_10px_24px_rgba(2,6,23,0.36)] backdrop-blur-md"
+            className="fixed z-[70] flex items-center gap-1.5 rounded-full border border-indigo-500/20 bg-background/90 px-2 py-1.5 text-foreground shadow-xl backdrop-blur-md transition-colors"
             style={{
               top: `${selectionActionStyle.top}px`,
               left: `${selectionActionStyle.left}px`,

@@ -24,7 +24,7 @@ const FormattedText = ({ text }: { text: string }) => {
     <span className="relative">
       {parts.map((part, i) => {
         if (part.startsWith('**') && part.endsWith('**')) {
-          return <strong key={i} className="text-white font-bold">{part.slice(2, -2)}</strong>;
+          return <strong key={i} className="text-foreground dark:text-white font-bold">{part.slice(2, -2)}</strong>;
         }
         return part;
       })}
@@ -220,17 +220,17 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
   const lastMentorSession = sessions[0];
 
   return (
-    <div className="h-screen w-full bg-[#060D1A] text-white flex flex-col font-sans relative overflow-hidden">
+    <div className="h-screen w-full bg-background text-foreground flex flex-col font-sans relative overflow-hidden transition-colors duration-300">
       {/* Background Decor */}
       <div className="absolute inset-0 z-0 pointer-events-none opacity-40"
         style={{
-          backgroundImage: `radial-gradient(circle at 80% 30%, rgba(29, 78, 216, 0.3) 0%, transparent 40%),
-                           radial-gradient(circle at 20% 70%, rgba(56, 189, 248, 0.15) 0%, transparent 40%)`
+          backgroundImage: `radial-gradient(circle at 80% 30%, rgba(29, 78, 216, 0.15) 0%, transparent 40%),
+                           radial-gradient(circle at 20% 70%, rgba(56, 189, 248, 0.1) 0%, transparent 40%)`
         }}>
       </div>
 
       {/* Fixed Header */}
-      <header className="relative z-30 flex items-center justify-between px-6 py-4 border-b border-white/10 bg-[#0A1128]/90 backdrop-blur-lg flex-shrink-0">
+      <header className="relative z-30 flex items-center justify-between px-6 py-4 border-b border-border/40 bg-card/60 backdrop-blur-xl flex-shrink-0">
         <div className="flex items-center gap-4">
           <button
             onClick={() => {
@@ -257,7 +257,7 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
           )}
 
           <div className="relative">
-            <div className="w-10 h-10 rounded-full bg-blue-600/20 border border-blue-500/50 flex items-center justify-center shadow-lg overflow-hidden">
+            <div className="w-10 h-10 rounded-full bg-blue-600/10 border border-blue-500/20 flex items-center justify-center shadow-lg overflow-hidden">
               <img src="/ai-bot.png" alt="AI" className="w-full h-full object-cover" />
             </div>
           </div>
@@ -273,7 +273,7 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
                     if (e.key === 'Escape') setIsEditingTitle(false);
                   }}
                   onBlur={() => handleUpdateTitle()}
-                  className="bg-white/5 border border-blue-500/30 rounded px-2 py-0.5 text-sm text-white focus:outline-none focus:border-blue-500 w-40"
+                  className="bg-muted border border-blue-500/30 rounded px-2 py-0.5 text-sm text-foreground focus:outline-none focus:border-blue-500 w-40"
                 />
               </div>
             ) : (
@@ -281,15 +281,15 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
                 className={`flex items-center gap-2 ${activeSession ? 'cursor-pointer group' : ''}`}
                 onClick={() => activeSession && setIsEditingTitle(true)}
               >
-                <h1 className="text-xl font-bold text-white tracking-wide leading-none">
+                <h1 className="text-xl font-bold text-foreground tracking-wide leading-none">
                   {viewMode === 'chat' && activeSession ? activeSession.title : 'AI Explainer'}
                 </h1>
                 {activeSession && (
-                  <Sparkles className="w-3 h-3 text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <Sparkles className="w-3 h-3 text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity" />
                 )}
               </div>
             )}
-            <p className="text-[10px] text-blue-400/80 font-bold uppercase tracking-widest mt-1">24/7 Academic Mentor</p>
+            <p className="text-[10px] text-blue-500 font-bold uppercase tracking-widest mt-1">24/7 Academic Mentor</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -321,21 +321,21 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
                   animate={{ width: 288, opacity: 1 }}
                   exit={{ width: 0, opacity: 0 }}
                   transition={{ duration: 0.3, ease: "easeInOut" }}
-                  className="hidden lg:flex flex-col border-r border-white/5 bg-[#060D1A]/50 overflow-hidden"
+                  className="hidden lg:flex flex-col border-r border-border/40 bg-card/30 overflow-hidden"
                 >
                   <div className="p-6 flex flex-col h-full">
                     <div className="flex items-center gap-3 mb-6 px-2">
-                      <h3 className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] flex-1">Recent Sessions</h3>
+                      <h3 className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em] flex-1">Recent Sessions</h3>
                       <button
                         onClick={() => setIsSidebarOpen(false)}
-                        className="p-1.5 rounded-lg text-slate-400 hover:bg-white/10 transition-all outline-none"
+                        className="p-1.5 rounded-lg text-muted-foreground hover:bg-muted transition-all outline-none"
                         title="Hide Sidebar"
                       >
                         <PanelLeftClose className="w-4 h-4" />
                       </button>
                       <button
                         onClick={() => createNewSession("New Physics Session", "Physics")}
-                        className="p-1.5 rounded-lg bg-blue-600/10 text-blue-400 hover:bg-blue-600/20 transition-all"
+                        className="p-1.5 rounded-lg bg-blue-500/10 text-blue-500 hover:bg-blue-500/20 transition-all"
                         title="New Chat"
                       >
                         <Plus className="w-4 h-4" />
@@ -353,7 +353,7 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
                             setEditingSidebarId(s.id);
                             setSidebarEditValue(s.title);
                           }}
-                          className={`w-full p-4 rounded-2xl transition-all text-left group cursor-pointer ${activeSession?.id === s.id ? 'bg-blue-600/10 border-blue-500/40 shadow-lg' : 'bg-white/[0.03] border border-white/5 hover:border-blue-500/30'}`}
+                          className={`w-full p-4 rounded-2xl transition-all text-left group cursor-pointer ${activeSession?.id === s.id ? 'bg-blue-500/10 border-blue-500/30 shadow-lg shadow-blue-500/5' : 'bg-background/40 border border-border/50 hover:border-blue-500/30'}`}
                           role="button"
                           tabIndex={0}
                         >
@@ -382,8 +382,8 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
                             />
                           ) : (
                             <>
-                              <p className={`text-sm font-semibold truncate ${activeSession?.id === s.id ? 'text-blue-400' : 'text-slate-300 group-hover:text-white'}`}>{s.title}</p>
-                              <p className="text-[10px] text-slate-500 mt-1">{new Date(s.updatedAt || s.createdAt).toLocaleDateString()}</p>
+                              <p className={`text-sm font-semibold truncate ${activeSession?.id === s.id ? 'text-blue-500' : 'text-muted-foreground group-hover:text-foreground'}`}>{s.title}</p>
+                              <p className="text-[10px] text-muted-foreground/60 mt-1">{new Date(s.updatedAt || s.createdAt).toLocaleDateString()}</p>
                             </>
                           )}
                         </div>
@@ -409,9 +409,9 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
                 </div>
 
                 {/* Fixed Bottom Input Bar */}
-                <div className="p-6 bg-gradient-to-t from-[#060D1A] via-[#060D1A] to-transparent flex-shrink-0">
+                <div className="p-6 bg-gradient-to-t from-background via-background to-transparent flex-shrink-0">
                   <div className="max-w-4xl mx-auto">
-                    <div className={`bg-[#0A1A3B]/80 backdrop-blur-2xl border ${isRecording ? 'border-red-500/40 shadow-red-500/10' : 'border-white/10 shadow-2xl'} rounded-[28px] p-2 flex items-end gap-2 transition-all`}>
+                    <div className={`bg-card/80 backdrop-blur-2xl border ${isRecording ? 'border-red-500/40 shadow-red-500/10' : 'border-border/60 shadow-2xl'} rounded-[28px] p-2 flex items-end gap-2 transition-all`}>
                       {!isRecording ? (
                         <>
                           <button onClick={() => toast.info("Coming soon, we are working on it")} className="p-3 text-slate-400 hover:text-white transition-colors">
@@ -586,23 +586,23 @@ function SelectionView({ onCreate, onUpload, sessions, onSelectSession, lastSess
 
   return (
     <div className="w-full max-w-5xl mx-auto px-6 py-12 overflow-y-auto custom-scrollbar">
-      <div className="relative p-10 rounded-[40px] bg-gradient-to-br from-blue-600/20 to-indigo-600/5 border border-white/10 mb-12 overflow-hidden group">
-        <Sparkles className="absolute top-6 right-8 w-12 h-12 text-blue-500/20 group-hover:rotate-12 transition-transform duration-700" />
-        <h2 className="text-4xl font-bold text-white mb-4 leading-tight">Master your subjects<br />with AI precision.</h2>
-        <p className="text-slate-400 text-lg max-w-xl mb-8 leading-relaxed">Stuck on a problem at 2 AM? Get step-by-step guidance and conceptual deep-dives instantly.</p>
+      <div className="relative p-10 rounded-[40px] bg-gradient-to-br from-blue-600/10 to-indigo-600/5 border border-border/60 mb-12 overflow-hidden group shadow-xl">
+        <Sparkles className="absolute top-6 right-8 w-12 h-12 text-blue-500/10 group-hover:rotate-12 transition-transform duration-700" />
+        <h2 className="text-4xl font-bold text-foreground mb-4 leading-tight">Master your subjects<br />with AI precision.</h2>
+        <p className="text-muted-foreground text-lg max-w-xl mb-8 leading-relaxed">Stuck on a problem at 2 AM? Get step-by-step guidance and conceptual deep-dives instantly.</p>
         <div className="flex flex-wrap gap-4">
-          <button onClick={() => onCreate('New Physics Session', 'Physics')} className="px-8 py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-bold transition-all shadow-xl shadow-blue-600/30 flex items-center gap-2">
+          <button onClick={() => onCreate('New Physics Session', 'Physics')} className="px-8 py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-bold transition-all shadow-xl shadow-blue-600/20 flex items-center gap-2">
             <Plus className="w-5 h-5" /> Start New Chat
           </button>
           {lastSession && (
             <button
               onClick={() => onSelectSession(lastSession)}
-              className="px-8 py-4 bg-blue-600/10 hover:bg-blue-600/20 border border-blue-500/30 text-blue-400 rounded-2xl font-bold transition-all flex items-center gap-2"
+              className="px-8 py-4 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 text-blue-500 rounded-2xl font-bold transition-all flex items-center gap-2"
             >
               Continue last chat
             </button>
           )}
-          <button onClick={onUpload} className="px-8 py-4 bg-white/5 hover:bg-white/10 border border-white/10 text-white rounded-2xl font-bold transition-all flex items-center gap-2">
+          <button onClick={onUpload} className="px-8 py-4 bg-muted hover:bg-muted/80 border border-border/60 text-foreground rounded-2xl font-bold transition-all flex items-center gap-2 shadow-sm">
             <ImagePlus className="w-5 h-5" /> Scan Problem
           </button>
         </div>
@@ -616,14 +616,14 @@ function SelectionView({ onCreate, onUpload, sessions, onSelectSession, lastSess
               <button
                 key={topic.name}
                 onClick={() => onCreate(`${topic.name} Doubt Session`, topic.name)}
-                className="p-6 rounded-[28px] bg-white/[0.03] border border-white/5 hover:border-blue-500/30 transition-all group flex items-center gap-6"
+                className="p-6 rounded-[28px] bg-card/40 border border-border/50 hover:border-blue-500/30 transition-all group flex items-center gap-6 shadow-sm hover:shadow-md"
               >
-                <div className="w-14 h-14 rounded-2xl bg-[#0f172a] border border-white/10 flex items-center justify-center group-hover:scale-110 transition-transform">
+                <div className="w-14 h-14 rounded-2xl bg-muted border border-border/50 flex items-center justify-center group-hover:scale-110 transition-transform shadow-inner">
                   <topic.icon className={`w-7 h-7 ${topic.color}`} />
                 </div>
                 <div>
-                  <p className="text-lg font-bold text-white mb-0.5">{topic.name}</p>
-                  <p className="text-xs text-slate-500">{topic.desc}</p>
+                  <p className="text-lg font-bold text-foreground mb-0.5">{topic.name}</p>
+                  <p className="text-xs text-muted-foreground">{topic.desc}</p>
                 </div>
               </button>
             ))}
@@ -641,7 +641,7 @@ function SelectionView({ onCreate, onUpload, sessions, onSelectSession, lastSess
                   e.preventDefault();
                   handleStartEdit(e, s);
                 }}
-                className="w-full p-5 rounded-[28px] bg-white/[0.02] border border-white/5 hover:bg-white/5 transition-all text-left flex items-center justify-between group cursor-pointer"
+                className="w-full p-5 rounded-[28px] bg-card/30 border border-border/50 hover:bg-card/50 transition-all text-left flex items-center justify-between group cursor-pointer shadow-sm hover:shadow-md"
                 role="button"
                 tabIndex={0}
               >
@@ -666,15 +666,15 @@ function SelectionView({ onCreate, onUpload, sessions, onSelectSession, lastSess
                     ) : (
                       <>
                         <div className="flex items-center gap-2 group/title">
-                          <p className="text-sm font-bold text-slate-200 group-hover:text-white transition-colors truncate">{s.title}</p>
+                          <p className="text-sm font-bold text-foreground/80 group-hover:text-foreground transition-colors truncate">{s.title}</p>
                           <span
                             onClick={(e) => handleStartEdit(e, s)}
-                            className="opacity-0 group-hover/title:opacity-100 p-1 rounded hover:bg-white/10 transition-all cursor-pointer"
+                            className="opacity-0 group-hover/title:opacity-100 p-1 rounded hover:bg-muted transition-all cursor-pointer"
                           >
-                            <Sparkles className="w-3 h-3 text-blue-400" />
+                            <Sparkles className="w-3 h-3 text-blue-500" />
                           </span>
                         </div>
-                        <p className="text-[10px] text-slate-500 mt-0.5">{new Date(s.updatedAt || s.createdAt).toLocaleDateString()}</p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">{new Date(s.updatedAt || s.createdAt).toLocaleDateString()}</p>
                       </>
                     )}
                   </div>
@@ -744,7 +744,7 @@ function ChatMessage({ message }: { message: ChatMessageType }) {
           </div>
         )}
         <div className={`p-5 rounded-[28px] text-[15px] leading-relaxed shadow-xl ${isAI
-          ? 'bg-white/[0.04] border border-white/5 text-slate-200 rounded-tl-none'
+          ? 'bg-card/60 backdrop-blur-md border border-border/60 text-foreground rounded-tl-none'
           : 'bg-blue-600 text-white border border-blue-400/30 rounded-tr-none shadow-blue-600/20'
           }`}>
           {message.image && (

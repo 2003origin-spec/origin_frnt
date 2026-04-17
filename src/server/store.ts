@@ -998,6 +998,15 @@ function ensureOriginAiCollections(store: AppStore): boolean {
   return changed;
 }
 
+function ensureSubjectActivitiesCollection(store: AppStore): boolean {
+  let changed = false;
+  if (!Array.isArray((store as Partial<AppStore>).dailySubjectActivities)) {
+    store.dailySubjectActivities = [];
+    changed = true;
+  }
+  return changed;
+}
+
 function ensureStoreFile(): void {
   if (!fs.existsSync(STORE_DIR)) {
     fs.mkdirSync(STORE_DIR, { recursive: true });
@@ -1010,7 +1019,10 @@ function ensureStoreFile(): void {
 export function readStore(): AppStore {
   ensureStoreFile();
   const store = JSON.parse(fs.readFileSync(STORE_PATH, "utf8")) as AppStore;
-  const changed = ensureSeedUsers(store) || ensureOriginAiCollections(store);
+  const changed = 
+    ensureSeedUsers(store) || 
+    ensureOriginAiCollections(store) || 
+    ensureSubjectActivitiesCollection(store);
   if (changed) {
     fs.writeFileSync(STORE_PATH, JSON.stringify(store, null, 2), "utf8");
   }

@@ -344,20 +344,20 @@ export default function OriginAiMentor({
   const voiceStatusText = describeVoiceStatus(voiceStatus);
 
   const shellClassName = compact
-    ? 'flex h-full flex-col overflow-hidden rounded-[28px] border border-white/10 bg-[#07111f] text-white shadow-2xl'
-    : 'flex h-full min-h-[calc(100vh-7rem)] flex-col overflow-hidden rounded-[32px] border border-white/10 bg-[#07111f] text-white shadow-[0_25px_80px_rgba(2,6,23,0.45)]';
+    ? 'flex h-full flex-col overflow-hidden rounded-[28px] border border-border/40 bg-card text-foreground shadow-2xl transition-colors'
+    : 'flex h-full min-h-[calc(100vh-7rem)] flex-col overflow-hidden rounded-[32px] border border-border/40 bg-card text-foreground shadow-[0_25px_80px_rgba(2,6,23,0.15)] transition-colors';
 
   if (compact) {
     return (
       <div className={shellClassName} data-origin-ai-root="true">
-        <div className="flex items-center justify-between border-b border-white/10 bg-indigo-900/30 px-4 py-3">
+        <div className="flex items-center justify-between border-b border-border/40 bg-indigo-500/10 px-4 py-3">
           <div className="flex min-w-0 items-center gap-3">
-            <div className="relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-white/20 bg-white/10 p-1">
+            <div className="relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-border/20 bg-muted p-1">
               <img src="/Dipraj-ChatBot.png" alt="Origin AI" className="h-full w-full object-contain drop-shadow-md" />
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <h2 className="text-base font-semibold text-white">Origin AI</h2>
+                <h2 className="text-base font-semibold text-foreground">Origin AI</h2>
                 <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.25em] text-emerald-300">
                   online
                 </span>
@@ -379,7 +379,7 @@ export default function OriginAiMentor({
           ) : null}
         </div>
 
-        <div className="shrink-0 space-y-2 border-b border-white/10 px-4 py-3">
+        <div className="shrink-0 space-y-2 border-b border-border/40 px-4 py-3">
           {snapshot ? <PolicyBadge snapshot={snapshot} /> : null}
           {snapshot ? (
             <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
@@ -426,7 +426,7 @@ export default function OriginAiMentor({
           <div ref={scrollAnchorRef} />
         </div>
 
-        <div className="shrink-0 border-t border-white/10 bg-[#07111f] px-3 py-3">
+        <div className="shrink-0 border-t border-border/40 bg-card/40 px-3 py-3">
           {isVoiceActive ? (
             <div className="mb-3 rounded-2xl border border-blue-400/20 bg-blue-500/10 px-3 py-2.5 text-xs text-slate-200">
               <div className="flex items-center justify-between gap-3">
@@ -477,16 +477,16 @@ export default function OriginAiMentor({
                       ? 'Ask for a hint or a concept nudge...'
                       : 'Ask Origin AI anything about your studies...'
               }
-              className="no-scrollbar min-w-0 flex-1 resize-none rounded-3xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm leading-6 text-white outline-none transition focus:border-blue-400/40 focus:bg-white/[0.05]"
+              className="no-scrollbar min-w-0 flex-1 resize-none rounded-3xl border border-border/40 bg-muted/40 px-4 py-3 text-sm leading-6 text-foreground outline-none transition focus:border-blue-500/40 focus:bg-muted/60"
             />
             <Button
               type="button"
               onClick={() => void handleToggleVoice()}
               className={cn(
-                'h-12 w-12 shrink-0 rounded-3xl px-0 py-0 text-white',
+                'h-12 w-12 shrink-0 rounded-3xl px-0 py-0 text-foreground transition-colors',
                 isVoiceActive
-                  ? 'border border-rose-400/40 bg-rose-500/20 hover:bg-rose-500/30'
-                  : 'border border-white/10 bg-white/[0.03] hover:bg-white/10',
+                  ? 'border border-rose-500/40 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400'
+                  : 'border border-border/40 bg-muted/40 hover:bg-muted/80',
               )}
             >
               {voiceStatus === 'bootstrapping' || voiceStatus === 'connecting' ? (
@@ -511,16 +511,15 @@ export default function OriginAiMentor({
     );
   }
 
-  return (
-    <div className={shellClassName} data-origin-ai-root="true">
-      <div className={cn('flex items-center justify-between border-b border-white/10 bg-indigo-900/30', compact ? 'px-4 py-3' : 'px-5 py-4')}>
+  return <div className={shellClassName} data-origin-ai-root="true">
+      <div className={cn('flex items-center justify-between border-b border-border/40 bg-indigo-500/10', compact ? 'px-4 py-3' : 'px-5 py-4')}>
         <div className="flex items-center gap-3">
-          <div className={cn('relative flex items-center justify-center overflow-hidden rounded-full border border-white/20 bg-white/10 p-1', compact ? 'h-10 w-10' : 'h-11 w-11')}>
+          <div className={cn('relative flex items-center justify-center overflow-hidden rounded-full border border-border/20 bg-muted p-1', compact ? 'h-10 w-10' : 'h-11 w-11')}>
             <img src="/Dipraj-ChatBot.png" alt="Origin AI" className="h-full w-full object-contain drop-shadow-md" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-base font-semibold text-white">Origin AI</h2>
+              <h2 className="text-base font-semibold text-foreground">Origin AI</h2>
               <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.25em] text-emerald-300">
                 online
               </span>
@@ -546,7 +545,7 @@ export default function OriginAiMentor({
               type="button"
               variant="ghost"
               onClick={onClose}
-              className="text-slate-300 hover:bg-white/10 hover:text-white"
+              className="text-muted-foreground hover:bg-muted hover:text-foreground"
             >
               Close
             </Button>
@@ -556,7 +555,7 @@ export default function OriginAiMentor({
 
       <div className={cn('grid flex-1 gap-0', compact ? 'grid-cols-1' : 'grid-cols-1 xl:grid-cols-[1.4fr_0.9fr]')}>
         <div className="flex min-h-0 flex-col">
-          <div className={cn('space-y-3 border-b border-white/10', compact ? 'px-4 py-3' : 'px-5 py-4')}>
+          <div className={cn('space-y-3 border-b border-border/40', compact ? 'px-4 py-3' : 'px-5 py-4')}>
             {snapshot ? <PolicyBadge snapshot={snapshot} /> : null}
             {snapshot ? (
               <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
@@ -645,7 +644,7 @@ export default function OriginAiMentor({
             </ScrollArea>
           )}
 
-          <div className={cn('border-t border-white/10', compact ? 'px-3 py-3' : 'px-5 py-4')}>
+          <div className={cn('border-t border-border/40', compact ? 'px-3 py-3' : 'px-5 py-4')}>
             {isVoiceActive ? (
               <div className="mb-3 rounded-2xl border border-blue-400/20 bg-blue-500/10 px-3 py-2.5 text-xs text-slate-200">
                 <div className="flex items-center justify-between gap-3">
@@ -697,7 +696,7 @@ export default function OriginAiMentor({
                         : 'Ask Origin AI anything about your studies...'
                 }
                 className={cn(
-                  'flex-1 resize-none rounded-3xl border border-white/10 bg-white/[0.03] px-4 text-sm text-white outline-none transition focus:border-blue-400/40 focus:bg-white/[0.05]',
+                  'flex-1 resize-none rounded-3xl border border-border/40 bg-muted/40 px-4 text-sm text-foreground outline-none transition focus:border-blue-500/40 focus:bg-muted/60',
                   compact ? 'min-h-[48px] max-h-24 py-3 leading-6' : 'min-h-[56px] py-3',
                 )}
               />
@@ -705,10 +704,10 @@ export default function OriginAiMentor({
                 type="button"
                 onClick={() => void handleToggleVoice()}
                 className={cn(
-                  'rounded-3xl text-white',
+                  'rounded-3xl text-foreground transition-colors',
                   isVoiceActive
-                    ? 'border border-rose-400/40 bg-rose-500/20 hover:bg-rose-500/30'
-                    : 'border border-white/10 bg-white/[0.03] hover:bg-white/10',
+                    ? 'border border-rose-500/40 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400'
+                    : 'border border-border/40 bg-muted/40 hover:bg-muted/80',
                   compact ? 'h-12 w-12 shrink-0 px-0 py-0' : 'h-auto px-4 py-3',
                 )}
               >
@@ -743,10 +742,10 @@ export default function OriginAiMentor({
         </div>
 
         {!compact && snapshot ? (
-          <aside className="border-t border-white/10 px-5 py-5 xl:border-t-0 xl:border-l">
+          <aside className="border-t border-border/40 px-5 py-5 xl:border-t-0 xl:border-l xl:border-border/40">
             <div className="space-y-5">
-              <div className="rounded-[28px] border border-white/10 bg-white/[0.04] p-4">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.3em] text-blue-300">
+              <div className="rounded-[28px] border border-border/40 bg-muted/30 p-4 shadow-sm">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.3em] text-blue-500">
                   Mentor Memory
                 </div>
                 <h3 className="mt-3 text-lg font-semibold text-white">
@@ -766,7 +765,7 @@ export default function OriginAiMentor({
               </div>
 
               <div>
-                <div className="mb-3 text-[10px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+                <div className="mb-3 text-[10px] font-semibold uppercase tracking-[0.3em] text-muted-foreground">
                   Live Reminders
                 </div>
                 <ReminderCards snapshot={snapshot} />
