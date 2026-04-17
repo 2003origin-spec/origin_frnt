@@ -18,6 +18,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { dppQuestions } from '@/data/mockData';
+import { renderFormattedExplanation, renderInlineSegments, renderQuestionText } from '@/lib/math-text';
 import type { User } from '@/types';
 
 interface DPPViewProps {
@@ -193,9 +194,9 @@ export default function DPPView({ onBack }: DPPViewProps) {
                   </div>
 
                   {/* Question */}
-                  <h2 className="text-xl font-medium text-slate-900 dark:text-white mb-6 leading-relaxed">
-                    {currentQuestion.text}
-                  </h2>
+                  <div className="text-xl font-medium text-slate-900 dark:text-white mb-6 leading-relaxed">
+                    {renderQuestionText(currentQuestion.text, 'dpp-question')}
+                  </div>
 
                   {/* Options */}
                   <div className="space-y-3 mb-6">
@@ -240,7 +241,7 @@ export default function DPPView({ onBack }: DPPViewProps) {
                               ? 'text-red-700 dark:text-red-400'
                               : 'text-slate-700 dark:text-slate-300'
                             }`}>
-                            {option}
+                            {renderInlineSegments(String(option), `dpp-option-${index}`)}
                           </span>
                         </div>
                       </button>
@@ -254,9 +255,9 @@ export default function DPPView({ onBack }: DPPViewProps) {
                         <Lightbulb className="w-5 h-5 text-[#3CACA3]" />
                         Explanation
                       </h4>
-                      <p className="text-slate-700 dark:text-slate-300 leading-relaxed">
-                        {currentQuestion.explanation}
-                      </p>
+                      <div className="text-slate-700 dark:text-slate-300 leading-relaxed">
+                        {renderFormattedExplanation(currentQuestion.explanation)}
+                      </div>
                       <div className="mt-4 pt-4 border-t border-[#3CACA3]/20">
                         <p className="text-sm text-slate-600 dark:text-slate-400">
                           <strong className="text-slate-900 dark:text-white">Concept:</strong> {currentQuestion.concept}

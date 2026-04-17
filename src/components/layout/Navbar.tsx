@@ -21,7 +21,9 @@ import {
     Target,
     ChevronRight,
     Trophy,
-    ArrowRight
+    ArrowRight,
+    Menu,
+    X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { User, ViewState } from '@/types';
@@ -38,6 +40,7 @@ interface NavbarProps {
 export default function Navbar({ user, currentView, onNavigate, onLogout, theme, setTheme }: NavbarProps) {
     const [showProfileMenu, setShowProfileMenu] = useState(false);
     const [showExploreMenu, setShowExploreMenu] = useState(false);
+    const [showMobileMenu, setShowMobileMenu] = useState(false);
     const [hoveredTab, setHoveredTab] = useState<string | null>(null);
     const profileMenuRef = useRef<HTMLDivElement>(null);
     const exploreMenuRef = useRef<HTMLDivElement>(null);
@@ -69,26 +72,30 @@ export default function Navbar({ user, currentView, onNavigate, onLogout, theme,
 
     return (
         <div
-            className={`fixed ${theme === 'dark'
-                    ? 'bg-zinc-950/80 border-zinc-800/50 shadow-[0_8px_32px_rgba(0,0,0,0.5)]'
-                    : 'bg-white/80 border-slate-200/50 shadow-[0_8px_32px_rgba(148,163,184,0.15)]'
-                } top-6 left-0 right-0 mx-auto z-50 backdrop-blur-xl border rounded-[2rem] pointer-events-auto max-w-7xl w-[95%] transition-all duration-300`}
+            className="fixed top-6 left-0 right-0 mx-auto z-50 bg-white/70 dark:bg-slate-950/70 backdrop-blur-[16px] border border-slate-200/50 dark:border-white/10 text-slate-700 dark:text-slate-300 shadow-xl shadow-slate-200/50 dark:shadow-2xl rounded-[2rem] pointer-events-auto max-w-7xl w-[95%] transition-all duration-300"
         >
+
             <div className="w-full h-full flex items-center">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
                     <div className="flex items-center justify-between h-16 w-full">
 
                         {/* Logo */}
                         <div className="flex items-center gap-3">
+                            <button
+                                onClick={() => setShowMobileMenu(!showMobileMenu)}
+                                className="md:hidden p-2 text-slate-700 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-all bg-slate-100 dark:bg-white/5 rounded-full mr-1"
+                            >
+                                {showMobileMenu ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+                            </button>
                             <img
                                 src={user.role?.toLowerCase() === 'student' ? '/origin-new.jpg' : '/O3-Origin-Logo.png'}
                                 alt="ORIGIN"
-                                className="h-9 w-auto cursor-pointer"
+                                className="h-9 w-auto cursor-pointer rounded-lg"
                                 onClick={() => onNavigate('dashboard')}
                             />
                             <div className="hidden md:block h-6 w-[1px] bg-slate-200 dark:bg-slate-800 mx-2" />
                             {navItems.length > 0 && (
-                                <nav className="hidden md:flex items-center gap-1 relative px-1 py-1 bg-black/5 dark:bg-white/5 rounded-xl border border-black/5 dark:border-white/5">
+                                <nav className="hidden md:flex items-center gap-1 relative px-1 py-1 bg-slate-100/50 dark:bg-white/5 rounded-xl border border-slate-200/50 dark:border-white/5">
                                     {navItems.map((item) => {
                                         const isActive = currentView === item.view ||
                                             (item.view === 'ogcode' && currentView === 'ogcode-workspace');
@@ -109,19 +116,32 @@ export default function Navbar({ user, currentView, onNavigate, onLogout, theme,
                                             >
                                                 <button
                                                     onClick={() => onNavigate(item.view)}
-                                                    className={`relative px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-300 flex items-center gap-2 group z-10 ${isActive
-                                                        ? 'text-blue-600 dark:text-blue-400'
-                                                        : 'text-slate-600 dark:text-slate-400 hover:text-black dark:hover:text-white'
+                                                    className={`relative px-4 py-2 rounded-lg text-sm font-bold transition-all duration-300 flex items-center gap-2 group z-10 ${isActive
+                                                        ? 'text-[#334155] dark:text-white'
+                                                        : 'text-slate-500 dark:text-slate-400 hover:text-[#334155] dark:hover:text-white'
                                                         }`}
                                                 >
                                                     {typeof Icon === 'function' ? <Icon /> : <Icon className={`w-4 h-4 transition-transform duration-300 ${isActive ? 'scale-110' : 'group-hover:scale-110'}`} />}
                                                     {item.label}
                                                 </button>
 
-                                                {(hoveredTab === item.label) && (
+                                                {isActive && (
                                                     <motion.div
                                                         layoutId="nav-pill"
-                                                        className="absolute inset-0 bg-white dark:bg-zinc-800 shadow-sm rounded-lg z-0"
+                                                        className="absolute inset-0 bg-[#F1F5F9] dark:bg-blue-900/20 shadow-sm rounded-lg z-0"
+                                                        initial={false}
+                                                        transition={{
+                                                            type: "spring",
+                                                            stiffness: 500,
+                                                            damping: 35
+                                                        }}
+                                                    />
+                                                )}
+
+                                                {(hoveredTab === item.label && !isActive) && (
+                                                    <motion.div
+                                                        layoutId="nav-pill-hover"
+                                                        className="absolute inset-0 bg-slate-50 dark:bg-zinc-800 shadow-sm rounded-lg z-0"
                                                         initial={false}
                                                         transition={{
                                                             type: "spring",
@@ -216,7 +236,7 @@ export default function Navbar({ user, currentView, onNavigate, onLogout, theme,
                                 whileHover={{ scale: 1.1, rotate: 15 }}
                                 whileTap={{ scale: 0.9 }}
                                 onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-                                className="p-2 text-slate-500 hover:text-blue-500 dark:hover:text-blue-400 transition-colors bg-black/5 dark:bg-white/5 rounded-full"
+                                className={`p-2 transition-colors rounded-full ${theme === 'light' ? 'text-[#334155] bg-slate-100' : 'text-slate-400 hover:text-amber-500 bg-white/5'}`}
                             >
                                 {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
                             </motion.button>
@@ -224,7 +244,7 @@ export default function Navbar({ user, currentView, onNavigate, onLogout, theme,
                             <motion.button 
                                 whileHover={{ scale: 1.1 }}
                                 whileTap={{ scale: 0.9 }}
-                                className="p-2 text-slate-500 hover:text-blue-500 dark:hover:text-blue-400 transition-colors bg-black/5 dark:bg-white/5 rounded-full"
+                                className="p-2 text-slate-500 dark:text-slate-400 hover:text-[#334155] dark:hover:text-white transition-colors bg-slate-100/50 dark:bg-white/5 rounded-full"
                             >
                                 <Search className="w-4 h-4" />
                             </motion.button>
@@ -232,7 +252,7 @@ export default function Navbar({ user, currentView, onNavigate, onLogout, theme,
                             <motion.button 
                                 whileHover={{ scale: 1.1 }}
                                 whileTap={{ scale: 0.9 }}
-                                className="p-2 text-slate-500 hover:text-blue-500 dark:hover:text-blue-400 transition-colors relative bg-black/5 dark:bg-white/5 rounded-full"
+                                className="p-2 text-slate-500 dark:text-slate-400 hover:text-[#334155] dark:hover:text-white transition-colors relative bg-slate-100/50 dark:bg-white/5 rounded-full"
                             >
                                 <Bell className="w-4 h-4" />
                                 <span className="absolute top-2 right-2.5 w-1.5 h-1.5 bg-rose-500 rounded-full ring-2 ring-white dark:ring-zinc-950 animate-pulse" />
@@ -240,7 +260,7 @@ export default function Navbar({ user, currentView, onNavigate, onLogout, theme,
 
                             <div className="h-6 w-px bg-slate-200 dark:bg-zinc-800 mx-1" />
 
-                            <button className="hidden sm:flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-full transition-all shadow-lg shadow-blue-500/20 active:scale-95 group">
+                            <button className="hidden sm:flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-full transition-all active:scale-95 group">
                                 <UserPlus className="w-4 h-4 transition-transform group-hover:scale-110" />
                                 <span className="text-xs font-black uppercase tracking-widest">Invite</span>
                             </button>
@@ -268,7 +288,7 @@ export default function Navbar({ user, currentView, onNavigate, onLogout, theme,
                                         className="absolute right-0 mt-3 w-64 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-2xl rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.2)] border border-slate-200/50 dark:border-zinc-800 py-2 z-50 origin-top-right"
                                     >
                                         <div className="px-5 py-4 border-b border-slate-100 dark:border-zinc-800 mb-2">
-                                            <p className="text-sm font-bold text-black dark:text-white">{user.name}</p>
+                                            <p className="text-sm font-black text-black dark:text-white">{user.name}</p>
                                             <div className="flex items-center justify-between mt-1">
                                                 <p className="text-xs text-slate-500 dark:text-zinc-500 truncate max-w-[120px]">{user.email}</p>
                                                 <Badge className="text-[10px] h-5 px-1.5 bg-blue-600 text-white dark:bg-blue-500/20 dark:text-blue-400 border-none font-bold">
@@ -319,7 +339,7 @@ export default function Navbar({ user, currentView, onNavigate, onLogout, theme,
                                                         item.action();
                                                         setShowProfileMenu(false);
                                                     }}
-                                                    className="w-full flex items-center gap-3 px-3 py-2 text-sm font-bold text-slate-700 dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800 rounded-lg transition-colors group"
+                                                    className="w-full flex items-center gap-3 px-3 py-2 text-sm font-bold text-black dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800 rounded-lg transition-colors group"
                                                 >
                                                     <div className={`w-8 h-8 rounded-lg ${item.bg} flex items-center justify-center ${item.color} group-hover:scale-110 transition-transform`}>
                                                         <item.icon className="w-4 h-4" />
@@ -337,6 +357,36 @@ export default function Navbar({ user, currentView, onNavigate, onLogout, theme,
                     {/* Secondary Greeter Strip REMOVED for minimalism */}
                 </div>
             </div>
+
+            {/* Mobile Menu Overlay */}
+            <AnimatePresence>
+                {showMobileMenu && (
+                    <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="md:hidden border-t border-slate-100 dark:border-zinc-800 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-2xl rounded-b-[2rem] overflow-hidden"
+                    >
+                        <div className="p-4 space-y-1">
+                            {navItems.map((item) => (
+                                <button
+                                    key={item.label}
+                                    onClick={() => {
+                                        onNavigate(item.view);
+                                        setShowMobileMenu(false);
+                                    }}
+                                    className={`w-full flex items-center gap-4 p-4 rounded-2xl transition-all ${currentView === item.view ? 'bg-primary/10 text-primary' : 'hover:bg-slate-50 dark:hover:bg-zinc-900 text-black dark:text-slate-400'}`}
+                                >
+                                    <div className={`p-2 rounded-lg ${currentView === item.view ? 'bg-primary/20' : 'bg-slate-100 dark:bg-zinc-800'}`}>
+                                        {typeof item.icon === 'function' ? item.icon() : <item.icon className="w-5 h-5" />}
+                                    </div>
+                                    <span className="font-bold text-sm tracking-wide">{item.label}</span>
+                                </button>
+                            ))}
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div>
     );
 }

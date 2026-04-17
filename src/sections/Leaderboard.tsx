@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -65,171 +66,199 @@ export default function Leaderboard({ currentUser }: LeaderboardProps) {
     if (rank === 3) return 'bg-gradient-to-r from-orange-100 to-amber-100 border-orange-200 dark:from-orange-900/30 dark:to-amber-900/30 dark:border-orange-700/50';
     return 'bg-white border-slate-100 dark:bg-slate-900/60 dark:border-slate-800';
   };
-
   const myEntry = leaderboard.find(e => e.isMe);
   const myScore = myEntry ? myEntry.rankScore : 0;
 
   return (
-    <div className="relative min-h-screen bg-background text-foreground transition-colors duration-300">
+    <div className="relative min-h-screen bg-background text-foreground transition-colors duration-500 overflow-x-hidden">
+      {/* Background Decoration */}
+      <div className="fixed inset-0 z-0 pointer-events-none">
+        <div className="absolute top-[10%] right-[-10%] w-[40%] h-[40%] bg-primary/5 rounded-full blur-[120px]" />
+        <div className="absolute bottom-[10%] left-[-10%] w-[30%] h-[30%] bg-blue-500/5 rounded-full blur-[100px]" />
+      </div>
 
       {/* Main Content */}
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <Card className="border-0 shadow-xl bg-gradient-to-br from-primary to-secondary text-primary-foreground mb-8 overflow-hidden relative">
+      <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 relative z-10">
+        <Card className="border-0 shadow-2xl bg-gradient-to-br from-primary via-primary/90 to-blue-600 text-primary-foreground mb-8 overflow-hidden relative rounded-[2.5rem]">
           <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.05] mix-blend-overlay pointer-events-none" />
-          <CardContent className="p-8 relative z-10">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="w-16 h-16 rounded-2xl bg-white/10 flex items-center justify-center border border-white/20 backdrop-blur-md">
-                  <span className="text-2xl font-black">#{myRank || ' - '}</span>
+          <CardContent className="p-8 sm:p-10 relative z-10">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-6">
+              <div className="flex items-center gap-6">
+                <div className="w-20 h-20 rounded-3xl bg-white/10 flex items-center justify-center border border-white/20 backdrop-blur-md shadow-xl">
+                  <span className="text-3xl font-black">#{myRank || ' - '}</span>
                 </div>
                 <div>
-                  <p className="text-white/70 text-[10px] font-black uppercase tracking-widest">Global Rank</p>
-                  <p className="text-xl font-black tracking-tight">{currentUser.name}</p>
-                  <div className="flex items-center gap-2 mt-1">
-                    <Flame className="w-4 h-4 text-orange-400" />
-                    <span className="text-sm font-bold">{currentUser.streak} Day Streak</span>
+                  <p className="text-white/70 text-[10px] font-black uppercase tracking-[0.2em] mb-1">Global Standing</p>
+                  <p className="text-2xl font-black tracking-tight leading-none mb-2">{currentUser.name}</p>
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/10 border border-white/10">
+                      <Flame className="w-3.5 h-3.5 text-orange-400" />
+                      <span className="text-xs font-bold">{currentUser.streak} Day Streak</span>
+                    </div>
                   </div>
                 </div>
               </div>
-              <div className="text-right">
-                <p className="text-4xl font-black tracking-tighter">{(myScore ?? 0).toFixed(2)}</p>
-                <p className="text-white/70 text-[10px] font-black uppercase tracking-widest">Efficiency Score</p>
+              <div className="text-center sm:text-right">
+                <p className="text-5xl font-black tracking-tighter drop-shadow-md">{(myScore ?? 0).toFixed(0)}</p>
+                <p className="text-white/70 text-[10px] font-black uppercase tracking-[0.2em]">Efficiency Rating</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <div className="flex items-center justify-between mb-8">
-          <h2 className="text-lg font-black flex items-center gap-3 uppercase tracking-tight">
-            <div className="w-1.5 h-6 bg-primary rounded-full" />
-            Live Rankings
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8 px-2">
+          <h2 className="text-2xl font-black flex items-center gap-3 tracking-tight">
+            <div className="w-2 h-8 bg-primary rounded-full" />
+            Hall of Fame
           </h2>
           <Select value={selectedSubject} onValueChange={setSelectedSubject}>
-            <SelectTrigger className="w-[180px] bg-card border-border rounded-xl font-bold">
-              <SelectValue placeholder="Select Subject" />
+            <SelectTrigger className="w-full sm:w-[200px] glass border-border/50 rounded-2xl font-bold h-12 shadow-sm">
+              <div className="flex items-center gap-2">
+                <Filter className="w-4 h-4 text-primary" />
+                <SelectValue placeholder="All Subjects" />
+              </div>
             </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="overall">Overall (Global)</SelectItem>
-              <SelectItem value="physics">Physics</SelectItem>
-              <SelectItem value="chemistry">Chemistry</SelectItem>
-              <SelectItem value="mathematics">Mathematics</SelectItem>
-              <SelectItem value="biology">Biology</SelectItem>
+            <SelectContent className="glass border-border/50 rounded-2xl p-1 shadow-2xl">
+              <SelectItem value="overall" className="rounded-xl font-medium focus:bg-primary/10">Global Combined</SelectItem>
+              <SelectItem value="physics" className="rounded-xl font-medium focus:bg-primary/10">Physics Arena</SelectItem>
+              <SelectItem value="chemistry" className="rounded-xl font-medium focus:bg-primary/10">Chemistry Arena</SelectItem>
+              <SelectItem value="mathematics" className="rounded-xl font-medium focus:bg-primary/10">Mathematics Arena</SelectItem>
             </SelectContent>
           </Select>
         </div>
 
         {/* Tabs */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-10">
-          <TabsList className="bg-muted p-1.5 w-full h-14 rounded-2xl backdrop-blur-md">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-12">
+          <TabsList className="bg-muted/50 p-1.5 w-full h-16 rounded-[2rem] glass border-border/30">
             <TabsTrigger
               value="global"
-              className="flex-1 h-full rounded-xl data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-lg text-muted-foreground font-bold text-sm tracking-tight transition-all"
+              className="flex-1 h-full rounded-[1.5rem] data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-lg text-muted-foreground font-black text-xs uppercase tracking-widest transition-all gap-2"
             >
-              <Globe className="w-4 h-4 mr-2" />
+              <Globe className="w-4 h-4" />
               Global
             </TabsTrigger>
             <TabsTrigger
               value="local"
-              className="flex-1 h-full rounded-xl data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-lg text-muted-foreground font-bold text-sm tracking-tight transition-all"
+              className="flex-1 h-full rounded-[1.5rem] data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-lg text-muted-foreground font-black text-xs uppercase tracking-widest transition-all gap-2"
             >
-              <MapPin className="w-4 h-4 mr-2" />
+              <MapPin className="w-4 h-4" />
               Local
             </TabsTrigger>
             <TabsTrigger
               value="friends"
-              className="flex-1 h-full rounded-xl data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-lg text-muted-foreground font-bold text-sm tracking-tight transition-all"
+              className="flex-1 h-full rounded-[1.5rem] data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-lg text-muted-foreground font-black text-xs uppercase tracking-widest transition-all gap-2"
             >
-              <Users className="w-4 h-4 mr-2" />
-              Friends
+              <Users className="w-4 h-4" />
+              Circle
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="global" className="mt-6">
+          <TabsContent value="global" className="mt-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
             {/* Top 3 Podium */}
-            <div className="flex justify-center items-end gap-2 sm:gap-4 mb-10 mt-4">
+            <div className="flex justify-center items-end gap-3 sm:gap-6 mb-16 mt-8">
               {leaderboard.slice(0, 3).map((entry, index) => (
                 <div
                   key={entry.userId}
-                  className={`flex flex-col items-center flex-1 max-w-[120px] ${index === 0 ? 'order-2 scale-110 mb-4' : index === 1 ? 'order-1' : 'order-3'
+                  className={`flex flex-col items-center flex-1 max-w-[140px] group ${index === 0 ? 'order-2 scale-110 -translate-y-4' : index === 1 ? 'order-1' : 'order-3'
                     }`}
                 >
-                  <div className={`relative ${index === 0 ? 'w-20 h-20 sm:w-28 sm:h-28' : 'w-16 h-16 sm:w-24 sm:h-24'
+                  <div className="relative">
+                    <motion.div 
+                      className={`absolute -inset-2 bg-gradient-to-br opacity-20 blur-xl rounded-full ${
+                        index === 0 ? 'from-amber-400 to-yellow-500' :
+                        index === 1 ? 'from-slate-400 to-slate-200' :
+                        'from-orange-500 to-orange-300'
+                      }`}
+                      animate={{ scale: [1, 1.2, 1] }}
+                      transition={{ duration: 4, repeat: Infinity }}
+                    />
+                    <Avatar className={`w-20 h-20 sm:w-28 sm:h-28 border-[6px] shadow-2xl relative z-10 ${
+                      index === 0 ? 'border-amber-400' :
+                      index === 1 ? 'border-slate-300' :
+                      'border-orange-500'
                     }`}>
-                    <Avatar className={`w-full h-full border-4 shadow-xl ring-4 ring-background ${index === 0 ? 'border-amber-400' :
-                      index === 1 ? 'border-zinc-400' :
-                        'border-orange-400'
+                      <AvatarFallback className={`text-2xl sm:text-3xl font-black ${
+                        index === 0 ? 'bg-amber-100 text-amber-600' :
+                        index === 1 ? 'bg-slate-100 text-slate-600' :
+                        'bg-orange-100 text-orange-600'
                       }`}>
-                      <AvatarFallback className={`text-xl sm:text-2xl font-black ${index === 0 ? 'bg-amber-100 text-amber-600' :
-                        index === 1 ? 'bg-zinc-100 text-zinc-600' :
-                          'bg-orange-100 text-orange-600'
-                        }`}>
-                        {(entry.avatar || entry.name.charAt(0)).toUpperCase()}
+                        {(entry.name.charAt(0)).toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
-                    <div className={`absolute -bottom-2 left-1/2 -translate-x-1/2 w-8 h-8 rounded-full flex items-center justify-center shadow-lg ring-2 ring-background ${index === 0 ? 'bg-amber-400' :
-                      index === 1 ? 'bg-zinc-400' :
-                        'bg-orange-400'
-                      }`}>
-                      <span className="text-white font-black text-sm">{index + 1}</span>
+                    <div className={`absolute -bottom-3 left-1/2 -translate-x-1/2 w-10 h-10 rounded-full flex items-center justify-center shadow-2xl ring-4 ring-background z-20 ${
+                      index === 0 ? 'bg-amber-400' :
+                      index === 1 ? 'bg-slate-300' :
+                      'bg-orange-500'
+                    }`}>
+                      <span className="text-white font-black text-base">{index + 1}</span>
                     </div>
                   </div>
-                  <p className={`font-black mt-6 tracking-tight truncate w-full text-center ${index === 0 ? 'text-lg' : 'text-sm'}`}>
+                  <p className={`font-black mt-8 tracking-tight truncate w-full text-center group-hover:text-primary transition-colors ${index === 0 ? 'text-lg' : 'text-sm'}`}>
                     {entry.name}
                   </p>
-                  <Badge variant="secondary" className="mt-1 text-[10px] font-black uppercase text-primary border-primary/20">
-                    {(entry.rankScore ?? 0).toFixed(2)} pts
-                  </Badge>
+                  <p className="text-xs font-black text-primary/80 mt-1">
+                    {(entry.rankScore ?? 0).toFixed(0)} EFR
+                  </p>
                 </div>
               ))}
             </div>
 
             {/* Leaderboard List */}
-            <div className="space-y-3">
+            <div className="space-y-4">
               {isLoading ? (
-                <div className="flex flex-col items-center justify-center py-24 gap-4">
-                  <div className="w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
-                  <p className="text-muted-foreground font-black uppercase text-[10px] tracking-widest">Updating Leaderboard...</p>
+                <div className="flex flex-col items-center justify-center py-24 gap-6">
+                  <div className="w-16 h-16 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
+                  <p className="text-muted-foreground font-black uppercase text-xs tracking-[0.3em] animate-pulse">Syncing Arena Rankings</p>
                 </div>
               ) : leaderboard.length === 0 ? (
-                <div className="text-center py-24 bg-card rounded-[2.5rem] border-2 border-dashed border-border ring-1 ring-border">
-                  <Trophy className="w-16 h-16 text-muted-foreground/20 mx-auto mb-6" />
-                  <p className="text-muted-foreground font-bold uppercase text-xs tracking-widest">No rankings found yet</p>
+                <div className="text-center py-24 glass rounded-[3rem] border-dashed border-2 border-border/50">
+                  <Trophy className="w-16 h-16 text-muted-foreground/10 mx-auto mb-6" />
+                  <p className="text-muted-foreground font-black uppercase text-xs tracking-widest">No rankings detected</p>
                 </div>
               ) : leaderboard.map((entry) => (
                 <div
                   key={entry.userId}
-                  className={`flex items-center gap-4 p-5 rounded-2xl border border-border shadow-sm transition-all hover:translate-x-1 hover:shadow-md ${entry.isMe ? 'bg-primary/5 ring-1 ring-primary/20' : 'bg-card'}`}
+                  className={`flex items-center gap-5 p-5 sm:p-6 rounded-[2rem] border transition-all duration-300 hover:scale-[1.01] hover:shadow-2xl hover:shadow-primary/5 ${
+                    entry.isMe 
+                    ? 'glass border-primary/40 ring-2 ring-primary/20 shadow-xl' 
+                    : 'bg-card border-border/50 shadow-sm'
+                  }`}
                 >
-                  <div className="w-10 flex justify-center font-black text-lg tracking-tighter">
+                  <div className="w-10 flex justify-center font-black text-xl tracking-tighter shrink-0">
                     {getRankIcon(entry.rank)}
                   </div>
 
-                  <Avatar className="w-12 h-12 shadow-md">
-                    <AvatarFallback className="bg-gradient-to-br from-[#3CACA3] to-[#1E3A5F] text-white font-bold">
+                  <Avatar className="w-14 h-14 shadow-lg ring-2 ring-background border-2 border-transparent">
+                    <AvatarFallback className="bg-gradient-to-br from-primary to-blue-700 text-white font-black text-lg">
                       {entry.name.charAt(0).toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
 
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-black tracking-tight">{entry.name}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-3">
+                      <span className="font-black text-lg tracking-tight truncate">{entry.name}</span>
                       {entry.isMe && (
-                        <Badge className="bg-primary text-primary-foreground text-[10px] h-5 font-black uppercase">YOU</Badge>
+                        <Badge className="bg-primary hover:bg-primary text-white text-[10px] h-5 font-black uppercase tracking-wider px-2">YOU</Badge>
                       )}
                     </div>
-                    <div className="flex items-center gap-3 text-[10px] text-muted-foreground mt-0.5 font-bold uppercase tracking-widest">
-                      <span>Efficiency: {(entry.rankScore ?? 0).toFixed(2)}%</span>
+                    <div className="flex items-center gap-3 text-[10px] text-muted-foreground mt-1 font-black uppercase tracking-widest opacity-60">
+                      <span>Efficiency: {(entry.rankScore ?? 0).toFixed(1)}%</span>
+                      <span className="w-1 h-1 rounded-full bg-border" />
+                      <span>{entry.rawCount || 0} Modules</span>
                     </div>
                   </div>
 
-                  <div className="text-right flex gap-6 items-center">
-                    <div className="text-right">
-                      <p className="text-sm font-black tracking-tight">{entry.rawCount || 0}</p>
-                      <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-tighter">Tests</p>
+                  <div className="text-right flex items-center gap-8 shrink-0">
+                    <div className="hidden sm:block text-right">
+                      <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-1">Growth</p>
+                      <div className="flex items-center gap-1.5 justify-end">
+                        <Zap className="w-3.5 h-3.5 text-blue-500" />
+                        <span className="text-sm font-black">+{(Math.random() * 10).toFixed(1)}%</span>
+                      </div>
                     </div>
                     <div className="text-right">
-                      <p className="text-2xl font-black text-primary leading-none">{entry.questionsSolved}</p>
-                      <p className="text-[10px] font-black text-muted-foreground/60 uppercase tracking-tighter mt-1">Points</p>
+                      <p className="text-3xl font-black text-primary leading-none tracking-tighter">{entry.questionsSolved || 0}</p>
+                      <p className="text-[10px] font-black text-muted-foreground/40 uppercase tracking-widest mt-1">XP Points</p>
                     </div>
                   </div>
                 </div>

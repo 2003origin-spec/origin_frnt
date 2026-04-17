@@ -9,6 +9,7 @@ import {
     User,
     ArrowRight
 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import type { ViewState } from '@/types';
 
 interface ExploreProps {
@@ -90,26 +91,30 @@ export default function Explore({ onNavigate }: ExploreProps) {
     };
 
     return (
-        <div className="min-h-screen pt-12 pb-24 px-4 sm:px-6 lg:px-8 bg-background text-foreground transition-colors duration-300">
-            {/* Header Section */}
-            <div className="max-w-7xl mx-auto mb-16 relative">
-                <div className="absolute -top-24 -left-24 w-96 h-96 bg-primary/10 dark:bg-primary/5 rounded-full blur-[120px] pointer-events-none" />
-                <div className="absolute -top-12 -right-12 w-64 h-64 bg-secondary/10 dark:bg-secondary/5 rounded-full blur-[100px] pointer-events-none" />
+        <div className="min-h-screen pt-12 pb-24 px-4 sm:px-6 lg:px-8 bg-background text-foreground transition-colors duration-500">
+            {/* Ambient Background Elements */}
+            <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
+                <div className="absolute top-[20%] right-[-5%] w-[40%] h-[40%] bg-primary/5 rounded-full blur-[100px]" />
+                <div className="absolute bottom-[10%] left-[-5%] w-[30%] h-[30%] bg-blue-500/5 rounded-full blur-[80px]" />
+            </div>
 
+            {/* Header Section */}
+            <div className="max-w-7xl mx-auto mb-12 sm:mb-20 relative z-10">
                 <motion.div
                     initial={{ opacity: 0, y: -20 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="relative z-10 text-center lg:text-left pt-10"
+                    transition={{ duration: 0.6, ease: "easeOut" }}
+                    className="text-center lg:text-left pt-10"
                 >
-                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/5 border border-primary/10 dark:border-primary/20 mb-6">
-                        <TrendingUp className="w-4 h-4 text-primary" />
-                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-primary">Everything in one place</span>
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 mb-6 mx-auto lg:mx-0">
+                        <TrendingUp className="w-3 h-3 text-primary" />
+                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-primary">Academic Ecosystem</span>
                     </div>
-                    <h1 className="text-4xl lg:text-6xl font-black tracking-tighter mb-4">
-                        Explore <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-primary/60">Origin</span>
+                    <h1 className="text-5xl lg:text-7xl font-black tracking-tight mb-6">
+                        Explore <span className="text-gradient">Origin</span>
                     </h1>
-                    <p className="text-lg text-muted-foreground max-w-2xl lg:ml-0 mx-auto leading-relaxed">
-                        Access all your learning modules, assessments, and community features from this high-performance hub.
+                    <p className="text-lg sm:text-xl text-muted-foreground max-w-2xl lg:ml-0 mx-auto leading-relaxed font-medium">
+                        Your central command for mastery. Access practice modules, performance assessments, and professional growth tools.
                     </p>
                 </motion.div>
             </div>
@@ -119,40 +124,41 @@ export default function Explore({ onNavigate }: ExploreProps) {
                 variants={containerVariants}
                 initial="hidden"
                 animate="visible"
-                className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8"
+                className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8 relative z-10"
             >
                 {exploreCards.map((card, index) => (
                     <motion.div
                         key={index}
                         variants={itemVariants}
-                        whileHover={{ scale: 1.02, y: -5 }}
+                        whileHover={{ scale: 1.02, y: -8 }}
                         whileTap={{ scale: 0.98 }}
                         onClick={() => onNavigate(card.view)}
                         className="group relative cursor-pointer"
                     >
-                        <div className="absolute inset-0 bg-card rounded-[2.5rem] border border-border shadow-xl shadow-foreground/5 dark:shadow-none transition-all duration-300 group-hover:border-primary/30 group-hover:shadow-2xl group-hover:shadow-primary/10" />
-
-                        <div className="relative p-10 flex flex-col h-full min-h-[320px]">
+                        {/* Interactive Background Glow */}
+                        <div className={`absolute -inset-0.5 bg-gradient-to-br ${card.color} opacity-0 group-hover:opacity-20 rounded-[2.6rem] blur-xl transition-all duration-500`} />
+                        
+                        <div className="relative glass premium-shadow rounded-[2.5rem] p-8 sm:p-10 flex flex-col h-full min-h-[340px] transition-all duration-300 group-hover:border-primary/50">
                             {/* Icon Box */}
-                            <div className={`w-16 h-16 rounded-[1.5rem] bg-gradient-to-br ${card.color} p-4 text-white shadow-lg mb-8 transition-transform group-hover:scale-110 group-hover:rotate-6 duration-300`}>
+                            <div className={`w-16 h-16 rounded-2xl bg-gradient-to-br ${card.color} p-4 text-white shadow-xl group-hover:shadow-[0_0_30px_rgba(0,0,0,0.2)] mb-8 transition-all group-hover:scale-110 group-hover:rotate-6 duration-500`}>
                                 <card.icon className="w-full h-full stroke-[2.5px]" />
                             </div>
 
                             <div className="flex-1">
                                 <div className="flex items-center justify-between mb-4">
-                                    <h3 className="text-2xl font-black tracking-tight">{card.title}</h3>
-                                    <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                                        <ArrowRight className="w-6 h-6 text-primary" />
-                                    </div>
+                                    <h3 className="text-2xl font-black tracking-tight group-hover:text-primary transition-colors">{card.title}</h3>
+                                    <ArrowRight className="w-6 h-6 text-primary opacity-0 group-hover:opacity-100 -translate-x-4 group-hover:translate-x-0 transition-all duration-300" />
                                 </div>
-                                <p className="text-muted-foreground leading-relaxed font-medium">
+                                <p className="text-sm sm:text-base text-muted-foreground leading-relaxed font-medium">
                                     {card.description}
                                 </p>
                             </div>
 
-                            <div className="mt-8 pt-6 border-t border-border flex items-center justify-between">
-                                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">Status</span>
-                                <span className="text-xs font-bold text-primary">{card.stats}</span>
+                            <div className="mt-8 pt-6 border-t border-border/10 flex items-center justify-between">
+                                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/60">Module Status</span>
+                                <Badge variant="secondary" className="bg-primary/5 text-primary border-primary/20 font-bold px-3 py-1">
+                                    {card.stats}
+                                </Badge>
                             </div>
                         </div>
                     </motion.div>

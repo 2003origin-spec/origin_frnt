@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme inline {
   --color-background: hsl(var(--background));
   --color-foreground: hsl(var(--foreground));
@@ -30,33 +32,33 @@
 }
 
 :root {
-  --background: 210 40% 99%;
-  --foreground: 224 71% 4%;
-  --card: 0 0% 100%;
-  --card-foreground: 224 71% 4%;
+  --background: 210 40% 99%; /* #FBFCFE approx */
+  --foreground: 222.2 47.4% 11.2%;
+  --card: 0 0% 100%; /* #FFFFFF */
+  --card-foreground: 222.2 47.4% 11.2%;
   --popover: 0 0% 100%;
-  --popover-foreground: 224 71% 4%;
+  --popover-foreground: 222.2 47.4% 11.2%;
   --primary: 221.2 83.2% 53.3%;
-  --primary-foreground: 210 20% 98%;
-  --secondary: 210 40% 97%;
+  --primary-foreground: 210 40% 98%;
+  --secondary: 210 40% 96.1%;
   --secondary-foreground: 222.2 47.4% 11.2%;
   --muted: 210 40% 96.1%;
   --muted-foreground: 215.4 16.3% 46.9%;
   --accent: 210 40% 96.1%;
   --accent-foreground: 222.2 47.4% 11.2%;
   --destructive: 0 84.2% 60.2%;
-  --destructive-foreground: 210 20% 98%;
-  --border: 214.3 31.8% 91.4%;
-  --input: 214.3 31.8% 91.4%;
+  --destructive-foreground: 210 40% 98%;
+  --border: 210 40% 96%; /* #F1F5F9 approx */
+  --input: 210 40% 96%;
   --ring: 221.2 83.2% 53.3%;
 }
 
 .dark {
-  --background: 222.2 84% 4.9%;
+  --background: 222.2 84% 3.5%;
   --foreground: 210 40% 98%;
-  --card: 222.2 84% 4.9%;
+  --card: 222.2 84% 3.5%;
   --card-foreground: 210 40% 98%;
-  --popover: 222.2 84% 4.9%;
+  --popover: 222.2 84% 3.5%;
   --popover-foreground: 210 40% 98%;
   --primary: 217.2 91.2% 59.8%;
   --primary-foreground: 222.2 47.4% 11.2%;
@@ -75,50 +77,60 @@
 
 @layer base {
   * {
-    @apply border-border;
+    @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground antialiased;
-    font-family: 'Inter', sans-serif;
+    @apply bg-background text-foreground antialiased selection:bg-primary/20 transition-colors duration-500;
+    font-family: 'Inter', system-ui, sans-serif;
   }
 }
 
 @layer utilities {
   .glass {
-    background: rgba(255, 255, 255, 0.8);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: 1px solid rgba(255, 255, 255, 0.7);
-    box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07);
+    @apply bg-white/80 dark:bg-slate-950/80 backdrop-blur-[12px] border-b border-[#F1F5F9] dark:border-white/10;
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
   }
 
-  .glass-dark {
-    background: rgba(15, 23, 42, 0.7);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  .premium-shadow {
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.04), 0 4px 6px -2px rgba(0, 0, 0, 0.01);
   }
 
-  .shadow-soft {
-    box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.05);
+  .dark .premium-shadow {
+    box-shadow: 0 20px 50px -12px rgba(0, 0, 0, 0.5);
   }
 
   .premium-card {
-    @apply bg-card border-border rounded-2xl transition-all duration-300;
-    box-shadow: var(--shadow-soft);
+    @apply bg-white dark:bg-card border border-[#E2E8F0] dark:border-border/50 rounded-2xl transition-all duration-300;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.02);
   }
 
   .premium-card:hover {
-    @apply border-primary/20 shadow-lg;
+    @apply border-primary/20 shadow-lg shadow-primary/5 -translate-y-0.5;
   }
 
-  .shadow-glow {
-    box-shadow: 0 0 40px -10px rgba(60, 172, 163, 0.4);
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary/60;
   }
 
-  .animate-float {
-    animation: float 4s ease-in-out infinite;
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-muted-foreground/20 hover:bg-muted-foreground/40 rounded-full transition-colors;
+  }
+
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
   }
 }
 
@@ -137,6 +149,10 @@
   to { opacity: 1; }
 }
 
+.animate-float {
+  animation: float 5s ease-in-out infinite;
+}
+
 .animate-slide-up {
   animation: slide-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
@@ -145,23 +161,3 @@
   animation: fade-in 0.5s ease-out forwards;
 }
 
-.custom-scrollbar::-webkit-scrollbar {
-  width: 5px;
-}
-
-.custom-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  @apply bg-slate-200 dark:bg-slate-800 rounded-full;
-}
-
-.no-scrollbar {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
-
-.no-scrollbar::-webkit-scrollbar {
-  display: none;
-}

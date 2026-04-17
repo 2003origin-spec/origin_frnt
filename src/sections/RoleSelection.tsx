@@ -12,7 +12,7 @@ export default function RoleSelection({ onSelectRole, onBack }: RoleSelectionPro
     const [hoveredRole, setHoveredRole] = useState<'student' | 'teacher' | null>(null);
 
     return (
-        <div className="min-h-screen flex items-center justify-center p-4 bg-[#060D1A] text-white">
+        <div className="min-h-screen flex items-center justify-center p-4 bg-background text-foreground transition-colors duration-500">
             {/* Background Decoration */}
             <div className="absolute inset-0 z-0 pointer-events-none opacity-40 mix-blend-screen"
                 style={{
@@ -45,8 +45,8 @@ export default function RoleSelection({ onSelectRole, onBack }: RoleSelectionPro
                     {/* Student Card */}
                     <div
                         className={`group relative p-8 rounded-3xl border transition-all duration-500 cursor-pointer overflow-hidden ${hoveredRole === 'student'
-                            ? 'bg-slate-900/80 border-teal-500/50 shadow-[0_0_30px_rgba(20,184,166,0.3)] scale-[1.02]'
-                            : 'bg-slate-900/40 backdrop-blur-md border-white/10 hover:border-white/20 hover:bg-slate-900/60 shadow-xl'
+                            ? 'bg-card dark:bg-slate-900/80 border-teal-500/50 shadow-[0_0_30px_rgba(20,184,166,0.15)] dark:shadow-[0_0_30px_rgba(20,184,166,0.3)] scale-[1.02]'
+                            : 'bg-card/40 dark:bg-slate-900/40 backdrop-blur-md border-border dark:border-white/10 hover:border-black/10 dark:hover:border-white/20 hover:bg-card/80 dark:hover:bg-slate-900/60 shadow-xl'
                             }`}
                         onMouseEnter={() => setHoveredRole('student')}
                         onMouseLeave={() => setHoveredRole(null)}
@@ -95,8 +95,8 @@ export default function RoleSelection({ onSelectRole, onBack }: RoleSelectionPro
                     {/* Teacher Card */}
                     <div
                         className={`group relative p-8 rounded-3xl border transition-all duration-500 cursor-pointer overflow-hidden ${hoveredRole === 'teacher'
-                            ? 'bg-slate-900/80 border-blue-500/50 shadow-[0_0_30px_rgba(59,130,246,0.3)] scale-[1.02]'
-                            : 'bg-slate-900/40 backdrop-blur-md border-white/10 hover:border-white/20 hover:bg-slate-900/60 shadow-xl'
+                            ? 'bg-card dark:bg-slate-900/80 border-blue-500/50 shadow-[0_0_30px_rgba(59,130,246,0.15)] dark:shadow-[0_0_30px_rgba(59,130,246,0.3)] scale-[1.02]'
+                            : 'bg-card/40 dark:bg-slate-900/40 backdrop-blur-md border-border dark:border-white/10 hover:border-black/10 dark:hover:border-white/20 hover:bg-card/80 dark:hover:bg-slate-900/60 shadow-xl'
                             }`}
                         onMouseEnter={() => setHoveredRole('teacher')}
                         onMouseLeave={() => setHoveredRole(null)}

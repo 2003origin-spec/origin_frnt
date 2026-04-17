@@ -410,30 +410,41 @@ export default function StudyCorner({ user }: StudyCornerProps) {
     }
 
     return (
-        <div className="min-h-screen bg-background font-sans text-foreground transition-colors duration-300">
+        <div className="min-h-screen bg-background font-sans text-foreground transition-colors duration-500 overflow-x-hidden relative">
+            {/* Ambient Background Elements */}
+            <div className="fixed inset-0 z-0 pointer-events-none">
+                <div className="absolute top-[20%] right-[-10%] w-[50%] h-[50%] bg-primary/5 rounded-full blur-[120px]" />
+                <div className="absolute bottom-[0%] left-[-10%] w-[40%] h-[40%] bg-blue-500/5 rounded-full blur-[100px]" />
+            </div>
 
-            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-20">
+            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-24 relative z-10">
 
                 {/* Study Dashboard Tab (Mockup Implementation) */}
                 {activeTab === 'dashboard' && (
                     <div className="relative space-y-12 animate-in fade-in slide-in-from-bottom-10 duration-700 min-h-[800px]">
-                        {/* Immersive Background Glows */}
-                        <div className="absolute -top-24 -left-24 w-96 h-96 bg-indigo-600/10 blur-[120px] rounded-full pointer-events-none"></div>
-                        <div className="absolute top-1/2 -right-24 w-[500px] h-[500px] bg-violet-600/5 blur-[150px] rounded-full pointer-events-none"></div>
-
-                        <header className="flex items-center justify-between relative z-10">
-                            <h2 className="text-5xl sm:text-7xl font-black tracking-tighter text-foreground drop-shadow-[0_10px_30px_rgba(99,102,241,0.3)]">
-                                MY STUDY DASHBOARD.
+                        
+                        <header className="flex flex-col sm:flex-row items-center justify-between gap-6">
+                            <h2 className="text-5xl sm:text-7xl lg:text-8xl font-black tracking-tighter text-foreground drop-shadow-2xl uppercase">
+                                Study <span className="text-gradient">Hub.</span>
                             </h2>
+                            <div className="glass px-6 py-3 rounded-2xl border-border/50 flex items-center gap-4">
+                                <Search className="w-5 h-5 text-primary" />
+                                <input 
+                                    placeholder="Search modules..." 
+                                    className="bg-transparent border-none outline-none text-sm font-bold w-48 placeholder:text-muted-foreground/50"
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                />
+                            </div>
                         </header>
 
-                        <div className="grid grid-cols-1 md:grid-cols-12 gap-8 lg:gap-10 pb-32 relative z-10">
+                        <div className="grid grid-cols-1 md:grid-cols-12 gap-8 lg:gap-10 pb-32">
 
                             {/* Left Panel: FOLDERS */}
-                            <div className="md:col-span-12 lg:col-span-3 rounded-[3rem] bg-card/50 backdrop-blur-3xl border border-border p-10 shadow-2xl relative overflow-hidden group">
+                            <div className="md:col-span-12 lg:col-span-3 rounded-[3rem] glass p-8 sm:p-10 shadow-2xl relative overflow-hidden group border-border/50">
                                 <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-primary/10 to-transparent pointer-events-none"></div>
-                                <h3 className="text-xs font-black text-primary tracking-[0.3em] uppercase mb-10 flex items-center gap-2.5">
-                                    <LucideFolder className="w-5 h-5" /> Folders
+                                <h3 className="text-[10px] font-black text-primary tracking-[0.3em] uppercase mb-10 flex items-center gap-3">
+                                    <LucideFolder className="w-5 h-5" /> Navigation
                                 </h3>
 
                                 <div className="space-y-6">

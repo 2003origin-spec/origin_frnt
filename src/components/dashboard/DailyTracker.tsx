@@ -81,36 +81,36 @@ export default function DailyTracker({ user }: DailyTrackerProps) {
 
     const getLevelClass = (level: number) => {
         switch (level) {
-            case 1: return 'bg-emerald-500/30 dark:bg-emerald-900/40 border border-emerald-500/20';
-            case 2: return 'bg-emerald-500/50 dark:bg-emerald-700/60 border border-emerald-400/30';
-            case 3: return 'bg-emerald-500/80 dark:bg-emerald-500/70 border border-emerald-300/40';
-            case 4: return 'bg-emerald-400 dark:bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.5)] border border-emerald-200';
-            case 0: return 'bg-slate-200/50 dark:bg-slate-800/50 border border-slate-300/20 dark:border-slate-700/50';
+            case 1: return 'bg-[#D1FAE5] dark:bg-emerald-900/40 border border-[#A7F3D0]';
+            case 2: return 'bg-[#6EE7B7] dark:bg-emerald-700/60 border border-[#34D399]';
+            case 3: return 'bg-[#10B981] dark:bg-emerald-500/70 border border-[#059669]';
+            case 4: return 'bg-[#059669] dark:bg-emerald-400 shadow-[0_0_8px_rgba(5,150,105,0.3)] border border-[#047857]';
+            case 0: return 'bg-[#F1F5F9] dark:bg-slate-800/50 border border-[#E2E8F0] dark:border-slate-700/50';
             default: return 'bg-transparent border-dashed border border-slate-200/20 opacity-20';
         }
     };
 
     return (
-        <Card className="border border-white/20 dark:border-slate-800 bg-white/40 dark:bg-slate-950/40 backdrop-blur-2xl relative overflow-hidden group">
+        <Card className="border border-border/50 bg-card/50 backdrop-blur-2xl relative overflow-hidden group">
             {/* Animated Background Glow */}
             <div className="absolute -top-24 -right-24 w-64 h-64 bg-emerald-500/10 dark:bg-emerald-500/5 rounded-full blur-[100px] pointer-events-none group-hover:bg-emerald-500/20 transition-colors duration-700" />
             
             <CardHeader className="pb-6 relative z-10 flex flex-row items-start justify-between space-y-0">
                 <div className="space-y-1.5">
-                    <div className="flex items-center gap-2">
-                        <div className="p-2 bg-emerald-500/10 rounded-lg">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2.5 bg-emerald-500/10 rounded-xl">
                             <Calendar className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                         </div>
                         <div>
-                            <CardTitle className="text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100">
+                            <CardTitle className="text-xl font-black tracking-tight text-[#334155] dark:text-slate-100">
                                 Activity Vault
                             </CardTitle>
                             <div className="flex items-center gap-2">
-                                <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                                <span className="text-xs font-semibold text-[#64748B] dark:text-slate-400">
                                     {totalSolved} solved this year
                                 </span>
-                                <span className="w-1 h-1 rounded-full bg-slate-300 dark:bg-slate-700" />
-                                <div className="flex items-center gap-1 text-orange-500 dark:text-orange-400">
+                                <span className="w-1 h-1 rounded-full bg-[#E2E8F0]" />
+                                <div className="flex items-center gap-1 text-[#059669] dark:text-emerald-400">
                                     <Flame className="w-3 h-3 fill-current" />
                                     <span className="text-xs font-bold">{user.streak || 0} day streak</span>
                                 </div>
@@ -120,8 +120,8 @@ export default function DailyTracker({ user }: DailyTrackerProps) {
                 </div>
 
                 <div className="flex flex-col items-end gap-2">
-                   <div className="flex items-center gap-1.5 p-1.5 bg-slate-100/50 dark:bg-slate-900/50 rounded-md border border-slate-200/50 dark:border-slate-800/50">
-                        <span className="text-[10px] uppercase tracking-wider font-bold text-slate-400 mr-1">Intensity</span>
+                   <div className="flex items-center gap-1.5 p-1.5 bg-muted/50 rounded-lg border border-border/50">
+                        <span className="text-[10px] uppercase tracking-wider font-black text-muted-foreground/60 mr-1">Intensity</span>
                         {[0, 1, 2, 3, 4].map((lvl) => (
                             <div key={lvl} className={cn("w-2.5 h-2.5 rounded-[2px]", getLevelClass(lvl))} />
                         ))}

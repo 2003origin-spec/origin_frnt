@@ -28,7 +28,7 @@ export default function AuthPage({ userRole, onLogin, onBack, isLoading, error }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-[#060D1A] text-white">
+    <div className="min-h-screen flex items-center justify-center p-4 bg-background text-foreground transition-colors duration-500">
       {/* Background Decoration */}
       <div className="absolute inset-0 z-0 pointer-events-none opacity-40 mix-blend-screen"
         style={{
@@ -48,7 +48,7 @@ export default function AuthPage({ userRole, onLogin, onBack, isLoading, error }
           <span className="text-sm font-medium">Back to home</span>
         </button>
 
-        <Card className="border-white/10 shadow-[0_0_50px_rgba(0,0,0,0.5)] bg-slate-900/60 backdrop-blur-2xl dark:border-white/10">
+        <Card className="border-border dark:border-white/10 shadow-[0_0_50px_rgba(0,0,0,0.1)] dark:shadow-[0_0_50px_rgba(0,0,0,0.5)] bg-card/90 dark:bg-slate-900/60 backdrop-blur-2xl">
           <CardHeader className="text-center pb-2">
             <div className="flex justify-center mb-4">
               <img
@@ -58,7 +58,7 @@ export default function AuthPage({ userRole, onLogin, onBack, isLoading, error }
                       : '/O3-Origin-Logo.png'
                 }
                 alt="ORIGIN"
-                className="h-16 w-auto"
+                className="h-16 w-auto rounded-2xl shadow-sm"
               />
             </div>
             <CardTitle className="text-2xl font-bold text-slate-900 dark:text-white">
@@ -166,12 +166,12 @@ export default function AuthPage({ userRole, onLogin, onBack, isLoading, error }
                     <div className="w-full border-t border-slate-200 dark:border-slate-700" />
                   </div>
                   <div className="relative flex justify-center text-sm">
-                    <span className="px-2 bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400">Or continue with</span>
+                    <span className="px-2 bg-card dark:bg-slate-900 text-slate-500 dark:text-slate-400">Or continue with</span>
                   </div>
                 </div>
 
                 <div className="mt-4 grid grid-cols-2 gap-3">
-                  <Button variant="outline" className="h-11 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 dark:text-slate-200 dark:bg-slate-900">
+                  <Button variant="outline" className="h-11 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-foreground dark:text-slate-200 bg-white dark:bg-slate-900">
                     <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
                       <path
                         fill="currentColor"
@@ -192,7 +192,7 @@ export default function AuthPage({ userRole, onLogin, onBack, isLoading, error }
                     </svg>
                     Google
                   </Button>
-                  <Button variant="outline" className="h-11 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 dark:text-slate-200 dark:bg-slate-900">
+                  <Button variant="outline" className="h-11 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-foreground dark:text-slate-200 bg-white dark:bg-slate-900">
                     <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 24 24">
                       <path d="M16.365 1.43c0 1.14-.493 2.27-1.177 3.08-.684.81-1.513 1.24-2.333 1.24-.82 0-1.65-.43-2.333-1.24-.684-.81-1.177-1.94-1.177-3.08 0-1.14.493-2.27 1.177-3.08.684-.81 1.513-1.24 2.333-1.24.82 0 1.65.43 2.333 1.24.684.81 1.177 1.94 1.177 3.08zm-10.73 0c0 1.14-.493 2.27-1.177 3.08-.684.81-1.513 1.24-2.333 1.24-.82 0-1.65-.43-2.333-1.24C.493 3.7 0 2.57 0 1.43 0 .29.493-.84 1.177-1.65.684-.84 1.513-.41 2.333-.41c.82 0 1.65-.43 2.333-1.24C5.35-.84 5.843.29 5.843 1.43z" />
                     </svg>

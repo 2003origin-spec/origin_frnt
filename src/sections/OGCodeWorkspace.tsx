@@ -2,12 +2,13 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from 'react';
 import {
     ArrowLeft, Play, Clock, Loader2, CheckCircle2,
-    XCircle, RotateCcw, Trophy, X, HelpCircle
+    XCircle, RotateCcw, Trophy, X, HelpCircle, Sun, Moon
 } from 'lucide-react';
 import { apiCall } from '@/lib/api';
 import { usePublishOriginAiPageContext } from '@/features/origin-ai/page-context-store';
 import type { PracticeQuestion, User } from '@/types';
 import { toast } from 'sonner';
+import { useTheme } from 'next-themes';
 
 interface OGCodeWorkspaceProps {
     questionId: string | number;
@@ -467,6 +468,12 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
     const [showHint, setShowHint] = useState(false);
     const [showSolution, setShowSolution] = useState(false);
     const [answerInput, setAnswerInput] = useState('');
+    const { theme, setTheme, resolvedTheme } = useTheme();
+    const [mounted, setMounted] = useState(false);
+
+    useEffect(() => {
+        setMounted(true);
+    }, []);
 
     const [elapsed, setElapsed] = useState(0);
     const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -639,6 +646,15 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                     <div className="flex items-center gap-2 text-sm text-muted-foreground font-mono">
                         <Clock className="w-3.5 h-3.5" /> {Math.floor(elapsed / 60)}m {elapsed % 60}s
                     </div>
+                    {mounted && (
+                        <button
+                            onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
+                            className="p-1.5 hover:bg-accent rounded-lg transition-colors text-muted-foreground hover:text-foreground"
+                            aria-label="Toggle Theme"
+                        >
+                            {resolvedTheme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+                        </button>
+                    )}
                 </div>
             </div>
 

@@ -99,6 +99,34 @@ export default function OGCodeList({ onSelectQuestion, user }: OGCodeListProps) 
     const [isStatsExpanded, setIsStatsExpanded] = useState(false);
     // Refs for click-outside detection
     const statsRef = useRef<HTMLDivElement>(null);
+    const [mounted, setMounted] = useState(false);
+
+    // Persist and restore filters
+    useEffect(() => {
+        setMounted(true);
+        const savedFilters = localStorage.getItem('origin_ogcode_filters');
+        if (savedFilters) {
+            try {
+                const { subject, difficulty, status, chapters } = JSON.parse(savedFilters);
+                if (subject) setActiveSubject(subject);
+                if (difficulty) setActiveDifficulty(difficulty);
+                if (status) setActiveStatus(status);
+                if (chapters) setSelectedChapters(chapters);
+            } catch (e) {
+                console.error("Failed to restore filters", e);
+            }
+        }
+    }, []);
+
+    useEffect(() => {
+        if (!mounted) return;
+        localStorage.setItem('origin_ogcode_filters', JSON.stringify({
+            subject: activeSubject,
+            difficulty: activeDifficulty,
+            status: activeStatus,
+            chapters: selectedChapters
+        }));
+    }, [activeSubject, activeDifficulty, activeStatus, selectedChapters, mounted]);
 
     // Combined click-outside detection for stats and dropdowns
     useEffect(() => {
@@ -149,10 +177,6 @@ export default function OGCodeList({ onSelectQuestion, user }: OGCodeListProps) 
         return Array.from(chapters).sort();
     }, [questions, activeSubject]);
 
-    // Reset selected chapters when subject changes
-    useEffect(() => {
-        setSelectedChapters([]);
-    }, [activeSubject]);
 
     const toggleChapter = (chapter: string) => {
         setSelectedChapters(prev => 
@@ -412,6 +436,7 @@ export default function OGCodeList({ onSelectQuestion, user }: OGCodeListProps) 
                                                             key={idx}
                                                             onClick={() => {
                                                                 setActiveSubject(sub.name);
+                                                                setSelectedChapters([]);
                                                                 setOpenDropdown(null);
                                                             }}
                                                             className={cn(
@@ -503,11 +528,11 @@ export default function OGCodeList({ onSelectQuestion, user }: OGCodeListProps) 
                                             onClick={() => {
                                                 const tableEl = document.querySelector('table');
                                                 tableEl?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                                                toast.success(`Filters applied for ${selectedChapters.length} chapters`);
+                                                toast.success(`Filters active for ${selectedChapters.length} chapters`);
                                             }}
                                             className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-black uppercase tracking-widest rounded-xl shadow-lg shadow-blue-500/25 transition-all flex items-center gap-2 group"
                                         >
-                                            Proceed to Arena
+                                            View Target Topics
                                             <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
                                         </button>
                                     </motion.div>

@@ -43,7 +43,7 @@ export default function AdminSidebar({ isCollapsed, setCollapsed, onLogout }: Ad
         <motion.div
             initial={false}
             animate={{ width: isCollapsed ? 80 : 280 }}
-            className="fixed left-0 top-0 h-full bg-zinc-950 border-r border-white/5 flex flex-col z-[60] shadow-2xl overflow-hidden transition-all duration-300"
+            className="fixed left-0 top-0 h-full bg-card border-r border-border flex flex-col z-[60] shadow-2xl overflow-hidden transition-all duration-300"
         >
             {/* Header / Logo */}
             <div className="p-6 flex items-center justify-between min-h-[80px]">
@@ -54,14 +54,14 @@ export default function AdminSidebar({ isCollapsed, setCollapsed, onLogout }: Ad
                         className="flex items-center gap-2"
                     >
                         <div className="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center">
-                            <ShieldCheck className="w-5 h-5 text-zinc-950 font-black" />
+                            <ShieldCheck className="w-5 h-5 text-zinc-950 dark:text-zinc-950 font-black" />
                         </div>
-                        <span className="text-sm font-black tracking-widest text-white uppercase italic">Origin<span className="text-emerald-500">Admin</span></span>
+                        <span className="text-sm font-black tracking-widest text-foreground uppercase italic">Origin<span className="text-emerald-500">Admin</span></span>
                     </motion.div>
                 )}
                 <button
                     onClick={() => setCollapsed(!isCollapsed)}
-                    className="p-2 rounded-lg hover:bg-white/5 text-slate-400 transition-colors"
+                    className="p-2 rounded-lg hover:bg-accent text-muted-foreground transition-colors"
                 >
                     <ChevronLeft className={`w-5 h-5 transition-transform duration-300 ${isCollapsed ? 'rotate-180' : ''}`} />
                 </button>
@@ -70,7 +70,7 @@ export default function AdminSidebar({ isCollapsed, setCollapsed, onLogout }: Ad
             {/* Navigation */}
             <div className="flex-1 px-4 py-4 space-y-2 overflow-y-auto">
                 <div className="mb-4 px-2">
-                    {!isCollapsed && <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-4">Operations</p>}
+                    {!isCollapsed && <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/60 mb-4">Operations</p>}
                     <div className="space-y-1">
                         {navItems.map((item) => {
                             const isActive = pathname === item.path;
@@ -79,8 +79,8 @@ export default function AdminSidebar({ isCollapsed, setCollapsed, onLogout }: Ad
                                     key={item.id}
                                     onClick={() => router.push(item.path)}
                                     className={`w-full flex items-center gap-4 px-3 py-2.5 rounded-xl transition-all group relative ${isActive 
-                                        ? 'bg-emerald-500/10 text-emerald-400 font-bold border border-emerald-500/20' 
-                                        : 'text-slate-400 hover:bg-white/5 hover:text-white border border-transparent'
+                                        ? 'bg-emerald-500/10 text-emerald-500 font-bold border border-emerald-500/20' 
+                                        : 'text-muted-foreground hover:bg-accent hover:text-foreground border border-transparent'
                                     }`}
                                 >
                                     <item.icon className={`w-5 h-5 min-w-[20px] transition-transform duration-300 ${isActive ? 'scale-110' : 'group-hover:scale-110'}`} />
@@ -107,7 +107,7 @@ export default function AdminSidebar({ isCollapsed, setCollapsed, onLogout }: Ad
             </div>
 
             {/* Footer / Logout */}
-            <div className="p-4 border-t border-white/5 space-y-2">
+            <div className="p-4 border-t border-border space-y-2">
                 <button
                     onClick={onLogout}
                     className="w-full flex items-center gap-4 px-3 py-3 rounded-xl text-rose-500 hover:bg-rose-500/10 transition-all group"

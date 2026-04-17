@@ -6,10 +6,10 @@ interface PastWeekProgressProps {
 }
 
 const COLORS = {
-    webpage: '#3b82f6', // blue-500
-    practice: '#10b981', // emerald-500
-    pomodoro: '#f59e0b', // amber-500
-    empty: '#1e293b'     // slate-800
+    webpage: '#1E293B', // Deep Navy
+    practice: '#059669', // Emerald
+    pomodoro: '#D97706', // Amber
+    empty: '#F1F5F9'     // Neutral Gray
 };
 
 export default function PastWeekProgress({ user }: PastWeekProgressProps) {
@@ -43,18 +43,18 @@ export default function PastWeekProgress({ user }: PastWeekProgressProps) {
     };
 
     return (
-        <Card className="border-0 shadow-lg shadow-blue-500/5 bg-white/60 dark:bg-slate-900/60 backdrop-blur-xl relative overflow-hidden h-full flex flex-col justify-center">
-            <div className="absolute inset-0 bg-gradient-to-r from-blue-50/20 via-white/10 to-blue-50/20 dark:from-blue-900/20 dark:via-slate-800/10 dark:to-blue-900/20 pointer-events-none" />
+        <Card className="border border-border/50 shadow-lg shadow-primary/5 bg-card/50 backdrop-blur-xl relative overflow-hidden h-full flex flex-col justify-center">
+            <div className="absolute inset-0 bg-gradient-to-r from-primary/5 via-transparent to-primary/5 pointer-events-none" />
 
             <CardContent className="relative z-10 py-5 flex flex-col lg:flex-row items-center justify-between px-6 gap-6">
 
                 {/* Left Header & Legend */}
                 <div className="flex flex-col items-center lg:items-start min-w-max">
-                    <span className="text-sm font-black text-black dark:text-slate-200 tracking-wider mb-2">APP TIME ANALYTICS</span>
-                    <div className="flex gap-3 text-xs font-semibold text-black/80 dark:text-slate-300">
-                        <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-blue-500" /> Webpage</div>
-                        <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-emerald-500" /> Practice</div>
-                        <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-amber-500" /> Pomodoro</div>
+                    <span className="text-xs font-black text-[#334155] tracking-[0.2em] uppercase mb-4 opacity-80">App Time Analytics</span>
+                    <div className="flex gap-4 text-[10px] font-extrabold text-[#64748B] uppercase tracking-widest">
+                        <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full bg-[#1E293B] shadow-sm shadow-navy/20" /> Webpage</div>
+                        <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full bg-[#059669] shadow-sm shadow-emerald/20" /> Practice</div>
+                        <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full bg-[#D97706] shadow-sm shadow-amber/20" /> Pomodoro</div>
                     </div>
                 </div>
 

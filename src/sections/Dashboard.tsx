@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import type { User, ViewState } from '@/types';
 import DailyTracker from '@/components/dashboard/DailyTracker';
 import PastWeekProgress from '@/components/dashboard/PastWeekProgress';
@@ -31,14 +32,14 @@ function EventsCarousel() {
           key={event.id}
           className={`absolute inset-0 transition-opacity duration-1000 ${idx === current ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
         >
-          <img src={event.image} alt={event.title} className="w-full h-full object-cover opacity-80 mix-blend-overlay dark:opacity-60" />
-          <div className="absolute inset-0 bg-gradient-to-t from-white via-white/80 to-transparent dark:from-[#020617] dark:via-[#020617]/80 dark:to-transparent" />
-          <div className="absolute inset-0 p-6 sm:p-10 flex flex-col justify-end">
-            <span className="inline-block px-3 py-1 bg-black/5 dark:bg-white/10 backdrop-blur-md border border-black/10 dark:border-white/20 rounded-full text-[10px] font-bold tracking-widest uppercase text-indigo-600 dark:text-indigo-300 w-fit mb-3 shadow-sm">
+          <img src={event.image} alt={event.title} className="w-full h-full object-cover opacity-60 dark:opacity-40" />
+          <div className="absolute inset-0 bg-gradient-to-r from-blue-50/80 via-white/40 to-transparent dark:from-background dark:via-background/60 dark:to-transparent" />
+          <div className="absolute inset-0 p-6 sm:p-10 flex flex-col justify-center">
+            <span className="inline-block px-3 py-1 bg-blue-100/50 dark:bg-white/10 backdrop-blur-md border border-blue-200/50 dark:border-white/20 rounded-full text-[10px] font-black tracking-widest uppercase text-[#1D4ED8] dark:text-indigo-300 w-fit mb-4 shadow-sm">
               {event.date}
             </span>
-            <h2 className="text-2xl sm:text-3xl font-black text-black dark:text-white mb-2 tracking-tight drop-shadow-sm">{event.title}</h2>
-            <p className="text-sm text-black/80 dark:text-slate-300 max-w-lg leading-relaxed">{event.description}</p>
+            <h2 className="text-3xl sm:text-4xl font-black text-[#334155] dark:text-white mb-3 tracking-tight leading-tight max-w-2xl">{event.title}</h2>
+            <p className="text-base text-[#475569] dark:text-slate-300 max-w-xl leading-relaxed font-medium">{event.description}</p>
           </div>
         </div>
       ))}
@@ -88,37 +89,43 @@ export default function Dashboard({ user, onStartChallenge, setTimeMode, onNavig
   }, [setTimeMode]);
 
   return (
-    <div className="min-h-screen bg-background font-sans selection:bg-indigo-100 selection:text-indigo-900 transition-colors duration-300 relative overflow-x-hidden">
+    <div className="min-h-screen bg-background font-sans selection:bg-primary/20 selection:text-primary transition-colors duration-500 relative overflow-x-hidden">
       {/* Premium Background Decoration */}
-      <div className="fixed inset-0 z-0 pointer-events-none opacity-40 mix-blend-multiply dark:mix-blend-screen"
-        style={{
-          backgroundImage: `radial-gradient(circle at 80% 30%, rgba(29, 78, 216, 0.15) 0%, transparent 40%),
-                                radial-gradient(circle at 20% 70%, rgba(56, 189, 248, 0.1) 0%, transparent 40%)`
-        }}>
-        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.05] mix-blend-overlay"></div>
+      <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden opacity-30 dark:opacity-20">
+        <div className="absolute top-[-20%] right-[-10%] w-[70%] h-[70%] bg-blue-100 dark:bg-primary/10 rounded-full blur-[120px]" />
+        <div className="absolute bottom-[-20%] left-[-10%] w-[60%] h-[60%] bg-slate-100 dark:bg-blue-500/10 rounded-full blur-[100px]" />
+        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.02] mix-blend-overlay" />
       </div>
 
-      <main className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6 relative z-10">
-        <EventsCarousel />
+      <main className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 relative z-10">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.98 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.5 }}
+        >
+          <EventsCarousel />
+        </motion.div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           {/* Left Column (8 cols) */}
-          <div className="lg:col-span-8 flex flex-col gap-6">
-            <div className="h-auto lg:h-[280px]">
+          <div className="lg:col-span-8 flex flex-col gap-8">
+            <div className="h-auto">
               <DailyTracker user={user} />
             </div>
-            <div className="h-auto lg:h-[180px]">
+            <div className="h-auto">
               <PastWeekProgress user={user} />
             </div>
-            <PastActivitiesCard user={user} />
-            <PlacesToConcentrateCard user={user} />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <PastActivitiesCard user={user} />
+              <PlacesToConcentrateCard user={user} />
+            </div>
           </div>
 
           {/* Right Column (4 cols) */}
-          <div className="lg:col-span-4 flex flex-col gap-6">
+          <div className="lg:col-span-4 flex flex-col gap-8">
             <ChallengeCard user={user} onStartChallenge={onStartChallenge} />
             <PointsSummary data={pointsData} onNextSteps={() => onNavigate('prestige-milestones')} />
-            <div className="h-[408px]">
+            <div className="h-fit">
               <TodoListCard 
                 tasks={tasks}
                 onAddTask={onAddTask}

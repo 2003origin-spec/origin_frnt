@@ -53,47 +53,50 @@ export default function PointsSummary({ data, onNextSteps }: PointsSummaryProps)
 
 
     return (
-        <div className="w-full h-full bg-white/5 dark:bg-slate-900/40 backdrop-blur-md rounded-[32px] border border-white/10 p-6 flex flex-col justify-between overflow-hidden relative group">
+        <div className="w-full h-full bg-white dark:bg-slate-900/40 backdrop-blur-md rounded-[32px] border border-slate-100 dark:border-border/50 p-6 flex flex-col justify-between overflow-hidden relative group shadow-sm">
             {/* Background glow */}
-            <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-600/10 blur-[50px] pointer-events-none group-hover:bg-indigo-600/20 transition-colors duration-500" />
+            <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 blur-[50px] pointer-events-none group-hover:bg-blue-500/10 transition-colors duration-500" />
 
             {/* Header */}
             <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center">
-                        <Trophy className="w-5 h-5 text-indigo-400" />
+                <div className="flex items-center gap-4">
+                    <div className="w-14 h-14 rounded-2xl bg-[#EFF6FF] dark:bg-blue-500/10 flex items-center justify-center relative shadow-sm">
+                        <Trophy className="w-8 h-8 text-[#1D4ED8]" />
+                        <div className="absolute -top-1 -right-1 w-5 h-5 bg-[#059669] rounded-full border-2 border-white dark:border-zinc-900 flex items-center justify-center">
+                            <Star className="w-3 h-3 text-white fill-current" />
+                        </div>
                     </div>
                     <div>
                         <div className="flex items-center gap-1.5">
-                            <h3 className="text-xs font-bold text-black/50 dark:text-slate-500 uppercase tracking-widest">Prestige Points</h3>
+                            <h3 className="text-sm font-black text-[#64748B] dark:text-zinc-500 uppercase tracking-widest">Global Ranking</h3>
                             <button
                                 onClick={() => setShowInfo(true)}
-                                className="p-0.5 text-slate-500 hover:text-indigo-400 transition-colors"
+                                className="p-0.5 text-slate-400 hover:text-[#1D4ED8] transition-colors"
                                 title="How are points calculated?"
                             >
                                 <Info className="w-3.5 h-3.5" />
                             </button>
                         </div>
-                        <p className="text-2xl font-black text-black dark:text-white">{data.totalPoints.toLocaleString()}</p>
+                        <p className="text-2xl font-black text-[#334155] dark:text-white mt-0.5">{data.totalPoints.toLocaleString()}</p>
                     </div>
                 </div>
-                <div className={`px-3 py-1 rounded-full border text-[10px] font-black uppercase tracking-tighter ${tierStyle}`}>
+                <div className={`px-3 py-1 rounded-full border text-[10px] font-black uppercase tracking-tighter shadow-sm ${tierStyle}`}>
                     {data.currentTier}
                 </div>
             </div>
 
             {/* Progress */}
             <div className="space-y-2">
-                <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-widest">
-                    <span className="text-black/40 dark:text-slate-400">Next: {data.nextTier}</span>
-                    <span className="text-black/60 dark:text-indigo-400">{data.pointsToNext} more to rank up</span>
+                <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-widest">
+                    <span className="text-muted-foreground">Next: {data.nextTier}</span>
+                    <span className="text-primary">{data.pointsToNext} more to rank up</span>
                 </div>
-                <div className="w-full h-2 bg-slate-800/50 rounded-full overflow-hidden border border-white/5">
+                <div className="w-full h-2 bg-muted rounded-full overflow-hidden border border-border/20">
                     <motion.div
                         initial={{ width: 0 }}
                         animate={{ width: `${data.progressPercent}%` }}
                         transition={{ duration: 1, ease: "easeOut" }}
-                        className="h-full bg-gradient-to-r from-indigo-600 via-violet-500 to-indigo-400 shadow-[0_0_10px_rgba(99,102,241,0.5)]"
+                        className="h-full bg-gradient-to-r from-primary via-indigo-500 to-primary shadow-[0_0_10px_rgba(var(--primary),0.5)]"
                     />
                 </div>
             </div>

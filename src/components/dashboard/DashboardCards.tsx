@@ -68,23 +68,23 @@ export function ChallengeCard({ user, onStartChallenge }: ChallengeCardProps) {
     const prevMonth = () => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1));
 
     return (
-        <Card className="border border-border bg-card/40 backdrop-blur-2xl relative flex flex-col group min-h-[400px]">
+        <Card className="premium-card bg-card/50 backdrop-blur-xl relative flex flex-col group min-h-[400px] border-border/50">
             {/* Header: Month Navigation */}
             <div className="flex items-center justify-between px-5 pt-5 pb-2">
                 <div>
                     <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
                         Day {today.getDate()}
-                        <span className="text-[10px] text-muted-foreground font-medium tracking-tight whitespace-nowrap">Daily Challenge</span>
+                        <span className="text-[10px] text-muted-foreground font-medium tracking-tight whitespace-nowrap uppercase">Daily Challenge</span>
                     </h3>
                 </div>
-                <div className="flex items-center gap-1.5 bg-muted rounded-lg p-0.5 border border-border">
-                    <button onClick={prevMonth} className="p-1 hover:bg-white dark:hover:bg-slate-800 rounded-md text-slate-400 transition-colors">
+                <div className="flex items-center gap-1.5 bg-muted/50 rounded-lg p-0.5 border border-border/50">
+                    <button onClick={prevMonth} className="p-1 hover:bg-background rounded-md text-muted-foreground transition-colors">
                         <ChevronLeft className="w-3.5 h-3.5" />
                     </button>
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-700 dark:text-slate-300 w-12 text-center">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-foreground w-12 text-center">
                         {currentMonth.toLocaleDateString(undefined, { month: 'short' })}
                     </span>
-                    <button onClick={nextMonth} className="p-1 hover:bg-white dark:hover:bg-slate-800 rounded-md text-slate-400 transition-colors">
+                    <button onClick={nextMonth} className="p-1 hover:bg-background rounded-md text-muted-foreground transition-colors">
                         <ChevronRight className="w-3.5 h-3.5" />
                     </button>
                 </div>
@@ -96,7 +96,7 @@ export function ChallengeCard({ user, onStartChallenge }: ChallengeCardProps) {
                 <div className="mb-2">
                     <div className="grid grid-cols-7 gap-1 mb-1.5">
                         {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
-                            <div key={i} className="text-center text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">
+                            <div key={i} className="text-center text-[10px] font-black text-muted-foreground/50 uppercase tracking-widest">
                                 {d}
                             </div>
                         ))}
@@ -115,7 +115,7 @@ export function ChallengeCard({ user, onStartChallenge }: ChallengeCardProps) {
                                     <div className={`
                                         w-6 h-6 flex items-center justify-center rounded-full text-[10px] transition-all
                                         ${solved ? "ring-2 ring-emerald-500/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold" : "text-muted-foreground font-medium hover:bg-muted"}
-                                        ${current && !solved ? "text-orange-500 dark:text-orange-400 font-black bg-orange-500/10 ring-1 ring-orange-500/50" : ""}
+                                        ${current && !solved ? "text-primary font-black bg-primary/10 ring-1 ring-primary/50" : ""}
                                     `}>
                                         {solved ? <CheckCircle2 className="w-3.5 h-3.5" /> : day}
                                     </div>
@@ -126,19 +126,19 @@ export function ChallengeCard({ user, onStartChallenge }: ChallengeCardProps) {
                 </div>
 
                 {/* Bottom Section: Start Challenge */}
-                <div className="mt-auto bg-gradient-to-r from-orange-500/10 to-amber-500/5 dark:from-orange-500/10 dark:to-orange-900/20 rounded-xl p-3 border border-orange-200/50 dark:border-orange-500/30 flex items-center justify-between">
+                <div className="mt-auto bg-gradient-to-r from-primary/10 to-transparent rounded-xl p-3 border border-primary/20 flex items-center justify-between">
                     <div className="flex flex-col">
-                        <p className="text-[10px] font-bold text-orange-600 dark:text-orange-400 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                        <p className="text-[10px] font-black text-primary uppercase tracking-wider mb-1 flex items-center gap-1.5">
                             <Trophy className="w-3 h-3" />
                             Challenge of the Day
                         </p>
-                        <p className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                        <p className="text-[11px] font-bold text-foreground">
                             {isLoadingChallenge ? (
                                 <span className="opacity-50">Loading...</span>
                             ) : challenge ? (
-                                <>Solve <span className="text-orange-600 dark:text-orange-400">{challenge.concept || challenge.subject}</span></>
+                                <>Solve <span className="text-primary font-bold">{challenge.concept || challenge.subject}</span></>
                             ) : (
-                                <span className="opacity-50">No challenge today</span>
+                                <span className="text-muted-foreground/50">No challenge today</span>
                             )}
                         </p>
                     </div>
@@ -146,7 +146,7 @@ export function ChallengeCard({ user, onStartChallenge }: ChallengeCardProps) {
                         size="sm" 
                         disabled={isLoadingChallenge || !challenge || challenge.isSolved}
                         onClick={() => challenge && onStartChallenge?.(challenge.id.toString())}
-                        className="bg-orange-500 hover:bg-orange-600 text-white shadow-lg shadow-orange-500/20 text-[11px] font-bold px-4 h-8 transition-transform hover:scale-105 rounded-lg disabled:opacity-50"
+                        className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg shadow-primary/20 text-[11px] font-bold px-4 h-8 transition-transform hover:scale-105 rounded-lg disabled:opacity-50"
                     >
                         {challenge?.isSolved ? 'Solved' : 'Start Now'}
                     </Button>
@@ -173,62 +173,61 @@ export function PastActivitiesCard({ user }: { user: User }) {
             label: 'Webpage',
             icon: '🌐',
             secs: today.webpageTime || 0,
-            color: 'bg-blue-500',
-            textColor: 'text-blue-400',
+            color: 'bg-primary',
+            textColor: 'text-primary',
         },
         {
             label: 'Practice',
             icon: '📝',
             secs: today.practiceTime || 0,
-            color: 'bg-green-500',
-            textColor: 'text-green-400',
+            color: 'bg-emerald-500',
+            textColor: 'text-emerald-500',
         },
         {
             label: 'Pomodoro',
             icon: '🍅',
             secs: today.pomodoroTime || 0,
             color: 'bg-rose-500',
-            textColor: 'text-rose-400',
+            textColor: 'text-rose-500',
         },
     ];
 
     const totalSecs = types.reduce((a, t) => a + t.secs, 0);
 
     return (
-        <Card className="border-0 shadow-lg shadow-blue-500/5 bg-card backdrop-blur-xl relative overflow-hidden group ring-1 ring-border">
-            <div className="absolute inset-0 bg-gradient-to-br from-blue-50/50 to-transparent dark:from-blue-900/10 pointer-events-none" />
+        <Card className="premium-card relative overflow-hidden group">
+            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent pointer-events-none" />
 
-            <CardContent className="relative z-10 p-5 flex flex-col gap-4">
+            <CardContent className="relative z-10 p-6 flex flex-col gap-5">
                 {/* Header */}
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center text-blue-600 dark:text-blue-400">
+                        <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center text-[#4F46E5]">
                             <Clock className="w-5 h-5" />
                         </div>
                         <div>
-                            <h3 className="text-sm font-bold text-foreground">Time Spent</h3>
-                            <p className="text-[10px] text-muted-foreground font-medium">Today — {toHM(totalSecs)} total</p>
+                            <h3 className="text-sm font-bold text-[#334155]">Time Spent</h3>
+                            <p className="text-[10px] text-[#64748B] font-medium">Today — {toHM(totalSecs)} total</p>
                         </div>
                     </div>
                     <div className="text-right">
-                        <p className="text-xl font-black text-foreground">{toHM(totalSecs)}</p>
-                        <p className="text-[9px] text-muted-foreground uppercase tracking-widest">This session</p>
+                        <p className="text-xl font-black text-[#334155]">{toHM(totalSecs)}</p>
+                        <p className="text-[9px] text-[#64748B] uppercase tracking-widest font-bold">This session</p>
                     </div>
                 </div>
 
-                {/* Per-type breakdown */}
                 <div className="space-y-3">
                     {types.map((t) => {
                         const pct = totalSecs > 0 ? (t.secs / totalSecs) * 100 : 0;
                         return (
                             <div key={t.label} className="space-y-1">
                                 <div className="flex items-center justify-between">
-                                    <span className="text-[11px] font-bold text-black/60 dark:text-slate-400 flex items-center gap-1.5">
+                                    <span className="text-[11px] font-bold text-[#64748B] flex items-center gap-1.5">
                                         <span>{t.icon}</span> {t.label}
                                     </span>
                                     <span className={`text-[11px] font-black ${t.textColor}`}>{toHM(t.secs)}</span>
                                 </div>
-                                <div className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                                <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
                                     <motion.div
                                         initial={{ width: 0 }}
                                         animate={{ width: `${pct}%` }}
@@ -247,19 +246,20 @@ export function PastActivitiesCard({ user }: { user: User }) {
 
 export function PlacesToConcentrateCard({ user }: { user?: User }) {
     return (
-        <Card className="border-0 shadow-lg shadow-teal-500/5 bg-white dark:bg-slate-900/60 backdrop-blur-xl h-48 relative overflow-hidden group ring-1 ring-slate-100 dark:ring-white/5">
-            <div className="absolute inset-0 bg-gradient-to-br from-teal-50/40 to-transparent dark:from-teal-900/10 pointer-events-none" />
+        <Card className="premium-card h-48 relative overflow-hidden group">
+            <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent pointer-events-none" />
 
             <CardContent className="relative z-10 p-6 flex flex-col h-full">
                 <div className="flex items-start gap-4 mb-4">
-                    <div className="w-12 h-12 rounded-xl bg-teal-50 dark:bg-teal-900/20 flex items-center justify-center text-teal-600 dark:text-teal-400">
+                    <div className="w-12 h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-500">
                         <Target className="w-6 h-6" />
                     </div>
                     <div>
-                        <h3 className="text-base font-bold text-black dark:text-slate-100">Focus Areas</h3>
-                        <p className="text-xs text-black/50 dark:text-slate-400 mt-0.5">Based on your recent tests</p>
+                        <h3 className="text-base font-bold text-foreground">Focus Areas</h3>
+                        <p className="text-xs text-muted-foreground mt-0.5">Based on your recent tests</p>
                     </div>
                 </div>
+
 
                 <div className="flex-1 flex items-center justify-around px-4">
                     {/* Dynamic Progress Circles */}
@@ -338,8 +338,8 @@ export function TodoListCard({ tasks, onAddTask, onToggleTask, onRemoveTask, onV
 
             <CardContent className="relative z-10 p-6 flex-1 flex flex-col min-h-0">
                 <div className="flex items-center justify-between mb-6">
-                    <h3 className="text-lg font-bold text-black dark:text-slate-100 flex items-center gap-2.5">
-                        <div className="w-1.5 h-6 bg-indigo-500 rounded-full" />
+                    <h3 className="text-xl font-black text-foreground flex items-center gap-3">
+                        <div className="w-1.5 h-6 bg-primary rounded-full shadow-sm shadow-primary/20" />
                         Tasks & Goals
                     </h3>
                     <Button 
@@ -365,7 +365,7 @@ export function TodoListCard({ tasks, onAddTask, onToggleTask, onRemoveTask, onV
                         />
                         <Button
                             onClick={handleAdd}
-                            className="bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl px-3 shadow-lg shadow-indigo-500/20"
+                            className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl px-3 shadow-lg shadow-primary/20 transition-all hover:scale-105 active:scale-95"
                         >
                             <Plus className="w-5 h-5" />
                         </Button>

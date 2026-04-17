@@ -4,6 +4,8 @@ import { Camera, AlertTriangle, ShieldCheck } from 'lucide-react';
 import type { Test, TestResult, UserAnswer } from '@/types';
 import { apiCall } from '@/lib/api';
 import { toast } from 'sonner';
+import { useTheme } from 'next-themes';
+import { Sun, Moon } from 'lucide-react';
 
 interface TestInterfaceProps {
   test: Test;
@@ -15,6 +17,13 @@ interface TestInterfaceProps {
 type QuestionStatus = 'not_visited' | 'not_answered' | 'answered' | 'marked_review' | 'answered_marked';
 
 export default function TestInterface({ test, onComplete, onExit }: TestInterfaceProps) {
+  const { theme, setTheme, resolvedTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<UserAnswer[]>([]);
   const [timeRemaining, setTimeRemaining] = useState(test.duration * 60);
@@ -361,19 +370,20 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
   });
 
   return (
-    <div className="min-h-screen bg-white text-black font-sans text-sm selection:bg-blue-200 flex flex-col">
+  return (
+    <div className="min-h-screen bg-background text-foreground font-sans text-sm selection:bg-blue-200/30 flex flex-col transition-colors duration-300">
 
       {/* 1. Top Header */}
-      <header className="flex items-center justify-between px-6 py-2 border-b border-gray-300">
+      <header className="flex items-center justify-between px-6 py-2 border-b border-border bg-card">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center cursor-pointer" onClick={() => { stopCamera(); onExit(); }}>
             <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center">
-              <div className="w-6 h-6 bg-orange-500 rounded-tr-xl rounded-bl-xl" style={{ clipPath: 'polygon(0% 100%, 100% 100%, 100% 0%)' }}></div>
+              <div className="w-6 h-6 bg-orange-500 rounded-tr-xl rounded-bl-xl shadow-sm" style={{ clipPath: 'polygon(0% 100%, 100% 100%, 100% 0%)' }}></div>
             </div>
           </div>
           <div>
-            <h1 className="text-xl font-bold text-blue-900 leading-tight">O3 ORIGIN TESTING AGENCY</h1>
-            <p className="text-xs text-green-700 font-semibold italic">Excellence in Assessment</p>
+            <h1 className="text-xl font-bold text-blue-900 dark:text-blue-400 leading-tight">O3 ORIGIN TESTING AGENCY</h1>
+            <p className="text-xs text-green-700 dark:text-green-500 font-semibold italic">Excellence in Assessment</p>
           </div>
         </div>
 
@@ -409,10 +419,19 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
             )}
           </div>
           <div className="flex flex-col gap-1">
-            <div className="flex"><span className="w-28 text-gray-500">Candidate Name :</span> <span className="text-orange-500">[Your Name]</span></div>
-            <div className="flex"><span className="w-28 text-gray-500">Subject Name :</span> <span className="text-orange-500">{test.title}</span></div>
-            <div className="flex"><span className="w-28 text-gray-500">Remaining Time :</span> <span className="bg-blue-500 text-white px-2 py-0.5 rounded text-xs">{formatTime(timeRemaining)}</span></div>
+            <div className="flex"><span className="w-28 text-muted-foreground">Candidate Name :</span> <span className="text-orange-500 font-bold">[Your Name]</span></div>
+            <div className="flex"><span className="w-28 text-muted-foreground">Subject Name :</span> <span className="text-orange-500 font-bold">{test.title}</span></div>
+            <div className="flex"><span className="w-28 text-muted-foreground">Remaining Time :</span> <span className="bg-blue-600 text-white px-2 py-0.5 rounded text-xs shadow-sm font-mono">{formatTime(timeRemaining)}</span></div>
           </div>
+          {mounted && (
+            <button
+              onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
+              className="p-2 hover:bg-accent rounded-full transition-colors text-muted-foreground hover:text-foreground border border-border"
+              aria-label="Toggle Theme"
+            >
+              {resolvedTheme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            </button>
+          )}
         </div>
       </header>
 
@@ -438,9 +457,9 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
         <div className="flex-1 flex flex-col border-r border-gray-300 relative">
 
           {/* Question Header */}
-          <div className="flex justify-between items-center px-4 py-2 border-b border-gray-300 font-bold text-lg border-t-4 border-t-white">
-            <span>Question {currentQuestionIndex + 1}:</span>
-            <div className="w-6 h-6 bg-blue-600 rounded-full text-white flex items-center justify-center font-bold text-sm">&darr;</div>
+          <div className="flex justify-between items-center px-4 py-2 border-b border-border font-bold text-lg bg-card">
+            <span className="text-foreground">Question {currentQuestionIndex + 1}:</span>
+            <div className="w-6 h-6 bg-blue-600 rounded-full text-white flex items-center justify-center font-bold text-sm shadow-sm">&darr;</div>
           </div>
 
           {/* Question Text & Options */}
@@ -459,7 +478,7 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
                 </div>
               )}
 
-              <p className="text-base text-gray-800 leading-relaxed font-serif mb-8 whitespace-pre-wrap">
+              <p className="text-base text-foreground leading-relaxed font-serif mb-8 whitespace-pre-wrap">
                 {currentQuestion?.text}
               </p>
 
@@ -619,11 +638,11 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
         </div>
 
         {/* Right Area - Palette */}
-        <div className="w-[320px] lg:w-[350px] bg-white flex flex-col pt-4">
+        <div className="w-[320px] lg:w-[350px] bg-card border-l border-border flex flex-col pt-4">
 
           {/* Legend */}
-          <div className="px-4 pb-4 border-b border-gray-200">
-            <div className="grid grid-cols-2 gap-y-3 gap-x-2 text-[10px] text-gray-700 font-semibold mb-4">
+          <div className="px-4 pb-4 border-b border-border">
+            <div className="grid grid-cols-2 gap-y-3 gap-x-2 text-[10px] text-foreground font-semibold mb-4">
 
               <div className="flex items-center gap-1.5">
                 <div className="w-8 h-7 bg-gray-200 border border-gray-300 rounded-sm flex items-center justify-center font-bold text-gray-500 relative">

@@ -47,16 +47,23 @@ export default function ClientShell({ children }: { children: React.ReactNode })
     router.push(route);
   };
 
-  const noNavbarPaths = ['/', '/auth', '/onboarding', '/role-selection', '/explore'];
+  const noNavbarPaths = ['/', '/auth', '/onboarding', '/role-selection'];
   const isSpecialPath = pathname.startsWith('/tests/') || pathname.startsWith('/ogcode/');
   
   // Use resolvedTheme if available to handle 'system' correctly
-  const currentTheme = (mounted ? resolvedTheme : theme) || 'dark';
+  const currentTheme = (mounted ? resolvedTheme : 'dark') || 'dark';
   
+  // Show Navbar on more paths if needed
   const showNavbar = user && user.role === 'student' && !isNavigationLocked && !noNavbarPaths.includes(pathname) && !isSpecialPath;
 
   return (
-    <div className="min-h-screen bg-background text-foreground font-sans antialiased overflow-x-hidden relative flex flex-col transition-colors duration-300">
+    <div className="min-h-screen bg-background text-foreground font-sans antialiased overflow-x-hidden relative flex flex-col transition-colors duration-700">
+      {/* Dynamic Background Mesh */}
+      <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden opacity-30 dark:opacity-20">
+        <div className="absolute top-[-20%] right-[-10%] w-[70%] h-[70%] bg-blue-100 dark:bg-primary/10 rounded-full blur-[120px]" />
+        <div className="absolute bottom-[-20%] left-[-10%] w-[60%] h-[60%] bg-slate-100 dark:bg-blue-500/10 rounded-full blur-[100px]" />
+      </div>
+
       {mounted && showNavbar && (
         <Navbar
           user={user}
@@ -67,14 +74,14 @@ export default function ClientShell({ children }: { children: React.ReactNode })
           setTheme={setTheme}
         />
       )}
-      <main className={`flex-1 flex flex-col ${showNavbar ? 'pt-[92px]' : ''}`}>
+      <main className={`flex-1 flex flex-col relative z-10 ${mounted && showNavbar ? 'pt-[92px]' : ''}`}>
         <AnimatePresence mode="wait">
           <motion.div
             key={pathname}
-            initial={{ opacity: 0, scale: 0.98 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 1.02 }}
-            transition={{ duration: 0.25, ease: "easeInOut" }}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.3, ease: [0.23, 1, 0.32, 1] }}
             className="flex-1 flex flex-col"
           >
             {children}
@@ -85,3 +92,4 @@ export default function ClientShell({ children }: { children: React.ReactNode })
     </div>
   );
 }
+
