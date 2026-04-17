@@ -28,6 +28,7 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
   const [showMalpracticeWarning, setShowMalpracticeWarning] = useState(false);
   const [isMalpracticeTerminated, setIsMalpracticeTerminated] = useState(false);
   const malpracticeTimerRef = useRef<any>(null);
+  const questionStartedAtRef = useRef<number>(Date.now());
 
   // Proctoring setup
   useEffect(() => {
@@ -155,6 +156,7 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
       next[0] = true;
       return next;
     });
+    questionStartedAtRef.current = Date.now();
   }, [test.questions]);
 
   // Track if a question has been visited at all
@@ -228,7 +230,49 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
       setTempTextAnswer('');
     }
     markVisited(currentQuestionIndex);
+    questionStartedAtRef.current = Date.now();
   }, [currentQuestionIndex, answers]);
+
+  const getElapsedSeconds = () => Math.max(0, Math.round((Date.now() - questionStartedAtRef.current) / 1000));
+
+  const recordCurrentQuestionTime = () => {
+    const elapsedSeconds = getElapsedSeconds();
+    if (elapsedSeconds <= 0 || !answers[currentQuestionIndex]) {
+      questionStartedAtRef.current = Date.now();
+      return answers;
+    }
+
+    const updatedAnswers = [...answers];
+    updatedAnswers[currentQuestionIndex] = {
+      ...updatedAnswers[currentQuestionIndex],
+      timeSpent: (updatedAnswers[currentQuestionIndex].timeSpent ?? 0) + elapsedSeconds,
+    };
+    questionStartedAtRef.current = Date.now();
+    setAnswers(updatedAnswers);
+    return updatedAnswers;
+  };
+
+  const saveCurrentResponse = (isMarkedForReview: boolean) => {
+    const elapsedSeconds = getElapsedSeconds();
+    const updatedAnswers = [...answers];
+    updatedAnswers[currentQuestionIndex] = {
+      ...updatedAnswers[currentQuestionIndex],
+      selectedOption: tempSelection,
+      selectedOptions: tempSelections,
+      matrixPairs: tempMatrixPairs,
+      answerText: tempTextAnswer,
+      isMarkedForReview,
+      timeSpent: (updatedAnswers[currentQuestionIndex]?.timeSpent ?? 0) + elapsedSeconds,
+    };
+    questionStartedAtRef.current = Date.now();
+    setAnswers(updatedAnswers);
+    return updatedAnswers;
+  };
+
+  const navigateToQuestion = (nextIndex: number) => {
+    recordCurrentQuestionTime();
+    setCurrentQuestionIndex(nextIndex);
+  };
 
   const handleOptionSelect = (optionIndex: number) => {
     setTempSelection(optionIndex);
@@ -256,50 +300,23 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
   };
 
   const saveAndNext = () => {
-    const newAnswers = [...answers];
-    newAnswers[currentQuestionIndex] = {
-      ...newAnswers[currentQuestionIndex],
-      selectedOption: tempSelection,
-      selectedOptions: tempSelections,
-      matrixPairs: tempMatrixPairs,
-      answerText: tempTextAnswer,
-      isMarkedForReview: false
-    };
-    setAnswers(newAnswers);
+    saveCurrentResponse(false);
     if (currentQuestionIndex < test.totalQuestions - 1) {
-      setCurrentQuestionIndex(prev => prev + 1);
+      navigateToQuestion(currentQuestionIndex + 1);
     }
   };
 
   const saveAndMarkForReview = () => {
-    const newAnswers = [...answers];
-    newAnswers[currentQuestionIndex] = {
-      ...newAnswers[currentQuestionIndex],
-      selectedOption: tempSelection,
-      selectedOptions: tempSelections,
-      matrixPairs: tempMatrixPairs,
-      answerText: tempTextAnswer,
-      isMarkedForReview: true
-    };
-    setAnswers(newAnswers);
+    saveCurrentResponse(true);
     if (currentQuestionIndex < test.totalQuestions - 1) {
-      setCurrentQuestionIndex(prev => prev + 1);
+      navigateToQuestion(currentQuestionIndex + 1);
     }
   };
 
   const markForReviewAndNext = () => {
-    const newAnswers = [...answers];
-    newAnswers[currentQuestionIndex] = {
-      ...newAnswers[currentQuestionIndex],
-      selectedOption: tempSelection,
-      selectedOptions: tempSelections,
-      matrixPairs: tempMatrixPairs,
-      answerText: tempTextAnswer,
-      isMarkedForReview: true
-    };
-    setAnswers(newAnswers);
+    saveCurrentResponse(true);
     if (currentQuestionIndex < test.totalQuestions - 1) {
-      setCurrentQuestionIndex(prev => prev + 1);
+      navigateToQuestion(currentQuestionIndex + 1);
     }
   };
 
@@ -309,7 +326,8 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
 
     try {
       const isMalpractice = options?.malpractice || false;
-      const formattedAnswers = answers.filter(a =>
+      const answersWithCurrentTime = recordCurrentQuestionTime();
+      const formattedAnswers = answersWithCurrentTime.filter(a =>
         a.selectedOption !== null ||
         (a.selectedOptions && a.selectedOptions.length > 0) ||
         (a.matrixPairs && a.matrixPairs.length > 0) ||
@@ -476,7 +494,7 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
                         className="mt-1.5 w-4 h-4"
                       />
                       <span>({idx + 1})</span>
-                      <span>{renderInlineSegments(String(option), `test-mcq-option-${idx}`)}</span>
+                      <span className="text-gray-800">{renderInlineSegments(String(option), `test-mcq-option-${idx}`, 'plain')}</span>
                     </label>
                   ))}
                 </div>
@@ -499,7 +517,7 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
                       />
                       <span className="group-hover:text-blue-600 transition-colors">({idx + 1})</span>
                       <span className="group-hover:text-blue-600 transition-colors">
-                        {renderInlineSegments(String(option), `test-msq-option-${idx}`)}
+                        {renderInlineSegments(String(option), `test-msq-option-${idx}`, 'plain')}
                       </span>
                     </label>
                   ))}
@@ -607,12 +625,12 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
           <div className="bg-gray-100 border-t border-gray-300 px-4 py-3 flex justify-between items-center">
             <div className="flex gap-2">
               <button
-                onClick={() => setCurrentQuestionIndex(Math.max(0, currentQuestionIndex - 1))}
+                onClick={() => navigateToQuestion(Math.max(0, currentQuestionIndex - 1))}
                 className="bg-white border border-gray-300 text-gray-700 px-4 py-1 text-xs font-bold rounded-sm shadow-sm hover:bg-gray-50 uppercase"
                 disabled={currentQuestionIndex === 0}
               >&lt;&lt; BACK</button>
               <button
-                onClick={() => setCurrentQuestionIndex(Math.min(test.totalQuestions - 1, currentQuestionIndex + 1))}
+                onClick={() => navigateToQuestion(Math.min(test.totalQuestions - 1, currentQuestionIndex + 1))}
                 className="bg-white border border-gray-300 text-gray-700 px-4 py-1 text-xs font-bold rounded-sm shadow-sm hover:bg-gray-50 uppercase"
               >NEXT &gt;&gt;</button>
             </div>
@@ -695,7 +713,7 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
                 }
 
                 return (
-                  <button onClick={() => setCurrentQuestionIndex(i)} key={i} className={shapeClass}>
+                  <button onClick={() => navigateToQuestion(i)} key={i} className={shapeClass}>
                     {innerContent}
                   </button>
                 );

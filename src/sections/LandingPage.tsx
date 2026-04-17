@@ -1,5 +1,5 @@
 'use client';
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion, useScroll, useTransform, useSpring } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import FloatingLines from '@/components/ui/FloatingLines';
@@ -71,6 +71,13 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
   const heroRef = useRef<HTMLDivElement>(null);
   const howItWorksRef = useRef<HTMLDivElement>(null);
   const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const isDarkTheme = mounted && theme === 'dark';
 
   const { scrollYProgress } = useScroll({
     target: howItWorksRef,
@@ -165,7 +172,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
       {/* Ambient Background - Floating Lines */}
       <div className="fixed inset-0 z-0 pointer-events-none opacity-60 dark:opacity-100 transition-opacity">
         <FloatingLines
-          linesGradient={theme === 'dark' ? ['#2563EB', '#1E40AF', '#1D4ED8', '#1E3A8A'] : ['#3b82f6', '#2563eb', '#1d4ed8', '#1e40af']}
+          linesGradient={isDarkTheme ? ['#2563EB', '#1E40AF', '#1D4ED8', '#1E3A8A'] : ['#3b82f6', '#2563eb', '#1d4ed8', '#1e40af']}
           lineCount={[6, 8, 6]}
           lineDistance={[0.2, 0.3, 0.2]}
           parallaxStrength={0.1}
@@ -206,11 +213,11 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
 
           <div className="flex items-center gap-3">
             <button
-              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+              onClick={() => setTheme(isDarkTheme ? 'light' : 'dark')}
               className="p-2 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-colors rounded-full hover:bg-slate-100 dark:hover:bg-slate-800"
               aria-label="Toggle Theme"
             >
-              {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+              {isDarkTheme ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </button>
             <Button
               onClick={onGetStarted}

@@ -5,6 +5,7 @@ import {
   getPracticeQuestionDetail,
   getTestDetail,
 } from "@/server/assessments";
+import { getOriginAiAnalyticsSnapshot, type OriginAiAnalyticsSnapshot } from "@/server/analytics-store";
 import { awardPoints } from "@/server/gamification";
 import {
   createId,
@@ -116,6 +117,8 @@ interface OriginAiMemoryPayload {
   pendingAssignmentCount: number;
   currentStreak: number;
   lastTestSummary: string | null;
+  pendingDppFocusTopics?: string[];
+  recentDppProgressSummary?: string | null;
 }
 
 export interface OriginAiSessionPayload {
@@ -318,7 +321,7 @@ async function resolvePageContext(
     }
 
     if ((pageKind === "test_active" || pageKind === "test_result") && testId) {
-      const test = getTestDetail(store, user, testId);
+      const test = await getTestDetail(store, user, testId);
       context.title = test.title;
       context.subject = test.subject ?? null;
       context.chapter = test.chapter ?? null;
@@ -418,7 +421,12 @@ function getOrCreateMentorSession(store: AppStore, user: StoredUser, browserSess
   return session;
 }
 
-function buildReminders(store: AppStore, user: StoredUser, latestResult: StoredTestResult | null): StoredOriginAiReminder[] {
+function buildReminders(
+  store: AppStore,
+  user: StoredUser,
+  latestResult: StoredTestResult | null,
+  analyticsSnapshot: OriginAiAnalyticsSnapshot | null,
+): StoredOriginAiReminder[] {
   const createdAt = nowIso();
   const reminders: StoredOriginAiReminder[] = [];
 
@@ -436,8 +444,26 @@ function buildReminders(store: AppStore, user: StoredUser, latestResult: StoredT
     });
   }
 
-  if (latestResult) {
-    for (const weak of latestResult.weakAreas.slice(0, 3)) {
+  if (pendingDpps.length === 0 && analyticsSnapshot?.pendingDppCount) {
+    for (const topic of analyticsSnapshot.pendingDppFocusTopics.slice(0, 3)) {
+      reminders.push({
+        id: `reminder_dpp_focus_${topic.replace(/\s+/g, "_").toLowerCase()}`,
+        userId: user.id,
+        kind: "dpp",
+        title: `Practice ${topic}`,
+        message: `A generated DPP is waiting on ${topic}. Knock out those weak spots before they start charging rent.`,
+        priority: "high",
+        sourceId: null,
+        createdAt,
+      });
+    }
+  }
+
+  const revisionTopics =
+    analyticsSnapshot?.latestWeakTopics.length
+      ? analyticsSnapshot.latestWeakTopics.map((topic) => ({ topic, accuracy: 0 }))
+      : (latestResult?.weakAreas ?? []);
+  for (const weak of revisionTopics.slice(0, 3)) {
       reminders.push({
         id: `reminder_revision_${weak.topic.replace(/\s+/g, "_").toLowerCase()}`,
         userId: user.id,
@@ -445,10 +471,9 @@ function buildReminders(store: AppStore, user: StoredUser, latestResult: StoredT
         title: `Revise ${weak.topic}`,
         message: `${weak.topic} was one of your weaker zones in the last test. A short revision sprint here will pay rent.`,
         priority: "high",
-        sourceId: latestResult.id,
+        sourceId: latestResult?.id ?? null,
         createdAt,
       });
-    }
   }
 
   const pendingAssignments = store.assignments.filter((entry) => entry.userId === user.id && !entry.completed);
@@ -509,16 +534,21 @@ function buildMemoryPayload(
   user: StoredUser,
   latestResult: StoredTestResult | null,
   store: AppStore,
+  analyticsSnapshot: OriginAiAnalyticsSnapshot | null,
 ): OriginAiMemoryPayload {
   return {
     preferredName: memory.preferredName?.trim() || firstName(user),
     identitySummary: memory.identitySummary?.trim() || `${user.name} is studying with Origin.`,
     pinnedFacts: memory.pinnedFacts,
-    lastWeakTopics: memory.lastWeakTopics,
-    pendingDppCount: store.dpps.filter((entry) => entry.userId === user.id && !entry.completed).length,
+    lastWeakTopics: analyticsSnapshot?.latestWeakTopics.length ? analyticsSnapshot.latestWeakTopics : memory.lastWeakTopics,
+    pendingDppCount:
+      analyticsSnapshot?.pendingDppCount ??
+      store.dpps.filter((entry) => entry.userId === user.id && !entry.completed).length,
     pendingAssignmentCount: store.assignments.filter((entry) => entry.userId === user.id && !entry.completed).length,
     currentStreak: user.streak,
-    lastTestSummary: latestResult?.aiAnalysis.summary ?? null,
+    lastTestSummary: analyticsSnapshot?.latestTestSummary ?? latestResult?.aiAnalysis.summary ?? null,
+    pendingDppFocusTopics: analyticsSnapshot?.pendingDppFocusTopics ?? [],
+    recentDppProgressSummary: analyticsSnapshot?.recentDppProgressSummary ?? null,
   };
 }
 
@@ -527,6 +557,7 @@ interface OriginAiRuntimeState {
   pageContext: OriginAiResolvedPageContext;
   pagePolicy: OriginAiPolicy;
   latestResult: StoredTestResult | null;
+  analyticsSnapshot: OriginAiAnalyticsSnapshot | null;
   memoryRecord: StoredOriginAiProfileMemory;
   memoryPayload: OriginAiMemoryPayload;
   reminders: StoredOriginAiReminder[];
@@ -543,10 +574,11 @@ async function prepareOriginAiRuntime(
   const pageContext = await resolvePageContext(store, user, request, input);
   const pagePolicy = resolvePagePolicy(pageContext);
   const latestResult = getLatestResult(store, user.id);
+  const analyticsSnapshot = await getOriginAiAnalyticsSnapshot(user.id).catch(() => null);
   const memoryRecord = getOrCreateProfileMemory(store, user);
-  const reminders = buildReminders(store, user, latestResult);
+  const reminders = buildReminders(store, user, latestResult, analyticsSnapshot);
   syncProfileMemory(memoryRecord, user, latestResult, reminders, pageContext);
-  const memoryPayload = buildMemoryPayload(memoryRecord, user, latestResult, store);
+  const memoryPayload = buildMemoryPayload(memoryRecord, user, latestResult, store, analyticsSnapshot);
 
   store.originAiReminders = [
     ...store.originAiReminders.filter((entry) => entry.userId !== user.id),
@@ -563,6 +595,7 @@ async function prepareOriginAiRuntime(
     pageContext,
     pagePolicy,
     latestResult,
+    analyticsSnapshot,
     memoryRecord,
     memoryPayload,
     reminders,
@@ -1602,7 +1635,13 @@ export async function commitOriginAiVoiceTurn(
     userMessage,
     aiMessage,
     session: serializeSession(runtime.session),
-    memory: buildMemoryPayload(runtime.memoryRecord, user, runtime.latestResult, store),
+    memory: buildMemoryPayload(
+      runtime.memoryRecord,
+      user,
+      runtime.latestResult,
+      store,
+      runtime.analyticsSnapshot,
+    ),
     reminders: runtime.reminders,
     pageContext: runtime.pageContext,
     pagePolicy: runtime.pagePolicy,
@@ -1794,7 +1833,13 @@ export async function sendOriginAiMessage(
     userMessage,
     aiMessage,
     session: serializeSession(runtime.session),
-    memory: buildMemoryPayload(runtime.memoryRecord, user, runtime.latestResult, store),
+    memory: buildMemoryPayload(
+      runtime.memoryRecord,
+      user,
+      runtime.latestResult,
+      store,
+      runtime.analyticsSnapshot,
+    ),
     reminders: runtime.reminders,
     pageContext: runtime.pageContext,
     pagePolicy: runtime.pagePolicy,
