@@ -12,14 +12,14 @@ export default function RoleSelection({ onSelectRole, onBack }: RoleSelectionPro
     const [hoveredRole, setHoveredRole] = useState<'student' | 'teacher' | null>(null);
 
     return (
-        <div className="min-h-screen flex items-center justify-center p-4 bg-background text-foreground transition-colors duration-500">
+        <div className="min-h-screen flex items-center justify-center p-4 bg-background text-foreground transition-colors duration-500 overflow-hidden relative">
             {/* Background Decoration */}
-            <div className="absolute inset-0 z-0 pointer-events-none opacity-40 mix-blend-screen"
+            <div className="absolute inset-0 z-0 pointer-events-none opacity-40 mix-blend-multiply dark:mix-blend-screen"
                 style={{
-                    backgroundImage: `radial-gradient(circle at 80% 30%, rgba(29, 78, 216, 0.4) 0%, transparent 40%),
-                                     radial-gradient(circle at 20% 70%, rgba(56, 189, 248, 0.2) 0%, transparent 40%)`
+                    backgroundImage: `radial-gradient(circle at 80% 30%, rgba(29, 78, 216, 0.25) 0%, transparent 40%),
+                                     radial-gradient(circle at 20% 70%, rgba(56, 189, 248, 0.15) 0%, transparent 40%)`
                 }}>
-                <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.05] mix-blend-overlay"></div>
+                <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.03] mix-blend-overlay"></div>
             </div>
 
             <div className="w-full max-w-4xl relative z-10">
@@ -33,10 +33,10 @@ export default function RoleSelection({ onSelectRole, onBack }: RoleSelectionPro
                 </button>
 
                 <div className="text-center mb-12">
-                    <h1 className="text-4xl font-bold text-slate-900 dark:text-white mb-4 tracking-tight">
+                    <h1 className="text-4xl font-bold text-foreground mb-4 tracking-tight">
                         How will you use ORIGIN?
                     </h1>
-                    <p className="text-lg text-slate-600 dark:text-slate-400">
+                    <p className="text-lg text-muted-foreground">
                         Select your role to get a personalized experience
                     </p>
                 </div>
@@ -45,8 +45,8 @@ export default function RoleSelection({ onSelectRole, onBack }: RoleSelectionPro
                     {/* Student Card */}
                     <div
                         className={`group relative p-8 rounded-3xl border transition-all duration-500 cursor-pointer overflow-hidden ${hoveredRole === 'student'
-                            ? 'bg-card dark:bg-slate-900/80 border-teal-500/50 shadow-[0_0_30px_rgba(20,184,166,0.15)] dark:shadow-[0_0_30px_rgba(20,184,166,0.3)] scale-[1.02]'
-                            : 'bg-card/40 dark:bg-slate-900/40 backdrop-blur-md border-border dark:border-white/10 hover:border-black/10 dark:hover:border-white/20 hover:bg-card/80 dark:hover:bg-slate-900/60 shadow-xl'
+                            ? 'bg-card border-teal-500/50 shadow-[0_0_40px_rgba(20,184,166,0.1)] dark:shadow-[0_0_40px_rgba(20,184,166,0.2)] scale-[1.02]'
+                            : 'bg-card/40 backdrop-blur-xl border-border/40 hover:border-black/5 dark:hover:border-white/10 hover:bg-card/80 shadow-xl'
                             }`}
                         onMouseEnter={() => setHoveredRole('student')}
                         onMouseLeave={() => setHoveredRole(null)}
@@ -57,13 +57,13 @@ export default function RoleSelection({ onSelectRole, onBack }: RoleSelectionPro
                             <CheckCircle2 className="w-6 h-6 text-[#3CACA3]" />
                         </div>
 
-                        <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-6 transition-colors duration-300 ${hoveredRole === 'student' ? 'bg-teal-50 dark:bg-teal-900/30 text-[#3CACA3] dark:text-teal-400' : 'bg-slate-100 dark:bg-slate-800 text-slate-400'
+                        <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-6 transition-colors duration-300 ${hoveredRole === 'student' ? 'bg-teal-500/10 text-teal-600 dark:text-teal-400' : 'bg-muted text-muted-foreground'
                             }`}>
                             <GraduationCap className="w-8 h-8" />
                         </div>
 
-                        <h3 className="text-2xl font-bold text-slate-900 dark:text-white mb-3">Student</h3>
-                        <p className="text-slate-600 dark:text-slate-400 mb-6 leading-relaxed">
+                        <h3 className="text-2xl font-bold text-foreground mb-3">Student</h3>
+                        <p className="text-muted-foreground mb-6 leading-relaxed">
                             I want to prepare for JEE exams, take AI-powered tests, and track my progress.
                         </p>
 
@@ -74,8 +74,8 @@ export default function RoleSelection({ onSelectRole, onBack }: RoleSelectionPro
                                 'Concept Mastery Tracking',
                                 '24/7 Doubt Solving'
                             ].map((feature, i) => (
-                                <li key={i} className="flex items-center gap-3 text-sm text-slate-600 dark:text-slate-400">
-                                    <div className={`w-1.5 h-1.5 rounded-full ${hoveredRole === 'student' ? 'bg-[#3CACA3]' : 'bg-slate-300 dark:bg-slate-700'
+                                <li key={i} className="flex items-center gap-3 text-sm text-muted-foreground">
+                                    <div className={`w-1.5 h-1.5 rounded-full ${hoveredRole === 'student' ? 'bg-teal-500' : 'bg-muted-foreground/30'
                                         }`} />
                                     {feature}
                                 </li>
@@ -84,8 +84,8 @@ export default function RoleSelection({ onSelectRole, onBack }: RoleSelectionPro
 
                         <Button
                             className={`w-full py-6 text-base font-semibold transition-all duration-300 ${hoveredRole === 'student'
-                                ? 'bg-gradient-to-r from-[#3CACA3] to-[#2A8F87] text-white shadow-lg'
-                                : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700'
+                                ? 'bg-gradient-to-r from-teal-500 to-[#2A8F87] text-white shadow-lg shadow-teal-500/20'
+                                : 'bg-muted text-muted-foreground hover:bg-muted/80'
                                 }`}
                         >
                             Continue as Student
@@ -95,8 +95,8 @@ export default function RoleSelection({ onSelectRole, onBack }: RoleSelectionPro
                     {/* Teacher Card */}
                     <div
                         className={`group relative p-8 rounded-3xl border transition-all duration-500 cursor-pointer overflow-hidden ${hoveredRole === 'teacher'
-                            ? 'bg-card dark:bg-slate-900/80 border-blue-500/50 shadow-[0_0_30px_rgba(59,130,246,0.15)] dark:shadow-[0_0_30px_rgba(59,130,246,0.3)] scale-[1.02]'
-                            : 'bg-card/40 dark:bg-slate-900/40 backdrop-blur-md border-border dark:border-white/10 hover:border-black/10 dark:hover:border-white/20 hover:bg-card/80 dark:hover:bg-slate-900/60 shadow-xl'
+                            ? 'bg-card border-blue-500/50 shadow-[0_0_40px_rgba(59,130,246,0.1)] dark:shadow-[0_0_40px_rgba(59,130,246,0.2)] scale-[1.02]'
+                            : 'bg-card/40 backdrop-blur-xl border-border/40 hover:border-black/5 dark:hover:border-white/10 hover:bg-card/80 shadow-xl'
                             }`}
                         onMouseEnter={() => setHoveredRole('teacher')}
                         onMouseLeave={() => setHoveredRole(null)}
@@ -107,13 +107,13 @@ export default function RoleSelection({ onSelectRole, onBack }: RoleSelectionPro
                             <CheckCircle2 className="w-6 h-6 text-[#1E3A5F] dark:text-blue-400" />
                         </div>
 
-                        <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-6 transition-colors duration-300 ${hoveredRole === 'teacher' ? 'bg-blue-50 dark:bg-blue-900/30 text-[#1E3A5F] dark:text-blue-400' : 'bg-slate-100 dark:bg-slate-800 text-slate-400'
+                        <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-6 transition-colors duration-300 ${hoveredRole === 'teacher' ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400' : 'bg-muted text-muted-foreground'
                             }`}>
                             <BookOpen className="w-8 h-8" />
                         </div>
 
-                        <h3 className="text-2xl font-bold text-slate-900 dark:text-white mb-3">Teacher / Institution</h3>
-                        <p className="text-slate-600 dark:text-slate-400 mb-6 leading-relaxed">
+                        <h3 className="text-2xl font-bold text-foreground mb-3">Teacher / Institution</h3>
+                        <p className="text-muted-foreground mb-6 leading-relaxed">
                             I want to create tests, manage students, and analyze class performance.
                         </p>
 
@@ -124,8 +124,8 @@ export default function RoleSelection({ onSelectRole, onBack }: RoleSelectionPro
                                 'Detailed Class Analytics',
                                 'Assignment Management'
                             ].map((feature, i) => (
-                                <li key={i} className="flex items-center gap-3 text-sm text-slate-600 dark:text-slate-400">
-                                    <div className={`w-1.5 h-1.5 rounded-full ${hoveredRole === 'teacher' ? 'bg-[#1E3A5F] dark:bg-blue-500' : 'bg-slate-300 dark:bg-slate-700'
+                                <li key={i} className="flex items-center gap-3 text-sm text-muted-foreground">
+                                    <div className={`w-1.5 h-1.5 rounded-full ${hoveredRole === 'teacher' ? 'bg-blue-500' : 'bg-muted-foreground/30'
                                         }`} />
                                     {feature}
                                 </li>
@@ -134,8 +134,8 @@ export default function RoleSelection({ onSelectRole, onBack }: RoleSelectionPro
 
                         <Button
                             className={`w-full py-6 text-base font-semibold transition-all duration-300 ${hoveredRole === 'teacher'
-                                ? 'bg-gradient-to-r from-[#1E3A5F] to-[#152C4A] text-white shadow-lg'
-                                : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700'
+                                ? 'bg-gradient-to-r from-blue-600 to-[#152C4A] text-white shadow-lg shadow-blue-500/20'
+                                : 'bg-muted text-muted-foreground hover:bg-muted/80'
                                 }`}
                         >
                             Continue as Teacher

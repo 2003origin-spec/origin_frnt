@@ -28,27 +28,27 @@ export default function AuthPage({ userRole, onLogin, onBack, isLoading, error }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-background text-foreground transition-colors duration-500">
+    <div className="min-h-screen flex items-center justify-center p-4 bg-background text-foreground transition-colors duration-500 overflow-hidden relative">
       {/* Background Decoration */}
-      <div className="absolute inset-0 z-0 pointer-events-none opacity-40 mix-blend-screen"
+      <div className="absolute inset-0 z-0 pointer-events-none opacity-40 mix-blend-multiply dark:mix-blend-screen"
         style={{
-          backgroundImage: `radial-gradient(circle at 80% 30%, rgba(29, 78, 216, 0.4) 0%, transparent 40%),
-                               radial-gradient(circle at 20% 70%, rgba(56, 189, 248, 0.2) 0%, transparent 40%)`
+          backgroundImage: `radial-gradient(circle at 80% 30%, rgba(29, 78, 216, 0.25) 0%, transparent 40%),
+                               radial-gradient(circle at 20% 70%, rgba(56, 189, 248, 0.15) 0%, transparent 40%)`
         }}>
-        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.05] mix-blend-overlay"></div>
+        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.03] mix-blend-overlay"></div>
       </div>
 
       <div className="w-full max-w-md relative z-10">
         {/* Back Button */}
         <button
           onClick={onBack}
-          className="mb-6 flex items-center gap-2 text-slate-600 dark:text-slate-400 hover:text-[#3CACA3] dark:hover:text-[#3CACA3] transition-colors"
+          className="mb-6 flex items-center gap-2 text-muted-foreground hover:text-blue-500 transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
           <span className="text-sm font-medium">Back to home</span>
         </button>
 
-        <Card className="border-border dark:border-white/10 shadow-[0_0_50px_rgba(0,0,0,0.1)] dark:shadow-[0_0_50px_rgba(0,0,0,0.5)] bg-card/90 dark:bg-slate-900/60 backdrop-blur-2xl">
+        <Card className="border-border/40 shadow-2xl bg-card/80 backdrop-blur-2xl">
           <CardHeader className="text-center pb-2">
             <div className="flex justify-center mb-4">
               <img
@@ -61,17 +61,17 @@ export default function AuthPage({ userRole, onLogin, onBack, isLoading, error }
                 className="h-16 w-auto rounded-2xl shadow-sm"
               />
             </div>
-            <CardTitle className="text-2xl font-bold text-slate-900 dark:text-white">
+            <CardTitle className="text-2xl font-bold text-foreground">
               {userRole === 'teacher' ? 'Teacher Login' : userRole === 'student' ? 'Student Login' : 'Welcome to ORIGIN'}
             </CardTitle>
-            <CardDescription className="text-slate-500 dark:text-slate-400">
+            <CardDescription className="text-muted-foreground">
               {userRole === 'teacher' ? 'Access your dashboard and manage classes' : 'Your AI-powered JEE preparation companion'}
             </CardDescription>
           </CardHeader>
 
           <CardContent>
             <div className="flex flex-col items-center mb-6">
-              <div className="px-6 py-2 rounded-xl bg-slate-200/50 dark:bg-white/5 border border-white/5 font-bold text-[#3CACA3] dark:text-blue-300">
+              <div className="px-6 py-2 rounded-xl bg-muted border border-border/40 font-bold text-blue-600 dark:text-blue-400">
                 Login
               </div>
 
@@ -130,16 +130,16 @@ export default function AuthPage({ userRole, onLogin, onBack, isLoading, error }
                       id="remember"
                       checked={rememberMe}
                       onChange={(e) => setRememberMe(e.target.checked)}
-                      className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-950 text-[#3CACA3] focus:ring-[#3CACA3]/20"
+                      className="w-4 h-4 rounded border-border bg-muted dark:bg-slate-950 text-blue-600 focus:ring-blue-500/20"
                     />
                     <label
                       htmlFor="remember"
-                      className="text-sm text-slate-600 dark:text-slate-400 cursor-pointer"
+                      className="text-sm text-muted-foreground cursor-pointer"
                     >
                       Remember me
                     </label>
                   </div>
-                  <button type="button" className="text-sm text-[#3CACA3] hover:underline">
+                  <button type="button" className="text-sm text-blue-500 hover:underline">
                     Forgot password?
                   </button>
                 </div>
@@ -147,7 +147,7 @@ export default function AuthPage({ userRole, onLogin, onBack, isLoading, error }
                 <Button
                   type="submit"
                   disabled={isLoading}
-                  className="w-full h-12 bg-gradient-to-r from-[#3CACA3] to-[#1E3A5F] hover:opacity-90 text-white rounded-xl font-medium"
+                  className="w-full h-12 bg-gradient-to-r from-blue-600 to-[#1E3A5F] hover:opacity-90 text-white rounded-xl font-medium shadow-lg shadow-blue-500/20"
                 >
                   {isLoading ? (
                     <>
@@ -163,15 +163,15 @@ export default function AuthPage({ userRole, onLogin, onBack, isLoading, error }
               <div className="mt-6">
                 <div className="relative">
                   <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-slate-200 dark:border-slate-700" />
+                    <div className="w-full border-t border-border/40" />
                   </div>
                   <div className="relative flex justify-center text-sm">
-                    <span className="px-2 bg-card dark:bg-slate-900 text-slate-500 dark:text-slate-400">Or continue with</span>
+                    <span className="px-2 bg-card text-muted-foreground">Or continue with</span>
                   </div>
                 </div>
 
                 <div className="mt-4 grid grid-cols-2 gap-3">
-                  <Button variant="outline" className="h-11 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-foreground dark:text-slate-200 bg-white dark:bg-slate-900">
+                  <Button variant="outline" className="h-11 border-border/60 hover:bg-muted text-foreground bg-muted/40">
                     <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
                       <path
                         fill="currentColor"
@@ -192,7 +192,7 @@ export default function AuthPage({ userRole, onLogin, onBack, isLoading, error }
                     </svg>
                     Google
                   </Button>
-                  <Button variant="outline" className="h-11 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-foreground dark:text-slate-200 bg-white dark:bg-slate-900">
+                  <Button variant="outline" className="h-11 border-border/60 hover:bg-muted text-foreground bg-muted/40">
                     <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 24 24">
                       <path d="M16.365 1.43c0 1.14-.493 2.27-1.177 3.08-.684.81-1.513 1.24-2.333 1.24-.82 0-1.65-.43-2.333-1.24-.684-.81-1.177-1.94-1.177-3.08 0-1.14.493-2.27 1.177-3.08.684-.81 1.513-1.24 2.333-1.24.82 0 1.65.43 2.333 1.24.684.81 1.177 1.94 1.177 3.08zm-10.73 0c0 1.14-.493 2.27-1.177 3.08-.684.81-1.513 1.24-2.333 1.24-.82 0-1.65-.43-2.333-1.24C.493 3.7 0 2.57 0 1.43 0 .29.493-.84 1.177-1.65.684-.84 1.513-.41 2.333-.41c.82 0 1.65-.43 2.333-1.24C5.35-.84 5.843.29 5.843 1.43z" />
                     </svg>
@@ -204,7 +204,7 @@ export default function AuthPage({ userRole, onLogin, onBack, isLoading, error }
           </CardContent>
         </Card>
 
-        <p className="mt-6 text-center text-sm text-slate-500">
+        <p className="mt-6 text-center text-sm text-muted-foreground">
           By using ORIGIN, you agree to our commitment to your privacy and success
         </p>
       </div>
