@@ -55,6 +55,7 @@ export interface Test {
   totalQuestions: number;
   questions: Question[];
   isPremium: boolean;
+  isCustom?: boolean;
   attempted?: boolean;
   score?: number;
   attemptCount?: number;

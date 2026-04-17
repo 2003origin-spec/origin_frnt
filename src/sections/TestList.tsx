@@ -61,8 +61,9 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user }: 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(customTestConfig)
       });
-      // Add the new test to the top of the list
-      setTests([response, ...tests]);
+      // Add the new test to the top of the list and mark as custom
+      const newTest = { ...response, isCustom: true };
+      setTests([newTest, ...tests]);
       setShowCustomModal(false);
       // Auto-start the test after creating it
       onStartTest(response);
@@ -157,13 +158,6 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user }: 
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Button onClick={() => setShowCustomModal(true)} className="bg-[#3CACA3] hover:bg-[#3CACA3]/90 text-white rounded-full hidden sm:flex">
-                <Plus className="w-4 h-4 mr-2" />
-                Custom Test
-              </Button>
-              <Button onClick={() => setShowCustomModal(true)} size="icon" className="bg-[#3CACA3] hover:bg-[#3CACA3]/90 text-white rounded-full sm:hidden">
-                <Plus className="w-4 h-4" />
-              </Button>
               <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400">
                 <Flame className="w-4 h-4" />
                 <span className="text-sm font-medium">{user.streak || 0} day streak</span>
@@ -180,56 +174,26 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user }: 
           <div className="text-center py-16 text-slate-500">Loading tests...</div>
         ) : (
           <>
-            {/* Search and Filters */}
-            <div className="mb-8 space-y-4">
-              <div className="flex flex-col sm:flex-row gap-4">
-                <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                  <Input
-                    placeholder="Search tests..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-10 h-12 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 focus:border-[#3CACA3] focus:ring-[#3CACA3]/20 dark:text-white"
-                  />
-                </div>
-                <div className="flex gap-2">
-                  <select
-                    value={selectedSubject}
-                    onChange={(e) => setSelectedSubject(e.target.value)}
-                    className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 text-slate-700 dark:text-slate-300 focus:border-[#3CACA3] focus:outline-none"
-                  >
-                    <option value="all">All Subjects</option>
-                    <option value="physics">Physics</option>
-                    <option value="chemistry">Chemistry</option>
-                    <option value="mathematics">Mathematics</option>
-                    <option value="biology">Biology</option>
-                    <option value="mixed">Mixed</option>
-                  </select>
-                  <select
-                    value={selectedDifficulty}
-                    onChange={(e) => setSelectedDifficulty(e.target.value)}
-                    className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 text-slate-700 dark:text-slate-300 focus:border-[#3CACA3] focus:outline-none"
-                  >
-                    <option value="all">All Levels</option>
-                    <option value="easy">Easy</option>
-                    <option value="medium">Medium</option>
-                    <option value="hard">Hard</option>
-                  </select>
-                </div>
-              </div>
-            </div>
+            {/* Filters moved to tab */}
+
 
             {/* Tabs */}
             <Tabs defaultValue="all" className="mb-8">
-              <TabsList className="bg-slate-100 dark:bg-slate-800 p-1">
+              <TabsList className="bg-slate-100 dark:bg-slate-800 p-1 w-full max-w-2xl grid grid-cols-5">
                 <TabsTrigger value="all" className="data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:text-[#3CACA3] dark:data-[state=active]:text-teal-400 dark:text-slate-400">
-                  All Tests
+                  All
                 </TabsTrigger>
                 <TabsTrigger value="recommended" className="data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:text-[#3CACA3] dark:data-[state=active]:text-teal-400 dark:text-slate-400">
-                  Recommended
+                  Daily
                 </TabsTrigger>
                 <TabsTrigger value="attempted" className="data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:text-[#3CACA3] dark:data-[state=active]:text-teal-400 dark:text-slate-400">
-                  Attempted
+                  Done
+                </TabsTrigger>
+                <TabsTrigger value="custom" className="data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:text-[#3CACA3] dark:data-[state=active]:text-teal-400 dark:text-slate-400">
+                  Custom
+                </TabsTrigger>
+                <TabsTrigger value="filters" className="data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:text-[#3CACA3] dark:data-[state=active]:text-teal-400 dark:text-slate-400">
+                  Filters
                 </TabsTrigger>
               </TabsList>
 
@@ -300,6 +264,113 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user }: 
                     />
                   ))}
                 </div>
+              </TabsContent>
+
+              <TabsContent value="custom" className="mt-6">
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {/* Create Custom Test Card - Always first */}
+                  <Card 
+                    onClick={() => setShowCustomModal(true)}
+                    className="border-2 border-dashed border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-300 cursor-pointer group flex flex-col items-center justify-center p-8 text-center"
+                  >
+                    <div className="w-16 h-16 rounded-full bg-teal-100 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                      <Plus className="w-8 h-8" />
+                    </div>
+                    <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Build Your Test</h3>
+                    <p className="text-sm text-slate-500 dark:text-slate-400">
+                      Personalize subjects, topics, and difficulty to match your goals.
+                    </p>
+                    <Button className="mt-6 bg-[#3CACA3] hover:bg-[#3CACA3]/90 text-white rounded-full px-8">
+                      Start Building
+                    </Button>
+                  </Card>
+
+                  {filteredTests.filter(t => t.isCustom || (t as any).is_custom || t.id.startsWith('custom_')).map((test) => (
+                    <TestCard
+                      key={test.id}
+                      test={test}
+                      onStart={() => onStartTest(test)}
+                      onViewAnalysis={() => onViewAnalysis(test)}
+                      user={user}
+                      getSubjectIcon={getSubjectIcon}
+                      getSubjectColor={getSubjectColor}
+                      getDifficultyColor={getDifficultyColor}
+                    />
+                  ))}
+                </div>
+              </TabsContent>
+
+              <TabsContent value="filters" className="mt-6">
+                <Card className="border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 p-6">
+                  <div className="space-y-6">
+                    <div className="space-y-2">
+                      <Label className="text-slate-900 dark:text-white">Search</Label>
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                        <Input
+                          placeholder="Search tests by title or description..."
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          className="pl-10 h-12 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 focus:border-[#3CACA3] focus:ring-[#3CACA3]/20 dark:text-white"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid sm:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label className="text-slate-900 dark:text-white">Subject</Label>
+                        <select
+                          value={selectedSubject}
+                          onChange={(e) => setSelectedSubject(e.target.value)}
+                          className="w-full px-4 py-2 h-12 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-700 dark:text-slate-300 focus:border-[#3CACA3] focus:outline-none"
+                        >
+                          <option value="all">All Subjects</option>
+                          <option value="physics">Physics</option>
+                          <option value="chemistry">Chemistry</option>
+                          <option value="mathematics">Mathematics</option>
+                          <option value="biology">Biology</option>
+                          <option value="mixed">Mixed</option>
+                        </select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-slate-900 dark:text-white">Difficulty Level</Label>
+                        <select
+                          value={selectedDifficulty}
+                          onChange={(e) => setSelectedDifficulty(e.target.value)}
+                          className="w-full px-4 py-2 h-12 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-700 dark:text-slate-300 focus:border-[#3CACA3] focus:outline-none"
+                        >
+                          <option value="all">All Levels</option>
+                          <option value="easy">Easy</option>
+                          <option value="medium">Medium</option>
+                          <option value="hard">Hard</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="pt-4 flex justify-end">
+                      <Button 
+                        variant="outline" 
+                        onClick={() => {
+                          setSearchQuery('');
+                          setSelectedSubject('all');
+                          setSelectedDifficulty('all');
+                        }}
+                        className="rounded-full"
+                      >
+                        Reset All Filters
+                      </Button>
+                    </div>
+                  </div>
+                </Card>
+                
+                {/* Visual feedback of active filters */}
+                {(searchQuery || selectedSubject !== 'all' || selectedDifficulty !== 'all') && (
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {searchQuery && <Badge variant="secondary">Search: {searchQuery}</Badge>}
+                    {selectedSubject !== 'all' && <Badge variant="secondary">Subject: {selectedSubject}</Badge>}
+                    {selectedDifficulty !== 'all' && <Badge variant="secondary">Level: {selectedDifficulty}</Badge>}
+                  </div>
+                )}
               </TabsContent>
             </Tabs>
 
