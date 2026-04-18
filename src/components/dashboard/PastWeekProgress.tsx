@@ -6,7 +6,7 @@ interface PastWeekProgressProps {
 }
 
 const COLORS = {
-    webpage: '#1E293B', // Deep Navy
+    webpage: '#4F46E5', // Vibrant Indigo
     practice: '#059669', // Emerald
     pomodoro: '#D97706', // Amber
     empty: '#F1F5F9'     // Neutral Gray
