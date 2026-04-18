@@ -173,22 +173,22 @@ export function PastActivitiesCard({ user }: { user: User }) {
             label: 'Webpage',
             icon: '🌐',
             secs: today.webpageTime || 0,
-            color: 'bg-primary',
-            textColor: 'text-primary',
+            color: 'bg-indigo-600',
+            textColor: 'text-indigo-600',
         },
         {
             label: 'Practice',
             icon: '📝',
             secs: today.practiceTime || 0,
-            color: 'bg-emerald-500',
-            textColor: 'text-emerald-500',
+            color: 'bg-emerald-600',
+            textColor: 'text-emerald-600',
         },
         {
             label: 'Pomodoro',
             icon: '🍅',
             secs: today.pomodoroTime || 0,
-            color: 'bg-rose-500',
-            textColor: 'text-rose-500',
+            color: 'bg-amber-600',
+            textColor: 'text-amber-600',
         },
     ];
 
