@@ -15,26 +15,6 @@ const COLORS = {
 export default function PastWeekProgress({ user }: PastWeekProgressProps) {
     const timeData = user?.timeAnalytics || [];
 
-    // Helper to calculate SVG arc stroke-dasharray properties
-    const calculateSegments = (web: number, prac: number, pom: number) => {
-        const total = web + prac + pom;
-        if (total === 0) return null;
-
-        // Circumference of r=20 circle is 2 * PI * 20 = 125.6
-        const c = 125.6;
-        const webPct = web / total;
-        const pracPct = prac / total;
-
-        return {
-            webOffset: 0,
-            webDash: c * webPct,
-            pracOffset: -(c * webPct),
-            pracDash: c * pracPct,
-            pomOffset: -(c * (webPct + pracPct)),
-            pomDash: c * (pom / total)
-        };
-    };
-
     const formatTime = (seconds: number) => {
         if (seconds < 60) return `${seconds}s`;
         const mins = Math.floor(seconds / 60);
@@ -46,65 +26,90 @@ export default function PastWeekProgress({ user }: PastWeekProgressProps) {
         <Card className="border border-border/50 shadow-lg shadow-primary/5 bg-card/50 backdrop-blur-xl relative overflow-hidden h-full flex flex-col justify-center">
             <div className="absolute inset-0 bg-gradient-to-r from-primary/5 via-transparent to-primary/5 pointer-events-none" />
 
-            <CardContent className="relative z-10 py-5 flex flex-col lg:flex-row items-center justify-between px-6 gap-6">
-
-                {/* Left Header & Legend */}
-                <div className="flex flex-col items-center lg:items-start min-w-max">
-                    <span className="text-xs font-black text-[#334155] tracking-[0.2em] uppercase mb-4 opacity-80">App Time Analytics</span>
-                    <div className="flex gap-4 text-[10px] font-extrabold text-[#64748B] uppercase tracking-widest">
-                        <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full bg-[#1E293B] shadow-sm shadow-navy/20" /> Webpage</div>
-                        <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full bg-[#059669] shadow-sm shadow-emerald/20" /> Practice</div>
-                        <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full bg-[#D97706] shadow-sm shadow-amber/20" /> Pomodoro</div>
+            <CardContent className="relative z-10 py-8 flex flex-col items-center justify-between px-6 gap-10">
+                {/* Header Section */}
+                <div className="flex flex-col md:flex-row items-center justify-between w-full gap-4">
+                    <div className="flex flex-col items-center md:items-start">
+                        <span className="text-xs font-black text-[#334155] tracking-[0.3em] uppercase mb-1 opacity-80">App Time Analytics</span>
+                        <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-widest">Weekly Activity Report</p>
+                    </div>
+                    
+                    {/* Legend - Centered or right-aligned */}
+                    <div className="flex flex-wrap justify-center gap-6 text-[10px] font-black text-[#64748B] uppercase tracking-widest bg-muted/30 px-6 py-2 rounded-full border border-border/40">
+                        <div className="flex items-center gap-2.5">
+                            <div className="w-2.5 h-2.5 rounded-full bg-[#1E293B] shadow-sm shadow-navy/20" /> 
+                            <span>Webpage</span>
+                        </div>
+                        <div className="flex items-center gap-2.5">
+                            <div className="w-2.5 h-2.5 rounded-full bg-[#059669] shadow-sm shadow-emerald/20" /> 
+                            <span>Practice</span>
+                        </div>
+                        <div className="flex items-center gap-2.5">
+                            <div className="w-2.5 h-2.5 rounded-full bg-[#D97706] shadow-sm shadow-amber/20" /> 
+                            <span>Pomodoro</span>
+                        </div>
                     </div>
                 </div>
 
-                {/* 7-Day Mini Charts */}
-                <div className="flex flex-1 justify-between items-center gap-2 overflow-x-auto pb-2 scrollbar-hide w-full">
+                {/* 7-Day Mini Charts - Spaced out and Larger */}
+                <div className="flex flex-wrap lg:flex-nowrap justify-around items-end gap-6 w-full pb-2">
                     {timeData.map((item: any, index: number) => {
                         const isToday = index === timeData.length - 1;
                         const totalSecs = item.webpageTime + item.practiceTime + item.pomodoroTime;
-                        const segments = calculateSegments(item.webpageTime, item.practiceTime, item.pomodoroTime);
+                        
+                        // New larger circumference math (r=36)
+                        const c = 226.2;
+                        const total = totalSecs || 1; // Prevent div by zero
+                        const webPct = item.webpageTime / total;
+                        const pracPct = item.practiceTime / total;
+                        const pomPct = item.pomodoroTime / total;
+
+                        const webDash = c * webPct;
+                        const pracDash = c * pracPct;
+                        const pomDash = c * pomPct;
 
                         return (
-                            <div key={item.date} className="flex flex-col items-center gap-2 group relative">
+                            <div key={item.date} className="flex flex-col items-center gap-4 group relative">
                                 {isToday && (
-                                    <div className="absolute -top-6 text-[10px] font-bold text-indigo-500 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50 px-2 py-0.5 rounded-full border border-indigo-200 dark:border-indigo-800/50">
+                                    <div className="absolute -top-8 text-[10px] font-black text-white bg-blue-600 px-3 py-1 rounded-full border-2 border-background shadow-lg shadow-blue-500/20 z-20 scale-110">
                                         TODAY
                                     </div>
                                 )}
 
-                                <div className="relative w-14 h-14 flex items-center justify-center">
-                                    <svg className="w-full h-full transform -rotate-90">
+                                <div className="relative w-20 h-20 flex items-center justify-center transition-transform duration-300 group-hover:scale-110">
+                                    <svg className="w-full h-full transform -rotate-90 filter drop-shadow-sm">
                                         {/* Background Empty Track */}
-                                        <circle cx="28" cy="28" r="24" stroke="currentColor" strokeWidth="4" fill="transparent" className="text-slate-100 dark:text-slate-800/50" />
+                                        <circle cx="40" cy="40" r="36" stroke="currentColor" strokeWidth="5" fill="transparent" className="text-slate-100 dark:text-slate-800/10" />
 
-                                        {segments ? (
+                                        {totalSecs > 0 ? (
                                             <>
                                                 {/* Webpage Segment */}
-                                                {segments.webDash > 0 && (
-                                                    <circle cx="28" cy="28" r="24" fill="transparent" strokeWidth="4" stroke={COLORS.webpage}
-                                                        strokeDasharray={`150.8`} strokeDashoffset={150.8 - segments.webDash * 1.2} />
+                                                {webDash > 0 && (
+                                                    <circle cx="40" cy="40" r="36" fill="transparent" strokeWidth="6" stroke={COLORS.webpage}
+                                                        strokeDasharray={`${c}`} strokeDashoffset={c - webDash} strokeLinecap="round" />
                                                 )}
                                                 {/* Practice Segment */}
-                                                {segments.pracDash > 0 && (
-                                                    <circle cx="28" cy="28" r="24" fill="transparent" strokeWidth="4" stroke={COLORS.practice}
-                                                        strokeDasharray={`150.8`} strokeDashoffset={150.8 - segments.pracDash * 1.2} transform={`rotate(${(segments.webDash / 125.6) * 360} 28 28)`} />
+                                                {pracDash > 0 && (
+                                                    <circle cx="40" cy="40" r="36" fill="transparent" strokeWidth="6" stroke={COLORS.practice}
+                                                        strokeDasharray={`${c}`} strokeDashoffset={c - pracDash} strokeLinecap="round" transform={`rotate(${(item.webpageTime / total) * 360} 40 40)`} />
                                                 )}
                                                 {/* Pomodoro Segment */}
-                                                {segments.pomDash > 0 && (
-                                                    <circle cx="28" cy="28" r="24" fill="transparent" strokeWidth="4" stroke={COLORS.pomodoro}
-                                                        strokeDasharray={`150.8`} strokeDashoffset={150.8 - segments.pomDash * 1.2} transform={`rotate(${((segments.webDash + segments.pracDash) / 125.6) * 360} 28 28)`} />
+                                                {pomDash > 0 && (
+                                                    <circle cx="40" cy="40" r="36" fill="transparent" strokeWidth="6" stroke={COLORS.pomodoro}
+                                                        strokeDasharray={`${c}`} strokeDashoffset={c - pomDash} strokeLinecap="round" transform={`rotate(${((item.webpageTime + item.practiceTime) / total) * 360} 40 40)`} />
                                                 )}
                                             </>
                                         ) : null}
                                     </svg>
 
                                     {/* Center Text (Total Time) */}
-                                    <span className="absolute text-[10px] font-bold text-black dark:text-slate-300 text-center leading-tight">
-                                        {totalSecs > 0 ? formatTime(totalSecs) : '0m'}
-                                    </span>
+                                    <div className="absolute flex flex-col items-center justify-center">
+                                        <span className="text-[11px] font-black text-foreground text-center">
+                                            {totalSecs > 0 ? formatTime(totalSecs) : '0m'}
+                                        </span>
+                                    </div>
                                 </div>
-                                <span className={`text-xs font-bold transition-colors ${isToday ? 'text-black dark:text-indigo-400' : 'text-black/40 dark:text-slate-500 group-hover:text-black dark:group-hover:text-slate-300'}`}>
+                                <span className={`text-[11px] font-black tracking-widest transition-colors ${isToday ? 'text-blue-600 dark:text-blue-400' : 'text-muted-foreground/60 group-hover:text-foreground'}`}>
                                     {item.dayName.toUpperCase()}
                                 </span>
                             </div>
