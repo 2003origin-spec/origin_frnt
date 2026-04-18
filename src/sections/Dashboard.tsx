@@ -107,24 +107,22 @@ export default function Dashboard({ user, onStartChallenge, setTimeMode, onNavig
         </motion.div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          {/* Left Column (8 cols) */}
-          <div className="lg:col-span-8 flex flex-col gap-8">
+          {/* Main Content Column (9 cols for extra width) */}
+          <div className="lg:col-span-9 flex flex-col gap-8">
             <div className="h-auto">
               <DailyTracker user={user} />
             </div>
             <div className="h-auto">
               <PastWeekProgress user={user} />
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+            {/* Redesigned Wider Activity Area */}
+            <div className="flex flex-col gap-8">
               <PastActivitiesCard user={user} />
               <PlacesToConcentrateCard user={user} />
             </div>
-          </div>
 
-          {/* Right Column (4 cols) */}
-          <div className="lg:col-span-4 flex flex-col gap-8">
-            <ChallengeCard user={user} onStartChallenge={onStartChallenge} />
-            <PointsSummary data={pointsData} onNextSteps={() => onNavigate('prestige-milestones')} />
+            {/* Perfect Ending: Tasks & Goals at the bottom of the main flow */}
             <div className="h-fit">
               <TodoListCard 
                 tasks={tasks}
@@ -134,6 +132,12 @@ export default function Dashboard({ user, onStartChallenge, setTimeMode, onNavig
                 onViewAll={() => onNavigate('tasks-goals')}
               />
             </div>
+          </div>
+
+          {/* Sidebar Column (3 cols for a tighter, focused utility bar) */}
+          <div className="lg:col-span-3 flex flex-col gap-8">
+            <ChallengeCard user={user} onStartChallenge={onStartChallenge} />
+            <PointsSummary data={pointsData} onNextSteps={() => onNavigate('prestige-milestones')} />
           </div>
         </div>
       </main>
