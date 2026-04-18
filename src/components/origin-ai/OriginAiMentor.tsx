@@ -37,10 +37,10 @@ function formatRelativeTimestamp(date: Date): string {
 function PolicyBadge({ snapshot }: { snapshot: OriginAiSnapshot }) {
   const tone =
     snapshot.pagePolicy.mode === 'answer_blocked'
-      ? 'border-amber-500/30 bg-amber-500/10 text-amber-200'
+      ? 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-200'
       : snapshot.pagePolicy.mode === 'hint_only'
-        ? 'border-sky-500/30 bg-sky-500/10 text-sky-200'
-        : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200';
+        ? 'border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-200'
+        : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200';
 
   return (
     <div className={cn('rounded-2xl border px-3 py-2 text-xs leading-5', tone)}>
@@ -74,16 +74,16 @@ function ReminderCards({ snapshot, compact = false }: { snapshot: OriginAiSnapsh
         >
           <div className="flex items-start justify-between gap-3">
             <div>
-              <div className="text-[10px] font-semibold uppercase tracking-[0.25em] text-slate-400">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.25em] text-slate-500 dark:text-slate-400">
                 {reminder.kind}
               </div>
-              <div className="mt-1 text-sm font-semibold text-white">{reminder.title}</div>
+              <div className="mt-1 text-sm font-semibold text-foreground dark:text-white">{reminder.title}</div>
             </div>
-            <span className="rounded-full bg-white/5 px-2 py-1 text-[10px] uppercase tracking-[0.2em] text-slate-300">
+            <span className="rounded-full bg-slate-200/50 dark:bg-white/5 px-2 py-1 text-[10px] uppercase tracking-[0.2em] text-slate-600 dark:text-slate-300">
               {reminder.priority}
             </span>
           </div>
-          <p className="mt-2 text-sm leading-6 text-slate-300">{reminder.message}</p>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground dark:text-slate-300">{reminder.message}</p>
         </div>
       ))}
     </div>
@@ -108,17 +108,17 @@ function MessageList({ snapshot }: { snapshot: OriginAiSnapshot }) {
               ) : null}
               <div
                 className={cn(
-                  'rounded-3xl px-4 py-3 text-sm leading-7 shadow-lg',
+                  'rounded-3xl px-4 py-3 text-sm leading-7 shadow-lg transition-colors',
                   isAssistant
-                    ? 'rounded-tl-md border border-white/10 bg-white/[0.05] text-slate-100'
-                    : 'rounded-tr-md bg-blue-600 text-white',
+                    ? 'rounded-tl-md border border-border/60 bg-card text-foreground shadow-slate-200/50 dark:shadow-none'
+                    : 'rounded-tr-md bg-blue-600 text-white shadow-blue-600/10',
                 )}
               >
                 <div className="whitespace-pre-wrap">{message.content}</div>
                 <div
                   className={cn(
                     'mt-2 text-[10px] uppercase tracking-[0.2em]',
-                    isAssistant ? 'text-slate-400' : 'text-blue-100/80',
+                    isAssistant ? 'text-muted-foreground' : 'text-blue-100/90',
                   )}
                 >
                   {isAssistant ? 'Origin AI' : 'You'} · {formatRelativeTimestamp(message.timestamp)}
@@ -414,10 +414,10 @@ export default function OriginAiMentor({
                 exit={{ opacity: 0, y: 12 }}
                 className="mt-4 flex justify-start"
               >
-                <div className="rounded-3xl rounded-tl-md border border-white/10 bg-white/[0.05] px-4 py-3 text-sm text-slate-300">
+                <div className="rounded-3xl rounded-tl-md border border-border/60 bg-muted/30 px-4 py-3 text-sm text-foreground">
                   <div className="flex items-center gap-2">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Thinking...
+                    <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                    <span className="font-medium opacity-80">Thinking...</span>
                   </div>
                 </div>
               </motion.div>
@@ -428,25 +428,25 @@ export default function OriginAiMentor({
 
         <div className="shrink-0 border-t border-border/40 bg-card/40 px-3 py-3">
           {isVoiceActive ? (
-            <div className="mb-3 rounded-2xl border border-blue-400/20 bg-blue-500/10 px-3 py-2.5 text-xs text-slate-200">
+            <div className="mb-3 rounded-2xl border border-blue-400/20 bg-blue-500/10 px-3 py-2.5 text-xs transition-colors">
               <div className="flex items-center justify-between gap-3">
-                <div className="font-medium text-blue-100">{voiceStatusText}</div>
-                <span className="rounded-full bg-white/10 px-2 py-1 text-[10px] uppercase tracking-[0.2em] text-blue-100">
+                <div className="font-bold text-blue-700 dark:text-blue-100">{voiceStatusText}</div>
+                <span className="rounded-full bg-blue-600/15 dark:bg-white/10 px-2 py-1 text-[10px] uppercase tracking-[0.2em] font-black text-blue-800 dark:text-blue-100">
                   {voiceStatus.replace(/_/g, ' ')}
                 </span>
               </div>
               {liveUserTranscript ? (
-                <p className="mt-2 line-clamp-2 text-slate-300">You: {liveUserTranscript}</p>
+                <p className="mt-2 line-clamp-2 text-slate-700 dark:text-slate-300">You: {liveUserTranscript}</p>
               ) : null}
               {liveAssistantTranscript ? (
-                <p className="mt-1 line-clamp-2 text-slate-400">Origin AI: {liveAssistantTranscript}</p>
+                <p className="mt-1 line-clamp-2 text-slate-600 dark:text-slate-400">Origin AI: {liveAssistantTranscript}</p>
               ) : null}
             </div>
           ) : null}
           {highlightedText ? (
-            <div className="mb-2 flex items-center gap-2 rounded-2xl border border-blue-400/20 bg-blue-500/10 px-3 py-2 text-xs text-blue-200">
-              <span className="shrink-0 font-semibold uppercase tracking-wider">Selected:</span>
-              <span className="line-clamp-1 flex-1 opacity-80">{highlightedText}</span>
+            <div className="mb-2 flex items-center gap-2 rounded-2xl border border-blue-400/20 bg-blue-600/5 px-3 py-2 text-xs">
+              <span className="shrink-0 font-black uppercase tracking-wider text-blue-700 dark:text-blue-200">Selected:</span>
+              <span className="line-clamp-1 flex-1 font-medium text-slate-700 dark:text-blue-200/80">{highlightedText}</span>
               <button
                 type="button"
                 onClick={() => clearHighlightedText()}
