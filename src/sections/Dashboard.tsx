@@ -106,39 +106,44 @@ export default function Dashboard({ user, onStartChallenge, setTimeMode, onNavig
           <EventsCarousel />
         </motion.div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          {/* Main Content Grid (8/4 split for primary activity) */}
-          <div className="lg:col-span-8 flex flex-col gap-8">
-            <div className="h-auto">
-              <DailyTracker user={user} />
-            </div>
-            <div className="h-auto">
-              <PastWeekProgress user={user} />
-            </div>
-          </div>
+        {/* Tier 1: Activity Vault (Heatmap - Full Width) */}
+        <motion.div
+           initial={{ opacity: 0, y: 20 }}
+           animate={{ opacity: 1, y: 0 }}
+           transition={{ delay: 0.1 }}
+           className="w-full"
+        >
+          <DailyTracker user={user} />
+        </motion.div>
 
-          <div className="lg:col-span-4 flex flex-col gap-8">
-            <ChallengeCard user={user} onStartChallenge={onStartChallenge} />
+        {/* Tier 2: Core Metrics (Balanced Row - Symmetrical 3-Column Grid) */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          <div className="flex flex-col">
+            <PastWeekProgress user={user} />
+          </div>
+          <div className="flex flex-col">
             <PointsSummary data={pointsData} onNextSteps={() => onNavigate('prestige-milestones')} />
+          </div>
+          <div className="flex flex-col">
+            <ChallengeCard user={user} onStartChallenge={onStartChallenge} />
           </div>
         </div>
 
-        {/* Insights & Tasks Layer (Wider for better visibility) */}
-        <div className="space-y-8">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <PastActivitiesCard user={user} />
-            <PlacesToConcentrateCard user={user} />
-          </div>
+        {/* Tier 3: Insights & Performance (Wide Row) */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <PastActivitiesCard user={user} />
+          <PlacesToConcentrateCard user={user} />
+        </div>
 
-          <div className="w-full">
-            <TodoListCard 
-              tasks={tasks}
-              onAddTask={onAddTask}
-              onToggleTask={onToggleTask}
-              onRemoveTask={onRemoveTask}
-              onViewAll={() => onNavigate('tasks-goals')}
-            />
-          </div>
+        {/* Tier 4: Mission Conclusion (Full Width Footer) */}
+        <div className="w-full">
+          <TodoListCard 
+            tasks={tasks}
+            onAddTask={onAddTask}
+            onToggleTask={onToggleTask}
+            onRemoveTask={onRemoveTask}
+            onViewAll={() => onNavigate('tasks-goals')}
+          />
         </div>
       </main>
     </div>
