@@ -998,12 +998,45 @@ function ensureOriginAiCollections(store: AppStore): boolean {
   return changed;
 }
 
-function ensureSubjectActivitiesCollection(store: AppStore): boolean {
+function ensureAllCollections(store: AppStore): boolean {
   let changed = false;
-  if (!Array.isArray((store as Partial<AppStore>).dailySubjectActivities)) {
-    store.dailySubjectActivities = [];
-    changed = true;
+  const collections: (keyof AppStore)[] = [
+    "users",
+    "streaks",
+    "dailyActivities",
+    "dailySubjectActivities",
+    "pomodoroSessions",
+    "userScores",
+    "pointLogs",
+    "questions",
+    "tests",
+    "testResults",
+    "practiceAttempts",
+    "dpps",
+    "assignments",
+    "subjectRanks",
+    "books",
+    "notes",
+    "bookmarks",
+    "savedBooks",
+    "doubtSessions",
+    "originAiProfiles",
+    "originAiSessions",
+    "originAiReminders",
+    "authSessions",
+    "leaderboardSeed",
+  ];
+
+  for (const key of collections) {
+    if (!Array.isArray((store as any)[key])) {
+      (store as any)[key] = [];
+      changed = true;
+    }
   }
+
+  // Also call specific ones for migrations/extra checks
+  changed = ensureOriginAiCollections(store) || changed;
+  
   return changed;
 }
 
@@ -1019,10 +1052,7 @@ function ensureStoreFile(): void {
 export function readStore(): AppStore {
   ensureStoreFile();
   const store = JSON.parse(fs.readFileSync(STORE_PATH, "utf8")) as AppStore;
-  const changed = 
-    ensureSeedUsers(store) || 
-    ensureOriginAiCollections(store) || 
-    ensureSubjectActivitiesCollection(store);
+  const changed = ensureSeedUsers(store) || ensureAllCollections(store);
   if (changed) {
     fs.writeFileSync(STORE_PATH, JSON.stringify(store, null, 2), "utf8");
   }

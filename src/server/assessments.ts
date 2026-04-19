@@ -51,6 +51,7 @@ import type {
   StoredUserAnswer,
 } from "@/server/store";
 import { createId } from "@/server/store";
+import { isOgcodePostgresConfigured } from "@/server/postgres";
 
 export type QuestionAnswerPayload = {
   question_id?: string | number;
@@ -2011,6 +2012,9 @@ export async function getSingleResult(store: AppStore, user: StoredUser, resultI
 }
 
 export async function listGeneratedDpps(store: AppStore, user: StoredUser) {
+  if (!isOgcodePostgresConfigured()) {
+    return [];
+  }
   const plans = await listPendingDppPlans(user.id);
   const withAttempts = await Promise.all(
     plans.map(async (plan) => serializePersistedDppPlan(store, user.id, plan, await getLatestDppAttemptForPlan(user.id, plan.id))),
@@ -2019,6 +2023,9 @@ export async function listGeneratedDpps(store: AppStore, user: StoredUser) {
 }
 
 export async function getGeneratedDppDetail(store: AppStore, user: StoredUser, dppId: string) {
+  if (!isOgcodePostgresConfigured()) {
+    throw new Error("DPP analytics database is not configured.");
+  }
   const plan = await getDppPlanDetail(user.id, dppId);
   if (!plan) {
     throw new Error(`DPP ${dppId} was not found.`);
@@ -2033,6 +2040,9 @@ export async function submitGeneratedDpp(
   dppId: string,
   payload: TestSubmissionPayload,
 ) {
+  if (!isOgcodePostgresConfigured()) {
+    throw new Error("DPP analytics database is not configured.");
+  }
   const plan = await getDppPlanDetail(user.id, dppId);
   if (!plan) {
     throw new Error(`DPP ${dppId} was not found.`);

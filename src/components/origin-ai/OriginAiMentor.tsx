@@ -74,16 +74,16 @@ function ReminderCards({ snapshot, compact = false }: { snapshot: OriginAiSnapsh
         >
           <div className="flex items-start justify-between gap-3">
             <div>
-              <div className="text-[10px] font-semibold uppercase tracking-[0.25em] text-slate-500 dark:text-slate-400">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.25em] text-muted-foreground">
                 {reminder.kind}
               </div>
-              <div className="mt-1 text-sm font-semibold text-foreground dark:text-white">{reminder.title}</div>
+              <div className="mt-1 text-sm font-semibold text-foreground">{reminder.title}</div>
             </div>
-            <span className="rounded-full bg-slate-200/50 dark:bg-white/5 px-2 py-1 text-[10px] uppercase tracking-[0.2em] text-slate-600 dark:text-slate-300">
+            <span className="rounded-full bg-muted/40 px-2 py-1 text-[10px] uppercase tracking-[0.2em] text-foreground/80">
               {reminder.priority}
             </span>
           </div>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground dark:text-slate-300">{reminder.message}</p>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">{reminder.message}</p>
         </div>
       ))}
     </div>
@@ -362,7 +362,7 @@ export default function OriginAiMentor({
                   online
                 </span>
               </div>
-              <p className="max-w-[12rem] truncate text-[11px] leading-4 text-slate-400">
+              <p className="max-w-[12rem] truncate text-[11px] leading-4 text-muted-foreground">
                 Friendly mentor with page awareness and study memory.
               </p>
             </div>
@@ -372,7 +372,7 @@ export default function OriginAiMentor({
               type="button"
               variant="ghost"
               onClick={onClose}
-              className="shrink-0 text-slate-300 hover:bg-white/10 hover:text-white"
+              className="shrink-0 text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
             >
               Close
             </Button>
@@ -382,8 +382,8 @@ export default function OriginAiMentor({
         <div className="shrink-0 space-y-2 border-b border-border/40 px-4 py-3">
           {snapshot ? <PolicyBadge snapshot={snapshot} /> : null}
           {snapshot ? (
-            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
-              <span className="rounded-full bg-white/5 px-2.5 py-1">
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <span className="rounded-full bg-foreground/5 px-2.5 py-1">
                 Page: {snapshot.pageContext.pageKind.replace(/_/g, ' ')}
               </span>
             </div>
@@ -430,23 +430,23 @@ export default function OriginAiMentor({
           {isVoiceActive ? (
             <div className="mb-3 rounded-2xl border border-blue-400/20 bg-blue-500/10 px-3 py-2.5 text-xs transition-colors">
               <div className="flex items-center justify-between gap-3">
-                <div className="font-bold text-blue-700 dark:text-blue-100">{voiceStatusText}</div>
-                <span className="rounded-full bg-blue-600/15 dark:bg-white/10 px-2 py-1 text-[10px] uppercase tracking-[0.2em] font-black text-blue-800 dark:text-blue-100">
+                <div className="font-bold text-blue-600 dark:text-blue-100">{voiceStatusText}</div>
+                <span className="rounded-full bg-blue-600/15 dark:bg-white/10 px-2 py-1 text-[10px] uppercase tracking-[0.2em] font-black text-blue-700 dark:text-blue-100">
                   {voiceStatus.replace(/_/g, ' ')}
                 </span>
               </div>
               {liveUserTranscript ? (
-                <p className="mt-2 line-clamp-2 text-slate-700 dark:text-slate-300">You: {liveUserTranscript}</p>
+                <p className="mt-2 line-clamp-2 text-foreground/80 overflow-hidden">You: {liveUserTranscript}</p>
               ) : null}
               {liveAssistantTranscript ? (
-                <p className="mt-1 line-clamp-2 text-slate-600 dark:text-slate-400">Origin AI: {liveAssistantTranscript}</p>
+                <p className="mt-1 line-clamp-2 text-muted-foreground overflow-hidden">Origin AI: {liveAssistantTranscript}</p>
               ) : null}
             </div>
           ) : null}
           {highlightedText ? (
             <div className="mb-2 flex items-center gap-2 rounded-2xl border border-blue-400/20 bg-blue-600/5 px-3 py-2 text-xs">
-              <span className="shrink-0 font-black uppercase tracking-wider text-blue-700 dark:text-blue-200">Selected:</span>
-              <span className="line-clamp-1 flex-1 font-medium text-slate-700 dark:text-blue-200/80">{highlightedText}</span>
+              <span className="shrink-0 font-black uppercase tracking-wider text-blue-600 dark:text-blue-200">Selected:</span>
+              <span className="line-clamp-1 flex-1 font-medium text-foreground/80">{highlightedText}</span>
               <button
                 type="button"
                 onClick={() => clearHighlightedText()}
@@ -525,7 +525,7 @@ export default function OriginAiMentor({
                 online
               </span>
             </div>
-            <p className={cn('text-slate-400', compact ? 'max-w-[13rem] text-[11px] leading-4' : 'text-xs')}>
+            <p className={cn('text-muted-foreground', compact ? 'max-w-[13rem] text-[11px] leading-4' : 'text-xs')}>
               Friendly mentor with page awareness, memory, and just enough sarcasm to be useful.
             </p>
           </div>
@@ -536,7 +536,7 @@ export default function OriginAiMentor({
               type="button"
               variant="outline"
               onClick={loadSnapshot}
-              className="border-white/15 bg-white/[0.03] text-slate-200 hover:bg-white/10"
+              className="border-border/40 bg-muted/20 text-foreground/80 hover:bg-muted/40"
             >
               Refresh
             </Button>
@@ -559,8 +559,8 @@ export default function OriginAiMentor({
           <div className={cn('space-y-3 border-b border-border/40', compact ? 'px-4 py-3' : 'px-5 py-4')}>
             {snapshot ? <PolicyBadge snapshot={snapshot} /> : null}
             {snapshot ? (
-              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
-                <span className="rounded-full bg-white/5 px-2.5 py-1">
+              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                <span className="rounded-full bg-foreground/5 px-2.5 py-1">
                   Page: {snapshot.pageContext.pageKind.replace(/_/g, ' ')}
                 </span>
                 {!compact && snapshot.memory.lastWeakTopics.length > 0 ? (
@@ -599,9 +599,9 @@ export default function OriginAiMentor({
                     exit={{ opacity: 0, y: 12 }}
                     className="mt-4 flex justify-start"
                   >
-                    <div className="rounded-3xl rounded-tl-md border border-white/10 bg-white/[0.05] px-4 py-3 text-sm text-slate-300">
+                    <div className="rounded-3xl rounded-tl-md border border-border/40 bg-muted/40 px-4 py-3 text-sm text-foreground">
                       <div className="flex items-center gap-2">
-                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <Loader2 className="h-4 w-4 animate-spin text-primary" />
                         Thinking...
                       </div>
                     </div>
@@ -632,9 +632,9 @@ export default function OriginAiMentor({
                     exit={{ opacity: 0, y: 12 }}
                     className="mt-4 flex justify-start"
                   >
-                    <div className="rounded-3xl rounded-tl-md border border-white/10 bg-white/[0.05] px-4 py-3 text-sm text-slate-300">
+                    <div className="rounded-3xl rounded-tl-md border border-border/40 bg-muted/40 px-4 py-3 text-sm text-foreground">
                       <div className="flex items-center gap-2">
-                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <Loader2 className="h-4 w-4 animate-spin text-primary" />
                         Thinking...
                       </div>
                     </div>
@@ -655,10 +655,10 @@ export default function OriginAiMentor({
                   </span>
                 </div>
                 {liveUserTranscript ? (
-                  <p className="mt-2 line-clamp-2 text-slate-300">You: {liveUserTranscript}</p>
+                  <p className="mt-2 line-clamp-2 text-foreground/80">You: {liveUserTranscript}</p>
                 ) : null}
                 {liveAssistantTranscript ? (
-                  <p className="mt-1 line-clamp-2 text-slate-400">Origin AI: {liveAssistantTranscript}</p>
+                  <p className="mt-1 line-clamp-2 text-muted-foreground">Origin AI: {liveAssistantTranscript}</p>
                 ) : null}
               </div>
             ) : null}
@@ -752,13 +752,13 @@ export default function OriginAiMentor({
                 <h3 className="mt-3 text-lg font-semibold text-white">
                   {snapshot.memory.preferredName}, here’s what I’m tracking.
                 </h3>
-                <p className="mt-2 text-sm leading-6 text-slate-300">{snapshot.memory.identitySummary}</p>
-                <div className="mt-4 space-y-2 text-sm text-slate-300">
+                <p className="mt-2 text-sm leading-6 text-foreground/70">{snapshot.memory.identitySummary}</p>
+                <div className="mt-4 space-y-2 text-sm text-foreground/70">
                   <div>Current streak: {snapshot.memory.currentStreak} day(s)</div>
                   <div>Pending DPPs: {snapshot.memory.pendingDppCount}</div>
                   <div>Pending assignments: {snapshot.memory.pendingAssignmentCount}</div>
                   {snapshot.memory.lastTestSummary ? (
-                    <p className="rounded-2xl bg-white/[0.03] px-3 py-2 text-slate-300">
+                    <p className="rounded-2xl bg-foreground/5 px-3 py-2 text-foreground/70">
                       Last test summary: {snapshot.memory.lastTestSummary}
                     </p>
                   ) : null}

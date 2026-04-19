@@ -21,10 +21,10 @@ const SESSION_CACHE_KEY = 'doubt_sessions_cache';
 const FormattedText = ({ text }: { text: string }) => {
   const parts = text.split(/(\*\*.*?\*\*)/g);
   return (
-    <span className="relative">
+    <span className="relative text-foreground">
       {parts.map((part, i) => {
         if (part.startsWith('**') && part.endsWith('**')) {
-          return <strong key={i} className="text-foreground dark:text-white font-bold">{part.slice(2, -2)}</strong>;
+          return <strong key={i} className="font-bold text-foreground">{part.slice(2, -2)}</strong>;
         }
         return part;
       })}
@@ -243,13 +243,13 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
             }}
             className="p-2 rounded-full hover:bg-white/10 transition-colors"
           >
-            <ChevronLeft className="w-5 h-5 text-slate-300" />
+            <ChevronLeft className="w-5 h-5 text-muted-foreground" />
           </button>
 
           {viewMode === 'chat' && activeSession && !isSidebarOpen && (
             <button
               onClick={() => setIsSidebarOpen(true)}
-              className="p-2 rounded-lg text-slate-400 hover:bg-white/5 transition-colors"
+              className="p-2 rounded-lg text-muted-foreground hover:bg-muted/10 transition-colors"
               title="Show Sidebar"
             >
               <PanelLeft className="w-5 h-5" />
@@ -431,7 +431,7 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
                               }
                             }}
                             placeholder="Type your question here..."
-                            className="flex-1 bg-transparent border-none focus:ring-0 text-slate-200 placeholder:text-slate-500 py-3 text-[15px] resize-none max-h-40"
+                            className="flex-1 bg-transparent border-none focus:ring-0 text-foreground placeholder:text-muted-foreground/60 py-3 text-[15px] resize-none max-h-40"
                           />
                         </>
                       ) : (
@@ -445,7 +445,7 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
                           </div>
                           <button
                             onClick={() => setIsRecording(false)}
-                            className="text-[10px] font-bold uppercase tracking-widest text-slate-400 hover:text-white"
+                            className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-foreground"
                           >
                             Cancel
                           </button>
@@ -464,14 +464,14 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
                         disabled={!isRecording && !message.trim()}
                         className={`p-3 rounded-2xl transition-all ${isRecording
                           ? 'bg-red-500 text-white shadow-lg shadow-red-600/30'
-                          : (message.trim() ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30' : 'bg-white/5 text-slate-600 cursor-not-allowed')}`}
+                          : (message.trim() ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30' : 'bg-muted/20 text-muted-foreground/40 cursor-not-allowed')}`}
                       >
                         {isRecording ? <div className="w-5 h-5 flex items-center justify-center font-bold">●</div> : <Send className="w-5 h-5" />}
                       </button>
                     </div>
                     <div className="flex items-center justify-center gap-2 mt-3">
-                      <img src="/O3-Origin-Logo.png" alt="O3 Origin" className="h-4 w-auto" />
-                      <p className="text-[10px] text-slate-600 font-medium uppercase tracking-widest">
+                      <img src="/O3-Origin-Logo.png" alt="O3 Origin" className="h-4 w-auto grayscale opacity-50" />
+                      <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-widest">
                         AI Mentor • Powered by O3 Origin
                       </p>
                     </div>
@@ -631,7 +631,7 @@ function SelectionView({ onCreate, onUpload, sessions, onSelectSession, lastSess
         </div>
 
         <div>
-          <h3 className="text-xl font-bold text-white mb-6 uppercase tracking-widest text-slate-500">History</h3>
+          <h3 className="text-xl font-bold text-foreground mb-6 uppercase tracking-widest opacity-50">History</h3>
           <div className="space-y-3">
             {sessions.slice(0, 4).map(s => (
               <div
@@ -679,7 +679,7 @@ function SelectionView({ onCreate, onUpload, sessions, onSelectSession, lastSess
                     )}
                   </div>
                 </div>
-                <ChevronLeft className="w-4 h-4 text-slate-600 rotate-180 group-hover:text-blue-400 group-hover:translate-x-1 transition-all" />
+                <ChevronLeft className="w-4 h-4 text-muted-foreground rotate-180 group-hover:text-blue-400 group-hover:translate-x-1 transition-all" />
               </div>
             ))}
             {sessions.length === 0 && (

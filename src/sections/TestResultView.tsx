@@ -225,15 +225,8 @@ export default function TestResultView({
               variant="secondary"
               className="flex-1 bg-white/10 hover:bg-white/15 text-blue-400 border-none rounded-xl h-10"
               onClick={() => {
-                if (mistakeEntries.length > 0) {
-                  setSelectedReviewTab('mistakes');
-                  setSelectedReviewEntry(0);
-                  return;
-                }
-                if (correctEntries.length > 0) {
-                  setSelectedReviewTab('correct');
-                  setSelectedReviewEntry(0);
-                }
+                setSelectedReviewTab('mistakes');
+                setSelectedReviewEntry(0);
               }}
             >
               View Solution
@@ -684,30 +677,30 @@ export default function TestResultView({
           </TabsList>
 
           <TabsContent value="analysis">
-            <Card className="bg-[#1E293B]/40 backdrop-blur-xl border-white/10 rounded-[2rem] overflow-hidden group">
+            <Card className="bg-card/40 backdrop-blur-xl border-border/40 rounded-[2rem] overflow-hidden group">
               <CardContent className="p-10">
                 <div className="flex items-center gap-5 mb-8">
                   <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-teal-400 to-blue-600 flex items-center justify-center p-0.5 shadow-lg shadow-teal-500/20">
-                    <div className="w-full h-full bg-[#0F172A] rounded-[0.9rem] flex items-center justify-center">
+                    <div className="w-full h-full bg-background rounded-[0.9rem] flex items-center justify-center">
                       <Sparkles className="w-8 h-8 text-teal-400 animate-pulse" />
                     </div>
                   </div>
                   <div>
-                    <h3 className="text-2xl font-black text-white tracking-tight">AI Diagnostic Report</h3>
-                    <p className="text-sm text-slate-400 font-medium">Deep learning analysis of your attempt patterns</p>
+                    <h3 className="text-2xl font-black text-foreground tracking-tight">AI Diagnostic Report</h3>
+                    <p className="text-sm text-muted-foreground font-medium">Deep learning analysis of your attempt patterns</p>
                   </div>
                 </div>
 
 
                 <div className="prose prose-invert max-w-none">
-                  <p className="text-slate-300 leading-relaxed text-lg font-medium">
-                    {result.aiAnalysis?.summary || "Analysis is being generated..."}
+                  <p className="text-foreground/80 leading-relaxed text-lg font-medium">
+                    {result.aiAnalysis?.summary || "AI is analyzing your summary of attempt for loading"}
                   </p>
                 </div>
 
-                <div className="grid md:grid-cols-2 gap-8 mt-12 pt-8 border-t border-white/5">
+                <div className="grid md:grid-cols-2 gap-8 mt-12 pt-8 border-t border-border/40">
                   <div className="space-y-4">
-                    <h4 className="font-black text-white text-sm uppercase tracking-widest flex items-center gap-2">
+                    <h4 className="font-black text-foreground text-sm uppercase tracking-widest flex items-center gap-2">
                       <div className="w-2 h-2 rounded-full bg-teal-500" />
                       Core Strengths
                     </h4>
@@ -724,7 +717,7 @@ export default function TestResultView({
                     </div>
                   </div>
                   <div className="space-y-4">
-                    <h4 className="font-black text-white text-sm uppercase tracking-widest flex items-center gap-2">
+                    <h4 className="font-black text-foreground text-sm uppercase tracking-widest flex items-center gap-2">
                       <div className="w-2 h-2 rounded-full bg-rose-500" />
                       Focus Zones
                     </h4>
@@ -777,8 +770,19 @@ export default function TestResultView({
                   ))
                 ) : (
                   <div className="p-8 text-center bg-[#1E293B]/40 border border-white/5 rounded-2xl">
-                    <CheckCircle2 className="w-12 h-12 text-teal-400 mx-auto mb-4 opacity-20" />
-                    <p className="text-sm text-slate-500 font-bold uppercase tracking-widest">No mistakes recorded!</p>
+                    {(!result.aiAnalysis || !result.aiAnalysis.summary) ? (
+                      <>
+                        <Sparkles className="w-12 h-12 text-teal-400 mx-auto mb-4 animate-pulse" />
+                        <p className="text-sm text-slate-300 font-bold uppercase tracking-[0.15em] leading-relaxed">
+                          AI is analyzing your summary of attempt for loading
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="w-12 h-12 text-teal-400 mx-auto mb-4 opacity-20" />
+                        <p className="text-sm text-slate-500 font-bold uppercase tracking-widest">No mistakes recorded!</p>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
@@ -793,28 +797,28 @@ export default function TestResultView({
                           <XCircle className="w-3 h-3 mr-2" />
                           Category: {selectedReviewItem.error}
                         </Badge>
-                        <h3 className="text-3xl font-black text-white tracking-tight leading-tight">
+                        <h3 className="text-3xl font-black text-foreground tracking-tight leading-tight">
                           {selectedReviewItem.concept}
                         </h3>
                       </div>
 
-                      <div className="bg-white/5 rounded-3xl p-8 border border-white/5 relative group/item">
+                      <div className="bg-foreground/5 rounded-3xl p-8 border border-border/40 relative group/item">
                         <div className="absolute -left-1 top-8 bottom-8 w-1 bg-teal-500 rounded-full opacity-50" />
-                        <h4 className="font-black text-white text-xs uppercase tracking-[0.2em] mb-4 flex items-center gap-3">
+                        <h4 className="font-black text-foreground text-xs uppercase tracking-[0.2em] mb-4 flex items-center gap-3">
                           <BookOpen className="w-4 h-4 text-teal-500" />
                           Diagnostic Insight
                         </h4>
-                        <div className="text-slate-300 leading-relaxed font-medium">
+                        <div className="text-foreground/80 leading-relaxed font-medium">
                           {renderFormattedExplanation(selectedReviewItem.explanation)}
                         </div>
                       </div>
 
                       <div className="bg-teal-500/5 rounded-3xl p-8 border border-teal-500/10 relative">
-                        <h4 className="font-black text-white text-xs uppercase tracking-[0.2em] mb-4 flex items-center gap-3">
+                        <h4 className="font-black text-foreground text-xs uppercase tracking-[0.2em] mb-4 flex items-center gap-3">
                           <Target className="w-4 h-4 text-teal-500" />
                           Recommended strategy
                         </h4>
-                        <div className="text-slate-300 leading-relaxed font-medium">
+                        <div className="text-foreground/80 leading-relaxed font-medium">
                           {renderFormattedExplanation(selectedReviewItem.howToApproach)}
                         </div>
                       </div>
@@ -886,28 +890,28 @@ export default function TestResultView({
                           <CheckCircle2 className="w-3 h-3 mr-2" />
                           Verified / Solved
                         </Badge>
-                        <h3 className="text-3xl font-black text-white tracking-tight leading-tight">
+                        <h3 className="text-3xl font-black text-foreground tracking-tight leading-tight">
                           {selectedReviewItem.concept}
                         </h3>
                       </div>
 
-                      <div className="bg-white/5 rounded-3xl p-8 border border-white/5 relative group/item">
+                      <div className="bg-foreground/5 rounded-3xl p-8 border border-border/40 relative group/item">
                         <div className="absolute -left-1 top-8 bottom-8 w-1 bg-emerald-500 rounded-full opacity-50" />
-                        <h4 className="font-black text-white text-xs uppercase tracking-[0.2em] mb-4 flex items-center gap-3">
+                        <h4 className="font-black text-foreground text-xs uppercase tracking-[0.2em] mb-4 flex items-center gap-3">
                           <BookOpen className="w-4 h-4 text-emerald-500" />
                           Diagnostic Insight
                         </h4>
-                        <div className="text-slate-300 leading-relaxed font-medium">
+                        <div className="text-foreground/80 leading-relaxed font-medium">
                           {renderFormattedExplanation(selectedReviewItem.explanation)}
                         </div>
                       </div>
 
                       <div className="bg-emerald-500/5 rounded-3xl p-8 border border-emerald-500/10 relative">
-                        <h4 className="font-black text-white text-xs uppercase tracking-[0.2em] mb-4 flex items-center gap-3">
+                        <h4 className="font-black text-foreground text-xs uppercase tracking-[0.2em] mb-4 flex items-center gap-3">
                           <Target className="w-4 h-4 text-emerald-500" />
                           Why it worked
                         </h4>
-                        <div className="text-slate-300 leading-relaxed font-medium">
+                        <div className="text-foreground/80 leading-relaxed font-medium">
                           {renderFormattedExplanation(selectedReviewItem.howToApproach)}
                         </div>
                       </div>
@@ -943,7 +947,7 @@ export default function TestResultView({
                       <div className="w-10 h-10 rounded-full bg-teal-500/20 text-teal-400 flex items-center justify-center flex-shrink-0 font-black text-sm">
                         {index + 1}
                       </div>
-                      <p className="text-slate-300 font-medium leading-relaxed">{rec}</p>
+                      <p className="text-foreground/80 font-medium leading-relaxed">{rec}</p>
                       <ArrowRight className="w-5 h-5 text-teal-500 ml-auto opacity-0 group-hover/item:opacity-100 transition-opacity" />
                     </div>
                   ))}

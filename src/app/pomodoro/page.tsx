@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useTimeTracker } from '@/hooks/useTimeTracker';
 
 export default function PomodoroPage() {
-  const { user, setIsNavigationLocked } = useAuth();
+  const { user, setIsNavigationLocked, tasks } = useAuth();
   const router = useRouter();
   const { setTimeMode } = useTimeTracker(!!user);
 
@@ -30,6 +30,7 @@ export default function PomodoroPage() {
       setTimeMode={setTimeMode}
       onNavigate={handleNavigate}
       onLock={setIsNavigationLocked}
+      tasks={tasks}
     />
   );
 }

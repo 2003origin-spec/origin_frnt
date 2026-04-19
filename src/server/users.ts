@@ -322,29 +322,38 @@ async function handlePointsGet(request: Request) {
 }
 
 async function handleTimePost(request: Request, payload: UserPayload) {
-  return withStore((store) => {
-    const user = requireUserFromRequest(store, request);
-    if (!user) {
-      return unauthorized();
-    }
+  try {
+    return withStore((store) => {
+      const user = requireUserFromRequest(store, request);
+      if (!user) {
+        return unauthorized();
+      }
 
-    const timeType = asString(payload.time_type ?? payload.timeType);
-    const timeSpent = asNumber(payload.time_spent ?? payload.timeSpent);
-    const subject = asString(payload.subject);
-    if (!timeType || (timeType !== "webpage" && timeType !== "practice" && timeType !== "pomodoro")) {
-      return badRequest("Invalid payload", { time_type: "Expected webpage | practice | pomodoro" });
-    }
-    if (timeSpent === null || timeSpent <= 0) {
-      return badRequest("Invalid payload", { time_spent: "Expected positive integer seconds" });
-    }
+      const timeType = asString(payload.time_type ?? payload.timeType);
+      const timeSpent = asNumber(payload.time_spent ?? payload.timeSpent);
+      const subject = asString(payload.subject);
+      
+      console.log(`[TimeTrack] Processing for user ${user.id}: type=${timeType}, spent=${timeSpent}, sub=${subject}`);
 
-    const result = recordTime(store, user.id, timeType, Math.floor(timeSpent), subject);
-    return ok({
-      status: "success",
-      recorded_seconds: result.recordedSeconds,
-      recordedSeconds: result.recordedSeconds,
+      if (!timeType || (timeType !== "webpage" && timeType !== "practice" && timeType !== "pomodoro")) {
+        return badRequest("Invalid payload", { time_type: "Expected webpage | practice | pomodoro" });
+      }
+      if (timeSpent === null || timeSpent <= 0) {
+        return badRequest("Invalid payload", { time_spent: "Expected positive integer seconds" });
+      }
+
+      const result = recordTime(store, user.id, timeType, Math.floor(timeSpent), subject);
+      
+      return ok({
+        status: "success",
+        recorded_seconds: result.recordedSeconds,
+        recordedSeconds: result.recordedSeconds,
+      });
     });
-  });
+  } catch (error) {
+    console.error("[TimeTrack] Critical Error:", error);
+    return badRequest("internal_server_error", { details: String(error) });
+  }
 }
 
 async function handlePomodoroList(request: Request) {

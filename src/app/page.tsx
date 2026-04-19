@@ -16,5 +16,9 @@ export default function Home() {
     }
   };
 
-  return <LandingPage onGetStarted={handleGetStarted} />;
+  return (
+    <main className="relative min-h-screen">
+      <LandingPage onGetStarted={handleGetStarted} />
+    </main>
+  );
 }
