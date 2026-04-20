@@ -13,6 +13,7 @@ import {
   sendSolverMessage,
   updateDoubtSessionTitle,
 } from '@/features/ai-solver/client';
+import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 const SESSION_CACHE_KEY = 'doubt_sessions_cache';
@@ -403,6 +404,7 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
                     </div>
                   </div>
                 </motion.aside>
+                </>
               )}
             </AnimatePresence>
 

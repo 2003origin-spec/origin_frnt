@@ -495,8 +495,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user }: 
                     </div>
                   </div>
                 </Card>
-<<<<<<< HEAD
-                
+
                 {/* Visual feedback of active filters */}
                 {(searchQuery || selectedSubject !== 'all' || selectedDifficulty !== 'all') && (
                   <div className="mt-4 flex flex-wrap gap-2">

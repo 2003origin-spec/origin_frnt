@@ -369,21 +369,24 @@ export default function Navbar({ user, currentView, onNavigate, onLogout, theme,
                         className="md:hidden border-t border-slate-100 dark:border-zinc-800 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-2xl rounded-b-2xl overflow-hidden shadow-2xl"
                     >
                         <div className="p-4 space-y-2">
-                            {navItems.map((item) => (
-                                <button
-                                    key={item.label}
-                                    onClick={() => {
-                                        onNavigate(item.view);
-                                        setShowMobileMenu(false);
-                                    }}
-                                    className={`w-full flex items-center gap-4 p-4 rounded-2xl transition-all ${currentView === item.view ? 'bg-primary/10 text-primary' : 'hover:bg-slate-50 dark:hover:bg-zinc-900 text-black dark:text-slate-400'}`}
-                                >
-                                    <div className={`p-2 rounded-lg ${currentView === item.view ? 'bg-primary/20' : 'bg-slate-100 dark:bg-zinc-800'}`}>
-                                        {typeof item.icon === 'function' ? item.icon() : <item.icon className="w-5 h-5" />}
-                                    </div>
-                                    <span className="font-bold text-sm tracking-wide">{item.label}</span>
-                                </button>
-                            ))}
+                            {navItems.map((item) => {
+                                const Icon = item.icon;
+                                return (
+                                    <button
+                                        key={item.label}
+                                        onClick={() => {
+                                            onNavigate(item.view);
+                                            setShowMobileMenu(false);
+                                        }}
+                                        className={`w-full flex items-center gap-4 p-4 rounded-2xl transition-all ${currentView === item.view ? 'bg-primary/10 text-primary' : 'hover:bg-slate-50 dark:hover:bg-zinc-900 text-black dark:text-slate-400'}`}
+                                    >
+                                        <div className={`p-2 rounded-lg ${currentView === item.view ? 'bg-primary/20' : 'bg-slate-100 dark:bg-zinc-800'}`}>
+                                            <Icon className="w-5 h-5" />
+                                        </div>
+                                        <span className="font-bold text-sm tracking-wide">{item.label}</span>
+                                    </button>
+                                );
+                            })}
                         </div>
                     </motion.div>
                 )}
