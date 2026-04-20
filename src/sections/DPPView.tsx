@@ -266,20 +266,20 @@ export default function DPPView({ onBack }: DPPViewProps) {
   return (
     <div id="tutorial-dpp-hub" className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-teal-50/30 dark:from-slate-950 dark:via-slate-900 dark:to-teal-950/30 text-slate-900 dark:text-slate-100 transition-colors duration-300">
       <header className="z-40 bg-white/80 dark:bg-slate-900/80 border-b border-slate-200/50 dark:border-slate-800/50 backdrop-blur-md">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-4">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-14 sm:h-16">
+            <div className="flex items-center gap-2 sm:gap-4 truncate">
               <button onClick={onBack} className="p-2 rounded-lg hover:bg-slate-100 transition-colors">
                 <ChevronLeft className="w-5 h-5 text-slate-600" />
               </button>
-              <div>
-                <h1 className="text-xl font-bold text-slate-900 dark:text-white">Daily Practice Problems</h1>
-                <p className="text-sm text-slate-500 dark:text-slate-400">
-                  Personalized based on your latest weak-topic analytics
+              <div className="truncate">
+                <h1 className="text-base sm:text-xl font-bold text-slate-900 dark:text-white truncate">Daily Practice Problems</h1>
+                <p className="text-[10px] sm:text-sm text-slate-500 dark:text-slate-400 truncate">
+                  Personalized based on your analytics
                 </p>
               </div>
             </div>
-            <Badge className="bg-[#3CACA3]/10 text-[#3CACA3] dark:bg-[#3CACA3]/20">
+            <Badge className="bg-[#3CACA3]/10 text-[#3CACA3] dark:bg-[#3CACA3]/20 hidden xs:flex">
               <Sparkles className="w-3 h-3 mr-1" />
               Service Generated
             </Badge>
@@ -288,7 +288,7 @@ export default function DPPView({ onBack }: DPPViewProps) {
         <Progress value={progress} className="h-1 rounded-none" />
       </header>
 
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-5xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8">
         {loading ? (
           <Card className="border-0 shadow-lg dark:bg-slate-900/60 dark:ring-1 dark:ring-white/10">
             <CardContent className="p-8 flex items-center justify-center gap-3 text-slate-500">
@@ -316,24 +316,24 @@ export default function DPPView({ onBack }: DPPViewProps) {
               <div className="w-24 h-24 mx-auto rounded-full bg-gradient-to-br from-[#3CACA3] to-[#1E3A5F] flex items-center justify-center mb-6">
                 <CheckCircle2 className="w-12 h-12 text-white" />
               </div>
-              <h2 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">DPP Completed</h2>
-              <p className="text-slate-600 dark:text-slate-400 mb-6">
+              <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white mb-2">DPP Completed</h2>
+              <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400 mb-6">
                 {submissionResult?.summary ?? 'Your DPP attempt has been analyzed.'}
               </p>
-              <div className="grid grid-cols-3 gap-4 max-w-md mx-auto mb-8">
-                <div className="p-4 rounded-xl bg-green-50 dark:bg-green-900/20">
-                  <div className="text-3xl font-bold text-green-600">{correctCount}</div>
-                  <div className="text-sm text-slate-500 dark:text-slate-400">Correct</div>
+              <div className="grid grid-cols-3 gap-2 sm:gap-4 max-w-md mx-auto mb-8">
+                <div className="p-3 sm:p-4 rounded-xl bg-green-50 dark:bg-green-900/20">
+                  <div className="text-xl sm:text-3xl font-bold text-green-600">{correctCount}</div>
+                  <div className="text-[10px] sm:text-sm text-slate-500 dark:text-slate-400 font-bold uppercase tracking-widest">Correct</div>
                 </div>
-                <div className="p-4 rounded-xl bg-red-50 dark:bg-red-900/20">
-                  <div className="text-3xl font-bold text-red-600">{currentQuestions.length - correctCount}</div>
-                  <div className="text-sm text-slate-500 dark:text-slate-400">Wrong</div>
+                <div className="p-3 sm:p-4 rounded-xl bg-red-50 dark:bg-red-900/20">
+                  <div className="text-xl sm:text-3xl font-bold text-red-600">{currentQuestions.length - correctCount}</div>
+                  <div className="text-[10px] sm:text-sm text-slate-500 dark:text-slate-400 font-bold uppercase tracking-widest">Wrong</div>
                 </div>
-                <div className="p-4 rounded-xl bg-[#3CACA3]/10 dark:bg-[#3CACA3]/20">
-                  <div className="text-3xl font-bold text-[#3CACA3]">
+                <div className="p-3 sm:p-4 rounded-xl bg-[#3CACA3]/10 dark:bg-[#3CACA3]/20">
+                  <div className="text-xl sm:text-3xl font-bold text-[#3CACA3]">
                     {Math.round(submissionResult?.progress_score ?? submissionResult?.progressScore ?? 0)}%
                   </div>
-                  <div className="text-sm text-slate-500 dark:text-slate-400">Progress</div>
+                  <div className="text-[10px] sm:text-sm text-slate-500 dark:text-slate-400 font-bold uppercase tracking-widest">Score</div>
                 </div>
               </div>
 
@@ -379,7 +379,7 @@ export default function DPPView({ onBack }: DPPViewProps) {
 
                   {currentQuestion ? (
                     <>
-                      <div className="text-xl font-medium text-slate-900 dark:text-white mb-6 leading-relaxed">
+                      <div className="text-lg sm:text-xl font-medium text-slate-900 dark:text-white mb-6 leading-relaxed">
                         {renderQuestionText(currentQuestion.text, 'dpp-question')}
                       </div>
 
@@ -424,7 +424,7 @@ export default function DPPView({ onBack }: DPPViewProps) {
                                 )}
                               </div>
                               <span
-                                className={`text-lg ${
+                                className={`text-base sm:text-lg ${
                                   showSolution && index === getCorrectOption(currentQuestion)
                                     ? 'text-green-700 dark:text-green-400'
                                     : showSolution && selectedOption === index

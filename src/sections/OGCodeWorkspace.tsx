@@ -477,24 +477,24 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
     return (
         <div className="min-h-screen bg-[#0d1117] text-slate-100 flex flex-col font-sans">
             {/* Header */}
-            <div className="h-12 border-b border-white/[0.07] flex items-center justify-between px-4 bg-[#0d1117]">
-                <button onClick={onBack} className="p-1.5 hover:bg-white/5 rounded-lg transition-colors">
-                    <ArrowLeft className="w-4 h-4" />
+            <div className="h-14 sm:h-12 border-b border-white/[0.07] flex items-center justify-between px-3 sm:px-4 bg-[#0d1117] sticky top-0 z-50">
+                <button onClick={onBack} className="p-2 hover:bg-white/5 rounded-lg transition-colors">
+                    <ArrowLeft className="w-5 h-5 sm:w-4 sm:h-4" />
                 </button>
-                <div id="tutorial-ogcode-stats" className="flex items-center gap-4">
-                    <div className="flex items-center gap-1.5 text-xs font-bold text-amber-500 font-mono">
+                <div id="tutorial-ogcode-stats" className="flex items-center gap-3 sm:gap-4">
+                    <div className="flex items-center gap-1.5 text-[10px] sm:text-xs font-bold text-amber-500 font-mono bg-amber-500/5 px-2 py-1 rounded-md border border-amber-500/10">
                         <Trophy className="w-3.5 h-3.5" />
-                        {user?.points || 0} PTS
+                        {user?.points || 0} <span className="hidden xs:inline">PTS</span>
                     </div>
-                    <div className="flex items-center gap-2 text-sm text-slate-400 font-mono">
-                        <Clock className="w-3.5 h-3.5" /> {Math.floor(elapsed / 60)}m {elapsed % 60}s
+                    <div className="flex items-center gap-2 text-xs sm:text-sm text-slate-400 font-mono bg-white/5 px-2 py-1 rounded-md border border-white/5">
+                        <Clock className="w-3.5 h-3.5" /> {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')}
                     </div>
                 </div>
             </div>
 
             <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
                 {/* Left: Question Content */}
-                <div id="tutorial-ogcode-content" className="lg:w-1/2 p-6 overflow-y-auto border-r border-white/5">
+                <div id="tutorial-ogcode-content" className="w-full lg:w-1/2 p-4 sm:p-6 overflow-y-auto border-b lg:border-b-0 lg:border-r border-white/5">
                     <div className="space-y-4">
                         <div className="flex items-center gap-2">
                             <span className="text-[10px] font-bold text-blue-400 px-2 py-1 bg-blue-500/10 rounded uppercase tracking-wider">
@@ -518,7 +518,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                 </div>
 
                 {/* Right: Interaction and Results */}
-                <div className="lg:w-1/2 p-6 bg-slate-50 dark:bg-black border-l border-slate-200 dark:border-white/5 overflow-y-auto">
+                <div className="w-full lg:w-1/2 p-4 sm:p-6 bg-slate-50 dark:bg-black border-t lg:border-t-0 lg:border-l border-slate-200 dark:border-white/5 overflow-y-auto">
                     <div id="tutorial-ogcode-input" className="max-w-xl mx-auto space-y-6">
 
                         {/* 1. INPUT SECTION */}
@@ -692,27 +692,27 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                     </div>
                                 </div>
 
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3 mb-4">
                                     <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
-                                        <p className="text-[10px] uppercase tracking-widest text-slate-500">Result Score</p>
-                                        <p className="text-lg font-black text-slate-100">
+                                        <p className="text-[9px] sm:text-[10px] uppercase tracking-widest text-slate-500">Result Score</p>
+                                        <p className="text-base sm:text-lg font-black text-slate-100">
                                             {result.resultScore ?? 0}
-                                            <span className="ml-1 text-xs font-medium text-slate-500">/ {result.maxPoints ?? result.basePoints ?? 0}</span>
+                                            <span className="ml-1 text-[10px] sm:text-xs font-medium text-slate-500">/ {result.maxPoints ?? result.basePoints ?? 0}</span>
                                         </p>
                                     </div>
                                     <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
-                                        <p className="text-[10px] uppercase tracking-widest text-slate-500">Points Earned</p>
-                                        <p className={`text-lg font-black ${result.pointsAwarded ? 'text-amber-400' : 'text-slate-400'}`}>
+                                        <p className="text-[9px] sm:text-[10px] uppercase tracking-widest text-slate-500">Points Earned</p>
+                                        <p className={`text-base sm:text-lg font-black ${result.pointsAwarded ? 'text-amber-400' : 'text-slate-400'}`}>
                                             +{result.pointsAwarded ?? 0}
                                         </p>
                                     </div>
-                                    <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
-                                        <p className="text-[10px] uppercase tracking-widest text-slate-500">Speed Rating</p>
-                                        <p className="text-lg font-black text-slate-100">
+                                    <div className="col-span-2 sm:col-span-1 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
+                                        <p className="text-[9px] sm:text-[10px] uppercase tracking-widest text-slate-500">Speed Rating</p>
+                                        <p className="text-base sm:text-lg font-black text-slate-100 uppercase tracking-tighter">
                                             {result.speedBand ? SPEED_BAND_LABELS[result.speedBand] : 'Recorded'}
                                         </p>
                                         {typeof result.targetTimeSeconds === 'number' && (
-                                            <p className="text-[11px] text-slate-500">
+                                            <p className="text-[9px] sm:text-[11px] text-slate-500">
                                                 Target {Math.floor(result.targetTimeSeconds / 60)}m {result.targetTimeSeconds % 60}s
                                             </p>
                                         )}

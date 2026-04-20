@@ -225,10 +225,10 @@ export default function OGCodeList({ onSelectQuestion, user }: OGCodeListProps) 
                                 <Code2 className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                                 <span className="text-[10px] font-bold tracking-[0.2em] text-blue-600 dark:text-blue-400 uppercase">Practice Arena</span>
                             </div>
-                            <h1 className="text-4xl md:text-5xl font-black tracking-tight text-slate-900 dark:text-white leading-tight">
+                            <h1 className="text-3xl sm:text-4xl md:text-5xl font-black tracking-tight text-slate-900 dark:text-white leading-tight">
                                 OG<span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-blue-400 dark:from-blue-400 dark:to-blue-200">CODE</span> WORKSPACE
                             </h1>
-                            <p className="text-slate-500 dark:text-slate-400 font-light max-w-xl text-base">
+                            <p className="text-slate-500 dark:text-slate-400 font-light max-w-xl text-sm sm:text-base">
                                 Master complex concepts through structured practice, build your streak, and climb the national leaderboard.
                             </p>
                         </motion.div>
@@ -366,16 +366,16 @@ export default function OGCodeList({ onSelectQuestion, user }: OGCodeListProps) 
                     {/* Filter & Table Area */}
                     <div className="space-y-6">
                         {/* Enhanced Subject & Chapter Filter */}
-                        <div id="filter-area" className="space-y-4 bg-slate-50/50 dark:bg-white/[0.02] border border-slate-200 dark:border-white/5 rounded-2xl p-5 backdrop-blur-sm relative z-[60]">
-                            <div className="flex flex-wrap items-center gap-4">
-                                <div className="space-y-1.5">
+                        <div id="filter-area" className="space-y-4 bg-slate-50/50 dark:bg-white/[0.02] border border-slate-200 dark:border-white/5 rounded-2xl p-4 sm:p-5 backdrop-blur-sm relative z-[60]">
+                            <div className="flex flex-col sm:flex-row sm:items-end gap-4">
+                                <div className="space-y-1.5 w-full sm:w-auto">
                                     <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-zinc-500 ml-1">Major Subject</label>
                                     <div className="relative">
                                         <button 
                                             id="tutorial-ogcode-subject-filter"
                                             onClick={() => setOpenDropdown(openDropdown === 'subject' ? null : 'subject')}
                                             className={cn(
-                                                "min-w-[200px] flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl border bg-white dark:bg-zinc-900 transition-all shadow-sm",
+                                                "w-full sm:min-w-[200px] flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl border bg-white dark:bg-zinc-900 transition-all shadow-sm",
                                                 activeSubject !== 'Subject' ? "border-blue-500/50 ring-1 ring-blue-500/20" : "border-slate-200 dark:border-white/10"
                                             )}
                                         >
@@ -435,7 +435,7 @@ export default function OGCodeList({ onSelectQuestion, user }: OGCodeListProps) 
                                                 Clear All
                                             </button>
                                         </div>
-                                        <div className="flex flex-wrap gap-2 max-h-[120px] overflow-y-auto pr-2 custom-scrollbar p-1">
+                                        <div className="flex flex-wrap gap-2 max-h-[140px] sm:max-h-[120px] overflow-y-auto pr-2 custom-scrollbar p-1">
                                             {availableChapters.length > 0 ? (
                                                 availableChapters.map((chapter) => (
                                                     <button
@@ -531,17 +531,19 @@ export default function OGCodeList({ onSelectQuestion, user }: OGCodeListProps) 
                             </div>
                         </div>
 
-                        <div className="overflow-hidden bg-white dark:bg-[#1a1a1a] rounded-2xl border border-slate-200 dark:border-white/5 shadow-sm">
-                            <table className="w-full text-left border-collapse">
-                                <thead className="bg-slate-50/50 dark:bg-white/[0.02]">
-                                    <tr className="border-b border-slate-200 dark:border-white/5 text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                                        <th className="px-6 py-4">Status</th>
-                                        <th className="px-6 py-4">Title</th>
-                                        <th className="px-6 py-4">Chapter & Concept</th>
-                                        <th className="px-6 py-4">Difficulty</th>
-                                        <th className="px-6 py-4 text-right">Action</th>
-                                    </tr>
-                                </thead>
+                        <div className="bg-white dark:bg-[#1a1a1a] rounded-2xl border border-slate-200 dark:border-white/5 shadow-sm overflow-hidden">
+                            {/* Table view for Desktop */}
+                            <div className="hidden md:block overflow-x-auto">
+                                <table className="w-full text-left border-collapse">
+                                    <thead className="bg-slate-50/50 dark:bg-white/[0.02]">
+                                        <tr className="border-b border-slate-200 dark:border-white/5 text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                                            <th className="px-6 py-4">Status</th>
+                                            <th className="px-6 py-4">Title</th>
+                                            <th className="px-6 py-4">Chapter & Concept</th>
+                                            <th className="px-6 py-4">Difficulty</th>
+                                            <th className="px-6 py-4 text-right">Action</th>
+                                        </tr>
+                                    </thead>
                                 <tbody className="text-sm">
                                     {loading ? (
                                         <tr><td colSpan={5} className="py-20 text-center"><div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto" /></td></tr>
@@ -564,6 +566,58 @@ export default function OGCodeList({ onSelectQuestion, user }: OGCodeListProps) 
                                     )}
                                 </tbody>
                             </table>
+                            </div>
+
+                            {/* Card view for Mobile */}
+                            <div className="md:hidden divide-y divide-slate-200 dark:divide-white/5">
+                                {loading ? (
+                                    <div className="py-20 text-center"><div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto" /></div>
+                                ) : filteredQuestions.length > 0 ? (
+                                    filteredQuestions.map((q, idx) => {
+                                        const conf = DIFFICULTY_CONFIG[q.difficulty?.toLowerCase()] || DIFFICULTY_CONFIG.easy;
+                                        return (
+                                            <div 
+                                                key={q.id} 
+                                                onClick={() => onSelectQuestion(q.id)}
+                                                className="p-4 active:bg-slate-50 dark:active:bg-white/5 transition-colors space-y-3"
+                                            >
+                                                <div className="flex items-start justify-between gap-3">
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="flex items-center gap-2 mb-1.5">
+                                                            {(q.status === 'solved' || q.isSolved) && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />}
+                                                            <span className="text-[10px] font-bold text-slate-400">{idx + 1}.</span>
+                                                            <span className={cn("text-[10px] font-black uppercase tracking-wider", conf.darkText)}>
+                                                                {conf.label}
+                                                            </span>
+                                                        </div>
+                                                        <h4 className="text-[14px] font-bold text-slate-800 dark:text-slate-200 leading-snug line-clamp-2">
+                                                            {renderInlineSegments(String(q.title || q.text), `ogcode-mobile-${q.id}`)}
+                                                        </h4>
+                                                    </div>
+                                                    <div className="p-2 bg-blue-500/10 rounded-lg text-blue-500">
+                                                        <ChevronRight className="w-4 h-4" />
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center justify-between gap-4 pt-1">
+                                                    <div className="flex flex-col">
+                                                        <span className="text-[11px] font-black text-slate-700 dark:text-slate-300 truncate max-w-[150px]">
+                                                            {q.chapter || 'Foundations'}
+                                                        </span>
+                                                        <span className="text-[9px] font-bold text-slate-500/80 uppercase tracking-tighter">
+                                                            {q.concept || 'JEE Advanced'}
+                                                        </span>
+                                                    </div>
+                                                    <button className="px-3 py-1.5 bg-blue-600 text-white text-[10px] font-black uppercase tracking-wider rounded-lg shadow-sm">
+                                                        Attempt
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        );
+                                    })
+                                ) : (
+                                    <div className="py-20 text-center text-slate-500 text-sm">No questions found matching your criteria.</div>
+                                )}
+                            </div>
                         </div>
                     </div>
                 </div>

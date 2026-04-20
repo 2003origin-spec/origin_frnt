@@ -102,7 +102,7 @@ export const TutorialOverlay: React.FC = () => {
             className="pointer-events-auto"
             style={calculateTooltipPosition(targetRect, step.placement || 'bottom')}
           >
-            <div className="w-[320px] sm:w-[380px] max-h-[80vh] overflow-y-auto custom-scrollbar premium-card bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border border-blue-200/50 dark:border-white/10 p-6 shadow-2xl ring-1 ring-black/5 dark:ring-white/5 relative">
+            <div className="w-[calc(100vw-32px)] sm:w-[380px] max-h-[80vh] overflow-y-auto custom-scrollbar premium-card bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border border-blue-200/50 dark:border-white/10 p-4 sm:p-6 shadow-2xl ring-1 ring-black/5 dark:ring-white/5 relative">
             {/* Ambient Background Glow in Tooltip */}
             <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-3xl -z-10" />
             

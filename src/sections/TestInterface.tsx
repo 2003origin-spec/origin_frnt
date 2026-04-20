@@ -383,25 +383,25 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
     <div className="min-h-screen bg-white text-black font-sans text-sm selection:bg-blue-200 flex flex-col">
 
       {/* 1. Top Header */}
-      <header className="flex items-center justify-between px-6 py-2 border-b border-gray-300">
-        <div className="flex items-center gap-3">
+      <header className="flex flex-col sm:flex-row items-center justify-between px-3 sm:px-6 py-2 border-b border-gray-300 gap-3 sm:gap-0">
+        <div className="flex items-center justify-between w-full sm:w-auto gap-3">
           <div className="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center cursor-pointer" onClick={() => { stopCamera(); onExit(); }}>
             <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center">
               <div className="w-6 h-6 bg-orange-500 rounded-tr-xl rounded-bl-xl" style={{ clipPath: 'polygon(0% 100%, 100% 100%, 100% 0%)' }}></div>
             </div>
           </div>
           <div>
-            <h1 className="text-xl font-bold text-blue-900 leading-tight">O3 ORIGIN TESTING AGENCY</h1>
-            <p className="text-xs text-green-700 font-semibold italic">Excellence in Assessment</p>
+            <h1 className="text-sm sm:text-xl font-bold text-blue-900 leading-tight">O3 ORIGIN TESTING AGENCY</h1>
+            <p className="text-[10px] sm:text-xs text-green-700 font-semibold italic">Excellence in Assessment</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-4 text-xs font-semibold">
-          <div className="w-24 h-28 bg-gray-600 rounded-lg flex flex-col items-center justify-center overflow-hidden relative shadow-inner border-2 border-gray-400">
+        <div className="flex items-center justify-between w-full sm:w-auto gap-4 text-xs font-semibold">
+          <div className="w-16 h-20 sm:w-24 sm:h-28 bg-gray-600 rounded-lg flex flex-col items-center justify-center overflow-hidden relative shadow-inner border-2 border-gray-400">
             {proctorStatus === 'error' ? (
               <div className="flex flex-col items-center justify-center text-red-100 p-2 bg-red-900/50 w-full h-full">
-                <Camera className="w-6 h-6 mb-2" />
-                <span className="text-[10px] text-center font-bold tracking-tighter">ACCESS DENIED</span>
+                <Camera className="w-5 h-5 sm:w-6 sm:h-6 mb-2" />
+                <span className="text-[8px] sm:text-[10px] text-center font-bold tracking-tighter">ACCESS DENIED</span>
               </div>
             ) : (
               <>
@@ -427,23 +427,23 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
               </>
             )}
           </div>
-          <div className="flex flex-col gap-1">
-            <div className="flex"><span className="w-28 text-gray-500">Candidate Name :</span> <span className="text-orange-500">[Your Name]</span></div>
-            <div className="flex"><span className="w-28 text-gray-500">Subject Name :</span> <span className="text-orange-500">{test.title}</span></div>
-            <div className="flex"><span className="w-28 text-gray-500">Remaining Time :</span> <span className="bg-blue-500 text-white px-2 py-0.5 rounded text-xs">{formatTime(timeRemaining)}</span></div>
+          <div className="flex flex-col gap-0.5 sm:gap-1 text-[10px] sm:text-xs">
+            <div className="flex"><span className="w-20 sm:w-28 text-gray-500">Candidate:</span> <span className="text-orange-500 truncate max-w-[100px] sm:max-w-none">[Your Name]</span></div>
+            <div className="flex"><span className="w-20 sm:w-28 text-gray-500">Subject:</span> <span className="text-orange-500 truncate max-w-[100px] sm:max-w-none">{test.title}</span></div>
+            <div className="flex"><span className="w-20 sm:w-28 text-gray-500">Remaining:</span> <span className="bg-blue-500 text-white px-2 py-0.5 rounded text-[10px] sm:text-xs">{formatTime(timeRemaining)}</span></div>
           </div>
         </div>
       </header>
 
       {/* 2. Orange Sub Header */}
-      <div className="bg-[#f08c32] px-6 py-1.5 flex justify-between items-center text-xs">
+      <div className="bg-[#f08c32] px-3 sm:px-6 py-1.5 flex justify-between items-center text-[10px] sm:text-xs overflow-x-auto whitespace-nowrap">
         <div className="flex gap-1" style={{ height: '32px' }}>
-          <div className="flex items-center px-4 bg-orange-400 text-white font-bold opacity-80 uppercase">{test.title}</div>
+          <div className="flex items-center px-3 sm:px-4 bg-orange-400 text-white font-bold opacity-80 uppercase text-[10px] sm:text-xs">{test.title}</div>
         </div>
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-3 sm:gap-6 ml-4">
           <div className="flex items-center gap-2">
-            <span className="text-white font-bold">Paper Language:</span>
-            <select className="border border-gray-300 text-black px-2 py-1 bg-white outline-none w-48">
+            <span className="text-white font-bold hidden sm:inline">Paper Language:</span>
+            <select className="border border-gray-300 text-black px-1.5 py-0.5 sm:px-2 sm:py-1 bg-white outline-none w-24 sm:w-48 text-[10px] sm:text-xs">
               <option>English</option>
             </select>
           </div>
@@ -451,19 +451,19 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
       </div>
 
       {/* Main Layout */}
-      <div className="flex flex-1 overflow-hidden" style={{ height: 'calc(100vh - 120px)' }}>
+      <div className="flex flex-col lg:flex-row flex-1 overflow-hidden" style={{ height: 'calc(100vh - 120px)' }}>
 
         {/* Left Area - Question Content */}
         <div className="flex-1 flex flex-col border-r border-gray-300 relative">
 
           {/* Question Header */}
-          <div className="flex justify-between items-center px-4 py-2 border-b border-gray-300 font-bold text-lg border-t-4 border-t-white">
+          <div className="flex justify-between items-center px-4 py-2 border-b border-gray-300 font-bold text-base sm:text-lg border-t-4 border-t-white bg-white sticky top-0 z-20">
             <span>Question {currentQuestionIndex + 1}:</span>
             <div className="w-6 h-6 bg-blue-600 rounded-full text-white flex items-center justify-center font-bold text-sm">&darr;</div>
           </div>
 
           {/* Question Text & Options */}
-          <div className="flex-1 overflow-y-auto p-8 relative">
+          <div className="flex-1 overflow-y-auto p-4 sm:p-8 relative">
             <div className="absolute right-0 top-[50%] bg-black text-white px-1 py-4 cursor-pointer text-xs"><b>&gt;</b></div>
             <div className="max-w-3xl">
 
@@ -614,11 +614,11 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
           </div>
 
           {/* Action Buttons */}
-          <div className="border-t border-gray-300 px-4 py-3 flex gap-2">
-            <button onClick={saveAndNext} className="bg-[#5CB85C] text-white px-4 py-1.5 font-bold text-xs rounded-sm hover:opacity-90 uppercase">SAVE & NEXT</button>
-            <button onClick={saveAndMarkForReview} className="bg-[#F0AD4E] text-white px-4 py-1.5 font-bold text-xs rounded-sm hover:opacity-90 uppercase">SAVE & MARK FOR REVIEW</button>
-            <button onClick={handleClearResponse} className="bg-white text-gray-800 border border-gray-300 px-4 py-1.5 font-bold text-xs rounded-sm hover:bg-gray-50 uppercase shadow-sm">CLEAR RESPONSE</button>
-            <button onClick={markForReviewAndNext} className="bg-[#297FC6] text-white px-4 py-1.5 font-bold text-xs rounded-sm hover:opacity-90 uppercase ml-auto">MARK FOR REVIEW & NEXT</button>
+          <div className="border-t border-gray-300 px-3 sm:px-4 py-2 sm:py-3 grid grid-cols-2 sm:flex sm:flex-row gap-2">
+            <button onClick={saveAndNext} className="bg-[#5CB85C] text-white px-2 sm:px-4 py-2 sm:py-1.5 font-bold text-[10px] sm:text-xs rounded-sm hover:opacity-90 uppercase">SAVE & NEXT</button>
+            <button onClick={saveAndMarkForReview} className="bg-[#F0AD4E] text-white px-2 sm:px-4 py-2 sm:py-1.5 font-bold text-[10px] sm:text-xs rounded-sm hover:opacity-90 uppercase">SAVE & REVIEW</button>
+            <button onClick={handleClearResponse} className="bg-white text-gray-800 border border-gray-300 px-2 sm:px-4 py-2 sm:py-1.5 font-bold text-[10px] sm:text-xs rounded-sm hover:bg-gray-50 uppercase shadow-sm">CLEAR</button>
+            <button onClick={markForReviewAndNext} className="bg-[#297FC6] text-white px-2 sm:px-4 py-2 sm:py-1.5 font-bold text-[10px] sm:text-xs rounded-sm hover:opacity-90 uppercase sm:ml-auto">REVIEW & NEXT</button>
           </div>
 
           {/* Footer Buttons */}
@@ -640,7 +640,7 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
         </div>
 
         {/* Right Area - Palette */}
-        <div className="w-[320px] lg:w-[350px] bg-white flex flex-col pt-4">
+        <div className="w-full lg:w-[350px] bg-white flex flex-col pt-4 border-t lg:border-t-0 lg:border-l border-gray-300 max-h-[300px] lg:max-h-none">
 
           {/* Legend */}
           <div className="px-4 pb-4 border-b border-gray-200">

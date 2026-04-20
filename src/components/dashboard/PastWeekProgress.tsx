@@ -26,40 +26,47 @@ export default function PastWeekProgress({ user }: PastWeekProgressProps) {
         <Card className="border border-border/50 shadow-lg shadow-primary/5 bg-card/50 backdrop-blur-xl relative overflow-hidden h-full flex flex-col justify-center">
             <div className="absolute inset-0 bg-gradient-to-r from-primary/5 via-transparent to-primary/5 pointer-events-none" />
 
-            <CardContent className="relative z-10 py-8 flex flex-col items-center justify-between px-6 gap-10">
+            <CardContent className="relative z-10 py-4 sm:py-8 flex flex-col items-center justify-between px-4 sm:px-6 gap-6 sm:gap-10">
                 {/* Header Section */}
-                <div className="flex flex-col md:flex-row items-center justify-between w-full gap-4">
-                    <div className="flex flex-col items-center md:items-start">
-                        <span className="text-xs font-black text-[#334155] tracking-[0.3em] uppercase mb-1 opacity-80">App Time Analytics</span>
-                        <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-widest">Weekly Activity Report</p>
+                <div className="flex flex-col sm:flex-row items-center justify-between w-full gap-4">
+                    <div className="flex flex-col items-center sm:items-start">
+                        <span className="text-[10px] sm:text-xs font-black text-[#334155] tracking-[0.2em] sm:tracking-[0.3em] uppercase mb-1 opacity-80">App Time Analytics</span>
+                        <p className="text-[8px] sm:text-[10px] text-muted-foreground font-medium uppercase tracking-widest">Weekly Activity Report</p>
                     </div>
                     
                     {/* Legend - Centered or right-aligned */}
-                    <div className="flex flex-wrap justify-center gap-6 text-[10px] font-black text-[#64748B] uppercase tracking-widest bg-muted/30 px-6 py-2 rounded-full border border-border/40">
-                        <div className="flex items-center gap-2.5">
-                            <div className="w-2.5 h-2.5 rounded-full bg-[#1E293B] shadow-sm shadow-navy/20" /> 
+                    <div className="flex flex-wrap justify-center gap-3 sm:gap-6 text-[8px] sm:text-[10px] font-black text-[#64748B] uppercase tracking-widest bg-muted/20 sm:bg-muted/30 px-4 sm:px-6 py-2 rounded-full border border-border/40">
+                        <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-[#1E293B] shadow-sm shadow-navy/20" /> 
                             <span>Webpage</span>
                         </div>
-                        <div className="flex items-center gap-2.5">
-                            <div className="w-2.5 h-2.5 rounded-full bg-[#059669] shadow-sm shadow-emerald/20" /> 
+                        <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-[#059669] shadow-sm shadow-emerald/20" /> 
                             <span>Practice</span>
                         </div>
-                        <div className="flex items-center gap-2.5">
-                            <div className="w-2.5 h-2.5 rounded-full bg-[#D97706] shadow-sm shadow-amber/20" /> 
+                        <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-[#D97706] shadow-sm shadow-amber/20" /> 
                             <span>Pomodoro</span>
                         </div>
                     </div>
                 </div>
 
                 {/* 7-Day Mini Charts - Spaced out and Larger */}
-                <div className="flex flex-wrap lg:flex-nowrap justify-around items-end gap-6 w-full pb-2">
+                <div className="flex flex-wrap lg:flex-nowrap justify-center sm:justify-around items-end gap-4 sm:gap-6 w-full pb-2">
                     {timeData.map((item: any, index: number) => {
                         const isToday = index === timeData.length - 1;
                         const totalSecs = item.webpageTime + item.practiceTime + item.pomodoroTime;
                         
-                        // New larger circumference math (r=36)
-                        const c = 226.2;
-                        const total = totalSecs || 1; // Prevent div by zero
+                        // Responsive Math
+                        const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
+                        const r = isMobile ? 24 : 36;
+                        const c = 2 * Math.PI * r;
+                        const cx = isMobile ? 28 : 40;
+                        const cy = isMobile ? 28 : 40;
+                        const strokeWidth = isMobile ? 4 : 5;
+                        const activeStrokeWidth = isMobile ? 5 : 6;
+
+                        const total = totalSecs || 1;
                         const webPct = item.webpageTime / total;
                         const pracPct = item.practiceTime / total;
                         const pomPct = item.pomodoroTime / total;
@@ -69,34 +76,34 @@ export default function PastWeekProgress({ user }: PastWeekProgressProps) {
                         const pomDash = c * pomPct;
 
                         return (
-                            <div key={item.date} className="flex flex-col items-center gap-4 group relative">
+                            <div key={item.date} className="flex flex-col items-center gap-2 sm:gap-4 group relative">
                                 {isToday && (
-                                    <div className="absolute -top-8 text-[10px] font-black text-white bg-blue-600 px-3 py-1 rounded-full border-2 border-background shadow-lg shadow-blue-500/20 z-20 scale-110">
+                                    <div className="absolute -top-6 sm:-top-8 text-[8px] sm:text-[10px] font-black text-white bg-blue-600 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full border-2 border-background shadow-lg shadow-blue-500/20 z-20 scale-105 sm:scale-110">
                                         TODAY
                                     </div>
                                 )}
 
-                                <div className="relative w-20 h-20 flex items-center justify-center transition-transform duration-300 group-hover:scale-110">
+                                <div className="relative w-14 h-14 sm:w-20 sm:h-20 flex items-center justify-center transition-transform duration-300 group-hover:scale-110">
                                     <svg className="w-full h-full transform -rotate-90 filter drop-shadow-sm">
                                         {/* Background Empty Track */}
-                                        <circle cx="40" cy="40" r="36" stroke="currentColor" strokeWidth="5" fill="transparent" className="text-slate-100 dark:text-slate-800/10" />
+                                        <circle cx={cx} cy={cy} r={r} stroke="currentColor" strokeWidth={strokeWidth} fill="transparent" className="text-slate-100 dark:text-slate-800/10" />
 
                                         {totalSecs > 0 ? (
                                             <>
                                                 {/* Webpage Segment */}
                                                 {webDash > 0 && (
-                                                    <circle cx="40" cy="40" r="36" fill="transparent" strokeWidth="6" stroke={COLORS.webpage}
+                                                    <circle cx={cx} cy={cy} r={r} fill="transparent" strokeWidth={activeStrokeWidth} stroke={COLORS.webpage}
                                                         strokeDasharray={`${c}`} strokeDashoffset={c - webDash} strokeLinecap="round" />
                                                 )}
                                                 {/* Practice Segment */}
                                                 {pracDash > 0 && (
-                                                    <circle cx="40" cy="40" r="36" fill="transparent" strokeWidth="6" stroke={COLORS.practice}
-                                                        strokeDasharray={`${c}`} strokeDashoffset={c - pracDash} strokeLinecap="round" transform={`rotate(${(item.webpageTime / total) * 360} 40 40)`} />
+                                                    <circle cx={cx} cy={cy} r={r} fill="transparent" strokeWidth={activeStrokeWidth} stroke={COLORS.practice}
+                                                        strokeDasharray={`${c}`} strokeDashoffset={c - pracDash} strokeLinecap="round" transform={`rotate(${(item.webpageTime / total) * 360} ${cx} ${cy})`} />
                                                 )}
                                                 {/* Pomodoro Segment */}
                                                 {pomDash > 0 && (
-                                                    <circle cx="40" cy="40" r="36" fill="transparent" strokeWidth="6" stroke={COLORS.pomodoro}
-                                                        strokeDasharray={`${c}`} strokeDashoffset={c - pomDash} strokeLinecap="round" transform={`rotate(${((item.webpageTime + item.practiceTime) / total) * 360} 40 40)`} />
+                                                    <circle cx={cx} cy={cy} r={r} fill="transparent" strokeWidth={activeStrokeWidth} stroke={COLORS.pomodoro}
+                                                        strokeDasharray={`${c}`} strokeDashoffset={c - pomDash} strokeLinecap="round" transform={`rotate(${((item.webpageTime + item.practiceTime) / total) * 360} ${cx} ${cy})`} />
                                                 )}
                                             </>
                                         ) : null}
@@ -104,12 +111,12 @@ export default function PastWeekProgress({ user }: PastWeekProgressProps) {
 
                                     {/* Center Text (Total Time) */}
                                     <div className="absolute flex flex-col items-center justify-center">
-                                        <span className="text-[11px] font-black text-foreground text-center">
+                                        <span className="text-[9px] sm:text-[11px] font-black text-foreground text-center">
                                             {totalSecs > 0 ? formatTime(totalSecs) : '0m'}
                                         </span>
                                     </div>
                                 </div>
-                                <span className={`text-[11px] font-black tracking-widest transition-colors ${isToday ? 'text-blue-600 dark:text-blue-400' : 'text-muted-foreground/60 group-hover:text-foreground'}`}>
+                                <span className={`text-[9px] sm:text-[11px] font-black tracking-widest transition-colors ${isToday ? 'text-blue-600 dark:text-blue-400' : 'text-muted-foreground/60 group-hover:text-foreground'}`}>
                                     {item.dayName.toUpperCase()}
                                 </span>
                             </div>

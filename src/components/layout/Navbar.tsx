@@ -72,7 +72,7 @@ export default function Navbar({ user, currentView, onNavigate, onLogout, theme,
 
     return (
         <div
-            className="fixed top-6 left-0 right-0 mx-auto z-50 bg-white/70 dark:bg-slate-950/70 backdrop-blur-[16px] border border-slate-200/50 dark:border-white/10 text-slate-700 dark:text-slate-300 shadow-xl shadow-slate-200/50 dark:shadow-2xl rounded-[2rem] pointer-events-auto max-w-7xl w-[95%] transition-all duration-300"
+            className="fixed top-2 sm:top-6 left-0 right-0 mx-auto z-50 bg-white/70 dark:bg-slate-950/70 backdrop-blur-[16px] border border-slate-200/50 dark:border-white/10 text-slate-700 dark:text-slate-300 shadow-xl shadow-slate-200/50 dark:shadow-2xl rounded-2xl sm:rounded-[2rem] pointer-events-auto w-full sm:w-[95%] max-w-7xl transition-all duration-300"
         >
 
             <div className="w-full h-full flex items-center">
@@ -83,7 +83,7 @@ export default function Navbar({ user, currentView, onNavigate, onLogout, theme,
                         <div className="flex items-center gap-3">
                             <button
                                 onClick={() => setShowMobileMenu(!showMobileMenu)}
-                                className="md:hidden p-2 text-slate-700 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-all bg-slate-100 dark:bg-white/5 rounded-full mr-1"
+                                className="md:hidden p-2 text-slate-700 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-all bg-slate-100 dark:bg-white/5 rounded-xl"
                             >
                                 {showMobileMenu ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
                             </button>
@@ -356,7 +356,6 @@ export default function Navbar({ user, currentView, onNavigate, onLogout, theme,
                         </div>
                     </div>
 
-                    {/* Secondary Greeter Strip REMOVED for minimalism */}
                 </div>
             </div>
 
@@ -364,12 +363,12 @@ export default function Navbar({ user, currentView, onNavigate, onLogout, theme,
             <AnimatePresence>
                 {showMobileMenu && (
                     <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        exit={{ opacity: 0, height: 0 }}
-                        className="md:hidden border-t border-slate-100 dark:border-zinc-800 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-2xl rounded-b-[2rem] overflow-hidden"
+                        initial={{ opacity: 0, y: -20, height: 0 }}
+                        animate={{ opacity: 1, y: 0, height: 'auto' }}
+                        exit={{ opacity: 0, y: -20, height: 0 }}
+                        className="md:hidden border-t border-slate-100 dark:border-zinc-800 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-2xl rounded-b-2xl overflow-hidden shadow-2xl"
                     >
-                        <div className="p-4 space-y-1">
+                        <div className="p-4 space-y-2">
                             {navItems.map((item) => (
                                 <button
                                     key={item.label}

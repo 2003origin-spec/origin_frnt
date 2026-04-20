@@ -197,17 +197,17 @@ export default function TestResultView({
       <header className="sticky top-0 z-50 bg-[#0F172A]/80 backdrop-blur-xl border-b border-white/5">
         <div className="max-w-4xl mx-auto px-4">
           <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 sm:gap-4 truncate">
               <button
                 onClick={onBackToDashboard}
-                className="p-2 rounded-xl bg-white/5 hover:bg-white/10 transition-all border border-white/10"
+                className="p-1.5 sm:p-2 rounded-lg sm:xl bg-white/5 hover:bg-white/10 transition-all border border-white/10"
               >
-                <ChevronLeft className="w-5 h-5 text-slate-400" />
+                <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5 text-slate-400" />
               </button>
-              <div>
-                <h1 className="text-lg font-bold text-white leading-tight">Report Card</h1>
-                <p className="text-xs text-slate-500 truncate max-w-[200px] sm:max-w-sm">
-                  JEE Main - Previous Year Paper as Mock...
+              <div className="truncate">
+                <h1 className="text-base sm:text-lg font-bold text-white leading-tight truncate">Report Card</h1>
+                <p className="text-[10px] sm:text-xs text-slate-500 truncate max-w-[150px] sm:max-w-sm">
+                  JEE Main - Previous Year Paper...
                 </p>
               </div>
             </div>
@@ -223,7 +223,7 @@ export default function TestResultView({
           <div className="flex gap-2 pb-4">
             <Button
               variant="secondary"
-              className="flex-1 bg-white/10 hover:bg-white/15 text-blue-400 border-none rounded-xl h-10"
+              className="flex-1 bg-white/10 hover:bg-white/15 text-blue-400 border-none rounded-xl h-9 sm:h-10 text-xs sm:text-sm"
               onClick={() => {
                 setSelectedReviewTab('mistakes');
                 setSelectedReviewEntry(0);
@@ -234,7 +234,7 @@ export default function TestResultView({
             <Button 
               onClick={onRetakeTest}
               variant="secondary" 
-              className="flex-1 bg-white/10 hover:bg-white/15 text-blue-400 border-none rounded-xl h-10"
+              className="flex-1 bg-white/10 hover:bg-white/15 text-blue-400 border-none rounded-xl h-9 sm:h-10 text-xs sm:text-sm"
             >
               Reattempt
             </Button>
@@ -277,15 +277,14 @@ export default function TestResultView({
       {/* Main Content */}
       <main className="max-w-4xl mx-auto px-4 py-6 space-y-8 pb-24">
         {showSummary && (
-          <div className="p-6 bg-teal-500/10 border border-teal-500/20 rounded-3xl flex items-center gap-6 animate-in fade-in slide-in-from-top-4 duration-700">
-            <div className="w-16 h-16 rounded-2xl bg-teal-500 flex items-center justify-center flex-shrink-0 shadow-lg shadow-teal-500/20">
-              <Sparkles className="w-8 h-8 text-white" />
+          <div className="p-4 sm:p-6 bg-teal-500/10 border border-teal-500/20 rounded-2xl sm:rounded-3xl flex items-center gap-4 sm:gap-6 animate-in fade-in slide-in-from-top-4 duration-700">
+            <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl bg-teal-500 flex items-center justify-center flex-shrink-0 shadow-lg shadow-teal-500/20">
+              <Sparkles className="w-6 h-6 sm:w-8 sm:h-8 text-white" />
             </div>
             <div>
-              <h2 className="text-xl font-black text-white tracking-tight">Attempt Summary</h2>
-              <p className="text-slate-400 font-medium">
-                You scored <span className="text-teal-400 font-bold">{currentStats.score}</span> marks with <span className="text-teal-400 font-bold">{currentStats.accuracy}%</span> accuracy. 
-                {currentStats.accuracy > 80 ? " Outstanding performance!" : currentStats.accuracy > 50 ? " Good job, keep it up!" : " Review your mistakes to improve."}
+              <h2 className="text-lg sm:text-xl font-black text-white tracking-tight">Attempt Summary</h2>
+              <p className="text-xs sm:text-slate-400 font-medium">
+                You scored <span className="text-teal-400 font-bold">{currentStats.score}</span> with <span className="text-teal-400 font-bold">{currentStats.accuracy}%</span> accuracy. 
               </p>
             </div>
           </div>
@@ -303,25 +302,25 @@ export default function TestResultView({
         {/* Marks Obtained Card */}
         <section className="relative group">
           <div className="absolute -inset-1 bg-gradient-to-r from-teal-500/30 to-blue-500/30 rounded-[2.5rem] blur opacity-25 group-hover:opacity-50 transition duration-1000"></div>
-          <Card className="relative bg-[#1E293B]/40 backdrop-blur-xl border-white/10 rounded-[2rem] overflow-hidden">
-            <CardContent className="p-8 flex flex-col items-center">
-              <div className="text-[10px] uppercase tracking-[0.3em] font-black text-slate-500 mb-6 bg-white/5 px-4 py-1.5 rounded-full border border-white/5">
+          <Card className="relative bg-[#1E293B]/40 backdrop-blur-xl border-white/10 rounded-[1.5rem] sm:rounded-[2rem] overflow-hidden">
+            <CardContent className="p-6 sm:p-8 flex flex-col items-center">
+              <div className="text-[8px] sm:text-[10px] uppercase tracking-[0.3em] font-black text-slate-500 mb-4 sm:mb-6 bg-white/5 px-4 py-1 sm:py-1.5 rounded-full border border-white/5">
                 Marks Obtained
               </div>
               <div className="flex items-baseline gap-2">
-                <span className="text-7xl font-black text-white tracking-tighter drop-shadow-2xl">
+                <span className="text-5xl sm:text-7xl font-black text-white tracking-tighter drop-shadow-2xl">
                   {currentStats.score}
                 </span>
-                <span className="text-2xl font-bold text-slate-500">/ {currentStats.totalMarks}</span>
+                <span className="text-lg sm:text-2xl font-bold text-slate-500">/ {currentStats.totalMarks}</span>
               </div>
-              <div className="mt-6 flex items-center gap-2">
-                <div className={`h-1.5 w-48 bg-slate-800 rounded-full overflow-hidden border border-white/5`}>
+              <div className="mt-4 sm:mt-6 flex items-center gap-2">
+                <div className={`h-1 w-32 sm:h-1.5 sm:w-48 bg-slate-800 rounded-full overflow-hidden border border-white/5`}>
                   <div 
                     className="h-full bg-gradient-to-r from-teal-400 to-blue-500 transition-all duration-1000 ease-out"
                     style={{ width: `${(currentStats.score / currentStats.totalMarks) * 100}%` }}
                   />
                 </div>
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                <span className="text-[8px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                   {Math.round((currentStats.score / currentStats.totalMarks) * 100)}%
                 </span>
               </div>
@@ -331,29 +330,29 @@ export default function TestResultView({
 
 
         {/* Quick Stats Grid */}
-        <section className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <Card className="bg-[#1E293B]/40 backdrop-blur-lg border-white/5 rounded-2xl p-4 flex flex-col items-center text-center group hover:bg-white/5 transition-colors">
-            <div className="w-12 h-12 rounded-2xl bg-purple-500/10 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-              <HelpCircle className="w-6 h-6 text-purple-400" />
+        <section className="grid grid-cols-3 gap-2 sm:gap-4">
+          <Card className="bg-[#1E293B]/40 backdrop-blur-lg border-white/5 rounded-xl sm:rounded-2xl p-3 sm:p-4 flex flex-col items-center text-center group hover:bg-white/5 transition-colors">
+            <div className="w-8 h-8 sm:w-12 sm:h-12 rounded-lg sm:rounded-2xl bg-purple-500/10 flex items-center justify-center mb-2 sm:mb-3 group-hover:scale-110 transition-transform">
+              <HelpCircle className="w-4 h-4 sm:w-6 sm:h-6 text-purple-400" />
             </div>
-            <div className="text-xl font-black text-white leading-none mb-1">{currentStats.correct + currentStats.incorrect}</div>
-            <div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest leading-tight">Attempted <br/> {currentStats.totalQs} total</div>
+            <div className="text-sm sm:text-xl font-black text-white leading-none mb-1">{currentStats.correct + currentStats.incorrect}</div>
+            <div className="text-[8px] sm:text-[10px] text-slate-500 font-bold uppercase tracking-widest leading-tight">Attempted</div>
           </Card>
-          <Card className="bg-[#1E293B]/40 backdrop-blur-lg border-white/5 rounded-2xl p-4 flex flex-col items-center text-center group hover:bg-white/5 transition-colors">
-            <div className="w-12 h-12 rounded-2xl bg-teal-500/10 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-              <Target className="w-6 h-6 text-teal-400" />
+          <Card className="bg-[#1E293B]/40 backdrop-blur-lg border-white/5 rounded-xl sm:rounded-2xl p-3 sm:p-4 flex flex-col items-center text-center group hover:bg-white/5 transition-colors">
+            <div className="w-8 h-8 sm:w-12 sm:h-12 rounded-lg sm:rounded-2xl bg-teal-500/10 flex items-center justify-center mb-2 sm:mb-3 group-hover:scale-110 transition-transform">
+              <Target className="w-4 h-4 sm:w-6 sm:h-6 text-teal-400" />
             </div>
-            <div className="text-xl font-black text-white leading-none mb-1">{currentStats.accuracy}%</div>
-            <div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest leading-tight">Accuracy <br/> {selectedSubject === 'overall' ? 'Global' : 'Subject'}</div>
+            <div className="text-sm sm:text-xl font-black text-white leading-none mb-1">{currentStats.accuracy}%</div>
+            <div className="text-[8px] sm:text-[10px] text-slate-500 font-bold uppercase tracking-widest leading-tight">Accuracy</div>
           </Card>
-          <Card className="bg-[#1E293B]/40 backdrop-blur-lg border-white/5 rounded-2xl p-4 flex flex-col items-center text-center group hover:bg-white/5 transition-colors">
-            <div className="w-12 h-12 rounded-2xl bg-orange-500/10 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-              <Clock className="w-6 h-6 text-orange-400" />
+          <Card className="bg-[#1E293B]/40 backdrop-blur-lg border-white/5 rounded-xl sm:rounded-2xl p-3 sm:p-4 flex flex-col items-center text-center group hover:bg-white/5 transition-colors">
+            <div className="w-8 h-8 sm:w-12 sm:h-12 rounded-lg sm:rounded-2xl bg-orange-500/10 flex items-center justify-center mb-2 sm:mb-3 group-hover:scale-110 transition-transform">
+              <Clock className="w-4 h-4 sm:w-6 sm:h-6 text-orange-400" />
             </div>
-            <div className="text-xl font-black text-white leading-none mb-1">
-              {Math.floor(currentStats.timeTaken / 60)}m {currentStats.timeTaken % 60}s
+            <div className="text-sm sm:text-xl font-black text-white leading-none mb-1">
+              {Math.floor(currentStats.timeTaken / 60)}m
             </div>
-            <div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest leading-tight">Time Taken <br/> vs {Math.round((result as any).duration || 180)}m limit</div>
+            <div className="text-[8px] sm:text-[10px] text-slate-500 font-bold uppercase tracking-widest leading-tight">Time</div>
           </Card>
         </section>
 
@@ -416,7 +415,7 @@ export default function TestResultView({
             <CardContent className="p-10">
               <div className="flex flex-col md:flex-row items-center justify-around gap-12">
                 {/* Donut Chart */}
-                <div className="relative h-64 w-64 animate-in fade-in zoom-in duration-700">
+                <div className="relative h-48 w-48 sm:h-64 sm:w-64 animate-in fade-in zoom-in duration-700">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
@@ -425,8 +424,8 @@ export default function TestResultView({
                           { name: 'Incorrect', value: currentStats.incorrect, color: '#f43f5e' },
                           { name: 'Not Answered', value: currentStats.unattempted, color: '#475569' },
                         ]}
-                        innerRadius={80}
-                        outerRadius={105}
+                        innerRadius={60}
+                        outerRadius={80}
                         paddingAngle={4}
                         dataKey="value"
                         stroke="none"
@@ -442,33 +441,33 @@ export default function TestResultView({
                     </PieChart>
                   </ResponsiveContainer>
                   <div className="absolute inset-0 flex flex-col items-center justify-center">
-                    <span className="text-5xl font-black text-white leading-none">{currentStats.totalQs}</span>
-                    <span className="text-[10px] text-slate-400 uppercase font-black tracking-[0.2em] mt-2">Total Qs</span>
+                    <span className="text-3xl sm:text-5xl font-black text-white leading-none">{currentStats.totalQs}</span>
+                    <span className="text-[8px] sm:text-[10px] text-slate-400 uppercase font-black tracking-[0.2em] mt-1 sm:mt-2">Total Qs</span>
                   </div>
                 </div>
 
                 {/* Legend/Stats Bar */}
-                <div className="flex flex-col gap-6 w-full md:w-auto min-w-[200px]">
-                  <div className="group flex items-center justify-between p-4 rounded-2xl bg-white/5 border border-white/5 hover:bg-white/10 transition-all">
+                <div className="flex flex-col gap-3 sm:gap-6 w-full md:w-auto min-w-[200px]">
+                  <div className="group flex items-center justify-between p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-white/5 border border-white/5 hover:bg-white/10 transition-all">
                     <div className="flex items-center gap-3">
-                      <div className="w-3 h-3 rounded-full bg-teal-500 shadow-[0_0_10px_rgba(20,184,166,0.5)]" />
-                      <span className="text-xs font-bold text-slate-300 uppercase tracking-widest">Correct</span>
+                      <div className="w-2.5 h-2.5 rounded-full bg-teal-500 shadow-[0_0_10px_rgba(20,184,166,0.5)]" />
+                      <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">Correct</span>
                     </div>
-                    <span className="text-xl font-black text-white">{currentStats.correct}</span>
+                    <span className="text-lg sm:text-xl font-black text-white">{currentStats.correct}</span>
                   </div>
-                  <div className="group flex items-center justify-between p-4 rounded-2xl bg-white/5 border border-white/5 hover:bg-white/10 transition-all">
+                  <div className="group flex items-center justify-between p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-white/5 border border-white/5 hover:bg-white/10 transition-all">
                     <div className="flex items-center gap-3">
-                      <div className="w-3 h-3 rounded-full bg-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.5)]" />
-                      <span className="text-xs font-bold text-slate-300 uppercase tracking-widest">Incorrect</span>
+                      <div className="w-2.5 h-2.5 rounded-full bg-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.5)]" />
+                      <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">Incorrect</span>
                     </div>
-                    <span className="text-xl font-black text-white">{currentStats.incorrect}</span>
+                    <span className="text-lg sm:text-xl font-black text-white">{currentStats.incorrect}</span>
                   </div>
-                  <div className="group flex items-center justify-between p-4 rounded-2xl bg-white/5 border border-white/5 hover:bg-white/10 transition-all">
+                  <div className="group flex items-center justify-between p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-white/5 border border-white/5 hover:bg-white/10 transition-all">
                     <div className="flex items-center gap-3">
-                      <div className="w-3 h-3 rounded-full bg-slate-500" />
-                      <span className="text-xs font-bold text-slate-300 uppercase tracking-widest">Skipped</span>
+                      <div className="w-2.5 h-2.5 rounded-full bg-slate-500" />
+                      <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">Skipped</span>
                     </div>
-                    <span className="text-xl font-black text-white">{currentStats.unattempted}</span>
+                    <span className="text-lg sm:text-xl font-black text-white">{currentStats.unattempted}</span>
                   </div>
                 </div>
               </div>
@@ -490,8 +489,8 @@ export default function TestResultView({
             </div>
           </div>
 
-          <Card className="bg-[#1E293B]/40 backdrop-blur-xl border-white/10 rounded-[2.5rem] p-8 overflow-hidden">
-            <div className="h-72 mt-4">
+          <Card className="bg-[#1E293B]/40 backdrop-blur-xl border-white/10 rounded-[1.5rem] sm:rounded-[2.5rem] p-6 sm:p-8 overflow-hidden">
+            <div className="h-48 sm:h-72 mt-4">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={[
                   { name: 'Correct', time: currentStats.timeSpentCorrect, color: '#14b8a6' },
@@ -517,7 +516,7 @@ export default function TestResultView({
                     dataKey="name" 
                     axisLine={false} 
                     tickLine={false} 
-                    tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 600 }}
+                    tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 600 }}
                   />
                   <YAxis hide />
                   <Tooltip 
@@ -533,7 +532,7 @@ export default function TestResultView({
                       return null;
                     }} 
                   />
-                  <Bar dataKey="time" radius={[12, 12, 0, 0]} barSize={60}>
+                  <Bar dataKey="time" radius={[8, 8, 0, 0]} barSize={40}>
                     <Cell fill="url(#barGradientCorrect)" />
                     <Cell fill="url(#barGradientIncorrect)" />
                     <Cell fill="url(#barGradientSkipped)" />

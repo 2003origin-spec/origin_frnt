@@ -161,9 +161,9 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user }: 
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400">
-                <Flame className="w-4 h-4" />
-                <span className="text-sm font-medium">{user.streak || 0} day streak</span>
+              <div className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400">
+                <Flame className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                <span className="text-[10px] sm:text-sm font-bold truncate max-w-[60px] sm:max-w-none">{user.streak || 0}d streak</span>
               </div>
             </div>
           </div>
@@ -183,18 +183,18 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user }: 
             {/* Tabs */}
             <Tabs defaultValue="all" className="mb-12">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 mb-8 border-b border-border/40 pb-6">
-                <TabsList className="bg-transparent p-0 flex flex-wrap gap-2 h-auto">
+                <TabsList className="bg-transparent p-0 flex flex-wrap gap-1 sm:gap-2 h-auto justify-start">
                   {(['all', 'recommended', 'attempted', 'gallery', 'build', 'search'] as const).map((tab) => (
                     <TabsTrigger
                       key={tab}
                       value={tab}
-                      className="px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all data-[state=active]:bg-indigo-600 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-indigo-500/20 text-slate-500 hover:text-slate-900 dark:hover:text-white"
+                      className="px-3 sm:px-6 py-2 sm:py-2.5 rounded-lg sm:rounded-xl text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all data-[state=active]:bg-indigo-600 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-indigo-500/20 text-slate-500 hover:text-slate-900 dark:hover:text-white"
                     >
-                      {tab === 'all' ? 'Institute Mocks' : 
-                       tab === 'recommended' ? 'Daily Picks' : 
+                      {tab === 'all' ? 'Institute' : 
+                       tab === 'recommended' ? 'Daily' : 
                        tab === 'attempted' ? 'Performance' : 
                        tab === 'gallery' ? 'My Tests' : 
-                       tab === 'build' ? 'Build Lab' : 'Search Lab'}
+                       tab === 'build' ? 'Build' : 'Search'}
                     </TabsTrigger>
                   ))}
                 </TabsList>
@@ -338,14 +338,14 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user }: 
               <TabsContent value="build" className="mt-0 outline-none">
                 <div className="max-w-4xl mx-auto">
                     <Card className="border-0 bg-white/40 dark:bg-white/5 backdrop-blur-xl shadow-soft rounded-[40px] overflow-hidden">
-                        <div className="p-10 border-b border-border/40 bg-gradient-to-r from-indigo-600 to-indigo-900 text-white relative">
+                        <div className="p-6 sm:p-10 border-b border-border/40 bg-gradient-to-r from-indigo-600 to-indigo-900 text-white relative">
                             <div className="relative z-10">
-                                <h2 className="text-3xl font-black uppercase tracking-tighter mb-2 italic">Test Builder Lab</h2>
-                                <p className="text-xs font-bold opacity-80 uppercase tracking-widest">Configure your ideal testing conditions</p>
+                                <h2 className="text-xl sm:text-3xl font-black uppercase tracking-tighter mb-2 italic">Test Builder</h2>
+                                <p className="text-[10px] sm:text-xs font-bold opacity-80 uppercase tracking-widest">Configure your session</p>
                             </div>
-                            <Plus className="absolute top-10 right-10 w-20 h-20 opacity-10" />
+                            <Plus className="absolute top-6 right-6 sm:top-10 sm:right-10 w-12 h-12 sm:w-20 sm:h-20 opacity-10" />
                         </div>
-                        <div className="p-10 space-y-10">
+                        <div className="p-6 sm:p-10 space-y-6 sm:space-y-10">
                             <div className="grid sm:grid-cols-2 gap-10">
                                 <div className="space-y-4">
                                     <Label className="text-[10px] uppercase font-black tracking-widest text-slate-500">Domain Calibration</Label>
@@ -431,7 +431,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user }: 
 
               {/* Search Laboratory (Filters) */}
               <TabsContent value="search" className="mt-0 outline-none">
-                <Card className="border-0 bg-white/40 dark:bg-white/5 backdrop-blur-xl shadow-soft rounded-[40px] p-10">
+                <Card className="border-0 bg-white/40 dark:bg-white/5 backdrop-blur-xl shadow-soft rounded-[2rem] sm:rounded-[40px] p-6 sm:p-10">
                   <div className="space-y-8">
                     <div className="space-y-4">
                       <Label className="text-[10px] uppercase font-black tracking-widest text-slate-500">Query Input</Label>
@@ -541,11 +541,11 @@ function TestCard({ test, onStart, onViewAnalysis, user, getSubjectIcon, getSubj
   const isLocked = test.isPremium && !user.isPremium;
 
   return (
-    <Card className={`group relative border-0 bg-white/40 dark:bg-white/5 backdrop-blur-xl shadow-soft hover:shadow-2xl hover:shadow-indigo-500/10 transition-all duration-500 rounded-[32px] overflow-hidden ${isLocked ? 'grayscale opacity-80' : ''}`}>
-      <CardContent className="p-8">
+    <Card className={`group relative border-0 bg-white/40 dark:bg-white/5 backdrop-blur-xl shadow-soft hover:shadow-2xl hover:shadow-indigo-500/10 transition-all duration-500 rounded-[2rem] sm:rounded-[32px] overflow-hidden ${isLocked ? 'grayscale opacity-80' : ''}`}>
+      <CardContent className="p-5 sm:p-8">
         {/* Header Section */}
-        <div className="flex items-start justify-between mb-8">
-          <div className={`w-14 h-14 rounded-2xl ${getSubjectColor(test.subject)} flex items-center justify-center shadow-inner group-hover:scale-110 transition-transform duration-500`}>
+        <div className="flex items-start justify-between mb-4 sm:mb-8">
+          <div className={`w-10 h-10 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl ${getSubjectColor(test.subject)} flex items-center justify-center shadow-inner group-hover:scale-110 transition-transform duration-500`}>
             {getSubjectIcon(test.subject)}
           </div>
           <div className="flex flex-col items-end gap-2">
@@ -565,11 +565,11 @@ function TestCard({ test, onStart, onViewAnalysis, user, getSubjectIcon, getSubj
         </div>
 
         {/* Content Section */}
-        <div className="mb-6">
-          <h3 className="text-xl font-black text-slate-900 dark:text-white mb-2 leading-tight uppercase tracking-tighter italic transition-colors group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
+        <div className="mb-4 sm:mb-6">
+          <h3 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white mb-2 leading-tight uppercase tracking-tighter italic transition-colors group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
             {test.title}
           </h3>
-          <p className="text-xs font-medium text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed">
+          <p className="text-[10px] sm:text-xs font-medium text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed">
             {test.description}
           </p>
         </div>
@@ -597,14 +597,14 @@ function TestCard({ test, onStart, onViewAnalysis, user, getSubjectIcon, getSubj
         </div>
 
         {/* Difficulty Anchor */}
-        <div className="flex items-center justify-between mb-8">
-            <Badge variant="outline" className={`${getDifficultyColor(test.difficulty)} border px-4 py-1 rounded-full font-black text-[10px] uppercase tracking-[0.15em]`}>
+        <div className="flex items-center justify-between mb-6 sm:mb-8">
+            <Badge variant="outline" className={`${getDifficultyColor(test.difficulty)} border px-3 sm:px-4 py-1 rounded-full font-black text-[9px] sm:text-[10px] uppercase tracking-[0.15em]`}>
                 {test.difficulty}
             </Badge>
             {test.score !== undefined && test.score !== null && (
                 <div className="text-right">
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Last Score</p>
-                    <p className="text-lg font-black text-indigo-600 dark:text-indigo-400 leading-none">{test.score}%</p>
+                    <p className="text-[8px] sm:text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Score</p>
+                    <p className="text-base sm:text-lg font-black text-indigo-600 dark:text-indigo-400 leading-none">{test.score}%</p>
                 </div>
             )}
         </div>
@@ -640,11 +640,11 @@ function TestCard({ test, onStart, onViewAnalysis, user, getSubjectIcon, getSubj
           ) : (
             <Button
               onClick={onStart}
-              className="w-full h-14 rounded-[20px] bg-gradient-to-r from-indigo-600 to-indigo-900 hover:scale-[1.02] active:scale-[0.98] text-white font-black uppercase text-xs tracking-widest transition-all shadow-xl shadow-indigo-500/30 group/btn"
+              className="w-full h-12 sm:h-14 rounded-xl sm:rounded-[20px] bg-gradient-to-r from-indigo-600 to-indigo-900 hover:scale-[1.02] active:scale-[0.98] text-white font-black uppercase text-[10px] sm:text-xs tracking-widest transition-all shadow-xl shadow-indigo-500/30 group/btn"
             >
-              <Play className="w-4 h-4 mr-2 fill-current group-hover/btn:translate-x-1 transition-transform" />
+              <Play className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-2 fill-current group-hover/btn:translate-x-1 transition-transform" />
               Initialize Mock
-              <ArrowRight className="w-4 h-4 ml-2 opacity-0 -translate-x-2 group-hover/btn:opacity-100 group-hover/btn:translate-x-0 transition-all" />
+              <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4 ml-2 opacity-0 -translate-x-2 group-hover/btn:opacity-100 group-hover/btn:translate-x-0 transition-all" />
             </Button>
           )}
         </div>

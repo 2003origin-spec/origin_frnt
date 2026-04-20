@@ -424,14 +424,14 @@ export default function StudyCorner({ user }: StudyCornerProps) {
                     <div className="relative space-y-12 animate-in fade-in slide-in-from-bottom-10 duration-700 min-h-[800px]">
                         
                         <header className="flex flex-col sm:flex-row items-center justify-between gap-6">
-                            <h2 className="text-5xl sm:text-7xl lg:text-8xl font-black tracking-tighter text-foreground drop-shadow-2xl uppercase">
+                            <h2 className="text-3xl sm:text-7xl lg:text-8xl font-black tracking-tighter text-foreground drop-shadow-2xl uppercase">
                                 Study <span className="text-gradient">Hub.</span>
                             </h2>
-                            <div className="glass px-6 py-3 rounded-2xl border-border/50 flex items-center gap-4">
-                                <Search className="w-5 h-5 text-primary" />
+                            <div className="glass px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl border-border/50 flex items-center gap-2 sm:gap-4 w-full sm:w-auto">
+                                <Search className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
                                 <input 
                                     placeholder="Search modules..." 
-                                    className="bg-transparent border-none outline-none text-sm font-bold w-48 placeholder:text-muted-foreground/50"
+                                    className="bg-transparent border-none outline-none text-xs sm:text-sm font-bold flex-1 sm:w-48 placeholder:text-muted-foreground/50"
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
                                 />
@@ -441,10 +441,10 @@ export default function StudyCorner({ user }: StudyCornerProps) {
                         <div className="grid grid-cols-1 md:grid-cols-12 gap-8 lg:gap-10 pb-32">
 
                             {/* Left Panel: FOLDERS */}
-                            <div className="md:col-span-12 lg:col-span-3 rounded-[3rem] glass p-8 sm:p-10 shadow-2xl relative overflow-hidden group border-border/50">
+                            <div className="md:col-span-12 lg:col-span-3 rounded-[2rem] sm:rounded-[3rem] glass p-5 sm:p-10 shadow-2xl relative overflow-hidden group border-border/50">
                                 <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-primary/10 to-transparent pointer-events-none"></div>
-                                <h3 className="text-[10px] font-black text-primary tracking-[0.3em] uppercase mb-10 flex items-center gap-3">
-                                    <LucideFolder className="w-5 h-5" /> Navigation
+                                <h3 className="text-[10px] font-black text-primary tracking-[0.3em] uppercase mb-6 sm:mb-10 flex items-center gap-3">
+                                    <LucideFolder className="w-4 h-4 sm:w-5 sm:h-5" /> Navigation
                                 </h3>
 
                                 <div className="space-y-6">
@@ -493,12 +493,12 @@ export default function StudyCorner({ user }: StudyCornerProps) {
                             </div>
 
                             {/* Middle Panel: MY NOTES & FILES */}
-                            <div className="md:col-span-8 lg:col-span-6 rounded-[3rem] bg-card/50 backdrop-blur-3xl border border-border p-10 shadow-2xl relative group overflow-hidden">
+                            <div className="md:col-span-8 lg:col-span-6 rounded-[2rem] sm:rounded-[3rem] bg-card/50 backdrop-blur-3xl border border-border p-5 sm:p-10 shadow-2xl relative group overflow-hidden">
                                 <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-primary/10 to-transparent pointer-events-none"></div>
-                                <div className="flex items-center justify-between mb-12 relative z-10">
-                                    <div className="flex flex-col gap-2">
-                                        <h3 className="text-xs font-black text-primary tracking-[0.3em] uppercase flex items-center gap-2.5">
-                                            <FileText className="w-5 h-5" /> My Notes & Files
+                                <div className="flex items-center justify-between mb-8 sm:mb-12 relative z-10">
+                                    <div className="flex flex-col gap-1 sm:gap-2">
+                                        <h3 className="text-[10px] sm:text-xs font-black text-primary tracking-[0.3em] uppercase flex items-center gap-2 sm:gap-2.5">
+                                            <FileText className="w-4 h-4 sm:w-5 sm:h-5" /> My Notes
                                         </h3>
                                         {breadcrumbs.length > 0 && (
                                             <div className="flex items-center gap-2 text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1">
@@ -520,7 +520,7 @@ export default function StudyCorner({ user }: StudyCornerProps) {
                                     <button className="text-[10px] font-black text-foreground/30 hover:text-foreground transition-colors uppercase tracking-[0.2em] border-b border-border pb-0.5">View All</button>
                                 </div>
 
-                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-8 relative z-10 overflow-y-auto max-h-[600px] pr-2 custom-scrollbar">
+                                <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-8 relative z-10 overflow-y-auto max-h-[600px] pr-2 custom-scrollbar">
                                     {currentItems.length > 0 ? currentItems.map((item: any, i: number) => (
                                     <FileGridItem
                                         key={i}
@@ -552,10 +552,10 @@ export default function StudyCorner({ user }: StudyCornerProps) {
                             {/* Right Panel: Sidebar Widgets */}
                             <div className="md:col-span-4 lg:col-span-3 space-y-8">
                                 {/* Recent Notes */}
-                                <div className="rounded-[3rem] bg-card/50 backdrop-blur-3xl border border-border p-10 shadow-2xl relative group overflow-hidden">
+                                <div className="rounded-[2.5rem] sm:rounded-[3rem] bg-card/50 backdrop-blur-3xl border border-border p-6 sm:p-10 shadow-2xl relative group overflow-hidden">
                                     <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-primary/5 to-transparent pointer-events-none"></div>
-                                    <h3 className="text-xs font-black text-primary tracking-[0.3em] uppercase mb-8 flex items-center gap-2.5">
-                                        <Clock className="w-5 h-5" /> Recent Activity
+                                    <h3 className="text-[10px] sm:text-xs font-black text-primary tracking-[0.3em] uppercase mb-6 sm:mb-8 flex items-center gap-2.5">
+                                        <Clock className="w-4 h-4 sm:w-5 sm:h-5" /> Activity
                                     </h3>
                                     <div className="space-y-5">
                                         {aggregatedNotes.slice(0, 3).map((note, idx) => (
@@ -572,10 +572,10 @@ export default function StudyCorner({ user }: StudyCornerProps) {
                                 </div>
 
                                 {/* Shared Files */}
-                                <div className="rounded-[3rem] bg-card/50 backdrop-blur-3xl border border-border p-10 shadow-2xl relative group overflow-hidden">
+                                <div className="rounded-[2.5rem] sm:rounded-[3rem] bg-card/50 backdrop-blur-3xl border border-border p-6 sm:p-10 shadow-2xl relative group overflow-hidden">
                                     <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-primary/5 to-transparent pointer-events-none"></div>
-                                    <h3 className="text-xs font-black text-primary tracking-[0.3em] uppercase mb-8 flex items-center gap-2.5">
-                                        <Share2 className="w-5 h-5" /> Suggested Books
+                                    <h3 className="text-[10px] sm:text-xs font-black text-primary tracking-[0.3em] uppercase mb-6 sm:mb-8 flex items-center gap-2.5">
+                                        <Share2 className="w-4 h-4 sm:w-5 sm:h-5" /> Suggested
                                     </h3>
                                     <div className="space-y-4">
                                         {mockBooks.slice(0, 3).map((book, idx) => (
@@ -602,17 +602,17 @@ export default function StudyCorner({ user }: StudyCornerProps) {
                 {activeTab === 'discover' && (
                     <div className="space-y-8 animate-in fade-in zoom-in-95 duration-500">
                         {/* Hero Section for Discover */}
-                        <div className="relative rounded-3xl overflow-hidden bg-gradient-to-br from-indigo-600 via-indigo-700 to-violet-800 dark:from-indigo-900 dark:to-slate-900 px-8 py-12 sm:px-12 sm:py-16 flex items-center shadow-xl shadow-indigo-500/10 dark:shadow-indigo-500/5">
+                        <div className="relative rounded-2xl sm:rounded-3xl overflow-hidden bg-gradient-to-br from-indigo-600 via-indigo-700 to-violet-800 dark:from-indigo-900 dark:to-slate-900 px-6 py-10 sm:px-12 sm:py-16 flex items-center shadow-xl shadow-indigo-500/10 dark:shadow-indigo-500/5">
                             <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-10 mix-blend-overlay"></div>
                             <div className="absolute -right-20 -top-40 w-96 h-96 bg-white/10 blur-3xl rounded-full pointer-events-none"></div>
 
                             <div className="relative z-10 max-w-2xl">
-                                <Badge className="bg-white/20 hover:bg-white/30 text-white border-white/10 mb-4 backdrop-blur-md font-bold px-3 py-1">NCERT Digital Library</Badge>
-                                <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black text-white mb-4 leading-tight tracking-tight drop-shadow-sm">
-                                    Master Your Syllabus with Official Textbooks
+                                <Badge className="bg-white/20 hover:bg-white/30 text-white border-white/10 mb-3 sm:mb-4 backdrop-blur-md font-bold px-2 sm:px-3 py-1 text-[10px] sm:text-xs">NCERT Digital Library</Badge>
+                                <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black text-white mb-3 sm:mb-4 leading-tight tracking-tight drop-shadow-sm">
+                                    Master Your Syllabus
                                 </h2>
-                                <p className="text-indigo-100/90 text-lg sm:text-xl max-w-xl font-medium">
-                                    Read, highlight, and annotate your class {user.class || '12'} books. Everything syncs automatically to your personal notebook.
+                                <p className="text-indigo-100/90 text-sm sm:text-xl max-w-xl font-medium">
+                                    Read, highlight, and annotate your class {user.class || '12'} books.
                                 </p>
                             </div>
                         </div>
@@ -730,21 +730,21 @@ export default function StudyCorner({ user }: StudyCornerProps) {
                             <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-primary/5 pointer-events-none"></div>
                             <div className="relative z-10 w-full flex flex-col md:flex-row items-center justify-between gap-10">
                                 <div className="text-center md:text-left">
-                                    <h2 className="text-5xl font-black text-foreground mb-4 tracking-tighter drop-shadow-2xl uppercase">
+                                    <h2 className="text-3xl sm:text-5xl font-black text-foreground mb-3 sm:mb-4 tracking-tighter drop-shadow-2xl uppercase">
                                         Personal <span className="text-primary">Study Hub.</span>
                                     </h2>
-                                    <p className="text-muted-foreground text-lg max-w-xl font-medium leading-relaxed">
-                                        Every highlight and thought you've captured across the NCERT library, indexed and ready for your next session.
+                                    <p className="text-muted-foreground text-sm sm:text-lg max-w-xl font-medium leading-relaxed">
+                                        Every highlight and thought you've captured across the NCERT library.
                                     </p>
                                 </div>
-                                <div className="flex items-center gap-6">
-                                    <div className="px-8 py-6 rounded-[2.5rem] bg-primary/10 border border-primary/20 text-center ring-1 ring-primary/10">
-                                        <p className="text-3xl font-black text-primary mb-1">{aggregatedNotes.length}</p>
-                                        <p className="text-[10px] font-black text-primary/60 uppercase tracking-widest">Total Notes</p>
+                                <div className="flex items-center gap-4 sm:gap-6">
+                                    <div className="px-5 sm:px-8 py-4 sm:py-6 rounded-2xl sm:rounded-[2.5rem] bg-primary/10 border border-primary/20 text-center ring-1 ring-primary/10">
+                                        <p className="text-xl sm:text-3xl font-black text-primary mb-0.5 sm:mb-1">{aggregatedNotes.length}</p>
+                                        <p className="text-[8px] sm:text-[10px] font-black text-primary/60 uppercase tracking-widest">Notes</p>
                                     </div>
-                                    <div className="px-8 py-6 rounded-[2.5rem] bg-primary/10 border border-primary/20 text-center ring-1 ring-primary/10">
-                                        <p className="text-3xl font-black text-primary mb-1">{likedBooks.size}</p>
-                                        <p className="text-[10px] font-black text-primary/60 uppercase tracking-widest">Favorites</p>
+                                    <div className="px-5 sm:px-8 py-4 sm:py-6 rounded-2xl sm:rounded-[2.5rem] bg-primary/10 border border-primary/20 text-center ring-1 ring-primary/10">
+                                        <p className="text-xl sm:text-3xl font-black text-primary mb-0.5 sm:mb-1">{likedBooks.size}</p>
+                                        <p className="text-[8px] sm:text-[10px] font-black text-primary/60 uppercase tracking-widest">Favs</p>
                                     </div>
                                 </div>
                             </div>

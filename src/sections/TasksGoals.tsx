@@ -74,7 +74,7 @@ export default function TasksGoals({ tasks, onAddTask, onToggleTask, onRemoveTas
   };
 
   return (
-    <div id="tutorial-goals-hub" className="min-h-screen bg-[#F8FAFC] dark:bg-[#020617] text-slate-900 dark:text-slate-100 p-4 md:p-8">
+    <div id="tutorial-goals-hub" className="min-h-screen bg-[#F8FAFC] dark:bg-[#020617] text-slate-900 dark:text-slate-100 p-3 sm:p-4 md:p-8">
       <div className="max-w-6xl mx-auto space-y-8">
         
         {/* Header */}
@@ -87,14 +87,14 @@ export default function TasksGoals({ tasks, onAddTask, onToggleTask, onRemoveTas
               <ArrowLeft className="w-4 h-4" />
               Back to Dashboard
             </button>
-            <h1 className="text-3xl md:text-4xl font-black tracking-tight text-slate-900 dark:text-white flex items-center gap-3">
-              <div className="p-2 bg-indigo-500 rounded-2xl shadow-lg shadow-indigo-500/20">
-                <Target className="w-8 h-8 text-white" />
+            <h1 className="text-xl sm:text-4xl font-black tracking-tight text-slate-900 dark:text-white flex items-center gap-2 sm:gap-3">
+              <div className="p-1.5 bg-indigo-500 rounded-lg sm:rounded-2xl shadow-lg shadow-indigo-500/20">
+                <Target className="w-5 h-5 sm:w-8 sm:h-8 text-white" />
               </div>
               Tasks & Goals
             </h1>
-            <p className="text-slate-500 dark:text-slate-400 font-medium pl-14">
-              Hey {user.name}, organize your study journey and stay on top of your milestones.
+            <p className="text-slate-500 dark:text-slate-400 font-medium pl-9 sm:pl-14 text-[10px] sm:text-sm">
+              Hey {user.name}, stay on top of your milestones.
             </p>
           </div>
 
@@ -116,13 +116,13 @@ export default function TasksGoals({ tasks, onAddTask, onToggleTask, onRemoveTas
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.1 }}
-              className="bg-white dark:bg-slate-900/60 p-5 rounded-2xl border border-slate-100 dark:border-white/5 shadow-sm hover:shadow-md transition-all group"
+              className="bg-white dark:bg-slate-900/60 p-3 sm:p-5 rounded-xl sm:rounded-2xl border border-slate-100 dark:border-white/5 shadow-sm hover:shadow-md transition-all group"
             >
-              <div className={`w-10 h-10 rounded-xl bg-${stat.color}-100 dark:bg-${stat.color}-900/20 flex items-center justify-center text-${stat.color}-600 dark:text-${stat.color}-400 mb-3 group-hover:scale-110 transition-transform`}>
-                <stat.icon className="w-5 h-5" />
+              <div className={`w-7 h-7 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-${stat.color}-100 dark:bg-${stat.color}-900/20 flex items-center justify-center text-${stat.color}-600 dark:text-${stat.color}-400 mb-1.5 sm:mb-3 group-hover:scale-110 transition-transform`}>
+                <stat.icon className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
               </div>
-              <p className="text-2xl font-black text-slate-900 dark:text-white">{stat.value}</p>
-              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">{stat.label}</p>
+              <p className="text-lg sm:text-2xl font-black text-slate-900 dark:text-white">{stat.value}</p>
+              <p className="text-[8px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider">{stat.label}</p>
             </motion.div>
           ))}
         </div>
@@ -143,12 +143,12 @@ export default function TasksGoals({ tasks, onAddTask, onToggleTask, onRemoveTas
                   className="w-full bg-white dark:bg-slate-900/60 border border-slate-100 dark:border-white/5 rounded-2xl pl-12 pr-4 py-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all placeholder:text-slate-400"
                 />
               </div>
-              <div className="flex bg-white dark:bg-slate-900/60 p-1.5 rounded-2xl border border-slate-100 dark:border-white/5 shadow-sm">
+              <div className="flex bg-white dark:bg-slate-900/60 p-1 rounded-2xl border border-slate-100 dark:border-white/5 shadow-sm overflow-x-auto no-scrollbar">
                 {(['all', 'active', 'completed'] as const).map((f) => (
                   <button
                     key={f}
                     onClick={() => setFilter(f)}
-                    className={`px-4 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${
+                    className={`px-3 sm:px-4 py-1.5 rounded-xl text-[10px] sm:text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${
                       filter === f 
                         ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' 
                         : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'
@@ -170,7 +170,7 @@ export default function TasksGoals({ tasks, onAddTask, onToggleTask, onRemoveTas
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: 20 }}
-                    className={`group relative bg-white dark:bg-slate-900/60 p-4 rounded-2xl border transition-all flex items-start gap-4 ${
+                    className={`group relative bg-white dark:bg-slate-900/60 p-3 sm:p-4 rounded-xl sm:rounded-2xl border transition-all flex items-start gap-3 sm:gap-4 ${
                       task.completed 
                         ? 'border-slate-100 dark:border-white/5 opacity-60' 
                         : isOverdue(task.due)
@@ -190,7 +190,7 @@ export default function TasksGoals({ tasks, onAddTask, onToggleTask, onRemoveTas
                     </button>
 
                     <div className="flex-1 min-w-0">
-                      <h4 className={`text-base font-bold transition-all ${
+                      <h4 className={`text-sm sm:text-base font-bold transition-all ${
                         task.completed ? 'text-slate-400 line-through' : 'text-slate-900 dark:text-slate-100'
                       }`}>
                         {task.text}
@@ -211,9 +211,9 @@ export default function TasksGoals({ tasks, onAddTask, onToggleTask, onRemoveTas
 
                     <button
                       onClick={() => onRemoveTask(task.id)}
-                      className="p-2 text-slate-300 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-xl transition-all opacity-0 group-hover:opacity-100"
+                      className="p-2 text-slate-300 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-xl transition-all opacity-100 md:opacity-0 md:group-hover:opacity-100"
                     >
-                      <Trash2 className="w-5 h-5" />
+                      <Trash2 className="w-4 h-4 sm:w-5 sm:h-5" />
                     </button>
                   </motion.div>
                 ))}
@@ -235,35 +235,35 @@ export default function TasksGoals({ tasks, onAddTask, onToggleTask, onRemoveTas
 
           {/* Right Column: New Task Form */}
           <div className="space-y-6">
-            <Card className="border-0 shadow-2xl shadow-indigo-500/5 bg-white dark:bg-slate-900/60 backdrop-blur-xl relative overflow-hidden rounded-[2rem] ring-1 ring-slate-100 dark:ring-white/5 sticky top-8">
+            <Card className="border-0 shadow-2xl shadow-indigo-500/5 bg-white dark:bg-slate-900/60 backdrop-blur-xl relative overflow-hidden rounded-[1.5rem] sm:rounded-[2rem] ring-1 ring-slate-100 dark:ring-white/5 sticky top-8">
               <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 blur-3xl -mr-16 -mt-16" />
-              <CardContent className="p-8 space-y-6">
-                <div className="space-y-2">
-                  <h3 className="text-xl font-black text-slate-900 dark:text-white">Add New Task</h3>
-                  <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-widest italic">Break down your goals</p>
+              <CardContent className="p-5 sm:p-8 space-y-4 sm:space-y-6">
+                <div className="space-y-1 sm:space-y-2">
+                  <h3 className="text-base sm:text-xl font-black text-slate-900 dark:text-white">Add New Task</h3>
+                  <p className="text-[8px] sm:text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-widest italic leading-tight">Break down your goals</p>
                 </div>
 
                 <div className="space-y-4">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">Task Description</label>
+                  <div className="space-y-1.5 sm:space-y-2">
+                    <label className="text-[8px] sm:text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">Task Description</label>
                     <textarea 
                       placeholder="What needs to be done?"
                       value={newTaskText}
                       onChange={(e) => setNewTaskText(e.target.value)}
-                      rows={3}
-                      className="w-full bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-white/5 rounded-2xl p-4 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all placeholder:text-slate-400"
+                      rows={2}
+                      className="w-full bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-white/5 rounded-xl sm:rounded-2xl p-3 sm:p-4 text-xs sm:text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all placeholder:text-slate-400"
                     />
                   </div>
 
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">Deadline</label>
+                  <div className="space-y-1.5 sm:space-y-2">
+                    <label className="text-[8px] sm:text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">Deadline</label>
                     <div className="relative group">
-                      <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                      <Calendar className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400 pointer-events-none" />
                       <input 
                         type="datetime-local" 
                         value={newTaskDue}
                         onChange={(e) => setNewTaskDue(e.target.value)}
-                        className="w-full bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-white/5 rounded-2xl pl-12 pr-4 py-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all cursor-pointer"
+                        className="w-full bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-white/5 rounded-xl sm:rounded-2xl pl-10 sm:pl-12 pr-3 sm:pr-4 py-2.5 sm:py-3 text-xs sm:text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all cursor-pointer"
                       />
                     </div>
                   </div>
@@ -271,17 +271,17 @@ export default function TasksGoals({ tasks, onAddTask, onToggleTask, onRemoveTas
                   <Button 
                     onClick={handleAddTask}
                     disabled={!newTaskText.trim()}
-                    className="w-full h-14 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl shadow-xl shadow-indigo-500/30 text-base font-black gap-2 group"
+                    className="w-full h-11 sm:h-14 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl sm:rounded-2xl shadow-xl shadow-indigo-500/30 text-xs sm:text-base font-black gap-2 group"
                   >
                     Create Task
-                    <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                    <ChevronRight className="w-3.5 h-3.5 sm:w-5 sm:h-5 group-hover:translate-x-1 transition-transform" />
                   </Button>
                 </div>
 
-                <div className="p-4 bg-indigo-50 dark:bg-indigo-900/10 rounded-2xl border border-indigo-100 dark:border-indigo-900/30">
-                  <p className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold uppercase tracking-wider mb-2">💡 Quick Tip</p>
-                  <p className="text-xs text-indigo-900/60 dark:text-indigo-300 font-medium leading-relaxed">
-                    Setting specific deadlines helps you stay disciplined and focused on your learning objectives.
+                <div className="p-3 sm:p-4 bg-indigo-50 dark:bg-indigo-900/10 rounded-xl sm:rounded-2xl border border-indigo-100 dark:border-indigo-900/30">
+                  <p className="text-[8px] sm:text-[10px] text-indigo-600 dark:text-indigo-400 font-bold uppercase tracking-wider mb-1 sm:mb-2">💡 Quick Tip</p>
+                  <p className="text-[10px] sm:text-xs text-indigo-900/60 dark:text-indigo-300 font-medium leading-relaxed">
+                    Setting specific deadlines helps you stay disciplined and focused.
                   </p>
                 </div>
               </CardContent>

@@ -95,37 +95,37 @@ export default function DailyTracker({ user }: DailyTrackerProps) {
             {/* Animated Background Glow */}
             <div className="absolute -top-24 -right-24 w-64 h-64 bg-emerald-500/10 dark:bg-emerald-500/5 rounded-full blur-[100px] pointer-events-none group-hover:bg-emerald-500/20 transition-colors duration-700" />
             
-            <CardHeader className="pb-6 relative z-10 flex flex-row items-start justify-between space-y-0">
-                <div className="space-y-1.5">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2.5 bg-emerald-500/10 rounded-xl">
-                            <Calendar className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-                        </div>
-                        <div>
-                            <CardTitle className="text-xl font-black tracking-tight text-[#334155] dark:text-slate-100">
-                                Activity Vault
-                            </CardTitle>
-                            <div className="flex items-center gap-2">
-                                <span className="text-xs font-semibold text-[#64748B] dark:text-slate-400">
-                                    {totalSolved} solved this year
-                                </span>
-                                <span className="w-1 h-1 rounded-full bg-[#E2E8F0]" />
-                                <div className="flex items-center gap-1 text-[#059669] dark:text-emerald-400">
-                                    <Flame className="w-3 h-3 fill-current" />
-                                    <span className="text-xs font-bold">{user.streak || 0} day streak</span>
+            <CardHeader className="p-3 sm:p-6 relative z-10 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                    <div className="space-y-1.5">
+                        <div className="flex items-center gap-2 sm:gap-3">
+                            <div className="p-2 sm:p-2.5 bg-emerald-500/10 rounded-xl">
+                                <Calendar className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-600 dark:text-emerald-400" />
+                            </div>
+                            <div>
+                                <CardTitle className="text-base sm:text-xl font-black tracking-tight text-[#334155] dark:text-slate-100">
+                                    Activity Vault
+                                </CardTitle>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[9px] sm:text-xs font-semibold text-[#64748B] dark:text-slate-400">
+                                        {totalSolved} solved
+                                    </span>
+                                    <span className="w-1 h-1 rounded-full bg-[#E2E8F0]" />
+                                    <div className="flex items-center gap-1 text-[#059669] dark:text-emerald-400">
+                                        <Flame className="w-2.5 h-2.5 fill-current" />
+                                        <span className="text-[9px] sm:text-xs font-bold">{user.streak || 0}d streak</span>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
-                </div>
 
-                <div className="flex flex-col items-end gap-2">
-                   <div className="flex items-center gap-1.5 p-1.5 bg-muted/50 rounded-lg border border-border/50">
-                        <span className="text-[10px] uppercase tracking-wider font-black text-muted-foreground/60 mr-1">Intensity</span>
+                    <div className="flex items-center gap-1 p-1 sm:p-1.5 bg-muted/30 sm:bg-muted/50 rounded-lg border border-border/50 self-start sm:self-auto">
+                        <span className="text-[8px] sm:text-[10px] uppercase tracking-wider font-black text-muted-foreground/60 mr-1 ml-1">Intensity</span>
                         {[0, 1, 2, 3, 4].map((lvl) => (
-                            <div key={lvl} className={cn("w-2.5 h-2.5 rounded-[2px]", getLevelClass(lvl))} />
+                            <div key={lvl} className={cn("w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-[2px]", getLevelClass(lvl))} />
                         ))}
-                   </div>
+                    </div>
                 </div>
             </CardHeader>
 

@@ -856,47 +856,35 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
               >
                 <ChevronLeft className="w-5 h-5 text-slate-600 dark:text-slate-400" />
               </button>
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-700 flex items-center justify-center shadow-lg shadow-indigo-500/20">
-                  <Clock className="w-5 h-5 text-white" />
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-indigo-700 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+                  <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
                 </div>
-                <div className="hidden sm:block">
-                  <h1 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tighter">Focus Lab</h1>
-                  <p className="text-[10px] uppercase font-black tracking-widest text-indigo-500 dark:text-indigo-400">Pomodoro 3.0</p>
+                <div className="hidden xs:block">
+                  <h1 className="text-sm sm:text-lg font-black text-slate-900 dark:text-white uppercase tracking-tighter">Focus Lab</h1>
                 </div>
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 sm:gap-2">
               <button
                 onClick={() => setShowAtmosphere(!showAtmosphere)}
-                className={`p-2.5 rounded-xl transition-all ${showAtmosphere ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/20' : 'hover:bg-white/50 dark:hover:bg-white/5 text-slate-600 dark:text-slate-400'}`}
+                className={`p-2 sm:p-2.5 rounded-xl transition-all ${showAtmosphere ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/20' : 'hover:bg-white/50 dark:hover:bg-white/5 text-slate-600 dark:text-slate-400'}`}
                 title="Toggle Atmosphere"
               >
-                <Flame className={`w-5 h-5 ${showAtmosphere ? 'animate-pulse' : ''}`} />
+                <Flame className={`w-4 h-4 sm:w-5 sm:h-5 ${showAtmosphere ? 'animate-pulse' : ''}`} />
               </button>
               <button
                 onClick={() => setShowHistory(true)}
-                className="p-2.5 rounded-xl hover:bg-white/50 dark:hover:bg-white/5 text-slate-600 dark:text-slate-400"
+                className="p-2 sm:p-2.5 rounded-xl hover:bg-white/50 dark:hover:bg-white/5 text-slate-600 dark:text-slate-400"
               >
-                <History className="w-5 h-5" />
-              </button>
-              <div className="h-4 w-px bg-border/40 mx-2" />
-              <button
-                onClick={() => setSoundEnabled(!soundEnabled)}
-                className="p-2.5 rounded-xl hover:bg-white/50 dark:hover:bg-white/5"
-              >
-                {soundEnabled ? (
-                  <Volume2 className="w-5 h-5 text-slate-600 dark:text-slate-400" />
-                ) : (
-                  <VolumeX className="w-5 h-5 text-slate-400" />
-                )}
+                <History className="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
               <button
                 onClick={() => setShowSettings(true)}
-                className="p-2.5 rounded-xl hover:bg-white/50 dark:hover:bg-white/5"
+                className="p-2 sm:p-2.5 rounded-xl hover:bg-white/50 dark:hover:bg-white/5"
               >
-                <Settings className="w-5 h-5 text-slate-600 dark:text-slate-400" />
+                <Settings className="w-4 h-4 sm:w-5 sm:h-5 text-slate-600 dark:text-slate-400" />
               </button>
             </div>
           </div>
@@ -908,12 +896,12 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
           
           {/* Top Selection Bar */}
           <div className="flex flex-wrap items-center justify-between gap-6">
-            <div className="flex gap-2 p-1.5 bg-white/60 dark:bg-slate-900/60 backdrop-blur-sm rounded-2xl border border-border/40 w-fit">
+            <div className="flex gap-1 sm:gap-2 p-1 sm:p-1.5 bg-white/60 dark:bg-slate-900/60 backdrop-blur-sm rounded-xl sm:rounded-2xl border border-border/40 w-full sm:w-fit overflow-x-auto no-scrollbar">
               {(['focus', 'shortBreak', 'longBreak'] as const).map((m) => (
                 <button
                   key={m}
                   onClick={() => switchMode(m)}
-                  className={`px-8 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${mode === m
+                  className={`flex-1 sm:flex-none px-3 sm:px-8 py-2 sm:py-2.5 rounded-lg sm:rounded-xl text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all whitespace-nowrap ${mode === m
                     ? `bg-gradient-to-r ${modes[m].color} text-white shadow-lg ${modes[m].shadow}`
                     : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
                     }`}
@@ -982,18 +970,18 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
                       </div>
                     ) : (
                       <div className="relative z-10">
-                        <svg className="w-72 h-72 sm:w-80 sm:h-80 transform -rotate-90">
+                        <svg className="w-64 h-64 sm:w-80 sm:h-80 transform -rotate-90">
                           <circle
                             cx="50%"
                             cy="50%"
-                            r="48%"
+                            r="46%"
                             className="stroke-slate-100 dark:stroke-white/5 fill-none"
                             strokeWidth="4"
                           />
                           <motion.circle
                             cx="50%"
                             cy="50%"
-                            r="48%"
+                            r="46%"
                             className={`fill-none ${
                                mode === 'focus' ? 'stroke-indigo-600' : 'stroke-emerald-500'
                             }`}
@@ -1017,7 +1005,7 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
                           ) : (
                             <button
                               onClick={handleTimeEditClick}
-                              className="text-7xl sm:text-8xl font-black text-slate-900 dark:text-white tracking-tighter italic"
+                              className="text-6xl sm:text-8xl font-black text-slate-900 dark:text-white tracking-tighter italic"
                             >
                               {formatTime(timeRemaining)}
                             </button>
@@ -1032,23 +1020,23 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
                     )}
                   </div>
 
-                  <div className="flex items-center gap-6 mt-16">
+                  <div className="flex items-center gap-4 sm:gap-6 mt-12 sm:mt-16">
                     <button
                       onClick={toggleTimer}
                       disabled={isAlarmRinging}
-                      className={`w-20 h-20 rounded-full flex items-center justify-center transition-all active:scale-95 shadow-2xl ${
+                      className={`w-16 h-16 sm:w-20 sm:h-20 rounded-full flex items-center justify-center transition-all active:scale-95 shadow-2xl ${
                         isRunning 
                         ? 'bg-rose-500 text-white shadow-rose-500/20' 
                         : 'bg-indigo-600 text-white shadow-indigo-600/20'
                       }`}
                     >
-                      {isRunning ? <Pause className="w-8 h-8" /> : <Play className="w-8 h-8 ml-1" />}
+                      {isRunning ? <Pause className="w-6 h-6 sm:w-8 sm:h-8" /> : <Play className="w-6 h-6 sm:w-8 sm:h-8 ml-1" />}
                     </button>
                     <button
                       onClick={resetTimer}
-                      className="w-16 h-16 rounded-full bg-slate-100 dark:bg-white/5 text-slate-500 hover:text-indigo-500 flex items-center justify-center transition-all active:scale-95"
+                      className="w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-slate-100 dark:bg-white/5 text-slate-500 hover:text-indigo-500 flex items-center justify-center transition-all active:scale-95"
                     >
-                      <RotateCcw className="w-6 h-6" />
+                      <RotateCcw className="w-5 h-5 sm:w-6 sm:h-6" />
                     </button>
                   </div>
                 </CardContent>
@@ -1060,14 +1048,14 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
                   { label: 'Minutes Focused', value: todayMinutes, icon: History, color: 'text-indigo-500', bg: 'bg-indigo-500/10' },
                   { label: 'Sessions Today', value: todaySessions, icon: Target, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
                  ].map((stat, i) => (
-                    <Card key={i} className="border-0 bg-white/40 dark:bg-white/5 backdrop-blur-xl shadow-soft rounded-[32px]">
-                      <CardContent className="p-8 flex items-center justify-between">
+                    <Card key={i} className="border-0 bg-white/40 dark:bg-white/5 backdrop-blur-xl shadow-soft rounded-[24px] sm:rounded-[32px]">
+                      <CardContent className="p-5 sm:p-8 flex items-center justify-between">
                         <div>
-                          <p className="text-[10px] uppercase font-black tracking-widest text-slate-500 mb-1">{stat.label}</p>
-                          <p className="text-3xl font-black text-slate-900 dark:text-white">{stat.value}</p>
+                          <p className="text-[8px] sm:text-[10px] uppercase font-black tracking-widest text-slate-500 mb-1">{stat.label}</p>
+                          <p className="text-xl sm:text-3xl font-black text-slate-900 dark:text-white">{stat.value}</p>
                         </div>
-                        <div className={`w-12 h-12 rounded-2xl ${stat.bg} flex items-center justify-center`}>
-                          <stat.icon className={`w-6 h-6 ${stat.color}`} />
+                        <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl ${stat.bg} flex items-center justify-center`}>
+                          <stat.icon className={`w-5 h-5 sm:w-6 sm:h-6 ${stat.color}`} />
                         </div>
                       </CardContent>
                     </Card>

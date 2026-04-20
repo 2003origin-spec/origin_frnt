@@ -68,9 +68,9 @@ export function ChallengeCard({ user, onStartChallenge }: ChallengeCardProps) {
     const prevMonth = () => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1));
 
     return (
-        <Card className="premium-card bg-card/50 backdrop-blur-xl relative flex flex-col group min-h-[400px] border-border/50">
+        <Card className="premium-card bg-card/50 backdrop-blur-xl relative flex flex-col group min-h-[350px] sm:min-h-[400px] border-border/50">
             {/* Header: Month Navigation */}
-            <div className="flex items-center justify-between px-5 pt-5 pb-2">
+            <div className="flex items-center justify-between px-3 sm:px-5 pt-3 sm:pt-5 pb-2">
                 <div>
                     <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
                         Day {today.getDate()}
@@ -90,7 +90,7 @@ export function ChallengeCard({ user, onStartChallenge }: ChallengeCardProps) {
                 </div>
             </div>
 
-            <CardContent className="px-5 pb-5 flex-1 flex flex-col justify-between overflow-visible">
+            <CardContent className="px-3 sm:px-5 pb-3 sm:pb-5 flex-1 flex flex-col justify-between overflow-visible">
 
                 {/* Calendar Grid */}
                 <div className="mb-2">
@@ -198,7 +198,7 @@ export function PastActivitiesCard({ user }: { user: User }) {
         <Card className="premium-card relative overflow-hidden group">
             <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent pointer-events-none" />
 
-            <CardContent className="relative z-10 p-6 flex flex-col gap-5">
+            <CardContent className="relative z-10 p-3 sm:p-6 flex flex-col gap-4 sm:gap-5">
                 {/* Header */}
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
@@ -249,7 +249,7 @@ export function PlacesToConcentrateCard({ user }: { user?: User }) {
         <Card className="premium-card min-h-48 h-auto relative overflow-hidden group">
             <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent pointer-events-none" />
 
-            <CardContent className="relative z-10 p-6 flex flex-col h-full">
+            <CardContent className="relative z-10 p-4 sm:p-6 flex flex-col h-full">
                 <div className="flex items-start gap-4 mb-4">
                     <div className="w-12 h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-500">
                         <Target className="w-6 h-6" />
@@ -336,10 +336,10 @@ export function TodoListCard({ tasks, onAddTask, onToggleTask, onRemoveTask, onV
             {/* Soft decorative background */}
             <div className="absolute top-0 right-0 w-[40%] h-[40%] bg-gradient-to-bl from-indigo-50/50 to-transparent dark:from-indigo-900/20 pointer-events-none" />
 
-            <CardContent className="relative z-10 p-6 md:p-8 flex-1 flex flex-col min-h-0">
-                <div className="flex items-center justify-between mb-8">
-                    <h3 className="text-xl font-black text-foreground flex items-center gap-3">
-                        <div className="w-1.5 h-6 bg-primary rounded-full shadow-sm shadow-primary/20" />
+            <CardContent className="relative z-10 p-4 sm:p-6 md:p-8 flex-1 flex flex-col min-h-0">
+                <div className="flex items-center justify-between mb-4 sm:mb-8">
+                    <h3 className="text-base sm:text-xl font-black text-foreground flex items-center gap-2 sm:gap-3">
+                        <div className="w-1 h-4 sm:w-1.5 sm:h-6 bg-primary rounded-full shadow-sm shadow-primary/20" />
                         Tasks & Goals
                     </h3>
                     <Button 
@@ -352,32 +352,32 @@ export function TodoListCard({ tasks, onAddTask, onToggleTask, onRemoveTask, onV
                     </Button>
                 </div>
 
-                {/* Add Task Input - Centered and max-width for better wide-screen UX */}
-                <div className="mb-10 space-y-4 max-w-4xl mx-auto w-full">
-                    <div className="flex gap-4">
+                {/* Add Task Input - Optimized for mobile */}
+                <div className="mb-4 sm:mb-10 space-y-3 sm:space-y-4 max-w-4xl mx-auto w-full">
+                    <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">
                         <input
                             type="text"
-                            placeholder="Add a new task or mission goal..."
+                            placeholder="Add a task..."
                             value={newTaskText}
                             onChange={(e) => setNewTaskText(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-                            className="flex-1 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-2xl px-6 py-3 text-base text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all font-medium shadow-sm"
+                            className="flex-1 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl sm:rounded-2xl px-4 sm:px-6 py-2.5 sm:py-3 text-xs sm:text-base text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all font-medium shadow-sm"
                         />
                         <Button
                             onClick={handleAdd}
-                            className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-2xl px-6 h-12 shadow-lg shadow-primary/20 transition-all hover:scale-105 active:scale-95 flex items-center gap-2"
+                            className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl sm:rounded-2xl px-4 sm:px-6 h-10 sm:h-12 shadow-lg shadow-primary/20 transition-all active:scale-95 flex items-center justify-center gap-2 text-xs sm:text-sm font-bold"
                         >
-                            <Plus className="w-5 h-5" />
-                            <span className="hidden sm:inline">Add Task</span>
+                            <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
+                            <span>Add Task</span>
                         </Button>
                     </div>
-                    <div className="flex items-center justify-center gap-4">
-                        <span className="text-xs font-black text-slate-500 dark:text-slate-400 uppercase tracking-[0.2em]">Target Deadline:</span>
+                    <div className="flex items-center justify-between sm:justify-center gap-2 sm:gap-4 px-1">
+                        <span className="text-[8px] sm:text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider">Deadline:</span>
                         <input
                             type="datetime-local"
                             value={newTaskDue}
                             onChange={(e) => setNewTaskDue(e.target.value)}
-                            className="bg-slate-50/80 dark:bg-slate-800/30 border border-slate-100 dark:border-slate-700/50 rounded-xl px-4 py-2 text-xs text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-primary/30 transition-all cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800/50"
+                            className="bg-slate-50/80 dark:bg-slate-800/30 border border-slate-100 dark:border-slate-700/50 rounded-lg px-2 py-0.5 sm:py-1 text-[8px] sm:text-[10px] text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-primary/30 transition-all cursor-pointer"
                         />
                     </div>
                 </div>

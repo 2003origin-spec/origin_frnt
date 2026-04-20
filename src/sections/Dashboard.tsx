@@ -38,8 +38,8 @@ function EventsCarousel() {
             <span className="inline-block px-3 py-1 bg-blue-100/50 dark:bg-white/10 backdrop-blur-md border border-blue-200/50 dark:border-white/20 rounded-full text-[10px] font-black tracking-widest uppercase text-[#1D4ED8] dark:text-indigo-300 w-fit mb-4 shadow-sm">
               {event.date}
             </span>
-            <h2 className="text-3xl sm:text-4xl font-black text-[#334155] dark:text-white mb-3 tracking-tight leading-tight max-w-2xl">{event.title}</h2>
-            <p className="text-base text-[#475569] dark:text-slate-300 max-w-xl leading-relaxed font-medium">{event.description}</p>
+            <h2 className="text-2xl sm:text-4xl font-black text-[#334155] dark:text-white mb-2 sm:mb-3 tracking-tight leading-tight max-w-2xl">{event.title}</h2>
+            <p className="text-sm sm:text-base text-[#475569] dark:text-slate-300 max-w-xl leading-relaxed font-medium line-clamp-2 sm:line-clamp-none">{event.description}</p>
           </div>
         </div>
       ))}
@@ -97,7 +97,7 @@ export default function Dashboard({ user, onStartChallenge, setTimeMode, onNavig
         <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.02] mix-blend-overlay" />
       </div>
 
-      <main className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 relative z-10">
+      <main className="max-w-[1400px] mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6 sm:space-y-8 relative z-10">
         <motion.div
           id="tutorial-events"
           initial={{ opacity: 0, scale: 0.98 }}
@@ -107,9 +107,9 @@ export default function Dashboard({ user, onStartChallenge, setTimeMode, onNavig
           <EventsCarousel />
         </motion.div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8">
           {/* Main Content Grid (8/4 split for primary activity) */}
-          <div className="lg:col-span-8 flex flex-col gap-8">
+          <div className="lg:col-span-8 flex flex-col gap-6 sm:gap-8">
             <div id="tutorial-tracker" className="h-auto">
               <DailyTracker user={user} />
             </div>
@@ -118,7 +118,7 @@ export default function Dashboard({ user, onStartChallenge, setTimeMode, onNavig
             </div>
           </div>
 
-          <div className="lg:col-span-4 flex flex-col gap-8">
+          <div className="lg:col-span-4 flex flex-col gap-6 sm:gap-8">
             <div id="tutorial-challenge">
               <ChallengeCard user={user} onStartChallenge={onStartChallenge} />
             </div>
@@ -129,8 +129,8 @@ export default function Dashboard({ user, onStartChallenge, setTimeMode, onNavig
         </div>
 
         {/* Insights & Tasks Layer (Wider for better visibility) */}
-        <div className="space-y-8">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div className="space-y-6 sm:space-y-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8">
             <div id="tutorial-activities">
               <PastActivitiesCard user={user} />
             </div>
