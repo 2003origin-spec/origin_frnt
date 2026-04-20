@@ -481,8 +481,8 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user }: 
                       <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
                         Match Found: <span className="text-indigo-600 dark:text-indigo-400">{filteredTests.length} tests</span>
                       </p>
-                      <Button 
-                        variant="ghost" 
+                      <Button
+                        variant="ghost"
                         onClick={() => {
                           setSearchQuery('');
                           setSelectedSubject('all');
@@ -495,8 +495,18 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user }: 
                     </div>
                   </div>
                 </Card>
+<<<<<<< HEAD
                 
-                {filteredTests.length > 0 && (
+                {/* Visual feedback of active filters */}
+                {(searchQuery || selectedSubject !== 'all' || selectedDifficulty !== 'all') && (
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {searchQuery && <Badge variant="secondary">Search: {searchQuery}</Badge>}
+                    {selectedSubject !== 'all' && <Badge variant="secondary">Subject: {selectedSubject}</Badge>}
+                    {selectedDifficulty !== 'all' && <Badge variant="secondary">Level: {selectedDifficulty}</Badge>}
+                  </div>
+                )}
+
+                {filteredTests.length > 0 ? (
                   <div className="mt-12">
                     <h3 className="text-xs font-black uppercase tracking-[0.2em] text-slate-500 mb-8 flex items-center gap-4">
                       Query Results
@@ -517,7 +527,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user }: 
                       ))}
                     </div>
                   </div>
-                )}
+                ) : null}
               </TabsContent>
             </Tabs>
           </>

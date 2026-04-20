@@ -15,192 +15,104 @@ export type NCERTBook = {
     basePath?: string; // The directory structure under /public/books/
 }
 
+function chapterRange(prefix: string, from: number, to: number): NCERTChapter[] {
+    const out: NCERTChapter[] = [];
+    for (let i = from; i <= to; i++) {
+        out.push({ id: `${prefix}${i}`, title: `Chapter ${i}`, pdfFile: `Chapter ${i}.pdf` });
+    }
+    return out;
+}
+
+const pre: NCERTChapter = { id: 'pre', title: 'Prelims', pdfFile: 'Introduction.pdf' };
+const answers: NCERTChapter = { id: 'ans', title: 'Answers', pdfFile: 'Answers.pdf' };
+
 export const ncertBooksData: NCERTBook[] = [
-    // Class 11
+    // ----- Class 11 -----
     {
         id: 'ncert-bio-11', title: 'Biology', bookClass: '11', subject: 'Biology', code: 'kebo1',
-        totalChapters: 19,
         basePath: '11/Biology',
-        chapters: [
-            { id: 'pre', title: 'Prelims', pdfFile: 'Introduction.pdf' },
-            { id: 'ch1', title: 'Chapter 1', pdfFile: 'Chapter 1.pdf' },
-            { id: 'ch2', title: 'Chapter 2', pdfFile: 'Chapter 2.pdf' },
-            { id: 'ch3', title: 'Chapter 3', pdfFile: 'Chapter 3.pdf' },
-            { id: 'ch4', title: 'Chapter 4', pdfFile: 'Chapter 4.pdf' },
-            { id: 'ch5', title: 'Chapter 5', pdfFile: 'Chapter 5.pdf' },
-            { id: 'ch6', title: 'Chapter 6', pdfFile: 'Chapter 6.pdf' },
-            { id: 'ch7', title: 'Chapter 7', pdfFile: 'Chapter 7.pdf' },
-            { id: 'ch8', title: 'Chapter 8', pdfFile: 'Chapter 8.pdf' },
-            { id: 'ch9', title: 'Chapter 9', pdfFile: 'Chapter 9.pdf' },
-            { id: 'ch10', title: 'Chapter 10', pdfFile: 'Chapter 10.pdf' },
-            { id: 'ch11', title: 'Chapter 11', pdfFile: 'Chapter 11.pdf' },
-            { id: 'ch12', title: 'Chapter 12', pdfFile: 'Chapter 12.pdf' },
-            { id: 'ch13', title: 'Chapter 13', pdfFile: 'Chapter 13.pdf' },
-            { id: 'ch14', title: 'Chapter 14', pdfFile: 'Chapter 14.pdf' },
-            { id: 'ch15', title: 'Chapter 15', pdfFile: 'Chapter 15.pdf' },
-            { id: 'ch16', title: 'Chapter 16', pdfFile: 'Chapter 16.pdf' },
-            { id: 'ch17', title: 'Chapter 17', pdfFile: 'Chapter 17.pdf' },
-            { id: 'ch18', title: 'Chapter 18', pdfFile: 'Chapter 18.pdf' },
-            { id: 'ch19', title: 'Chapter 19', pdfFile: 'Chapter 19.pdf' },
-        ]
-    },
-    {
-        id: 'ncert-phy-11-1', title: 'Physics Part I', bookClass: '11', subject: 'Physics', code: 'keph1',
-        totalChapters: 8,
-        basePath: '11/Physics',
-        chapters: [
-            { id: 'pre', title: 'Prelims', pdfFile: 'Introduction.pdf' },
-            { id: 'ch1', title: 'Chapter 1', pdfFile: 'Chapter 1.pdf' },
-            { id: 'ch2', title: 'Chapter 2', pdfFile: 'Chapter 2.pdf' },
-            { id: 'ch3', title: 'Chapter 3', pdfFile: 'Chapter 3.pdf' },
-            { id: 'ch4', title: 'Chapter 4', pdfFile: 'Chapter 4.pdf' },
-            { id: 'ch5', title: 'Chapter 5', pdfFile: 'Chapter 5.pdf' },
-            { id: 'ch6', title: 'Chapter 6', pdfFile: 'Chapter 6.pdf' },
-            { id: 'ch7', title: 'Chapter 7', pdfFile: 'Chapter 7.pdf' },
-            { id: 'ch8', title: 'Chapter 8', pdfFile: 'Chapter 8.pdf' },
-        ]
+        chapters: [pre, ...chapterRange('ch', 1, 19)],
+        totalChapters: 19,
     },
     {
         id: 'ncert-chem-11-1', title: 'Chemistry Part I', bookClass: '11', subject: 'Chemistry', code: 'kech1',
-        totalChapters: 7,
-        basePath: '11/Chemistry',
-        chapters: [
-            { id: 'pre', title: 'Prelims', pdfFile: 'Introduction.pdf' },
-            { id: 'ch1', title: 'Chapter 1', pdfFile: 'Chapter 1.pdf' },
-            { id: 'ch2', title: 'Chapter 2', pdfFile: 'Chapter 2.pdf' },
-            { id: 'ch3', title: 'Chapter 3', pdfFile: 'Chapter 3.pdf' },
-            { id: 'ch4', title: 'Chapter 4', pdfFile: 'Chapter 4.pdf' },
-            { id: 'ch5', title: 'Chapter 5', pdfFile: 'Chapter 5.pdf' },
-            { id: 'ch6', title: 'Chapter 6', pdfFile: 'Chapter 6.pdf' },
-            { id: 'ch7', title: 'Chapter 7', pdfFile: 'Chapter 7.pdf' },
-        ]
+        basePath: '11/Chemistry/Part1',
+        chapters: [pre, ...chapterRange('ch', 1, 6), answers],
+        totalChapters: 6,
+    },
+    {
+        id: 'ncert-chem-11-2', title: 'Chemistry Part II', bookClass: '11', subject: 'Chemistry', code: 'kech2',
+        basePath: '11/Chemistry/Part2',
+        chapters: [pre, ...chapterRange('ch', 1, 3), answers],
+        totalChapters: 3,
     },
     {
         id: 'ncert-math-11', title: 'Mathematics', bookClass: '11', subject: 'Mathematics', code: 'kemh1',
-        totalChapters: 14,
         basePath: '11/Mathematics',
-        chapters: [
-            { id: 'pre', title: 'Prelims', pdfFile: 'Introduction.pdf' },
-            { id: 'ch1', title: 'Chapter 1', pdfFile: 'Chapter 1.pdf' },
-            { id: 'ch2', title: 'Chapter 2', pdfFile: 'Chapter 2.pdf' },
-            { id: 'ch3', title: 'Chapter 3', pdfFile: 'Chapter 3.pdf' },
-            { id: 'ch4', title: 'Chapter 4', pdfFile: 'Chapter 4.pdf' },
-            { id: 'ch5', title: 'Chapter 5', pdfFile: 'Chapter 5.pdf' },
-            { id: 'ch6', title: 'Chapter 6', pdfFile: 'Chapter 6.pdf' },
-            { id: 'ch7', title: 'Chapter 7', pdfFile: 'Chapter 7.pdf' },
-            { id: 'ch8', title: 'Chapter 8', pdfFile: 'Chapter 8.pdf' },
-            { id: 'ch9', title: 'Chapter 9', pdfFile: 'Chapter 9.pdf' },
-            { id: 'ch10', title: 'Chapter 10', pdfFile: 'Chapter 10.pdf' },
-            { id: 'ch11', title: 'Chapter 11', pdfFile: 'Chapter 11.pdf' },
-            { id: 'ch12', title: 'Chapter 12', pdfFile: 'Chapter 12.pdf' },
-            { id: 'ch13', title: 'Chapter 13', pdfFile: 'Chapter 13.pdf' },
-            { id: 'ch14', title: 'Chapter 14', pdfFile: 'Chapter 14.pdf' },
-        ]
+        chapters: [pre, ...chapterRange('ch', 1, 14), answers],
+        totalChapters: 14,
+    },
+    {
+        id: 'ncert-phy-11-1', title: 'Physics Part I', bookClass: '11', subject: 'Physics', code: 'keph1',
+        basePath: '11/Physics/Part1',
+        chapters: [pre, ...chapterRange('ch', 1, 7), answers],
+        totalChapters: 7,
+    },
+    {
+        id: 'ncert-phy-11-2', title: 'Physics Part II', bookClass: '11', subject: 'Physics', code: 'keph2',
+        basePath: '11/Physics/Part2',
+        chapters: [pre, ...chapterRange('ch', 1, 7), answers],
+        totalChapters: 7,
     },
 
-    // Class 12
+    // ----- Class 12 -----
     {
         id: 'ncert-bio-12', title: 'Biology', bookClass: '12', subject: 'Biology', code: 'lebo1',
-        totalChapters: 13,
         basePath: '12/Biology',
-        chapters: [
-            { id: 'pre', title: 'Prelims', pdfFile: 'Introduction.pdf' },
-            { id: 'ch1', title: 'Chapter 1', pdfFile: 'Chapter 1.pdf' },
-            { id: 'ch2', title: 'Chapter 2', pdfFile: 'Chapter 2.pdf' },
-            { id: 'ch3', title: 'Chapter 3', pdfFile: 'Chapter 3.pdf' },
-            { id: 'ch4', title: 'Chapter 4', pdfFile: 'Chapter 4.pdf' },
-            { id: 'ch5', title: 'Chapter 5', pdfFile: 'Chapter 5.pdf' },
-            { id: 'ch6', title: 'Chapter 6', pdfFile: 'Chapter 6.pdf' },
-            { id: 'ch7', title: 'Chapter 7', pdfFile: 'Chapter 7.pdf' },
-            { id: 'ch8', title: 'Chapter 8', pdfFile: 'Chapter 8.pdf' },
-            { id: 'ch9', title: 'Chapter 9', pdfFile: 'Chapter 9.pdf' },
-            { id: 'ch10', title: 'Chapter 10', pdfFile: 'Chapter 10.pdf' },
-            { id: 'ch11', title: 'Chapter 11', pdfFile: 'Chapter 11.pdf' },
-            { id: 'ch12', title: 'Chapter 12', pdfFile: 'Chapter 12.pdf' },
-            { id: 'ch13', title: 'Chapter 13', pdfFile: 'Chapter 13.pdf' },
-        ]
-    },
-    {
-        id: 'ncert-phy-12-1', title: 'Physics Part I', bookClass: '12', subject: 'Physics', code: 'leph1',
-        totalChapters: 8,
-        basePath: '12/Physics',
-        chapters: [
-            { id: 'pre', title: 'Prelims', pdfFile: 'Introduction.pdf' },
-            { id: 'ch1', title: 'Chapter 1', pdfFile: 'Chapter 1.pdf' },
-            { id: 'ch2', title: 'Chapter 2', pdfFile: 'Chapter 2.pdf' },
-            { id: 'ch3', title: 'Chapter 3', pdfFile: 'Chapter 3.pdf' },
-            { id: 'ch4', title: 'Chapter 4', pdfFile: 'Chapter 4.pdf' },
-            { id: 'ch5', title: 'Chapter 5', pdfFile: 'Chapter 5.pdf' },
-            { id: 'ch6', title: 'Chapter 6', pdfFile: 'Chapter 6.pdf' },
-            { id: 'ch7', title: 'Chapter 7', pdfFile: 'Chapter 7.pdf' },
-            { id: 'ch8', title: 'Chapter 8', pdfFile: 'Chapter 8.pdf' },
-        ]
+        chapters: [pre, ...chapterRange('ch', 1, 13)],
+        totalChapters: 13,
     },
     {
         id: 'ncert-chem-12-1', title: 'Chemistry Part I', bookClass: '12', subject: 'Chemistry', code: 'lech1',
+        basePath: '12/Chemistry/Part1',
+        chapters: [pre, ...chapterRange('ch', 1, 5), answers],
         totalChapters: 5,
-        basePath: '12/Chemistry',
-        chapters: [
-            { id: 'pre', title: 'Prelims', pdfFile: 'Introduction.pdf' },
-            { id: 'ch1', title: 'Chapter 1', pdfFile: 'Chapter 1.pdf' },
-            { id: 'ch2', title: 'Chapter 2', pdfFile: 'Chapter 2.pdf' },
-            { id: 'ch3', title: 'Chapter 3', pdfFile: 'Chapter 3.pdf' },
-            { id: 'ch4', title: 'Chapter 4', pdfFile: 'Chapter 4.pdf' },
-            { id: 'ch5', title: 'Chapter 5', pdfFile: 'Chapter 5.pdf' },
-        ]
-    },
-
-    // Class 10
-    {
-        id: 'ncert-sci-10', title: 'Science', bookClass: '10', subject: 'Science', code: 'jesc1',
-        totalChapters: 13,
-        basePath: '10/Science',
-        chapters: [
-            { id: 'pre', title: 'Prelims', pdfFile: 'Introduction.pdf' },
-            { id: 'ch1', title: 'Chapter 1', pdfFile: 'Chapter 1.pdf' },
-            { id: 'ch2', title: 'Chapter 2', pdfFile: 'Chapter 2.pdf' },
-            { id: 'ch3', title: 'Chapter 3', pdfFile: 'Chapter 3.pdf' },
-        ]
     },
     {
-        id: 'ncert-math-10', title: 'Mathematics', bookClass: '10', subject: 'Mathematics', code: 'jemh1',
-        totalChapters: 14,
-        basePath: '10/Mathematics',
-        chapters: [
-            { id: 'pre', title: 'Prelims', pdfFile: 'Introduction.pdf' },
-            { id: 'ch1', title: 'Chapter 1', pdfFile: 'Chapter 1.pdf' },
-            { id: 'ch2', title: 'Chapter 2', pdfFile: 'Chapter 2.pdf' },
-        ]
+        id: 'ncert-chem-12-2', title: 'Chemistry Part II', bookClass: '12', subject: 'Chemistry', code: 'lech2',
+        basePath: '12/Chemistry/Part2',
+        chapters: [pre, ...chapterRange('ch', 1, 5), answers],
+        totalChapters: 5,
     },
-    // Class 9
     {
-        id: 'ncert-sci-9', title: 'Science', bookClass: '9', subject: 'Science', code: 'iesc1',
-        totalChapters: 12,
-        basePath: '9/Science',
-        chapters: [
-            { id: 'pre', title: 'Prelims', pdfFile: 'Introduction.pdf' },
-            { id: 'ch1', title: 'Chapter 1', pdfFile: 'Chapter 1.pdf' },
-        ]
+        id: 'ncert-math-12-1', title: 'Mathematics Part I', bookClass: '12', subject: 'Mathematics', code: 'lemh1',
+        basePath: '12/Mathematics/Part1',
+        chapters: [pre, ...chapterRange('ch', 1, 6), answers],
+        totalChapters: 6,
     },
-    // Class 8
     {
-        id: 'ncert-sci-8', title: 'Science', bookClass: '8', subject: 'Science', code: 'hesc1',
-        totalChapters: 13,
-        basePath: '8/Science',
-        chapters: [
-            { id: 'pre', title: 'Prelims', pdfFile: 'Introduction.pdf' },
-            { id: 'ch1', title: 'Chapter 1', pdfFile: 'Chapter 1.pdf' },
-        ]
+        id: 'ncert-math-12-2', title: 'Mathematics Part II', bookClass: '12', subject: 'Mathematics', code: 'lemh2',
+        basePath: '12/Mathematics/Part2',
+        chapters: [pre, ...chapterRange('ch', 1, 7), answers],
+        totalChapters: 7,
+    },
+    {
+        id: 'ncert-phy-12-1', title: 'Physics Part I', bookClass: '12', subject: 'Physics', code: 'leph1',
+        basePath: '12/Physics/Part1',
+        chapters: [pre, ...chapterRange('ch', 1, 8), answers],
+        totalChapters: 8,
+    },
+    {
+        id: 'ncert-phy-12-2', title: 'Physics Part II', bookClass: '12', subject: 'Physics', code: 'leph2',
+        basePath: '12/Physics/Part2',
+        chapters: [pre, ...chapterRange('ch', 1, 6)],
+        totalChapters: 6,
     },
 ];
 
-export const ncertClasses = ['12', '11', '10', '9', '8', '7', '6'];
+export const ncertClasses = ['12', '11'];
+
 export const ncertSubjectsByClass: Record<string, string[]> = {
-    '12': ['Biology', 'Physics', 'Chemistry', 'Mathematics'],
-    '11': ['Biology', 'Physics', 'Chemistry', 'Mathematics'],
-    '10': ['Science', 'Mathematics', 'Social Science'],
-    '9': ['Science', 'Mathematics', 'Social Science'],
-    '8': ['Science', 'Mathematics', 'Social Science'],
-    '7': ['Science', 'Mathematics', 'Social Science'],
-    '6': ['Science', 'Mathematics', 'Social Science'],
+    '12': ['Biology', 'Chemistry', 'Mathematics', 'Physics'],
+    '11': ['Biology', 'Chemistry', 'Mathematics', 'Physics'],
 };

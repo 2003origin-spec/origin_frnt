@@ -125,12 +125,61 @@ function toNumberArray(value: unknown): number[] | null {
   return numbers.length ? numbers : null;
 }
 
+function normalizeOptionText(value: unknown): string {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/^[a-d]\s*[).:-]\s*/i, "")
+    .replace(/\s+/g, " ");
+}
+
+/**
+ * Reconciles correct_option against answer_text + options at read time so rows
+ * imported by older importer versions (which mis-treated numeric answers as
+ * 1-based indices) return the right option without a DB re-import.
+ */
+function reconcileCorrectOption(
+  questionType: string,
+  options: string[] | null,
+  rawCorrectOption: number | null,
+  answerText: string | null,
+): number | null {
+  if (!options || options.length === 0) {
+    return rawCorrectOption;
+  }
+  if (questionType !== "mcq") {
+    return rawCorrectOption;
+  }
+
+  const normalizedAnswer = normalizeOptionText(answerText);
+  if (!normalizedAnswer) {
+    return rawCorrectOption;
+  }
+
+  const textMatchIndex = options.findIndex((option) => normalizeOptionText(option) === normalizedAnswer);
+  if (textMatchIndex < 0) {
+    return rawCorrectOption;
+  }
+
+  // Prefer the unambiguous text match over a stored index that disagrees.
+  return textMatchIndex;
+}
+
 function mapCatalogRow(row: CatalogRow): StoredQuestion {
+  const options = toTextArray(row.options);
+  const rawCorrectOption = row.correct_option == null ? null : Number(row.correct_option);
+  const questionType = normalizeQuestionType(String(row.question_type));
+  const reconciledCorrectOption = reconcileCorrectOption(
+    questionType,
+    options,
+    rawCorrectOption,
+    row.answer_text ?? null,
+  );
   return {
     id: row.id,
     text: row.text,
-    options: toTextArray(row.options),
-    correctOption: row.correct_option == null ? null : Number(row.correct_option),
+    options,
+    correctOption: reconciledCorrectOption,
     correctOptions: toNumberArray(row.correct_options),
     answerText: row.answer_text ?? null,
     answerSpec: row.answer_spec ?? null,
@@ -144,7 +193,7 @@ function mapCatalogRow(row: CatalogRow): StoredQuestion {
     difficulty: normalizeDifficulty(String(row.difficulty)),
     image: row.image ?? null,
     tags: Array.isArray(row.tags) ? row.tags.map((entry) => String(entry)) : row.tags ?? null,
-    questionType: normalizeQuestionType(String(row.question_type)),
+    questionType,
     acceptanceRate: Number(row.acceptance_rate ?? 0),
     totalCorrect: Number(row.total_correct ?? 0),
     frequency: Number(row.frequency ?? 0),
@@ -362,6 +411,30 @@ export async function getOgcodeChallengeQuestion(): Promise<StoredQuestion | nul
   }
 
   await ensureCatalogSchema();
+
+  // Pool 1: explicitly curated challenge questions. Pool 2: full MCQ catalog.
+  // Whichever pool is non-empty, pick a stable-per-day row using today's
+  // epoch-day as an offset so the challenge rotates automatically each day.
+  const curatedCountResult = await pool.query<{ total: number | string }>(
+    `SELECT COUNT(*)::int AS total FROM ogcode_questions WHERE is_challenge_of_day = true`,
+  );
+  const curatedCount = Number(curatedCountResult.rows[0]?.total ?? 0);
+
+  const baseFilter = curatedCount > 0
+    ? `WHERE is_challenge_of_day = true`
+    : `WHERE question_type = 'mcq' AND correct_option IS NOT NULL`;
+
+  const totalResult = await pool.query<{ total: number | string }>(
+    `SELECT COUNT(*)::int AS total FROM ogcode_questions ${baseFilter}`,
+  );
+  const total = Number(totalResult.rows[0]?.total ?? 0);
+  if (total <= 0) {
+    return null;
+  }
+
+  const epochDay = Math.floor(Date.now() / 86_400_000);
+  const offset = ((epochDay % total) + total) % total;
+
   const result = await pool.query<CatalogRow>(
     `
       SELECT
@@ -389,9 +462,12 @@ export async function getOgcodeChallengeQuestion(): Promise<StoredQuestion | nul
         frequency,
         is_challenge_of_day
       FROM ogcode_questions
-      ORDER BY is_challenge_of_day DESC, CASE difficulty WHEN 'hard' THEN 0 WHEN 'medium' THEN 1 WHEN 'easy' THEN 2 ELSE 3 END, source_index ASC
+      ${baseFilter}
+      ORDER BY source_index ASC, id ASC
+      OFFSET $1
       LIMIT 1
     `,
+    [offset],
   );
 
   return result.rows[0] ? mapCatalogRow(result.rows[0]) : null;

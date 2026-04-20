@@ -101,9 +101,6 @@ export default function DPPView({ onBack }: DPPViewProps) {
         setError('');
         const plans = await apiCall('/assessments/dpps/');
         setDpps(Array.isArray(plans) ? plans : []);
-        if (Array.isArray(plans) && plans.length > 0) {
-          setSelectedDppId(plans[0].id);
-        }
       } catch (loadError: any) {
         setError(loadError.message || 'Failed to load generated DPPs.');
       } finally {
@@ -269,13 +266,19 @@ export default function DPPView({ onBack }: DPPViewProps) {
         <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-14 sm:h-16">
             <div className="flex items-center gap-2 sm:gap-4 truncate">
-              <button onClick={onBack} className="p-2 rounded-lg hover:bg-slate-100 transition-colors">
+              <button
+                onClick={() => (selectedDppId ? setSelectedDppId(null) : onBack())}
+                className="p-2 rounded-lg hover:bg-slate-100 transition-colors"
+                aria-label={selectedDppId ? 'Back to DPP list' : 'Back to dashboard'}
+              >
                 <ChevronLeft className="w-5 h-5 text-slate-600" />
               </button>
               <div className="truncate">
                 <h1 className="text-base sm:text-xl font-bold text-slate-900 dark:text-white truncate">Daily Practice Problems</h1>
                 <p className="text-[10px] sm:text-sm text-slate-500 dark:text-slate-400 truncate">
-                  Personalized based on your analytics
+                  {selectedDppId
+                    ? 'Solve a DPP, then jump back to pick another'
+                    : 'Pick any generated DPP — one per recent test'}
                 </p>
               </div>
             </div>
@@ -300,7 +303,7 @@ export default function DPPView({ onBack }: DPPViewProps) {
           <Card className="border-0 shadow-lg dark:bg-slate-900/60 dark:ring-1 dark:ring-white/10">
             <CardContent className="p-8 text-center text-red-500">{error}</CardContent>
           </Card>
-        ) : !currentDpp ? (
+        ) : dpps.length === 0 ? (
           <Card className="border-0 shadow-lg dark:bg-slate-900/60 dark:ring-1 dark:ring-white/10">
             <CardContent className="p-8 text-center space-y-3">
               <Target className="w-10 h-10 text-[#3CACA3] mx-auto" />
@@ -308,6 +311,15 @@ export default function DPPView({ onBack }: DPPViewProps) {
               <p className="text-slate-500 dark:text-slate-400">
                 Submit a custom or regular test first so the analytics pipeline can generate targeted DPPs.
               </p>
+            </CardContent>
+          </Card>
+        ) : !selectedDppId ? (
+          <DppSelectionGrid dpps={dpps} onSelect={setSelectedDppId} />
+        ) : !currentDpp ? (
+          <Card className="border-0 shadow-lg dark:bg-slate-900/60 dark:ring-1 dark:ring-white/10">
+            <CardContent className="p-8 flex items-center justify-center gap-3 text-slate-500">
+              <Loader2 className="w-5 h-5 animate-spin" />
+              Loading DPP...
             </CardContent>
           </Card>
         ) : isCompleted ? (
@@ -348,11 +360,21 @@ export default function DPPView({ onBack }: DPPViewProps) {
                 </div>
               </div>
 
-              <div className="flex justify-center gap-4 mt-8">
+              <div className="flex flex-wrap justify-center gap-4 mt-8">
                 <Button variant="outline" onClick={retryCurrentDpp} className="rounded-full">
                   <RotateCcw className="w-4 h-4 mr-2" />
                   Retry DPP
                 </Button>
+                {dpps.length > 1 ? (
+                  <Button
+                    variant="outline"
+                    onClick={() => setSelectedDppId(null)}
+                    className="rounded-full"
+                  >
+                    <ChevronLeft className="w-4 h-4 mr-2" />
+                    Pick another DPP
+                  </Button>
+                ) : null}
                 <Button onClick={onBack} className="rounded-full bg-gradient-to-r from-[#3CACA3] to-[#1E3A5F] text-white">
                   Back to Dashboard
                   <ArrowRight className="w-4 h-4 ml-2" />
@@ -556,6 +578,125 @@ export default function DPPView({ onBack }: DPPViewProps) {
           </div>
         )}
       </main>
+    </div>
+  );
+}
+
+function DppSelectionGrid({
+  dpps,
+  onSelect,
+}: {
+  dpps: GeneratedDpp[];
+  onSelect: (dppId: string) => void;
+}) {
+  const formatDate = (value?: string) => {
+    if (!value) return null;
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return parsed.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-900 dark:text-white">
+            {dpps.length} DPP{dpps.length === 1 ? '' : 's'} ready for you
+          </h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+            Each card comes from a test you submitted. Pick one to start solving.
+          </p>
+        </div>
+      </div>
+
+      <div className="grid md:grid-cols-2 gap-4">
+        {dpps.map((dpp) => {
+          const questionCount = dpp.questions?.length ?? dpp.targetQuestionCount ?? 0;
+          const weakTopics = dpp.weakTopics ?? dpp.weak_topics ?? [];
+          const generatedDate = formatDate(dpp.createdAt);
+          const progressScore = dpp.latestAttempt?.progress_score ?? dpp.latestAttempt?.progressScore ?? null;
+
+          return (
+            <button
+              key={dpp.id}
+              type="button"
+              onClick={() => onSelect(dpp.id)}
+              className="text-left group"
+            >
+              <Card className="h-full border-0 shadow-soft hover:shadow-xl transition-all duration-300 dark:bg-slate-900/60 dark:ring-1 dark:ring-white/10 group-hover:-translate-y-0.5">
+                <CardContent className="p-6 space-y-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Badge variant="secondary" className="capitalize">
+                          {dpp.subject}
+                        </Badge>
+                        {dpp.completed ? (
+                          <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">
+                            <CheckCircle2 className="w-3 h-3 mr-1" />
+                            Completed
+                          </Badge>
+                        ) : (
+                          <Badge className="bg-[#3CACA3]/10 text-[#3CACA3]">
+                            <Sparkles className="w-3 h-3 mr-1" />
+                            New
+                          </Badge>
+                        )}
+                      </div>
+                      <h3 className="text-lg font-semibold text-slate-900 dark:text-white leading-snug">
+                        {dpp.title}
+                      </h3>
+                      {dpp.summary ? (
+                        <p className="text-sm text-slate-500 dark:text-slate-400 mt-2 line-clamp-2">
+                          {dpp.summary}
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {weakTopics.slice(0, 3).map((topic) => (
+                      <Badge
+                        key={topic}
+                        variant="secondary"
+                        className="bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300"
+                      >
+                        {topic}
+                      </Badge>
+                    ))}
+                    {weakTopics.length > 3 ? (
+                      <span className="text-xs text-slate-400 self-center">+{weakTopics.length - 3} more</span>
+                    ) : null}
+                  </div>
+
+                  <div className="flex items-center justify-between text-sm text-slate-600 dark:text-slate-400">
+                    <div className="flex items-center gap-4">
+                      <span className="inline-flex items-center gap-1">
+                        <Target className="w-4 h-4" />
+                        {questionCount} Qs
+                      </span>
+                      {dpp.duration ? (
+                        <span>{dpp.duration} min</span>
+                      ) : null}
+                      {generatedDate ? <span>Generated {generatedDate}</span> : null}
+                    </div>
+                    {progressScore !== null ? (
+                      <span className="text-[#3CACA3] font-semibold">{Math.round(progressScore)}%</span>
+                    ) : null}
+                  </div>
+
+                  <div className="pt-2">
+                    <Button className="w-full rounded-full bg-gradient-to-r from-[#3CACA3] to-[#1E3A5F] text-white">
+                      {dpp.completed ? 'Review DPP' : 'Start Solving'}
+                      <ArrowRight className="w-4 h-4 ml-2" />
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

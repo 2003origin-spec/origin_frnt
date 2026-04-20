@@ -2456,7 +2456,18 @@ export async function getChallengeOfTheDay(store: AppStore, user: StoredUser) {
   } catch {
     challenge = null;
   }
-  challenge = challenge ?? store.questions.find((question) => question.isChallengeOfTheDay) ?? store.questions[0];
+  if (!challenge) {
+    const epochDay = Math.floor(Date.now() / 86_400_000);
+    const curated = store.questions.filter((question) => question.isChallengeOfTheDay);
+    const pool = curated.length > 0
+      ? curated
+      : store.questions.filter((question) => question.questionType === "mcq" && question.correctOption !== null);
+    if (pool.length > 0) {
+      challenge = pool[((epochDay % pool.length) + pool.length) % pool.length];
+    } else {
+      challenge = store.questions[0];
+    }
+  }
   if (!challenge) {
     throw new Error("No challenge of the day set.");
   }

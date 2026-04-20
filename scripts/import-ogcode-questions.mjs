@@ -267,14 +267,27 @@ function findCorrectOptionIndex(options, answer) {
     return null;
   }
 
+  // Try exact / normalized text match first. Answers in this dataset are values
+  // (e.g. "3"), not 1-based option indices, so matching by text is the reliable
+  // path and avoids the common failure where a numeric value collides with an
+  // index (answer "3" with options ["3","2","4","5"] must resolve to index 0,
+  // not index 2).
+  const normalizedAnswer = normalizeOptionText(answer);
+  if (normalizedAnswer) {
+    const matchedIndex = options.findIndex((option) => normalizeOptionText(option) === normalizedAnswer);
+    if (matchedIndex >= 0) {
+      return matchedIndex;
+    }
+  }
+
+  // Fallback: genuine 1-based option index (e.g. answer is "2" meaning option B)
+  // but only when no option text matches.
   const answerNumber = Number(String(answer ?? "").trim());
   if (Number.isInteger(answerNumber) && answerNumber >= 1 && answerNumber <= options.length) {
     return answerNumber - 1;
   }
 
-  const normalizedAnswer = normalizeOptionText(answer);
-  const matchedIndex = options.findIndex((option) => normalizeOptionText(option) === normalizedAnswer);
-  return matchedIndex >= 0 ? matchedIndex : null;
+  return null;
 }
 
 function normalizeOptions(rawOptions) {

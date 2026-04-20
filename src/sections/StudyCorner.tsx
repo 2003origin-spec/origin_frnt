@@ -388,6 +388,9 @@ export default function StudyCorner({ user }: StudyCornerProps) {
         }
 
         const bookFromMetadata = ncertBooksData.find(b => b.id === selectedPDF.bookId);
+        const fallbackBasePath = selectedPDF.url
+            ? selectedPDF.url.replace(/^\/books\//, '').split('/').slice(0, -1).join('/')
+            : '';
         const chapters = bookFromMetadata?.chapters || [
             { id: selectedPDF.chapterId || 'ch1', title: selectedPDF.name, pdfFile: selectedPDF.url.split('/').pop() }
         ];
@@ -401,6 +404,7 @@ export default function StudyCorner({ user }: StudyCornerProps) {
                     subject: subject,
                     coverImage: 'https://images.unsplash.com/photo-1636466497769-f81855aebf13?auto=format&fit=crop&q=80&w=400',
                     isLiked: false,
+                    basePath: bookFromMetadata?.basePath || fallbackBasePath,
                     chapters: chapters.map((ch: any) => ({ ...ch, pages: 0 })) // pages not needed for reader now
                 }}
                 activeChapterId={selectedPDF.chapterId || 'ch1'}

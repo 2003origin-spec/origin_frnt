@@ -356,20 +356,28 @@ export default function NCERTReader({ book, onBack, initialNotes = [], activeCha
                                 </h2>
 
                                 <div className="w-full h-[1000px] bg-slate-100 rounded-sm overflow-hidden border border-slate-200 relative">
-                                    {/* Use current chapter pdf path to render if it exists */}
-                                    {book.chapters.find(c => c.id === activeChapter)?.pdfFile ? (
-                                        <iframe
-                                            src={`/books/${book.basePath}/${book.chapters.find(c => c.id === activeChapter)?.pdfFile}#toolbar=0&navpanes=0&scrollbar=1`}
-                                            className="w-full h-full border-none"
-                                            title="NCERT Viewer"
-                                        />
-                                    ) : (
-                                        <div className="flex flex-col items-center justify-center h-full p-10 text-center">
-                                            <p className="text-lg leading-relaxed text-slate-800 mb-6 font-serif">
-                                                This is a mock textual representation of the NCERT book content. In a full production environment, this container would house a <code className="bg-slate-100 px-1 rounded border border-slate-200 font-mono text-sm">react-pdf</code> viewer rendering the actual PDF document page by page.
-                                            </p>
-                                        </div>
-                                    )}
+                                    {(() => {
+                                        const activeChapterMeta = book.chapters.find(c => c.id === activeChapter);
+                                        const pdfFile = activeChapterMeta?.pdfFile;
+                                        const basePath = book.basePath;
+                                        if (pdfFile && basePath) {
+                                            const pdfUrl = `/books/${basePath}/${pdfFile}#toolbar=0&navpanes=0&scrollbar=1`;
+                                            return (
+                                                <iframe
+                                                    src={pdfUrl}
+                                                    className="w-full h-full border-none"
+                                                    title="NCERT Viewer"
+                                                />
+                                            );
+                                        }
+                                        return (
+                                            <div className="flex flex-col items-center justify-center h-full p-10 text-center">
+                                                <p className="text-lg leading-relaxed text-slate-800 mb-6 font-serif">
+                                                    PDF source unavailable for this chapter. The book metadata is missing a base path or PDF filename.
+                                                </p>
+                                            </div>
+                                        );
+                                    })()}
                                 </div>
 
                                 <p className="text-lg leading-relaxed text-slate-800 mb-6 font-serif">
