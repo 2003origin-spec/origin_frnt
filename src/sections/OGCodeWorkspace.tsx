@@ -481,7 +481,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                 <button onClick={onBack} className="p-1.5 hover:bg-white/5 rounded-lg transition-colors">
                     <ArrowLeft className="w-4 h-4" />
                 </button>
-                <div className="flex items-center gap-4">
+                <div id="tutorial-ogcode-stats" className="flex items-center gap-4">
                     <div className="flex items-center gap-1.5 text-xs font-bold text-amber-500 font-mono">
                         <Trophy className="w-3.5 h-3.5" />
                         {user?.points || 0} PTS
@@ -494,7 +494,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
 
             <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
                 {/* Left: Question Content */}
-                <div className="lg:w-1/2 p-6 overflow-y-auto border-r border-white/5">
+                <div id="tutorial-ogcode-content" className="lg:w-1/2 p-6 overflow-y-auto border-r border-white/5">
                     <div className="space-y-4">
                         <div className="flex items-center gap-2">
                             <span className="text-[10px] font-bold text-blue-400 px-2 py-1 bg-blue-500/10 rounded uppercase tracking-wider">
@@ -519,7 +519,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
 
                 {/* Right: Interaction and Results */}
                 <div className="lg:w-1/2 p-6 bg-slate-50 dark:bg-black border-l border-slate-200 dark:border-white/5 overflow-y-auto">
-                    <div className="max-w-xl mx-auto space-y-6">
+                    <div id="tutorial-ogcode-input" className="max-w-xl mx-auto space-y-6">
 
                         {/* 1. INPUT SECTION */}
                         <div className="space-y-4">
@@ -660,6 +660,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                         {/* 2. SUBMIT BUTTON (Hidden after result) */}
                         {!result && (
                             <button
+                                id="tutorial-ogcode-submit"
                                 onClick={doSubmit}
                                 disabled={isSubmitting || (
                                     qType === 'mcq' ? selectedOption === null :

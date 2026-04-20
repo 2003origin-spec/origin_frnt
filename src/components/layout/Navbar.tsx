@@ -95,7 +95,7 @@ export default function Navbar({ user, currentView, onNavigate, onLogout, theme,
                             />
                             <div className="hidden md:block h-6 w-[1px] bg-slate-200 dark:bg-slate-800 mx-2" />
                             {navItems.length > 0 && (
-                                <nav className="hidden md:flex items-center gap-1 relative px-1 py-1 bg-slate-100/50 dark:bg-white/5 rounded-xl border border-slate-200/50 dark:border-white/5">
+                                <nav id="tutorial-nav" className="hidden md:flex items-center gap-1 relative px-1 py-1 bg-slate-100/50 dark:bg-white/5 rounded-xl border border-slate-200/50 dark:border-white/5">
                                     {navItems.map((item) => {
                                         const isActive = currentView === item.view ||
                                             (item.view === 'ogcode' && currentView === 'ogcode-workspace');
@@ -104,6 +104,7 @@ export default function Navbar({ user, currentView, onNavigate, onLogout, theme,
                                         return (
                                             <div
                                                 key={item.label}
+                                                id={`tutorial-nav-${item.view}`}
                                                 className="relative"
                                                 onMouseEnter={() => {
                                                     setHoveredTab(item.label);
@@ -115,6 +116,7 @@ export default function Navbar({ user, currentView, onNavigate, onLogout, theme,
                                                 }}
                                             >
                                                 <button
+                                                    id={`tutorial-nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
                                                     onClick={() => onNavigate(item.view)}
                                                     className={`relative px-4 py-2 rounded-lg text-sm font-bold transition-all duration-300 flex items-center gap-2 group z-10 ${isActive
                                                         ? 'text-[#334155] dark:text-white'

@@ -372,6 +372,7 @@ export default function OGCodeList({ onSelectQuestion, user }: OGCodeListProps) 
                                     <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-zinc-500 ml-1">Major Subject</label>
                                     <div className="relative">
                                         <button 
+                                            id="tutorial-ogcode-subject-filter"
                                             onClick={() => setOpenDropdown(openDropdown === 'subject' ? null : 'subject')}
                                             className={cn(
                                                 "min-w-[200px] flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl border bg-white dark:bg-zinc-900 transition-all shadow-sm",
@@ -498,7 +499,10 @@ export default function OGCodeList({ onSelectQuestion, user }: OGCodeListProps) 
                             </div>
                             <div className="flex items-center gap-2">
                                 <div className="relative">
-                                    <button onClick={() => setOpenDropdown(openDropdown === 'difficulty' ? null : 'difficulty')} className={cn("flex items-center gap-2 px-3 py-1.5 rounded-lg text-[13px] font-medium border border-transparent transition-all", activeDifficulty !== 'All' ? "bg-blue-500/10 text-blue-500 border-blue-500/20" : "bg-slate-100/50 dark:bg-white/5 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-white/10")}>
+                                    <button 
+                                        id="tutorial-ogcode-difficulty-filter"
+                                        onClick={() => setOpenDropdown(openDropdown === 'difficulty' ? null : 'difficulty')} 
+                                        className={cn("flex items-center gap-2 px-3 py-1.5 rounded-lg text-[13px] font-medium border border-transparent transition-all", activeDifficulty !== 'All' ? "bg-blue-500/10 text-blue-500 border-blue-500/20" : "bg-slate-100/50 dark:bg-white/5 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-white/10")}>
                                         {activeDifficulty === 'All' ? 'Difficulty' : activeDifficulty} 
                                         <ChevronRight className={cn("w-3.5 h-3.5 transition-transform", openDropdown === 'difficulty' ? "-rotate-90" : "rotate-90")} />
                                     </button>

@@ -264,7 +264,7 @@ export default function DPPView({ onBack }: DPPViewProps) {
   const correctCount = answers.filter((value, index) => value === getCorrectOption(currentQuestions[index] ?? null)).length;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-teal-50/30 dark:from-slate-950 dark:via-slate-900 dark:to-teal-950/30 text-slate-900 dark:text-slate-100 transition-colors duration-300">
+    <div id="tutorial-dpp-hub" className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-teal-50/30 dark:from-slate-950 dark:via-slate-900 dark:to-teal-950/30 text-slate-900 dark:text-slate-100 transition-colors duration-300">
       <header className="z-40 bg-white/80 dark:bg-slate-900/80 border-b border-slate-200/50 dark:border-slate-800/50 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">

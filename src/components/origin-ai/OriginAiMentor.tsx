@@ -349,7 +349,7 @@ export default function OriginAiMentor({
 
   if (compact) {
     return (
-      <div className={shellClassName} data-origin-ai-root="true">
+      <div id="tutorial-mentor" className={shellClassName} data-origin-ai-root="true">
         <div className="flex items-center justify-between border-b border-border/40 bg-indigo-500/10 px-4 py-3">
           <div className="flex min-w-0 items-center gap-3">
             <div className="relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-border/20 bg-muted p-1">
@@ -512,7 +512,7 @@ export default function OriginAiMentor({
   }
 
   return (
-    <div className={shellClassName} data-origin-ai-root="true">
+    <div id="tutorial-mentor" className={shellClassName} data-origin-ai-root="true">
       <div className={cn('flex items-center justify-between border-b border-border/40 bg-indigo-500/10', compact ? 'px-4 py-3' : 'px-5 py-4')}>
         <div className="flex items-center gap-3">
           <div className={cn('relative flex items-center justify-center overflow-hidden rounded-full border border-border/20 bg-muted p-1', compact ? 'h-10 w-10' : 'h-11 w-11')}>

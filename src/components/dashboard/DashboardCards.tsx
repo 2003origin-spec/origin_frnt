@@ -382,7 +382,7 @@ export function TodoListCard({ tasks, onAddTask, onToggleTask, onRemoveTask, onV
                     </div>
                 </div>
 
-                <div className="space-y-3 flex-1 overflow-y-auto min-h-0 pr-2 custom-scrollbar">
+                <div className="space-y-3 flex-1 overflow-y-auto max-h-[360px] min-h-0 pr-2 custom-scrollbar">
                     {tasks.map((todo) => {
                         const overdue = !todo.completed && isOverdue(todo.due);
                         return (

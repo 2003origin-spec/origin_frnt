@@ -99,6 +99,7 @@ export default function Dashboard({ user, onStartChallenge, setTimeMode, onNavig
 
       <main className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 relative z-10">
         <motion.div
+          id="tutorial-events"
           initial={{ opacity: 0, scale: 0.98 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.5 }}
@@ -109,28 +110,36 @@ export default function Dashboard({ user, onStartChallenge, setTimeMode, onNavig
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           {/* Main Content Grid (8/4 split for primary activity) */}
           <div className="lg:col-span-8 flex flex-col gap-8">
-            <div className="h-auto">
+            <div id="tutorial-tracker" className="h-auto">
               <DailyTracker user={user} />
             </div>
-            <div className="h-auto">
+            <div id="tutorial-progress" className="h-auto">
               <PastWeekProgress user={user} />
             </div>
           </div>
 
           <div className="lg:col-span-4 flex flex-col gap-8">
-            <ChallengeCard user={user} onStartChallenge={onStartChallenge} />
-            <PointsSummary data={pointsData} onNextSteps={() => onNavigate('prestige-milestones')} />
+            <div id="tutorial-challenge">
+              <ChallengeCard user={user} onStartChallenge={onStartChallenge} />
+            </div>
+            <div id="tutorial-points">
+              <PointsSummary data={pointsData} onNextSteps={() => onNavigate('prestige-milestones')} />
+            </div>
           </div>
         </div>
 
         {/* Insights & Tasks Layer (Wider for better visibility) */}
         <div className="space-y-8">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <PastActivitiesCard user={user} />
-            <PlacesToConcentrateCard user={user} />
+            <div id="tutorial-activities">
+              <PastActivitiesCard user={user} />
+            </div>
+            <div id="tutorial-focus">
+              <PlacesToConcentrateCard user={user} />
+            </div>
           </div>
 
-          <div className="w-full">
+          <div id="tutorial-todo" className="w-full">
             <TodoListCard 
               tasks={tasks}
               onAddTask={onAddTask}

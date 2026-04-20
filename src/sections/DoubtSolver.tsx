@@ -591,7 +591,11 @@ function SelectionView({ onCreate, onUpload, sessions, onSelectSession, lastSess
         <h2 className="text-4xl font-bold text-foreground mb-4 leading-tight">Master your subjects<br />with AI precision.</h2>
         <p className="text-muted-foreground text-lg max-w-xl mb-8 leading-relaxed">Stuck on a problem at 2 AM? Get step-by-step guidance and conceptual deep-dives instantly.</p>
         <div className="flex flex-wrap gap-4">
-          <button onClick={() => onCreate('New Physics Session', 'Physics')} className="px-8 py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-bold transition-all shadow-xl shadow-blue-600/20 flex items-center gap-2">
+          <button 
+            id="tutorial-doubt-solver-new"
+            onClick={() => onCreate('New Physics Session', 'Physics')} 
+            className="px-8 py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-bold transition-all shadow-xl shadow-blue-600/20 flex items-center gap-2"
+          >
             <Plus className="w-5 h-5" /> Start New Chat
           </button>
           {lastSession && (

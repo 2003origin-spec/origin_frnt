@@ -74,7 +74,7 @@ export default function TasksGoals({ tasks, onAddTask, onToggleTask, onRemoveTas
   };
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#020617] text-slate-900 dark:text-slate-100 p-4 md:p-8">
+    <div id="tutorial-goals-hub" className="min-h-screen bg-[#F8FAFC] dark:bg-[#020617] text-slate-900 dark:text-slate-100 p-4 md:p-8">
       <div className="max-w-6xl mx-auto space-y-8">
         
         {/* Header */}
@@ -161,7 +161,7 @@ export default function TasksGoals({ tasks, onAddTask, onToggleTask, onRemoveTas
             </div>
 
             {/* Task List */}
-            <div className="space-y-3">
+            <div className="space-y-3 max-h-[600px] overflow-y-auto pr-4 custom-scrollbar">
               <AnimatePresence mode="popLayout">
                 {filteredTasks.map((task) => (
                   <motion.div

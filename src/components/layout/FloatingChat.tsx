@@ -101,6 +101,7 @@ export default function FloatingChat() {
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={() => openOriginAi()}
+            id="tutorial-mentor-trigger"
             className="relative outline-none"
             aria-label="Open Origin AI"
           >

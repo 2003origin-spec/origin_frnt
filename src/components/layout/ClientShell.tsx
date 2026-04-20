@@ -8,6 +8,8 @@ import Navbar from './Navbar';
 import FloatingChat from './FloatingChat';
 import { useTheme } from 'next-themes';
 import { AnimatePresence, motion } from 'framer-motion';
+import { TutorialProvider } from '@/features/tutorial/TutorialProvider';
+import { TutorialOverlay } from '@/features/tutorial/TutorialOverlay';
 
 export default function ClientShell({ children }: { children: React.ReactNode }) {
   const { user, logout, isNavigationLocked } = useAuth();
@@ -57,7 +59,8 @@ export default function ClientShell({ children }: { children: React.ReactNode })
   const showNavbar = user && user.role === 'student' && !isNavigationLocked && !noNavbarPaths.includes(pathname) && !isSpecialPath;
 
   return (
-    <div className="min-h-screen bg-background text-foreground font-sans antialiased overflow-x-hidden relative flex flex-col transition-colors duration-700">
+    <TutorialProvider>
+      <div id="tutorial-welcome" className="min-h-screen bg-background text-foreground font-sans antialiased overflow-x-hidden relative flex flex-col transition-colors duration-700">
       {/* Dynamic Background Mesh */}
       <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden opacity-30 dark:opacity-20">
         <div className="absolute top-[-20%] right-[-10%] w-[70%] h-[70%] bg-blue-100 dark:bg-primary/10 rounded-full blur-[120px]" />
@@ -89,7 +92,9 @@ export default function ClientShell({ children }: { children: React.ReactNode })
         </AnimatePresence>
       </main>
       {user && pathname !== '/doubt-solver' && <FloatingChat />}
+      <TutorialOverlay />
     </div>
+    </TutorialProvider>
   );
 }
 
