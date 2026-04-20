@@ -51,8 +51,8 @@ export const TutorialProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     // Persistence Check
     const isCompleted = localStorage.getItem(getStorageKey(page));
     
-    // FOR TESTING: Always show tutorial for now (will re-enable persistent check later)
-    const forceShow = true; // Set to false to enable persistence
+    // Set to false to enable persistence, true for testing
+    const forceShow = false; 
 
     if (!isCompleted || forceShow) {
       const timer = setTimeout(() => {
