@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { renderInlineSegments } from '@/lib/math-text';
@@ -77,19 +78,76 @@ interface UserStats {
 }
 
 export default function OGCodeList({ onSelectQuestion, user }: OGCodeListProps) {
+    const router = useRouter();
+    const searchParams = useSearchParams();
+
+    // Initialize state from URL params
+    const initialSubject = searchParams.get('subject') || 'Subject';
+    const initialDifficulty = searchParams.get('difficulty') || 'All';
+    const initialStatus = searchParams.get('status') || 'All';
+    const initialChapters = searchParams.get('chapters')?.split(',').filter(Boolean) || [];
+
     const [questions, setQuestions] = useState<PracticeQuestion[]>([]);
     const [subjectRanks, setSubjectRanks] = useState<SubjectRank[]>([]);
     const [loading, setLoading] = useState(true);
     const [userStats, setUserStats] = useState<UserStats | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
-    const [activeSubject, setActiveSubject] = useState('Subject');
+    const [activeSubject, setActiveSubject] = useState(initialSubject);
     const [timeRange, setTimeRange] = useState<'daily' | 'weekly' | 'monthly'>('weekly');
     
-    const [activeDifficulty, setActiveDifficulty] = useState('All');
-    const [activeStatus, setActiveStatus] = useState('All');
-    const [selectedChapters, setSelectedChapters] = useState<string[]>([]);
+    const [activeDifficulty, setActiveDifficulty] = useState(initialDifficulty);
+    const [activeStatus, setActiveStatus] = useState(initialStatus);
+    const [selectedChapters, setSelectedChapters] = useState<string[]>(initialChapters);
     const [openDropdown, setOpenDropdown] = useState<'difficulty' | 'status' | 'subject' | null>(null);
     const [isStatsExpanded, setIsStatsExpanded] = useState(false);
+    
+    // Sync state with URL params
+    const updateUrlParams = useCallback((updates: Record<string, string | string[] | null>) => {
+        const params = new URLSearchParams(searchParams.toString());
+        
+        Object.entries(updates).forEach(([key, value]) => {
+            if (value === null || value === 'All' || value === 'Subject' || (Array.isArray(value) && value.length === 0)) {
+                params.delete(key);
+            } else if (Array.isArray(value)) {
+                params.set(key, value.join(','));
+            } else {
+                params.set(key, value);
+            }
+        });
+
+        const query = params.toString();
+        router.replace(query ? `/ogcode?${query}` : '/ogcode', { scroll: false });
+    }, [router, searchParams]);
+
+    // Handle filter changes
+    const handleSubjectChange = (subject: string) => {
+        setActiveSubject(subject);
+        setSelectedChapters([]);
+        updateUrlParams({ subject, chapters: null });
+    };
+
+    const handleDifficultyChange = (difficulty: string) => {
+        setActiveDifficulty(difficulty);
+        updateUrlParams({ difficulty });
+    };
+
+    const handleStatusChange = (status: string) => {
+        setActiveStatus(status);
+        updateUrlParams({ status });
+    };
+
+    const handleToggleChapter = (chapter: string) => {
+        const next = selectedChapters.includes(chapter) 
+            ? selectedChapters.filter(c => c !== chapter) 
+            : [...selectedChapters, chapter];
+        setSelectedChapters(next);
+        updateUrlParams({ chapters: next });
+    };
+
+    const handleClearChapters = () => {
+        setSelectedChapters([]);
+        updateUrlParams({ chapters: null });
+    };
     // Refs for click-outside detection
     const statsRef = useRef<HTMLDivElement>(null);
 
@@ -142,18 +200,8 @@ export default function OGCodeList({ onSelectQuestion, user }: OGCodeListProps) 
         return Array.from(chapters).sort();
     }, [questions, activeSubject]);
 
-    // Reset selected chapters when subject changes
-    useEffect(() => {
-        setSelectedChapters([]);
-    }, [activeSubject]);
-
-    const toggleChapter = (chapter: string) => {
-        setSelectedChapters(prev => 
-            prev.includes(chapter) 
-                ? prev.filter(c => c !== chapter) 
-                : [...prev, chapter]
-        );
-    };
+    // Effects handled by child components or URL state
+    // Reset selected chapters when subject changes (already handled in handleSubjectChange)
 
     const filteredQuestions = questions.filter(q => {
         const matchesSearch = (q.text || q.title || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -234,7 +282,7 @@ export default function OGCodeList({ onSelectQuestion, user }: OGCodeListProps) 
                         </motion.div>
 
                         {/* AIR Badge & Stats Dropdown */}
-                        <div ref={statsRef} className="relative self-start z-[50]">
+                        <div ref={statsRef} className="relative self-start z-[100]">
                             <motion.button
                                 whileHover={{ scale: 1.05 }}
                                 whileTap={{ scale: 0.95 }}
@@ -264,7 +312,7 @@ export default function OGCodeList({ onSelectQuestion, user }: OGCodeListProps) 
                                         animate={{ opacity: 1, y: 0, scale: 1 }}
                                         exit={{ opacity: 0, y: 10, scale: 0.95 }}
                                         transition={{ duration: 0.2, ease: "easeOut" }}
-                                        className="absolute top-full right-0 mt-4 w-[320px] md:w-[380px] z-[100] space-y-4 pointer-events-auto"
+                                        className="absolute top-full right-0 mt-4 w-[320px] md:w-[380px] z-[110] space-y-4 pointer-events-auto"
                                     >
                                         {/* Mastery Index Card */}
                                         <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-3xl border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-xl">
@@ -398,7 +446,7 @@ export default function OGCodeList({ onSelectQuestion, user }: OGCodeListProps) 
                                                         <button
                                                             key={idx}
                                                             onClick={() => {
-                                                                setActiveSubject(sub.name);
+                                                                handleSubjectChange(sub.name);
                                                                 setOpenDropdown(null);
                                                             }}
                                                             className={cn(
@@ -428,7 +476,7 @@ export default function OGCodeList({ onSelectQuestion, user }: OGCodeListProps) 
                                                 <span className="px-1.5 py-0.5 rounded-md bg-blue-500/10 text-blue-500 text-[8px] font-black uppercase tracking-tighter">Multi-select</span>
                                             </div>
                                             <button 
-                                                onClick={() => setSelectedChapters([])}
+                                                onClick={handleClearChapters}
                                                 className="text-[9px] font-black uppercase text-blue-500 hover:text-blue-600 transition-colors"
                                                 disabled={selectedChapters.length === 0}
                                             >
@@ -440,7 +488,7 @@ export default function OGCodeList({ onSelectQuestion, user }: OGCodeListProps) 
                                                 availableChapters.map((chapter) => (
                                                     <button
                                                         key={chapter}
-                                                        onClick={() => toggleChapter(chapter)}
+                                                        onClick={() => handleToggleChapter(chapter)}
                                                         className={cn(
                                                             "flex items-center gap-2 px-3 py-1.5 rounded-lg border text-[11px] font-bold transition-all",
                                                             selectedChapters.includes(chapter)
@@ -509,7 +557,7 @@ export default function OGCodeList({ onSelectQuestion, user }: OGCodeListProps) 
                                     {openDropdown === 'difficulty' && (
                                         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="absolute top-full mt-2 left-0 w-40 bg-white dark:bg-[#1a1a1a] border border-slate-200 dark:border-white/10 rounded-xl shadow-xl z-50 overflow-hidden" onClick={(e) => e.stopPropagation()}>
                                             {['All', 'Easy', 'Medium', 'Hard', 'Insane'].map((diff) => (
-                                                <button key={diff} onClick={() => { setActiveDifficulty(diff); setOpenDropdown(null); }} className={cn("w-full text-left px-4 py-2.5 text-[13px] transition-colors hover:bg-slate-50 dark:hover:bg-white/5", activeDifficulty === diff ? "text-blue-500 font-bold bg-blue-500/5" : "text-slate-600 dark:text-slate-400")}>{diff}</button>
+                                                <button key={diff} onClick={() => { handleDifficultyChange(diff); setOpenDropdown(null); }} className={cn("w-full text-left px-4 py-2.5 text-[13px] transition-colors hover:bg-slate-50 dark:hover:bg-white/5", activeDifficulty === diff ? "text-blue-500 font-bold bg-blue-500/5" : "text-slate-600 dark:text-slate-400")}>{diff}</button>
                                             ))}
                                         </motion.div>
                                     )}
@@ -522,7 +570,7 @@ export default function OGCodeList({ onSelectQuestion, user }: OGCodeListProps) 
                                     {openDropdown === 'status' && (
                                         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="absolute top-full mt-2 left-0 w-40 bg-white dark:bg-[#1a1a1a] border border-slate-200 dark:border-white/10 rounded-xl shadow-xl z-50 overflow-hidden" onClick={(e) => e.stopPropagation()}>
                                             {['All', 'Solved', 'Unsolved'].map((stat) => (
-                                                <button key={stat} onClick={() => { setActiveStatus(stat); setOpenDropdown(null); }} className={cn("w-full text-left px-4 py-2.5 text-[13px] transition-colors hover:bg-slate-50 dark:hover:bg-white/5", activeStatus === stat ? "text-blue-500 font-bold bg-blue-500/5" : "text-slate-600 dark:text-slate-400")}>{stat}</button>
+                                                <button key={stat} onClick={() => { handleStatusChange(stat); setOpenDropdown(null); }} className={cn("w-full text-left px-4 py-2.5 text-[13px] transition-colors hover:bg-slate-50 dark:hover:bg-white/5", activeStatus === stat ? "text-blue-500 font-bold bg-blue-500/5" : "text-slate-600 dark:text-slate-400")}>{stat}</button>
                                             ))}
                                         </motion.div>
                                     )}

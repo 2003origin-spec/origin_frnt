@@ -52,7 +52,7 @@ export const TutorialOverlay: React.FC = () => {
   if (!isActive) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] pointer-events-none overflow-hidden">
+    <div className="fixed inset-0 z-[9999] pointer-events-none overflow-hidden">
       {/* Dimmed Background with SVG Mask (Spotlight) */}
       <svg className="absolute inset-0 w-full h-full pointer-events-auto">
         <defs>
@@ -96,7 +96,7 @@ export const TutorialOverlay: React.FC = () => {
             transition: { type: 'spring', stiffness: 500, damping: 35 }
           }}
           exit={{ opacity: 0, scale: 0.9, y: 10 }}
-          className="pointer-events-none fixed inset-0 z-[101] flex items-start justify-start p-4"
+          className="pointer-events-none fixed inset-0 z-[10000] flex items-start justify-start p-4"
         >
           <div 
             className="pointer-events-auto"
