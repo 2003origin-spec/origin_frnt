@@ -1,19 +1,20 @@
-'use client';
+import { redirect } from 'next/navigation';
+import { getServerUser } from '@/lib/auth-server';
+import { readStore } from '@/server/store';
+import { buildPointsSummary } from '@/server/gamification';
+import MilestonesClient from './_client';
 
-import MilestonesPage from '@/sections/MilestonesPage';
-import { useAuth } from '@/context/AuthContext';
-import { useRouter } from 'next/navigation';
+export default async function MilestonesPage() {
+  const serverUser = await getServerUser();
+  if (!serverUser) redirect('/auth?next=/milestones');
 
-export default function Milestones() {
-  const { user } = useAuth();
-  const router = useRouter();
+  let initialPoints = 0;
+  try {
+    const store = readStore();
+    initialPoints = buildPointsSummary(store, serverUser.id).totalPoints;
+  } catch {
+    // MilestonesPage will fetch points client-side via /users/points/
+  }
 
-  if (!user) return null;
-
-  return (
-    <MilestonesPage
-      userPoints={user.points || 0}
-      onBack={() => router.back()}
-    />
-  );
+  return <MilestonesClient initialPoints={initialPoints} />;
 }

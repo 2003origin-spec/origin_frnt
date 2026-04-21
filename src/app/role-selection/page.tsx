@@ -1,17 +1,6 @@
-'use client';
-
-import RoleSelection from '@/sections/RoleSelection';
-import { useRouter } from 'next/navigation';
+// Server Component — router callbacks live in _client.tsx
+import RoleSelectionClient from './_client';
 
 export default function RoleSelectionPage() {
-  const router = useRouter();
-
-  return (
-    <RoleSelection
-      onSelectRole={(role) => {
-        router.push(`/auth?role=${role}`);
-      }}
-      onBack={() => router.back()}
-    />
-  );
+  return <RoleSelectionClient />;
 }

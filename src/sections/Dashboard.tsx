@@ -65,8 +65,8 @@ interface DashboardProps {
   onNavigate: (view: ViewState) => void;
   tasks: any[];
   onAddTask: (text: string, due: string) => void;
-  onToggleTask: (id: number) => void;
-  onRemoveTask: (id: number) => void;
+  onToggleTask: (id: string) => void;
+  onRemoveTask: (id: string) => void;
 }
 
 export default function Dashboard({ user, onStartChallenge, setTimeMode, onNavigate, tasks, onAddTask, onToggleTask, onRemoveTask }: DashboardProps) {

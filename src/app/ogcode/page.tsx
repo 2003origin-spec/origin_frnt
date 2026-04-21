@@ -1,27 +1,22 @@
-'use client';
+import { redirect } from 'next/navigation';
+import { getServerUser } from '@/lib/auth-server';
+import { readStore } from '@/server/store';
+import { listOgcodeQuestions } from '@/server/assessments';
+import OGCodeClient from './_client';
+import type { PracticeQuestion } from '@/types';
 
-import OGCodeList from '@/sections/OGCodeList';
-import { useAuth } from '@/context/AuthContext';
-import { useRouter } from 'next/navigation';
+export default async function OGCodePage() {
+  const serverUser = await getServerUser();
+  if (!serverUser) redirect('/auth?next=/ogcode');
 
-export default function OGCodePage() {
-  const { user } = useAuth();
-  const router = useRouter();
+  let initialQuestions: PracticeQuestion[] = [];
+  try {
+    const store = readStore();
+    // Fetch all questions with no filters — the client-side filter UI starts at "All"
+    initialQuestions = (await listOgcodeQuestions(store, serverUser, {})) as unknown as PracticeQuestion[];
+  } catch {
+    // OGCodeList will fetch questions client-side on mount
+  }
 
-  if (!user) return null;
-
-  const handleSelectQuestion = (id: string) => {
-    if (id === 'leaderboard') {
-      router.push('/leaderboard');
-    } else {
-      router.push(`/ogcode/${id}`);
-    }
-  };
-
-  return (
-    <OGCodeList
-      user={user}
-      onSelectQuestion={handleSelectQuestion}
-    />
-  );
+  return <OGCodeClient initialQuestions={initialQuestions} />;
 }

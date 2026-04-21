@@ -343,7 +343,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
                 onClick={() => setTheme(actualTheme === 'dark' ? 'light' : 'dark')}
                 className="flex items-center gap-3 px-6 py-3 rounded-full border border-border/50 text-foreground font-black text-xs uppercase tracking-widest bg-muted/30"
               >
-                {actualTheme === 'dark' ? (
+                {mounted ? (actualTheme === 'dark' ? (
                   <>
                     <Sun className="w-4 h-4" /> Light
                   </>
@@ -351,7 +351,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
                   <>
                     <Moon className="w-4 h-4" /> Dark
                   </>
-                )}
+                )) : <><Moon className="w-4 h-4" /> Dark</>}
               </button>
             </div>
           </div>

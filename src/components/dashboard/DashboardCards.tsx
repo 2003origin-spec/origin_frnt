@@ -290,8 +290,8 @@ export function PlacesToConcentrateCard({ user }: { user?: User }) {
 interface TodoListCardProps {
     tasks: Task[];
     onAddTask: (text: string, due: string) => void;
-    onToggleTask: (id: number) => void;
-    onRemoveTask: (id: number) => void;
+    onToggleTask: (id: string) => void;
+    onRemoveTask: (id: string) => void;
     onViewAll: () => void;
 }
 

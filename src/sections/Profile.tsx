@@ -37,10 +37,27 @@ interface ProfileProps {
   onUpgrade: () => void;
 }
 
+interface ProfileStats {
+  tests_taken: number;
+  study_hours: number;
+  global_rank: number | null;
+  subject_progress: Array<{ subject: string; accuracy: number }>;
+  overall_accuracy: number;
+  achievements: {
+    first_test: boolean;
+    streak_7: boolean;
+    doubt_master: boolean;
+    top_100: boolean;
+    perfect_score: boolean;
+    streak_30: boolean;
+  };
+}
+
 export default function Profile({ user, streakData, onBack, onUpgrade }: ProfileProps) {
   const { resolvedTheme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [profileStats, setProfileStats] = useState<ProfileStats | null>(null);
 
   const [editData, setEditData] = useState({
     name: user.name,
@@ -50,16 +67,14 @@ export default function Profile({ user, streakData, onBack, onUpgrade }: Profile
   });
   const [isLoading, setIsLoading] = useState(false);
 
-  // Avoid hydration mismatch
   useEffect(() => {
     setMounted(true);
+    apiCall('/users/stats/').then((data: ProfileStats) => setProfileStats(data)).catch(() => {});
   }, []);
 
   const toggleDarkMode = () => {
     setTheme(resolvedTheme === 'dark' ? 'light' : 'dark');
   };
-
-  if (!mounted) return null;
 
   const handleSave = async () => {
     setIsLoading(true);
@@ -77,19 +92,26 @@ export default function Profile({ user, streakData, onBack, onUpgrade }: Profile
     }
   };
 
-  const subjectProgress = [
-    { subject: 'Physics', progress: 75, color: 'bg-blue-500 dark:bg-blue-600' },
-    { subject: 'Chemistry', progress: 60, color: 'bg-green-500 dark:bg-green-600' },
-    { subject: 'Mathematics', progress: 85, color: 'bg-purple-500 dark:bg-purple-600' },
-  ];
+  const SUBJECT_COLORS: Record<string, string> = {
+    Physics: 'bg-blue-500 dark:bg-blue-600',
+    Chemistry: 'bg-green-500 dark:bg-green-600',
+    Mathematics: 'bg-purple-500 dark:bg-purple-600',
+    Biology: 'bg-rose-500 dark:bg-rose-600',
+  };
+
+  const subjectProgress = (profileStats?.subject_progress ?? []).map((s) => ({
+    subject: s.subject,
+    progress: s.accuracy,
+    color: SUBJECT_COLORS[s.subject] ?? 'bg-indigo-500 dark:bg-indigo-600',
+  }));
 
   const achievements = [
-    { name: 'First Test', description: 'Completed your first test', icon: BookOpen, unlocked: true },
-    { name: '7-Day Streak', description: 'Studied 7 days in a row', icon: TrendingUp, unlocked: true },
-    { name: 'Doubt Master', description: 'Solved 50 doubts', icon: Target, unlocked: true },
-    { name: 'Top 100', description: 'Reached top 100 rank', icon: Trophy, unlocked: false },
-    { name: 'Perfect Score', description: 'Scored 100% on a test', icon: Crown, unlocked: false },
-    { name: '30-Day Streak', description: 'Studied 30 days in a row', icon: Calendar, unlocked: false },
+    { name: 'First Test', description: 'Completed your first test', icon: BookOpen, unlocked: profileStats?.achievements.first_test ?? false },
+    { name: '7-Day Streak', description: 'Studied 7 days in a row', icon: TrendingUp, unlocked: profileStats?.achievements.streak_7 ?? false },
+    { name: 'Doubt Master', description: 'Solved 50 doubts', icon: Target, unlocked: profileStats?.achievements.doubt_master ?? false },
+    { name: 'Top 100', description: 'Reached top 100 rank', icon: Trophy, unlocked: profileStats?.achievements.top_100 ?? false },
+    { name: 'Perfect Score', description: 'Scored 100% on a test', icon: Crown, unlocked: profileStats?.achievements.perfect_score ?? false },
+    { name: '30-Day Streak', description: 'Studied 30 days in a row', icon: Calendar, unlocked: profileStats?.achievements.streak_30 ?? false },
   ];
 
   return (
@@ -123,7 +145,7 @@ export default function Profile({ user, streakData, onBack, onUpgrade }: Profile
                   onClick={toggleDarkMode}
                   className="p-2.5 rounded-full bg-secondary/50 text-muted-foreground hover:text-foreground transition-all"
                 >
-                  {resolvedTheme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+                  {mounted ? (resolvedTheme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />) : <Moon className="w-5 h-5" />}
                 </button>
                 <button className="p-2.5 rounded-full bg-secondary/50 text-muted-foreground hover:text-foreground transition-all">
                   <Settings className="w-5 h-5" />
@@ -284,10 +306,10 @@ export default function Profile({ user, streakData, onBack, onUpgrade }: Profile
           {/* Stats Grid */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
             {[
-              { label: 'Tests Taken', value: '24', icon: BookOpen, color: 'text-blue-500 shadow-blue-500/10' },
-              { label: 'Study Hours', value: '156', icon: Clock, color: 'text-emerald-500 shadow-emerald-500/10' },
+              { label: 'Tests Taken', value: profileStats ? String(profileStats.tests_taken) : '—', icon: BookOpen, color: 'text-blue-500 shadow-blue-500/10' },
+              { label: 'Study Hours', value: profileStats ? String(profileStats.study_hours) : '—', icon: Clock, color: 'text-emerald-500 shadow-emerald-500/10' },
               { label: 'Current Streak', value: `${streakData.currentStreak} days`, icon: TrendingUp, color: 'text-orange-500 shadow-orange-500/10' },
-              { label: 'Global Rank', value: '#247', icon: Trophy, color: 'text-primary shadow-primary/10' },
+              { label: 'Global Rank', value: profileStats ? (profileStats.global_rank ? `#${profileStats.global_rank}` : '—') : '—', icon: Trophy, color: 'text-primary shadow-primary/10' },
             ].map((stat, index) => (
               <Card key={index} className="border border-border shadow-lg bg-card backdrop-blur-xl ring-1 ring-border hover:scale-[1.02] transition-all group cursor-default">
                 <CardContent className="p-6 text-center">
@@ -331,6 +353,9 @@ export default function Profile({ user, streakData, onBack, onUpgrade }: Profile
                 </CardHeader>
                 <CardContent className="p-8">
                   <div className="space-y-6">
+                    {subjectProgress.length === 0 && (
+                      <p className="text-sm text-muted-foreground text-center py-4">No practice data yet. Start solving questions to see your progress.</p>
+                    )}
                     {subjectProgress.map((subject) => (
                       <div key={subject.subject}>
                         <div className="flex items-center justify-between mb-2">
@@ -348,7 +373,7 @@ export default function Profile({ user, streakData, onBack, onUpgrade }: Profile
                   </div>
 
                   <div className="mt-8 p-8 rounded-2xl bg-gradient-to-br from-primary/5 to-transparent dark:from-primary/10 dark:to-secondary/20 ring-1 ring-primary/20">
-                    <h4 className="font-bold mb-2">Overall Performance</h4>
+                    <h4 className="font-bold mb-2">Overall Practice Accuracy</h4>
                     <div className="flex items-center gap-6">
                       <div className="w-24 h-24 relative flex-shrink-0">
                         <svg className="w-full h-full transform -rotate-90">
@@ -361,7 +386,7 @@ export default function Profile({ user, streakData, onBack, onUpgrade }: Profile
                             stroke="url(#indigo-grad)"
                             strokeWidth="8"
                             strokeLinecap="round"
-                            strokeDasharray={`${0.73 * 264} 264`}
+                            strokeDasharray={`${((profileStats?.overall_accuracy ?? 0) / 100) * 264} 264`}
                           />
                           <defs>
                             <linearGradient id="indigo-grad" x1="0%" y1="0%" x2="100%" y2="0%">
@@ -371,11 +396,17 @@ export default function Profile({ user, streakData, onBack, onUpgrade }: Profile
                           </defs>
                         </svg>
                         <div className="absolute inset-0 flex flex-col items-center justify-center">
-                          <span className="text-2xl font-black text-primary">73%</span>
+                          <span className="text-2xl font-black text-primary">{profileStats?.overall_accuracy ?? 0}%</span>
                         </div>
                       </div>
                       <div>
-                        <p className="text-sm text-muted-foreground leading-relaxed font-medium">You're doing great! Your performance is <span className="text-emerald-500 font-bold">15% higher</span> than last month. Keep it up!</p>
+                        <p className="text-sm text-muted-foreground leading-relaxed font-medium">
+                          {(profileStats?.overall_accuracy ?? 0) >= 70
+                            ? <>You&apos;re doing great! Keep pushing your accuracy higher.</>
+                            : (profileStats?.overall_accuracy ?? 0) > 0
+                            ? <>Keep practicing to improve your accuracy. You can do it!</>
+                            : <>Start practicing questions to track your performance here.</>}
+                        </p>
                         <Button
                           variant="ghost"
                           className="text-primary p-0 h-auto mt-2 font-bold hover:bg-transparent"

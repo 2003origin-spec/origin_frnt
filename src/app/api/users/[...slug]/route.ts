@@ -1,6 +1,6 @@
-import type { NextRequest } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 
-import { badRequest, getSlugSegments, methodNotAllowed, parseJsonBody } from "@/server/http";
+import { badRequest, getSlugSegments, parseJsonBody } from "@/server/http";
 import { handleUsersRequest } from "@/server/users";
 
 export const runtime = "nodejs";
@@ -10,13 +10,60 @@ type RouteContext = {
   params: Promise<{ slug?: string[] }>;
 };
 
-async function resolveSlug(context: RouteContext): Promise<string[]> {
-  const params = await context.params;
-  return getSlugSegments(params);
+const COOKIE_OPTS_ACCESS = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "lax" as const,
+  path: "/",
+  maxAge: 24 * 60 * 60, // 24 h — matches server/auth.ts ACCESS_TOKEN_TTL_MS
+};
+
+const COOKIE_OPTS_REFRESH = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "lax" as const,
+  path: "/",
+  maxAge: 7 * 24 * 60 * 60, // 7 d — matches REFRESH_TOKEN_TTL_MS
+};
+
+/**
+ * Mirror access + refresh tokens from the JSON response body into HttpOnly
+ * cookies so that Server Components and middleware can read them without
+ * touching localStorage.
+ */
+async function withAuthCookies(response: Response): Promise<NextResponse> {
+  let data: Record<string, unknown>;
+  try {
+    data = await response.clone().json();
+  } catch {
+    return response as NextResponse;
+  }
+
+  const access = typeof data.access === "string" ? data.access : null;
+  const refresh = typeof data.refresh === "string" ? data.refresh : null;
+
+  if (!access) return response as NextResponse;
+
+  const cookied = NextResponse.json(data, { status: response.status });
+  cookied.cookies.set("origin_access_token", access, COOKIE_OPTS_ACCESS);
+  if (refresh) {
+    cookied.cookies.set("origin_refresh_token", refresh, COOKIE_OPTS_REFRESH);
+  }
+  return cookied;
 }
 
 async function dispatch(method: string, request: NextRequest, context: RouteContext) {
-  const slug = await resolveSlug(context);
+  const params = await context.params;
+  const slug = getSlugSegments(params);
+
+  // Logout — handled here, no users.ts involvement needed
+  if (method === "POST" && slug[0] === "logout") {
+    const res = NextResponse.json({ ok: true });
+    res.cookies.set("origin_access_token", "", { ...COOKIE_OPTS_ACCESS, maxAge: 0 });
+    res.cookies.set("origin_refresh_token", "", { ...COOKIE_OPTS_REFRESH, maxAge: 0 });
+    return res;
+  }
+
   let payload: Record<string, unknown> = {};
   if (method !== "GET" && method !== "DELETE") {
     try {
@@ -25,25 +72,33 @@ async function dispatch(method: string, request: NextRequest, context: RouteCont
       return badRequest("Invalid JSON body.");
     }
   }
-  return handleUsersRequest(method, slug, request, payload);
+
+  const response = await handleUsersRequest(method, slug, request, payload);
+
+  // Auth endpoints: mirror tokens into HttpOnly cookies
+  const isLogin = method === "POST" && slug[0] === "login";
+  const isRegister = method === "POST" && slug[0] === "register";
+  const isRefresh = method === "POST" && slug[0] === "token" && slug[1] === "refresh";
+
+  if ((isLogin || isRegister || isRefresh) && response.ok) {
+    return withAuthCookies(response);
+  }
+
+  return response;
 }
 
 export async function GET(request: NextRequest, context: RouteContext) {
   return dispatch("GET", request, context);
 }
-
 export async function POST(request: NextRequest, context: RouteContext) {
   return dispatch("POST", request, context);
 }
-
 export async function PATCH(request: NextRequest, context: RouteContext) {
   return dispatch("PATCH", request, context);
 }
-
 export async function PUT(request: NextRequest, context: RouteContext) {
   return dispatch("PUT", request, context);
 }
-
-export async function DELETE() {
-  return methodNotAllowed();
+export async function DELETE(request: NextRequest, context: RouteContext) {
+  return dispatch("DELETE", request, context);
 }

@@ -7,17 +7,17 @@ import {
     Save,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { ncertBooksData, ncertClasses, ncertSubjectsByClass } from '@/data/ncertBooks';
 import type { NCERTBook } from '@/data/ncertBooks';
 import GlassSurface from '@/components/ui/GlassSurface';
 import NCERTReader from './NCERTReader';
 
 interface NCERTCornerProps {
+    catalog: NCERTBook[];
     onAddBook: (book: any, folderName: string) => void;
     existingFolders: string[];
 }
 
-export default function NCERTCorner({ onAddBook, existingFolders }: NCERTCornerProps) {
+export default function NCERTCorner({ catalog, onAddBook, existingFolders }: NCERTCornerProps) {
     const [selectedClass, setSelectedClass] = useState('');
     const [selectedSubject, setSelectedSubject] = useState('');
     const [selectedBookId, setSelectedBookId] = useState('');
@@ -25,13 +25,18 @@ export default function NCERTCorner({ onAddBook, existingFolders }: NCERTCornerP
     const [activeChapterId, setActiveChapterId] = useState<string | null>(null);
     const [isAdded, setIsAdded] = useState(false);
 
-    const subjects = selectedClass ? ncertSubjectsByClass[selectedClass] || [] : [];
-    const books = ncertBooksData.filter(
+    // Derive classes (descending) and subjects from the passed catalog
+    const classes = Array.from(new Set(catalog.map(b => b.bookClass)))
+        .sort((a, b) => Number(b) - Number(a));
+    const subjects = selectedClass
+        ? Array.from(new Set(catalog.filter(b => b.bookClass === selectedClass).map(b => b.subject)))
+        : [];
+    const books = catalog.filter(
         (b) => b.bookClass === selectedClass && b.subject === selectedSubject
     );
 
     const handleGo = () => {
-        const book = ncertBooksData.find((b) => b.id === selectedBookId);
+        const book = catalog.find((b) => b.id === selectedBookId);
         if (book) {
             // Transform NCERTBook to Book type for NCERTReader
             const readerBook = {
@@ -88,7 +93,7 @@ export default function NCERTCorner({ onAddBook, existingFolders }: NCERTCornerP
                     className="h-10 px-3 rounded text-foreground text-xs font-bold border-none outline-none min-w-[150px] bg-background/90 hover:bg-background transition-colors"
                 >
                     <option value="" className="text-foreground">..Select Class..</option>
-                    {ncertClasses.map((c) => (
+                    {classes.map((c) => (
                         <option key={c} value={c} className="text-foreground">Class {c}</option>
                     ))}
                 </select>

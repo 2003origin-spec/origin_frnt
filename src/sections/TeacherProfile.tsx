@@ -49,8 +49,6 @@ export default function TeacherProfile({ user, onBack, onLogout }: TeacherProfil
         setTheme(resolvedTheme === 'dark' ? 'light' : 'dark');
     };
 
-    if (!mounted) return null;
-
     const teachingStats = [
         { label: 'Active Classes', value: '12', icon: Users, color: 'text-blue-500 shadow-blue-500/10' },
         { label: 'Total Students', value: '450+', icon: GraduationCap, color: 'text-emerald-500 shadow-emerald-500/10' },
@@ -104,7 +102,7 @@ export default function TeacherProfile({ user, onBack, onLogout }: TeacherProfil
                                     onClick={toggleDarkMode}
                                     className="p-2.5 rounded-full bg-card text-muted-foreground hover:text-foreground transition-all border border-border"
                                 >
-                                    {resolvedTheme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+                                    {mounted ? (resolvedTheme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />) : <Moon className="w-5 h-5" />}
                                 </button>
                                 <button className="p-2.5 rounded-full bg-card text-muted-foreground hover:text-foreground transition-all border border-border">
                                     <Settings className="w-5 h-5" />

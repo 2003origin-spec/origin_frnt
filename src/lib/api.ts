@@ -7,60 +7,99 @@ function normalizeEndpoint(endpoint: string) {
     return queryParts.length ? `${normalizedPath}?${queryParts.join('?')}` : normalizedPath;
 }
 
-export const apiCall = async (endpoint: string, options: RequestInit = {}) => {
-    const token = localStorage.getItem('origin_access_token');
-    const normalizedEndpoint = normalizeEndpoint(endpoint);
+// Dispatched when the refresh token itself is expired — AuthContext listens and logs the user out
+export const AUTH_EXPIRED_EVENT = 'origin:auth:expired';
 
-    const headers = {
+async function attemptTokenRefresh(): Promise<string | null> {
+    const refreshToken = localStorage.getItem('origin_refresh_token');
+    if (!refreshToken) return null;
+
+    try {
+        const response = await fetch(`${API_URL}/users/token/refresh`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refresh: refreshToken }),
+            cache: 'no-store',
+        });
+        if (!response.ok) return null;
+        const data = await response.json();
+        if (!data.access) return null;
+        localStorage.setItem('origin_access_token', data.access);
+        if (data.refresh) localStorage.setItem('origin_refresh_token', data.refresh);
+        return data.access;
+    } catch {
+        return null;
+    }
+}
+
+function buildHeaders(token: string | null, overrides?: HeadersInit): Record<string, string> {
+    return {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...options.headers,
+        ...(overrides as Record<string, string> ?? {}),
     };
+}
 
-    console.log(`[API Call] ${options.method || 'GET'} ${normalizedEndpoint}`, { headers });
-
-    const response = await fetch(`${API_URL}${normalizedEndpoint}`, {
-        cache: 'no-store', // Prevent aggressive browser caching of GET requests
-        ...options,
-        headers,
-    });
-
-    if (!response.ok) {
-        console.error(`[API Error] ${response.status} ${normalizedEndpoint}`, {
-            status: response.status,
-            statusText: response.statusText
-        });
-        if (response.status === 401) {
-            console.warn(`[API Unauthorized] Token might be invalid or missing for ${normalizedEndpoint}`);
-            // Handle token expiration/unauthorized appropriately (e.g. refresh token logic can go here)
-            // localStorage.removeItem('origin_access_token');
-            // localStorage.removeItem('origin_refresh_token');
+function parseErrorMessage(errorData: Record<string, unknown>): string {
+    if (errorData.detail) return String(errorData.detail);
+    if (errorData.message) return String(errorData.message);
+    if (errorData.non_field_errors) {
+        const v = errorData.non_field_errors;
+        return Array.isArray(v) ? String(v[0]) : String(v);
+    }
+    const firstKey = Object.keys(errorData)[0];
+    if (firstKey) {
+        const val = errorData[firstKey];
+        const msg = Array.isArray(val) ? String(val[0]) : String(val);
+        if (!msg.toLowerCase().includes(firstKey.toLowerCase())) {
+            return `${firstKey}: ${msg}`;
         }
-        const errorData = await response.json().catch(() => ({}));
-        
-        let errorMessage = errorData.detail || errorData.message || 'API Request Failed';
-        
-        if (errorData.non_field_errors) {
-            errorMessage = Array.isArray(errorData.non_field_errors) 
-                ? errorData.non_field_errors[0] 
-                : errorData.non_field_errors;
-        } else if (typeof errorData === 'object' && !errorData.detail) {
-            // Handle field-specific errors if no general detail present
-            const firstKey = Object.keys(errorData)[0];
-            if (firstKey) {
-                const val = errorData[firstKey];
-                errorMessage = Array.isArray(val) ? val[0] : val;
-                // Prepend key name for context if it's not non_field_errors
-                if (firstKey !== 'non_field_errors' && typeof errorMessage === 'string' && !errorMessage.toLowerCase().includes(firstKey.toLowerCase())) {
-                    errorMessage = `${firstKey}: ${errorMessage}`;
-                }
-            }
-        }
-        
-        throw new Error(errorMessage);
+        return msg;
+    }
+    return 'API Request Failed';
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const apiCall = async (endpoint: string, options: RequestInit = {}): Promise<any> => {
+    const normalizedEndpoint = normalizeEndpoint(endpoint);
+
+    if (process.env.NODE_ENV === 'development') {
+        console.log(`[API Call] ${options.method || 'GET'} ${normalizedEndpoint}`);
     }
 
-    // Handle empty responses
+    const doFetch = (token: string | null) =>
+        fetch(`${API_URL}${normalizedEndpoint}`, {
+            cache: 'no-store',
+            ...options,
+            headers: buildHeaders(token, options.headers),
+        });
+
+    let token = localStorage.getItem('origin_access_token');
+    let response = await doFetch(token);
+
+    // On 401, try refreshing the access token once then retry
+    if (response.status === 401) {
+        const newToken = await attemptTokenRefresh();
+        if (newToken) {
+            token = newToken;
+            response = await doFetch(token);
+        } else {
+            // Refresh failed — session is fully expired, force logout
+            localStorage.removeItem('origin_access_token');
+            localStorage.removeItem('origin_refresh_token');
+            window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
+            throw new Error('Session expired. Please log in again.');
+        }
+    }
+
+    if (!response.ok) {
+        if (process.env.NODE_ENV === 'development') {
+            console.error(`[API Error] ${response.status} ${normalizedEndpoint}`);
+        }
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(parseErrorMessage(errorData));
+    }
+
     const text = await response.text();
     return text ? JSON.parse(text) : {};
 };

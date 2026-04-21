@@ -21,21 +21,21 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import type { User, ViewState, Book } from '@/types';
+import type { ViewState, Book } from '@/types';
+import type { NCERTBook } from '@/data/ncertBooks';
 import { mockBooks, mockNotes } from '@/data/mockData';
 import NCERTReader from '@/components/study/NCERTReader';
 import NCERTCorner from '@/components/study/NCERTCorner';
-import { ncertBooksData } from '@/data/ncertBooks';
-
+import { useAuth } from '@/context/AuthContext';
 
 interface StudyCornerProps {
-    user: User;
-    onNavigate: (view: ViewState) => void;
+    catalog: NCERTBook[];
 }
 
 type TabType = 'dashboard' | 'discover' | 'library' | 'notes' | 'bookmarks' | 'ncert';
 
-export default function StudyCorner({ user }: StudyCornerProps) {
+export default function StudyCorner({ catalog }: StudyCornerProps) {
+    const { user } = useAuth();
     const [activeTab, setActiveTab] = useState<TabType>('dashboard');
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedBook, setSelectedBook] = useState<Book | null>(null);
@@ -162,10 +162,10 @@ export default function StudyCorner({ user }: StudyCornerProps) {
     // --- Dynamic Dashboard Folder Generation ---
     const generateDashboardFolders = () => {
         const folders: any[] = [];
-        const subjects = Array.from(new Set(ncertBooksData.map((b: any) => b.subject)));
-        
+        const subjects = Array.from(new Set(catalog.map((b: any) => b.subject)));
+
         subjects.forEach((subject: string) => {
-            const subjectBooks = ncertBooksData.filter((b: any) => b.subject === subject);
+            const subjectBooks = catalog.filter((b: any) => b.subject === subject);
             const classes = Array.from(new Set(subjectBooks.map((b: any) => b.bookClass))).sort((a: any, b: any) => parseInt(b) - parseInt(a));
             
             folders.push({
@@ -387,7 +387,7 @@ export default function StudyCorner({ user }: StudyCornerProps) {
             }
         }
 
-        const bookFromMetadata = ncertBooksData.find(b => b.id === selectedPDF.bookId);
+        const bookFromMetadata = catalog.find(b => b.id === selectedPDF.bookId);
         const fallbackBasePath = selectedPDF.url
             ? selectedPDF.url.replace(/^\/books\//, '').split('/').slice(0, -1).join('/')
             : '';
@@ -616,14 +616,14 @@ export default function StudyCorner({ user }: StudyCornerProps) {
                                     Master Your Syllabus
                                 </h2>
                                 <p className="text-indigo-100/90 text-sm sm:text-xl max-w-xl font-medium">
-                                    Read, highlight, and annotate your class {user.class || '12'} books.
+                                    Read, highlight, and annotate your class {user?.class || '12'} books.
                                 </p>
                             </div>
                         </div>
 
                         <div className="mt-12">
                             <div className="flex items-center justify-between mb-8">
-                                <h3 className="text-2xl font-bold tracking-tight text-foreground">Trending in Class {user.class || '12'}</h3>
+                                <h3 className="text-2xl font-bold tracking-tight text-foreground">Trending in Class {user?.class || '12'}</h3>
                                 <Button variant="ghost" className="text-primary hover:bg-primary/10">View All</Button>
                             </div>
                             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6 gap-y-10">
@@ -721,8 +721,9 @@ export default function StudyCorner({ user }: StudyCornerProps) {
                 {/* NCERT Corner Tab */}
                 {activeTab === 'ncert' && (
                     <NCERTCorner
+                        catalog={catalog}
                         onAddBook={handleAddNCERTBook}
-                                        existingFolders={dashboardFolders.map(s => s.name)}
+                        existingFolders={dashboardFolders.map(s => s.name)}
                     />
                 )}
 

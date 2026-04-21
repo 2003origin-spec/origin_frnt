@@ -929,9 +929,8 @@ function normalizeAnswer(payload: QuestionAnswerPayload | PracticeSubmissionPayl
       payload.matrix_pairs ??
       null,
     answerText:
-      payload.answerText ??
-      payload.answer_text ??
-      null,
+      (payload.answerText ?? payload.answer_text ?? null)
+        ?.trim().replace(/\s+/g, ' ') ?? null,
     timeSpent:
       payload.timeSpent ??
       payload.time_spent ??
@@ -2307,20 +2306,12 @@ export function getOgcodeSubjectRanks(store: AppStore, user: StoredUser) {
 }
 
 async function buildLeaderboardEntries(store: AppStore, user: StoredUser, subject: string | null) {
-  const attemptedQuestions = await buildQuestionLookup(
-    store,
-    store.practiceAttempts.filter((attempt) => attempt.userId === user.id).map((attempt) => attempt.questionId),
-  );
-  const currentUserAttempts = store.practiceAttempts.filter((attempt) => {
-    if (attempt.userId !== user.id || !attempt.isCorrect) {
-      return false;
-    }
-    if (!subject) {
-      return true;
-    }
-    return attemptedQuestions.get(attempt.questionId)?.subject === subject;
-  });
-  const uniqueSolved = new Set(currentUserAttempts.map((attempt) => attempt.questionId)).size;
+  // Use pre-aggregated subjectRanks instead of scanning all practiceAttempts (O(subjects) vs O(attempts))
+  const userRanks = store.subjectRanks.filter((r) => r.userId === user.id);
+  const uniqueSolved = subject
+    ? (userRanks.find((r) => r.subject === subject)?.questionsSolved ?? 0)
+    : userRanks.reduce((sum, r) => sum + r.questionsSolved, 0);
+
   const dailyAnalytics = buildTimeAnalytics(store, user.id);
   const totalMinutes = dailyAnalytics.reduce(
     (sum, row) => sum + row.practiceTime + row.webpageTime + row.pomodoroTime,

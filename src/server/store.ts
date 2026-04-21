@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import bcrypt from "bcryptjs";
+import { Mutex } from "async-mutex";
 
 import {
   dppQuestions,
@@ -369,6 +371,19 @@ export interface StoredAuthSession {
   refreshToken: string;
   userId: string;
   createdAt: string;
+  accessTokenExpiresAt: string;
+  refreshTokenExpiresAt: string;
+}
+
+export interface StoredTask {
+  id: string;
+  userId: string;
+  text: string;
+  completed: boolean;
+  due: string;
+  createdAt: string;
+  category?: string;
+  priority?: 'low' | 'medium' | 'high';
 }
 
 export interface LeaderboardSeedEntry {
@@ -407,6 +422,7 @@ export interface AppStore {
   originAiReminders: StoredOriginAiReminder[];
   authSessions: StoredAuthSession[];
   leaderboardSeed: LeaderboardSeedEntry[];
+  tasks: StoredTask[];
 }
 
 const STORE_DIR = path.join(process.cwd(), ".origin-dev");
@@ -534,13 +550,30 @@ function createSeedUser(config: SeedUserConfig): StoredUser {
   };
 }
 
+// Plaintext passwords for seed users — used only to (re-)hash on store init.
+// Never stored or transmitted in plaintext.
+const SEED_PASSWORDS: Record<string, string> = {
+  user_student_demo: "password123",
+  user_teacher_demo: "password123",
+  user_student_ayush: "Ap@1234",
+  user_teacher_ayush: "Ap@1234",
+  user_student_tohin: "123456",
+  user_teacher_tohin: "123456",
+};
+
+function hashSeedPassword(id: string): string {
+  const plain = SEED_PASSWORDS[id];
+  if (!plain) throw new Error(`No seed password defined for user id: ${id}`);
+  return bcrypt.hashSync(plain, 10);
+}
+
 function buildSeedUsers(joinedAt: string): StoredUser[] {
   return [
     createSeedUser({
       id: "user_student_demo",
       name: "Demo Learner",
       email: "student@origin.test",
-      password: "password123",
+      password: hashSeedPassword("user_student_demo"),
       role: "student",
       studentClass: "11",
       fieldOfInterest: "Engineering",
@@ -555,7 +588,7 @@ function buildSeedUsers(joinedAt: string): StoredUser[] {
       id: "user_teacher_demo",
       name: "Demo Teacher",
       email: "teacher@origin.test",
-      password: "password123",
+      password: hashSeedPassword("user_teacher_demo"),
       role: "teacher",
       streak: 3,
       totalStudyTime: 120,
@@ -570,7 +603,7 @@ function buildSeedUsers(joinedAt: string): StoredUser[] {
       id: "user_student_ayush",
       name: "Ayush Student",
       email: "ayushzz0306@gmail.com",
-      password: "Ap@1234",
+      password: hashSeedPassword("user_student_ayush"),
       role: "student",
       studentClass: "12",
       fieldOfInterest: "Engineering",
@@ -582,7 +615,7 @@ function buildSeedUsers(joinedAt: string): StoredUser[] {
       id: "user_teacher_ayush",
       name: "Ayush Teacher",
       email: "ayushzz0306@gmail.com",
-      password: "Ap@1234",
+      password: hashSeedPassword("user_teacher_ayush"),
       role: "teacher",
       joinedAt,
       yearsOfExperience: "3+",
@@ -593,7 +626,7 @@ function buildSeedUsers(joinedAt: string): StoredUser[] {
       id: "user_student_tohin",
       name: "Tohin Student",
       email: "tohin1400@gmail.com",
-      password: "123456",
+      password: hashSeedPassword("user_student_tohin"),
       role: "student",
       studentClass: "12",
       fieldOfInterest: "Engineering",
@@ -605,7 +638,7 @@ function buildSeedUsers(joinedAt: string): StoredUser[] {
       id: "user_teacher_tohin",
       name: "Tohin Teacher",
       email: "tohin1400@gmail.com",
-      password: "123456",
+      password: hashSeedPassword("user_teacher_tohin"),
       role: "teacher",
       joinedAt,
       yearsOfExperience: "4+",
@@ -619,7 +652,10 @@ function ensureSeedUsers(store: AppStore): boolean {
   let changed = false;
   const joinedAt = nowIso();
 
-  for (const seedUser of buildSeedUsers(joinedAt)) {
+  for (const [id, plainPassword] of Object.entries(SEED_PASSWORDS)) {
+    const seedUser = buildSeedUsers(joinedAt).find((u) => u.id === id);
+    if (!seedUser) continue;
+
     const existing = store.users.find(
       (entry) => entry.email.toLowerCase() === seedUser.email.toLowerCase() && entry.role === seedUser.role,
     );
@@ -630,8 +666,11 @@ function ensureSeedUsers(store: AppStore): boolean {
       continue;
     }
 
-    if (existing.password !== seedUser.password) {
-      existing.password = seedUser.password;
+    // Re-hash if: stored password is plaintext (no bcrypt prefix) or doesn't match known plain password
+    const storedIsHashed = existing.password.startsWith("$2");
+    const passwordStillValid = storedIsHashed && bcrypt.compareSync(plainPassword, existing.password);
+    if (!passwordStillValid) {
+      existing.password = bcrypt.hashSync(plainPassword, 10);
       changed = true;
     }
   }
@@ -966,6 +1005,7 @@ function buildSeedStore(): AppStore {
     originAiReminders: [],
     authSessions: [],
     leaderboardSeed,
+    tasks: [],
   };
 }
 
@@ -1025,6 +1065,7 @@ function ensureAllCollections(store: AppStore): boolean {
     "originAiReminders",
     "authSessions",
     "leaderboardSeed",
+    "tasks",
   ];
 
   for (const key of collections) {
@@ -1064,6 +1105,10 @@ export function writeStore(store: AppStore): void {
   fs.writeFileSync(STORE_PATH, JSON.stringify(store, null, 2), "utf8");
 }
 
+// Serializes all async read-modify-write operations to prevent concurrent request races.
+// Sync withStore() is safe without a mutex because JS is single-threaded for sync code.
+const storeMutex = new Mutex();
+
 export function withStore<T>(mutate: (store: AppStore) => T): T {
   const store = readStore();
   const result = mutate(store);
@@ -1072,10 +1117,12 @@ export function withStore<T>(mutate: (store: AppStore) => T): T {
 }
 
 export async function withStoreAsync<T>(mutate: (store: AppStore) => Promise<T>): Promise<T> {
-  const store = readStore();
-  const result = await mutate(store);
-  writeStore(store);
-  return result;
+  return storeMutex.runExclusive(async () => {
+    const store = readStore();
+    const result = await mutate(store);
+    writeStore(store);
+    return result;
+  });
 }
 
 export function resetStore(): AppStore {

@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -24,18 +24,27 @@ import type { User } from '@/types';
 
 interface LeaderboardProps {
   currentUser: User;
+  /** Pre-loaded by the Server Component for the 'overall' subject */
+  initialLeaderboard?: unknown[];
+  initialMyRank?: number | null;
 }
 
-export default function Leaderboard({ currentUser }: LeaderboardProps) {
+export default function Leaderboard({ currentUser, initialLeaderboard, initialMyRank }: LeaderboardProps) {
   const [activeTab, setActiveTab] = useState('global');
   const [selectedSubject, setSelectedSubject] = useState<string>('overall');
-  const [leaderboard, setLeaderboard] = useState<any[]>([]);
-  const [myRank, setMyRank] = useState<number | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [leaderboard, setLeaderboard] = useState<any[]>((initialLeaderboard as any[]) ?? []);
+  const [myRank, setMyRank] = useState<number | null>(initialMyRank ?? null);
+  const [isLoading, setIsLoading] = useState(!initialLeaderboard);
+  // Track whether we can skip the first 'overall' fetch (SSR already provided it)
+  const skipInitialFetch = useRef(!!initialLeaderboard);
 
   useEffect(() => {
+    if (skipInitialFetch.current && selectedSubject === 'overall') {
+      skipInitialFetch.current = false;
+      return;
+    }
     fetchLeaderboard();
-  }, [selectedSubject]);
+  }, [selectedSubject]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchLeaderboard = async () => {
     setIsLoading(true);

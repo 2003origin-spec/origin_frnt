@@ -18,6 +18,22 @@ export default function ResultPage({ params }: { params: Promise<{ id: string }>
 
   useEffect(() => {
     const fetchResult = async () => {
+      // Try sessionStorage first — set by TestPage right before navigation
+      const cached = sessionStorage.getItem(`origin_test_result_${id}`);
+      if (cached) {
+        try {
+          const parsed: TestResult = JSON.parse(cached);
+          setTestResult(parsed);
+          setTestHistory([parsed]);
+          sessionStorage.removeItem(`origin_test_result_${id}`);
+          setIsLoading(false);
+          return;
+        } catch {
+          sessionStorage.removeItem(`origin_test_result_${id}`);
+        }
+      }
+
+      // Fallback: fetch from API (e.g. direct page load or refresh)
       try {
         const results = await apiCall(`/assessments/tests/${id}/results/`);
         if (results && results.length > 0) {
@@ -27,8 +43,7 @@ export default function ResultPage({ params }: { params: Promise<{ id: string }>
           toast.error('No results found for this test.');
           router.push('/tests');
         }
-      } catch (error) {
-        console.error('Failed to fetch test result:', error);
+      } catch {
         toast.error('Error loading test analysis.');
         router.push('/tests');
       } finally {

@@ -151,6 +151,10 @@ async function analyticsRequest<TResponse, TBody extends object>(
     return null;
   }
 
+  if (!process.env.ANALYTICS_SERVICE_TOKEN) {
+    throw new Error('[analytics-client] ANALYTICS_SERVICE_TOKEN must be set when ANALYTICS_SERVICE_URL is configured');
+  }
+
   const timeoutMs = Number(process.env.ANALYTICS_SERVICE_TIMEOUT_MS ?? 7000);
   const controller = new AbortController();
   const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
@@ -166,10 +170,24 @@ async function analyticsRequest<TResponse, TBody extends object>(
 
     if (!response.ok) {
       const message = await response.text().catch(() => "");
-      throw new Error(message || `Analytics service request failed for ${path}.`);
+      const errorMsg = message || `Analytics service request failed for ${path}.`;
+      console.error('[analytics-client] Analytics service returned error status — falling back', {
+        status: response.status,
+        path,
+      });
+      throw new Error(errorMsg);
     }
 
     return (await response.json()) as TResponse;
+  } catch (err) {
+    if (err instanceof Error && err.message.includes('Analytics service')) {
+      throw err;
+    }
+    console.error('[analytics-client] Analytics service call failed — falling back', {
+      error: err instanceof Error ? err.message : String(err),
+      path,
+    });
+    throw err;
   } finally {
     clearTimeout(timeoutHandle);
   }

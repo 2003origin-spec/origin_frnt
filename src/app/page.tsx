@@ -1,24 +1,6 @@
-'use client';
+// Server Component — auth check + redirect logic live in _client.tsx and middleware.ts
+import HomeClient from './_client';
 
-import LandingPage from '@/sections/LandingPage';
-import { useAuth } from '@/context/AuthContext';
-import { useRouter } from 'next/navigation';
-
-export default function Home() {
-  const { user } = useAuth();
-  const router = useRouter();
-
-  const handleGetStarted = () => {
-    if (user) {
-      router.push('/dashboard');
-    } else {
-      router.push('/role-selection');
-    }
-  };
-
-  return (
-    <main className="relative min-h-screen">
-      <LandingPage onGetStarted={handleGetStarted} />
-    </main>
-  );
+export default function HomePage() {
+  return <HomeClient />;
 }

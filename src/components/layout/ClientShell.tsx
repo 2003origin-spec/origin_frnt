@@ -56,7 +56,7 @@ export default function ClientShell({ children }: { children: React.ReactNode })
   const currentTheme = (mounted ? resolvedTheme : 'dark') || 'dark';
   
   // Show Navbar on more paths if needed
-  const showNavbar = user && user.role === 'student' && !isNavigationLocked && !noNavbarPaths.includes(pathname) && !isSpecialPath;
+  const showNavbar = mounted && !!user && user.role === 'student' && !isNavigationLocked && !noNavbarPaths.includes(pathname) && !isSpecialPath;
 
   return (
     <TutorialProvider>

@@ -98,6 +98,10 @@ export async function gradePracticeAnswerWithService(
     return null;
   }
 
+  if (!process.env.GRADER_SERVICE_TOKEN) {
+    throw new Error('[grader-client] GRADER_SERVICE_TOKEN must be set when GRADER_SERVICE_URL is configured');
+  }
+
   if (question.questionType !== "subjective" && question.questionType !== "numerical") {
     return null;
   }
@@ -116,6 +120,10 @@ export async function gradePracticeAnswerWithService(
     });
 
     if (!response.ok) {
+      console.error('[grader-client] Remote grader returned error status — falling back to local grading', {
+        status: response.status,
+        questionId: question.id,
+      });
       return null;
     }
 
@@ -157,7 +165,11 @@ export async function gradePracticeAnswerWithService(
         evaluation_source: "python_grader",
       },
     };
-  } catch {
+  } catch (err) {
+    console.error('[grader-client] Remote grader call failed — falling back to local grading', {
+      error: err instanceof Error ? err.message : String(err),
+      questionId: question.id,
+    });
     return null;
   } finally {
     clearTimeout(timeoutHandle);

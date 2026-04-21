@@ -1,34 +1,22 @@
-'use client';
-
-import TestList from '@/sections/TestList';
-import { useAuth } from '@/context/AuthContext';
-import { useRouter } from 'next/navigation';
-import { useState } from 'react';
-import { apiCall } from '@/lib/api';
-import { toast } from 'sonner';
+import { redirect } from 'next/navigation';
+import { getServerUser } from '@/lib/auth-server';
+import { readStore } from '@/server/store';
+import { listTests } from '@/server/assessments';
+import TestsClient from './_client';
 import type { Test } from '@/types';
 
-export default function TestsPage() {
-  const { user } = useAuth();
-  const router = useRouter();
+export default async function TestsPage() {
+  const serverUser = await getServerUser();
+  if (!serverUser) redirect('/auth?next=/tests');
 
-  if (!user) return null;
+  let initialTests: Test[] = [];
+  try {
+    const store = readStore();
+    // Direct server function call — zero HTTP round-trip
+    initialTests = (await listTests(store, serverUser)) as unknown as Test[];
+  } catch {
+    // Fall back gracefully; TestList will fetch client-side on mount
+  }
 
-  const handleStartTest = (test: Test) => {
-    router.push(`/tests/${test.id}`);
-  };
-
-  const handleViewAnalysis = async (test: Test) => {
-    // In many apps, this would navigate to a results page
-    router.push(`/tests/${test.id}/result`);
-  };
-
-  return (
-    <TestList
-      user={user}
-      onStartTest={handleStartTest}
-      onViewAnalysis={handleViewAnalysis}
-      onBack={() => router.push('/dashboard')}
-    />
-  );
+  return <TestsClient initialTests={initialTests} />;
 }

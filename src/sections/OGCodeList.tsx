@@ -18,6 +18,8 @@ import { toast } from 'sonner';
 interface OGCodeListProps {
     onSelectQuestion: (questionId: string) => void;
     user: User;
+    /** Pre-loaded question catalog from the Server Component — skips the first questions fetch */
+    initialQuestions?: PracticeQuestion[];
 }
 
 const SUBJECTS = [
@@ -77,7 +79,7 @@ interface UserStats {
     totalAttempts: number;
 }
 
-export default function OGCodeList({ onSelectQuestion, user }: OGCodeListProps) {
+export default function OGCodeList({ onSelectQuestion, user, initialQuestions }: OGCodeListProps) {
     const router = useRouter();
     const searchParams = useSearchParams();
 
@@ -87,9 +89,11 @@ export default function OGCodeList({ onSelectQuestion, user }: OGCodeListProps) 
     const initialStatus = searchParams.get('status') || 'All';
     const initialChapters = searchParams.get('chapters')?.split(',').filter(Boolean) || [];
 
-    const [questions, setQuestions] = useState<PracticeQuestion[]>([]);
+    const [questions, setQuestions] = useState<PracticeQuestion[]>(initialQuestions ?? []);
     const [subjectRanks, setSubjectRanks] = useState<SubjectRank[]>([]);
     const [loading, setLoading] = useState(true);
+    // When true the first fetchData call skips re-fetching questions (SSR already provided them)
+    const skipQuestionsFetch = useRef(!!initialQuestions);
     const [userStats, setUserStats] = useState<UserStats | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [activeSubject, setActiveSubject] = useState(initialSubject);
@@ -170,13 +174,20 @@ export default function OGCodeList({ onSelectQuestion, user }: OGCodeListProps) 
 
     const fetchData = useCallback(async () => {
         setLoading(true);
+        const useSSRQuestions = skipQuestionsFetch.current;
+        skipQuestionsFetch.current = false; // only skip on the very first call
         try {
             const [qData, rData, statsData] = await Promise.all([
-                apiCall('/assessments/ogcode/questions/'),
+                // Skip question fetch when SSR already provided the catalog
+                useSSRQuestions
+                    ? Promise.resolve(null)
+                    : apiCall('/assessments/ogcode/questions/'),
                 apiCall(`/assessments/ogcode/leaderboard/subjects/?time_range=${timeRange}`),
                 apiCall('/assessments/ogcode/user-stats/'),
             ]);
-            setQuestions(Array.isArray(qData) ? qData : []);
+            if (!useSSRQuestions) {
+                setQuestions(Array.isArray(qData) ? qData : []);
+            }
             setSubjectRanks(Array.isArray(rData) ? rData : []);
             setUserStats(statsData);
         } catch (error) {
@@ -185,7 +196,7 @@ export default function OGCodeList({ onSelectQuestion, user }: OGCodeListProps) 
         } finally {
             setLoading(false);
         }
-    }, [timeRange]);
+    }, [timeRange]); // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => {
         fetchData();

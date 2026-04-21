@@ -35,14 +35,16 @@ interface TestListProps {
   onViewAnalysis: (test: Test) => void;
   onBack: () => void;
   user: User;
+  /** Pre-loaded by the Server Component — skips the initial client-side fetch */
+  initialTests?: Test[];
 }
 
-export default function TestList({ onStartTest, onViewAnalysis, onBack, user }: TestListProps) {
-  const [tests, setTests] = useState<Test[]>([]);
+export default function TestList({ onStartTest, onViewAnalysis, onBack, user, initialTests }: TestListProps) {
+  const [tests, setTests] = useState<Test[]>(initialTests ?? []);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSubject, setSelectedSubject] = useState('all');
   const [selectedDifficulty, setSelectedDifficulty] = useState('all');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!initialTests);
 
   const [customTestConfig, setCustomTestConfig] = useState({
     subject: 'mixed',
@@ -75,6 +77,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user }: 
   };
 
   useEffect(() => {
+    if (initialTests) return; // SSR already provided the data — skip client fetch
     const fetchTests = async () => {
       try {
         const data = await apiCall('/assessments/tests/');
@@ -86,7 +89,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user }: 
       }
     };
     fetchTests();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const filteredTests = tests.filter((test) => {
     const matchesSearch = test.title.toLowerCase().includes(searchQuery.toLowerCase()) ||

@@ -18,17 +18,10 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
   useEffect(() => {
     const fetchTest = async () => {
       try {
-        const tests = await apiCall('/assessments/tests/');
-        const foundTest = tests.find((t: Test) => t.id.toString() === id);
-        if (foundTest) {
-          setTest(foundTest);
-        } else {
-          toast.error('Test not found');
-          router.push('/tests');
-        }
-      } catch (error) {
-        console.error('Failed to fetch test:', error);
-        toast.error('Error loading test');
+        const test = await apiCall(`/assessments/tests/${id}`);
+        setTest(test);
+      } catch {
+        toast.error('Test not found');
         router.push('/tests');
       } finally {
         setIsLoading(false);
@@ -38,7 +31,7 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
   }, [id, router]);
 
   const handleComplete = async (result: TestResult) => {
-    // In original project, this navigated to test-result
+    sessionStorage.setItem(`origin_test_result_${id}`, JSON.stringify(result));
     await refreshUser();
     router.push(`/tests/${id}/result`);
   };

@@ -1,4 +1,7 @@
-import { createAuthSession, requireUserFromRequest } from "@/server/auth";
+import bcrypt from "bcryptjs";
+import { createAuthSession, isRefreshTokenValid, rotateAccessToken, requireUserFromRequest, resolveTokenToUser, refreshAccessToken, createAuthSessionAsync } from "@/server/auth";
+import { isUserPostgresConfigured } from "@/server/user-postgres";
+import { dbLoginUser, dbRegisterUser, dbGetTasks, dbCreateTask, dbUpdateTask, dbDeleteTask } from "@/server/db-users";
 import {
   awardPoints,
   buildContributionData,
@@ -9,8 +12,8 @@ import {
   recordTime,
   updateUserStreak,
 } from "@/server/gamification";
-import { badRequest, created, notFound, ok, unauthorized } from "@/server/http";
-import type { AppStore } from "@/server/store";
+import { badRequest, created, noContent, notFound, ok, unauthorized } from "@/server/http";
+import type { AppStore, StoredTask } from "@/server/store";
 import { createId, withStore } from "@/server/store";
 
 type UserPayload = Record<string, unknown>;
@@ -146,10 +149,38 @@ async function handleLogin(payload: UserPayload) {
     return badRequest('Must include "email" and "password".');
   }
 
+  // DB-backed login when Postgres is configured
+  if (isUserPostgresConfigured()) {
+    try {
+      const rolesToTry = role ? [role] : ["student", "teacher"];
+      let dbResult = null;
+      for (const r of rolesToTry) {
+        const res = await dbLoginUser(email, password, r);
+        if (res) {
+          if (dbResult) {
+            return badRequest("Multiple accounts use this email. Please select Student or Teacher before logging in.");
+          }
+          dbResult = res;
+        }
+      }
+      if (dbResult) {
+        // Mirror session to flat-file so gamification endpoints remain functional
+        return withStore((store) => {
+          store.authSessions = store.authSessions.filter((s) => s.userId !== dbResult!.user.id);
+          store.authSessions.push(dbResult!.session);
+          const userData = serializeUser(store, dbResult!.user.id);
+          return ok({ user: userData, refresh: dbResult!.session.refreshToken, access: dbResult!.session.accessToken });
+        });
+      }
+      // No matching DB user — fall through to flat-file (existing users before migration)
+    } catch (err) {
+      console.error('[users] DB login failed, falling back to flat-file', err instanceof Error ? err.message : err);
+    }
+  }
+
   return withStore((store) => {
-    const matchingUsers = store.users.filter(
-      (entry) => entry.email.toLowerCase() === email && entry.password === password,
-    );
+    const emailMatches = store.users.filter((entry) => entry.email.toLowerCase() === email);
+    const matchingUsers = emailMatches.filter((entry) => bcrypt.compareSync(password, entry.password));
     const eligibleUsers = role ? matchingUsers.filter((entry) => entry.role === role) : matchingUsers;
 
     if (!eligibleUsers.length) {
@@ -160,18 +191,11 @@ async function handleLogin(payload: UserPayload) {
     }
 
     const user = eligibleUsers[0];
-
     const session = createAuthSession(store, user.id);
     const userData = serializeUser(store, user.id);
-    if (!userData) {
-      return notFound("User not found.");
-    }
+    if (!userData) return notFound("User not found.");
 
-    return ok({
-      user: userData,
-      refresh: session.refreshToken,
-      access: session.accessToken,
-    });
+    return ok({ user: userData, refresh: session.refreshToken, access: session.accessToken });
   });
 }
 
@@ -185,6 +209,26 @@ async function handleRegister(payload: UserPayload) {
     return badRequest('Must include "email" and "password".');
   }
 
+  // DB-backed registration when Postgres is configured
+  if (isUserPostgresConfigured()) {
+    try {
+      const { user: dbUser, session } = await dbRegisterUser({ name, email, password, role });
+      // Dual-write to flat-file so gamification endpoints work immediately after registration
+      return withStore((store) => {
+        store.users.push({ ...dbUser, password: dbUser.password });
+        store.authSessions = store.authSessions.filter((s) => s.userId !== dbUser.id);
+        store.authSessions.push(session);
+        const userData = serializeUser(store, dbUser.id);
+        return created({ user: userData, refresh: session.refreshToken, access: session.accessToken });
+      });
+    } catch (err) {
+      if (err instanceof Error && err.message.includes("already exists")) {
+        return badRequest(err.message);
+      }
+      console.error('[users] DB register failed, falling back to flat-file', err instanceof Error ? err.message : err);
+    }
+  }
+
   return withStore((store) => {
     if (store.users.some((entry) => entry.email.toLowerCase() === email)) {
       return badRequest("A user with this email already exists.");
@@ -195,7 +239,7 @@ async function handleRegister(payload: UserPayload) {
       id: userId,
       name,
       email,
-      password,
+      password: bcrypt.hashSync(password, 10),
       role: role === "teacher" || role === "admin" ? role : "student",
       studentClass: null,
       fieldOfInterest: null,
@@ -234,16 +278,9 @@ async function handleRefresh(payload: UserPayload) {
     return badRequest("Refresh token is required.");
   }
 
-  return withStore((store) => {
-    const session = store.authSessions.find((entry) => entry.refreshToken === refreshToken);
-    if (!session) {
-      return unauthorized("Token is invalid or expired.");
-    }
-
-    session.accessToken = createId("access");
-    session.createdAt = new Date().toISOString();
-    return ok({ access: session.accessToken, refresh: session.refreshToken });
-  });
+  const tokens = await refreshAccessToken(refreshToken);
+  if (!tokens) return unauthorized("Token is invalid or expired.");
+  return ok({ access: tokens.accessToken, refresh: tokens.refreshToken });
 }
 
 async function handleMeGet(request: Request) {
@@ -318,6 +355,95 @@ async function handlePointsGet(request: Request) {
       return unauthorized();
     }
     return ok(buildPointsSummary(store, user.id));
+  });
+}
+
+async function handleStatsGet(request: Request) {
+  return withStore((store) => {
+    const user = requireUserFromRequest(store, request);
+    if (!user) {
+      return unauthorized();
+    }
+
+    // Tests taken
+    const testsTaken = store.testResults.filter((r) => r.userId === user.id).length;
+
+    // Study hours (totalStudyTime is in minutes)
+    const studyHours = Math.round(user.totalStudyTime / 60);
+
+    // Streak data
+    const streak = getOrCreateStreak(store, user.id);
+
+    // Per-subject accuracy from practice attempts
+    const subjectStats: Record<string, { correct: number; total: number }> = {};
+
+    // Pre-populate with user's enrolled subjects at 0% so they always appear
+    for (const s of user.subjects) {
+      const key = s.toLowerCase();
+      subjectStats[key] = { correct: 0, total: 0 };
+    }
+
+    for (const attempt of store.practiceAttempts.filter((a) => a.userId === user.id)) {
+      const question = store.questions.find((q) => q.id === attempt.questionId);
+      if (!question) continue;
+      const subj = question.subject.toLowerCase();
+      if (!subjectStats[subj]) {
+        subjectStats[subj] = { correct: 0, total: 0 };
+      }
+      subjectStats[subj].total += 1;
+      if (attempt.isCorrect) {
+        subjectStats[subj].correct += 1;
+      }
+    }
+
+    const subjectProgress = Object.entries(subjectStats).map(([subject, data]) => ({
+      subject: subject.charAt(0).toUpperCase() + subject.slice(1),
+      accuracy: data.total > 0 ? Math.round((data.correct / data.total) * 100) : 0,
+    }));
+
+    // Overall accuracy
+    const userAttempts = store.practiceAttempts.filter((a) => a.userId === user.id);
+    const overallAccuracy =
+      userAttempts.length > 0
+        ? Math.round((userAttempts.filter((a) => a.isCorrect).length / userAttempts.length) * 100)
+        : 0;
+
+    // Global rank by unique correct questions solved
+    const userSolvedCounts: Record<string, Set<string>> = {};
+    for (const attempt of store.practiceAttempts) {
+      if (attempt.isCorrect) {
+        if (!userSolvedCounts[attempt.userId]) {
+          userSolvedCounts[attempt.userId] = new Set();
+        }
+        userSolvedCounts[attempt.userId].add(attempt.questionId);
+      }
+    }
+    const mySolvedCount = userSolvedCounts[user.id]?.size ?? 0;
+    const sortedByRank = Object.entries(userSolvedCounts)
+      .map(([uid, qs]) => ({ uid, count: qs.size }))
+      .sort((a, b) => b.count - a.count);
+    const myRankIndex = sortedByRank.findIndex((e) => e.uid === user.id);
+    const globalRank = mySolvedCount > 0 ? myRankIndex + 1 : null;
+
+    // Achievements
+    const doubtCount = store.doubtSessions.filter((s) => s.userId === user.id).length;
+    const hasPerfectScore = store.testResults.some((r) => r.userId === user.id && r.percentage >= 100);
+
+    return ok({
+      tests_taken: testsTaken,
+      study_hours: studyHours,
+      global_rank: globalRank,
+      subject_progress: subjectProgress,
+      overall_accuracy: overallAccuracy,
+      achievements: {
+        first_test: testsTaken > 0,
+        streak_7: streak.longestStreak >= 7 || streak.currentStreak >= 7,
+        doubt_master: doubtCount >= 50,
+        top_100: globalRank !== null && globalRank <= 100,
+        perfect_score: hasPerfectScore,
+        streak_30: streak.longestStreak >= 30 || streak.currentStreak >= 30,
+      },
+    });
   });
 }
 
@@ -492,6 +618,124 @@ async function handlePomodoroUpdate(request: Request, payload: UserPayload, sess
   });
 }
 
+function serializeTask(task: StoredTask) {
+  return {
+    id: task.id,
+    text: task.text,
+    completed: task.completed,
+    due: task.due,
+    createdAt: task.createdAt,
+    category: task.category ?? null,
+    priority: task.priority ?? null,
+  };
+}
+
+async function handleTaskList(request: Request) {
+  const user = await resolveTokenToUser(request);
+  if (!user) return unauthorized();
+
+  if (isUserPostgresConfigured()) {
+    try {
+      const tasks = await dbGetTasks(user.id);
+      return ok(tasks.map(serializeTask));
+    } catch (err) {
+      console.error('[users] DB task list failed, falling back to flat-file', err instanceof Error ? err.message : err);
+    }
+  }
+
+  return withStore((store) => {
+    const tasks = store.tasks
+      .filter((t) => t.userId === user.id)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return ok(tasks.map(serializeTask));
+  });
+}
+
+async function handleTaskCreate(request: Request, payload: UserPayload) {
+  const text = asString(payload.text)?.trim();
+  const due = asString(payload.due);
+  if (!text || !due) return badRequest("text and due are required.");
+
+  const user = await resolveTokenToUser(request);
+  if (!user) return unauthorized();
+
+  if (isUserPostgresConfigured()) {
+    try {
+      const task = await dbCreateTask(user.id, text, due, asString(payload.category) ?? undefined, asString(payload.priority) ?? undefined);
+      return created(serializeTask(task));
+    } catch (err) {
+      console.error('[users] DB task create failed, falling back to flat-file', err instanceof Error ? err.message : err);
+    }
+  }
+
+  return withStore((store) => {
+    const task: StoredTask = {
+      id: createId("task"),
+      userId: user.id,
+      text,
+      completed: false,
+      due,
+      createdAt: new Date().toISOString(),
+      category: asString(payload.category) ?? undefined,
+      priority: (asString(payload.priority) as StoredTask['priority']) ?? undefined,
+    };
+    store.tasks.push(task);
+    return created(serializeTask(task));
+  });
+}
+
+async function handleTaskUpdate(request: Request, payload: UserPayload, taskId: string) {
+  const user = await resolveTokenToUser(request);
+  if (!user) return unauthorized();
+
+  if (isUserPostgresConfigured()) {
+    try {
+      const patch: { completed?: boolean; text?: string; due?: string } = {};
+      if (typeof payload.completed === 'boolean') patch.completed = payload.completed;
+      if (asString(payload.text)?.trim()) patch.text = asString(payload.text)!.trim();
+      if (asString(payload.due)) patch.due = asString(payload.due)!;
+      const updated = await dbUpdateTask(taskId, user.id, patch);
+      if (!updated) return notFound("Task not found.");
+      return ok(serializeTask(updated));
+    } catch (err) {
+      console.error('[users] DB task update failed, falling back to flat-file', err instanceof Error ? err.message : err);
+    }
+  }
+
+  return withStore((store) => {
+    const task = store.tasks.find((t) => t.id === taskId && t.userId === user.id);
+    if (!task) return notFound("Task not found.");
+    if (typeof payload.completed === 'boolean') task.completed = payload.completed;
+    if (asString(payload.text)?.trim()) task.text = asString(payload.text)!.trim();
+    if (asString(payload.due)) task.due = asString(payload.due)!;
+    if (asString(payload.category) !== null) task.category = asString(payload.category) ?? undefined;
+    if (asString(payload.priority)) task.priority = asString(payload.priority) as StoredTask['priority'];
+    return ok(serializeTask(task));
+  });
+}
+
+async function handleTaskDelete(request: Request, taskId: string) {
+  const user = await resolveTokenToUser(request);
+  if (!user) return unauthorized();
+
+  if (isUserPostgresConfigured()) {
+    try {
+      const deleted = await dbDeleteTask(taskId, user.id);
+      if (!deleted) return notFound("Task not found.");
+      return noContent();
+    } catch (err) {
+      console.error('[users] DB task delete failed, falling back to flat-file', err instanceof Error ? err.message : err);
+    }
+  }
+
+  return withStore((store) => {
+    const idx = store.tasks.findIndex((t) => t.id === taskId && t.userId === user.id);
+    if (idx === -1) return notFound("Task not found.");
+    store.tasks.splice(idx, 1);
+    return noContent();
+  });
+}
+
 export async function handleUsersRequest(method: string, slug: string[], request: Request, payload: UserPayload) {
   if (slug.length === 1 && slug[0] === "login" && method === "POST") {
     return handleLogin(payload);
@@ -511,6 +755,9 @@ export async function handleUsersRequest(method: string, slug: string[], request
   if (slug.length === 1 && slug[0] === "points" && method === "GET") {
     return handlePointsGet(request);
   }
+  if (slug.length === 1 && slug[0] === "stats" && method === "GET") {
+    return handleStatsGet(request);
+  }
   if (slug.length === 1 && slug[0] === "time" && method === "POST") {
     return handleTimePost(request, payload);
   }
@@ -525,6 +772,18 @@ export async function handleUsersRequest(method: string, slug: string[], request
   }
   if (slug.length === 2 && slug[0] === "pomodoro" && (method === "PATCH" || method === "PUT")) {
     return handlePomodoroUpdate(request, payload, slug[1]);
+  }
+  if (slug.length === 1 && slug[0] === "tasks" && method === "GET") {
+    return handleTaskList(request);
+  }
+  if (slug.length === 1 && slug[0] === "tasks" && method === "POST") {
+    return handleTaskCreate(request, payload);
+  }
+  if (slug.length === 2 && slug[0] === "tasks" && (method === "PATCH" || method === "PUT")) {
+    return handleTaskUpdate(request, payload, slug[1]);
+  }
+  if (slug.length === 2 && slug[0] === "tasks" && method === "DELETE") {
+    return handleTaskDelete(request, slug[1]);
   }
 
   return notFound("Endpoint not found.");

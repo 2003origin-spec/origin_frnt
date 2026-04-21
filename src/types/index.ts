@@ -19,8 +19,9 @@ export interface User {
   yearsOfExperience?: string;
   subjects?: string[];
   studentCapacity?: string;
+  streakData?: StreakData;
   dailyQuestionsPracticed?: number;
-  points?: number; // Added for leaderboard/summary
+  points?: number;
   timeAnalytics?: Array<{
     date: string;
     dayName: string;
@@ -222,7 +223,7 @@ export interface PomodoroSession {
 export interface StreakData {
   currentStreak: number;
   longestStreak: number;
-  lastStudyDate: Date;
+  lastStudyDate: Date | null;
   weeklyData: boolean[];
 }
 
@@ -253,7 +254,7 @@ export interface Notification {
   createdAt: Date;
 }
 export interface Task {
-  id: number;
+  id: string;
   text: string;
   completed: boolean;
   due: string;

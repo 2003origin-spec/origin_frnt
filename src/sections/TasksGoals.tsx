@@ -22,8 +22,8 @@ import type { Task, User } from '@/types';
 interface TasksGoalsProps {
   tasks: Task[];
   onAddTask: (text: string, due: string) => void;
-  onToggleTask: (id: number) => void;
-  onRemoveTask: (id: number) => void;
+  onToggleTask: (id: string) => void;
+  onRemoveTask: (id: string) => void;
   onBack: () => void;
   user: User;
 }
