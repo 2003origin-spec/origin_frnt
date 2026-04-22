@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 
 import { requireUserFromRequest } from "@/server/auth";
+import { generalLimiter, checkRateLimit } from "@/lib/rate-limit";
 import {
   addSessionMessage,
   createDoubtSession,
@@ -33,6 +34,15 @@ async function resolveSlug(context: RouteContext): Promise<string[]> {
   return getSlugSegments(params);
 }
 
+function sessionIdentifier(request: NextRequest): string {
+  return (
+    request.cookies.get("origin_access_token")?.value ??
+    request.headers.get("authorization")?.replace("Bearer ", "") ??
+    request.headers.get("x-forwarded-for") ??
+    "unknown"
+  );
+}
+
 function validateBaseRoute(slug: string[]) {
   if (slug.length === 0 || slug[0] !== "doubts") {
     return false;
@@ -45,6 +55,9 @@ export async function GET(request: NextRequest, context: RouteContext) {
   if (!validateBaseRoute(slug)) {
     return notFound();
   }
+
+  const limited = await checkRateLimit(generalLimiter, sessionIdentifier(request));
+  if (limited) return limited;
 
   const store = readStore();
   const user = requireUserFromRequest(store, request);
@@ -72,6 +85,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
   if (!validateBaseRoute(slug)) {
     return notFound();
   }
+
+  const limited = await checkRateLimit(generalLimiter, sessionIdentifier(request));
+  if (limited) return limited;
 
   try {
     if (slug.length === 1) {
@@ -122,6 +138,9 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     return notFound();
   }
 
+  const limited = await checkRateLimit(generalLimiter, sessionIdentifier(request));
+  if (limited) return limited;
+
   try {
     const payload = await parseJsonBody<{ title?: string; subject?: string }>(request);
     const result = withStore((store) => {
@@ -153,6 +172,9 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
   if (!validateBaseRoute(slug) || slug.length !== 2) {
     return notFound();
   }
+
+  const limited = await checkRateLimit(generalLimiter, sessionIdentifier(request));
+  if (limited) return limited;
 
   const result = withStore((store) => {
     const user = requireUserFromRequest(store, request);

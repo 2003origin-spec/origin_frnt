@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 
 import { badRequest, getSlugSegments, parseJsonBody } from "@/server/http";
 import { handleStudyRequest } from "@/server/study";
+import { generalLimiter, checkRateLimit } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,6 +18,15 @@ async function resolveSlug(context: RouteContext): Promise<string[]> {
 
 async function dispatch(method: string, request: NextRequest, context: RouteContext) {
   const slug = await resolveSlug(context);
+
+  const identifier =
+    request.cookies.get("origin_access_token")?.value ??
+    request.headers.get("authorization")?.replace("Bearer ", "") ??
+    request.headers.get("x-forwarded-for") ??
+    "unknown";
+  const limited = await checkRateLimit(generalLimiter, identifier);
+  if (limited) return limited;
+
   let payload: Record<string, unknown> = {};
   if (method !== "GET" && method !== "DELETE") {
     try {

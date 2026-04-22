@@ -21,9 +21,11 @@ import {
   unauthorized,
 } from "@/server/http";
 import { withStoreAsync, type StoredUser } from "@/server/store";
+import { aiLimiter, voiceLimiter, generalLimiter, checkRateLimit } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 120;
 
 const ORIGIN_AI_SERVICE_URL = process.env.ORIGIN_AI_SERVICE_URL || "";
 const ORIGIN_AI_SERVICE_TOKEN = process.env.ORIGIN_AI_SERVICE_TOKEN || "dev-origin-ai-token";
@@ -215,11 +217,23 @@ async function resolveProxyUser(request: NextRequest): Promise<StoredUser | null
   return withStoreAsync(async (store) => requireUserFromRequest(store, request));
 }
 
+function userIdentifier(request: NextRequest): string {
+  return (
+    request.cookies.get("origin_access_token")?.value ??
+    request.headers.get("authorization")?.replace("Bearer ", "") ??
+    request.headers.get("x-forwarded-for") ??
+    "unknown"
+  );
+}
+
 export async function GET(request: NextRequest, context: RouteContext) {
   const slug = await resolveSlug(context);
   if (slug.length !== 1 || slug[0] !== "session") {
     return notFound();
   }
+
+  const limited = await checkRateLimit(generalLimiter, userIdentifier(request));
+  if (limited) return limited;
 
   const parsedQuery = sessionQuerySchema.safeParse({
     pathname: request.nextUrl.searchParams.get("pathname") ?? undefined,
@@ -277,6 +291,13 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
 export async function POST(request: NextRequest, context: RouteContext) {
   const slug = await resolveSlug(context);
+  const uid = userIdentifier(request);
+
+  const isVoice = slug[0] === "voice";
+  const isMessage = slug.length === 2 && slug[0] === "session" && slug[1] === "message";
+  const limiter = isMessage ? aiLimiter : isVoice ? voiceLimiter : generalLimiter;
+  const limited = await checkRateLimit(limiter, uid);
+  if (limited) return limited;
 
   try {
     const body = await parseJsonBody(request);

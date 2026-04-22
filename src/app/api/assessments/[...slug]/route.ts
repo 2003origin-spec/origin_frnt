@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 
 import { requireUserFromRequest } from "@/server/auth";
+import { submitLimiter, generalLimiter, checkRateLimit } from "@/lib/rate-limit";
 import {
   type CustomTestPayload,
   createCustomTest,
@@ -50,6 +51,9 @@ export async function GET(request: NextRequest, context: RouteContext) {
   if (!auth) {
     return unauthorized();
   }
+
+  const limited = await checkRateLimit(generalLimiter, auth.user.id);
+  if (limited) return limited;
 
   const { store, user } = auth;
   const params = await context.params;
@@ -147,6 +151,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
   if (!auth) {
     return unauthorized();
   }
+
+  const isSubmit = second === "submit" || (root === "ogcode" && first === "location");
+  const limited = await checkRateLimit(isSubmit ? submitLimiter : generalLimiter, auth.user.id);
+  if (limited) return limited;
 
   try {
     if (root === "tests" && first === "custom") {

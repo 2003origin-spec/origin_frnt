@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { badRequest, getSlugSegments, parseJsonBody } from "@/server/http";
 import { handleUsersRequest } from "@/server/users";
+import { authLimiter, generalLimiter, checkRateLimit } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -55,6 +56,20 @@ async function withAuthCookies(response: Response): Promise<NextResponse> {
 async function dispatch(method: string, request: NextRequest, context: RouteContext) {
   const params = await context.params;
   const slug = getSlugSegments(params);
+
+  const ip = request.headers.get("x-forwarded-for") ?? "unknown";
+  const isAuthEndpoint =
+    method === "POST" &&
+    (slug[0] === "login" || slug[0] === "register" || (slug[0] === "token" && slug[1] === "refresh"));
+
+  if (isAuthEndpoint) {
+    const limited = await checkRateLimit(authLimiter, ip);
+    if (limited) return limited;
+  } else {
+    const userId = request.headers.get("x-origin-user-id") ?? ip;
+    const limited = await checkRateLimit(generalLimiter, userId);
+    if (limited) return limited;
+  }
 
   // Logout — handled here, no users.ts involvement needed
   if (method === "POST" && slug[0] === "logout") {
