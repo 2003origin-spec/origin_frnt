@@ -9,22 +9,29 @@ import { Eye, EyeOff, ArrowLeft, Loader2, Mail, Lock } from 'lucide-react';
 interface AuthPageProps {
   userRole: 'student' | 'teacher' | null;
   onLogin: (email: string, password: string, role?: 'student' | 'teacher' | null) => void;
+  onRegister: (name: string, email: string, password: string, role?: 'student' | 'teacher' | null) => void;
   onBack: () => void;
   isLoading: boolean;
   error?: string | null;
 }
 
-export default function AuthPage({ userRole, onLogin, onBack, isLoading, error }: AuthPageProps) {
+export default function AuthPage({ userRole, onLogin, onRegister, onBack, isLoading, error }: AuthPageProps) {
   const [showPassword, setShowPassword] = useState(false);
+  const [isLogin, setIsLogin] = useState(true);
 
-  // Login form state
-  const [loginEmail, setLoginEmail] = useState('');
-  const [loginPassword, setLoginPassword] = useState('');
+  // Form state
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
 
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onLogin(loginEmail, loginPassword, userRole);
+    if (isLogin) {
+      onLogin(email, password, userRole);
+    } else {
+      onRegister(name, email, password, userRole);
+    }
   };
 
   return (
@@ -71,46 +78,79 @@ export default function AuthPage({ userRole, onLogin, onBack, isLoading, error }
 
           <CardContent>
             <div className="flex flex-col items-center mb-6">
-              <div className="px-6 py-2 rounded-xl bg-muted border border-border/40 font-bold text-blue-600 dark:text-blue-400">
-                Login
+              <div className="flex bg-muted/50 p-1 rounded-xl w-full max-w-[240px] mb-4">
+                <button
+                  type="button"
+                  onClick={() => setIsLogin(true)}
+                  className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${isLogin ? 'bg-white dark:bg-slate-800 shadow-sm text-blue-600 dark:text-blue-400' : 'text-muted-foreground hover:text-foreground'}`}
+                >
+                  Login
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsLogin(false)}
+                  className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${!isLogin ? 'bg-white dark:bg-slate-800 shadow-sm text-blue-600 dark:text-blue-400' : 'text-muted-foreground hover:text-foreground'}`}
+                >
+                  Sign Up
+                </button>
               </div>
 
               {error && (
-                <div className="mt-4 w-full p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-500 text-xs font-bold text-center animate-in fade-in slide-in-from-top-1 duration-300">
+                <div className="mt-2 w-full p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-500 text-xs font-bold text-center animate-in fade-in slide-in-from-top-1 duration-300">
                   {error}
                 </div>
               )}
             </div>
 
             <div>
-              <form onSubmit={handleLoginSubmit} className="space-y-4">
+              <form onSubmit={handleSubmit} className="space-y-4">
+                {!isLogin && (
+                  <div className="space-y-2 animate-in slide-in-from-top-2 fade-in duration-300">
+                    <Label htmlFor="name" className="text-slate-700 dark:text-slate-300">Full Name</Label>
+                    <div className="relative">
+                      <div className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                      </div>
+                      <Input
+                        id="name"
+                        type="text"
+                        placeholder="Enter your full name"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        className="pl-10 h-12 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 focus:border-[#3CACA3] focus:ring-[#3CACA3]/20 dark:text-white transition-all"
+                        required
+                      />
+                    </div>
+                  </div>
+                )}
+
                 <div className="space-y-2">
-                  <Label htmlFor="login-email" className="text-slate-700 dark:text-slate-300">Email</Label>
+                  <Label htmlFor="email" className="text-slate-700 dark:text-slate-300">Email</Label>
                   <div className="relative">
                     <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                     <Input
-                      id="login-email"
+                      id="email"
                       type="email"
                       placeholder="you@example.com"
-                      value={loginEmail}
-                      onChange={(e) => setLoginEmail(e.target.value)}
-                      className="pl-10 h-12 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 focus:border-[#3CACA3] focus:ring-[#3CACA3]/20 dark:text-white"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="pl-10 h-12 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 focus:border-[#3CACA3] focus:ring-[#3CACA3]/20 dark:text-white transition-all"
                       required
                     />
                   </div>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="login-password" className="text-slate-700 dark:text-slate-300">Password</Label>
+                  <Label htmlFor="password" className="text-slate-700 dark:text-slate-300">Password</Label>
                   <div className="relative">
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                     <Input
-                      id="login-password"
+                      id="password"
                       type={showPassword ? 'text' : 'password'}
-                      placeholder="Enter your password"
-                      value={loginPassword}
-                      onChange={(e) => setLoginPassword(e.target.value)}
-                      className="pl-10 pr-10 h-12 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 focus:border-[#3CACA3] focus:ring-[#3CACA3]/20 dark:text-white"
+                      placeholder={isLogin ? "Enter your password" : "Create a password"}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="pl-10 pr-10 h-12 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 focus:border-[#3CACA3] focus:ring-[#3CACA3]/20 dark:text-white transition-all"
                       required
                     />
                     <button
@@ -123,26 +163,28 @@ export default function AuthPage({ userRole, onLogin, onBack, isLoading, error }
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      id="remember"
-                      checked={rememberMe}
-                      onChange={(e) => setRememberMe(e.target.checked)}
-                      className="w-4 h-4 rounded border-border bg-muted dark:bg-slate-950 text-blue-600 focus:ring-blue-500/20"
-                    />
-                    <label
-                      htmlFor="remember"
-                      className="text-sm text-muted-foreground cursor-pointer"
-                    >
-                      Remember me
-                    </label>
+                {isLogin && (
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        id="remember"
+                        checked={rememberMe}
+                        onChange={(e) => setRememberMe(e.target.checked)}
+                        className="w-4 h-4 rounded border-border bg-muted dark:bg-slate-950 text-blue-600 focus:ring-blue-500/20"
+                      />
+                      <label
+                        htmlFor="remember"
+                        className="text-sm text-muted-foreground cursor-pointer"
+                      >
+                        Remember me
+                      </label>
+                    </div>
+                    <button type="button" className="text-sm text-blue-500 hover:underline">
+                      Forgot password?
+                    </button>
                   </div>
-                  <button type="button" className="text-sm text-blue-500 hover:underline">
-                    Forgot password?
-                  </button>
-                </div>
+                )}
 
                 <Button
                   type="submit"
@@ -152,10 +194,10 @@ export default function AuthPage({ userRole, onLogin, onBack, isLoading, error }
                   {isLoading ? (
                     <>
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Logging in...
+                      {isLogin ? 'Logging in...' : 'Signing up...'}
                     </>
                   ) : (
-                    'Login'
+                    isLogin ? 'Login' : 'Create Account'
                   )}
                 </Button>
               </form>

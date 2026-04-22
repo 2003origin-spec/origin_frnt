@@ -16,6 +16,7 @@ interface AuthContextType {
   tasks: Task[];
   tasksLoading: boolean;
   login: (email: string, password: string, role?: 'student' | 'teacher' | null) => Promise<void>;
+  register: (name: string, email: string, password: string, role?: 'student' | 'teacher' | null) => Promise<void>;
   logout: () => void;
   refreshUser: () => Promise<void>;
   addTask: (text: string, due: string) => Promise<void>;
@@ -167,6 +168,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const register = async (name: string, email: string, password: string, role?: 'student' | 'teacher' | null) => {
+    setIsLoading(true);
+    setAuthError(null);
+    try {
+      const response = await apiCall('/users/register/', {
+        method: 'POST',
+        body: JSON.stringify({ name, email, password, ...(role ? { role } : {}) }),
+      });
+
+      clearOriginAiBrowserSession();
+      localStorage.setItem('origin_access_token', response.access);
+      localStorage.setItem('origin_refresh_token', response.refresh);
+
+      setUser(response.user);
+      if (response.user.streakData) setStreakData(response.user.streakData);
+      if (response.user.role === 'student' || response.user.role === 'teacher') setUserRole(response.user.role);
+
+      tasksFetched.current = false;
+      await fetchTasks();
+
+      if (response.user.role === 'student' && !response.user.isOnboarded) {
+        router.push('/onboarding');
+      } else {
+        router.push('/dashboard');
+      }
+      toast.success('Registration successful! Welcome to ORIGIN!');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Registration failed';
+      setAuthError(message);
+      toast.error(message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const logout = () => {
     setUser(null);
     setUserRole(null);
@@ -240,6 +276,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       tasks,
       tasksLoading,
       login,
+      register,
       logout,
       refreshUser,
       addTask,

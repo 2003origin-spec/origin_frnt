@@ -6,7 +6,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useRouter, useSearchParams } from 'next/navigation';
 
 function AuthPageContent() {
-  const { user, userRole, login, isLoading, authError } = useAuth();
+  const { user, userRole, login, register, isLoading, authError } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const requestedRole = searchParams.get('role');
@@ -25,6 +25,7 @@ function AuthPageContent() {
           : selectedRole ?? userRole
       }
       onLogin={login}
+      onRegister={register}
       onBack={() => router.back()}
       isLoading={isLoading}
       error={authError}

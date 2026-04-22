@@ -91,7 +91,7 @@ export default function ClientShell({ children }: { children: React.ReactNode })
           </motion.div>
         </AnimatePresence>
       </main>
-      {user && pathname !== '/doubt-solver' && <FloatingChat />}
+      {mounted && user && !noNavbarPaths.includes(pathname) && pathname !== '/doubt-solver' && <FloatingChat />}
       <TutorialOverlay />
     </div>
     </TutorialProvider>

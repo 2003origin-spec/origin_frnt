@@ -1,10 +1,14 @@
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 
-const redis = new Redis({
-  url: process.env.UPSTASH_REDIS_REST_URL!,
-  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
-});
+const hasRedisVars = !!process.env.UPSTASH_REDIS_REST_URL && !!process.env.UPSTASH_REDIS_REST_TOKEN;
+
+const redis = hasRedisVars
+  ? new Redis({
+      url: process.env.UPSTASH_REDIS_REST_URL,
+      token: process.env.UPSTASH_REDIS_REST_TOKEN,
+    })
+  : null as any;
 
 export const authLimiter = new Ratelimit({
   redis,
@@ -40,6 +44,11 @@ export async function checkRateLimit(
   limiter: Ratelimit,
   identifier: string
 ): Promise<Response | null> {
+  // Pass through if Redis is not configured (local dev)
+  if (!process.env.UPSTASH_REDIS_REST_URL) {
+    return null;
+  }
+
   const { success, limit, remaining, reset } = await limiter.limit(identifier);
   if (!success) {
     return new Response(

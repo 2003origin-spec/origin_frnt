@@ -178,7 +178,18 @@ export default function Profile({ user, streakData, onBack, onUpgrade }: Profile
                 {/* Info */}
                 <div className="flex-1 text-center sm:text-left">
                   <div className="flex items-center justify-center sm:justify-start gap-4 mb-3">
-                    <h2 className="text-3xl font-black tracking-tight">{user.name}</h2>
+                    {isEditing ? (
+                      <input
+                        type="text"
+                        value={editData.name}
+                        onChange={(e) => setEditData({ ...editData, name: e.target.value })}
+                        className="text-3xl font-black tracking-tight bg-transparent border-b-2 border-primary/30 focus:border-primary outline-none max-w-[200px] sm:max-w-[300px]"
+                        placeholder="Your Name"
+                        autoFocus
+                      />
+                    ) : (
+                      <h2 className="text-3xl font-black tracking-tight">{user.name}</h2>
+                    )}
                     {user.isPremium && (
                       <Badge className="bg-gradient-to-r from-amber-400 to-orange-500 text-white shadow-lg shadow-orange-500/20 border-0 h-6">
                         <Crown className="w-3 h-3 mr-1" />
