@@ -1,7 +1,8 @@
 import bcrypt from "bcryptjs";
 import { createAuthSession, isRefreshTokenValid, rotateAccessToken, requireUserFromRequest, resolveTokenToUser, refreshAccessToken, createAuthSessionAsync } from "@/server/auth";
 import { isUserPostgresConfigured } from "@/server/user-postgres";
-import { dbLoginUser, dbRegisterUser, dbGetTasks, dbCreateTask, dbUpdateTask, dbDeleteTask } from "@/server/db-users";
+import { dbLoginUser, dbRegisterUser, dbGetTasks, dbCreateTask, dbUpdateTask, dbDeleteTask, dbFindUserByEmail, dbCreateUser, dbUpdateUser, dbCreateAuthSession } from "@/server/db-users";
+import { OAuth2Client } from "google-auth-library";
 import {
   awardPoints,
   buildContributionData,
@@ -270,6 +271,86 @@ async function handleRegister(payload: UserPayload) {
       access: session.accessToken,
     });
   });
+}
+
+async function handleGoogleLogin(payload: UserPayload) {
+  const credential = asString(payload.credential);
+  if (!credential) return badRequest("Missing Google credential token.");
+
+  try {
+    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "YOUR_GOOGLE_CLIENT_ID";
+    const client = new OAuth2Client(clientId);
+    
+    // Fallback stub for if they attempt to test the button blindly with YOUR_... client ID. 
+    // They won't get a valid token anyway from google, so verifying will fail.
+    const ticket = await client.verifyIdToken({
+      idToken: credential,
+      audience: clientId,
+    });
+    const googlePayload = ticket.getPayload();
+    if (!googlePayload || !googlePayload.email) return badRequest("Google token missing email payload");
+    
+    const email = googlePayload.email;
+    const name = googlePayload.name ?? "Google User";
+    const avatar = googlePayload.picture ?? null;
+
+    if (isUserPostgresConfigured()) {
+      try {
+        let dbUser = await dbFindUserByEmail(email, "student");
+        if (!dbUser) {
+          const hashed = bcrypt.hashSync(createId("rand"), 10);
+          dbUser = await dbCreateUser({
+            name, email, password: hashed, role: "student",
+            studentClass: null, fieldOfInterest: null, referralSource: null,
+            avatar, streak: 0, totalStudyTime: 0, joinedAt: new Date().toISOString(),
+            isPremium: false, premiumExpiry: null, isOnboarded: false,
+            selectedCourse: null, isDropper: false, yearsOfExperience: null,
+            subjects: [], studentCapacity: null,
+          });
+        } else if (!dbUser.avatar && avatar) {
+          await dbUpdateUser(dbUser.id, { avatar });
+          dbUser.avatar = avatar;
+        }
+
+        const session = await dbCreateAuthSession(dbUser.id);
+        
+        return withStore((store) => {
+          if (!store.users.some(u => u.id === dbUser!.id)) store.users.push({...dbUser!, password: dbUser!.password});
+          store.authSessions = store.authSessions.filter((s) => s.userId !== dbUser!.id);
+          store.authSessions.push(session);
+          const userData = serializeUser(store, dbUser!.id);
+          return ok({ user: userData, refresh: session.refreshToken, access: session.accessToken });
+        });
+      } catch (err) {
+        console.error('[users] DB google login failed, falling back to flat-file', err instanceof Error ? err.message : err);
+      }
+    }
+
+    return withStore((store) => {
+      let user = store.users.find((entry) => entry.email.toLowerCase() === email.toLowerCase() && entry.role === 'student');
+      if (!user) {
+        const userId = createId("user");
+        user = {
+          id: userId, name, email, password: bcrypt.hashSync(createId("rand"), 10),
+          role: "student", studentClass: null, fieldOfInterest: null,
+          referralSource: null, avatar, streak: 0, totalStudyTime: 0,
+          joinedAt: new Date().toISOString(), isPremium: false, premiumExpiry: null,
+          isOnboarded: false, selectedCourse: null, isDropper: false,
+          yearsOfExperience: null, subjects: [], studentCapacity: null,
+        };
+        store.users.push(user);
+      } else if (!user.avatar && avatar) {
+        user.avatar = avatar;
+      }
+      
+      const session = createAuthSession(store, user.id);
+      const userData = serializeUser(store, user.id);
+      return ok({ user: userData, refresh: session.refreshToken, access: session.accessToken });
+    });
+  } catch (e: any) {
+    console.error("Google Auth verify error:", e);
+    return unauthorized("Invalid Google Token");
+  }
 }
 
 async function handleRefresh(payload: UserPayload) {
@@ -742,6 +823,9 @@ export async function handleUsersRequest(method: string, slug: string[], request
   }
   if (slug.length === 1 && slug[0] === "register" && method === "POST") {
     return handleRegister(payload);
+  }
+  if (slug.length === 1 && slug[0] === "google-login" && method === "POST") {
+    return handleGoogleLogin(payload);
   }
   if (slug.length === 2 && slug[0] === "token" && slug[1] === "refresh" && method === "POST") {
     return handleRefresh(payload);

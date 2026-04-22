@@ -60,7 +60,7 @@ async function dispatch(method: string, request: NextRequest, context: RouteCont
   const ip = request.headers.get("x-forwarded-for") ?? "unknown";
   const isAuthEndpoint =
     method === "POST" &&
-    (slug[0] === "login" || slug[0] === "register" || (slug[0] === "token" && slug[1] === "refresh"));
+    (slug[0] === "login" || slug[0] === "register" || slug[0] === "google-login" || (slug[0] === "token" && slug[1] === "refresh"));
 
   if (isAuthEndpoint) {
     const limited = await checkRateLimit(authLimiter, ip);
@@ -93,9 +93,10 @@ async function dispatch(method: string, request: NextRequest, context: RouteCont
   // Auth endpoints: mirror tokens into HttpOnly cookies
   const isLogin = method === "POST" && slug[0] === "login";
   const isRegister = method === "POST" && slug[0] === "register";
+  const isGoogleLogin = method === "POST" && slug[0] === "google-login";
   const isRefresh = method === "POST" && slug[0] === "token" && slug[1] === "refresh";
 
-  if ((isLogin || isRegister || isRefresh) && response.ok) {
+  if ((isLogin || isRegister || isGoogleLogin || isRefresh) && response.ok) {
     return withAuthCookies(response);
   }
 
