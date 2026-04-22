@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense } from 'react';
+import { Suspense, useEffect } from 'react';
 import AuthPage from '@/sections/AuthPage';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -11,10 +11,24 @@ function AuthPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const requestedRole = searchParams.get('role');
+
+  // Guard: Redirect authenticated users away from /auth
+  useEffect(() => {
+    if (user && !isLoading) {
+      if (user.role === 'student' && !user.isOnboarded) {
+        router.push('/onboarding');
+      } else {
+        router.push('/dashboard');
+      }
+    }
+  }, [user, isLoading, router]);
+
   const selectedRole =
     requestedRole === 'student' || requestedRole === 'teacher'
       ? requestedRole
       : null;
+
+  if (user && !isLoading) return null; // Avoid rendering the form if already logged in
 
   return (
     <AuthPage

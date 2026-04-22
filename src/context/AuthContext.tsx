@@ -126,11 +126,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Runs on every route change — redirects unauthenticated users off protected pages
+  // Runs on every route change — manages redirection for protected and guest-only pages
   useEffect(() => {
     if (isLoading) return;
+
+    // 1. Unauthenticated users: redirect away from protected pages
     if (!user && !PUBLIC_PATHS.includes(pathname) && !pathname.startsWith('/admin')) {
       router.push('/');
+      return;
+    }
+
+    // 2. Authenticated users: redirect away from guest pages
+    if (user && PUBLIC_PATHS.includes(pathname)) {
+      if (user.role === 'student' && !user.isOnboarded) {
+        router.push('/onboarding');
+      } else {
+        router.push('/dashboard');
+      }
     }
   }, [pathname, user, isLoading, router]);
 
