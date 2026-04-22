@@ -279,20 +279,49 @@ async function handleGoogleLogin(payload: UserPayload) {
 
   try {
     const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "YOUR_GOOGLE_CLIENT_ID";
-    const client = new OAuth2Client(clientId);
-    
-    // Fallback stub for if they attempt to test the button blindly with YOUR_... client ID. 
-    // They won't get a valid token anyway from google, so verifying will fail.
-    const ticket = await client.verifyIdToken({
-      idToken: credential,
-      audience: clientId,
-    });
-    const googlePayload = ticket.getPayload();
-    if (!googlePayload || !googlePayload.email) return badRequest("Google token missing email payload");
-    
-    const email = googlePayload.email;
-    const name = googlePayload.name ?? "Google User";
-    const avatar = googlePayload.picture ?? null;
+    let email: string | undefined;
+    let name: string = "Google User";
+    let avatar: string | null = null;
+
+    // Try verifying as ID Token first (JWTs usually have 3 parts separated by dots)
+    if (credential.includes('.')) {
+      try {
+        const client = new OAuth2Client(clientId);
+        const ticket = await client.verifyIdToken({
+          idToken: credential,
+          audience: clientId,
+        });
+        const googlePayload = ticket.getPayload();
+        if (googlePayload) {
+          email = googlePayload.email;
+          name = googlePayload.name ?? "Google User";
+          avatar = googlePayload.picture ?? null;
+        }
+      } catch (e) {
+        console.warn("[GoogleAuth] ID Token verification failed, checking if it is an access token instead", e);
+      }
+    }
+
+    // If ID token verification didn't work (or skipped), try fetching user info with it as an Access Token
+    if (!email) {
+      try {
+        const res = await fetch(`https://www.googleapis.com/oauth2/v3/userinfo?access_token=${credential}`);
+        if (!res.ok) {
+          throw new Error(`Google userinfo status: ${res.status}`);
+        }
+        const data = await res.json();
+        email = data.email;
+        name = data.name ?? "Google User";
+        avatar = data.picture ?? null;
+      } catch (e) {
+        console.error("[GoogleAuth] Access Token verification failed:", e);
+        return unauthorized("Invalid Google Token (Not an ID Token nor a valid Access Token)");
+      }
+    }
+
+    if (!email) {
+      return unauthorized("Could not retrieve email from Google token.");
+    }
 
     if (isUserPostgresConfigured()) {
       try {
@@ -327,11 +356,11 @@ async function handleGoogleLogin(payload: UserPayload) {
     }
 
     return withStore((store) => {
-      let user = store.users.find((entry) => entry.email.toLowerCase() === email.toLowerCase() && entry.role === 'student');
+      let user = store.users.find((entry) => entry.email.toLowerCase() === email!.toLowerCase() && entry.role === 'student');
       if (!user) {
         const userId = createId("user");
         user = {
-          id: userId, name, email, password: bcrypt.hashSync(createId("rand"), 10),
+          id: userId, name, email: email!, password: bcrypt.hashSync(createId("rand"), 10),
           role: "student", studentClass: null, fieldOfInterest: null,
           referralSource: null, avatar, streak: 0, totalStudyTime: 0,
           joinedAt: new Date().toISOString(), isPremium: false, premiumExpiry: null,
@@ -348,8 +377,8 @@ async function handleGoogleLogin(payload: UserPayload) {
       return ok({ user: userData, refresh: session.refreshToken, access: session.accessToken });
     });
   } catch (e: any) {
-    console.error("Google Auth verify error:", e);
-    return unauthorized("Invalid Google Token");
+    console.error("Google Auth processing error:", e);
+    return unauthorized("Failed to process Google login");
   }
 }
 

@@ -218,7 +218,7 @@ export default function TeacherDashboard({ user }: { user: User }) {
 
                         {/* AI Insight Placeholder - Futuristic Element */}
                         <div className="relative overflow-hidden rounded-[2rem] bg-gradient-to-r from-primary to-secondary p-[1px] shadow-2xl shadow-primary/20 group">
-                            <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-overlay"></div>
+                            <div className="absolute inset-0 bg-[url('/noise.svg')] opacity-20 mix-blend-overlay"></div>
                             <div className="relative bg-background/40 backdrop-blur-3xl p-8 rounded-[1.95rem] flex flex-col md:flex-row items-center justify-between gap-6 overflow-hidden">
                                 <div className="absolute top-0 right-0 w-64 h-64 bg-primary/20 rounded-full blur-[80px] -mr-32 -mt-32" />
                                 <div className="flex items-start gap-5 relative z-10">
@@ -366,7 +366,7 @@ export default function TeacherDashboard({ user }: { user: User }) {
 
                     <TabsContent value="avatar" className="mt-0">
                         <Card className="border border-border shadow-2xl bg-card rounded-[2.5rem] overflow-hidden relative">
-                            <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-5 mix-blend-overlay" />
+                            <div className="absolute inset-0 bg-[url('/noise.svg')] opacity-5 mix-blend-overlay" />
                             <CardContent className="p-16 text-center flex flex-col items-center justify-center min-h-[600px] relative z-10">
                                 <div className="w-40 h-40 bg-gradient-to-br from-primary to-secondary rounded-[2.5rem] mb-10 flex items-center justify-center shadow-2xl shadow-primary/30 relative overflow-hidden group border-4 border-background ring-2 ring-border">
                                     <div className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all backdrop-blur-sm">

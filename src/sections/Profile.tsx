@@ -122,7 +122,7 @@ export default function Profile({ user, streakData, onBack, onUpgrade }: Profile
           backgroundImage: `radial-gradient(circle at 80% 30%, rgba(29, 78, 216, 0.3) 0%, transparent 40%),
                                radial-gradient(circle at 20% 70%, rgba(56, 189, 248, 0.15) 0%, transparent 40%)`
         }}>
-        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.05] mix-blend-overlay"></div>
+        <div className="absolute inset-0 bg-[url('/noise.svg')] opacity-[0.05] mix-blend-overlay"></div>
       </div>
 
       <div className="relative z-10 flex flex-col min-h-screen">

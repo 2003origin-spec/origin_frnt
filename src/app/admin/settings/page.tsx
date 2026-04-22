@@ -137,7 +137,7 @@ export default function SystemSettings() {
                     {/* Danger Zone Side-Panel */}
                     <div className="space-y-8">
                         <div className="bg-rose-500/5 border border-rose-500/20 rounded-[2.5rem] p-10 flex flex-col items-center justify-center text-center relative overflow-hidden group">
-                            <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 pointer-events-none" />
+                            <div className="absolute inset-0 bg-[url('/noise.svg')] opacity-20 pointer-events-none" />
                             <div className="w-16 h-16 rounded-[2rem] bg-rose-500/10 border border-rose-500/20 flex items-center justify-center mb-6 relative z-10 group-hover:rotate-12 transition-transform duration-500">
                                 <AlertTriangle className="w-8 h-8 text-rose-500" />
                             </div>

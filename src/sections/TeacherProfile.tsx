@@ -79,7 +79,7 @@ export default function TeacherProfile({ user, onBack, onLogout }: TeacherProfil
                     backgroundImage: `radial-gradient(circle at 80% 30%, hsl(var(--primary) / 0.15) 0%, transparent 40%),
                                radial-gradient(circle at 20% 70%, hsl(var(--secondary) / 0.1) 0%, transparent 40%)`
                 }}>
-                <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.03] mix-blend-overlay"></div>
+                <div className="absolute inset-0 bg-[url('/noise.svg')] opacity-[0.03] mix-blend-overlay"></div>
             </div>
 
             <div className="relative z-10 flex flex-col min-h-screen">

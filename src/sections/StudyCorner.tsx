@@ -607,7 +607,7 @@ export default function StudyCorner({ catalog }: StudyCornerProps) {
                     <div className="space-y-8 animate-in fade-in zoom-in-95 duration-500">
                         {/* Hero Section for Discover */}
                         <div className="relative rounded-2xl sm:rounded-3xl overflow-hidden bg-gradient-to-br from-indigo-600 via-indigo-700 to-violet-800 dark:from-indigo-900 dark:to-slate-900 px-6 py-10 sm:px-12 sm:py-16 flex items-center shadow-xl shadow-indigo-500/10 dark:shadow-indigo-500/5">
-                            <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-10 mix-blend-overlay"></div>
+                            <div className="absolute inset-0 bg-[url('/noise.svg')] opacity-10 mix-blend-overlay"></div>
                             <div className="absolute -right-20 -top-40 w-96 h-96 bg-white/10 blur-3xl rounded-full pointer-events-none"></div>
 
                             <div className="relative z-10 max-w-2xl">

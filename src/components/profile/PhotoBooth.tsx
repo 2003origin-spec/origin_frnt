@@ -56,7 +56,7 @@ export default function PhotoBooth() {
     return (
         <div className="w-full relative overflow-hidden rounded-[2.5rem] bg-[#030014] border border-white/5 shadow-2xl min-h-[700px] flex flex-col p-8 sm:p-12 group/booth">
             {/* Deep Gradient Background & Grid */}
-            <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.03] mix-blend-overlay z-0 pointer-events-none"></div>
+            <div className="absolute inset-0 bg-[url('/noise.svg')] opacity-[0.03] mix-blend-overlay z-0 pointer-events-none"></div>
             <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px] z-0 pointer-events-none"></div>
 
             {/* Soft Radial Lighting Glows */}
@@ -212,7 +212,7 @@ export default function PhotoBooth() {
 
                                         <div className="w-48 h-48 sm:w-56 sm:h-56 rounded-full bg-black/40 backdrop-blur-xl border border-white/10 shadow-[0_0_50px_rgba(99,102,241,0.2)] hover:shadow-[0_0_80px_rgba(99,102,241,0.4)] flex flex-col items-center justify-center relative overflow-hidden transition-all duration-500 hover:border-indigo-400/50">
                                             <div className="absolute inset-0 bg-gradient-to-b from-white/10 to-transparent opacity-50 pointer-events-none"></div>
-                                            <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-overlay pointer-events-none"></div>
+                                            <div className="absolute inset-0 bg-[url('/noise.svg')] opacity-20 mix-blend-overlay pointer-events-none"></div>
 
                                             <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-gradient-to-br from-indigo-500/20 to-violet-500/20 flex items-center justify-center mb-2 sm:mb-3 group-hover:scale-110 transition-transform duration-500 border border-white/5 shadow-inner">
                                                 <ImageIcon className="w-8 h-8 sm:w-10 sm:h-10 text-white group-hover:text-indigo-300 transition-colors duration-300" />

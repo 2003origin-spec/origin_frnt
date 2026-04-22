@@ -220,7 +220,7 @@ export default function Financials() {
 
                 {/* Tier Management Banner */}
                 <div className="bg-gradient-to-br from-blue-600/20 via-transparent to-purple-600/20 border border-white/5 rounded-[3rem] p-10 lg:p-16 flex flex-col lg:flex-row items-center gap-12 relative overflow-hidden">
-                    <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 pointer-events-none" />
+                    <div className="absolute inset-0 bg-[url('/noise.svg')] opacity-20 pointer-events-none" />
                     <div className="lg:w-2/3 space-y-6 relative z-10">
                         <div className="flex items-center gap-3 px-4 py-2 bg-white/5 self-start rounded-full border border-white/10 w-fit">
                             <ShieldCheck className="w-4 h-4 text-emerald-500" />

@@ -89,7 +89,7 @@ export default function Leaderboard({ currentUser, initialLeaderboard, initialMy
       {/* Main Content */}
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 relative z-10">
         <Card className="border-0 shadow-2xl bg-gradient-to-br from-primary via-primary/90 to-blue-600 text-primary-foreground mb-8 overflow-hidden relative rounded-[2.5rem]">
-          <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.05] mix-blend-overlay pointer-events-none" />
+          <div className="absolute inset-0 bg-[url('/noise.svg')] opacity-[0.05] mix-blend-overlay pointer-events-none" />
           <CardContent className="p-8 sm:p-10 relative z-10">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-6">
               <div className="flex items-center gap-6">
