@@ -17,6 +17,7 @@ interface AuthContextType {
   tasksLoading: boolean;
   login: (email: string, password: string, role?: 'student' | 'teacher' | null) => Promise<void>;
   register: (name: string, email: string, password: string, role?: 'student' | 'teacher' | null) => Promise<void>;
+  googleLogin: (credential: string) => Promise<void>;
   logout: () => void;
   refreshUser: () => Promise<void>;
   addTask: (text: string, due: string) => Promise<void>;
@@ -203,6 +204,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const googleLogin = async (credential: string) => {
+    setIsLoading(true);
+    setAuthError(null);
+    try {
+      const response = await apiCall('/users/google-login/', {
+        method: 'POST',
+        body: JSON.stringify({ credential }),
+      });
+
+      clearOriginAiBrowserSession();
+      localStorage.setItem('origin_access_token', response.access);
+      localStorage.setItem('origin_refresh_token', response.refresh);
+
+      setUser(response.user);
+      if (response.user.streakData) setStreakData(response.user.streakData);
+      if (response.user.role === 'student' || response.user.role === 'teacher') setUserRole(response.user.role);
+
+      tasksFetched.current = false;
+      await fetchTasks();
+
+      if (response.user.role === 'student' && !response.user.isOnboarded) {
+        router.push('/onboarding');
+      } else {
+        router.push('/dashboard');
+      }
+      toast.success('Google login successful! Welcome to ORIGIN!');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Google Login failed';
+      setAuthError(message);
+      toast.error(message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const logout = () => {
     setUser(null);
     setUserRole(null);
@@ -277,6 +313,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       tasksLoading,
       login,
       register,
+      googleLogin,
       logout,
       refreshUser,
       addTask,

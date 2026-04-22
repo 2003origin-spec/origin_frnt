@@ -4,9 +4,10 @@ import { Suspense } from 'react';
 import AuthPage from '@/sections/AuthPage';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { GoogleOAuthProvider } from '@react-oauth/google';
 
 function AuthPageContent() {
-  const { user, userRole, login, register, isLoading, authError } = useAuth();
+  const { user, userRole, login, register, googleLogin, isLoading, authError } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const requestedRole = searchParams.get('role');
@@ -26,6 +27,7 @@ function AuthPageContent() {
       }
       onLogin={login}
       onRegister={register}
+      onGoogleLogin={googleLogin}
       onBack={() => router.back()}
       isLoading={isLoading}
       error={authError}
@@ -36,7 +38,9 @@ function AuthPageContent() {
 export default function Auth() {
   return (
     <Suspense fallback={null}>
-      <AuthPageContent />
+      <GoogleOAuthProvider clientId={process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || 'YOUR_GOOGLE_CLIENT_ID'}>
+        <AuthPageContent />
+      </GoogleOAuthProvider>
     </Suspense>
   );
 }

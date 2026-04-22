@@ -5,19 +5,30 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Eye, EyeOff, ArrowLeft, Loader2, Mail, Lock } from 'lucide-react';
+import { useGoogleLogin } from '@react-oauth/google';
 
 interface AuthPageProps {
   userRole: 'student' | 'teacher' | null;
   onLogin: (email: string, password: string, role?: 'student' | 'teacher' | null) => void;
   onRegister: (name: string, email: string, password: string, role?: 'student' | 'teacher' | null) => void;
+  onGoogleLogin?: (credential: string) => void;
   onBack: () => void;
   isLoading: boolean;
   error?: string | null;
 }
 
-export default function AuthPage({ userRole, onLogin, onRegister, onBack, isLoading, error }: AuthPageProps) {
+export default function AuthPage({ userRole, onLogin, onRegister, onGoogleLogin, onBack, isLoading, error }: AuthPageProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [isLogin, setIsLogin] = useState(true);
+
+  const handleGoogleAuth = useGoogleLogin({
+    onSuccess: (codeResponse) => {
+      if (onGoogleLogin && codeResponse.access_token) {
+        onGoogleLogin(codeResponse.access_token);
+      }
+    },
+    onError: (error) => console.log('Google Login Failed:', error)
+  });
 
   // Form state
   const [name, setName] = useState('');
@@ -207,13 +218,18 @@ export default function AuthPage({ userRole, onLogin, onRegister, onBack, isLoad
                   <div className="absolute inset-0 flex items-center">
                     <div className="w-full border-t border-border/40" />
                   </div>
-                  <div className="relative flex justify-center text-sm">
-                    <span className="px-2 bg-card text-muted-foreground">Or continue with</span>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-card px-2 text-muted-foreground font-medium">Or continue with</span>
                   </div>
                 </div>
 
-                <div className="mt-4 grid grid-cols-2 gap-3">
-                  <Button variant="outline" className="h-11 border-border/60 hover:bg-muted text-foreground bg-muted/40">
+                <div className="mt-6 flex flex-col gap-3">
+                  <Button 
+                    variant="outline" 
+                    className="h-11 border-border/60 hover:bg-muted text-foreground bg-muted/40"
+                    onClick={() => handleGoogleAuth()}
+                    disabled={isLoading}
+                  >
                     <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
                       <path
                         fill="currentColor"
