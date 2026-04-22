@@ -130,14 +130,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     if (isLoading) return;
 
+    // Normalize path for robust matching (remove trailing slash except for root)
+    const normalizedPath = pathname === '/' ? '/' : pathname.replace(/\/+$/, '');
+    const isPublicPath = PUBLIC_PATHS.some(p => normalizedPath === p);
+
     // 1. Unauthenticated users: redirect away from protected pages
-    if (!user && !PUBLIC_PATHS.includes(pathname) && !pathname.startsWith('/admin')) {
+    if (!user && !isPublicPath && !normalizedPath.startsWith('/admin')) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[AuthGuard] Unauthenticated user on protected path ${normalizedPath}, redirecting to /`);
+      }
       router.push('/');
       return;
     }
 
     // 2. Authenticated users: redirect away from guest pages
-    if (user && PUBLIC_PATHS.includes(pathname)) {
+    if (user && isPublicPath) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[AuthGuard] Authenticated user on guest path ${normalizedPath}, redirecting to functional area`);
+      }
       if (user.role === 'student' && !user.isOnboarded) {
         router.push('/onboarding');
       } else {
