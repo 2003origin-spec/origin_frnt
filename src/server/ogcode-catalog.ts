@@ -1,11 +1,26 @@
+import { cacheLife, cacheTag } from "next/cache";
+
 import type { DifficultyLevel, QuestionType, StoredAnswerSpec, StoredQuestion } from "@/server/store";
 
 import { getOgcodePostgresPool, isOgcodePostgresConfigured } from "@/server/postgres";
+
+declare global {
+  var __originOgcodeCatalogSchemaReady: Promise<void> | undefined;
+}
 
 type CatalogFilters = {
   subject?: string | null;
   difficulty?: string | null;
   type?: string | null;
+  search?: string | null;
+  chapters?: string[] | null;
+};
+
+type CatalogPageFilters = CatalogFilters & {
+  includeIds?: string[] | null;
+  excludeIds?: string[] | null;
+  limit: number;
+  offset: number;
 };
 
 type CatalogRow = {
@@ -68,8 +83,6 @@ const CREATE_TABLE_SQL = `
   CREATE INDEX IF NOT EXISTS ogcode_questions_question_type_idx ON ogcode_questions (question_type);
   ALTER TABLE ogcode_questions ADD COLUMN IF NOT EXISTS answer_spec JSONB;
 `;
-
-let schemaReady: Promise<void> | null = null;
 
 function normalizeDifficulty(value: string): DifficultyLevel {
   if (value === "easy" || value === "medium" || value === "hard" || value === "insane") {
@@ -207,19 +220,19 @@ async function ensureCatalogSchema(): Promise<void> {
     return;
   }
 
-  if (!schemaReady) {
-    schemaReady = pool.query(CREATE_TABLE_SQL).then(() => undefined).catch((error) => {
-      schemaReady = null;
+  if (!globalThis.__originOgcodeCatalogSchemaReady) {
+    globalThis.__originOgcodeCatalogSchemaReady = pool.query(CREATE_TABLE_SQL).then(() => undefined).catch((error) => {
+      globalThis.__originOgcodeCatalogSchemaReady = undefined;
       throw error;
     });
   }
 
-  await schemaReady;
+  await globalThis.__originOgcodeCatalogSchemaReady;
 }
 
 function buildFilterClause(filters: CatalogFilters) {
   const clauses: string[] = [];
-  const values: string[] = [];
+  const values: unknown[] = [];
 
   if (filters.subject) {
     values.push(normalizeSubject(filters.subject));
@@ -236,7 +249,24 @@ function buildFilterClause(filters: CatalogFilters) {
     clauses.push(`question_type = $${values.length}`);
   }
 
+  const chapters = (filters.chapters ?? [])
+    .map((entry) => String(entry ?? "").trim())
+    .filter(Boolean);
+  if (chapters.length) {
+    values.push(chapters);
+    clauses.push(`chapter = ANY($${values.length}::text[])`);
+  }
+
+  const search = String(filters.search ?? "").trim();
+  if (search) {
+    values.push(`%${search.toLowerCase()}%`);
+    clauses.push(
+      `(LOWER(text) LIKE $${values.length} OR LOWER(chapter) LIKE $${values.length} OR LOWER(concept) LIKE $${values.length} OR LOWER(COALESCE(tags::text, '')) LIKE $${values.length})`,
+    );
+  }
+
   return {
+    clauses,
     sql: clauses.length ? `WHERE ${clauses.join(" AND ")}` : "",
     values,
   };
@@ -247,6 +277,10 @@ export function isOgcodeCatalogAvailable(): boolean {
 }
 
 export async function listOgcodeCatalogQuestions(filters: CatalogFilters = {}): Promise<StoredQuestion[]> {
+  'use cache';
+  cacheLife('hours');
+  cacheTag('ogcode-catalog');
+
   const pool = getOgcodePostgresPool();
   if (!pool) {
     return [];
@@ -290,7 +324,137 @@ export async function listOgcodeCatalogQuestions(filters: CatalogFilters = {}): 
   return result.rows.map(mapCatalogRow);
 }
 
+export async function listOgcodeCatalogQuestionIds(filters: CatalogFilters = {}): Promise<string[]> {
+  'use cache';
+  cacheLife('hours');
+  cacheTag('ogcode-catalog');
+
+  const pool = getOgcodePostgresPool();
+  if (!pool) {
+    return [];
+  }
+
+  await ensureCatalogSchema();
+  const { sql, values } = buildFilterClause(filters);
+  const result = await pool.query<{ id: string }>(
+    `
+      SELECT id
+      FROM ogcode_questions
+      ${sql}
+      ORDER BY source_index ASC
+    `,
+    values,
+  );
+
+  return result.rows.map((row) => row.id);
+}
+
+export async function listOgcodeCatalogQuestionPage(filters: CatalogPageFilters): Promise<{
+  items: StoredQuestion[];
+  total: number;
+}> {
+  'use cache';
+  cacheLife('minutes');
+  cacheTag('ogcode-catalog');
+
+  const pool = getOgcodePostgresPool();
+  if (!pool) {
+    return { items: [], total: 0 };
+  }
+
+  await ensureCatalogSchema();
+  const base = buildFilterClause(filters);
+  const clauses = [...base.clauses];
+  const values = [...base.values];
+  const includeIds = [...new Set((filters.includeIds ?? []).filter(Boolean))];
+  const excludeIds = [...new Set((filters.excludeIds ?? []).filter(Boolean))];
+
+  if (includeIds.length) {
+    values.push(includeIds);
+    clauses.push(`id = ANY($${values.length}::text[])`);
+  }
+
+  if (excludeIds.length) {
+    values.push(excludeIds);
+    clauses.push(`NOT (id = ANY($${values.length}::text[]))`);
+  }
+
+  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+  values.push(Math.max(1, Math.trunc(filters.limit)), Math.max(0, Math.trunc(filters.offset)));
+
+  const result = await pool.query<(CatalogRow & { total_count: number | string })>(
+    `
+      SELECT
+        id,
+        source_index,
+        text,
+        options,
+        correct_option,
+        correct_options,
+        answer_text,
+        answer_spec,
+        tolerance,
+        matrix_data,
+        explanation,
+        hint,
+        subject,
+        chapter,
+        concept,
+        difficulty,
+        image,
+        tags,
+        question_type,
+        acceptance_rate,
+        total_correct,
+        frequency,
+        is_challenge_of_day,
+        COUNT(*) OVER() AS total_count
+      FROM ogcode_questions
+      ${where}
+      ORDER BY source_index ASC
+      LIMIT $${values.length - 1}
+      OFFSET $${values.length}
+    `,
+    values,
+  );
+
+  return {
+    items: result.rows.map(mapCatalogRow),
+    total: Number(result.rows[0]?.total_count ?? 0),
+  };
+}
+
+export async function listOgcodeCatalogChapters(subject: string): Promise<string[]> {
+  'use cache';
+  cacheLife('hours');
+  cacheTag('ogcode-catalog');
+
+  const pool = getOgcodePostgresPool();
+  if (!pool) {
+    return [];
+  }
+
+  await ensureCatalogSchema();
+  const result = await pool.query<{ chapter: string }>(
+    `
+      SELECT DISTINCT chapter
+      FROM ogcode_questions
+      WHERE subject = $1
+      ORDER BY chapter ASC
+    `,
+    [normalizeSubject(subject)],
+  );
+
+  return result.rows
+    .map((row) => row.chapter.trim())
+    .filter(Boolean);
+}
+
 export async function getOgcodeCatalogQuestionById(questionId: string): Promise<StoredQuestion | null> {
+  'use cache';
+  cacheLife('hours');
+  cacheTag('ogcode-catalog', `ogcode-question:${questionId}`);
+
   const pool = getOgcodePostgresPool();
   if (!pool) {
     return null;
@@ -379,6 +543,10 @@ export async function getOgcodeCatalogQuestionMap(questionIds: string[]): Promis
 }
 
 export async function getOgcodeCatalogCounts() {
+  'use cache';
+  cacheLife('hours');
+  cacheTag('ogcode-catalog');
+
   const pool = getOgcodePostgresPool();
   if (!pool) {
     return { total: 0, bySubject: {} as Record<string, number> };
@@ -405,6 +573,10 @@ export async function getOgcodeCatalogCounts() {
 }
 
 export async function getOgcodeChallengeQuestion(): Promise<StoredQuestion | null> {
+  'use cache';
+  cacheLife('hours');
+  cacheTag('ogcode-challenge');
+
   const pool = getOgcodePostgresPool();
   if (!pool) {
     return null;

@@ -14,6 +14,7 @@ import {
     renderQuestionText as sharedRenderQuestionText,
 } from '@/lib/math-text';
 import type { PracticeQuestion, User } from '@/types';
+import { submitOgcodeAnswerAction } from '@/server/actions/ogcode-actions';
 import { toast } from 'sonner';
 
 interface OGCodeWorkspaceProps {
@@ -22,6 +23,11 @@ interface OGCodeWorkspaceProps {
     onRefreshUser?: () => void;
     setTimeMode?: (mode: 'webpage' | 'practice' | 'pomodoro', subject?: string) => void;
     user: User;
+    /**
+     * Server-seeded question payload. When present, the workspace renders
+     * immediately with no client fetch for the initial question.
+     */
+    initialQuestion?: PracticeQuestion | null;
 }
 
 interface SubmitResult {
@@ -304,9 +310,9 @@ function renderQuestionText(content: string | null | undefined, keyPrefix: strin
     return sharedRenderQuestionText(content, keyPrefix);
 }
 
-export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, setTimeMode, user }: OGCodeWorkspaceProps) {
-    const [question, setQuestion] = useState<PracticeQuestion | null>(null);
-    const [isLoading, setIsLoading] = useState(true);
+export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, setTimeMode, user, initialQuestion }: OGCodeWorkspaceProps) {
+    const [question, setQuestion] = useState<PracticeQuestion | null>(initialQuestion ?? null);
+    const [isLoading, setIsLoading] = useState(!initialQuestion);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [result, setResult] = useState<SubmitResult | null>(null);
 
@@ -320,7 +326,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
 
     const [elapsed, setElapsed] = useState(0);
     const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-    const hasFetched = useRef(false);
+    const hasFetched = useRef(Boolean(initialQuestion));
 
     // 1. SAFE TAGS: Prevents the ".map is not a function" crash
     const safeTags = useMemo(() => {
@@ -408,10 +414,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
         try {
             setShowHint(false);
             setShowSolution(false);
-            const res = await apiCall(`/assessments/practice/${question.id}/submit/`, {
-                method: 'POST',
-                body: JSON.stringify(payload),
-            });
+            const res = await submitOgcodeAnswerAction(question.id, payload);
             if (timerRef.current) clearInterval(timerRef.current);
             setResult(res); // This triggers the result UI
             toast.success(res.isCorrect ? "Brilliant! Correct Answer" : "Not quite right. Try again?");

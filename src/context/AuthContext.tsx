@@ -5,7 +5,20 @@ import { useRouter, usePathname } from 'next/navigation';
 import { toast } from 'sonner';
 import type { User, StreakData, Task } from '@/types';
 import { clearOriginAiBrowserSession } from '@/features/origin-ai/session';
-import { apiCall, AUTH_EXPIRED_EVENT } from '@/lib/api';
+import { AUTH_EXPIRED_EVENT } from '@/lib/api';
+import {
+  addTaskAction,
+  listTasksAction,
+  removeTaskAction,
+  toggleTaskAction,
+} from '@/server/actions/task-actions';
+import {
+  googleLoginAction,
+  loginAction,
+  logoutAction,
+  refreshUserAction,
+  registerAction,
+} from '@/server/actions/auth-actions';
 
 interface AuthContextType {
   user: User | null;
@@ -23,6 +36,7 @@ interface AuthContextType {
   addTask: (text: string, due: string) => Promise<void>;
   toggleTask: (id: string) => Promise<void>;
   removeTask: (id: string) => Promise<void>;
+  primeTasks: (seededTasks: Task[]) => void;
   isNavigationLocked: boolean;
   setIsNavigationLocked: (locked: boolean) => void;
 }
@@ -38,11 +52,27 @@ const EMPTY_STREAK: StreakData = {
 
 const PUBLIC_PATHS = ['/', '/auth', '/role-selection'];
 
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [userRole, setUserRole] = useState<'student' | 'teacher' | null>(null);
-  const [streakData, setStreakData] = useState<StreakData>(EMPTY_STREAK);
-  const [isLoading, setIsLoading] = useState(true);
+function normalizeRole(role: User['role'] | undefined): 'student' | 'teacher' | null {
+  return role === 'student' || role === 'teacher' ? role : null;
+}
+
+interface AuthProviderProps {
+  children: React.ReactNode;
+  /**
+   * Server-resolved user, seeded from the root layout via `getServerFrontendUser`.
+   * When present, the provider starts fully hydrated with no loading state and
+   * no blocking `/users/me` round-trip.
+   */
+  initialUser: User | null;
+}
+
+export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUser }) => {
+  const [user, setUser] = useState<User | null>(initialUser);
+  const [userRole, setUserRole] = useState<'student' | 'teacher' | null>(
+    normalizeRole(initialUser?.role),
+  );
+  const [streakData, setStreakData] = useState<StreakData>(initialUser?.streakData ?? EMPTY_STREAK);
+  const [isLoading, setIsLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [tasksLoading, setTasksLoading] = useState(false);
@@ -54,7 +84,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const applyUserData = useCallback((userData: User) => {
     setUser(userData);
     if (userData.streakData) setStreakData(userData.streakData);
-    if (userData.role === 'student' || userData.role === 'teacher') setUserRole(userData.role);
+    setUserRole(normalizeRole(userData.role));
   }, []);
 
   const fetchTasks = useCallback(async () => {
@@ -62,8 +92,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     tasksFetched.current = true;
     setTasksLoading(true);
     try {
-      const data = await apiCall('/users/tasks');
-      setTasks(Array.isArray(data) ? data : []);
+      const data = await listTasksAction();
+      setTasks((data ?? []) as unknown as Task[]);
     } catch {
       // Non-fatal — tasks stay empty, user can still use the app
     } finally {
@@ -71,10 +101,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
+  const primeTasks = useCallback((seededTasks: Task[]) => {
+    tasksFetched.current = true;
+    setTasksLoading(false);
+    setTasks((current) => (current.length > 0 ? current : seededTasks));
+  }, []);
+
   const refreshUser = useCallback(async () => {
     try {
-      const userData = await apiCall('/users/me/') as User;
-      applyUserData(userData);
+      const userData = await refreshUserAction();
+      if (userData) applyUserData(userData);
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
         console.error('Failed to refresh user:', error);
@@ -82,7 +118,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [applyUserData]);
 
-  // Runs once on mount — fetches user from stored token and listens for session expiry
+  // Auth-expired listener only. The server now seeds `initialUser`, and task
+  // lists are primed by the specific routes that need them.
   useEffect(() => {
     const handleAuthExpired = () => {
       setUser(null);
@@ -94,39 +131,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       toast.error('Your session expired. Please log in again.');
     };
     window.addEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
-
-    const token = localStorage.getItem('origin_access_token');
-    if (!token) {
-      setIsLoading(false);
-      return () => window.removeEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
-    }
-
-    const fetchInitialUser = async () => {
-      try {
-        const userData = await apiCall('/users/me/') as User;
-        applyUserData(userData);
-        await fetchTasks();
-        const currentPath = window.location.pathname;
-        if (currentPath === '/auth' || currentPath === '/') {
-          if (userData.role === 'student' && !userData.isOnboarded) {
-            router.push('/onboarding');
-          } else {
-            router.push('/dashboard');
-          }
-        }
-      } catch {
-        localStorage.removeItem('origin_access_token');
-        localStorage.removeItem('origin_refresh_token');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    fetchInitialUser();
     return () => window.removeEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Runs on every route change — manages redirection for protected and guest-only pages
+  // Runs on every route change and keeps protected and guest-only pages aligned
+  // with the current auth state.
   useEffect(() => {
     if (isLoading) return;
 
@@ -160,23 +170,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoading(true);
     setAuthError(null);
     try {
-      const response = await apiCall('/users/login/', {
-        method: 'POST',
-        body: JSON.stringify({ email, password, ...(role ? { role } : {}) }),
-      });
+      const result = await loginAction({ email, password, role: role ?? null });
+      if (!result.ok) {
+        setAuthError(result.message);
+        toast.error(result.message);
+        return;
+      }
 
       clearOriginAiBrowserSession();
-      localStorage.setItem('origin_access_token', response.access);
-      localStorage.setItem('origin_refresh_token', response.refresh);
+      // Tokens already live in HttpOnly cookies; mirror to localStorage so
+      // legacy `apiCall` sites (and the mobile bridge) keep working until
+      // every call site is migrated off the /api/... bridge.
+      if (result.access) localStorage.setItem('origin_access_token', result.access);
+      if (result.refresh) localStorage.setItem('origin_refresh_token', result.refresh);
 
-      setUser(response.user);
-      if (response.user.streakData) setStreakData(response.user.streakData);
-      if (response.user.role === 'student' || response.user.role === 'teacher') setUserRole(response.user.role);
+      setUser(result.user);
+      if (result.user.streakData) setStreakData(result.user.streakData);
+      setUserRole(normalizeRole(result.user.role));
 
       tasksFetched.current = false;
       await fetchTasks();
 
-      if (response.user.role === 'student' && !response.user.isOnboarded) {
+      if (result.user.role === 'student' && !result.user.isOnboarded) {
         router.push('/onboarding');
       } else {
         router.push('/dashboard');
@@ -195,23 +210,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoading(true);
     setAuthError(null);
     try {
-      const response = await apiCall('/users/register/', {
-        method: 'POST',
-        body: JSON.stringify({ name, email, password, ...(role ? { role } : {}) }),
-      });
+      const result = await registerAction({ name, email, password, role: role ?? null });
+      if (!result.ok) {
+        setAuthError(result.message);
+        toast.error(result.message);
+        return;
+      }
 
       clearOriginAiBrowserSession();
-      localStorage.setItem('origin_access_token', response.access);
-      localStorage.setItem('origin_refresh_token', response.refresh);
+      if (result.access) localStorage.setItem('origin_access_token', result.access);
+      if (result.refresh) localStorage.setItem('origin_refresh_token', result.refresh);
 
-      setUser(response.user);
-      if (response.user.streakData) setStreakData(response.user.streakData);
-      if (response.user.role === 'student' || response.user.role === 'teacher') setUserRole(response.user.role);
+      setUser(result.user);
+      if (result.user.streakData) setStreakData(result.user.streakData);
+      setUserRole(normalizeRole(result.user.role));
 
       tasksFetched.current = false;
       await fetchTasks();
 
-      if (response.user.role === 'student' && !response.user.isOnboarded) {
+      if (result.user.role === 'student' && !result.user.isOnboarded) {
         router.push('/onboarding');
       } else {
         router.push('/dashboard');
@@ -230,23 +247,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoading(true);
     setAuthError(null);
     try {
-      const response = await apiCall('/users/google-login/', {
-        method: 'POST',
-        body: JSON.stringify({ credential }),
-      });
+      const result = await googleLoginAction({ credential });
+      if (!result.ok) {
+        setAuthError(result.message);
+        toast.error(result.message);
+        return;
+      }
 
       clearOriginAiBrowserSession();
-      localStorage.setItem('origin_access_token', response.access);
-      localStorage.setItem('origin_refresh_token', response.refresh);
+      if (result.access) localStorage.setItem('origin_access_token', result.access);
+      if (result.refresh) localStorage.setItem('origin_refresh_token', result.refresh);
 
-      setUser(response.user);
-      if (response.user.streakData) setStreakData(response.user.streakData);
-      if (response.user.role === 'student' || response.user.role === 'teacher') setUserRole(response.user.role);
+      setUser(result.user);
+      if (result.user.streakData) setStreakData(result.user.streakData);
+      setUserRole(normalizeRole(result.user.role));
 
       tasksFetched.current = false;
       await fetchTasks();
 
-      if (response.user.role === 'student' && !response.user.isOnboarded) {
+      if (result.user.role === 'student' && !result.user.isOnboarded) {
         router.push('/onboarding');
       } else {
         router.push('/dashboard');
@@ -269,26 +288,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     clearOriginAiBrowserSession();
     localStorage.removeItem('origin_access_token');
     localStorage.removeItem('origin_refresh_token');
-    // Clear the HttpOnly cookies that Server Components read (fire-and-forget)
-    fetch('/api/users/logout', { method: 'POST' }).catch(() => {});
+    // Server Action clears the HttpOnly cookies + revalidates the RSC tree.
+    // Fire-and-forget so the UI never waits on the round-trip.
+    void logoutAction().catch(() => {});
     router.push('/');
     toast.info('Logged out successfully');
   };
 
   const addTask = async (text: string, due: string) => {
-    // Optimistic: add a temporary task immediately
     const tempId = `temp_${Date.now()}`;
     const optimistic: Task = { id: tempId, text, due, completed: false };
     setTasks(prev => [optimistic, ...prev]);
     try {
-      const created = await apiCall('/users/tasks', {
-        method: 'POST',
-        body: JSON.stringify({ text, due }),
-      });
-      // Replace temp task with server-assigned ID
-      setTasks(prev => prev.map(t => t.id === tempId ? created : t));
+      const created = await addTaskAction({ text, due });
+      setTasks(prev => prev.map(t => t.id === tempId ? (created as unknown as Task) : t));
     } catch {
-      // Revert on failure
       setTasks(prev => prev.filter(t => t.id !== tempId));
       toast.error('Failed to save task. Please try again.');
     }
@@ -297,15 +311,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const toggleTask = async (id: string) => {
     const original = tasks.find(t => t.id === id);
     if (!original) return;
-    // Optimistic update
     setTasks(prev => prev.map(t => t.id === id ? { ...t, completed: !t.completed } : t));
     try {
-      await apiCall(`/users/tasks/${id}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ completed: !original.completed }),
-      });
+      await toggleTaskAction(id, !original.completed);
     } catch {
-      // Revert
       setTasks(prev => prev.map(t => t.id === id ? original : t));
       toast.error('Failed to update task.');
     }
@@ -313,12 +322,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const removeTask = async (id: string) => {
     const original = tasks.find(t => t.id === id);
-    // Optimistic remove
     setTasks(prev => prev.filter(t => t.id !== id));
     try {
-      await apiCall(`/users/tasks/${id}`, { method: 'DELETE' });
+      await removeTaskAction(id);
     } catch {
-      // Revert
       if (original) setTasks(prev => [original, ...prev]);
       toast.error('Failed to delete task.');
     }
@@ -341,6 +348,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       addTask,
       toggleTask,
       removeTask,
+      primeTasks,
       isNavigationLocked,
       setIsNavigationLocked,
     }}>

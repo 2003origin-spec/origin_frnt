@@ -19,9 +19,25 @@ import {
 import type { User } from '@/types';
 
 interface PremiumProps {
-  user: User;
+  user?: User | null;
   onBack: () => void;
   onSubscribe: (plan: string) => void;
+}
+
+interface PremiumPlan {
+  id: string;
+  name: string;
+  price: {
+    monthly: number;
+    yearly: number;
+  };
+  description: string;
+  features: string[];
+  notIncluded: string[];
+  cta: string;
+  popular: boolean;
+  current: boolean;
+  comingSoon?: boolean;
 }
 
 export default function Premium({ user, onBack, onSubscribe }: PremiumProps) {
@@ -29,7 +45,7 @@ export default function Premium({ user, onBack, onSubscribe }: PremiumProps) {
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const plans = [
+  const plans: PremiumPlan[] = [
     {
       id: 'free',
       name: 'Free',
@@ -49,7 +65,7 @@ export default function Premium({ user, onBack, onSubscribe }: PremiumProps) {
       ],
       cta: 'Current Plan',
       popular: false,
-      current: !user.isPremium,
+      current: !user?.isPremium,
     },
     {
       id: 'pro',
@@ -185,11 +201,11 @@ export default function Premium({ user, onBack, onSubscribe }: PremiumProps) {
                 <div className="text-center mb-8">
                   <div className="flex items-baseline justify-center gap-1">
                     <span className="text-4xl font-bold text-slate-900 dark:text-white">
-                      {(plan as any).comingSoon ? 'Coming Soon' : `₹${billingCycle === 'monthly' ? plan.price.monthly : Math.round(plan.price.yearly / 12)}`}
+                      {plan.comingSoon ? 'Coming Soon' : `₹${billingCycle === 'monthly' ? plan.price.monthly : Math.round(plan.price.yearly / 12)}`}
                     </span>
-                    {!(plan as any).comingSoon && <span className="text-slate-500 dark:text-slate-400">/month</span>}
+                    {!plan.comingSoon && <span className="text-slate-500 dark:text-slate-400">/month</span>}
                   </div>
-                  {!(plan as any).comingSoon && billingCycle === 'yearly' && plan.price.yearly > 0 && (
+                  {!plan.comingSoon && billingCycle === 'yearly' && plan.price.yearly > 0 && (
                     <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
                       ₹{plan.price.yearly} billed annually
                     </p>
@@ -311,7 +327,9 @@ export default function Premium({ user, onBack, onSubscribe }: PremiumProps) {
                     <Star key={star} className="w-4 h-4 fill-amber-400 text-amber-400" />
                   ))}
                 </div>
-                <p className="text-slate-700 dark:text-slate-300 mb-4 italic">"{testimonial.quote}"</p>
+                <p className="text-slate-700 dark:text-slate-300 mb-4 italic">
+                  &ldquo;{testimonial.quote}&rdquo;
+                </p>
                 <div>
                   <p className="font-semibold text-slate-900 dark:text-white">{testimonial.name}</p>
                   <p className="text-sm text-[#3CACA3]">{testimonial.rank}</p>

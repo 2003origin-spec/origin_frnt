@@ -8,11 +8,17 @@ import type {
   OriginAiReply,
   OriginAiSession,
   OriginAiSnapshot,
+  OriginAiThread,
   OriginAiVoiceReply,
   OriginAiVoiceSpeakResponse,
   OriginAiVoiceBootstrap,
   OriginAiVisibleQuestion,
 } from '@/types';
+
+type RawThread = Omit<OriginAiThread, 'createdAt' | 'updatedAt'> & {
+  createdAt: string | Date;
+  updatedAt: string | Date;
+};
 
 type RawMessage = ChatMessage & {
   timestamp: string | Date;
@@ -60,6 +66,7 @@ type ServiceMessage = {
   content: string;
   source?: string;
   tokens_used?: number;
+  metadata?: Record<string, unknown> | null;
   created_at: string | Date;
 };
 
@@ -70,6 +77,11 @@ type ServiceSnapshot = {
     is_active?: boolean;
     created_at: string | Date;
     updated_at?: string | Date | null;
+    thread_id?: string | null;
+    subject?: string | null;
+    active_concept?: string | null;
+    last_pathname?: string | null;
+    last_page_kind?: string | null;
   };
   memory: {
     preferred_name?: string | null;
@@ -180,6 +192,15 @@ const normalizeSession = (session: RawSession): OriginAiSession => ({
   createdAt: new Date(session.createdAt),
   updatedAt: new Date(session.updatedAt),
   messages: (session.messages || []).map(normalizeMessage),
+  threadId: session.threadId ?? null,
+  subject: session.subject ?? null,
+  activeConcept: session.activeConcept ?? null,
+});
+
+const normalizeThread = (thread: RawThread): OriginAiThread => ({
+  ...thread,
+  createdAt: new Date(thread.createdAt),
+  updatedAt: new Date(thread.updatedAt),
 });
 
 const normalizeServiceMessage = (message: ServiceMessage): ChatMessage => ({
@@ -188,6 +209,7 @@ const normalizeServiceMessage = (message: ServiceMessage): ChatMessage => ({
   content: message.content,
   timestamp: new Date(message.created_at),
   metadata: {
+    ...(message.metadata ?? {}),
     source: message.source ?? 'ai',
     tokensUsed: message.tokens_used ?? 0,
   },
@@ -233,6 +255,14 @@ function buildIdentitySummary(memory: ServiceSnapshot['memory']): string {
 function normalizeServiceSnapshot(
   snapshot: ServiceSnapshot,
   pageContext?: OriginAiClientPageContext,
+  sessionOverrides?: {
+    threadId?: string | null;
+    subject?: string | null;
+    activeConcept?: string | null;
+    title?: string | null;
+    lastPathname?: string | null;
+    lastPageKind?: string | null;
+  },
 ): OriginAiSnapshot {
   const messages = (snapshot.messages ?? []).map(normalizeServiceMessage);
   const updatedAt =
@@ -243,13 +273,16 @@ function normalizeServiceSnapshot(
   return {
     session: {
       id: snapshot.session.id,
-      title: snapshot.session.title ?? 'Conversation',
+      title: sessionOverrides?.title ?? snapshot.session.title ?? 'Conversation',
       summary: null,
-      lastPathname: pageContext?.pathname ?? null,
-      lastPageKind: pageContext?.pageKind ?? null,
+      lastPathname: sessionOverrides?.lastPathname ?? snapshot.session.last_pathname ?? pageContext?.pathname ?? null,
+      lastPageKind: sessionOverrides?.lastPageKind ?? snapshot.session.last_page_kind ?? pageContext?.pageKind ?? null,
       createdAt: new Date(snapshot.session.created_at),
       updatedAt: new Date(updatedAt),
       messages,
+      threadId: sessionOverrides?.threadId ?? snapshot.session.thread_id ?? null,
+      subject: sessionOverrides?.subject ?? snapshot.session.subject ?? null,
+      activeConcept: sessionOverrides?.activeConcept ?? snapshot.session.active_concept ?? null,
     },
     memory: {
       preferredName: snapshot.memory.preferred_name?.trim() || 'Learner',
@@ -348,6 +381,41 @@ async function fetchSessionSnapshot(pageContext?: OriginAiClientPageContext): Pr
 
   if (isServiceSnapshot(data)) {
     return normalizeServiceSnapshot(data, pageContext);
+  }
+
+  return normalizeSnapshot(data as RawSnapshot);
+}
+
+async function fetchThreadSnapshot(
+  threadId: string,
+  fallback?: {
+    title?: string | null;
+    subject?: string | null;
+    activeConcept?: string | null;
+  },
+): Promise<OriginAiSnapshot> {
+  const data = await apiCall(`/origin-ai/threads/${encodeURIComponent(threadId)}`, {
+    method: 'GET',
+    headers: { 'X-Origin-AI-Session-Id': getOriginAiBrowserSessionId() },
+  });
+
+  if (isServiceSnapshot(data)) {
+    return normalizeServiceSnapshot(
+      data,
+      {
+        pathname: '/doubt-solver',
+        pageKind: 'doubt_solver',
+        activeSubject: fallback?.subject ?? null,
+      },
+      {
+        threadId,
+        title: fallback?.title ?? null,
+        subject: fallback?.subject ?? null,
+        activeConcept: fallback?.activeConcept ?? null,
+        lastPathname: '/doubt-solver',
+        lastPageKind: 'doubt_solver',
+      },
+    );
   }
 
   return normalizeSnapshot(data as RawSnapshot);
@@ -480,6 +548,7 @@ export async function sendOriginAiMessage(
   message: string,
   pageContext?: OriginAiClientPageContext,
   highlightedText?: string | null,
+  threadId?: string | null,
 ): Promise<OriginAiReply> {
   const data = await apiCall('/origin-ai/session/message', {
     method: 'POST',
@@ -490,15 +559,72 @@ export async function sendOriginAiMessage(
       message,
       pageContext,
       highlightedText: highlightedText || null,
+      threadId: threadId ?? null,
     }),
   });
 
   if (isServiceReply(data)) {
-    const snapshot = await fetchSessionSnapshot(pageContext);
+    const snapshot = threadId
+      ? await fetchThreadSnapshot(threadId, {
+          subject: pageContext?.activeSubject ?? null,
+        })
+      : await fetchSessionSnapshot(pageContext);
     return toReplyFromSnapshot(snapshot, data.user_message_id, data.ai_message_id);
   }
 
   return normalizeReply(data as RawReply);
+}
+
+// ---------- Thread CRUD (full-window Doubt Solver) ----------
+
+export async function listOriginAiThreads(): Promise<OriginAiThread[]> {
+  const data = (await apiCall('/origin-ai/threads', {
+    method: 'GET',
+    headers: { 'X-Origin-AI-Session-Id': getOriginAiBrowserSessionId() },
+  })) as { threads?: RawThread[] };
+  return (data.threads ?? []).map(normalizeThread);
+}
+
+export async function createOriginAiThread(payload: {
+  title?: string;
+  subject?: string | null;
+}): Promise<OriginAiThread> {
+  const data = (await apiCall('/origin-ai/threads', {
+    method: 'POST',
+    headers: { 'X-Origin-AI-Session-Id': getOriginAiBrowserSessionId() },
+    body: JSON.stringify(payload),
+  })) as { thread: RawThread };
+  return normalizeThread(data.thread);
+}
+
+export async function renameOriginAiThread(
+  threadId: string,
+  payload: { title?: string; subject?: string | null },
+): Promise<OriginAiThread> {
+  const data = (await apiCall(`/origin-ai/threads/${encodeURIComponent(threadId)}`, {
+    method: 'PATCH',
+    headers: { 'X-Origin-AI-Session-Id': getOriginAiBrowserSessionId() },
+    body: JSON.stringify(payload),
+  })) as { thread: RawThread };
+  return normalizeThread(data.thread);
+}
+
+export async function deleteOriginAiThread(threadId: string): Promise<void> {
+  await apiCall(`/origin-ai/threads/${encodeURIComponent(threadId)}`, {
+    method: 'DELETE',
+    headers: { 'X-Origin-AI-Session-Id': getOriginAiBrowserSessionId() },
+  });
+}
+
+export async function getOriginAiThreadSnapshot(
+  threadId: string,
+  fallback?: {
+    title?: string | null;
+    subject?: string | null;
+    activeConcept?: string | null;
+  },
+): Promise<OriginAiSnapshot> {
+  return fetchThreadSnapshot(threadId, fallback);
 }
 
 export async function getOriginAiVoiceBootstrap(

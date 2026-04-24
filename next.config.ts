@@ -5,6 +5,7 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: process.cwd(),
   },
+  cacheComponents: true,
   async headers() {
     return [
       {

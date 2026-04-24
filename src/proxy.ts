@@ -3,7 +3,7 @@ import type { NextRequest } from 'next/server';
 
 /**
  * Routes that require a valid session cookie.
- * Middleware checks are prefix-matched, so /tests also covers /tests/[id] etc.
+ * Prefix-matched: `/tests` also covers `/tests/[id]` etc.
  */
 const PROTECTED_PREFIXES = [
   '/dashboard',
@@ -21,7 +21,7 @@ const PROTECTED_PREFIXES = [
   '/admin',
 ];
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const token = request.cookies.get('origin_access_token')?.value;
 
@@ -29,7 +29,6 @@ export function middleware(request: NextRequest) {
     (prefix) => pathname === prefix || pathname.startsWith(prefix + '/'),
   );
 
-  // Unauthenticated user hitting a protected route → send to auth
   if (isProtected && !token) {
     const url = request.nextUrl.clone();
     url.pathname = '/auth';
@@ -37,7 +36,6 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Authenticated user hitting the auth page → send to dashboard
   if (pathname === '/auth' && token) {
     const next = request.nextUrl.searchParams.get('next');
     const url = request.nextUrl.clone();
@@ -51,14 +49,6 @@ export function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    /*
-     * Match all paths except:
-     *   - _next/static  (static files)
-     *   - _next/image   (image optimisation)
-     *   - favicon.ico
-     *   - /api/         (API routes handle their own auth)
-     *   - public assets (.png, .svg, etc.)
-     */
     '/((?!_next/static|_next/image|favicon\\.ico|api/|.*\\.(?:png|jpg|jpeg|gif|svg|ico|webp|woff2?|ttf|eot)).*)',
   ],
 };

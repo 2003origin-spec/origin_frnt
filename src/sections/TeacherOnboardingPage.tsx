@@ -20,10 +20,11 @@ import {
     GraduationCap
 } from 'lucide-react';
 import type { User } from '@/types';
+import { completeOnboardingAction } from '@/server/actions/profile-actions';
 
 interface TeacherOnboardingPageProps {
     user: User;
-    onComplete: (data: Partial<User>) => void;
+    onComplete: (data: Partial<User>) => void | Promise<void>;
 }
 
 export default function TeacherOnboardingPage({ onComplete }: TeacherOnboardingPageProps) {
@@ -38,16 +39,21 @@ export default function TeacherOnboardingPage({ onComplete }: TeacherOnboardingP
     const totalSteps = 4;
     const progress = (step / totalSteps) * 100;
 
-    const handleNext = () => {
+    const handleNext = async () => {
         if (step < totalSteps) {
             setStep(step + 1);
         } else {
-            onComplete({
-                yearsOfExperience: formData.yearsOfExperience,
-                subjects: formData.subjects,
-                referralSource: formData.referralSource,
-                studentCapacity: formData.studentCapacity
-            });
+            try {
+                const response = await completeOnboardingAction({
+                    yearsOfExperience: formData.yearsOfExperience,
+                    subjects: formData.subjects,
+                    referralSource: formData.referralSource,
+                    studentCapacity: formData.studentCapacity
+                });
+                await onComplete(response);
+            } catch (error) {
+                console.error('Failed to complete teacher onboarding:', error);
+            }
         }
     };
 

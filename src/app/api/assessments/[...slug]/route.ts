@@ -9,6 +9,8 @@ import {
   getChallengeOfTheDay,
   getFocusAreas,
   getOgcodeLeaderboard,
+  listOgcodeQuestionChapters,
+  listOgcodeQuestionPage,
   listOgcodeQuestions,
   listGeneratedDpps,
   getOgcodeSubjectRanks,
@@ -16,9 +18,9 @@ import {
   getPracticeQuestionDetail,
   getSingleResult,
   getTestDetail,
+  listTestPreviews,
   listPracticeQuestions,
   listTestResults,
-  listTests,
   type PracticeSubmissionPayload,
   submitGeneratedDpp,
   submitPracticeQuestion,
@@ -29,9 +31,6 @@ import {
 } from "@/server/assessments";
 import { badRequest, created, getSlugSegments, methodNotAllowed, notFound, ok, parseJsonBody, unauthorized } from "@/server/http";
 import { readStore, withStore, withStoreAsync } from "@/server/store";
-
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
 
 function authUser(request: Request) {
   const store = readStore();
@@ -62,7 +61,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
   try {
     if (root === "tests" && !first) {
-      return ok(await listTests(store, user));
+      return ok(await listTestPreviews(store, user));
     }
 
     if (root === "tests" && first && !second) {
@@ -102,6 +101,30 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
     if (root === "ogcode" && first === "questions") {
       const url = new URL(request.url);
+      const limit = url.searchParams.get("limit");
+      const offset = url.searchParams.get("offset");
+      // Read repeated ?chapters=… params. Chapter names contain commas,
+      // so we can't use a CSV separator here.
+      const chapters = url.searchParams
+        .getAll("chapters")
+        .map((entry) => entry.trim())
+        .filter(Boolean);
+
+      if (limit) {
+        return ok(
+          await listOgcodeQuestionPage(store, user, {
+            subject: url.searchParams.get("subject"),
+            difficulty: url.searchParams.get("difficulty"),
+            type: url.searchParams.get("type"),
+            search: url.searchParams.get("search"),
+            status: url.searchParams.get("status") as "solved" | "unsolved" | null,
+            chapters,
+            limit: Number(limit),
+            offset: offset ? Number(offset) : 0,
+          }),
+        );
+      }
+
       return ok(
         await listOgcodeQuestions(store, user, {
           subject: url.searchParams.get("subject"),
@@ -113,6 +136,12 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
     if (root === "ogcode" && first === "challenge") {
       return ok(await getChallengeOfTheDay(store, user));
+    }
+
+    if (root === "ogcode" && first === "chapters") {
+      const url = new URL(request.url);
+      const subject = url.searchParams.get("subject");
+      return ok(subject ? await listOgcodeQuestionChapters(store, user, subject) : []);
     }
 
     if (root === "ogcode" && first === "user-stats") {

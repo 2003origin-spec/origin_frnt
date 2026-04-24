@@ -1,69 +1,35 @@
-'use client';
-
-import React, { useEffect, useState, use } from 'react';
-import TestResultView from '@/sections/TestResultView';
-import { useAuth } from '@/context/AuthContext';
-import { useRouter } from 'next/navigation';
-import { apiCall } from '@/lib/api';
+import { Suspense } from 'react';
+import { redirect } from 'next/navigation';
+import { getServerUser } from '@/lib/auth-server';
+import { listTestResultsForRender } from '@/server/render-loaders';
 import type { TestResult } from '@/types';
-import { toast } from 'sonner';
+import ResultClient from './_client';
 
 export default function ResultPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params);
-  const { user } = useAuth();
-  const router = useRouter();
-  const [testResult, setTestResult] = useState<TestResult | null>(null);
-  const [testHistory, setTestHistory] = useState<TestResult[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    const fetchResult = async () => {
-      // Try sessionStorage first — set by TestPage right before navigation
-      const cached = sessionStorage.getItem(`origin_test_result_${id}`);
-      if (cached) {
-        try {
-          const parsed: TestResult = JSON.parse(cached);
-          setTestResult(parsed);
-          setTestHistory([parsed]);
-          sessionStorage.removeItem(`origin_test_result_${id}`);
-          setIsLoading(false);
-          return;
-        } catch {
-          sessionStorage.removeItem(`origin_test_result_${id}`);
-        }
-      }
-
-      // Fallback: fetch from API (e.g. direct page load or refresh)
-      try {
-        const results = await apiCall(`/assessments/tests/${id}/results/`);
-        if (results && results.length > 0) {
-          setTestResult(results[0]);
-          setTestHistory(results);
-        } else {
-          toast.error('No results found for this test.');
-          router.push('/tests');
-        }
-      } catch {
-        toast.error('Error loading test analysis.');
-        router.push('/tests');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    fetchResult();
-  }, [id, router]);
-
-  if (isLoading) return <div className="flex h-screen items-center justify-center text-slate-400">Analyzing Results...</div>;
-  if (!testResult) return null;
-
   return (
-    <TestResultView
-      result={testResult}
-      history={testHistory}
-      showSummary={true}
-      onBackToDashboard={() => router.push('/dashboard')}
-      onViewDPP={() => router.push('/dpp')}
-      onRetakeTest={() => router.push('/tests')}
-    />
+    <Suspense
+      fallback={
+        <div className="flex h-screen items-center justify-center text-slate-400">
+          Analyzing Results...
+        </div>
+      }
+    >
+      <ResultContent params={params} />
+    </Suspense>
   );
+}
+
+async function ResultContent({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const user = await getServerUser();
+  if (!user) redirect(`/auth?next=/tests/${id}/result`);
+
+  let initialHistory: TestResult[] = [];
+  try {
+    initialHistory = (await listTestResultsForRender(user.id, id)) as unknown as TestResult[];
+  } catch {
+    // Client leaf will do a final fallback fetch.
+  }
+
+  return <ResultClient testId={id} initialHistory={initialHistory} />;
 }

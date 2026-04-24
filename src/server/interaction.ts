@@ -30,11 +30,15 @@ interface SolverTurn {
   suggestedTitle?: string | null;
 }
 
-const GENERIC_SESSION_TITLES = new Set([
-  "new physics session",
-  "physics doubt session",
-  "physics - image analysis",
-]);
+const SUBJECT_WORDS = ["physics", "chemistry", "mathematics", "maths", "math", "biology", "bio"] as const;
+
+const GENERIC_SESSION_TITLES = new Set<string>(
+  SUBJECT_WORDS.flatMap((s) => [
+    `new ${s} session`,
+    `${s} doubt session`,
+    `${s} - image analysis`,
+  ]).concat(["general doubt session", "new general session"]),
+);
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -46,7 +50,8 @@ function normalizeText(value: string): string {
 
 function shouldAutoRenameSession(title: string): boolean {
   const normalized = normalizeText(title);
-  return GENERIC_SESSION_TITLES.has(normalized) || normalized.startsWith("new physics");
+  if (GENERIC_SESSION_TITLES.has(normalized)) return true;
+  return SUBJECT_WORDS.some((s) => normalized.startsWith(`new ${s}`));
 }
 
 function extractSolverContent(value: unknown): string | null {
@@ -198,8 +203,12 @@ export function getDoubtSession(store: AppStore, userId: string, sessionId: stri
 }
 
 export function createDoubtSession(store: AppStore, userId: string, payload: CreateSessionInput) {
-  const subject = (payload.subject?.trim() || "Physics").slice(0, 50);
-  const title = (payload.title?.trim() || `New ${subject} Session`).slice(0, 255);
+  // Subject is optional now — when blank, ai-solver-kb's crossSubjectLookup
+  // resolves the subject from the question itself. Avoid the old "Physics"
+  // default that masked Bio/Chem/Math threads as Physics.
+  const subject = (payload.subject?.trim() ?? "").slice(0, 50);
+  const sessionLabel = subject || "Doubt";
+  const title = (payload.title?.trim() || `New ${sessionLabel} Session`).slice(0, 255);
   const timestamp = nowIso();
 
   const session: StoredDoubtSession = {

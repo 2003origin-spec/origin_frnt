@@ -1,5 +1,5 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 
 import {
   BookOpen,
@@ -55,8 +55,10 @@ export default function StudyCorner({ catalog }: StudyCornerProps) {
     const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
 
     // --- Dynamic Note Aggregation Logic ---
+    // Reads localStorage, so must run client-side only (skipped during SSR prerender).
     const getAggregatedNotes = () => {
         const aggregated: any[] = [];
+        if (typeof window === 'undefined') return mockNotes;
 
         mockBooks.forEach(book => {
             const savedNote = localStorage.getItem(`origin_notes_${book.id}`);
@@ -101,7 +103,10 @@ export default function StudyCorner({ catalog }: StudyCornerProps) {
         return aggregated.length > 0 ? aggregated : mockNotes; // Fallback to mock if empty
     };
 
-    const aggregatedNotes = getAggregatedNotes();
+    const [aggregatedNotes, setAggregatedNotes] = useState<any[]>(mockNotes);
+    useEffect(() => {
+        setAggregatedNotes(getAggregatedNotes());
+    }, []);
 
     const toggleLike = (bookId: string) => {
         const newLiked = new Set(likedBooks);

@@ -1,17 +1,25 @@
+import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
 import { getServerUser } from '@/lib/auth-server';
-import { readStore } from '@/server/store';
-import { buildPointsSummary } from '@/server/gamification';
+import { getPointsSummaryForRender } from '@/server/render-loaders';
 import MilestonesClient from './_client';
+import MilestonesLoading from './loading';
 
-export default async function MilestonesPage() {
+export default function MilestonesPage() {
+  return (
+    <Suspense fallback={<MilestonesLoading />}>
+      <MilestonesContent />
+    </Suspense>
+  );
+}
+
+async function MilestonesContent() {
   const serverUser = await getServerUser();
   if (!serverUser) redirect('/auth?next=/milestones');
 
   let initialPoints = 0;
   try {
-    const store = readStore();
-    initialPoints = buildPointsSummary(store, serverUser.id).totalPoints;
+    initialPoints = (await getPointsSummaryForRender(serverUser.id)).totalPoints;
   } catch {
     // MilestonesPage will fetch points client-side via /users/points/
   }

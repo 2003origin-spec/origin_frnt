@@ -10,6 +10,10 @@ import type {
 import { getOgcodePostgresPool } from "@/server/postgres";
 import { createId, type StoredUserAnswer } from "@/server/store";
 
+declare global {
+  var __originAnalyticsSchemaReady: Promise<void> | undefined;
+}
+
 const ANALYTICS_SCHEMA_SQL = `
 CREATE SCHEMA IF NOT EXISTS analytics;
 
@@ -320,8 +324,6 @@ type PersistDppAttemptInput = {
   response: AnalyticsDppAttemptResponse;
 };
 
-let schemaReady: Promise<void> | null = null;
-
 function getPoolOrThrow() {
   const pool = getOgcodePostgresPool();
   if (!pool) {
@@ -350,12 +352,16 @@ async function ensureSchema(client?: PoolClient): Promise<void> {
     await client.query(ANALYTICS_SCHEMA_SQL);
     return;
   }
-  if (!schemaReady) {
-    schemaReady = getPoolOrThrow()
+  if (!globalThis.__originAnalyticsSchemaReady) {
+    globalThis.__originAnalyticsSchemaReady = getPoolOrThrow()
       .query(ANALYTICS_SCHEMA_SQL)
-      .then(() => undefined);
+      .then(() => undefined)
+      .catch((error) => {
+        globalThis.__originAnalyticsSchemaReady = undefined;
+        throw error;
+      });
   }
-  await schemaReady;
+  await globalThis.__originAnalyticsSchemaReady;
 }
 
 export async function ensureAnalyticsTables(): Promise<void> {
@@ -895,6 +901,46 @@ export async function getLatestDppAttemptForPlan(userId: string, dppId: string):
     createdAt: row.created_at,
     answers: fromJsonArray<StoredUserAnswer>(row.answers),
   };
+}
+
+export async function listLatestDppAttemptsForPlans(
+  userId: string,
+  dppIds: string[],
+): Promise<Map<string, PersistedDppAttemptRecord>> {
+  await ensureSchema();
+  const pool = getPoolOrThrow();
+  const uniqueIds = [...new Set(dppIds.filter(Boolean))];
+  if (uniqueIds.length === 0) {
+    return new Map();
+  }
+
+  const result = await pool.query(
+    `SELECT DISTINCT ON (dpp_id) *
+       FROM analytics.dpp_attempts
+      WHERE user_id = $1 AND dpp_id = ANY($2::text[])
+      ORDER BY dpp_id, created_at DESC`,
+    [userId, uniqueIds],
+  );
+
+  return new Map(
+    result.rows.map((row) => [
+      String(row.dpp_id),
+      {
+        id: row.id,
+        dppId: row.dpp_id,
+        userId: row.user_id,
+        title: row.title,
+        summary: row.summary,
+        recommendations: fromJsonArray<string>(row.recommendations),
+        resolvedTopics: fromJsonArray<string>(row.resolved_topics),
+        stillWeakTopics: fromJsonArray<string>(row.still_weak_topics),
+        progressScore: Number(row.progress_score ?? 0),
+        completed: Boolean(row.completed),
+        createdAt: row.created_at,
+        answers: fromJsonArray<StoredUserAnswer>(row.answers),
+      } satisfies PersistedDppAttemptRecord,
+    ]),
+  );
 }
 
 export async function getOriginAiAnalyticsSnapshot(userId: string): Promise<OriginAiAnalyticsSnapshot | null> {

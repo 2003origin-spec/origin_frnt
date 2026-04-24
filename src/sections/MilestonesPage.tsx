@@ -1,8 +1,7 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { ChevronLeft, Trophy, Star, Zap, Check, BookOpen, Target, MessageCircle, TrendingUp, Crown } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { apiCall } from '@/lib/api';
 
 interface MilestonesPageProps {
   onBack: () => void;
@@ -45,14 +44,8 @@ const HOW_EARNED = [
 ];
 
 export default function MilestonesPage({ onBack, userPoints }: MilestonesPageProps) {
-  const [totalPoints, setTotalPoints] = useState(userPoints);
+  const totalPoints = userPoints;
   const [activeTab, setActiveTab] = useState<'milestones' | 'how'>('milestones');
-
-  useEffect(() => {
-    apiCall('/users/points/').then((data: any) => {
-      if (data?.totalPoints != null) setTotalPoints(data.totalPoints);
-    }).catch(() => { });
-  }, []);
 
   const currentTier = [...TIER_THRESHOLDS].reverse().find(t => totalPoints >= t.min) || TIER_THRESHOLDS[0];
 

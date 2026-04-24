@@ -27,6 +27,7 @@ import {
   type OriginAiProviderRequest,
   type OriginAiVoiceSynthesisResponse,
 } from "@/server/origin-ai-provider";
+import { solveWithKnowledgeBase } from "@/server/ai-solver-kb";
 
 export type OriginAiPageKind =
   | "dashboard"
@@ -130,6 +131,22 @@ export interface OriginAiSessionPayload {
   createdAt: string;
   updatedAt: string;
   messages: StoredChatMessage[];
+  threadId: string | null;
+  subject: string | null;
+  activeConcept: string | null;
+}
+
+export interface OriginAiThreadPayload {
+  id: string;
+  threadId: string;
+  title: string;
+  subject: string | null;
+  activeConcept: string | null;
+  lastPathname: string | null;
+  createdAt: string;
+  updatedAt: string;
+  messageCount: number;
+  lastMessageSnippet: string | null;
 }
 
 export interface OriginAiSnapshotPayload {
@@ -398,9 +415,16 @@ function resolveBrowserSessionId(request: Request, user: StoredUser): string {
   return `legacy-origin-ai-session-${user.id}`;
 }
 
-function getOrCreateMentorSession(store: AppStore, user: StoredUser, browserSessionId: string): StoredOriginAiSession {
-  let session = store.originAiSessions.find(
-    (entry) => entry.userId === user.id && entry.browserSessionId === browserSessionId,
+function getOrCreateMentorSession(
+  store: AppStore,
+  user: StoredUser,
+  browserSessionId: string,
+  threadId: string | null = null,
+): StoredOriginAiSession {
+  let session = store.originAiSessions.find((entry) =>
+    threadId
+      ? entry.userId === user.id && entry.threadId === threadId
+      : entry.userId === user.id && entry.browserSessionId === browserSessionId && !entry.threadId,
   );
   if (!session) {
     const timestamp = nowIso();
@@ -408,17 +432,92 @@ function getOrCreateMentorSession(store: AppStore, user: StoredUser, browserSess
       id: createId("origin_ai"),
       userId: user.id,
       browserSessionId,
-      title: "Origin AI Mentor",
-      summary: "Persistent mentor chat for study guidance and revision planning.",
+      title: threadId ? "Doubt Thread" : "Origin AI Mentor",
+      summary: threadId ? null : "Persistent mentor chat for study guidance and revision planning.",
       lastPathname: null,
       lastPageKind: null,
       createdAt: timestamp,
       updatedAt: timestamp,
       messages: [],
+      threadId,
+      subject: null,
+      activeConcept: null,
     };
     store.originAiSessions.push(session);
   }
   return session;
+}
+
+export function getThreadById(
+  store: AppStore,
+  userId: string,
+  threadId: string,
+): StoredOriginAiSession | null {
+  return (
+    store.originAiSessions.find(
+      (entry) => entry.userId === userId && entry.threadId === threadId,
+    ) ?? null
+  );
+}
+
+export function listThreads(store: AppStore, userId: string): StoredOriginAiSession[] {
+  return store.originAiSessions
+    .filter((entry) => entry.userId === userId && entry.threadId)
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+}
+
+export function createThread(
+  store: AppStore,
+  userId: string,
+  browserSessionId: string,
+  payload: { title?: string; subject?: string | null },
+): StoredOriginAiSession {
+  const subject = payload.subject?.trim() ? payload.subject.trim().slice(0, 50) : null;
+  const title = (payload.title?.trim() || `New ${subject ?? "Doubt"} Session`).slice(0, 255);
+  const timestamp = nowIso();
+  const session: StoredOriginAiSession = {
+    id: createId("origin_ai"),
+    userId,
+    browserSessionId,
+    title,
+    summary: null,
+    lastPathname: "/doubt-solver",
+    lastPageKind: "doubt_solver",
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    messages: [],
+    threadId: createId("thread"),
+    subject,
+    activeConcept: null,
+  };
+  store.originAiSessions.push(session);
+  return session;
+}
+
+export function updateThread(
+  store: AppStore,
+  userId: string,
+  threadId: string,
+  payload: { title?: string; subject?: string | null },
+): StoredOriginAiSession | null {
+  const session = getThreadById(store, userId, threadId);
+  if (!session) return null;
+  if (typeof payload.title === "string" && payload.title.trim()) {
+    session.title = payload.title.trim().slice(0, 255);
+  }
+  if (typeof payload.subject === "string" && payload.subject.trim()) {
+    session.subject = payload.subject.trim().slice(0, 50);
+  }
+  session.updatedAt = nowIso();
+  return session;
+}
+
+export function deleteThread(store: AppStore, userId: string, threadId: string): boolean {
+  const originalLength = store.originAiSessions.length;
+  store.originAiSessions = store.originAiSessions.filter(
+    (entry) => !(entry.userId === userId && entry.threadId === threadId),
+  );
+  return store.originAiSessions.length !== originalLength;
 }
 
 function buildReminders(
@@ -569,6 +668,7 @@ async function prepareOriginAiRuntime(
   user: StoredUser,
   request: Request,
   input?: OriginAiPageContextInput | null,
+  threadId: string | null = null,
 ): Promise<OriginAiRuntimeState> {
   const browserSessionId = resolveBrowserSessionId(request, user);
   const pageContext = await resolvePageContext(store, user, request, input);
@@ -585,10 +685,16 @@ async function prepareOriginAiRuntime(
     ...reminders,
   ];
 
-  const session = getOrCreateMentorSession(store, user, browserSessionId);
+  const session = getOrCreateMentorSession(store, user, browserSessionId, threadId);
   session.lastPathname = pageContext.pathname;
   session.lastPageKind = pageContext.pageKind;
-  ensureWelcomeTurn(session, user, memoryPayload, reminders, pagePolicy);
+  if (session.threadId && !session.subject && pageContext.activeSubject?.trim()) {
+    session.subject = pageContext.activeSubject.trim().slice(0, 50);
+  }
+  // Skip the welcome bootstrap for named doubt threads — they start empty, subject-focused.
+  if (!session.threadId) {
+    ensureWelcomeTurn(session, user, memoryPayload, reminders, pagePolicy);
+  }
 
   return {
     browserSessionId,
@@ -613,6 +719,28 @@ function serializeSession(session: StoredOriginAiSession): OriginAiSessionPayloa
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
     messages: [...session.messages].sort((left, right) => left.timestamp.localeCompare(right.timestamp)),
+    threadId: session.threadId ?? null,
+    subject: session.subject ?? null,
+    activeConcept: session.activeConcept ?? null,
+  };
+}
+
+export function serializeThread(session: StoredOriginAiSession): OriginAiThreadPayload {
+  const sorted = [...session.messages].sort((left, right) =>
+    left.timestamp.localeCompare(right.timestamp),
+  );
+  const last = sorted[sorted.length - 1] ?? null;
+  return {
+    id: session.id,
+    threadId: session.threadId ?? "",
+    title: session.title,
+    subject: session.subject ?? null,
+    activeConcept: session.activeConcept ?? null,
+    lastPathname: session.lastPathname,
+    createdAt: session.createdAt,
+    updatedAt: session.updatedAt,
+    messageCount: sorted.length,
+    lastMessageSnippet: last ? last.content.slice(0, 160) : null,
   };
 }
 
@@ -1395,6 +1523,46 @@ async function generateAssistantReply(
     };
   }
 
+  let kbFallbackReply: ReturnType<typeof solveWithKnowledgeBase> | null = null;
+
+  // Doubt Solver named threads are subject-scoped academic Q&A — route through
+  // the local KB first. This is the brain that actually answers "explain
+  // Carnot Cycle", and it doesn't burn LLM tokens. Falls through to the
+  // provider/local-mentor when the KB isn't confident (kbResolved === false),
+  // so non-academic questions like "what are my weaknesses" still get a real
+  // mentor reply instead of the KB clarifier ("I need exact subject + concept…").
+  if (session.threadId && pageContext.pageKind === "doubt_solver") {
+    try {
+      const kbReply = solveWithKnowledgeBase({
+        sessionTitle: session.title,
+        sessionSubject: pageContext.activeSubject ?? session.subject ?? "",
+        activeConcept: session.activeConcept,
+        studentInput: userMessage,
+        image: null,
+      });
+      const kbResolved = kbReply.metadata.kbResolved !== false;
+      if (kbResolved && kbReply.content.trim()) {
+        if (typeof kbReply.metadata.subject === "string" && !session.subject) {
+          session.subject = kbReply.metadata.subject;
+        }
+        if (kbReply.activeConcept) {
+          session.activeConcept = kbReply.activeConcept;
+        }
+        return {
+          content: kbReply.content,
+          provider: "local_kb",
+          model: "ai-solver-kb",
+          metadata: { source: "ai_solver_kb", ...kbReply.metadata },
+        };
+      }
+      if (kbReply.content.trim()) {
+        kbFallbackReply = kbReply;
+      }
+    } catch (err) {
+      console.error("[origin-ai] KB lookup failed, falling through to provider", err);
+    }
+  }
+
   const history = session.messages.slice(-10).map((message) => ({
     role: message.role,
     content: message.content,
@@ -1416,6 +1584,15 @@ async function generateAssistantReply(
       provider: providerReply.provider,
       model: providerReply.model,
       metadata: providerReply.metadata ?? {},
+    };
+  }
+
+  if (kbFallbackReply?.content.trim()) {
+    return {
+      content: kbFallbackReply.content.trim(),
+      provider: "local_kb",
+      model: "ai-solver-kb-clarifier",
+      metadata: { source: "ai_solver_kb", ...kbFallbackReply.metadata },
     };
   }
 
@@ -1450,8 +1627,9 @@ export async function getOriginAiSnapshot(
   user: StoredUser,
   request: Request,
   input?: OriginAiPageContextInput | null,
+  threadId: string | null = null,
 ): Promise<OriginAiSnapshotPayload> {
-  const runtime = await prepareOriginAiRuntime(store, user, request, input);
+  const runtime = await prepareOriginAiRuntime(store, user, request, input, threadId);
 
   return {
     session: serializeSession(runtime.session),
@@ -1546,6 +1724,7 @@ interface SendOriginAiMessageOptions {
   transport?: "text_chat" | "voice_mode";
   userMetadata?: Record<string, unknown>;
   assistantMetadata?: Record<string, unknown>;
+  threadId?: string | null;
 }
 
 export async function commitOriginAiVoiceTurn(
@@ -1778,7 +1957,7 @@ export async function sendOriginAiMessage(
   if (!trimmed) {
     return { error: "Message is required." };
   }
-  const runtime = await prepareOriginAiRuntime(store, user, request, input);
+  const runtime = await prepareOriginAiRuntime(store, user, request, input, options?.threadId ?? null);
   maybeUpdatePinnedFacts(runtime.memoryRecord, trimmed);
 
   const userMessage: StoredChatMessage = {

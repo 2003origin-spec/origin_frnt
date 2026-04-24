@@ -2,14 +2,22 @@
 
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
-import OGCodeList from '@/sections/OGCodeList';
-import type { PracticeQuestion } from '@/types';
+import OGCodeList, { type UserStats } from '@/sections/OGCodeList';
+import type { PracticeQuestionPage, SubjectRank } from '@/types';
 
 interface OGCodeClientProps {
-  initialQuestions: PracticeQuestion[];
+  initialQuestionPage: PracticeQuestionPage | null;
+  initialSubjectRanks: SubjectRank[] | null;
+  initialUserStats: UserStats | null;
+  initialChapters: string[] | null;
 }
 
-export default function OGCodeClient({ initialQuestions }: OGCodeClientProps) {
+export default function OGCodeClient({
+  initialQuestionPage,
+  initialSubjectRanks,
+  initialUserStats,
+  initialChapters,
+}: OGCodeClientProps) {
   const { user } = useAuth();
   const router = useRouter();
   if (!user) return null;
@@ -17,7 +25,10 @@ export default function OGCodeClient({ initialQuestions }: OGCodeClientProps) {
   return (
     <OGCodeList
       user={user}
-      initialQuestions={initialQuestions}
+      initialQuestionPage={initialQuestionPage}
+      initialSubjectRanks={initialSubjectRanks}
+      initialUserStats={initialUserStats}
+      initialChapters={initialChapters}
       onSelectQuestion={(id) => {
         if (id === 'leaderboard') {
           router.push('/leaderboard');

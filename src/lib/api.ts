@@ -19,7 +19,6 @@ async function attemptTokenRefresh(): Promise<string | null> {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ refresh: refreshToken }),
-            cache: 'no-store',
         });
         if (!response.ok) return null;
         const data = await response.json();
@@ -69,7 +68,6 @@ export const apiCall = async (endpoint: string, options: RequestInit = {}): Prom
 
     const doFetch = (token: string | null) =>
         fetch(`${API_URL}${normalizedEndpoint}`, {
-            cache: 'no-store',
             ...options,
             headers: buildHeaders(token, options.headers),
         });

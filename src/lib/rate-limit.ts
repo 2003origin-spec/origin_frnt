@@ -1,54 +1,85 @@
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 
-const hasRedisVars = !!process.env.UPSTASH_REDIS_REST_URL && !!process.env.UPSTASH_REDIS_REST_TOKEN;
+type AppRateLimitResult = {
+  success: boolean;
+  limit: number;
+  remaining: number;
+  reset: number;
+};
 
-const redis = hasRedisVars
-  ? new Redis({
-      url: process.env.UPSTASH_REDIS_REST_URL,
-      token: process.env.UPSTASH_REDIS_REST_TOKEN,
-    })
-  : null as any;
+type AppRateLimiter = {
+  limit(identifier: string): Promise<AppRateLimitResult>;
+};
 
-export const authLimiter = new Ratelimit({
-  redis,
-  limiter: Ratelimit.slidingWindow(5, "60 s"),
-  prefix: "rl:auth",
-});
+const redisUrl = process.env.UPSTASH_REDIS_REST_URL?.trim();
+const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN?.trim();
+const redis =
+  redisUrl && redisToken
+    ? new Redis({
+        url: redisUrl,
+        token: redisToken,
+      })
+    : null;
 
-export const aiLimiter = new Ratelimit({
-  redis,
-  limiter: Ratelimit.slidingWindow(10, "60 s"),
-  prefix: "rl:ai",
-});
+let hasWarnedMissingRedis = false;
 
-export const voiceLimiter = new Ratelimit({
-  redis,
-  limiter: Ratelimit.slidingWindow(5, "60 s"),
-  prefix: "rl:voice",
-});
-
-export const submitLimiter = new Ratelimit({
-  redis,
-  limiter: Ratelimit.slidingWindow(20, "60 s"),
-  prefix: "rl:submit",
-});
-
-export const generalLimiter = new Ratelimit({
-  redis,
-  limiter: Ratelimit.slidingWindow(60, "60 s"),
-  prefix: "rl:general",
-});
-
-export async function checkRateLimit(
-  limiter: Ratelimit,
-  identifier: string
-): Promise<Response | null> {
-  // Pass through if Redis is not configured (local dev)
-  if (!process.env.UPSTASH_REDIS_REST_URL) {
-    return null;
+function createNoopLimiter(limit: number): AppRateLimiter {
+  if (process.env.NODE_ENV !== "production" && !hasWarnedMissingRedis) {
+    hasWarnedMissingRedis = true;
+    console.warn(
+      "[rate-limit] UPSTASH_REDIS_REST_URL/TOKEN are not set. Using a no-op limiter in local development.",
+    );
   }
 
+  return {
+    async limit() {
+      return {
+        success: true,
+        limit,
+        remaining: limit,
+        reset: Date.now() + 60_000,
+      };
+    },
+  };
+}
+
+function createLimiter(limit: number, prefix: string): AppRateLimiter {
+  if (!redis) {
+    if (process.env.NODE_ENV === "production") {
+      return {
+        async limit() {
+          throw new Error(
+            "[rate-limit] UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN must be set in production.",
+          );
+        },
+      };
+    }
+
+    return createNoopLimiter(limit);
+  }
+
+  return new Ratelimit({
+    redis,
+    limiter: Ratelimit.slidingWindow(limit, "60 s"),
+    prefix,
+  });
+}
+
+export const authLimiter = createLimiter(5, "rl:auth");
+
+export const aiLimiter = createLimiter(10, "rl:ai");
+
+export const voiceLimiter = createLimiter(5, "rl:voice");
+
+export const submitLimiter = createLimiter(20, "rl:submit");
+
+export const generalLimiter = createLimiter(60, "rl:general");
+
+export async function checkRateLimit(
+  limiter: AppRateLimiter,
+  identifier: string
+): Promise<Response | null> {
   const { success, limit, remaining, reset } = await limiter.limit(identifier);
   if (!success) {
     return new Response(

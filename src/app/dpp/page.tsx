@@ -1,19 +1,28 @@
-'use client';
-
-import DPPView from '@/sections/DPPView';
-import { useAuth } from '@/context/AuthContext';
-import { useRouter } from 'next/navigation';
+import { Suspense } from 'react';
+import { redirect } from 'next/navigation';
+import { getServerUser } from '@/lib/auth-server';
+import { listGeneratedDppsForRender, type GeneratedDppForRender } from '@/server/render-loaders';
+import DPPClient from './_client';
+import DppLoading from './loading';
 
 export default function DPPPage() {
-  const { user } = useAuth();
-  const router = useRouter();
-
-  if (!user) return null;
-
   return (
-    <DPPView
-      user={user}
-      onBack={() => router.push('/dashboard')}
-    />
+    <Suspense fallback={<DppLoading />}>
+      <DPPGate />
+    </Suspense>
   );
+}
+
+async function DPPGate() {
+  const user = await getServerUser();
+  if (!user) redirect('/auth?next=/dpp');
+
+  let initialDpps: GeneratedDppForRender[] | null = null;
+  try {
+    initialDpps = await listGeneratedDppsForRender(user.id);
+  } catch {
+    // Fall back to the existing client fetch when analytics storage is unavailable.
+  }
+
+  return <DPPClient initialDpps={initialDpps} />;
 }

@@ -9,12 +9,13 @@ interface LeaderboardClientProps {
 }
 
 export default function LeaderboardClient({ initialLeaderboard, initialMyRank }: LeaderboardClientProps) {
+  // Page-level redirect guarantees an authenticated user reaches this island;
+  // AuthProvider is seeded from the server layout, so `user` is non-null on first render.
   const { user } = useAuth();
-  if (!user) return null;
 
   return (
     <Leaderboard
-      currentUser={user}
+      currentUser={user!}
       initialLeaderboard={initialLeaderboard}
       initialMyRank={initialMyRank}
     />

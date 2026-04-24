@@ -2,8 +2,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { Camera, AlertTriangle, ShieldCheck } from 'lucide-react';
 import type { Test, TestResult, UserAnswer } from '@/types';
-import { apiCall } from '@/lib/api';
 import { renderInlineSegments, renderQuestionText } from '@/lib/math-text';
+import { submitTestAction } from '@/server/actions/test-actions';
 import { toast } from 'sonner';
 
 interface TestInterfaceProps {
@@ -349,12 +349,9 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
         isMalpractice: isMalpractice
       };
 
-      const result = await apiCall(`/assessments/tests/${test.id}/submit/`, {
-        method: 'POST',
-        body: JSON.stringify(payload)
-      });
+      const result = await submitTestAction(test.id, payload);
 
-      onComplete(result);
+      onComplete(result as TestResult);
     } catch (error: any) {
       console.error('Test submission failed:', error);
       toast.error('Failed to submit test. Please try again.');

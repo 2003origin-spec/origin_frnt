@@ -1,37 +1,144 @@
 'use client';
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { Fragment, useState, useRef, useEffect, useCallback } from 'react';
 import {
   ChevronLeft, Send, ImagePlus,
   X, Sparkles, Plus, Atom,
-  FlaskConical, Calculator, PanelLeft, PanelLeftClose
+  FlaskConical, Calculator, Leaf, PanelLeft, PanelLeftClose, Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import type { DoubtSession, User, ChatMessage as ChatMessageType } from '@/types';
+import type {
+  DoubtSession,
+  User,
+  ChatMessage as ChatMessageType,
+  OriginAiSession,
+  OriginAiThread,
+  OriginAiReply,
+} from '@/types';
 import {
-  createDoubtSession,
-  listDoubtSessions,
-  sendSolverMessage,
-  updateDoubtSessionTitle,
-} from '@/features/ai-solver/client';
+  buildOriginAiPageContext,
+  createOriginAiThread,
+  deleteOriginAiThread,
+  getOriginAiThreadSnapshot,
+  listOriginAiThreads,
+  renameOriginAiThread,
+  sendOriginAiMessage,
+} from '@/features/origin-ai/client';
+import { renderInlineSegments } from '@/lib/math-text';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 const SESSION_CACHE_KEY = 'doubt_sessions_cache';
+const LAST_SUBJECT_KEY = 'doubt_last_subject';
+const STEP_MARKER = '<!-- step -->';
+
+type SubjectKey = 'phy' | 'chem' | 'math' | 'bio';
+const SUBJECT_DISPLAY: Record<SubjectKey, string> = {
+  phy: 'Physics',
+  chem: 'Chemistry',
+  math: 'Mathematics',
+  bio: 'Biology',
+};
+
+// Adapt an OriginAiThread (list payload, no messages) into the DoubtSession shape
+// the UI already speaks. We use `threadId` as the canonical id so PATCH/DELETE
+// against /origin-ai/threads/:id keep working.
+function threadToSession(thread: OriginAiThread): DoubtSession {
+  return {
+    id: thread.threadId,
+    title: thread.title,
+    subject: thread.subject ?? undefined,
+    activeConcept: thread.activeConcept,
+    messages: [],
+    createdAt: thread.createdAt,
+    updatedAt: thread.updatedAt,
+  };
+}
+
+function snapshotToSession(session: OriginAiSession): DoubtSession {
+  return {
+    id: session.threadId ?? session.id,
+    title: session.title,
+    subject: session.subject ?? undefined,
+    activeConcept: session.activeConcept,
+    messages: session.messages,
+    createdAt: session.createdAt,
+    updatedAt: session.updatedAt,
+  };
+}
+
+function repairBrokenLatexEscapes(value: string): string {
+  return value
+    .replace(/\t(?=[A-Za-z])/g, '\\t')
+    .replace(/\r(?=[A-Za-z])/g, '\\r')
+    .replace(/\f(?=[A-Za-z])/g, '\\f')
+    .replace(/\u0008(?=[A-Za-z])/g, '\\b');
+}
 
 // Simple Markdown + LaTeX formatter for the UI
 const FormattedText = ({ text }: { text: string }) => {
-  const parts = text.split(/(\*\*.*?\*\*)/g);
+  const lines = repairBrokenLatexEscapes(text).split('\n');
   return (
     <span className="relative text-foreground">
-      {parts.map((part, i) => {
-        if (part.startsWith('**') && part.endsWith('**')) {
-          return <strong key={i} className="font-bold text-foreground">{part.slice(2, -2)}</strong>;
-        }
-        return part;
+      {lines.map((line, lineIndex) => {
+        const parts = line.split(/(\*\*.*?\*\*)/g);
+        return (
+          <Fragment key={`line-${lineIndex}`}>
+            {parts.map((part, partIndex) => {
+              if (!part) {
+                return null;
+              }
+
+              const hasLeadingSpace = /^\s+/.test(part);
+              const hasTrailingSpace = /\s+$/.test(part);
+
+              if (part.startsWith('**') && part.endsWith('**')) {
+                return (
+                  <Fragment key={`bold-${lineIndex}-${partIndex}`}>
+                    {hasLeadingSpace ? ' ' : null}
+                    <strong className="font-bold text-foreground">
+                      {renderInlineSegments(part.slice(2, -2), `bold-${lineIndex}-${partIndex}`, 'plain')}
+                    </strong>
+                    {hasTrailingSpace ? ' ' : null}
+                  </Fragment>
+                );
+              }
+
+              return (
+                <Fragment key={`text-${lineIndex}-${partIndex}`}>
+                  {hasLeadingSpace ? ' ' : null}
+                  {renderInlineSegments(part, `text-${lineIndex}-${partIndex}`, 'plain')}
+                  {hasTrailingSpace ? ' ' : null}
+                </Fragment>
+              );
+            })}
+            {lineIndex < lines.length - 1 ? <br /> : null}
+          </Fragment>
+        );
       })}
     </span>
   );
 };
+
+function extractResponseSteps(content: string): string[] {
+  return content
+    .split(STEP_MARKER)
+    .map((step) => step.trim())
+    .filter(Boolean);
+}
+
+function shouldUseProgressiveReveal(message: ChatMessageType): boolean {
+  const metadata = message.metadata ?? {};
+  const policyMode = typeof metadata.policyMode === 'string' ? metadata.policyMode : null;
+  const mode = typeof metadata.mode === 'string' ? metadata.mode : null;
+  const source = typeof metadata.source === 'string' ? metadata.source : null;
+
+  return (
+    policyMode === 'hint_only' ||
+    mode === 'hint' ||
+    source === 'origin_ai_hint_guardrail' ||
+    source === 'subject_kb_hint'
+  );
+}
 
 interface DoubtSolverProps {
   onBack: () => void;
@@ -85,9 +192,21 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
 
     return {
       ...reply.session,
+      id: reply.session.id || baseSession?.id || '',
+      title: reply.session.title || baseSession?.title || 'Doubt Thread',
+      subject: reply.session.subject ?? baseSession?.subject,
+      activeConcept: reply.session.activeConcept ?? baseSession?.activeConcept ?? null,
       messages: dedupedMessages,
     };
   };
+
+  const removeSessionLocally = useCallback((sessionId: string) => {
+    setSessions(prev => {
+      const nextSessions = prev.filter(session => session.id !== sessionId);
+      persistSessionCache(nextSessions);
+      return nextSessions;
+    });
+  }, [persistSessionCache]);
 
   useEffect(() => {
     if (activeSession) {
@@ -106,13 +225,16 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
     }
 
     try {
-      const updated = await updateDoubtSessionTitle(targetSessionId, targetTitle.trim());
+      const updated = threadToSession(
+        await renameOriginAiThread(targetSessionId, { title: targetTitle.trim() }),
+      );
       if (activeSession?.id === updated.id) {
-        setActiveSession(updated);
+        // Preserve loaded messages — rename returns metadata only.
+        setActiveSession({ ...updated, messages: activeSession.messages });
       }
 
       setSessions(prev => {
-        const newSessions = prev.map(s => s.id === updated.id ? updated : s);
+        const newSessions = prev.map(s => s.id === updated.id ? { ...updated, messages: s.messages } : s);
         persistSessionCache(newSessions);
         return newSessions;
       });
@@ -135,7 +257,8 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
 
     const fetchSessions = async () => {
       try {
-        const data = await listDoubtSessions();
+        const threads = await listOriginAiThreads();
+        const data = threads.map(threadToSession);
         setSessions(data);
         persistSessionCache(data);
       } catch (error) {
@@ -182,8 +305,12 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
     setIsTyping(true);
 
     try {
-      const response = await sendSolverMessage(activeSession.id, { content: currentMessage });
-      const mergedSession = mergeReplyIntoSession(activeSession, response);
+      const ctx = {
+        ...buildOriginAiPageContext('/doubt-solver'),
+        activeSubject: activeSession.subject ?? null,
+      };
+      const response = await sendOriginAiMessage(currentMessage, ctx, null, activeSession.id);
+      const mergedSession = mergeReplyIntoSession(activeSession, replyToDoubtReply(response));
 
       setActiveSession(mergedSession);
       setSessions(prev => {
@@ -195,14 +322,24 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
       });
     } catch (error) {
       console.error("Failed to send message", error);
+      toast.error("Couldn't send your message — please try again.");
     } finally {
       setIsTyping(false);
     }
   };
 
-  const createNewSession = async (title: string, subject?: string) => {
+  // Adapt the OriginAiReply (session/userMessage/aiMessage) to the legacy
+  // DoubtSession-shaped reply that mergeReplyIntoSession expects.
+  const replyToDoubtReply = (reply: OriginAiReply) => ({
+    session: snapshotToSession(reply.session),
+    userMessage: reply.userMessage,
+    aiMessage: reply.aiMessage,
+  });
+
+  const createNewSession = async (title: string, subject?: string | null) => {
     try {
-      const newSession = await createDoubtSession({ title, subject: subject || 'General' });
+      const thread = await createOriginAiThread({ title, subject: subject ?? null });
+      const newSession = threadToSession(thread);
       setSessions(prev => {
         const existing = prev.some(session => session.id === newSession.id);
         const newSessions = existing
@@ -213,12 +350,69 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
       });
       setActiveSession(newSession);
       setViewMode('chat');
+      if (subject) {
+        try { localStorage.setItem(lastSubjectKey, subject); } catch {}
+      }
+      return newSession;
     } catch (error) {
       console.error("Failed to create session", error);
+      toast.error("Couldn't start a new chat — please try again.");
+      return null;
     }
   };
 
+  // Load the full message transcript for a thread when the user clicks it in the sidebar.
+  const handleSelectSession = useCallback(async (session: DoubtSession) => {
+    setActiveSession(session);
+    setViewMode('chat');
+    if (session.messages.length > 0) return;
+    try {
+      const snapshot = await getOriginAiThreadSnapshot(session.id, {
+        title: session.title,
+        subject: session.subject ?? null,
+        activeConcept: session.activeConcept ?? null,
+      });
+      const hydrated = snapshotToSession(snapshot.session);
+      setActiveSession(prev => (prev?.id === hydrated.id ? hydrated : prev));
+      setSessions(prev => prev.map(s => (s.id === hydrated.id ? hydrated : s)));
+    } catch (error) {
+      console.error("Failed to load thread", error);
+    }
+  }, []);
+
+  const handleDeleteSession = useCallback(async (session: DoubtSession) => {
+    if (!window.confirm(`Delete "${session.title}"? This removes the full thread history.`)) {
+      return;
+    }
+
+    const wasActive = activeSession?.id === session.id;
+    try {
+      await deleteOriginAiThread(session.id);
+      removeSessionLocally(session.id);
+      if (wasActive) {
+        setActiveSession(null);
+        setViewMode('selection');
+      }
+    } catch (error) {
+      console.error("Failed to delete thread", error);
+      toast.error("Couldn't delete that chat — please try again.");
+    }
+  }, [activeSession?.id, removeSessionLocally]);
+
+  const lastSubjectKey = `${LAST_SUBJECT_KEY}_${user.id}`;
   const lastMentorSession = sessions[0];
+
+  const startNewChatFromCTA = () => {
+    let subjectKey: SubjectKey = 'phy';
+    try {
+      const saved = localStorage.getItem(lastSubjectKey);
+      if (saved && (saved === 'phy' || saved === 'chem' || saved === 'math' || saved === 'bio')) {
+        subjectKey = saved;
+      }
+    } catch {}
+    const subjectName = SUBJECT_DISPLAY[subjectKey];
+    void createNewSession(`${subjectName} Doubt Session`, subjectKey);
+  };
 
   return (
     <div className="h-screen w-full bg-background text-foreground flex flex-col font-sans relative overflow-hidden transition-colors duration-300">
@@ -308,9 +502,11 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
             onCreate={(title, sub) => createNewSession(title, sub)}
             onUpload={() => setShowImageUpload(true)}
             sessions={sessions}
-            onSelectSession={setActiveSession}
+            onSelectSession={handleSelectSession}
             lastSession={lastMentorSession}
             onUpdateTitle={handleUpdateTitle}
+            onStartNewChat={startNewChatFromCTA}
+            onDeleteSession={handleDeleteSession}
           />
         ) : (
           <div className="flex-1 flex overflow-hidden relative">
@@ -347,9 +543,9 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
                         <PanelLeftClose className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => createNewSession("New Physics Session", "Physics")}
+                        onClick={startNewChatFromCTA}
                         className="p-1.5 rounded-lg bg-blue-500/10 text-blue-500 hover:bg-blue-500/20 transition-all"
-                        title="New Chat"
+                        title="New Chat (uses your last subject)"
                       >
                         <Plus className="w-4 h-4" />
                       </button>
@@ -359,7 +555,7 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
                         <div
                           key={s.id}
                           onClick={() => {
-                            if (editingSidebarId !== s.id) setActiveSession(s);
+                            if (editingSidebarId !== s.id) void handleSelectSession(s);
                           }}
                           onContextMenu={(e) => {
                             e.preventDefault();
@@ -394,10 +590,24 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
                               className="bg-white/10 border border-blue-500/50 rounded px-2 py-0.5 text-xs text-white w-full focus:outline-none"
                             />
                           ) : (
-                            <>
-                              <p className={`text-sm font-semibold truncate ${activeSession?.id === s.id ? 'text-blue-500' : 'text-muted-foreground group-hover:text-foreground'}`}>{s.title}</p>
-                              <p className="text-[10px] text-muted-foreground/60 mt-1">{new Date(s.updatedAt || s.createdAt).toLocaleDateString()}</p>
-                            </>
+                            <div className="flex items-start gap-2 justify-between">
+                              <div className="min-w-0 flex-1">
+                                <p className={`text-sm font-semibold truncate ${activeSession?.id === s.id ? 'text-blue-500' : 'text-muted-foreground group-hover:text-foreground'}`}>{s.title}</p>
+                                <p className="text-[10px] text-muted-foreground/60 mt-1">{new Date(s.updatedAt || s.createdAt).toLocaleDateString()}</p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void handleDeleteSession(s);
+                                }}
+                                className="p-1.5 rounded-lg text-muted-foreground/70 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                                title={`Delete ${s.title}`}
+                                aria-label={`Delete ${s.title}`}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           )}
                         </div>
                       ))}
@@ -411,11 +621,18 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
             {/* Chat Viewport */}
             {activeSession && (
               <section className="flex-1 flex flex-col h-full overflow-hidden bg-transparent">
+                {/* Subject pill bar — click = new thread for that subject */}
+                <SubjectPillBar
+                  activeSubject={activeSession.subject ?? null}
+                  onPick={(subjectKey) => {
+                    void createNewSession(`${SUBJECT_DISPLAY[subjectKey]} Doubt Session`, subjectKey);
+                  }}
+                />
                 {/* Scrollable Message Area */}
                 <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-6 sm:py-8 custom-scrollbar">
                   <div className="max-w-4xl mx-auto space-y-6 sm:space-y-8">
                     {activeSession.messages.map((msg, i) => (
-                      <ChatMessage key={i} message={msg} />
+                      <ChatMessage key={msg.id || i} message={msg} />
                     ))}
                     {isTyping && <TypingIndicator />}
                     <div ref={messagesEndRef} className="h-4" />
@@ -514,21 +731,23 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
               };
 
               const handleImageUpload = async () => {
-                let sessionId = activeSession?.id;
-                if (!sessionId) {
+                let session = activeSession;
+                if (!session) {
+                  // Use last-saved subject for image-driven session, falling back to Physics.
+                  let subjectKey: SubjectKey = 'phy';
                   try {
-                    const newSession = await createDoubtSession({ title: "Physics - Image Analysis", subject: "Physics" });
-                    sessionId = newSession.id;
-                    setSessions(prev => {
-                      const newSessions = [newSession, ...prev];
-                      persistSessionCache(newSessions);
-                      return newSessions;
-                    });
-                    setActiveSession({
-                      ...newSession,
-                      messages: [userMsg]
-                    });
-                  } catch (error) { console.error(error); return; }
+                    const saved = localStorage.getItem(lastSubjectKey);
+                    if (saved === 'phy' || saved === 'chem' || saved === 'math' || saved === 'bio') {
+                      subjectKey = saved;
+                    }
+                  } catch {}
+                  const created = await createNewSession(
+                    `${SUBJECT_DISPLAY[subjectKey]} - Image Analysis`,
+                    subjectKey,
+                  );
+                  if (!created) return;
+                  session = { ...created, messages: [userMsg] };
+                  setActiveSession(session);
                 } else {
                   setActiveSession(prev => prev ? { ...prev, messages: [...prev.messages, userMsg], updatedAt: new Date() } : null);
                 }
@@ -537,22 +756,27 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
                 setIsTyping(true);
 
                 try {
-                  const response = await sendSolverMessage(sessionId, { content: userMsg.content, image: imageDataUrl });
-                  const mergedSession = mergeReplyIntoSession(activeSession, response);
+                  const ctx = {
+                    ...buildOriginAiPageContext('/doubt-solver'),
+                    activeSubject: session.subject ?? null,
+                  };
+                  const response = await sendOriginAiMessage(userMsg.content, ctx, null, session.id);
+                  const mergedSession = mergeReplyIntoSession(session, replyToDoubtReply(response));
 
                   setActiveSession(mergedSession);
                   setSessions(prev => {
-                    const exists = prev.some(session => session.id === mergedSession.id);
+                    const exists = prev.some(s => s.id === mergedSession.id);
                     const nextSessions = !exists
                       ? [{ ...mergedSession, messages: [] }, ...prev]
-                      : prev.map(session => (
-                      session.id === mergedSession.id ? { ...mergedSession, messages: session.messages } : session
+                      : prev.map(s => (
+                      s.id === mergedSession.id ? { ...mergedSession, messages: s.messages } : s
                     ));
                     persistSessionCache(nextSessions);
                     return nextSessions;
                   });
                 } catch (error) {
                   console.error("Failed to upload image", error);
+                  toast.error("Couldn't process the image — please try again.");
                 } finally {
                   setIsTyping(false);
                 }
@@ -568,21 +792,24 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
   );
 }
 
-function SelectionView({ onCreate, onUpload, sessions, onSelectSession, lastSession, onUpdateTitle }: {
-  onCreate: (t: string, sub: string) => void,
+function SelectionView({ onCreate, onUpload, sessions, onSelectSession, lastSession, onUpdateTitle, onStartNewChat, onDeleteSession }: {
+  onCreate: (t: string, sub: SubjectKey) => void,
   onUpload: () => void,
   sessions: DoubtSession[],
   onSelectSession: (s: DoubtSession) => void,
   lastSession?: DoubtSession,
-  onUpdateTitle: (id: string, title: string) => Promise<void>
+  onUpdateTitle: (id: string, title: string) => Promise<void>,
+  onStartNewChat: () => void,
+  onDeleteSession: (session: DoubtSession) => Promise<void>,
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
 
-  const quickTopics = [
-    { name: 'Physics', icon: Atom, color: 'text-blue-400', desc: 'Active & Interactive' },
-    { name: 'Chemistry', icon: FlaskConical, color: 'text-emerald-400', desc: 'Mentor Ready' },
-    { name: 'Mathematics', icon: Calculator, color: 'text-violet-400', desc: 'Mentor Ready' },
+  const quickTopics: { name: string; subjectKey: SubjectKey; icon: typeof Atom; color: string; desc: string }[] = [
+    { name: 'Physics', subjectKey: 'phy', icon: Atom, color: 'text-blue-400', desc: 'Mentor Ready' },
+    { name: 'Chemistry', subjectKey: 'chem', icon: FlaskConical, color: 'text-emerald-400', desc: 'Mentor Ready' },
+    { name: 'Mathematics', subjectKey: 'math', icon: Calculator, color: 'text-violet-400', desc: 'Mentor Ready' },
+    { name: 'Biology', subjectKey: 'bio', icon: Leaf, color: 'text-green-400', desc: 'Mentor Ready' },
   ];
 
   const handleStartEdit = (e: React.MouseEvent<HTMLElement>, s: DoubtSession) => {
@@ -605,9 +832,9 @@ function SelectionView({ onCreate, onUpload, sessions, onSelectSession, lastSess
         <h2 className="text-xl sm:text-4xl font-bold text-foreground mb-2 sm:mb-4 leading-tight">Master your subjects<br />with AI precision.</h2>
         <p className="text-muted-foreground text-xs sm:text-lg max-w-xl mb-4 sm:mb-8 leading-relaxed">Stuck on a problem at 2 AM? Get step-by-step guidance and conceptual deep-dives instantly.</p>
         <div className="flex flex-wrap gap-2 sm:gap-4">
-          <button 
+          <button
             id="tutorial-doubt-solver-new"
-            onClick={() => onCreate('New Physics Session', 'Physics')} 
+            onClick={onStartNewChat}
             className="px-5 sm:px-8 py-2.5 sm:py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-lg sm:rounded-2xl font-bold transition-all shadow-xl shadow-blue-600/20 flex items-center gap-2 text-xs sm:text-base"
           >
             <Plus className="w-3.5 h-3.5 sm:w-5 sm:h-5" /> Start New Chat
@@ -633,7 +860,7 @@ function SelectionView({ onCreate, onUpload, sessions, onSelectSession, lastSess
             {quickTopics.map((topic) => (
               <button
                 key={topic.name}
-                onClick={() => onCreate(`${topic.name} Doubt Session`, topic.name)}
+                onClick={() => onCreate(`${topic.name} Doubt Session`, topic.subjectKey)}
                 className="p-4 sm:p-6 rounded-[20px] sm:rounded-[28px] bg-card/40 border border-border/50 hover:border-blue-500/30 transition-all group flex items-center gap-4 sm:gap-6 shadow-sm hover:shadow-md"
               >
                 <div className="w-10 h-10 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl bg-muted border border-border/50 flex items-center justify-center group-hover:scale-110 transition-transform shadow-inner">
@@ -650,8 +877,8 @@ function SelectionView({ onCreate, onUpload, sessions, onSelectSession, lastSess
 
         <div>
           <h3 className="text-lg sm:text-xl font-bold text-foreground mb-4 sm:mb-6 uppercase tracking-widest opacity-50">History</h3>
-          <div className="space-y-3">
-            {sessions.slice(0, 4).map(s => (
+          <div className="space-y-3 lg:max-h-[34rem] lg:overflow-y-auto lg:pr-1 lg:custom-scrollbar">
+            {sessions.map(s => (
               <div
                 key={s.id}
                 onClick={() => onSelectSession(s)}
@@ -697,7 +924,21 @@ function SelectionView({ onCreate, onUpload, sessions, onSelectSession, lastSess
                     )}
                   </div>
                 </div>
-                <ChevronLeft className="w-4 h-4 text-muted-foreground rotate-180 group-hover:text-blue-400 group-hover:translate-x-1 transition-all" />
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void onDeleteSession(s);
+                    }}
+                    className="p-2 rounded-full text-muted-foreground/70 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                    title={`Delete ${s.title}`}
+                    aria-label={`Delete ${s.title}`}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                  <ChevronLeft className="w-4 h-4 text-muted-foreground rotate-180 group-hover:text-blue-400 group-hover:translate-x-1 transition-all" />
+                </div>
               </div>
             ))}
             {sessions.length === 0 && (
@@ -713,13 +954,34 @@ function SelectionView({ onCreate, onUpload, sessions, onSelectSession, lastSess
 }
 
 // Sub-components
-function ProgressiveResponse({ content }: { content: string }) {
-  const steps = content.split('<!-- step -->');
+function ProgressiveResponse({
+  content,
+  progressive = false,
+}: {
+  content: string;
+  progressive?: boolean;
+}) {
+  const steps = extractResponseSteps(content);
   const [revealedCount, setRevealedCount] = useState(1);
   const isMultiStep = steps.length > 1;
 
   if (!isMultiStep) {
-    return <FormattedText text={content} />;
+    return <FormattedText text={steps[0] ?? content} />;
+  }
+
+  if (!progressive) {
+    return (
+      <div className="space-y-4">
+        {steps.map((step, i) => (
+          <div
+            key={`${i}-${step.slice(0, 24)}`}
+            className={i > 0 ? "pt-4 border-t border-white/5" : ""}
+          >
+            <FormattedText text={step} />
+          </div>
+        ))}
+      </div>
+    );
   }
 
   return (
@@ -753,6 +1015,7 @@ function ProgressiveResponse({ content }: { content: string }) {
 
 function ChatMessage({ message }: { message: ChatMessageType }) {
   const isAI = message.role === 'assistant';
+  const progressiveReveal = isAI && shouldUseProgressiveReveal(message);
   return (
     <div className={`flex w-full ${isAI ? 'justify-start' : 'justify-end'} animate-in fade-in slide-in-from-bottom-4 duration-500`}>
       <div className={`flex gap-4 max-w-[85%] ${isAI ? 'flex-row' : 'flex-row-reverse'}`}>
@@ -772,7 +1035,7 @@ function ChatMessage({ message }: { message: ChatMessageType }) {
           )}
           <div className="whitespace-pre-line">
             {isAI ? (
-              <ProgressiveResponse content={message.content} />
+              <ProgressiveResponse content={message.content} progressive={progressiveReveal} />
             ) : (
               <FormattedText text={message.content} />
             )}
@@ -781,6 +1044,48 @@ function ChatMessage({ message }: { message: ChatMessageType }) {
             {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function SubjectPillBar({
+  activeSubject,
+  onPick,
+}: {
+  activeSubject: string | null;
+  onPick: (subject: SubjectKey) => void;
+}) {
+  const pills: { key: SubjectKey; name: string; icon: typeof Atom; color: string; activeBg: string }[] = [
+    { key: 'phy',  name: 'Physics',     icon: Atom,         color: 'text-blue-400',    activeBg: 'bg-blue-500/15 border-blue-500/40' },
+    { key: 'chem', name: 'Chemistry',   icon: FlaskConical, color: 'text-emerald-400', activeBg: 'bg-emerald-500/15 border-emerald-500/40' },
+    { key: 'math', name: 'Mathematics', icon: Calculator,   color: 'text-violet-400',  activeBg: 'bg-violet-500/15 border-violet-500/40' },
+    { key: 'bio',  name: 'Biology',     icon: Leaf,         color: 'text-green-400',   activeBg: 'bg-green-500/15 border-green-500/40' },
+  ];
+  const normalized = (activeSubject ?? '').toLowerCase();
+  return (
+    <div className="px-4 sm:px-6 pt-3 pb-2 border-b border-border/30 bg-card/30 backdrop-blur-sm flex-shrink-0">
+      <div className="max-w-4xl mx-auto flex flex-wrap gap-2">
+        {pills.map((pill) => {
+          const isActive = normalized === pill.key || normalized === pill.name.toLowerCase();
+          const Icon = pill.icon;
+          return (
+            <button
+              key={pill.key}
+              onClick={() => onPick(pill.key)}
+              title={`Start a new ${pill.name} thread`}
+              className={cn(
+                'inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-semibold transition-all',
+                isActive
+                  ? `${pill.activeBg} ${pill.color}`
+                  : 'border-border/50 text-muted-foreground hover:border-blue-500/30 hover:text-foreground',
+              )}
+            >
+              <Icon className={cn('w-3.5 h-3.5', isActive ? pill.color : 'opacity-70')} />
+              {pill.name}
+            </button>
+          );
+        })}
       </div>
     </div>
   );

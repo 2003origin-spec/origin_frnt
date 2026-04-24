@@ -8,10 +8,13 @@ import {
   awardPoints,
 } from "@/server/gamification";
 import {
+  getOgcodeCatalogCounts,
   getOgcodeCatalogQuestionById,
   getOgcodeCatalogQuestionMap,
   getOgcodeChallengeQuestion,
   incrementOgcodeCatalogQuestionStats,
+  listOgcodeCatalogChapters,
+  listOgcodeCatalogQuestionPage,
   listOgcodeCatalogQuestions,
 } from "@/server/ogcode-catalog";
 import { gradePracticeAnswerWithService } from "@/server/grader-client";
@@ -26,6 +29,7 @@ import {
   getAttemptedQuestionIdsForUser,
   getDppPlanDetail,
   getLatestDppAttemptForPlan,
+  listLatestDppAttemptsForPlans,
   getPersistedCustomTest,
   getPersistedResultById,
   getRecentWeakTopicsForUser,
@@ -40,6 +44,7 @@ import {
   type PersistedDppPlanRecord,
   type PersistedTestResultRecord,
 } from "@/server/analytics-store";
+import type { PracticeQuestion, TestPreview } from "@/types";
 import type {
   AppStore,
   DifficultyLevel,
@@ -103,6 +108,32 @@ export type UpdateOgcodeLocationPayload = {
   latitude?: number | null;
   longitude?: number | null;
   share?: boolean;
+};
+
+export type OgcodeQuestionListFilters = {
+  subject?: string | null;
+  difficulty?: string | null;
+  type?: string | null;
+  search?: string | null;
+  chapters?: string[] | null;
+  status?: "solved" | "unsolved" | null;
+  limit?: number | null;
+  offset?: number | null;
+};
+
+export type OgcodeQuestionPage = {
+  items: PracticeQuestion[];
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+};
+
+export type OgcodeIndexData = {
+  questionPage: OgcodeQuestionPage;
+  userStats: Awaited<ReturnType<typeof getOgcodeUserStats>>;
+  subjectRanks: ReturnType<typeof getOgcodeSubjectRanks>;
+  chapters: string[] | null;
 };
 
 type TopicAccuracy = { topic: string; accuracy: number };
@@ -1136,6 +1167,133 @@ async function buildQuestionLookup(store: AppStore, questionIds: string[]): Prom
   return lookup;
 }
 
+type OgcodeAttemptState = {
+  attemptedIds: Set<string>;
+  solvedIds: Set<string>;
+};
+
+function buildOgcodeAttemptState(store: AppStore, userId: string): OgcodeAttemptState {
+  const attemptedIds = new Set<string>();
+  const solvedIds = new Set<string>();
+
+  store.practiceAttempts.forEach((attempt) => {
+    if (attempt.userId !== userId) {
+      return;
+    }
+
+    attemptedIds.add(attempt.questionId);
+    if (attempt.isCorrect) {
+      solvedIds.add(attempt.questionId);
+    }
+  });
+
+  return { attemptedIds, solvedIds };
+}
+
+function normalizeOgcodeStatusFilter(status: string | null | undefined): "solved" | "unsolved" | null {
+  if (status === "solved" || status === "unsolved") {
+    return status;
+  }
+  return null;
+}
+
+function normalizeOgcodeChaptersFilter(chapters: string[] | null | undefined): string[] {
+  return (chapters ?? []).map((entry) => String(entry ?? "").trim()).filter(Boolean);
+}
+
+function matchesOgcodeSearch(question: StoredQuestion, rawSearch: string | null | undefined): boolean {
+  const search = String(rawSearch ?? "").trim().toLowerCase();
+  if (!search) {
+    return true;
+  }
+
+  const haystack = [
+    question.text,
+    question.chapter,
+    question.concept,
+    ...(Array.isArray(question.tags) ? question.tags : question.tags ? [String(question.tags)] : []),
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  return haystack.includes(search);
+}
+
+function matchesOgcodeStatus(
+  questionId: string,
+  status: "solved" | "unsolved" | null,
+  attemptState: OgcodeAttemptState,
+): boolean {
+  if (!status) {
+    return true;
+  }
+  if (status === "solved") {
+    return attemptState.solvedIds.has(questionId);
+  }
+  return !attemptState.solvedIds.has(questionId);
+}
+
+function matchesLocalOgcodeQuestion(
+  question: StoredQuestion,
+  filters: OgcodeQuestionListFilters,
+  attemptState: OgcodeAttemptState,
+): boolean {
+  const subject = filters.subject ? normalizeSubject(filters.subject) : null;
+  const difficulty = filters.difficulty ? normalizeDifficulty(filters.difficulty) : null;
+  const type = filters.type ? String(filters.type).trim().toLowerCase() : null;
+  const chapters = normalizeOgcodeChaptersFilter(filters.chapters);
+  const status = normalizeOgcodeStatusFilter(filters.status);
+
+  if (subject && question.subject !== subject) {
+    return false;
+  }
+  if (difficulty && question.difficulty !== difficulty) {
+    return false;
+  }
+  if (type && question.questionType !== type) {
+    return false;
+  }
+  if (chapters.length && !chapters.includes(question.chapter)) {
+    return false;
+  }
+  if (!matchesOgcodeSearch(question, filters.search)) {
+    return false;
+  }
+  return matchesOgcodeStatus(question.id, status, attemptState);
+}
+
+function serializeOgcodeQuestionPreview(
+  question: StoredQuestion,
+  attemptState: OgcodeAttemptState,
+): PracticeQuestion {
+  const attempted = attemptState.attemptedIds.has(question.id);
+  const isSolved = attemptState.solvedIds.has(question.id);
+
+  return {
+    id: question.id,
+    text: question.text,
+    difficulty: question.difficulty,
+    subject: question.subject,
+    concept: question.concept,
+    chapter: question.chapter,
+    isSolved,
+    status: isSolved ? "solved" : attempted ? "attempted" : "unattempted",
+    attempted,
+    questionType: question.questionType,
+    tags: question.tags ?? undefined,
+    frequency: question.frequency,
+    acceptance_rate: Number(question.acceptanceRate.toFixed(1)),
+  };
+}
+
+function clampOgcodePageSize(limit: number | null | undefined): number {
+  if (!Number.isFinite(limit)) {
+    return 60;
+  }
+
+  return Math.min(120, Math.max(1, Math.trunc(limit as number)));
+}
+
 function testById(store: AppStore, testId: string): StoredTest {
   const test = store.tests.find((entry) => entry.id === testId);
   if (!test) {
@@ -1210,6 +1368,7 @@ export function serializeTest(store: AppStore, userId: string, test: StoredTest)
   );
   const averageScore = computeAveragePercentage(results);
   const allScores = results.map((result) => result.percentage);
+  const isCustom = Boolean(test.createdBy);
 
   return {
     id: test.id,
@@ -1223,9 +1382,42 @@ export function serializeTest(store: AppStore, userId: string, test: StoredTest)
     total_questions: test.totalQuestions,
     isPremium: test.isPremium,
     is_premium: test.isPremium,
+    isCustom,
+    is_custom: isCustom,
     questions,
     attempted: results.length > 0,
     score: averageScore,
+    attemptCount: results.length,
+    attempt_count: results.length,
+    allScores,
+    all_scores: allScores,
+  };
+}
+
+export function serializeTestPreview(store: AppStore, userId: string, test: StoredTest) {
+  const results = store.testResults
+    .filter((result) => result.userId === userId && result.testId === test.id)
+    .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+  const averageScore = computeAveragePercentage(results);
+  const allScores = results.map((result) => result.percentage);
+  const isCustom = Boolean(test.createdBy);
+
+  return {
+    id: test.id,
+    title: test.title,
+    description: test.description,
+    subject: test.subject,
+    chapter: test.chapter ?? undefined,
+    difficulty: test.difficulty,
+    duration: test.duration,
+    totalQuestions: test.totalQuestions,
+    total_questions: test.totalQuestions,
+    isPremium: test.isPremium,
+    is_premium: test.isPremium,
+    isCustom,
+    is_custom: isCustom,
+    attempted: results.length > 0,
+    score: averageScore ?? undefined,
     attemptCount: results.length,
     attempt_count: results.length,
     allScores,
@@ -1269,6 +1461,15 @@ async function serializePersistedCustomTest(
   test: PersistedCustomTestRecord,
 ) {
   const questionLookup = await buildQuestionLookup(store, test.questionIds);
+  return serializePersistedCustomTestWithLookup(store, userId, test, questionLookup);
+}
+
+function serializePersistedCustomTestWithLookup(
+  store: AppStore,
+  userId: string,
+  test: PersistedCustomTestRecord,
+  questionLookup: Map<string, StoredQuestion>,
+) {
   const questions = test.questionIds
     .map((questionId) => questionLookup.get(questionId))
     .filter((question): question is StoredQuestion => Boolean(question))
@@ -1286,6 +1487,8 @@ async function serializePersistedCustomTest(
     total_questions: test.questionCount,
     isPremium: false,
     is_premium: false,
+    isCustom: true,
+    is_custom: true,
     questions,
     attempted: test.attemptCount > 0,
     score: test.averageScore,
@@ -1301,6 +1504,30 @@ async function serializePersistedCustomTest(
     recommended_time_per_question_seconds: test.recommendedTimePerQuestionSeconds,
     createdAt: test.createdAt,
     created_at: test.createdAt,
+  };
+}
+
+function serializePersistedCustomTestPreview(test: PersistedCustomTestRecord) {
+  return {
+    id: test.id,
+    title: test.title,
+    description: test.description,
+    subject: test.subject,
+    chapter: test.chapter ?? undefined,
+    difficulty: test.difficulty,
+    duration: test.durationMinutes,
+    totalQuestions: test.questionCount,
+    total_questions: test.questionCount,
+    isPremium: false,
+    is_premium: false,
+    isCustom: true,
+    is_custom: true,
+    attempted: test.attemptCount > 0,
+    score: test.averageScore ?? undefined,
+    attemptCount: test.attemptCount,
+    attempt_count: test.attemptCount,
+    allScores: test.allScores,
+    all_scores: test.allScores,
   };
 }
 
@@ -1341,6 +1568,16 @@ async function serializePersistedDppPlan(
   latestAttempt: PersistedDppAttemptRecord | null,
 ) {
   const lookup = await buildQuestionLookup(store, plan.questionIds);
+  return serializePersistedDppPlanWithLookup(store, userId, plan, latestAttempt, lookup);
+}
+
+function serializePersistedDppPlanWithLookup(
+  store: AppStore,
+  userId: string,
+  plan: PersistedDppPlanRecord,
+  latestAttempt: PersistedDppAttemptRecord | null,
+  lookup: Map<string, StoredQuestion>,
+) {
   const questions = plan.questionIds
     .map((questionId) => lookup.get(questionId))
     .filter((question): question is StoredQuestion => Boolean(question))
@@ -1385,6 +1622,10 @@ async function serializePersistedDppPlan(
 
 function listTestsFallback(store: AppStore, user: StoredUser) {
   return store.tests.map((test) => serializeTest(store, user.id, test));
+}
+
+function listTestPreviewsFallback(store: AppStore, user: StoredUser) {
+  return store.tests.map((test) => serializeTestPreview(store, user.id, test));
 }
 
 function getTestDetailFallback(store: AppStore, user: StoredUser, testId: string) {
@@ -1808,12 +2049,34 @@ export async function listTests(store: AppStore, user: StoredUser) {
   const seeded = listTestsFallback(store, user);
   try {
     const persisted = await listPersistedCustomTests(user.id);
-    const persistedSerialized = await Promise.all(
-      persisted.map((test) => serializePersistedCustomTest(store, user.id, test)),
+    const questionLookup = await buildQuestionLookup(
+      store,
+      persisted.flatMap((test) => test.questionIds),
+    );
+    const persistedSerialized = persisted.map((test) =>
+      serializePersistedCustomTestWithLookup(store, user.id, test, questionLookup),
     );
     const deduped = new Map<
       string,
       Awaited<ReturnType<typeof serializePersistedCustomTest>> | ReturnType<typeof serializeTest>
+    >();
+    for (const test of [...persistedSerialized, ...seeded]) {
+      deduped.set(test.id, test);
+    }
+    return [...deduped.values()];
+  } catch {
+    return seeded;
+  }
+}
+
+export async function listTestPreviews(store: AppStore, user: StoredUser) {
+  const seeded = listTestPreviewsFallback(store, user);
+  try {
+    const persisted = await listPersistedCustomTests(user.id);
+    const persistedSerialized = persisted.map((test) => serializePersistedCustomTestPreview(test));
+    const deduped = new Map<
+      string,
+      ReturnType<typeof serializePersistedCustomTestPreview> | ReturnType<typeof serializeTestPreview>
     >();
     for (const test of [...persistedSerialized, ...seeded]) {
       deduped.set(test.id, test);
@@ -2015,10 +2278,30 @@ export async function listGeneratedDpps(store: AppStore, user: StoredUser) {
     return [];
   }
   const plans = await listPendingDppPlans(user.id);
-  const withAttempts = await Promise.all(
-    plans.map(async (plan) => serializePersistedDppPlan(store, user.id, plan, await getLatestDppAttemptForPlan(user.id, plan.id))),
+  if (plans.length === 0) {
+    return [];
+  }
+
+  const [latestAttemptMap, questionLookup] = await Promise.all([
+    listLatestDppAttemptsForPlans(
+      user.id,
+      plans.map((plan) => plan.id),
+    ),
+    buildQuestionLookup(
+      store,
+      plans.flatMap((plan) => plan.questionIds),
+    ),
+  ]);
+
+  return plans.map((plan) =>
+    serializePersistedDppPlanWithLookup(
+      store,
+      user.id,
+      plan,
+      latestAttemptMap.get(plan.id) ?? null,
+      questionLookup,
+    ),
   );
-  return withAttempts;
 }
 
 export async function getGeneratedDppDetail(store: AppStore, user: StoredUser, dppId: string) {
@@ -2122,6 +2405,100 @@ export function listPracticeQuestions(
       return matchesSubject && matchesDifficulty && matchesType;
     })
     .map((question) => serializeQuestion(store, user.id, question, true));
+}
+
+export async function listOgcodeQuestionChapters(
+  store: AppStore,
+  _user: StoredUser,
+  subject: string,
+) {
+  const normalizedSubject = normalizeSubject(subject);
+  const chapters = new Set<string>();
+
+  store.questions.forEach((question) => {
+    if (question.subject === normalizedSubject && question.chapter) {
+      chapters.add(question.chapter);
+    }
+  });
+
+  try {
+    const catalogChapters = await listOgcodeCatalogChapters(normalizedSubject);
+    catalogChapters.forEach((chapter) => {
+      if (chapter) {
+        chapters.add(chapter);
+      }
+    });
+  } catch {
+    // Fall back to the local seeded store.
+  }
+
+  return [...chapters].sort((left, right) => left.localeCompare(right));
+}
+
+export async function listOgcodeQuestionPage(
+  store: AppStore,
+  user: StoredUser,
+  filters: OgcodeQuestionListFilters,
+): Promise<OgcodeQuestionPage> {
+  const limit = clampOgcodePageSize(filters.limit);
+  const offset = Math.max(0, Math.trunc(filters.offset ?? 0));
+  const chapters = normalizeOgcodeChaptersFilter(filters.chapters);
+  const status = normalizeOgcodeStatusFilter(filters.status);
+  const attemptState = buildOgcodeAttemptState(store, user.id);
+
+  const localQuestionsById = new Map<string, StoredQuestion>();
+  const localIds: string[] = [];
+  store.questions.forEach((question) => {
+    localQuestionsById.set(question.id, question);
+    if (matchesLocalOgcodeQuestion(question, { ...filters, chapters, status }, attemptState)) {
+      localIds.push(question.id);
+    }
+  });
+
+  let catalogOverlap = new Map<string, StoredQuestion>();
+  try {
+    catalogOverlap = localIds.length ? await getOgcodeCatalogQuestionMap(localIds) : new Map<string, StoredQuestion>();
+  } catch {
+    catalogOverlap = new Map<string, StoredQuestion>();
+  }
+
+  const localOnlyIds = localIds.filter((questionId) => !catalogOverlap.has(questionId));
+  const localPageIds = localOnlyIds.slice(offset, offset + limit);
+  const remainingLimit = Math.max(0, limit - localPageIds.length);
+  const remoteOffset = Math.max(0, offset - localOnlyIds.length);
+  const solvedCatalogIds = [...attemptState.solvedIds];
+
+  const remotePage = remainingLimit && !(status === "solved" && solvedCatalogIds.length === 0)
+    ? await listOgcodeCatalogQuestionPage({
+        subject: filters.subject,
+        difficulty: filters.difficulty,
+        type: filters.type,
+        search: filters.search,
+        chapters,
+        includeIds: status === "solved" ? solvedCatalogIds : null,
+        excludeIds: status === "unsolved" ? solvedCatalogIds : null,
+        limit: remainingLimit,
+        offset: remoteOffset,
+      }).catch(() => ({ items: [], total: 0 }))
+    : { items: [], total: 0 };
+
+  const items = [
+    ...localPageIds
+      .map((questionId) => localQuestionsById.get(questionId))
+      .filter((question): question is StoredQuestion => Boolean(question))
+      .map((question) => serializeOgcodeQuestionPreview(question, attemptState)),
+    ...remotePage.items.map((question) => serializeOgcodeQuestionPreview(question, attemptState)),
+  ];
+
+  const total = localOnlyIds.length + remotePage.total;
+
+  return {
+    items,
+    total,
+    limit,
+    offset,
+    hasMore: offset + items.length < total,
+  };
 }
 
 export async function listOgcodeQuestions(
@@ -2268,7 +2645,11 @@ export async function getOgcodeUserStats(store: AppStore, user: StoredUser) {
     attempts.filter((attempt) => attempt.isCorrect).map((attempt) => attempt.questionId),
   ).size;
   const attemptedCount = new Set(attempts.map((attempt) => attempt.questionId)).size;
-  const totalQuestions = (await getOgcodeQuestionBank(store)).length;
+  const { total: catalogTotal } = await getOgcodeCatalogCounts();
+  const storeIds = store.questions.map((question) => question.id);
+  const catalogStoreOverlap = storeIds.length ? await getOgcodeCatalogQuestionMap(storeIds) : new Map<string, StoredQuestion>();
+  const localOnlyCount = storeIds.filter((questionId) => !catalogStoreOverlap.has(questionId)).length;
+  const totalQuestions = catalogTotal + localOnlyCount;
   const accuracy = totalAttempts > 0 ? Math.round((correctAttempts / totalAttempts) * 100) : 0;
   const syllabusCoverage = totalQuestions > 0 ? Math.round((attemptedCount / totalQuestions) * 100) : 0;
 
@@ -2303,6 +2684,26 @@ export function getOgcodeSubjectRanks(store: AppStore, user: StoredUser) {
     }));
 
   return rows;
+}
+
+export async function getOgcodeIndexData(
+  store: AppStore,
+  user: StoredUser,
+  filters: OgcodeQuestionListFilters,
+): Promise<OgcodeIndexData> {
+  const subjectRanks = getOgcodeSubjectRanks(store, user);
+  const [questionPage, userStats, chapters] = await Promise.all([
+    listOgcodeQuestionPage(store, user, filters),
+    getOgcodeUserStats(store, user),
+    filters.subject ? listOgcodeQuestionChapters(store, user, filters.subject) : Promise.resolve(null),
+  ]);
+
+  return {
+    questionPage,
+    userStats,
+    subjectRanks,
+    chapters,
+  };
 }
 
 async function buildLeaderboardEntries(store: AppStore, user: StoredUser, subject: string | null) {

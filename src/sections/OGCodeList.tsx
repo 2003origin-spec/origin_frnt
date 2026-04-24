@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { renderInlineSegments } from '@/lib/math-text';
@@ -11,15 +11,17 @@ import {
     ChevronRight, Target, Shuffle, ArrowRight
 } from 'lucide-react';
 import { apiCall } from '@/lib/api';
-import type { PracticeQuestion, SubjectRank, User } from '@/types';
+import type { PracticeQuestion, PracticeQuestionPage, SubjectRank, User } from '@/types';
 import { usePublishOriginAiPageContext } from '@/features/origin-ai/page-context-store';
 import { toast } from 'sonner';
 
 interface OGCodeListProps {
     onSelectQuestion: (questionId: string) => void;
     user: User;
-    /** Pre-loaded question catalog from the Server Component — skips the first questions fetch */
-    initialQuestions?: PracticeQuestion[];
+    initialQuestionPage: PracticeQuestionPage | null;
+    initialSubjectRanks: SubjectRank[] | null;
+    initialUserStats: UserStats | null;
+    initialChapters: string[] | null;
 }
 
 const SUBJECTS = [
@@ -52,6 +54,7 @@ const SUBJECT_COLORS: Record<string, string> = {
 };
 
 const ORIGIN_AI_VISIBLE_QUESTION_LIMIT = 40;
+const QUESTION_PAGE_SIZE = 60;
 
 function normalizeTags(tags: string | string[] | null | undefined): string[] {
     if (!tags) return [];
@@ -70,7 +73,7 @@ function normalizeSubject(value: string | null | undefined): string {
     return (value ?? '').trim().toLowerCase();
 }
 
-interface UserStats {
+export interface UserStats {
     rank: number | null;
     accuracy: number;
     solvedCount: number;
@@ -79,65 +82,262 @@ interface UserStats {
     totalAttempts: number;
 }
 
-export default function OGCodeList({ onSelectQuestion, user, initialQuestions }: OGCodeListProps) {
-    const router = useRouter();
+function normalizeQuestionPage(data: unknown): PracticeQuestionPage {
+    if (!data || typeof data !== 'object') {
+        return { items: [], total: 0, limit: QUESTION_PAGE_SIZE, offset: 0, hasMore: false };
+    }
+
+    const payload = data as Partial<PracticeQuestionPage>;
+    return {
+        items: Array.isArray(payload.items) ? payload.items : [],
+        total: Number(payload.total ?? 0),
+        limit: Number(payload.limit ?? QUESTION_PAGE_SIZE) || QUESTION_PAGE_SIZE,
+        offset: Number(payload.offset ?? 0) || 0,
+        hasMore: Boolean(payload.hasMore),
+    };
+}
+
+function dedupeQuestions(questions: PracticeQuestion[]): PracticeQuestion[] {
+    const seen = new Set<string>();
+    return questions.filter((question) => {
+        if (seen.has(question.id)) return false;
+        seen.add(question.id);
+        return true;
+    });
+}
+
+function deriveChapterOptions(subject: string, questions: PracticeQuestion[]): string[] {
+    if (subject === 'Subject') {
+        return [];
+    }
+
+    return Array.from(
+        new Set(
+            questions
+                .filter((question) => normalizeSubject(question.subject) === normalizeSubject(subject))
+                .map((question) => question.chapter || 'Foundations'),
+        ),
+    ).sort();
+}
+
+function mapStatusFilter(status: string): 'solved' | 'unsolved' | null {
+    if (status === 'Solved') {
+        return 'solved';
+    }
+    if (status === 'Unsolved') {
+        return 'unsolved';
+    }
+    return null;
+}
+
+function parseSubjectFilter(value: string | null): string {
+    switch ((value ?? '').trim().toLowerCase()) {
+        case 'physics':
+            return 'Physics';
+        case 'chemistry':
+            return 'Chemistry';
+        case 'mathematics':
+            return 'Mathematics';
+        case 'biology':
+            return 'Biology';
+        default:
+            return 'Subject';
+    }
+}
+
+function parseDifficultyFilter(value: string | null): string {
+    switch ((value ?? '').trim().toLowerCase()) {
+        case 'easy':
+            return 'Easy';
+        case 'medium':
+            return 'Medium';
+        case 'hard':
+            return 'Hard';
+        case 'insane':
+            return 'Insane';
+        default:
+            return 'All';
+    }
+}
+
+function parseStatusFilter(value: string | null): string {
+    switch ((value ?? '').trim().toLowerCase()) {
+        case 'solved':
+            return 'Solved';
+        case 'unsolved':
+            return 'Unsolved';
+        default:
+            return 'All';
+    }
+}
+
+function sameStringArray(left: string[], right: string[]) {
+    return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function buildOgcodeUrl(filters: {
+    subject: string;
+    difficulty: string;
+    status: string;
+    chapters: string[];
+    search: string;
+}) {
+    const params = new URLSearchParams();
+
+    if (filters.subject !== 'Subject') params.set('subject', filters.subject);
+    if (filters.difficulty !== 'All') params.set('difficulty', filters.difficulty.toLowerCase());
+    if (filters.status !== 'All') {
+        const mappedStatus = mapStatusFilter(filters.status);
+        if (mappedStatus) {
+            params.set('status', mappedStatus);
+        }
+    }
+    // Use repeated ?chapters=… params instead of a comma-joined list.
+    // Chapter names contain commas (e.g. "Acids, Bases, and Volumetric Analysis"),
+    // so a CSV round-trip corrupts them and fights the state.
+    for (const chapter of filters.chapters) {
+        params.append('chapters', chapter);
+    }
+
+    const normalizedSearch = filters.search.trim();
+    if (normalizedSearch) params.set('search', normalizedSearch);
+
+    const query = params.toString();
+    return query ? `/ogcode?${query}` : '/ogcode';
+}
+
+export default function OGCodeList({
+    onSelectQuestion,
+    user,
+    initialQuestionPage,
+    initialSubjectRanks,
+    initialUserStats,
+    initialChapters,
+}: OGCodeListProps) {
     const searchParams = useSearchParams();
 
     // Initialize state from URL params
-    const initialSubject = searchParams.get('subject') || 'Subject';
-    const initialDifficulty = searchParams.get('difficulty') || 'All';
-    const initialStatus = searchParams.get('status') || 'All';
-    const initialChapters = searchParams.get('chapters')?.split(',').filter(Boolean) || [];
+    const initialSubject = parseSubjectFilter(searchParams.get('subject'));
+    const initialDifficulty = parseDifficultyFilter(searchParams.get('difficulty'));
+    const initialStatus = parseStatusFilter(searchParams.get('status'));
+    const initialSearch = searchParams.get('search') || '';
+    const initialSelectedChapters = searchParams.getAll('chapters').filter(Boolean);
+    const prefetchedQuestionPage = initialQuestionPage ? normalizeQuestionPage(initialQuestionPage) : null;
 
-    const [questions, setQuestions] = useState<PracticeQuestion[]>(initialQuestions ?? []);
-    const [subjectRanks, setSubjectRanks] = useState<SubjectRank[]>([]);
-    const [loading, setLoading] = useState(true);
-    // When true the first fetchData call skips re-fetching questions (SSR already provided them)
-    const skipQuestionsFetch = useRef(!!initialQuestions);
-    const [userStats, setUserStats] = useState<UserStats | null>(null);
-    const [searchQuery, setSearchQuery] = useState('');
+    const [questions, setQuestions] = useState<PracticeQuestion[]>(prefetchedQuestionPage?.items ?? []);
+    const [totalQuestions, setTotalQuestions] = useState(prefetchedQuestionPage?.total ?? 0);
+    const [hasMoreQuestions, setHasMoreQuestions] = useState(prefetchedQuestionPage?.hasMore ?? false);
+    const [nextOffset, setNextOffset] = useState((prefetchedQuestionPage?.offset ?? 0) + (prefetchedQuestionPage?.items.length ?? 0));
+    const [subjectRanks, setSubjectRanks] = useState<SubjectRank[]>(initialSubjectRanks ?? []);
+    const [questionsLoading, setQuestionsLoading] = useState(!prefetchedQuestionPage);
+    const [statsLoading, setStatsLoading] = useState(!(initialSubjectRanks && initialUserStats));
+    const [chaptersLoading, setChaptersLoading] = useState(false);
+    const [userStats, setUserStats] = useState<UserStats | null>(initialUserStats);
+    const [searchQuery, setSearchQuery] = useState(initialSearch);
     const [activeSubject, setActiveSubject] = useState(initialSubject);
     const [timeRange, setTimeRange] = useState<'daily' | 'weekly' | 'monthly'>('weekly');
     
     const [activeDifficulty, setActiveDifficulty] = useState(initialDifficulty);
     const [activeStatus, setActiveStatus] = useState(initialStatus);
-    const [selectedChapters, setSelectedChapters] = useState<string[]>(initialChapters);
+    const [selectedChapters, setSelectedChapters] = useState<string[]>(initialSelectedChapters);
+    const [availableChapters, setAvailableChapters] = useState<string[]>(
+        initialChapters ?? deriveChapterOptions(initialSubject, prefetchedQuestionPage?.items ?? []),
+    );
     const [openDropdown, setOpenDropdown] = useState<'difficulty' | 'status' | 'subject' | null>(null);
     const [isStatsExpanded, setIsStatsExpanded] = useState(false);
+    const skipInitialQuestionFetch = useRef(Boolean(prefetchedQuestionPage));
+    const skipInitialStatsFetch = useRef(Boolean(initialSubjectRanks && initialUserStats));
+    const skipInitialChapterFetch = useRef(initialChapters !== null && initialSubject !== 'Subject');
+    // Next 16 patches history.pushState to update useSearchParams inside a
+    // startTransition. Our filter setters are urgent, so there's a window
+    // where state is new but useSearchParams still reflects the old URL.
+    // The URL→state sync effect below sees that mismatch and reverts the
+    // user's click, then the transition lands and flips it back — an
+    // oscillation. This ref marks self-initiated URL pushes so the effect
+    // skips them, while still syncing on genuine external changes
+    // (browser back/forward, <Link> navigations).
+    const selfInitiatedUrlChange = useRef(false);
     
-    // Sync state with URL params
-    const updateUrlParams = useCallback((updates: Record<string, string | string[] | null>) => {
-        const params = new URLSearchParams(searchParams.toString());
-        
-        Object.entries(updates).forEach(([key, value]) => {
-            if (value === null || value === 'All' || value === 'Subject' || (Array.isArray(value) && value.length === 0)) {
-                params.delete(key);
-            } else if (Array.isArray(value)) {
-                params.set(key, value.join(','));
-            } else {
-                params.set(key, value);
-            }
-        });
+    const urlSubject = parseSubjectFilter(searchParams.get('subject'));
+    const urlDifficulty = parseDifficultyFilter(searchParams.get('difficulty'));
+    const urlStatus = parseStatusFilter(searchParams.get('status'));
+    const urlSearch = searchParams.get('search') || '';
+    const urlSelectedChapters = searchParams.getAll('chapters').filter(Boolean);
 
-        const query = params.toString();
-        router.replace(query ? `/ogcode?${query}` : '/ogcode', { scroll: false });
-    }, [router, searchParams]);
+    const syncUrlParams = useCallback((
+        updates: Partial<{ subject: string; difficulty: string; status: string; chapters: string[]; search: string }>,
+        mode: 'push' | 'replace' = 'push',
+    ) => {
+        if (typeof window === 'undefined') {
+            return;
+        }
+
+        const url = buildOgcodeUrl({
+            subject: updates.subject ?? activeSubject,
+            difficulty: updates.difficulty ?? activeDifficulty,
+            status: updates.status ?? activeStatus,
+            chapters: updates.chapters ?? selectedChapters,
+            search: updates.search ?? searchQuery,
+        });
+        const currentUrl = `${window.location.pathname}${window.location.search}`;
+        if (currentUrl === url) {
+            return;
+        }
+
+        selfInitiatedUrlChange.current = true;
+        window.history[mode === 'replace' ? 'replaceState' : 'pushState'](null, '', url);
+    }, [activeDifficulty, activeStatus, activeSubject, searchQuery, selectedChapters]);
+
+    useEffect(() => {
+        if (selfInitiatedUrlChange.current) {
+            selfInitiatedUrlChange.current = false;
+            return;
+        }
+        if (activeSubject !== urlSubject) {
+            setActiveSubject(urlSubject);
+            setAvailableChapters([]);
+        }
+        if (activeDifficulty !== urlDifficulty) {
+            setActiveDifficulty(urlDifficulty);
+        }
+        if (activeStatus !== urlStatus) {
+            setActiveStatus(urlStatus);
+        }
+        if (searchQuery !== urlSearch) {
+            setSearchQuery(urlSearch);
+        }
+        if (!sameStringArray(selectedChapters, urlSelectedChapters)) {
+            setSelectedChapters(urlSelectedChapters);
+        }
+    }, [
+        activeDifficulty,
+        activeStatus,
+        activeSubject,
+        searchQuery,
+        selectedChapters,
+        urlDifficulty,
+        urlSearch,
+        urlSelectedChapters,
+        urlStatus,
+        urlSubject,
+    ]);
 
     // Handle filter changes
     const handleSubjectChange = (subject: string) => {
         setActiveSubject(subject);
         setSelectedChapters([]);
-        updateUrlParams({ subject, chapters: null });
+        setAvailableChapters([]);
+        syncUrlParams({ subject, chapters: [] }, 'push');
     };
 
     const handleDifficultyChange = (difficulty: string) => {
         setActiveDifficulty(difficulty);
-        updateUrlParams({ difficulty });
+        syncUrlParams({ difficulty }, 'push');
     };
 
     const handleStatusChange = (status: string) => {
         setActiveStatus(status);
-        updateUrlParams({ status });
+        syncUrlParams({ status }, 'push');
     };
 
     const handleToggleChapter = (chapter: string) => {
@@ -145,12 +345,12 @@ export default function OGCodeList({ onSelectQuestion, user, initialQuestions }:
             ? selectedChapters.filter(c => c !== chapter) 
             : [...selectedChapters, chapter];
         setSelectedChapters(next);
-        updateUrlParams({ chapters: next });
+        syncUrlParams({ chapters: next }, 'push');
     };
 
     const handleClearChapters = () => {
         setSelectedChapters([]);
-        updateUrlParams({ chapters: null });
+        syncUrlParams({ chapters: [] }, 'push');
     };
     // Refs for click-outside detection
     const statsRef = useRef<HTMLDivElement>(null);
@@ -172,47 +372,121 @@ export default function OGCodeList({ onSelectQuestion, user, initialQuestions }:
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
-    const fetchData = useCallback(async () => {
-        setLoading(true);
-        const useSSRQuestions = skipQuestionsFetch.current;
-        skipQuestionsFetch.current = false; // only skip on the very first call
+    const buildQuestionQueryString = useCallback((offset: number) => {
+        const params = new URLSearchParams();
+        params.set('limit', String(QUESTION_PAGE_SIZE));
+        params.set('offset', String(offset));
+
+        if (activeSubject !== 'Subject') params.set('subject', activeSubject);
+        if (activeDifficulty !== 'All') params.set('difficulty', activeDifficulty.toLowerCase());
+        if (activeStatus !== 'All') {
+            const mappedStatus = mapStatusFilter(activeStatus);
+            if (mappedStatus) params.set('status', mappedStatus);
+        }
+        for (const chapter of selectedChapters) {
+            params.append('chapters', chapter);
+        }
+
+        const normalizedSearch = searchQuery.trim();
+        if (normalizedSearch) params.set('search', normalizedSearch);
+
+        return params.toString();
+    }, [activeDifficulty, activeStatus, activeSubject, searchQuery, selectedChapters]);
+
+    const fetchQuestionPage = useCallback(async ({ offset = 0, append = false }: { offset?: number; append?: boolean } = {}) => {
+        setQuestionsLoading(true);
         try {
-            const [qData, rData, statsData] = await Promise.all([
-                // Skip question fetch when SSR already provided the catalog
-                useSSRQuestions
-                    ? Promise.resolve(null)
-                    : apiCall('/assessments/ogcode/questions/'),
-                apiCall(`/assessments/ogcode/leaderboard/subjects/?time_range=${timeRange}`),
-                apiCall('/assessments/ogcode/user-stats/'),
-            ]);
-            if (!useSSRQuestions) {
-                setQuestions(Array.isArray(qData) ? qData : []);
-            }
-            setSubjectRanks(Array.isArray(rData) ? rData : []);
-            setUserStats(statsData);
+            const data = await apiCall(`/assessments/ogcode/questions/?${buildQuestionQueryString(offset)}`);
+            const page = normalizeQuestionPage(data);
+
+            setQuestions((current) => append ? dedupeQuestions([...current, ...page.items]) : page.items);
+            setTotalQuestions(page.total);
+            setHasMoreQuestions(page.hasMore);
+            setNextOffset(page.offset + page.items.length);
         } catch (error) {
             console.error('Failed to fetch OGCode data:', error);
             toast.error('Failed to load questions');
         } finally {
-            setLoading(false);
+            setQuestionsLoading(false);
         }
-    }, [timeRange]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [buildQuestionQueryString]);
 
     useEffect(() => {
-        fetchData();
-    }, [fetchData]);
+        const timeout = window.setTimeout(() => {
+            if (skipInitialQuestionFetch.current) {
+                skipInitialQuestionFetch.current = false;
+                return;
+            }
+            void fetchQuestionPage();
+        }, searchQuery.trim() ? 220 : 0);
 
-    // Extract unique chapters based on active subject
-    const availableChapters = useMemo(() => {
-        const subjectQuestions = questions.filter(q => 
-            activeSubject === 'Subject' || normalizeSubject(q.subject) === normalizeSubject(activeSubject)
-        );
-        const chapters = new Set(subjectQuestions.map(q => q.chapter || 'Foundations'));
-        return Array.from(chapters).sort();
-    }, [questions, activeSubject]);
+        return () => window.clearTimeout(timeout);
+    }, [fetchQuestionPage, searchQuery]);
 
-    // Effects handled by child components or URL state
-    // Reset selected chapters when subject changes (already handled in handleSubjectChange)
+    useEffect(() => {
+        const timeout = window.setTimeout(() => {
+            syncUrlParams({ search: searchQuery }, 'replace');
+        }, searchQuery.trim() ? 220 : 0);
+
+        return () => window.clearTimeout(timeout);
+    }, [searchQuery, syncUrlParams]);
+
+    const fetchStats = useCallback(async () => {
+        setStatsLoading(true);
+        try {
+            const [rankData, statsData] = await Promise.all([
+                apiCall(`/assessments/ogcode/leaderboard/subjects/?time_range=${timeRange}`),
+                apiCall('/assessments/ogcode/user-stats/'),
+            ]);
+            setSubjectRanks(Array.isArray(rankData) ? rankData : []);
+            setUserStats(statsData as UserStats);
+        } catch (error) {
+            console.error('Failed to fetch OGCode stats:', error);
+        } finally {
+            setStatsLoading(false);
+        }
+    }, [timeRange]);
+
+    useEffect(() => {
+        if (skipInitialStatsFetch.current) {
+            skipInitialStatsFetch.current = false;
+            return;
+        }
+        void fetchStats();
+    }, [fetchStats]);
+
+    const fetchChapters = useCallback(async () => {
+        if (activeSubject === 'Subject') {
+            setAvailableChapters([]);
+            return;
+        }
+
+        setChaptersLoading(true);
+        try {
+            const data = await apiCall(`/assessments/ogcode/chapters/?subject=${encodeURIComponent(activeSubject)}`);
+            setAvailableChapters(Array.isArray(data) ? data : []);
+        } catch (error) {
+            console.error('Failed to fetch OGCode chapters:', error);
+            setAvailableChapters([]);
+        } finally {
+            setChaptersLoading(false);
+        }
+    }, [activeSubject]);
+
+    useEffect(() => {
+        if (skipInitialChapterFetch.current) {
+            skipInitialChapterFetch.current = false;
+            return;
+        }
+        void fetchChapters();
+    }, [fetchChapters]);
+
+    const handleLoadMore = () => {
+        if (!hasMoreQuestions || questionsLoading) {
+            return;
+        }
+        void fetchQuestionPage({ offset: nextOffset, append: true });
+    };
 
     const filteredQuestions = questions.filter(q => {
         const matchesSearch = (q.text || q.title || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -264,6 +538,10 @@ export default function OGCodeList({ onSelectQuestion, user, initialQuestions }:
     const accuracy = userStats?.accuracy ?? 0;
     const syllabusCoverage = userStats?.syllabusCoverage ?? 0;
     const streak = userStats?.streak ?? user.streak ?? 0;
+    const showQuestionsSpinner = questionsLoading && questions.length === 0;
+    const questionSummaryLabel = totalQuestions > 0
+        ? `Showing ${Math.min(filteredQuestions.length, totalQuestions)} of ${totalQuestions} questions`
+        : 'No questions available yet.';
 
     return (
         <div className="min-h-screen bg-white dark:bg-black text-slate-900 dark:text-slate-100 font-sans selection:bg-blue-500/30 px-4 sm:px-6 lg:px-8 pb-16 transition-colors duration-500">
@@ -390,20 +668,30 @@ export default function OGCodeList({ onSelectQuestion, user, initialQuestions }:
                                                 </div>
                                             </div>
                                             <div className="space-y-4">
-                                                {subjectRanks.map((rank, i) => (
-                                                    <div key={i} className="flex items-center justify-between">
-                                                        <div className="flex items-center gap-3">
-                                                            <div className={cn("p-2 rounded-lg bg-slate-100 dark:bg-white/5", SUBJECT_COLORS[rank.subject]?.split(' ')[0])}>
-                                                                {SUBJECT_ICONS[rank.subject]}
-                                                            </div>
-                                                            <div className="text-[11px] font-bold text-slate-900 dark:text-white uppercase tracking-wider">{rank.subject}</div>
-                                                        </div>
-                                                        <div className="text-right">
-                                                            <div className="text-sm font-black text-amber-500">#{rank.rankPosition || rank.rank}</div>
-                                                            <div className="text-[8px] font-black text-slate-400 uppercase">AIR</div>
-                                                        </div>
+                                                {statsLoading && subjectRanks.length === 0 ? (
+                                                    <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                                                        Loading rankings...
                                                     </div>
-                                                ))}
+                                                ) : subjectRanks.length > 0 ? (
+                                                    subjectRanks.map((rank, i) => (
+                                                        <div key={i} className="flex items-center justify-between">
+                                                            <div className="flex items-center gap-3">
+                                                                <div className={cn("p-2 rounded-lg bg-slate-100 dark:bg-white/5", SUBJECT_COLORS[rank.subject]?.split(' ')[0])}>
+                                                                    {SUBJECT_ICONS[rank.subject]}
+                                                                </div>
+                                                                <div className="text-[11px] font-bold text-slate-900 dark:text-white uppercase tracking-wider">{rank.subject}</div>
+                                                            </div>
+                                                            <div className="text-right">
+                                                                <div className="text-sm font-black text-amber-500">#{rank.rankPosition || rank.rank}</div>
+                                                                <div className="text-[8px] font-black text-slate-400 uppercase">AIR</div>
+                                                            </div>
+                                                        </div>
+                                                    ))
+                                                ) : (
+                                                    <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                                                        Rankings will appear after your first attempts.
+                                                    </div>
+                                                )}
                                                 <button 
                                                     type="button"
                                                     onClick={() => {
@@ -495,7 +783,9 @@ export default function OGCodeList({ onSelectQuestion, user, initialQuestions }:
                                             </button>
                                         </div>
                                         <div className="flex flex-wrap gap-2 max-h-[140px] sm:max-h-[120px] overflow-y-auto pr-2 custom-scrollbar p-1">
-                                            {availableChapters.length > 0 ? (
+                                            {chaptersLoading ? (
+                                                <div className="text-[11px] font-medium text-slate-400 italic py-2">Loading chapters...</div>
+                                            ) : availableChapters.length > 0 ? (
                                                 availableChapters.map((chapter) => (
                                                     <button
                                                         key={chapter}
@@ -604,9 +894,9 @@ export default function OGCodeList({ onSelectQuestion, user, initialQuestions }:
                                         </tr>
                                     </thead>
                                 <tbody className="text-sm">
-                                    {loading ? (
+                                    {showQuestionsSpinner ? (
                                         <tr><td colSpan={5} className="py-20 text-center"><div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto" /></td></tr>
-                                    ) : (
+                                    ) : filteredQuestions.length > 0 ? (
                                         filteredQuestions.map((q, idx) => {
                                             const conf = DIFFICULTY_CONFIG[q.difficulty?.toLowerCase()] || DIFFICULTY_CONFIG.easy;
                                             return (
@@ -622,6 +912,8 @@ export default function OGCodeList({ onSelectQuestion, user, initialQuestions }:
                                                 </tr>
                                             );
                                         })
+                                    ) : (
+                                        <tr><td colSpan={5} className="py-20 text-center text-slate-500 text-sm">No questions found matching your criteria.</td></tr>
                                     )}
                                 </tbody>
                             </table>
@@ -629,7 +921,7 @@ export default function OGCodeList({ onSelectQuestion, user, initialQuestions }:
 
                             {/* Card view for Mobile */}
                             <div className="md:hidden divide-y divide-slate-200 dark:divide-white/5">
-                                {loading ? (
+                                {showQuestionsSpinner ? (
                                     <div className="py-20 text-center"><div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto" /></div>
                                 ) : filteredQuestions.length > 0 ? (
                                     filteredQuestions.map((q, idx) => {
@@ -676,6 +968,22 @@ export default function OGCodeList({ onSelectQuestion, user, initialQuestions }:
                                 ) : (
                                     <div className="py-20 text-center text-slate-500 text-sm">No questions found matching your criteria.</div>
                                 )}
+                            </div>
+
+                            <div className="flex flex-col gap-3 border-t border-slate-200 dark:border-white/5 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+                                <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                                    {questionsLoading && questions.length > 0 ? 'Updating question list...' : questionSummaryLabel}
+                                </div>
+                                {hasMoreQuestions ? (
+                                    <button
+                                        type="button"
+                                        onClick={handleLoadMore}
+                                        disabled={questionsLoading}
+                                        className="inline-flex items-center justify-center gap-2 rounded-xl border border-blue-500/20 bg-blue-500/10 px-4 py-2 text-[11px] font-black uppercase tracking-wider text-blue-500 transition-all hover:bg-blue-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                        {questionsLoading ? 'Loading...' : `Load ${QUESTION_PAGE_SIZE} More`}
+                                    </button>
+                                ) : null}
                             </div>
                         </div>
                     </div>

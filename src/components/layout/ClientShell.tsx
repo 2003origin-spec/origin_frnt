@@ -1,52 +1,92 @@
 'use client';
 
 import React from 'react';
+import dynamic from 'next/dynamic';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import type { ViewState } from '@/types';
 import Navbar from './Navbar';
-import FloatingChat from './FloatingChat';
 import { useTheme } from 'next-themes';
-import { AnimatePresence, motion } from 'framer-motion';
 import { TutorialProvider } from '@/features/tutorial/TutorialProvider';
-import { TutorialOverlay } from '@/features/tutorial/TutorialOverlay';
+
+const FloatingChat = dynamic(() => import('./FloatingChat'), { ssr: false });
+const TutorialOverlay = dynamic(() =>
+  import('@/features/tutorial/TutorialOverlay').then((module) => module.TutorialOverlay),
+  { ssr: false },
+);
+
+const ROUTES: Record<string, string> = {
+  'landing': '/',
+  'dashboard': '/dashboard',
+  'auth': '/auth',
+  'test-list': '/tests',
+  'test-interface': '/tests',
+  'test-result': '/tests/result',
+  'ogcode': '/ogcode',
+  'ogcode-workspace': '/ogcode',
+  'doubt-solver': '/doubt-solver',
+  'dpp': '/dpp',
+  'tasks-goals': '/tasks',
+  'explore': '/explore',
+  'profile': '/profile',
+  'premium': '/premium',
+  'study-corner': '/study-corner',
+  'pomodoro': '/pomodoro',
+  'leaderboard': '/leaderboard',
+  'milestones': '/milestones',
+  'prestige-milestones': '/milestones',
+};
+
+function resolveRoute(view: string) {
+  return ROUTES[view] || `/${view}`;
+}
 
 export default function ClientShell({ children }: { children: React.ReactNode }) {
   const { user, logout, isNavigationLocked } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
-  const { theme, resolvedTheme, setTheme } = useTheme();
+  const { resolvedTheme, setTheme } = useTheme();
   const [mounted, setMounted] = React.useState(false);
+  const [deferredUiReady, setDeferredUiReady] = React.useState(false);
 
   React.useEffect(() => {
     setMounted(true);
   }, []);
 
+  React.useEffect(() => {
+    if (!mounted) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setDeferredUiReady(true);
+    }, 400);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [mounted]);
+
+  const prefetchRoute = React.useCallback((view: string) => {
+    router.prefetch(resolveRoute(view));
+  }, [router]);
+
+  React.useEffect(() => {
+    if (!mounted || !user || isNavigationLocked) {
+      return;
+    }
+
+    const routesToPrefetch = user.role === 'teacher'
+      ? ['/dashboard', '/profile']
+      : ['/dashboard', '/ogcode', '/tests', '/dpp', '/tasks', '/study-corner', '/pomodoro', '/leaderboard', '/milestones', '/profile'];
+
+    const timeoutId = window.setTimeout(() => {
+      routesToPrefetch.forEach((route) => router.prefetch(route));
+    }, 250);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [isNavigationLocked, mounted, router, user]);
+
   const handleNavigate = (view: string) => {
-    // Basic mapping for backward compatibility with Navbar views
-    const routes: Record<string, string> = {
-      'landing': '/',
-      'dashboard': '/dashboard',
-      'auth': '/auth',
-      'test-list': '/tests',
-      'test-interface': '/tests',
-      'test-result': '/tests/result',
-      'ogcode': '/ogcode',
-      'ogcode-workspace': '/ogcode',
-      'doubt-solver': '/doubt-solver',
-      'dpp': '/dpp',
-      'tasks-goals': '/tasks',
-      'explore': '/explore',
-      'profile': '/profile',
-      'premium': '/premium',
-      'study-corner': '/study-corner',
-      'pomodoro': '/pomodoro',
-      'leaderboard': '/leaderboard',
-      'milestones': '/milestones'
-    };
-    
-    const route = routes[view] || `/${view}`;
-    router.push(route);
+    router.push(resolveRoute(view));
   };
 
   const noNavbarPaths = ['/', '/auth', '/onboarding', '/role-selection'];
@@ -72,29 +112,22 @@ export default function ClientShell({ children }: { children: React.ReactNode })
           user={user}
           currentView={pathname.replace('/', '') as ViewState}
           onNavigate={handleNavigate}
+          onPrefetch={prefetchRoute}
           onLogout={logout}
           theme={currentTheme as "dark" | "light" | "system"}
           setTheme={setTheme}
         />
       )}
       <main className={`flex-1 flex flex-col relative z-10 ${mounted && showNavbar ? 'pt-[92px]' : ''}`}>
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={pathname}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.3, ease: [0.23, 1, 0.32, 1] }}
-            className="flex-1 flex flex-col relative"
-          >
-            {children}
-          </motion.div>
-        </AnimatePresence>
+        <div className="flex-1 flex flex-col relative">
+          {children}
+        </div>
       </main>
-      {mounted && user && !noNavbarPaths.includes(pathname) && pathname !== '/doubt-solver' && <FloatingChat />}
-      <TutorialOverlay />
+      {deferredUiReady && user && !noNavbarPaths.includes(pathname) && pathname !== '/doubt-solver'
+        ? <FloatingChat />
+        : null}
+      {deferredUiReady ? <TutorialOverlay /> : null}
     </div>
     </TutorialProvider>
   );
 }
-

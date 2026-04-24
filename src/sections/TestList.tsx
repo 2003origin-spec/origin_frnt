@@ -27,20 +27,40 @@ import {
   Sparkles,
   ArrowRight
 } from 'lucide-react';
-import type { Test, User } from '@/types';
+import type { Test, TestPreview, User } from '@/types';
 import { apiCall } from '@/lib/api';
+import { createCustomTestAction } from '@/server/actions/test-actions';
 
 interface TestListProps {
-  onStartTest: (test: Test) => void;
-  onViewAnalysis: (test: Test) => void;
+  onStartTest: (test: TestPreview) => void;
+  onViewAnalysis: (test: TestPreview) => void;
   onBack: () => void;
   user: User;
   /** Pre-loaded by the Server Component — skips the initial client-side fetch */
-  initialTests?: Test[];
+  initialTests?: TestPreview[];
+}
+
+function toTestPreview(test: Test | TestPreview): TestPreview {
+  return {
+    id: test.id,
+    title: test.title,
+    description: test.description,
+    subject: test.subject,
+    chapter: test.chapter,
+    difficulty: test.difficulty,
+    duration: test.duration,
+    totalQuestions: test.totalQuestions,
+    isPremium: test.isPremium,
+    isCustom: test.isCustom,
+    attempted: test.attempted,
+    score: test.score,
+    attemptCount: test.attemptCount,
+    allScores: test.allScores,
+  };
 }
 
 export default function TestList({ onStartTest, onViewAnalysis, onBack, user, initialTests }: TestListProps) {
-  const [tests, setTests] = useState<Test[]>(initialTests ?? []);
+  const [tests, setTests] = useState<TestPreview[]>(initialTests ?? []);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSubject, setSelectedSubject] = useState('all');
   const [selectedDifficulty, setSelectedDifficulty] = useState('all');
@@ -59,16 +79,12 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
     setCreatingTest(true);
     setCustomTestError('');
     try {
-      const response = await apiCall('/assessments/tests/custom/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(customTestConfig)
-      });
+      const response = (await createCustomTestAction(customTestConfig)) as Test;
       // Add the new test to the top of the list and mark as custom
-      const newTest = { ...response, isCustom: true };
-      setTests([newTest, ...tests]);
+      const newTest = { ...toTestPreview(response), isCustom: true };
+      setTests((prev) => [newTest, ...prev]);
       // Auto-start the test after creating it
-      onStartTest(response);
+      onStartTest(newTest);
     } catch (error: any) {
       setCustomTestError(error.message || 'Failed to create custom test. Try making it broader.');
     } finally {
@@ -81,7 +97,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
     const fetchTests = async () => {
       try {
         const data = await apiCall('/assessments/tests/');
-        setTests(data);
+        setTests(Array.isArray(data) ? (data as TestPreview[]) : []);
       } catch (error) {
         console.error('Failed to fetch tests:', error);
       } finally {
@@ -540,7 +556,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
 }
 
 interface TestCardProps {
-  test: Test;
+  test: TestPreview;
   onStart: () => void;
   onViewAnalysis: () => void;
   user: User;

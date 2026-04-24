@@ -8,7 +8,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { apiCall } from '@/lib/api';
 import { renderFormattedExplanation, renderInlineSegments, renderQuestionText } from '@/lib/math-text';
-import type { Question, User } from '@/types';
+import type { User } from '@/types';
 import {
   ArrowRight,
   CheckCircle2,
@@ -25,6 +25,7 @@ import {
 interface DPPViewProps {
   onBack: () => void;
   user: User;
+  initialDpps: GeneratedDpp[] | null;
 }
 
 interface GeneratedDppAttemptSummary {
@@ -54,8 +55,25 @@ interface GeneratedDpp {
   completed: boolean;
   duration?: number;
   targetQuestionCount?: number;
-  questions: Question[];
+  questions: DppQuestion[];
   latestAttempt?: GeneratedDppAttemptSummary | null;
+}
+
+type DppQuestion = {
+  id: string;
+  text: string;
+  options?: string[];
+  explanation: string;
+  concept: string;
+  difficulty: string;
+  subject: string;
+  chapter?: string;
+  correctOption?: number | null;
+  correct_option?: number | null;
+};
+
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
 }
 
 interface DppSubmissionResponse extends GeneratedDppAttemptSummary {
@@ -70,9 +88,9 @@ interface DppSubmissionResponse extends GeneratedDppAttemptSummary {
   }>;
 }
 
-export default function DPPView({ onBack }: DPPViewProps) {
-  const [loading, setLoading] = useState(true);
-  const [dpps, setDpps] = useState<GeneratedDpp[]>([]);
+export default function DPPView({ onBack, initialDpps }: DPPViewProps) {
+  const [loading, setLoading] = useState(initialDpps === null);
+  const [dpps, setDpps] = useState<GeneratedDpp[]>(initialDpps ?? []);
   const [selectedDppId, setSelectedDppId] = useState<string | null>(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
@@ -95,23 +113,32 @@ export default function DPPView({ onBack }: DPPViewProps) {
   const isCompleted = Boolean(submissionResult);
 
   useEffect(() => {
+    if (initialDpps !== null) {
+      return;
+    }
+
     const loadDpps = async () => {
       try {
         setLoading(true);
         setError('');
         const plans = await apiCall('/assessments/dpps/');
         setDpps(Array.isArray(plans) ? plans : []);
-      } catch (loadError: any) {
-        setError(loadError.message || 'Failed to load generated DPPs.');
+      } catch (loadError) {
+        setError(getErrorMessage(loadError, 'Failed to load generated DPPs.'));
       } finally {
         setLoading(false);
       }
     };
     loadDpps();
-  }, []);
+  }, [initialDpps]);
 
   useEffect(() => {
     if (!selectedDppId) {
+      return;
+    }
+
+    const selectedDpp = dpps.find((entry) => entry.id === selectedDppId);
+    if (selectedDpp?.questions?.length) {
       return;
     }
 
@@ -120,14 +147,14 @@ export default function DPPView({ onBack }: DPPViewProps) {
         setLoading(true);
         const detail = await apiCall(`/assessments/dpps/${selectedDppId}/`);
         setDpps((previous) => previous.map((entry) => (entry.id === selectedDppId ? detail : entry)));
-      } catch (loadError: any) {
-        setError(loadError.message || 'Failed to load DPP details.');
+      } catch (loadError) {
+        setError(getErrorMessage(loadError, 'Failed to load DPP details.'));
       } finally {
         setLoading(false);
       }
     };
     loadDetail();
-  }, [selectedDppId]);
+  }, [dpps, selectedDppId]);
 
   useEffect(() => {
     const questionCount = currentDpp?.questions?.length ?? 0;
@@ -141,12 +168,11 @@ export default function DPPView({ onBack }: DPPViewProps) {
     questionStartedAtRef.current = Date.now();
   }, [selectedDppId, currentDpp?.questions?.length]);
 
-  const getCorrectOption = (question: Question | null) => {
+  const getCorrectOption = (question: DppQuestion | null) => {
     if (!question) {
       return null;
     }
-    const typedQuestion = question as Question & { correct_option?: number };
-    return typedQuestion.correctOption ?? typedQuestion.correct_option ?? null;
+    return question.correctOption ?? question.correct_option ?? null;
   };
 
   const getElapsedSeconds = () => Math.max(0, Math.round((Date.now() - questionStartedAtRef.current) / 1000));
@@ -232,8 +258,8 @@ export default function DPPView({ onBack }: DPPViewProps) {
             : entry,
         ),
       );
-    } catch (submitError: any) {
-      setError(submitError.message || 'Failed to submit DPP.');
+    } catch (submitError) {
+      setError(getErrorMessage(submitError, 'Failed to submit DPP.'));
     } finally {
       setSubmitting(false);
     }
@@ -617,14 +643,20 @@ function DppSelectionGrid({
           const progressScore = dpp.latestAttempt?.progress_score ?? dpp.latestAttempt?.progressScore ?? null;
 
           return (
-            <button
+            <Card
               key={dpp.id}
-              type="button"
+              role="button"
+              tabIndex={0}
               onClick={() => onSelect(dpp.id)}
-              className="text-left group"
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  onSelect(dpp.id);
+                }
+              }}
+              className="h-full cursor-pointer border-0 shadow-soft transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl dark:bg-slate-900/60 dark:ring-1 dark:ring-white/10"
             >
-              <Card className="h-full border-0 shadow-soft hover:shadow-xl transition-all duration-300 dark:bg-slate-900/60 dark:ring-1 dark:ring-white/10 group-hover:-translate-y-0.5">
-                <CardContent className="p-6 space-y-4">
+              <CardContent className="p-6 space-y-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-2">
@@ -686,14 +718,15 @@ function DppSelectionGrid({
                   </div>
 
                   <div className="pt-2">
-                    <Button className="w-full rounded-full bg-gradient-to-r from-[#3CACA3] to-[#1E3A5F] text-white">
+                    <Button asChild className="w-full rounded-full bg-gradient-to-r from-[#3CACA3] to-[#1E3A5F] text-white">
+                      <span>
                       {dpp.completed ? 'Review DPP' : 'Start Solving'}
                       <ArrowRight className="w-4 h-4 ml-2" />
+                      </span>
                     </Button>
                   </div>
-                </CardContent>
-              </Card>
-            </button>
+              </CardContent>
+            </Card>
           );
         })}
       </div>

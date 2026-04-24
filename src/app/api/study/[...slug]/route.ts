@@ -4,9 +4,6 @@ import { badRequest, getSlugSegments, parseJsonBody } from "@/server/http";
 import { handleStudyRequest } from "@/server/study";
 import { generalLimiter, checkRateLimit } from "@/lib/rate-limit";
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
-
 type RouteContext = {
   params: Promise<{ slug?: string[] }>;
 };

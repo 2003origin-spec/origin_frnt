@@ -1,32 +1,27 @@
-'use client';
-
-import Profile from '@/sections/Profile';
-import TeacherProfile from '@/sections/TeacherProfile';
-import { useAuth } from '@/context/AuthContext';
-import { useRouter } from 'next/navigation';
+import { Suspense } from 'react';
+import { redirect } from 'next/navigation';
+import { getServerUser } from '@/lib/auth-server';
+import { getProfileStatsForRender } from '@/server/render-loaders';
+import ProfileClient from './_client';
 
 export default function ProfilePage() {
-  const { user, streakData, logout } = useAuth();
-  const router = useRouter();
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-background" />}>
+      <ProfileGate />
+    </Suspense>
+  );
+}
 
-  if (!user) return null;
+async function ProfileGate() {
+  const user = await getServerUser();
+  if (!user) redirect('/auth?next=/profile');
 
-  if (user.role === 'teacher') {
-    return (
-      <TeacherProfile
-        user={user}
-        onBack={() => router.back()}
-        onLogout={logout}
-      />
-    );
+  let initialProfileStats: Awaited<ReturnType<typeof getProfileStatsForRender>> | null = null;
+  try {
+    initialProfileStats = await getProfileStatsForRender(user.id);
+  } catch {
+    // Profile page can fall back to client fetch.
   }
 
-  return (
-    <Profile
-      user={user}
-      streakData={streakData}
-      onBack={() => router.back()}
-      onUpgrade={() => router.push('/premium')}
-    />
-  );
+  return <ProfileClient initialProfileStats={initialProfileStats} />;
 }

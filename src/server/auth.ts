@@ -1,5 +1,5 @@
 import type { AppStore, StoredAuthSession, StoredUser } from "@/server/store";
-import { createId, readStore } from "@/server/store";
+import { createId, readStore, writeStore } from "@/server/store";
 import { isUserPostgresConfigured } from "@/server/user-postgres";
 import { dbFindUserByAccessToken, dbGetSessionByRefreshToken, dbRotateAccessToken, dbCreateAuthSession } from "@/server/db-users";
 
@@ -75,12 +75,19 @@ export function clearUserSessions(store: AppStore, userId: string): void {
 // ─── Async DB-first helpers (used when USER_DATABASE_URL is configured) ────────
 
 /**
- * Resolves a Bearer token to a user, checking Postgres first then flat-file.
+ * Resolves a Bearer token to a user, preferring the mirrored flat-file session
+ * and falling back to Postgres only when the local mirror is stale/missing.
  * Use this in async handlers instead of requireUserFromRequest.
  */
 export async function resolveTokenToUser(request: Request): Promise<StoredUser | null> {
   const token = extractBearerToken(request);
   if (!token) return null;
+
+  const store = readStore();
+  const localUser = findUserByAccessToken(store, token);
+  if (localUser) {
+    return localUser;
+  }
 
   if (isUserPostgresConfigured()) {
     try {
@@ -92,8 +99,7 @@ export async function resolveTokenToUser(request: Request): Promise<StoredUser |
   }
 
   // Flat-file fallback
-  const store = readStore();
-  return findUserByAccessToken(store, token);
+  return null;
 }
 
 /**
@@ -104,7 +110,18 @@ export async function refreshAccessToken(refreshToken: string): Promise<{ access
   if (isUserPostgresConfigured()) {
     try {
       const updated = await dbRotateAccessToken(refreshToken);
-      if (updated) return { accessToken: updated.accessToken, refreshToken: updated.refreshToken };
+      if (updated) {
+        // Keep the mirrored flat-file session in sync so Server Components and
+        // route handlers can resolve auth without a remote DB round-trip.
+        const store = readStore();
+        const nextSessions = store.authSessions.filter(
+          (entry) => entry.userId !== updated.userId && entry.refreshToken !== refreshToken,
+        );
+        nextSessions.push(updated);
+        store.authSessions = nextSessions;
+        writeStore(store);
+        return { accessToken: updated.accessToken, refreshToken: updated.refreshToken };
+      }
     } catch (err) {
       console.error('[auth] DB token rotation failed, falling back to flat-file', err instanceof Error ? err.message : err);
     }
@@ -116,7 +133,6 @@ export async function refreshAccessToken(refreshToken: string): Promise<{ access
   if (!session) return null;
   rotateAccessToken(session);
   // Write the rotated token back
-  const { writeStore } = await import("@/server/store");
   writeStore(store);
   return { accessToken: session.accessToken, refreshToken: session.refreshToken };
 }

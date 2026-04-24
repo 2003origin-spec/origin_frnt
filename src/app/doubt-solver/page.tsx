@@ -1,22 +1,18 @@
-'use client';
-
-import { useRouter } from 'next/navigation';
-
-import DoubtSolver from '@/sections/DoubtSolver';
-import { useAuth } from '@/context/AuthContext';
+import { Suspense } from 'react';
+import { redirect } from 'next/navigation';
+import { getServerUser } from '@/lib/auth-server';
+import DoubtSolverClient from './_client';
 
 export default function DoubtSolverPage() {
-  const router = useRouter();
-  const { user } = useAuth();
-
-  if (!user) {
-    return null;
-  }
-
   return (
-    <DoubtSolver
-      user={user}
-      onBack={() => router.push('/dashboard')}
-    />
+    <Suspense fallback={<div className="min-h-screen bg-background" />}>
+      <DoubtSolverGate />
+    </Suspense>
   );
+}
+
+async function DoubtSolverGate() {
+  const user = await getServerUser();
+  if (!user) redirect('/auth?next=/doubt-solver');
+  return <DoubtSolverClient />;
 }

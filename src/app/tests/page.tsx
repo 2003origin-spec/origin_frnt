@@ -1,19 +1,26 @@
+import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
 import { getServerUser } from '@/lib/auth-server';
-import { readStore } from '@/server/store';
-import { listTests } from '@/server/assessments';
+import { listTestsForRender } from '@/server/render-loaders';
 import TestsClient from './_client';
-import type { Test } from '@/types';
+import TestsLoading from './loading';
+import type { TestPreview } from '@/types';
 
-export default async function TestsPage() {
+export default function TestsPage() {
+  return (
+    <Suspense fallback={<TestsLoading />}>
+      <TestsContent />
+    </Suspense>
+  );
+}
+
+async function TestsContent() {
   const serverUser = await getServerUser();
   if (!serverUser) redirect('/auth?next=/tests');
 
-  let initialTests: Test[] = [];
+  let initialTests: TestPreview[] = [];
   try {
-    const store = readStore();
-    // Direct server function call — zero HTTP round-trip
-    initialTests = (await listTests(store, serverUser)) as unknown as Test[];
+    initialTests = (await listTestsForRender(serverUser.id)) as unknown as TestPreview[];
   } catch {
     // Fall back gracefully; TestList will fetch client-side on mount
   }

@@ -9,13 +9,16 @@ export default function PremiumPage() {
   const { user, refreshUser } = useAuth();
   const router = useRouter();
 
-  if (!user) return null;
-
   const handleSubscribe = async (plan: string) => {
+    if (!user) {
+      router.push('/role-selection');
+      return;
+    }
+
     // In original project, it just updated the local user state
     // We should probably call an API, but for now matching App.tsx logic
     toast.success(`Subscribed to ${plan} plan!`);
-    await refreshUser();
+    void refreshUser();
     router.push('/dashboard');
   };
 

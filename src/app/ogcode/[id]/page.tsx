@@ -1,26 +1,29 @@
-'use client';
-
-import React, { use } from 'react';
-import OGCodeWorkspace from '@/sections/OGCodeWorkspace';
-import { useAuth } from '@/context/AuthContext';
-import { useRouter } from 'next/navigation';
-import { useTimeTracker } from '@/hooks/useTimeTracker';
+import { Suspense } from 'react';
+import { redirect } from 'next/navigation';
+import { getServerUser } from '@/lib/auth-server';
+import { getPracticeQuestionDetailForRender } from '@/server/render-loaders';
+import type { PracticeQuestion } from '@/types';
+import OGCodeClient from './_client';
 
 export default function OGCodeWorkspacePage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params);
-  const { user, refreshUser } = useAuth();
-  const router = useRouter();
-  const { setTimeMode } = useTimeTracker(!!user);
-
-  if (!user || !id) return null;
-
   return (
-    <OGCodeWorkspace
-      questionId={id}
-      onBack={() => router.back()}
-      user={user}
-      onRefreshUser={refreshUser}
-      setTimeMode={setTimeMode}
-    />
+    <Suspense fallback={<div className="min-h-screen bg-background" />}>
+      <OGCodeContent params={params} />
+    </Suspense>
   );
+}
+
+async function OGCodeContent({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const user = await getServerUser();
+  if (!user) redirect(`/auth?next=/ogcode/${id}`);
+
+  let initialQuestion: PracticeQuestion | null = null;
+  try {
+    initialQuestion = (await getPracticeQuestionDetailForRender(user.id, id)) as unknown as PracticeQuestion;
+  } catch {
+    // The workspace will do a client fetch as a fallback.
+  }
+
+  return <OGCodeClient questionId={id} initialQuestion={initialQuestion} />;
 }

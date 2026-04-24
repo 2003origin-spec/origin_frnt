@@ -48,7 +48,8 @@ export default function DailyTracker({ user }: DailyTrackerProps) {
         for (let i = 0; i < 12; i++) {
             const year = currentIterDate.getFullYear();
             const month = currentIterDate.getMonth();
-            const monthName = currentIterDate.toLocaleDateString(undefined, { month: 'short' });
+            // Pin locale to avoid SSR/client hydration mismatch ("Sept" vs "Sep" — Node + en-GB rendered "Sept", browser default "Sep").
+            const monthName = currentIterDate.toLocaleDateString('en-US', { month: 'short' });
             const startDay = currentIterDate.getDay();
             const daysInMonth = new Date(year, month + 1, 0).getDate();
             const days = [];
@@ -176,8 +177,8 @@ export default function DailyTracker({ user }: DailyTrackerProps) {
                                                                 {day.count} {day.count === 1 ? 'Solution' : 'Solutions'}
                                                             </p>
                                                             <p className="text-[10px] opacity-70 font-medium">
-                                                                {day.date.toLocaleDateString(undefined, { 
-                                                                    month: 'short', 
+                                                                {day.date.toLocaleDateString('en-US', {
+                                                                    month: 'short',
                                                                     day: 'numeric',
                                                                     weekday: 'short'
                                                                 })}

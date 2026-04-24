@@ -9,12 +9,19 @@ import {
   respondOriginAiVoiceTurn,
   speakOriginAiVoiceText,
   sendOriginAiMessage,
+  serializeThread,
+  createThread,
+  deleteThread,
+  getThreadById,
+  listThreads,
+  updateThread,
   type OriginAiPageContextInput,
 } from "@/server/origin-ai";
 import {
   badRequest,
   created,
   getSlugSegments,
+  noContent,
   notFound,
   ok,
   parseJsonBody,
@@ -23,8 +30,6 @@ import {
 import { withStoreAsync, type StoredUser } from "@/server/store";
 import { aiLimiter, voiceLimiter, generalLimiter, checkRateLimit } from "@/lib/rate-limit";
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
 const ORIGIN_AI_SERVICE_URL = process.env.ORIGIN_AI_SERVICE_URL || "";
@@ -79,6 +84,17 @@ const messageBodySchema = z.object({
   message: z.string().trim().min(1),
   pageContext: pageContextSchema.optional(),
   highlightedText: z.string().nullable().optional(),
+  threadId: z.string().trim().min(1).nullable().optional(),
+});
+
+const createThreadBodySchema = z.object({
+  title: z.string().trim().min(1).max(255).optional(),
+  subject: z.string().trim().min(1).max(50).nullable().optional(),
+});
+
+const updateThreadBodySchema = z.object({
+  title: z.string().trim().min(1).max(255).optional(),
+  subject: z.string().trim().min(1).max(50).nullable().optional(),
 });
 
 const voiceBootstrapBodySchema = z.object({
@@ -202,8 +218,45 @@ async function proxyToMicroservice(
       body: body ? JSON.stringify(body) : undefined,
     });
 
-    const data = await resp.json();
-    return new Response(JSON.stringify(data), {
+    // 204 No Content (e.g. DELETE) and 304 carry no body — don't try to parse.
+    if (resp.status === 204 || resp.status === 304) {
+      return new Response(null, { status: resp.status });
+    }
+
+    const contentType = resp.headers.get("Content-Type") ?? resp.headers.get("content-type") ?? "";
+    const text = await resp.text();
+    let data: unknown = null;
+
+    if (text) {
+      const looksJson = contentType.includes("application/json")
+        || text.trim().startsWith("{")
+        || text.trim().startsWith("[");
+
+      if (looksJson) {
+        try {
+          data = JSON.parse(text);
+        } catch (parseError) {
+          console.error("[origin-ai proxy] failed to parse upstream JSON", {
+            path,
+            status: resp.status,
+            contentType,
+            preview: text.slice(0, 240),
+            parseError,
+          });
+        }
+      }
+
+      if (data === null) {
+        data = resp.ok
+          ? { raw: text }
+          : {
+              error: text.trim() || `Origin AI service error (${resp.status})`,
+              upstreamStatus: resp.status,
+            };
+      }
+    }
+
+    return new Response(data === null ? "" : JSON.stringify(data), {
       status: resp.status,
       headers: { "Content-Type": "application/json" },
     });
@@ -228,6 +281,60 @@ function userIdentifier(request: NextRequest): string {
 
 export async function GET(request: NextRequest, context: RouteContext) {
   const slug = await resolveSlug(context);
+
+  // GET /origin-ai/threads — list named Doubt Solver threads for the user.
+  // When ORIGIN_AI_SERVICE_URL is set, threads live in Neon (origin_ai.sessions
+  // rows with thread_id IS NOT NULL); otherwise we serve from the local store.
+  if (slug.length === 1 && slug[0] === "threads") {
+    const limited = await checkRateLimit(generalLimiter, userIdentifier(request));
+    if (limited) return limited;
+
+    if (ORIGIN_AI_SERVICE_URL) {
+      const proxyUser = await resolveProxyUser(request);
+      if (!proxyUser) return unauthorized();
+      const proxyResp = await proxyToMicroservice("GET", "/api/v1/chat/threads", null, request, proxyUser);
+      if (proxyResp) return proxyResp;
+    }
+
+    const result = await withStoreAsync(async (store) => {
+      const user = requireUserFromRequest(store, request);
+      if (!user) return { status: "unauthorized" as const };
+      return { status: "ok" as const, threads: listThreads(store, user.id).map(serializeThread) };
+    });
+
+    if (result.status === "unauthorized") return unauthorized();
+    return ok({ threads: result.threads });
+  }
+
+  // GET /origin-ai/threads/:threadId — fetch a single thread's full snapshot (messages + metadata).
+  if (slug.length === 2 && slug[0] === "threads") {
+    const limited = await checkRateLimit(generalLimiter, userIdentifier(request));
+    if (limited) return limited;
+
+    if (ORIGIN_AI_SERVICE_URL) {
+      const proxyUser = await resolveProxyUser(request);
+      if (!proxyUser) return unauthorized();
+      const proxyResp = await proxyToMicroservice(
+        "GET",
+        `/api/v1/chat/threads/${encodeURIComponent(slug[1])}`,
+        null,
+        request,
+        proxyUser,
+      );
+      if (proxyResp) return proxyResp;
+    }
+
+    const result = await withStoreAsync(async (store) => {
+      const user = requireUserFromRequest(store, request);
+      if (!user) return { status: "unauthorized" as const };
+      const snapshot = await getOriginAiSnapshot(store, user, request, toPageContext({}), slug[1]);
+      return { status: "ok" as const, snapshot };
+    });
+
+    if (result.status === "unauthorized") return unauthorized();
+    return ok(result.snapshot);
+  }
+
   if (slug.length !== 1 || slug[0] !== "session") {
     return notFound();
   }
@@ -299,6 +406,50 @@ export async function POST(request: NextRequest, context: RouteContext) {
   const limited = await checkRateLimit(limiter, uid);
   if (limited) return limited;
 
+  // POST /origin-ai/threads — create a named thread (body { title?, subject? }).
+  if (slug.length === 1 && slug[0] === "threads") {
+    let body: unknown;
+    try {
+      body = await parseJsonBody(request);
+    } catch {
+      return badRequest("Invalid JSON payload.");
+    }
+    const parsed = createThreadBodySchema.safeParse(body ?? {});
+    if (!parsed.success) {
+      return badRequest("Invalid thread payload.");
+    }
+
+    if (ORIGIN_AI_SERVICE_URL) {
+      const proxyUser = await resolveProxyUser(request);
+      if (!proxyUser) return unauthorized();
+      const proxyResp = await proxyToMicroservice(
+        "POST",
+        "/api/v1/chat/threads",
+        parsed.data,
+        request,
+        proxyUser,
+      );
+      if (proxyResp) {
+        // Python returns the bare ThreadOut; the client expects { thread: … }.
+        const data = await proxyResp.json().catch(() => null);
+        return created({ thread: data ?? null });
+      }
+    }
+
+    const result = await withStoreAsync(async (store) => {
+      const user = requireUserFromRequest(store, request);
+      if (!user) return { status: "unauthorized" as const };
+      const browserSessionId = request.headers.get("X-Origin-AI-Session-Id") ?? `legacy-origin-ai-session-${user.id}`;
+      const session = createThread(store, user.id, browserSessionId, {
+        title: parsed.data.title,
+        subject: parsed.data.subject ?? null,
+      });
+      return { status: "created" as const, thread: serializeThread(session) };
+    });
+    if (result.status === "unauthorized") return unauthorized();
+    return created({ thread: result.thread });
+  }
+
   try {
     const body = await parseJsonBody(request);
 
@@ -313,7 +464,29 @@ export async function POST(request: NextRequest, context: RouteContext) {
         if (!proxyUser) {
           return unauthorized();
         }
-        const proxyResp = await proxyToMicroservice("POST", "/api/v1/chat/message", parsedBody.data, request, proxyUser);
+        // Enrich the outbound payload with thread metadata the Python service
+        // needs: thread_id (so it doesn't write into the floating-avatar
+        // session) and subject (so subject_kb scopes its lookup correctly).
+        // The local origin-ai store still holds the canonical thread → subject
+        // mapping, so we read it here before forwarding.
+        let threadSubject: string | null = null;
+        if (parsedBody.data.threadId) {
+          threadSubject = await withStoreAsync(async (store) => {
+            const thread = getThreadById(store, proxyUser.id, parsedBody.data.threadId!);
+            return thread?.subject ?? null;
+          });
+        }
+        const enrichedPayload = {
+          ...parsedBody.data,
+          subject: threadSubject ?? parsedBody.data.pageContext?.activeSubject ?? null,
+          pageContext: {
+            ...(parsedBody.data.pageContext ?? {}),
+            ...(threadSubject && !parsedBody.data.pageContext?.activeSubject
+              ? { activeSubject: threadSubject }
+              : {}),
+          },
+        };
+        const proxyResp = await proxyToMicroservice("POST", "/api/v1/chat/message", enrichedPayload, request, proxyUser);
         if (proxyResp) return proxyResp;
       }
 
@@ -330,7 +503,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
           request,
           parsedBody.data.message,
           toPageContext(parsedBody.data.pageContext),
-          { userMetadata: { highlightedText: parsedBody.data.highlightedText } },
+          {
+            userMetadata: { highlightedText: parsedBody.data.highlightedText },
+            threadId: parsedBody.data.threadId ?? null,
+          },
         );
 
         if ("error" in reply) {
@@ -560,4 +736,92 @@ export async function POST(request: NextRequest, context: RouteContext) {
   } catch {
     return badRequest("Invalid JSON payload.");
   }
+}
+
+// PATCH /origin-ai/threads/:threadId — rename / change subject.
+export async function PATCH(request: NextRequest, context: RouteContext) {
+  const slug = await resolveSlug(context);
+  if (slug.length !== 2 || slug[0] !== "threads") {
+    return notFound();
+  }
+  const limited = await checkRateLimit(generalLimiter, userIdentifier(request));
+  if (limited) return limited;
+
+  let body: unknown;
+  try {
+    body = await parseJsonBody(request);
+  } catch {
+    return badRequest("Invalid JSON payload.");
+  }
+  const parsed = updateThreadBodySchema.safeParse(body ?? {});
+  if (!parsed.success) {
+    return badRequest("Invalid thread payload.");
+  }
+
+  if (ORIGIN_AI_SERVICE_URL) {
+    const proxyUser = await resolveProxyUser(request);
+    if (!proxyUser) return unauthorized();
+    const proxyResp = await proxyToMicroservice(
+      "PATCH",
+      `/api/v1/chat/threads/${encodeURIComponent(slug[1])}`,
+      parsed.data,
+      request,
+      proxyUser,
+    );
+    if (proxyResp) {
+      const data = await proxyResp.json().catch(() => null);
+      return ok({ thread: data ?? null });
+    }
+  }
+
+  const result = await withStoreAsync(async (store) => {
+    const user = requireUserFromRequest(store, request);
+    if (!user) return { status: "unauthorized" as const };
+    const session = updateThread(store, user.id, slug[1], {
+      title: parsed.data.title,
+      subject: parsed.data.subject ?? undefined,
+    });
+    if (!session) return { status: "not_found" as const };
+    return { status: "ok" as const, thread: serializeThread(session) };
+  });
+
+  if (result.status === "unauthorized") return unauthorized();
+  if (result.status === "not_found") return notFound("Thread not found.");
+  return ok({ thread: result.thread });
+}
+
+// DELETE /origin-ai/threads/:threadId
+export async function DELETE(request: NextRequest, context: RouteContext) {
+  const slug = await resolveSlug(context);
+  if (slug.length !== 2 || slug[0] !== "threads") {
+    return notFound();
+  }
+  const limited = await checkRateLimit(generalLimiter, userIdentifier(request));
+  if (limited) return limited;
+
+  if (ORIGIN_AI_SERVICE_URL) {
+    const proxyUser = await resolveProxyUser(request);
+    if (!proxyUser) return unauthorized();
+    const proxyResp = await proxyToMicroservice(
+      "DELETE",
+      `/api/v1/chat/threads/${encodeURIComponent(slug[1])}`,
+      null,
+      request,
+      proxyUser,
+    );
+    // proxyToMicroservice returns null on transport failure; otherwise we
+    // honor the upstream status (204 ok, 404 not found, etc.).
+    if (proxyResp) return proxyResp;
+  }
+
+  const result = await withStoreAsync(async (store) => {
+    const user = requireUserFromRequest(store, request);
+    if (!user) return { status: "unauthorized" as const };
+    const removed = deleteThread(store, user.id, slug[1]);
+    return { status: removed ? ("ok" as const) : ("not_found" as const) };
+  });
+
+  if (result.status === "unauthorized") return unauthorized();
+  if (result.status === "not_found") return notFound("Thread not found.");
+  return noContent();
 }

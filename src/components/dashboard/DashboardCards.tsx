@@ -10,22 +10,34 @@ import { useEffect } from 'react';
 
 import type { User, Task } from '@/types';
 
+export interface DashboardChallengePreview {
+    id: string | number;
+    concept?: string | null;
+    subject?: string | null;
+    isSolved?: boolean;
+}
+
 interface ChallengeCardProps {
     user?: User;
     onStartChallenge?: (questionId: string) => void;
+    initialChallenge?: DashboardChallengePreview | null;
 }
 
-export function ChallengeCard({ user, onStartChallenge }: ChallengeCardProps) {
+export function ChallengeCard({ user, onStartChallenge, initialChallenge }: ChallengeCardProps) {
     const today = new Date();
     const [currentMonth, setCurrentMonth] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
-    const [challenge, setChallenge] = useState<any>(null);
-    const [isLoadingChallenge, setIsLoadingChallenge] = useState(true);
+    const [challenge, setChallenge] = useState<DashboardChallengePreview | null>(initialChallenge ?? null);
+    const [isLoadingChallenge, setIsLoadingChallenge] = useState(!initialChallenge);
 
     useEffect(() => {
+        if (initialChallenge) {
+            return;
+        }
+
         const fetchChallenge = async () => {
             setIsLoadingChallenge(true);
             try {
-                const data = await apiCall('/assessments/ogcode/challenge/');
+                const data = await apiCall('/assessments/ogcode/challenge/') as DashboardChallengePreview;
                 setChallenge(data);
             } catch (error) {
                 console.error("Failed to fetch challenge of the day:", error);
@@ -34,7 +46,7 @@ export function ChallengeCard({ user, onStartChallenge }: ChallengeCardProps) {
             }
         };
         fetchChallenge();
-    }, [user?.id]);
+    }, [initialChallenge, user?.id]);
 
     const daysInMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0).getDate();
     const startDay = currentMonth.getDay();

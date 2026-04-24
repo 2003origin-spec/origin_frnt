@@ -1,23 +1,28 @@
-'use client';
-
-import TasksGoals from '@/sections/TasksGoals';
-import { useAuth } from '@/context/AuthContext';
-import { useRouter } from 'next/navigation';
+import { Suspense } from 'react';
+import { redirect } from 'next/navigation';
+import { getServerUser } from '@/lib/auth-server';
+import { listTasksForRender } from '@/server/render-loaders';
+import type { Task } from '@/types';
+import TasksClient from './_client';
 
 export default function TasksPage() {
-  const { user, tasks, addTask, toggleTask, removeTask } = useAuth();
-  const router = useRouter();
-
-  if (!user) return null;
-
   return (
-    <TasksGoals
-      user={user}
-      tasks={tasks}
-      onAddTask={addTask}
-      onToggleTask={toggleTask}
-      onRemoveTask={removeTask}
-      onBack={() => router.back()}
-    />
+    <Suspense fallback={<div className="min-h-screen bg-background" />}>
+      <TasksGate />
+    </Suspense>
   );
+}
+
+async function TasksGate() {
+  const user = await getServerUser();
+  if (!user) redirect('/auth?next=/tasks');
+
+  let initialTasks: Task[] = [];
+  try {
+    initialTasks = (await listTasksForRender(user.id)) as unknown as Task[];
+  } catch {
+    // TasksGoals will still work with client-side optimistic mutations.
+  }
+
+  return <TasksClient initialTasks={initialTasks} />;
 }

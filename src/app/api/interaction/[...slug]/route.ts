@@ -22,9 +22,6 @@ import {
 } from "@/server/http";
 import { readStore, withStore, writeStore } from "@/server/store";
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
-
 type RouteContext = {
   params: Promise<{ slug?: string[] }>;
 };
@@ -89,31 +86,41 @@ export async function POST(request: NextRequest, context: RouteContext) {
   const limited = await checkRateLimit(generalLimiter, sessionIdentifier(request));
   if (limited) return limited;
 
-  try {
-    if (slug.length === 1) {
-      const payload = await parseJsonBody<{ title?: string; subject?: string }>(request);
-      const result = withStore((store) => {
-        const user = requireUserFromRequest(store, request);
-        if (!user) {
-          return { status: "unauthorized" as const };
-        }
-        const session = createDoubtSession(store, user.id, payload);
-        return { status: "created" as const, session };
-      });
-
-      if (result.status === "unauthorized") {
-        return unauthorized();
-      }
-      return created(result.session);
+  if (slug.length === 1) {
+    let payload: { title?: string; subject?: string };
+    try {
+      payload = await parseJsonBody<{ title?: string; subject?: string }>(request);
+    } catch {
+      return badRequest("Invalid JSON payload.");
     }
-
-    if (slug.length === 3 && slug[2] === "add_message") {
-      const payload = await parseJsonBody<{ content?: string; image?: string }>(request);
-      const store = readStore();
+    const result = withStore((store) => {
       const user = requireUserFromRequest(store, request);
       if (!user) {
-        return unauthorized();
+        return { status: "unauthorized" as const };
       }
+      const session = createDoubtSession(store, user.id, payload);
+      return { status: "created" as const, session };
+    });
+
+    if (result.status === "unauthorized") {
+      return unauthorized();
+    }
+    return created(result.session);
+  }
+
+  if (slug.length === 3 && slug[2] === "add_message") {
+    let payload: { content?: string; image?: string };
+    try {
+      payload = await parseJsonBody<{ content?: string; image?: string }>(request);
+    } catch {
+      return badRequest("Invalid JSON payload.");
+    }
+    const store = readStore();
+    const user = requireUserFromRequest(store, request);
+    if (!user) {
+      return unauthorized();
+    }
+    try {
       const reply = await addSessionMessage(store, user, slug[1], payload);
       if (!reply) {
         return notFound("Doubt session not found.");
@@ -122,11 +129,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
         return badRequest(reply.error, { error: reply.error });
       }
       writeStore(store);
-
       return created(reply);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unable to solve doubt right now.";
+      console.error("[add_message]", err);
+      return badRequest(message);
     }
-  } catch {
-    return badRequest("Invalid JSON payload.");
   }
 
   return notFound();

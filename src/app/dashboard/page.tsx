@@ -1,55 +1,52 @@
-'use client';
-
-import Dashboard from '@/sections/Dashboard';
-import TeacherDashboard from '@/sections/TeacherDashboard';
-import { useAuth } from '@/context/AuthContext';
-import { useRouter } from 'next/navigation';
-import { useTimeTracker } from '@/hooks/useTimeTracker';
+import { Suspense } from 'react';
+import { redirect } from 'next/navigation';
+import { getServerUser } from '@/lib/auth-server';
+import {
+  getChallengeOfTheDayForRender,
+  getPointsSummaryForRender,
+  listTasksForRender,
+} from '@/server/render-loaders';
+import type { Task } from '@/types';
+import DashboardClient from './_client';
+import DashboardLoading from './loading';
 
 export default function DashboardPage() {
-  const { 
-    user, 
-    tasks, 
-    addTask, 
-    toggleTask, 
-    removeTask 
-  } = useAuth();
-  const router = useRouter();
-  const { setTimeMode } = useTimeTracker(!!user);
+  return (
+    <Suspense fallback={<DashboardLoading />}>
+      <DashboardGate />
+    </Suspense>
+  );
+}
 
-  if (!user) return null;
+async function DashboardGate() {
+  const user = await getServerUser();
+  if (!user) redirect('/auth?next=/dashboard');
 
-  if (user.role === 'teacher') {
-    return <TeacherDashboard user={user} />;
+  let initialTasks: Task[] = [];
+  let initialPointsData: Awaited<ReturnType<typeof getPointsSummaryForRender>> | null = null;
+  let initialChallenge: Awaited<ReturnType<typeof getChallengeOfTheDayForRender>> | null = null;
+
+  const [tasksResult, pointsResult, challengeResult] = await Promise.allSettled([
+    listTasksForRender(user.id),
+    getPointsSummaryForRender(user.id),
+    getChallengeOfTheDayForRender(user.id),
+  ]);
+
+  if (tasksResult.status === 'fulfilled') {
+    initialTasks = (tasksResult.value ?? []) as unknown as Task[];
+  }
+  if (pointsResult.status === 'fulfilled') {
+    initialPointsData = pointsResult.value;
+  }
+  if (challengeResult.status === 'fulfilled') {
+    initialChallenge = challengeResult.value;
   }
 
-  const handleStartChallenge = (questionId: string) => {
-    router.push(`/ogcode/${questionId}`);
-  };
-
-  const handleNavigate = (view: string) => {
-    const routes: Record<string, string> = {
-      'test-list': '/tests',
-      'study-corner': '/study-corner',
-      'ogcode': '/ogcode',
-      'tasks-goals': '/tasks',
-      'profile': '/profile',
-      'pomodoro': '/pomodoro',
-      'leaderboard': '/leaderboard'
-    };
-    router.push(routes[view] || `/${view}`);
-  };
-
   return (
-    <Dashboard
-      user={user}
-      onStartChallenge={handleStartChallenge}
-      setTimeMode={setTimeMode}
-      onNavigate={handleNavigate}
-      tasks={tasks}
-      onAddTask={addTask}
-      onToggleTask={toggleTask}
-      onRemoveTask={removeTask}
+    <DashboardClient
+      initialChallenge={initialChallenge}
+      initialPointsData={initialPointsData}
+      initialTasks={initialTasks}
     />
   );
 }

@@ -1,10 +1,16 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import type { User, ViewState } from '@/types';
+import { motion } from 'framer-motion';
+import type { Task, User, ViewState } from '@/types';
 import DailyTracker from '@/components/dashboard/DailyTracker';
 import PastWeekProgress from '@/components/dashboard/PastWeekProgress';
-import { ChallengeCard, PastActivitiesCard, PlacesToConcentrateCard, TodoListCard } from '@/components/dashboard/DashboardCards';
+import {
+  ChallengeCard,
+  type DashboardChallengePreview,
+  PastActivitiesCard,
+  PlacesToConcentrateCard,
+  TodoListCard,
+} from '@/components/dashboard/DashboardCards';
 import PointsSummary from '@/components/dashboard/PointsSummary';
 import { apiCall } from '@/lib/api';
 import type { TimeType } from '@/hooks/useTimeTracker';
@@ -63,16 +69,47 @@ interface DashboardProps {
   onStartChallenge: (questionId: string) => void;
   setTimeMode: (mode: TimeType, subject?: string) => void;
   onNavigate: (view: ViewState) => void;
-  tasks: any[];
+  tasks: Task[];
   onAddTask: (text: string, due: string) => void;
   onToggleTask: (id: string) => void;
   onRemoveTask: (id: string) => void;
+  initialPointsData?: {
+    totalPoints: number;
+    currentTier: string;
+    nextTier: string;
+    pointsToNext: number;
+    progressPercent: number;
+    recentLogs: { points: number; type: string; description: string; timestamp: string }[];
+  } | null;
+  initialChallenge?: DashboardChallengePreview | null;
 }
 
-export default function Dashboard({ user, onStartChallenge, setTimeMode, onNavigate, tasks, onAddTask, onToggleTask, onRemoveTask }: DashboardProps) {
-  const [pointsData, setPointsData] = useState<{ totalPoints: number; currentTier: string; nextTier: string; pointsToNext: number; progressPercent: number; recentLogs: { points: number; type: string; description: string; timestamp: string }[] } | null>(null);
+export default function Dashboard({
+  user,
+  onStartChallenge,
+  setTimeMode,
+  onNavigate,
+  tasks,
+  onAddTask,
+  onToggleTask,
+  onRemoveTask,
+  initialPointsData = null,
+  initialChallenge = null,
+}: DashboardProps) {
+  const [pointsData, setPointsData] = useState<{
+    totalPoints: number;
+    currentTier: string;
+    nextTier: string;
+    pointsToNext: number;
+    progressPercent: number;
+    recentLogs: { points: number; type: string; description: string; timestamp: string }[];
+  } | null>(initialPointsData);
 
   useEffect(() => {
+    if (initialPointsData) {
+      return;
+    }
+
     const fetchPoints = async () => {
       try {
         const data = await apiCall('/users/points/');
@@ -82,7 +119,7 @@ export default function Dashboard({ user, onStartChallenge, setTimeMode, onNavig
       }
     };
     fetchPoints();
-  }, []);
+  }, [initialPointsData]);
 
   useEffect(() => {
     setTimeMode('webpage');
@@ -120,7 +157,11 @@ export default function Dashboard({ user, onStartChallenge, setTimeMode, onNavig
 
           <div className="lg:col-span-4 flex flex-col gap-6 sm:gap-8">
             <div id="tutorial-challenge">
-              <ChallengeCard user={user} onStartChallenge={onStartChallenge} />
+              <ChallengeCard
+                user={user}
+                initialChallenge={initialChallenge}
+                onStartChallenge={onStartChallenge}
+              />
             </div>
             <div id="tutorial-points">
               <PointsSummary data={pointsData} onNextSteps={() => onNavigate('prestige-milestones')} />

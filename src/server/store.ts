@@ -364,6 +364,11 @@ export interface StoredOriginAiSession {
   createdAt: string;
   updatedAt: string;
   messages: StoredChatMessage[];
+  // Named-thread support: threadId is null for the default "floating avatar" session,
+  // a UUID for each named full-window Doubt Solver thread. subject scopes KB lookups.
+  threadId: string | null;
+  subject: string | null;
+  activeConcept: string | null;
 }
 
 export interface StoredAuthSession {
@@ -651,9 +656,13 @@ function buildSeedUsers(joinedAt: string): StoredUser[] {
 function ensureSeedUsers(store: AppStore): boolean {
   let changed = false;
   const joinedAt = nowIso();
+  // Previously this called buildSeedUsers(joinedAt) inside the loop, which
+  // runs bcrypt.hashSync(cost=10) 6 times per call. With the outer loop also
+  // at 6 iterations, that was 36 bcrypt rounds (~2.4s) on every readStore().
+  const seedUsers = buildSeedUsers(joinedAt);
 
   for (const [id, plainPassword] of Object.entries(SEED_PASSWORDS)) {
-    const seedUser = buildSeedUsers(joinedAt).find((u) => u.id === id);
+    const seedUser = seedUsers.find((u) => u.id === id);
     if (!seedUser) continue;
 
     const existing = store.users.find(
@@ -1020,15 +1029,27 @@ function ensureOriginAiCollections(store: AppStore): boolean {
     changed = true;
   } else {
     store.originAiSessions = store.originAiSessions.map((session, index) => {
-      if (typeof session.browserSessionId === 'string' && session.browserSessionId.trim()) {
-        return session;
+      const base = session as Partial<StoredOriginAiSession> & StoredOriginAiSession;
+      let next = session;
+
+      if (typeof base.browserSessionId !== 'string' || !base.browserSessionId.trim()) {
+        changed = true;
+        next = { ...next, browserSessionId: `legacy-origin-ai-session-${next.userId}-${index}` };
+      }
+      if (!('threadId' in base)) {
+        changed = true;
+        next = { ...next, threadId: null };
+      }
+      if (!('subject' in base)) {
+        changed = true;
+        next = { ...next, subject: null };
+      }
+      if (!('activeConcept' in base)) {
+        changed = true;
+        next = { ...next, activeConcept: null };
       }
 
-      changed = true;
-      return {
-        ...session,
-        browserSessionId: `legacy-origin-ai-session-${session.userId}-${index}`,
-      };
+      return next;
     });
   }
   if (!Array.isArray((store as Partial<AppStore>).originAiReminders)) {
@@ -1090,19 +1111,33 @@ function ensureStoreFile(): void {
   }
 }
 
+// In-memory cache of the parsed store. Once loaded, subsequent reads skip the
+// disk I/O, JSON.parse, and (crucially) the bcrypt-heavy seed checks. All
+// mutations flow through writeStore(), which keeps this reference in sync.
+let cachedStore: AppStore | null = null;
+let seedingComplete = false;
+
 export function readStore(): AppStore {
+  if (cachedStore) {
+    return cachedStore;
+  }
   ensureStoreFile();
   const store = JSON.parse(fs.readFileSync(STORE_PATH, "utf8")) as AppStore;
-  const changed = ensureSeedUsers(store) || ensureAllCollections(store);
-  if (changed) {
-    fs.writeFileSync(STORE_PATH, JSON.stringify(store, null, 2), "utf8");
+  if (!seedingComplete) {
+    const changed = ensureSeedUsers(store) || ensureAllCollections(store);
+    if (changed) {
+      fs.writeFileSync(STORE_PATH, JSON.stringify(store, null, 2), "utf8");
+    }
+    seedingComplete = true;
   }
+  cachedStore = store;
   return store;
 }
 
 export function writeStore(store: AppStore): void {
   ensureStoreFile();
   fs.writeFileSync(STORE_PATH, JSON.stringify(store, null, 2), "utf8");
+  cachedStore = store;
 }
 
 // Serializes all async read-modify-write operations to prevent concurrent request races.
@@ -1128,6 +1163,7 @@ export async function withStoreAsync<T>(mutate: (store: AppStore) => Promise<T>)
 export function resetStore(): AppStore {
   const fresh = buildSeedStore();
   writeStore(fresh);
+  seedingComplete = true;
   return fresh;
 }
 

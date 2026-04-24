@@ -27,6 +27,8 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { apiCall } from '@/lib/api';
+import { useAuth } from '@/context/AuthContext';
+import { updateProfileAction } from '@/server/actions/profile-actions';
 import type { User as UserType, StreakData } from '@/types';
 import PhotoBooth from '@/components/profile/PhotoBooth';
 
@@ -35,6 +37,7 @@ interface ProfileProps {
   streakData: StreakData;
   onBack: () => void;
   onUpgrade: () => void;
+  initialProfileStats?: ProfileStats | null;
 }
 
 interface ProfileStats {
@@ -53,11 +56,18 @@ interface ProfileStats {
   };
 }
 
-export default function Profile({ user, streakData, onBack, onUpgrade }: ProfileProps) {
+export default function Profile({
+  user,
+  streakData,
+  onBack,
+  onUpgrade,
+  initialProfileStats = null,
+}: ProfileProps) {
   const { resolvedTheme, setTheme } = useTheme();
+  const { refreshUser } = useAuth();
   const [mounted, setMounted] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  const [profileStats, setProfileStats] = useState<ProfileStats | null>(null);
+  const [profileStats, setProfileStats] = useState<ProfileStats | null>(initialProfileStats);
 
   const [editData, setEditData] = useState({
     name: user.name,
@@ -69,8 +79,12 @@ export default function Profile({ user, streakData, onBack, onUpgrade }: Profile
 
   useEffect(() => {
     setMounted(true);
+    if (initialProfileStats) {
+      return;
+    }
+
     apiCall('/users/stats/').then((data: ProfileStats) => setProfileStats(data)).catch(() => {});
-  }, []);
+  }, [initialProfileStats]);
 
   const toggleDarkMode = () => {
     setTheme(resolvedTheme === 'dark' ? 'light' : 'dark');
@@ -79,12 +93,15 @@ export default function Profile({ user, streakData, onBack, onUpgrade }: Profile
   const handleSave = async () => {
     setIsLoading(true);
     try {
-      await apiCall('/users/me/', {
-        method: 'PATCH',
-        body: JSON.stringify(editData),
+      const updatedUser = await updateProfileAction(editData);
+      setEditData({
+        name: updatedUser.name,
+        class: updatedUser.class || '',
+        selectedCourse: updatedUser.selectedCourse || '',
+        subjects: updatedUser.subjects || [],
       });
+      await refreshUser();
       setIsEditing(false);
-      window.location.reload();
     } catch (error) {
       console.error('Failed to update profile:', error);
     } finally {

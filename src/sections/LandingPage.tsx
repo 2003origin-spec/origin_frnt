@@ -1,10 +1,15 @@
 'use client';
 import { useRef, useEffect, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { motion, useScroll, useTransform, useSpring } from 'framer-motion';
 import { Button } from '@/components/ui/button';
-import FloatingLines from '@/components/ui/FloatingLines';
 import CrystalBackground from '@/components/ui/CrystalBackground';
-import CardSwap, { Card } from '@/components/ui/CardSwap';
+import { Card } from '@/components/ui/CardSwap';
+
+// Heavy graphics libs (three, gsap) — split into their own chunks so the
+// landing shell can stream without paying the ~300 KB cost on first paint.
+const FloatingLines = dynamic(() => import('@/components/ui/FloatingLines'), { ssr: false });
+const CardSwap = dynamic(() => import('@/components/ui/CardSwap'), { ssr: false });
 import { useTheme } from 'next-themes';
 import {
   MessageCircle,

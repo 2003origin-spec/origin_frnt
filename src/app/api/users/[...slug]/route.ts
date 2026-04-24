@@ -4,9 +4,6 @@ import { badRequest, getSlugSegments, parseJsonBody } from "@/server/http";
 import { handleUsersRequest } from "@/server/users";
 import { authLimiter, generalLimiter, checkRateLimit } from "@/lib/rate-limit";
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
-
 type RouteContext = {
   params: Promise<{ slug?: string[] }>;
 };
@@ -29,7 +26,7 @@ const COOKIE_OPTS_REFRESH = {
 
 /**
  * Mirror access + refresh tokens from the JSON response body into HttpOnly
- * cookies so that Server Components and middleware can read them without
+ * cookies so that Server Components and proxy can read them without
  * touching localStorage.
  */
 async function withAuthCookies(response: Response): Promise<NextResponse> {

@@ -63,6 +63,23 @@ export interface Test {
   allScores?: number[];
 }
 
+export interface TestPreview {
+  id: string;
+  title: string;
+  description: string;
+  subject: string;
+  chapter?: string;
+  difficulty: string;
+  duration: number;
+  totalQuestions: number;
+  isPremium: boolean;
+  isCustom?: boolean;
+  attempted?: boolean;
+  score?: number;
+  attemptCount?: number;
+  allScores?: number[];
+}
+
 export interface Question {
   id: string;
   text: string;
@@ -105,6 +122,14 @@ export interface PracticeQuestion {
   hint?: string;
   explanation?: string;
   answerText?: string;
+}
+
+export interface PracticeQuestionPage {
+  items: PracticeQuestion[];
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
 }
 
 export interface SubjectRank {
@@ -419,6 +444,22 @@ export interface OriginAiSession {
   createdAt: Date;
   updatedAt: Date;
   messages: ChatMessage[];
+  threadId: string | null;
+  subject: string | null;
+  activeConcept: string | null;
+}
+
+export interface OriginAiThread {
+  id: string;
+  threadId: string;
+  title: string;
+  subject: string | null;
+  activeConcept: string | null;
+  lastPathname: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  messageCount: number;
+  lastMessageSnippet: string | null;
 }
 
 export interface OriginAiSnapshot {

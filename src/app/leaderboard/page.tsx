@@ -1,10 +1,19 @@
+import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
 import { getServerUser } from '@/lib/auth-server';
-import { readStore } from '@/server/store';
-import { getOgcodeLeaderboard } from '@/server/assessments';
+import { getOgcodeLeaderboardForRender } from '@/server/render-loaders';
 import LeaderboardClient from './_client';
+import LeaderboardLoading from './loading';
 
-export default async function LeaderboardPage() {
+export default function LeaderboardPage() {
+  return (
+    <Suspense fallback={<LeaderboardLoading />}>
+      <LeaderboardContent />
+    </Suspense>
+  );
+}
+
+async function LeaderboardContent() {
   const serverUser = await getServerUser();
   if (!serverUser) redirect('/auth?next=/leaderboard');
 
@@ -12,8 +21,7 @@ export default async function LeaderboardPage() {
   let initialMyRank: number | null = null;
 
   try {
-    const store = readStore();
-    const data = await getOgcodeLeaderboard(store, serverUser, null);
+    const data = await getOgcodeLeaderboardForRender(serverUser.id, null);
     initialLeaderboard = data.leaderboard;
     initialMyRank = data.myRank;
   } catch {

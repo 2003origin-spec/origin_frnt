@@ -1,0 +1,170 @@
+'use server';
+
+import { cookies } from 'next/headers';
+import { revalidatePath } from 'next/cache';
+
+import { handleGoogleLogin, handleLogin, handleRegister, handleRefresh, serializeUser } from '@/server/users';
+import { readStore } from '@/server/store';
+import { getServerUser } from '@/lib/auth-server';
+import type { User } from '@/types';
+
+/**
+ * Server-Action auth surface — the mutation path for every auth flow.
+ *
+ * Each action calls the shared domain handler in `@/server/users`, parses the
+ * JSON response, mirrors the access + refresh tokens into HttpOnly cookies,
+ * and returns just the user payload. The client never sees the raw tokens —
+ * cookies are the session contract.
+ */
+
+const COOKIE_OPTS_ACCESS = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'lax' as const,
+  path: '/',
+  maxAge: 24 * 60 * 60,
+};
+
+const COOKIE_OPTS_REFRESH = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'lax' as const,
+  path: '/',
+  maxAge: 7 * 24 * 60 * 60,
+};
+
+type AuthSuccess = { ok: true; user: User; access: string; refresh: string };
+type AuthFailure = { ok: false; status: number; message: string };
+type AuthResult = AuthSuccess | AuthFailure;
+
+async function parseAuthResponse(response: Response): Promise<AuthResult> {
+  let body: Record<string, unknown> = {};
+  try {
+    body = (await response.clone().json()) as Record<string, unknown>;
+  } catch {
+    // fall through
+  }
+
+  if (!response.ok) {
+    const message =
+      typeof body.detail === 'string'
+        ? body.detail
+        : typeof body.message === 'string'
+          ? body.message
+          : 'Authentication failed.';
+    return { ok: false, status: response.status, message };
+  }
+
+  const access = typeof body.access === 'string' ? body.access : '';
+  const refresh = typeof body.refresh === 'string' ? body.refresh : '';
+  const user = body.user as User | undefined;
+  if (!access || !user) {
+    return { ok: false, status: 500, message: 'Malformed auth response.' };
+  }
+
+  return { ok: true, user, access, refresh };
+}
+
+async function setSessionCookies(access: string, refresh: string): Promise<void> {
+  const cookieStore = await cookies();
+  cookieStore.set('origin_access_token', access, COOKIE_OPTS_ACCESS);
+  if (refresh) {
+    cookieStore.set('origin_refresh_token', refresh, COOKIE_OPTS_REFRESH);
+  }
+}
+
+export async function loginAction(input: {
+  email: string;
+  password: string;
+  role?: 'student' | 'teacher' | null;
+}): Promise<AuthResult> {
+  const response = await handleLogin({
+    email: input.email,
+    password: input.password,
+    role: input.role ?? undefined,
+  });
+  const parsed = await parseAuthResponse(response);
+  if (parsed.ok) {
+    await setSessionCookies(parsed.access, parsed.refresh);
+    revalidatePath('/', 'layout');
+  }
+  return parsed;
+}
+
+export async function registerAction(input: {
+  name?: string;
+  email: string;
+  password: string;
+  role?: 'student' | 'teacher' | null;
+}): Promise<AuthResult> {
+  const response = await handleRegister({
+    name: input.name,
+    email: input.email,
+    password: input.password,
+    role: input.role ?? undefined,
+  });
+  const parsed = await parseAuthResponse(response);
+  if (parsed.ok) {
+    await setSessionCookies(parsed.access, parsed.refresh);
+    revalidatePath('/', 'layout');
+  }
+  return parsed;
+}
+
+export async function googleLoginAction(input: { credential: string }): Promise<AuthResult> {
+  const response = await handleGoogleLogin({ credential: input.credential });
+  const parsed = await parseAuthResponse(response);
+  if (parsed.ok) {
+    await setSessionCookies(parsed.access, parsed.refresh);
+    revalidatePath('/', 'layout');
+  }
+  return parsed;
+}
+
+/**
+ * Refreshes the access token using the HttpOnly refresh cookie. Returns the
+ * new short-lived access cookie value; callers don't need the value itself —
+ * the cookie is already rotated on return. Used by client-side fetch paths
+ * after a 401 without shipping the refresh token to JS.
+ */
+export async function refreshTokenAction(): Promise<{ ok: boolean }> {
+  const cookieStore = await cookies();
+  const refresh = cookieStore.get('origin_refresh_token')?.value;
+  if (!refresh) return { ok: false };
+
+  const response = await handleRefresh({ refresh });
+  if (!response.ok) return { ok: false };
+
+  let body: Record<string, unknown> = {};
+  try {
+    body = (await response.clone().json()) as Record<string, unknown>;
+  } catch {
+    return { ok: false };
+  }
+
+  const access = typeof body.access === 'string' ? body.access : '';
+  const newRefresh = typeof body.refresh === 'string' ? body.refresh : '';
+  if (!access) return { ok: false };
+
+  await setSessionCookies(access, newRefresh || refresh);
+  return { ok: true };
+}
+
+/**
+ * Returns the current user (or null) resolved from the access-token cookie.
+ * Replaces the client-side `apiCall('/users/me/')` hop in `AuthContext.refreshUser`.
+ */
+export async function refreshUserAction(): Promise<User | null> {
+  const stored = await getServerUser();
+  if (!stored) return null;
+  const store = readStore();
+  const payload = serializeUser(store, stored.id);
+  return (payload as unknown as User) ?? null;
+}
+
+export async function logoutAction(): Promise<void> {
+  const cookieStore = await cookies();
+  cookieStore.set('origin_access_token', '', { ...COOKIE_OPTS_ACCESS, maxAge: 0 });
+  cookieStore.set('origin_refresh_token', '', { ...COOKIE_OPTS_REFRESH, maxAge: 0 });
+  revalidatePath('/', 'layout');
+}

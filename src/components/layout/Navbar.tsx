@@ -32,12 +32,13 @@ interface NavbarProps {
     user: User;
     currentView: ViewState;
     onNavigate: (view: ViewState) => void;
+    onPrefetch?: (view: ViewState) => void;
     onLogout: () => void;
     theme: "dark" | "light" | "system";
     setTheme: (theme: "dark" | "light" | "system") => void;
 }
 
-export default function Navbar({ user, currentView, onNavigate, onLogout, theme, setTheme }: NavbarProps) {
+export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLogout, theme, setTheme }: NavbarProps) {
     const [showProfileMenu, setShowProfileMenu] = useState(false);
     const [showExploreMenu, setShowExploreMenu] = useState(false);
     const [showMobileMenu, setShowMobileMenu] = useState(false);
@@ -118,6 +119,8 @@ export default function Navbar({ user, currentView, onNavigate, onLogout, theme,
                                                 <button
                                                     id={`tutorial-nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
                                                     onClick={() => onNavigate(item.view)}
+                                                    onMouseEnter={() => onPrefetch?.(item.view)}
+                                                    onFocus={() => onPrefetch?.(item.view)}
                                                     className={`relative px-4 py-2 rounded-lg text-sm font-bold transition-all duration-300 flex items-center gap-2 group z-10 ${isActive
                                                         ? 'text-[#334155] dark:text-white'
                                                         : 'text-slate-500 dark:text-slate-400 hover:text-[#334155] dark:hover:text-white'
@@ -194,6 +197,8 @@ export default function Navbar({ user, currentView, onNavigate, onLogout, theme,
                                                                                 onNavigate(subItem.view as ViewState);
                                                                                 setShowExploreMenu(false);
                                                                             }}
+                                                                            onMouseEnter={() => onPrefetch?.(subItem.view as ViewState)}
+                                                                            onFocus={() => onPrefetch?.(subItem.view as ViewState)}
                                                                             className="w-full flex items-center gap-4 px-3 py-2.5 rounded-xl hover:bg-slate-50 dark:hover:bg-zinc-800/50 transition-all group"
                                                                         >
                                                                             <div className={`w-10 h-10 rounded-lg bg-slate-100 dark:bg-zinc-800 flex items-center justify-center transition-transform group-hover:scale-110 ${subItem.color}`}>
@@ -211,6 +216,8 @@ export default function Navbar({ user, currentView, onNavigate, onLogout, theme,
                                                                 <div className="mt-2 pt-2 border-t border-slate-100 dark:border-zinc-800">
                                                                     <button
                                                                         onClick={() => onNavigate('explore')}
+                                                                        onMouseEnter={() => onPrefetch?.('explore')}
+                                                                        onFocus={() => onPrefetch?.('explore')}
                                                                         className="w-full flex items-center justify-between px-3 py-2 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-colors group"
                                                                     >
                                                                         <div className="flex items-center gap-2">
@@ -270,8 +277,12 @@ export default function Navbar({ user, currentView, onNavigate, onLogout, theme,
                             {/* Profile Dropdown */}
                             <div className="relative ml-1" ref={profileMenuRef}>
                                 <button
-                                    onMouseEnter={() => setShowProfileMenu(true)}
+                                    onMouseEnter={() => {
+                                        setShowProfileMenu(true);
+                                        onPrefetch?.('profile');
+                                    }}
                                     onClick={() => onNavigate('profile')}
+                                    onFocus={() => onPrefetch?.('profile')}
                                     className="flex items-center gap-2 pl-1 pr-1 py-1 rounded-full hover:bg-white/50 dark:hover:bg-slate-800/50 transition-all border border-transparent hover:border-slate-200 dark:hover:border-slate-700"
                                 >
                                     <Avatar className="w-8 h-8 border-2 border-white dark:border-slate-800 shadow-sm ring-1 ring-slate-100 dark:ring-slate-800">
@@ -306,6 +317,8 @@ export default function Navbar({ user, currentView, onNavigate, onLogout, theme,
                                                         onNavigate('premium');
                                                         setShowProfileMenu(false);
                                                     }}
+                                                    onMouseEnter={() => onPrefetch?.('premium')}
+                                                    onFocus={() => onPrefetch?.('premium')}
                                                     className="w-full flex items-center justify-center gap-2 px-3 py-2.5 text-xs font-bold text-white bg-gradient-to-r from-amber-500 to-orange-600 rounded-xl shadow-lg shadow-orange-500/20 hover:shadow-orange-500/30 hover:scale-[1.02] transition-all"
                                                 >
                                                     <Crown className="w-3.5 h-3.5" />
@@ -340,6 +353,11 @@ export default function Navbar({ user, currentView, onNavigate, onLogout, theme,
                                                     onClick={() => {
                                                         item.action();
                                                         setShowProfileMenu(false);
+                                                    }}
+                                                    onMouseEnter={() => {
+                                                        if (item.label === 'My Profile' || item.label === 'Settings') {
+                                                            onPrefetch?.('profile');
+                                                        }
                                                     }}
                                                     className="w-full flex items-center gap-3 px-3 py-2 text-sm font-bold text-black dark:text-zinc-300 hover:bg-slate-50 dark:hover:bg-zinc-800 rounded-lg transition-colors group"
                                                 >
@@ -378,6 +396,7 @@ export default function Navbar({ user, currentView, onNavigate, onLogout, theme,
                                             onNavigate(item.view);
                                             setShowMobileMenu(false);
                                         }}
+                                        onTouchStart={() => onPrefetch?.(item.view)}
                                         className={`w-full flex items-center gap-4 p-4 rounded-2xl transition-all ${currentView === item.view ? 'bg-primary/10 text-primary' : 'hover:bg-slate-50 dark:hover:bg-zinc-900 text-black dark:text-slate-400'}`}
                                     >
                                         <div className={`p-2 rounded-lg ${currentView === item.view ? 'bg-primary/20' : 'bg-slate-100 dark:bg-zinc-800'}`}>

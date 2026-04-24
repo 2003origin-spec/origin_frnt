@@ -19,11 +19,11 @@ import {
   Target,
 } from 'lucide-react';
 import type { User } from '@/types';
-import { apiCall } from '@/lib/api';
+import { completeOnboardingAction } from '@/server/actions/profile-actions';
 
 interface OnboardingPageProps {
   user: User;
-  onComplete: (data: Partial<User>) => void;
+  onComplete: (data: Partial<User>) => void | Promise<void>;
 }
 
 export default function OnboardingPage({ onComplete }: OnboardingPageProps) {
@@ -44,18 +44,14 @@ export default function OnboardingPage({ onComplete }: OnboardingPageProps) {
       setStep(step + 1);
     } else {
       try {
-        const response = await apiCall('/users/me/', {
-          method: 'PATCH',
-          body: JSON.stringify({
-            class: formData.class,
-            isDropper: formData.isDropper,
-            selectedCourse: formData.selectedCourse,
-            subjects: formData.subjects,
-            referralSource: formData.referralSource,
-            isOnboarded: true
-          }),
+        const response = await completeOnboardingAction({
+          class: formData.class,
+          isDropper: formData.isDropper,
+          selectedCourse: formData.selectedCourse,
+          subjects: formData.subjects,
+          referralSource: formData.referralSource,
         });
-        onComplete(response);
+        await onComplete(response);
       } catch (error) {
         console.error('Failed to complete onboarding:', error);
       }

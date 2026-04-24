@@ -14,7 +14,7 @@ import {
   updateUserStreak,
 } from "@/server/gamification";
 import { badRequest, created, noContent, notFound, ok, unauthorized } from "@/server/http";
-import type { AppStore, StoredTask } from "@/server/store";
+import type { AppStore, StoredTask, StoredUser } from "@/server/store";
 import { createId, withStore } from "@/server/store";
 
 type UserPayload = Record<string, unknown>;
@@ -42,7 +42,7 @@ function asStringArray(value: unknown): string[] | null {
   return value.map((item) => String(item)).filter((item) => item.trim().length > 0);
 }
 
-function serializeUser(store: AppStore, userId: string) {
+export function serializeUser(store: AppStore, userId: string) {
   const user = store.users.find((entry) => entry.id === userId);
   if (!user) {
     return null;
@@ -110,6 +110,101 @@ function serializeUser(store: AppStore, userId: string) {
   return payload;
 }
 
+export type UserStatsSnapshot = {
+  tests_taken: number;
+  study_hours: number;
+  global_rank: number | null;
+  subject_progress: Array<{ subject: string; accuracy: number }>;
+  overall_accuracy: number;
+  achievements: {
+    first_test: boolean;
+    streak_7: boolean;
+    doubt_master: boolean;
+    top_100: boolean;
+    perfect_score: boolean;
+    streak_30: boolean;
+  };
+};
+
+export function buildUserStatsSnapshot(store: AppStore, user: StoredUser): UserStatsSnapshot {
+  const testsTaken = store.testResults.filter((result) => result.userId === user.id).length;
+  const studyHours = Math.round(user.totalStudyTime / 60);
+  const streak = getOrCreateStreak(store, user.id);
+
+  const subjectStats: Record<string, { correct: number; total: number }> = {};
+  for (const subject of user.subjects) {
+    subjectStats[subject.toLowerCase()] = { correct: 0, total: 0 };
+  }
+
+  for (const attempt of store.practiceAttempts.filter((entry) => entry.userId === user.id)) {
+    const question = store.questions.find((entry) => entry.id === attempt.questionId);
+    if (!question) {
+      continue;
+    }
+
+    const subjectKey = question.subject.toLowerCase();
+    if (!subjectStats[subjectKey]) {
+      subjectStats[subjectKey] = { correct: 0, total: 0 };
+    }
+
+    subjectStats[subjectKey].total += 1;
+    if (attempt.isCorrect) {
+      subjectStats[subjectKey].correct += 1;
+    }
+  }
+
+  const subjectProgress = Object.entries(subjectStats).map(([subject, data]) => ({
+    subject: subject.charAt(0).toUpperCase() + subject.slice(1),
+    accuracy: data.total > 0 ? Math.round((data.correct / data.total) * 100) : 0,
+  }));
+
+  const userAttempts = store.practiceAttempts.filter((entry) => entry.userId === user.id);
+  const overallAccuracy =
+    userAttempts.length > 0
+      ? Math.round((userAttempts.filter((entry) => entry.isCorrect).length / userAttempts.length) * 100)
+      : 0;
+
+  const userSolvedCounts: Record<string, Set<string>> = {};
+  for (const attempt of store.practiceAttempts) {
+    if (!attempt.isCorrect) {
+      continue;
+    }
+
+    if (!userSolvedCounts[attempt.userId]) {
+      userSolvedCounts[attempt.userId] = new Set();
+    }
+    userSolvedCounts[attempt.userId].add(attempt.questionId);
+  }
+
+  const mySolvedCount = userSolvedCounts[user.id]?.size ?? 0;
+  const sortedByRank = Object.entries(userSolvedCounts)
+    .map(([userId, questions]) => ({ userId, count: questions.size }))
+    .sort((left, right) => right.count - left.count);
+  const myRankIndex = sortedByRank.findIndex((entry) => entry.userId === user.id);
+  const globalRank = mySolvedCount > 0 ? myRankIndex + 1 : null;
+
+  const doubtCount = store.doubtSessions.filter((session) => session.userId === user.id).length;
+  const hasPerfectScore = store.testResults.some(
+    (result) => result.userId === user.id && result.percentage >= 100,
+  );
+
+  return {
+    tests_taken: testsTaken,
+    study_hours: studyHours,
+    global_rank: globalRank,
+    subject_progress: subjectProgress,
+    overall_accuracy: overallAccuracy,
+    achievements: {
+      first_test: testsTaken > 0,
+      streak_7: streak.longestStreak >= 7 || streak.currentStreak >= 7,
+      doubt_master: doubtCount >= 50,
+      top_100: globalRank !== null && globalRank <= 100,
+      perfect_score: hasPerfectScore,
+      streak_30: streak.longestStreak >= 30 || streak.currentStreak >= 30,
+    },
+  };
+}
+
 function serializePomodoro(session: {
   id: string;
   startTime: string;
@@ -137,7 +232,7 @@ function serializePomodoro(session: {
   };
 }
 
-async function handleLogin(payload: UserPayload) {
+export async function handleLogin(payload: UserPayload) {
   const email = asString(payload.email)?.trim().toLowerCase();
   const password = asString(payload.password);
   const requestedRole = asString(payload.role)?.trim().toLowerCase();
@@ -200,7 +295,7 @@ async function handleLogin(payload: UserPayload) {
   });
 }
 
-async function handleRegister(payload: UserPayload) {
+export async function handleRegister(payload: UserPayload) {
   const email = asString(payload.email)?.trim().toLowerCase();
   const password = asString(payload.password);
   const name = asString(payload.name)?.trim() ?? "";
@@ -273,7 +368,7 @@ async function handleRegister(payload: UserPayload) {
   });
 }
 
-async function handleGoogleLogin(payload: UserPayload) {
+export async function handleGoogleLogin(payload: UserPayload) {
   const credential = asString(payload.credential);
   if (!credential) return badRequest("Missing Google credential token.");
 
@@ -382,7 +477,7 @@ async function handleGoogleLogin(payload: UserPayload) {
   }
 }
 
-async function handleRefresh(payload: UserPayload) {
+export async function handleRefresh(payload: UserPayload) {
   const refreshToken = asString(payload.refresh);
   if (!refreshToken) {
     return badRequest("Refresh token is required.");
@@ -475,85 +570,7 @@ async function handleStatsGet(request: Request) {
       return unauthorized();
     }
 
-    // Tests taken
-    const testsTaken = store.testResults.filter((r) => r.userId === user.id).length;
-
-    // Study hours (totalStudyTime is in minutes)
-    const studyHours = Math.round(user.totalStudyTime / 60);
-
-    // Streak data
-    const streak = getOrCreateStreak(store, user.id);
-
-    // Per-subject accuracy from practice attempts
-    const subjectStats: Record<string, { correct: number; total: number }> = {};
-
-    // Pre-populate with user's enrolled subjects at 0% so they always appear
-    for (const s of user.subjects) {
-      const key = s.toLowerCase();
-      subjectStats[key] = { correct: 0, total: 0 };
-    }
-
-    for (const attempt of store.practiceAttempts.filter((a) => a.userId === user.id)) {
-      const question = store.questions.find((q) => q.id === attempt.questionId);
-      if (!question) continue;
-      const subj = question.subject.toLowerCase();
-      if (!subjectStats[subj]) {
-        subjectStats[subj] = { correct: 0, total: 0 };
-      }
-      subjectStats[subj].total += 1;
-      if (attempt.isCorrect) {
-        subjectStats[subj].correct += 1;
-      }
-    }
-
-    const subjectProgress = Object.entries(subjectStats).map(([subject, data]) => ({
-      subject: subject.charAt(0).toUpperCase() + subject.slice(1),
-      accuracy: data.total > 0 ? Math.round((data.correct / data.total) * 100) : 0,
-    }));
-
-    // Overall accuracy
-    const userAttempts = store.practiceAttempts.filter((a) => a.userId === user.id);
-    const overallAccuracy =
-      userAttempts.length > 0
-        ? Math.round((userAttempts.filter((a) => a.isCorrect).length / userAttempts.length) * 100)
-        : 0;
-
-    // Global rank by unique correct questions solved
-    const userSolvedCounts: Record<string, Set<string>> = {};
-    for (const attempt of store.practiceAttempts) {
-      if (attempt.isCorrect) {
-        if (!userSolvedCounts[attempt.userId]) {
-          userSolvedCounts[attempt.userId] = new Set();
-        }
-        userSolvedCounts[attempt.userId].add(attempt.questionId);
-      }
-    }
-    const mySolvedCount = userSolvedCounts[user.id]?.size ?? 0;
-    const sortedByRank = Object.entries(userSolvedCounts)
-      .map(([uid, qs]) => ({ uid, count: qs.size }))
-      .sort((a, b) => b.count - a.count);
-    const myRankIndex = sortedByRank.findIndex((e) => e.uid === user.id);
-    const globalRank = mySolvedCount > 0 ? myRankIndex + 1 : null;
-
-    // Achievements
-    const doubtCount = store.doubtSessions.filter((s) => s.userId === user.id).length;
-    const hasPerfectScore = store.testResults.some((r) => r.userId === user.id && r.percentage >= 100);
-
-    return ok({
-      tests_taken: testsTaken,
-      study_hours: studyHours,
-      global_rank: globalRank,
-      subject_progress: subjectProgress,
-      overall_accuracy: overallAccuracy,
-      achievements: {
-        first_test: testsTaken > 0,
-        streak_7: streak.longestStreak >= 7 || streak.currentStreak >= 7,
-        doubt_master: doubtCount >= 50,
-        top_100: globalRank !== null && globalRank <= 100,
-        perfect_score: hasPerfectScore,
-        streak_30: streak.longestStreak >= 30 || streak.currentStreak >= 30,
-      },
-    });
+    return ok(buildUserStatsSnapshot(store, user));
   });
 }
 
@@ -728,7 +745,7 @@ async function handlePomodoroUpdate(request: Request, payload: UserPayload, sess
   });
 }
 
-function serializeTask(task: StoredTask) {
+export function serializeTask(task: StoredTask) {
   return {
     id: task.id,
     text: task.text,
