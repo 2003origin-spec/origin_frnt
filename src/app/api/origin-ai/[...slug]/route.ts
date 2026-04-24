@@ -32,6 +32,11 @@ import { aiLimiter, voiceLimiter, generalLimiter, checkRateLimit } from "@/lib/r
 
 export const maxDuration = 120;
 
+// Timeout for regular microservice proxy calls (ms)
+const PROXY_TIMEOUT_MS = 30_000;
+// TTS synthesis can take longer — give it 75 seconds
+const PROXY_TTS_TIMEOUT_MS = 75_000;
+
 const ORIGIN_AI_SERVICE_URL = process.env.ORIGIN_AI_SERVICE_URL || "";
 const ORIGIN_AI_SERVICE_TOKEN = process.env.ORIGIN_AI_SERVICE_TOKEN || "dev-origin-ai-token";
 
@@ -199,10 +204,16 @@ async function proxyToMicroservice(
 
   const browserSessionId = request.headers.get("X-Origin-AI-Session-Id") ?? "";
 
+  const isTts = path.includes('/voice/speak');
+  const timeoutMs = isTts ? PROXY_TTS_TIMEOUT_MS : PROXY_TIMEOUT_MS;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
   try {
     const resp = await fetch(`${ORIGIN_AI_SERVICE_URL}${path}`, {
       method,
       cache: "no-store",
+      signal: controller.signal,
       headers: {
         "Content-Type": "application/json",
         "X-Service-Token": ORIGIN_AI_SERVICE_TOKEN,
@@ -261,8 +272,14 @@ async function proxyToMicroservice(
       headers: { "Content-Type": "application/json" },
     });
   } catch (err) {
-    console.error("[origin-ai proxy] microservice call failed, falling back:", err);
+    if (err instanceof Error && err.name === 'AbortError') {
+      console.error(`[origin-ai proxy] microservice call timed out after ${isTts ? PROXY_TTS_TIMEOUT_MS : PROXY_TIMEOUT_MS}ms for ${path}`);
+    } else {
+      console.error("[origin-ai proxy] microservice call failed, falling back:", err);
+    }
     return null; // fallback to in-app implementation
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
@@ -281,6 +298,33 @@ function userIdentifier(request: NextRequest): string {
 
 export async function GET(request: NextRequest, context: RouteContext) {
   const slug = await resolveSlug(context);
+
+  // GET /origin-ai/chapters?subject=math — list NCERT chapters for a subject
+  if (slug.length === 1 && slug[0] === "chapters") {
+    const limited = await checkRateLimit(generalLimiter, userIdentifier(request));
+    if (limited) return limited;
+
+    const subject = request.nextUrl.searchParams.get("subject");
+    if (!subject || !["math", "phy", "chem", "bio"].includes(subject)) {
+      return badRequest("Invalid subject. Must be one of: math, phy, chem, bio");
+    }
+
+    if (ORIGIN_AI_SERVICE_URL) {
+      const proxyUser = await resolveProxyUser(request);
+      if (!proxyUser) return unauthorized();
+      const proxyResp = await proxyToMicroservice(
+        "GET",
+        `/api/v1/chapters?subject=${encodeURIComponent(subject)}`,
+        null,
+        request,
+        proxyUser,
+      );
+      if (proxyResp) return proxyResp;
+    }
+
+    // No local fallback — chapters require the Python backend
+    return badRequest("Chapter listing requires the Origin AI microservice.");
+  }
 
   // GET /origin-ai/threads — list named Doubt Solver threads for the user.
   // When ORIGIN_AI_SERVICE_URL is set, threads live in Neon (origin_ai.sessions

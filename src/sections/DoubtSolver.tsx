@@ -19,9 +19,11 @@ import {
   createOriginAiThread,
   deleteOriginAiThread,
   getOriginAiThreadSnapshot,
+  listOriginAiChapters,
   listOriginAiThreads,
   renameOriginAiThread,
   sendOriginAiMessage,
+  type ChapterItem,
 } from '@/features/origin-ai/client';
 import { renderInlineSegments } from '@/lib/math-text';
 import { cn } from '@/lib/utils';
@@ -148,7 +150,10 @@ interface DoubtSolverProps {
 export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
   const [sessions, setSessions] = useState<DoubtSession[]>([]);
   const [activeSession, setActiveSession] = useState<DoubtSession | null>(null);
-  const [viewMode, setViewMode] = useState<'selection' | 'chat'>('selection');
+  const [viewMode, setViewMode] = useState<'selection' | 'chapter' | 'chat'>('selection');
+  const [selectedSubject, setSelectedSubject] = useState<SubjectKey | null>(null);
+  const [chapters, setChapters] = useState<ChapterItem[]>([]);
+  const [chaptersLoading, setChaptersLoading] = useState(false);
 
   const [message, setMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -402,16 +407,61 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
   const lastSubjectKey = `${LAST_SUBJECT_KEY}_${user.id}`;
   const lastMentorSession = sessions[0];
 
-  const startNewChatFromCTA = () => {
-    let subjectKey: SubjectKey = 'phy';
+  const handleSelectSubject = async (subjectKey: SubjectKey) => {
+    setSelectedSubject(subjectKey);
+    setViewMode('chapter');
+    setChaptersLoading(true);
     try {
-      const saved = localStorage.getItem(lastSubjectKey);
-      if (saved && (saved === 'phy' || saved === 'chem' || saved === 'math' || saved === 'bio')) {
-        subjectKey = saved;
+      const chapterList = await listOriginAiChapters(subjectKey);
+      setChapters(chapterList);
+    } catch (error) {
+      console.error('Failed to load chapters', error);
+      toast.error('Could not load chapters — please try again.');
+      setViewMode('selection');
+    } finally {
+      setChaptersLoading(false);
+    }
+  };
+
+  const handleSelectChapter = async (chapter: ChapterItem) => {
+    if (!selectedSubject) return;
+    const subjectName = SUBJECT_DISPLAY[selectedSubject];
+    const session = await createNewSession(
+      `${chapter.name}`,
+      selectedSubject,
+    );
+    if (session) {
+      // Auto-send first message asking AI to explain the chapter
+      setIsTyping(true);
+      try {
+        const ctx = {
+          ...buildOriginAiPageContext('/doubt-solver'),
+          activeSubject: selectedSubject,
+          questionChapter: chapter.name,
+        };
+        const autoMessage = `Explain all the concepts of the chapter "${chapter.name}" in ${subjectName} step by step. Start from the basics and cover every important concept, formula, and example.`;
+        const response = await sendOriginAiMessage(autoMessage, ctx, null, session.id);
+        const mergedSession = mergeReplyIntoSession(session, replyToDoubtReply(response));
+        setActiveSession(mergedSession);
+        setSessions(prev => {
+          const nextSessions = prev.map(s =>
+            s.id === mergedSession.id ? { ...mergedSession, messages: s.messages } : s
+          );
+          persistSessionCache(nextSessions);
+          return nextSessions;
+        });
+      } catch (error) {
+        console.error('Failed to start chapter explanation', error);
+        toast.error('Could not start the explanation — please try again.');
+      } finally {
+        setIsTyping(false);
       }
-    } catch {}
-    const subjectName = SUBJECT_DISPLAY[subjectKey];
-    void createNewSession(`${subjectName} Doubt Session`, subjectKey);
+    }
+  };
+
+  const startNewChatFromCTA = () => {
+    // Go to subject selection
+    setViewMode('selection');
   };
 
   return (
@@ -429,9 +479,12 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
         <div className="flex items-center gap-3 sm:gap-4">
           <button
             onClick={() => {
-              if (viewMode !== 'selection') {
-                setViewMode('selection');
+              if (viewMode === 'chat') {
+                setViewMode(selectedSubject ? 'chapter' : 'selection');
                 setActiveSession(null);
+              } else if (viewMode === 'chapter') {
+                setViewMode('selection');
+                setSelectedSubject(null);
               } else {
                 onBack();
               }
@@ -499,7 +552,7 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
       <main className="relative z-10 flex-1 flex overflow-hidden">
         {viewMode === 'selection' ? (
           <SelectionView
-            onCreate={(title, sub) => createNewSession(title, sub)}
+            onCreate={(title, sub) => handleSelectSubject(sub)}
             onUpload={() => setShowImageUpload(true)}
             sessions={sessions}
             onSelectSession={handleSelectSession}
@@ -507,6 +560,17 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
             onUpdateTitle={handleUpdateTitle}
             onStartNewChat={startNewChatFromCTA}
             onDeleteSession={handleDeleteSession}
+          />
+        ) : viewMode === 'chapter' && selectedSubject ? (
+          <ChapterSelectionView
+            subject={selectedSubject}
+            chapters={chapters}
+            loading={chaptersLoading}
+            onSelectChapter={handleSelectChapter}
+            onBack={() => {
+              setViewMode('selection');
+              setSelectedSubject(null);
+            }}
           />
         ) : (
           <div className="flex-1 flex overflow-hidden relative">
@@ -1087,6 +1151,112 @@ function SubjectPillBar({
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function ChapterSelectionView({
+  subject,
+  chapters,
+  loading,
+  onSelectChapter,
+  onBack,
+}: {
+  subject: SubjectKey;
+  chapters: ChapterItem[];
+  loading: boolean;
+  onSelectChapter: (chapter: ChapterItem) => void;
+  onBack: () => void;
+}) {
+  const subjectName = SUBJECT_DISPLAY[subject];
+  const subjectColors: Record<SubjectKey, { accent: string; bg: string; border: string; badge: string }> = {
+    phy: { accent: 'text-blue-400', bg: 'from-blue-600/10 to-blue-800/5', border: 'border-blue-500/20 hover:border-blue-500/40', badge: 'bg-blue-500/15 text-blue-400' },
+    chem: { accent: 'text-emerald-400', bg: 'from-emerald-600/10 to-emerald-800/5', border: 'border-emerald-500/20 hover:border-emerald-500/40', badge: 'bg-emerald-500/15 text-emerald-400' },
+    math: { accent: 'text-violet-400', bg: 'from-violet-600/10 to-violet-800/5', border: 'border-violet-500/20 hover:border-violet-500/40', badge: 'bg-violet-500/15 text-violet-400' },
+    bio: { accent: 'text-green-400', bg: 'from-green-600/10 to-green-800/5', border: 'border-green-500/20 hover:border-green-500/40', badge: 'bg-green-500/15 text-green-400' },
+  };
+  const colors = subjectColors[subject];
+
+  const class11Chapters = chapters.filter(ch => ch.ncertClass === '11');
+  const class12Chapters = chapters.filter(ch => ch.ncertClass === '12');
+
+  if (loading) {
+    return (
+      <div className="w-full max-w-5xl mx-auto px-3 sm:px-6 py-8 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-10 h-10 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
+          <p className="text-sm text-muted-foreground">Loading chapters...</p>
+        </div>
+      </div>
+    );
+  }
+
+  const renderChapterCard = (chapter: ChapterItem) => (
+    <motion.button
+      key={chapter.name}
+      whileHover={{ scale: 1.02, y: -2 }}
+      whileTap={{ scale: 0.98 }}
+      onClick={() => onSelectChapter(chapter)}
+      className={`p-4 sm:p-5 rounded-2xl bg-gradient-to-br ${colors.bg} border ${colors.border} transition-all text-left group shadow-sm hover:shadow-lg`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1 min-w-0">
+          <p className="text-sm sm:text-base font-bold text-foreground group-hover:text-foreground/90 leading-snug">{chapter.name}</p>
+          <p className="text-[10px] sm:text-xs text-muted-foreground mt-1.5">{chapter.conceptCount} concepts</p>
+        </div>
+        <Sparkles className={`w-4 h-4 ${colors.accent} opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 mt-0.5`} />
+      </div>
+    </motion.button>
+  );
+
+  return (
+    <div className="w-full max-w-5xl mx-auto px-3 sm:px-6 py-4 sm:py-8 overflow-y-auto custom-scrollbar">
+      {/* Header */}
+      <div className={`relative p-5 sm:p-8 rounded-[24px] sm:rounded-[32px] bg-gradient-to-br ${colors.bg} border border-border/60 mb-6 sm:mb-8 overflow-hidden shadow-lg`}>
+        <Sparkles className={`absolute top-4 right-6 w-8 h-8 ${colors.accent} opacity-10`} />
+        <h2 className={`text-xl sm:text-3xl font-bold text-foreground mb-2 leading-tight`}>
+          {subjectName} Chapters
+        </h2>
+        <p className="text-muted-foreground text-xs sm:text-base max-w-xl leading-relaxed">
+          Select a chapter to get a detailed AI-powered explanation of all concepts.
+        </p>
+      </div>
+
+      {/* Class 11 */}
+      {class11Chapters.length > 0 && (
+        <div className="mb-8">
+          <div className="flex items-center gap-3 mb-4 px-1">
+            <span className={`px-3 py-1 rounded-full text-[10px] sm:text-xs font-bold uppercase tracking-widest ${colors.badge}`}>
+              Class 11
+            </span>
+            <div className="flex-1 h-px bg-border/40" />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+            {class11Chapters.map(renderChapterCard)}
+          </div>
+        </div>
+      )}
+
+      {/* Class 12 */}
+      {class12Chapters.length > 0 && (
+        <div className="mb-8">
+          <div className="flex items-center gap-3 mb-4 px-1">
+            <span className={`px-3 py-1 rounded-full text-[10px] sm:text-xs font-bold uppercase tracking-widest ${colors.badge}`}>
+              Class 12
+            </span>
+            <div className="flex-1 h-px bg-border/40" />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+            {class12Chapters.map(renderChapterCard)}
+          </div>
+        </div>
+      )}
+
+      {chapters.length === 0 && !loading && (
+        <div className="p-10 text-center rounded-[28px] border border-dashed border-border/30">
+          <p className="text-sm text-muted-foreground">No chapters found for {subjectName}.</p>
+        </div>
+      )}
     </div>
   );
 }

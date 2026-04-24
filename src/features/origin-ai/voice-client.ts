@@ -1,18 +1,10 @@
 import {
   getOriginAiVoiceBootstrap,
-  respondOriginAiVoiceAudio,
+  sendOriginAiMessage,
   synthesizeOriginAiVoiceText,
   type OriginAiClientPageContext,
 } from '@/features/origin-ai/client';
 import type { OriginAiReply, OriginAiVoiceStatus } from '@/types';
-
-type AudioContextLike = AudioContext & {
-  createScriptProcessor?: (
-    bufferSize?: number,
-    inputChannels?: number,
-    outputChannels?: number,
-  ) => ScriptProcessorNode;
-};
 
 export interface OriginAiVoiceCallbacks {
   onStatusChange?: (status: OriginAiVoiceStatus) => void;
@@ -27,17 +19,8 @@ export interface OriginAiVoiceController {
   isActive: () => boolean;
 }
 
-interface CapturedVoiceTurn {
-  audioData: string;
-  mimeType: string;
-}
-
-interface MicrophonePipeline {
-  stream: MediaStream;
-  audioContext: AudioContextLike;
-  sourceNode: MediaStreamAudioSourceNode;
-  processorNode: ScriptProcessorNode;
-  sinkNode: GainNode;
+interface SpeechRecognitionPipeline {
+  stop: () => void;
   finalizeActivity: () => void;
 }
 
@@ -48,18 +31,10 @@ interface AudioPlayer {
   close: () => Promise<void>;
 }
 
-const INPUT_SAMPLE_RATE = 16000;
 const DEFAULT_OUTPUT_SAMPLE_RATE = 24000;
-const PROCESSOR_BUFFER_SIZE = 2048;
-const USER_SPEECH_START_RMS_THRESHOLD_MIN = 0.012;
-const USER_SPEECH_ACTIVE_RMS_THRESHOLD_MIN = 0.007;
-const USER_SPEECH_START_CHUNKS_REQUIRED = 2;
-const USER_SPEECH_END_SILENCE_CHUNKS_REQUIRED = 10;
-const AMBIENT_RMS_INITIAL = 0.003;
-const AMBIENT_RMS_SMOOTHING = 0.08;
 const ASSISTANT_PLAYBACK_GAP_GRACE_MS = 900;
 const VOICE_RESPOND_TIMEOUT_MS = 25000;
-const VOICE_SPEAK_TIMEOUT_MS = 50000;
+const VOICE_SPEAK_TIMEOUT_MS = 80000;
 
 function emitStatus(callbacks: OriginAiVoiceCallbacks, status: OriginAiVoiceStatus): void {
   callbacks.onStatusChange?.(status);
@@ -93,67 +68,6 @@ function base64ToBytes(base64Data: string): Uint8Array {
 function parseSampleRate(mimeType?: string | null): number {
   const match = mimeType?.match(/rate=(\d+)/i);
   return Number(match?.[1] || DEFAULT_OUTPUT_SAMPLE_RATE);
-}
-
-function float32ToInt16(input: Float32Array): Int16Array {
-  const pcm = new Int16Array(input.length);
-  for (let index = 0; index < input.length; index += 1) {
-    const sample = Math.max(-1, Math.min(1, input[index] ?? 0));
-    pcm[index] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
-  }
-  return pcm;
-}
-
-function encodePcmChunksToWavBase64(chunks: Int16Array[], sampleRate: number): string {
-  const totalSamples = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
-  const dataSize = totalSamples * 2;
-  const buffer = new ArrayBuffer(44 + dataSize);
-  const view = new DataView(buffer);
-  let offset = 0;
-
-  const writeString = (value: string) => {
-    for (let index = 0; index < value.length; index += 1) {
-      view.setUint8(offset, value.charCodeAt(index));
-      offset += 1;
-    }
-  };
-
-  writeString('RIFF');
-  view.setUint32(offset, 36 + dataSize, true);
-  offset += 4;
-  writeString('WAVE');
-  writeString('fmt ');
-  view.setUint32(offset, 16, true);
-  offset += 4;
-  view.setUint16(offset, 1, true);
-  offset += 2;
-  view.setUint16(offset, 1, true);
-  offset += 2;
-  view.setUint32(offset, sampleRate, true);
-  offset += 4;
-  view.setUint32(offset, sampleRate * 2, true);
-  offset += 4;
-  view.setUint16(offset, 2, true);
-  offset += 2;
-  view.setUint16(offset, 16, true);
-  offset += 2;
-  writeString('data');
-  view.setUint32(offset, dataSize, true);
-  offset += 4;
-
-  for (const chunk of chunks) {
-    for (let index = 0; index < chunk.length; index += 1) {
-      view.setInt16(offset, chunk[index] ?? 0, true);
-      offset += 2;
-    }
-  }
-
-  const bytes = new Uint8Array(buffer);
-  let binary = '';
-  for (let index = 0; index < bytes.byteLength; index += 1) {
-    binary += String.fromCharCode(bytes[index] ?? 0);
-  }
-  return window.btoa(binary);
 }
 
 function pcmChunkToAudioBuffer(
@@ -197,27 +111,15 @@ async function decodeAudioBuffer(
     return null;
   }
 
-  if (mimeType?.includes('audio/pcm')) {
+  // Gemini TTS returns raw PCM as either 'audio/pcm' or 'audio/L16;codec=pcm;rate=XXXXX'
+  const isRawPcm = mimeType?.includes('audio/pcm') || mimeType?.includes('audio/l16') || mimeType?.includes('audio/L16');
+  if (isRawPcm) {
     return pcmChunkToAudioBuffer(audioContext, base64Data, parseSampleRate(mimeType));
   }
 
   const bytes = base64ToBytes(base64Data);
   const arrayBuffer = Uint8Array.from(bytes).buffer;
   return audioContext.decodeAudioData(arrayBuffer);
-}
-
-function calculateRms(input: Float32Array): number {
-  if (input.length === 0) {
-    return 0;
-  }
-
-  let sum = 0;
-  for (let index = 0; index < input.length; index += 1) {
-    const sample = input[index] ?? 0;
-    sum += sample * sample;
-  }
-
-  return Math.sqrt(sum / input.length);
 }
 
 function createAudioPlayer(callbacks: OriginAiVoiceCallbacks, onIdle: () => void): AudioPlayer {
@@ -300,11 +202,12 @@ function pickBrowserSpeechVoice(): SpeechSynthesisVoice | null {
     return null;
   }
 
-  const preferredNames = ['daniel', 'aaron', 'alex', 'arthur', 'fred', 'google us english'];
+  // Prefer friendly male voices for a teacher-like tone
+  const malePreferredNames = ['daniel', 'alex', 'aaron', 'arthur', 'fred', 'mark', 'tom', 'google uk english male', 'google us english male', 'oliver', 'george'];
   const englishVoices = voices.filter((voice) => voice.lang.toLowerCase().startsWith('en'));
   const preferred =
     englishVoices.find((voice) =>
-      preferredNames.some((name) => voice.name.toLowerCase().includes(name)),
+      malePreferredNames.some((name) => voice.name.toLowerCase().includes(name)),
     ) ?? englishVoices[0];
 
   return preferred ?? voices[0] ?? null;
@@ -315,7 +218,10 @@ async function speakWithBrowserFallback(text: string): Promise<void> {
     return;
   }
 
-  const utterance = new SpeechSynthesisUtterance(text);
+  const cleanText = text.replace(/[*_#`~>]/g, '').trim();
+  if (!cleanText) return;
+
+  const utterance = new SpeechSynthesisUtterance(cleanText);
   utterance.lang = 'en-US';
   utterance.rate = 1.0;
   utterance.pitch = 0.92;
@@ -326,136 +232,163 @@ async function speakWithBrowserFallback(text: string): Promise<void> {
 
   await new Promise<void>((resolve, reject) => {
     utterance.onend = () => resolve();
-    utterance.onerror = () => reject(new Error('Origin AI browser speech fallback failed.'));
+    utterance.onerror = (e) => {
+      console.warn('[OriginAI Voice] Browser speech error:', e);
+      reject(new Error('Origin AI browser speech fallback failed.'));
+    };
     window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(utterance);
+    
+    // Fix: Timeout prevents Mac/Safari from cancelling the utterance immediately after cancel()
+    setTimeout(() => {
+      window.speechSynthesis.speak(utterance);
+    }, 50);
   });
 }
 
-async function startMicrophonePipeline(
+/**
+ * Split AI response text into TTS-friendly sentence chunks.
+ * - Strips markdown formatting
+ * - Merges very short fragments
+ * - Caps each chunk at 250 chars
+ * - Returns at most 5 chunks (first part of the response)
+ *   so TTS stays fast and natural without reading a whole essay.
+ */
+function splitIntoTtsChunks(text: string): string[] {
+  // Strip markdown and normalise whitespace
+  const cleaned = text
+    .replace(/[*_#`~>]/g, '')
+    .replace(/\n{2,}/g, '\n')
+    .trim();
+  if (!cleaned) return [];
+
+  // Split on sentence-ending punctuation followed by whitespace or newline
+  const raw = cleaned
+    .replace(/([.!?])\s+/g, '$1\n')
+    .split('\n')
+    .map((s) => s.trim())
+    // Skip pure bullet-list lines like "1. " or "- " starters — they sound bad spoken
+    .filter((s) => s.length > 3 && !/^[\-\d]+[\.\)]\s/.test(s));
+
+  // Merge very short fragments into their neighbour, cap each chunk at 250 chars
+  const merged: string[] = [];
+  let buffer = '';
+  for (const sentence of raw) {
+    if (!buffer) {
+      buffer = sentence.slice(0, 250);
+    } else if (buffer.length < 25) {
+      buffer = (buffer + ' ' + sentence).slice(0, 250);
+    } else {
+      merged.push(buffer);
+      buffer = sentence.slice(0, 250);
+    }
+  }
+  if (buffer) merged.push(buffer);
+
+  // Only speak the first 5 chunks — keeps voice response snappy
+  return merged.slice(0, 5);
+}
+
+
+async function startSpeechRecognitionPipeline(
+
   isAssistantBusy: () => boolean,
-  onUserTurnEnded: (turn: CapturedVoiceTurn) => void,
-): Promise<MicrophonePipeline> {
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: {
-      channelCount: 1,
-      echoCancellation: true,
-      noiseSuppression: true,
-      autoGainControl: true,
-    },
-  });
+  onUserTranscript: (text: string) => void,
+  onUserTurnEnded: (text: string) => void,
+): Promise<SpeechRecognitionPipeline> {
+  const SpeechRecognitionCtor =
+    typeof window !== 'undefined'
+      ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+      : null;
 
-  const AudioContextCtor = window.AudioContext;
-  const audioContext = new AudioContextCtor({ sampleRate: INPUT_SAMPLE_RATE }) as AudioContextLike;
-  const sourceNode = audioContext.createMediaStreamSource(stream);
-  const processorNode = audioContext.createScriptProcessor?.(PROCESSOR_BUFFER_SIZE, 1, 1);
-
-  if (!processorNode) {
-    stream.getTracks().forEach((track) => track.stop());
-    await audioContext.close();
-    throw new Error('This browser cannot start Origin AI voice mode.');
+  if (!SpeechRecognitionCtor) {
+    throw new Error('This browser does not support Web Speech API for voice mode. Please use Chrome, Edge or Safari.');
   }
 
-  const sinkNode = audioContext.createGain();
-  sinkNode.gain.value = 0;
+  await navigator.mediaDevices.getUserMedia({ audio: true }).catch(() => {
+    throw new Error('Microphone permission denied.');
+  });
 
-  let activeSpeechChunks = 0;
-  let activeSilenceChunks = 0;
-  let userSpeechActive = false;
-  let ambientRms = AMBIENT_RMS_INITIAL;
-  let pendingSpeechChunks: Int16Array[] = [];
-  let capturedSpeechChunks: Int16Array[] = [];
+  const recognition = new SpeechRecognitionCtor();
+  recognition.continuous = true;
+  recognition.interimResults = true;
+  recognition.lang = 'en-US';
+
+  let finalTranscript = '';
+  let isActive = true;
+  let silenceTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  const resetSilenceTimeout = () => {
+    if (silenceTimeout) clearTimeout(silenceTimeout);
+    silenceTimeout = setTimeout(() => {
+      if (finalTranscript.trim()) {
+        finishTurn();
+      }
+    }, 1500); // 1.5s of silence triggers completion
+  };
 
   const finishTurn = () => {
-    if (!userSpeechActive || capturedSpeechChunks.length === 0) {
-      userSpeechActive = false;
-      activeSpeechChunks = 0;
-      activeSilenceChunks = 0;
-      pendingSpeechChunks = [];
-      capturedSpeechChunks = [];
-      return;
-    }
-
-    const audioData = encodePcmChunksToWavBase64(capturedSpeechChunks, INPUT_SAMPLE_RATE);
-
-    userSpeechActive = false;
-    activeSpeechChunks = 0;
-    activeSilenceChunks = 0;
-    pendingSpeechChunks = [];
-    capturedSpeechChunks = [];
-
-    onUserTurnEnded({
-      audioData,
-      mimeType: 'audio/wav',
-    });
+    if (silenceTimeout) clearTimeout(silenceTimeout);
+    if (!finalTranscript.trim()) return;
+    const textToSubmit = finalTranscript.trim();
+    finalTranscript = '';
+    onUserTurnEnded(textToSubmit);
   };
 
-  processorNode.onaudioprocess = (event) => {
-    const channelData = event.inputBuffer.getChannelData(0);
-    if (!channelData || channelData.length === 0) {
-      return;
-    }
-
-    const rms = calculateRms(channelData);
-    const pcmChunk = float32ToInt16(channelData);
-
+  recognition.onresult = (event: any) => {
     if (isAssistantBusy()) {
-      if (!userSpeechActive) {
-        activeSpeechChunks = 0;
-        activeSilenceChunks = 0;
-        pendingSpeechChunks = [];
-        capturedSpeechChunks = [];
-      }
+      finalTranscript = '';
       return;
     }
 
-    if (!userSpeechActive) {
-      ambientRms = ambientRms * (1 - AMBIENT_RMS_SMOOTHING) + rms * AMBIENT_RMS_SMOOTHING;
+    let interimTranscript = '';
+    let currentFinal = '';
 
-      const startThreshold = Math.max(USER_SPEECH_START_RMS_THRESHOLD_MIN, ambientRms * 3.2);
-      if (rms < startThreshold) {
-        activeSpeechChunks = 0;
-        pendingSpeechChunks = [];
-        return;
+    for (let i = event.resultIndex; i < event.results.length; ++i) {
+      if (event.results[i].isFinal) {
+        currentFinal += event.results[i][0].transcript;
+      } else {
+        interimTranscript += event.results[i][0].transcript;
       }
-
-      activeSpeechChunks += 1;
-      pendingSpeechChunks.push(pcmChunk);
-      if (activeSpeechChunks < USER_SPEECH_START_CHUNKS_REQUIRED) {
-        return;
-      }
-
-      userSpeechActive = true;
-      activeSpeechChunks = 0;
-      activeSilenceChunks = 0;
-      capturedSpeechChunks = pendingSpeechChunks.slice();
-      pendingSpeechChunks = [];
-      return;
     }
 
-    const activeSpeechThreshold = Math.max(USER_SPEECH_ACTIVE_RMS_THRESHOLD_MIN, ambientRms * 1.8);
-    if (rms >= activeSpeechThreshold) {
-      activeSilenceChunks = 0;
-      capturedSpeechChunks.push(pcmChunk);
-      return;
+    if (currentFinal) {
+      finalTranscript += ' ' + currentFinal;
+      finalTranscript = finalTranscript.trim();
     }
 
-    activeSilenceChunks += 1;
-    if (activeSilenceChunks >= USER_SPEECH_END_SILENCE_CHUNKS_REQUIRED) {
-      finishTurn();
+    onUserTranscript((finalTranscript + ' ' + interimTranscript).trim());
+    resetSilenceTimeout();
+  };
+
+  recognition.onerror = (event: any) => {
+    if (event.error === 'no-speech' || event.error === 'aborted') return;
+    console.warn('[OriginAI Voice] Speech recognition error:', event.error);
+  };
+
+  recognition.onend = () => {
+    if (isActive && !isAssistantBusy()) {
+      try {
+        recognition.start();
+      } catch (e) {
+        // ignore already started
+      }
     }
   };
 
-  sourceNode.connect(processorNode);
-  processorNode.connect(sinkNode);
-  sinkNode.connect(audioContext.destination);
+  try {
+    recognition.start();
+  } catch (e) {
+    // ignore
+  }
 
   return {
-    stream,
-    audioContext,
-    sourceNode,
-    processorNode,
-    sinkNode,
+    stop: () => {
+      isActive = false;
+      if (silenceTimeout) clearTimeout(silenceTimeout);
+      try {
+        recognition.stop();
+      } catch (e) {}
+    },
     finalizeActivity: finishTurn,
   };
 }
@@ -465,12 +398,20 @@ export async function startOriginAiVoiceMode(
   getHighlightedText: () => string | null | undefined,
   callbacks: OriginAiVoiceCallbacks,
 ): Promise<OriginAiVoiceController> {
+  // Warm up the speech synthesis engine synchronously with the user interaction
+  if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+    const warmUp = new SpeechSynthesisUtterance('');
+    warmUp.volume = 0;
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(warmUp);
+  }
+
   emitStatus(callbacks, 'bootstrapping');
   const bootstrap = await getOriginAiVoiceBootstrap(pageContext);
 
   let isActive = true;
   let isAwaitingResponse = false;
-  let microphonePipeline: MicrophonePipeline | null = null;
+  let speechRecognitionPipeline: SpeechRecognitionPipeline | null = null;
   let assistantPlaybackHoldUntil = 0;
   let isBrowserFallbackSpeaking = false;
 
@@ -498,9 +439,14 @@ export async function startOriginAiVoiceMode(
 
   emitStatus(callbacks, 'connecting');
 
-  microphonePipeline = await startMicrophonePipeline(
+  speechRecognitionPipeline = await startSpeechRecognitionPipeline(
     () => isAwaitingResponse || audioPlayer.isPlaying() || Date.now() < assistantPlaybackHoldUntil,
-    (turn) => {
+    (interimText) => {
+      if (!isAwaitingResponse) {
+        callbacks.onUserTranscript?.(interimText);
+      }
+    },
+    (finalText) => {
       if (!isActive || isAwaitingResponse) {
         return;
       }
@@ -512,13 +458,7 @@ export async function startOriginAiVoiceMode(
         try {
           const highlightedText = getHighlightedText();
           const reply = await withTimeout(
-            respondOriginAiVoiceAudio(
-              turn.audioData,
-              turn.mimeType,
-              pageContext,
-              bootstrap.voice.voiceName,
-              highlightedText,
-            ),
+            sendOriginAiMessage(finalText, pageContext, highlightedText),
             VOICE_RESPOND_TIMEOUT_MS,
             'Origin AI took too long to prepare the voice reply.',
           );
@@ -527,74 +467,86 @@ export async function startOriginAiVoiceMode(
             return;
           }
 
-          callbacks.onUserTranscript?.(reply.userTranscript);
-          callbacks.onAssistantTranscript?.(reply.assistantTranscript);
+          callbacks.onUserTranscript?.(reply.userMessage.content);
+          callbacks.onAssistantTranscript?.(reply.aiMessage.content);
           callbacks.onReplyCommitted?.(reply);
 
-          // Text reply is ready — now synthesize audio in a separate step.
           // Emit 'speaking' so the UI reflects that TTS is in progress
-          // instead of staying stuck on 'thinking'.
           emitStatus(callbacks, 'speaking');
-
-          let voiceAudio = reply.voiceAudio;
-          let voiceAudioSegments = voiceAudio ? [voiceAudio] : [];
-          let fallbackText = reply.assistantTranscript;
-          if (!voiceAudio) {
-            try {
-              const speakResponse = await withTimeout(
-                synthesizeOriginAiVoiceText(reply.assistantTranscript, bootstrap.voice.voiceName),
-                VOICE_SPEAK_TIMEOUT_MS,
-                'Origin AI took too long to synthesize the spoken reply.',
-              );
-              voiceAudio = speakResponse.voiceAudio;
-              voiceAudioSegments =
-                speakResponse.voiceAudioSegments?.length > 0
-                  ? speakResponse.voiceAudioSegments
-                  : speakResponse.voiceAudio
-                    ? [speakResponse.voiceAudio]
-                    : [];
-              fallbackText = speakResponse.fallbackText ?? reply.assistantTranscript;
-              if (speakResponse.synthesisError) {
-                console.warn('[OriginAI Voice] TTS synthesis failed, will use browser fallback:', speakResponse.synthesisError);
-              }
-            } catch (speakErr) {
-              // TTS failed — the text reply is already committed via
-              // onReplyCommitted, so the user can still read it. Continue
-              // the conversation loop with browser speech fallback.
-              console.warn('[OriginAI Voice] TTS call failed, will use browser fallback:', speakErr);
-            }
-          }
 
           if (!isActive) {
             return;
           }
 
-          if (voiceAudioSegments.length > 0) {
+
+          // ---------------------------------------------------------------
+          // Pipelined TTS: split response into sentence chunks, fire all
+          // synthesis requests simultaneously, then play each in order as
+          // it arrives. The first sentence starts playing ~2-3s after the
+          // text is ready instead of waiting for the entire reply to be
+          // synthesized (~10-15s).
+          // ---------------------------------------------------------------
+          const sentences = splitIntoTtsChunks(reply.aiMessage.content);
+          const fallbackText = reply.aiMessage.content;
+
+          if (sentences.length === 0) {
+            // Nothing to speak
+          } else {
+            // Fire all TTS requests in parallel
+            const ttsPromises = sentences.map((sentence) =>
+              synthesizeOriginAiVoiceText(sentence, bootstrap.voice.voiceName).catch((err) => {
+                console.warn('[OriginAI Voice] TTS chunk failed:', sentence.slice(0, 40), err);
+                return null;
+              }),
+            );
+
+            let anyAudioPlayed = false;
             assistantPlaybackHoldUntil = Date.now() + ASSISTANT_PLAYBACK_GAP_GRACE_MS;
-            for (const segment of voiceAudioSegments) {
-              await audioPlayer.enqueue(segment.data, segment.mimeType);
+
+            // Await and enqueue each chunk IN ORDER (not as each resolves)
+            // This ensures gapless sequential playback even if a later chunk
+            // arrives before an earlier one.
+            for (const promise of ttsPromises) {
+              if (!isActive) break;
+              const speakResponse = await promise;
+              if (!speakResponse) continue;
+
+              const segments =
+                speakResponse.voiceAudioSegments && speakResponse.voiceAudioSegments.length > 0
+                  ? speakResponse.voiceAudioSegments
+                  : speakResponse.voiceAudio
+                    ? [speakResponse.voiceAudio]
+                    : [];
+
+              for (const segment of segments) {
+                if (segment?.data) {
+                  await audioPlayer.enqueue(segment.data, segment.mimeType);
+                  anyAudioPlayed = true;
+                }
+              }
             }
-          } else if (fallbackText.trim()) {
-            assistantPlaybackHoldUntil = Date.now() + ASSISTANT_PLAYBACK_GAP_GRACE_MS;
-            isBrowserFallbackSpeaking = true;
-            emitStatus(callbacks, 'speaking');
-            try {
-              await speakWithBrowserFallback(fallbackText);
-            } catch {
-              // Ignore fallback speech errors; the text reply is already visible.
-            } finally {
-              isBrowserFallbackSpeaking = false;
+
+            if (!isActive) {
+              return;
+            }
+
+            // If no audio was produced at all, fall back to browser TTS
+            if (!anyAudioPlayed && fallbackText.trim()) {
+              isBrowserFallbackSpeaking = true;
+              emitStatus(callbacks, 'speaking');
+              try {
+                await speakWithBrowserFallback(fallbackText);
+              } catch {
+                // Ignore fallback speech errors; the text reply is already visible.
+              } finally {
+                isBrowserFallbackSpeaking = false;
+              }
             }
           }
-          // If audio is unavailable, skip playback silently. The text
-          // reply was already committed and the loop will return to
-          // listening via the finally block below.
         } catch (error) {
           const message =
             error instanceof Error ? error.message : 'Origin AI voice mode could not finish the turn.';
           callbacks.onError?.(message);
-          // Don't set status to 'error' permanently — let the finally
-          // block return to listening so the conversation can continue.
         } finally {
           isAwaitingResponse = false;
           maybeReturnToListening();
@@ -625,16 +577,12 @@ export async function startOriginAiVoiceMode(
       }
       isBrowserFallbackSpeaking = false;
 
-      if (microphonePipeline) {
+      if (speechRecognitionPipeline) {
         try {
-          microphonePipeline.processorNode.disconnect();
-          microphonePipeline.sourceNode.disconnect();
-          microphonePipeline.sinkNode.disconnect();
+          speechRecognitionPipeline.stop();
         } catch {
           // ignore shutdown race
         }
-        microphonePipeline.stream.getTracks().forEach((track) => track.stop());
-        await microphonePipeline.audioContext.close();
       }
 
       await audioPlayer.close();

@@ -585,6 +585,20 @@ export async function listOriginAiThreads(): Promise<OriginAiThread[]> {
   return (data.threads ?? []).map(normalizeThread);
 }
 
+export type ChapterItem = {
+  name: string;
+  ncertClass: string;
+  conceptCount: number;
+};
+
+export async function listOriginAiChapters(subject: string): Promise<ChapterItem[]> {
+  const data = (await apiCall(`/origin-ai/chapters?subject=${encodeURIComponent(subject)}`, {
+    method: 'GET',
+    headers: { 'X-Origin-AI-Session-Id': getOriginAiBrowserSessionId() },
+  })) as { chapters?: ChapterItem[] };
+  return data.chapters ?? [];
+}
+
 export async function createOriginAiThread(payload: {
   title?: string;
   subject?: string | null;
