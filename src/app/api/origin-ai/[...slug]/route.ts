@@ -36,6 +36,8 @@ export const maxDuration = 120;
 const PROXY_TIMEOUT_MS = 30_000;
 // TTS synthesis can take longer — give it 75 seconds
 const PROXY_TTS_TIMEOUT_MS = 75_000;
+// Image solve: vision extraction + embedding search + Gemini Pro generation
+const PROXY_IMAGE_TIMEOUT_MS = 180_000;
 
 const ORIGIN_AI_SERVICE_URL = process.env.ORIGIN_AI_SERVICE_URL || "";
 const ORIGIN_AI_SERVICE_TOKEN = process.env.ORIGIN_AI_SERVICE_TOKEN || "dev-origin-ai-token";
@@ -205,7 +207,9 @@ async function proxyToMicroservice(
   const browserSessionId = request.headers.get("X-Origin-AI-Session-Id") ?? "";
 
   const isTts = path.includes('/voice/speak');
-  const timeoutMs = isTts ? PROXY_TTS_TIMEOUT_MS : PROXY_TIMEOUT_MS;
+  const isImageSolve = path.includes('/image-solve');
+  const isMessage = path.includes('/chat/message');
+  const timeoutMs = isTts ? PROXY_TTS_TIMEOUT_MS : (isImageSolve || isMessage) ? PROXY_IMAGE_TIMEOUT_MS : PROXY_TIMEOUT_MS;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -267,13 +271,13 @@ async function proxyToMicroservice(
       }
     }
 
-    return new Response(data === null ? "" : JSON.stringify(data), {
+    return new Response(JSON.stringify(data ?? {}), {
       status: resp.status,
       headers: { "Content-Type": "application/json" },
     });
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {
-      console.error(`[origin-ai proxy] microservice call timed out after ${isTts ? PROXY_TTS_TIMEOUT_MS : PROXY_TIMEOUT_MS}ms for ${path}`);
+      console.error(`[origin-ai proxy] microservice call timed out after ${timeoutMs}ms for ${path}`);
     } else {
       console.error("[origin-ai proxy] microservice call failed, falling back:", err);
     }
@@ -492,6 +496,32 @@ export async function POST(request: NextRequest, context: RouteContext) {
     });
     if (result.status === "unauthorized") return unauthorized();
     return created({ thread: result.thread });
+  }
+
+  // POST /origin-ai/transcribe — STT transcription
+  if (slug.length === 1 && slug[0] === "transcribe") {
+    if (ORIGIN_AI_SERVICE_URL) {
+      const proxyUser = await resolveProxyUser(request);
+      if (!proxyUser) return unauthorized();
+      let body: unknown;
+      try { body = await parseJsonBody(request); } catch { return badRequest("Invalid JSON."); }
+      const proxyResp = await proxyToMicroservice("POST", "/api/v1/chat/transcribe", body, request, proxyUser);
+      if (proxyResp) return proxyResp;
+    }
+    return badRequest("Transcription requires the Origin AI microservice.");
+  }
+
+  // POST /origin-ai/image-solve — Image problem solver
+  if (slug.length === 1 && slug[0] === "image-solve") {
+    if (ORIGIN_AI_SERVICE_URL) {
+      const proxyUser = await resolveProxyUser(request);
+      if (!proxyUser) return unauthorized();
+      let body: unknown;
+      try { body = await parseJsonBody(request); } catch { return badRequest("Invalid JSON."); }
+      const proxyResp = await proxyToMicroservice("POST", "/api/v1/chat/image-solve", body, request, proxyUser);
+      if (proxyResp) return proxyResp;
+    }
+    return badRequest("Image solving requires the Origin AI microservice.");
   }
 
   try {

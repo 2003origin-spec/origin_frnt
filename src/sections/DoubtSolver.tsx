@@ -1,9 +1,10 @@
 'use client';
 import { Fragment, useState, useRef, useEffect, useCallback } from 'react';
 import {
-  ChevronLeft, Send, ImagePlus,
+  ChevronLeft, Send, ImagePlus, Mic, MicOff,
   X, Sparkles, Plus, Atom,
-  FlaskConical, Calculator, Leaf, PanelLeft, PanelLeftClose, Trash2
+  FlaskConical, Calculator, Leaf, PanelLeft, PanelLeftClose, Trash2,
+  Database
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type {
@@ -23,7 +24,10 @@ import {
   listOriginAiThreads,
   renameOriginAiThread,
   sendOriginAiMessage,
+
+  solveOriginAiImage,
   type ChapterItem,
+  type ImageSolveResult,
 } from '@/features/origin-ai/client';
 import { renderInlineSegments } from '@/lib/math-text';
 import { cn } from '@/lib/utils';
@@ -31,7 +35,27 @@ import { toast } from 'sonner';
 
 const SESSION_CACHE_KEY = 'doubt_sessions_cache';
 const LAST_SUBJECT_KEY = 'doubt_last_subject';
+const IMAGE_MSGS_KEY = 'doubt_image_msgs';
 const STEP_MARKER = '<!-- step -->';
+
+function loadImageMsgs(threadId: string): ChatMessageType[] {
+  try {
+    const raw = localStorage.getItem(`${IMAGE_MSGS_KEY}_${threadId}`);
+    if (!raw) return [];
+    return JSON.parse(raw).map((m: ChatMessageType) => ({
+      ...m,
+      timestamp: new Date(m.timestamp),
+    }));
+  } catch { return []; }
+}
+
+function saveImageMsgs(threadId: string, msgs: ChatMessageType[]) {
+  try {
+    // Keep only the last 10 image solve exchanges per thread to cap storage
+    const trimmed = msgs.slice(-10);
+    localStorage.setItem(`${IMAGE_MSGS_KEY}_${threadId}`, JSON.stringify(trimmed));
+  } catch { /* quota exceeded — silently ignore */ }
+}
 
 type SubjectKey = 'phy' | 'chem' | 'math' | 'bio';
 const SUBJECT_DISPLAY: Record<SubjectKey, string> = {
@@ -159,14 +183,17 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
   const [isTyping, setIsTyping] = useState(false);
   const [showImageUpload, setShowImageUpload] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
-  const [recordingTime, setRecordingTime] = useState(0);
+  const [liveTranscript, setLiveTranscript] = useState('');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editedTitle, setEditedTitle] = useState('');
   const [editingSidebarId, setEditingSidebarId] = useState<string | null>(null);
   const [sidebarEditValue, setSidebarEditValue] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const speechRecognitionRef = useRef<any>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const lastImageContextRef = useRef<string | null>(null);
+  const [isProcessingImage, setIsProcessingImage] = useState(false);
   const sessionCacheKey = `${SESSION_CACHE_KEY}_${user.id}`;
 
   const persistSessionCache = useCallback((nextSessions: DoubtSession[]) => {
@@ -273,26 +300,6 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
     fetchSessions();
   }, [persistSessionCache, sessionCacheKey]);
 
-  // Recording Timer
-  useEffect(() => {
-    if (isRecording) {
-      timerRef.current = setInterval(() => {
-        setRecordingTime(prev => prev + 1);
-      }, 1000);
-    } else {
-      if (timerRef.current) clearInterval(timerRef.current);
-      setRecordingTime(0);
-    }
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [isRecording]);
-
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -302,18 +309,22 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
     scrollToBottom();
   }, [activeSession?.messages, isTyping]);
 
-  const handleSendMessage = async () => {
-    if (!message.trim() || !activeSession) return;
+  const handleSendMessage = async (overrideText?: string) => {
+    const currentMessage = overrideText ?? message;
+    if (!currentMessage.trim() || !activeSession) return;
 
-    const currentMessage = message;
     setMessage('');
     setIsTyping(true);
 
     try {
-      const ctx = {
+      const ctx: Record<string, unknown> = {
         ...buildOriginAiPageContext('/doubt-solver'),
         activeSubject: activeSession.subject ?? null,
       };
+      if (lastImageContextRef.current) {
+        ctx.imageContext = lastImageContextRef.current;
+        lastImageContextRef.current = null;
+      }
       const response = await sendOriginAiMessage(currentMessage, ctx, null, activeSession.id);
       const mergedSession = mergeReplyIntoSession(activeSession, replyToDoubtReply(response));
 
@@ -378,6 +389,19 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
         activeConcept: session.activeConcept ?? null,
       });
       const hydrated = snapshotToSession(snapshot.session);
+
+      // Merge persisted image-solve messages (not stored on backend)
+      const imageMsgs = loadImageMsgs(session.id);
+      if (imageMsgs.length > 0) {
+        const backendIds = new Set(hydrated.messages.map(m => m.id));
+        const newImageMsgs = imageMsgs.filter(m => !backendIds.has(m.id));
+        if (newImageMsgs.length > 0) {
+          hydrated.messages = [...hydrated.messages, ...newImageMsgs].sort(
+            (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+          );
+        }
+      }
+
       setActiveSession(prev => (prev?.id === hydrated.id ? hydrated : prev));
       setSessions(prev => prev.map(s => (s.id === hydrated.id ? hydrated : s)));
     } catch (error) {
@@ -706,14 +730,192 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
                 {/* Fixed Bottom Input Bar */}
                 <div className="p-3 sm:p-6 bg-gradient-to-t from-background via-background to-transparent flex-shrink-0">
                   <div className="max-w-4xl mx-auto">
+                    {/* Status indicators */}
+                    <AnimatePresence>
+                      {(isRecording || isProcessingImage) && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 10, height: 0 }}
+                          animate={{ opacity: 1, y: 0, height: 'auto' }}
+                          exit={{ opacity: 0, y: 10, height: 0 }}
+                          className="mb-2 px-4 py-2 rounded-xl border border-border/40 bg-card/60 backdrop-blur-sm flex items-center gap-3"
+                        >
+                          {isRecording && (
+                            <>
+                              <div className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse flex-shrink-0" />
+                              <span className="text-xs text-red-400 font-medium truncate">
+                                {liveTranscript ? liveTranscript : 'Listening... speak now'}
+                              </span>
+                            </>
+                          )}
+                          {isProcessingImage && (
+                            <>
+                              <div className="w-4 h-4 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
+                              <span className="text-xs text-blue-400 font-medium">Analyzing image &amp; searching knowledge base...</span>
+                            </>
+                          )}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                     <div className={`bg-card/80 backdrop-blur-2xl border ${isRecording ? 'border-red-500/40 shadow-red-500/10' : 'border-border/60 shadow-2xl'} rounded-xl sm:rounded-[28px] p-1 sm:p-2 flex items-end gap-1 sm:gap-2 transition-all`}>
                       {!isRecording ? (
                         <>
-                          <button onClick={() => toast.info("Coming soon, we are working on it")} className="p-3 text-slate-400 hover:text-white transition-colors">
-                            <span className="w-5 h-5 flex items-center justify-center">📷</span>
+                          <button
+                            onClick={() => fileInputRef.current?.click()}
+                            className="p-3 text-slate-400 hover:text-blue-400 transition-colors"
+                            title="Upload image of a problem"
+                          >
+                            <ImagePlus className="w-5 h-5" />
                           </button>
-                          <button onClick={() => toast.info("Coming soon, we are working on it")} className="p-3 text-slate-400 hover:text-blue-400 transition-colors">
-                            <span className="w-5 h-5 flex items-center justify-center">🎤</span>
+                          <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={async (e) => {
+                              const file = e.target.files?.[0];
+                              if (!file || !activeSession) return;
+                              e.target.value = '';
+
+                              setIsProcessingImage(true);
+                              setIsTyping(true);
+
+                              try {
+                                // Convert to base64
+                                const reader = new FileReader();
+                                const dataUrl = await new Promise<string>((resolve) => {
+                                  reader.onload = () => resolve(reader.result as string);
+                                  reader.readAsDataURL(file);
+                                });
+                                const base64 = dataUrl.split(',')[1];
+                                const mimeType = file.type || 'image/png';
+
+                                // Add user message with image preview
+                                const userMsg: ChatMessageType = {
+                                  id: Date.now().toString(),
+                                  role: 'user',
+                                  content: 'I uploaded an image of a problem. Can you solve it?',
+                                  timestamp: new Date(),
+                                  image: dataUrl,
+                                };
+                                // Call image-solve API
+                                const result = await solveOriginAiImage(
+                                  base64,
+                                  mimeType,
+                                  activeSession.subject,
+                                );
+
+                                // Build AI response
+                                let aiContent = '';
+                                if (result.matchFound && result.matchDetails) {
+                                  aiContent += `📚 **Found in ${result.matchDetails.source === 'ogcode' ? 'OGCode Database' : 'Knowledge Base'}** (${Math.round(result.matchDetails.score * 100)}% match)\n\n`;
+                                } else {
+                                  aiContent += `🧠 **Solved using ${result.modelUsed}** (new problem)\n\n`;
+                                }
+                                if (result.extractedQuestion) {
+                                  aiContent += `**Extracted Question:** ${result.extractedQuestion}\n\n`;
+                                }
+                                aiContent += result.answer;
+                                if (result.savedToDb) {
+                                  aiContent += '\n\n✅ _This problem has been saved to our database for future reference._';
+                                }
+
+                                const aiMsg: ChatMessageType = {
+                                  id: (Date.now() + 1).toString(),
+                                  role: 'assistant',
+                                  content: aiContent,
+                                  timestamp: new Date(),
+                                  metadata: { source: result.source, modelUsed: result.modelUsed },
+                                };
+
+                                // Store context so the next text message gives the AI background
+                                lastImageContextRef.current = `The student just uploaded an image of this problem: "${result.extractedQuestion || userMsg.content}". The solution provided was: "${result.answer.slice(0, 800)}"`;
+
+                                setActiveSession(prev => {
+                                  if (!prev) return null;
+                                  const updated = { ...prev, messages: [...prev.messages, userMsg, aiMsg] };
+
+                                  // Persist image-solve messages separately so they survive refresh
+                                  const existingImgMsgs = loadImageMsgs(prev.id);
+                                  const existingIds = new Set(existingImgMsgs.map(m => m.id));
+                                  const newMsgs = [userMsg, aiMsg].filter(m => !existingIds.has(m.id));
+                                  if (newMsgs.length > 0) {
+                                    saveImageMsgs(prev.id, [...existingImgMsgs, ...newMsgs]);
+                                  }
+
+                                  return updated;
+                                });
+                              } catch (error) {
+                                console.error('Image solve failed', error);
+                                toast.error('Could not process the image — please try again.');
+                              } finally {
+                                setIsProcessingImage(false);
+                                setIsTyping(false);
+                              }
+                            }}
+                          />
+                          <button
+                            onClick={() => {
+                              if (isRecording) {
+                                speechRecognitionRef.current?.stop();
+                                return;
+                              }
+
+                              const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+                              if (!SpeechRecognition) {
+                                toast.error('Speech recognition is not supported in this browser. Please use Chrome.');
+                                return;
+                              }
+
+                              const recognition = new SpeechRecognition();
+                              speechRecognitionRef.current = recognition;
+                              recognition.continuous = true;
+                              recognition.interimResults = true;
+                              recognition.lang = 'en-IN';
+
+                              let finalText = '';
+
+                              recognition.onresult = (event: any) => {
+                                let interim = '';
+                                for (let i = event.resultIndex; i < event.results.length; i++) {
+                                  const result = event.results[i];
+                                  if (result.isFinal) {
+                                    finalText += result[0].transcript + ' ';
+                                  } else {
+                                    interim = result[0].transcript;
+                                  }
+                                }
+                                setLiveTranscript((finalText + interim).trim());
+                              };
+
+                              recognition.onend = () => {
+                                setIsRecording(false);
+                                const transcript = finalText.trim();
+                                setLiveTranscript('');
+                                if (transcript) {
+                                  setMessage(transcript);
+                                  // Use a microtask so setMessage flushes before send
+                                  setTimeout(() => {
+                                    handleSendMessage(transcript);
+                                  }, 0);
+                                }
+                              };
+
+                              recognition.onerror = (event: any) => {
+                                if (event.error !== 'aborted') {
+                                  toast.error('Voice recognition error. Please try again.');
+                                }
+                                setIsRecording(false);
+                                setLiveTranscript('');
+                              };
+
+                              recognition.start();
+                              setIsRecording(true);
+                              setLiveTranscript('');
+                            }}
+                            className={`p-3 transition-colors ${isRecording ? 'text-red-500 animate-pulse' : 'text-slate-400 hover:text-blue-400'}`}
+                            title={isRecording ? 'Stop recording' : 'Record voice'}
+                          >
+                            {isRecording ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
                           </button>
                           <textarea
                             rows={1}
@@ -730,17 +932,18 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
                           />
                         </>
                       ) : (
-                        <div className="flex-1 flex items-center gap-4 px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                            <span className="text-red-500 font-bold text-sm">Recording {formatTime(recordingTime)}</span>
-                          </div>
-                          <div className="flex-1 h-1 bg-white/5 rounded-full overflow-hidden relative">
-                            <div className="absolute inset-0 bg-red-500/20 animate-pulse" />
-                          </div>
+                        <div className="flex-1 flex items-center gap-3 px-4 py-3">
+                          <div className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse flex-shrink-0" />
+                          <span className="flex-1 text-sm text-foreground/80 italic truncate">
+                            {liveTranscript || 'Listening...'}
+                          </span>
                           <button
-                            onClick={() => setIsRecording(false)}
-                            className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-foreground"
+                            onClick={() => {
+                              speechRecognitionRef.current?.abort();
+                              setIsRecording(false);
+                              setLiveTranscript('');
+                            }}
+                            className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-foreground flex-shrink-0"
                           >
                             Cancel
                           </button>
@@ -750,8 +953,7 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
                       <button
                         onClick={() => {
                           if (isRecording) {
-                            setIsRecording(false);
-                            setMessage("Sent an audio question.");
+                            speechRecognitionRef.current?.stop();
                           } else {
                             handleSendMessage();
                           }
@@ -1088,10 +1290,29 @@ function ChatMessage({ message }: { message: ChatMessageType }) {
             <img src="/ai-bot.png" alt="AI" className="w-full h-full object-cover" />
           </div>
         )}
-        <div className={`p-3 sm:p-5 rounded-xl sm:rounded-[28px] text-xs sm:text-[15px] leading-relaxed shadow-xl ${isAI
+        <div className={`p-3 sm:p-5 rounded-xl sm:rounded-[28px] text-xs sm:text-[15px] leading-relaxed shadow-xl relative ${isAI
           ? 'bg-card/60 backdrop-blur-md border border-border/60 text-foreground rounded-tl-none'
           : 'bg-blue-600 text-white border border-blue-400/30 rounded-tr-none shadow-blue-600/20'
           }`}>
+          {isAI && message.metadata?.retrieval_status && (
+            <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider mb-3 w-fit border ${
+              message.metadata.retrieval_status === 'retrieved from kb'
+                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                : 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+            }`}>
+              {message.metadata.retrieval_status === 'retrieved from kb' ? (
+                <>
+                  <Database className="w-3 h-3" />
+                  retrieved from kb
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-3 h-3" />
+                  generated
+                </>
+              )}
+            </div>
+          )}
           {message.image && (
             <div className="mb-4 rounded-2xl overflow-hidden border border-white/10 max-w-[200px]">
               <img src={message.image} alt="Uploaded problem" className="w-full h-auto object-cover" />

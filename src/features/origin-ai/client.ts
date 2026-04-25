@@ -599,6 +599,44 @@ export async function listOriginAiChapters(subject: string): Promise<ChapterItem
   return data.chapters ?? [];
 }
 
+// STT: transcribe audio to text
+export async function transcribeOriginAiAudio(
+  audioData: string,
+  mimeType: string = 'audio/wav',
+): Promise<string> {
+  const data = (await apiCall('/origin-ai/transcribe', {
+    method: 'POST',
+    headers: { 'X-Origin-AI-Session-Id': getOriginAiBrowserSessionId() },
+    body: JSON.stringify({ audioData, mimeType }),
+  })) as { transcript?: string };
+  return data.transcript ?? '';
+}
+
+// Image solver
+export type ImageSolveResult = {
+  extractedQuestion: string;
+  questionType: string;
+  answer: string;
+  source: string;
+  modelUsed: string;
+  tokensUsed: number;
+  matchFound: boolean;
+  matchDetails: { source: string; title: string; score: number } | null;
+  savedToDb: boolean;
+};
+
+export async function solveOriginAiImage(
+  imageData: string,
+  mimeType: string = 'image/png',
+  subject?: string | null,
+): Promise<ImageSolveResult> {
+  return (await apiCall('/origin-ai/image-solve', {
+    method: 'POST',
+    headers: { 'X-Origin-AI-Session-Id': getOriginAiBrowserSessionId() },
+    body: JSON.stringify({ imageData, mimeType, subject }),
+  })) as ImageSolveResult;
+}
+
 export async function createOriginAiThread(payload: {
   title?: string;
   subject?: string | null;
