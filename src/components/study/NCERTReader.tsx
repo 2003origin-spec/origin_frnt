@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { apiCall } from '@/lib/api';
 import type { Book, Note } from '@/types';
+import { setManualSelection, extractSelectionText } from '@/features/origin-ai/highlight-capture';
 
 interface Stroke {
     type: 'pen' | 'highlight';
@@ -39,9 +40,48 @@ export default function NCERTReader({ book, onBack, initialNotes = [], activeCha
     const [activeChapter, setActiveChapter] = useState(activeChapterId || book.chapters[0]?.id);
     const [searchQuery, setSearchQuery] = useState('');
     const [isFullscreen, setIsFullscreen] = useState(false);
+    const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
     // --- State for Canvas Annotations ---
     const [activeTool, setActiveTool] = useState<'none' | 'pen' | 'highlight' | 'eraser'>('none');
+    const iframeRef = useRef<HTMLIFrameElement>(null);
+
+    // Synchronize selection from iframe to parent for Origin AI
+    useEffect(() => {
+        const handleIframeSelection = () => {
+            if (!iframeRef.current?.contentDocument) return;
+            const selection = iframeRef.current.contentDocument.getSelection();
+            if (selection && selection.toString()) {
+                const cleanText = extractSelectionText(selection);
+                setManualSelection(cleanText);
+            } else {
+                setManualSelection(null);
+            }
+        };
+
+        const attachListener = () => {
+            const doc = iframeRef.current?.contentDocument;
+            if (doc) {
+                doc.addEventListener('selectionchange', handleIframeSelection);
+            }
+        };
+
+        const iframe = iframeRef.current;
+        if (iframe) {
+            iframe.addEventListener('load', attachListener);
+            attachListener();
+        }
+
+        return () => {
+            if (iframe) {
+                iframe.removeEventListener('load', attachListener);
+                const doc = iframe.contentDocument;
+                if (doc) {
+                    doc.removeEventListener('selectionchange', handleIframeSelection);
+                }
+            }
+        };
+    }, []);
     const [strokes, setStrokes] = useState<Stroke[]>([]);
     const [currentStroke, setCurrentStroke] = useState<Stroke | null>(null);
 
@@ -250,14 +290,9 @@ export default function NCERTReader({ book, onBack, initialNotes = [], activeCha
                     >
                         <ChevronLeft className="w-5 h-5" />
                     </Button>
-                    <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center border border-primary/20 shadow-sm">
-                            <BookOpen className="w-4 h-4 text-primary" />
-                        </div>
-                        <div>
-                            <h1 className="text-sm font-bold text-foreground tracking-wide">{book.title}</h1>
-                            <p className="text-[10px] text-primary font-bold uppercase tracking-wider">{book.subject} • Class {book.bookClass}</p>
-                        </div>
+                    <div className="hidden md:flex flex-col">
+                        <h1 className="text-sm font-bold text-foreground tracking-tight leading-none mb-1">{book.title}</h1>
+                        <p className="text-[10px] text-primary font-bold uppercase tracking-wider">{book.subject} • Class {book.bookClass}</p>
                     </div>
                 </div>
 
@@ -300,13 +335,22 @@ export default function NCERTReader({ book, onBack, initialNotes = [], activeCha
                     </Button>
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                    <Button
+                        variant={isSidebarOpen ? "secondary" : "default"}
+                        size="sm"
+                        onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                        className="h-9 px-4 rounded-full text-xs font-bold shadow-sm transition-all active:scale-95"
+                    >
+                        <PenTool className="w-4 h-4 mr-2" />
+                        {isSidebarOpen ? 'Hide Notes' : 'Show Notes'}
+                    </Button>
                     <Button
                         onClick={handleSave}
-                        className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-full h-9 px-4 text-xs font-bold shadow-lg shadow-primary/20 transition-all active:scale-95"
+                        className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-full h-9 px-4 text-xs font-bold shadow-lg shadow-primary/20 transition-all active:scale-95 hidden sm:flex"
                     >
                         <Save className="w-4 h-4 mr-2" />
-                        Sync Progress
+                        Sync
                     </Button>
                     <Button
                         variant="ghost"
@@ -344,55 +388,33 @@ export default function NCERTReader({ book, onBack, initialNotes = [], activeCha
                     {/* Document Content Area */}
                     <div
                         ref={containerRef}
-                        className="flex-1 overflow-y-auto relative flex justify-center p-4 sm:p-8 custom-scrollbar"
+                        className="flex-1 overflow-hidden relative flex justify-center bg-muted/10"
                     >
-                        {/* The "Paper" Container */}
-                        <div className="w-full max-w-4xl min-h-[1200px] bg-white dark:bg-white/95 rounded-sm shadow-2xl relative text-slate-900 mx-auto transition-transform origin-top">
-
-                            {/* Text Content (Mock) */}
-                            <div className="p-10 sm:p-16 max-w-3xl mx-auto select-auto">
-                                <h2 className="text-3xl font-serif font-bold text-slate-900 mb-8 border-b-2 border-slate-200 pb-4">
-                                    {book.chapters.find(c => c.id === activeChapter)?.title || 'Chapter Title'}
-                                </h2>
-
-                                <div className="w-full h-[1000px] bg-slate-100 rounded-sm overflow-hidden border border-slate-200 relative">
-                                    {(() => {
-                                        const activeChapterMeta = book.chapters.find(c => c.id === activeChapter);
-                                        const pdfFile = activeChapterMeta?.pdfFile;
-                                        const basePath = book.basePath;
-                                        if (pdfFile && basePath) {
-                                            const pdfUrl = `/books/${basePath}/${pdfFile}#toolbar=0&navpanes=0&scrollbar=1`;
-                                            return (
-                                                <iframe
-                                                    src={pdfUrl}
-                                                    className="w-full h-full border-none"
-                                                    title="NCERT Viewer"
-                                                />
-                                            );
-                                        }
-                                        return (
-                                            <div className="flex flex-col items-center justify-center h-full p-10 text-center">
-                                                <p className="text-lg leading-relaxed text-slate-800 mb-6 font-serif">
-                                                    PDF source unavailable for this chapter. The book metadata is missing a base path or PDF filename.
-                                                </p>
-                                            </div>
-                                        );
-                                    })()}
-                                </div>
-
-                                <p className="text-lg leading-relaxed text-slate-800 mb-6 font-serif">
-                                    However, representing the text in DOM elements first allows for vastly superior accessibility, crisp rendering on all devices, and makes native browser text-selection and searching trivial. The <strong>Antigravity theme</strong> surrounds this eye-friendly texture, reducing strain while keeping the core content highly legible.
-                                </p>
-
-                                <div className="my-8 p-6 bg-indigo-50 dark:bg-blue-50/50 border-l-4 border-indigo-500 dark:border-blue-500 rounded-xl shadow-sm">
-                                    <h4 className="font-bold text-indigo-900 dark:text-blue-900 mb-2">Did You Know?</h4>
-                                    <p className="text-indigo-800 dark:text-blue-800">You can use the highlighter tool from the top toolbar to mark any of this text. The canvas layer sits exactly on top of the text, allowing your strokes to persist across sessions!</p>
-                                </div>
-
-                                <p className="text-lg leading-relaxed text-slate-800 font-serif">
-                                    Try grabbing the Pen tool (blue icon) and scribbling over this paragraph. Then switch to the Eraser to rub it out.
-                                </p>
-                            </div>
+                        {/* The PDF Container - Now maximized */}
+                        <div className="w-full h-full relative">
+                            {(() => {
+                                const activeChapterMeta = book.chapters.find(c => c.id === activeChapter);
+                                const pdfFile = activeChapterMeta?.pdfFile;
+                                const basePath = book.basePath;
+                                if (pdfFile && basePath) {
+                                    const pdfUrl = `/books/${basePath}/${pdfFile}#toolbar=0&navpanes=0&scrollbar=1`;
+                                    return (
+                                        <iframe
+                                            ref={iframeRef}
+                                            src={pdfUrl}
+                                            className="w-full h-full border-none"
+                                            title="NCERT Viewer"
+                                        />
+                                    );
+                                }
+                                return (
+                                    <div className="flex flex-col items-center justify-center h-full p-10 text-center">
+                                        <p className="text-lg leading-relaxed text-slate-800 mb-6 font-serif">
+                                            PDF source unavailable for this chapter.
+                                        </p>
+                                    </div>
+                                );
+                            })()}
 
                             {/* Interactive Canvas Overlay */}
                             <canvas
@@ -415,36 +437,38 @@ export default function NCERTReader({ book, onBack, initialNotes = [], activeCha
                 </div>
 
                 {/* --- Right: Personal Notebook Sidebar --- */}
-                <div className="w-80 lg:w-96 bg-card backdrop-blur-xl border-l border-border flex flex-col shrink-0 z-20 shadow-[-5px_0_15px_rgba(0,0,0,0.05)] transition-colors">
-                    <div className="h-14 flex items-center justify-between px-5 border-b border-border bg-muted/50">
-                        <div className="flex items-center gap-2">
-                            <PenTool className="w-4 h-4 text-primary" />
-                            <span className="font-bold text-sm tracking-wide text-foreground">Smart Notebook</span>
+                {isSidebarOpen && (
+                    <div className="w-80 lg:w-96 bg-card backdrop-blur-xl border-l border-border flex flex-col shrink-0 z-20 shadow-[-5px_0_15px_rgba(0,0,0,0.05)] transition-all">
+                        <div className="h-14 flex items-center justify-between px-5 border-b border-border bg-muted/50">
+                            <div className="flex items-center gap-2">
+                                <PenTool className="w-4 h-4 text-primary" />
+                                <span className="font-bold text-sm tracking-wide text-foreground">Smart Notebook</span>
+                            </div>
+                            <Badge variant="outline" className="text-[10px] font-bold bg-primary/5 text-primary border-primary/20">AUTO-SYNC</Badge>
                         </div>
-                        <Badge variant="outline" className="text-[10px] font-bold bg-primary/5 text-primary border-primary/20">AUTO-SYNC</Badge>
-                    </div>
 
-                    <div className="p-4 border-b border-border bg-muted/20">
-                        <div className="relative group">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground group-focus-within:text-primary transition-colors" />
-                            <Input
-                                placeholder="Search your notes..."
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                className="w-full h-9 pl-9 bg-background border-border text-xs text-foreground rounded-xl focus-visible:ring-2 focus-visible:ring-primary/20 transition-all font-medium"
+                        <div className="p-4 border-b border-border bg-muted/20">
+                            <div className="relative group">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground group-focus-within:text-primary transition-colors" />
+                                <Input
+                                    placeholder="Search your notes..."
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    className="w-full h-9 pl-9 bg-background border-border text-xs text-foreground rounded-xl focus-visible:ring-2 focus-visible:ring-primary/20 transition-all font-medium"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="flex-1 p-5 overflow-y-auto bg-card">
+                            <textarea
+                                value={markdownNote}
+                                onChange={(e) => setMarkdownNote(e.target.value)}
+                                className="w-full h-full bg-transparent border-none resize-none focus:ring-0 text-foreground text-sm leading-relaxed font-sans placeholder:text-muted-foreground/50 outline-none"
+                                placeholder="Type your notes here... Supports markdown formatting."
                             />
                         </div>
                     </div>
-
-                    <div className="flex-1 p-5 overflow-y-auto bg-card">
-                        <textarea
-                            value={markdownNote}
-                            onChange={(e) => setMarkdownNote(e.target.value)}
-                            className="w-full h-full bg-transparent border-none resize-none focus:ring-0 text-foreground text-sm leading-relaxed font-sans placeholder:text-muted-foreground/50 outline-none"
-                            placeholder="Type your notes here... Supports markdown formatting."
-                        />
-                    </div>
-                </div>
+                )}
 
             </div>
         </div>

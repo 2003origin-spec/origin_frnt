@@ -1124,29 +1124,50 @@ function ensureStoreFile(): void {
 // disk I/O, JSON.parse, and (crucially) the bcrypt-heavy seed checks. All
 // mutations flow through writeStore(), which keeps this reference in sync.
 let cachedStore: AppStore | null = null;
+let lastLoadedTime = 0;
 let seedingComplete = false;
 
 export function readStore(): AppStore {
-  if (cachedStore) {
+  ensureStoreFile();
+  const stats = fs.statSync(STORE_PATH);
+  const mtime = stats.mtimeMs;
+
+  if (cachedStore && mtime <= lastLoadedTime) {
     return cachedStore;
   }
-  ensureStoreFile();
-  const store = JSON.parse(fs.readFileSync(STORE_PATH, "utf8")) as AppStore;
-  if (!seedingComplete) {
-    const changed = ensureSeedUsers(store) || ensureAllCollections(store);
-    if (changed) {
-      fs.writeFileSync(STORE_PATH, JSON.stringify(store, null, 2), "utf8");
+
+  try {
+    const raw = fs.readFileSync(STORE_PATH, "utf8");
+    const store = JSON.parse(raw) as AppStore;
+    
+    if (!seedingComplete) {
+      const changed = ensureSeedUsers(store) || ensureAllCollections(store);
+      if (changed) {
+        fs.writeFileSync(STORE_PATH, JSON.stringify(store, null, 2), "utf8");
+        // Update mtime after seeding
+        lastLoadedTime = fs.statSync(STORE_PATH).mtimeMs;
+      } else {
+        lastLoadedTime = mtime;
+      }
+      seedingComplete = true;
+    } else {
+      lastLoadedTime = mtime;
     }
-    seedingComplete = true;
+    
+    cachedStore = store;
+    return store;
+  } catch (err) {
+    console.error("Failed to read store from disk, using cache if available", err);
+    if (cachedStore) return cachedStore;
+    throw err;
   }
-  cachedStore = store;
-  return store;
 }
 
 export function writeStore(store: AppStore): void {
   ensureStoreFile();
   fs.writeFileSync(STORE_PATH, JSON.stringify(store, null, 2), "utf8");
   cachedStore = store;
+  lastLoadedTime = fs.statSync(STORE_PATH).mtimeMs;
 }
 
 // Serializes all async read-modify-write operations to prevent concurrent request races.

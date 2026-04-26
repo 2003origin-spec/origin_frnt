@@ -69,6 +69,7 @@ export const apiCall = async (endpoint: string, options: RequestInit = {}): Prom
     const doFetch = (token: string | null) =>
         fetch(`${API_URL}${normalizedEndpoint}`, {
             ...options,
+            cache: 'no-store',
             headers: buildHeaders(token, options.headers),
         });
 

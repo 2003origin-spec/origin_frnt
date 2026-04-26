@@ -305,7 +305,7 @@ function renderFormattedExplanation(content: string | null | undefined): ReactNo
 }
 
 function renderQuestionText(content: string | null | undefined, keyPrefix: string): ReactNode {
-    return <FormattedMessage content={content || ''} inline />;
+    return <FormattedMessage content={content || ''} />;
 }
 
 export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, setTimeMode, user, initialQuestion }: OGCodeWorkspaceProps) {

@@ -3,7 +3,7 @@
 import { revalidateTag } from 'next/cache';
 
 import { getServerUser } from '@/lib/auth-server';
-import { readStore } from '@/server/store';
+import { withStoreAsync } from '@/server/store';
 import {
   createCustomTest,
   submitTest,
@@ -19,8 +19,9 @@ async function requireUser() {
 
 export async function createCustomTestAction(payload: CustomTestPayload) {
   const user = await requireUser();
-  const store = readStore();
-  const test = await createCustomTest(store, user, payload);
+  const test = await withStoreAsync(async (store) => {
+    return createCustomTest(store, user, payload);
+  });
   revalidateTag('tests', 'max');
   revalidateTag(`progress-user:${user.id}`, 'max');
   return test;
@@ -28,8 +29,9 @@ export async function createCustomTestAction(payload: CustomTestPayload) {
 
 export async function submitTestAction(testId: string, payload: TestSubmissionPayload) {
   const user = await requireUser();
-  const store = readStore();
-  const result = await submitTest(store, user, testId, payload);
+  const result = await withStoreAsync(async (store) => {
+    return submitTest(store, user, testId, payload);
+  });
 
   revalidateTag('tests', 'max');
   revalidateTag(`test:${testId}`, 'max');

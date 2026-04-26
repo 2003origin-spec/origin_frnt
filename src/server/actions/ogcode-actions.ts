@@ -1,9 +1,9 @@
 'use server';
 
-import { revalidateTag } from 'next/cache';
+import { revalidateTag, revalidatePath } from 'next/cache';
 
 import { getServerUser } from '@/lib/auth-server';
-import { readStore } from '@/server/store';
+import { withStoreAsync } from '@/server/store';
 import {
   submitPracticeQuestion,
   type PracticeSubmissionPayload,
@@ -20,8 +20,9 @@ export async function submitOgcodeAnswerAction(
   payload: PracticeSubmissionPayload,
 ) {
   const user = await requireUser();
-  const store = readStore();
-  const result = await submitPracticeQuestion(store, user, questionId, payload);
+  const result = await withStoreAsync(async (store) => {
+    return submitPracticeQuestion(store, user, questionId, payload);
+  });
 
   revalidateTag('leaderboard', 'max');
   revalidateTag('milestones', 'max');
@@ -29,9 +30,8 @@ export async function submitOgcodeAnswerAction(
   revalidateTag(`progress-user:${user.id}`, 'max');
   revalidateTag(`ogcode-question:${questionId}`, 'max');
   revalidateTag('ogcode-catalog', 'max');
-  revalidateTag(`ogcode-user:${user.id}`, 'max');
-  revalidateTag('ogcode-challenge', 'max');
-  revalidateTag('auth-user', 'max');
-  revalidateTag(`user:${user.id}`, 'max');
+  revalidateTag('user-stats', 'max');
+  revalidatePath('/ogcode', 'page');
+  revalidatePath(`/ogcode/${questionId}`, 'page');
   return result;
 }

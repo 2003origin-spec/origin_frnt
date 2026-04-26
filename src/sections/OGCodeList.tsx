@@ -8,7 +8,7 @@ import {
     CheckCircle2, Code2, Search,
     Trophy, Zap, Flame, Brain, Circle,
     TrendingUp, Atom, Beaker, Calculator, Leaf,
-    ChevronRight, Target, Shuffle, ArrowRight
+    ChevronRight, Target, Shuffle, ArrowRight, X
 } from 'lucide-react';
 import { apiCall } from '@/lib/api';
 import type { PracticeQuestion, PracticeQuestionPage, SubjectRank, User } from '@/types';
@@ -250,6 +250,17 @@ export default function OGCodeList({
     );
     const [openDropdown, setOpenDropdown] = useState<'difficulty' | 'status' | 'subject' | null>(null);
     const [isStatsExpanded, setIsStatsExpanded] = useState(false);
+    
+    const handleQuestionClick = useCallback((questionId: string) => {
+        if (typeof window !== 'undefined') {
+            const selection = window.getSelection();
+            if (selection && selection.toString().trim().length > 0) {
+                return;
+            }
+        }
+        onSelectQuestion(questionId);
+    }, [onSelectQuestion]);
+
     const skipInitialQuestionFetch = useRef(Boolean(prefetchedQuestionPage));
     const skipInitialStatsFetch = useRef(Boolean(initialSubjectRanks && initialUserStats));
     const skipInitialChapterFetch = useRef(initialChapters !== null && initialSubject !== 'Subject');
@@ -262,6 +273,7 @@ export default function OGCodeList({
     // skips them, while still syncing on genuine external changes
     // (browser back/forward, <Link> navigations).
     const selfInitiatedUrlChange = useRef(false);
+    const lastSyncedSearch = useRef(initialSearch);
     
     const urlSubject = parseSubjectFilter(searchParams.get('subject'));
     const urlDifficulty = parseDifficultyFilter(searchParams.get('difficulty'));
@@ -284,6 +296,10 @@ export default function OGCodeList({
             chapters: updates.chapters ?? selectedChapters,
             search: updates.search ?? searchQuery,
         });
+        
+        if (updates.search !== undefined) {
+            lastSyncedSearch.current = updates.search;
+        }
         const currentUrl = `${window.location.pathname}${window.location.search}`;
         if (currentUrl === url) {
             return;
@@ -308,8 +324,9 @@ export default function OGCodeList({
         if (activeStatus !== urlStatus) {
             setActiveStatus(urlStatus);
         }
-        if (searchQuery !== urlSearch) {
+        if (searchQuery !== urlSearch && lastSyncedSearch.current !== urlSearch) {
             setSearchQuery(urlSearch);
+            lastSyncedSearch.current = urlSearch;
         }
         if (!sameStringArray(selectedChapters, urlSelectedChapters)) {
             setSelectedChapters(urlSelectedChapters);
@@ -422,8 +439,12 @@ export default function OGCodeList({
                 skipInitialQuestionFetch.current = false;
                 return;
             }
+            // Clear current questions if it's a fresh search to show spinner
+            if (searchQuery.trim()) {
+                setQuestions([]);
+            }
             void fetchQuestionPage();
-        }, searchQuery.trim() ? 220 : 0);
+        }, searchQuery.trim() ? 300 : 0);
 
         return () => window.clearTimeout(timeout);
     }, [fetchQuestionPage, searchQuery]);
@@ -431,7 +452,7 @@ export default function OGCodeList({
     useEffect(() => {
         const timeout = window.setTimeout(() => {
             syncUrlParams({ search: searchQuery }, 'replace');
-        }, searchQuery.trim() ? 220 : 0);
+        }, searchQuery.trim() ? 300 : 0);
 
         return () => window.clearTimeout(timeout);
     }, [searchQuery, syncUrlParams]);
@@ -494,8 +515,14 @@ export default function OGCodeList({
     };
 
     const filteredQuestions = questions.filter(q => {
-        const matchesSearch = (q.text || q.title || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-            normalizeTags(q.tags).some(t => t.toLowerCase().includes(searchQuery.toLowerCase()));
+        const query = searchQuery.toLowerCase().trim();
+        const matchesSearch = !query || 
+            (q.text || '').toLowerCase().includes(query) ||
+            (q.title || '').toLowerCase().includes(query) ||
+            (q.chapter || '').toLowerCase().includes(query) ||
+            (q.concept || '').toLowerCase().includes(query) ||
+            (q.subject || '').toLowerCase().includes(query) ||
+            normalizeTags(q.tags).some(t => t.toLowerCase().includes(query));
         
         const matchesSubject =
             activeSubject === 'Subject' ||
@@ -841,15 +868,23 @@ export default function OGCodeList({
                         </div>
 
                         <div className="flex flex-wrap items-center gap-3 py-2">
-                            <div className="flex-1 min-w-[300px] relative">
+                            <div className="flex-1 min-w-[280px] relative">
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                                 <input
                                     type="text"
                                     placeholder="Search by title, tags or concepts..."
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
-                                    className="w-full pl-10 pr-4 py-2 bg-slate-100/50 dark:bg-white/5 border border-transparent dark:border-white/5 rounded-lg text-[13px] font-medium text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500/50 transition-all shadow-sm"
+                                    className="w-full pl-10 pr-10 py-2.5 bg-slate-100/50 dark:bg-white/5 border border-slate-200/50 dark:border-white/5 rounded-xl text-[13px] font-medium text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/50 transition-all shadow-sm"
                                 />
+                                {searchQuery && (
+                                    <button 
+                                        onClick={() => setSearchQuery('')}
+                                        className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-slate-200 dark:hover:bg-white/10 rounded-full transition-colors"
+                                    >
+                                        <X className="w-3 h-3 text-slate-400" />
+                                    </button>
+                                )}
                             </div>
                             <div className="flex items-center gap-2">
                                 <div className="relative">
@@ -905,7 +940,7 @@ export default function OGCodeList({
                                         filteredQuestions.map((q, idx) => {
                                             const conf = DIFFICULTY_CONFIG[q.difficulty?.toLowerCase()] || DIFFICULTY_CONFIG.easy;
                                             return (
-                                                <tr key={q.id} onClick={() => onSelectQuestion(q.id)} className={cn("group cursor-pointer transition-colors border-b last:border-0 border-slate-200 dark:border-white/5 hover:bg-slate-100 dark:hover:bg-white/[0.03]")}>
+                                                <tr key={q.id} onClick={() => handleQuestionClick(q.id)} className={cn("group cursor-pointer transition-colors border-b last:border-0 border-slate-200 dark:border-white/5 hover:bg-slate-100 dark:hover:bg-white/[0.03]")}>
                                                     <td className="px-6 py-4">{(q.status === 'solved' || q.isSolved) ? <CheckCircle2 className="w-5 h-5 text-emerald-500" /> : <div className="w-5 h-1 bg-slate-300 dark:bg-slate-700/50 rounded-full" />}</td>
                                                     <td className="px-6 py-4 font-black text-[14px] text-slate-800 dark:text-slate-200 group-hover:text-blue-500 transition-colors">
                                                         <span className="mr-1">{idx + 1}.</span>
@@ -934,7 +969,7 @@ export default function OGCodeList({
                                         return (
                                             <div 
                                                 key={q.id} 
-                                                onClick={() => onSelectQuestion(q.id)}
+                                                onClick={() => handleQuestionClick(q.id)}
                                                 className="p-4 active:bg-slate-50 dark:active:bg-white/5 transition-colors space-y-3"
                                             >
                                                 <div className="flex items-start justify-between gap-3">

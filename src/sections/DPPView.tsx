@@ -428,7 +428,7 @@ export default function DPPView({ onBack, initialDpps }: DPPViewProps) {
                   {currentQuestion ? (
                     <>
                       <div className="text-lg sm:text-xl font-medium text-slate-900 dark:text-white mb-6 leading-relaxed">
-                        <FormattedMessage content={currentQuestion.text} inline />
+                        <FormattedMessage content={currentQuestion.text} />
                       </div>
 
                       <div className="space-y-3 mb-6">

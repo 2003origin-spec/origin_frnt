@@ -451,8 +451,8 @@ export default function OriginAiMentor({
           ) : null}
           {highlightedText ? (
             <div className="mb-2 flex items-center gap-2 rounded-2xl border border-blue-400/20 bg-blue-600/5 px-3 py-2 text-xs">
-              <span className="shrink-0 font-black uppercase tracking-wider text-blue-600 dark:text-blue-200">Selected:</span>
-              <span className="line-clamp-1 flex-1 font-medium text-foreground/80">{highlightedText}</span>
+              <span className="shrink-0 font-black tracking-wider text-blue-600 dark:text-blue-200">Selected </span>
+              <FormattedMessage content={highlightedText} inline className="line-clamp-1 flex-1 font-medium text-foreground/80" />
               <button
                 type="button"
                 onClick={() => clearHighlightedText()}
@@ -670,8 +670,8 @@ export default function OriginAiMentor({
             ) : null}
             {highlightedText ? (
               <div className="mb-2 flex items-center gap-2 rounded-2xl border border-blue-400/20 bg-blue-500/10 px-3 py-2 text-xs text-blue-200">
-                <span className="shrink-0 font-semibold uppercase tracking-wider">Selected:</span>
-                <span className="line-clamp-1 flex-1 opacity-80">{highlightedText}</span>
+                <span className="shrink-0 font-semibold tracking-wider">Selected </span>
+                <FormattedMessage content={highlightedText} inline className="line-clamp-1 flex-1 opacity-80" />
                 <button
                   type="button"
                   onClick={() => clearHighlightedText()}

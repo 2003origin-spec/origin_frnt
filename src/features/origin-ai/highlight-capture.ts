@@ -47,11 +47,80 @@ function getSelectionRect(selection: Selection | null): HighlightRect | null {
   };
 }
 
+export function extractSelectionText(selection: Selection | null): string | null {
+  if (!selection || selection.rangeCount === 0) return null;
+
+  let extractedText = '';
+  
+  for (let i = 0; i < selection.rangeCount; i++) {
+    const range = selection.getRangeAt(i);
+    const frag = range.cloneContents();
+    const div = document.createElement('div');
+    div.appendChild(frag);
+
+    // Process KaTeX nodes bottom-up to handle nested math correctly
+    const katexNodes = Array.from(div.querySelectorAll('.katex'));
+    // Sort by depth (deepest first) to ensure we don't replace a parent before its children
+    katexNodes.sort((a, b) => b.querySelectorAll('*').length - a.querySelectorAll('*').length);
+
+    katexNodes.forEach((node) => {
+      // Check if node is still connected to our working div
+      if (!div.contains(node)) return;
+
+      const annotation = node.querySelector('annotation[encoding="application/x-tex"]');
+      const mathElement = node.querySelector('math');
+      const ariaLabel = node.getAttribute('aria-label');
+      
+      // Attempt to find the best LaTeX source
+      let tex = (annotation?.textContent || mathElement?.getAttribute('alttext') || ariaLabel || '').trim();
+      
+      // If the TeX source looks like it might be visual junk (contains symbols like √ or scripts incorrectly)
+      // we try to clean it or skip it to avoid corruption like "$./$(...)"
+      if (tex && !tex.includes('$./')) {
+        const isDisplay = node.classList.contains('katex-display') || !!node.querySelector('.katex-display');
+        const delimiter = isDisplay ? '$$' : '$';
+        
+        // Replace the entire KaTeX block with the clean TeX string
+        const textNode = document.createTextNode(`${delimiter}${tex}${delimiter}`);
+        node.replaceWith(textNode);
+      } else {
+        // If no reliable TeX found, strip all visual noise to prevent corrupted innerText
+        node.querySelectorAll('.katex-html, .katex-mathml').forEach(n => n.remove());
+        // If it's a root .katex node and we cleared its guts, remove it entirely
+        if (node.classList.contains('katex') && !node.textContent?.trim()) {
+          node.remove();
+        }
+      }
+    });
+
+    // Cleanup orphaned KaTeX fragments (common in partial selections)
+    const orphanedJunk = div.querySelectorAll(
+      '.katex-html, .katex-mathml, .katex-display, .vlist, .strut, .base, .mord, .msupsub'
+    );
+    orphanedJunk.forEach(n => n.remove());
+
+    div.style.position = 'absolute';
+    div.style.left = '-9999px';
+    div.style.top = '0';
+    div.style.opacity = '0';
+    div.style.pointerEvents = 'none';
+    div.style.whiteSpace = 'pre-wrap';
+    document.body.appendChild(div);
+    
+    // innerText respects display:none and gives us a clean text representation
+    extractedText += div.innerText;
+    document.body.removeChild(div);
+  }
+  
+  return extractedText.trim() || null;
+}
+
 function handleSelectionChange() {
   const selection = window.getSelection();
-  const text = selection?.toString().trim() || null;
+  const text = extractSelectionText(selection);
   if (!text) {
-    if (currentHighlightRect) {
+    if (currentHighlight || currentHighlightRect) {
+      currentHighlight = null;
       currentHighlightRect = null;
       emitChange();
     }
@@ -63,7 +132,8 @@ function handleSelectionChange() {
     anchorNode instanceof Element ? anchorNode : anchorNode?.parentElement ?? null;
 
   if (anchorElement?.closest('[data-origin-ai-root="true"]')) {
-    if (currentHighlightRect) {
+    if (currentHighlight || currentHighlightRect) {
+      currentHighlight = null;
       currentHighlightRect = null;
       emitChange();
     }
@@ -101,6 +171,12 @@ export function stopHighlightCapture(): void {
 export function clearHighlightedText(): void {
   currentHighlight = null;
   currentHighlightRect = null;
+  emitChange();
+}
+
+export function setManualSelection(text: string | null, rect?: HighlightRect | null): void {
+  currentHighlight = text;
+  currentHighlightRect = rect || null;
   emitChange();
 }
 

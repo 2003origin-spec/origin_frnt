@@ -30,6 +30,7 @@ interface TasksGoalsProps {
 
 import { useLayout } from '@/context/LayoutContext';
 import { cn } from '@/lib/utils';
+import { FormattedMessage } from '@/components/origin-ai/FormattedMessage';
 
 export default function TasksGoals({ tasks, onAddTask, onToggleTask, onRemoveTask, onBack, user }: TasksGoalsProps) {
   const { availableWidth } = useLayout();
@@ -246,11 +247,12 @@ export default function TasksGoals({ tasks, onAddTask, onToggleTask, onRemoveTas
                   </button>
 
                   <div className="flex-1 min-w-0">
-                    <h4 className={`text-sm sm:text-base font-bold transition-all ${
+                    <div className={cn(
+                      "text-sm sm:text-base font-bold transition-all",
                       task.completed ? 'text-slate-400 line-through' : 'text-slate-900 dark:text-slate-100'
-                    }`}>
-                      {task.text}
-                    </h4>
+                    )}>
+                      <FormattedMessage content={task.text} inline isAssistant={false} />
+                    </div>
                     <div className="flex flex-wrap items-center gap-3 mt-2">
                       <Badge variant="outline" className={`h-6 px-2 border-0 font-bold text-[10px] uppercase tracking-wider ${
                         task.completed 

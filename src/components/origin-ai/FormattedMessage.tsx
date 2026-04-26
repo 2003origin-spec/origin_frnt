@@ -15,20 +15,161 @@ interface FormattedMessageProps {
 }
 
 /**
- * Normalizes common AI math delimiters to standard Markdown math delimiters ($ and $$)
- * so that remark-math can parse them correctly.
+ * Normalizes common AI math delimiters to standard Markdown math delimiters ($ and $$).
+ * Uses a character-level state machine to avoid the broken protect/restore regex approach.
  */
 function normalizeDelimiters(content: string): string {
   if (!content) return '';
 
-  return content
-    // Replace \[ ... \] with $$ ... $$ (block)
-    .replace(/\\\[([\\s\\S]*?)\\\]/g, '$$$$$1$$$$')
-    // Replace \( ... \) with $ ... $ (inline)
-    .replace(/\\\(([\\s\\S]*?)\\\)/g, '$$$1$$')
-    .replace(/(\$|\\\(|\\\[)[\s\S]*?(\$|\\\)|\\\])/g, (match) => {
-      return match.replace(/\\_/g, '_');
-    });
+  // Step 1: Convert \[ ... \] to $$ ... $$ and \( ... \) to $ ... $
+  let result = content
+    .replace(/\\\[([\s\S]*?)\\\]/g, '\n$$\n$1\n$$\n')
+    .replace(/\\\(([\s\S]*?)\\\)/g, '$$$1$$');
+
+  // Step 2: Wrap bare LaTeX expressions with $ delimiters
+  result = wrapBareLaTeX(result);
+
+  return result;
+}
+
+/**
+ * Wraps bare LaTeX expressions (starting with \command or Greek/math-symbol characters)
+ * with $ delimiters, using a single-pass character-level state machine.
+ * Already-delimited $...$ and $$...$$ blocks are copied verbatim without modification.
+ */
+function wrapBareLaTeX(text: string): string {
+  const out: string[] = [];
+  let i = 0;
+  const len = text.length;
+
+  const isGreek = (c: string): boolean => {
+    const cp = c.codePointAt(0) ?? 0;
+    return (cp >= 0x0370 && cp <= 0x03FF) || (cp >= 0x1F00 && cp <= 0x1FFF);
+  };
+
+  const isMathSymbol = (c: string): boolean =>
+    '±∞≈≠≤≥×÷√∝∠∫∬∭∮∇∂∆∑∏'.includes(c);
+
+  // Peek ahead from position pos (skipping spaces) and check if what follows
+  // looks like math (LaTeX command, Greek, math symbol, or ^ _)
+  const nextIsMath = (pos: number): boolean => {
+    let k = pos;
+    while (k < len && (text[k] === ' ' || text[k] === '\t')) k++;
+    if (k >= len) return false;
+    const c = text[k];
+    return c === '\\' || isGreek(c) || isMathSymbol(c) || '^_'.includes(c);
+  };
+
+  while (i < len) {
+    // ── Case 1: $$ ... $$ block ───────────────────────────────────────────
+    if (text[i] === '$' && i + 1 < len && text[i + 1] === '$') {
+      const end = text.indexOf('$$', i + 2);
+      if (end !== -1) {
+        out.push(text.slice(i, end + 2));
+        i = end + 2;
+        continue;
+      }
+    }
+
+    // ── Case 2: $ ... $ block ─────────────────────────────────────────────
+    if (text[i] === '$') {
+      const end = text.indexOf('$', i + 1);
+      if (end !== -1) {
+        out.push(text.slice(i, end + 1));
+        i = end + 1;
+        continue;
+      }
+    }
+
+    // ── Case 3: Bare LaTeX starting point ─────────────────────────────────
+    const isLatexCmd = text[i] === '\\' && i + 1 < len && /[a-zA-Z]/.test(text[i + 1]);
+    const isSpecial = isGreek(text[i]) || isMathSymbol(text[i]);
+
+    if (isLatexCmd || isSpecial) {
+      const mathStart = i;
+      let braceDepth = 0;
+      let j = i;
+
+      while (j < len) {
+        const c = text[j];
+
+        // ── Inside braces: consume everything including nested parens ──
+        if (c === '{') { braceDepth++; j++; continue; }
+        if (c === '}') {
+          if (braceDepth > 0) { braceDepth--; j++; continue; }
+          break; // unmatched } – stop
+        }
+        if (braceDepth > 0) { j++; continue; }
+
+        // ── Outside braces ─────────────────────────────────────────────
+        // LaTeX command word
+        if (c === '\\' && j + 1 < len && /[a-zA-Z]/.test(text[j + 1])) {
+          const cmdStart = j + 1;
+          j += 2;
+          while (j < len && /[a-zA-Z]/.test(text[j])) j++;
+          const cmdWord = text.slice(cmdStart, j);
+          // \left, \right, \bigl, \bigr, \Big, \Bigg etc. are followed by
+          // a single delimiter character that MUST stay inside the math block
+          if (/^(left|right|[Bb]ig[lr]?[lr]?|[Bb]igg[lr]?|middle)$/.test(cmdWord)) {
+            // Consume the delimiter: (, ), [, ], |, ., \{, \}
+            if (j < len) {
+              if (text[j] === '\\' && j + 1 < len && /[{}|]/.test(text[j + 1])) {
+                j += 2; // e.g. \left\{ or \right\}
+              } else {
+                j++; // e.g. \left( or \right)
+              }
+            }
+          }
+          continue;
+        }
+
+        // Superscript / subscript
+        if ('^_'.includes(c)) { j++; continue; }
+
+        // Operators and digits
+        if (/[0-9+\-*\/=<>!|&~%]/.test(c)) { j++; continue; }
+
+        // Greek or math symbols
+        if (isGreek(c) || isMathSymbol(c)) { j++; continue; }
+
+        // Single letters (variable names)
+        if (/[a-zA-Z]/.test(c)) { j++; continue; }
+
+        // Space / tab: allow only when next non-space token is math-like
+        if (c === ' ' || c === '\t') {
+          if (nextIsMath(j + 1)) { j++; continue; }
+          // Also allow if a digit follows and THEN math (e.g. "2\theta")
+          let k = j + 1;
+          while (k < len && /[0-9]/.test(text[k])) k++;
+          if (k > j + 1 && nextIsMath(k)) { j++; continue; }
+          break;
+        }
+
+        // Everything else (parens, commas, colons …) – stop
+        break;
+      }
+
+      // Trim trailing whitespace / punctuation that shouldn't end math
+      let mathEnd = j;
+      while (mathEnd > mathStart && /[\s.,;:]/.test(text[mathEnd - 1])) mathEnd--;
+
+      const mathContent = text.slice(mathStart, mathEnd);
+      if (mathContent.length > 0) {
+        out.push('$' + mathContent + '$');
+        i = mathEnd;
+      } else {
+        out.push(text[i]);
+        i++;
+      }
+      continue;
+    }
+
+    // ── Case 4: Regular character ─────────────────────────────────────────
+    out.push(text[i]);
+    i++;
+  }
+
+  return out.join('');
 }
 
 type PProps = ClassAttributes<HTMLParagraphElement> & HTMLAttributes<HTMLParagraphElement> & ExtraProps;

@@ -7,7 +7,7 @@ import { submitTestAction } from '@/server/actions/test-actions';
 import { toast } from 'sonner';
 
 function renderQuestionText(content: string | null | undefined, keyPrefix: string) {
-    return <FormattedMessage content={content || ''} inline />;
+    return <FormattedMessage content={content || ''} />;
 }
 
 function renderInlineSegments(value: string, keyPrefix: string, style?: string) {

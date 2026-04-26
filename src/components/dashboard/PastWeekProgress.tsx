@@ -122,8 +122,8 @@ export default function PastWeekProgress({ user }: PastWeekProgressProps) {
                                     </svg>
 
                                     {/* Center Text (Total Time) */}
-                                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                                        <span className="text-[9px] sm:text-[11px] font-black text-foreground text-center">
+                                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center justify-center pointer-events-none w-full">
+                                        <span className="text-[9px] sm:text-[11px] font-black text-foreground text-center leading-none">
                                             {totalSecs > 0 ? formatTime(totalSecs) : '0m'}
                                         </span>
                                     </div>
