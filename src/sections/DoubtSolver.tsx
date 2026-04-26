@@ -1,5 +1,5 @@
 'use client';
-import { Fragment, useState, useRef, useEffect, useCallback } from 'react';
+import { Fragment, useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   ChevronLeft, Send, ImagePlus, Mic, MicOff,
   X, Sparkles, Plus, Atom,
@@ -32,6 +32,7 @@ import {
 import { renderInlineSegments } from '@/lib/math-text';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { usePublishOriginAiPageContext } from '@/features/origin-ai/page-context-store';
 
 const SESSION_CACHE_KEY = 'doubt_sessions_cache';
 const LAST_SUBJECT_KEY = 'doubt_last_subject';
@@ -64,6 +65,27 @@ const SUBJECT_DISPLAY: Record<SubjectKey, string> = {
   math: 'Mathematics',
   bio: 'Biology',
 };
+
+function isSubjectKey(value: string): value is SubjectKey {
+  return Object.prototype.hasOwnProperty.call(SUBJECT_DISPLAY, value);
+}
+
+function formatSubjectForContext(subject?: string | null): string | null {
+  if (!subject) {
+    return null;
+  }
+
+  return isSubjectKey(subject) ? SUBJECT_DISPLAY[subject] : subject;
+}
+
+function getChapterContextTitle(session: DoubtSession | null): string | null {
+  const title = session?.title?.trim();
+  if (!title || title === 'Doubt Thread' || title.toLowerCase().includes('image analysis')) {
+    return null;
+  }
+
+  return title;
+}
 
 // Adapt an OriginAiThread (list payload, no messages) into the DoubtSession shape
 // the UI already speaks. We use `threadId` as the canonical id so PATCH/DELETE
@@ -195,6 +217,29 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
   const lastImageContextRef = useRef<string | null>(null);
   const [isProcessingImage, setIsProcessingImage] = useState(false);
   const sessionCacheKey = `${SESSION_CACHE_KEY}_${user.id}`;
+  const originAiPageContext = useMemo(() => {
+    const subject = activeSession?.subject ?? selectedSubject ?? null;
+    const subjectLabel = formatSubjectForContext(subject);
+    const chapterTitle = getChapterContextTitle(activeSession);
+    const sessionTitle = activeSession?.title?.trim() || null;
+
+    return {
+      ...buildOriginAiPageContext('/doubt-solver'),
+      questionTitle: sessionTitle ?? (subjectLabel ? `${subjectLabel} Doubt Solver` : 'Doubt Solver'),
+      questionSubject: subjectLabel,
+      questionChapter: chapterTitle,
+      questionConcept: activeSession?.activeConcept ?? null,
+      activeSubject: subject,
+      selectedChapters: chapterTitle ? [chapterTitle] : [],
+    };
+  }, [
+    activeSession?.activeConcept,
+    activeSession?.subject,
+    activeSession?.title,
+    selectedSubject,
+  ]);
+
+  usePublishOriginAiPageContext(originAiPageContext);
 
   const persistSessionCache = useCallback((nextSessions: DoubtSession[]) => {
     const cacheData = nextSessions.map((session) => {

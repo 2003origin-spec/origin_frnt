@@ -90,7 +90,13 @@ export default function ClientShell({ children }: { children: React.ReactNode })
   };
 
   const noNavbarPaths = ['/', '/auth', '/onboarding', '/role-selection'];
+  const isTestsPath = pathname === '/tests' || pathname.startsWith('/tests/');
   const isSpecialPath = pathname.startsWith('/tests/') || pathname.startsWith('/ogcode/');
+  const shouldShowFloatingOriginAi =
+    deferredUiReady &&
+    !!user &&
+    !noNavbarPaths.includes(pathname) &&
+    !isTestsPath;
   
   // Use resolvedTheme if available to handle 'system' correctly
   const currentTheme = (mounted ? resolvedTheme : 'dark') || 'dark';
@@ -123,7 +129,7 @@ export default function ClientShell({ children }: { children: React.ReactNode })
           {children}
         </div>
       </main>
-      {deferredUiReady && user && !noNavbarPaths.includes(pathname) && pathname !== '/doubt-solver'
+      {shouldShowFloatingOriginAi
         ? <FloatingChat />
         : null}
       {deferredUiReady ? <TutorialOverlay /> : null}
