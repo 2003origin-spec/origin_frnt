@@ -5,7 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { toast } from 'sonner';
 import type { User, StreakData, Task } from '@/types';
 import { clearOriginAiBrowserSession } from '@/features/origin-ai/session';
-import { AUTH_EXPIRED_EVENT } from '@/lib/api';
+import { AUTH_EXPIRED_EVENT, TOKEN_REFRESHED_EVENT } from '@/lib/api';
 import {
   addTaskAction,
   listTasksAction,
@@ -39,6 +39,8 @@ interface AuthContextType {
   primeTasks: (seededTasks: Task[]) => void;
   isNavigationLocked: boolean;
   setIsNavigationLocked: (locked: boolean) => void;
+  accessToken: string | null;
+  refreshToken: string | null;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -68,11 +70,14 @@ interface AuthProviderProps {
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUser }) => {
   const [user, setUser] = useState<User | null>(initialUser);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [refreshToken, setRefreshToken] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<'student' | 'teacher' | 'admin' | null>(
     normalizeRole(initialUser?.role),
   );
   const [streakData, setStreakData] = useState<StreakData>(initialUser?.streakData ?? EMPTY_STREAK);
   const [isLoading, setIsLoading] = useState(false);
+  const [isHydrating, setIsHydrating] = useState(typeof window !== 'undefined' && !initialUser);
   const [authError, setAuthError] = useState<string | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [tasksLoading, setTasksLoading] = useState(false);
@@ -118,27 +123,110 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
     }
   }, [applyUserData]);
 
-  // Auth-expired listener only. The server now seeds `initialUser`, and task
-  // lists are primed by the specific routes that need them.
+  // 1. Session Hydration: If the server didn't find a user (expired cookie) but
+  // localStorage has tokens, attempt a silent recovery.
+  useEffect(() => {
+    const hydrate = async () => {
+      const storedAccess = localStorage.getItem('origin_access_token');
+      const storedRefresh = localStorage.getItem('origin_refresh_token');
+
+      if (storedAccess) setAccessToken(storedAccess);
+      if (storedRefresh) setRefreshToken(storedRefresh);
+
+      // If we have an initial user from the server, we're already hydrated.
+      if (initialUser) {
+        setIsHydrating(false);
+        return;
+      }
+
+      // If no tokens in localStorage, we're done.
+      if (!storedAccess) {
+        setIsHydrating(false);
+        return;
+      }
+
+      try {
+        // Try to fetch the user profile using the stored token.
+        // refreshUserAction() uses getServerUser() which checks cookies, 
+        // so we actually need to hit the /api/users/me endpoint directly 
+        // to use the Bearer token from localStorage.
+        const response = await fetch('/api/users/me', {
+          headers: {
+            'Authorization': `Bearer ${storedAccess}`
+          }
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.user) {
+            applyUserData(data.user);
+          }
+        } else if (response.status === 401 && storedRefresh) {
+          // Access token expired, try to refresh
+          const refreshRes = await fetch('/api/users/token/refresh', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refresh: storedRefresh })
+          });
+          
+          if (refreshRes.ok) {
+            const refreshData = await refreshRes.json();
+            if (refreshData.access) {
+              localStorage.setItem('origin_access_token', refreshData.access);
+              setAccessToken(refreshData.access);
+              // Retry fetching user
+              const retryRes = await fetch('/api/users/me', {
+                headers: { 'Authorization': `Bearer ${refreshData.access}` }
+              });
+              if (retryRes.ok) {
+                const retryData = await retryRes.json();
+                if (retryData.user) applyUserData(retryData.user);
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.error('[AuthContext] Hydration failed:', err);
+      } finally {
+        setIsHydrating(false);
+      }
+    };
+
+    hydrate();
+  }, [initialUser, applyUserData]);
+
+  // Auth-expired listener only.
   useEffect(() => {
     const handleAuthExpired = () => {
       setUser(null);
       setUserRole(null);
+      setAccessToken(null);
+      setRefreshToken(null);
       setTasks([]);
       tasksFetched.current = false;
       clearOriginAiBrowserSession();
       router.push('/auth');
       toast.error('Your session expired. Please log in again.');
     };
+    const handleTokenRefreshed = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail.access) setAccessToken(detail.access);
+      if (detail.refresh) setRefreshToken(detail.refresh);
+    };
+
     window.addEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
-    return () => window.removeEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
+    window.addEventListener(TOKEN_REFRESHED_EVENT, handleTokenRefreshed);
+    return () => {
+      window.removeEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
+      window.removeEventListener(TOKEN_REFRESHED_EVENT, handleTokenRefreshed);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Runs on every route change and keeps protected and guest-only pages aligned
   // with the current auth state.
   useEffect(() => {
-    if (isLoading) return;
+    if (isLoading || isHydrating) return;
 
     // Normalize path for robust matching (remove trailing slash except for root)
     const normalizedPath = pathname === '/' ? '/' : pathname.replace(/\/+$/, '');
@@ -183,8 +271,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
       // Tokens already live in HttpOnly cookies; mirror to localStorage so
       // legacy `apiCall` sites (and the mobile bridge) keep working until
       // every call site is migrated off the /api/... bridge.
-      if (result.access) localStorage.setItem('origin_access_token', result.access);
-      if (result.refresh) localStorage.setItem('origin_refresh_token', result.refresh);
+      if (result.access) {
+        localStorage.setItem('origin_access_token', result.access);
+        setAccessToken(result.access);
+      }
+      if (result.refresh) {
+        localStorage.setItem('origin_refresh_token', result.refresh);
+        setRefreshToken(result.refresh);
+      }
 
       setUser(result.user);
       if (result.user.streakData) setStreakData(result.user.streakData);
@@ -222,8 +316,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
       }
 
       clearOriginAiBrowserSession();
-      if (result.access) localStorage.setItem('origin_access_token', result.access);
-      if (result.refresh) localStorage.setItem('origin_refresh_token', result.refresh);
+      if (result.access) {
+        localStorage.setItem('origin_access_token', result.access);
+        setAccessToken(result.access);
+      }
+      if (result.refresh) {
+        localStorage.setItem('origin_refresh_token', result.refresh);
+        setRefreshToken(result.refresh);
+      }
 
       setUser(result.user);
       if (result.user.streakData) setStreakData(result.user.streakData);
@@ -261,8 +361,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
       }
 
       clearOriginAiBrowserSession();
-      if (result.access) localStorage.setItem('origin_access_token', result.access);
-      if (result.refresh) localStorage.setItem('origin_refresh_token', result.refresh);
+      if (result.access) {
+        localStorage.setItem('origin_access_token', result.access);
+        setAccessToken(result.access);
+      }
+      if (result.refresh) {
+        localStorage.setItem('origin_refresh_token', result.refresh);
+        setRefreshToken(result.refresh);
+      }
 
       setUser(result.user);
       if (result.user.streakData) setStreakData(result.user.streakData);
@@ -299,6 +405,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
     // Server Action clears the HttpOnly cookies + revalidates the RSC tree.
     // Fire-and-forget so the UI never waits on the round-trip.
     void logoutAction().catch(() => {});
+    setAccessToken(null);
+    setRefreshToken(null);
     router.push('/');
     toast.info('Logged out successfully');
   };
@@ -359,6 +467,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
       primeTasks,
       isNavigationLocked,
       setIsNavigationLocked,
+      accessToken,
+      refreshToken,
     }}>
       {children}
     </AuthContext.Provider>

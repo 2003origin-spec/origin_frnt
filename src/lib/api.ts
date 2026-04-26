@@ -9,6 +9,8 @@ function normalizeEndpoint(endpoint: string) {
 
 // Dispatched when the refresh token itself is expired — AuthContext listens and logs the user out
 export const AUTH_EXPIRED_EVENT = 'origin:auth:expired';
+// Dispatched when a new access token is obtained via refresh — AuthContext listens and updates its in-memory state
+export const TOKEN_REFRESHED_EVENT = 'origin:auth:refreshed';
 
 async function attemptTokenRefresh(): Promise<string | null> {
     const refreshToken = localStorage.getItem('origin_refresh_token');
@@ -25,6 +27,7 @@ async function attemptTokenRefresh(): Promise<string | null> {
         if (!data.access) return null;
         localStorage.setItem('origin_access_token', data.access);
         if (data.refresh) localStorage.setItem('origin_refresh_token', data.refresh);
+        window.dispatchEvent(new CustomEvent(TOKEN_REFRESHED_EVENT, { detail: { access: data.access, refresh: data.refresh } }));
         return data.access;
     } catch {
         return null;
