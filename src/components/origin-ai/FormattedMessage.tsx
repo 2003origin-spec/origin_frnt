@@ -185,12 +185,12 @@ export function FormattedMessage({ content, className, isAssistant = true, inlin
 
   return (
     <Wrapper className={cn(
-      !inline && 'prose prose-sm dark:prose-invert max-w-none',
+      !inline && 'prose prose-sm max-w-none',
+      !inline && !className?.includes('prose-invert') && 'dark:prose-invert',
       !inline && 'prose-p:leading-relaxed prose-p:my-1',
       !inline && 'prose-ul:my-2 prose-ol:my-2',
       !inline && 'prose-li:my-0.5',
       !inline && 'prose-strong:text-blue-600 dark:prose-strong:text-blue-400 prose-strong:font-bold',
-      isAssistant ? 'text-foreground' : 'text-white prose-strong:text-white dark:prose-strong:text-white',
       className
     )}>
       <ReactMarkdown

@@ -203,7 +203,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
             <Tabs defaultValue="all" className="mb-12">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 mb-8 border-b border-border/40 pb-6">
                 <TabsList className="bg-transparent p-0 flex flex-wrap gap-1 sm:gap-2 h-auto justify-start">
-                  {(['all', 'recommended', 'attempted', 'gallery', 'build', 'search'] as const).map((tab) => (
+                  {(['all', 'recommended', 'pyq', 'attempted', 'gallery', 'build', 'search'] as const).map((tab) => (
                     <TabsTrigger
                       key={tab}
                       value={tab}
@@ -211,6 +211,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                     >
                       {tab === 'all' ? 'Institute' : 
                        tab === 'recommended' ? 'Daily' : 
+                       tab === 'pyq' ? 'PYQ Tests' :
                        tab === 'attempted' ? 'Performance' : 
                        tab === 'gallery' ? 'My Tests' : 
                        tab === 'build' ? 'Build' : 'Search'}
@@ -254,7 +255,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                 <div className="mb-8 p-6 rounded-[32px] bg-gradient-to-br from-indigo-600 to-indigo-900 text-white relative overflow-hidden shadow-xl shadow-indigo-500/20">
                   <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
                     <div>
-                      <h2 className="text-2xl font-black uppercase tracking-tighter mb-1 italic">Personalized Intelligence</h2>
+                      <h2 className="text-2xl font-black uppercase tracking-tighter mb-1">Personalized Intelligence</h2>
                       <p className="text-xs font-bold opacity-80 uppercase tracking-widest flex items-center gap-2">
                         <Sparkles className="w-4 h-4" />
                         Tests curated for your primary subjects
@@ -296,6 +297,56 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                       />
                     ))}
                 </div>
+              </TabsContent>
+
+              <TabsContent value="pyq" className="mt-0 outline-none">
+                <Tabs defaultValue="jee-main" className="w-full">
+                  <div className="flex justify-center mb-8">
+                    <TabsList className="bg-slate-100/50 dark:bg-slate-800/50 p-1 rounded-2xl">
+                      <TabsTrigger value="jee-main" className="rounded-xl px-6 py-2 text-xs font-bold uppercase tracking-widest data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:shadow-sm">JEE Main</TabsTrigger>
+                      <TabsTrigger value="jee-advanced" className="rounded-xl px-6 py-2 text-xs font-bold uppercase tracking-widest data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:shadow-sm">JEE Advanced</TabsTrigger>
+                      <TabsTrigger value="neet" className="rounded-xl px-6 py-2 text-xs font-bold uppercase tracking-widest data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:shadow-sm">NEET</TabsTrigger>
+                    </TabsList>
+                  </div>
+
+                  {(['jee-main', 'jee-advanced', 'neet'] as const).map(exam => {
+                    const examTests = standardTests.filter(t => {
+                       const title = t.title.toLowerCase();
+                       const desc = t.description.toLowerCase();
+                       const isPyq = title.includes('pyq') || desc.includes('pyq') || title.includes('previous year') || desc.includes('previous year');
+                       if (!isPyq) return false;
+                       if (exam === 'jee-main') return title.includes('jee main') || title.includes('mains') || desc.includes('jee main');
+                       if (exam === 'jee-advanced') return title.includes('jee adv') || title.includes('advanced') || desc.includes('advanced');
+                       if (exam === 'neet') return title.includes('neet') || desc.includes('neet');
+                       return false;
+                    });
+                    
+                    return (
+                      <TabsContent key={exam} value={exam} className="mt-0 outline-none">
+                        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                          {examTests.map((test) => (
+                            <TestCard
+                              key={test.id}
+                              test={test}
+                              onStart={() => onStartTest(test)}
+                              onViewAnalysis={() => onViewAnalysis(test)}
+                              user={user}
+                              getSubjectIcon={getSubjectIcon}
+                              getSubjectColor={getSubjectColor}
+                              getDifficultyColor={getDifficultyColor}
+                            />
+                          ))}
+                          {examTests.length === 0 && (
+                            <div className="col-span-full py-20 text-center border-2 border-dashed border-border/40 rounded-[40px] bg-slate-50/50 dark:bg-white/5">
+                              <BookOpen className="w-12 h-12 text-slate-300 mx-auto mb-4 opacity-50" />
+                              <p className="text-sm font-bold text-slate-500 uppercase tracking-widest">No PYQ tests available for this category</p>
+                            </div>
+                          )}
+                        </div>
+                      </TabsContent>
+                    )
+                  })}
+                </Tabs>
               </TabsContent>
 
               <TabsContent value="attempted" className="mt-0 outline-none">
@@ -346,7 +397,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                       <div className="w-20 h-20 rounded-3xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center mb-6">
                         <Plus className="w-10 h-10" />
                       </div>
-                      <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-2 uppercase tracking-tighter italic">Generator Empty</h3>
+                      <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-2 uppercase tracking-tighter">Generator Empty</h3>
                       <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-8">No custom tests found in your gallery.</p>
                     </Card>
                   )}
@@ -359,7 +410,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                     <Card className="border-0 bg-white/40 dark:bg-white/5 backdrop-blur-xl shadow-soft rounded-[40px] overflow-hidden">
                         <div className="p-6 sm:p-10 border-b border-border/40 bg-gradient-to-r from-indigo-600 to-indigo-900 text-white relative">
                             <div className="relative z-10">
-                                <h2 className="text-xl sm:text-3xl font-black uppercase tracking-tighter mb-2 italic">Test Builder</h2>
+                                <h2 className="text-xl sm:text-3xl font-black uppercase tracking-tighter mb-2">Test Builder</h2>
                                 <p className="text-[10px] sm:text-xs font-bold opacity-80 uppercase tracking-widest">Configure your session</p>
                             </div>
                             <Plus className="absolute top-6 right-6 sm:top-10 sm:right-10 w-12 h-12 sm:w-20 sm:h-20 opacity-10" />
@@ -594,7 +645,7 @@ function TestCard({ test, onStart, onViewAnalysis, user, getSubjectIcon, getSubj
 
         {/* Content Section */}
         <div className="mb-4 sm:mb-6">
-          <h3 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white mb-2 leading-tight uppercase tracking-tighter italic transition-colors group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
+          <h3 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white mb-2 leading-tight uppercase tracking-tighter transition-colors group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
             {test.title}
           </h3>
           <p className="text-[10px] sm:text-xs font-medium text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed">

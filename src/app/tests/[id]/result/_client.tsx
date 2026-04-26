@@ -71,7 +71,7 @@ export default function ResultClient({ testId, initialHistory }: Props) {
       showSummary={true}
       onBackToDashboard={() => router.push('/dashboard')}
       onViewDPP={() => router.push('/dpp')}
-      onRetakeTest={() => router.push('/tests')}
+      onRetakeTest={() => router.push(`/tests/${testId}`)}
     />
   );
 }

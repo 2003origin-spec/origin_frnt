@@ -1,18 +1,19 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
-import { Camera, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { Camera, AlertTriangle, ShieldCheck, CheckCircle2, Loader2, Play, Info, X } from 'lucide-react';
 import type { Test, TestResult, UserAnswer } from '@/types';
 import { FormattedMessage } from '@/components/origin-ai/FormattedMessage';
 import { submitTestAction } from '@/server/actions/test-actions';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 
-function renderQuestionText(content: string | null | undefined, keyPrefix: string) {
-    return <FormattedMessage content={content || ''} />;
-}
+const renderQuestionText = (text: string, idPrefix: string) => {
+    return <FormattedMessage content={text} isAssistant={true} className="text-slate-900 !prose-slate" />;
+};
 
-function renderInlineSegments(value: string, keyPrefix: string, style?: string) {
-    return <FormattedMessage content={value || ''} inline />;
-}
+const renderInlineSegments = (text: string, idPrefix: string, type: 'plain' | 'math') => {
+    return <FormattedMessage content={text} inline={true} isAssistant={true} className="text-slate-900" />;
+};
 
 interface TestInterfaceProps {
   test: Test;
@@ -29,6 +30,7 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
   const [timeRemaining, setTimeRemaining] = useState(test.duration * 60);
   const [showSubmitModal, setShowSubmitModal] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const previewVideoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [proctorStatus, setProctorStatus] = useState<'monitoring' | 'warning' | 'error'>('monitoring');
   const [mobileDetected, setMobileDetected] = useState(false);
@@ -36,29 +38,67 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
   const [showMalpracticeWarning, setShowMalpracticeWarning] = useState(false);
   const [isMalpracticeTerminated, setIsMalpracticeTerminated] = useState(false);
   const malpracticeTimerRef = useRef<any>(null);
+  const [isExamStarted, setIsExamStarted] = useState(false);
+  const [isCameraActive, setIsCameraActive] = useState(false);
+  const [isFaceDetected, setIsFaceDetected] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [verificationStep, setVerificationStep] = useState<'instructions' | 'proctoring'>('instructions');
+  const [hasAcceptedRules, setHasAcceptedRules] = useState(false);
+  const [showRefreshWarning, setShowRefreshWarning] = useState(false);
   const questionStartedAtRef = useRef<number>(Date.now());
 
-  // Proctoring setup
+  // Proctoring setup - gated by verification step
   useEffect(() => {
+    if (verificationStep !== 'proctoring') return;
 
     async function startProctoring() {
+      setCameraError(null);
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { width: 320, height: 240, frameRate: 15 }
         });
         streamRef.current = stream;
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-        }
-      } catch (err) {
+        
+        // Attach to both potential video elements
+        if (videoRef.current) videoRef.current.srcObject = stream;
+        if (previewVideoRef.current) previewVideoRef.current.srcObject = stream;
+        
+        setIsCameraActive(true);
+        
+        // Simulate face detection for 1.5 seconds
+        setTimeout(() => {
+          setIsFaceDetected(true);
+        }, 1500);
+
+      } catch (err: any) {
         console.error("Camera access failed", err);
         setProctorStatus('error');
+        setIsCameraActive(false);
+        setCameraError(err.message || "Could not access camera");
       }
     }
 
     startProctoring();
 
-    // Mock detection logic - students using mobiles
+    // Secondary sync: if refs attach late, try to set srcObject again
+    const syncInterval = setInterval(() => {
+      if (streamRef.current) {
+        if (videoRef.current && !videoRef.current.srcObject) videoRef.current.srcObject = streamRef.current;
+        if (previewVideoRef.current && !previewVideoRef.current.srcObject) previewVideoRef.current.srcObject = streamRef.current;
+      }
+    }, 500);
+
+    return () => {
+      clearInterval(syncInterval);
+      stopCamera();
+      if (malpracticeTimerRef.current) clearTimeout(malpracticeTimerRef.current);
+    };
+  }, [verificationStep]);
+
+  // Mock detection logic - only when exam started
+  useEffect(() => {
+    if (!isExamStarted) return;
+
     const detectionInterval = setInterval(() => {
       // Small chance of simulation every interval
       if (Math.random() < 0.1) {
@@ -73,15 +113,13 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
       }
     }, 20000);
 
-    return () => {
-      stopCamera();
-      clearInterval(detectionInterval);
-      if (malpracticeTimerRef.current) clearTimeout(malpracticeTimerRef.current);
-    };
-  }, []);
+    return () => clearInterval(detectionInterval);
+  }, [isExamStarted]);
 
   // Malpractice Detection Logic
   useEffect(() => {
+    if (!isExamStarted) return;
+    
     const handleViolation = () => {
       setViolations(prev => {
         const next = prev + 1;
@@ -96,10 +134,11 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
 
     const startTimer = () => {
       if (!malpracticeTimerRef.current && !isMalpracticeTerminated) {
+        // Very strict: 1 second grace period for accidental focus loss
         malpracticeTimerRef.current = setTimeout(() => {
           handleViolation();
           malpracticeTimerRef.current = null;
-        }, 2000);
+        }, 1000);
       }
     };
 
@@ -118,16 +157,61 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
     const handleBlur = () => startTimer();
     const handleFocus = () => stopTimer();
 
+    // Prevent Inspect Element and Shortcuts
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // F12, Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+U, Cmd+Option+I
+      if (
+        e.key === 'F12' ||
+        (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'J' || e.key === 'C')) ||
+        (e.ctrlKey && e.key === 'u') ||
+        (e.metaKey && e.altKey && (e.key === 'i' || e.key === 'j')) ||
+        (e.ctrlKey && e.key === 's') || // Prevent Save
+        (e.metaKey && e.key === 's')
+      ) {
+        e.preventDefault();
+        toast.error("Shortcut blocked during examination");
+      }
+
+      // Block Refresh (F5, Ctrl+R, Cmd+R)
+      if (
+        e.key === 'F5' ||
+        (e.ctrlKey && (e.key === 'r' || e.key === 'R')) ||
+        (e.metaKey && (e.key === 'r' || e.key === 'R'))
+      ) {
+        e.preventDefault();
+        setShowRefreshWarning(true);
+      }
+    };
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isExamStarted) {
+        e.preventDefault();
+        e.returnValue = "Refreshing the page will automatically SUBMIT your exam. Are you sure?";
+        return e.returnValue;
+      }
+    };
+
+    const handleContextMenu = (e: MouseEvent) => {
+      e.preventDefault();
+      toast.error("Right-click disabled during examination");
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
     window.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('blur', handleBlur);
     window.addEventListener('focus', handleFocus);
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('contextmenu', handleContextMenu);
 
     return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
       window.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('blur', handleBlur);
       window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('contextmenu', handleContextMenu);
     };
-  }, [isMalpracticeTerminated]);
+  }, [isExamStarted, isMalpracticeTerminated]);
 
   const terminateWithMalpractice = () => {
     setIsMalpracticeTerminated(true);
@@ -180,6 +264,7 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
   };
 
   useEffect(() => {
+    if (!isExamStarted) return;
     const timer = setInterval(() => {
       setTimeRemaining((prev) => {
         if (prev <= 1) {
@@ -214,6 +299,29 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
     if (hasAnswered && !ans.isMarkedForReview) return 'answered';
     if (!hasAnswered && ans.isMarkedForReview) return 'marked_review';
     return 'not_answered';
+  };
+
+  // Group questions by subject for NTA-style sections
+  const subjects = Array.from(new Set(test.questions.map((q) => q.subject))).filter(Boolean);
+  const activeSubject = test.questions[currentQuestionIndex]?.subject;
+
+  const getSubjectStats = (subjectName: string) => {
+    let not_answered = 0;
+    let answered = 0;
+    let marked_review = 0;
+    let answered_marked = 0;
+
+    test.questions.forEach((q, i) => {
+      if (q.subject === subjectName) {
+        const status = getQuestionStatus(i);
+        if (status === 'not_answered') not_answered++;
+        else if (status === 'answered') answered++;
+        else if (status === 'marked_review') marked_review++;
+        else if (status === 'answered_marked') answered_marked++;
+      }
+    });
+
+    return { not_answered, answered, marked_review, answered_marked };
   };
 
   const currentQuestion = test.questions[currentQuestionIndex];
@@ -278,6 +386,7 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
   };
 
   const navigateToQuestion = (nextIndex: number) => {
+    if (nextIndex < 0 || nextIndex >= test.questions.length) return;
     recordCurrentQuestionTime();
     setCurrentQuestionIndex(nextIndex);
   };
@@ -309,21 +418,21 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
 
   const saveAndNext = () => {
     saveCurrentResponse(false);
-    if (currentQuestionIndex < test.totalQuestions - 1) {
+    if (currentQuestionIndex < test.questions.length - 1) {
       navigateToQuestion(currentQuestionIndex + 1);
     }
   };
 
   const saveAndMarkForReview = () => {
     saveCurrentResponse(true);
-    if (currentQuestionIndex < test.totalQuestions - 1) {
+    if (currentQuestionIndex < test.questions.length - 1) {
       navigateToQuestion(currentQuestionIndex + 1);
     }
   };
 
   const markForReviewAndNext = () => {
     saveCurrentResponse(true);
-    if (currentQuestionIndex < test.totalQuestions - 1) {
+    if (currentQuestionIndex < test.questions.length - 1) {
       navigateToQuestion(currentQuestionIndex + 1);
     }
   };
@@ -385,7 +494,250 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
   });
 
   return (
-    <div className="min-h-screen bg-white text-black font-sans text-sm selection:bg-blue-200 flex flex-col">
+    <div className="min-h-screen bg-white text-black font-sans text-sm selection:bg-blue-200 flex flex-col relative">
+
+      {/* 0. Verification Overlay */}
+      {!isExamStarted && (
+        <div className="fixed inset-0 z-[200] bg-slate-900 flex items-center justify-center p-4 sm:p-8 overflow-y-auto">
+          {verificationStep === 'instructions' ? (
+            /* Phase 1: Instructions */
+            <div className="max-w-5xl w-full bg-white rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+              {/* Header */}
+              <div className="bg-blue-900 px-6 py-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center p-1.5 shadow-md">
+                    <img src="/origin-logo.png" alt="O3" className="w-full h-full object-contain" onError={(e) => { e.currentTarget.src = 'https://api.dicebear.com/7.x/initials/svg?seed=O3'; }} />
+                  </div>
+                  <h2 className="text-white font-black text-lg uppercase tracking-tight">General Instructions</h2>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div className="text-white/70 text-xs font-bold uppercase tracking-widest bg-white/10 px-3 py-1 rounded-full">
+                    Time: {test.duration} Minutes
+                  </div>
+                  <button onClick={onExit} className="text-white/70 hover:text-white transition-colors p-1 hover:bg-white/10 rounded-lg">
+                    <X className="w-6 h-6" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Body */}
+              <div className="flex-1 overflow-y-auto p-6 sm:p-10 space-y-8 text-gray-700">
+                
+                <section>
+                  <h3 className="text-blue-900 font-bold text-lg mb-4 border-b-2 border-blue-100 pb-2 flex items-center gap-2">
+                    <span className="w-6 h-6 bg-blue-100 text-blue-900 rounded-full flex items-center justify-center text-xs">1</span>
+                    Standard Exam Rules
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
+                    <ul className="space-y-3 list-disc pl-5 font-medium">
+                      <li>The total duration of the examination is <span className="font-bold text-blue-600">{test.duration} minutes</span>.</li>
+                      <li>The clock will be set at the server. The countdown timer at the top right corner of the screen will display the remaining time available for you to complete the examination.</li>
+                      <li>The Question Palette displayed on the right side of the screen will show the status of each question using one of the following symbols:</li>
+                    </ul>
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+                       <div className="flex items-center gap-3">
+                        <div className="w-6 h-5 bg-white border border-gray-400 rounded-sm"></div>
+                        <span className="text-xs font-bold">You have not visited the question yet.</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="w-6 h-6 rounded-tr-[10px] rounded-br-[2px] rounded-tl-[2px] bg-[#D9534F] text-white flex items-center justify-center text-[10px] font-bold" style={{ clipPath: 'polygon(0% 0%, 100% 0%, 100% 70%, 70% 100%, 0% 100%)' }}>00</div>
+                        <span className="text-xs font-bold">You have not answered the question.</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="w-6 h-6 rounded-tr-[2px] rounded-bl-[10px] rounded-tl-[2px] rounded-br-[2px] bg-[#5CB85C] text-white flex items-center justify-center text-[10px] font-bold" style={{ clipPath: 'polygon(0% 0%, 100% 0%, 100% 100%, 30% 100%, 0% 70%)' }}>00</div>
+                        <span className="text-xs font-bold">You have answered the question.</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="w-6 h-6 rounded-full bg-[#5B247A] text-white flex items-center justify-center text-[10px] font-bold">00</div>
+                        <span className="text-xs font-bold">You have NOT answered but marked for review.</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="w-6 h-6 rounded-full bg-[#5B247A] text-white flex items-center justify-center text-[10px] font-bold relative">00 <div className="absolute right-0 bottom-0 w-2 h-2 bg-green-500 rounded-full border border-white"></div></div>
+                        <span className="text-xs font-bold">The question(s) "Answered and Marked for Review" will be considered for evaluation.</span>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                <section>
+                  <h3 className="text-blue-900 font-bold text-lg mb-4 border-b-2 border-blue-100 pb-2 flex items-center gap-2">
+                    <span className="w-6 h-6 bg-blue-100 text-blue-900 rounded-full flex items-center justify-center text-xs">2</span>
+                    Marking Scheme (NTA Standard)
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
+                      <p className="text-[10px] font-black text-green-700 uppercase mb-1">Correct Answer</p>
+                      <p className="text-2xl font-black text-green-700">+4 Marks</p>
+                    </div>
+                    <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-center">
+                      <p className="text-[10px] font-black text-red-700 uppercase mb-1">Incorrect Answer</p>
+                      <p className="text-2xl font-black text-red-700">-1 Mark</p>
+                    </div>
+                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-center">
+                      <p className="text-[10px] font-black text-slate-500 uppercase mb-1">Unattempted</p>
+                      <p className="text-2xl font-black text-slate-700">0 Marks</p>
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-gray-500 mt-4 italic">* For Numerical Value questions, negative marking may not apply. Please refer to specific question instructions.</p>
+                </section>
+
+                <section className="bg-blue-50/50 p-6 rounded-2xl border border-blue-100">
+                  <h3 className="text-blue-900 font-bold text-base mb-3 flex items-center gap-2">
+                    <ShieldCheck className="w-5 h-5" /> AI Proctoring Compliance
+                  </h3>
+                  <ul className="text-xs space-y-2 text-slate-600 font-medium">
+                    <li>• Switching tabs or minimizing the browser will trigger a malpractice warning.</li>
+                    <li>• After <span className="text-red-600 font-bold">3 violations</span>, the test will be automatically terminated.</li>
+                    <li>• Your camera must be active and your face must be clearly visible throughout the exam.</li>
+                  </ul>
+                </section>
+              </div>
+
+              {/* Footer */}
+              <div className="bg-slate-50 px-6 py-6 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <label className="flex items-center gap-3 cursor-pointer group">
+                  <input 
+                    type="checkbox" 
+                    checked={hasAcceptedRules}
+                    onChange={(e) => setHasAcceptedRules(e.target.checked)}
+                    className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer" 
+                  />
+                  <span className="text-xs sm:text-sm font-bold text-gray-700 group-hover:text-blue-900 transition-colors">
+                    I have read and understood the instructions.
+                  </span>
+                </label>
+                <div className="flex gap-3 w-full sm:w-auto">
+                  <button 
+                    onClick={onExit}
+                    className="px-8 py-3 border border-slate-300 text-slate-600 font-bold rounded-xl hover:bg-slate-100 transition-all uppercase text-sm"
+                  >
+                    Exit
+                  </button>
+                  <button
+                    disabled={!hasAcceptedRules}
+                    onClick={() => setVerificationStep('proctoring')}
+                    className={`flex items-center gap-2 px-10 py-3 rounded-xl font-black uppercase tracking-tight transition-all
+                      ${hasAcceptedRules 
+                        ? 'bg-blue-600 text-white shadow-lg hover:bg-blue-700 hover:scale-[1.02] active:scale-95' 
+                        : 'bg-gray-300 text-gray-500 cursor-not-allowed'}
+                    `}
+                  >
+                    Proceed <Play className="w-4 h-4 fill-current" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* Phase 2: Proctoring (Existing logic) */
+            <div className="max-w-4xl w-full grid grid-cols-1 md:grid-cols-2 gap-8 items-center bg-slate-800/50 backdrop-blur-xl rounded-3xl p-6 sm:p-10 border border-white/10 shadow-2xl">
+              
+              {/* Camera Preview Side */}
+              <div className="flex flex-col gap-6">
+                <div className="aspect-video bg-black rounded-2xl overflow-hidden relative border-4 border-slate-700 shadow-inner group">
+                  {isCameraActive ? (
+                     <video
+                      ref={previewVideoRef}
+                      autoPlay
+                      playsInline
+                      muted
+                      className="w-full h-full object-cover -scale-x-100"
+                    />
+                  ) : (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-500 gap-4">
+                      <div className="w-16 h-16 rounded-full bg-slate-800 flex items-center justify-center animate-pulse">
+                        <Camera className="w-8 h-8" />
+                      </div>
+                      <p className="text-sm font-medium">Camera not active</p>
+                    </div>
+                  )}
+                  
+                  {/* Status Indicator Overlay */}
+                  <div className="absolute top-4 right-4 flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/60 backdrop-blur-md border border-white/10">
+                    <div className={`w-2 h-2 rounded-full animate-pulse ${isCameraActive ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                    <span className="text-[10px] font-bold text-white uppercase tracking-wider">
+                      {isCameraActive ? 'Live Preview' : 'Camera Off'}
+                    </span>
+                  </div>
+                </div>
+
+                {cameraError && (
+                  <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 flex items-start gap-3">
+                    <AlertTriangle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+                    <div className="text-xs">
+                      <p className="text-red-400 font-bold mb-1 uppercase">Permission Required</p>
+                      <p className="text-slate-300 leading-relaxed">
+                        {cameraError}. Please enable camera access in your browser settings to continue.
+                      </p>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Back button to rules */}
+                <button 
+                  onClick={() => setVerificationStep('instructions')}
+                  className="text-slate-400 text-[10px] font-bold uppercase tracking-widest hover:text-white transition-colors flex items-center gap-2 w-fit"
+                >
+                  &larr; Back to Instructions
+                </button>
+              </div>
+
+              {/* Content Side */}
+              <div className="flex flex-col gap-8">
+                <div>
+                  <h2 className="text-2xl sm:text-3xl font-black text-white mb-2 uppercase tracking-tight">Identity Verification</h2>
+                  <p className="text-slate-400 text-sm font-medium leading-relaxed">
+                    To ensure exam integrity, please allow camera access and stay within the frame throughout the duration of the test.
+                  </p>
+                </div>
+
+                {/* Checklist */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between p-4 bg-slate-700/30 rounded-2xl border border-white/5 transition-all">
+                    <div className="flex items-center gap-4">
+                      <div className={`p-2 rounded-lg ${isCameraActive ? 'bg-green-500/20 text-green-500' : 'bg-slate-700 text-slate-500'}`}>
+                        <Camera className="w-5 h-5" />
+                      </div>
+                      <span className={`text-sm font-bold ${isCameraActive ? 'text-white' : 'text-slate-500'}`}>Camera Permission</span>
+                    </div>
+                    {isCameraActive ? <CheckCircle2 className="w-5 h-5 text-green-500" /> : <Loader2 className="w-5 h-5 text-slate-600 animate-spin" />}
+                  </div>
+
+                  <div className="flex items-center justify-between p-4 bg-slate-700/30 rounded-2xl border border-white/5 transition-all">
+                    <div className="flex items-center gap-4">
+                      <div className={`p-2 rounded-lg ${isFaceDetected ? 'bg-green-500/20 text-green-500' : 'bg-slate-700 text-slate-500'}`}>
+                        <ShieldCheck className="w-5 h-5" />
+                      </div>
+                      <span className={`text-sm font-bold ${isFaceDetected ? 'text-white' : 'text-slate-500'}`}>Face Visible</span>
+                    </div>
+                    {isFaceDetected ? <CheckCircle2 className="w-5 h-5 text-green-500" /> : <Loader2 className="w-5 h-5 text-slate-600 animate-spin" />}
+                  </div>
+                </div>
+
+                <div className="mt-auto pt-4 flex flex-col gap-4">
+                  <button
+                    disabled={!isCameraActive || !isFaceDetected}
+                    onClick={() => {
+                      setIsExamStarted(true);
+                      questionStartedAtRef.current = Date.now();
+                    }}
+                    className={`w-full group relative flex items-center justify-center gap-3 py-4 rounded-2xl font-black text-lg transition-all
+                      ${(isCameraActive && isFaceDetected) 
+                        ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-[0_0_30px_rgba(37,99,235,0.4)] hover:scale-[1.02] active:scale-95' 
+                        : 'bg-slate-700 text-slate-500 cursor-not-allowed opacity-50'}
+                    `}
+                  >
+                    <Play className={`w-6 h-6 fill-current ${isCameraActive && isFaceDetected ? 'animate-pulse' : ''}`} />
+                    START EXAMINATION
+                  </button>
+                  <p className="text-[10px] text-center text-slate-500 font-bold uppercase tracking-widest">
+                    By starting, you agree to being monitored via AI proctoring
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 1. Top Header */}
       <header className="flex flex-col sm:flex-row items-center justify-between px-3 sm:px-6 py-2 border-b border-gray-300 gap-3 sm:gap-0">
@@ -440,10 +792,68 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
         </div>
       </header>
 
-      {/* 2. Orange Sub Header */}
-      <div className="bg-[#f08c32] px-3 sm:px-6 py-1.5 flex justify-between items-center text-[10px] sm:text-xs overflow-x-auto whitespace-nowrap">
-        <div className="flex gap-1" style={{ height: '32px' }}>
-          <div className="flex items-center px-3 sm:px-4 bg-orange-400 text-white font-bold opacity-80 uppercase text-[10px] sm:text-xs">{test.title}</div>
+      {/* 2. Section/Subject Header */}
+      <div className="bg-[#f08c32] px-3 sm:px-6 py-0 flex justify-between items-center text-[10px] sm:text-xs overflow-visible">
+        <div className="flex gap-0 items-center h-[40px]">
+          <div className="flex bg-[#337ab7] text-white px-4 h-full items-center font-bold text-xs border-r border-white/20 whitespace-nowrap">
+            SECTION
+          </div>
+          {subjects.map((subj) => {
+            const isActive = activeSubject === subj;
+            const stats = getSubjectStats(subj);
+            return (
+              <div key={subj} className="group relative h-full flex items-center">
+                <button
+                  onClick={() => {
+                    const firstIdx = test.questions.findIndex(q => q.subject === subj);
+                    if (firstIdx !== -1) navigateToQuestion(firstIdx);
+                  }}
+                  className={`h-full px-4 text-xs font-bold uppercase transition-all flex items-center gap-2 border-r border-white/20 ${
+                    isActive ? 'bg-white text-black' : 'bg-[#337ab7] text-white hover:bg-[#286090]'
+                  }`}
+                >
+                  {subj}
+                  <div className="p-0.5 hover:bg-black/10 rounded cursor-help">
+                    <Info className="w-3.5 h-3.5" />
+                  </div>
+                </button>
+
+                {/* Legend Tooltip */}
+                <div className="absolute top-full left-0 mt-0 w-72 bg-white shadow-2xl rounded-b-md border border-gray-200 z-[100] hidden group-hover:block p-4 pointer-events-none">
+                  <div className="space-y-4">
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-tr-[16px] rounded-br-[4px] rounded-tl-[4px] bg-[#D9534F] text-white flex-shrink-0 flex items-center justify-center font-bold shadow-sm" style={{ clipPath: 'polygon(0% 0%, 100% 0%, 100% 70%, 70% 100%, 0% 100%)' }}>
+                        {stats.not_answered.toString().padStart(2, '0')}
+                      </div>
+                      <p className="text-[11px] text-gray-700 font-bold uppercase leading-tight mt-1">You have not answered the question.</p>
+                    </div>
+                    
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-tr-[4px] rounded-bl-[16px] rounded-tl-[4px] rounded-br-[4px] bg-[#5CB85C] text-white flex-shrink-0 flex items-center justify-center font-bold shadow-sm" style={{ clipPath: 'polygon(0% 0%, 100% 0%, 100% 100%, 30% 100%, 0% 70%)' }}>
+                        {stats.answered.toString().padStart(2, '0')}
+                      </div>
+                      <p className="text-[11px] text-gray-700 font-bold uppercase leading-tight mt-1">You have answered the question.</p>
+                    </div>
+
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-full bg-[#5B247A] text-white flex-shrink-0 flex items-center justify-center font-bold shadow-sm">
+                        {stats.marked_review.toString().padStart(2, '0')}
+                      </div>
+                      <p className="text-[11px] text-gray-700 font-bold uppercase leading-tight mt-1">You have NOT answered but marked for review.</p>
+                    </div>
+
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-full bg-[#5B247A] text-white flex-shrink-0 flex items-center justify-center font-bold shadow-sm relative">
+                        {stats.answered_marked.toString().padStart(2, '0')}
+                        <div className="absolute right-0 bottom-0 w-2.5 h-2.5 bg-green-500 rounded-full border border-white"></div>
+                      </div>
+                      <p className="text-[11px] text-gray-700 font-bold uppercase leading-tight mt-0.5">The question(s) "Answered and Marked for Review" will be considered for evaluation.</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
         <div className="flex items-center gap-3 sm:gap-6 ml-4">
           <div className="flex items-center gap-2">
@@ -484,23 +894,34 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
               )}
 
               <div className="text-base text-gray-800 leading-relaxed font-serif mb-8 whitespace-pre-wrap">
-                {renderQuestionText(currentQuestion?.text, 'test-question')}
+                {renderQuestionText(currentQuestion?.text || '', 'test-question')}
               </div>
 
               {(currentQuestion?.questionType === 'mcq' || !currentQuestion?.questionType) && (
                 <div className="space-y-4 font-serif text-base">
                   {currentQuestion?.options.map((option, idx) => (
-                    <label key={idx} className="flex items-start gap-4 cursor-pointer">
-                      <input
-                        type="radio"
-                        name={`question-${currentQuestionIndex}`}
-                        checked={tempSelection === idx}
-                        onChange={() => handleOptionSelect(idx)}
-                        className="mt-1.5 w-4 h-4"
-                      />
-                      <span>({idx + 1})</span>
-                      <span className="text-gray-800">{renderInlineSegments(String(option), `test-mcq-option-${idx}`, 'plain')}</span>
-                    </label>
+                    <button
+                      key={idx}
+                      onClick={() => handleOptionSelect(idx)}
+                      className={cn(
+                        "w-full p-4 rounded-xl border-2 transition-all duration-200 flex items-start gap-4 text-left group",
+                        tempSelection === idx
+                          ? "border-blue-600 bg-blue-50 shadow-md shadow-blue-100"
+                          : "border-slate-100 hover:border-blue-200 hover:bg-slate-50"
+                      )}
+                    >
+                      <div className={cn(
+                        "w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 font-bold border-2 transition-colors",
+                        tempSelection === idx
+                          ? "bg-blue-600 border-blue-600 text-white"
+                          : "bg-white border-slate-200 text-slate-500 group-hover:border-blue-300 group-hover:text-blue-600"
+                      )}>
+                        {String.fromCharCode(65 + idx)}
+                      </div>
+                      <div className="flex-1 pt-1">
+                        <span className="text-slate-900 font-medium">{renderInlineSegments(String(option), `test-mcq-option-${idx}`, 'plain')}</span>
+                      </div>
+                    </button>
                   ))}
                 </div>
               )}
@@ -619,29 +1040,21 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
           </div>
 
           {/* Action Buttons */}
-          <div className="border-t border-gray-300 px-3 sm:px-4 py-2 sm:py-3 grid grid-cols-2 sm:flex sm:flex-row gap-2">
-            <button onClick={saveAndNext} className="bg-[#5CB85C] text-white px-2 sm:px-4 py-2 sm:py-1.5 font-bold text-[10px] sm:text-xs rounded-sm hover:opacity-90 uppercase">SAVE & NEXT</button>
-            <button onClick={saveAndMarkForReview} className="bg-[#F0AD4E] text-white px-2 sm:px-4 py-2 sm:py-1.5 font-bold text-[10px] sm:text-xs rounded-sm hover:opacity-90 uppercase">SAVE & REVIEW</button>
-            <button onClick={handleClearResponse} className="bg-white text-gray-800 border border-gray-300 px-2 sm:px-4 py-2 sm:py-1.5 font-bold text-[10px] sm:text-xs rounded-sm hover:bg-gray-50 uppercase shadow-sm">CLEAR</button>
-            <button onClick={markForReviewAndNext} className="bg-[#297FC6] text-white px-2 sm:px-4 py-2 sm:py-1.5 font-bold text-[10px] sm:text-xs rounded-sm hover:opacity-90 uppercase sm:ml-auto">REVIEW & NEXT</button>
-          </div>
-
-          {/* Footer Buttons */}
-          <div className="bg-gray-100 border-t border-gray-300 px-4 py-3 flex justify-between items-center">
+          <div className="border-t border-gray-300 px-3 sm:px-4 py-2 sm:py-3 flex justify-between items-center bg-white shadow-sm">
             <div className="flex gap-2">
-              <button
-                onClick={() => navigateToQuestion(Math.max(0, currentQuestionIndex - 1))}
-                className="bg-white border border-gray-300 text-gray-700 px-4 py-1 text-xs font-bold rounded-sm shadow-sm hover:bg-gray-50 uppercase"
-                disabled={currentQuestionIndex === 0}
-              >&lt;&lt; BACK</button>
-              <button
-                onClick={() => navigateToQuestion(Math.min(test.totalQuestions - 1, currentQuestionIndex + 1))}
-                className="bg-white border border-gray-300 text-gray-700 px-4 py-1 text-xs font-bold rounded-sm shadow-sm hover:bg-gray-50 uppercase"
-              >NEXT &gt;&gt;</button>
+              <button onClick={markForReviewAndNext} className="bg-[#297FC6] text-white px-2 sm:px-4 py-2 sm:py-2.5 font-bold text-[10px] sm:text-xs rounded-sm hover:opacity-90 uppercase flex flex-col items-center leading-tight">
+                MARK FOR REVIEW & NEXT
+                <span className="text-[7px] lowercase font-medium opacity-80">(will be counted for evaluation)</span>
+              </button>
+              <button onClick={handleClearResponse} className="bg-white text-gray-800 border border-gray-300 px-2 sm:px-4 py-2 sm:py-2.5 font-bold text-[10px] sm:text-xs rounded-sm hover:bg-gray-50 uppercase shadow-sm">
+                CLEAR RESPONSE
+              </button>
             </div>
-            <button onClick={() => setShowSubmitModal(true)} className="bg-[#5CB85C] text-white px-6 py-1.5 font-bold text-sm rounded-sm hover:opacity-90 uppercase shadow-md">SUBMIT</button>
+            <button onClick={saveAndNext} className="bg-[#5CB85C] text-white px-4 sm:px-8 py-2 sm:py-2.5 font-bold text-[10px] sm:text-xs rounded-sm hover:opacity-90 uppercase flex flex-col items-center leading-tight">
+              SAVE & NEXT
+              <span className="text-[7px] lowercase font-medium opacity-80">(save the question)</span>
+            </button>
           </div>
-
         </div>
 
         {/* Right Area - Palette */}
@@ -725,6 +1138,15 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
               })}
             </div>
           </div>
+
+          <div className="p-4 bg-gray-50 border-t border-gray-200 mt-auto">
+             <button 
+               onClick={() => setShowSubmitModal(true)} 
+               className="w-full bg-[#5CB85C] text-white py-3 font-bold text-sm rounded hover:bg-green-600 uppercase shadow-lg transition-all active:scale-95"
+             >
+               SUBMIT
+             </button>
+          </div>
         </div>
 
       </div>
@@ -744,22 +1166,41 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
       )}
 
       {showMalpracticeWarning && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-300">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 text-center border-b-8 border-yellow-500">
-            <div className="w-20 h-20 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-6">
-              <AlertTriangle className="w-10 h-10 text-yellow-600" />
+        <div className="fixed inset-0 z-[210] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in zoom-in duration-300">
+          <div className="bg-white rounded-3xl shadow-[0_0_50px_rgba(234,179,8,0.2)] max-w-md w-full overflow-hidden border-t-8 border-yellow-500">
+            <div className="bg-yellow-500/10 p-8 text-center border-b border-yellow-100">
+              <div className="w-20 h-20 bg-yellow-500 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg shadow-yellow-500/40">
+                <AlertTriangle className="w-10 h-10 text-white animate-pulse" />
+              </div>
+              <h2 className="text-3xl font-black text-gray-900 mb-2 uppercase tracking-tighter">Warning: Security Alert</h2>
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-red-600 text-white text-xs font-black rounded-full uppercase tracking-widest mb-4">
+                Violation {violations} of 3
+              </div>
             </div>
-            <h2 className="text-2xl font-black text-gray-900 mb-2 uppercase tracking-tight">Warning: Screen Left</h2>
-            <p className="text-gray-600 mb-8 leading-relaxed font-medium">
-              You switched tabs or left the test screen. This is a violation of exam rules.
-              <br /><span className="text-red-600 font-bold mt-2 block">Violation: {violations}/3</span>
-            </p>
-            <button
-              onClick={() => setShowMalpracticeWarning(false)}
-              className="w-full bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-4 rounded-xl transition-all shadow-lg active:scale-95 text-lg"
-            >
-              I Understand, Continue Test
-            </button>
+            
+            <div className="p-8 space-y-6">
+              <div className="space-y-3">
+                <p className="text-gray-900 font-bold text-center text-lg italic">"Unauthorized tab switching detected"</p>
+                <p className="text-gray-500 text-sm text-center leading-relaxed">
+                  The system has recorded that you attempted to leave the examination screen. 
+                  This is a direct violation of the <span className="font-bold text-blue-600">O3 Testing Agency</span> proctoring guidelines.
+                </p>
+              </div>
+
+              <div className="bg-red-50 p-4 rounded-2xl border border-red-100">
+                <p className="text-red-700 text-[10px] font-black uppercase tracking-widest text-center">Final Warning Consequences</p>
+                <p className="text-red-600 text-[11px] font-bold text-center mt-1">
+                  Exceeding 3 violations will result in automatic test termination and disqualification.
+                </p>
+              </div>
+
+              <button
+                onClick={() => setShowMalpracticeWarning(false)}
+                className="w-full bg-slate-900 hover:bg-black text-white font-black py-4 rounded-2xl transition-all shadow-xl active:scale-95 text-lg uppercase tracking-tight"
+              >
+                Return to Examination
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -801,6 +1242,37 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
                 className="px-6 py-2 bg-blue-600 text-white font-bold rounded hover:bg-blue-700 transition-colors shadow-md"
               >
                 Confirm Submit
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showRefreshWarning && (
+        <div className="fixed inset-0 z-[250] flex items-center justify-center bg-black/70 backdrop-blur-md p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 text-center border-t-8 border-orange-500">
+            <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-6">
+              <AlertTriangle className="w-8 h-8 text-orange-600" />
+            </div>
+            <h2 className="text-2xl font-black text-gray-900 mb-2 uppercase tracking-tight">Reload Detected</h2>
+            <p className="text-gray-600 mb-8 font-medium">
+              Refreshing the page will cause your exam to be <span className="text-red-600 font-bold">AUTOMATICALLY SUBMITTED</span>. 
+              Do you want to submit and reload?
+            </p>
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={() => {
+                  setShowRefreshWarning(false);
+                  finalSubmit();
+                }}
+                className="w-full py-3 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 transition-colors uppercase tracking-wide"
+              >
+                Yes, Submit and Reload
+              </button>
+              <button
+                onClick={() => setShowRefreshWarning(false)}
+                className="w-full py-3 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200 transition-colors uppercase tracking-wide"
+              >
+                No, Continue Exam
               </button>
             </div>
           </div>
