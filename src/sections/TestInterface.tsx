@@ -2,9 +2,17 @@
 import { useState, useEffect, useRef } from 'react';
 import { Camera, AlertTriangle, ShieldCheck } from 'lucide-react';
 import type { Test, TestResult, UserAnswer } from '@/types';
-import { renderInlineSegments, renderQuestionText } from '@/lib/math-text';
+import { FormattedMessage } from '@/components/origin-ai/FormattedMessage';
 import { submitTestAction } from '@/server/actions/test-actions';
 import { toast } from 'sonner';
+
+function renderQuestionText(content: string | null | undefined, keyPrefix: string) {
+    return <FormattedMessage content={content || ''} inline />;
+}
+
+function renderInlineSegments(value: string, keyPrefix: string, style?: string) {
+    return <FormattedMessage content={value || ''} inline />;
+}
 
 interface TestInterfaceProps {
   test: Test;

@@ -29,10 +29,14 @@ import {
   type ChapterItem,
   type ImageSolveResult,
 } from '@/features/origin-ai/client';
-import { renderInlineSegments } from '@/lib/math-text';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { usePublishOriginAiPageContext } from '@/features/origin-ai/page-context-store';
+import { FormattedMessage } from '@/components/origin-ai/FormattedMessage';
+
+function renderInlineSegments(value: string, keyPrefix: string) {
+    return <FormattedMessage content={value || ''} inline />;
+}
 
 const SESSION_CACHE_KEY = 'doubt_sessions_cache';
 const LAST_SUBJECT_KEY = 'doubt_last_subject';
@@ -122,51 +126,7 @@ function repairBrokenLatexEscapes(value: string): string {
     .replace(/\u0008(?=[A-Za-z])/g, '\\b');
 }
 
-// Simple Markdown + LaTeX formatter for the UI
-const FormattedText = ({ text }: { text: string }) => {
-  const lines = repairBrokenLatexEscapes(text).split('\n');
-  return (
-    <span className="relative text-foreground">
-      {lines.map((line, lineIndex) => {
-        const parts = line.split(/(\*\*.*?\*\*)/g);
-        return (
-          <Fragment key={`line-${lineIndex}`}>
-            {parts.map((part, partIndex) => {
-              if (!part) {
-                return null;
-              }
-
-              const hasLeadingSpace = /^\s+/.test(part);
-              const hasTrailingSpace = /\s+$/.test(part);
-
-              if (part.startsWith('**') && part.endsWith('**')) {
-                return (
-                  <Fragment key={`bold-${lineIndex}-${partIndex}`}>
-                    {hasLeadingSpace ? ' ' : null}
-                    <strong className="font-bold text-foreground">
-                      {renderInlineSegments(part.slice(2, -2), `bold-${lineIndex}-${partIndex}`, 'plain')}
-                    </strong>
-                    {hasTrailingSpace ? ' ' : null}
-                  </Fragment>
-                );
-              }
-
-              return (
-                <Fragment key={`text-${lineIndex}-${partIndex}`}>
-                  {hasLeadingSpace ? ' ' : null}
-                  {renderInlineSegments(part, `text-${lineIndex}-${partIndex}`, 'plain')}
-                  {hasTrailingSpace ? ' ' : null}
-                </Fragment>
-              );
-            })}
-            {lineIndex < lines.length - 1 ? <br /> : null}
-          </Fragment>
-        );
-      })}
-    </span>
-  );
-};
-
+// Progressive revelation and response steps
 function extractResponseSteps(content: string): string[] {
   return content
     .split(STEP_MARKER)
@@ -1277,7 +1237,7 @@ function ProgressiveResponse({
   const isMultiStep = steps.length > 1;
 
   if (!isMultiStep) {
-    return <FormattedText text={steps[0] ?? content} />;
+    return <FormattedMessage content={steps[0] ?? content} isAssistant={true} />;
   }
 
   if (!progressive) {
@@ -1288,7 +1248,7 @@ function ProgressiveResponse({
             key={`${i}-${step.slice(0, 24)}`}
             className={i > 0 ? "pt-4 border-t border-white/5" : ""}
           >
-            <FormattedText text={step} />
+            <FormattedMessage content={step} isAssistant={true} />
           </div>
         ))}
       </div>
@@ -1305,7 +1265,7 @@ function ProgressiveResponse({
           transition={{ duration: 0.4, ease: "easeOut" }}
           className={i > 0 ? "pt-4 border-t border-white/5" : ""}
         >
-          <FormattedText text={step.trim()} />
+          <FormattedMessage content={step.trim()} isAssistant={true} />
         </motion.div>
       ))}
 
@@ -1364,11 +1324,7 @@ function ChatMessage({ message }: { message: ChatMessageType }) {
             </div>
           )}
           <div className="whitespace-pre-line">
-            {isAI ? (
-              <ProgressiveResponse content={message.content} progressive={progressiveReveal} />
-            ) : (
-              <FormattedText text={message.content} />
-            )}
+            <FormattedMessage content={message.content} isAssistant={isAI} />
           </div>
           <div className={`text-[10px] mt-3 font-bold uppercase tracking-widest opacity-40 ${isAI ? 'text-slate-400' : 'text-blue-100'}`}>
             {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}

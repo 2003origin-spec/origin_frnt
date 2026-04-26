@@ -10,12 +10,16 @@ import {
 } from "@/components/ui/tooltip"
 import { cn } from '@/lib/utils';
 import type { User } from '@/types';
+import { useLayout } from '@/context/LayoutContext';
 
 interface DailyTrackerProps {
     user: User;
 }
 
 export default function DailyTracker({ user }: DailyTrackerProps) {
+    const { availableWidth } = useLayout();
+    const isMobile = availableWidth < 640;
+
     const scrollRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -96,15 +100,15 @@ export default function DailyTracker({ user }: DailyTrackerProps) {
             {/* Animated Background Glow */}
             <div className="absolute -top-24 -right-24 w-64 h-64 bg-emerald-500/10 dark:bg-emerald-500/5 rounded-full blur-[100px] pointer-events-none group-hover:bg-emerald-500/20 transition-colors duration-700" />
             
-            <CardHeader className="p-3 sm:p-6 relative z-10 space-y-4">
+            <CardHeader className={cn("relative z-10 space-y-4", isMobile ? "p-4" : "p-6")}>
                 <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                     <div className="space-y-1.5">
                         <div className="flex items-center gap-2 sm:gap-3">
-                            <div className="p-2 sm:p-2.5 bg-emerald-500/10 rounded-xl">
-                                <Calendar className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-600 dark:text-emerald-400" />
+                            <div className={cn("bg-emerald-500/10 rounded-xl", isMobile ? "p-2" : "p-2.5")}>
+                                <Calendar className={cn("text-emerald-600 dark:text-emerald-400", isMobile ? "w-4 h-4" : "w-5 h-5")} />
                             </div>
                             <div>
-                                <CardTitle className="text-base sm:text-xl font-black tracking-tight text-[#334155] dark:text-slate-100">
+                                <CardTitle className={cn("font-black tracking-tight text-[#334155] dark:text-slate-100", isMobile ? "text-base" : "text-xl")}>
                                     Activity Vault
                                 </CardTitle>
                                 <div className="flex items-center gap-2">
@@ -122,7 +126,7 @@ export default function DailyTracker({ user }: DailyTrackerProps) {
                     </div>
 
                     <div className="flex items-center gap-1 p-1 sm:p-1.5 bg-muted/30 sm:bg-muted/50 rounded-lg border border-border/50 self-start sm:self-auto">
-                        <span className="text-[8px] sm:text-[10px] uppercase tracking-wider font-black text-muted-foreground/60 mr-1 ml-1">Intensity</span>
+                        {!isMobile && <span className="text-[10px] uppercase tracking-wider font-black text-muted-foreground/60 mr-1 ml-1">Intensity</span>}
                         {[0, 1, 2, 3, 4].map((lvl) => (
                             <div key={lvl} className={cn("w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-[2px]", getLevelClass(lvl))} />
                         ))}

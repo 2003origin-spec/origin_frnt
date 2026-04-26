@@ -9,10 +9,8 @@ import { usePublishOriginAiPageContext } from '@/features/origin-ai/page-context
 import {
     formatMathExpression as sharedFormatMathExpression,
     hasMathMarkup as sharedHasMathMarkup,
-    renderFormattedExplanation as sharedRenderFormattedExplanation,
-    renderInlineSegments as sharedRenderInlineSegments,
-    renderQuestionText as sharedRenderQuestionText,
 } from '@/lib/math-text';
+import { FormattedMessage } from '@/components/origin-ai/FormattedMessage';
 import type { PracticeQuestion, User } from '@/types';
 import { submitOgcodeAnswerAction } from '@/server/actions/ogcode-actions';
 import { toast } from 'sonner';
@@ -298,16 +296,16 @@ function isEquationHeavyLine(value: string): boolean {
         || (startsLikeEquation && latexSignalCount >= 1);
 }
 
-function renderInlineSegments(value: string, keyPrefix: string): ReactNode[] {
-    return sharedRenderInlineSegments(value, keyPrefix);
+function renderInlineSegments(value: string, keyPrefix: string): ReactNode {
+    return <FormattedMessage content={value || ''} inline />;
 }
 
 function renderFormattedExplanation(content: string | null | undefined): ReactNode {
-    return sharedRenderFormattedExplanation(content);
+    return <FormattedMessage content={content || ''} />;
 }
 
 function renderQuestionText(content: string | null | undefined, keyPrefix: string): ReactNode {
-    return sharedRenderQuestionText(content, keyPrefix);
+    return <FormattedMessage content={content || ''} inline />;
 }
 
 export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, setTimeMode, user, initialQuestion }: OGCodeWorkspaceProps) {
@@ -478,9 +476,9 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
     const diff = DIFFICULTY_CONFIG[diffKey as keyof typeof DIFFICULTY_CONFIG] || DIFFICULTY_CONFIG.medium;
 
     return (
-        <div className="min-h-screen bg-[#0d1117] text-slate-100 flex flex-col font-sans">
+        <div className="min-h-screen bg-white dark:bg-[#0d1117] text-slate-900 dark:text-slate-100 flex flex-col font-sans transition-colors duration-300">
             {/* Header */}
-            <div className="h-14 sm:h-12 border-b border-white/[0.07] flex items-center justify-between px-3 sm:px-4 bg-[#0d1117] sticky top-0 z-50">
+            <div className="h-14 sm:h-12 border-b border-slate-200 dark:border-white/[0.07] flex items-center justify-between px-3 sm:px-4 bg-white dark:bg-[#0d1117] sticky top-0 z-50">
                 <button onClick={onBack} className="p-2 hover:bg-white/5 rounded-lg transition-colors">
                     <ArrowLeft className="w-5 h-5 sm:w-4 sm:h-4" />
                 </button>
@@ -495,34 +493,35 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                 </div>
             </div>
 
-            <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
-                {/* Left: Question Content */}
-                <div id="tutorial-ogcode-content" className="w-full lg:w-1/2 p-4 sm:p-6 overflow-y-auto border-b lg:border-b-0 lg:border-r border-white/5">
-                    <div className="space-y-4">
+            <div className="flex-1 overflow-y-auto bg-slate-50 dark:bg-[#0d1117]">
+                <div className="max-w-3xl mx-auto p-4 sm:p-8 space-y-10">
+                    {/* Question Content */}
+                    <div id="tutorial-ogcode-content" className="space-y-6">
                         <div className="flex items-center gap-2">
-                            <span className="text-[10px] font-bold text-blue-400 px-2 py-1 bg-blue-500/10 rounded uppercase tracking-wider">
+                            <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 px-2 py-1 bg-blue-500/10 rounded uppercase tracking-wider">
                                 {question.subject}
                             </span>
                             <span className={`text-[10px] font-bold ${diff.color} px-2 py-1 ${diff.bg} rounded uppercase tracking-wider`}>
                                 {diff.label}
                             </span>
                         </div>
-                        <div className="text-lg font-serif">
+                        <div className="text-xl sm:text-2xl font-serif leading-relaxed text-slate-900 dark:text-slate-100">
                             {renderQuestionText(question.text, 'question-text')}
                         </div>
-                        <div className="flex flex-wrap gap-2 pt-4">
+                        <div className="flex flex-wrap gap-2">
                             {safeTags.map((tag, i) => (
-                                <span key={i} className="text-[10px] px-2 py-0.5 bg-white/5 border border-white/10 rounded text-slate-500">
+                                <span key={i} className="text-[10px] px-2 py-0.5 bg-slate-200 dark:bg-white/5 border border-slate-300 dark:border-white/10 rounded text-slate-600 dark:text-slate-400">
                                     {tag}
                                 </span>
                             ))}
                         </div>
                     </div>
-                </div>
 
-                {/* Right: Interaction and Results */}
-                <div className="w-full lg:w-1/2 p-4 sm:p-6 bg-slate-50 dark:bg-black border-t lg:border-t-0 lg:border-l border-slate-200 dark:border-white/5 overflow-y-auto">
-                    <div id="tutorial-ogcode-input" className="max-w-xl mx-auto space-y-6">
+                    {/* Subtle Divider */}
+                    <div className="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+
+                    {/* Interaction and Results */}
+                    <div id="tutorial-ogcode-input" className="space-y-6 pb-20">
 
                         {/* 1. INPUT SECTION */}
                         <div className="space-y-4">
@@ -671,7 +670,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                             qType === 'matrix_match' ? matrixPairs.length === 0 :
                                                 !answerInput
                                 )}
-                                className="w-full py-4 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-blue-900/20 transition-all active:scale-[0.98]"
+                                className="w-full py-4 bg-blue-900 hover:bg-blue-800 dark:bg-blue-600 dark:hover:bg-blue-500 disabled:opacity-50 rounded-xl font-bold text-white flex items-center justify-center gap-2 shadow-lg shadow-blue-900/20 transition-all active:scale-[0.98]"
                             >
                                 {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Play className="w-5 h-5" />}
                                 Submit Answer
@@ -698,9 +697,9 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3 mb-4">
                                     <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
                                         <p className="text-[9px] sm:text-[10px] uppercase tracking-widest text-slate-500">Result Score</p>
-                                        <p className="text-base sm:text-lg font-black text-slate-100">
+                                        <p className="text-base sm:text-lg font-black text-slate-900 dark:text-slate-100">
                                             {result.resultScore ?? 0}
-                                            <span className="ml-1 text-[10px] sm:text-xs font-medium text-slate-500">/ {result.maxPoints ?? result.basePoints ?? 0}</span>
+                                            <span className="ml-1 text-[10px] sm:text-xs font-medium text-slate-500 dark:text-slate-500">/ {result.maxPoints ?? result.basePoints ?? 0}</span>
                                         </p>
                                     </div>
                                     <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
@@ -711,7 +710,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                     </div>
                                     <div className="col-span-2 sm:col-span-1 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
                                         <p className="text-[9px] sm:text-[10px] uppercase tracking-widest text-slate-500">Speed Rating</p>
-                                        <p className="text-base sm:text-lg font-black text-slate-100 uppercase tracking-tighter">
+                                        <p className="text-base sm:text-lg font-black text-slate-900 dark:text-slate-100 uppercase tracking-tighter">
                                             {result.speedBand ? SPEED_BAND_LABELS[result.speedBand] : 'Recorded'}
                                         </p>
                                         {typeof result.targetTimeSeconds === 'number' && (
@@ -774,7 +773,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                                     <div className="rounded-xl border border-blue-500/15 bg-blue-500/5 px-4 py-3">
                                                         <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Stored Answer</p>
                                                         {hasMathMarkup(result.correctAnswerText) ? (
-                                                            <div className="rounded-lg border border-blue-500/15 bg-black/20 px-3 py-2 font-mono text-base text-blue-100">
+                                                            <div className="rounded-lg border border-blue-500/15 bg-blue-500/5 dark:bg-black/20 px-3 py-2 font-mono text-base text-blue-700 dark:text-blue-100">
                                                                 {formatMathExpression(result.correctAnswerText)}
                                                             </div>
                                                         ) : (

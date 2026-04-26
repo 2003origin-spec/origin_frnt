@@ -58,7 +58,7 @@ export default function PointsSummary({ data, onNextSteps }: PointsSummaryProps)
             <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 blur-[50px] pointer-events-none group-hover:bg-blue-500/10 transition-colors duration-500" />
 
             {/* Header */}
-            <div className="flex items-center justify-between mb-2">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-2">
                 <div className="flex items-center gap-4">
                     <div className="w-14 h-14 rounded-2xl bg-[#EFF6FF] dark:bg-blue-500/10 flex items-center justify-center relative shadow-sm">
                         <Trophy className="w-8 h-8 text-[#1D4ED8]" />
@@ -66,21 +66,21 @@ export default function PointsSummary({ data, onNextSteps }: PointsSummaryProps)
                             <Star className="w-3 h-3 text-white fill-current" />
                         </div>
                     </div>
-                    <div>
-                        <div className="flex items-center gap-1.5">
-                            <h3 className="text-sm font-black text-[#64748B] dark:text-zinc-500 uppercase tracking-widest">Global Ranking</h3>
+                    <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                            <h3 className="text-sm font-black text-[#64748B] dark:text-zinc-500 uppercase tracking-widest truncate">Global Ranking</h3>
                             <button
                                 onClick={() => setShowInfo(true)}
-                                className="p-0.5 text-slate-400 hover:text-[#1D4ED8] transition-colors"
+                                className="p-0.5 text-slate-400 hover:text-[#1D4ED8] transition-colors flex-shrink-0"
                                 title="How are points calculated?"
                             >
                                 <Info className="w-3.5 h-3.5" />
                             </button>
                         </div>
-                        <p className="text-2xl font-black text-[#334155] dark:text-white mt-0.5">{data.totalPoints.toLocaleString()}</p>
+                        <p className="text-2xl font-black text-[#334155] dark:text-white mt-0.5 truncate">{data.totalPoints.toLocaleString()}</p>
                     </div>
                 </div>
-                <div className={`px-3 py-1 rounded-full border text-[10px] font-black uppercase tracking-tighter shadow-sm ${tierStyle}`}>
+                <div className={`px-3 py-1 rounded-full border text-[10px] font-black uppercase tracking-tighter shadow-sm flex-shrink-0 self-start sm:self-center ${tierStyle}`}>
                     {data.currentTier}
                 </div>
             </div>

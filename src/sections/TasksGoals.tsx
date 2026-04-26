@@ -28,7 +28,14 @@ interface TasksGoalsProps {
   user: User;
 }
 
+import { useLayout } from '@/context/LayoutContext';
+import { cn } from '@/lib/utils';
+
 export default function TasksGoals({ tasks, onAddTask, onToggleTask, onRemoveTask, onBack, user }: TasksGoalsProps) {
+  const { availableWidth } = useLayout();
+  const isConstrained = availableWidth < 1024;
+  const isMobile = availableWidth < 640;
+
   const [filter, setFilter] = useState<'all' | 'active' | 'completed'>('all');
   const [search, setSearch] = useState('');
   const [newTaskText, setNewTaskText] = useState('');
@@ -74,8 +81,14 @@ export default function TasksGoals({ tasks, onAddTask, onToggleTask, onRemoveTas
   };
 
   return (
-    <div id="tutorial-goals-hub" className="min-h-screen bg-[#F8FAFC] dark:bg-[#020617] text-slate-900 dark:text-slate-100 p-3 sm:p-4 md:p-8">
-      <div className="max-w-6xl mx-auto space-y-8">
+    <div id="tutorial-goals-hub" className="min-h-screen bg-[#F8FAFC] dark:bg-[#020617] text-slate-900 dark:text-slate-100 p-3 sm:p-4 md:p-8 relative overflow-x-hidden">
+      {/* Premium Background Decoration */}
+      <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden opacity-30 dark:opacity-20">
+        <div className="absolute top-[-20%] right-[-10%] w-[70%] h-[70%] bg-blue-100 dark:bg-primary/10 rounded-full blur-[120px]" />
+        <div className="absolute bottom-[-20%] left-[-10%] w-[60%] h-[60%] bg-slate-100 dark:bg-blue-500/10 rounded-full blur-[100px]" />
+      </div>
+
+      <div className="max-w-6xl mx-auto space-y-8 relative z-10">
         
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -97,14 +110,13 @@ export default function TasksGoals({ tasks, onAddTask, onToggleTask, onRemoveTas
               Hey {user.name}, stay on top of your milestones.
             </p>
           </div>
-
-          <div className="flex items-center gap-3">
-            {/* Stats Summary Tooltips could go here, but let's do a mini-card layout */}
-          </div>
         </div>
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className={cn(
+          "grid gap-4",
+          isConstrained ? "grid-cols-2" : "grid-cols-2 md:grid-cols-4"
+        )}>
           {[
             { label: 'Total Tasks', value: stats.total, icon: ListTodo, color: 'indigo' },
             { label: 'Completed', value: stats.completed, icon: CheckCircle2, color: 'emerald' },
@@ -118,177 +130,164 @@ export default function TasksGoals({ tasks, onAddTask, onToggleTask, onRemoveTas
               transition={{ delay: i * 0.1 }}
               className="bg-white dark:bg-slate-900/60 p-3 sm:p-5 rounded-xl sm:rounded-2xl border border-slate-100 dark:border-white/5 shadow-sm hover:shadow-md transition-all group"
             >
-              <div className={`w-7 h-7 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-${stat.color}-100 dark:bg-${stat.color}-900/20 flex items-center justify-center text-${stat.color}-600 dark:text-${stat.color}-400 mb-1.5 sm:mb-3 group-hover:scale-110 transition-transform`}>
-                <stat.icon className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
+              <div className={cn(
+                "rounded-lg sm:rounded-xl flex items-center justify-center mb-1.5 sm:mb-3 group-hover:scale-110 transition-transform",
+                isMobile ? "w-7 h-7" : "w-10 h-10",
+                `bg-${stat.color}-100 dark:bg-${stat.color}-900/20 text-${stat.color}-600 dark:text-${stat.color}-400`
+              )}>
+                <stat.icon className={cn(isMobile ? "w-3.5 h-3.5" : "w-5 h-5")} />
               </div>
-              <p className="text-lg sm:text-2xl font-black text-slate-900 dark:text-white">{stat.value}</p>
+              <p className={cn("font-black text-slate-900 dark:text-white", isMobile ? "text-lg" : "text-2xl")}>{stat.value}</p>
               <p className="text-[8px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider">{stat.label}</p>
             </motion.div>
           ))}
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Main Task Column */}
-          <div className="lg:col-span-2 space-y-6">
-            
-            {/* Filters & Search */}
-            <div className="flex flex-col sm:flex-row gap-4">
-              <div className="relative flex-1 group">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
-                <input 
-                  type="text" 
-                  placeholder="Search your tasks..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="w-full bg-white dark:bg-slate-900/60 border border-slate-100 dark:border-white/5 rounded-2xl pl-12 pr-4 py-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all placeholder:text-slate-400"
-                />
-              </div>
-              <div className="flex bg-white dark:bg-slate-900/60 p-1 rounded-2xl border border-slate-100 dark:border-white/5 shadow-sm overflow-x-auto no-scrollbar">
-                {(['all', 'active', 'completed'] as const).map((f) => (
-                  <button
-                    key={f}
-                    onClick={() => setFilter(f)}
-                    className={`px-3 sm:px-4 py-1.5 rounded-xl text-[10px] sm:text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${
-                      filter === f 
-                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' 
-                        : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'
-                    }`}
-                  >
-                    {f}
-                  </button>
-                ))}
-              </div>
+        <div className="space-y-6">
+          {/* Filters & Search */}
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="relative flex-1 group">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+              <input 
+                type="text" 
+                placeholder="Search your tasks..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full bg-white dark:bg-slate-900/60 border border-slate-100 dark:border-white/5 rounded-2xl pl-12 pr-4 py-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all placeholder:text-slate-400"
+              />
             </div>
-
-            {/* Task List */}
-            <div className="space-y-3 max-h-[600px] overflow-y-auto pr-4 custom-scrollbar">
-              <AnimatePresence mode="popLayout">
-                {filteredTasks.map((task) => (
-                  <motion.div
-                    key={task.id}
-                    layout
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 20 }}
-                    className={`group relative bg-white dark:bg-slate-900/60 p-3 sm:p-4 rounded-xl sm:rounded-2xl border transition-all flex items-start gap-3 sm:gap-4 ${
-                      task.completed 
-                        ? 'border-slate-100 dark:border-white/5 opacity-60' 
-                        : isOverdue(task.due)
-                          ? 'border-rose-100 dark:border-rose-900/30'
-                          : 'border-slate-100 dark:border-white/5 hover:border-indigo-200 dark:hover:border-indigo-900/30'
-                    }`}
-                  >
-                    <button 
-                      onClick={() => onToggleTask(task.id)}
-                      className={`mt-1 w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${
-                        task.completed 
-                          ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-500/10' 
-                          : 'border-slate-200 dark:border-slate-700 hover:border-indigo-400'
-                      }`}
-                    >
-                      <CheckCircle2 className={`w-4 h-4 ${task.completed ? 'block' : 'hidden md:block opacity-0 group-hover:opacity-30'}`} />
-                    </button>
-
-                    <div className="flex-1 min-w-0">
-                      <h4 className={`text-sm sm:text-base font-bold transition-all ${
-                        task.completed ? 'text-slate-400 line-through' : 'text-slate-900 dark:text-slate-100'
-                      }`}>
-                        {task.text}
-                      </h4>
-                      <div className="flex flex-wrap items-center gap-3 mt-2">
-                        <Badge variant="outline" className={`h-6 px-2 border-0 font-bold text-[10px] uppercase tracking-wider ${
-                          task.completed 
-                            ? 'bg-slate-100 dark:bg-slate-800 text-slate-500' 
-                            : isOverdue(task.due)
-                              ? 'bg-rose-100 dark:bg-rose-900/40 text-rose-600'
-                              : 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400'
-                        }`}>
-                          <Calendar className="w-3 h-3 mr-1.5" />
-                          {task.completed ? 'Completed' : isOverdue(task.due) ? `Missed: ${formatDate(task.due)}` : `Due: ${formatDate(task.due)}`}
-                        </Badge>
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={() => onRemoveTask(task.id)}
-                      className="p-2 text-slate-300 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-xl transition-all opacity-100 md:opacity-0 md:group-hover:opacity-100"
-                    >
-                      <Trash2 className="w-4 h-4 sm:w-5 sm:h-5" />
-                    </button>
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-
-              {filteredTasks.length === 0 && (
-                <div className="py-20 flex flex-col items-center justify-center text-center space-y-4">
-                  <div className="w-16 h-16 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center text-slate-400">
-                    <LayoutGrid className="w-8 h-8" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-bold text-slate-900 dark:text-white">No tasks found</h3>
-                    <p className="text-sm text-slate-500">Try adjusting your filters or search query.</p>
-                  </div>
-                </div>
-              )}
+            <div className="flex bg-white dark:bg-slate-900/60 p-1 rounded-2xl border border-slate-100 dark:border-white/5 shadow-sm overflow-x-auto no-scrollbar">
+              {(['all', 'active', 'completed'] as const).map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setFilter(f)}
+                  className={`px-3 sm:px-4 py-1.5 rounded-xl text-[10px] sm:text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${
+                    filter === f 
+                      ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20' 
+                      : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'
+                  }`}
+                >
+                  {f}
+                </button>
+              ))}
             </div>
           </div>
 
-          {/* Right Column: New Task Form */}
-          <div className="space-y-6">
-            <Card className="border-0 shadow-2xl shadow-indigo-500/5 bg-white dark:bg-slate-900/60 backdrop-blur-xl relative overflow-hidden rounded-[1.5rem] sm:rounded-[2rem] ring-1 ring-slate-100 dark:ring-white/5 sticky top-8">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 blur-3xl -mr-16 -mt-16" />
-              <CardContent className="p-5 sm:p-8 space-y-4 sm:space-y-6">
-                <div className="space-y-1 sm:space-y-2">
-                  <h3 className="text-base sm:text-xl font-black text-slate-900 dark:text-white">Add New Task</h3>
-                  <p className="text-[8px] sm:text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-widest italic leading-tight">Break down your goals</p>
+          {/* New Task Form - Moved here */}
+          <Card className="border-0 shadow-2xl shadow-indigo-500/5 bg-white dark:bg-slate-900/60 backdrop-blur-xl relative overflow-hidden rounded-2xl sm:rounded-3xl ring-1 ring-slate-100 dark:ring-white/5">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 blur-3xl -mr-16 -mt-16" />
+            <CardContent className="p-4 sm:p-6">
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+                <div className="md:col-span-6 space-y-1.5">
+                  <label className="text-[8px] sm:text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">Task Description</label>
+                  <input 
+                    type="text"
+                    placeholder="What needs to be done?"
+                    value={newTaskText}
+                    onChange={(e) => setNewTaskText(e.target.value)}
+                    className="w-full bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-white/5 rounded-xl p-3 text-xs sm:text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all placeholder:text-slate-400"
+                  />
                 </div>
 
-                <div className="space-y-4">
-                  <div className="space-y-1.5 sm:space-y-2">
-                    <label className="text-[8px] sm:text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">Task Description</label>
-                    <textarea 
-                      placeholder="What needs to be done?"
-                      value={newTaskText}
-                      onChange={(e) => setNewTaskText(e.target.value)}
-                      rows={2}
-                      className="w-full bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-white/5 rounded-xl sm:rounded-2xl p-3 sm:p-4 text-xs sm:text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all placeholder:text-slate-400"
+                <div className="md:col-span-4 space-y-1.5">
+                  <label className="text-[8px] sm:text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">Deadline</label>
+                  <div className="relative group">
+                    <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+                    <input 
+                      type="datetime-local" 
+                      value={newTaskDue}
+                      onChange={(e) => setNewTaskDue(e.target.value)}
+                      className="w-full bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-white/5 rounded-xl pl-10 pr-3 py-3 text-xs sm:text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all cursor-pointer"
                     />
                   </div>
+                </div>
 
-                  <div className="space-y-1.5 sm:space-y-2">
-                    <label className="text-[8px] sm:text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">Deadline</label>
-                    <div className="relative group">
-                      <Calendar className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400 pointer-events-none" />
-                      <input 
-                        type="datetime-local" 
-                        value={newTaskDue}
-                        onChange={(e) => setNewTaskDue(e.target.value)}
-                        className="w-full bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-white/5 rounded-xl sm:rounded-2xl pl-10 sm:pl-12 pr-3 sm:pr-4 py-2.5 sm:py-3 text-xs sm:text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all cursor-pointer"
-                      />
-                    </div>
-                  </div>
-
+                <div className="md:col-span-2">
                   <Button 
                     onClick={handleAddTask}
                     disabled={!newTaskText.trim()}
-                    className="w-full h-11 sm:h-14 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl sm:rounded-2xl shadow-xl shadow-indigo-500/30 text-xs sm:text-base font-black gap-2 group"
+                    className="w-full h-[46px] bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl shadow-lg shadow-indigo-500/20 text-xs sm:text-sm font-black gap-2 group"
                   >
-                    Create Task
-                    <ChevronRight className="w-3.5 h-3.5 sm:w-5 sm:h-5 group-hover:translate-x-1 transition-transform" />
+                    Add
+                    <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
                   </Button>
                 </div>
+              </div>
+            </CardContent>
+          </Card>
 
-                <div className="p-3 sm:p-4 bg-indigo-50 dark:bg-indigo-900/10 rounded-xl sm:rounded-2xl border border-indigo-100 dark:border-indigo-900/30">
-                  <p className="text-[8px] sm:text-[10px] text-indigo-600 dark:text-indigo-400 font-bold uppercase tracking-wider mb-1 sm:mb-2">💡 Quick Tip</p>
-                  <p className="text-[10px] sm:text-xs text-indigo-900/60 dark:text-indigo-300 font-medium leading-relaxed">
-                    Setting specific deadlines helps you stay disciplined and focused.
-                  </p>
+          {/* Task List */}
+          <div className="space-y-3 max-h-[800px] overflow-y-auto pr-2 custom-scrollbar">
+            <AnimatePresence mode="popLayout">
+              {filteredTasks.map((task) => (
+                <motion.div
+                  key={task.id}
+                  layout
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 20 }}
+                  className={`group relative bg-white dark:bg-slate-900/60 p-3 sm:p-4 rounded-xl sm:rounded-2xl border transition-all flex items-start gap-3 sm:gap-4 ${
+                    task.completed 
+                      ? 'border-slate-100 dark:border-white/5 opacity-60' 
+                      : isOverdue(task.due)
+                        ? 'border-rose-100 dark:border-rose-900/30'
+                        : 'border-slate-100 dark:border-white/5 hover:border-indigo-200 dark:hover:border-indigo-900/30'
+                  }`}
+                >
+                  <button 
+                    onClick={() => onToggleTask(task.id)}
+                    className={`mt-1 w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${
+                      task.completed 
+                        ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-500/10' 
+                        : 'border-slate-200 dark:border-slate-700 hover:border-indigo-400'
+                    }`}
+                  >
+                    <CheckCircle2 className={`w-4 h-4 ${task.completed ? 'block' : 'hidden md:block opacity-0 group-hover:opacity-30'}`} />
+                  </button>
+
+                  <div className="flex-1 min-w-0">
+                    <h4 className={`text-sm sm:text-base font-bold transition-all ${
+                      task.completed ? 'text-slate-400 line-through' : 'text-slate-900 dark:text-slate-100'
+                    }`}>
+                      {task.text}
+                    </h4>
+                    <div className="flex flex-wrap items-center gap-3 mt-2">
+                      <Badge variant="outline" className={`h-6 px-2 border-0 font-bold text-[10px] uppercase tracking-wider ${
+                        task.completed 
+                          ? 'bg-slate-100 dark:bg-slate-800 text-slate-500' 
+                          : isOverdue(task.due)
+                            ? 'bg-rose-100 dark:bg-rose-900/40 text-rose-600'
+                            : 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400'
+                      }`}>
+                        <Calendar className="w-3 h-3 mr-1.5" />
+                        {task.completed ? 'Completed' : isOverdue(task.due) ? `Missed: ${formatDate(task.due)}` : `Due: ${formatDate(task.due)}`}
+                      </Badge>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => onRemoveTask(task.id)}
+                    className="p-2 text-slate-300 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-xl transition-all opacity-100 md:opacity-0 md:group-hover:opacity-100"
+                  >
+                    <Trash2 className="w-4 h-4 sm:w-5 sm:h-5" />
+                  </button>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+
+            {filteredTasks.length === 0 && (
+              <div className="py-20 flex flex-col items-center justify-center text-center space-y-4">
+                <div className="w-16 h-16 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center text-slate-400">
+                  <LayoutGrid className="w-8 h-8" />
                 </div>
-              </CardContent>
-            </Card>
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-white">No tasks found</h3>
+                  <p className="text-sm text-slate-500">Try adjusting your filters or search query.</p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
-
       </div>
     </div>
   );

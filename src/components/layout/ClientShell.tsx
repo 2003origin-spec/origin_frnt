@@ -8,6 +8,10 @@ import type { ViewState } from '@/types';
 import Navbar from './Navbar';
 import { useTheme } from 'next-themes';
 import { TutorialProvider } from '@/features/tutorial/TutorialProvider';
+import { cn } from '@/lib/utils';
+import { useResizable } from '@/hooks/use-resizable';
+import AiSidebar from './AiSidebar';
+import { LayoutProvider, useLayout } from '@/context/LayoutContext';
 
 const FloatingChat = dynamic(() => import('./FloatingChat'), { ssr: false });
 const TutorialOverlay = dynamic(() =>
@@ -41,13 +45,44 @@ function resolveRoute(view: string) {
   return ROUTES[view] || `/${view}`;
 }
 
-export default function ClientShell({ children }: { children: React.ReactNode }) {
+function ClientShellInner({ children }: { children: React.ReactNode }) {
   const { user, logout, isNavigationLocked } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
   const { resolvedTheme, setTheme } = useTheme();
+  const { setSidebarWidth, setIsAiOpen: setContextAiOpen } = useLayout();
   const [mounted, setMounted] = React.useState(false);
   const [deferredUiReady, setDeferredUiReady] = React.useState(false);
+
+  // Side AI State
+  const [isAiOpen, setIsAiOpenInternal] = React.useState(false);
+
+  // Sync state with context
+  React.useEffect(() => {
+    setContextAiOpen(isAiOpen);
+  }, [isAiOpen, setContextAiOpen]);
+
+  const [aiSide, setAiSide] = React.useState<'left' | 'right'>('right');
+  const [autoAskSelectionNonce, setAutoAskSelectionNonce] = React.useState(0);
+
+  const { width: aiWidth, isResizing, startResizing } = useResizable({
+    initialWidth: typeof window !== 'undefined' ? window.innerWidth * 0.2 : 400,
+    minWidth: 320,
+    maxWidth: 800,
+    side: aiSide,
+  });
+
+  // Sync with layout context
+  React.useEffect(() => {
+    setSidebarWidth(isAiOpen ? aiWidth : 0);
+  }, [aiWidth, isAiOpen, setSidebarWidth]);
+
+  const toggleAi = React.useCallback((options?: { autoAskSelection?: boolean }) => {
+    if (options?.autoAskSelection) {
+      setAutoAskSelectionNonce((current) => current + 1);
+    }
+    setIsAiOpenInternal(true);
+  }, []);
 
   React.useEffect(() => {
     setMounted(true);
@@ -98,42 +133,76 @@ export default function ClientShell({ children }: { children: React.ReactNode })
     !noNavbarPaths.includes(pathname) &&
     !isTestsPath;
   
-  // Use resolvedTheme if available to handle 'system' correctly
   const currentTheme = (mounted ? resolvedTheme : 'dark') || 'dark';
-  
-  // Show Navbar on more paths if needed
   const showNavbar = mounted && !!user && user.role === 'student' && !isNavigationLocked && !noNavbarPaths.includes(pathname) && !isSpecialPath;
 
   return (
     <TutorialProvider>
-      <div id="tutorial-welcome" className="min-h-screen bg-background text-foreground font-sans antialiased overflow-x-hidden relative flex flex-col transition-colors duration-700">
-      {/* Dynamic Background Mesh */}
-      <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden opacity-30 dark:opacity-20">
-        <div className="absolute top-[-20%] right-[-10%] w-[70%] h-[70%] bg-blue-100 dark:bg-primary/10 rounded-full blur-[120px]" />
-        <div className="absolute bottom-[-20%] left-[-10%] w-[60%] h-[60%] bg-slate-100 dark:bg-blue-500/10 rounded-full blur-[100px]" />
-      </div>
+      <div id="tutorial-welcome" className={cn(
+        "h-screen bg-background text-foreground font-sans antialiased overflow-hidden relative flex transition-colors duration-700",
+        aiSide === 'right' ? 'flex-row' : 'flex-row-reverse'
+      )}>
+        {/* Main Content Area */}
+        <div className="flex-1 flex flex-col min-w-0 relative h-screen">
+          <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden opacity-30 dark:opacity-20">
+            <div className="absolute top-[-20%] right-[-10%] w-[70%] h-[70%] bg-blue-100 dark:bg-primary/10 rounded-full blur-[120px]" />
+            <div className="absolute bottom-[-20%] left-[-10%] w-[60%] h-[60%] bg-slate-100 dark:bg-blue-500/10 rounded-full blur-[100px]" />
+          </div>
 
-      {mounted && showNavbar && (
-        <Navbar
-          user={user}
-          currentView={pathname.replace('/', '') as ViewState}
-          onNavigate={handleNavigate}
-          onPrefetch={prefetchRoute}
-          onLogout={logout}
-          theme={currentTheme as "dark" | "light" | "system"}
-          setTheme={setTheme}
-        />
-      )}
-      <main className={`flex-1 flex flex-col relative z-10 ${mounted && showNavbar ? 'pt-[92px]' : ''}`}>
-        <div className="flex-1 flex flex-col relative">
-          {children}
+          {mounted && showNavbar && (
+            <Navbar
+              user={user}
+              currentView={pathname.replace('/', '') as ViewState}
+              onNavigate={handleNavigate}
+              onPrefetch={prefetchRoute}
+              onLogout={logout}
+              theme={currentTheme as "dark" | "light" | "system"}
+              setTheme={setTheme}
+            />
+          )}
+          <main className={cn(
+            "flex-1 flex flex-col relative z-10 overflow-y-auto overflow-x-hidden custom-scrollbar",
+            "transition-all duration-300 min-w-[320px]",
+            mounted && showNavbar ? 'pt-[92px]' : ''
+          )}>
+            <div className="flex-1 flex flex-col relative w-full max-w-full">
+              {children}
+            </div>
+          </main>
         </div>
-      </main>
-      {shouldShowFloatingOriginAi
-        ? <FloatingChat />
-        : null}
-      {deferredUiReady ? <TutorialOverlay /> : null}
-    </div>
+
+        {/* Resizable AI Sidebar */}
+        {shouldShowFloatingOriginAi && (
+           <AiSidebar 
+            isOpen={isAiOpen}
+            onClose={() => setIsAiOpenInternal(false)}
+            width={aiWidth}
+            isResizing={isResizing}
+            onResizeStart={startResizing}
+            side={aiSide}
+            onSideToggle={() => setAiSide(prev => prev === 'left' ? 'right' : 'left')}
+            autoAskSelectionNonce={autoAskSelectionNonce}
+          />
+        )}
+
+        {shouldShowFloatingOriginAi && (
+          <FloatingChat 
+            onOpen={toggleAi} 
+            autoAskSelectionNonce={autoAskSelectionNonce} 
+            hideMainButton={isAiOpen} 
+          />
+        )}
+
+        {deferredUiReady ? <TutorialOverlay /> : null}
+      </div>
     </TutorialProvider>
+  );
+}
+
+export default function ClientShell({ children }: { children: React.ReactNode }) {
+  return (
+    <LayoutProvider>
+      <ClientShellInner>{children}</ClientShellInner>
+    </LayoutProvider>
   );
 }

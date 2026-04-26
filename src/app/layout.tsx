@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import "./globals.css";
+import "katex/dist/katex.min.css";
 import { AuthProvider } from "@/context/AuthContext";
 import { ThemeProvider } from "next-themes";
 import { Toaster } from "@/components/ui/sonner";

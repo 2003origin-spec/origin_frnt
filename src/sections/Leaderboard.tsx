@@ -29,7 +29,14 @@ interface LeaderboardProps {
   initialMyRank?: number | null;
 }
 
+import { useLayout } from '@/context/LayoutContext';
+import { cn } from '@/lib/utils';
+
 export default function Leaderboard({ currentUser, initialLeaderboard, initialMyRank }: LeaderboardProps) {
+  const { availableWidth } = useLayout();
+  const isConstrained = availableWidth < 1024;
+  const isMobile = availableWidth < 640;
+
   const [activeTab, setActiveTab] = useState('global');
   const [selectedSubject, setSelectedSubject] = useState<string>('overall');
   const [leaderboard, setLeaderboard] = useState<any[]>((initialLeaderboard as any[]) ?? []);
@@ -63,10 +70,10 @@ export default function Leaderboard({ currentUser, initialLeaderboard, initialMy
   };
 
   const getRankIcon = (rank: number) => {
-    if (rank === 1) return <Crown className="w-5 h-5 text-amber-500" />;
-    if (rank === 2) return <Medal className="w-5 h-5 text-slate-400" />;
-    if (rank === 3) return <Award className="w-5 h-5 text-orange-500" />;
-    return <span className="w-5 h-5 flex items-center justify-center font-medium text-slate-500">{rank}</span>;
+    if (rank === 1) return <Crown className={cn(isMobile ? "w-4 h-4" : "w-5 h-5", "text-amber-500")} />;
+    if (rank === 2) return <Medal className={cn(isMobile ? "w-4 h-4" : "w-5 h-5", "text-slate-400")} />;
+    if (rank === 3) return <Award className={cn(isMobile ? "w-4 h-4" : "w-5 h-5", "text-orange-500")} />;
+    return <span className={cn(isMobile ? "text-sm" : "text-base", "w-5 h-5 flex items-center justify-center font-medium text-slate-500")}>{rank}</span>;
   };
 
   const getRankStyle = (rank: number) => {
@@ -90,15 +97,21 @@ export default function Leaderboard({ currentUser, initialLeaderboard, initialMy
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 relative z-10">
         <Card className="border-0 shadow-2xl bg-gradient-to-br from-primary via-primary/90 to-blue-600 text-primary-foreground mb-8 overflow-hidden relative rounded-[2.5rem]">
           <div className="absolute inset-0 bg-[url('/noise.svg')] opacity-[0.05] mix-blend-overlay pointer-events-none" />
-          <CardContent className="p-8 sm:p-10 relative z-10">
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-6">
+          <CardContent className={cn("relative z-10", isMobile ? "p-6" : "p-8 sm:p-10")}>
+            <div className={cn(
+              "flex items-center justify-between gap-6",
+              isMobile ? "flex-col" : "flex-row"
+            )}>
               <div className="flex items-center gap-6">
-                <div className="w-20 h-20 rounded-3xl bg-white/10 flex items-center justify-center border border-white/20 backdrop-blur-md shadow-xl">
-                  <span className="text-3xl font-black">#{myRank || ' - '}</span>
+                <div className={cn(
+                  "rounded-3xl bg-white/10 flex items-center justify-center border border-white/20 backdrop-blur-md shadow-xl",
+                  isMobile ? "w-16 h-16" : "w-20 h-20"
+                )}>
+                  <span className={cn("font-black", isMobile ? "text-2xl" : "text-3xl")}>#{myRank || ' - '}</span>
                 </div>
                 <div>
                   <p className="text-white/70 text-[10px] font-black uppercase tracking-[0.2em] mb-1">Global Standing</p>
-                  <p className="text-2xl font-black tracking-tight leading-none mb-2">{currentUser.name}</p>
+                  <p className={cn("font-black tracking-tight leading-none mb-2", isMobile ? "text-xl" : "text-2xl")}>{currentUser.name}</p>
                   <div className="flex items-center gap-2">
                     <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/10 border border-white/10">
                       <Flame className="w-3.5 h-3.5 text-orange-400" />
@@ -107,8 +120,8 @@ export default function Leaderboard({ currentUser, initialLeaderboard, initialMy
                   </div>
                 </div>
               </div>
-              <div className="text-center sm:text-right">
-                <p className="text-5xl font-black tracking-tighter drop-shadow-md">{(myScore ?? 0).toFixed(0)}</p>
+              <div className={cn("text-center", isMobile ? "" : "sm:text-right")}>
+                <p className={cn("font-black tracking-tighter drop-shadow-md", isMobile ? "text-4xl" : "text-5xl")}>{(myScore ?? 0).toFixed(0)}</p>
                 <p className="text-white/70 text-[10px] font-black uppercase tracking-[0.2em]">Efficiency Rating</p>
               </div>
             </div>
@@ -164,12 +177,18 @@ export default function Leaderboard({ currentUser, initialLeaderboard, initialMy
 
           <TabsContent value="global" className="mt-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
             {/* Top 3 Podium */}
-            <div className="flex justify-center items-end gap-3 sm:gap-6 mb-16 mt-8">
+            <div className={cn(
+              "flex justify-center items-end mt-8 mb-16",
+              isMobile ? "gap-2" : "gap-3 sm:gap-6"
+            )}>
               {leaderboard.slice(0, 3).map((entry, index) => (
                 <div
                   key={entry.userId}
-                  className={`flex flex-col items-center flex-1 max-w-[140px] group ${index === 0 ? 'order-2 scale-110 -translate-y-4' : index === 1 ? 'order-1' : 'order-3'
-                    }`}
+                  className={cn(
+                    "flex flex-col items-center flex-1 group",
+                    isMobile ? "max-w-[100px]" : "max-w-[140px]",
+                    index === 0 ? 'order-2 scale-110 -translate-y-4' : index === 1 ? 'order-1' : 'order-3'
+                  )}
                 >
                   <div className="relative">
                     <motion.div 
@@ -181,31 +200,40 @@ export default function Leaderboard({ currentUser, initialLeaderboard, initialMy
                       animate={{ scale: [1, 1.2, 1] }}
                       transition={{ duration: 4, repeat: Infinity }}
                     />
-                    <Avatar className={`w-20 h-20 sm:w-28 sm:h-28 border-[6px] shadow-2xl relative z-10 ${
+                    <Avatar className={cn(
+                      "border-[6px] shadow-2xl relative z-10",
+                      isMobile ? "w-16 h-16 border-[4px]" : "w-20 h-20 sm:w-28 sm:h-28",
                       index === 0 ? 'border-amber-400' :
                       index === 1 ? 'border-slate-300' :
                       'border-orange-500'
-                    }`}>
-                      <AvatarFallback className={`text-2xl sm:text-3xl font-black ${
+                    )}>
+                      <AvatarFallback className={cn(
+                        "font-black",
+                        isMobile ? "text-xl" : "text-2xl sm:text-3xl",
                         index === 0 ? 'bg-amber-100 text-amber-600' :
                         index === 1 ? 'bg-slate-100 text-slate-600' :
                         'bg-orange-100 text-orange-600'
-                      }`}>
+                      )}>
                         {(entry.name.charAt(0)).toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
-                    <div className={`absolute -bottom-3 left-1/2 -translate-x-1/2 w-10 h-10 rounded-full flex items-center justify-center shadow-2xl ring-4 ring-background z-20 ${
+                    <div className={cn(
+                      "absolute -bottom-3 left-1/2 -translate-x-1/2 rounded-full flex items-center justify-center shadow-2xl ring-4 ring-background z-20",
+                      isMobile ? "w-7 h-7 ring-2" : "w-10 h-10",
                       index === 0 ? 'bg-amber-400' :
                       index === 1 ? 'bg-slate-300' :
                       'bg-orange-500'
-                    }`}>
-                      <span className="text-white font-black text-base">{index + 1}</span>
+                    )}>
+                      <span className={cn("text-white font-black", isMobile ? "text-xs" : "text-base")}>{index + 1}</span>
                     </div>
                   </div>
-                  <p className={`font-black mt-8 tracking-tight truncate w-full text-center group-hover:text-primary transition-colors ${index === 0 ? 'text-lg' : 'text-sm'}`}>
+                  <p className={cn(
+                    "font-black mt-8 tracking-tight truncate w-full text-center group-hover:text-primary transition-colors",
+                    index === 0 ? (isMobile ? 'text-sm' : 'text-lg') : 'text-xs'
+                  )}>
                     {entry.name}
                   </p>
-                  <p className="text-xs font-black text-primary/80 mt-1">
+                  <p className="text-[10px] font-black text-primary/80 mt-1">
                     {(entry.rankScore ?? 0).toFixed(0)} EFR
                   </p>
                 </div>
@@ -227,17 +255,25 @@ export default function Leaderboard({ currentUser, initialLeaderboard, initialMy
               ) : leaderboard.map((entry) => (
                 <div
                   key={entry.userId}
-                  className={`flex items-center gap-5 p-5 sm:p-6 rounded-[2rem] border transition-all duration-300 hover:scale-[1.01] hover:shadow-2xl hover:shadow-primary/5 ${
+                  className={cn(
+                    "flex items-center rounded-[2rem] border transition-all duration-300 hover:scale-[1.01] hover:shadow-2xl hover:shadow-primary/5",
+                    isMobile ? "gap-3 p-4" : "gap-5 p-5 sm:p-6",
                     entry.isMe 
                     ? 'glass border-primary/40 ring-2 ring-primary/20 shadow-xl' 
                     : 'bg-card border-border/50 shadow-sm'
-                  }`}
+                  )}
                 >
-                  <div className="w-10 flex justify-center font-black text-xl tracking-tighter shrink-0">
+                  <div className={cn(
+                    "flex justify-center font-black tracking-tighter shrink-0",
+                    isMobile ? "w-6 text-lg" : "w-10 text-xl"
+                  )}>
                     {getRankIcon(entry.rank)}
                   </div>
 
-                  <Avatar className="w-14 h-14 shadow-lg ring-2 ring-background border-2 border-transparent">
+                  <Avatar className={cn(
+                    "shadow-lg ring-2 ring-background border-2 border-transparent shrink-0",
+                    isMobile ? "w-10 h-10" : "w-14 h-14"
+                  )}>
                     <AvatarFallback className="bg-gradient-to-br from-primary to-blue-700 text-white font-black text-lg">
                       {entry.name.charAt(0).toUpperCase()}
                     </AvatarFallback>
@@ -245,28 +281,30 @@ export default function Leaderboard({ currentUser, initialLeaderboard, initialMy
 
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-3">
-                      <span className="font-black text-lg tracking-tight truncate">{entry.name}</span>
+                      <span className={cn("font-black tracking-tight truncate", isMobile ? "text-sm" : "text-lg")}>{entry.name}</span>
                       {entry.isMe && (
                         <Badge className="bg-primary hover:bg-primary text-white text-[10px] h-5 font-black uppercase tracking-wider px-2">YOU</Badge>
                       )}
                     </div>
                     <div className="flex items-center gap-3 text-[10px] text-muted-foreground mt-1 font-black uppercase tracking-widest opacity-60">
-                      <span>Efficiency: {(entry.rankScore ?? 0).toFixed(1)}%</span>
-                      <span className="w-1 h-1 rounded-full bg-border" />
+                      <span className={isMobile ? "hidden" : "block"}>Efficiency: {(entry.rankScore ?? 0).toFixed(1)}%</span>
+                      {!isMobile && <span className="w-1 h-1 rounded-full bg-border" />}
                       <span>{entry.rawCount || 0} Modules</span>
                     </div>
                   </div>
 
-                  <div className="text-right flex items-center gap-8 shrink-0">
-                    <div className="hidden sm:block text-right">
-                      <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-1">Growth</p>
-                      <div className="flex items-center gap-1.5 justify-end">
-                        <Zap className="w-3.5 h-3.5 text-blue-500" />
-                        <span className="text-sm font-black">+{(Math.random() * 10).toFixed(1)}%</span>
+                  <div className="text-right flex items-center gap-4 sm:gap-8 shrink-0">
+                    {!isMobile && (
+                      <div className="hidden sm:block text-right">
+                        <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-1">Growth</p>
+                        <div className="flex items-center gap-1.5 justify-end">
+                          <Zap className="w-3.5 h-3.5 text-blue-500" />
+                          <span className="text-sm font-black">+{(Math.random() * 10).toFixed(1)}%</span>
+                        </div>
                       </div>
-                    </div>
+                    )}
                     <div className="text-right">
-                      <p className="text-3xl font-black text-primary leading-none tracking-tighter">{entry.questionsSolved || 0}</p>
+                      <p className={cn("font-black text-primary leading-none tracking-tighter", isMobile ? "text-xl" : "text-3xl")}>{entry.questionsSolved || 0}</p>
                       <p className="text-[10px] font-black text-muted-foreground/40 uppercase tracking-widest mt-1">XP Points</p>
                     </div>
                   </div>

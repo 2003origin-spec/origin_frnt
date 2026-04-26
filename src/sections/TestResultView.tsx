@@ -29,7 +29,7 @@ import {
   YAxis,
   CartesianGrid
 } from 'recharts';
-import { renderFormattedExplanation } from '@/lib/math-text';
+import { FormattedMessage } from '@/components/origin-ai/FormattedMessage';
 import type { ReviewEntry, TestResult } from '@/types';
 
 interface TestResultViewProps {
@@ -808,7 +808,7 @@ export default function TestResultView({
                           Diagnostic Insight
                         </h4>
                         <div className="text-foreground/80 leading-relaxed font-medium">
-                          {renderFormattedExplanation(selectedReviewItem.explanation)}
+                          <FormattedMessage content={selectedReviewItem.explanation} />
                         </div>
                       </div>
 
@@ -818,7 +818,7 @@ export default function TestResultView({
                           Recommended strategy
                         </h4>
                         <div className="text-foreground/80 leading-relaxed font-medium">
-                          {renderFormattedExplanation(selectedReviewItem.howToApproach)}
+                          <FormattedMessage content={selectedReviewItem.howToApproach} />
                         </div>
                       </div>
 
@@ -901,7 +901,7 @@ export default function TestResultView({
                           Diagnostic Insight
                         </h4>
                         <div className="text-foreground/80 leading-relaxed font-medium">
-                          {renderFormattedExplanation(selectedReviewItem.explanation)}
+                          <FormattedMessage content={selectedReviewItem.explanation} />
                         </div>
                       </div>
 
@@ -911,7 +911,7 @@ export default function TestResultView({
                           Why it worked
                         </h4>
                         <div className="text-foreground/80 leading-relaxed font-medium">
-                          {renderFormattedExplanation(selectedReviewItem.howToApproach)}
+                          <FormattedMessage content={selectedReviewItem.howToApproach} />
                         </div>
                       </div>
                     </div>

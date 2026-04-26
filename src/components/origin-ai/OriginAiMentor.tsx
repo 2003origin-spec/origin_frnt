@@ -14,6 +14,7 @@ import { clearHighlightedText, getHighlightedText, useHighlightedText } from '@/
 import { startOriginAiVoiceMode, type OriginAiVoiceController } from '@/features/origin-ai/voice-client';
 import { cn } from '@/lib/utils';
 import type { OriginAiSnapshot, OriginAiVoiceStatus } from '@/types';
+import { FormattedMessage } from './FormattedMessage';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from 'sonner';
@@ -22,6 +23,7 @@ interface OriginAiMentorProps {
   compact?: boolean;
   onClose?: () => void;
   autoAskSelectionNonce?: number;
+  isSidebar?: boolean;
 }
 
 function formatRelativeTimestamp(date: Date): string {
@@ -114,7 +116,7 @@ function MessageList({ snapshot }: { snapshot: OriginAiSnapshot }) {
                     : 'rounded-tr-md bg-blue-600 text-white shadow-blue-600/10',
                 )}
               >
-                <div className="whitespace-pre-wrap">{message.content}</div>
+                <FormattedMessage content={message.content} isAssistant={isAssistant} />
                 <div
                   className={cn(
                     'mt-2 text-[10px] uppercase tracking-[0.2em]',
@@ -155,6 +157,7 @@ export default function OriginAiMentor({
   compact = false,
   onClose,
   autoAskSelectionNonce = 0,
+  isSidebar = false,
 }: OriginAiMentorProps) {
   const pathname = usePathname();
   const [snapshot, setSnapshot] = React.useState<OriginAiSnapshot | null>(null);
@@ -344,7 +347,10 @@ export default function OriginAiMentor({
   const voiceStatusText = describeVoiceStatus(voiceStatus);
 
   const shellClassName = compact
-    ? 'flex h-full flex-col overflow-hidden rounded-[28px] border border-border/40 bg-card text-foreground shadow-2xl transition-colors'
+    ? cn(
+        'flex h-full flex-col overflow-hidden transition-colors',
+        !isSidebar && 'rounded-[28px] border border-border/40 bg-card shadow-2xl'
+      )
     : 'flex h-full min-h-[calc(100vh-7rem)] flex-col overflow-hidden rounded-[32px] border border-border/40 bg-card text-foreground shadow-[0_25px_80px_rgba(2,6,23,0.15)] transition-colors';
 
   if (compact) {
@@ -358,7 +364,7 @@ export default function OriginAiMentor({
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <h2 className="text-base font-semibold text-foreground">Origin AI</h2>
-                <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.25em] text-emerald-300">
+                <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.25em] text-emerald-600 dark:text-emerald-300">
                   online
                 </span>
               </div>
@@ -521,7 +527,7 @@ export default function OriginAiMentor({
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-base font-semibold text-foreground">Origin AI</h2>
-              <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.25em] text-emerald-300">
+              <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.25em] text-emerald-600 dark:text-emerald-300">
                 online
               </span>
             </div>
@@ -749,7 +755,7 @@ export default function OriginAiMentor({
                 <div className="text-[10px] font-semibold uppercase tracking-[0.3em] text-blue-500">
                   Mentor Memory
                 </div>
-                <h3 className="mt-3 text-lg font-semibold text-white">
+                <h3 className="mt-3 text-lg font-semibold text-foreground">
                   {snapshot.memory.preferredName}, here’s what I’m tracking.
                 </h3>
                 <p className="mt-2 text-sm leading-6 text-foreground/70">{snapshot.memory.identitySummary}</p>

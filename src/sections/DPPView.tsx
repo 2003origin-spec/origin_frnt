@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { apiCall } from '@/lib/api';
-import { renderFormattedExplanation, renderInlineSegments, renderQuestionText } from '@/lib/math-text';
+import { FormattedMessage } from '@/components/origin-ai/FormattedMessage';
 import type { User } from '@/types';
 import {
   ArrowRight,
@@ -428,7 +428,7 @@ export default function DPPView({ onBack, initialDpps }: DPPViewProps) {
                   {currentQuestion ? (
                     <>
                       <div className="text-lg sm:text-xl font-medium text-slate-900 dark:text-white mb-6 leading-relaxed">
-                        {renderQuestionText(currentQuestion.text, 'dpp-question')}
+                        <FormattedMessage content={currentQuestion.text} inline />
                       </div>
 
                       <div className="space-y-3 mb-6">
@@ -480,7 +480,7 @@ export default function DPPView({ onBack, initialDpps }: DPPViewProps) {
                                       : 'text-slate-700 dark:text-slate-300'
                                 }`}
                               >
-                                {renderInlineSegments(String(option), `dpp-option-${index}`)}
+                                <FormattedMessage content={String(option)} inline />
                               </span>
                             </div>
                           </button>
@@ -494,7 +494,7 @@ export default function DPPView({ onBack, initialDpps }: DPPViewProps) {
                             Explanation
                           </h4>
                           <div className="text-slate-700 dark:text-slate-300 leading-relaxed">
-                            {renderFormattedExplanation(currentQuestion.explanation)}
+                            <FormattedMessage content={currentQuestion.explanation} />
                           </div>
                           <div className="mt-4 pt-4 border-t border-[#3CACA3]/20">
                             <p className="text-sm text-slate-600 dark:text-slate-400">

@@ -1,5 +1,6 @@
 import { Card, CardContent } from '@/components/ui/card';
 import type { User } from '@/types';
+import { useLayout } from '@/context/LayoutContext';
 
 interface PastWeekProgressProps {
     user: User;
@@ -21,6 +22,10 @@ export default function PastWeekProgress({ user }: PastWeekProgressProps) {
         if (mins < 60) return `${mins}m`;
         return `${Math.floor(mins / 60)}h ${mins % 60}m`;
     };
+
+    const { availableWidth } = useLayout();
+    const isMobile = availableWidth < 640;
+    const isSmall = availableWidth < 1024;
 
     return (
         <Card className="border border-border/50 shadow-lg shadow-primary/5 bg-card/50 backdrop-blur-xl relative overflow-hidden h-full flex flex-col justify-center">
@@ -52,19 +57,18 @@ export default function PastWeekProgress({ user }: PastWeekProgressProps) {
                 </div>
 
                 {/* 7-Day Mini Charts - Spaced out and Larger */}
-                <div className="flex flex-wrap lg:flex-nowrap justify-center sm:justify-around items-end gap-4 sm:gap-6 w-full pb-2">
+                <div className="flex flex-wrap lg:flex-nowrap justify-center sm:justify-around items-end gap-2 sm:gap-4 md:gap-6 w-full pb-2">
                     {timeData.map((item: any, index: number) => {
                         const isToday = index === timeData.length - 1;
                         const totalSecs = item.webpageTime + item.practiceTime + item.pomodoroTime;
                         
-                        // Responsive Math
-                        const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
-                        const r = isMobile ? 24 : 36;
+                        // Responsive Math - Reactive and consistent
+                        const size = isMobile ? 56 : isSmall ? 68 : 80;
+                        const r = isMobile ? 22 : isSmall ? 26 : 32;
                         const c = 2 * Math.PI * r;
-                        const cx = isMobile ? 28 : 40;
-                        const cy = isMobile ? 28 : 40;
-                        const strokeWidth = isMobile ? 4 : 5;
-                        const activeStrokeWidth = isMobile ? 5 : 6;
+                        const center = size / 2;
+                        const strokeWidth = isMobile ? 3 : 4;
+                        const activeStrokeWidth = isMobile ? 4 : 5;
 
                         const total = totalSecs || 1;
                         const webPct = item.webpageTime / total;
@@ -83,34 +87,42 @@ export default function PastWeekProgress({ user }: PastWeekProgressProps) {
                                     </div>
                                 )}
 
-                                <div className="relative w-14 h-14 sm:w-20 sm:h-20 flex items-center justify-center transition-transform duration-300 group-hover:scale-110">
-                                    <svg className="w-full h-full transform -rotate-90 filter drop-shadow-sm">
+                                <div 
+                                    className="relative flex items-center justify-center transition-transform duration-300 group-hover:scale-110"
+                                    style={{ width: `${size}px`, height: `${size}px` }}
+                                >
+                                    <svg 
+                                        width={size} 
+                                        height={size} 
+                                        viewBox={`0 0 ${size} ${size}`}
+                                        className="transform -rotate-90 filter drop-shadow-sm"
+                                    >
                                         {/* Background Empty Track */}
-                                        <circle cx={cx} cy={cy} r={r} stroke="currentColor" strokeWidth={strokeWidth} fill="transparent" className="text-slate-100 dark:text-slate-800/10" />
+                                        <circle cx={center} cy={center} r={r} stroke="currentColor" strokeWidth={strokeWidth} fill="transparent" className="text-slate-100 dark:text-slate-800/10" />
 
                                         {totalSecs > 0 ? (
                                             <>
                                                 {/* Webpage Segment */}
                                                 {webDash > 0 && (
-                                                    <circle cx={cx} cy={cy} r={r} fill="transparent" strokeWidth={activeStrokeWidth} stroke={COLORS.webpage}
+                                                    <circle cx={center} cy={center} r={r} fill="transparent" strokeWidth={activeStrokeWidth} stroke={COLORS.webpage}
                                                         strokeDasharray={`${c}`} strokeDashoffset={c - webDash} strokeLinecap="round" />
                                                 )}
                                                 {/* Practice Segment */}
                                                 {pracDash > 0 && (
-                                                    <circle cx={cx} cy={cy} r={r} fill="transparent" strokeWidth={activeStrokeWidth} stroke={COLORS.practice}
-                                                        strokeDasharray={`${c}`} strokeDashoffset={c - pracDash} strokeLinecap="round" transform={`rotate(${(item.webpageTime / total) * 360} ${cx} ${cy})`} />
+                                                    <circle cx={center} cy={center} r={r} fill="transparent" strokeWidth={activeStrokeWidth} stroke={COLORS.practice}
+                                                        strokeDasharray={`${c}`} strokeDashoffset={c - pracDash} strokeLinecap="round" transform={`rotate(${(item.webpageTime / total) * 360} ${center} ${center})`} />
                                                 )}
                                                 {/* Pomodoro Segment */}
                                                 {pomDash > 0 && (
-                                                    <circle cx={cx} cy={cy} r={r} fill="transparent" strokeWidth={activeStrokeWidth} stroke={COLORS.pomodoro}
-                                                        strokeDasharray={`${c}`} strokeDashoffset={c - pomDash} strokeLinecap="round" transform={`rotate(${((item.webpageTime + item.practiceTime) / total) * 360} ${cx} ${cy})`} />
+                                                    <circle cx={center} cy={center} r={r} fill="transparent" strokeWidth={activeStrokeWidth} stroke={COLORS.pomodoro}
+                                                        strokeDasharray={`${c}`} strokeDashoffset={c - pomDash} strokeLinecap="round" transform={`rotate(${((item.webpageTime + item.practiceTime) / total) * 360} ${center} ${center})`} />
                                                 )}
                                             </>
                                         ) : null}
                                     </svg>
 
                                     {/* Center Text (Total Time) */}
-                                    <div className="absolute flex flex-col items-center justify-center">
+                                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                                         <span className="text-[9px] sm:text-[11px] font-black text-foreground text-center">
                                             {totalSecs > 0 ? formatTime(totalSecs) : '0m'}
                                         </span>

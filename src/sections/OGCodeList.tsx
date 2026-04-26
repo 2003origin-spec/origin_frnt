@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
-import { renderInlineSegments } from '@/lib/math-text';
+import { FormattedMessage } from '@/components/origin-ai/FormattedMessage';
 import {
     CheckCircle2, Code2, Search,
     Trophy, Zap, Flame, Brain, Circle,
@@ -14,6 +14,11 @@ import { apiCall } from '@/lib/api';
 import type { PracticeQuestion, PracticeQuestionPage, SubjectRank, User } from '@/types';
 import { usePublishOriginAiPageContext } from '@/features/origin-ai/page-context-store';
 import { toast } from 'sonner';
+
+function renderInlineSegments(value: string, keyPrefix: string) {
+    return <FormattedMessage content={value || ''} inline />;
+}
+
 
 interface OGCodeListProps {
     onSelectQuestion: (questionId: string) => void;

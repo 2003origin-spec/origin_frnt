@@ -395,7 +395,7 @@ export function renderFormattedExplanation(content: string | null | undefined): 
         if (headingMatch) {
           return (
             <div key={`heading-${index}`} className="pt-1">
-              <h4 className="text-sm font-black uppercase tracking-wide text-slate-100">
+              <h4 className="text-sm font-black uppercase tracking-wide text-slate-800 dark:text-slate-100">
                 {headingMatch[1]}
               </h4>
             </div>
@@ -405,8 +405,8 @@ export function renderFormattedExplanation(content: string | null | undefined): 
         const bulletMatch = line.match(/^- (.+)$/);
         if (bulletMatch) {
           return (
-            <div key={`bullet-${index}`} className="flex gap-2 text-sm leading-relaxed text-slate-300">
-              <span className="mt-[2px] text-slate-500">•</span>
+            <div key={`bullet-${index}`} className="flex gap-2 text-sm leading-relaxed text-slate-700 dark:text-slate-300">
+              <span className="mt-[2px] text-slate-400 dark:text-slate-500">•</span>
               <div className="flex-1">{renderInlineSegments(bulletMatch[1], `bullet-${index}`)}</div>
             </div>
           );
@@ -417,7 +417,7 @@ export function renderFormattedExplanation(content: string | null | undefined): 
           return (
             <div
               key={`math-${index}`}
-              className="rounded-xl border border-blue-500/20 bg-blue-500/10 px-4 py-3 font-mono text-sm text-blue-100"
+              className="rounded-xl border border-blue-200 dark:border-blue-500/20 bg-blue-50 dark:bg-blue-500/10 px-4 py-3 font-mono text-sm text-blue-700 dark:text-blue-100"
             >
               {formatMathExpression(blockMathMatch[1])}
             </div>
@@ -441,7 +441,7 @@ export function renderFormattedExplanation(content: string | null | undefined): 
         }
 
         return (
-          <p key={`line-${index}`} className="text-sm leading-relaxed text-slate-300">
+          <p key={`line-${index}`} className="text-sm leading-relaxed text-slate-700 dark:text-slate-300">
             {renderInlineSegments(line, `line-${index}`)}
           </p>
         );

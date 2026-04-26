@@ -1,5 +1,7 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
+import { useLayout } from '@/context/LayoutContext';
+import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -46,6 +48,10 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
     const profileMenuRef = useRef<HTMLDivElement>(null);
     const exploreMenuRef = useRef<HTMLDivElement>(null);
 
+    const { availableWidth } = useLayout();
+    const isConstrained = availableWidth < 1024; // Force mobile menu if space is less than 1024px
+    const effectiveShowMobileMenu = showMobileMenu || (isConstrained && showMobileMenu);
+
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (profileMenuRef.current && !profileMenuRef.current.contains(event.target as Node)) {
@@ -73,7 +79,7 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
 
     return (
         <div
-            className="fixed top-2 sm:top-6 left-0 right-0 mx-auto z-50 bg-white/70 dark:bg-slate-950/70 backdrop-blur-[16px] border border-slate-200/50 dark:border-white/10 text-slate-700 dark:text-slate-300 shadow-xl shadow-slate-200/50 dark:shadow-2xl rounded-2xl sm:rounded-[2rem] pointer-events-auto w-full sm:w-[95%] max-w-7xl transition-all duration-300"
+            className="absolute top-2 sm:top-6 left-0 right-0 mx-auto z-50 bg-white/70 dark:bg-slate-950/70 backdrop-blur-[16px] border border-slate-200/50 dark:border-white/10 text-slate-700 dark:text-slate-300 shadow-xl shadow-slate-200/50 dark:shadow-2xl rounded-2xl sm:rounded-[2rem] pointer-events-auto w-full sm:w-[95%] max-w-7xl transition-all duration-300"
         >
 
             <div className="w-full h-full flex items-center">
@@ -81,10 +87,13 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                     <div className="flex items-center justify-between h-16 w-full">
 
                         {/* Logo */}
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 flex-shrink-0">
                             <button
                                 onClick={() => setShowMobileMenu(!showMobileMenu)}
-                                className="md:hidden p-2 text-slate-700 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-all bg-slate-100 dark:bg-white/5 rounded-xl"
+                                className={cn(
+                                    "p-2 text-slate-700 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-all bg-slate-100 dark:bg-white/5 rounded-xl",
+                                    isConstrained ? "flex" : "md:hidden"
+                                )}
                             >
                                 {showMobileMenu ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
                             </button>
@@ -94,9 +103,15 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                                 className="h-9 w-auto cursor-pointer rounded-lg"
                                 onClick={() => onNavigate('dashboard')}
                             />
-                            <div className="hidden md:block h-6 w-[1px] bg-slate-200 dark:bg-slate-800 mx-2" />
+                            <div className={cn(
+                                "h-6 w-[1px] bg-slate-200 dark:bg-slate-800 mx-2 flex-shrink-0",
+                                isConstrained ? "hidden" : "hidden md:block"
+                            )} />
                             {navItems.length > 0 && (
-                                <nav id="tutorial-nav" className="hidden md:flex items-center gap-1 relative px-1 py-1 bg-slate-100/50 dark:bg-white/5 rounded-xl border border-slate-200/50 dark:border-white/5">
+                                <nav id="tutorial-nav" className={cn(
+                                    "items-center gap-1 relative px-1 py-1 bg-slate-100/50 dark:bg-white/5 rounded-xl border border-slate-200/50 dark:border-white/5 overflow-hidden min-w-0",
+                                    isConstrained ? "hidden" : "hidden md:flex"
+                                )}>
                                     {navItems.map((item) => {
                                         const isActive = currentView === item.view ||
                                             (item.view === 'ogcode' && currentView === 'ogcode-workspace');
@@ -121,7 +136,7 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                                                     onClick={() => onNavigate(item.view)}
                                                     onMouseEnter={() => onPrefetch?.(item.view)}
                                                     onFocus={() => onPrefetch?.(item.view)}
-                                                    className={`relative px-4 py-2 rounded-lg text-sm font-bold transition-all duration-300 flex items-center gap-2 group z-10 ${isActive
+                                                    className={`relative px-2 lg:px-4 py-2 rounded-lg text-sm font-bold transition-all duration-300 flex items-center gap-1 lg:gap-2 group z-10 ${isActive
                                                         ? 'text-[#334155] dark:text-white'
                                                         : 'text-slate-500 dark:text-slate-400 hover:text-[#334155] dark:hover:text-white'
                                                         }`}
@@ -240,7 +255,7 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                         {/* Center Welcome Message (Desktop) - REMOVED from main row */}
 
                         {/* Right Actions */}
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 flex-shrink-0">
                             <motion.button
                                 whileHover={{ scale: 1.1, rotate: 15 }}
                                 whileTap={{ scale: 0.9 }}
@@ -267,9 +282,15 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                                 <span className="absolute top-2 right-2.5 w-1.5 h-1.5 bg-rose-500 rounded-full ring-2 ring-white dark:ring-zinc-950 animate-pulse" />
                             </motion.button>
 
-                            <div className="h-6 w-px bg-slate-200 dark:bg-zinc-800 mx-1" />
+                            <div className={cn(
+                                "h-6 w-px bg-slate-200 dark:bg-zinc-800 mx-1",
+                                isConstrained ? "hidden" : "block"
+                            )} />
 
-                            <button className="hidden sm:flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-full transition-all active:scale-95 group">
+                            <button className={cn(
+                                "items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-full transition-all active:scale-95 group",
+                                isConstrained ? "hidden" : "hidden sm:flex"
+                            )}>
                                 <UserPlus className="w-4 h-4 transition-transform group-hover:scale-110" />
                                 <span className="text-xs font-black uppercase tracking-widest">Invite</span>
                             </button>
@@ -384,11 +405,16 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                         initial={{ opacity: 0, y: -20, height: 0 }}
                         animate={{ opacity: 1, y: 0, height: 'auto' }}
                         exit={{ opacity: 0, y: -20, height: 0 }}
-                        className="md:hidden border-t border-slate-100 dark:border-zinc-800 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-2xl rounded-b-2xl overflow-hidden shadow-2xl"
+                        className={cn(
+                            "border-t border-slate-100 dark:border-zinc-800 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-2xl rounded-b-2xl overflow-hidden shadow-2xl",
+                            isConstrained ? "block" : "md:hidden"
+                        )}
                     >
                         <div className="p-4 space-y-2">
                             {navItems.map((item) => {
-                                const Icon = item.icon;
+                                const Icon = item.icon as any;
+                                const isActive = currentView === item.view ||
+                                    (item.view === 'ogcode' && currentView === 'ogcode-workspace');
                                 return (
                                     <button
                                         key={item.label}
@@ -397,10 +423,10 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                                             setShowMobileMenu(false);
                                         }}
                                         onTouchStart={() => onPrefetch?.(item.view)}
-                                        className={`w-full flex items-center gap-4 p-4 rounded-2xl transition-all ${currentView === item.view ? 'bg-primary/10 text-primary' : 'hover:bg-slate-50 dark:hover:bg-zinc-900 text-black dark:text-slate-400'}`}
+                                        className={`w-full flex items-center gap-4 p-4 rounded-2xl transition-all ${isActive ? 'bg-primary/10 text-primary' : 'hover:bg-slate-50 dark:hover:bg-zinc-900 text-black dark:text-slate-400'}`}
                                     >
-                                        <div className={`p-2 rounded-lg ${currentView === item.view ? 'bg-primary/20' : 'bg-slate-100 dark:bg-zinc-800'}`}>
-                                            <Icon className="w-5 h-5" />
+                                        <div className={`p-2 rounded-lg ${isActive ? 'bg-primary/20' : 'bg-slate-100 dark:bg-zinc-800'}`}>
+                                            {typeof Icon === 'function' ? <Icon /> : <Icon className="w-5 h-5" />}
                                         </div>
                                         <span className="font-bold text-sm tracking-wide">{item.label}</span>
                                     </button>

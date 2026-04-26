@@ -13,6 +13,8 @@ import {
 } from '@/components/dashboard/DashboardCards';
 import PointsSummary from '@/components/dashboard/PointsSummary';
 import { apiCall } from '@/lib/api';
+import { useLayout } from '@/context/LayoutContext';
+import { cn } from '@/lib/utils';
 import type { TimeType } from '@/hooks/useTimeTracker';
 
 const MOCK_EVENTS = [
@@ -105,6 +107,9 @@ export default function Dashboard({
     recentLogs: { points: number; type: string; description: string; timestamp: string }[];
   } | null>(initialPointsData);
 
+  const { availableWidth } = useLayout();
+  const isConstrained = availableWidth < 1024;
+
   useEffect(() => {
     if (initialPointsData) {
       return;
@@ -144,9 +149,15 @@ export default function Dashboard({
           <EventsCarousel />
         </motion.div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8">
+        <div className={cn(
+          "grid gap-6 sm:gap-8",
+          isConstrained ? "grid-cols-1" : "grid-cols-1 lg:grid-cols-12"
+        )}>
           {/* Main Content Grid (8/4 split for primary activity) */}
-          <div className="lg:col-span-8 flex flex-col gap-6 sm:gap-8">
+          <div className={cn(
+            "flex flex-col gap-6 sm:gap-8",
+            isConstrained ? "" : "lg:col-span-8"
+          )}>
             <div id="tutorial-tracker" className="h-auto">
               <DailyTracker user={user} />
             </div>
@@ -155,7 +166,10 @@ export default function Dashboard({
             </div>
           </div>
 
-          <div className="lg:col-span-4 flex flex-col gap-6 sm:gap-8">
+          <div className={cn(
+            "flex flex-col gap-6 sm:gap-8",
+            isConstrained ? "" : "lg:col-span-4"
+          )}>
             <div id="tutorial-challenge">
               <ChallengeCard
                 user={user}
@@ -171,7 +185,10 @@ export default function Dashboard({
 
         {/* Insights & Tasks Layer (Wider for better visibility) */}
         <div className="space-y-6 sm:space-y-8">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8">
+          <div className={cn(
+            "grid gap-6 sm:gap-8",
+            isConstrained ? "grid-cols-1" : "grid-cols-1 md:grid-cols-2"
+          )}>
             <div id="tutorial-activities">
               <PastActivitiesCard user={user} />
             </div>

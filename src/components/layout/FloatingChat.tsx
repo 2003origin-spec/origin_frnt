@@ -1,15 +1,18 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles } from 'lucide-react';
 
-import OriginAiMentor from '@/components/origin-ai/OriginAiMentor';
 import { useHighlightedSelection } from '@/features/origin-ai/highlight-capture';
 
-export default function FloatingChat() {
-  const [isOpen, setIsOpen] = useState(false);
-  const [autoAskSelectionNonce, setAutoAskSelectionNonce] = useState(0);
+interface FloatingChatProps {
+  onOpen: (options?: { autoAskSelection?: boolean }) => void;
+  autoAskSelectionNonce: number;
+  hideMainButton?: boolean;
+}
+
+export default function FloatingChat({ onOpen, hideMainButton }: FloatingChatProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const highlightedSelection = useHighlightedSelection();
 
@@ -30,20 +33,8 @@ export default function FloatingChat() {
   }, [highlightedSelection.rect]);
 
   const shouldShowSelectionAction =
-    !isOpen &&
     Boolean(highlightedSelection.text?.trim()) &&
     Boolean(selectionActionStyle);
-
-  const openOriginAi = (options?: { autoAskSelection?: boolean }) => {
-    if (options?.autoAskSelection) {
-      setAutoAskSelectionNonce((current) => current + 1);
-    }
-    setIsOpen(true);
-    const activeElement = document.activeElement;
-    if (activeElement instanceof HTMLElement) {
-      activeElement.blur();
-    }
-  };
 
   return (
     <>
@@ -56,7 +47,7 @@ export default function FloatingChat() {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.92, y: 8 }}
             transition={{ duration: 0.16 }}
-            onClick={() => openOriginAi({ autoAskSelection: true })}
+            onClick={() => onOpen({ autoAskSelection: true })}
             className="fixed z-[70] flex items-center gap-1.5 rounded-full border border-indigo-500/20 bg-background/90 px-2 py-1.5 text-foreground shadow-xl backdrop-blur-md transition-colors"
             style={{
               top: `${selectionActionStyle.top}px`,
@@ -68,39 +59,20 @@ export default function FloatingChat() {
             <div className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-indigo-500/10 p-0.5">
               <img src="/Dipraj-ChatBot.png" alt="Origin AI" className="h-full w-full object-contain" />
             </div>
-            <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-indigo-200">
+            <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-900 dark:text-indigo-200">
               Ask Origin AI
             </span>
           </motion.button>
         ) : null}
       </AnimatePresence>
 
-      <div ref={containerRef} className="fixed bottom-4 right-4 z-50 flex flex-col items-end sm:bottom-6 sm:right-6">
-        <AnimatePresence>
-          {isOpen ? (
-            <motion.div
-              key="origin-ai-panel"
-            initial={{ opacity: 0, y: 20, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 20, scale: 0.95 }}
-            transition={{ duration: 0.2 }}
-            className="mb-2 h-[min(640px,calc(100vh-1rem))] w-[380px] max-w-[calc(100vw-1rem)] overflow-hidden sm:mb-3 sm:max-w-[calc(100vw-1.5rem)]"
-          >
-              <OriginAiMentor
-                compact
-                onClose={() => setIsOpen(false)}
-                autoAskSelectionNonce={autoAskSelectionNonce}
-              />
-            </motion.div>
-          ) : null}
-        </AnimatePresence>
-
-        {!isOpen ? (
+      {!hideMainButton && (
+        <div ref={containerRef} className="fixed bottom-4 right-4 z-50 flex flex-col items-end sm:bottom-6 sm:right-6">
           <motion.button
             type="button"
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            onClick={() => openOriginAi()}
+            onClick={() => onOpen()}
             id="tutorial-mentor-trigger"
             className="relative outline-none"
             aria-label="Open Origin AI"
@@ -121,8 +93,8 @@ export default function FloatingChat() {
               <div className="absolute right-4 top-4 z-20 h-4 w-4 rounded-full border-2 border-white bg-rose-500 shadow-md dark:border-slate-900" />
             </div>
           </motion.button>
-        ) : null}
-      </div>
+        </div>
+      )}
     </>
   );
 }

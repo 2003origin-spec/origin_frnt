@@ -7,6 +7,8 @@ import { Trophy, Clock, Target, CheckCircle2, Plus, Trash2, ChevronLeft, Chevron
 import { motion } from 'framer-motion';
 import { apiCall } from '@/lib/api';
 import { useEffect } from 'react';
+import { useLayout } from '@/context/LayoutContext';
+import { cn } from '@/lib/utils';
 
 import type { User, Task } from '@/types';
 
@@ -24,6 +26,9 @@ interface ChallengeCardProps {
 }
 
 export function ChallengeCard({ user, onStartChallenge, initialChallenge }: ChallengeCardProps) {
+    const { availableWidth } = useLayout();
+    const isMobile = availableWidth < 640;
+
     const today = new Date();
     const [currentMonth, setCurrentMonth] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
     const [challenge, setChallenge] = useState<DashboardChallengePreview | null>(initialChallenge ?? null);
@@ -82,7 +87,7 @@ export function ChallengeCard({ user, onStartChallenge, initialChallenge }: Chal
     return (
         <Card className="premium-card bg-card/50 backdrop-blur-xl relative flex flex-col group min-h-[350px] sm:min-h-[400px] border-border/50">
             {/* Header: Month Navigation */}
-            <div className="flex items-center justify-between px-3 sm:px-5 pt-3 sm:pt-5 pb-2">
+            <div className={cn("flex items-center justify-between pt-5 pb-2", isMobile ? "px-3" : "px-5")}>
                 <div>
                     <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
                         Day {today.getDate()}
@@ -170,6 +175,9 @@ export function ChallengeCard({ user, onStartChallenge, initialChallenge }: Chal
 }
 
 export function PastActivitiesCard({ user }: { user: User }) {
+    const { availableWidth } = useLayout();
+    const isMobile = availableWidth < 640;
+
     const analytics = user.timeAnalytics || [];
     const today = analytics[analytics.length - 1] || { practiceTime: 0, webpageTime: 0, pomodoroTime: 0 };
 
@@ -210,20 +218,20 @@ export function PastActivitiesCard({ user }: { user: User }) {
         <Card className="premium-card relative overflow-hidden group">
             <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent pointer-events-none" />
 
-            <CardContent className="relative z-10 p-3 sm:p-6 flex flex-col gap-4 sm:gap-5">
+            <CardContent className={cn("relative z-10 flex flex-col gap-4 sm:gap-5", isMobile ? "p-3" : "p-6")}>
                 {/* Header */}
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center text-[#4F46E5]">
-                            <Clock className="w-5 h-5" />
+                        <div className={cn("rounded-xl bg-indigo-50 flex items-center justify-center text-[#4F46E5]", isMobile ? "w-8 h-8" : "w-10 h-10")}>
+                            <Clock className={isMobile ? "w-4 h-4" : "w-5 h-5"} />
                         </div>
                         <div>
                             <h3 className="text-sm font-bold text-[#334155]">Time Spent</h3>
-                            <p className="text-[10px] text-[#64748B] font-medium">Today — {toHM(totalSecs)} total</p>
+                            {!isMobile && <p className="text-[10px] text-[#64748B] font-medium">Today — {toHM(totalSecs)} total</p>}
                         </div>
                     </div>
                     <div className="text-right">
-                        <p className="text-xl font-black text-[#334155]">{toHM(totalSecs)}</p>
+                        <p className={cn("font-black text-[#334155]", isMobile ? "text-lg" : "text-xl")}>{toHM(totalSecs)}</p>
                         <p className="text-[9px] text-[#64748B] uppercase tracking-widest font-bold">This session</p>
                     </div>
                 </div>
@@ -257,35 +265,38 @@ export function PastActivitiesCard({ user }: { user: User }) {
 }
 
 export function PlacesToConcentrateCard({ user }: { user?: User }) {
+    const { availableWidth } = useLayout();
+    const isMobile = availableWidth < 640;
+
     return (
         <Card className="premium-card min-h-48 h-auto relative overflow-hidden group">
             <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent pointer-events-none" />
 
-            <CardContent className="relative z-10 p-4 sm:p-6 flex flex-col h-full">
+            <CardContent className={cn("relative z-10 flex flex-col h-full", isMobile ? "p-4" : "p-6")}>
                 <div className="flex items-start gap-4 mb-4">
-                    <div className="w-12 h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-500">
-                        <Target className="w-6 h-6" />
+                    <div className={cn("rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-500", isMobile ? "w-10 h-10" : "w-12 h-12")}>
+                        <Target className={isMobile ? "w-5 h-5" : "w-6 h-6"} />
                     </div>
                     <div>
-                        <h3 className="text-base font-bold text-foreground">Focus Areas</h3>
+                        <h3 className={cn("font-bold text-foreground", isMobile ? "text-sm" : "text-base")}>Focus Areas</h3>
                         <p className="text-xs text-muted-foreground mt-0.5">Based on your recent tests</p>
                     </div>
                 </div>
 
 
-                <div className="flex-1 flex items-center justify-around px-4">
+                <div className={cn("flex-1 flex items-center justify-around", isMobile ? "px-0" : "px-4")}>
                     {/* Dynamic Progress Circles */}
                     {(user?.subjects?.length ? user.subjects : ['Physics', 'Chemistry', 'Mathematics']).slice(0, 3).map((subject, idx) => {
                         const colors = ['text-red-400', 'text-amber-400', 'text-emerald-400', 'text-blue-400'];
                         const progress = [45, 62, 88, 70][idx % 4];
                         return (
                             <div key={subject} className="flex flex-col items-center gap-2 group/item">
-                                <div className="relative w-14 h-14 flex items-center justify-center">
+                                <div className={cn("relative flex items-center justify-center", isMobile ? "w-12 h-12" : "w-14 h-14")}>
                                     <svg className="w-full h-full -rotate-90">
-                                        <circle cx="28" cy="28" r="24" stroke="currentColor" strokeWidth="4" fill="transparent" className="text-slate-100 dark:text-slate-800" />
-                                        <circle cx="28" cy="28" r="24" stroke="currentColor" strokeWidth="4" fill="transparent" strokeDasharray="150" strokeDashoffset={150 - (150 * (progress / 100))} className={`${colors[idx % 4]} transition-all duration-1000`} strokeLinecap="round" />
+                                        <circle cx={isMobile ? "24" : "28"} cy={isMobile ? "24" : "28"} r={isMobile ? "20" : "24"} stroke="currentColor" strokeWidth="4" fill="transparent" className="text-slate-100 dark:text-slate-800" />
+                                        <circle cx={isMobile ? "24" : "28"} cy={isMobile ? "24" : "28"} r={isMobile ? "20" : "24"} stroke="currentColor" strokeWidth="4" fill="transparent" strokeDasharray={isMobile ? "126" : "150"} strokeDashoffset={(isMobile ? 126 : 150) - ((isMobile ? 126 : 150) * (progress / 100))} className={`${colors[idx % 4]} transition-all duration-1000`} strokeLinecap="round" />
                                     </svg>
-                                    <span className="absolute text-xs font-bold text-black dark:text-slate-200">{progress}%</span>
+                                    <span className={cn("absolute font-bold text-black dark:text-slate-200", isMobile ? "text-[10px]" : "text-xs")}>{progress}%</span>
                                 </div>
                                 <span className="text-[10px] font-semibold text-black/60 dark:text-slate-400 tracking-wide uppercase truncate max-w-[60px]">{subject}</span>
                             </div>
