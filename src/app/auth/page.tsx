@@ -17,6 +17,8 @@ function AuthPageContent() {
     if (user && !isLoading) {
       if (user.role === 'student' && !user.isOnboarded) {
         router.push('/onboarding');
+      } else if (user.role === 'admin') {
+        router.push('/admin');
       } else {
         router.push('/dashboard');
       }
@@ -24,8 +26,8 @@ function AuthPageContent() {
   }, [user, isLoading, router]);
 
   const selectedRole =
-    requestedRole === 'student' || requestedRole === 'teacher'
-      ? requestedRole
+    requestedRole === 'student' || requestedRole === 'teacher' || requestedRole === 'admin'
+      ? requestedRole as 'student' | 'teacher' | 'admin'
       : null;
 
   if (user && !isLoading) return null; // Avoid rendering the form if already logged in
@@ -34,10 +36,10 @@ function AuthPageContent() {
     <AuthPage
       userRole={
         user
-          ? user.role === 'student' || user.role === 'teacher'
+          ? user.role === 'student' || user.role === 'teacher' || user.role === 'admin'
             ? user.role
             : null
-          : selectedRole ?? userRole
+          : selectedRole ?? (userRole as any)
       }
       onLogin={login}
       onRegister={register}

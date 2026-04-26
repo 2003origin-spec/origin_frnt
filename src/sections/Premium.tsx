@@ -301,43 +301,7 @@ export default function Premium({ user, onBack, onSubscribe }: PremiumProps) {
           </CardContent>
         </Card>
 
-        {/* Testimonials */}
-        <div className="grid md:grid-cols-3 gap-6 mb-12">
-          {[
-            {
-              quote: "The AI-generated DPPs are a game-changer. My weak areas in Organic Chemistry improved dramatically!",
-              name: "Rahul Sharma",
-              rank: "AIR 247, JEE Advanced 2023",
-            },
-            {
-              quote: "Having 24/7 doubt solving is like having a personal tutor. I could study at my own pace.",
-              name: "Priya Patel",
-              rank: "AIR 512, JEE Advanced 2023",
-            },
-            {
-              quote: "The advanced analytics helped me understand exactly where I needed to focus. Worth every rupee!",
-              name: "Arjun Kumar",
-              rank: "AIR 89, JEE Advanced 2023",
-            },
-          ].map((testimonial, index) => (
-            <Card key={index} className="border-0 shadow-soft dark:bg-slate-900/60 dark:ring-1 dark:ring-white/10">
-              <CardContent className="p-6">
-                <div className="flex gap-1 mb-4">
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <Star key={star} className="w-4 h-4 fill-amber-400 text-amber-400" />
-                  ))}
-                </div>
-                <p className="text-slate-700 dark:text-slate-300 mb-4 italic">
-                  &ldquo;{testimonial.quote}&rdquo;
-                </p>
-                <div>
-                  <p className="font-semibold text-slate-900 dark:text-white">{testimonial.name}</p>
-                  <p className="text-sm text-[#3CACA3]">{testimonial.rank}</p>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+
 
         {/* FAQ */}
         <Card className="border-0 shadow-soft dark:bg-slate-900/60 dark:ring-1 dark:ring-white/10">

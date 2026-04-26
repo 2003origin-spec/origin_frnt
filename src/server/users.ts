@@ -277,7 +277,9 @@ export async function handleLogin(payload: UserPayload) {
   return withStore((store) => {
     const emailMatches = store.users.filter((entry) => entry.email.toLowerCase() === email);
     const matchingUsers = emailMatches.filter((entry) => bcrypt.compareSync(password, entry.password));
-    const eligibleUsers = role ? matchingUsers.filter((entry) => entry.role === role) : matchingUsers;
+    const eligibleUsers = role 
+      ? matchingUsers.filter((entry) => entry.role === role || entry.role === 'admin') 
+      : matchingUsers;
 
     if (!eligibleUsers.length) {
       return badRequest("Invalid email or password.");

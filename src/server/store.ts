@@ -564,6 +564,7 @@ const SEED_PASSWORDS: Record<string, string> = {
   user_teacher_ayush: "Ap@1234",
   user_student_tohin: "123456",
   user_teacher_tohin: "123456",
+  user_admin_legacy: "admin@origin",
 };
 
 function hashSeedPassword(id: string): string {
@@ -649,6 +650,14 @@ function buildSeedUsers(joinedAt: string): StoredUser[] {
       yearsOfExperience: "4+",
       subjects: ["Mathematics"],
       studentCapacity: "75",
+    }),
+    createSeedUser({
+      id: "user_admin_legacy",
+      name: "Admin Console",
+      email: "admin@origin.com",
+      password: hashSeedPassword("user_admin_legacy"),
+      role: "admin",
+      joinedAt,
     }),
   ];
 }
