@@ -41,6 +41,11 @@ export default function DashboardClient({
     return <TeacherDashboard user={user} />;
   }
 
+  if (user.role === 'admin') {
+    router.push('/admin');
+    return null;
+  }
+
   const handleStartChallenge = (questionId: string) => {
     router.push(`/ogcode/${questionId}`);
   };

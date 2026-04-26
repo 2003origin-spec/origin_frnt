@@ -1,7 +1,7 @@
 'use client';
 import { useRef, useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { motion, useScroll, useTransform, useSpring } from 'framer-motion';
+import { motion, useScroll, useTransform, useSpring, useInView } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import CrystalBackground from '@/components/ui/CrystalBackground';
 import { Card } from '@/components/ui/CardSwap';
@@ -72,6 +72,32 @@ const PhaseAchieveIcon = ({ className }: { className?: string }) => (
   </svg>
 );
 
+const AnimatedCounter = ({ from, to, duration, inView }: { from: number; to: number; duration: number; inView: boolean }) => {
+  const [count, setCount] = useState(from);
+
+  useEffect(() => {
+    if (!inView) return;
+
+    let startTime: number | null = null;
+    let animationFrame: number;
+
+    const animate = (timestamp: number) => {
+      if (!startTime) startTime = timestamp;
+      const progress = Math.min((timestamp - startTime) / (duration * 1000), 1);
+      setCount(Math.floor(progress * (to - from) + from));
+
+      if (progress < 1) {
+        animationFrame = requestAnimationFrame(animate);
+      }
+    };
+
+    animationFrame = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(animationFrame);
+  }, [from, to, duration, inView]);
+
+  return <>{count}</>;
+};
+
 interface LandingPageProps {
   onGetStarted: () => void;
 }
@@ -83,6 +109,8 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
   const [mounted, setMounted] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const counterRef = useRef<HTMLDivElement>(null);
+  const isCounterInView = useInView(counterRef, { once: true, amount: 0.5 });
 
   useEffect(() => {
     setMounted(true);
@@ -368,14 +396,6 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
         <div className="max-w-6xl mx-auto text-center space-y-12">
           {/* Hero Branding - CSS Managed Visibility */}
           <div className="hidden dark:flex flex-col items-center space-y-12">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="inline-flex items-center gap-2.5 px-5 py-2 rounded-full glass border-primary/20 shadow-xl shadow-primary/5"
-            >
-              <Sparkles className="w-4 h-4 text-primary animate-pulse" />
-              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-primary">Accelerating Future Rankers</span>
-            </motion.div>
             <div className="space-y-4">
               <h1 className="text-4xl sm:text-7xl lg:text-[10rem] font-black text-white tracking-[-0.04em] leading-[0.8] animate-slide-up flex flex-col items-center">
                 <span>Master Your</span>
@@ -383,7 +403,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
               </h1>
             </div>
             <p className="text-lg sm:text-xl md:text-2xl text-slate-400 max-w-2xl mx-auto font-light leading-relaxed tracking-tight animate-fade-in delay-300 px-4">
-              Data-driven prep for elite students. Stop guessing, start mastering.
+              Crack Every competitive Exams with Unfare Precision using A.I.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-6 pt-8 animate-slide-up delay-500 w-full px-6">
               <Button onClick={onGetStarted} size="lg" className="w-full sm:w-auto rounded-full px-10 py-8 text-xl bg-blue-600 text-white hover:bg-blue-700 shadow-xl shadow-blue-500/20 transition-all hover:scale-105 font-bold">
@@ -396,17 +416,6 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
           </div>
 
           <div className="flex dark:hidden flex-col items-center space-y-12">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="inline-flex items-center gap-2.5 px-6 py-2.5 rounded-full border border-black/10 bg-white/20 backdrop-blur-md shadow-sm"
-            >
-              <div className="w-4 h-4 bg-primary/20 rounded-full flex items-center justify-center">
-                <Sparkles className="w-2.5 h-2.5 text-primary animate-pulse" />
-              </div>
-              <span className="text-[9px] font-black uppercase tracking-[0.3em] text-foreground/70">Accelerating Future Rankers</span>
-            </motion.div>
-
             <div className="space-y-4">
               <h1 className="text-4xl sm:text-7xl lg:text-[10rem] font-black tracking-[-0.04em] leading-[0.8] animate-slide-up flex flex-col items-center">
                 <span className="text-[#1e293b]">Master Your</span>
@@ -462,13 +471,9 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
             <h2 className="text-[10px] font-black text-primary tracking-[0.4em] uppercase mb-4">
               Core Capabilities
             </h2>
-            <h1 className="text-6xl sm:text-5xl lg:text-8xl font-black text-foreground mb-8 tracking-tighter">
+            <h1 className="text-6xl sm:text-6xl lg:text-8xl font-black text-foreground mb-8 tracking-tighter">
               Engineered for <span className="text-gradient">Rankers.</span>
             </h1>
-            <p className="text-xl text-muted-foreground max-w-4xl mx-auto sm:mx-0 font-medium leading-relaxed tracking-tight">
-              Every tool is forged with one goal: maximizing your marks per hour of intense focus.
-            </p>
-            <br/>
           </motion.div>
 
           {/* Mobile: Simple grid of cards */}
@@ -539,142 +544,252 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
         </div>
       </section>
 
-      {/* How It Works - Enhanced Flow */}
-      <section id="how-it-works" ref={howItWorksRef} className="py-24 lg:py-32 relative z-10">
+      {/* The Protocol Section - Zigzag Layout with High-Impact Visuals */}
+      <section id="how-it-works" ref={howItWorksRef} className="py-24 lg:py-40 relative z-10 overflow-hidden">
         <div className="max-w-7xl mx-auto px-6">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
+            transition={{ duration: 0.8, ease: "easeOut" }}
             viewport={{ once: true }}
-            className="text-center mb-16"
+            className="text-center mb-32"
           >
-            <h2 className="text-4xl sm:text-5xl font-black text-foreground mb-6 tracking-tighter">
-              The Protocol
+            <h2 className="text-[10px] font-black text-primary tracking-[0.5em] uppercase mb-6">
+              Mastery Framework
             </h2>
-            <p className="text-xl text-foreground/70 max-w-2xl mx-auto font-medium leading-relaxed tracking-tight">
-              A systematic approach to mastering the syllabus.
+            <h1 className="text-6xl sm:text-7xl lg:text-9xl font-black text-foreground mb-8 tracking-tighter">
+              The <span className="text-gradient">Protocol.</span>
+            </h1>
+            <p className="text-xl sm:text-2xl text-muted-foreground max-w-3xl mx-auto font-medium leading-relaxed tracking-tight">
+              A systematic, AI-driven approach to mastering the syllabus and securing your top rank.
             </p>
           </motion.div>
 
-          <div className="grid md:grid-cols-4 gap-12 relative">
-            {/* Connecting Line - Animated */}
-            <div className="hidden md:block absolute top-12 left-0 right-0 h-0.5 bg-gradient-to-r from-blue-100 via-indigo-200 to-blue-100 dark:from-white/5 dark:via-white/10 dark:to-white/5 -z-10 rounded-full overflow-hidden">
-              <motion.div
-                style={{ scaleX, originX: 0 }}
-                className="h-full w-full bg-gradient-to-r from-blue-400 via-blue-600 to-teal-400 dark:from-blue-500 dark:via-blue-600 dark:to-teal-500"
-              />
-            </div>
-
-            {/* Step 1 */}
-            <div className="relative group text-center">
-              <motion.div
-                style={{ scale: step1Scale, borderColor: step1Border, boxShadow: step1Glow }}
-                className="w-24 h-24 mx-auto bg-white/80 backdrop-blur-sm dark:bg-slate-900 border-2 rounded-3xl flex items-center justify-center text-slate-950 dark:text-white mb-6 z-10 relative transition-all duration-500 group-hover:shadow-2xl shadow-soft ring-1 ring-slate-200/50"
+          <div className="space-y-40 lg:space-y-64 relative">
+            {/* Step 1: Diagnose */}
+            <div className="flex flex-col lg:flex-row items-center gap-16 lg:gap-32">
+              <motion.div 
+                initial={{ opacity: 0, x: -50 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.8, delay: 0.2 }}
+                viewport={{ once: true, margin: "-100px" }}
+                className="flex-1 space-y-8"
               >
-                <PhaseStartIcon className="w-10 h-10" />
+                <div className="inline-flex items-center gap-3 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 text-primary">
+                  <span className="text-xs font-black uppercase tracking-widest">Step 01</span>
+                </div>
+                <h2 className="text-5xl lg:text-7xl font-black text-foreground tracking-tighter">
+                  Diagnose.
+                </h2>
+                <p className="text-xl lg:text-2xl text-muted-foreground leading-relaxed font-medium">
+                  Identify critical knowledge gaps with hyper-precise AI diagnostic tests. Our AI maps your cognitive profile in real-time.
+                </p>
+                <ul className="space-y-4 pt-4">
+                  {[
+                    "Real-time gap detection",
+                    "Cognitive strength mapping",
+                    "Syllabus coverage audit"
+                  ].map((item, i) => (
+                    <li key={i} className="flex items-center gap-3 text-foreground/80 font-bold">
+                      <div className="w-1.5 h-1.5 rounded-full bg-primary" />
+                      {item}
+                    </li>
+                  ))}
+                </ul>
               </motion.div>
-              <motion.div style={{ opacity: step1Opacity }}>
-                <h3 className="text-2xl font-black text-foreground mb-3 tracking-tight">Diagnose</h3>
-                <p className="text-foreground/80 font-medium text-lg leading-relaxed">Identify gaps with AI tests.</p>
-              </motion.div>
-            </div>
-
-            {/* Step 2 */}
-            <div className="relative group text-center">
-              <motion.div
-                style={{ scale: step2Scale, borderColor: step2Border, boxShadow: step2Glow }}
-                className="w-24 h-24 mx-auto bg-white dark:bg-slate-900 border-2 rounded-full flex items-center justify-center text-slate-900 dark:text-white mb-6 z-10 relative transition-all duration-500 group-hover:shadow-xl"
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.9, rotate: 2 }}
+                whileInView={{ opacity: 1, scale: 1, rotate: 0 }}
+                transition={{ duration: 0.8 }}
+                viewport={{ once: true }}
+                className="flex-1 relative group"
               >
-                <PhaseRunIcon className="w-10 h-10" />
-              </motion.div>
-              <motion.div style={{ opacity: step2Opacity }}>
-                <h3 className="text-2xl font-black text-foreground mb-3 tracking-tight">Plan</h3>
-                <p className="text-foreground/80 font-medium text-lg leading-relaxed">Get a custom roadmap.</p>
-              </motion.div>
-            </div>
-
-            {/* Step 3 */}
-            <div className="relative group text-center">
-              <motion.div
-                style={{ scale: step3Scale, borderColor: step3Border, boxShadow: step3Glow }}
-                className="w-24 h-24 mx-auto bg-white dark:bg-slate-900 border-2 rounded-full flex items-center justify-center text-slate-900 dark:text-white mb-6 z-10 relative transition-all duration-500 group-hover:shadow-xl"
-              >
-                <PhaseSprintIcon className="w-10 h-10" />
-              </motion.div>
-              <motion.div style={{ opacity: step3Opacity }}>
-                <h3 className="text-2xl font-black text-foreground mb-3 tracking-tight">Execute</h3>
-                <p className="text-foreground/80 font-medium text-lg leading-relaxed">Practice adaptive DPPs.</p>
+                <div className="absolute inset-0 bg-primary/20 blur-[100px] rounded-full group-hover:bg-primary/30 transition-colors duration-700" />
+                <div className="relative rounded-[2.5rem] overflow-hidden border border-white/10 shadow-2xl">
+                  <img src="/images/protocol/diagnose.png" alt="Diagnose" className="w-full h-auto object-cover hover:scale-105 transition-transform duration-1000" />
+                </div>
               </motion.div>
             </div>
 
-            {/* Step 4 */}
-            <div className="relative group text-center">
-              <motion.div
-                style={{ scale: step4Scale, borderColor: step4Border, boxShadow: step4Glow }}
-                className="w-24 h-24 mx-auto bg-white dark:bg-slate-900 border-2 rounded-full flex items-center justify-center text-slate-900 dark:text-white mb-6 z-10 relative transition-all duration-500 group-hover:shadow-xl"
+            {/* Step 2: Plan */}
+            <div className="flex flex-col lg:flex-row-reverse items-center gap-16 lg:gap-32">
+              <motion.div 
+                initial={{ opacity: 0, x: 50 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.8, delay: 0.2 }}
+                viewport={{ once: true, margin: "-100px" }}
+                className="flex-1 space-y-8"
               >
-                <PhaseAchieveIcon className="w-10 h-10" />
+                <div className="inline-flex items-center gap-3 px-4 py-2 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-500">
+                  <span className="text-xs font-black uppercase tracking-widest">Step 02</span>
+                </div>
+                <h2 className="text-5xl lg:text-7xl font-black text-foreground tracking-tighter">
+                  Plan.
+                </h2>
+                <p className="text-xl lg:text-2xl text-muted-foreground leading-relaxed font-medium">
+                  Get a custom roadmap generated by our AIR prediction engine. Every hour of study is optimized for maximum mark gains.
+                </p>
+                <ul className="space-y-4 pt-4">
+                  {[
+                    "Personalized path to AIR < 100",
+                    "Dynamic subject re-prioritization",
+                    "Time-blocked efficiency maps"
+                  ].map((item, i) => (
+                    <li key={i} className="flex items-center gap-3 text-foreground/80 font-bold">
+                      <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                      {item}
+                    </li>
+                  ))}
+                </ul>
               </motion.div>
-              <motion.div style={{ opacity: step4Opacity }}>
-                <h3 className="text-2xl font-black text-foreground mb-3 tracking-tight">Achieve</h3>
-                <p className="text-foreground/80 font-medium text-lg leading-relaxed">Track rank improvements.</p>
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.9, rotate: -2 }}
+                whileInView={{ opacity: 1, scale: 1, rotate: 0 }}
+                transition={{ duration: 0.8 }}
+                viewport={{ once: true }}
+                className="flex-1 relative group"
+              >
+                <div className="absolute inset-0 bg-blue-500/20 blur-[100px] rounded-full group-hover:bg-blue-500/30 transition-colors duration-700" />
+                <div className="relative rounded-[2.5rem] overflow-hidden border border-white/10 shadow-2xl">
+                  <img src="/images/protocol/plan.png" alt="Plan" className="w-full h-auto object-cover hover:scale-105 transition-transform duration-1000" />
+                </div>
+              </motion.div>
+            </div>
+
+            {/* Step 3: Execute */}
+            <div className="flex flex-col lg:flex-row items-center gap-16 lg:gap-32">
+              <motion.div 
+                initial={{ opacity: 0, x: -50 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.8, delay: 0.2 }}
+                viewport={{ once: true, margin: "-100px" }}
+                className="flex-1 space-y-8"
+              >
+                <div className="inline-flex items-center gap-3 px-4 py-2 rounded-full bg-teal-500/10 border border-teal-500/20 text-teal-500">
+                  <span className="text-xs font-black uppercase tracking-widest">Step 03</span>
+                </div>
+                <h2 className="text-5xl lg:text-7xl font-black text-foreground tracking-tighter">
+                  Execute.
+                </h2>
+                <p className="text-xl lg:text-2xl text-muted-foreground leading-relaxed font-medium">
+                  Practice with adaptive DPPs that evolve as you solve. No two students ever solve the same question set.
+                </p>
+                <ul className="space-y-4 pt-4">
+                  {[
+                    "Infinite adaptive problem sets",
+                    "Hyper-focused doubt resolution",
+                    "Scientifically designed focus blocks"
+                  ].map((item, i) => (
+                    <li key={i} className="flex items-center gap-3 text-foreground/80 font-bold">
+                      <div className="w-1.5 h-1.5 rounded-full bg-teal-500" />
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </motion.div>
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.9, rotate: 2 }}
+                whileInView={{ opacity: 1, scale: 1, rotate: 0 }}
+                transition={{ duration: 0.8 }}
+                viewport={{ once: true }}
+                className="flex-1 relative group"
+              >
+                <div className="absolute inset-0 bg-teal-500/20 blur-[100px] rounded-full group-hover:bg-teal-500/30 transition-colors duration-700" />
+                <div className="relative rounded-[2.5rem] overflow-hidden border border-white/10 shadow-2xl">
+                  <img src="/images/protocol/execute.png" alt="Execute" className="w-full h-auto object-cover hover:scale-105 transition-transform duration-1000" />
+                </div>
+              </motion.div>
+            </div>
+
+            {/* Step 4: Achieve */}
+            <div className="flex flex-col lg:flex-row-reverse items-center gap-16 lg:gap-32">
+              <motion.div 
+                initial={{ opacity: 0, x: 50 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.8, delay: 0.2 }}
+                viewport={{ once: true, margin: "-100px" }}
+                className="flex-1 space-y-8"
+              >
+                <div className="inline-flex items-center gap-3 px-4 py-2 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-500">
+                  <span className="text-xs font-black uppercase tracking-widest">Step 04</span>
+                </div>
+                <h2 className="text-5xl lg:text-7xl font-black text-foreground tracking-tighter">
+                  Achieve.
+                </h2>
+                <p className="text-xl lg:text-2xl text-muted-foreground leading-relaxed font-medium">
+                  Track your rank improvements daily. See your predicted AIR rise as you master more concepts.
+                </p>
+                <ul className="space-y-4 pt-4">
+                  {[
+                    "Daily AIR prediction updates",
+                    "Milestone celebration engine",
+                    "Final sprint optimization"
+                  ].map((item, i) => (
+                    <li key={i} className="flex items-center gap-3 text-foreground/80 font-bold">
+                      <div className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </motion.div>
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.9, rotate: -2 }}
+                whileInView={{ opacity: 1, scale: 1, rotate: 0 }}
+                transition={{ duration: 0.8 }}
+                viewport={{ once: true }}
+                className="flex-1 relative group"
+              >
+                <div className="absolute inset-0 bg-amber-500/20 blur-[100px] rounded-full group-hover:bg-amber-500/30 transition-colors duration-700" />
+                <div className="relative rounded-[2.5rem] overflow-hidden border border-white/10 shadow-2xl">
+                  <img src="/images/protocol/achieve.png" alt="Achieve" className="w-full h-auto object-cover hover:scale-105 transition-transform duration-1000" />
+                </div>
               </motion.div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Testimonials - Enhanced Cards */}
-      <section className="py-24 lg:py-32 relative z-10">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="grid md:grid-cols-2 gap-16 items-center">
-            <motion.div
-              initial={{ opacity: 0, x: -30 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.6 }}
-              viewport={{ once: true }}
-            >
-              <h2 className="text-4xl sm:text-5xl font-black text-foreground mb-8 leading-[1.1] tracking-tighter">
-                Trusted by the <br />
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#0f4c81] to-[#1e40af] dark:from-blue-400 dark:to-teal-400">Top 1%</span>.
-              </h2>
-              <p className="text-xl text-foreground/80 max-w-2xl font-medium leading-relaxed mb-12 tracking-tight">
-                Join a community of serious aspirants who are rewriting their destiny with ORIGIN. The results speak for themselves.
-              </p>
-              <Button variant="outline" className="rounded-full px-8 py-6 border-slate-300 dark:border-white/20 text-slate-700 dark:text-white hover:bg-slate-100 dark:hover:bg-white/10 transition-all duration-300 hover:scale-105">
-                Read Success Stories
-              </Button>
-            </motion.div>
+      {/* Testimonials - Simplified & Centered */}
+      <section className="py-24 lg:py-40 relative z-10 overflow-hidden">
+        <div className="max-w-7xl mx-auto px-6 text-center">
+          <motion.div
+            ref={counterRef}
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8 }}
+            viewport={{ once: true }}
+            className="flex flex-col items-center space-y-10"
+          >
+            <h2 className="text-5xl sm:text-7xl lg:text-9xl font-black text-foreground tracking-tighter leading-none">
+              Trusted by the <br />
+              <span className="text-gradient">Top 1%.</span>
+            </h2>
+            <p className="text-xl sm:text-2xl text-muted-foreground max-w-3xl mx-auto font-black leading-relaxed tracking-tight uppercase">
+              <span className="text-primary text-4xl sm:text-6xl md:text-8xl block mb-6 font-black tabular-nums">
+                <AnimatedCounter from={1} to={12620} duration={10} inView={isCounterInView} />+
+              </span>
+              QUESTIONS To Practice FROM NCERT, PYQS, AND Famous Books for JEE and NEET Preparation
+            </p>
 
-            <div className="grid gap-6">
-              {[
-                { name: "Rahul Sharma", rank: "AIR 247", text: "Origin transformed my preparation completely. The adaptive tests identified exactly what I was missing and helped me improve by 2000+ ranks in just 2 months!" },
-                { name: "Priya Patel", rank: "AIR 189", text: "The AI doubt resolution is a game-changer. Getting instant, detailed solutions at 2 AM saved me countless hours. Best decision I made for JEE prep." },
-                { name: "Amit Kumar", rank: "AIR 312", text: "Finally, a platform that actually adapts to you instead of forcing you into a rigid structure. The mentorship from IITians was invaluable." }
-              ].map((t, i) => (
-                <motion.div
-                  key={i}
-                  initial={{ opacity: 0, x: 30 }}
-                  whileInView={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.6, delay: i * 0.1 }}
-                  viewport={{ once: true }}
-                  className="p-8 rounded-3xl bg-white/40 dark:bg-slate-900/30 border border-black/10 dark:border-white/10 hover:border-black/20 dark:hover:border-white/20 transition-all duration-300 hover:shadow-xl backdrop-blur-md ring-1 ring-black/5"
-                >
-                  <p className="text-lg text-foreground font-medium mb-6 leading-relaxed">"{t.text}"</p>
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <span className="font-black text-foreground block">{t.name}</span>
-                      <span className="text-sm text-foreground/60 font-medium">Verified Student</span>
-                    </div>
-                    <span className="text-xs font-black px-3 py-1.5 rounded-full bg-primary/10 text-primary border border-primary/20">
-                      {t.rank}
-                    </span>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-          </div>
+            <motion.a
+              href="https://chat.whatsapp.com/BBwpKNeiCypGzeVMwsw9ns?mode=gi_t"
+              target="_blank"
+              rel="noopener noreferrer"
+              initial={{ opacity: 0, scale: 0.9 }}
+              whileInView={{ opacity: 1, scale: 1 }}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              transition={{ delay: 0.2 }}
+              className="flex items-center gap-4 px-10 py-5 bg-[#25D366] text-white rounded-full font-black text-lg shadow-2xl shadow-green-500/30 hover:shadow-green-500/50 transition-all duration-300 group"
+            >
+              <div className="w-8 h-8 flex items-center justify-center bg-white rounded-full p-1.5 group-hover:rotate-12 transition-transform">
+                <svg className="w-full h-full text-[#25D366]" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L0 24l6.335-1.662c1.72.938 3.659 1.434 5.628 1.435h.006c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/>
+                </svg>
+              </div>
+              Join O3 Minds Community
+            </motion.a>
+          </motion.div>
         </div>
       </section>
 
@@ -796,34 +911,59 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
             viewport={{ once: true }}
             className="space-y-10"
           >
-            <h2 className="text-5xl sm:text-7xl font-black text-foreground tracking-tighter leading-none">
+            <h2 className="text-6xl sm:text-8xl lg:text-[10rem] font-black text-foreground tracking-tighter leading-[0.8] mb-12">
               REWRITE YOUR <br />
               <span className="text-gradient">STORY.</span>
             </h2>
-            <Button
-              onClick={onGetStarted}
-              size="lg"
-              className="bg-primary text-white hover:bg-primary/90 rounded-full px-12 py-10 text-2xl font-black shadow-[0_20px_60px_rgba(37,99,235,0.3)] transition-all duration-300 hover:scale-105 group"
-            >
-              Start Your Journey
-              <Zap className="w-6 h-6 ml-3 group-hover:rotate-12 transition-transform fill-current" />
-            </Button>
+
+            <div className="flex flex-col items-center gap-8">
+              <div className="bg-primary/10 border border-primary/20 px-6 py-2 rounded-full">
+                <p className="text-sm sm:text-base font-black tracking-[0.2em] text-primary uppercase animate-pulse">
+                  ⚠️ Only 57 Seats Left
+                </p>
+              </div>
+
+              <Button
+                onClick={onGetStarted}
+                size="sm"
+                className="bg-primary text-white hover:bg-primary/90 rounded-full px-12 py-10 text-2xl font-black shadow-[0_20px_60px_rgba(37,99,235,0.3)] transition-all duration-300 hover:scale-105 group"
+              >
+                START YOUR JOURNEY
+                <Zap className="w-6 h-6 ml-2 group-hover:rotate-12 transition-transform fill-current" />
+              </Button>
+
+              <p className="text-lg sm:text-xl text-muted-foreground font-black tracking-tight uppercase">
+                Join Success journey with <span className="text-foreground border-b-4 border-primary/30">O3 Minds</span>
+              </p>
+            </div>
           </motion.div>
         </div>
       </section>
 
       {/* Footer - Minimalist & Geometric */}
-      <footer className="py-20 relative z-10 border-t border-border/50 bg-background/50 backdrop-blur-md">
-        <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-12">
-          <div className="flex flex-col items-center md:items-start gap-4">
-            <img src="/origin-new.jpg" alt="ORIGIN" className="h-8 w-auto dark:brightness-110" />
-            <span className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.3em]">© 2026 ORIGIN TECHNOLOGY CORP.</span>
+      <footer className="py-10 relative z-10 border-t border-border/50 bg-background/50 backdrop-blur-md">
+        <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row items-center md:items-end justify-between gap-12">
+          <div className="flex flex-col items-center md:items-start gap-3">
+            <span className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.4em]">© O3 Minds</span>
+            <img src="/origin-new.jpg" alt="ORIGIN" className="h-12 w-auto dark:brightness-110" />
           </div>
-          <div className="flex gap-10 text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">
-            <a href="#" className="hover:text-foreground transition-colors">Privacy</a>
-            <a href="#" className="hover:text-foreground transition-colors">Legal</a>
-            <a href="#" className="hover:text-foreground transition-colors">Safety</a>
-            <a href="#" className="hover:text-foreground transition-colors">Discord</a>
+
+          <div className="flex flex-col items-center md:items-end gap-6">
+            <span className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.4em]">Connect With Us</span>
+            <div className="flex gap-6 items-center">
+              <a href="https://chat.whatsapp.com/BBwpKNeiCypGzeVMwsw9ns?mode=gi_t" target="_blank" rel="noopener noreferrer" className="hover:scale-110 transition-transform duration-200">
+                <img src="/images/SocialMedia/Whatsapp-Logo.png" alt="WhatsApp" className="h-12 w-auto" />
+              </a>
+              <a href="https://www.linkedin.com/in/o3-origin-ba73233a8/" target="_blank" rel="noopener noreferrer" className="hover:scale-110 transition-transform duration-200">
+                <img src="/images/SocialMedia/LinkedIn.png" alt="LinkedIn" className="h-12 w-auto" />
+              </a>
+              <a href="https://x.com/O3_origin" target="_blank" rel="noopener noreferrer" className="hover:scale-110 transition-transform duration-200">
+                <img src="/images/SocialMedia/X.jpg" alt="X" className="h-12 w-auto rounded-md" />
+              </a>
+              <a href="https://www.instagram.com/o3.origin/?hl=en" target="_blank" rel="noopener noreferrer" className="hover:scale-110 transition-transform duration-200">
+                <img src="/images/SocialMedia/Instagram.png" alt="Instagram" className="h-12 w-auto" />
+              </a>
+            </div>
           </div>
         </div>
       </footer>

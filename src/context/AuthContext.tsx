@@ -22,14 +22,14 @@ import {
 
 interface AuthContextType {
   user: User | null;
-  userRole: 'student' | 'teacher' | null;
+  userRole: 'student' | 'teacher' | 'admin' | null;
   streakData: StreakData;
   isLoading: boolean;
   authError: string | null;
   tasks: Task[];
   tasksLoading: boolean;
-  login: (email: string, password: string, role?: 'student' | 'teacher' | null) => Promise<void>;
-  register: (name: string, email: string, password: string, role?: 'student' | 'teacher' | null) => Promise<void>;
+  login: (email: string, password: string, role?: 'student' | 'teacher' | 'admin' | null) => Promise<void>;
+  register: (name: string, email: string, password: string, role?: 'student' | 'teacher' | 'admin' | null) => Promise<void>;
   googleLogin: (credential: string) => Promise<void>;
   logout: () => void;
   refreshUser: () => Promise<void>;
@@ -52,8 +52,8 @@ const EMPTY_STREAK: StreakData = {
 
 const PUBLIC_PATHS = ['/', '/auth', '/role-selection'];
 
-function normalizeRole(role: User['role'] | undefined): 'student' | 'teacher' | null {
-  return role === 'student' || role === 'teacher' ? role : null;
+function normalizeRole(role: User['role'] | undefined): 'student' | 'teacher' | 'admin' | null {
+  return role === 'student' || role === 'teacher' || role === 'admin' ? role : null;
 }
 
 interface AuthProviderProps {
@@ -68,7 +68,7 @@ interface AuthProviderProps {
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUser }) => {
   const [user, setUser] = useState<User | null>(initialUser);
-  const [userRole, setUserRole] = useState<'student' | 'teacher' | null>(
+  const [userRole, setUserRole] = useState<'student' | 'teacher' | 'admin' | null>(
     normalizeRole(initialUser?.role),
   );
   const [streakData, setStreakData] = useState<StreakData>(initialUser?.streakData ?? EMPTY_STREAK);
@@ -160,6 +160,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
       }
       if (user.role === 'student' && !user.isOnboarded) {
         router.push('/onboarding');
+      } else if (user.role === 'admin') {
+        router.push('/admin');
       } else {
         router.push('/dashboard');
       }
@@ -193,6 +195,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
 
       if (result.user.role === 'student' && !result.user.isOnboarded) {
         router.push('/onboarding');
+      } else if (result.user.role === 'admin') {
+        router.push('/admin');
       } else {
         router.push('/dashboard');
       }
@@ -206,7 +210,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
     }
   };
 
-  const register = async (name: string, email: string, password: string, role?: 'student' | 'teacher' | null) => {
+  const register = async (name: string, email: string, password: string, role?: 'student' | 'teacher' | 'admin' | null) => {
     setIsLoading(true);
     setAuthError(null);
     try {
@@ -230,6 +234,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
 
       if (result.user.role === 'student' && !result.user.isOnboarded) {
         router.push('/onboarding');
+      } else if (result.user.role === 'admin') {
+        router.push('/admin');
       } else {
         router.push('/dashboard');
       }
@@ -267,6 +273,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
 
       if (result.user.role === 'student' && !result.user.isOnboarded) {
         router.push('/onboarding');
+      } else if (result.user.role === 'admin') {
+        router.push('/admin');
       } else {
         router.push('/dashboard');
       }

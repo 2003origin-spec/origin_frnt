@@ -17,14 +17,10 @@ import {
 } from 'lucide-react';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
-    const { user, logout } = useAuth();
+    const { user, logout, isLoading } = useAuth();
     const router = useRouter();
     const pathname = usePathname();
     const [isCollapsed, setCollapsed] = useState(false);
-    const [isAuthorized, setIsAuthorized] = useState(false);
-    const [credentials, setCredentials] = useState({ email: '', password: '' });
-    const [error, setError] = useState('');
-    const [isVerifying, setIsVerifying] = useState(false);
     const { theme, setTheme, resolvedTheme } = useTheme();
     const [mounted, setMounted] = React.useState(false);
 
@@ -32,117 +28,21 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         setMounted(true);
     }, []);
 
-    // Initial session check
+    // Protection logic
     React.useEffect(() => {
-        const sessionAuth = sessionStorage.getItem('origin-admin-auth');
-        if (sessionAuth === 'true') {
-            setIsAuthorized(true);
+        if (!isLoading && (!user || user.role !== 'admin')) {
+            router.push('/auth?role=admin');
         }
-    }, []);
+    }, [user, isLoading, router]);
 
-    const handleAdminLogin = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setIsVerifying(true);
-        setError('');
-
-        // Artificial delay for "Security Clearance" feel
-        await new Promise(resolve => setTimeout(resolve, 1200));
-
-        if (credentials.email === 'admin@origin.com' && credentials.password === 'admin@origin') {
-            sessionStorage.setItem('origin-admin-auth', 'true');
-            setIsAuthorized(true);
-        } else {
-            setError('ACCESS DENIED: INVALID CLEARANCE LEVEL');
-        }
-        setIsVerifying(false);
-    };
-
-    if (!isAuthorized) {
+    if (isLoading || !user || user.role !== 'admin') {
         return (
-            <div className="min-h-screen bg-background flex items-center justify-center p-6 selection:bg-emerald-500/30 transition-colors duration-300">
-                <motion.div 
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="w-full max-w-md"
-                >
-                    <div className="bg-card border border-border rounded-[2.5rem] p-10 backdrop-blur-2xl shadow-2xl relative overflow-hidden">
-                        {/* Background Decoration */}
-                        <div className="absolute -top-12 -right-12 w-32 h-32 bg-emerald-500/10 dark:bg-emerald-500/5 blur-[60px] rounded-full" />
-                        
-                        <div className="relative z-10 space-y-8">
-                            <div className="text-center space-y-2">
-                                <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mx-auto mb-6">
-                                    <ShieldCheck className="w-8 h-8 text-emerald-500" />
-                                </div>
-                                <h1 className="text-2xl font-black text-foreground uppercase tracking-widest">Admin Console</h1>
-                                <p className="text-[10px] text-muted-foreground font-black uppercase tracking-[0.3em]">Sector 01 Clearance Required</p>
-                            </div>
-
-                            <form onSubmit={handleAdminLogin} className="space-y-4">
-                                <div className="space-y-1">
-                                    <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Terminal ID</label>
-                                    <input 
-                                        type="email" 
-                                        value={credentials.email}
-                                        onChange={(e) => setCredentials({...credentials, email: e.target.value})}
-                                        placeholder="admin@origin.com"
-                                        className="w-full bg-background border border-border rounded-2xl px-6 py-4 text-sm font-bold text-foreground focus:outline-none focus:border-emerald-500/50 transition-all font-mono placeholder:text-muted-foreground/50"
-                                        required
-                                    />
-                                </div>
-                                <div className="space-y-1">
-                                    <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Security Key</label>
-                                    <input 
-                                        type="password" 
-                                        value={credentials.password}
-                                        onChange={(e) => setCredentials({...credentials, password: e.target.value})}
-                                        placeholder="••••••••"
-                                        className="w-full bg-background border border-border rounded-2xl px-6 py-4 text-sm font-bold text-foreground focus:outline-none focus:border-emerald-500/50 transition-all font-mono placeholder:text-muted-foreground/50"
-                                        required
-                                    />
-                                </div>
-
-                                <AnimatePresence mode="wait">
-                                    {error && (
-                                        <motion.p 
-                                            initial={{ opacity: 0, height: 0 }}
-                                            animate={{ opacity: 1, height: 'auto' }}
-                                            exit={{ opacity: 0, height: 0 }}
-                                            className="text-[10px] font-black text-rose-500 uppercase tracking-widest text-center"
-                                        >
-                                            {error}
-                                        </motion.p>
-                                    )}
-                                </AnimatePresence>
-
-                                <button 
-                                    type="submit"
-                                    disabled={isVerifying}
-                                    className={`w-full py-4 rounded-2xl font-black text-[12px] uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-3 active:scale-95 shadow-xl ${isVerifying ? 'bg-slate-800 text-slate-500' : 'bg-white text-zinc-950 hover:bg-emerald-500 hover:shadow-emerald-500/10'}`}
-                                >
-                                    {isVerifying ? (
-                                        <>
-                                            <div className="w-4 h-4 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
-                                            Verifying Clearance...
-                                        </>
-                                    ) : (
-                                        'Initialize Console'
-                                    )}
-                                </button>
-                            </form>
-
-                            <button 
-                                onClick={() => router.push('/dashboard')}
-                                className="w-full text-[9px] font-black uppercase tracking-widest text-slate-600 hover:text-white transition-colors"
-                            >
-                                Return to Student Hub
-                            </button>
-                        </div>
-                    </div>
-                </motion.div>
+            <div className="min-h-screen bg-background flex items-center justify-center">
+                <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin" />
             </div>
         );
     }
+
 
     const pageTitle = pathname.split('/').pop()?.replace(/-/g, ' ') || 'Mission Control';
 

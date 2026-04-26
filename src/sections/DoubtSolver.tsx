@@ -1339,7 +1339,7 @@ function ChatMessage({ message }: { message: ChatMessageType }) {
           ? 'bg-card/60 backdrop-blur-md border border-border/60 text-foreground rounded-tl-none'
           : 'bg-blue-600 text-white border border-blue-400/30 rounded-tr-none shadow-blue-600/20'
           }`}>
-          {isAI && message.metadata?.retrieval_status && (
+          {isAI && !!message.metadata?.retrieval_status && (
             <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider mb-3 w-fit border ${
               message.metadata.retrieval_status === 'retrieved from kb'
                 ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'

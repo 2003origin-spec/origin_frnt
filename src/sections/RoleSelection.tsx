@@ -22,7 +22,7 @@ export default function RoleSelection({ onSelectRole, onBack }: RoleSelectionPro
                 <div className="absolute inset-0 bg-[url('/noise.svg')] opacity-[0.03] mix-blend-overlay"></div>
             </div>
 
-            <div className="w-full max-w-4xl relative z-10">
+            <div className="w-full max-w-3xl relative z-10">
                 {/* Back Button */}
                 <button
                     onClick={onBack}
@@ -141,6 +141,7 @@ export default function RoleSelection({ onSelectRole, onBack }: RoleSelectionPro
                             Continue as Teacher
                         </Button>
                     </div>
+
                 </div>
             </div>
         </div>
