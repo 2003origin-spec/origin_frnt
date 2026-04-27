@@ -121,7 +121,7 @@ export default function Leaderboard({ currentUser, initialLeaderboard, initialMy
                 </div>
               </div>
               <div className={cn("text-center", isMobile ? "" : "sm:text-right")}>
-                <p className={cn("font-black tracking-tighter drop-shadow-md", isMobile ? "text-4xl" : "text-5xl")}>{(myScore ?? 0).toFixed(0)}</p>
+                <p className={cn("font-black tracking-tighter drop-shadow-md", isMobile ? "text-4xl" : "text-5xl")}>{(myScore ?? 0).toFixed(1)}%</p>
                 <p className="text-white/70 text-[10px] font-black uppercase tracking-[0.2em]">Efficiency Rating</p>
               </div>
             </div>
@@ -234,7 +234,7 @@ export default function Leaderboard({ currentUser, initialLeaderboard, initialMy
                     {entry.name}
                   </p>
                   <p className="text-[10px] font-black text-primary/80 mt-1">
-                    {(entry.rankScore ?? 0).toFixed(0)} EFR
+                    {(entry.rankScore ?? 0).toFixed(1)}% Efficiency
                   </p>
                 </div>
               ))}
@@ -289,22 +289,22 @@ export default function Leaderboard({ currentUser, initialLeaderboard, initialMy
                     <div className="flex items-center gap-3 text-[10px] text-muted-foreground mt-1 font-black uppercase tracking-widest opacity-60">
                       <span className={isMobile ? "hidden" : "block"}>Efficiency: {(entry.rankScore ?? 0).toFixed(1)}%</span>
                       {!isMobile && <span className="w-1 h-1 rounded-full bg-border" />}
-                      <span>{entry.rawCount || 0} Modules</span>
+                      <span>{entry.questionsSolved || 0} Questions Solved</span>
                     </div>
                   </div>
 
                   <div className="text-right flex items-center gap-4 sm:gap-8 shrink-0">
                     {!isMobile && (
                       <div className="hidden sm:block text-right">
-                        <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-1">Growth</p>
+                        <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-1">Study Time</p>
                         <div className="flex items-center gap-1.5 justify-end">
-                          <Zap className="w-3.5 h-3.5 text-blue-500" />
-                          <span className="text-sm font-black">+{(Math.random() * 10).toFixed(1)}%</span>
+                          <Flame className="w-3.5 h-3.5 text-orange-500" />
+                          <span className="text-sm font-black">{entry.studyTime || 0}m</span>
                         </div>
                       </div>
                     )}
                     <div className="text-right">
-                      <p className={cn("font-black text-primary leading-none tracking-tighter", isMobile ? "text-xl" : "text-3xl")}>{entry.questionsSolved || 0}</p>
+                      <p className={cn("font-black text-primary leading-none tracking-tighter", isMobile ? "text-xl" : "text-3xl")}>{entry.score || 0}</p>
                       <p className="text-[10px] font-black text-muted-foreground/40 uppercase tracking-widest mt-1">XP Points</p>
                     </div>
                   </div>
@@ -314,8 +314,13 @@ export default function Leaderboard({ currentUser, initialLeaderboard, initialMy
           </TabsContent>
 
           <TabsContent value="local" className="mt-8">
-            <Card className="border border-border shadow-xl bg-card/60 backdrop-blur-xl ring-1 ring-border">
-              <CardContent className="p-12 text-center">
+            <Card className="border border-border shadow-xl bg-card/60 backdrop-blur-xl ring-1 ring-border relative overflow-hidden">
+              <div className="absolute inset-0 bg-background/60 backdrop-blur-sm z-10 flex flex-col items-center justify-center p-6 text-center">
+                <Badge variant="secondary" className="mb-4 font-black tracking-widest px-4 py-1.5">COMING SOON</Badge>
+                <h3 className="text-xl font-black mb-2">Regional Connectivity</h3>
+                <p className="text-sm text-muted-foreground max-w-[280px]">We're building the infrastructure to connect you with learners in your immediate vicinity.</p>
+              </div>
+              <CardContent className="p-12 text-center opacity-40 grayscale">
                 <div className="w-20 h-20 mx-auto rounded-3xl bg-primary/10 flex items-center justify-center mb-6 transition-transform hover:scale-110">
                   <MapPin className="w-10 h-10 text-primary" />
                 </div>
@@ -323,7 +328,7 @@ export default function Leaderboard({ currentUser, initialLeaderboard, initialMy
                 <p className="text-muted-foreground mb-8 max-w-sm mx-auto font-medium leading-relaxed">
                   Join your local network and see how you rank among students in your city.
                 </p>
-                <Button className="rounded-xl px-8 h-12 bg-primary text-primary-foreground font-black hover:scale-105 transition-all shadow-lg shadow-primary/20">
+                <Button disabled className="rounded-xl px-8 h-12 bg-primary text-primary-foreground font-black hover:scale-105 transition-all shadow-lg shadow-primary/20">
                   <MapPin className="w-5 h-5 mr-3" />
                   Enable Location
                 </Button>
@@ -332,8 +337,13 @@ export default function Leaderboard({ currentUser, initialLeaderboard, initialMy
           </TabsContent>
 
           <TabsContent value="friends" className="mt-8">
-            <Card className="border border-border shadow-xl bg-card/60 backdrop-blur-xl ring-1 ring-border">
-              <CardContent className="p-12 text-center">
+            <Card className="border border-border shadow-xl bg-card/60 backdrop-blur-xl ring-1 ring-border relative overflow-hidden">
+              <div className="absolute inset-0 bg-background/60 backdrop-blur-sm z-10 flex flex-col items-center justify-center p-6 text-center">
+                <Badge variant="secondary" className="mb-4 font-black tracking-widest px-4 py-1.5">COMING SOON</Badge>
+                <h3 className="text-xl font-black mb-2">Social Circles</h3>
+                <p className="text-sm text-muted-foreground max-w-[280px]">Challenge your friends and build a community for collective growth.</p>
+              </div>
+              <CardContent className="p-12 text-center opacity-40 grayscale">
                 <div className="w-20 h-20 mx-auto rounded-3xl bg-secondary/20 flex items-center justify-center mb-6 transition-transform hover:scale-110">
                   <Users className="w-10 h-10 text-primary" />
                 </div>
@@ -341,7 +351,7 @@ export default function Leaderboard({ currentUser, initialLeaderboard, initialMy
                 <p className="text-muted-foreground mb-8 max-w-sm mx-auto font-medium leading-relaxed">
                    Competing with friends increases learning efficiency by 40%. Start your journey together.
                 </p>
-                <Button className="rounded-xl px-8 h-12 bg-primary text-primary-foreground font-black hover:scale-105 transition-all shadow-lg shadow-primary/20">
+                <Button disabled className="rounded-xl px-8 h-12 bg-primary text-primary-foreground font-black hover:scale-105 transition-all shadow-lg shadow-primary/20">
                   <Zap className="w-5 h-5 mr-3" />
                   Invite Friends
                 </Button>
