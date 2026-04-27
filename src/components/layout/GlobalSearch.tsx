@@ -60,7 +60,7 @@ export default function GlobalSearch({ isOpen, onClose, currentView, onNavigate 
     if (!query.trim()) return [];
 
     const q = query.toLowerCase();
-    const matches = [];
+    const matches: any[] = [];
 
     // Search Tests
     if (activeCategory === 'all' || activeCategory === 'tests') {

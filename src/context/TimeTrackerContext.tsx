@@ -42,7 +42,7 @@ export function TimeTrackerProvider({ children }: { children: React.ReactNode })
                     method: 'POST',
                     body: JSON.stringify(payload)
                 }).then(() => {
-                    refreshUser();
+                    if (refreshUser) refreshUser();
                 }).catch(err => {
                     console.error('[TimeTracker] Sync failed:', err);
                 });

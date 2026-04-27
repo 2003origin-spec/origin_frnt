@@ -362,18 +362,18 @@ export default function OriginAiMentor({
       <div id="tutorial-mentor" className={shellClassName} data-origin-ai-root="true">
         <div className="flex items-center justify-between border-b border-border/40 bg-indigo-500/10 px-4 py-3">
           <div className="flex min-w-0 items-center gap-3">
+            <div className="relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-border/20 bg-muted p-1">
+              <img src="/Dipraj-ChatBot.png" alt="Origin AI" className="h-full w-full object-contain drop-shadow-md" />
+            </div>
             {onSideToggle && (
               <button
                 onClick={onSideToggle}
-                className="p-1.5 rounded-md hover:bg-foreground/5 text-muted-foreground transition-colors mr-1 shrink-0"
+                className="p-1 rounded-md hover:bg-foreground/5 text-muted-foreground transition-colors shrink-0"
                 title={side === 'left' ? "Move to Right" : "Move to Left"}
               >
                 {side === 'left' ? <PanelRight className="h-4 w-4" /> : <PanelLeft className="h-4 w-4" />}
               </button>
             )}
-            <div className="relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-border/20 bg-muted p-1">
-              <img src="/Dipraj-ChatBot.png" alt="Origin AI" className="h-full w-full object-contain drop-shadow-md" />
-            </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <h2 className="text-base font-semibold text-foreground">Origin AI</h2>

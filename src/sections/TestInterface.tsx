@@ -963,7 +963,7 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
                           <span className="w-5 h-5 rounded bg-blue-50 text-blue-600 flex items-center justify-center text-[10px] font-bold shrink-0">
                             {idx + 1}
                           </span>
-                          <span className="text-xs text-gray-700">{renderInlineSegments(String(term), `test-matrix-term-${idx}`)}</span>
+                          <span className="text-xs text-gray-700">{renderInlineSegments(String(term), `test-matrix-term-${idx}`, 'plain')}</span>
                         </div>
                       ))}
                     </div>
@@ -976,7 +976,7 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
                           <span className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px] font-bold">
                             {String.fromCharCode(80 + idxA)}
                           </span>
-                          <span className="text-sm font-semibold text-gray-800">{renderInlineSegments(String(itemA), `test-matrix-item-${idxA}`)}</span>
+                          <span className="text-sm font-semibold text-gray-800">{renderInlineSegments(String(itemA), `test-matrix-item-${idxA}`, 'plain')}</span>
                         </div>
                         <div className="flex flex-wrap gap-2">
                           {(currentQuestion as any).matrixData.column_b.map((_: any, idxB: number) => {

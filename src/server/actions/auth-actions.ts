@@ -76,7 +76,7 @@ async function setSessionCookies(access: string, refresh: string): Promise<void>
 export async function loginAction(input: {
   email: string;
   password: string;
-  role?: 'student' | 'teacher' | null;
+  role?: 'student' | 'teacher' | 'admin' | null;
 }): Promise<AuthResult> {
   const response = await handleLogin({
     email: input.email,
@@ -95,7 +95,7 @@ export async function registerAction(input: {
   name?: string;
   email: string;
   password: string;
-  role?: 'student' | 'teacher' | null;
+  role?: 'student' | 'teacher' | 'admin' | null;
 }): Promise<AuthResult> {
   const response = await handleRegister({
     name: input.name,

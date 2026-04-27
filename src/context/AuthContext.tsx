@@ -256,7 +256,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
     }
   }, [pathname, user, isLoading, router]);
 
-  const login = async (email: string, password: string, role?: 'student' | 'teacher' | null) => {
+  const login = async (email: string, password: string, role?: 'student' | 'teacher' | 'admin' | null) => {
     setIsLoading(true);
     setAuthError(null);
     try {

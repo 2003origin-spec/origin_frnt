@@ -9,8 +9,30 @@ import ClientShell from "@/components/layout/ClientShell";
 import { getServerFrontendUser } from "@/lib/auth-server";
 
 export const metadata: Metadata = {
-  title: "ORIGIN - Your Academic Hub",
-  description: "Advanced learning platform for students and teachers.",
+  title: "ORIGIN AI - Best Preparation Platform for JEE/NEET",
+  description: "The most advanced AI-powered learning platform for JEE, NEET, and Foundation. Personalized guidance, infinite practice, and 24/7 AI mentoring.",
+  openGraph: {
+    title: "ORIGIN AI - Best Preparation Platform for JEE/NEET",
+    description: "Personalized guidance, infinite practice, and 24/7 AI mentoring for JEE and NEET scholars.",
+    url: "https://origin-ai.vercel.app",
+    siteName: "ORIGIN AI",
+    images: [
+      {
+        url: "/og-image.jpg",
+        width: 1200,
+        height: 630,
+        alt: "ORIGIN AI - Best Prep Platform",
+      },
+    ],
+    locale: "en_US",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "ORIGIN AI - Best Preparation Platform for JEE/NEET",
+    description: "The most advanced AI-powered learning platform for JEE, NEET, and Foundation.",
+    images: ["/og-image.jpg"],
+  },
 };
 
 /**
