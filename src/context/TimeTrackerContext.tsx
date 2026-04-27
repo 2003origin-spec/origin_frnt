@@ -25,21 +25,6 @@ export function TimeTrackerProvider({ children }: { children: React.ReactNode })
     const timeTypeRef = useRef<TimeType>('webpage');
     const activeSubjectRef = useRef<string | null>(null);
 
-    const setTimeMode = useCallback((mode: TimeType, subject?: string) => {
-        // Sync before switching to avoid mixing time in buffers
-        syncNow();
-        
-        timeTypeRef.current = mode;
-        if (subject) {
-            activeSubjectRef.current = subject;
-        } else if (mode === 'webpage' || mode === 'pomodoro') {
-             // In webpage or pomodoro, we might not have a specific "question" subject, 
-             // but pomodoro might want to keep the current study subject if any.
-             // For now, clear it for webpage.
-            if (mode === 'webpage') activeSubjectRef.current = null;
-        }
-    }, []);
-
     const syncNow = useCallback(() => {
         const types: TimeType[] = ['webpage', 'practice', 'pomodoro'];
         for (const tType of types) {
@@ -63,7 +48,22 @@ export function TimeTrackerProvider({ children }: { children: React.ReactNode })
                 });
             }
         }
-    }, []);
+    }, [refreshUser]);
+
+    const setTimeMode = useCallback((mode: TimeType, subject?: string) => {
+        // Sync before switching to avoid mixing time in buffers
+        syncNow();
+        
+        timeTypeRef.current = mode;
+        if (subject) {
+            activeSubjectRef.current = subject;
+        } else if (mode === 'webpage' || mode === 'pomodoro') {
+             // In webpage or pomodoro, we might not have a specific "question" subject, 
+             // but pomodoro might want to keep the current study subject if any.
+             // For now, clear it for webpage.
+            if (mode === 'webpage') activeSubjectRef.current = null;
+        }
+    }, [syncNow]);
 
     // 1. Tick every second
     useEffect(() => {
