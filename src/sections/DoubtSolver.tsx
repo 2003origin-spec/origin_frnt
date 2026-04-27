@@ -4,7 +4,7 @@ import {
   ChevronLeft, Send, ImagePlus, Mic, MicOff,
   X, Sparkles, Plus, Atom,
   FlaskConical, Calculator, Leaf, PanelLeft, PanelLeftClose, Trash2,
-  Database
+  Database, MessageCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type {
@@ -322,9 +322,13 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
     setIsTyping(true);
 
     try {
+      const chapterTitle = getChapterContextTitle(activeSession);
       const ctx: Record<string, unknown> = {
         ...buildOriginAiPageContext('/doubt-solver'),
         activeSubject: activeSession.subject ?? null,
+        questionChapter: chapterTitle,
+        questionSubject: formatSubjectForContext(activeSession.subject ?? null),
+        questionConcept: activeSession.activeConcept ?? null,
       };
       if (lastImageContextRef.current) {
         ctx.imageContext = lastImageContextRef.current;
@@ -589,6 +593,12 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
             onUpdateTitle={handleUpdateTitle}
             onStartNewChat={startNewChatFromCTA}
             onDeleteSession={handleDeleteSession}
+            onGeneralChat={async () => {
+              const session = await createNewSession('General Doubt Session', null);
+              if (session) {
+                setViewMode('chat');
+              }
+            }}
           />
         ) : viewMode === 'chapter' && selectedSubject ? (
           <ChapterSelectionView
@@ -1063,7 +1073,7 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
   );
 }
 
-function SelectionView({ onCreate, onUpload, sessions, onSelectSession, lastSession, onUpdateTitle, onStartNewChat, onDeleteSession }: {
+function SelectionView({ onCreate, onUpload, sessions, onSelectSession, lastSession, onUpdateTitle, onStartNewChat, onDeleteSession, onGeneralChat }: {
   onCreate: (t: string, sub: SubjectKey) => void,
   onUpload: () => void,
   sessions: DoubtSession[],
@@ -1072,15 +1082,17 @@ function SelectionView({ onCreate, onUpload, sessions, onSelectSession, lastSess
   onUpdateTitle: (id: string, title: string) => Promise<void>,
   onStartNewChat: () => void,
   onDeleteSession: (session: DoubtSession) => Promise<void>,
+  onGeneralChat?: () => void,
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
 
-  const quickTopics: { name: string; subjectKey: SubjectKey; icon: typeof Atom; color: string; desc: string }[] = [
-    { name: 'Physics', subjectKey: 'phy', icon: Atom, color: 'text-blue-400', desc: 'Mentor Ready' },
-    { name: 'Chemistry', subjectKey: 'chem', icon: FlaskConical, color: 'text-emerald-400', desc: 'Mentor Ready' },
-    { name: 'Mathematics', subjectKey: 'math', icon: Calculator, color: 'text-violet-400', desc: 'Mentor Ready' },
-    { name: 'Biology', subjectKey: 'bio', icon: Leaf, color: 'text-green-400', desc: 'Mentor Ready' },
+  const quickTopics: { name: string; subjectKey: SubjectKey | 'general'; icon: typeof Atom; color: string; desc: string }[] = [
+    { name: 'Physics', subjectKey: 'phy', icon: Atom, color: 'text-blue-400', desc: 'Chapters & Concepts' },
+    { name: 'Chemistry', subjectKey: 'chem', icon: FlaskConical, color: 'text-emerald-400', desc: 'Chapters & Concepts' },
+    { name: 'Mathematics', subjectKey: 'math', icon: Calculator, color: 'text-violet-400', desc: 'Chapters & Concepts' },
+    { name: 'Biology', subjectKey: 'bio', icon: Leaf, color: 'text-green-400', desc: 'Chapters & Concepts' },
+    { name: 'General', subjectKey: 'general', icon: MessageCircle, color: 'text-amber-400', desc: 'Ask Anything' },
   ];
 
   const handleStartEdit = (e: React.MouseEvent<HTMLElement>, s: DoubtSession) => {
@@ -1131,7 +1143,13 @@ function SelectionView({ onCreate, onUpload, sessions, onSelectSession, lastSess
             {quickTopics.map((topic) => (
               <button
                 key={topic.name}
-                onClick={() => onCreate(`${topic.name} Doubt Session`, topic.subjectKey)}
+                onClick={() => {
+                  if (topic.subjectKey === 'general') {
+                    onGeneralChat?.();
+                  } else {
+                    onCreate(`${topic.name} Doubt Session`, topic.subjectKey as SubjectKey);
+                  }
+                }}
                 className="p-4 sm:p-6 rounded-[20px] sm:rounded-[28px] bg-card/40 border border-border/50 hover:border-blue-500/30 transition-all group flex items-center gap-4 sm:gap-6 shadow-sm hover:shadow-md"
               >
                 <div className="w-10 h-10 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl bg-muted border border-border/50 flex items-center justify-center group-hover:scale-110 transition-transform shadow-inner">
