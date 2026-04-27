@@ -61,37 +61,13 @@ export default function AiSidebar({
              </div>
           </div>
 
-          {/* Top Bar with Controls */}
-          <div className="flex items-center justify-between border-b border-border/40 px-4 py-2 bg-background/50">
-            <div className="flex items-center gap-1">
-               <button
-                onClick={onSideToggle}
-                className="p-1.5 rounded-md hover:bg-foreground/5 text-muted-foreground transition-colors"
-                title={side === 'left' ? "Move to Right" : "Move to Left"}
-              >
-                {side === 'left' ? <PanelRight className="h-4 w-4" /> : <PanelLeft className="h-4 w-4" />}
-              </button>
-            </div>
-            
-            <div className="flex items-center gap-2">
-               <p className="mt-1 text-[10px] uppercase tracking-[0.15em] text-slate-500 dark:text-slate-400">
-                Origin AI Docked
-              </p>
-              <button
-                onClick={onClose}
-                className="p-1.5 rounded-md hover:bg-rose-500/10 text-muted-foreground hover:text-rose-500 transition-colors"
-                title="Close"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
-
           {/* Bot Content */}
           <div className="flex-1 overflow-hidden flex flex-col h-full">
             <OriginAiMentor
               compact
               isSidebar
+              side={side}
+              onSideToggle={onSideToggle}
               onClose={onClose}
               autoAskSelectionNonce={autoAskSelectionNonce}
             />

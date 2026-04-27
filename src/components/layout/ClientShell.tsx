@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils';
 import { useResizable } from '@/hooks/use-resizable';
 import AiSidebar from './AiSidebar';
 import { LayoutProvider, useLayout } from '@/context/LayoutContext';
+import { TimeTrackerProvider } from '@/context/TimeTrackerContext';
 
 const FloatingChat = dynamic(() => import('./FloatingChat'), { ssr: false });
 const TutorialOverlay = dynamic(() =>
@@ -202,7 +203,9 @@ function ClientShellInner({ children }: { children: React.ReactNode }) {
 export default function ClientShell({ children }: { children: React.ReactNode }) {
   return (
     <LayoutProvider>
-      <ClientShellInner>{children}</ClientShellInner>
+      <TimeTrackerProvider>
+        <ClientShellInner>{children}</ClientShellInner>
+      </TimeTrackerProvider>
     </LayoutProvider>
   );
 }

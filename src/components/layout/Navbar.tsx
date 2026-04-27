@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { User, ViewState } from '@/types';
+import GlobalSearch from './GlobalSearch';
 
 interface NavbarProps {
     user: User;
@@ -44,9 +45,21 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
     const [showProfileMenu, setShowProfileMenu] = useState(false);
     const [showExploreMenu, setShowExploreMenu] = useState(false);
     const [showMobileMenu, setShowMobileMenu] = useState(false);
+    const [isSearchOpen, setIsSearchOpen] = useState(false);
     const [hoveredTab, setHoveredTab] = useState<string | null>(null);
     const profileMenuRef = useRef<HTMLDivElement>(null);
     const exploreMenuRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+                e.preventDefault();
+                setIsSearchOpen(true);
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, []);
 
     const { availableWidth } = useLayout();
     const isConstrained = availableWidth < 1024; // Force mobile menu if space is less than 1024px
@@ -268,6 +281,7 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                             <motion.button 
                                 whileHover={{ scale: 1.1 }}
                                 whileTap={{ scale: 0.9 }}
+                                onClick={() => setIsSearchOpen(true)}
                                 className="p-2 text-slate-500 dark:text-slate-400 hover:text-[#334155] dark:hover:text-white transition-colors bg-slate-100/50 dark:bg-white/5 rounded-full"
                             >
                                 <Search className="w-4 h-4" />
@@ -436,6 +450,13 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                     </motion.div>
                 )}
             </AnimatePresence>
+
+            <GlobalSearch 
+                isOpen={isSearchOpen}
+                onClose={() => setIsSearchOpen(false)}
+                currentView={currentView}
+                onNavigate={onNavigate}
+            />
         </div>
     );
 }

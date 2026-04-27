@@ -133,10 +133,6 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
   // Navigation lock: prevent leaving during focus
   const [showNavLock, setShowNavLock] = useState(false);
 
-  // Track pomodoro seconds to sync to daily analytics
-  const pomodoroSecondsRef = useRef(0);
-  const lastSyncedRef = useRef(0);
-
   // Continuous Alarm State
   const [isAlarmRinging, setIsAlarmRinging] = useState(false);
   const audioIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -221,12 +217,7 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
 
     if (isRunning && timeRemaining > 0) {
       interval = setInterval(() => {
-        setTimeRemaining((prev) => {
-          if (mode === 'focus') {
-            pomodoroSecondsRef.current += 1;
-          }
-          return prev - 1;
-        });
+        setTimeRemaining((prev) => prev - 1);
       }, 1000);
     } else if (timeRemaining === 0 && isRunning) {
       setIsRunning(false);
@@ -260,36 +251,23 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
 
   useEffect(() => {
     fetchHistory();
-    if (setTimeMode) setTimeMode('pomodoro');
 
     return () => {
       stopContinuousAlarm();
-      // Sync remaining seconds on unmount
-      const remaining = pomodoroSecondsRef.current - lastSyncedRef.current;
-      if (remaining > 0) {
-        apiCall('/users/time/', {
-          method: 'POST',
-          body: JSON.stringify({ time_type: 'pomodoro', time_spent: remaining })
-        }).catch(console.error);
-      }
+      if (setTimeMode) setTimeMode('webpage');
     };
   }, []);
 
-  // Sync pomodoro time to analytics every 30 seconds
+  // Sync mode to global tracker
   useEffect(() => {
-    if (!isRunning || mode !== 'focus') return;
-    const interval = setInterval(() => {
-      const elapsed = pomodoroSecondsRef.current - lastSyncedRef.current;
-      if (elapsed > 0) {
-        lastSyncedRef.current = pomodoroSecondsRef.current;
-        apiCall('/users/time/', {
-          method: 'POST',
-          body: JSON.stringify({ time_type: 'pomodoro', time_spent: elapsed })
-        }).catch(console.error);
+    if (setTimeMode) {
+      if (isRunning && mode === 'focus') {
+        setTimeMode('pomodoro');
+      } else {
+        setTimeMode('webpage');
       }
-    }, 30000); // every 30s
-    return () => clearInterval(interval);
-  }, [isRunning, mode]);
+    }
+  }, [isRunning, mode, setTimeMode]);
 
   // Warn browser on tab close during focus session
   useEffect(() => {
@@ -496,14 +474,6 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
         interruption_count: interruptionCount,
         end_time: new Date().toISOString()
       });
-    }
-    // Sync remaining pomodoro time
-    const remaining = pomodoroSecondsRef.current - lastSyncedRef.current;
-    if (remaining > 0) {
-      apiCall('/users/time/', {
-        method: 'POST',
-        body: JSON.stringify({ time_type: 'pomodoro', time_spent: remaining })
-      }).catch(console.error);
     }
     stopContinuousAlarm();
     if (onLock) onLock(false);
