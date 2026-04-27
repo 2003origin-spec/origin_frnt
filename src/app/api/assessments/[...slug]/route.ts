@@ -149,11 +149,11 @@ export async function GET(request: NextRequest, context: RouteContext) {
     }
 
     if (root === "ogcode" && first === "leaderboard" && second === "subjects") {
-      return ok(getOgcodeSubjectRanks(store, user));
+      return ok(await getOgcodeSubjectRanks(store, user));
     }
 
     if (root === "ogcode" && first === "stats") {
-      return ok(getOgcodeSubjectRanks(store, user));
+      return ok(await getOgcodeSubjectRanks(store, user));
     }
 
     if (root === "ogcode" && first === "leaderboard") {

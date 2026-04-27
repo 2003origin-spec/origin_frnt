@@ -17,6 +17,7 @@ import {
   listOgcodeCatalogQuestionPage,
   listOgcodeCatalogQuestions,
 } from "@/server/ogcode-catalog";
+import { getUserPostgresPool, isUserPostgresConfigured } from "@/server/user-postgres";
 import { gradePracticeAnswerWithService } from "@/server/grader-client";
 import {
   analyzeDppAttemptWithService,
@@ -56,7 +57,7 @@ import type {
   StoredUserAnswer,
 } from "@/server/store";
 import { createId } from "@/server/store";
-import { isOgcodePostgresConfigured } from "@/server/postgres";
+import { isOgcodePostgresConfigured, getOgcodePostgresPool } from "@/server/postgres";
 
 export type QuestionAnswerPayload = {
   question_id?: string | number;
@@ -132,7 +133,7 @@ export type OgcodeQuestionPage = {
 export type OgcodeIndexData = {
   questionPage: OgcodeQuestionPage;
   userStats: Awaited<ReturnType<typeof getOgcodeUserStats>>;
-  subjectRanks: ReturnType<typeof getOgcodeSubjectRanks>;
+  subjectRanks: Awaited<ReturnType<typeof getOgcodeSubjectRanks>>;
   chapters: string[] | null;
 };
 
@@ -2653,8 +2654,8 @@ export async function getOgcodeUserStats(store: AppStore, user: StoredUser) {
   const accuracy = totalAttempts > 0 ? Math.round((correctAttempts / totalAttempts) * 100) : 0;
   const syllabusCoverage = totalQuestions > 0 ? Math.round((attemptedCount / totalQuestions) * 100) : 0;
 
-  const leaderboard = await buildLeaderboardEntries(store, user, null);
-  const myRank = leaderboard.find((entry) => entry.isMe)?.rank ?? null;
+  const leaderboardData = await getOgcodeLeaderboard(store, user, null);
+  const myRank = leaderboardData.myRank;
 
   return {
     rank: myRank,
@@ -2669,7 +2670,28 @@ export async function getOgcodeUserStats(store: AppStore, user: StoredUser) {
   };
 }
 
-export function getOgcodeSubjectRanks(store: AppStore, user: StoredUser) {
+export async function getOgcodeSubjectRanks(store: AppStore, user: StoredUser) {
+  if (isUserPostgresConfigured() && isOgcodePostgresConfigured()) {
+    const subjects = ["physics", "chemistry", "mathematics", "biology"];
+    const rows = await Promise.all(
+      subjects.map(async (subject) => {
+        const entries = await buildLeaderboardEntriesFromDb(user, subject);
+        const myEntry = entries.find((entry) => entry.isMe);
+        return {
+          subject,
+          questionsSolved: myEntry?.questionsSolved ?? 0,
+          questions_solved: myEntry?.questionsSolved ?? 0,
+          rankScore: myEntry?.rankScore ?? 0,
+          rank_score: myEntry?.rankScore ?? 0,
+          rankPosition: myEntry?.rank ?? entries.length + 1,
+          rank_position: myEntry?.rank ?? entries.length + 1,
+        };
+      }),
+    );
+    return rows.sort((left, right) => right.rankScore - left.rankScore);
+  }
+
+  // Fallback to in-memory store
   const rows = store.subjectRanks
     .filter((entry) => entry.userId === user.id)
     .sort((left, right) => right.rankScore - left.rankScore)
@@ -2691,8 +2713,8 @@ export async function getOgcodeIndexData(
   user: StoredUser,
   filters: OgcodeQuestionListFilters,
 ): Promise<OgcodeIndexData> {
-  const subjectRanks = getOgcodeSubjectRanks(store, user);
-  const [questionPage, userStats, chapters] = await Promise.all([
+  const [subjectRanks, questionPage, userStats, chapters] = await Promise.all([
+    getOgcodeSubjectRanks(store, user),
     listOgcodeQuestionPage(store, user, filters),
     getOgcodeUserStats(store, user),
     filters.subject ? listOgcodeQuestionChapters(store, user, filters.subject) : Promise.resolve(null),
@@ -2706,60 +2728,113 @@ export async function getOgcodeIndexData(
   };
 }
 
-async function buildLeaderboardEntries(store: AppStore, user: StoredUser, subject: string | null) {
-  // Use pre-aggregated subjectRanks instead of scanning all practiceAttempts (O(subjects) vs O(attempts))
-  const userRanks = store.subjectRanks.filter((r) => r.userId === user.id);
-  const uniqueSolved = subject
-    ? (userRanks.find((r) => r.subject === subject)?.questionsSolved ?? 0)
-    : userRanks.reduce((sum, r) => sum + r.questionsSolved, 0);
+async function buildLeaderboardEntriesFromDb(user: StoredUser, subject: string | null) {
+  const userPool = getUserPostgresPool();
+  const ogcodePool = getOgcodePostgresPool();
+  if (!userPool || !ogcodePool) return [];
 
-  const dailyAnalytics = buildTimeAnalytics(store, user.id);
-  const totalMinutes = dailyAnalytics.reduce(
-    (sum, row) => sum + row.practiceTime + row.webpageTime + row.pomodoroTime,
-    0,
-  ) / 60;
-  const myRankScore = totalMinutes > 0 ? Number((uniqueSolved / totalMinutes).toFixed(3)) : uniqueSolved * 10;
+  // 1. Get all students from user pool
+  const usersResult = await userPool.query(`
+    SELECT id, name, avatar, total_study_time, streak
+    FROM origin_users
+    WHERE role = 'student'
+  `);
+  const users = usersResult.rows;
 
-  const seedEntries = store.leaderboardSeed.map((entry) => ({
-    rank: entry.rank,
-    userId: entry.userId,
-    name: entry.name,
-    avatar: entry.avatar,
-    rankScore: Number((entry.score / Math.max(entry.studyTime, 1)).toFixed(3)),
-    rank_score: Number((entry.score / Math.max(entry.studyTime, 1)).toFixed(3)),
-    score: entry.score,
-    studyTime: entry.studyTime,
-    location: entry.location,
-    isMe: false,
-    is_me: false,
-  }));
+  // 2. Get performance data from ogcode pool
+  // We aggregate from test_results. For 'overall', we sum across all subjects.
+  const subjectFilter = subject ? "AND subject = $1" : "";
+  const queryParams = subject ? [subject] : [];
 
-  const current = {
-    rank: 0,
-    userId: user.id,
-    name: user.name,
-    avatar: user.avatar ?? undefined,
-    rankScore: myRankScore,
-    rank_score: myRankScore,
-    score: buildPointsSummary(store, user.id).totalPoints,
-    studyTime: Math.round(totalMinutes),
-    location: undefined,
-    isMe: true,
-    is_me: true,
-  };
+  const resultsResult = await ogcodePool.query(`
+    SELECT
+      user_id,
+      SUM(correct_answers) as total_solved,
+      AVG(percentage) as avg_accuracy
+    FROM analytics.test_results
+    WHERE 1=1 ${subjectFilter}
+    GROUP BY user_id
+  `, queryParams);
 
-  const entries = [...seedEntries.filter((entry) => entry.userId !== user.id), current]
-    .sort((left, right) => right.rankScore - left.rankScore)
+  const statsMap = new Map();
+  resultsResult.rows.forEach(row => {
+    statsMap.set(row.user_id, {
+      solved: parseInt(row.total_solved || 0),
+      accuracy: parseFloat(row.avg_accuracy || 0)
+    });
+  });
+
+  // 3. Combine and calculate rankScore
+  const entries = users.map(u => {
+    const stats = statsMap.get(u.id) || { solved: 0, accuracy: 0 };
+    const studyMinutes = u.total_study_time || 0;
+
+    // Efficiency Rating: solved / study_time (scaled)
+    // If studyTime is 0, we use a default multiplier for solved questions
+    const rankScore = studyMinutes > 0
+      ? Number((stats.solved / studyMinutes).toFixed(3))
+      : stats.solved * 0.1;
+
+    return {
+      userId: u.id,
+      name: u.name,
+      avatar: u.avatar || undefined,
+      rankScore: rankScore,
+      rank_score: rankScore,
+      score: stats.solved * 10, // Simple XP proxy: 10 pts per solved
+      studyTime: studyMinutes,
+      questionsSolved: stats.solved,
+      accuracy: stats.accuracy,
+      isMe: u.id === user.id,
+      is_me: u.id === user.id,
+    };
+  });
+
+  // 4. Sort and Rank
+  return entries
+    .sort((a, b) => b.rankScore - a.rankScore)
     .map((entry, index) => ({
       ...entry,
-      rank: index + 1,
+      rank: index + 1
     }));
-
-  return entries;
 }
 
 export async function getOgcodeLeaderboard(store: AppStore, user: StoredUser, subject: string | null) {
-  const entries = await buildLeaderboardEntries(store, user, subject);
+  let entries;
+  if (isUserPostgresConfigured() && isOgcodePostgresConfigured()) {
+    entries = await buildLeaderboardEntriesFromDb(user, subject);
+  } else {
+    // Fallback: build entries from in-memory store
+    const allSubjectRanks = store.subjectRanks;
+    const rankedUsers = Array.from(
+      allSubjectRanks
+        .filter((entry) => !subject || entry.subject === subject)
+        .reduce<Map<string, { solved: number; rankScore: number }>>((map, entry) => {
+          const existing = map.get(entry.userId) ?? { solved: 0, rankScore: 0 };
+          map.set(entry.userId, {
+            solved: existing.solved + entry.questionsSolved,
+            rankScore: existing.rankScore + entry.rankScore,
+          });
+          return map;
+        }, new Map())
+        .entries(),
+    )
+      .sort(([, a], [, b]) => b.rankScore - a.rankScore)
+      .map(([userId, stats], index) => ({
+        userId,
+        name: store.users.find((u) => u.id === userId)?.name ?? "Unknown",
+        avatar: store.users.find((u) => u.id === userId)?.avatar ?? null,
+        questionsSolved: stats.solved,
+        rankScore: stats.rankScore,
+        accuracy: 0,
+        streak: 0,
+        xp: stats.solved * 10,
+        isMe: userId === user.id,
+        rank: index + 1,
+      }));
+    entries = rankedUsers;
+  }
+
   return {
     leaderboard: entries.slice(0, 20),
     myRank: entries.find((entry) => entry.isMe)?.rank ?? null,
@@ -2789,29 +2864,54 @@ export function updateOgcodeLocation(
 }
 
 export async function getFocusAreas(store: AppStore, user: StoredUser) {
-  const attemptedQuestionIds = new Set<string>();
-  store.practiceAttempts
-    .filter((attempt) => attempt.userId === user.id)
-    .forEach((attempt) => attemptedQuestionIds.add(attempt.questionId));
-  store.testResults
-    .filter((result) => result.userId === user.id)
-    .flatMap((result) => result.answers)
-    .forEach((answer) => attemptedQuestionIds.add(answer.questionId));
-
   const subjects = ["physics", "chemistry", "mathematics", "biology"];
   const questionBank = await getOgcodeQuestionBank(store);
-  const attemptedLookup = await buildQuestionLookup(store, [...attemptedQuestionIds]);
-  const attemptedBySubject: Record<string, number> = {};
   const totalBySubject = questionBank.reduce<Record<string, number>>((accumulator, question) => {
     accumulator[question.subject] = (accumulator[question.subject] ?? 0) + 1;
     return accumulator;
   }, {});
 
-  attemptedLookup.forEach((question, questionId) => {
-    if (attemptedQuestionIds.has(questionId)) {
-      attemptedBySubject[question.subject] = (attemptedBySubject[question.subject] ?? 0) + 1;
+  // Fetch attempted question counts per subject from the database when available
+  let attemptedBySubject: Record<string, number> = {};
+  if (isOgcodePostgresConfigured()) {
+    try {
+      const ogcodePool = getOgcodePostgresPool();
+      if (ogcodePool) {
+        const result = await ogcodePool.query<{ subject: string; attempted: string }>(
+          `SELECT subject, COUNT(DISTINCT question_id) AS attempted
+           FROM analytics.test_results
+           WHERE user_id = $1
+           GROUP BY subject`,
+          [user.id],
+        );
+        for (const row of result.rows) {
+          attemptedBySubject[row.subject.toLowerCase()] = Number(row.attempted);
+        }
+      }
+    } catch (error) {
+      console.error("[getFocusAreas] DB query failed, falling back to store:", error);
+      // Fall through to in-memory fallback below
     }
-  });
+  }
+
+  // Fallback: count attempted questions from the in-memory store
+  if (Object.keys(attemptedBySubject).length === 0) {
+    const attemptedQuestionIds = new Set<string>();
+    store.practiceAttempts
+      .filter((attempt) => attempt.userId === user.id)
+      .forEach((attempt) => attemptedQuestionIds.add(attempt.questionId));
+    store.testResults
+      .filter((result) => result.userId === user.id)
+      .flatMap((result) => result.answers)
+      .forEach((answer) => attemptedQuestionIds.add(answer.questionId));
+
+    const attemptedLookup = await buildQuestionLookup(store, [...attemptedQuestionIds]);
+    attemptedLookup.forEach((question, questionId) => {
+      if (attemptedQuestionIds.has(questionId)) {
+        attemptedBySubject[question.subject] = (attemptedBySubject[question.subject] ?? 0) + 1;
+      }
+    });
+  }
 
   return subjects
     .map((subject) => {
