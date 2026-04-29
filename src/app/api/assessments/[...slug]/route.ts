@@ -4,6 +4,7 @@ import { requireUserFromRequest } from "@/server/auth";
 import { submitLimiter, generalLimiter, checkRateLimit } from "@/lib/rate-limit";
 import {
   type CustomTestPayload,
+  checkGeneratedDppQuestion,
   createCustomTest,
   getGeneratedDppDetail,
   getChallengeOfTheDay,
@@ -22,6 +23,7 @@ import {
   listPracticeQuestions,
   listTestResults,
   type PracticeSubmissionPayload,
+  type DppQuestionCheckPayload,
   submitGeneratedDpp,
   submitPracticeQuestion,
   type TestSubmissionPayload,
@@ -220,6 +222,18 @@ export async function POST(request: NextRequest, context: RouteContext) {
         return submitGeneratedDpp(store, user, first, body);
       });
       return created(response);
+    }
+
+    if (root === "dpps" && first && second === "check") {
+      const body = await parseJsonBody<DppQuestionCheckPayload>(request);
+      const response = await withStoreAsync(async (store) => {
+        const user = requireUserFromRequest(store, request);
+        if (!user) {
+          throw new Error("Authentication credentials were not provided.");
+        }
+        return checkGeneratedDppQuestion(store, user, first, body);
+      });
+      return ok(response);
     }
 
     if (root === "practice" && first && second === "submit") {

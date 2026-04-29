@@ -53,6 +53,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
   const [verificationStep, setVerificationStep] = useState<'instructions' | 'proctoring'>('instructions');
   const [hasAcceptedRules, setHasAcceptedRules] = useState(false);
   const [showRefreshWarning, setShowRefreshWarning] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const questionStartedAtRef = useRef<number>(Date.now());
 
   // Proctoring setup - gated by verification step
@@ -241,6 +242,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
   useEffect(() => {
     const initialAnswers = test.questions.map((q) => ({
       questionId: q.id,
+      presentationId: q.presentationId ?? q.presentation_id ?? null,
       selectedOption: null,
       selectedOptions: [],
       matrixPairs: [],
@@ -387,8 +389,16 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
   const saveCurrentResponse = (isMarkedForReview: boolean) => {
     const elapsedSeconds = getElapsedSeconds();
     const updatedAnswers = [...answers];
+    const currentAnswer = updatedAnswers[currentQuestionIndex];
+    const currentQuestionId = test.questions[currentQuestionIndex]?.id;
     updatedAnswers[currentQuestionIndex] = {
-      ...updatedAnswers[currentQuestionIndex],
+      ...currentAnswer,
+      questionId: currentAnswer?.questionId ?? currentQuestionId,
+      presentationId:
+        currentAnswer?.presentationId ??
+        test.questions[currentQuestionIndex]?.presentationId ??
+        test.questions[currentQuestionIndex]?.presentation_id ??
+        null,
       selectedOption: tempSelection,
       selectedOptions: tempSelections,
       matrixPairs: tempMatrixPairs,
@@ -401,10 +411,15 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
     return updatedAnswers;
   };
 
+  const moveToQuestion = (nextIndex: number) => {
+    if (nextIndex < 0 || nextIndex >= test.questions.length) return;
+    setCurrentQuestionIndex(nextIndex);
+  };
+
   const navigateToQuestion = (nextIndex: number) => {
     if (nextIndex < 0 || nextIndex >= test.questions.length) return;
-    recordCurrentQuestionTime();
-    setCurrentQuestionIndex(nextIndex);
+    saveCurrentResponse(answers[currentQuestionIndex]?.isMarkedForReview ?? false);
+    moveToQuestion(nextIndex);
   };
 
   const handleOptionSelect = (optionIndex: number) => {
@@ -435,33 +450,36 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
   const saveAndNext = () => {
     saveCurrentResponse(false);
     if (currentQuestionIndex < test.questions.length - 1) {
-      navigateToQuestion(currentQuestionIndex + 1);
+      moveToQuestion(currentQuestionIndex + 1);
     }
   };
 
   const saveAndMarkForReview = () => {
     saveCurrentResponse(true);
     if (currentQuestionIndex < test.questions.length - 1) {
-      navigateToQuestion(currentQuestionIndex + 1);
+      moveToQuestion(currentQuestionIndex + 1);
     }
   };
 
   const markForReviewAndNext = () => {
     saveCurrentResponse(true);
     if (currentQuestionIndex < test.questions.length - 1) {
-      navigateToQuestion(currentQuestionIndex + 1);
+      moveToQuestion(currentQuestionIndex + 1);
     }
   };
 
   const finalSubmit = async (options?: { malpractice?: boolean }) => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     stopCamera();
     setShowSubmitModal(false);
 
     try {
       const isMalpractice = options?.malpractice || false;
       const answersWithCurrentResponse = saveCurrentResponse(answers[currentQuestionIndex]?.isMarkedForReview ?? false);
-      const formattedAnswers = answersWithCurrentResponse.filter(shouldSubmitTestAnswer).map(a => ({
+      const formattedAnswers = answersWithCurrentResponse.filter((a) => a.questionId && shouldSubmitTestAnswer(a)).map(a => ({
         questionId: a.questionId,
+        presentationId: a.presentationId ?? null,
         selectedOption: a.selectedOption,
         selectedOptions: a.selectedOptions,
         matrixPairs: a.matrixPairs,
@@ -484,6 +502,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
     } catch (error: any) {
       console.error('Test submission failed:', error);
       toast.error('Failed to submit test. Please try again.');
+      setIsSubmitting(false);
     }
   };
 

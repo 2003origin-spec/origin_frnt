@@ -374,14 +374,35 @@ function summarizeRows(rows, banks) {
       accumulator.byDifficulty[row.difficulty] = (accumulator.byDifficulty[row.difficulty] ?? 0) + 1;
       accumulator.byType[row.question_type] = (accumulator.byType[row.question_type] ?? 0) + 1;
       accumulator.bySubject[row.subject] = (accumulator.bySubject[row.subject] ?? 0) + 1;
+      if (row.question_type === "mcq") {
+        accumulator.mcq.total += 1;
+        const key = row.correct_option == null ? "null" : String(row.correct_option);
+        accumulator.mcq.correctOptionDistribution[key] = (accumulator.mcq.correctOptionDistribution[key] ?? 0) + 1;
+        if (row.correct_option != null) {
+          accumulator.mcq.withCorrectOption += 1;
+        }
+      }
       return accumulator;
     },
     {
       bySubject: {},
       byDifficulty: {},
       byType: {},
+      mcq: {
+        total: 0,
+        withCorrectOption: 0,
+        correctOptionDistribution: {},
+        firstTwoOptionShare: 0,
+      },
     },
   );
+
+  const firstTwoCount =
+    (summary.mcq.correctOptionDistribution["0"] ?? 0) +
+    (summary.mcq.correctOptionDistribution["1"] ?? 0);
+  summary.mcq.firstTwoOptionShare = summary.mcq.withCorrectOption
+    ? Number(((firstTwoCount / summary.mcq.withCorrectOption) * 100).toFixed(1))
+    : 0;
 
   return {
     files: banks.map((entry) => ({ subject: entry.subject, file: entry.file })),
@@ -418,6 +439,11 @@ async function main() {
   const summary = summarizeRows(rows, args.banks);
   console.log(`Prepared ${rows.length} OGCode questions from ${args.banks.length} source files`);
   console.log(JSON.stringify(summary, null, 2));
+  if (summary.totals.mcq.firstTwoOptionShare >= 70) {
+    console.warn(
+      `Warning: ${summary.totals.mcq.firstTwoOptionShare}% of MCQs with a correct option resolve to A/B. Runtime option shuffling is required.`,
+    );
+  }
 
   if (args.dryRun) {
     return;

@@ -33,6 +33,8 @@ interface SubmitResult {
     already_solved?: boolean;
     correctOption?: number;
     correctOptions?: number[];
+    presentationId?: string;
+    presentation_id?: string;
     correctPairs?: number[][];
     correctAnswerText?: string;
     explanation?: string;
@@ -50,6 +52,8 @@ type SubmitPayload = {
     timeSpent: number;
     selectedOption?: number | null;
     selectedOptions?: number[];
+    presentationId?: string | null;
+    presentation_id?: string | null;
     matrixPairs?: number[][];
     answerText?: string;
 };
@@ -400,7 +404,10 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
     const doSubmit = useCallback(async () => {
         if (!question || result || isSubmitting) return;
 
-        const payload: SubmitPayload = { timeSpent: elapsed };
+        const payload: SubmitPayload = {
+            timeSpent: elapsed,
+            presentationId: question.presentationId ?? question.presentation_id ?? null,
+        };
         const qType = question.questionType ?? 'mcq';
 
         if (qType === 'mcq') payload.selectedOption = selectedOption;

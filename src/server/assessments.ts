@@ -59,10 +59,18 @@ import type {
 } from "@/server/store";
 import { createId } from "@/server/store";
 import { isOgcodePostgresConfigured, getOgcodePostgresPool } from "@/server/postgres";
+import {
+  getOptionDisplayOrder,
+  presentOptions,
+  verifyOptionPresentationToken,
+  type OptionPresentationScope,
+} from "@/server/option-presentation";
 
 export type QuestionAnswerPayload = {
   question_id?: string | number;
   questionId?: string | number;
+  presentation_id?: string | null;
+  presentationId?: string | null;
   selected_option?: number | null;
   selectedOption?: number | null;
   selected_options?: number[];
@@ -86,6 +94,8 @@ export type TestSubmissionPayload = {
 };
 
 export type PracticeSubmissionPayload = {
+  presentation_id?: string | null;
+  presentationId?: string | null;
   selected_option?: number | null;
   selectedOption?: number | null;
   selected_options?: number[];
@@ -103,6 +113,11 @@ export type CustomTestPayload = {
   difficulty?: string;
   chapter?: string;
   question_count?: number;
+};
+
+export type DppQuestionCheckPayload = PracticeSubmissionPayload & {
+  question_id?: string | number;
+  questionId?: string | number;
 };
 
 export type UpdateOgcodeLocationPayload = {
@@ -163,6 +178,24 @@ type ReviewEntry = {
   howToApproach: string;
 };
 
+type QuestionPresentationContext = {
+  scope: OptionPresentationScope;
+  assessmentId: string;
+  attemptKey: string | number;
+};
+
+type SerializeQuestionOptions =
+  | boolean
+  | {
+      includeCorrectFields?: boolean;
+      presentationContext?: QuestionPresentationContext;
+    };
+
+type PreparedAnswer = {
+  answer: StoredUserAnswer;
+  displayOrder: number[] | null;
+};
+
 function normalizeSubject(subject: string): string {
   return subject.toLowerCase();
 }
@@ -176,6 +209,107 @@ function normalizeDifficulty(difficulty: string): DifficultyLevel {
 
 function sortedNumbers(values: number[] | undefined | null): number[] {
   return [...(values ?? [])].sort((left, right) => left - right);
+}
+
+function isPresentedChoiceQuestion(question: StoredQuestion): boolean {
+  return (
+    (question.questionType === "mcq" || question.questionType === "msq") &&
+    Array.isArray(question.options) &&
+    question.options.length > 1
+  );
+}
+
+function normalizeSerializeQuestionOptions(options: SerializeQuestionOptions): {
+  includeCorrectFields: boolean;
+  presentationContext?: QuestionPresentationContext;
+} {
+  if (typeof options === "boolean") {
+    return { includeCorrectFields: options };
+  }
+  return {
+    includeCorrectFields: options.includeCorrectFields ?? true,
+    presentationContext: options.presentationContext,
+  };
+}
+
+function remapPresentedAnswer(
+  userId: string,
+  question: StoredQuestion,
+  answer: StoredUserAnswer,
+  expectedPresentation?: Partial<Pick<QuestionPresentationContext, "scope" | "assessmentId">>,
+): PreparedAnswer {
+  if (!isPresentedChoiceQuestion(question)) {
+    return { answer, displayOrder: null };
+  }
+
+  if (!answer.presentationId) {
+    if (hasResponse(answer)) {
+      throw new Error("Option presentation token is required.");
+    }
+    return { answer, displayOrder: null };
+  }
+
+  const payload = verifyOptionPresentationToken(answer.presentationId, {
+    userId,
+    questionId: question.id,
+    optionCount: question.options?.length ?? 0,
+    scope: expectedPresentation?.scope,
+    assessmentId: expectedPresentation?.assessmentId,
+  });
+
+  if (!payload) {
+    throw new Error("Invalid option presentation token.");
+  }
+
+  const displayOrder = getOptionDisplayOrder(payload);
+  const selectedOption =
+    answer.selectedOption === null
+      ? null
+      : displayOrder[answer.selectedOption] ?? -1;
+  const selectedOptions =
+    answer.selectedOptions?.map((optionIndex) => displayOrder[optionIndex] ?? -1) ?? null;
+
+  return {
+    answer: {
+      ...answer,
+      selectedOption,
+      selectedOptions,
+    },
+    displayOrder,
+  };
+}
+
+function toPresentedGradeInfo(
+  question: StoredQuestion,
+  info: Record<string, unknown>,
+  displayOrder: number[] | null,
+): Record<string, unknown> {
+  if (!displayOrder) {
+    return info;
+  }
+
+  if (question.questionType === "mcq" && question.correctOption !== null) {
+    const displayedCorrectOption = displayOrder.indexOf(question.correctOption);
+    return {
+      ...info,
+      correctOption: displayedCorrectOption >= 0 ? displayedCorrectOption : null,
+      correct_option: displayedCorrectOption >= 0 ? displayedCorrectOption : null,
+    };
+  }
+
+  if (question.questionType === "msq" && question.correctOptions?.length) {
+    const displayedCorrectOptions = question.correctOptions
+      .map((correctOption) => displayOrder.indexOf(correctOption))
+      .filter((optionIndex) => optionIndex >= 0)
+      .sort((left, right) => left - right);
+    return {
+      ...info,
+      correctOptions: displayedCorrectOptions,
+      correct_options: displayedCorrectOptions,
+    };
+  }
+
+  return info;
 }
 
 const SUPERSCRIPT_MAP = new Map<string, string>([
@@ -949,6 +1083,10 @@ function normalizeAnswer(payload: QuestionAnswerPayload | PracticeSubmissionPayl
         (payload as QuestionAnswerPayload).question_id ??
         "",
     ),
+    presentationId:
+      payload.presentationId ??
+      payload.presentation_id ??
+      null,
     selectedOption:
       payload.selectedOption ??
       payload.selected_option ??
@@ -986,7 +1124,10 @@ function hasResponse(answer: StoredUserAnswer): boolean {
 
 function gradeAnswer(question: StoredQuestion, answer: StoredUserAnswer): GradeResult {
   if (question.questionType === "mcq") {
-    const isCorrect = answer.selectedOption === question.correctOption;
+    const isCorrect =
+      question.correctOption !== null &&
+      answer.selectedOption !== null &&
+      answer.selectedOption === question.correctOption;
     return {
       isCorrect,
       info: {
@@ -1000,7 +1141,7 @@ function gradeAnswer(question: StoredQuestion, answer: StoredUserAnswer): GradeR
   if (question.questionType === "msq") {
     const submitted = sortedNumbers(answer.selectedOptions);
     const expected = sortedNumbers(question.correctOptions);
-    const isCorrect = JSON.stringify(submitted) === JSON.stringify(expected);
+    const isCorrect = expected.length > 0 && JSON.stringify(submitted) === JSON.stringify(expected);
     return {
       isCorrect,
       info: {
@@ -1316,27 +1457,46 @@ export function serializeQuestion(
   store: AppStore,
   userId: string,
   question: StoredQuestion,
-  includeCorrectFields = true,
+  options: SerializeQuestionOptions = true,
 ) {
+  const { includeCorrectFields, presentationContext } = normalizeSerializeQuestionOptions(options);
   const attempts = store.practiceAttempts.filter(
     (attempt) => attempt.userId === userId && attempt.questionId === question.id,
   );
   const isSolved = attempts.some((attempt) => attempt.isCorrect);
   const isAttempted = attempts.length > 0;
+  const presented =
+    presentationContext && isPresentedChoiceQuestion(question)
+      ? presentOptions(question.options, {
+          userId,
+          scope: presentationContext.scope,
+          assessmentId: presentationContext.assessmentId,
+          questionId: question.id,
+          attemptKey: presentationContext.attemptKey,
+        })
+      : { options: question.options ?? undefined, presentationId: undefined };
+  const matrixData = question.matrixData
+    ? {
+        ...question.matrixData,
+        correct_pairs: includeCorrectFields ? question.matrixData.correct_pairs : [],
+      }
+    : undefined;
 
   const base = {
     id: question.id,
     text: question.text,
-    options: question.options ?? undefined,
+    options: presented.options,
+    presentationId: presented.presentationId,
+    presentation_id: presented.presentationId,
     correctOption: includeCorrectFields ? question.correctOption : undefined,
     correct_option: includeCorrectFields ? question.correctOption : undefined,
     correctOptions: includeCorrectFields ? question.correctOptions : undefined,
     correct_options: includeCorrectFields ? question.correctOptions : undefined,
     answerText: includeCorrectFields ? question.answerText : undefined,
     answer_text: includeCorrectFields ? question.answerText : undefined,
-    matrixData: question.matrixData ?? undefined,
-    matrix_data: question.matrixData ?? undefined,
-    explanation: question.explanation,
+    matrixData: matrixData,
+    matrix_data: matrixData,
+    explanation: includeCorrectFields ? question.explanation : undefined,
     hint: question.hint ?? undefined,
     subject: question.subject,
     chapter: question.chapter,
@@ -1365,12 +1525,20 @@ export function serializeTest(store: AppStore, userId: string, test: StoredTest)
   const results = store.testResults
     .filter((result) => result.userId === userId && result.testId === test.id)
     .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+  const isCustom = Boolean(test.createdBy);
+  const presentationContext: QuestionPresentationContext = {
+    scope: isCustom ? "custom-test" : "test",
+    assessmentId: test.id,
+    attemptKey: String(results.length + 1),
+  };
   const questions = test.questionIds.map((questionId) =>
-    serializeQuestion(store, userId, questionById(store, questionId), true),
+    serializeQuestion(store, userId, questionById(store, questionId), {
+      includeCorrectFields: false,
+      presentationContext,
+    }),
   );
   const averageScore = computeAveragePercentage(results);
   const allScores = results.map((result) => result.percentage);
-  const isCustom = Boolean(test.createdBy);
 
   return {
     id: test.id,
@@ -1472,10 +1640,20 @@ function serializePersistedCustomTestWithLookup(
   test: PersistedCustomTestRecord,
   questionLookup: Map<string, StoredQuestion>,
 ) {
+  const presentationContext: QuestionPresentationContext = {
+    scope: "custom-test",
+    assessmentId: test.id,
+    attemptKey: String(test.attemptCount + 1),
+  };
   const questions = test.questionIds
     .map((questionId) => questionLookup.get(questionId))
     .filter((question): question is StoredQuestion => Boolean(question))
-    .map((question) => serializeQuestion(store, userId, question, true));
+    .map((question) =>
+      serializeQuestion(store, userId, question, {
+        includeCorrectFields: false,
+        presentationContext,
+      }),
+    );
 
   return {
     id: test.id,
@@ -1580,10 +1758,20 @@ function serializePersistedDppPlanWithLookup(
   latestAttempt: PersistedDppAttemptRecord | null,
   lookup: Map<string, StoredQuestion>,
 ) {
+  const presentationContext: QuestionPresentationContext = {
+    scope: "dpp",
+    assessmentId: plan.id,
+    attemptKey: latestAttempt?.id ?? "first",
+  };
   const questions = plan.questionIds
     .map((questionId) => lookup.get(questionId))
     .filter((question): question is StoredQuestion => Boolean(question))
-    .map((question) => serializeQuestion(store, userId, question, true));
+    .map((question) =>
+      serializeQuestion(store, userId, question, {
+        includeCorrectFields: false,
+        presentationContext,
+      }),
+    );
 
   return {
     id: plan.id,
@@ -1677,6 +1865,11 @@ function createCustomTestFallback(
 
 function submitTestFallback(store: AppStore, user: StoredUser, testId: string, payload: TestSubmissionPayload) {
   const test = testById(store, testId);
+  const presentationContext: QuestionPresentationContext = {
+    scope: test.createdBy ? "custom-test" : "test",
+    assessmentId: test.id,
+    attemptKey: "legacy-submit",
+  };
   const submittedAnswers = payload.answers ?? [];
   const answersMap = new Map<string, StoredUserAnswer>();
   submittedAnswers.forEach((rawAnswer) => {
@@ -1707,7 +1900,7 @@ function submitTestFallback(store: AppStore, user: StoredUser, testId: string, p
 
   for (const questionId of test.questionIds) {
     const question = questionById(store, questionId);
-    const answer = answersMap.get(questionId) ?? {
+    const rawAnswer = answersMap.get(questionId) ?? {
       questionId,
       selectedOption: null,
       selectedOptions: null,
@@ -1716,6 +1909,7 @@ function submitTestFallback(store: AppStore, user: StoredUser, testId: string, p
       timeSpent: 0,
       isMarkedForReview: false,
     };
+    const { answer } = remapPresentedAnswer(user.id, question, rawAnswer, presentationContext);
 
     if (!topicStats[question.concept]) {
       topicStats[question.concept] = { correct: 0, total: 0 };
@@ -1889,8 +2083,10 @@ function getSingleResultFallback(store: AppStore, user: StoredUser, resultId: st
 
 async function buildAnalyticsAttempts(
   store: AppStore,
+  userId: string,
   questionIds: string[],
   answersMap: Map<string, StoredUserAnswer>,
+  presentationContext: Pick<QuestionPresentationContext, "scope" | "assessmentId">,
 ) {
   const questionLookup = await buildQuestionLookup(store, questionIds);
   const gradedAttempts: AnalyticsGradedAttempt[] = [];
@@ -1917,7 +2113,7 @@ async function buildAnalyticsAttempts(
     if (!question) {
       continue;
     }
-    const answer = answersMap.get(questionId) ?? {
+    const rawAnswer = answersMap.get(questionId) ?? {
       questionId,
       selectedOption: null,
       selectedOptions: null,
@@ -1926,6 +2122,7 @@ async function buildAnalyticsAttempts(
       timeSpent: 0,
       isMarkedForReview: false,
     };
+    const { answer } = remapPresentedAnswer(userId, question, rawAnswer, presentationContext);
 
     if (!subjectStats[question.subject]) {
       subjectStats[question.subject] = {
@@ -2196,7 +2393,16 @@ export async function submitTest(
   const questionIds = seededTest?.questionIds ?? persistedTest!.questionIds;
   const questionCount = questionIds.length;
 
-  const analytics = await buildAnalyticsAttempts(store, questionIds, answersMap);
+  const analytics = await buildAnalyticsAttempts(
+    store,
+    user.id,
+    questionIds,
+    answersMap,
+    {
+      scope: seededTest?.createdBy ? "custom-test" : seededTest ? "test" : "custom-test",
+      assessmentId: testId,
+    },
+  );
   const totalMarks = questionCount * 4;
   const percentage = totalMarks > 0 ? Math.max(0, Math.round((analytics.score / totalMarks) * 100)) : 0;
   const reviewEntries = buildReviewEntriesFromAnswers(analytics.questionLookup, analytics.userAnswers);
@@ -2340,6 +2546,53 @@ export async function getGeneratedDppDetail(store: AppStore, user: StoredUser, d
   return serializePersistedDppPlan(store, user.id, plan, latestAttempt);
 }
 
+export async function checkGeneratedDppQuestion(
+  store: AppStore,
+  user: StoredUser,
+  dppId: string,
+  payload: DppQuestionCheckPayload,
+) {
+  if (!isOgcodePostgresConfigured()) {
+    throw new Error("DPP analytics database is not configured.");
+  }
+
+  const questionId = String(payload.questionId ?? payload.question_id ?? "").trim();
+  if (!questionId) {
+    throw new Error("question_id is required.");
+  }
+
+  const plan = await getDppPlanDetail(user.id, dppId);
+  if (!plan) {
+    throw new Error(`DPP ${dppId} was not found.`);
+  }
+  if (!plan.questionIds.includes(questionId)) {
+    throw new Error(`Question ${questionId} is not part of DPP ${dppId}.`);
+  }
+
+  const questionLookup = await buildQuestionLookup(store, [questionId]);
+  const question = questionLookup.get(questionId);
+  if (!question) {
+    throw new Error(`Question ${questionId} was not found.`);
+  }
+
+  const rawAnswer = normalizeAnswer(payload);
+  rawAnswer.questionId = question.id;
+  const prepared = remapPresentedAnswer(user.id, question, rawAnswer, {
+    scope: "dpp",
+    assessmentId: dppId,
+  });
+  const grade = gradeAnswer(question, prepared.answer);
+  const info = toPresentedGradeInfo(question, grade.info, prepared.displayOrder);
+
+  return {
+    isCorrect: grade.isCorrect,
+    is_correct: grade.isCorrect,
+    questionId: question.id,
+    question_id: question.id,
+    ...info,
+  };
+}
+
 export async function submitGeneratedDpp(
   store: AppStore,
   user: StoredUser,
@@ -2363,7 +2616,16 @@ export async function submitGeneratedDpp(
     }
   });
 
-  const analytics = await buildAnalyticsAttempts(store, plan.questionIds, answersMap);
+  const analytics = await buildAnalyticsAttempts(
+    store,
+    user.id,
+    plan.questionIds,
+    answersMap,
+    {
+      scope: "dpp",
+      assessmentId: dppId,
+    },
+  );
   const response = await analyzeDppAttemptWithService({
     user_id: user.id,
     dpp_id: dppId,
@@ -2428,7 +2690,18 @@ export function listPracticeQuestions(
       const matchesType = !filters.type || question.questionType === filters.type;
       return matchesSubject && matchesDifficulty && matchesType;
     })
-    .map((question) => serializeQuestion(store, user.id, question, true));
+    .map((question) =>
+      serializeQuestion(store, user.id, question, {
+        includeCorrectFields: false,
+        presentationContext: {
+          scope: "practice",
+          assessmentId: "practice-list",
+          attemptKey: store.practiceAttempts.filter(
+            (attempt) => attempt.userId === user.id && attempt.questionId === question.id,
+          ).length + 1,
+        },
+      }),
+    );
 }
 
 export async function listOgcodeQuestionChapters(
@@ -2538,12 +2811,32 @@ export async function listOgcodeQuestions(
       const matchesType = !filters.type || question.questionType === filters.type;
       return matchesSubject && matchesDifficulty && matchesType;
     })
-    .map((question) => serializeQuestion(store, user.id, question, false));
+    .map((question) =>
+      serializeQuestion(store, user.id, question, {
+        includeCorrectFields: false,
+        presentationContext: {
+          scope: "practice",
+          assessmentId: "ogcode-list",
+          attemptKey: store.practiceAttempts.filter(
+            (attempt) => attempt.userId === user.id && attempt.questionId === question.id,
+          ).length + 1,
+        },
+      }),
+    );
 }
 
 export async function getPracticeQuestionDetail(store: AppStore, user: StoredUser, questionId: string) {
   const resolved = await resolvePracticeQuestion(store, questionId);
-  return serializeQuestion(store, user.id, resolved.question, false);
+  return serializeQuestion(store, user.id, resolved.question, {
+    includeCorrectFields: false,
+    presentationContext: {
+      scope: "practice",
+      assessmentId: questionId,
+      attemptKey: store.practiceAttempts.filter(
+        (attempt) => attempt.userId === user.id && attempt.questionId === resolved.question.id,
+      ).length + 1,
+    },
+  });
 }
 
 function getOrCreateSubjectRank(store: AppStore, userId: string, subject: string): StoredSubjectRank {
@@ -2572,9 +2865,13 @@ export async function submitPracticeQuestion(
 ) {
   const resolved = await resolvePracticeQuestion(store, questionId);
   const question = resolved.question;
-  const answer = normalizeAnswer(payload);
-  answer.questionId = question.id;
-  const { isCorrect, info } = await gradePracticeAnswer(question, answer, user.id);
+  const rawAnswer = normalizeAnswer(payload);
+  rawAnswer.questionId = question.id;
+  const prepared = remapPresentedAnswer(user.id, question, rawAnswer);
+  const answer = prepared.answer;
+  const grade = await gradePracticeAnswer(question, answer, user.id);
+  const isCorrect = grade.isCorrect;
+  const info = toPresentedGradeInfo(question, grade.info, prepared.displayOrder);
 
   const attemptedBefore = store.practiceAttempts.some(
     (attempt) => attempt.userId === user.id && attempt.questionId === question.id,
@@ -2986,7 +3283,15 @@ export async function getChallengeOfTheDay(store: AppStore, user: StoredUser) {
   if (!challenge) {
     throw new Error("No challenge of the day set.");
   }
-  const data = serializeQuestion(store, user.id, challenge, false);
+  const epochDay = Math.floor(Date.now() / 86_400_000);
+  const data = serializeQuestion(store, user.id, challenge, {
+    includeCorrectFields: false,
+    presentationContext: {
+      scope: "challenge",
+      assessmentId: "challenge-of-the-day",
+      attemptKey: epochDay,
+    },
+  });
   return {
     ...data,
     isSolved: store.practiceAttempts.some(

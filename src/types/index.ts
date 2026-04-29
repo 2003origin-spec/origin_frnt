@@ -84,8 +84,8 @@ export interface Question {
   id: string;
   text: string;
   options: string[];
-  correctOption: number;
-  explanation: string;
+  correctOption?: number;
+  explanation?: string;
   hint?: string;
   subject: string;
   chapter: string;
@@ -96,6 +96,8 @@ export interface Question {
   answerText?: string;
   tags?: string[] | string;
   matrixData?: { column_a: string[]; column_b: string[]; correct_pairs: number[][] };
+  presentationId?: string;
+  presentation_id?: string;
 }
 
 export interface PracticeQuestion {
@@ -112,7 +114,12 @@ export interface PracticeQuestion {
   attemptCount?: number;
   questionType: 'mcq' | 'msq' | 'numerical' | 'matrix_match' | 'subjective';
   options?: string[];
+  presentationId?: string;
+  presentation_id?: string;
+  correctOption?: number;
+  correct_option?: number;
   correctOptions?: number[];
+  correct_options?: number[];
   matrixData?: { column_a: string[]; column_b: string[]; correct_pairs: number[][] };
   tags?: string[] | string;
   image?: string;
@@ -153,6 +160,7 @@ export interface UserAnswer {
   answerText?: string; // Add phase 7 support for non-mcq
   timeSpent: number;
   isMarkedForReview: boolean;
+  presentationId?: string | null;
 }
 
 export interface TestResult {

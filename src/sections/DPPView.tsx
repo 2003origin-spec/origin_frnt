@@ -63,11 +63,13 @@ type DppQuestion = {
   id: string;
   text: string;
   options?: string[];
-  explanation: string;
+  explanation?: string;
   concept: string;
   difficulty: string;
   subject: string;
   chapter?: string;
+  presentationId?: string;
+  presentation_id?: string;
   correctOption?: number | null;
   correct_option?: number | null;
 };
@@ -88,6 +90,14 @@ interface DppSubmissionResponse extends GeneratedDppAttemptSummary {
   }>;
 }
 
+type DppCheckResult = {
+  isCorrect: boolean;
+  is_correct?: boolean;
+  correctOption?: number | null;
+  correct_option?: number | null;
+  explanation?: string;
+};
+
 export default function DPPView({ onBack, initialDpps }: DPPViewProps) {
   const [loading, setLoading] = useState(initialDpps === null);
   const [dpps, setDpps] = useState<GeneratedDpp[]>(initialDpps ?? []);
@@ -97,7 +107,9 @@ export default function DPPView({ onBack, initialDpps }: DPPViewProps) {
   const [showSolution, setShowSolution] = useState(false);
   const [answers, setAnswers] = useState<(number | null)[]>([]);
   const [revealedAnswers, setRevealedAnswers] = useState<boolean[]>([]);
+  const [checkResults, setCheckResults] = useState<(DppCheckResult | null)[]>([]);
   const [timeSpentByQuestion, setTimeSpentByQuestion] = useState<number[]>([]);
+  const [checking, setChecking] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submissionResult, setSubmissionResult] = useState<DppSubmissionResponse | null>(null);
   const [error, setError] = useState('');
@@ -163,16 +175,15 @@ export default function DPPView({ onBack, initialDpps }: DPPViewProps) {
     setShowSolution(false);
     setAnswers(new Array(questionCount).fill(null));
     setRevealedAnswers(new Array(questionCount).fill(false));
+    setCheckResults(new Array(questionCount).fill(null));
     setTimeSpentByQuestion(new Array(questionCount).fill(0));
     setSubmissionResult(null);
     questionStartedAtRef.current = Date.now();
   }, [selectedDppId, currentDpp?.questions?.length]);
 
-  const getCorrectOption = (question: DppQuestion | null) => {
-    if (!question) {
-      return null;
-    }
-    return question.correctOption ?? question.correct_option ?? null;
+  const getCorrectOption = (index: number) => {
+    const result = checkResults[index];
+    return result?.correctOption ?? result?.correct_option ?? null;
   };
 
   const getElapsedSeconds = () => Math.max(0, Math.round((Date.now() - questionStartedAtRef.current) / 1000));
@@ -205,20 +216,44 @@ export default function DPPView({ onBack, initialDpps }: DPPViewProps) {
     setSelectedOption(optionIndex);
   };
 
-  const handleCheck = () => {
-    if (selectedOption === null || !currentQuestion) return;
+  const handleCheck = async () => {
+    if (selectedOption === null || !currentQuestion || !currentDpp) return;
+    const elapsedSeconds = getElapsedSeconds();
     recordCurrentQuestionTime();
-    setShowSolution(true);
-    setAnswers((previous) => {
-      const next = [...previous];
-      next[currentQuestionIndex] = selectedOption;
-      return next;
-    });
-    setRevealedAnswers((previous) => {
-      const next = [...previous];
-      next[currentQuestionIndex] = true;
-      return next;
-    });
+    setChecking(true);
+    setError('');
+    try {
+      const response = await apiCall(`/assessments/dpps/${currentDpp?.id}/check/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question_id: currentQuestion.id,
+          presentation_id: currentQuestion.presentationId ?? currentQuestion.presentation_id ?? null,
+          selected_option: selectedOption,
+          time_spent: (timeSpentByQuestion[currentQuestionIndex] ?? 0) + elapsedSeconds,
+        }),
+      });
+      setShowSolution(true);
+      setAnswers((previous) => {
+        const next = [...previous];
+        next[currentQuestionIndex] = selectedOption;
+        return next;
+      });
+      setRevealedAnswers((previous) => {
+        const next = [...previous];
+        next[currentQuestionIndex] = true;
+        return next;
+      });
+      setCheckResults((previous) => {
+        const next = [...previous];
+        next[currentQuestionIndex] = response;
+        return next;
+      });
+    } catch (checkError) {
+      setError(getErrorMessage(checkError, 'Failed to check answer.'));
+    } finally {
+      setChecking(false);
+    }
   };
 
   const handlePrevious = () => {
@@ -235,6 +270,7 @@ export default function DPPView({ onBack, initialDpps }: DPPViewProps) {
       const payload = {
         answers: currentQuestions.map((question, index) => ({
           question_id: question.id,
+          presentation_id: question.presentationId ?? question.presentation_id ?? null,
           selected_option: answers[index],
           time_spent: timeSpentByQuestion[index] ?? 0,
           is_marked_for_review: false,
@@ -279,12 +315,13 @@ export default function DPPView({ onBack, initialDpps }: DPPViewProps) {
     setShowSolution(false);
     setAnswers(new Array(currentQuestions.length).fill(null));
     setRevealedAnswers(new Array(currentQuestions.length).fill(false));
+    setCheckResults(new Array(currentQuestions.length).fill(null));
     setTimeSpentByQuestion(new Array(currentQuestions.length).fill(0));
     setSubmissionResult(null);
     questionStartedAtRef.current = Date.now();
   };
 
-  const correctCount = answers.filter((value, index) => value === getCorrectOption(currentQuestions[index] ?? null)).length;
+  const correctCount = checkResults.filter((result) => Boolean(result?.isCorrect ?? result?.is_correct)).length;
 
   return (
     <div id="tutorial-dpp-hub" className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-teal-50/30 dark:from-slate-950 dark:via-slate-900 dark:to-teal-950/30 text-slate-900 dark:text-slate-100 transition-colors duration-300">
@@ -439,7 +476,7 @@ export default function DPPView({ onBack, initialDpps }: DPPViewProps) {
                             disabled={showSolution}
                             className={`w-full p-4 rounded-xl border-2 text-left transition-all ${
                               showSolution
-                                ? index === getCorrectOption(currentQuestion)
+                                ? index === getCorrectOption(currentQuestionIndex)
                                   ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
                                   : selectedOption === index
                                     ? 'border-red-500 bg-red-50 dark:bg-red-900/20'
@@ -453,7 +490,7 @@ export default function DPPView({ onBack, initialDpps }: DPPViewProps) {
                               <div
                                 className={`w-8 h-8 rounded-full flex items-center justify-center font-medium ${
                                   showSolution
-                                    ? index === getCorrectOption(currentQuestion)
+                                    ? index === getCorrectOption(currentQuestionIndex)
                                       ? 'bg-green-500 text-white'
                                       : selectedOption === index
                                         ? 'bg-red-500 text-white'
@@ -463,7 +500,7 @@ export default function DPPView({ onBack, initialDpps }: DPPViewProps) {
                                       : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
                                 }`}
                               >
-                                {showSolution && index === getCorrectOption(currentQuestion) ? (
+                                {showSolution && index === getCorrectOption(currentQuestionIndex) ? (
                                   <CheckCircle2 className="w-5 h-5" />
                                 ) : showSolution && selectedOption === index ? (
                                   <XCircle className="w-5 h-5" />
@@ -473,7 +510,7 @@ export default function DPPView({ onBack, initialDpps }: DPPViewProps) {
                               </div>
                               <span
                                 className={`text-base sm:text-lg ${
-                                  showSolution && index === getCorrectOption(currentQuestion)
+                                  showSolution && index === getCorrectOption(currentQuestionIndex)
                                     ? 'text-green-700 dark:text-green-400'
                                     : showSolution && selectedOption === index
                                       ? 'text-red-700 dark:text-red-400'
@@ -494,7 +531,7 @@ export default function DPPView({ onBack, initialDpps }: DPPViewProps) {
                             Explanation
                           </h4>
                           <div className="text-slate-700 dark:text-slate-300 leading-relaxed">
-                            <FormattedMessage content={currentQuestion.explanation} />
+                            <FormattedMessage content={checkResults[currentQuestionIndex]?.explanation ?? currentQuestion.explanation ?? ''} />
                           </div>
                           <div className="mt-4 pt-4 border-t border-[#3CACA3]/20">
                             <p className="text-sm text-slate-600 dark:text-slate-400">
@@ -513,11 +550,11 @@ export default function DPPView({ onBack, initialDpps }: DPPViewProps) {
                         {!showSolution ? (
                           <Button
                             onClick={handleCheck}
-                            disabled={selectedOption === null}
+                            disabled={selectedOption === null || checking}
                             className="rounded-full bg-gradient-to-r from-[#3CACA3] to-[#1E3A5F] text-white"
                           >
-                            <CheckCircle2 className="w-4 h-4 mr-2" />
-                            Check Answer
+                            {checking ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
+                            {checking ? 'Checking...' : 'Check Answer'}
                           </Button>
                         ) : (
                           <Button
@@ -553,7 +590,7 @@ export default function DPPView({ onBack, initialDpps }: DPPViewProps) {
                           index === currentQuestionIndex ? 'ring-2 ring-[#3CACA3] ring-offset-2' : ''
                         } ${
                           answers[index] !== null
-                            ? answers[index] === getCorrectOption(currentQuestions[index] ?? null)
+                            ? Boolean(checkResults[index]?.isCorrect ?? checkResults[index]?.is_correct)
                               ? 'bg-green-500 text-white'
                               : 'bg-red-500 text-white'
                             : 'bg-slate-100 text-slate-400'

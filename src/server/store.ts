@@ -164,6 +164,7 @@ export interface StoredUserAnswer {
   answerText: string | null;
   timeSpent: number;
   isMarkedForReview: boolean;
+  presentationId?: string | null;
 }
 
 export interface StoredTestResult {
@@ -483,7 +484,7 @@ function toStoredQuestion(question: SeedQuestion): StoredQuestion {
     answerText: question.answerText ?? null,
     tolerance: typeof question.tolerance === "number" ? question.tolerance : null,
     matrixData: question.matrixData ?? null,
-    explanation: question.explanation,
+    explanation: question.explanation ?? "Explanation unavailable.",
     hint: question.hint ?? null,
     subject: normalizeSubject(question.subject),
     chapter: question.chapter,
