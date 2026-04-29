@@ -18,6 +18,23 @@ export function extractBearerToken(request: Request): string | null {
   return token.trim();
 }
 
+function extractCookieToken(request: Request): string | null {
+  const cookieHeader = request.headers.get("cookie");
+  if (!cookieHeader) {
+    return null;
+  }
+
+  for (const cookie of cookieHeader.split(";")) {
+    const [rawName, ...rawValue] = cookie.trim().split("=");
+    if (rawName === "origin_access_token") {
+      const value = rawValue.join("=");
+      return value ? decodeURIComponent(value) : null;
+    }
+  }
+
+  return null;
+}
+
 function isTokenExpired(expiresAt: string | undefined): boolean {
   if (!expiresAt) return true; // sessions from before expiry was added are treated as expired
   return new Date(expiresAt) <= new Date();
@@ -80,7 +97,7 @@ export function clearUserSessions(store: AppStore, userId: string): void {
  * Use this in async handlers instead of requireUserFromRequest.
  */
 export async function resolveTokenToUser(request: Request): Promise<StoredUser | null> {
-  const token = extractBearerToken(request);
+  const token = extractBearerToken(request) ?? extractCookieToken(request);
   if (!token) return null;
 
   const store = readStore();

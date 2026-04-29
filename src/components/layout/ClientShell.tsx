@@ -27,6 +27,7 @@ const ROUTES: Record<string, string> = {
   'test-list': '/tests',
   'test-interface': '/tests',
   'test-result': '/tests/result',
+  'study-rooms': '/study-rooms',
   'ogcode': '/ogcode',
   'ogcode-workspace': '/ogcode',
   'doubt-solver': '/doubt-solver',
@@ -127,7 +128,8 @@ function ClientShellInner({ children }: { children: React.ReactNode }) {
 
   const noNavbarPaths = ['/', '/auth', '/onboarding', '/role-selection'];
   const isTestsPath = pathname === '/tests' || pathname.startsWith('/tests/');
-  const isSpecialPath = pathname.startsWith('/tests/') || pathname.startsWith('/ogcode/');
+  const isStudyRoomTestPath = /^\/study-rooms\/[^/]+\/test/.test(pathname);
+  const isSpecialPath = pathname.startsWith('/tests/') || pathname.startsWith('/ogcode/') || isStudyRoomTestPath;
   const shouldShowFloatingOriginAi =
     deferredUiReady &&
     !!user &&

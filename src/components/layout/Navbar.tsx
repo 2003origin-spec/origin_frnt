@@ -85,6 +85,7 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
         { label: 'OGCode', icon: Code, view: 'ogcode' as ViewState },
         { label: 'AI Explainer', icon: () => <img src="/ai-bot.png" className="w-4 h-4 object-cover rounded-sm" />, view: 'doubt-solver' as ViewState },
         { label: 'Tests', icon: FileText, view: 'test-list' as ViewState },
+        { label: 'Rooms', icon: Crown, view: 'study-rooms' as ViewState },
         { label: 'DPP', icon: Target, view: 'dpp' as ViewState },
         { label: 'Goals', icon: ListTodo, view: 'tasks-goals' as ViewState },
         { label: 'Explore', icon: LayoutGrid, view: 'explore' as ViewState },
@@ -126,7 +127,9 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                                     isConstrained ? "hidden" : "hidden md:flex"
                                 )}>
                                     {navItems.map((item) => {
-                                        const isActive = currentView === item.view ||
+                                        const currentViewValue = String(currentView);
+                                        const isActive = currentViewValue === item.view ||
+                                            (item.view === 'study-rooms' && currentViewValue.startsWith('study-rooms')) ||
                                             (item.view === 'ogcode' && currentView === 'ogcode-workspace');
                                         const Icon = item.icon as any;
 
@@ -427,7 +430,9 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                         <div className="p-4 space-y-2">
                             {navItems.map((item) => {
                                 const Icon = item.icon as any;
-                                const isActive = currentView === item.view ||
+                                const currentViewValue = String(currentView);
+                                const isActive = currentViewValue === item.view ||
+                                    (item.view === 'study-rooms' && currentViewValue.startsWith('study-rooms')) ||
                                     (item.view === 'ogcode' && currentView === 'ogcode-workspace');
                                 return (
                                     <button

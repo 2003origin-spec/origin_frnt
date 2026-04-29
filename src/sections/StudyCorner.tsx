@@ -254,7 +254,7 @@ export default function StudyCorner({ catalog }: StudyCornerProps) {
 
     const currentItems = getCurrentItems();
     const breadcrumbs = selectedPath ? selectedPath.reduce((acc: any[], index, i) => {
-        let current: any = i === 0 ? dashboardFolders[index] : acc[i - 1].children[index];
+        const current: any = i === 0 ? dashboardFolders[index] : acc[i - 1].children[index];
         acc.push(current);
         return acc;
     }, []) : [];

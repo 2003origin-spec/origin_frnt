@@ -72,7 +72,7 @@ export function extractSelectionText(selection: Selection | null): string | null
       const ariaLabel = node.getAttribute('aria-label');
       
       // Attempt to find the best LaTeX source
-      let tex = (annotation?.textContent || mathElement?.getAttribute('alttext') || ariaLabel || '').trim();
+      const tex = (annotation?.textContent || mathElement?.getAttribute('alttext') || ariaLabel || '').trim();
       
       // If the TeX source looks like it might be visual junk (contains symbols like √ or scripts incorrectly)
       // we try to clean it or skip it to avoid corruption like "$./$(...)"

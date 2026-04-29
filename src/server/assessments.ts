@@ -32,6 +32,7 @@ import {
   getLatestDppAttemptForPlan,
   listLatestDppAttemptsForPlans,
   getPersistedCustomTest,
+  getPersistedCustomTestById,
   getPersistedResultById,
   getRecentWeakTopicsForUser,
   listPendingDppPlans,
@@ -2101,6 +2102,19 @@ export async function getTestDetail(store: AppStore, user: StoredUser, testId: s
   return serializePersistedCustomTest(store, user.id, persisted);
 }
 
+export async function getRoomTestDetail(store: AppStore, user: StoredUser, testId: string) {
+  const seeded = store.tests.find((entry) => entry.id === testId);
+  if (seeded) {
+    return serializeTest(store, user.id, seeded);
+  }
+
+  const persisted = await getPersistedCustomTestById(testId);
+  if (!persisted) {
+    throw new Error(`Test ${testId} was not found.`);
+  }
+  return serializePersistedCustomTest(store, user.id, persisted);
+}
+
 export async function createCustomTest(
   store: AppStore,
   user: StoredUser,
@@ -2150,9 +2164,18 @@ export async function createCustomTest(
   }
 }
 
-export async function submitTest(store: AppStore, user: StoredUser, testId: string, payload: TestSubmissionPayload) {
+export async function submitTest(
+  store: AppStore,
+  user: StoredUser,
+  testId: string,
+  payload: TestSubmissionPayload,
+  options: { allowRoomParticipant?: boolean } = {},
+) {
   const seededTest = store.tests.find((entry) => entry.id === testId);
-  const persistedTest = seededTest ? null : await getPersistedCustomTest(testId, user.id);
+  const persistedTest = seededTest
+    ? null
+    : (await getPersistedCustomTest(testId, user.id)) ??
+      (options.allowRoomParticipant ? await getPersistedCustomTestById(testId) : null);
   if (!seededTest && !persistedTest) {
     throw new Error(`Test ${testId} was not found.`);
   }
@@ -2872,7 +2895,7 @@ export async function getFocusAreas(store: AppStore, user: StoredUser) {
   }, {});
 
   // Fetch attempted question counts per subject from the database when available
-  let attemptedBySubject: Record<string, number> = {};
+  const attemptedBySubject: Record<string, number> = {};
   if (isOgcodePostgresConfigured()) {
     try {
       const ogcodePool = getOgcodePostgresPool();

@@ -8,6 +8,7 @@ import {
   getOgcodeSubjectRanks,
   getOgcodeUserStats,
   getPracticeQuestionDetail,
+  getSingleResult,
   getTestDetail,
   listOgcodeQuestionChapters,
   listOgcodeQuestionPage,
@@ -56,6 +57,15 @@ export async function listTestResultsForRender(userId: string, testId: string) {
 
   const { store, user } = requireStoredUser(userId);
   return listTestResults(store, user, testId);
+}
+
+export async function getSingleResultForRender(userId: string, resultId: string) {
+  'use cache';
+  cacheLife('minutes');
+  cacheTag('tests', 'progress', `progress-user:${userId}`);
+
+  const { store, user } = requireStoredUser(userId);
+  return getSingleResult(store, user, resultId);
 }
 
 export async function listTasksForRender(userId: string) {

@@ -4,6 +4,8 @@ import { Camera, AlertTriangle, ShieldCheck, CheckCircle2, Loader2, Play, Info, 
 import type { Test, TestResult, UserAnswer } from '@/types';
 import { FormattedMessage } from '@/components/origin-ai/FormattedMessage';
 import { submitTestAction } from '@/server/actions/test-actions';
+import type { TestSubmissionPayload } from '@/server/assessments';
+import { useServerAnchoredTimer, type ServerAnchoredTimerSource } from '@/hooks/useServerAnchoredTimer';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -19,15 +21,18 @@ interface TestInterfaceProps {
   test: Test;
   onComplete: (result: TestResult) => void;
   onExit: () => void;
+  timerSource?: ServerAnchoredTimerSource;
+  submitHandler?: (payload: TestSubmissionPayload) => Promise<unknown>;
 }
 
 // NTA Status Types
 type QuestionStatus = 'not_visited' | 'not_answered' | 'answered' | 'marked_review' | 'answered_marked';
 
-export default function TestInterface({ test, onComplete, onExit }: TestInterfaceProps) {
+export default function TestInterface({ test, onComplete, onExit, timerSource, submitHandler }: TestInterfaceProps) {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<UserAnswer[]>([]);
-  const [timeRemaining, setTimeRemaining] = useState(test.duration * 60);
+  const durationSeconds = timerSource?.durationSeconds ?? test.duration * 60;
+  const [timeRemaining, setTimeRemaining] = useState(durationSeconds);
   const [showSubmitModal, setShowSubmitModal] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const previewVideoRef = useRef<HTMLVideoElement>(null);
@@ -39,6 +44,8 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
   const [isMalpracticeTerminated, setIsMalpracticeTerminated] = useState(false);
   const malpracticeTimerRef = useRef<any>(null);
   const [isExamStarted, setIsExamStarted] = useState(false);
+  const serverTimeRemaining = useServerAnchoredTimer(timerSource, isExamStarted);
+  const effectiveTimeRemaining = timerSource ? serverTimeRemaining : timeRemaining;
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [isFaceDetected, setIsFaceDetected] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
@@ -264,6 +271,14 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
   };
 
   useEffect(() => {
+    if (!timerSource || !isExamStarted) return;
+    if (serverTimeRemaining <= 0) {
+      finalSubmit();
+    }
+  }, [isExamStarted, serverTimeRemaining, timerSource]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (timerSource) return;
     if (!isExamStarted) return;
     const timer = setInterval(() => {
       setTimeRemaining((prev) => {
@@ -276,7 +291,7 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [isExamStarted, timerSource]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const formatTime = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
@@ -462,11 +477,13 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
 
       const payload = {
         answers: formattedAnswers,
-        timeTaken: test.duration * 60 - timeRemaining,
+        timeTaken: Math.max(0, durationSeconds - effectiveTimeRemaining),
         isMalpractice: isMalpractice
       };
 
-      const result = await submitTestAction(test.id, payload);
+      const result = submitHandler
+        ? await submitHandler(payload)
+        : await submitTestAction(test.id, payload);
 
       onComplete(result as TestResult);
     } catch (error: any) {
@@ -787,7 +804,7 @@ export default function TestInterface({ test, onComplete, onExit }: TestInterfac
           <div className="flex flex-col gap-0.5 sm:gap-1 text-[10px] sm:text-xs">
             <div className="flex"><span className="w-20 sm:w-28 text-gray-500">Candidate:</span> <span className="text-orange-500 truncate max-w-[100px] sm:max-w-none">[Your Name]</span></div>
             <div className="flex"><span className="w-20 sm:w-28 text-gray-500">Subject:</span> <span className="text-orange-500 truncate max-w-[100px] sm:max-w-none">{test.title}</span></div>
-            <div className="flex"><span className="w-20 sm:w-28 text-gray-500">Remaining:</span> <span className="bg-blue-500 text-white px-2 py-0.5 rounded text-[10px] sm:text-xs">{formatTime(timeRemaining)}</span></div>
+            <div className="flex"><span className="w-20 sm:w-28 text-gray-500">Remaining:</span> <span className="bg-blue-500 text-white px-2 py-0.5 rounded text-[10px] sm:text-xs">{formatTime(effectiveTimeRemaining)}</span></div>
           </div>
         </div>
       </header>

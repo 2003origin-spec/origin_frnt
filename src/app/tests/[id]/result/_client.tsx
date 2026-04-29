@@ -11,9 +11,10 @@ interface Props {
   testId: string;
   /** Server-seeded history of results for this test (may be empty). */
   initialHistory: TestResult[];
+  requestedResultId?: string | null;
 }
 
-export default function ResultClient({ testId, initialHistory }: Props) {
+export default function ResultClient({ testId, initialHistory, requestedResultId }: Props) {
   const router = useRouter();
   // Prefer the hot result stashed in sessionStorage by TestPage right before navigation;
   // fall back to server-seeded history.
@@ -24,21 +25,57 @@ export default function ResultClient({ testId, initialHistory }: Props) {
         try {
           const parsed: TestResult = JSON.parse(cached);
           window.sessionStorage.removeItem(`origin_test_result_${testId}`);
-          return parsed;
+          if (!requestedResultId || parsed.id === requestedResultId) {
+            return parsed;
+          }
         } catch {
           window.sessionStorage.removeItem(`origin_test_result_${testId}`);
         }
       }
+
+      if (requestedResultId) {
+        const exactCached = window.sessionStorage.getItem(`origin_test_result_id_${requestedResultId}`);
+        if (exactCached) {
+          try {
+            const parsed: TestResult = JSON.parse(exactCached);
+            window.sessionStorage.removeItem(`origin_test_result_id_${requestedResultId}`);
+            if (parsed.id === requestedResultId) {
+              return parsed;
+            }
+          } catch {
+            window.sessionStorage.removeItem(`origin_test_result_id_${requestedResultId}`);
+          }
+        }
+      }
+    }
+
+    if (requestedResultId) {
+      return initialHistory.find((result) => result.id === requestedResultId) ?? null;
     }
     return initialHistory[0] ?? null;
   });
   const [testHistory, setTestHistory] = useState<TestResult[]>(() =>
-    testResult ? [testResult, ...initialHistory.filter((r) => r !== testResult)] : initialHistory,
+    testResult ? [testResult, ...initialHistory.filter((r) => r.id !== testResult.id)] : initialHistory,
   );
 
   useEffect(() => {
+    if (!requestedResultId || testResult?.id === requestedResultId) return;
+    (async () => {
+      try {
+        const result = await apiCall(`/assessments/results/${requestedResultId}/`);
+        if (result?.id === requestedResultId) {
+          setTestResult(result);
+          setTestHistory((current) => [result, ...current.filter((entry) => entry.id !== result.id)]);
+        }
+      } catch {
+        toast.error('Error loading the selected test analysis.');
+      }
+    })();
+  }, [requestedResultId, testResult?.id]);
+
+  useEffect(() => {
     // If neither sessionStorage nor SSR payload produced a result, fall back to a client fetch.
-    if (testResult || initialHistory.length > 0) return;
+    if (testResult || initialHistory.length > 0 || requestedResultId) return;
     (async () => {
       try {
         const results = await apiCall(`/assessments/tests/${testId}/results/`);
@@ -54,7 +91,7 @@ export default function ResultClient({ testId, initialHistory }: Props) {
         router.push('/tests');
       }
     })();
-  }, [testId, router, testResult, initialHistory.length]);
+  }, [testId, router, testResult, initialHistory.length, requestedResultId]);
 
   if (!testResult) {
     return (

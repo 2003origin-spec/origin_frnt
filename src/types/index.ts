@@ -156,6 +156,7 @@ export interface UserAnswer {
 }
 
 export interface TestResult {
+  id?: string;
   testId: string;
   score: number;
   correctAnswers: number;
@@ -343,6 +344,7 @@ export type ViewState =
   | 'test-list'
   | 'test-interface'
   | 'test-result'
+  | 'study-rooms'
   | 'dpp'
   | 'doubt-solver'
   | 'leaderboard'

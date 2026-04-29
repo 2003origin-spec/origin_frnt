@@ -347,7 +347,30 @@ function toTopicAccuracy(topics: AnalyticsTopicSignal[]): Array<{ topic: string;
   }));
 }
 
-async function ensureSchema(client?: PoolClient): Promise<void> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapPersistedCustomTestRow(row: any): PersistedCustomTestRecord {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    title: row.title,
+    description: row.description,
+    subject: row.subject,
+    chapter: row.chapter,
+    difficulty: row.difficulty,
+    durationMinutes: row.duration_minutes,
+    questionCount: row.question_count,
+    questionIds: fromJsonArray<string>(row.question_ids),
+    focusTopics: fromJsonArray<string>(row.focus_topics),
+    generationSummary: row.generation_summary,
+    recommendedTimePerQuestionSeconds: row.recommended_time_per_question_seconds,
+    createdAt: row.created_at,
+    attemptCount: row.attempt_count ?? 0,
+    averageScore: row.average_score ?? null,
+    allScores: fromJsonArray<number>(row.all_scores),
+  };
+}
+
+export async function ensureAnalyticsSchema(client?: PoolClient): Promise<void> {
   if (client) {
     await client.query(ANALYTICS_SCHEMA_SQL);
     return;
@@ -363,6 +386,8 @@ async function ensureSchema(client?: PoolClient): Promise<void> {
   }
   await globalThis.__originAnalyticsSchemaReady;
 }
+
+const ensureSchema = ensureAnalyticsSchema;
 
 export async function ensureAnalyticsTables(): Promise<void> {
   await ensureSchema();
@@ -501,30 +526,47 @@ export async function listPersistedCustomTests(userId: string): Promise<Persiste
     [userId],
   );
 
-  return result.rows.map((row) => ({
-    id: row.id,
-    userId: row.user_id,
-    title: row.title,
-    description: row.description,
-    subject: row.subject,
-    chapter: row.chapter,
-    difficulty: row.difficulty,
-    durationMinutes: row.duration_minutes,
-    questionCount: row.question_count,
-    questionIds: fromJsonArray<string>(row.question_ids),
-    focusTopics: fromJsonArray<string>(row.focus_topics),
-    generationSummary: row.generation_summary,
-    recommendedTimePerQuestionSeconds: row.recommended_time_per_question_seconds,
-    createdAt: row.created_at,
-    attemptCount: row.attempt_count ?? 0,
-    averageScore: row.average_score ?? null,
-    allScores: fromJsonArray<number>(row.all_scores),
-  }));
+  return result.rows.map(mapPersistedCustomTestRow);
 }
 
 export async function getPersistedCustomTest(testId: string, userId: string): Promise<PersistedCustomTestRecord | null> {
   const tests = await listPersistedCustomTests(userId);
   return tests.find((test) => test.id === testId) ?? null;
+}
+
+export async function getPersistedCustomTestById(testId: string): Promise<PersistedCustomTestRecord | null> {
+  await ensureSchema();
+  const pool = getPoolOrThrow();
+  const result = await pool.query(
+    `SELECT
+       t.*,
+       (
+         SELECT COALESCE(json_agg(question_id ORDER BY position), '[]'::json)
+         FROM analytics.custom_test_questions q
+         WHERE q.test_id = t.id
+       ) AS question_ids,
+       (
+         SELECT COUNT(*)::int
+         FROM analytics.test_results r
+         WHERE r.user_id = t.user_id AND r.test_id = t.id
+       ) AS attempt_count,
+       (
+         SELECT ROUND(AVG(r.percentage))::int
+         FROM analytics.test_results r
+         WHERE r.user_id = t.user_id AND r.test_id = t.id
+       ) AS average_score,
+       (
+         SELECT COALESCE(json_agg(r.percentage ORDER BY r.created_at DESC), '[]'::json)
+         FROM analytics.test_results r
+         WHERE r.user_id = t.user_id AND r.test_id = t.id
+       ) AS all_scores
+     FROM analytics.custom_tests t
+     WHERE t.id = $1
+     LIMIT 1`,
+    [testId],
+  );
+
+  return result.rows[0] ? mapPersistedCustomTestRow(result.rows[0]) : null;
 }
 
 export async function persistTestAnalysisResult(input: PersistTestAnalysisInput): Promise<PersistedTestResultRecord> {
@@ -606,7 +648,8 @@ export async function persistTestAnalysisResult(input: PersistTestAnalysisInput)
       );
     }
 
-    for (const plan of input.dppPlans) {
+    for (const [planIndex, plan] of input.dppPlans.entries()) {
+      const planId = `${resultId}_dpp_${plan.sequence || planIndex + 1}`;
       await client.query(
         `INSERT INTO analytics.dpp_plans (
            id, user_id, source_test_result_id, title, subject, summary,
@@ -622,7 +665,7 @@ export async function persistTestAnalysisResult(input: PersistTestAnalysisInput)
            target_question_count = EXCLUDED.target_question_count,
            sequence = EXCLUDED.sequence`,
         [
-          plan.id,
+          planId,
           input.userId,
           resultId,
           plan.title,
@@ -635,11 +678,11 @@ export async function persistTestAnalysisResult(input: PersistTestAnalysisInput)
           plan.sequence,
         ],
       );
-      await client.query(`DELETE FROM analytics.dpp_questions WHERE dpp_id = $1`, [plan.id]);
+      await client.query(`DELETE FROM analytics.dpp_questions WHERE dpp_id = $1`, [planId]);
       for (const [index, questionId] of plan.question_ids.entries()) {
         await client.query(
           `INSERT INTO analytics.dpp_questions (dpp_id, question_id, position) VALUES ($1, $2, $3)`,
-          [plan.id, questionId, index],
+          [planId, questionId, index],
         );
       }
     }

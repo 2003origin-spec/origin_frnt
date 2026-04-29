@@ -12,6 +12,8 @@ type AppRateLimiter = {
   limit(identifier: string): Promise<AppRateLimitResult>;
 };
 
+type SlidingWindowDuration = Parameters<typeof Ratelimit.slidingWindow>[1];
+
 const redisUrl = process.env.UPSTASH_REDIS_REST_URL?.trim();
 const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN?.trim();
 const redis =
@@ -44,7 +46,11 @@ function createNoopLimiter(limit: number): AppRateLimiter {
   };
 }
 
-function createLimiter(limit: number, prefix: string): AppRateLimiter {
+function createLimiter(
+  limit: number,
+  prefix: string,
+  window: SlidingWindowDuration = "60 s",
+): AppRateLimiter {
   if (!redis) {
     if (process.env.NODE_ENV === "production") {
       return {
@@ -61,7 +67,7 @@ function createLimiter(limit: number, prefix: string): AppRateLimiter {
 
   return new Ratelimit({
     redis,
-    limiter: Ratelimit.slidingWindow(limit, "60 s"),
+    limiter: Ratelimit.slidingWindow(limit, window),
     prefix,
   });
 }
@@ -75,6 +81,14 @@ export const voiceLimiter = createLimiter(5, "rl:voice");
 export const submitLimiter = createLimiter(20, "rl:submit");
 
 export const generalLimiter = createLimiter(60, "rl:general");
+
+export const roomCreateLimiter = createLimiter(10, "rl:room-create", "1 h");
+
+export const roomCodeLimiter = createLimiter(6, "rl:room-code", "1 h");
+
+export const roomJoinLimiter = createLimiter(30, "rl:room-join", "1 h");
+
+export const roomChatLimiter = createLimiter(10, "rl:room-chat", "60 s");
 
 export async function checkRateLimit(
   limiter: AppRateLimiter,
