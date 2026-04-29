@@ -8,6 +8,7 @@ import type { TestSubmissionPayload } from '@/server/assessments';
 import { useServerAnchoredTimer, type ServerAnchoredTimerSource } from '@/hooks/useServerAnchoredTimer';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { shouldSubmitTestAnswer } from '@/lib/tests/time-stats';
 
 const renderQuestionText = (text: string, idPrefix: string) => {
     return <FormattedMessage content={text} isAssistant={true} className="text-slate-900 !prose-slate" />;
@@ -458,14 +459,8 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
 
     try {
       const isMalpractice = options?.malpractice || false;
-      const answersWithCurrentTime = recordCurrentQuestionTime();
-      const formattedAnswers = answersWithCurrentTime.filter(a =>
-        a.selectedOption !== null ||
-        (a.selectedOptions && a.selectedOptions.length > 0) ||
-        (a.matrixPairs && a.matrixPairs.length > 0) ||
-        a.answerText ||
-        a.isMarkedForReview
-      ).map(a => ({
+      const answersWithCurrentResponse = saveCurrentResponse(answers[currentQuestionIndex]?.isMarkedForReview ?? false);
+      const formattedAnswers = answersWithCurrentResponse.filter(shouldSubmitTestAnswer).map(a => ({
         questionId: a.questionId,
         selectedOption: a.selectedOption,
         selectedOptions: a.selectedOptions,

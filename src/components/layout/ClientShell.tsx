@@ -130,11 +130,12 @@ function ClientShellInner({ children }: { children: React.ReactNode }) {
   const isTestsPath = pathname === '/tests' || pathname.startsWith('/tests/');
   const isStudyRoomTestPath = /^\/study-rooms\/[^/]+\/test/.test(pathname);
   const isSpecialPath = pathname.startsWith('/tests/') || pathname.startsWith('/ogcode/') || isStudyRoomTestPath;
+  const shouldHideOriginAi = isTestsPath || isStudyRoomTestPath;
   const shouldShowFloatingOriginAi =
     deferredUiReady &&
     !!user &&
     !noNavbarPaths.includes(pathname) &&
-    !isTestsPath;
+    !shouldHideOriginAi;
   
   const currentTheme = (mounted ? resolvedTheme : 'dark') || 'dark';
   const showNavbar = mounted && !!user && user.role === 'student' && !isNavigationLocked && !noNavbarPaths.includes(pathname) && !isSpecialPath;

@@ -30,6 +30,7 @@ import {
   CartesianGrid
 } from 'recharts';
 import { FormattedMessage } from '@/components/origin-ai/FormattedMessage';
+import { buildSubjectTimeBreakdown } from '@/lib/tests/time-stats';
 import type { ReviewEntry, TestResult } from '@/types';
 
 interface TestResultViewProps {
@@ -186,26 +187,8 @@ export default function TestResultView({
   }, [result]);
 
   const subjectTimeBreakdown = useMemo(() => {
-    const entries = Object.entries(result.subjectStats ?? {});
-    if (entries.length === 0) {
-      return [];
-    }
-
-    const totalRecorded = entries.reduce((sum, [, stats]) => sum + (stats.total_time_spent ?? 0), 0);
-    if (totalRecorded > 0) {
-      return entries.map(([subject, stats]) => ({
-        name: subject,
-        time: stats.total_time_spent,
-      }));
-    }
-
-    const fallbackTotal = overallTimeStats.total > 0 ? overallTimeStats.total : result.timeTaken || 0;
-    const totalQuestions = entries.reduce((sum, [, stats]) => sum + (stats.total_qs ?? 0), 0) || 1;
-    return entries.map(([subject, stats]) => ({
-      name: subject,
-      time: Math.round((fallbackTotal * (stats.total_qs ?? 0)) / totalQuestions),
-    }));
-  }, [overallTimeStats.total, result.subjectStats, result.timeTaken]);
+    return buildSubjectTimeBreakdown(result.subjectStats);
+  }, [result.subjectStats]);
 
   return (
     <div className="min-h-screen bg-[#0F172A] text-slate-100 font-sans selection:bg-teal-500/30">
