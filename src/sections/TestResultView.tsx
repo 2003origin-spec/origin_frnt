@@ -1,5 +1,5 @@
 'use client';
-import { useState, useMemo } from 'react';
+import { useRef, useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -52,6 +52,7 @@ export default function TestResultView({
   const [selectedSubject, setSelectedSubject] = useState<'overall' | string>('overall');
   const [selectedReviewTab, setSelectedReviewTab] = useState<'analysis' | 'mistakes' | 'correct' | 'recommendations'>('analysis');
   const [selectedReviewEntry, setSelectedReviewEntry] = useState(0);
+  const reviewSectionRef = useRef<HTMLDivElement>(null);
 
   const subjects = useMemo(() => {
     if (!result || !result.subjectStats) return [];
@@ -81,6 +82,21 @@ export default function TestResultView({
 
   const activeReviewEntries = selectedReviewTab === 'correct' ? correctEntries : mistakeEntries;
   const selectedReviewItem = activeReviewEntries[selectedReviewEntry] ?? null;
+
+  const handleViewSolution = () => {
+    const nextTab =
+      mistakeEntries.length > 0
+        ? 'mistakes'
+        : correctEntries.length > 0
+          ? 'correct'
+          : 'analysis';
+
+    setSelectedReviewTab(nextTab);
+    setSelectedReviewEntry(0);
+    requestAnimationFrame(() => {
+      reviewSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  };
 
   const overallTimeStats = useMemo(() => {
     const fromSubjects = Object.values(result.subjectStats ?? {}).reduce(
@@ -224,10 +240,7 @@ export default function TestResultView({
             <Button
               variant="secondary"
               className="flex-1 bg-white/10 hover:bg-white/15 text-blue-400 border-none rounded-xl h-9 sm:h-10 text-xs sm:text-sm"
-              onClick={() => {
-                setSelectedReviewTab('mistakes');
-                setSelectedReviewEntry(0);
-              }}
+              onClick={handleViewSolution}
             >
               View Solution
             </Button>
@@ -649,6 +662,7 @@ export default function TestResultView({
 
         {/* Detailed Analysis Tabs */}
         <Tabs
+          ref={reviewSectionRef}
           value={selectedReviewTab}
           onValueChange={(value) => {
             setSelectedReviewTab(value as 'analysis' | 'mistakes' | 'correct' | 'recommendations');
