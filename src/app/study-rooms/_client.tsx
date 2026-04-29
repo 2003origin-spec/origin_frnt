@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { DeleteRoomButton } from '@/components/study-rooms/DeleteRoomButton';
 import { apiCall } from '@/lib/api';
+import { formatStudyRoomDateTime } from '@/lib/study-rooms/date-format';
 import type { RoomSummary } from '@/server/study-rooms';
 
 export default function StudyRoomsClient({
@@ -80,7 +81,7 @@ export default function StudyRoomsClient({
                 </div>
                 <p className="flex items-center gap-2 text-xs text-slate-500">
                   <Clock3 className="h-3.5 w-3.5" />
-                  Created {new Date(room.created_at).toLocaleString()}
+                  Created {formatStudyRoomDateTime(room.created_at)}
                 </p>
               </div>
               <div className="flex items-center gap-2">

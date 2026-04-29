@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { formatStudyRoomTime } from '@/lib/study-rooms/date-format';
 import type { ParticipantSummary } from '@/lib/study-rooms/events';
 
 export function ParticipantList({
@@ -62,7 +63,7 @@ export function ParticipantList({
                   )}
                 </div>
                 <p className="text-xs text-slate-500">
-                  Joined {new Date(participant.joined_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  Joined {formatStudyRoomTime(participant.joined_at)}
                 </p>
               </div>
 

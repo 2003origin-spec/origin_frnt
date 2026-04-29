@@ -17,16 +17,18 @@ export function InviteCodeCard({
   isAdmin: boolean;
   onRegenerate: () => Promise<void>;
 }) {
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState<number | null>(null);
   const [isRegenerating, setIsRegenerating] = useState(false);
 
   useEffect(() => {
+    setNow(Date.now());
     const interval = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(interval);
   }, []);
 
   const secondsRemaining = useMemo(() => {
     if (!inviteCode) return 0;
+    if (now === null) return Math.max(0, inviteCode.ttl_seconds);
     return Math.max(0, Math.ceil((new Date(inviteCode.expires_at).getTime() - now) / 1000));
   }, [inviteCode, now]);
 
