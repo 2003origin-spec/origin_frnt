@@ -85,8 +85,9 @@ const CREATE_TABLE_SQL = `
 `;
 
 function normalizeDifficulty(value: string): DifficultyLevel {
-  if (value === "easy" || value === "medium" || value === "hard" || value === "insane") {
-    return value;
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (normalized === "easy" || normalized === "medium" || normalized === "hard" || normalized === "insane") {
+    return normalized as DifficultyLevel;
   }
   return "medium";
 }

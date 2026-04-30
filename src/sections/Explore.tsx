@@ -7,7 +7,8 @@ import {
     TrendingUp,
     Settings,
     User,
-    ArrowRight
+    ArrowRight,
+    Timer
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import type { ViewState } from '@/types';
@@ -65,6 +66,14 @@ export default function Explore({ onNavigate }: ExploreProps) {
             view: 'profile' as ViewState, // Reuse profile for now or add settings
             color: 'from-gray-400 to-gray-600',
             stats: 'Configured'
+        },
+        {
+            title: 'Focus Timer',
+            description: 'Master your time with Pomodoro sessions and track your deep work hours.',
+            icon: Timer,
+            view: 'pomodoro' as ViewState,
+            color: 'from-rose-500 to-red-600',
+            stats: 'Productivity'
         }
     ];
 

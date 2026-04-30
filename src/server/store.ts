@@ -381,6 +381,13 @@ export interface StoredAuthSession {
   refreshTokenExpiresAt: string;
 }
 
+export interface StoredOtp {
+  email: string;
+  otp: string;
+  expiresAt: string;
+  verified?: boolean;
+}
+
 export interface StoredTask {
   id: string;
   userId: string;
@@ -429,6 +436,7 @@ export interface AppStore {
   authSessions: StoredAuthSession[];
   leaderboardSeed: LeaderboardSeedEntry[];
   tasks: StoredTask[];
+  otps: StoredOtp[];
 }
 
 const STORE_DIR = path.join(process.cwd(), ".origin-dev");
@@ -1097,6 +1105,7 @@ function ensureAllCollections(store: AppStore): boolean {
     "authSessions",
     "leaderboardSeed",
     "tasks",
+    "otps",
   ];
 
   for (const key of collections) {

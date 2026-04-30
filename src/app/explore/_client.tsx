@@ -9,6 +9,10 @@ const ROUTES: Record<string, string> = {
   'study-corner': '/study-corner',
   ogcode: '/ogcode',
   'tasks-goals': '/tasks',
+  'pomodoro': '/pomodoro',
+  'leaderboard': '/leaderboard',
+  'dpp': '/dpp',
+  'profile': '/profile',
 };
 
 export default function ExploreClient() {

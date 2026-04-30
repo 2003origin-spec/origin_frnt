@@ -4,20 +4,39 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Eye, EyeOff, ArrowLeft, Loader2, Mail, Lock } from 'lucide-react';
+import { Eye, EyeOff, ArrowLeft, Loader2, Mail, Lock, CheckCircle2, RefreshCw } from 'lucide-react';
 import { useGoogleLogin } from '@react-oauth/google';
+import {
+  InputOTP,
+  InputOTPGroup,
+  InputOTPSeparator,
+  InputOTPSlot,
+} from "@/components/ui/input-otp";
+import { toast } from 'sonner';
 
 interface AuthPageProps {
   userRole: 'student' | 'teacher' | 'admin' | null;
   onLogin: (email: string, password: string, role?: 'student' | 'teacher' | 'admin' | null) => void;
   onRegister: (name: string, email: string, password: string, role?: 'student' | 'teacher' | 'admin' | null) => void;
   onGoogleLogin?: (credential: string) => void;
+  sendOtp?: (email: string) => Promise<{ ok: boolean; message: string }>;
+  verifyOtp?: (email: string, otp: string) => Promise<{ ok: boolean; message: string }>;
   onBack: () => void;
   isLoading: boolean;
   error?: string | null;
 }
 
-export default function AuthPage({ userRole, onLogin, onRegister, onGoogleLogin, onBack, isLoading, error }: AuthPageProps) {
+export default function AuthPage({ 
+  userRole, 
+  onLogin, 
+  onRegister, 
+  onGoogleLogin, 
+  onBack, 
+  isLoading, 
+  error,
+  sendOtp,
+  verifyOtp 
+}: AuthPageProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [isLogin, setIsLogin] = useState(true);
 
@@ -41,13 +60,57 @@ export default function AuthPage({ userRole, onLogin, onRegister, onGoogleLogin,
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
+  
+  // OTP state
+  const [step, setStep] = useState<'form' | 'otp'>('form');
+  const [otp, setOtp] = useState('');
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
+
+  useEffect(() => {
+    if (resendCooldown > 0) {
+      const timer = setTimeout(() => setResendCooldown(resendCooldown - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [resendCooldown]);
+
+  const handleSendOtp = async () => {
+    if (!email) return;
+    if (sendOtp) {
+      const res = await sendOtp(email);
+      if (res.ok) {
+        setStep('otp');
+        setResendCooldown(60); // 1 minute cooldown
+      }
+    }
+  };
+
+  const handleVerifyAndRegister = async () => {
+    if (!otp || otp.length < 6) {
+      toast.error('Please enter the full 6-digit code.');
+      return;
+    }
+    
+    setIsVerifying(true);
+    if (verifyOtp) {
+      const res = await verifyOtp(email, otp);
+      if (res.ok) {
+        onRegister(name, email, password, userRole);
+      }
+    }
+    setIsVerifying(false);
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (isLogin) {
       onLogin(email, password, userRole);
     } else {
-      onRegister(name, email, password, userRole);
+      if (step === 'form') {
+        handleSendOtp();
+      } else {
+        handleVerifyAndRegister();
+      }
     }
   };
 
@@ -123,7 +186,7 @@ export default function AuthPage({ userRole, onLogin, onRegister, onGoogleLogin,
 
             <div>
               <form onSubmit={handleSubmit} className="space-y-4">
-                {!isLogin && (
+                {!isLogin && step === 'form' && (
                   <div className="space-y-2 animate-in slide-in-from-top-2 fade-in duration-300">
                     <Label htmlFor="name" className="text-slate-700 dark:text-slate-300">Full Name</Label>
                     <div className="relative">
@@ -143,44 +206,119 @@ export default function AuthPage({ userRole, onLogin, onRegister, onGoogleLogin,
                   </div>
                 )}
 
-                <div className="space-y-2">
-                  <Label htmlFor="email" className="text-slate-700 dark:text-slate-300">Email</Label>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <Input
-                      id="email"
-                      type="email"
-                      placeholder="you@example.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="pl-10 h-12 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 focus:border-[#3CACA3] focus:ring-[#3CACA3]/20 dark:text-white transition-all"
-                      required
-                    />
-                  </div>
-                </div>
+                {isLogin || step === 'form' ? (
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="email" className="text-slate-700 dark:text-slate-300">Email</Label>
+                      <div className="relative">
+                        <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                        <Input
+                          id="email"
+                          type="email"
+                          placeholder="you@example.com"
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          className="pl-10 h-12 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 focus:border-[#3CACA3] focus:ring-[#3CACA3]/20 dark:text-white transition-all"
+                          required
+                        />
+                      </div>
+                    </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="password" className="text-slate-700 dark:text-slate-300">Password</Label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <Input
-                      id="password"
-                      type={showPassword ? 'text' : 'password'}
-                      placeholder={isLogin ? "Enter your password" : "Create a password"}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className="pl-10 pr-10 h-12 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 focus:border-[#3CACA3] focus:ring-[#3CACA3]/20 dark:text-white transition-all"
-                      required
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-                    >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="password" className="text-slate-700 dark:text-slate-300">Password</Label>
+                        {isLogin && (
+                          <button type="button" className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline">
+                            Forgot password?
+                          </button>
+                        )}
+                      </div>
+                      <div className="relative">
+                        <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                        <Input
+                          id="password"
+                          type={showPassword ? 'text' : 'password'}
+                          placeholder={isLogin ? "Enter your password" : "Create a password"}
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          className="px-10 h-12 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 focus:border-[#3CACA3] focus:ring-[#3CACA3]/20 dark:text-white transition-all"
+                          required
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+                        >
+                          {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="space-y-6 py-4 animate-in zoom-in-95 fade-in duration-500">
+                    <div className="text-center space-y-2">
+                      <div className="mx-auto w-12 h-12 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center mb-4">
+                        <Mail className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+                      </div>
+                      <h3 className="text-lg font-bold">Check your email</h3>
+                      <p className="text-sm text-muted-foreground">
+                        We've sent a 6-digit verification code to <span className="font-bold text-foreground">{email}</span>
+                      </p>
+                    </div>
+
+                    <div className="flex flex-col items-center gap-4">
+                      <InputOTP
+                        maxLength={6}
+                        value={otp}
+                        onChange={(value) => setOtp(value)}
+                        containerClassName="group"
+                      >
+                        <InputOTPGroup>
+                          <InputOTPSlot index={0} />
+                          <InputOTPSlot index={1} />
+                          <InputOTPSlot index={2} />
+                        </InputOTPGroup>
+                        <InputOTPSeparator />
+                        <InputOTPGroup>
+                          <InputOTPSlot index={3} />
+                          <InputOTPSlot index={4} />
+                          <InputOTPSlot index={5} />
+                        </InputOTPGroup>
+                      </InputOTP>
+
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className="text-muted-foreground">Didn't receive the code?</span>
+                        <button
+                          type="button"
+                          disabled={resendCooldown > 0}
+                          onClick={handleSendOtp}
+                          className="font-bold text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50 disabled:no-underline flex items-center gap-1"
+                        >
+                          {resendCooldown > 0 ? (
+                            `Resend in ${resendCooldown}s`
+                          ) : (
+                            <>
+                              <RefreshCw className="w-3 h-3" />
+                              Resend code
+                            </>
+                          )}
+                        </button>
+                      </div>
+                      
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setStep('form');
+                          setOtp('');
+                        }}
+                        className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+                      >
+                        <ArrowLeft className="w-3 h-3" />
+                        Change email address
+                      </button>
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {isLogin && (
                   <div className="flex items-center justify-between">
@@ -207,16 +345,16 @@ export default function AuthPage({ userRole, onLogin, onRegister, onGoogleLogin,
 
                 <Button
                   type="submit"
-                  disabled={isLoading}
+                  disabled={isLoading || isVerifying}
                   className="w-full h-12 bg-gradient-to-r from-blue-600 to-[#1E3A5F] hover:opacity-90 text-white rounded-xl font-medium shadow-lg shadow-blue-500/20"
                 >
-                  {isLoading ? (
+                  {isLoading || isVerifying ? (
                     <>
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      {isLogin ? 'Logging in...' : 'Signing up...'}
+                      {step === 'otp' ? 'Verifying...' : (isLogin ? 'Logging in...' : 'Sending code...')}
                     </>
                   ) : (
-                    isLogin ? 'Login' : 'Create Account'
+                    isLogin ? 'Login' : (step === 'form' ? 'Create Account' : 'Verify & Complete')
                   )}
                 </Button>
               </form>

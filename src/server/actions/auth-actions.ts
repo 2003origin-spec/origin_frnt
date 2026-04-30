@@ -4,7 +4,7 @@ import { cookies } from 'next/headers';
 import { revalidatePath } from 'next/cache';
 
 import { handleGoogleLogin, handleLogin, handleRegister, handleRefresh, serializeUser } from '@/server/users';
-import { readStore } from '@/server/store';
+import { readStore, writeStore } from '@/server/store';
 import { getServerUser } from '@/lib/auth-server';
 import type { User } from '@/types';
 
@@ -97,6 +97,14 @@ export async function registerAction(input: {
   password: string;
   role?: 'student' | 'teacher' | 'admin' | null;
 }): Promise<AuthResult> {
+  // Check if email was verified via OTP
+  const store = readStore();
+  const isVerified = store.otps.some(o => o.email.toLowerCase() === input.email.toLowerCase() && o.verified === true);
+  
+  if (!isVerified) {
+    return { ok: false, status: 400, message: 'Email verification required. Please verify your email first.' };
+  }
+
   const response = await handleRegister({
     name: input.name,
     email: input.email,
@@ -105,6 +113,11 @@ export async function registerAction(input: {
   });
   const parsed = await parseAuthResponse(response);
   if (parsed.ok) {
+    // Clean up verified OTP record after successful registration
+    const cleanupStore = readStore();
+    cleanupStore.otps = cleanupStore.otps.filter(o => o.email.toLowerCase() !== input.email.toLowerCase());
+    writeStore(cleanupStore);
+
     await setSessionCookies(parsed.access, parsed.refresh);
     revalidatePath('/', 'layout');
   }

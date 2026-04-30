@@ -24,7 +24,8 @@ function normalizeDelimiters(content: string): string {
   // Step 1: Convert \[ ... \] to $$ ... $$ and \( ... \) to $ ... $
   let result = content
     .replace(/\\\[([\s\S]*?)\\\]/g, '\n$$\n$1\n$$\n')
-    .replace(/\\\(([\s\S]*?)\\\)/g, '$$$1$$');
+    .replace(/\\\(([\s\S]*?)\\\)/g, '$$$1$$')
+    .replace(/√/g, '\\sqrt');
 
   // Step 2: Wrap bare LaTeX expressions with $ delimiters
   result = wrapBareLaTeX(result);

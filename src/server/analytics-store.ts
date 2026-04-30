@@ -408,36 +408,54 @@ export async function getRecentWeakTopicsForUser(userId: string): Promise<string
 }
 
 export async function getAttemptedQuestionIdsForUser(userId: string): Promise<string[]> {
+  const { attemptedIds } = await getOgcodeProgressForUser(userId);
+  return [...attemptedIds];
+}
+
+export async function getOgcodeProgressForUser(userId: string): Promise<{ attemptedIds: Set<string>; solvedIds: Set<string> }> {
   await ensureSchema();
   const pool = getPoolOrThrow();
   const result = await pool.query(
-    `SELECT answers
+    `SELECT ai_analysis->'reviewEntries' AS review_entries, answers
        FROM analytics.test_results
       WHERE user_id = $1
       UNION ALL
-     SELECT answers
+     SELECT NULL as review_entries, answers
        FROM analytics.dpp_attempts
       WHERE user_id = $1`,
     [userId],
   );
-  const questionIds = new Set<string>();
+
+  const attemptedIds = new Set<string>();
+  const solvedIds = new Set<string>();
+
   for (const row of result.rows) {
+    const reviewEntries = fromJsonArray<{ questionId: string; status: string }>(row.review_entries);
+    for (const entry of reviewEntries) {
+      if (entry.questionId) {
+        attemptedIds.add(entry.questionId);
+        if (entry.status === "correct") {
+          solvedIds.add(entry.questionId);
+        }
+      }
+    }
+
     const answers = fromJsonArray<StoredUserAnswer>(row.answers);
     for (const answer of answers) {
-      if (
-        answer?.questionId &&
-        (
+      if (answer?.questionId) {
+        const hasResponse =
           answer.selectedOption !== null ||
           (answer.selectedOptions?.length ?? 0) > 0 ||
           (answer.matrixPairs?.length ?? 0) > 0 ||
-          Boolean(answer.answerText?.trim())
-        )
-      ) {
-        questionIds.add(answer.questionId);
+          Boolean(answer.answerText?.trim());
+        if (hasResponse) {
+          attemptedIds.add(answer.questionId);
+        }
       }
     }
   }
-  return [...questionIds];
+
+  return { attemptedIds, solvedIds };
 }
 
 export async function persistGeneratedCustomTest(input: PersistGeneratedCustomTestInput): Promise<void> {

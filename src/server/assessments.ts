@@ -35,6 +35,7 @@ import {
   getPersistedCustomTestById,
   getPersistedResultById,
   getRecentWeakTopicsForUser,
+  getOgcodeProgressForUser,
   listPendingDppPlans,
   listPersistedCustomTests,
   listPersistedTestResults,
@@ -201,8 +202,9 @@ function normalizeSubject(subject: string): string {
 }
 
 function normalizeDifficulty(difficulty: string): DifficultyLevel {
-  if (difficulty === "easy" || difficulty === "medium" || difficulty === "hard" || difficulty === "insane") {
-    return difficulty;
+  const normalized = String(difficulty ?? "").trim().toLowerCase();
+  if (normalized === "easy" || normalized === "medium" || normalized === "hard" || normalized === "insane") {
+    return normalized as DifficultyLevel;
   }
   return "medium";
 }
@@ -1315,9 +1317,19 @@ type OgcodeAttemptState = {
   solvedIds: Set<string>;
 };
 
-function buildOgcodeAttemptState(store: AppStore, userId: string): OgcodeAttemptState {
+async function buildOgcodeAttemptState(store: AppStore, userId: string): Promise<OgcodeAttemptState> {
   const attemptedIds = new Set<string>();
   const solvedIds = new Set<string>();
+
+  if (isUserPostgresConfigured()) {
+    try {
+      const dbState = await getOgcodeProgressForUser(userId);
+      dbState.attemptedIds.forEach((id) => attemptedIds.add(id));
+      dbState.solvedIds.forEach((id) => solvedIds.add(id));
+    } catch (error) {
+      console.error("[assessments] Failed to fetch OGCode progress from Postgres:", error);
+    }
+  }
 
   store.practiceAttempts.forEach((attempt) => {
     if (attempt.userId !== userId) {
@@ -2741,7 +2753,7 @@ export async function listOgcodeQuestionPage(
   const offset = Math.max(0, Math.trunc(filters.offset ?? 0));
   const chapters = normalizeOgcodeChaptersFilter(filters.chapters);
   const status = normalizeOgcodeStatusFilter(filters.status);
-  const attemptState = buildOgcodeAttemptState(store, user.id);
+  const attemptState = await buildOgcodeAttemptState(store, user.id);
 
   const localQuestionsById = new Map<string, StoredQuestion>();
   const localIds: string[] = [];

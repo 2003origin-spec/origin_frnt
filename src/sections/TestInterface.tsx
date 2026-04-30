@@ -818,7 +818,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
           <div className="flex flex-col gap-0.5 sm:gap-1 text-[10px] sm:text-xs">
             <div className="flex"><span className="w-20 sm:w-28 text-gray-500">Candidate:</span> <span className="text-orange-500 truncate max-w-[100px] sm:max-w-none">[Your Name]</span></div>
             <div className="flex"><span className="w-20 sm:w-28 text-gray-500">Subject:</span> <span className="text-orange-500 truncate max-w-[100px] sm:max-w-none">{test.title}</span></div>
-            <div className="flex"><span className="w-20 sm:w-28 text-gray-500">Remaining:</span> <span className="bg-blue-500 text-white px-2 py-0.5 rounded text-[10px] sm:text-xs">{formatTime(effectiveTimeRemaining)}</span></div>
+            <div className="flex"><span className="w-20 sm:w-28 text-gray-500">Remaining:</span> <span className="bg-blue-500 text-white px-2 py-0.5 rounded text-[10px] sm:text-xs" suppressHydrationWarning>{formatTime(effectiveTimeRemaining)}</span></div>
           </div>
         </div>
       </header>

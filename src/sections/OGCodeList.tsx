@@ -380,13 +380,18 @@ export default function OGCodeList({
     // Combined click-outside detection for stats and dropdowns
     useEffect(() => {
         function handleClickOutside(event: MouseEvent) {
+            const target = event.target as Node;
             // Stats dropdown
-            if (statsRef.current && !statsRef.current.contains(event.target as Node)) {
+            if (statsRef.current && !statsRef.current.contains(target)) {
                 setIsStatsExpanded(false);
             }
             // General filter dropdowns
-            const filterContainer = document.getElementById('filter-area');
-            if (filterContainer && !filterContainer.contains(event.target as Node)) {
+            const filterArea = document.getElementById('filter-area');
+            const secondaryFilterArea = document.getElementById('secondary-filter-area');
+            const isInsideFilters = (filterArea && filterArea.contains(target)) || 
+                                   (secondaryFilterArea && secondaryFilterArea.contains(target));
+            
+            if (!isInsideFilters) {
                 setOpenDropdown(null);
             }
         }
@@ -867,7 +872,7 @@ export default function OGCodeList({
                             </div>
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-3 py-2">
+                        <div id="secondary-filter-area" className="flex flex-wrap items-center gap-3 py-2 relative z-[70]">
                             <div className="flex-1 min-w-[280px] relative">
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                                 <input

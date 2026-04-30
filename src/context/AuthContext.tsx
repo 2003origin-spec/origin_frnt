@@ -19,6 +19,7 @@ import {
   refreshUserAction,
   registerAction,
 } from '@/server/actions/auth-actions';
+import { sendOtpAction, verifyOtpAction } from '@/server/actions/otp-actions';
 
 interface AuthContextType {
   user: User | null;
@@ -41,6 +42,8 @@ interface AuthContextType {
   setIsNavigationLocked: (locked: boolean) => void;
   accessToken: string | null;
   refreshToken: string | null;
+  sendOtp: (email: string) => Promise<{ ok: boolean; message: string }>;
+  verifyOtp: (email: string, otp: string) => Promise<{ ok: boolean; message: string }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -349,6 +352,44 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
     }
   };
 
+  const sendOtp = async (email: string) => {
+    setIsLoading(true);
+    try {
+      const result = await sendOtpAction(email);
+      if (result.ok) {
+        toast.success(result.message);
+      } else {
+        toast.error(result.message);
+      }
+      return result;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to send OTP';
+      toast.error(message);
+      return { ok: false, message };
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const verifyOtp = async (email: string, otp: string) => {
+    setIsLoading(true);
+    try {
+      const result = await verifyOtpAction(email, otp);
+      if (result.ok) {
+        toast.success(result.message);
+      } else {
+        toast.error(result.message);
+      }
+      return result;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to verify OTP';
+      toast.error(message);
+      return { ok: false, message };
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const googleLogin = async (credential: string) => {
     setIsLoading(true);
     setAuthError(null);
@@ -469,6 +510,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
       setIsNavigationLocked,
       accessToken,
       refreshToken,
+      sendOtp,
+      verifyOtp,
     }}>
       {children}
     </AuthContext.Provider>
