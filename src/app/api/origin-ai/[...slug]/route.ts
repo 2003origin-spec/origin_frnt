@@ -560,11 +560,14 @@ export async function POST(request: NextRequest, context: RouteContext) {
               : {}),
           },
         };
+        console.log("[origin-ai proxy] highlightedText in parsed:", parsedBody.data.highlightedText?.slice(0, 60) ?? "NULL");
+        console.log("[origin-ai proxy] highlightedText in enriched:", (enrichedPayload as Record<string, unknown>).highlightedText ? String((enrichedPayload as Record<string, unknown>).highlightedText).slice(0, 60) : "NULL");
         const proxyResp = await proxyToMicroservice("POST", "/api/v1/chat/message", enrichedPayload, request, proxyUser);
         if (proxyResp) return proxyResp;
       }
 
       // Fallback
+      console.log("[origin-ai proxy] ⚠️ PROXY RETURNED NULL — running FALLBACK in-app implementation. Highlighted text will use userMetadata path.");
       const result = await withStoreAsync(async (store) => {
         const user = requireUserFromRequest(store, request);
         if (!user) {
