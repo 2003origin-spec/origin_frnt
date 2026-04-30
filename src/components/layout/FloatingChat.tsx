@@ -4,7 +4,7 @@ import { useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles } from 'lucide-react';
 
-import { useHighlightedSelection } from '@/features/origin-ai/highlight-capture';
+import { useHighlightedSelection, snapshotHighlightedText } from '@/features/origin-ai/highlight-capture';
 
 interface FloatingChatProps {
   onOpen: (options?: { autoAskSelection?: boolean }) => void;
@@ -47,6 +47,10 @@ export default function FloatingChat({ onOpen, hideMainButton }: FloatingChatPro
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.92, y: 8 }}
             transition={{ duration: 0.16 }}
+            onMouseDown={() => {
+              // Snapshot BEFORE the browser clears the selection (mousedown is the first event)
+              snapshotHighlightedText();
+            }}
             onClick={() => onOpen({ autoAskSelection: true })}
             className="fixed z-[70] flex items-center gap-1.5 rounded-full border border-indigo-500/20 bg-background/90 px-2 py-1.5 text-foreground shadow-xl backdrop-blur-md transition-colors"
             style={{

@@ -17,6 +17,11 @@ type SelectionListener = (selection: HighlightSelection) => void;
 
 let currentHighlight: string | null = null;
 let currentHighlightRect: HighlightRect | null = null;
+// When the browser clears the selection (e.g. clicking a button), we keep the
+// last valid highlight for a short window so auto-ask flows can still read it.
+let lastValidHighlight: string | null = null;
+let lastValidHighlightTs: number = 0;
+const HIGHLIGHT_RETAIN_MS = 3_000; // keep for 3 seconds after deselection
 const listeners = new Set<Listener>();
 const selectionListeners = new Set<SelectionListener>();
 
@@ -120,6 +125,12 @@ function handleSelectionChange() {
   const text = extractSelectionText(selection);
   if (!text) {
     if (currentHighlight || currentHighlightRect) {
+      // Save the highlight before clearing so auto-ask can still read it
+      if (currentHighlight) {
+        lastValidHighlight = currentHighlight;
+        lastValidHighlightTs = Date.now();
+        console.log('[highlight-capture] Selection cleared, buffered:', lastValidHighlight?.slice(0, 60));
+      }
       currentHighlight = null;
       currentHighlightRect = null;
       emitChange();
@@ -143,6 +154,7 @@ function handleSelectionChange() {
   if (text !== currentHighlight) {
     currentHighlight = text;
     currentHighlightRect = getSelectionRect(selection);
+    console.log('[highlight-capture] NEW highlight:', text?.slice(0, 80));
     emitChange();
     return;
   }
@@ -182,6 +194,40 @@ export function setManualSelection(text: string | null, rect?: HighlightRect | n
 
 export function getHighlightedText(): string | null {
   return currentHighlight;
+}
+
+/**
+ * Snapshot the current highlighted text so it survives the browser clearing
+ * the selection. Also copies to lastValidHighlight as a fallback.
+ */
+export function snapshotHighlightedText(): void {
+  if (currentHighlight) {
+    lastValidHighlight = currentHighlight;
+    lastValidHighlightTs = Date.now();
+  }
+}
+
+/**
+ * Retrieve the highlighted text, falling back to the last valid highlight
+ * if the browser already cleared the selection (within a 3-second window).
+ * Consumes the buffer on read to prevent stale reuse.
+ */
+export function getPendingHighlightedText(): string | null {
+  // Prefer current live highlight
+  if (currentHighlight) {
+    console.log('[highlight-capture] getPending → live:', currentHighlight?.slice(0, 60));
+    return currentHighlight;
+  }
+  // Fall back to the time-buffered last valid highlight
+  if (lastValidHighlight && (Date.now() - lastValidHighlightTs) < HIGHLIGHT_RETAIN_MS) {
+    const text = lastValidHighlight;
+    console.log('[highlight-capture] getPending → buffered:', text?.slice(0, 60), 'age:', Date.now() - lastValidHighlightTs, 'ms');
+    lastValidHighlight = null; // consume
+    return text;
+  }
+  console.log('[highlight-capture] getPending → NULL (buffer:', lastValidHighlight?.slice(0, 30), 'age:', lastValidHighlight ? Date.now() - lastValidHighlightTs : 'n/a', 'ms)');
+  lastValidHighlight = null;
+  return null;
 }
 
 export function getHighlightedSelection(): HighlightSelection {

@@ -10,7 +10,7 @@ import {
   sendOriginAiMessage,
 } from '@/features/origin-ai/client';
 import { useOriginAiPageContext } from '@/features/origin-ai/page-context-store';
-import { clearHighlightedText, getHighlightedText, useHighlightedText } from '@/features/origin-ai/highlight-capture';
+import { clearHighlightedText, getHighlightedText, getPendingHighlightedText, useHighlightedText } from '@/features/origin-ai/highlight-capture';
 import { startOriginAiVoiceMode, type OriginAiVoiceController } from '@/features/origin-ai/voice-client';
 import { cn } from '@/lib/utils';
 import type { OriginAiSnapshot, OriginAiVoiceStatus } from '@/types';
@@ -251,10 +251,12 @@ export default function OriginAiMentor({
       return;
     }
 
-    const selectedText = getHighlightedText()?.trim();
+    const selectedText = getPendingHighlightedText()?.trim();
+    console.log('[OriginAiMentor] autoAsk effect: selectedText =', selectedText?.slice(0, 80) ?? 'NULL');
     lastAutoAskedSelectionNonceRef.current = autoAskSelectionNonce;
 
     if (!selectedText) {
+      console.log('[OriginAiMentor] autoAsk effect: no selected text, returning');
       return;
     }
 
@@ -263,6 +265,7 @@ export default function OriginAiMentor({
       setIsSending(true);
 
       try {
+        console.log('[OriginAiMentor] Sending with highlightedText:', selectedText?.slice(0, 80));
         const reply = await sendOriginAiMessage(
           'Explain the selected text in the current screen context.',
           pageContext,
@@ -282,8 +285,12 @@ export default function OriginAiMentor({
 
   const handleSend = async () => {
     const trimmed = message.trim();
+    // Use the time-buffered highlight: even if the browser cleared the
+    // selection (e.g. user clicked the input), the last valid highlight
+    // survives for 3 seconds.
+    const snappedHighlight = highlightedText || getPendingHighlightedText();
     const outboundMessage =
-      trimmed || (highlightedText ? 'Explain the selected text in the current screen context.' : '');
+      trimmed || (snappedHighlight ? 'Explain the selected text in the current screen context.' : '');
 
     if (!outboundMessage) {
       return;
@@ -293,7 +300,7 @@ export default function OriginAiMentor({
     setIsSending(true);
 
     try {
-      const reply = await sendOriginAiMessage(outboundMessage, pageContext, highlightedText);
+      const reply = await sendOriginAiMessage(outboundMessage, pageContext, snappedHighlight);
       setSnapshot(reply);
     } catch (error) {
       console.error('Failed to send Origin AI message', error);
