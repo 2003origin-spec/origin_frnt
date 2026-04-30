@@ -13,6 +13,8 @@ import {
   InputOTPSlot,
 } from "@/components/ui/input-otp";
 import { toast } from 'sonner';
+import { getRegistrationStatusAction } from '@/server/actions/system-actions';
+import { cn } from '@/lib/utils';
 
 interface AuthPageProps {
   userRole: 'student' | 'teacher' | 'admin' | null;
@@ -66,6 +68,17 @@ export default function AuthPage({
   const [otp, setOtp] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
+  
+  // Registration limit state
+  const [regStatus, setRegStatus] = useState<{ count: number; limit: number; seatsLeft: number } | null>(null);
+
+  useEffect(() => {
+    const fetchStatus = async () => {
+      const status = await getRegistrationStatusAction();
+      setRegStatus(status);
+    };
+    fetchStatus();
+  }, []);
 
   useEffect(() => {
     if (resendCooldown > 0) {
@@ -180,6 +193,31 @@ export default function AuthPage({
               {error && (
                 <div className="mt-2 w-full p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-500 text-xs font-bold text-center animate-in fade-in slide-in-from-top-1 duration-300">
                   {error}
+                </div>
+              )}
+
+              {regStatus && !isLogin && (
+                <div className={cn(
+                  "mt-4 w-full p-3 rounded-xl border flex items-center justify-center gap-2 animate-in fade-in zoom-in-95 duration-500",
+                  regStatus.seatsLeft > 0 
+                    ? "bg-blue-500/10 border-blue-500/20 text-blue-500" 
+                    : "bg-amber-500/10 border-amber-500/20 text-amber-500"
+                )}>
+                  {regStatus.seatsLeft > 0 ? (
+                    <>
+                      <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                      <span className="text-xs font-black tracking-widest uppercase">
+                        Hurry! {regStatus.seatsLeft} Seats Left
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <Lock className="w-3 h-3" />
+                      <span className="text-xs font-black tracking-widest uppercase">
+                        Registration Closed (Capacity Reached)
+                      </span>
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -345,7 +383,7 @@ export default function AuthPage({
 
                 <Button
                   type="submit"
-                  disabled={isLoading || isVerifying}
+                  disabled={isLoading || isVerifying || (!isLogin && regStatus?.seatsLeft === 0)}
                   className="w-full h-12 bg-gradient-to-r from-blue-600 to-[#1E3A5F] hover:opacity-90 text-white rounded-xl font-medium shadow-lg shadow-blue-500/20"
                 >
                   {isLoading || isVerifying ? (

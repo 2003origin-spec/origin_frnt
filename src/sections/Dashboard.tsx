@@ -16,27 +16,28 @@ import { apiCall } from '@/lib/api';
 import { useLayout } from '@/context/LayoutContext';
 import { cn } from '@/lib/utils';
 import type { TimeType } from '@/hooks/useTimeTracker';
+import { getRegistrationStatusAction } from '@/server/actions/system-actions';
 
 const MOCK_EVENTS = [
   { 
     id: 1, 
     title: 'Origin V1.0 is Live!', 
     description: 'Welcome, O3 Minds! Your personalized rank booster just got a major upgrade. 🚀 Let\'s find those gaps.', 
-    image: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=1000&auto=format&fit=crop', 
+    image: '/carousel/launch.png', 
     badge: 'OCTOBER 15, 2026' 
   },
   { 
     id: 2, 
     title: 'The Reality Check: IPL vs. Exams', 
     description: 'IPL will atahi rahega but jee/neet ekbarhi ayegaaa. 🏏📚💀 Focus on your *real* match now.', 
-    image: 'https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?q=80&w=1000&auto=format&fit=crop', 
+    image: '/carousel/ipl.png', 
     badge: 'IPL SEASON 2026' 
   },
   { 
     id: 3, 
     title: 'Study Plan vs. Reality', 
     description: 'Let\'s reset that focus streak and stop doomscrolling. Origin knows your true power level. 🤓🔄📉', 
-    image: 'https://images.unsplash.com/photo-1555421689-d68471e189f2?q=80&w=1000&auto=format&fit=crop', 
+    image: '/carousel/study.png', 
     badge: '3:00 AM (MONDAY)' 
   },
 ];
@@ -129,6 +130,16 @@ export default function Dashboard({
     progressPercent: number;
     recentLogs: { points: number; type: string; description: string; timestamp: string }[];
   } | null>(initialPointsData);
+  
+  const [regStatus, setRegStatus] = useState<{ count: number; limit: number; seatsLeft: number } | null>(null);
+
+  useEffect(() => {
+    const fetchRegStatus = async () => {
+      const status = await getRegistrationStatusAction();
+      setRegStatus(status);
+    };
+    fetchRegStatus();
+  }, []);
 
   const prevTierRef = useRef<string | null>(pointsData?.currentTier || null);
   const achievementsRef = useRef<Record<string, boolean>>({});
@@ -259,6 +270,30 @@ export default function Dashboard({
       </div>
 
       <main className="max-w-[1400px] mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6 sm:space-y-8 relative z-10">
+        {/* Registration Status Banner */}
+        {regStatus && regStatus.seatsLeft > 0 && regStatus.seatsLeft <= 50 && (
+          <motion.div 
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-blue-600/10 border border-blue-600/20 rounded-2xl p-4 flex items-center justify-between gap-4 backdrop-blur-xl"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-blue-600/20 flex items-center justify-center text-blue-600">
+                <Zap className="w-5 h-5 animate-pulse" />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider">Limited Seats Remaining!</p>
+                <p className="text-xs text-slate-600 dark:text-slate-400 font-medium">Only {regStatus.seatsLeft} out of {regStatus.limit} seats left for this phase.</p>
+              </div>
+            </div>
+            <button 
+              onClick={() => window.open('https://chat.whatsapp.com/L7X7N7P7N7P7N7P7N7P7N7', '_blank')}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-black rounded-xl transition-all shadow-lg shadow-blue-500/20 uppercase tracking-tighter"
+            >
+              Invite Friends
+            </button>
+          </motion.div>
+        )}
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
           <div>
             <h1 className="text-2xl sm:text-4xl font-black text-[#334155] dark:text-white tracking-tight">

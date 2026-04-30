@@ -12,6 +12,11 @@ export interface OriginAiProviderResponse {
   provider: "gemini" | "origin_ai_service" | "local_fallback";
   model: string;
   metadata?: Record<string, unknown>;
+  usage?: {
+    promptTokens: number;
+    candidateTokens: number;
+    totalTokens: number;
+  };
 }
 
 export interface OriginAiLiveBootstrapRequest {
@@ -39,6 +44,7 @@ export interface OriginAiVoiceSynthesisResponse {
   provider: "gemini";
   model: string;
   voiceName: string;
+  duration?: number; // Estimated duration in seconds
 }
 
 const DEFAULT_GEMINI_STT_MODEL = "gemini-2.5-flash";
@@ -299,10 +305,14 @@ async function callGemini(payload: OriginAiProviderRequest): Promise<OriginAiPro
       return null;
     }
 
-    const data = (await response.json()) as {
       candidates?: unknown[];
       modelVersion?: string;
       promptFeedback?: Record<string, unknown>;
+      usageMetadata?: {
+        promptTokenCount: number;
+        candidatesTokenCount: number;
+        totalTokenCount: number;
+      };
     };
 
     const candidate = Array.isArray(data.candidates) ? data.candidates[0] : null;
@@ -318,6 +328,11 @@ async function callGemini(payload: OriginAiProviderRequest): Promise<OriginAiPro
       metadata: {
         promptFeedback: data.promptFeedback ?? null,
       },
+      usage: data.usageMetadata ? {
+        promptTokens: data.usageMetadata.promptTokenCount,
+        candidateTokens: data.usageMetadata.candidatesTokenCount,
+        totalTokens: data.usageMetadata.totalTokenCount,
+      } : undefined,
     };
   } catch {
     return null;
@@ -496,6 +511,7 @@ export async function synthesizeOriginAiVoiceAudio(
     provider: "gemini",
     model,
     voiceName,
+    duration: cleaned.length / 15, // Roughly 15 chars per second (900 chars/min)
   };
 }
 

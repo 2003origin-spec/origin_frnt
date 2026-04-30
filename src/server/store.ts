@@ -45,6 +45,9 @@ export interface StoredUser {
   subjects: string[];
   studentCapacity: string | null;
   location: string | null;
+  voiceMinutesUsedToday: number;
+  tokensUsedToday: number;
+  usageResetAt: string;
 }
 
 export interface StoredStreakData {
@@ -564,6 +567,9 @@ function createSeedUser(config: SeedUserConfig): StoredUser {
     subjects: config.subjects ?? [],
     studentCapacity: config.studentCapacity ?? null,
     location: config.location ?? null,
+    voiceMinutesUsedToday: 0,
+    tokensUsedToday: 0,
+    usageResetAt: nowIso(),
   };
 }
 

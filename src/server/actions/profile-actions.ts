@@ -5,6 +5,8 @@ import { revalidatePath, revalidateTag } from 'next/cache';
 import { getServerUser } from '@/lib/auth-server';
 import { withStore } from '@/server/store';
 import { serializeUser } from '@/server/users';
+import { isUserPostgresConfigured } from '@/server/user-postgres';
+import { dbUpdateUser } from '@/server/db-users';
 import type { User } from '@/types';
 
 type UpdateProfileInput = Partial<{
@@ -64,13 +66,36 @@ function applyProfileUpdates(userId: string, input: UpdateProfileInput): User | 
 export async function updateProfileAction(input: UpdateProfileInput): Promise<User> {
   const current = await requireUser();
   const updated = applyProfileUpdates(current.id, input);
-  if (!updated) throw new Error('Profile update failed — user missing from store.');
+
+  if (!updated) {
+    throw new Error('Failed to update profile');
+  }
+
+  // Persist to Postgres if configured
+  if (isUserPostgresConfigured()) {
+    try {
+      await dbUpdateUser(current.id, {
+        name: input.name,
+        student_class: input.studentClass ?? input.class ?? input.student_class,
+        field_of_interest: input.fieldOfInterest,
+        referral_source: input.referralSource,
+        avatar: input.avatar,
+        selected_course: input.selectedCourse,
+        years_of_experience: input.yearsOfExperience,
+        student_capacity: input.studentCapacity,
+        location: input.location,
+      });
+    } catch (err) {
+      console.error('[profile-actions] Failed to persist updates to DB:', err);
+    }
+  }
+
+  revalidatePath('/');
 
   revalidateTag('auth-user', 'max');
   revalidateTag(`user:${current.id}`, 'max');
   revalidateTag('progress', 'max');
   revalidateTag(`progress-user:${current.id}`, 'max');
-  revalidatePath('/', 'layout');
   return updated;
 }
 
@@ -84,6 +109,26 @@ export async function completeOnboardingAction(input: UpdateProfileInput = {}): 
   const current = await requireUser();
   const updated = applyProfileUpdates(current.id, { ...input, isOnboarded: true });
   if (!updated) throw new Error('Onboarding completion failed — user missing from store.');
+
+  // Persist to Postgres if configured
+  if (isUserPostgresConfigured()) {
+    try {
+      await dbUpdateUser(current.id, {
+        isOnboarded: true,
+        name: input.name,
+        student_class: input.studentClass ?? input.class ?? input.student_class,
+        field_of_interest: input.fieldOfInterest,
+        referral_source: input.referralSource,
+        avatar: input.avatar,
+        selected_course: input.selectedCourse,
+        years_of_experience: input.yearsOfExperience,
+        student_capacity: input.studentCapacity,
+        location: input.location,
+      });
+    } catch (err) {
+      console.error('[profile-actions] Failed to persist onboarding updates to DB:', err);
+    }
+  }
 
   revalidateTag('auth-user', 'max');
   revalidateTag(`user:${current.id}`, 'max');

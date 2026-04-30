@@ -18,7 +18,8 @@ import {
   Medal,
   Award,
   Zap,
-  Filter
+  Filter,
+  Edit3
 } from 'lucide-react';
 import { apiCall } from '@/lib/api';
 import type { User } from '@/types';
@@ -338,11 +339,20 @@ export default function Leaderboard({ currentUser, initialLeaderboard, initialMy
               </Card>
             ) : (
               <div className="space-y-4">
-                <div className="flex items-center justify-between px-4 mb-4">
-                  <div className="flex items-center gap-2 text-primary font-black uppercase text-xs tracking-widest">
-                    <MapPin className="w-4 h-4" />
-                    Ranking in {currentUser.location}
+                <div className="flex items-center justify-between px-4 mb-6">
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-center gap-2 text-primary font-black uppercase text-[10px] tracking-[0.2em]">
+                      <MapPin className="w-3.5 h-3.5" />
+                      Current Region
+                    </div>
+                    <div className="text-xl font-black tracking-tight">{currentUser.location}</div>
                   </div>
+                  <Link href="/profile">
+                    <Button variant="outline" size="sm" className="rounded-xl font-bold border-primary/20 hover:bg-primary/5 hover:text-primary transition-all gap-2 text-xs h-9">
+                      <Edit3 className="w-3.5 h-3.5" />
+                      Update Region
+                    </Button>
+                  </Link>
                 </div>
                 {isLoading ? (
                   <div className="flex flex-col items-center justify-center py-24 gap-6">

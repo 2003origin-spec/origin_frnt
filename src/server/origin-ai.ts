@@ -28,6 +28,7 @@ import {
   type OriginAiVoiceSynthesisResponse,
 } from "@/server/origin-ai-provider";
 import { solveWithKnowledgeBase } from "@/server/ai-solver-kb";
+import { dbUpdateUsageMetrics } from "./db-users";
 
 export type OriginAiPageKind =
   | "dashboard"
@@ -187,6 +188,7 @@ export interface OriginAiVoiceSpeakPayload {
   voiceAudioSegments: Array<OriginAiVoiceSynthesisResponse & { transport: "server_tts" }>;
   fallbackText: string | null;
   synthesisError?: string | null;
+  totalDurationSeconds?: number;
 }
 
 const PROMPT_CACHE = new Map<string, string>();
@@ -1926,10 +1928,13 @@ export async function speakOriginAiVoiceText(
       transport: "server_tts" as const,
     }));
 
+    const totalDurationSeconds = audioSegments.reduce((sum, seg) => sum + (seg.duration ?? 0), 0);
+
     return {
       voiceAudio: transportedSegments[0] ?? null,
       voiceAudioSegments: transportedSegments,
       fallbackText: text,
+      totalDurationSeconds,
     };
   } catch (error) {
     const detail = error instanceof Error ? error.message : "Origin AI could not synthesize the voice reply.";
@@ -1957,6 +1962,19 @@ export async function sendOriginAiMessage(
   if (!trimmed) {
     return { error: "Message is required." };
   }
+
+  // Check usage and daily limits (10 mins voice, 200k tokens)
+  // We call dbUpdateUsageMetrics with 0 increments to handle the daily reset and get fresh counts.
+  const currentUsage = await dbUpdateUsageMetrics(user.id, { tokens: 0, voiceMinutes: 0 });
+  const isVoiceMode = (options?.transport ?? "text_chat") === "voice_mode";
+
+  if (currentUsage.tokensUsedToday >= 200000) {
+    return { error: "DAILY_TOKEN_LIMIT_EXCEEDED" };
+  }
+  if (isVoiceMode && currentUsage.voiceMinutesUsedToday >= 10) {
+    return { error: "DAILY_VOICE_LIMIT_EXCEEDED" };
+  }
+
   const runtime = await prepareOriginAiRuntime(store, user, request, input, options?.threadId ?? null);
   maybeUpdatePinnedFacts(runtime.memoryRecord, trimmed);
 
@@ -2006,6 +2024,13 @@ export async function sendOriginAiMessage(
 
   runtime.session.messages.push(aiMessage);
   runtime.session.updatedAt = nowIso();
+
+  // Track token usage
+  const totalTokens = (assistantTurn.metadata?.usage as any)?.totalTokens || 0;
+  if (totalTokens > 0) {
+    await dbUpdateUsageMetrics(user.id, { tokens: totalTokens });
+  }
+
   maybeAwardOriginAiPoints(store, user, aiMessage.id);
 
   return {

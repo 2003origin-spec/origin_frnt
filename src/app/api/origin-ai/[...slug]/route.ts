@@ -20,6 +20,7 @@ import {
 import {
   badRequest,
   created,
+  forbidden,
   getSlugSegments,
   noContent,
   notFound,
@@ -28,6 +29,7 @@ import {
   unauthorized,
 } from "@/server/http";
 import { withStoreAsync, type StoredUser } from "@/server/store";
+import { dbUpdateUsageMetrics } from "@/server/db-users";
 import { aiLimiter, voiceLimiter, generalLimiter, checkRateLimit } from "@/lib/rate-limit";
 
 export const maxDuration = 120;
@@ -587,6 +589,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
         );
 
         if ("error" in reply) {
+          if (reply.error === "DAILY_TOKEN_LIMIT_EXCEEDED") {
+            return { status: "forbidden" as const, error: "You've reached your daily AI usage limit (200k tokens). Please try again tomorrow." };
+          }
+          if (reply.error === "DAILY_VOICE_LIMIT_EXCEEDED") {
+            return { status: "forbidden" as const, error: "You've reached your daily voice limit (10 minutes). Please try again tomorrow." };
+          }
           return { status: "error" as const, error: reply.error };
         }
 
@@ -595,6 +603,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
       if (result.status === "unauthorized") {
         return unauthorized();
+      }
+
+      if (result.status === "forbidden") {
+        return forbidden(result.error);
       }
 
       if (result.status === "error") {
@@ -747,6 +759,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
         );
 
         if ("error" in reply) {
+          if (reply.error === "DAILY_TOKEN_LIMIT_EXCEEDED") {
+            return { status: "forbidden" as const, error: "You've reached your daily AI usage limit (200k tokens). Please try again tomorrow." };
+          }
+          if (reply.error === "DAILY_VOICE_LIMIT_EXCEEDED") {
+            return { status: "forbidden" as const, error: "You've reached your daily voice limit (10 minutes). Please try again tomorrow." };
+          }
           return { status: "error" as const, error: reply.error };
         }
 
@@ -755,6 +773,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
       if (result.status === "unauthorized") {
         return unauthorized();
+      }
+
+      if (result.status === "forbidden") {
+        return forbidden(result.error);
       }
 
       if (result.status === "error") {
@@ -790,6 +812,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
           text: parsedBody.data.text,
           voiceName: parsedBody.data.voiceName ?? null,
         });
+
+        // Track voice usage
+        if (reply.totalDurationSeconds && reply.totalDurationSeconds > 0) {
+          const minutes = reply.totalDurationSeconds / 60;
+          await dbUpdateUsageMetrics(user.id, { voiceMinutes: minutes });
+        }
 
         return { status: "ok" as const, reply };
       });

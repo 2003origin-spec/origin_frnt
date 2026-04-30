@@ -26,6 +26,7 @@ import {
   Sun,
   Moon
 } from 'lucide-react';
+import { getRegistrationStatusAction } from '@/server/actions/system-actions';
 
 const PhaseStartIcon = ({ className }: { className?: string }) => (
   <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -109,8 +110,17 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
   const [mounted, setMounted] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [regStatus, setRegStatus] = useState<{ count: number; limit: number; seatsLeft: number } | null>(null);
   const counterRef = useRef<HTMLDivElement>(null);
   const isCounterInView = useInView(counterRef, { once: true, amount: 0.5 });
+
+  useEffect(() => {
+    const fetchRegStatus = async () => {
+      const status = await getRegistrationStatusAction();
+      setRegStatus(status);
+    };
+    fetchRegStatus();
+  }, []);
 
   useEffect(() => {
     setMounted(true);
@@ -397,17 +407,17 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
           {/* Hero Branding - CSS Managed Visibility */}
           <div className="hidden dark:flex flex-col items-center space-y-12">
             <div className="space-y-4">
-              <h1 className="text-4xl sm:text-7xl lg:text-[10rem] font-black text-white tracking-[-0.04em] leading-[0.8] animate-slide-up flex flex-col items-center">
-                <span>Master Your</span>
-                <span className="text-blue-400">Goals.</span>
+              <h1 className="text-4xl sm:text-6xl lg:text-[7rem] font-black text-white tracking-[-0.04em] leading-[0.9] animate-slide-up flex flex-col items-center">
+                <span>The Topper Knew Something</span>
+                <span className="text-blue-400 text-3xl sm:text-5xl lg:text-[5rem] mt-4 tracking-tighter">You didn't. Now you do.</span>
               </h1>
             </div>
             <p className="text-lg sm:text-xl md:text-2xl text-slate-400 max-w-2xl mx-auto font-light leading-relaxed tracking-tight animate-fade-in delay-300 px-4">
-              Crack Every competitive Exams with Unfare Precision using A.I.
+              Crack Every Competitive Exams with Unfare Precision using A.I.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-6 pt-8 animate-slide-up delay-500 w-full px-6">
-              <Button onClick={onGetStarted} size="lg" className="w-full sm:w-auto rounded-full px-10 py-8 text-xl bg-blue-600 text-white hover:bg-blue-700 shadow-xl shadow-blue-500/20 transition-all hover:scale-105 font-bold">
-                Get Started Now
+              <Button onClick={onGetStarted} size="lg" className="w-full sm:w-auto rounded-full px-10 py-8 text-xl bg-blue-600 text-white hover:bg-blue-700 shadow-xl shadow-blue-500/20 transition-all hover:scale-105 font-bold uppercase tracking-widest">
+                Join Origin
               </Button>
               <Button variant="outline" size="lg" className="w-full sm:w-auto rounded-full px-10 py-8 text-xl border-white/10 text-white hover:bg-white/5 transition-all hover:scale-105 font-bold" onClick={() => document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })}>
                 Learn More
@@ -417,9 +427,9 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
 
           <div className="flex dark:hidden flex-col items-center space-y-12">
             <div className="space-y-4">
-              <h1 className="text-4xl sm:text-7xl lg:text-[10rem] font-black tracking-[-0.04em] leading-[0.8] animate-slide-up flex flex-col items-center">
-                <span className="text-[#1e293b]">Master Your</span>
-                <span className="text-[#1d4ed8]">Goals.</span>
+              <h1 className="text-4xl sm:text-6xl lg:text-[7rem] font-black tracking-[-0.04em] leading-[0.9] animate-slide-up flex flex-col items-center">
+                <span className="text-[#1e293b]">The topper knew something</span>
+                <span className="text-[#1d4ed8] text-3xl sm:text-5xl lg:text-[5rem] mt-4 tracking-tighter">you didn't. Now you do.</span>
               </h1>
             </div>
 
@@ -428,8 +438,8 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
             </p>
 
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-8 pt-8 animate-slide-up delay-500 w-full px-6">
-              <Button onClick={onGetStarted} size="lg" className="w-full sm:w-auto rounded-full px-12 py-10 text-xl bg-[#0f4c81] text-white hover:bg-[#0a355c] shadow-[0_20px_40px_rgba(15,76,129,0.3)] transition-all hover:scale-105 group font-black">
-                Get Started Now
+              <Button onClick={onGetStarted} size="lg" className="w-full sm:w-auto rounded-full px-12 py-10 text-xl bg-[#0f4c81] text-white hover:bg-[#0a355c] shadow-[0_20px_40px_rgba(15,76,129,0.3)] transition-all hover:scale-105 group font-black uppercase tracking-widest">
+                Join Origin
                 <ChevronRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
               </Button>
               <Button variant="outline" size="lg" className="w-full sm:w-auto rounded-full px-12 py-10 text-xl border-2 border-black/10 text-foreground hover:bg-black/5 transition-all hover:scale-105 font-black" onClick={() => document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })}>
@@ -919,7 +929,9 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
             <div className="flex flex-col items-center gap-8">
               <div className="bg-primary/10 border border-primary/20 px-6 py-2 rounded-full">
                 <p className="text-sm sm:text-base font-black tracking-[0.2em] text-primary uppercase animate-pulse">
-                  ⚠️ Only 57 Seats Left
+                  {regStatus 
+                    ? `⚠️ ${regStatus.seatsLeft > 0 ? `Only ${regStatus.seatsLeft} Seats Left` : 'Capacity Reached'}` 
+                    : '⚠️ Limited Seats Remaining'}
                 </p>
               </div>
 

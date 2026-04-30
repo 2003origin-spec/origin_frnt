@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs";
 import { createAuthSession, isRefreshTokenValid, rotateAccessToken, requireUserFromRequest, resolveTokenToUser, refreshAccessToken, createAuthSessionAsync } from "@/server/auth";
 import { isUserPostgresConfigured } from "@/server/user-postgres";
-import { dbLoginUser, dbRegisterUser, dbGetTasks, dbCreateTask, dbUpdateTask, dbDeleteTask, dbFindUserByEmail, dbCreateUser, dbUpdateUser, dbCreateAuthSession } from "@/server/db-users";
+import { dbLoginUser, dbRegisterUser, dbGetTasks, dbCreateTask, dbUpdateTask, dbDeleteTask, dbFindUserByEmail, dbCreateUser, dbUpdateUser, dbCreateAuthSession, dbGetUserCount } from "@/server/db-users";
 import { OAuth2Client } from "google-auth-library";
 import {
   awardPoints,
@@ -15,7 +15,7 @@ import {
 } from "@/server/gamification";
 import { badRequest, created, noContent, notFound, ok, unauthorized } from "@/server/http";
 import type { AppStore, StoredTask, StoredUser } from "@/server/store";
-import { createId, withStore } from "@/server/store";
+import { createId, withStore, withStoreAsync } from "@/server/store";
 
 type UserPayload = Record<string, unknown>;
 
@@ -309,6 +309,24 @@ export async function handleLogin(payload: UserPayload) {
   });
 }
 
+const REGISTRATION_LIMIT = 110;
+
+export async function getRegistrationStatus() {
+  if (isUserPostgresConfigured()) {
+    try {
+      const count = await dbGetUserCount();
+      return { count, limit: REGISTRATION_LIMIT, seatsLeft: Math.max(0, REGISTRATION_LIMIT - count) };
+    } catch (err) {
+      console.error('[users] Failed to get user count', err);
+    }
+  }
+
+  return withStore((store) => {
+    const count = store.users.length;
+    return { count, limit: REGISTRATION_LIMIT, seatsLeft: Math.max(0, REGISTRATION_LIMIT - count) };
+  });
+}
+
 export async function handleRegister(payload: UserPayload) {
   const email = asString(payload.email)?.trim().toLowerCase();
   const password = asString(payload.password);
@@ -317,6 +335,12 @@ export async function handleRegister(payload: UserPayload) {
 
   if (!email || !password) {
     return badRequest('Must include "email" and "password".');
+  }
+
+  // Enforce registration limit
+  const status = await getRegistrationStatus();
+  if (status.seatsLeft <= 0) {
+    return badRequest("Registration is currently closed. We've reached our maximum capacity for this phase.");
   }
 
   // DB-backed registration when Postgres is configured
@@ -436,6 +460,12 @@ export async function handleGoogleLogin(payload: UserPayload) {
       try {
         let dbUser = await dbFindUserByEmail(email, "student");
         if (!dbUser) {
+          // Enforce registration limit for new users
+          const status = await getRegistrationStatus();
+          if (status.seatsLeft <= 0) {
+            return badRequest("Registration is currently closed. We've reached our maximum capacity for this phase.");
+          }
+
           const hashed = bcrypt.hashSync(createId("rand"), 10);
           dbUser = await dbCreateUser({
             name, email, password: hashed, role: "student",
@@ -464,9 +494,15 @@ export async function handleGoogleLogin(payload: UserPayload) {
       }
     }
 
-    return withStore((store) => {
+    return withStoreAsync(async (store) => {
       let user = store.users.find((entry) => entry.email.toLowerCase() === email!.toLowerCase() && entry.role === 'student');
       if (!user) {
+        // Enforce registration limit for new users
+        const status = await getRegistrationStatus();
+        if (status.seatsLeft <= 0) {
+          return badRequest("Registration is currently closed. We've reached our maximum capacity for this phase.");
+        }
+
         const userId = createId("user");
         user = {
           id: userId, name, email: email!, password: bcrypt.hashSync(createId("rand"), 10),

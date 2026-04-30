@@ -59,8 +59,18 @@ export async function ensureUserSchema(): Promise<void> {
             years_of_experience TEXT,
             subjects            TEXT[] NOT NULL DEFAULT '{}',
             student_capacity    TEXT,
+            location            TEXT,
+            voice_minutes_used_today FLOAT NOT NULL DEFAULT 0,
+            tokens_used_today   INTEGER NOT NULL DEFAULT 0,
+            usage_reset_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             UNIQUE (email, role)
           );
+
+          -- Migrations
+          ALTER TABLE origin_users ADD COLUMN IF NOT EXISTS location TEXT;
+          ALTER TABLE origin_users ADD COLUMN IF NOT EXISTS voice_minutes_used_today FLOAT NOT NULL DEFAULT 0;
+          ALTER TABLE origin_users ADD COLUMN IF NOT EXISTS tokens_used_today INTEGER NOT NULL DEFAULT 0;
+          ALTER TABLE origin_users ADD COLUMN IF NOT EXISTS usage_reset_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
           CREATE TABLE IF NOT EXISTS origin_auth_sessions (
             access_token              TEXT PRIMARY KEY,
@@ -124,6 +134,10 @@ function rowToUser(row: any): StoredUser {
     yearsOfExperience: row.years_of_experience ?? null,
     subjects: Array.isArray(row.subjects) ? row.subjects : [],
     studentCapacity: row.student_capacity ?? null,
+    location: row.location ?? null,
+    voiceMinutesUsedToday: Number(row.voice_minutes_used_today ?? 0),
+    tokensUsedToday: Number(row.tokens_used_today ?? 0),
+    usageResetAt: row.usage_reset_at instanceof Date ? row.usage_reset_at.toISOString() : String(row.usage_reset_at),
   };
 }
 
@@ -178,14 +192,16 @@ export async function dbCreateUser(data: Omit<StoredUser, "id"> & { id?: string 
        (id, name, email, password_hash, role, student_class, field_of_interest,
         referral_source, avatar, streak, total_study_time, joined_at, is_premium,
         premium_expiry, is_onboarded, selected_course, is_dropper,
-        years_of_experience, subjects, student_capacity)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+        years_of_experience, subjects, student_capacity, location,
+        voice_minutes_used_today, tokens_used_today, usage_reset_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)`,
     [
       id, data.name, data.email, data.password, data.role,
       data.studentClass, data.fieldOfInterest, data.referralSource, data.avatar,
       data.streak, data.totalStudyTime, data.joinedAt, data.isPremium,
       data.premiumExpiry, data.isOnboarded, data.selectedCourse, data.isDropper,
-      data.yearsOfExperience, data.subjects, data.studentCapacity,
+      data.yearsOfExperience, data.subjects, data.studentCapacity, data.location,
+      data.voiceMinutesUsedToday ?? 0, data.tokensUsedToday ?? 0, data.usageResetAt ?? new Date().toISOString(),
     ],
   );
   return { ...data, id };
@@ -205,7 +221,9 @@ export async function dbUpdateUser(id: string, patch: Partial<StoredUser>): Prom
     premiumExpiry: "premium_expiry", isOnboarded: "is_onboarded",
     selectedCourse: "selected_course", isDropper: "is_dropper",
     yearsOfExperience: "years_of_experience", subjects: "subjects",
-    studentCapacity: "student_capacity",
+    studentCapacity: "student_capacity", location: "location",
+    voiceMinutesUsedToday: "voice_minutes_used_today", tokensUsedToday: "tokens_used_today",
+    usageResetAt: "usage_reset_at",
   };
 
   for (const [key, col] of Object.entries(mapping)) {
@@ -365,7 +383,48 @@ export async function dbRegisterUser(data: {
     joinedAt: new Date().toISOString(), isPremium: false, premiumExpiry: null,
     isOnboarded: false, selectedCourse: null, isDropper: false,
     yearsOfExperience: null, subjects: [], studentCapacity: null,
+    voiceMinutesUsedToday: 0, tokensUsedToday: 0, usageResetAt: new Date().toISOString(),
   });
   const session = await dbCreateAuthSession(user.id);
   return { user, session };
+}
+
+export async function dbUpdateUsageMetrics(userId: string, metrics: { voiceMinutes?: number; tokens?: number }): Promise<{ voiceMinutesUsedToday: number; tokensUsedToday: number }> {
+  await ensureUserSchema();
+  const { voiceMinutes = 0, tokens = 0 } = metrics;
+
+  // Use a single query with daily reset logic:
+  // If usage_reset_at is not today (UTC), reset counters to 0 and update reset time to now.
+  // Then add the new usage values.
+  const result = await pool().query(
+    `UPDATE origin_users
+     SET
+       voice_minutes_used_today = CASE
+         WHEN usage_reset_at < CURRENT_DATE THEN $1::FLOAT
+         ELSE voice_minutes_used_today + $1::FLOAT
+       END,
+       tokens_used_today = CASE
+         WHEN usage_reset_at < CURRENT_DATE THEN $2::INTEGER
+         ELSE tokens_used_today + $2::INTEGER
+       END,
+       usage_reset_at = CASE
+         WHEN usage_reset_at < CURRENT_DATE THEN NOW()
+         ELSE usage_reset_at
+       END
+     WHERE id = $3
+     RETURNING voice_minutes_used_today, tokens_used_today`,
+    [voiceMinutes, tokens, userId],
+  );
+
+  const row = result.rows[0];
+  return {
+    voiceMinutesUsedToday: row?.voice_minutes_used_today ?? 0,
+    tokensUsedToday: row?.tokens_used_today ?? 0,
+  };
+}
+
+export async function dbGetUserCount(): Promise<number> {
+  await ensureUserSchema();
+  const result = await pool().query("SELECT COUNT(*) FROM origin_users");
+  return parseInt(result.rows[0].count, 10);
 }

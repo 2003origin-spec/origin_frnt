@@ -31,6 +31,9 @@ export function notFound(message = "Not found."): NextResponse {
 export function methodNotAllowed(): NextResponse {
   return json({ detail: "Method not allowed." }, { status: 405 });
 }
+export function forbidden(message = "You do not have permission to perform this action."): NextResponse {
+  return json({ detail: message }, { status: 403 });
+}
 
 export async function parseJsonBody<T = Record<string, unknown>>(request: Request): Promise<T> {
   const contentLength = request.headers.get("content-length");
