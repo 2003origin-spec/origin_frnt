@@ -1077,7 +1077,7 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
                     persistSessionCache(nextSessions);
                     return nextSessions;
                   });
-                  console.error("Failed to upload image", error);
+                  console.error("Failed to upload image", Error);
                   toast.error("Couldn't process the image — please try again.");
                 } finally {
                   setIsTyping(false);
