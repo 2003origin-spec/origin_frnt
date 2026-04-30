@@ -68,10 +68,19 @@ export const CrystalBackground: React.FC = () => {
         {shards.map((shard, i) => (
           <motion.div
             key={i}
-            initial={{ opacity: 0, scale: 1.1 }}
-            animate={{ opacity: shard.opacity * 1.5, scale: 1 }}
-            transition={{ duration: 2, delay: shard.delay }}
-            className="absolute bg-white/40 dark:bg-white/10 border border-white/60 dark:border-white/20 shadow-[0_10px_30px_rgba(0,0,0,0.02)]"
+            className="absolute bg-white/50 dark:bg-white/10 border border-white/70 dark:border-white/20 shadow-[0_20px_50px_rgba(0,0,0,0.03)]"
+            animate={{ 
+              opacity: shard.opacity * 1.5, 
+              scale: 1,
+              x: [0, 15, 0],
+              y: [0, -15, 0],
+            }}
+            transition={{ 
+              duration: 10 + i * 2, 
+              repeat: Infinity, 
+              ease: "easeInOut",
+              delay: shard.delay 
+            }}
             style={{
               top: shard.top,
               left: shard.left,

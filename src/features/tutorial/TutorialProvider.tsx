@@ -28,7 +28,7 @@ const getPageFromPath = (path: string) => {
   return null;
 };
 
-const getStorageKey = (page: string) => `origin_tutorial_${page}_completed`;
+const getStorageKey = (userId: string | number, page: string) => `origin_tutorial_${userId}_${page}_completed`;
 
 export const TutorialProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isActive, setIsActive] = useState(false);
@@ -49,7 +49,7 @@ export const TutorialProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setCurrentStep(0);
 
     // Persistence Check
-    const isCompleted = localStorage.getItem(getStorageKey(page));
+    const isCompleted = localStorage.getItem(getStorageKey(user.id, page));
     
     // Set to false to enable persistence, true for testing
     const forceShow = false; 
@@ -71,11 +71,11 @@ export const TutorialProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setCurrentStep(prev => prev + 1);
     } else {
       setIsActive(false);
-      if (activePage) {
-        localStorage.setItem(getStorageKey(activePage), 'true');
+      if (activePage && user) {
+        localStorage.setItem(getStorageKey(user.id, activePage), 'true');
       }
     }
-  }, [currentStep, steps, activePage]);
+  }, [currentStep, steps, activePage, user]);
 
   const prevStep = useCallback(() => {
     if (currentStep > 0) {
@@ -85,10 +85,10 @@ export const TutorialProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const skipTutorial = useCallback(() => {
     setIsActive(false);
-    if (activePage) {
-      localStorage.setItem(getStorageKey(activePage), 'true');
+    if (activePage && user) {
+      localStorage.setItem(getStorageKey(user.id, activePage), 'true');
     }
-  }, [activePage]);
+  }, [activePage, user]);
 
   const startTutorial = useCallback(() => {
     setCurrentStep(0);

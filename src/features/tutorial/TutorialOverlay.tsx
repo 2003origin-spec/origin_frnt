@@ -117,10 +117,11 @@ export const TutorialOverlay: React.FC = () => {
               </div>
               <button 
                 onClick={skipTutorial}
-                className="p-1 hover:bg-slate-100 dark:hover:bg-white/10 rounded-full transition-colors"
+                className="group flex items-center gap-1.5 px-3 py-1.5 hover:bg-slate-100 dark:hover:bg-white/5 rounded-full transition-all duration-300"
                 title="Skip Tutorial"
               >
-                <X className="w-4 h-4 text-muted-foreground" />
+                <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground group-hover:text-primary transition-colors">Skip</span>
+                <X className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary transition-colors" />
               </button>
             </div>
 
@@ -142,17 +143,21 @@ export const TutorialOverlay: React.FC = () => {
                 {currentStep > 0 && (
                   <button
                     onClick={prevStep}
-                    className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors"
+                    className="p-3 text-slate-400 hover:text-slate-600 dark:hover:text-white transition-all hover:scale-110 active:scale-90"
                   >
                     <ChevronLeft className="w-5 h-5" />
                   </button>
                 )}
                 <Button 
                   onClick={nextStep}
-                  className="bg-primary hover:bg-primary/90 text-white rounded-full px-5 py-5 h-auto text-xs font-black uppercase tracking-widest shadow-lg shadow-primary/20"
+                  className="relative overflow-hidden bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-full px-8 py-6 h-auto text-[11px] font-black uppercase tracking-[0.2em] shadow-[0_10px_20px_-5px_rgba(37,99,235,0.4)] transition-all hover:scale-105 active:scale-95 group border-none"
                 >
-                  {currentStep === steps.length - 1 ? 'Finish' : 'Next'}
-                  <ChevronRight className="w-4 h-4 ml-1.5" />
+                  <span className="relative z-10 flex items-center">
+                    {currentStep === steps.length - 1 ? 'Finish Journey' : 'Next Protocol'}
+                    <ChevronRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
+                  </span>
+                  {/* Subtle shimmer effect on hover */}
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:animate-[shimmer_2s_infinite] transition-transform" />
                 </Button>
               </div>
             </div>

@@ -301,7 +301,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
 
       {/* Navigation - Unified Crystal Glass Design */}
       <nav className="fixed top-8 left-0 right-0 mx-auto z-50 flex justify-center px-4">
-        <div className="bg-white/40 dark:bg-black/20 backdrop-blur-md px-2 py-1.5 rounded-full flex items-center justify-between lg:justify-center gap-4 lg:gap-8 shadow-sm border border-white/40 dark:border-white/10 ring-1 ring-black/5 w-full max-w-fit md:w-auto">
+        <div className="bg-white/60 dark:bg-black/20 backdrop-blur-xl px-2 py-2 rounded-full flex items-center justify-between lg:justify-center gap-4 lg:gap-12 shadow-[0_8px_32px_rgba(0,0,0,0.05)] border border-white/80 dark:border-white/10 ring-1 ring-black/[0.03] w-full max-w-fit md:w-auto transition-all duration-500 hover:shadow-[0_12px_40px_rgba(0,0,0,0.08)]">
           <div className="flex items-center gap-3">
             <div className="flex items-center justify-center">
               <img
@@ -338,7 +338,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
             {/* CTA Button - Responsive Width */}
             <Button
               onClick={onGetStarted}
-              className="bg-[#020617] dark:bg-white text-white dark:text-black hover:bg-black/90 dark:hover:bg-white/90 rounded-full px-6 lg:px-10 h-10 lg:h-11 text-[10px] lg:text-[11px] uppercase tracking-[0.15em] font-black transition-all duration-300 shadow-xl"
+              className="bg-blue-600 dark:bg-white text-white dark:text-black hover:bg-blue-700 dark:hover:bg-white/90 rounded-full px-6 lg:px-10 h-10 lg:h-12 text-[10px] lg:text-[11px] uppercase tracking-[0.2em] font-black transition-all duration-300 shadow-lg shadow-blue-500/20 active:scale-95"
             >
               Join Now
             </Button>
@@ -426,24 +426,34 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
           </div>
 
           <div className="flex dark:hidden flex-col items-center space-y-12">
-            <div className="space-y-4">
-              <h1 className="text-4xl sm:text-6xl lg:text-[7rem] font-black tracking-[-0.04em] leading-[0.9] animate-slide-up flex flex-col items-center">
-                <span className="text-[#1e293b]">The topper knew something</span>
-                <span className="text-[#1d4ed8] text-3xl sm:text-5xl lg:text-[5rem] mt-4 tracking-tighter">you didn't. Now you do.</span>
+            <div className="space-y-6">
+              {regStatus && regStatus.seatsLeft > 0 && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-blue-50 border border-blue-100 text-blue-600 shadow-sm mb-4"
+                >
+                  <Sparkles className="w-3.5 h-3.5 animate-pulse" />
+                  <span className="text-[10px] font-black uppercase tracking-[0.2em]">Limited Access: {regStatus.seatsLeft} Seats Left</span>
+                </motion.div>
+              )}
+              <h1 className="text-4xl sm:text-6xl lg:text-[7.5rem] font-black tracking-[-0.05em] leading-[0.9] animate-slide-up flex flex-col items-center drop-shadow-[0_2px_10px_rgba(0,0,0,0.02)]">
+                <span className="text-slate-900">The Topper Knew Something</span>
+                <span className="text-blue-600 text-3xl sm:text-5xl lg:text-[5.5rem] mt-4 tracking-tighter drop-shadow-none">You didn't. Now you do.</span>
               </h1>
             </div>
 
-            <p className="text-lg sm:text-xl md:text-2xl text-muted-foreground max-w-2xl mx-auto font-medium leading-relaxed tracking-tight animate-fade-in delay-300 px-4">
-              Data-driven prep for elite students. Stop guessing, start mastering.
+            <p className="text-lg sm:text-xl md:text-2xl text-slate-500 max-w-2xl mx-auto font-medium leading-relaxed tracking-tight animate-fade-in delay-300 px-4">
+              Premium data-driven prep for elite students. <br className="hidden sm:block" /> Stop guessing, start mastering.
             </p>
 
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-8 pt-8 animate-slide-up delay-500 w-full px-6">
-              <Button onClick={onGetStarted} size="lg" className="w-full sm:w-auto rounded-full px-12 py-10 text-xl bg-[#0f4c81] text-white hover:bg-[#0a355c] shadow-[0_20px_40px_rgba(15,76,129,0.3)] transition-all hover:scale-105 group font-black uppercase tracking-widest">
+              <Button onClick={onGetStarted} size="lg" className="w-full sm:w-auto rounded-full px-12 py-10 text-xl bg-blue-600 text-white hover:bg-blue-700 shadow-[0_20px_40px_rgba(37,99,235,0.25)] transition-all hover:scale-105 group font-black uppercase tracking-widest active:scale-95">
                 Join Origin
                 <ChevronRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
               </Button>
-              <Button variant="outline" size="lg" className="w-full sm:w-auto rounded-full px-12 py-10 text-xl border-2 border-black/10 text-foreground hover:bg-black/5 transition-all hover:scale-105 font-black" onClick={() => document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })}>
-                Learn More
+              <Button variant="outline" size="lg" className="w-full sm:w-auto rounded-full px-12 py-10 text-xl border-2 border-slate-200 text-slate-900 hover:bg-slate-50 hover:border-slate-300 transition-all hover:scale-105 font-black uppercase tracking-widest active:scale-95" onClick={() => document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })}>
+                Explore Protocol
               </Button>
             </div>
           </div>
@@ -588,10 +598,10 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
                 <div className="inline-flex items-center gap-3 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 text-primary">
                   <span className="text-xs font-black uppercase tracking-widest">Step 01</span>
                 </div>
-                <h2 className="text-5xl lg:text-7xl font-black text-foreground tracking-tighter">
+                <h2 className="text-5xl lg:text-7xl font-black text-slate-900 tracking-tighter">
                   Diagnose.
                 </h2>
-                <p className="text-xl lg:text-2xl text-muted-foreground leading-relaxed font-medium">
+                <p className="text-xl lg:text-2xl text-slate-500 leading-relaxed font-medium">
                   Identify critical knowledge gaps with hyper-precise AI diagnostic tests. Our AI maps your cognitive profile in real-time.
                 </p>
                 <ul className="space-y-4 pt-4">
@@ -614,8 +624,8 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
                 viewport={{ once: true }}
                 className="flex-1 relative group"
               >
-                <div className="absolute inset-0 bg-primary/20 blur-[100px] rounded-full group-hover:bg-primary/30 transition-colors duration-700" />
-                <div className="relative rounded-[2.5rem] overflow-hidden border border-white/10 shadow-2xl">
+                <div className="absolute inset-0 bg-primary/20 blur-[100px] rounded-full group-hover:bg-primary/30 transition-colors duration-700 dark:block hidden" />
+                <div className="relative rounded-[2.5rem] overflow-hidden border-4 border-white dark:border-white/10 shadow-[0_40px_80px_-15px_rgba(0,0,0,0.12)] dark:shadow-2xl">
                   <img src="/images/protocol/diagnose.png" alt="Diagnose" className="w-full h-auto object-cover hover:scale-105 transition-transform duration-1000" />
                 </div>
               </motion.div>
@@ -633,10 +643,10 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
                 <div className="inline-flex items-center gap-3 px-4 py-2 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-500">
                   <span className="text-xs font-black uppercase tracking-widest">Step 02</span>
                 </div>
-                <h2 className="text-5xl lg:text-7xl font-black text-foreground tracking-tighter">
+                <h2 className="text-5xl lg:text-7xl font-black text-slate-900 tracking-tighter">
                   Plan.
                 </h2>
-                <p className="text-xl lg:text-2xl text-muted-foreground leading-relaxed font-medium">
+                <p className="text-xl lg:text-2xl text-slate-500 leading-relaxed font-medium">
                   Get a custom roadmap generated by our AIR prediction engine. Every hour of study is optimized for maximum mark gains.
                 </p>
                 <ul className="space-y-4 pt-4">
@@ -659,8 +669,8 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
                 viewport={{ once: true }}
                 className="flex-1 relative group"
               >
-                <div className="absolute inset-0 bg-blue-500/20 blur-[100px] rounded-full group-hover:bg-blue-500/30 transition-colors duration-700" />
-                <div className="relative rounded-[2.5rem] overflow-hidden border border-white/10 shadow-2xl">
+                <div className="absolute inset-0 bg-blue-500/20 blur-[100px] rounded-full group-hover:bg-blue-500/30 transition-colors duration-700 dark:block hidden" />
+                <div className="relative rounded-[2.5rem] overflow-hidden border-4 border-white dark:border-white/10 shadow-[0_40px_80px_-15px_rgba(0,0,0,0.12)] dark:shadow-2xl">
                   <img src="/images/protocol/plan.png" alt="Plan" className="w-full h-auto object-cover hover:scale-105 transition-transform duration-1000" />
                 </div>
               </motion.div>
@@ -678,10 +688,10 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
                 <div className="inline-flex items-center gap-3 px-4 py-2 rounded-full bg-teal-500/10 border border-teal-500/20 text-teal-500">
                   <span className="text-xs font-black uppercase tracking-widest">Step 03</span>
                 </div>
-                <h2 className="text-5xl lg:text-7xl font-black text-foreground tracking-tighter">
+                <h2 className="text-5xl lg:text-7xl font-black text-slate-900 tracking-tighter">
                   Execute.
                 </h2>
-                <p className="text-xl lg:text-2xl text-muted-foreground leading-relaxed font-medium">
+                <p className="text-xl lg:text-2xl text-slate-500 leading-relaxed font-medium">
                   Practice with adaptive DPPs that evolve as you solve. No two students ever solve the same question set.
                 </p>
                 <ul className="space-y-4 pt-4">
@@ -704,8 +714,8 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
                 viewport={{ once: true }}
                 className="flex-1 relative group"
               >
-                <div className="absolute inset-0 bg-teal-500/20 blur-[100px] rounded-full group-hover:bg-teal-500/30 transition-colors duration-700" />
-                <div className="relative rounded-[2.5rem] overflow-hidden border border-white/10 shadow-2xl">
+                <div className="absolute inset-0 bg-teal-500/20 blur-[100px] rounded-full group-hover:bg-teal-500/30 transition-colors duration-700 dark:block hidden" />
+                <div className="relative rounded-[2.5rem] overflow-hidden border-4 border-white dark:border-white/10 shadow-[0_40px_80px_-15px_rgba(0,0,0,0.12)] dark:shadow-2xl">
                   <img src="/images/protocol/execute.png" alt="Execute" className="w-full h-auto object-cover hover:scale-105 transition-transform duration-1000" />
                 </div>
               </motion.div>
@@ -723,10 +733,10 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
                 <div className="inline-flex items-center gap-3 px-4 py-2 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-500">
                   <span className="text-xs font-black uppercase tracking-widest">Step 04</span>
                 </div>
-                <h2 className="text-5xl lg:text-7xl font-black text-foreground tracking-tighter">
+                <h2 className="text-5xl lg:text-7xl font-black text-slate-900 tracking-tighter">
                   Achieve.
                 </h2>
-                <p className="text-xl lg:text-2xl text-muted-foreground leading-relaxed font-medium">
+                <p className="text-xl lg:text-2xl text-slate-500 leading-relaxed font-medium">
                   Track your rank improvements daily. See your predicted AIR rise as you master more concepts.
                 </p>
                 <ul className="space-y-4 pt-4">
@@ -749,8 +759,8 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
                 viewport={{ once: true }}
                 className="flex-1 relative group"
               >
-                <div className="absolute inset-0 bg-amber-500/20 blur-[100px] rounded-full group-hover:bg-amber-500/30 transition-colors duration-700" />
-                <div className="relative rounded-[2.5rem] overflow-hidden border border-white/10 shadow-2xl">
+                <div className="absolute inset-0 bg-amber-500/20 blur-[100px] rounded-full group-hover:bg-amber-500/30 transition-colors duration-700 dark:block hidden" />
+                <div className="relative rounded-[2.5rem] overflow-hidden border-4 border-white dark:border-white/10 shadow-[0_40px_80px_-15px_rgba(0,0,0,0.12)] dark:shadow-2xl">
                   <img src="/images/protocol/achieve.png" alt="Achieve" className="w-full h-auto object-cover hover:scale-105 transition-transform duration-1000" />
                 </div>
               </motion.div>
