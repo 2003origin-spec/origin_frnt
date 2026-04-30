@@ -21,6 +21,7 @@ type UpdateProfileInput = Partial<{
   isOnboarded: boolean;
   isDropper: boolean;
   subjects: string[];
+  location: string;
 }>;
 
 async function requireUser() {
@@ -42,6 +43,7 @@ function applyProfileUpdates(userId: string, input: UpdateProfileInput): User | 
       ['selectedCourse', input.selectedCourse],
       ['yearsOfExperience', input.yearsOfExperience],
       ['studentCapacity', input.studentCapacity],
+      ['location', input.location],
     ];
 
     for (const [field, value] of stringFields) {

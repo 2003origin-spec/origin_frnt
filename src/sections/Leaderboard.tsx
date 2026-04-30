@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
+import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -56,9 +57,13 @@ export default function Leaderboard({ currentUser, initialLeaderboard, initialMy
   const fetchLeaderboard = async () => {
     setIsLoading(true);
     try {
-      const url = selectedSubject === 'overall'
-        ? '/assessments/ogcode/leaderboard/'
-        : `/assessments/ogcode/leaderboard/?subject=${selectedSubject}`;
+      const params = new URLSearchParams();
+      if (selectedSubject !== 'overall') params.append('subject', selectedSubject);
+      if (activeTab === 'local' && currentUser.location) {
+        params.append('location', currentUser.location);
+      }
+      
+      const url = `/assessments/ogcode/leaderboard/?${params.toString()}`;
       const data = await apiCall(url);
       setLeaderboard(data.leaderboard || []);
       setMyRank(data.myRank);
@@ -164,7 +169,7 @@ export default function Leaderboard({ currentUser, initialLeaderboard, initialMy
               className="flex-1 h-full rounded-[1.5rem] data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-lg text-muted-foreground font-black text-xs uppercase tracking-widest transition-all gap-2"
             >
               <MapPin className="w-4 h-4" />
-              Local
+              Regional
             </TabsTrigger>
             <TabsTrigger
               value="friends"
@@ -312,28 +317,94 @@ export default function Leaderboard({ currentUser, initialLeaderboard, initialMy
               ))}
             </div>
           </TabsContent>
-
-          <TabsContent value="local" className="mt-8">
-            <Card className="border border-border shadow-xl bg-card/60 backdrop-blur-xl ring-1 ring-border relative overflow-hidden">
-              <div className="absolute inset-0 bg-background/60 backdrop-blur-sm z-10 flex flex-col items-center justify-center p-6 text-center">
-                <Badge variant="secondary" className="mb-4 font-black tracking-widest px-4 py-1.5">COMING SOON</Badge>
-                <h3 className="text-xl font-black mb-2">Regional Connectivity</h3>
-                <p className="text-sm text-muted-foreground max-w-[280px]">We're building the infrastructure to connect you with learners in your immediate vicinity.</p>
-              </div>
-              <CardContent className="p-12 text-center opacity-40 grayscale">
-                <div className="w-20 h-20 mx-auto rounded-3xl bg-primary/10 flex items-center justify-center mb-6 transition-transform hover:scale-110">
-                  <MapPin className="w-10 h-10 text-primary" />
+          <TabsContent value="local" className="mt-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
+            {!currentUser.location ? (
+              <Card className="border border-border shadow-xl bg-card/60 backdrop-blur-xl ring-1 ring-border overflow-hidden">
+                <CardContent className="p-12 text-center">
+                  <div className="w-20 h-20 mx-auto rounded-3xl bg-primary/10 flex items-center justify-center mb-6">
+                    <MapPin className="w-10 h-10 text-primary" />
+                  </div>
+                  <h3 className="text-2xl font-black tracking-tight mb-2">Location Required</h3>
+                  <p className="text-muted-foreground mb-8 max-w-sm mx-auto font-medium leading-relaxed">
+                    Please set your Region/State in your profile to view the regional leaderboard.
+                  </p>
+                  <Link href="/profile">
+                    <Button className="rounded-xl px-8 h-12 bg-primary text-primary-foreground font-black hover:scale-105 transition-all shadow-lg shadow-primary/20">
+                      <MapPin className="w-5 h-5 mr-3" />
+                      Set Location in Profile
+                    </Button>
+                  </Link>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between px-4 mb-4">
+                  <div className="flex items-center gap-2 text-primary font-black uppercase text-xs tracking-widest">
+                    <MapPin className="w-4 h-4" />
+                    Ranking in {currentUser.location}
+                  </div>
                 </div>
-                <h3 className="text-2xl font-black tracking-tight mb-2">Regional Ranking</h3>
-                <p className="text-muted-foreground mb-8 max-w-sm mx-auto font-medium leading-relaxed">
-                  Join your local network and see how you rank among students in your city.
-                </p>
-                <Button disabled className="rounded-xl px-8 h-12 bg-primary text-primary-foreground font-black hover:scale-105 transition-all shadow-lg shadow-primary/20">
-                  <MapPin className="w-5 h-5 mr-3" />
-                  Enable Location
-                </Button>
-              </CardContent>
-            </Card>
+                {isLoading ? (
+                  <div className="flex flex-col items-center justify-center py-24 gap-6">
+                    <div className="w-16 h-16 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
+                    <p className="text-muted-foreground font-black uppercase text-xs tracking-[0.3em] animate-pulse">Syncing Regional Rankings</p>
+                  </div>
+                ) : leaderboard.length === 0 ? (
+                  <div className="text-center py-24 glass rounded-[3rem] border-dashed border-2 border-border/50">
+                    <Trophy className="w-16 h-16 text-muted-foreground/10 mx-auto mb-6" />
+                    <p className="text-muted-foreground font-black uppercase text-xs tracking-widest">No rankings detected in this region</p>
+                  </div>
+                ) : leaderboard.map((entry) => (
+                  <div
+                    key={entry.userId}
+                    className={cn(
+                      "flex items-center rounded-[2rem] border transition-all duration-300 hover:scale-[1.01] hover:shadow-2xl hover:shadow-primary/5",
+                      isMobile ? "gap-3 p-4" : "gap-5 p-5 sm:p-6",
+                      entry.isMe
+                        ? 'glass border-primary/40 ring-2 ring-primary/20 shadow-xl'
+                        : 'bg-card border-border/50 shadow-sm'
+                    )}
+                  >
+                    <div className={cn(
+                      "flex justify-center font-black tracking-tighter shrink-0",
+                      isMobile ? "w-6 text-lg" : "w-10 text-xl"
+                    )}>
+                      {getRankIcon(entry.rank)}
+                    </div>
+
+                    <Avatar className={cn(
+                      "shadow-lg ring-2 ring-background border-2 border-transparent shrink-0",
+                      isMobile ? "w-10 h-10" : "w-14 h-14"
+                    )}>
+                      <AvatarFallback className="bg-gradient-to-br from-primary to-blue-700 text-white font-black text-lg">
+                        {entry.name.charAt(0).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-3">
+                        <span className={cn("font-black tracking-tight truncate", isMobile ? "text-sm" : "text-lg")}>{entry.name}</span>
+                        {entry.isMe && (
+                          <Badge className="bg-primary hover:bg-primary text-white text-[10px] h-5 font-black uppercase tracking-wider px-2">YOU</Badge>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3 text-[10px] text-muted-foreground mt-1 font-black uppercase tracking-widest opacity-60">
+                        <span className={isMobile ? "hidden" : "block"}>Efficiency: {(entry.rankScore ?? 0).toFixed(1)}%</span>
+                        {!isMobile && <span className="w-1 h-1 rounded-full bg-border" />}
+                        <span>{entry.questionsSolved || 0} Questions Solved</span>
+                      </div>
+                    </div>
+
+                    <div className="text-right flex items-center gap-4 sm:gap-8 shrink-0">
+                      <div className="text-right">
+                        <p className={cn("font-black text-primary leading-none tracking-tighter", isMobile ? "text-xl" : "text-3xl")}>{entry.score || 0}</p>
+                        <p className="text-[10px] font-black text-muted-foreground/40 uppercase tracking-widest mt-1">XP Points</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </TabsContent>
 
           <TabsContent value="friends" className="mt-8">

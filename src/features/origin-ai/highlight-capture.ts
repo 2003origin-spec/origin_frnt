@@ -25,6 +25,10 @@ const HIGHLIGHT_RETAIN_MS = 3_000; // keep for 3 seconds after deselection
 const listeners = new Set<Listener>();
 const selectionListeners = new Set<SelectionListener>();
 
+// Selection state tracking
+let isMouseDown = false;
+let heavyExtractionTimeout: NodeJS.Timeout | null = null;
+
 function emitChange() {
   listeners.forEach((listener) => listener(currentHighlight));
   const selection = {
@@ -54,6 +58,12 @@ function getSelectionRect(selection: Selection | null): HighlightRect | null {
 
 export function extractSelectionText(selection: Selection | null): string | null {
   if (!selection || selection.rangeCount === 0) return null;
+
+  // If we are currently dragging, we perform a LIGHTWEIGHT extraction to avoid
+  // triggering layout recalcs that disrupt the browser's selection engine.
+  if (isMouseDown) {
+    return selection.toString().trim() || null;
+  }
 
   let extractedText = '';
   
@@ -104,11 +114,10 @@ export function extractSelectionText(selection: Selection | null): string | null
     );
     orphanedJunk.forEach(n => n.remove());
 
-    div.style.position = 'absolute';
+    div.style.position = 'fixed';
     div.style.left = '-9999px';
     div.style.top = '0';
-    div.style.opacity = '0';
-    div.style.pointerEvents = 'none';
+    div.style.visibility = 'hidden';
     div.style.whiteSpace = 'pre-wrap';
     document.body.appendChild(div);
     
@@ -122,14 +131,16 @@ export function extractSelectionText(selection: Selection | null): string | null
 
 function handleSelectionChange() {
   const selection = window.getSelection();
-  const text = extractSelectionText(selection);
-  if (!text) {
+  
+  // Phase 1: Immediate lightweight update
+  const lightText = selection?.toString().trim() || null;
+  
+  if (!lightText) {
     if (currentHighlight || currentHighlightRect) {
-      // Save the highlight before clearing so auto-ask can still read it
+      // Save the highlight before clearing so auto-ask flows can still read it
       if (currentHighlight) {
         lastValidHighlight = currentHighlight;
         lastValidHighlightTs = Date.now();
-        console.log('[highlight-capture] Selection cleared, buffered:', lastValidHighlight?.slice(0, 60));
       }
       currentHighlight = null;
       currentHighlightRect = null;
@@ -138,10 +149,9 @@ function handleSelectionChange() {
     return;
   }
 
+  // Check if we are inside an ignored root
   const anchorNode = selection?.anchorNode;
-  const anchorElement =
-    anchorNode instanceof Element ? anchorNode : anchorNode?.parentElement ?? null;
-
+  const anchorElement = anchorNode instanceof Element ? anchorNode : anchorNode?.parentElement ?? null;
   if (anchorElement?.closest('[data-origin-ai-root="true"]')) {
     if (currentHighlight || currentHighlightRect) {
       currentHighlight = null;
@@ -151,32 +161,58 @@ function handleSelectionChange() {
     return;
   }
 
-  if (text !== currentHighlight) {
-    currentHighlight = text;
+  // Update immediately with light text if it's new (Phase 1)
+  // This gives the user feedback that selection is working without causing lag.
+  if (lightText !== currentHighlight) {
+    currentHighlight = lightText;
     currentHighlightRect = getSelectionRect(selection);
-    console.log('[highlight-capture] NEW highlight:', text?.slice(0, 80));
     emitChange();
-    return;
   }
 
-  const rect = getSelectionRect(selection);
-  if (rect) {
-    currentHighlightRect = rect;
-    emitChange();
-  }
+  // Phase 2: Rich extraction (KaTeX handling)
+  // We debounce this to avoid DOM mutations during active dragging.
+  if (heavyExtractionTimeout) clearTimeout(heavyExtractionTimeout);
+  
+  heavyExtractionTimeout = setTimeout(() => {
+    // Only perform heavy extraction if we still have a selection and mouse is up
+    if (!isMouseDown) {
+      const richText = extractSelectionText(window.getSelection());
+      if (richText && richText !== currentHighlight) {
+        currentHighlight = richText;
+        currentHighlightRect = getSelectionRect(window.getSelection());
+        console.log('[highlight-capture] Rich update:', richText.slice(0, 50));
+        emitChange();
+      }
+    }
+  }, 200);
+}
+
+// Global mouse listeners to track drag state
+function handleMouseDown() { 
+  isMouseDown = true; 
+}
+function handleMouseUp() { 
+  isMouseDown = false;
+  // Trigger a re-evaluation on mouse up to finalize the rich extraction
+  handleSelectionChange();
 }
 
 let isListening = false;
 
 export function startHighlightCapture(): void {
-  if (isListening) return;
+  if (typeof window === 'undefined' || isListening) return;
   isListening = true;
   document.addEventListener('selectionchange', handleSelectionChange);
+  window.addEventListener('mousedown', handleMouseDown);
+  window.addEventListener('mouseup', handleMouseUp);
 }
 
 export function stopHighlightCapture(): void {
+  if (typeof window === 'undefined') return;
   isListening = false;
   document.removeEventListener('selectionchange', handleSelectionChange);
+  window.removeEventListener('mousedown', handleMouseDown);
+  window.removeEventListener('mouseup', handleMouseUp);
   clearHighlightedText();
 }
 

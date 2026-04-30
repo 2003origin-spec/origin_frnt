@@ -33,6 +33,7 @@ export interface User {
     date: string;
     count: number;
   }>;
+  location?: string;
 }
 
 export interface Classroom {

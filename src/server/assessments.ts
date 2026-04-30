@@ -2999,6 +2999,15 @@ export async function getOgcodeUserStats(store: AppStore, user: StoredUser) {
     syllabusCoverage,
     syllabus_coverage: syllabusCoverage,
     streak: user.streak,
+    achievements: {
+      first_test: totalAttempts > 0,
+      streak_7: (user.streak?.currentStreak || 0) >= 7,
+      streak_30: (user.streak?.currentStreak || 0) >= 30,
+      streak_100: (user.streak?.currentStreak || 0) >= 100,
+      perfect_score: store.testResults.some(r => r.userId === user.id && r.percentage >= 100),
+      subject_master: false, // Needs subject-wise check
+      doubt_master: store.doubtSessions?.some(s => s.studentId === user.id && s.isResolved) || false,
+    }
   };
 }
 
@@ -3060,33 +3069,73 @@ export async function getOgcodeIndexData(
   };
 }
 
-async function buildLeaderboardEntriesFromDb(user: StoredUser, subject: string | null) {
+async function buildLeaderboardEntriesFromDb(user: StoredUser, subject: string | null, location?: string | null) {
   const userPool = getUserPostgresPool();
   const ogcodePool = getOgcodePostgresPool();
   if (!userPool || !ogcodePool) return [];
 
   // 1. Get all students from user pool
-  const usersResult = await userPool.query(`
-    SELECT id, name, avatar, total_study_time, streak
-    FROM origin_users
-    WHERE role = 'student'
-  `);
-  const users = usersResult.rows;
+  let users;
+  try {
+    const usersResult = await userPool.query(`
+      SELECT id, name, avatar, total_study_time, streak
+      FROM origin_users
+      WHERE role = 'student' ${location ? "AND location = $1" : ""}
+    `, location ? [location] : []);
+    users = usersResult.rows;
+  } catch (err: any) {
+    // If location column is missing, retry without the filter if possible, or throw
+    if (err.message?.includes('column "location" does not exist')) {
+      if (location) {
+        throw new Error("Regional leaderboard is currently unavailable (location data not configured in database).");
+      }
+      const usersResult = await userPool.query(`
+        SELECT id, name, avatar, total_study_time, streak
+        FROM origin_users
+        WHERE role = 'student'
+      `);
+      users = usersResult.rows;
+    } else {
+      throw err;
+    }
+  }
 
   // 2. Get performance data from ogcode pool
   // We aggregate from test_results. For 'overall', we sum across all subjects.
   const subjectFilter = subject ? "AND subject = $1" : "";
-  const queryParams = subject ? [subject] : [];
+  const locationFilter = location ? `AND u.location = $${subject ? 2 : 1}` : "";
+  const queryParams = [];
+  if (subject) queryParams.push(subject);
+  if (location) queryParams.push(location);
 
-  const resultsResult = await ogcodePool.query(`
-    SELECT
-      user_id,
-      SUM(correct_answers) as total_solved,
-      AVG(percentage) as avg_accuracy
-    FROM analytics.test_results
-    WHERE 1=1 ${subjectFilter}
-    GROUP BY user_id
-  `, queryParams);
+  let resultsResult;
+  try {
+    resultsResult = await ogcodePool.query(`
+      SELECT
+        user_id,
+        SUM(correct_answers) as total_solved,
+        AVG(percentage) as avg_accuracy
+      FROM analytics.test_results tr
+      ${location ? "JOIN origin_users u ON tr.user_id = u.id" : ""}
+      WHERE 1=1 ${subjectFilter} ${location ? "AND u.location = $" + (subject ? 2 : 1) : ""}
+      GROUP BY user_id
+    `, queryParams);
+  } catch (err: any) {
+    if (err.message?.includes('column "location" does not exist')) {
+      // Retry without location join/filter
+      resultsResult = await ogcodePool.query(`
+        SELECT
+          user_id,
+          SUM(correct_answers) as total_solved,
+          AVG(percentage) as avg_accuracy
+        FROM analytics.test_results tr
+        WHERE 1=1 ${subjectFilter}
+        GROUP BY user_id
+      `, subject ? [subject] : []);
+    } else {
+      throw err;
+    }
+  }
 
   const statsMap = new Map();
   resultsResult.rows.forEach(row => {
@@ -3131,16 +3180,21 @@ async function buildLeaderboardEntriesFromDb(user: StoredUser, subject: string |
     }));
 }
 
-export async function getOgcodeLeaderboard(store: AppStore, user: StoredUser, subject: string | null) {
+export async function getOgcodeLeaderboard(store: AppStore, user: StoredUser, subject: string | null, location?: string | null) {
   let entries;
   if (isUserPostgresConfigured() && isOgcodePostgresConfigured()) {
-    entries = await buildLeaderboardEntriesFromDb(user, subject);
+    entries = await buildLeaderboardEntriesFromDb(user, subject, location);
   } else {
     // Fallback: build entries from in-memory store
     const allSubjectRanks = store.subjectRanks;
     const rankedUsers = Array.from(
       allSubjectRanks
-        .filter((entry) => !subject || entry.subject === subject)
+        .filter((entry) => {
+          const matchesSubject = !subject || entry.subject === subject;
+          const userEntry = store.users.find(u => u.id === entry.userId);
+          const matchesLocation = !location || userEntry?.location === location;
+          return matchesSubject && matchesLocation;
+        })
         .reduce<Map<string, { solved: number; rankScore: number }>>((map, entry) => {
           const existing = map.get(entry.userId) ?? { solved: 0, rankScore: 0 };
           map.set(entry.userId, {
@@ -3152,18 +3206,22 @@ export async function getOgcodeLeaderboard(store: AppStore, user: StoredUser, su
         .entries(),
     )
       .sort(([, a], [, b]) => b.rankScore - a.rankScore)
-      .map(([userId, stats], index) => ({
-        userId,
-        name: store.users.find((u) => u.id === userId)?.name ?? "Unknown",
-        avatar: store.users.find((u) => u.id === userId)?.avatar ?? null,
-        questionsSolved: stats.solved,
-        rankScore: stats.rankScore,
-        accuracy: 0,
-        streak: 0,
-        xp: stats.solved * 10,
-        isMe: userId === user.id,
-        rank: index + 1,
-      }));
+      .map(([userId, stats], index) => {
+        const u = store.users.find((u) => u.id === userId);
+        return {
+          userId,
+          name: u?.name ?? "Unknown",
+          avatar: u?.avatar ?? null,
+          location: u?.location ?? null,
+          questionsSolved: stats.solved,
+          rankScore: stats.rankScore,
+          accuracy: 0,
+          streak: 0,
+          xp: stats.solved * 10,
+          isMe: userId === user.id,
+          rank: index + 1,
+        };
+      });
     entries = rankedUsers;
   }
 

@@ -27,6 +27,7 @@ import {
     Menu,
     X
 } from 'lucide-react';
+import { NotificationBell } from './NotificationBell';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { User, ViewState } from '@/types';
 import GlobalSearch from './GlobalSearch';
@@ -290,14 +291,7 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                                 <Search className="w-4 h-4" />
                             </motion.button>
 
-                            <motion.button 
-                                whileHover={{ scale: 1.1 }}
-                                whileTap={{ scale: 0.9 }}
-                                className="p-2 text-slate-500 dark:text-slate-400 hover:text-[#334155] dark:hover:text-white transition-colors relative bg-slate-100/50 dark:bg-white/5 rounded-full"
-                            >
-                                <Bell className="w-4 h-4" />
-                                <span className="absolute top-2 right-2.5 w-1.5 h-1.5 bg-rose-500 rounded-full ring-2 ring-white dark:ring-zinc-950 animate-pulse" />
-                            </motion.button>
+                            <NotificationBell />
 
                             <div className={cn(
                                 "h-6 w-px bg-slate-200 dark:bg-zinc-800 mx-1",

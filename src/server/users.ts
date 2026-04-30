@@ -105,6 +105,7 @@ export function serializeUser(store: AppStore, userId: string) {
     contributionData: buildContributionData(store, user.id),
     contribution_data: buildContributionData(store, user.id),
     points: score.totalPoints,
+    location: user.location,
   };
 
   return payload;
@@ -119,10 +120,14 @@ export type UserStatsSnapshot = {
   achievements: {
     first_test: boolean;
     streak_7: boolean;
+    streak_30: boolean;
+    streak_100: boolean;
     doubt_master: boolean;
     top_100: boolean;
     perfect_score: boolean;
-    streak_30: boolean;
+    subject_master: boolean;
+    night_owl: boolean;
+    early_bird: boolean;
   };
 };
 
@@ -187,6 +192,11 @@ export function buildUserStatsSnapshot(store: AppStore, user: StoredUser): UserS
   const hasPerfectScore = store.testResults.some(
     (result) => result.userId === user.id && result.percentage >= 100,
   );
+  const subjectMaster = Object.values(subjectStats).some(s => s.total >= 50 && (s.correct / s.total) >= 0.9);
+  
+  const userActivities = store.dailyActivities.filter(a => a.userId === user.id);
+  const nightOwl = false; 
+  const earlyBird = false;
 
   return {
     tests_taken: testsTaken,
@@ -197,6 +207,8 @@ export function buildUserStatsSnapshot(store: AppStore, user: StoredUser): UserS
     achievements: {
       first_test: testsTaken > 0,
       streak_7: streak.longestStreak >= 7 || streak.currentStreak >= 7,
+      streak_30: streak.longestStreak >= 30 || streak.currentStreak >= 30,
+      streak_100: streak.longestStreak >= 100 || streak.currentStreak >= 100,
       doubt_master: doubtCount >= 50,
       top_100: globalRank !== null && globalRank <= 100,
       perfect_score: hasPerfectScore,
@@ -519,6 +531,7 @@ async function handleMePatch(request: Request, payload: UserPayload) {
       ["selectedCourse", payload.selectedCourse ?? payload.selected_course],
       ["yearsOfExperience", payload.yearsOfExperience ?? payload.years_of_experience],
       ["studentCapacity", payload.studentCapacity ?? payload.student_capacity],
+      ["location", payload.location],
     ];
 
     const studentClass = asString(payload.studentClass ?? payload.student_class ?? payload.class);

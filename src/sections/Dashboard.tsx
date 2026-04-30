@@ -18,9 +18,27 @@ import { cn } from '@/lib/utils';
 import type { TimeType } from '@/hooks/useTimeTracker';
 
 const MOCK_EVENTS = [
-  { id: 1, title: 'Grand Mastery Test III', description: 'Compete nationwide in this ultimate simulation for JEE Advanced 2026', image: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?q=80&w=800&auto=format&fit=crop', date: 'March 15, 2026' },
-  { id: 2, title: 'Physics Olympiad Prep', description: 'Exclusive problem-solving session with former IPhO gold medalists', image: 'https://images.unsplash.com/photo-1636466497217-26c8cba22b10?q=80&w=800&auto=format&fit=crop', date: 'March 20, 2026' },
-  { id: 3, title: 'Calculus Marathon', description: '12-hour continuous problem-solving streaming event', image: 'https://images.unsplash.com/photo-1635070041078-e363dbe005cb?q=80&w=800&auto=format&fit=crop', date: 'April 5, 2026' },
+  { 
+    id: 1, 
+    title: 'Origin V1.0 is Live!', 
+    description: 'Welcome, O3 Minds! Your personalized rank booster just got a major upgrade. 🚀 Let\'s find those gaps.', 
+    image: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=1000&auto=format&fit=crop', 
+    badge: 'OCTOBER 15, 2026' 
+  },
+  { 
+    id: 2, 
+    title: 'The Reality Check: IPL vs. Exams', 
+    description: 'IPL will atahi rahega but jee/neet ekbarhi ayegaaa. 🏏📚💀 Focus on your *real* match now.', 
+    image: 'https://images.unsplash.com/photo-1540747913346-19e32dc3e97e?q=80&w=1000&auto=format&fit=crop', 
+    badge: 'IPL SEASON 2026' 
+  },
+  { 
+    id: 3, 
+    title: 'Study Plan vs. Reality', 
+    description: 'Let\'s reset that focus streak and stop doomscrolling. Origin knows your true power level. 🤓🔄📉', 
+    image: 'https://images.unsplash.com/photo-1555421689-d68471e189f2?q=80&w=1000&auto=format&fit=crop', 
+    badge: '3:00 AM (MONDAY)' 
+  },
 ];
 
 function EventsCarousel() {
@@ -44,7 +62,7 @@ function EventsCarousel() {
           <div className="absolute inset-0 bg-gradient-to-r from-blue-50/80 via-white/40 to-transparent dark:from-background dark:via-background/60 dark:to-transparent" />
           <div className="absolute inset-0 p-6 sm:p-10 flex flex-col justify-center">
             <span className="inline-block px-3 py-1 bg-blue-100/50 dark:bg-white/10 backdrop-blur-md border border-blue-200/50 dark:border-white/20 rounded-full text-[10px] font-black tracking-widest uppercase text-[#1D4ED8] dark:text-indigo-300 w-fit mb-4 shadow-sm">
-              {event.date}
+              {event.badge}
             </span>
             <h2 className="text-2xl sm:text-4xl font-black text-[#334155] dark:text-white mb-2 sm:mb-3 tracking-tight leading-tight max-w-2xl">{event.title}</h2>
             <p className="text-sm sm:text-base text-[#475569] dark:text-slate-300 max-w-xl leading-relaxed font-medium line-clamp-2 sm:line-clamp-none">{event.description}</p>
@@ -86,6 +104,10 @@ interface DashboardProps {
   initialChallenge?: DashboardChallengePreview | null;
 }
 
+import { useNotifications } from '@/context/NotificationContext';
+import { TIER_THRESHOLDS, getUserTitle } from '@/lib/achievements';
+import { useRef } from 'react';
+
 export default function Dashboard({
   user,
   onStartChallenge,
@@ -98,6 +120,7 @@ export default function Dashboard({
   initialPointsData = null,
   initialChallenge = null,
 }: DashboardProps) {
+  const { addNotification } = useNotifications();
   const [pointsData, setPointsData] = useState<{
     totalPoints: number;
     currentTier: string;
@@ -107,8 +130,28 @@ export default function Dashboard({
     recentLogs: { points: number; type: string; description: string; timestamp: string }[];
   } | null>(initialPointsData);
 
+  const prevTierRef = useRef<string | null>(pointsData?.currentTier || null);
+  const achievementsRef = useRef<Record<string, boolean>>({});
+
   const { availableWidth } = useLayout();
   const isConstrained = availableWidth < 1024;
+
+  // Track tier changes for notifications
+  useEffect(() => {
+    if (pointsData?.currentTier) {
+      if (prevTierRef.current && prevTierRef.current !== pointsData.currentTier) {
+        const newTier = TIER_THRESHOLDS.find(t => t.tier === pointsData.currentTier);
+        if (newTier) {
+          addNotification({
+            title: 'Rank Up! 🏆',
+            message: `Amazing! You've ascended to the ${newTier.tier} rank. Your dedication is paying off!`,
+            type: 'success'
+          });
+        }
+      }
+      prevTierRef.current = pointsData.currentTier;
+    }
+  }, [pointsData?.currentTier, addNotification]);
 
   useEffect(() => {
     if (initialPointsData) {
@@ -126,9 +169,85 @@ export default function Dashboard({
     fetchPoints();
   }, [initialPointsData]);
 
+  // Welcome notification & Achievement tracking
+  useEffect(() => {
+    if (!user) return;
+
+    // 1. Daily Welcome
+    const today = new Date().toISOString().split('T')[0];
+    const lastWelcome = localStorage.getItem(`welcome_${user.id}`);
+    
+    if (lastWelcome !== today) {
+      const title = getUserTitle(user);
+      const greeting = getGreeting();
+      const name = user.name.split(' ')[0];
+      
+      addNotification({
+        title: `${greeting}, ${title ? title + ' ' : ''}${name}! 👋`,
+        message: `Welcome back to Origin AI. Ready to push your boundaries today?`,
+        type: 'info'
+      });
+      localStorage.setItem(`welcome_${user.id}`, today);
+    }
+
+    // 2. Poll for stats/achievements periodically
+    const checkAchievements = async () => {
+      try {
+        const stats = await apiCall('/assessments/ogcode/user-stats/');
+        const newAchievements = stats.achievements || {};
+        
+        // Initial load - don't notify
+        if (Object.keys(achievementsRef.current).length === 0) {
+          achievementsRef.current = newAchievements;
+          return;
+        }
+
+        // Check for new unlocks
+        Object.entries(newAchievements).forEach(([key, unlocked]) => {
+          if (unlocked && !achievementsRef.current[key]) {
+            const achievementNames: Record<string, string> = {
+              streak_7: '7-Day Streak! 🔥',
+              streak_30: 'Monthly Warrior! 🛡️',
+              streak_100: 'Centurion! 💯',
+              perfect_score: 'Perfect Score! 🎯',
+              subject_master: 'Subject Master! 🧠',
+              doubt_master: 'Doubt Resolver! 💡',
+            };
+
+            if (achievementNames[key]) {
+              addNotification({
+                title: 'Achievement Unlocked!',
+                message: achievementNames[key],
+                type: 'success'
+              });
+            }
+          }
+        });
+        achievementsRef.current = newAchievements;
+      } catch (err) {
+        console.error("Failed to check achievements", err);
+      }
+    };
+
+    checkAchievements();
+    const interval = setInterval(checkAchievements, 60000 * 5); // Check every 5 mins
+    return () => clearInterval(interval);
+  }, [user, addNotification]);
+
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good Morning';
+    if (hour < 17) return 'Good Afternoon';
+    return 'Good Evening';
+  };
+
   useEffect(() => {
     setTimeMode('webpage');
   }, [setTimeMode]);
+
+  const displayName = getUserTitle(user) 
+    ? `${getUserTitle(user)} ${user.name.split(' ')[0]}` 
+    : user.name.split(' ')[0];
 
   return (
     <div className="min-h-screen bg-background font-sans selection:bg-primary/20 selection:text-primary transition-colors duration-500 relative overflow-x-hidden">
@@ -140,6 +259,19 @@ export default function Dashboard({
       </div>
 
       <main className="max-w-[1400px] mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6 sm:space-y-8 relative z-10">
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+          <div>
+            <h1 className="text-2xl sm:text-4xl font-black text-[#334155] dark:text-white tracking-tight">
+              {getGreeting()}, {displayName}!
+            </h1>
+            <p className="text-sm sm:text-base text-slate-500 dark:text-slate-400 font-medium mt-1">
+              {pointsData?.pointsToNext && pointsData.pointsToNext > 0 
+                ? `You're just ${pointsData.pointsToNext.toLocaleString()} pts away from becoming a ${pointsData.nextTier}!`
+                : "You've reached the absolute peak of excellence!"}
+            </p>
+          </div>
+        </div>
+
         <motion.div
           id="tutorial-events"
           initial={{ opacity: 0, scale: 0.98 }}
@@ -200,7 +332,14 @@ export default function Dashboard({
           <div id="tutorial-todo" className="w-full">
             <TodoListCard 
               tasks={tasks}
-              onAddTask={onAddTask}
+              onAddTask={(text, due) => {
+                onAddTask(text, due);
+                addNotification({
+                  title: 'Goal Set!',
+                  message: `"${text}" has been added to your goals. Stay focused!`,
+                  type: 'success'
+                });
+              }}
               onToggleTask={onToggleTask}
               onRemoveTask={onRemoveTask}
               onViewAll={() => onNavigate('tasks-goals')}

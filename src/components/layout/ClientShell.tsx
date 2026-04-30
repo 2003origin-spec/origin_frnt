@@ -102,6 +102,29 @@ function ClientShellInner({ children }: { children: React.ReactNode }) {
     return () => window.clearTimeout(timeoutId);
   }, [mounted]);
 
+  // Route-based default theme initialization
+  React.useEffect(() => {
+    if (!mounted) return;
+
+    const isLanding = pathname === '/';
+    // Define app routes as anything authenticated and not a public/auth page
+    const isApp = !!user && !['/', '/auth', '/role-selection'].includes(pathname);
+
+    if (isLanding) {
+      const landingInit = localStorage.getItem('origin-landing-init');
+      if (!landingInit) {
+        setTheme('dark');
+        localStorage.setItem('origin-landing-init', 'true');
+      }
+    } else if (isApp) {
+      const appInit = localStorage.getItem('origin-app-init');
+      if (!appInit) {
+        setTheme('light');
+        localStorage.setItem('origin-app-init', 'true');
+      }
+    }
+  }, [pathname, user, mounted, setTheme]);
+
   const prefetchRoute = React.useCallback((view: string) => {
     router.prefetch(resolveRoute(view));
   }, [router]);

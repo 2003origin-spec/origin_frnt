@@ -69,7 +69,15 @@ export default function RootLayout({
   );
 }
 
+import { NotificationProvider } from "@/context/NotificationContext";
+
 async function AuthBootstrap({ children }: { children: React.ReactNode }) {
   const initialUser = await getServerFrontendUser();
-  return <AuthProvider initialUser={initialUser}>{children}</AuthProvider>;
+  return (
+    <AuthProvider initialUser={initialUser}>
+      <NotificationProvider>
+        {children}
+      </NotificationProvider>
+    </AuthProvider>
+  );
 }

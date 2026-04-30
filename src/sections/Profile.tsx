@@ -25,12 +25,14 @@ import {
   Sun,
   Moon,
   Sparkles,
+  MapPin,
 } from 'lucide-react';
 import { apiCall } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { updateProfileAction } from '@/server/actions/profile-actions';
 import type { User as UserType, StreakData } from '@/types';
 import PhotoBooth from '@/components/profile/PhotoBooth';
+import { INDIAN_STATES } from '@/lib/constants';
 
 interface ProfileProps {
   user: UserType;
@@ -56,6 +58,8 @@ interface ProfileStats {
   };
 }
 
+import { getUserTitle } from '@/lib/achievements';
+
 export default function Profile({
   user,
   streakData,
@@ -69,12 +73,27 @@ export default function Profile({
   const [isEditing, setIsEditing] = useState(false);
   const [profileStats, setProfileStats] = useState<ProfileStats | null>(initialProfileStats);
 
+  const title = getUserTitle(user);
+  const displayName = title ? `${title} ${user.name}` : user.name;
+
   const [editData, setEditData] = useState({
     name: user.name,
     class: user.class || '',
     selectedCourse: user.selectedCourse || '',
     subjects: user.subjects || [],
+    location: user.location || '',
   });
+
+  // Sync state with user prop if updated externally
+  useEffect(() => {
+    setEditData({
+      name: user.name,
+      class: user.class || '',
+      selectedCourse: user.selectedCourse || '',
+      subjects: user.subjects || [],
+      location: user.location || '',
+    });
+  }, [user]);
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
@@ -99,6 +118,7 @@ export default function Profile({
         class: updatedUser.class || '',
         selectedCourse: updatedUser.selectedCourse || '',
         subjects: updatedUser.subjects || [],
+        location: updatedUser.location || '',
       });
       await refreshUser();
       setIsEditing(false);
@@ -205,7 +225,7 @@ export default function Profile({
                         autoFocus
                       />
                     ) : (
-                      <h2 className="text-3xl font-black tracking-tight">{user.name}</h2>
+                      <h2 className="text-3xl font-black tracking-tight">{displayName}</h2>
                     )}
                     {user.isPremium && (
                       <Badge className="bg-gradient-to-r from-amber-400 to-orange-500 text-white shadow-lg shadow-orange-500/20 border-0 h-6">
@@ -249,6 +269,21 @@ export default function Profile({
                             </select>
                           </div>
                         </div>
+                        <div className="flex gap-4">
+                          <div className="flex-1 space-y-2">
+                            <label className="text-[10px] font-bold uppercase text-slate-500">Region/State</label>
+                            <select
+                              value={editData.location}
+                              onChange={(e) => setEditData({ ...editData, location: e.target.value })}
+                              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2 text-sm font-bold text-slate-800 dark:text-white"
+                            >
+                              <option value="">Select Region</option>
+                              {INDIAN_STATES.map(state => (
+                                <option key={state} value={state}>{state}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
                         <div className="space-y-2">
                           <label className="text-[10px] font-bold uppercase text-slate-500">Subjects</label>
                           <div className="flex flex-wrap gap-2">
@@ -281,6 +316,10 @@ export default function Profile({
                         <Badge variant="secondary" className="px-3.5 py-1.5 bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 border-0 shadow-sm font-bold text-[10px] uppercase tracking-wider">
                           <Target className="w-3.5 h-3.5 mr-1.5" />
                           {editData.selectedCourse || 'No Course'}
+                        </Badge>
+                        <Badge variant="secondary" className="px-3.5 py-1.5 bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 border-0 shadow-sm font-bold text-[10px] uppercase tracking-wider">
+                          <MapPin className="w-3.5 h-3.5 mr-1.5" />
+                          {editData.location || 'Global'}
                         </Badge>
                         <div className="flex flex-wrap gap-2 mt-2">
                           {editData.subjects.map((s: string) => (

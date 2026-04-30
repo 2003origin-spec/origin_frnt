@@ -160,7 +160,12 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
     if (root === "ogcode" && first === "leaderboard") {
       const url = new URL(request.url);
-      return ok(await getOgcodeLeaderboard(store, user, url.searchParams.get("subject")));
+      return ok(await getOgcodeLeaderboard(
+        store,
+        user,
+        url.searchParams.get("subject"),
+        url.searchParams.get("location")
+      ));
     }
 
     if (root === "focus-areas") {

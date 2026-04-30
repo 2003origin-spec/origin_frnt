@@ -44,6 +44,7 @@ export interface StoredUser {
   yearsOfExperience: string | null;
   subjects: string[];
   studentCapacity: string | null;
+  location: string | null;
 }
 
 export interface StoredStreakData {
@@ -463,6 +464,7 @@ type SeedUserConfig = {
   yearsOfExperience?: string | null;
   subjects?: string[];
   studentCapacity?: string | null;
+  location?: string | null;
 };
 
 type SeedQuestion = Question & {
@@ -561,6 +563,7 @@ function createSeedUser(config: SeedUserConfig): StoredUser {
     yearsOfExperience: config.yearsOfExperience ?? null,
     subjects: config.subjects ?? [],
     studentCapacity: config.studentCapacity ?? null,
+    location: config.location ?? null,
   };
 }
 
