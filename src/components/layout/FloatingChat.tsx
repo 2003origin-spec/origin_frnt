@@ -60,10 +60,10 @@ export default function FloatingChat({ onOpen, hideMainButton }: FloatingChatPro
             }}
             aria-label="Ask Origin AI about the selected text"
           >
-            <div className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-indigo-500/10 p-0.5">
+            <div className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-primary/10 p-0.5">
               <img src="/Dipraj-ChatBot.png" alt="Origin AI" className="h-full w-full object-contain" />
             </div>
-            <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-900 dark:text-indigo-200">
+            <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-900 dark:text-primary/80">
               Ask Origin AI
             </span>
           </motion.button>
@@ -82,7 +82,7 @@ export default function FloatingChat({ onOpen, hideMainButton }: FloatingChatPro
             aria-label="Open Origin AI"
           >
             <div className="relative group">
-              <div className="absolute inset-0 rounded-full bg-indigo-500/20 blur-2xl scale-0 transition-transform duration-500 group-hover:scale-150" />
+              <div className="absolute inset-0 rounded-full bg-primary/20 blur-2xl scale-0 transition-transform duration-500 group-hover:scale-150" />
               <div className="absolute inset-0 z-0 flex items-center justify-center text-blue-100">
                 <Sparkles className="h-7 w-7" />
               </div>

@@ -26,7 +26,7 @@ export const TutorialOverlay: React.FC = () => {
       if (step.targetId === 'tutorial-mentor' && !element) {
         document.getElementById('tutorial-mentor-trigger')?.click();
         // Wait a bit for the animation to start and element to appear
-        setTimeout(updatePosition, 100);
+        setTimeout(updatePosition, 300);
         return;
       }
 
@@ -150,7 +150,7 @@ export const TutorialOverlay: React.FC = () => {
                 )}
                 <Button 
                   onClick={nextStep}
-                  className="relative overflow-hidden bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-full px-8 py-6 h-auto text-[11px] font-black uppercase tracking-[0.2em] shadow-[0_10px_20px_-5px_rgba(37,99,235,0.4)] transition-all hover:scale-105 active:scale-95 group border-none"
+                  className="relative overflow-hidden bg-primary hover:opacity-90 text-white rounded-full px-6 h-10 text-[11px] font-black uppercase tracking-[0.2em] shadow-lg shadow-primary/20 transition-all hover:scale-105 active:scale-95 group border-none"
                 >
                   <span className="relative z-10 flex items-center">
                     {currentStep === steps.length - 1 ? 'Finish Journey' : 'Next Protocol'}
