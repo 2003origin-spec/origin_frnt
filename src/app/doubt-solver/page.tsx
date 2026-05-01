@@ -13,6 +13,6 @@ export default function DoubtSolverPage() {
 
 async function DoubtSolverGate() {
   const user = await getServerUser();
-  if (!user) redirect('/auth?next=/doubt-solver');
+  if (!user) redirect('/');
   return <DoubtSolverClient />;
 }

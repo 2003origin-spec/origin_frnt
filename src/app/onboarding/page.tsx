@@ -13,6 +13,6 @@ export default function OnboardingPageRoute() {
 
 async function OnboardingGate() {
   const user = await getServerUser();
-  if (!user) redirect('/auth?next=/onboarding');
+  if (!user) redirect('/');
   return <OnboardingClient />;
 }

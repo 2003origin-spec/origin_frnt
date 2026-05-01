@@ -208,7 +208,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
       setTasks([]);
       tasksFetched.current = false;
       clearOriginAiBrowserSession();
-      router.push('/auth');
+      router.push('/');
       toast.error('Your session expired. Please log in again.');
     };
     const handleTokenRefreshed = (e: Event) => {

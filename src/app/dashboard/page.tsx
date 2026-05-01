@@ -20,7 +20,7 @@ export default function DashboardPage() {
 
 async function DashboardGate() {
   const user = await getServerUser();
-  if (!user) redirect('/auth?next=/dashboard');
+  if (!user) redirect('/');
 
   let initialTasks: Task[] = [];
   let initialPointsData: Awaited<ReturnType<typeof getPointsSummaryForRender>> | null = null;

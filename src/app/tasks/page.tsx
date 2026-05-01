@@ -15,7 +15,7 @@ export default function TasksPage() {
 
 async function TasksGate() {
   const user = await getServerUser();
-  if (!user) redirect('/auth?next=/tasks');
+  if (!user) redirect('/');
 
   let initialTasks: Task[] = [];
   try {

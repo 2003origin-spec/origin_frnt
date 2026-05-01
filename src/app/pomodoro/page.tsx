@@ -13,6 +13,6 @@ export default function PomodoroPage() {
 
 async function PomodoroGate() {
   const user = await getServerUser();
-  if (!user) redirect('/auth?next=/pomodoro');
+  if (!user) redirect('/');
   return <PomodoroClient />;
 }

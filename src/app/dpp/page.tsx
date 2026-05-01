@@ -15,7 +15,7 @@ export default function DPPPage() {
 
 async function DPPGate() {
   const user = await getServerUser();
-  if (!user) redirect('/auth?next=/dpp');
+  if (!user) redirect('/');
 
   let initialDpps: GeneratedDppForRender[] | null = null;
   try {

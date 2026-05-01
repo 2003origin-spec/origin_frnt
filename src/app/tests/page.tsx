@@ -16,7 +16,7 @@ export default function TestsPage() {
 
 async function TestsContent() {
   const serverUser = await getServerUser();
-  if (!serverUser) redirect('/auth?next=/tests');
+  if (!serverUser) redirect('/');
 
   let initialTests: TestPreview[] = [];
   try {

@@ -51,7 +51,7 @@ function normalizeStatus(status: string | undefined): 'solved' | 'unsolved' | nu
 
 async function OGCodeContent({ searchParams }: PageProps) {
   const serverUser = await getServerUser();
-  if (!serverUser) redirect('/auth?next=/ogcode');
+  if (!serverUser) redirect('/');
 
   const resolvedSearchParams = await searchParams;
   let initialData: Awaited<ReturnType<typeof getOgcodeIndexDataForRender>> | null = null;

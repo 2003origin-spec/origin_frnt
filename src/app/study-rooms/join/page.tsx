@@ -5,6 +5,6 @@ import JoinStudyRoomClient from './_client';
 
 export default async function JoinStudyRoomPage() {
   const user = await getServerUser();
-  if (!user) redirect('/auth?next=/study-rooms/join');
+  if (!user) redirect('/');
   return <JoinStudyRoomClient />;
 }

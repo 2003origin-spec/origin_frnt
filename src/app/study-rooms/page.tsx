@@ -15,7 +15,7 @@ export default function StudyRoomsPage() {
 
 async function StudyRoomsGate() {
   const user = await getServerUser();
-  if (!user) redirect('/auth?next=/study-rooms');
+  if (!user) redirect('/');
 
   let rooms: RoomSummary[] = [];
   try {

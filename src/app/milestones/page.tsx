@@ -15,7 +15,7 @@ export default function MilestonesPage() {
 
 async function MilestonesContent() {
   const serverUser = await getServerUser();
-  if (!serverUser) redirect('/auth?next=/milestones');
+  if (!serverUser) redirect('/');
 
   let initialPoints = 0;
   try {

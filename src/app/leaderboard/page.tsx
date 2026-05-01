@@ -15,7 +15,7 @@ export default function LeaderboardPage() {
 
 async function LeaderboardContent() {
   const serverUser = await getServerUser();
-  if (!serverUser) redirect('/auth?next=/leaderboard');
+  if (!serverUser) redirect('/');
 
   let initialLeaderboard: unknown[] = [];
   let initialMyRank: number | null = null;

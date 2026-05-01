@@ -14,7 +14,7 @@ export default function ProfilePage() {
 
 async function ProfileGate() {
   const user = await getServerUser();
-  if (!user) redirect('/auth?next=/profile');
+  if (!user) redirect('/');
 
   let initialProfileStats: Awaited<ReturnType<typeof getProfileStatsForRender>> | null = null;
   try {
