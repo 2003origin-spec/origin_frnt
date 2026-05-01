@@ -258,7 +258,7 @@ export default function AuthPage({
                   </div>
                 )}
 
-                {isLogin || step === 'form' ? (
+                {(isLogin && userRole !== 'admin') || step === 'form' ? (
                   <>
                     <div className="space-y-2">
                       <Label htmlFor="email" className="text-slate-700 dark:text-slate-300">Email</Label>
