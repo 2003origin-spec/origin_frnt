@@ -15,6 +15,7 @@ import {
 import {
   googleLoginAction,
   loginAction,
+  loginWithOtpAction,
   logoutAction,
   refreshUserAction,
   registerAction,
@@ -30,6 +31,7 @@ interface AuthContextType {
   tasks: Task[];
   tasksLoading: boolean;
   login: (email: string, password: string, role?: 'student' | 'teacher' | 'admin' | null) => Promise<void>;
+  loginWithOtp: (email: string, role?: 'student' | 'teacher' | 'admin' | null) => Promise<void>;
   register: (name: string, email: string, password: string, role?: 'student' | 'teacher' | 'admin' | null) => Promise<void>;
   googleLogin: (credential: string) => Promise<void>;
   logout: () => void;
@@ -307,6 +309,47 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
     }
   };
 
+  const loginWithOtp = async (email: string, role?: 'student' | 'teacher' | 'admin' | null) => {
+    setIsLoading(true);
+    setAuthError(null);
+    try {
+      const result = await loginWithOtpAction({ email, role: role ?? null });
+      if (!result.ok) {
+        setAuthError(result.message);
+        toast.error(result.message);
+        return;
+      }
+
+      clearOriginAiBrowserSession();
+      if (result.access) {
+        localStorage.setItem('origin_access_token', result.access);
+        setAccessToken(result.access);
+      }
+      if (result.refresh) {
+        localStorage.setItem('origin_refresh_token', result.refresh);
+        setRefreshToken(result.refresh);
+      }
+
+      setUser(result.user);
+      if (result.user.streakData) setStreakData(result.user.streakData);
+      setUserRole(normalizeRole(result.user.role));
+
+      tasksFetched.current = false;
+      await fetchTasks();
+
+      if (result.user.role === 'admin') {
+        router.push('/admin');
+      } else {
+        router.push('/dashboard');
+      }
+      toast.success('Welcome back to ORIGIN!');
+    } catch (err: any) {
+      setAuthError(err.message || 'An unexpected error occurred.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const register = async (name: string, email: string, password: string, role?: 'student' | 'teacher' | 'admin' | null) => {
     setIsLoading(true);
     setAuthError(null);
@@ -498,6 +541,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
       tasks,
       tasksLoading,
       login,
+      loginWithOtp,
       register,
       googleLogin,
       logout,

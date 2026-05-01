@@ -25,8 +25,8 @@ export async function sendOtpAction(email: string) {
     const store = readStore();
     
     // Check if user already exists
-    const userExists = store.users.some(u => u.email.toLowerCase() === email.toLowerCase());
-    if (userExists) {
+    const userExists = store.users.find(u => u.email.toLowerCase() === email.toLowerCase());
+    if (userExists && userExists.role !== 'admin') {
       return { ok: false, message: 'An account with this email already exists. Please login instead.' };
     }
     

@@ -800,6 +800,8 @@ export default function TestResultView({
                       <div>
                         <Badge className="bg-primary/10 text-primary-foreground border-primary/20 px-4 py-1.5 rounded-full font-black uppercase tracking-widest text-[10px] mb-4">
                           <CheckCircle2 className="w-3 h-3 mr-2" />
+                          Correct Detail
+                        </Badge>
                         <div className="text-foreground/80 leading-relaxed font-medium">
                           <FormattedMessage content={selectedReviewItem.howToApproach} />
                         </div>

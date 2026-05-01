@@ -7,7 +7,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 
 function AuthPageContent() {
-  const { user, userRole, login, register, googleLogin, isLoading, authError, sendOtp, verifyOtp } = useAuth();
+  const { user, userRole, login, loginWithOtp, register, googleLogin, isLoading, authError, sendOtp, verifyOtp } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const requestedRole = searchParams.get('role');
@@ -42,6 +42,7 @@ function AuthPageContent() {
           : selectedRole ?? (userRole as any)
       }
       onLogin={login}
+      onLoginWithOtp={loginWithOtp}
       onRegister={register}
       onGoogleLogin={googleLogin}
       sendOtp={sendOtp}

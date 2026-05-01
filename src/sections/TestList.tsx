@@ -145,6 +145,8 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
         return 'bg-primary/20 text-primary';
       default:
         return 'bg-slate-100 text-slate-600 dark:bg-slate-900/40 dark:text-slate-400';
+    }
+  };
 
   const getDifficultyColor = (difficulty: string) => {
     switch (difficulty.toLowerCase()) {

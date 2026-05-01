@@ -309,6 +309,37 @@ export async function handleLogin(payload: UserPayload) {
   });
 }
 
+export async function handleLoginWithOtp(payload: UserPayload) {
+  const email = asString(payload.email)?.trim().toLowerCase();
+  const role = asString(payload.role)?.trim().toLowerCase();
+
+  if (!email) {
+    return badRequest('Must include "email".');
+  }
+
+  return withStore((store) => {
+    // Check if OTP was verified for this email
+    const isVerified = store.otps.some(o => o.email.toLowerCase() === email && o.verified === true);
+    if (!isVerified) {
+      return unauthorized("Email verification required.");
+    }
+
+    const user = store.users.find((entry) => entry.email.toLowerCase() === email && (role ? entry.role === role : true));
+    if (!user) {
+      return notFound("User not found.");
+    }
+
+    const session = createAuthSession(store, user.id);
+    const userData = serializeUser(store, user.id);
+    if (!userData) return notFound("User not found.");
+
+    // Clean up OTP after successful login
+    store.otps = store.otps.filter(o => o.email.toLowerCase() !== email);
+
+    return ok({ user: userData, refresh: session.refreshToken, access: session.accessToken });
+  });
+}
+
 const REGISTRATION_LIMIT = 110;
 
 export async function getRegistrationStatus() {

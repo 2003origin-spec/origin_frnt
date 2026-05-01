@@ -3,7 +3,7 @@
 import { cookies } from 'next/headers';
 import { revalidatePath } from 'next/cache';
 
-import { handleGoogleLogin, handleLogin, handleRegister, handleRefresh, serializeUser } from '@/server/users';
+import { handleGoogleLogin, handleLogin, handleRegister, handleRefresh, serializeUser, handleLoginWithOtp } from '@/server/users';
 import { readStore, writeStore } from '@/server/store';
 import { getServerUser } from '@/lib/auth-server';
 import type { User } from '@/types';
@@ -81,6 +81,22 @@ export async function loginAction(input: {
   const response = await handleLogin({
     email: input.email,
     password: input.password,
+    role: input.role ?? undefined,
+  });
+  const parsed = await parseAuthResponse(response);
+  if (parsed.ok) {
+    await setSessionCookies(parsed.access, parsed.refresh);
+    revalidatePath('/', 'layout');
+  }
+  return parsed;
+}
+
+export async function loginWithOtpAction(input: {
+  email: string;
+  role?: 'student' | 'teacher' | 'admin' | null;
+}): Promise<AuthResult> {
+  const response = await handleLoginWithOtp({
+    email: input.email,
     role: input.role ?? undefined,
   });
   const parsed = await parseAuthResponse(response);

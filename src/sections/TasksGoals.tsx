@@ -119,6 +119,10 @@ export default function TasksGoals({ tasks, onAddTask, onToggleTask, onRemoveTas
           isConstrained ? "grid-cols-2" : "grid-cols-2 md:grid-cols-4"
         )}>
           {[
+            { label: 'Total Tasks', value: stats.total, icon: ListTodo, color: 'rose' },
+            { label: 'Completed', value: stats.completed, icon: CheckCircle2, color: 'emerald' },
+            { label: 'Pending', value: stats.pending, icon: Clock, color: 'amber' },
+            { label: 'Overdue', value: stats.overdue, icon: AlertCircle, color: 'rose' }
           ].map((stat, i) => (
             <motion.div
               key={stat.label}

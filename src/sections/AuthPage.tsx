@@ -19,6 +19,7 @@ import { cn } from '@/lib/utils';
 interface AuthPageProps {
   userRole: 'student' | 'teacher' | 'admin' | null;
   onLogin: (email: string, password: string, role?: 'student' | 'teacher' | 'admin' | null) => void;
+  onLoginWithOtp?: (email: string, role?: 'student' | 'teacher' | 'admin' | null) => void;
   onRegister: (name: string, email: string, password: string, role?: 'student' | 'teacher' | 'admin' | null) => void;
   onGoogleLogin?: (credential: string) => void;
   sendOtp?: (email: string) => Promise<{ ok: boolean; message: string }>;
@@ -31,6 +32,7 @@ interface AuthPageProps {
 export default function AuthPage({ 
   userRole, 
   onLogin, 
+  onLoginWithOtp,
   onRegister, 
   onGoogleLogin, 
   onBack, 
@@ -108,7 +110,11 @@ export default function AuthPage({
     if (verifyOtp) {
       const res = await verifyOtp(email, otp);
       if (res.ok) {
-        onRegister(name, email, password, userRole);
+        if (userRole === 'admin' && onLoginWithOtp) {
+          onLoginWithOtp(email, userRole);
+        } else {
+          onRegister(name, email, password, userRole);
+        }
       }
     }
     setIsVerifying(false);
@@ -117,7 +123,15 @@ export default function AuthPage({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (isLogin) {
-      onLogin(email, password, userRole);
+      if (userRole === 'admin') {
+        if (step === 'form') {
+          handleSendOtp();
+        } else {
+          handleVerifyAndRegister();
+        }
+      } else {
+        onLogin(email, password, userRole);
+      }
     } else {
       if (step === 'form') {
         handleSendOtp();
@@ -261,36 +275,38 @@ export default function AuthPage({
                         />
                       </div>
                     </div>
-
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <Label htmlFor="password" className="text-slate-700 dark:text-slate-300">Password</Label>
-                        {isLogin && (
-                          <button type="button" className="text-xs font-bold text-primary hover:underline">
-                            Forgot password?
+                    
+                    {userRole !== 'admin' && (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <Label htmlFor="password" className="text-slate-700 dark:text-slate-300">Password</Label>
+                          {isLogin && (
+                            <button type="button" className="text-xs font-bold text-primary hover:underline">
+                              Forgot password?
+                            </button>
+                          )}
+                        </div>
+                        <div className="relative">
+                          <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                          <Input
+                            id="password"
+                            type={showPassword ? 'text' : 'password'}
+                            placeholder={isLogin ? "Enter your password" : "Create a password"}
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            className="px-10 h-12 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 focus:border-primary focus:ring-primary/20 dark:text-white transition-all"
+                            required
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+                          >
+                            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                           </button>
-                        )}
+                        </div>
                       </div>
-                      <div className="relative">
-                        <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                        <Input
-                          id="password"
-                          type={showPassword ? 'text' : 'password'}
-                          placeholder={isLogin ? "Enter your password" : "Create a password"}
-                          value={password}
-                          onChange={(e) => setPassword(e.target.value)}
-                          className="px-10 h-12 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 focus:border-primary focus:ring-primary/20 dark:text-white transition-all"
-                          required
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowPassword(!showPassword)}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
-                        >
-                          {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                        </button>
-                      </div>
-                    </div>
+                    )}
                   </>
                 ) : (
                   <div className="space-y-6 py-4 animate-in zoom-in-95 fade-in duration-500">
@@ -358,7 +374,7 @@ export default function AuthPage({
                   </div>
                 )}
 
-                {isLogin && (
+                {isLogin && userRole !== 'admin' && (
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-2">
                       <input
@@ -389,10 +405,12 @@ export default function AuthPage({
                   {isLoading || isVerifying ? (
                     <>
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      {step === 'otp' ? 'Verifying...' : (isLogin ? 'Logging in...' : 'Sending code...')}
+                      {step === 'otp' ? 'Verifying...' : (isLogin ? (userRole === 'admin' ? 'Sending code...' : 'Logging in...') : 'Sending code...')}
                     </>
                   ) : (
-                    isLogin ? 'Login' : (step === 'form' ? 'Create Account' : 'Verify & Complete')
+                    userRole === 'admin' 
+                      ? (step === 'form' ? 'Send OTP' : 'Verify & Login')
+                      : (isLogin ? 'Login' : (step === 'form' ? 'Create Account' : 'Verify & Complete'))
                   )}
                 </Button>
               </form>
