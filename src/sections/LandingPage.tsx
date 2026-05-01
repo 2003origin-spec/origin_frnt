@@ -383,9 +383,11 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
                   <span className="text-[10px] font-black uppercase tracking-[0.2em]">Limited Access: {regStatus.seatsLeft} Seats Left</span>
                 </motion.div>
               )} */}
-              <h1 className="text-6xl sm:text-8xl lg:text-9xl font-black tracking-tighter leading-[1.1] text-gray-900 dark:text-white">
-                <span>The Topper Knew Something</span>
-                <span className="block text-4xl sm:text-6xl lg:text-7xl bg-gradient-to-r from-primary via-primary/90 to-primary bg-clip-text text-transparent mt-6">You didn't. Now you do.</span>
+              <h1 className="text-6xl sm:text-8xl lg:text-9xl font-black tracking-tighter leading-[0.9] text-gray-900 dark:text-white flex flex-col items-center">
+                <span className="opacity-90">The Topper Knew Something</span>
+                <span className="block text-4xl sm:text-7xl lg:text-[9rem] xl:text-[11rem] bg-gradient-to-r from-primary via-primary/90 to-primary bg-clip-text text-transparent mt-4 pb-4">
+                  You didn't. Now you do.
+                </span>
               </h1>
             </div>
             <p className="text-lg sm:text-xl md:text-2xl text-gray-600 dark:text-white/80 max-w-2xl mx-auto font-medium leading-relaxed">
