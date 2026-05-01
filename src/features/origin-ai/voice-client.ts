@@ -250,8 +250,7 @@ async function speakWithBrowserFallback(text: string): Promise<void> {
  * - Strips markdown formatting
  * - Merges very short fragments
  * - Caps each chunk at 250 chars
- * - Returns at most 5 chunks (first part of the response)
- *   so TTS stays fast and natural without reading a whole essay.
+ * - Returns all chunks so spoken replies do not stop before the main explanation.
  */
 function splitIntoTtsChunks(text: string): string[] {
   // Strip markdown and normalise whitespace
@@ -284,8 +283,7 @@ function splitIntoTtsChunks(text: string): string[] {
   }
   if (buffer) merged.push(buffer);
 
-  // Only speak the first 5 chunks — keeps voice response snappy
-  return merged.slice(0, 5);
+  return merged;
 }
 
 
@@ -323,7 +321,7 @@ async function startSpeechRecognitionPipeline(
       if (finalTranscript.trim()) {
         finishTurn();
       }
-    }, 1500); // 1.5s of silence triggers completion
+    }, 700); // 0.7s of silence triggers completion
   };
 
   const finishTurn = () => {
