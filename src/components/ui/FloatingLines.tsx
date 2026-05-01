@@ -1,18 +1,15 @@
-'use client';
 import { useEffect, useRef } from 'react';
 import {
-  Scene,
-  OrthographicCamera,
-  WebGLRenderer,
-  PlaneGeometry,
+  Clock,
   Mesh,
+  OrthographicCamera,
+  PlaneGeometry,
+  Scene,
   ShaderMaterial,
-  Vector3,
   Vector2,
-  Timer
+  Vector3,
+  WebGLRenderer
 } from 'three';
-
-import './FloatingLines.css';
 
 const vertexShader = `
 precision highp float;
@@ -194,7 +191,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     }
   }
 
-  fragColor = vec4(col, 1.0);
+  float alpha = clamp(max(col.r, max(col.g, col.b)) * 2.0, 0.0, 1.0);
+  fragColor = vec4(col, alpha);
 }
 
 void main() {
@@ -278,7 +276,6 @@ export default function FloatingLines({
   const currentInfluenceRef = useRef<number>(0);
   const targetParallaxRef = useRef<Vector2>(new Vector2(0, 0));
   const currentParallaxRef = useRef<Vector2>(new Vector2(0, 0));
-  const isDraggingRef = useRef(false);
 
   const getLineCount = (waveType: 'top' | 'middle' | 'bottom'): number => {
     if (typeof lineCount === 'number') return lineCount;
@@ -303,18 +300,22 @@ export default function FloatingLines({
   const bottomLineDistance = enabledWaves.includes('bottom') ? getLineDistance('bottom') * 0.01 : 0.01;
 
   useEffect(() => {
-    if (!containerRef.current) return;
+    const container = containerRef.current;
+    if (!container) return;
+
+    let active = true;
 
     const scene = new Scene();
 
     const camera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
     camera.position.z = 1;
 
-    const renderer = new WebGLRenderer({ antialias: true, alpha: false });
+    const renderer = new WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setClearColor(0x000000, 0);
     renderer.domElement.style.width = '100%';
     renderer.domElement.style.height = '100%';
-    containerRef.current.appendChild(renderer.domElement);
+    container.appendChild(renderer.domElement);
 
     const uniforms = {
       iTime: { value: 0 },
@@ -387,13 +388,12 @@ export default function FloatingLines({
     const mesh = new Mesh(geometry, material);
     scene.add(mesh);
 
-    const timer = new Timer();
+    const clock = new Clock();
 
     const setSize = () => {
-      if (!containerRef.current) return;
-      const el = containerRef.current;
-      const width = el.clientWidth || 1;
-      const height = el.clientHeight || 1;
+      if (!active) return;
+      const width = container.clientWidth || 1;
+      const height = container.clientHeight || 1;
 
       renderer.setSize(width, height, false);
 
@@ -404,38 +404,24 @@ export default function FloatingLines({
 
     setSize();
 
-    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(setSize) : null;
+    const ro =
+      typeof ResizeObserver !== 'undefined'
+        ? new ResizeObserver(() => {
+            if (!active) return;
+            setSize();
+          })
+        : null;
 
-    if (ro && containerRef.current) {
-      ro.observe(containerRef.current);
-    }
-
-
-
-    const handlePointerDown = (event: PointerEvent) => {
-      isDraggingRef.current = true;
-      const rect = renderer.domElement.getBoundingClientRect();
-      const x = event.clientX - rect.left;
-      const y = event.clientY - rect.top;
-      const dpr = renderer.getPixelRatio();
-      targetMouseRef.current.set(x * dpr, (rect.height - y) * dpr);
-      targetInfluenceRef.current = 1.0;
-    };
-
-    const handlePointerUp = () => {
-      isDraggingRef.current = false;
-      targetInfluenceRef.current = 0.0;
-    };
+    if (ro) ro.observe(container);
 
     const handlePointerMove = (event: PointerEvent) => {
-      if (!isDraggingRef.current) return;
-
       const rect = renderer.domElement.getBoundingClientRect();
       const x = event.clientX - rect.left;
       const y = event.clientY - rect.top;
       const dpr = renderer.getPixelRatio();
 
       targetMouseRef.current.set(x * dpr, (rect.height - y) * dpr);
+      targetInfluenceRef.current = 1.0;
 
       if (parallax) {
         const centerX = rect.width / 2;
@@ -446,17 +432,20 @@ export default function FloatingLines({
       }
     };
 
+    const handlePointerLeave = () => {
+      targetInfluenceRef.current = 0.0;
+    };
+
     if (interactive) {
-      window.addEventListener('pointerdown', handlePointerDown);
-      window.addEventListener('pointerup', handlePointerUp);
-      window.addEventListener('pointermove', handlePointerMove);
-      window.addEventListener('pointerleave', handlePointerUp);
+      renderer.domElement.addEventListener('pointermove', handlePointerMove);
+      renderer.domElement.addEventListener('pointerleave', handlePointerLeave);
     }
 
     let raf = 0;
     const renderLoop = () => {
-      timer.update();
-      uniforms.iTime.value = timer.getElapsed();
+      if (!active) return;
+
+      uniforms.iTime.value = clock.getElapsedTime();
 
       if (interactive) {
         currentMouseRef.current.lerp(targetMouseRef.current, mouseDamping);
@@ -477,21 +466,21 @@ export default function FloatingLines({
     renderLoop();
 
     return () => {
+      active = false;
+
       cancelAnimationFrame(raf);
-      if (ro && containerRef.current) {
-        ro.disconnect();
-      }
+
+      if (ro) ro.disconnect();
 
       if (interactive) {
-        window.removeEventListener('pointerdown', handlePointerDown);
-        window.removeEventListener('pointerup', handlePointerUp);
-        window.removeEventListener('pointermove', handlePointerMove);
-        window.removeEventListener('pointerleave', handlePointerUp);
+        renderer.domElement.removeEventListener('pointermove', handlePointerMove);
+        renderer.domElement.removeEventListener('pointerleave', handlePointerLeave);
       }
 
       geometry.dispose();
       material.dispose();
       renderer.dispose();
+      renderer.forceContextLoss();
       if (renderer.domElement.parentElement) {
         renderer.domElement.parentElement.removeChild(renderer.domElement);
       }
@@ -516,7 +505,7 @@ export default function FloatingLines({
   return (
     <div
       ref={containerRef}
-      className="floating-lines-container"
+      className="relative w-full h-full overflow-hidden floating-lines-container"
       style={{
         mixBlendMode: mixBlendMode
       }}
