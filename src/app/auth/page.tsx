@@ -11,6 +11,9 @@ function AuthPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const requestedRole = searchParams.get('role');
+  const nextParam = searchParams.get('next');
+
+  const isAdminRedirect = nextParam === '/admin' || nextParam?.startsWith('/admin/');
 
   // Guard: Redirect authenticated users away from /auth
   useEffect(() => {
@@ -39,7 +42,7 @@ function AuthPageContent() {
           ? user.role === 'student' || user.role === 'teacher' || user.role === 'admin'
             ? user.role
             : null
-          : selectedRole ?? (userRole as any)
+          : (selectedRole || (isAdminRedirect ? 'admin' : null)) ?? (userRole as any)
       }
       onLogin={login}
       onLoginWithOtp={loginWithOtp}
