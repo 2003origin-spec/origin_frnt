@@ -34,6 +34,13 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { usePublishOriginAiPageContext } from '@/features/origin-ai/page-context-store';
 import { FormattedMessage } from '@/components/origin-ai/FormattedMessage';
+import { useQuota } from '@/context/QuotaContext';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 function renderInlineSegments(value: string, keyPrefix: string) {
     return <FormattedMessage content={value || ''} inline />;
@@ -178,6 +185,18 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const lastImageContextRef = useRef<string | null>(null);
   const [isProcessingImage, setIsProcessingImage] = useState(false);
+  const { 
+    addTextUsage, 
+    startVoiceTracking, 
+    stopVoiceTracking, 
+    isVoiceQuotaReached, 
+    isTextQuotaReached,
+    getRemainingVoiceTime,
+    getRemainingTokens,
+    voiceProgress,
+    textProgress
+  } = useQuota();
+
   const sessionCacheKey = `${SESSION_CACHE_KEY}_${user.id}`;
   const originAiPageContext = useMemo(() => {
     const subject = activeSession?.subject ?? selectedSubject ?? null;
@@ -316,6 +335,15 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
     scrollToBottom();
   }, [activeSession?.messages, isTyping]);
 
+  useEffect(() => {
+    if (isRecording) {
+      startVoiceTracking();
+    } else {
+      stopVoiceTracking();
+    }
+    return () => stopVoiceTracking();
+  }, [isRecording, startVoiceTracking, stopVoiceTracking]);
+
   const handleSendMessage = async (overrideText?: string) => {
     const currentMessage = overrideText ?? message;
     // Use the time-buffered highlight: even if the browser cleared the
@@ -343,6 +371,12 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
         lastImageContextRef.current = null;
       }
       const response = await sendOriginAiMessage(outboundMessage, ctx, snappedHighlight, activeSession.id);
+      
+      // Update tokens
+      const userTokens = (response.userMessage.metadata?.tokensUsed as number) || 0;
+      const aiTokens = (response.aiMessage.metadata?.tokensUsed as number) || 0;
+      addTextUsage(userTokens + aiTokens);
+
       const mergedSession = mergeReplyIntoSession(activeSession, replyToDoubtReply(response));
 
       setActiveSession(mergedSession);
@@ -841,6 +875,9 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
                                   activeSession.subject,
                                 );
 
+                                // Update tokens
+                                addTextUsage(result.tokensUsed || 0);
+
                                 // Build AI response
                                 let aiContent = '';
                                 if (result.matchFound && result.matchDetails) {
@@ -890,83 +927,122 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
                               }
                             }}
                           />
-                          <button
-                            onClick={() => {
-                              if (isRecording) {
-                                speechRecognitionRef.current?.stop();
-                                return;
-                              }
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button
+                                  onClick={() => {
+                                    if (isVoiceQuotaReached) {
+                                      toast.error("Voice quota reached for today.");
+                                      return;
+                                    }
+                                    if (isRecording) {
+                                      speechRecognitionRef.current?.stop();
+                                      return;
+                                    }
 
-                              const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-                              if (!SpeechRecognition) {
-                                toast.error('Speech recognition is not supported in this browser. Please use Chrome.');
-                                return;
-                              }
+                                    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+                                    if (!SpeechRecognition) {
+                                      toast.error('Speech recognition is not supported in this browser. Please use Chrome.');
+                                      return;
+                                    }
 
-                              const recognition = new SpeechRecognition();
-                              speechRecognitionRef.current = recognition;
-                              recognition.continuous = true;
-                              recognition.interimResults = true;
-                              recognition.lang = 'en-IN';
+                                    const recognition = new SpeechRecognition();
+                                    speechRecognitionRef.current = recognition;
+                                    recognition.continuous = true;
+                                    recognition.interimResults = true;
+                                    recognition.lang = 'en-IN';
 
-                              let finalText = '';
+                                    let finalText = '';
 
-                              recognition.onresult = (event: any) => {
-                                let interim = '';
-                                for (let i = event.resultIndex; i < event.results.length; i++) {
-                                  const result = event.results[i];
-                                  if (result.isFinal) {
-                                    finalText += result[0].transcript + ' ';
-                                  } else {
-                                    interim = result[0].transcript;
-                                  }
-                                }
-                                setLiveTranscript((finalText + interim).trim());
-                              };
+                                    recognition.onresult = (event: any) => {
+                                      let interim = '';
+                                      for (let i = event.resultIndex; i < event.results.length; i++) {
+                                        const result = event.results[i];
+                                        if (result.isFinal) {
+                                          finalText += result[0].transcript + ' ';
+                                        } else {
+                                          interim = result[0].transcript;
+                                        }
+                                      }
+                                      setLiveTranscript((finalText + interim).trim());
+                                    };
 
-                              recognition.onend = () => {
-                                setIsRecording(false);
-                                const transcript = finalText.trim();
-                                setLiveTranscript('');
-                                if (transcript) {
-                                  setMessage(transcript);
-                                  // Use a microtask so setMessage flushes before send
-                                  setTimeout(() => {
-                                    handleSendMessage(transcript);
-                                  }, 0);
-                                }
-                              };
+                                    recognition.onend = () => {
+                                      setIsRecording(false);
+                                      const transcript = finalText.trim();
+                                      setLiveTranscript('');
+                                      if (transcript) {
+                                        setMessage(transcript);
+                                        // Use a microtask so setMessage flushes before send
+                                        setTimeout(() => {
+                                          handleSendMessage(transcript);
+                                        }, 0);
+                                      }
+                                    };
 
-                              recognition.onerror = (event: any) => {
-                                if (event.error !== 'aborted') {
-                                  toast.error('Voice recognition error. Please try again.');
-                                }
-                                setIsRecording(false);
-                                setLiveTranscript('');
-                              };
+                                    recognition.onerror = (event: any) => {
+                                      if (event.error !== 'aborted') {
+                                        toast.error('Voice recognition error. Please try again.');
+                                      }
+                                      setIsRecording(false);
+                                      setLiveTranscript('');
+                                    };
 
-                              recognition.start();
-                              setIsRecording(true);
-                              setLiveTranscript('');
-                            }}
-                            className={`p-3 transition-colors ${isRecording ? 'text-red-500 animate-pulse' : 'text-slate-400 hover:text-blue-400'}`}
-                            title={isRecording ? 'Stop recording' : 'Record voice'}
-                          >
-                            {isRecording ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
-                          </button>
-                          <textarea
-                            rows={1}
-                            value={message}
-                            onChange={(e) => setMessage(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' && !e.shiftKey) {
-                                e.preventDefault();
-                                handleSendMessage();
-                              }
-                            }}
-                            placeholder={highlightedText ? 'Ask about the selected text...' : 'Type your question here...'}
-                            className="flex-1 bg-transparent border-none focus:ring-0 text-foreground placeholder:text-muted-foreground/60 py-3 text-[15px] resize-none max-h-40"
-                          />
+                                    recognition.start();
+                                    setIsRecording(true);
+                                    setLiveTranscript('');
+                                  }}
+                                  disabled={isVoiceQuotaReached && !isRecording}
+                                  className={`p-3 transition-colors ${isRecording ? 'text-red-500 animate-pulse' : (isVoiceQuotaReached ? 'text-slate-600 cursor-not-allowed' : 'text-slate-400 hover:text-blue-400')}`}
+                                  title={isRecording ? 'Stop recording' : (isVoiceQuotaReached ? 'Voice quota reached' : 'Record voice')}
+                                >
+                                  {isRecording ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent side="top" className="bg-slate-900 border-white/10 text-white">
+                                <div className="space-y-1">
+                                  <p className="text-xs font-bold">{isVoiceQuotaReached ? 'Quota Reached' : getRemainingVoiceTime()}</p>
+                                  <div className="w-32 h-1 bg-white/10 rounded-full overflow-hidden">
+                                    <div className="h-full bg-blue-500 transition-all duration-500" style={{ width: `${voiceProgress}%` }} />
+                                  </div>
+                                </div>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <textarea
+                                  rows={1}
+                                  value={message}
+                                  disabled={isTextQuotaReached}
+                                  onChange={(e) => setMessage(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && !e.shiftKey) {
+                                      e.preventDefault();
+                                      if (isTextQuotaReached) {
+                                        toast.error("Text quota reached for today.");
+                                        return;
+                                      }
+                                      handleSendMessage();
+                                    }
+                                  }}
+                                  placeholder={isTextQuotaReached ? 'Text quota reached for today' : (highlightedText ? 'Ask about the selected text...' : 'Type your question here...')}
+                                  className={`flex-1 bg-transparent border-none focus:ring-0 text-foreground placeholder:text-muted-foreground/60 py-3 text-[15px] resize-none max-h-40 ${isTextQuotaReached ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                />
+                              </TooltipTrigger>
+                              <TooltipContent side="top" className="bg-slate-900 border-white/10 text-white">
+                                <div className="space-y-1">
+                                  <p className="text-xs font-bold">{isTextQuotaReached ? 'Quota Reached' : getRemainingTokens()}</p>
+                                  <div className="w-32 h-1 bg-white/10 rounded-full overflow-hidden">
+                                    <div className="h-full bg-emerald-500 transition-all duration-500" style={{ width: `${textProgress}%` }} />
+                                  </div>
+                                </div>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
                         </>
                       ) : (
                         <div className="flex-1 flex items-center gap-3 px-4 py-3">

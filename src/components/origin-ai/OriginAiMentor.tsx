@@ -18,6 +18,14 @@ import { FormattedMessage } from './FormattedMessage';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from 'sonner';
+import { useQuota } from '@/context/QuotaContext';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import { Progress } from '@/components/ui/progress';
 
 interface OriginAiMentorProps {
   compact?: boolean;
@@ -180,6 +188,24 @@ export default function OriginAiMentor({
   const pageContext = useOriginAiPageContext(pathname || '/dashboard');
   const highlightedText = useHighlightedText();
 
+  const {
+    textUsage,
+    voiceUsage,
+    textLimit,
+    voiceLimit,
+    addTextUsage,
+    startVoiceTracking,
+    stopVoiceTracking,
+    isTextQuotaReached,
+    isVoiceQuotaReached
+  } = useQuota();
+
+  const textProgress = (textUsage / textLimit) * 100;
+  const voiceProgress = (voiceUsage / voiceLimit) * 100;
+
+  const remainingText = Math.max(0, textLimit - textUsage);
+  const remainingVoiceMins = Math.max(0, Math.ceil((voiceLimit - voiceUsage) / 60));
+
   const loadSnapshot = React.useCallback(async () => {
     setIsLoading(true);
     try {
@@ -215,6 +241,17 @@ export default function OriginAiMentor({
       voiceControllerRef.current = null;
     };
   }, []);
+
+  React.useEffect(() => {
+    // voiceStatus: 'listening', 'thinking', 'speaking', 'error', 'idle', 'bootstrapping', 'connecting'
+    // We track when it's actively engaged in conversation (listening or speaking)
+    if (voiceStatus === 'listening' || voiceStatus === 'speaking' || voiceStatus === 'thinking') {
+      startVoiceTracking();
+    } else {
+      stopVoiceTracking();
+    }
+    return () => stopVoiceTracking();
+  }, [voiceStatus, startVoiceTracking, stopVoiceTracking]);
 
   React.useEffect(() => {
     const pageKey = `${pageContext.pathname}|${pageContext.pageKind}|${pageContext.questionId ?? ''}`;
@@ -302,6 +339,9 @@ export default function OriginAiMentor({
     try {
       const reply = await sendOriginAiMessage(outboundMessage, pageContext, snappedHighlight);
       setSnapshot(reply);
+      // Track usage
+      const tokens = (reply.aiMessage.metadata?.tokensUsed as number) || 0;
+      addTextUsage(tokens);
     } catch (error) {
       console.error('Failed to send Origin AI message', error);
       toast.error(error instanceof Error ? error.message : 'Origin AI could not reply');
@@ -318,6 +358,11 @@ export default function OriginAiMentor({
       setVoiceStatus('idle');
       setLiveUserTranscript('');
       setLiveAssistantTranscript('');
+      return;
+    }
+
+    if (isVoiceQuotaReached) {
+      toast.error("Daily voice quota reached. Please try again tomorrow.");
       return;
     }
 
@@ -484,53 +529,94 @@ export default function OriginAiMentor({
             </div>
           ) : null}
           <div className="flex min-w-0 items-end gap-2">
-            <textarea
-              value={message}
-              onChange={(event) => setMessage(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' && !event.shiftKey) {
-                  event.preventDefault();
-                  void handleSend();
-                }
-              }}
-              rows={1}
-              placeholder={
-                highlightedText
-                  ? 'Ask about the selected text...'
-                  : snapshot?.pagePolicy.mode === 'answer_blocked'
-                    ? 'Ask for strategy, not answers...'
-                    : snapshot?.pagePolicy.mode === 'hint_only'
-                      ? 'Ask for a hint or a concept nudge...'
-                      : 'Ask Origin AI anything about your studies...'
-              }
-              className="no-scrollbar min-w-0 flex-1 resize-none rounded-3xl border border-border/40 bg-muted/40 px-4 py-3 text-sm leading-6 text-foreground outline-none transition focus:border-primary/40 focus:bg-muted/60"
-            />
-            <Button
-              type="button"
-              onClick={() => void handleToggleVoice()}
-              className={cn(
-                'h-12 w-12 shrink-0 rounded-3xl px-0 py-0 text-foreground transition-colors',
-                isVoiceActive
-                  ? 'border border-rose-500/40 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400'
-                  : 'border border-border/40 bg-muted/40 hover:bg-muted/80',
-              )}
-            >
-              {voiceStatus === 'bootstrapping' || voiceStatus === 'connecting' ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : isVoiceActive ? (
-                <Square className="h-4 w-4" />
-              ) : (
-                <Mic className="h-4 w-4" />
-              )}
-            </Button>
-            <Button
-              type="button"
-              onClick={() => void handleSend()}
-              disabled={isSending || (!message.trim() && !highlightedText)}
-              className="h-12 w-12 shrink-0 rounded-3xl bg-primary px-0 py-0 text-white hover:bg-primary/90 disabled:opacity-50"
-            >
-              {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-            </Button>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <textarea
+                    value={message}
+                    onChange={(event) => setMessage(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' && !event.shiftKey) {
+                        event.preventDefault();
+                        void handleSend();
+                      }
+                    }}
+                    rows={1}
+                    disabled={isTextQuotaReached}
+                    placeholder={
+                      isTextQuotaReached
+                        ? 'Daily text quota reached...'
+                        : highlightedText
+                        ? 'Ask about the selected text...'
+                        : snapshot?.pagePolicy.mode === 'answer_blocked'
+                          ? 'Ask for strategy, not answers...'
+                          : snapshot?.pagePolicy.mode === 'hint_only'
+                            ? 'Ask for a hint or a concept nudge...'
+                            : 'Ask Origin AI anything about your studies...'
+                    }
+                    className="no-scrollbar min-w-0 flex-1 resize-none rounded-3xl border border-border/40 bg-muted/40 px-4 py-3 text-sm leading-6 text-foreground outline-none transition focus:border-primary/40 focus:bg-muted/60 disabled:opacity-50"
+                  />
+                </TooltipTrigger>
+                <TooltipContent className="p-4 w-64 bg-card border-border/40 shadow-xl backdrop-blur-md">
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Daily Text Quota</span>
+                      <span className="text-xs font-bold text-primary">{Math.round(textProgress)}%</span>
+                    </div>
+                    <Progress value={textProgress} className="h-1.5" />
+                    <p className="text-[10px] text-muted-foreground leading-relaxed">
+                      {remainingText.toLocaleString()} tokens remaining today.
+                    </p>
+                  </div>
+                </TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    onClick={() => void handleToggleVoice()}
+                    disabled={isVoiceQuotaReached && !isVoiceActive}
+                    className={cn(
+                      'h-12 w-12 shrink-0 rounded-3xl px-0 py-0 text-foreground transition-colors',
+                      isVoiceActive
+                        ? 'border border-rose-500/40 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400'
+                        : 'border border-border/40 bg-muted/40 hover:bg-muted/80',
+                      isVoiceQuotaReached && !isVoiceActive && 'opacity-50 cursor-not-allowed'
+                    )}
+                  >
+                    {voiceStatus === 'bootstrapping' || voiceStatus === 'connecting' ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : isVoiceActive ? (
+                      <Square className="h-4 w-4" />
+                    ) : (
+                      <Mic className="h-4 w-4" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent className="p-4 w-64 bg-card border-border/40 shadow-xl backdrop-blur-md">
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Daily Voice Quota</span>
+                      <span className="text-xs font-bold text-primary">{Math.round(voiceProgress)}%</span>
+                    </div>
+                    <Progress value={voiceProgress} className="h-1.5" />
+                    <p className="text-[10px] text-muted-foreground leading-relaxed">
+                      {remainingVoiceMins} minutes of voice interaction remaining today.
+                    </p>
+                  </div>
+                </TooltipContent>
+              </Tooltip>
+
+              <Button
+                type="button"
+                onClick={() => void handleSend()}
+                disabled={isSending || isTextQuotaReached || (!message.trim() && !highlightedText)}
+                className="h-12 w-12 shrink-0 rounded-3xl bg-primary px-0 py-0 text-white hover:bg-primary/90 disabled:opacity-50"
+              >
+                {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              </Button>
+            </TooltipProvider>
           </div>
         </div>
       </div>
@@ -703,60 +789,101 @@ export default function OriginAiMentor({
               </div>
             ) : null}
             <div className={cn('flex items-end', compact ? 'gap-2' : 'gap-3')}>
-              <textarea
-                value={message}
-                onChange={(event) => setMessage(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' && !event.shiftKey) {
-                    event.preventDefault();
-                    void handleSend();
-                  }
-                }}
-                rows={compact ? 1 : 3}
-                placeholder={
-                  highlightedText
-                    ? 'Ask about the selected text...'
-                    : snapshot?.pagePolicy.mode === 'answer_blocked'
-                      ? 'Ask for strategy, not answers...'
-                      : snapshot?.pagePolicy.mode === 'hint_only'
-                        ? 'Ask for a hint or a concept nudge...'
-                        : 'Ask Origin AI anything about your studies...'
-                }
-                className={cn(
-                  'flex-1 resize-none rounded-3xl border border-border/40 bg-muted/40 px-4 text-sm text-foreground outline-none transition focus:border-primary/40 focus:bg-muted/60',
-                  compact ? 'min-h-[48px] max-h-24 py-3 leading-6' : 'min-h-[56px] py-3',
-                )}
-              />
-              <Button
-                type="button"
-                onClick={() => void handleToggleVoice()}
-                className={cn(
-                  'rounded-3xl text-foreground transition-colors',
-                  isVoiceActive
-                    ? 'border border-rose-500/40 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400'
-                    : 'border border-border/40 bg-muted/40 hover:bg-muted/80',
-                  compact ? 'h-12 w-12 shrink-0 px-0 py-0' : 'h-auto px-4 py-3',
-                )}
-              >
-                {voiceStatus === 'bootstrapping' || voiceStatus === 'connecting' ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : isVoiceActive ? (
-                  <Square className="h-4 w-4" />
-                ) : (
-                  <Mic className="h-4 w-4" />
-                )}
-              </Button>
-              <Button
-                type="button"
-                onClick={() => void handleSend()}
-                disabled={isSending || (!message.trim() && !highlightedText)}
-                className={cn(
-                  'rounded-3xl bg-primary text-white hover:bg-primary/90 disabled:opacity-50',
-                  compact ? 'h-12 w-12 shrink-0 px-0 py-0' : 'h-auto px-4 py-3',
-                )}
-              >
-                {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              </Button>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <textarea
+                      value={message}
+                      onChange={(event) => setMessage(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' && !event.shiftKey) {
+                          event.preventDefault();
+                          void handleSend();
+                        }
+                      }}
+                      rows={compact ? 1 : 3}
+                      disabled={isTextQuotaReached}
+                      placeholder={
+                        isTextQuotaReached
+                          ? 'Daily text quota reached...'
+                          : highlightedText
+                          ? 'Ask about the selected text...'
+                          : snapshot?.pagePolicy.mode === 'answer_blocked'
+                            ? 'Ask for strategy, not answers...'
+                            : snapshot?.pagePolicy.mode === 'hint_only'
+                              ? 'Ask for a hint or a concept nudge...'
+                              : 'Ask Origin AI anything about your studies...'
+                      }
+                      className={cn(
+                        'flex-1 resize-none rounded-3xl border border-border/40 bg-muted/40 px-4 text-sm text-foreground outline-none transition focus:border-primary/40 focus:bg-muted/60 disabled:opacity-50',
+                        compact ? 'min-h-[48px] max-h-24 py-3 leading-6' : 'min-h-[56px] py-3',
+                      )}
+                    />
+                  </TooltipTrigger>
+                  <TooltipContent className="p-4 w-64 bg-card border-border/40 shadow-xl backdrop-blur-md">
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Daily Text Quota</span>
+                        <span className="text-xs font-bold text-primary">{Math.round(textProgress)}%</span>
+                      </div>
+                      <Progress value={textProgress} className="h-1.5" />
+                      <p className="text-[10px] text-muted-foreground leading-relaxed">
+                        {remainingText.toLocaleString()} tokens remaining today.
+                      </p>
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
+
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      onClick={() => void handleToggleVoice()}
+                      disabled={isVoiceQuotaReached && !isVoiceActive}
+                      className={cn(
+                        'rounded-3xl text-foreground transition-colors',
+                        isVoiceActive
+                          ? 'border border-rose-500/40 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400'
+                          : 'border border-border/40 bg-muted/40 hover:bg-muted/80',
+                        compact ? 'h-12 w-12 shrink-0 px-0 py-0' : 'h-auto px-4 py-3',
+                        isVoiceQuotaReached && !isVoiceActive && 'opacity-50 cursor-not-allowed'
+                      )}
+                    >
+                      {voiceStatus === 'bootstrapping' || voiceStatus === 'connecting' ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : isVoiceActive ? (
+                        <Square className="h-4 w-4" />
+                      ) : (
+                        <Mic className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent className="p-4 w-64 bg-card border-border/40 shadow-xl backdrop-blur-md">
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Daily Voice Quota</span>
+                        <span className="text-xs font-bold text-primary">{Math.round(voiceProgress)}%</span>
+                      </div>
+                      <Progress value={voiceProgress} className="h-1.5" />
+                      <p className="text-[10px] text-muted-foreground leading-relaxed">
+                        {remainingVoiceMins} minutes of voice interaction remaining today.
+                      </p>
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
+
+                <Button
+                  type="button"
+                  onClick={() => void handleSend()}
+                  disabled={isSending || isTextQuotaReached || (!message.trim() && !highlightedText)}
+                  className={cn(
+                    'rounded-3xl bg-primary text-white hover:bg-primary/90 disabled:opacity-50',
+                    compact ? 'h-12 w-12 shrink-0 px-0 py-0' : 'h-auto px-4 py-3',
+                  )}
+                >
+                  {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                </Button>
+              </TooltipProvider>
             </div>
             {compact ? null : (
               <div className="mt-3 flex items-center justify-between gap-3">

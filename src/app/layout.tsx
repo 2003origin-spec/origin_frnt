@@ -69,15 +69,18 @@ export default function RootLayout({
   );
 }
 
+import { QuotaProvider } from "@/context/QuotaContext";
 import { NotificationProvider } from "@/context/NotificationContext";
 
 async function AuthBootstrap({ children }: { children: React.ReactNode }) {
   const initialUser = await getServerFrontendUser();
   return (
     <AuthProvider initialUser={initialUser}>
-      <NotificationProvider>
-        {children}
-      </NotificationProvider>
+      <QuotaProvider>
+        <NotificationProvider>
+          {children}
+        </NotificationProvider>
+      </QuotaProvider>
     </AuthProvider>
   );
 }

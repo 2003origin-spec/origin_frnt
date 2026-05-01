@@ -51,7 +51,7 @@ export const sendEmail = async ({
 }) => {
   try {
     const info = await transporter.sendMail({
-      from: process.env.EMAIL_FROM || '"ORIGIN AI" <noreply@originai.test>',
+      from: process.env.EMAIL_FROM || '"ORIGIN AI" <adminoffice@o3origin.com>',
       to,
       subject,
       text,
