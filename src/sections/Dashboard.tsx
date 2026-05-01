@@ -23,7 +23,7 @@ const MOCK_EVENTS = [
   { 
     id: 1, 
     title: 'Origin V1.0 is Live!', 
-    description: 'Welcome, O3 Minds! Your personalized rank booster just got a major upgrade. 🚀 Let\'s find those gaps.', 
+    description: 'Welcome, O3 Origin! Your personalized rank booster just got a major upgrade. 🚀 Let\'s find those gaps.', 
     image: '/carousel/launch.png', 
     badge: 'OCTOBER 15, 2026' 
   },

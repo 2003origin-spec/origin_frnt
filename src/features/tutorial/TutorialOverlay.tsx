@@ -153,7 +153,7 @@ export const TutorialOverlay: React.FC = () => {
                   className="relative overflow-hidden bg-primary hover:opacity-90 text-white rounded-full px-6 h-10 text-[11px] font-black uppercase tracking-[0.2em] shadow-lg shadow-primary/20 transition-all hover:scale-105 active:scale-95 group border-none"
                 >
                   <span className="relative z-10 flex items-center">
-                    {currentStep === steps.length - 1 ? 'Finish Journey' : 'Next Protocol'}
+                    {currentStep === steps.length - 1 ? 'Finish' : 'Next'}
                     <ChevronRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
                   </span>
                   {/* Subtle shimmer effect on hover */}
@@ -161,9 +161,9 @@ export const TutorialOverlay: React.FC = () => {
                 </Button>
               </div>
             </div>
-            </div>
           </div>
-        </motion.div>
+        </div>
+      </motion.div>
       </AnimatePresence>
     </div>
   );
