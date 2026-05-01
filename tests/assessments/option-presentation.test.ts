@@ -8,7 +8,7 @@ import {
   verifyOptionPresentationToken,
 } from "../../src/server/option-presentation";
 import { submitPracticeQuestion } from "../../src/server/assessments";
-import type { AppStore, StoredQuestion, StoredUser } from "../../src/server/store";
+import { withStoredUserDefaults, type AppStore, type StoredQuestion, type StoredUser } from "../../src/server/store";
 
 const SECRET = "12345678901234567890123456789012";
 process.env.OPTION_SHUFFLE_SECRET = SECRET;
@@ -68,7 +68,7 @@ test("presentOptions returns shuffled options without exposing the order in the 
 });
 
 function buildPracticeStore() {
-  const user: StoredUser = {
+  const user: StoredUser = withStoredUserDefaults({
     id: CONTEXT.userId,
     name: "Test User",
     email: "test@example.com",
@@ -89,7 +89,7 @@ function buildPracticeStore() {
     yearsOfExperience: null,
     subjects: [],
     studentCapacity: null,
-  };
+  });
   const question: StoredQuestion = {
     id: CONTEXT.questionId,
     text: "Which option is correct?",
@@ -139,6 +139,7 @@ function buildPracticeStore() {
     authSessions: [],
     leaderboardSeed: [],
     tasks: [],
+    otps: [],
   };
   return { store, user, question };
 }

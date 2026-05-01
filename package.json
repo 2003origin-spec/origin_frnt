@@ -12,7 +12,12 @@
     "db:logs": "docker compose -f docker-compose.postgres.yml logs -f postgres",
     "ogcode:import": "node --env-file=.env.local scripts/import-ogcode-questions.mjs",
     "ogcode:import:replace": "node --env-file=.env.local scripts/import-ogcode-questions.mjs --replace",
-    "ogcode:import:dry-run": "node scripts/import-ogcode-questions.mjs --dry-run"
+    "ogcode:import:dry-run": "node scripts/import-ogcode-questions.mjs --dry-run",
+    "origin-ai:vectors:export": "node --env-file=.env.local scripts/origin-ai-vectors.mjs export",
+    "origin-ai:vectors:import": "node --env-file=.env.local scripts/origin-ai-vectors.mjs import",
+    "origin-ai:vectors:import:replace": "node --env-file=.env.local scripts/origin-ai-vectors.mjs import --replace",
+    "origin-ai:seed-embeddings": "cd ../origin-ai && .venv/bin/python seed_embeddings.py",
+    "origin-ai:seed-embeddings:replace": "cd ../origin-ai && .venv/bin/python seed_embeddings.py --replace"
   },
   "dependencies": {
     "@google/genai": "^1.48.0",

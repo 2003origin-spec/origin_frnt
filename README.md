@@ -22,7 +22,7 @@ This project uses [`next/font`](https://nextjs.org/docs/app/building-your-applic
 
 ## Local Postgres For OGCode
 
-This repo includes a dedicated local Postgres setup for the OGCode question bank.
+This repo includes a dedicated local Postgres setup for the OGCode question bank and Origin AI pgvector tables.
 
 1. Copy the env example:
 
@@ -43,6 +43,30 @@ npm run ogcode:import:replace
 ```
 
 The app reads the catalog from `OGCODE_DATABASE_URL` when it is present. The Docker setup exposes Postgres on `127.0.0.1:54329` and keeps data in the `origin_v1_ogcode_pgdata` Docker volume.
+
+## Origin AI Vector Seed
+
+The Docker image already includes pgvector. `/health` only proves pgvector is available; AI Explainer chapter counts require rows in `origin_ai.concept_embeddings`.
+
+To create the vector rows on a machine with a valid Gemini embedding key:
+
+```bash
+npm run db:up
+npm run origin-ai:seed-embeddings:replace
+npm run origin-ai:vectors:export -- --out data/origin-ai-vector-seed.json.gz
+```
+
+Commit `data/origin-ai-vector-seed.json.gz` only if the file size is acceptable for the repo. If it is large, publish it via Git LFS or a release artifact instead.
+
+Teammates can restore the shared vectors after starting Docker:
+
+```bash
+npm run db:up
+npm run ogcode:import:replace
+npm run origin-ai:vectors:import:replace -- --file data/origin-ai-vector-seed.json.gz
+```
+
+Restart `origin-ai` after importing so its in-memory chapter map rebuilds from the restored vectors.
 
 ## Learn More
 

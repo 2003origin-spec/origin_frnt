@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
+import { Zap } from 'lucide-react';
 import type { Task, User, ViewState } from '@/types';
 import DailyTracker from '@/components/dashboard/DailyTracker';
 import PastWeekProgress from '@/components/dashboard/PastWeekProgress';

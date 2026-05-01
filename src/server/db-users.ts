@@ -10,7 +10,7 @@
 import { randomUUID } from "node:crypto";
 import bcrypt from "bcryptjs";
 import type { Pool } from "pg";
-import type { StoredUser, StoredAuthSession, StoredTask } from "@/server/store";
+import { withStoredUserDefaults, type StoredAuthSession, type StoredTask, type StoredUser, type StoredUserWithOptionalDefaults } from "@/server/store";
 import { getUserPostgresPool } from "@/server/user-postgres";
 
 declare global {
@@ -184,9 +184,12 @@ export async function dbFindUserById(id: string): Promise<StoredUser | null> {
   return result.rows[0] ? rowToUser(result.rows[0]) : null;
 }
 
-export async function dbCreateUser(data: Omit<StoredUser, "id"> & { id?: string }): Promise<StoredUser> {
+type DbCreateUserInput = Omit<StoredUserWithOptionalDefaults, "id"> & { id?: string };
+
+export async function dbCreateUser(data: DbCreateUserInput): Promise<StoredUser> {
   await ensureUserSchema();
   const id = data.id ?? createId("user");
+  const user = withStoredUserDefaults({ ...data, id });
   await pool().query(
     `INSERT INTO origin_users
        (id, name, email, password_hash, role, student_class, field_of_interest,
@@ -196,15 +199,15 @@ export async function dbCreateUser(data: Omit<StoredUser, "id"> & { id?: string 
         voice_minutes_used_today, tokens_used_today, usage_reset_at)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)`,
     [
-      id, data.name, data.email, data.password, data.role,
-      data.studentClass, data.fieldOfInterest, data.referralSource, data.avatar,
-      data.streak, data.totalStudyTime, data.joinedAt, data.isPremium,
-      data.premiumExpiry, data.isOnboarded, data.selectedCourse, data.isDropper,
-      data.yearsOfExperience, data.subjects, data.studentCapacity, data.location,
-      data.voiceMinutesUsedToday ?? 0, data.tokensUsedToday ?? 0, data.usageResetAt ?? new Date().toISOString(),
+      user.id, user.name, user.email, user.password, user.role,
+      user.studentClass, user.fieldOfInterest, user.referralSource, user.avatar,
+      user.streak, user.totalStudyTime, user.joinedAt, user.isPremium,
+      user.premiumExpiry, user.isOnboarded, user.selectedCourse, user.isDropper,
+      user.yearsOfExperience, user.subjects, user.studentCapacity, user.location,
+      user.voiceMinutesUsedToday, user.tokensUsedToday, user.usageResetAt,
     ],
   );
-  return { ...data, id };
+  return user;
 }
 
 export async function dbUpdateUser(id: string, patch: Partial<StoredUser>): Promise<void> {

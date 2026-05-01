@@ -3,6 +3,7 @@ import {
   buildTimeAnalytics,
   calculateTimedPracticeScore,
   getOrCreateDailyActivity,
+  getOrCreateStreak,
   updateUserStreak,
   updateUserStudyTime,
   awardPoints,
@@ -2988,6 +2989,8 @@ export async function getOgcodeUserStats(store: AppStore, user: StoredUser) {
 
   const leaderboardData = await getOgcodeLeaderboard(store, user, null);
   const myRank = leaderboardData.myRank;
+  const streak = getOrCreateStreak(store, user.id);
+  const doubtCount = store.doubtSessions.filter((session) => session.userId === user.id).length;
 
   return {
     rank: myRank,
@@ -2998,15 +3001,18 @@ export async function getOgcodeUserStats(store: AppStore, user: StoredUser) {
     total_attempts: totalAttempts,
     syllabusCoverage,
     syllabus_coverage: syllabusCoverage,
-    streak: user.streak,
+    streak: streak.currentStreak,
     achievements: {
       first_test: totalAttempts > 0,
-      streak_7: (user.streak?.currentStreak || 0) >= 7,
-      streak_30: (user.streak?.currentStreak || 0) >= 30,
-      streak_100: (user.streak?.currentStreak || 0) >= 100,
+      streak_7: streak.currentStreak >= 7 || streak.longestStreak >= 7,
+      streak_30: streak.currentStreak >= 30 || streak.longestStreak >= 30,
+      streak_100: streak.currentStreak >= 100 || streak.longestStreak >= 100,
+      doubt_master: doubtCount >= 50,
+      top_100: myRank !== null && myRank <= 100,
       perfect_score: store.testResults.some(r => r.userId === user.id && r.percentage >= 100),
-      subject_master: false, // Needs subject-wise check
-      doubt_master: store.doubtSessions?.some(s => s.studentId === user.id && s.isResolved) || false,
+      subject_master: false,
+      night_owl: false,
+      early_bird: false,
     }
   };
 }

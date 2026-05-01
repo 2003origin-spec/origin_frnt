@@ -487,6 +487,24 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+type StoredUserDefaultFields = Pick<
+  StoredUser,
+  "location" | "voiceMinutesUsedToday" | "tokensUsedToday" | "usageResetAt"
+>;
+
+export type StoredUserWithOptionalDefaults = Omit<StoredUser, keyof StoredUserDefaultFields> &
+  Partial<StoredUserDefaultFields>;
+
+export function withStoredUserDefaults(user: StoredUserWithOptionalDefaults): StoredUser {
+  return {
+    ...user,
+    location: user.location ?? null,
+    voiceMinutesUsedToday: user.voiceMinutesUsedToday ?? 0,
+    tokensUsedToday: user.tokensUsedToday ?? 0,
+    usageResetAt: user.usageResetAt ?? nowIso(),
+  };
+}
+
 function toStoredQuestion(question: SeedQuestion): StoredQuestion {
   return {
     id: String(question.id),
@@ -545,7 +563,7 @@ function normalizeSubject(subject: string | undefined): string {
 }
 
 function createSeedUser(config: SeedUserConfig): StoredUser {
-  return {
+  return withStoredUserDefaults({
     id: config.id,
     name: config.name,
     email: config.email,
@@ -567,10 +585,7 @@ function createSeedUser(config: SeedUserConfig): StoredUser {
     subjects: config.subjects ?? [],
     studentCapacity: config.studentCapacity ?? null,
     location: config.location ?? null,
-    voiceMinutesUsedToday: 0,
-    tokensUsedToday: 0,
-    usageResetAt: nowIso(),
-  };
+  });
 }
 
 // Plaintext passwords for seed users — used only to (re-)hash on store init.
@@ -1042,6 +1057,7 @@ function buildSeedStore(): AppStore {
     authSessions: [],
     leaderboardSeed,
     tasks: [],
+    otps: [],
   };
 }
 
@@ -1120,6 +1136,26 @@ function ensureAllCollections(store: AppStore): boolean {
   for (const key of collections) {
     if (!Array.isArray((store as any)[key])) {
       (store as any)[key] = [];
+      changed = true;
+    }
+  }
+
+  for (const user of store.users) {
+    const maybeUser = user as unknown as Record<string, unknown>;
+    if (maybeUser.location === undefined) {
+      user.location = null;
+      changed = true;
+    }
+    if (typeof maybeUser.voiceMinutesUsedToday !== "number") {
+      user.voiceMinutesUsedToday = 0;
+      changed = true;
+    }
+    if (typeof maybeUser.tokensUsedToday !== "number") {
+      user.tokensUsedToday = 0;
+      changed = true;
+    }
+    if (typeof maybeUser.usageResetAt !== "string") {
+      user.usageResetAt = nowIso();
       changed = true;
     }
   }

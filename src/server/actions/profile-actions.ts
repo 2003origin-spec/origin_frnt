@@ -76,13 +76,13 @@ export async function updateProfileAction(input: UpdateProfileInput): Promise<Us
     try {
       await dbUpdateUser(current.id, {
         name: input.name,
-        student_class: input.studentClass ?? input.class ?? input.student_class,
-        field_of_interest: input.fieldOfInterest,
-        referral_source: input.referralSource,
+        studentClass: input.studentClass ?? input.class ?? input.student_class,
+        fieldOfInterest: input.fieldOfInterest,
+        referralSource: input.referralSource,
         avatar: input.avatar,
-        selected_course: input.selectedCourse,
-        years_of_experience: input.yearsOfExperience,
-        student_capacity: input.studentCapacity,
+        selectedCourse: input.selectedCourse,
+        yearsOfExperience: input.yearsOfExperience,
+        studentCapacity: input.studentCapacity,
         location: input.location,
       });
     } catch (err) {
@@ -116,13 +116,13 @@ export async function completeOnboardingAction(input: UpdateProfileInput = {}): 
       await dbUpdateUser(current.id, {
         isOnboarded: true,
         name: input.name,
-        student_class: input.studentClass ?? input.class ?? input.student_class,
-        field_of_interest: input.fieldOfInterest,
-        referral_source: input.referralSource,
+        studentClass: input.studentClass ?? input.class ?? input.student_class,
+        fieldOfInterest: input.fieldOfInterest,
+        referralSource: input.referralSource,
         avatar: input.avatar,
-        selected_course: input.selectedCourse,
-        years_of_experience: input.yearsOfExperience,
-        student_capacity: input.studentCapacity,
+        selectedCourse: input.selectedCourse,
+        yearsOfExperience: input.yearsOfExperience,
+        studentCapacity: input.studentCapacity,
         location: input.location,
       });
     } catch (err) {

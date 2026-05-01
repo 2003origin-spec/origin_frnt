@@ -15,7 +15,7 @@ import {
 } from "@/server/gamification";
 import { badRequest, created, noContent, notFound, ok, unauthorized } from "@/server/http";
 import type { AppStore, StoredTask, StoredUser } from "@/server/store";
-import { createId, withStore, withStoreAsync } from "@/server/store";
+import { createId, withStore, withStoreAsync, withStoredUserDefaults } from "@/server/store";
 
 type UserPayload = Record<string, unknown>;
 
@@ -192,10 +192,8 @@ export function buildUserStatsSnapshot(store: AppStore, user: StoredUser): UserS
   const hasPerfectScore = store.testResults.some(
     (result) => result.userId === user.id && result.percentage >= 100,
   );
-  const subjectMaster = Object.values(subjectStats).some(s => s.total >= 50 && (s.correct / s.total) >= 0.9);
-  
-  const userActivities = store.dailyActivities.filter(a => a.userId === user.id);
-  const nightOwl = false; 
+  const subjectMaster = Object.values(subjectStats).some((s) => s.total >= 50 && (s.correct / s.total) >= 0.9);
+  const nightOwl = false;
   const earlyBird = false;
 
   return {
@@ -212,7 +210,9 @@ export function buildUserStatsSnapshot(store: AppStore, user: StoredUser): UserS
       doubt_master: doubtCount >= 50,
       top_100: globalRank !== null && globalRank <= 100,
       perfect_score: hasPerfectScore,
-      streak_30: streak.longestStreak >= 30 || streak.currentStreak >= 30,
+      subject_master: subjectMaster,
+      night_owl: nightOwl,
+      early_bird: earlyBird,
     },
   };
 }
@@ -369,7 +369,7 @@ export async function handleRegister(payload: UserPayload) {
     }
 
     const userId = createId("user");
-    store.users.push({
+    store.users.push(withStoredUserDefaults({
       id: userId,
       name,
       email,
@@ -390,7 +390,7 @@ export async function handleRegister(payload: UserPayload) {
       yearsOfExperience: null,
       subjects: [],
       studentCapacity: null,
-    });
+    }));
 
     const session = createAuthSession(store, userId);
     const userData = serializeUser(store, userId);
@@ -504,14 +504,14 @@ export async function handleGoogleLogin(payload: UserPayload) {
         }
 
         const userId = createId("user");
-        user = {
+        user = withStoredUserDefaults({
           id: userId, name, email: email!, password: bcrypt.hashSync(createId("rand"), 10),
           role: "student", studentClass: null, fieldOfInterest: null,
           referralSource: null, avatar, streak: 0, totalStudyTime: 0,
           joinedAt: new Date().toISOString(), isPremium: false, premiumExpiry: null,
           isOnboarded: false, selectedCourse: null, isDropper: false,
           yearsOfExperience: null, subjects: [], studentCapacity: null,
-        };
+        });
         store.users.push(user);
       } else if (!user.avatar && avatar) {
         user.avatar = avatar;
