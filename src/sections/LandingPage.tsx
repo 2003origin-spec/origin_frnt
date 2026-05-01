@@ -198,7 +198,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
   const FeatureCard = ({ feature }: { feature: typeof features[0] }) => (
     <div className="group relative bg-card/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-3xl border border-gray-200/50 dark:border-gray-800/50 shadow-xl hover:shadow-2xl transition-all duration-500 hover:-translate-y-2 overflow-hidden h-full flex flex-col">
       {/* Gradient top line */}
-      <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-rose-400 via-pink-500 to-rose-600 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+      <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-primary/60 via-primary to-primary/60 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
       
       {/* Tab Header */}
       <div className="h-14 bg-gray-50/50 dark:bg-gray-800/30 border-b border-gray-200/30 dark:border-gray-700/30 flex items-center px-6 gap-3 shrink-0">
@@ -214,7 +214,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
 
       {/* Card Content */}
       <div className="p-8 flex flex-col justify-center items-start text-left h-full">
-        <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-rose-500/10 to-pink-500/10 flex items-center justify-center mb-6 text-rose-600 dark:text-rose-400 shadow-inner ring-1 ring-rose-500/20">
+        <div className="w-14 h-14 rounded-2xl bg-gradient-to-br bg-primary/10 flex items-center justify-center mb-6 text-primary dark:text-primary/70 shadow-inner ring-1 ring-primary/20">
           <feature.icon className="w-7 h-7" />
         </div>
         <h3 className="text-2xl font-black text-gray-900 dark:text-white mb-3 tracking-tight">
@@ -318,7 +318,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
               onClick={() => setTheme(actualTheme === 'dark' ? 'light' : 'dark')}
               className="hidden lg:flex items-center justify-center p-2 rounded-full bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/20 border border-gray-200 dark:border-white/10 transition-all duration-300 active:scale-90"
             >
-              {mounted && (actualTheme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-rose-600" />)}
+              {mounted && (actualTheme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-primary" />)}
             </button>
 
             <Button
@@ -385,7 +385,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
               )} */}
               <h1 className="text-6xl sm:text-8xl lg:text-9xl font-black tracking-tighter leading-[1.1] text-gray-900 dark:text-white">
                 <span>The Topper Knew Something</span>
-                <span className="block bg-gradient-to-r from-rose-600 to-pink-600 dark:from-blue-400 dark:to-indigo-400 bg-clip-text text-transparent mt-6">You didn't. Now you do.</span>
+                <span className="block text-4xl sm:text-6xl lg:text-7xl bg-gradient-to-r from-primary via-primary/90 to-primary bg-clip-text text-transparent mt-6">You didn't. Now you do.</span>
               </h1>
             </div>
             <p className="text-lg sm:text-xl md:text-2xl text-gray-600 dark:text-white/80 max-w-2xl mx-auto font-medium leading-relaxed">
@@ -422,9 +422,9 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
       <section id="features" className="py-28 lg:py-36 relative z-10 overflow-x-hidden">
         <div className="max-w-7xl mx-auto px-6">
           <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }} viewport={{ once: true }} className="text-center mb-16">
-            <h2 className="text-[10px] font-black text-rose-600 tracking-[0.4em] uppercase mb-4">Core Capabilities</h2>
+            <h2 className="text-[10px] font-black text-primary tracking-[0.4em] uppercase mb-4">Core Capabilities</h2>
             <h1 className="text-5xl sm:text-6xl lg:text-7xl font-black text-gray-900 dark:text-white mb-6 tracking-tighter">
-              Engineered for <span className="bg-gradient-to-r from-rose-600 to-pink-600 dark:from-blue-400 dark:to-indigo-400 bg-clip-text text-transparent">Rankers.</span>
+              Engineered for <span className="bg-gradient-to-r from-primary via-primary/90 to-primary bg-clip-text text-transparent">Rankers.</span>
             </h1>
           </motion.div>
 
@@ -446,7 +446,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
                       <span className="text-[10px] font-black text-gray-500 dark:text-gray-400 ml-4 uppercase tracking-[0.2em] truncate">{feature.title}</span>
                     </div>
                     <div className="p-8 flex flex-col justify-center items-start h-full">
-                      <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-rose-500/10 to-pink-500/10 flex items-center justify-center mb-6 text-rose-600 dark:text-rose-400">
+                      <div className="w-14 h-14 rounded-2xl bg-gradient-to-br bg-primary/10 flex items-center justify-center mb-6 text-primary dark:text-primary/70">
                         <feature.icon className="w-7 h-7" />
                       </div>
                       <h3 className="text-2xl font-black text-gray-900 dark:text-white mb-3 tracking-tight">{feature.title}</h3>
@@ -469,9 +469,9 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
       <section id="how-it-works" ref={howItWorksRef} className="py-28 lg:py-40 relative z-10 overflow-hidden">
         <div className="max-w-7xl mx-auto px-6">
           <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} transition={{ duration: 0.8, ease: "easeOut" }} viewport={{ once: true }} className="text-center mb-24">
-            <h2 className="text-[10px] font-black text-rose-600 tracking-[0.5em] uppercase mb-6">Mastery Framework</h2>
+            <h2 className="text-[10px] font-black text-primary tracking-[0.5em] uppercase mb-6">Mastery Framework</h2>
             <h1 className="text-6xl sm:text-7xl lg:text-8xl font-black text-gray-900 dark:text-white mb-6 tracking-tighter">
-              The <span className="bg-gradient-to-r from-rose-600 to-pink-600 dark:from-blue-400 dark:to-indigo-400 bg-clip-text text-transparent">Protocol.</span>
+              The <span className="bg-gradient-to-r from-primary via-primary/90 to-primary bg-clip-text text-transparent">Protocol.</span>
             </h1>
             <p className="text-xl sm:text-2xl text-gray-600 dark:text-gray-300 max-w-3xl mx-auto font-medium leading-relaxed">
               A systematic, AI-driven approach to mastering the syllabus and securing your top rank.
@@ -490,13 +490,13 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
                 <ul className="space-y-4 pt-4">
                   {["Real-time gap detection", "Cognitive strength mapping", "Syllabus coverage audit"].map((item, i) => (
                     <li key={i} className="flex items-center gap-3 text-gray-700 dark:text-gray-300 font-bold">
-                      <div className="w-1.5 h-1.5 rounded-full bg-rose-500" /> {item}
+                      <div className="w-1.5 h-1.5 rounded-full bg-primary/80" /> {item}
                     </li>
                   ))}
                 </ul>
               </motion.div>
               <motion.div initial={{ opacity: 0, scale: 0.95 }} whileInView={{ opacity: 1, scale: 1 }} transition={{ duration: 0.8 }} viewport={{ once: true }} className="flex-1 relative group">
-                <div className="absolute inset-0 bg-rose-500/20 blur-[80px] rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
+                <div className="absolute inset-0 bg-primary/80/20 blur-[80px] rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
                 <div className="relative rounded-3xl overflow-hidden border border-gray-200 dark:border-gray-800 shadow-2xl">
                   <img src="/images/protocol/diagnose.png" alt="Diagnose" className="w-full h-auto object-cover hover:scale-105 transition-transform duration-1000" />
                 </div>
@@ -506,7 +506,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
             {/* Step 2 */}
             <div className="flex flex-col lg:flex-row-reverse items-center gap-16 lg:gap-32">
               <motion.div initial={{ opacity: 0, x: 50 }} whileInView={{ opacity: 1, x: 0 }} transition={{ duration: 0.8, delay: 0.2 }} viewport={{ once: true, margin: "-100px" }} className="flex-1 space-y-6">
-                <div className="inline-flex items-center gap-3 px-4 py-2 rounded-full bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
+                <div className="inline-flex items-center gap-3 px-4 py-2 rounded-full bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300 border border-primary/20 dark:border-rose-800">
                   <span className="text-xs font-black uppercase tracking-widest">Step 02</span>
                 </div>
                 <h2 className="text-5xl lg:text-6xl font-black text-gray-900 dark:text-white tracking-tighter">Plan.</h2>
@@ -514,13 +514,13 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
                 <ul className="space-y-4 pt-4">
                   {["Personalized path to AIR < 100", "Dynamic subject re-prioritization", "Time-blocked efficiency maps"].map((item, i) => (
                     <li key={i} className="flex items-center gap-3 text-gray-700 dark:text-gray-300 font-bold">
-                      <div className="w-1.5 h-1.5 rounded-full bg-rose-500" /> {item}
+                      <div className="w-1.5 h-1.5 rounded-full bg-primary/80" /> {item}
                     </li>
                   ))}
                 </ul>
               </motion.div>
               <motion.div initial={{ opacity: 0, scale: 0.95 }} whileInView={{ opacity: 1, scale: 1 }} transition={{ duration: 0.8 }} viewport={{ once: true }} className="flex-1 relative group">
-                <div className="absolute inset-0 bg-rose-500/20 blur-[80px] rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
+                <div className="absolute inset-0 bg-primary/80/20 blur-[80px] rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
                 <div className="relative rounded-3xl overflow-hidden border border-gray-200 dark:border-gray-800 shadow-2xl">
                   <img src="/images/protocol/plan.png" alt="Plan" className="w-full h-auto object-cover hover:scale-105 transition-transform duration-1000" />
                 </div>
@@ -584,7 +584,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
           <motion.div ref={counterRef} initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} transition={{ duration: 0.8 }} viewport={{ once: true }} className="flex flex-col items-center space-y-10">
             <h2 className="text-5xl sm:text-7xl lg:text-8xl font-black text-gray-900 dark:text-white tracking-tighter leading-none">
               Trusted by the <br />
-              <span className="bg-gradient-to-r from-rose-600 to-pink-600 dark:from-blue-400 dark:to-indigo-400 bg-clip-text text-transparent">Top 1%.</span>
+              <span className="bg-gradient-to-r from-primary via-primary/90 to-primary bg-clip-text text-transparent">Top 1%.</span>
             </h2>
             <p className="text-xl sm:text-2xl text-gray-600 dark:text-gray-300 max-w-3xl mx-auto font-black leading-relaxed tracking-tight uppercase">
               <span className="text-primary text-5xl sm:text-7xl md:text-8xl block mb-5 font-black tabular-nums">
@@ -618,9 +618,9 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
       <section id="pricing" className="py-28 lg:py-36 relative z-10">
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center mb-16">
-            <h2 className="text-[10px] font-black text-rose-600 tracking-[0.4em] uppercase mb-4">Pricing Plans</h2>
+            <h2 className="text-[10px] font-black text-primary tracking-[0.4em] uppercase mb-4">Pricing Plans</h2>
             <h2 className="text-5xl sm:text-6xl lg:text-7xl font-black text-gray-900 dark:text-white mb-6 tracking-tighter">
-              Invest in <span className="bg-gradient-to-r from-rose-600 to-pink-600 dark:from-blue-400 dark:to-indigo-400 bg-clip-text text-transparent">Your Future.</span>
+              Invest in <span className="bg-gradient-to-r from-primary via-primary/90 to-primary bg-clip-text text-transparent">Your Future.</span>
             </h2>
             <p className="text-xl text-gray-600 dark:text-gray-300 max-w-2xl mx-auto font-medium">Elite training shouldn't be a luxury. Choose the track that fits your ambition.</p>
           </div>
@@ -632,7 +632,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
               { name: 'Elite', price: 'Waitlist', desc: '1-on-1 performance engineering.', features: ['Everything in Pro', 'Personal AI Tutor Agent', 'Mastery-Based Explanations', 'End-to-End Milestone Maps', 'Rapid Revision Protocols', 'Mental Performance Gear', 'Advanced Predictive Ops'], cta: 'Join Waitlist', popular: false, comingSoon: true },
             ].map((plan, index) => (
               <div key={index} className={`relative p-10 flex flex-col rounded-3xl transition-all duration-500 hover:scale-[1.02] ${plan.popular ? 'bg-card dark:bg-gray-950 border-2 border-rose-500 shadow-2xl shadow-rose-500/10' : 'bg-card/80 dark:bg-gray-900/80 backdrop-blur-sm border border-gray-200 dark:border-gray-800 shadow-xl'}`}>
-                {plan.popular && <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 px-5 py-2 rounded-full bg-rose-600 text-white text-[10px] font-black uppercase tracking-[0.2em] shadow-lg">Most Strategic</div>}
+                {plan.popular && <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 px-5 py-2 rounded-full bg-primary text-white text-[10px] font-black uppercase tracking-[0.2em] shadow-lg">Most Strategic</div>}
                 <div className="mb-8">
                   <h3 className="text-2xl font-black mb-2 tracking-tight text-gray-900 dark:text-white">{plan.name}</h3>
                   <div className="text-4xl font-black mb-4 text-gray-900 dark:text-white">{plan.price}</div>
@@ -664,8 +664,8 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
           <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }} viewport={{ once: true }} className="space-y-10">
             <h2 className="text-6xl sm:text-8xl lg:text-9xl font-black text-gray-900 dark:text-white tracking-tighter leading-[0.9] mb-8">
               REWRITE YOUR <br />
-              <span className="bg-gradient-to-r from-rose-600 to-pink-600 dark:from-blue-400 dark:to-indigo-400 bg-clip-text text-transparent">STORY.</span>
-            </h2>
+              <span className="bg-gradient-to-r from-primary via-primary/90 to-primary bg-clip-text text-transparent">STORY.</span>
+              </h2>
             <div className="flex flex-col items-center gap-6">
               <div className="bg-rose-100 dark:bg-rose-900/30 border border-emerald-200 dark:border-rose-800 px-6 py-2 rounded-full">
                 <p className="text-sm font-black tracking-[0.2em] text-rose-700 dark:text-emerald-300 uppercase animate-pulse">
