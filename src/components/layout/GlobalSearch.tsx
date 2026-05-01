@@ -140,7 +140,7 @@ export default function GlobalSearch({ isOpen, onClose, currentView, onNavigate 
           initial={{ opacity: 0, scale: 0.95, y: -20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: -20 }}
-          className="relative w-full max-w-2xl bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden"
+          className="relative w-full max-w-2xl bg-card dark:bg-slate-900 rounded-2xl shadow-2xl border border-primary/20 dark:border-slate-800 overflow-hidden"
         >
           {/* Search Header */}
           <div className="flex items-center px-4 py-3 border-b border-slate-200 dark:border-slate-800">
@@ -217,13 +217,13 @@ export default function GlobalSearch({ isOpen, onClose, currentView, onNavigate 
                       <button 
                         key={nav.label}
                         onClick={() => onNavigate(nav.view as ViewState)}
-                        className="flex items-center gap-3 p-3 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-all group"
+                        className="flex items-center gap-3 p-3 rounded-xl hover:bg-primary/10 dark:hover:bg-primary/20 transition-all group"
                       >
-                        <div className="w-8 h-8 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-blue-500">
+                        <div className="w-8 h-8 rounded-lg bg-primary/5 dark:bg-primary/10 border border-primary/20 dark:border-primary/30 flex items-center justify-center text-primary">
                           <nav.icon className="w-4 h-4" />
                         </div>
-                        <span className="text-sm font-bold text-slate-700 dark:text-slate-300 group-hover:text-blue-500 transition-colors">{nav.label}</span>
-                        <ChevronRight className="w-4 h-4 ml-auto text-slate-300 dark:text-slate-600 group-hover:translate-x-1 transition-all" />
+                        <span className="text-sm font-bold text-primary group-hover:opacity-80 transition-colors">{nav.label}</span>
+                        <ChevronRight className="w-4 h-4 ml-auto text-primary/30 dark:text-primary/60 group-hover:translate-x-1 transition-all" />
                       </button>
                     ))}
                   </div>
@@ -246,7 +246,7 @@ export default function GlobalSearch({ isOpen, onClose, currentView, onNavigate 
                     >
                       <div className={cn(
                         "w-10 h-10 rounded-lg flex items-center justify-center shrink-0 transition-colors",
-                        isSelected ? "bg-white/20 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-500 group-hover:text-blue-500"
+                        isSelected ? "bg-primary/20 text-primary" : "bg-primary/5 dark:bg-slate-800 text-slate-500 group-hover:text-primary"
                       )}>
                         <Icon className="w-5 h-5" />
                       </div>

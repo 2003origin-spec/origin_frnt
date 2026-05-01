@@ -34,7 +34,7 @@ export function ParticipantList({
   };
 
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950">
+    <section className="rounded-lg border border-primary/20 bg-card p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950">
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-sm font-black uppercase tracking-[0.18em] text-slate-500">Participants</h2>
         <Badge variant="secondary" className="rounded-md">{activeParticipants.length}/100</Badge>

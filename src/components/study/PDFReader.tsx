@@ -86,10 +86,10 @@ export default function PDFReader({ url, name, subject, classNum, onBack }: PDFR
     };
 
     return (
-        <div className={`flex flex-col bg-slate-50 dark:bg-[#060D1A] text-slate-900 dark:text-slate-200 font-sans transition-all duration-300 ${isFullscreen ? 'fixed inset-0 z-50' : 'h-screen'}`}>
+        <div className={`flex flex-col bg-background text-slate-900 dark:text-slate-200 font-sans transition-all duration-300 ${isFullscreen ? 'fixed inset-0 z-50' : 'h-screen'}`}>
 
             {/* Header */}
-            <header className="h-14 flex items-center justify-between px-4 sm:px-6 bg-white dark:bg-[#030712]/60 backdrop-blur-xl border-b border-slate-200 dark:border-indigo-500/10 shadow-sm z-20 shrink-0 gap-4">
+            <header className="h-14 flex items-center justify-between px-4 sm:px-6 bg-card dark:bg-[#030712]/60 backdrop-blur-xl border-b border-rose-200 dark:border-indigo-500/10 shadow-sm z-20 shrink-0 gap-4">
                 <div className="flex items-center gap-3 min-w-0">
                     <Button
                         variant="ghost"
@@ -165,7 +165,7 @@ export default function PDFReader({ url, name, subject, classNum, onBack }: PDFR
                 </div>
 
                 {/* Right: Notes Panel */}
-                <div className="w-80 lg:w-96 bg-white dark:bg-[#030712]/90 backdrop-blur-xl border-l border-slate-200 dark:border-white/5 flex flex-col shrink-0 shadow-[-4px_0_15px_rgba(0,0,0,0.05)] dark:shadow-[-8px_0_30px_rgba(0,0,0,0.5)]">
+                <div className="w-80 lg:w-96 bg-card dark:bg-[#030712]/90 backdrop-blur-xl border-l border-rose-200 dark:border-white/5 flex flex-col shrink-0 shadow-[-4px_0_15px_rgba(0,0,0,0.05)] dark:shadow-[-8px_0_30px_rgba(0,0,0,0.5)]">
                     {/* Notes Header */}
                     <div className="h-13 flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-white/5 bg-slate-50 dark:bg-transparent shrink-0">
                         <div className="flex items-center gap-2">

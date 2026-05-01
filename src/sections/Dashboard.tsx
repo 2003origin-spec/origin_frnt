@@ -61,9 +61,9 @@ function EventsCarousel() {
           className={`absolute inset-0 transition-opacity duration-1000 ${idx === current ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
         >
           <img src={event.image} alt={event.title} className="w-full h-full object-cover opacity-60 dark:opacity-40" />
-          <div className="absolute inset-0 bg-gradient-to-r from-blue-50/80 via-white/40 to-transparent dark:from-background dark:via-background/60 dark:to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent dark:from-background dark:via-background/60 dark:to-transparent" />
           <div className="absolute inset-0 p-6 sm:p-10 flex flex-col justify-center">
-            <span className="inline-block px-3 py-1 bg-blue-100/50 dark:bg-white/10 backdrop-blur-md border border-blue-200/50 dark:border-white/20 rounded-full text-[10px] font-black tracking-widest uppercase text-[#1D4ED8] dark:text-indigo-300 w-fit mb-4 shadow-sm">
+            <span className="inline-block px-3 py-1 bg-primary/10 dark:bg-primary/20 backdrop-blur-md border border-primary/20 rounded-full text-[10px] font-black tracking-widest uppercase text-primary w-fit mb-4 shadow-sm">
               {event.badge}
             </span>
             <h2 className="text-2xl sm:text-4xl font-black text-[#334155] dark:text-white mb-2 sm:mb-3 tracking-tight leading-tight max-w-2xl">{event.title}</h2>
@@ -78,7 +78,7 @@ function EventsCarousel() {
           <button
             key={idx}
             onClick={() => setCurrent(idx)}
-            className={`w-2 h-2 rounded-full transition-all ${idx === current ? 'w-6 bg-indigo-600 dark:bg-indigo-500 shadow-sm' : 'bg-slate-300 dark:bg-slate-700 hover:bg-slate-400 dark:hover:bg-slate-600'}`}
+            className={`w-2 h-2 rounded-full transition-all ${idx === current ? 'w-6 bg-primary shadow-sm' : 'bg-slate-300 dark:bg-slate-700 hover:bg-slate-400 dark:hover:bg-slate-600'}`}
           />
         ))}
       </div>
@@ -264,9 +264,9 @@ export default function Dashboard({
   return (
     <div className="min-h-screen bg-background font-sans selection:bg-primary/20 selection:text-primary transition-colors duration-500 relative overflow-x-hidden">
       {/* Premium Background Decoration */}
-      <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden opacity-30 dark:opacity-20">
-        <div className="absolute top-[-20%] right-[-10%] w-[70%] h-[70%] bg-blue-100 dark:bg-primary/10 rounded-full blur-[120px]" />
-        <div className="absolute bottom-[-20%] left-[-10%] w-[60%] h-[60%] bg-slate-100 dark:bg-blue-500/10 rounded-full blur-[100px]" />
+      <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden opacity-40 dark:opacity-20">
+        <div className="absolute top-[-20%] right-[-10%] w-[70%] h-[70%] bg-primary/10 rounded-full blur-[120px]" />
+        <div className="absolute bottom-[-20%] left-[-10%] w-[60%] h-[60%] bg-primary/10 rounded-full blur-[100px]" />
         <div className="absolute inset-0 bg-[url('/noise.svg')] opacity-[0.02] mix-blend-overlay" />
       </div>
 
@@ -276,20 +276,20 @@ export default function Dashboard({
           <motion.div 
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-blue-600/10 border border-blue-600/20 rounded-2xl p-4 flex items-center justify-between gap-4 backdrop-blur-xl"
+            className="bg-primary/10 border border-primary/20 rounded-2xl p-4 flex items-center justify-between gap-4 backdrop-blur-xl"
           >
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-blue-600/20 flex items-center justify-center text-blue-600">
+              <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center text-primary">
                 <Zap className="w-5 h-5 animate-pulse" />
               </div>
               <div>
-                <p className="text-sm font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider">Limited Seats Remaining!</p>
+                <p className="text-sm font-bold text-primary uppercase tracking-wider">Limited Seats Remaining!</p>
                 <p className="text-xs text-slate-600 dark:text-slate-400 font-medium">Only {regStatus.seatsLeft} out of {regStatus.limit} seats left for this phase.</p>
               </div>
             </div>
             <button 
               onClick={() => window.open('https://chat.whatsapp.com/L7X7N7P7N7P7N7P7N7P7N7', '_blank')}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-black rounded-xl transition-all shadow-lg shadow-blue-500/20 uppercase tracking-tighter"
+              className="px-4 py-2 bg-primary hover:bg-primary/90 text-white text-xs font-black rounded-xl transition-all shadow-lg shadow-primary/20 uppercase tracking-tighter"
             >
               Invite Friends
             </button>

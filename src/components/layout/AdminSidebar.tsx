@@ -110,7 +110,7 @@ export default function AdminSidebar({ isCollapsed, setCollapsed, onLogout }: Ad
             <div className="p-4 border-t border-border space-y-2">
                 <button
                     onClick={onLogout}
-                    className="w-full flex items-center gap-4 px-3 py-3 rounded-xl text-rose-500 hover:bg-rose-500/10 transition-all group"
+                    className="w-full flex items-center gap-4 px-3 py-3 rounded-xl text-primary hover:bg-primary/10 transition-all group"
                 >
                     <LogOut className="w-5 h-5 min-w-[20px] group-hover:-translate-x-1 transition-transform" />
                     {!isCollapsed && (

@@ -138,12 +138,12 @@ export default function PhotoBooth() {
             <div className="absolute left-[-9999px] top-[-9999px]">
                 <div 
                     ref={frameTemplateRef}
-                    className="w-[1080px] h-[1080px] bg-white p-12 flex flex-col items-center justify-center relative overflow-hidden"
+                    className="w-[1080px] h-[1080px] bg-card p-12 flex flex-col items-center justify-center relative overflow-hidden"
                     style={{ fontFamily: 'system-ui, sans-serif' }}
                 >
                     {/* Frame Decoration */}
                     <div className="absolute inset-0 border-[40px] border-[#030014]"></div>
-                    <div className="absolute inset-[40px] border-2 border-indigo-500/20"></div>
+                    <div className="absolute inset-[40px] border-2 border-primary/20"></div>
                     
                     {/* Content Area */}
                     <div className="w-full h-full flex flex-col p-12 bg-[#030014] relative">
@@ -159,10 +159,10 @@ export default function PhotoBooth() {
                         <div className="pt-10 flex items-center justify-between">
                             <div className="space-y-2">
                                 <h2 className="text-white text-5xl font-black tracking-tight">{nickname}</h2>
-                                <p className="text-indigo-400 text-xl font-bold uppercase tracking-widest">ORIGIN AI • {new Date().getFullYear()}</p>
+                                <p className="text-primary/80 text-xl font-bold uppercase tracking-widest">ORIGIN AI • {new Date().getFullYear()}</p>
                             </div>
                             <div className="flex items-center gap-6">
-                                <img src="/origin-new.jpg" alt="Origin Logo" className="w-24 h-24 rounded-2xl object-cover border-2 border-indigo-500/50" />
+                                <img src="/origin-new.jpg" alt="Origin Logo" className="w-24 h-24 rounded-2xl object-cover border-2 border-primary/50" />
                                 <div className="text-right">
                                     <p className="text-white text-2xl font-black">Best Prep Platform</p>
                                     <p className="text-slate-400 text-lg font-bold">JEE / NEET / FOUNDATION</p>
@@ -171,7 +171,7 @@ export default function PhotoBooth() {
                         </div>
 
                         {/* Aesthetic Elements */}
-                        <div className="absolute top-16 right-16 px-6 py-3 rounded-full bg-indigo-600 text-white font-black text-xl tracking-[0.2em] uppercase shadow-lg shadow-indigo-500/40">
+                        <div className="absolute top-16 right-16 px-6 py-3 rounded-full bg-primary text-white font-black text-xl tracking-[0.2em] uppercase shadow-lg shadow-primary/40">
                             Verified Scholar
                         </div>
                     </div>
@@ -179,9 +179,9 @@ export default function PhotoBooth() {
             </div>
 
             {/* Soft Radial Lighting Glows */}
-            <div className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] bg-indigo-600/20 rounded-full blur-[120px] z-0 pointer-events-none mix-blend-screen transition-all duration-1000 group-hover/booth:bg-indigo-500/20"></div>
-            <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-violet-600/20 rounded-full blur-[100px] z-0 pointer-events-none mix-blend-screen transition-all duration-1000 group-hover/booth:bg-violet-500/20"></div>
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[40%] h-[40%] bg-blue-500/10 rounded-full blur-[80px] z-0 pointer-events-none"></div>
+            <div className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] bg-primary/20 rounded-full blur-[120px] z-0 pointer-events-none mix-blend-screen transition-all duration-1000 group-hover/booth:bg-primary/30"></div>
+            <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-primary/20 rounded-full blur-[100px] z-0 pointer-events-none mix-blend-screen transition-all duration-1000 group-hover/booth:bg-primary/20"></div>
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[40%] h-[40%] bg-primary/10 rounded-full blur-[80px] z-0 pointer-events-none"></div>
 
             <input
                 type="file"
@@ -217,10 +217,10 @@ export default function PhotoBooth() {
                                     initial={{ opacity: 0, y: 20 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     transition={{ delay: 0.2 }}
-                                    className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/5 border border-white/10 backdrop-blur-md shadow-[0_0_15px_rgba(99,102,241,0.2)]"
+                                    className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/5 border border-white/10 backdrop-blur-md shadow-[0_0_15px_var(--primary)]"
                                 >
-                                    <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-                                    <span className="text-[10px] sm:text-xs font-bold text-indigo-200 uppercase tracking-[0.3em]">Origin Branded</span>
+                                    <Sparkles className="w-3.5 h-3.5 text-primary/80" />
+                                    <span className="text-[10px] sm:text-xs font-bold text-primary/60 uppercase tracking-[0.3em]">Origin Branded</span>
                                 </motion.div>
 
                                 {/* Heading */}
@@ -232,7 +232,7 @@ export default function PhotoBooth() {
                                 >
                                     <h1 className="text-5xl sm:text-6xl lg:text-7xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-br from-white via-white to-white/40 leading-[1.1]">
                                         Scholar <br className="hidden lg:block" />
-                                        <span className="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Photobooth</span>
+                                        <span className="bg-gradient-to-r from-primary/80 via-primary to-primary/60 bg-clip-text text-transparent">Photobooth</span>
                                     </h1>
                                     <p className="text-lg text-slate-400 font-medium max-w-md leading-relaxed mx-auto lg:mx-0">
                                         Create your custom Origin scholar memory. Take a photo, apply the frame, and share your journey.
@@ -248,7 +248,7 @@ export default function PhotoBooth() {
                                 >
                                     <button
                                         onClick={() => fileInputRef.current?.click()}
-                                        className="w-full sm:w-auto relative group px-8 py-4 rounded-full bg-gradient-to-r from-violet-600 to-indigo-600 font-bold text-white shadow-[0_0_40px_rgba(79,70,229,0.3)] hover:shadow-[0_0_60px_rgba(79,70,229,0.5)] transition-all duration-300 hover:-translate-y-1 overflow-hidden"
+                                        className="w-full sm:w-auto relative group px-8 py-4 rounded-full bg-primary font-bold text-white shadow-[0_0_40px_var(--primary)] hover:opacity-90 transition-all duration-300 hover:-translate-y-1 overflow-hidden"
                                     >
                                         <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out"></div>
                                         <span className="relative z-10 flex items-center justify-center gap-2 text-sm">
@@ -271,7 +271,7 @@ export default function PhotoBooth() {
                                 >
                                     <div className="flex -space-x-3">
                                         {[1, 2, 3].map(i => (
-                                            <div key={i} className="w-8 h-8 rounded-full border-2 border-[#030014] bg-indigo-900/50 flex items-center justify-center overflow-hidden">
+                                            <div key={i} className="w-8 h-8 rounded-full border-2 border-[#030014] bg-primary/20 flex items-center justify-center overflow-hidden">
                                                 <img src={`https://i.pravatar.cc/100?img=${i + 15}`} alt="user" className="w-full h-full object-cover opacity-80" />
                                             </div>
                                         ))}
@@ -291,12 +291,12 @@ export default function PhotoBooth() {
                                             <div className="h-4 w-24 bg-white/10 rounded"></div>
                                             <div className="h-3 w-16 bg-white/5 rounded"></div>
                                         </div>
-                                        <div className="w-10 h-10 rounded-lg bg-indigo-500/20 border border-indigo-500/30"></div>
+                                        <div className="w-10 h-10 rounded-lg bg-primary/20 border border-primary/30"></div>
                                     </div>
-                                    <div className="absolute inset-0 bg-gradient-to-tr from-indigo-500/10 to-transparent pointer-events-none"></div>
+                                    <div className="absolute inset-0 bg-gradient-to-tr from-primary/10 to-transparent pointer-events-none"></div>
                                 </div>
                                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                                    <div className="w-64 h-64 bg-indigo-500/20 blur-[100px] rounded-full"></div>
+                                    <div className="w-64 h-64 bg-primary/20 blur-[100px] rounded-full"></div>
                                 </div>
                             </div>
                         </motion.div>
@@ -316,11 +316,11 @@ export default function PhotoBooth() {
                                 {isGenerating && (
                                     <div className="absolute inset-0 bg-black/70 backdrop-blur-xl flex flex-col items-center justify-center text-center p-8 z-20">
                                         <div className="relative mb-8">
-                                            <div className="w-24 h-24 rounded-full border-4 border-indigo-500/20 border-t-indigo-500 animate-[spin_1.5s_linear_infinite]" />
-                                            <div className="absolute inset-0 m-auto w-16 h-16 bg-indigo-500/20 rounded-full blur-xl animate-pulse"></div>
-                                            <Sparkles className="absolute inset-0 m-auto w-8 h-8 text-indigo-400 animate-pulse" />
+                                            <div className="w-24 h-24 rounded-full border-4 border-primary/20 border-t-primary animate-[spin_1.5s_linear_infinite]" />
+                                            <div className="absolute inset-0 m-auto w-16 h-16 bg-primary/20 rounded-full blur-xl animate-pulse"></div>
+                                            <Sparkles className="absolute inset-0 m-auto w-8 h-8 text-primary/80 animate-pulse" />
                                         </div>
-                                        <h3 className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400 font-black text-2xl uppercase tracking-[0.2em]">Applying Frame</h3>
+                                        <h3 className="text-transparent bg-clip-text bg-gradient-to-r from-primary via-primary/80 to-primary/60 font-black text-2xl uppercase tracking-[0.2em]">Applying Frame</h3>
                                         <p className="text-slate-400 text-xs mt-3 uppercase font-bold tracking-widest">Optimizing for sharing...</p>
                                     </div>
                                 )}
@@ -337,13 +337,13 @@ export default function PhotoBooth() {
                                     className="flex gap-4 w-full max-w-lg mt-8"
                                 >
                                     <button
-                                        className="flex-1 h-14 rounded-full border border-white/10 hover:bg-white/5 text-slate-300 font-bold uppercase tracking-widest flex items-center justify-center gap-2 transition-colors backdrop-blur-md"
+                                        className="flex-1 h-14 rounded-full border border-primary/20 hover:bg-primary/10 text-white font-bold uppercase tracking-widest flex items-center justify-center gap-2 transition-colors backdrop-blur-md"
                                         onClick={reset}
                                     >
                                         <RefreshCw className="w-4 h-4" /> Retake
                                     </button>
                                     <button
-                                        className="flex-[2] h-14 px-8 rounded-full bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-black uppercase tracking-widest shadow-[0_0_30px_rgba(79,70,229,0.3)] hover:shadow-[0_0_50px_rgba(79,70,229,0.5)] flex items-center justify-center gap-2 transition-all group"
+                                        className="flex-[2] h-14 px-8 rounded-full bg-primary hover:opacity-90 text-white font-black uppercase tracking-widest shadow-[0_0_30px_var(--primary)] flex items-center justify-center gap-2 transition-all group"
                                         onClick={handleGenerate}
                                     >
                                         Apply Origin Frame <Sparkles className="w-4 h-4 group-hover:rotate-12 transition-transform" />
@@ -361,14 +361,14 @@ export default function PhotoBooth() {
                             className="w-full h-full grid grid-cols-1 lg:grid-cols-2 gap-12 items-center z-10 p-4 lg:p-8"
                         >
                             <div className="relative group perspective-1000 mx-auto w-full max-w-md">
-                                <div className="absolute inset-0 bg-indigo-500/20 blur-[100px] group-hover:bg-indigo-500/30 transition-all duration-700 pointer-events-none" />
+                                <div className="absolute inset-0 bg-primary/20 blur-[100px] group-hover:bg-primary/30 transition-all duration-700 pointer-events-none" />
                                 <motion.div
-                                    className="relative aspect-square rounded-[2.5rem] overflow-hidden border border-white/10 shadow-[0_0_80px_rgba(99,102,241,0.2)]"
+                                    className="relative aspect-square rounded-[2.5rem] overflow-hidden border border-primary/20 shadow-[0_0_80px_var(--primary)]"
                                     whileHover={{ rotateY: 5, rotateX: -5 }}
                                     transition={{ type: "spring", stiffness: 300, damping: 20 }}
                                     style={{ transformStyle: "preserve-3d" }}
                                 >
-                                    <img src={framedImage} alt="Framed Result" className="w-full h-full object-contain bg-[#030014]" />
+                                    <img src={framedImage} alt="Framed Result" className="w-full h-full object-contain bg-slate-900" />
                                 </motion.div>
                             </div>
 
@@ -377,15 +377,15 @@ export default function PhotoBooth() {
                                     <div className="inline-flex items-center justify-center lg:justify-start gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-black uppercase tracking-widest mb-2">
                                         <Check className="w-3 h-3" /> Frame Applied Successfully
                                     </div>
-                                    <h3 className="text-4xl md:text-5xl font-black text-white tracking-tighter leading-tight">Your Scholar <br /><span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-pink-400">Memory Card</span></h3>
+                                    <h3 className="text-4xl md:text-5xl font-black text-white tracking-tighter leading-tight">Your Scholar <br /><span className="text-transparent bg-clip-text bg-gradient-to-r from-primary via-primary/80 to-primary/60">Memory Card</span></h3>
                                     
                                     <div className="space-y-2 text-left pt-2">
-                                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Nickname on Card</label>
+                                        <label className="text-[10px] font-black text-primary uppercase tracking-widest ml-1">Nickname on Card</label>
                                         <input
                                             type="text"
                                             value={nickname}
                                             onChange={(e) => setNickname(e.target.value)}
-                                            className="w-full h-12 px-5 rounded-xl bg-white/5 border border-white/10 text-white font-bold text-sm outline-none focus:border-indigo-500/50 transition-all"
+                                            className="w-full h-12 px-5 rounded-xl bg-white/5 border border-white/10 text-white font-bold text-sm outline-none focus:border-primary/50 transition-all"
                                             placeholder="Scholars Name..."
                                         />
                                         <p className="text-[10px] text-slate-500 font-medium italic">*Update nickname and click "Apply" again to refresh card</p>
@@ -395,7 +395,7 @@ export default function PhotoBooth() {
                                 <div className="space-y-4">
                                     <button 
                                         onClick={handleDownload}
-                                        className="w-full h-16 rounded-2xl bg-white text-black hover:bg-slate-200 transition-all flex items-center justify-center gap-3 font-black uppercase tracking-widest shadow-xl group"
+                                        className="w-full h-16 rounded-2xl bg-white/5 text-white border border-white/10 hover:bg-white/10 transition-all flex items-center justify-center gap-3 font-black uppercase tracking-widest shadow-xl group"
                                     >
                                         <Download className="w-5 h-5 group-hover:translate-y-0.5 transition-transform" /> Download Photo
                                     </button>
@@ -409,7 +409,7 @@ export default function PhotoBooth() {
                                         </button>
                                         <button 
                                             onClick={() => handleShare()}
-                                            className="h-14 rounded-2xl bg-indigo-600 hover:bg-indigo-500 transition-all flex items-center justify-center gap-2 text-white font-bold uppercase tracking-widest text-xs shadow-lg shadow-indigo-500/20"
+                                            className="h-14 rounded-2xl bg-primary hover:opacity-90 transition-all flex items-center justify-center gap-2 text-white font-bold uppercase tracking-widest text-xs shadow-lg shadow-primary/20"
                                         >
                                             <Share2 className="w-4 h-4" /> Share Card
                                         </button>
@@ -428,7 +428,7 @@ export default function PhotoBooth() {
                                                 navigator.clipboard.writeText(fullMessage);
                                                 alert('Branded message & link copied!');
                                             }}
-                                            className="flex-1 h-14 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all flex items-center justify-center gap-2 text-slate-300 font-bold uppercase tracking-widest text-xs"
+                                            className="flex-1 h-14 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all flex items-center justify-center gap-2 text-primary font-bold uppercase tracking-widest text-xs"
                                         >
                                             <Copy className="w-4 h-4" /> Copy Link
                                         </button>
@@ -450,7 +450,7 @@ export default function PhotoBooth() {
             {/* Footer / Info */}
             <div className="mt-8 pt-6 border-t border-white/5 flex flex-col sm:flex-row items-center justify-between z-10 gap-4">
                 <div className="flex items-center gap-3">
-                    <div className="p-2.5 rounded-xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                    <div className="p-2.5 rounded-xl bg-primary/10 text-primary border border-primary/20">
                         <Sparkles className="w-4 h-4" />
                     </div>
                     <div>

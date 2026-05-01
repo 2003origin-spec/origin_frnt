@@ -94,7 +94,7 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
 
     return (
         <div
-            className="absolute top-2 sm:top-6 left-0 right-0 mx-auto z-50 bg-white/70 dark:bg-slate-950/70 backdrop-blur-[16px] border border-slate-200/50 dark:border-white/10 text-slate-700 dark:text-slate-300 shadow-xl shadow-slate-200/50 dark:shadow-2xl rounded-2xl sm:rounded-[2rem] pointer-events-auto w-full sm:w-[95%] max-w-7xl transition-all duration-300"
+            className="absolute top-2 sm:top-6 left-0 right-0 mx-auto z-50 bg-card/70 dark:bg-slate-950/70 backdrop-blur-[16px] border border-primary/20 dark:border-white/10 text-slate-700 dark:text-slate-300 shadow-xl shadow-primary/10 dark:shadow-2xl rounded-2xl sm:rounded-[2rem] pointer-events-auto w-full sm:w-[95%] max-w-7xl transition-all duration-300"
         >
 
             <div className="w-full h-full flex items-center">
@@ -106,7 +106,7 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                             <button
                                 onClick={() => setShowMobileMenu(!showMobileMenu)}
                                 className={cn(
-                                    "p-2 text-slate-700 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-all bg-slate-100 dark:bg-white/5 rounded-xl",
+                                    "p-2 text-slate-700 dark:text-slate-400 hover:text-primary transition-all bg-primary/5 dark:bg-white/5 rounded-xl",
                                     isConstrained ? "flex" : "md:hidden"
                                 )}
                             >
@@ -124,7 +124,7 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                             )} />
                             {navItems.length > 0 && (
                                 <nav id="tutorial-nav" className={cn(
-                                    "items-center gap-1 relative px-1 py-1 bg-slate-100/50 dark:bg-white/5 rounded-xl border border-slate-200/50 dark:border-white/5 overflow-hidden min-w-0",
+                                    "items-center gap-1 relative px-1 py-1 bg-primary/5 dark:bg-white/5 rounded-xl border border-primary/10 dark:border-white/5 overflow-hidden min-w-0",
                                     isConstrained ? "hidden" : "hidden md:flex"
                                 )}>
                                     {navItems.map((item) => {
@@ -165,7 +165,7 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                                                 {isActive && (
                                                     <motion.div
                                                         layoutId="nav-pill"
-                                                        className="absolute inset-0 bg-[#F1F5F9] dark:bg-blue-900/20 shadow-sm rounded-lg z-0"
+                                                        className="absolute inset-0 bg-primary/5 dark:bg-primary/20 shadow-sm rounded-lg z-0"
                                                         initial={false}
                                                         transition={{
                                                             type: "spring",
@@ -196,7 +196,7 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                                                                 animate={{ opacity: 1, y: 0, scale: 1 }}
                                                                 exit={{ opacity: 0, y: 10, scale: 0.95 }}
                                                                 transition={{ duration: 0.2, ease: "easeOut" }}
-                                                                className="absolute left-0 mt-3 w-80 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-2xl rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.2)] border border-slate-200/50 dark:border-zinc-800 p-2 z-50 origin-top-left"
+                                                                className="absolute left-0 mt-3 w-80 bg-card/95 dark:bg-zinc-900/95 backdrop-blur-2xl rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.2)] border border-primary/20 dark:border-zinc-800 p-2 z-50 origin-top-left"
                                                             >
                                                                 <div className="px-3 py-2 mb-2">
                                                                     <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-zinc-500">Learning Hub</h3>
@@ -215,8 +215,8 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                                                                     }}
                                                                 >
                                                                     {[
-                                                                        { label: 'Study Corner', icon: BookOpen, view: 'study-corner', desc: 'NCERT & Materials', color: 'text-blue-500' },
-                                                                        { label: 'Pomodoro', icon: Timer, view: 'pomodoro', desc: 'Focus timer', color: 'text-rose-500' },
+                                                                        { label: 'Study Corner', icon: BookOpen, view: 'study-corner', desc: 'NCERT & Materials', color: 'text-primary' },
+                                                                        { label: 'Pomodoro', icon: Timer, view: 'pomodoro', desc: 'Focus timer', color: 'text-primary' },
                                                                         { label: 'Leaderboard', icon: Trophy, view: 'leaderboard', desc: 'Global rankings', color: 'text-amber-500' }
                                                                     ].map((subItem) => (
                                                                         <motion.button
@@ -250,12 +250,12 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                                                                         onClick={() => onNavigate('explore')}
                                                                         onMouseEnter={() => onPrefetch?.('explore')}
                                                                         onFocus={() => onPrefetch?.('explore')}
-                                                                        className="w-full flex items-center justify-between px-3 py-2 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-colors group"
+                                                                        className="w-full flex items-center justify-between px-3 py-2 hover:bg-primary/5 dark:hover:bg-primary/10 rounded-xl transition-colors group"
                                                                     >
                                                                         <div className="flex items-center gap-2">
-                                                                            <span className="text-xs font-bold text-blue-600 dark:text-blue-400">View All Features</span>
+                                                                            <span className="text-xs font-bold text-primary">View All Features</span>
                                                                         </div>
-                                                                        <ArrowRight className="w-3.5 h-3.5 text-blue-400 opacity-0 group-hover:opacity-100 transition-all -translate-x-2 group-hover:translate-x-0" />
+                                                                        <ArrowRight className="w-3.5 h-3.5 text-rose-400 opacity-0 group-hover:opacity-100 transition-all -translate-x-2 group-hover:translate-x-0" />
                                                                     </button>
                                                                 </div>
                                                             </motion.div>
@@ -277,7 +277,7 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                                 whileHover={{ scale: 1.1, rotate: 15 }}
                                 whileTap={{ scale: 0.9 }}
                                 onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-                                className={`p-2 transition-colors rounded-full ${theme === 'light' ? 'text-[#334155] bg-slate-100' : 'text-slate-400 hover:text-amber-500 bg-white/5'}`}
+                                className={`p-2 transition-colors rounded-full ${theme === 'light' ? 'text-primary bg-primary/10' : 'text-slate-400 hover:text-amber-500 bg-white/5'}`}
                             >
                                 {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
                             </motion.button>
@@ -286,7 +286,7 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                                 whileHover={{ scale: 1.1 }}
                                 whileTap={{ scale: 0.9 }}
                                 onClick={() => setIsSearchOpen(true)}
-                                className="p-2 text-slate-500 dark:text-slate-400 hover:text-[#334155] dark:hover:text-white transition-colors bg-slate-100/50 dark:bg-white/5 rounded-full"
+                                className="p-2 text-slate-500 dark:text-slate-400 hover:text-primary transition-colors bg-primary/5 dark:bg-white/5 rounded-full"
                             >
                                 <Search className="w-4 h-4" />
                             </motion.button>
@@ -299,7 +299,7 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                             )} />
 
                             <button className={cn(
-                                "items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-full transition-all active:scale-95 group",
+                                "items-center gap-2 px-4 py-2 bg-primary hover:opacity-90 text-white rounded-full transition-all active:scale-95 group",
                                 isConstrained ? "hidden" : "hidden sm:flex"
                             )}>
                                 <UserPlus className="w-4 h-4 transition-transform group-hover:scale-110" />
@@ -315,10 +315,10 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                                     }}
                                     onClick={() => onNavigate('profile')}
                                     onFocus={() => onPrefetch?.('profile')}
-                                    className="flex items-center gap-2 pl-1 pr-1 py-1 rounded-full hover:bg-white/50 dark:hover:bg-slate-800/50 transition-all border border-transparent hover:border-slate-200 dark:hover:border-slate-700"
+                                    className="flex items-center gap-2 pl-1 pr-1 py-1 rounded-full hover:bg-primary/5 dark:hover:bg-slate-800/50 transition-all border border-transparent hover:border-primary/20 dark:hover:border-slate-700"
                                 >
                                     <Avatar className="w-8 h-8 border-2 border-white dark:border-slate-800 shadow-sm ring-1 ring-slate-100 dark:ring-slate-800">
-                                        <AvatarFallback className="bg-gradient-to-br from-blue-500 to-cyan-600 text-white text-xs font-bold">
+                                        <AvatarFallback className="bg-primary text-white text-xs font-bold">
                                             {user.name.charAt(0).toUpperCase()}
                                         </AvatarFallback>
                                     </Avatar>
@@ -330,13 +330,13 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                                         animate={{ opacity: 1, y: 0, scale: 1 }}
                                         exit={{ opacity: 0, y: 10, scale: 0.95 }}
                                         onMouseLeave={() => setShowProfileMenu(false)}
-                                        className="absolute right-0 mt-3 w-64 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-2xl rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.2)] border border-slate-200/50 dark:border-zinc-800 py-2 z-50 origin-top-right"
+                                        className="absolute right-0 mt-3 w-64 bg-card/95 dark:bg-zinc-900/95 backdrop-blur-2xl rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.2)] border border-primary/20 dark:border-zinc-800 py-2 z-50 origin-top-right"
                                     >
                                         <div className="px-5 py-4 border-b border-slate-100 dark:border-zinc-800 mb-2">
                                             <p className="text-sm font-black text-black dark:text-white">{user.name}</p>
                                             <div className="flex items-center justify-between mt-1">
                                                 <p className="text-xs text-slate-500 dark:text-zinc-500 truncate max-w-[120px]">{user.email}</p>
-                                                <Badge className="text-[10px] h-5 px-1.5 bg-blue-600 text-white dark:bg-blue-500/20 dark:text-blue-400 border-none font-bold">
+                                                <Badge className="text-[10px] h-5 px-1.5 bg-rose-600 text-white dark:bg-rose-500/20 dark:text-rose-400 border-none font-bold">
                                                     {user.isPremium ? 'PRO' : 'FREE'}
                                                 </Badge>
                                             </div>
@@ -372,7 +372,7 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                                             }}
                                         >
                                             {[
-                                                { label: 'My Profile', icon: UserIcon, action: () => onNavigate('profile'), color: 'text-blue-500', bg: 'bg-blue-50 dark:bg-blue-900/30' },
+                                                { label: 'My Profile', icon: UserIcon, action: () => onNavigate('profile'), color: 'text-rose-500', bg: 'bg-rose-50 dark:bg-rose-900/30' },
                                                 { label: 'Settings', icon: Settings, action: () => onNavigate('profile'), color: 'text-slate-500', bg: 'bg-slate-50 dark:bg-zinc-800/50' },
                                                 { label: 'Logout', icon: LogOut, action: onLogout, color: 'text-rose-500', bg: 'bg-rose-50 dark:bg-rose-900/20' }
                                             ].map((item) => (
@@ -417,7 +417,7 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                         animate={{ opacity: 1, y: 0, height: 'auto' }}
                         exit={{ opacity: 0, y: -20, height: 0 }}
                         className={cn(
-                            "border-t border-slate-100 dark:border-zinc-800 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-2xl rounded-b-2xl overflow-hidden shadow-2xl",
+                            "border-t border-rose-100 dark:border-zinc-800 bg-card/95 dark:bg-zinc-950/95 backdrop-blur-2xl rounded-b-2xl overflow-hidden shadow-2xl",
                             isConstrained ? "block" : "md:hidden"
                         )}
                     >

@@ -130,16 +130,16 @@ export default function Profile({
   };
 
   const SUBJECT_COLORS: Record<string, string> = {
-    Physics: 'bg-blue-500 dark:bg-blue-600',
-    Chemistry: 'bg-green-500 dark:bg-green-600',
-    Mathematics: 'bg-purple-500 dark:bg-purple-600',
-    Biology: 'bg-rose-500 dark:bg-rose-600',
+    Physics: 'bg-primary',
+    Chemistry: 'bg-primary/80',
+    Mathematics: 'bg-primary/60',
+    Biology: 'bg-primary/40',
   };
 
   const subjectProgress = (profileStats?.subject_progress ?? []).map((s) => ({
     subject: s.subject,
     progress: s.accuracy,
-    color: SUBJECT_COLORS[s.subject] ?? 'bg-indigo-500 dark:bg-indigo-600',
+    color: SUBJECT_COLORS[s.subject] ?? 'bg-primary',
   }));
 
   const achievements = [
@@ -156,8 +156,8 @@ export default function Profile({
       {/* Premium Background Decoration */}
       <div className="fixed inset-0 z-0 pointer-events-none opacity-40 mix-blend-screen"
         style={{
-          backgroundImage: `radial-gradient(circle at 80% 30%, rgba(29, 78, 216, 0.3) 0%, transparent 40%),
-                               radial-gradient(circle at 20% 70%, rgba(56, 189, 248, 0.15) 0%, transparent 40%)`
+          backgroundImage: `radial-gradient(circle at 80% 30%, var(--primary) 0%, transparent 40%),
+                                radial-gradient(circle at 20% 70%, var(--primary) 0%, transparent 40%)`
         }}>
         <div className="absolute inset-0 bg-[url('/noise.svg')] opacity-[0.05] mix-blend-overlay"></div>
       </div>
@@ -201,13 +201,13 @@ export default function Profile({
               <div className="flex flex-col sm:flex-row items-center gap-8">
                 {/* Avatar */}
                 <div className="relative group">
-                  <div className="absolute -inset-1 bg-gradient-to-tr from-indigo-500 to-violet-500 rounded-full opacity-30 blur group-hover:opacity-50 transition duration-500" />
-                  <Avatar className="w-28 h-28 border-4 border-white dark:border-slate-800 relative z-10">
-                    <AvatarFallback className="bg-gradient-to-br from-indigo-500 to-violet-600 text-white text-4xl font-black">
+                  <div className="absolute -inset-1 bg-primary rounded-full opacity-30 blur group-hover:opacity-50 transition duration-500" />
+                  <Avatar className="w-28 h-28 border-4 border-card dark:border-slate-800 relative z-10">
+                    <AvatarFallback className="bg-primary text-white text-4xl font-black">
                       {user.name.charAt(0).toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
-                  <button className="absolute bottom-1 right-1 w-9 h-9 rounded-full bg-indigo-600 dark:bg-indigo-500 text-white flex items-center justify-center shadow-lg border-2 border-white dark:border-slate-800 hover:scale-110 transition-transform z-20">
+                  <button className="absolute bottom-1 right-1 w-9 h-9 rounded-full bg-primary text-white flex items-center justify-center shadow-lg border-2 border-card dark:border-slate-800 hover:scale-110 transition-transform z-20">
                     <Camera className="w-4 h-4" />
                   </button>
                 </div>
@@ -297,7 +297,7 @@ export default function Profile({
                                   setEditData({ ...editData, subjects: newSubjects });
                                 }}
                                 className={`cursor-pointer px-4 py-1.5 h-auto text-[10px] font-black uppercase tracking-wider rounded-lg transition-all ${editData.subjects.includes(s)
-                                  ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20'
+                                  ? 'bg-primary text-white shadow-lg shadow-primary/20'
                                   : 'bg-slate-100 dark:bg-slate-800/50 text-slate-500 border border-transparent'
                                   }`}
                               >
@@ -323,7 +323,7 @@ export default function Profile({
                         </Badge>
                         <div className="flex flex-wrap gap-2 mt-2">
                           {editData.subjects.map((s: string) => (
-                            <Badge key={s} variant="outline" className="text-[10px] font-bold border-indigo-500/20 text-indigo-500">
+                            <Badge key={s} variant="outline" className="text-[10px] font-bold border-primary/20 text-primary">
                               {s}
                             </Badge>
                           ))}
@@ -373,7 +373,7 @@ export default function Profile({
           {/* Stats Grid */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
             {[
-              { label: 'Tests Taken', value: profileStats ? String(profileStats.tests_taken) : '—', icon: BookOpen, color: 'text-blue-500 shadow-blue-500/10' },
+              { label: 'Tests Taken', value: profileStats ? String(profileStats.tests_taken) : '—', icon: BookOpen, color: 'text-primary shadow-primary/10' },
               { label: 'Study Hours', value: profileStats ? String(profileStats.study_hours) : '—', icon: Clock, color: 'text-emerald-500 shadow-emerald-500/10' },
               { label: 'Current Streak', value: `${streakData.currentStreak} days`, icon: TrendingUp, color: 'text-orange-500 shadow-orange-500/10' },
               { label: 'Global Rank', value: profileStats ? (profileStats.global_rank ? `#${profileStats.global_rank}` : '—') : '—', icon: Trophy, color: 'text-primary shadow-primary/10' },
@@ -450,13 +450,13 @@ export default function Profile({
                             cy="48"
                             r="42"
                             fill="none"
-                            stroke="url(#indigo-grad)"
+                            stroke="url(#primary-grad)"
                             strokeWidth="8"
                             strokeLinecap="round"
                             strokeDasharray={`${((profileStats?.overall_accuracy ?? 0) / 100) * 264} 264`}
                           />
                           <defs>
-                            <linearGradient id="indigo-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+                            <linearGradient id="primary-grad" x1="0%" y1="0%" x2="100%" y2="0%">
                               <stop offset="0%" stopColor="hsl(var(--primary))" />
                               <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity="0.8" />
                             </linearGradient>
@@ -518,11 +518,11 @@ export default function Profile({
             </TabsContent>
 
             <TabsContent value="settings" className="mt-8">
-              <Card className="border-0 shadow-xl bg-white dark:bg-slate-900/60 backdrop-blur-xl ring-1 ring-slate-100 dark:ring-white/5">
+              <Card className="border-0 shadow-xl bg-card dark:bg-slate-900/60 backdrop-blur-xl ring-1 ring-slate-100 dark:ring-white/5">
                 <CardContent className="p-6">
                   <div className="space-y-3">
                     {[
-                      { icon: User, label: 'Personal Information', desc: 'Update your name, email, and bio', color: 'bg-blue-50 dark:bg-blue-900/20 text-blue-500' },
+                      { icon: User, label: 'Personal Information', desc: 'Update your name, email, and bio', color: 'bg-primary/5 text-primary' },
                       { icon: Bell, label: 'Notifications', desc: 'Manage your alert preferences', color: 'bg-primary/5 text-primary' },
                       { icon: Shield, label: 'Privacy & Security', desc: 'Password, 2FA, and sessions', color: 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-500' }
                     ].map((item, idx) => (

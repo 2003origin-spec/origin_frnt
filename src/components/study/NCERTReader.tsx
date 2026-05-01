@@ -166,7 +166,9 @@ export default function NCERTReader({ book, onBack, initialNotes = [], activeCha
                 ctx.lineJoin = 'miter';
                 ctx.globalCompositeOperation = 'multiply'; // Makes highlight look realistic on text
             } else {
-                ctx.strokeStyle = '#3b82f6'; // Blue-500 ink
+                // Use the primary color hex from CSS variables
+                const primaryHex = getComputedStyle(document.documentElement).getPropertyValue('--primary-hex').trim() || '#f43f5e';
+                ctx.strokeStyle = primaryHex; 
                 ctx.lineWidth = 3;
                 ctx.lineCap = 'round';
                 ctx.lineJoin = 'round';
@@ -311,8 +313,8 @@ export default function NCERTReader({ book, onBack, initialNotes = [], activeCha
                         icon={Pencil}
                         active={activeTool === 'pen'}
                         onClick={() => setActiveTool('pen')}
-                        activeColor="text-blue-600"
-                        activeBg="bg-blue-100/50"
+                        activeColor="text-primary"
+                        activeBg="bg-primary/10"
                         tooltip="Pen"
                     />
                     <ToolbarButton

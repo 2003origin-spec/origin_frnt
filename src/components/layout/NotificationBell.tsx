@@ -26,7 +26,7 @@ export const NotificationBell: React.FC = () => {
     switch (type) {
       case 'success': return <CheckCircle className="w-4 h-4 text-emerald-500" />;
       case 'warning': return <AlertTriangle className="w-4 h-4 text-amber-500" />;
-      default: return <Info className="w-4 h-4 text-blue-500" />;
+      default: return <Info className="w-4 h-4 text-primary" />;
     }
   };
 
@@ -36,11 +36,11 @@ export const NotificationBell: React.FC = () => {
         whileHover={{ scale: 1.1 }}
         whileTap={{ scale: 0.9 }}
         onClick={() => setIsOpen(!isOpen)}
-        className="p-2 text-slate-500 dark:text-slate-400 hover:text-[#334155] dark:hover:text-white transition-colors relative bg-slate-100/50 dark:bg-white/5 rounded-full"
+        className="p-2 text-slate-500 dark:text-slate-400 hover:text-primary dark:hover:text-white transition-colors relative bg-primary/10 dark:bg-white/5 rounded-full"
       >
         <Bell className="w-4 h-4" />
         {unreadCount > 0 && (
-          <span className="absolute top-2 right-2.5 w-1.5 h-1.5 bg-rose-500 rounded-full ring-2 ring-white dark:ring-zinc-950 animate-pulse" />
+          <span className="absolute top-2 right-2.5 w-1.5 h-1.5 bg-primary rounded-full ring-2 ring-white dark:ring-zinc-950 animate-pulse" />
         )}
       </motion.button>
 
@@ -51,14 +51,14 @@ export const NotificationBell: React.FC = () => {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.95 }}
             transition={{ duration: 0.2, ease: "easeOut" }}
-            className="absolute right-0 mt-2 w-80 sm:w-96 bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-2xl shadow-xl overflow-hidden z-50 backdrop-blur-xl bg-opacity-80 dark:bg-opacity-80"
+            className="absolute right-0 mt-2 w-80 sm:w-96 bg-card dark:bg-zinc-950 border border-primary/20 dark:border-zinc-800 rounded-2xl shadow-xl overflow-hidden z-50 backdrop-blur-xl bg-opacity-80 dark:bg-opacity-80"
           >
             {/* Header */}
-            <div className="px-4 py-3 border-b border-slate-100 dark:border-zinc-900 flex items-center justify-between bg-slate-50/50 dark:bg-white/5">
+            <div className="px-4 py-3 border-b border-primary/10 dark:border-zinc-900 flex items-center justify-between bg-primary/5 dark:bg-white/5">
               <h3 className="font-semibold text-slate-900 dark:text-white flex items-center gap-2">
                 Notifications
                 {unreadCount > 0 && (
-                  <span className="px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-[10px] font-bold rounded-full uppercase tracking-wider">
+                  <span className="px-1.5 py-0.5 bg-primary/10 dark:bg-primary/20 text-primary text-[10px] font-bold rounded-full uppercase tracking-wider">
                     {unreadCount} New
                   </span>
                 )}
@@ -67,7 +67,7 @@ export const NotificationBell: React.FC = () => {
                 {notifications.length > 0 && (
                   <button 
                     onClick={markAllAsRead}
-                    className="text-xs text-slate-500 hover:text-blue-600 dark:text-slate-400 dark:hover:text-blue-400 transition-colors flex items-center gap-1"
+                    className="text-xs text-slate-500 hover:text-primary dark:text-slate-400 dark:hover:text-primary transition-colors flex items-center gap-1"
                   >
                     <Check className="w-3 h-3" /> Mark all read
                   </button>
@@ -90,7 +90,7 @@ export const NotificationBell: React.FC = () => {
                       key={notification.id}
                       className={cn(
                         "p-4 transition-all relative group cursor-default",
-                        !notification.read ? "bg-blue-50/30 dark:bg-blue-900/10" : "hover:bg-slate-50 dark:hover:bg-zinc-900/50"
+                        !notification.read ? "bg-primary/5 dark:bg-primary/10" : "hover:bg-slate-50 dark:hover:bg-zinc-900/50"
                       )}
                       onClick={() => !notification.read && markAsRead(notification.id)}
                     >
@@ -117,13 +117,13 @@ export const NotificationBell: React.FC = () => {
                             e.stopPropagation();
                             removeNotification(notification.id);
                           }}
-                          className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-rose-100 dark:hover:bg-rose-900/30 hover:text-rose-600 dark:text-zinc-600 rounded-lg transition-all"
+                          className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-primary/10 dark:hover:bg-primary/20 hover:text-primary dark:text-zinc-600 rounded-lg transition-all"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
                       {!notification.read && (
-                        <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500" />
+                        <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary" />
                       )}
                     </div>
                   ))}
@@ -141,10 +141,10 @@ export const NotificationBell: React.FC = () => {
 
             {/* Footer */}
             {notifications.length > 0 && (
-              <div className="p-3 border-t border-slate-100 dark:border-zinc-900 bg-slate-50/50 dark:bg-white/5">
+              <div className="p-3 border-t border-primary/10 dark:border-zinc-900 bg-primary/5 dark:bg-white/5">
                 <button 
                   onClick={clearAll}
-                  className="w-full py-2 text-xs text-slate-500 hover:text-rose-600 dark:text-slate-400 dark:hover:text-rose-400 transition-colors font-medium rounded-lg hover:bg-rose-50 dark:hover:bg-rose-900/10"
+                  className="w-full py-2 text-xs text-slate-500 hover:text-primary dark:text-slate-400 dark:hover:text-primary transition-colors font-medium rounded-lg hover:bg-primary/5 dark:hover:bg-primary/10"
                 >
                   Clear all notifications
                 </button>

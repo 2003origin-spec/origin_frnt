@@ -510,8 +510,8 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
       {/* Background Decor */}
       <div className="absolute inset-0 z-0 pointer-events-none opacity-40"
         style={{
-          backgroundImage: `radial-gradient(circle at 80% 30%, rgba(29, 78, 216, 0.15) 0%, transparent 40%),
-                           radial-gradient(circle at 20% 70%, rgba(56, 189, 248, 0.1) 0%, transparent 40%)`
+          backgroundImage: `radial-gradient(circle at 80% 30%, rgba(225, 29, 72, 0.15) 0%, transparent 40%),
+                           radial-gradient(circle at 20% 70%, rgba(251, 113, 133, 0.1) 0%, transparent 40%)`
         }}>
       </div>
 
@@ -546,7 +546,7 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
           )}
 
           <div className="relative">
-            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-blue-600/10 border border-blue-500/20 flex items-center justify-center shadow-lg overflow-hidden">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-rose-600/10 border border-rose-500/20 flex items-center justify-center shadow-lg overflow-hidden">
               <img src="/ai-bot.png" alt="AI" className="w-full h-full object-cover" />
             </div>
           </div>
@@ -562,7 +562,7 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
                     if (e.key === 'Escape') setIsEditingTitle(false);
                   }}
                   onBlur={() => handleUpdateTitle()}
-                  className="bg-muted border border-blue-500/30 rounded px-2 py-0.5 text-xs sm:text-sm text-foreground focus:outline-none focus:border-blue-500 w-32 sm:w-40"
+                  className="bg-muted border border-rose-500/30 rounded px-2 py-0.5 text-xs sm:text-sm text-foreground focus:outline-none focus:border-rose-500 w-32 sm:w-40"
                 />
               </div>
             ) : (
@@ -574,11 +574,11 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
                   {viewMode === 'chat' && activeSession ? activeSession.title : 'AI Explainer'}
                 </h1>
                 {activeSession && (
-                  <Sparkles className="w-3 h-3 text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <Sparkles className="w-3 h-3 text-rose-500 opacity-0 group-hover:opacity-100 transition-opacity" />
                 )}
               </div>
             )}
-            <p className="text-[10px] text-blue-500 font-bold uppercase tracking-widest mt-1">24/7 Academic Mentor</p>
+            <p className="text-[10px] text-rose-500 font-bold uppercase tracking-widest mt-1">24/7 Academic Mentor</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -655,7 +655,7 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
                       </button>
                       <button
                         onClick={startNewChatFromCTA}
-                        className="p-1.5 rounded-lg bg-blue-500/10 text-blue-500 hover:bg-blue-500/20 transition-all"
+                        className="p-1.5 rounded-lg bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 transition-all"
                         title="New Chat (uses your last subject)"
                       >
                         <Plus className="w-4 h-4" />
@@ -673,7 +673,7 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
                             setEditingSidebarId(s.id);
                             setSidebarEditValue(s.title);
                           }}
-                          className={`w-full p-4 rounded-2xl transition-all text-left group cursor-pointer ${activeSession?.id === s.id ? 'bg-blue-500/10 border-blue-500/30 shadow-lg shadow-blue-500/5' : 'bg-background/40 border border-border/50 hover:border-blue-500/30'}`}
+                          className={`w-full p-4 rounded-2xl transition-all text-left group cursor-pointer ${activeSession?.id === s.id ? 'bg-rose-500/10 border-rose-500/30 shadow-lg shadow-rose-500/5' : 'bg-background/40 border border-border/50 hover:border-rose-500/30'}`}
                           role="button"
                           tabIndex={0}
                         >
@@ -698,12 +698,12 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
                                 if (e.key === 'Escape') setEditingSidebarId(null);
                               }}
                               onClick={(e) => e.stopPropagation()}
-                              className="bg-white/10 border border-blue-500/50 rounded px-2 py-0.5 text-xs text-white w-full focus:outline-none"
+                              className="bg-white/10 border border-rose-500/50 rounded px-2 py-0.5 text-xs text-white w-full focus:outline-none"
                             />
                           ) : (
                             <div className="flex items-start gap-2 justify-between">
                               <div className="min-w-0 flex-1">
-                                <p className={`text-sm font-semibold truncate ${activeSession?.id === s.id ? 'text-blue-500' : 'text-muted-foreground group-hover:text-foreground'}`}>{s.title}</p>
+                                <p className={`text-sm font-semibold truncate ${activeSession?.id === s.id ? 'text-rose-500' : 'text-muted-foreground group-hover:text-foreground'}`}>{s.title}</p>
                                 <p className="text-[10px] text-muted-foreground/60 mt-1">{new Date(s.updatedAt || s.createdAt).toLocaleDateString()}</p>
                               </div>
                               <button
@@ -772,16 +772,16 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
                           )}
                           {isProcessingImage && (
                             <>
-                              <div className="w-4 h-4 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
-                              <span className="text-xs text-blue-400 font-medium">Analyzing image &amp; searching knowledge base...</span>
+                              <div className="w-4 h-4 border-2 border-rose-500/30 border-t-rose-500 rounded-full animate-spin" />
+                              <span className="text-xs text-rose-400 font-medium">Analyzing image &amp; searching knowledge base...</span>
                             </>
                           )}
                         </motion.div>
                       )}
                     </AnimatePresence>
                     {highlightedText ? (
-                      <div className="mb-2 flex items-center gap-2 rounded-2xl border border-blue-400/20 bg-blue-600/5 px-3 py-2 text-xs">
-                        <span className="shrink-0 font-black tracking-wider text-blue-600 dark:text-blue-200">Selected</span>
+                      <div className="mb-2 flex items-center gap-2 rounded-2xl border border-rose-400/20 bg-rose-600/5 px-3 py-2 text-xs">
+                        <span className="shrink-0 font-black tracking-wider text-rose-600 dark:text-rose-200">Selected</span>
                         <FormattedMessage content={highlightedText} inline className="line-clamp-1 flex-1 font-medium text-foreground/80" />
                         <button
                           type="button"

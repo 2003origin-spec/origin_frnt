@@ -36,7 +36,7 @@ export function LobbyChat({
   };
 
   return (
-    <section className="flex min-h-[420px] flex-col rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950">
+    <section className="flex min-h-[420px] flex-col rounded-lg border border-primary/20 bg-card/40 backdrop-blur-md shadow-sm dark:border-slate-800 dark:bg-slate-950/40">
       <div className="border-b border-slate-100 px-5 py-4 dark:border-slate-800">
         <h2 className="text-sm font-black uppercase tracking-[0.18em] text-slate-500">Lobby Chat</h2>
       </div>
@@ -49,7 +49,10 @@ export function LobbyChat({
           const isMine = message.user_id === currentUserId;
           return (
             <div key={message.id} className={isMine ? 'flex justify-end' : 'flex justify-start'}>
-              <div className={isMine ? 'max-w-[80%] rounded-lg bg-blue-600 px-3 py-2 text-white' : 'max-w-[80%] rounded-lg bg-slate-100 px-3 py-2 dark:bg-slate-900'}>
+              <div className={isMine 
+                ? 'max-w-[80%] rounded-lg bg-primary/40 backdrop-blur-md px-3 py-2 text-foreground border border-primary/20 shadow-sm' 
+                : 'max-w-[80%] rounded-lg bg-slate-100/50 backdrop-blur-md px-3 py-2 border border-slate-200/50 dark:bg-slate-900/50 dark:border-slate-800/50'
+              }>
                 {!isMine && <p className="mb-1 text-[10px] font-black uppercase tracking-wider text-slate-500">{message.display_name}</p>}
                 <p className="whitespace-pre-wrap break-words text-sm">{message.content}</p>
               </div>

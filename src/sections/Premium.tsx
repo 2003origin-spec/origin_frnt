@@ -124,7 +124,7 @@ export default function Premium({ user, onBack, onSubscribe }: PremiumProps) {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-teal-50/30 dark:from-slate-950 dark:via-slate-900 dark:to-teal-950/30 text-slate-900 dark:text-slate-100 transition-colors duration-300">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-primary/5 dark:from-slate-950 dark:via-slate-900 dark:to-primary/5 text-slate-900 dark:text-slate-100 transition-colors duration-300">
       {/* Header */}
       <header className="sticky top-0 z-40 glass border-b border-slate-200/50 dark:bg-slate-900/80 dark:border-slate-800/50 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -181,11 +181,11 @@ export default function Premium({ user, onBack, onSubscribe }: PremiumProps) {
           {plans.map((plan) => (
             <Card
               key={plan.id}
-              className={`relative border-0 shadow-lg overflow-hidden dark:bg-slate-900/60 dark:ring-1 dark:ring-white/10 ${plan.popular ? 'ring-2 ring-[#3CACA3] scale-105' : ''
+              className={`relative border-0 shadow-lg overflow-hidden dark:bg-slate-900/60 dark:ring-1 dark:ring-white/10 ${plan.popular ? 'ring-primary scale-105' : ''
                 }`}
             >
               {plan.popular && (
-                <div className="absolute top-0 left-0 right-0 bg-gradient-to-r from-[#3CACA3] to-[#1E3A5F] text-white text-center py-2 text-sm font-medium">
+                <div className="absolute top-0 left-0 right-0 bg-primary text-white text-center py-2 text-sm font-medium">
                   Most Popular
                 </div>
               )}
@@ -239,7 +239,7 @@ export default function Premium({ user, onBack, onSubscribe }: PremiumProps) {
                   className={`w-full rounded-full py-6 ${plan.current
                     ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed'
                     : plan.popular
-                      ? 'bg-gradient-to-r from-[#3CACA3] to-[#1E3A5F] text-white hover:opacity-90'
+                      ? 'bg-primary text-white hover:opacity-90'
                       : 'bg-slate-900 dark:bg-slate-700 text-white hover:bg-slate-800 dark:hover:bg-slate-600'
                     }`}
                 >
@@ -290,7 +290,7 @@ export default function Premium({ user, onBack, onSubscribe }: PremiumProps) {
                 },
               ].map((feature, index) => (
                 <div key={index} className="text-center">
-                  <div className="w-14 h-14 mx-auto rounded-xl bg-gradient-to-br from-[#3CACA3]/10 to-[#1E3A5F]/10 dark:from-[#3CACA3]/20 dark:to-[#1E3A5F]/20 flex items-center justify-center mb-4 overflow-hidden p-2">
+                  <div className="w-14 h-14 mx-auto rounded-xl bg-primary/10 flex items-center justify-center mb-4 overflow-hidden p-2">
                     <img src="/ai-bot.png" alt="AI" className="w-full h-full object-cover rounded-lg" />
                   </div>
                   <h4 className="font-semibold text-slate-900 dark:text-white mb-2">{feature.title}</h4>

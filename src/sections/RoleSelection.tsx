@@ -16,8 +16,8 @@ export default function RoleSelection({ onSelectRole, onBack }: RoleSelectionPro
             {/* Background Decoration */}
             <div className="absolute inset-0 z-0 pointer-events-none opacity-40 mix-blend-multiply dark:mix-blend-screen"
                 style={{
-                    backgroundImage: `radial-gradient(circle at 80% 30%, rgba(29, 78, 216, 0.25) 0%, transparent 40%),
-                                     radial-gradient(circle at 20% 70%, rgba(56, 189, 248, 0.15) 0%, transparent 40%)`
+                    backgroundImage: `radial-gradient(circle at 80% 30%, rgba(225, 29, 72, 0.25) 0%, transparent 40%),
+                                     radial-gradient(circle at 20% 70%, rgba(244, 63, 94, 0.15) 0%, transparent 40%)`
                 }}>
                 <div className="absolute inset-0 bg-[url('/noise.svg')] opacity-[0.03] mix-blend-overlay"></div>
             </div>
@@ -26,7 +26,7 @@ export default function RoleSelection({ onSelectRole, onBack }: RoleSelectionPro
                 {/* Back Button */}
                 <button
                     onClick={onBack}
-                    className="mb-8 flex items-center gap-2 text-slate-600 dark:text-slate-400 hover:text-[#3CACA3] dark:hover:text-[#3CACA3] transition-colors"
+                    className="mb-8 flex items-center gap-2 text-slate-600 dark:text-slate-400 hover:text-rose-500 dark:hover:text-rose-500 transition-colors"
                 >
                     <ArrowLeft className="w-4 h-4" />
                     <span className="text-sm font-medium">Back to home</span>
@@ -45,7 +45,7 @@ export default function RoleSelection({ onSelectRole, onBack }: RoleSelectionPro
                     {/* Student Card */}
                     <div
                         className={`group relative p-8 rounded-3xl border transition-all duration-500 cursor-pointer overflow-hidden ${hoveredRole === 'student'
-                            ? 'bg-card border-teal-500/50 shadow-[0_0_40px_rgba(20,184,166,0.1)] dark:shadow-[0_0_40px_rgba(20,184,166,0.2)] scale-[1.02]'
+                            ? 'bg-card border-rose-500/50 shadow-[0_0_40px_rgba(244,63,94,0.1)] dark:shadow-[0_0_40px_rgba(244,63,94,0.2)] scale-[1.02]'
                             : 'bg-card/40 backdrop-blur-xl border-border/40 hover:border-black/5 dark:hover:border-white/10 hover:bg-card/80 shadow-xl'
                             }`}
                         onMouseEnter={() => setHoveredRole('student')}
@@ -54,10 +54,10 @@ export default function RoleSelection({ onSelectRole, onBack }: RoleSelectionPro
                     >
                         <div className={`absolute top-6 right-6 transition-opacity duration-300 ${hoveredRole === 'student' ? 'opacity-100' : 'opacity-0'
                             }`}>
-                            <CheckCircle2 className="w-6 h-6 text-[#3CACA3]" />
+                            <CheckCircle2 className="w-6 h-6 text-rose-500" />
                         </div>
 
-                        <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-6 transition-colors duration-300 ${hoveredRole === 'student' ? 'bg-teal-500/10 text-teal-600 dark:text-teal-400' : 'bg-muted text-muted-foreground'
+                        <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-6 transition-colors duration-300 ${hoveredRole === 'student' ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400' : 'bg-muted text-muted-foreground'
                             }`}>
                             <GraduationCap className="w-8 h-8" />
                         </div>
@@ -75,7 +75,7 @@ export default function RoleSelection({ onSelectRole, onBack }: RoleSelectionPro
                                 '24/7 Doubt Solving'
                             ].map((feature, i) => (
                                 <li key={i} className="flex items-center gap-3 text-sm text-muted-foreground">
-                                    <div className={`w-1.5 h-1.5 rounded-full ${hoveredRole === 'student' ? 'bg-teal-500' : 'bg-muted-foreground/30'
+                                    <div className={`w-1.5 h-1.5 rounded-full ${hoveredRole === 'student' ? 'bg-rose-500' : 'bg-muted-foreground/30'
                                         }`} />
                                     {feature}
                                 </li>
@@ -84,7 +84,7 @@ export default function RoleSelection({ onSelectRole, onBack }: RoleSelectionPro
 
                         <Button
                             className={`w-full py-6 text-base font-semibold transition-all duration-300 ${hoveredRole === 'student'
-                                ? 'bg-gradient-to-r from-teal-500 to-[#2A8F87] text-white shadow-lg shadow-teal-500/20'
+                                ? 'bg-gradient-to-r from-rose-500 to-rose-600 text-white shadow-lg shadow-rose-500/20'
                                 : 'bg-muted text-muted-foreground hover:bg-muted/80'
                                 }`}
                         >
@@ -95,7 +95,7 @@ export default function RoleSelection({ onSelectRole, onBack }: RoleSelectionPro
                     {/* Teacher Card */}
                     <div
                         className={`group relative p-8 rounded-3xl border transition-all duration-500 cursor-pointer overflow-hidden ${hoveredRole === 'teacher'
-                            ? 'bg-card border-blue-500/50 shadow-[0_0_40px_rgba(59,130,246,0.1)] dark:shadow-[0_0_40px_rgba(59,130,246,0.2)] scale-[1.02]'
+                            ? 'bg-card border-pink-500/50 shadow-[0_0_40px_rgba(236,72,153,0.1)] dark:shadow-[0_0_40px_rgba(236,72,153,0.2)] scale-[1.02]'
                             : 'bg-card/40 backdrop-blur-xl border-border/40 hover:border-black/5 dark:hover:border-white/10 hover:bg-card/80 shadow-xl'
                             }`}
                         onMouseEnter={() => setHoveredRole('teacher')}
@@ -104,10 +104,10 @@ export default function RoleSelection({ onSelectRole, onBack }: RoleSelectionPro
                     >
                         <div className={`absolute top-6 right-6 transition-opacity duration-300 ${hoveredRole === 'teacher' ? 'opacity-100' : 'opacity-0'
                             }`}>
-                            <CheckCircle2 className="w-6 h-6 text-[#1E3A5F] dark:text-blue-400" />
+                            <CheckCircle2 className="w-6 h-6 text-pink-500 dark:text-pink-400" />
                         </div>
 
-                        <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-6 transition-colors duration-300 ${hoveredRole === 'teacher' ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400' : 'bg-muted text-muted-foreground'
+                        <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-6 transition-colors duration-300 ${hoveredRole === 'teacher' ? 'bg-pink-500/10 text-pink-600 dark:text-pink-400' : 'bg-muted text-muted-foreground'
                             }`}>
                             <BookOpen className="w-8 h-8" />
                         </div>
@@ -125,7 +125,7 @@ export default function RoleSelection({ onSelectRole, onBack }: RoleSelectionPro
                                 'Assignment Management'
                             ].map((feature, i) => (
                                 <li key={i} className="flex items-center gap-3 text-sm text-muted-foreground">
-                                    <div className={`w-1.5 h-1.5 rounded-full ${hoveredRole === 'teacher' ? 'bg-blue-500' : 'bg-muted-foreground/30'
+                                    <div className={`w-1.5 h-1.5 rounded-full ${hoveredRole === 'teacher' ? 'bg-pink-500' : 'bg-muted-foreground/30'
                                         }`} />
                                     {feature}
                                 </li>
@@ -134,7 +134,7 @@ export default function RoleSelection({ onSelectRole, onBack }: RoleSelectionPro
 
                         <Button
                             className={`w-full py-6 text-base font-semibold transition-all duration-300 ${hoveredRole === 'teacher'
-                                ? 'bg-gradient-to-r from-blue-600 to-[#152C4A] text-white shadow-lg shadow-blue-500/20'
+                                ? 'bg-gradient-to-r from-pink-600 to-rose-700 text-white shadow-lg shadow-pink-500/20'
                                 : 'bg-muted text-muted-foreground hover:bg-muted/80'
                                 }`}
                         >

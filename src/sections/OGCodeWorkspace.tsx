@@ -454,7 +454,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
 
     if (isLoading) return (
         <div className="min-h-screen bg-[#0d1117] flex items-center justify-center">
-            <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+            <Loader2 className="w-8 h-8 text-primary animate-spin" />
         </div>
     );
     if (!question) return null;
@@ -505,7 +505,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                     {/* Question Content */}
                     <div id="tutorial-ogcode-content" className="space-y-6">
                         <div className="flex items-center gap-2">
-                            <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 px-2 py-1 bg-blue-500/10 rounded uppercase tracking-wider">
+                            <span className="text-[10px] font-bold text-primary px-2 py-1 bg-primary/10 rounded uppercase tracking-wider">
                                 {question.subject}
                             </span>
                             <span className={`text-[10px] font-bold ${diff.color} px-2 py-1 ${diff.bg} rounded uppercase tracking-wider`}>
@@ -537,8 +537,8 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                     key={idx}
                                     disabled={!!result || isSubmitting}
                                     onClick={() => setSelectedOption(idx)}
-                                    className={`w-full text-left p-4 rounded-xl border-2 transition-all font-serif
-                                        ${selectedOption === idx ? 'border-blue-500 bg-blue-50 dark:bg-blue-500/5' : 'border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.02]'}
+                                    className={`w-full text-left p-4 rounded-xl border-2 transition-all font-serif backdrop-blur-md
+                                        ${selectedOption === idx ? 'border-primary bg-primary/10' : 'border-slate-200 dark:border-white/10 bg-white/40 dark:bg-white/[0.02]'}
                                         ${result?.isCorrect && result?.correctOption === idx ? 'border-emerald-500 bg-emerald-500/5 text-emerald-600 dark:text-emerald-400' : ''}
                                         ${result && !result.isCorrect && selectedOption === idx ? 'border-rose-500 bg-rose-500/5 text-rose-600 dark:text-rose-400' : ''}
                                     `}
@@ -557,14 +557,14 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                             prev.includes(idx) ? prev.filter(i => i !== idx) : [...prev, idx]
                                         );
                                     }}
-                                    className={`w-full text-left p-4 rounded-xl border-2 transition-all font-serif
-                                        ${selectedOptions.includes(idx) ? 'border-blue-500 bg-blue-50 dark:bg-blue-500/5' : 'border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.02]'}
+                                    className={`w-full text-left p-4 rounded-xl border-2 transition-all font-serif backdrop-blur-md
+                                        ${selectedOptions.includes(idx) ? 'border-primary bg-primary/10' : 'border-slate-200 dark:border-white/10 bg-white/40 dark:bg-white/[0.02]'}
                                         ${result?.isCorrect && result?.correctOptions?.includes(idx) ? 'border-emerald-500 bg-emerald-500/5 text-emerald-600 dark:text-emerald-400' : ''}
                                         ${result && !result.isCorrect && selectedOptions.includes(idx) ? 'border-rose-500 bg-rose-500/5 text-rose-600 dark:text-rose-400' : ''}
                                     `}
                                 >
                                     <div className="flex items-center gap-3">
-                                        <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${selectedOptions.includes(idx) ? 'bg-blue-500 border-blue-500' : 'border-white/20'}`}>
+                                        <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${selectedOptions.includes(idx) ? 'bg-primary border-primary' : 'border-white/20'}`}>
                                             {selectedOptions.includes(idx) && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
                                         </div>
                                         <span className="font-mono text-xs opacity-50">({String.fromCharCode(65 + idx)})</span>
@@ -581,7 +581,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                             <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-500 ml-1">Column B Reference</h4>
                                             <button 
                                                 onClick={() => setMatrixPairs([])}
-                                                className="text-[10px] font-black uppercase tracking-widest text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1.5 px-2 py-1 bg-blue-500/5 hover:bg-blue-500/10 rounded-md border border-blue-500/20"
+                                                className="text-[10px] font-black uppercase tracking-widest text-primary hover:text-primary/80 transition-colors flex items-center gap-1.5 px-2 py-1 bg-primary/5 hover:bg-primary/10 rounded-md border border-primary/20"
                                             >
                                                 <X className="w-3 h-3" /> Clear Selections
                                             </button>
@@ -589,7 +589,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                             {(colB).map((term: string, idx: number) => (
                                                 <div key={idx} className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-xl p-2.5">
-                                                    <span className="w-5 h-5 rounded-md bg-indigo-500/10 text-indigo-400 flex items-center justify-center text-[10px] font-bold shrink-0">
+                                                    <span className="w-5 h-5 rounded-md bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold shrink-0">
                                                         {idx + 1}
                                                     </span>
                                                     <span className="text-xs text-slate-300 truncate">
@@ -631,8 +631,8 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                                                         return [...prev, [idxA, idxB]];
                                                                     });
                                                                 }}
-                                                                className={`w-12 h-12 rounded-xl border text-[13px] font-black transition-all flex items-center justify-center shadow-sm
-                                                                    ${isSelected ? 'bg-blue-600 border-blue-600 text-white shadow-lg' : 'bg-white dark:bg-white/5 border-slate-200 dark:border-white/10 text-slate-400 dark:text-slate-500'}
+                                                                className={`w-12 h-12 rounded-xl border text-[13px] font-black transition-all flex items-center justify-center shadow-sm backdrop-blur-sm
+                                                                    ${isSelected ? 'bg-primary border-primary text-white shadow-lg' : 'bg-white/40 dark:bg-white/5 border-slate-200 dark:border-white/10 text-slate-400 dark:text-slate-500'}
                                                                     ${result?.isCorrect && isCorrect ? 'bg-emerald-500 border-emerald-500 text-white' : ''}
                                                                     ${result && !result.isCorrect && isSelected ? 'bg-rose-500 border-rose-500 text-white animate-pulse' : ''}
                                                                     hover:scale-105 active:scale-95 group/btn
@@ -656,7 +656,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                         disabled={!!result || isSubmitting}
                                         value={answerInput}
                                         onChange={(e) => setAnswerInput(e.target.value)}
-                                        className="w-full bg-white/5 border-2 border-white/10 p-5 rounded-2xl text-2xl text-center font-mono focus:border-blue-500 outline-none transition-all"
+                                        className="w-full bg-white/5 border-2 border-white/10 p-5 rounded-2xl text-2xl text-center font-mono focus:border-primary outline-none transition-all backdrop-blur-md"
                                         placeholder={qType === 'numerical' ? "Enter value..." : "Type answer..."}
                                     />
                                     {result && !result.isCorrect && result.correctAnswerText && (
@@ -677,7 +677,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                             qType === 'matrix_match' ? matrixPairs.length === 0 :
                                                 !answerInput
                                 )}
-                                className="w-full py-4 bg-blue-900 hover:bg-blue-800 dark:bg-blue-600 dark:hover:bg-blue-500 disabled:opacity-50 rounded-xl font-bold text-white flex items-center justify-center gap-2 shadow-lg shadow-blue-900/20 transition-all active:scale-[0.98]"
+                                className="w-full py-4 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded-xl font-bold text-white flex items-center justify-center gap-2 shadow-lg shadow-primary/20 transition-all active:scale-[0.98] backdrop-blur-md"
                             >
                                 {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Play className="w-5 h-5" />}
                                 Submit Answer
@@ -752,7 +752,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                                 {(result.correctAnswerText || result.explanation) && !showSolution && (
                                                     <button
                                                         onClick={() => setShowSolution(true)}
-                                                        className="w-full py-3 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 rounded-xl text-blue-400 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all"
+                                                        className="w-full py-3 bg-primary/10 hover:bg-primary/20 border border-primary/20 rounded-xl text-primary text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all"
                                                     >
                                                         <Trophy className="w-3.5 h-3.5" /> See Full Solution
                                                     </button>
@@ -773,14 +773,14 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
 
                                         {showSolution && (result.correctAnswerText || result.explanation) && (
                                             <div className="pt-4 border-t border-white/5 animate-in fade-in zoom-in-95 duration-300 space-y-3">
-                                                <p className="text-xs font-bold text-blue-400 uppercase tracking-widest mb-2 flex items-center gap-2">
+                                                <p className="text-xs font-bold text-primary uppercase tracking-widest mb-2 flex items-center gap-2">
                                                     <Trophy className="w-3.5 h-3.5" /> Full Solution
                                                 </p>
                                                 {result.correctAnswerText && (
-                                                    <div className="rounded-xl border border-blue-500/15 bg-blue-500/5 px-4 py-3">
+                                                    <div className="rounded-xl border border-primary/15 bg-primary/5 px-4 py-3 backdrop-blur-sm">
                                                         <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Stored Answer</p>
                                                         {hasMathMarkup(result.correctAnswerText) ? (
-                                                            <div className="rounded-lg border border-blue-500/15 bg-blue-500/5 dark:bg-black/20 px-3 py-2 font-mono text-base text-blue-700 dark:text-blue-100">
+                                                            <div className="rounded-lg border border-primary/15 bg-primary/5 dark:bg-black/20 px-3 py-2 font-mono text-base text-primary dark:text-primary/90">
                                                                 {formatMathExpression(result.correctAnswerText)}
                                                             </div>
                                                         ) : (

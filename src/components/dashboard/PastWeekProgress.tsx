@@ -82,7 +82,7 @@ export default function PastWeekProgress({ user }: PastWeekProgressProps) {
                         return (
                             <div key={item.date} className="flex flex-col items-center gap-2 sm:gap-4 group relative">
                                 {isToday && (
-                                    <div className="absolute -top-6 sm:-top-8 text-[8px] sm:text-[10px] font-black text-white bg-blue-600 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full border-2 border-background shadow-lg shadow-blue-500/20 z-20 scale-105 sm:scale-110">
+                                    <div className="absolute -top-6 sm:-top-8 text-[8px] sm:text-[10px] font-black text-white bg-primary px-2 sm:px-3 py-0.5 sm:py-1 rounded-full border-2 border-background shadow-lg shadow-primary/20 z-20 scale-105 sm:scale-110">
                                         TODAY
                                     </div>
                                 )}
@@ -128,7 +128,7 @@ export default function PastWeekProgress({ user }: PastWeekProgressProps) {
                                         </span>
                                     </div>
                                 </div>
-                                <span className={`text-[9px] sm:text-[11px] font-black tracking-widest transition-colors ${isToday ? 'text-blue-600 dark:text-blue-400' : 'text-muted-foreground/60 group-hover:text-foreground'}`}>
+                                <span className={`text-[9px] sm:text-[11px] font-black tracking-widest transition-colors ${isToday ? 'text-primary' : 'text-muted-foreground/60 group-hover:text-foreground'}`}>
                                     {item.dayName.toUpperCase()}
                                 </span>
                             </div>

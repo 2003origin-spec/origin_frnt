@@ -72,7 +72,7 @@ export default function StudyCorner({ catalog }: StudyCornerProps) {
                     content: savedNote.substring(0, 200) + (savedNote.length > 200 ? '...' : ''),
                     fullContent: savedNote,
                     type: 'notebook',
-                    color: '#6366f1',
+                    color: '#e11d48',
                     createdAt: new Date(), // Mock date since we don't store it yet
                     tags: ['myself', book.subject.toLowerCase()]
                 });
@@ -265,12 +265,12 @@ export default function StudyCorner({ catalog }: StudyCornerProps) {
                 <p className="text-sm font-bold text-foreground group-hover:text-primary transition-colors line-clamp-1">{title}</p>
                 <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mt-1">{date}</p>
             </div>
-            <div className="relative shrink-0 w-12 h-16 bg-white rounded-md shadow-xl rotate-3 group-hover:rotate-6 transition-transform overflow-hidden flex flex-col p-2 gap-1.5 ring-2 ring-indigo-500/20 group-hover:ring-indigo-500/40">
-                <div className="absolute top-0 left-0 w-full h-1 bg-indigo-500/20"></div>
+            <div className="relative shrink-0 w-12 h-16 bg-card rounded-md shadow-xl rotate-3 group-hover:rotate-6 transition-transform overflow-hidden flex flex-col p-2 gap-1.5 ring-2 ring-primary/20 group-hover:ring-primary/40">
+                <div className="absolute top-0 left-0 w-full h-1 bg-primary/20"></div>
                 {[...Array(5)].map((_, i) => (
                     <div key={i} className={`h-0.5 bg-slate-200 rounded-full ${i % 2 === 0 ? 'w-full' : 'w-3/4'}`}></div>
                 ))}
-                <div className="mt-auto text-[7px] font-black text-indigo-600 tracking-tighter self-end opacity-40">ORIGIN</div>
+                <div className="mt-auto text-[7px] font-black text-primary tracking-tighter self-end opacity-40">ORIGIN</div>
             </div>
         </div>
     );
@@ -280,22 +280,22 @@ export default function StudyCorner({ catalog }: StudyCornerProps) {
             onClick={onClick}
             className="aspect-square rounded-[2rem] bg-card border border-border flex flex-col items-center justify-center group cursor-pointer hover:border-primary/50 transition-all hover:bg-primary/5 shadow-inner relative overflow-hidden p-6"
         >
-            <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
             <div className="relative transform group-hover:-translate-y-2 transition-transform duration-500 flex flex-col items-center text-center gap-4">
                 {item.type === 'folder' ? (
                     <AnimatedFolder
                         size={0.6}
-                        color="#818cf8"
+                        color="var(--primary-hex, #e11d48)"
                         className="mb-2"
                         items={[
-                            <div key="1" className="w-full h-full bg-indigo-500/20" />,
-                            <div key="2" className="w-full h-full bg-indigo-400/20" />,
-                            <div key="3" className="w-full h-full bg-white" />
+                            <div key="1" className="w-full h-full bg-primary/20" />,
+                            <div key="2" className="w-full h-full bg-primary/15" />,
+                            <div key="3" className="w-full h-full bg-card" />
                         ]}
                     />
                 ) : (
                     <div className="p-3 rounded-2xl bg-background/40 ring-1 ring-border group-hover:ring-primary/40 transition-all shadow-xl mb-2">
-                        <FileText className="w-6 h-6 text-muted-foreground group-hover:text-primary group-hover:drop-shadow-[0_0_12px_rgba(129,140,248,0.6)]" />
+                        <FileText className="w-6 h-6 text-muted-foreground group-hover:text-primary group-hover:drop-shadow-[0_0_12px_rgba(251,113,133,0.6)]" />
                     </div>
                 )}
                 <div>
@@ -313,7 +313,7 @@ export default function StudyCorner({ catalog }: StudyCornerProps) {
     );
 
     const renderBookCard = (book: Book, inLibrary: boolean = false) => (
-        <Card key={book.id} className="group flex flex-col overflow-hidden border border-slate-200 dark:border-slate-800 shadow-sm bg-white dark:bg-[#0B1120] hover:shadow-2xl hover:shadow-indigo-500/10 transition-all duration-500 hover:-translate-y-1 rounded-2xl">
+        <Card key={book.id} className="group flex flex-col overflow-hidden border border-primary/20 dark:border-slate-800 shadow-sm bg-card dark:bg-[#0B1120] hover:shadow-2xl hover:shadow-primary/10 transition-all duration-500 hover:-translate-y-1 rounded-2xl">
             <div className="relative aspect-[3/4] overflow-hidden bg-slate-100 dark:bg-slate-800">
                 <img
                     src={book.coverImage}
@@ -324,22 +324,22 @@ export default function StudyCorner({ catalog }: StudyCornerProps) {
                     <div className="flex justify-end transform -translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300 delay-75">
                         <button
                             onClick={(e) => { e.stopPropagation(); toggleLike(book.id); }}
-                            className="p-2.5 rounded-full bg-white/20 backdrop-blur-md hover:bg-white/40 transition-colors shadow-sm"
+                            className="p-2.5 rounded-full bg-primary/10 backdrop-blur-md hover:bg-primary/20 transition-colors shadow-sm"
                         >
-                            <Heart className={`w-5 h-5 transition-transform active:scale-75 ${likedBooks.has(book.id) ? 'fill-rose-500 text-rose-500' : 'text-white'}`} />
+                            <Heart className={`w-5 h-5 transition-transform active:scale-75 ${likedBooks.has(book.id) ? 'fill-primary text-primary' : 'text-white'}`} />
                         </button>
                     </div>
                     <div className="flex gap-2 transform translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300 delay-100">
                         {inLibrary ? (
                             <Button
-                                className="flex-1 bg-[#3CACA3] hover:bg-[#2A8C84] text-white font-bold h-11 rounded-xl shadow-lg shadow-teal-500/20"
+                                className="flex-1 bg-primary text-white font-bold h-11 rounded-xl shadow-lg shadow-primary/20"
                                 onClick={(e) => { e.stopPropagation(); setSelectedBook(book); }}
                             >
                                 Read Now
                             </Button>
                         ) : (
                             <Button
-                                className="flex-1 bg-white hover:bg-indigo-50 text-indigo-900 font-bold h-11 rounded-xl shadow-lg"
+                                className="flex-1 bg-card hover:bg-primary/5 text-primary font-bold h-11 rounded-xl shadow-lg"
                                 onClick={() => toggleLibrary(book.id)}
                             >
                                 <Download className="w-4 h-4 mr-2" />
@@ -351,12 +351,12 @@ export default function StudyCorner({ catalog }: StudyCornerProps) {
             </div>
             <CardContent className="p-5 flex-1 flex flex-col">
                 <div className="flex justify-between items-center mb-3">
-                    <Badge variant="secondary" className="bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400 font-bold text-[10px] tracking-wider uppercase border-indigo-100 dark:border-indigo-800 px-2 leading-tight">
+                    <Badge variant="secondary" className="bg-primary/10 text-primary font-bold text-[10px] tracking-wider uppercase border-primary/10 dark:border-rose-800 px-2 leading-tight">
                         {book.subject}
                     </Badge>
                     <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 tracking-wider">CLASS {book.bookClass}</span>
                 </div>
-                <h3 className="font-bold text-slate-900 dark:text-white line-clamp-2 leading-snug mb-2 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                <h3 className="font-bold text-slate-900 dark:text-white line-clamp-2 leading-snug mb-2 group-hover:text-primary transition-colors">
                     {book.title}
                 </h3>
                 <div className="mt-auto pt-4 flex items-center text-xs font-medium text-slate-500 dark:text-slate-500 gap-3 border-t border-slate-100 dark:border-slate-800/50">
@@ -423,7 +423,7 @@ export default function StudyCorner({ catalog }: StudyCornerProps) {
             {/* Ambient Background Elements */}
             <div className="fixed inset-0 z-0 pointer-events-none">
                 <div className="absolute top-[20%] right-[-10%] w-[50%] h-[50%] bg-primary/5 rounded-full blur-[120px]" />
-                <div className="absolute bottom-[0%] left-[-10%] w-[40%] h-[40%] bg-blue-500/5 rounded-full blur-[100px]" />
+                <div className="absolute bottom-[0%] left-[-10%] w-[40%] h-[40%] bg-primary/5 rounded-full blur-[100px]" />
             </div>
 
             <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-24 relative z-10">
@@ -462,13 +462,13 @@ export default function StudyCorner({ catalog }: StudyCornerProps) {
                                         return (
                                             <div key={i} className="space-y-4">
                                                 <div
-                                                    className={`flex items-center gap-4 cursor-pointer transition-all group/folder py-2 px-3 rounded-2xl ${isSelected ? 'bg-primary/10 text-foreground border border-primary/20 shadow-[0_0_20px_rgba(99,102,241,0.1)]' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50 border border-transparent'}`}
+                                                    className={`flex items-center gap-4 cursor-pointer transition-all group/folder py-2 px-3 rounded-2xl ${isSelected ? 'bg-primary/10 text-foreground border border-primary/20 shadow-[0_0_20px_rgba(244,63,94,0.1)]' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50 border border-transparent'}`}
                                                     onClick={() => toggleFolder([i])}
                                                 >
                                                     <div className="shrink-0 transition-transform duration-300" style={{ transform: subject.isOpen ? 'rotate(180deg)' : 'rotate(0)' }}>
                                                         <ChevronDown className={`w-4 h-4 transition-colors ${isSelected ? 'text-primary' : 'text-primary/40 group-hover/folder:text-primary'}`} />
                                                     </div>
-                                                    <div className={`p-2 rounded-xl transition-all ${isSelected ? 'bg-primary text-white shadow-[0_0_20px_rgba(99,102,241,0.4)] ring-2 ring-primary/50 scale-110' : 'bg-primary/20 text-primary shadow-[0_0_20px_rgba(99,102,241,0.2)] ring-1 ring-primary/30 group-hover:scale-105'}`}>
+                                                    <div className={`p-2 rounded-xl transition-all ${isSelected ? 'bg-primary text-white shadow-[0_0_20px_rgba(244,63,94,0.4)] ring-2 ring-primary/50 scale-110' : 'bg-primary/20 text-primary shadow-[0_0_20px_rgba(244,63,94,0.2)] ring-1 ring-primary/30 group-hover:scale-105'}`}>
                                                         <LucideFolder className="w-5 h-5 fill-current" />
                                                     </div>
                                                     <span className={`text-sm tracking-tight transition-all ${isSelected ? 'font-black' : 'font-bold'}`}>{subject.name}</span>
@@ -487,7 +487,7 @@ export default function StudyCorner({ catalog }: StudyCornerProps) {
                                                                         <div className="shrink-0 transition-transform duration-300" style={{ transform: cls.isOpen ? 'rotate(180deg)' : 'rotate(0)' }}>
                                                                             <ChevronDown className="w-3.5 h-3.5 opacity-50" />
                                                                         </div>
-                                                                        <Library className={`w-5 h-5 transition-colors ${isSubSelected ? 'text-primary shadow-[0_0_10px_rgba(99,102,241,0.3)]' : 'text-primary/60 group-hover/subfolder:text-primary'}`} />
+                                                                        <Library className={`w-5 h-5 transition-colors ${isSubSelected ? 'text-primary shadow-[0_0_10px_rgba(244,63,94,0.3)]' : 'text-primary/60 group-hover/subfolder:text-primary'}`} />
                                                                         <span className={`text-sm tracking-tight transition-all ${isSubSelected ? 'font-black' : 'font-bold'}`}>{cls.name}</span>
                                                                     </div>
                                                                 </div>
@@ -611,16 +611,15 @@ export default function StudyCorner({ catalog }: StudyCornerProps) {
                 {activeTab === 'discover' && (
                     <div className="space-y-8 animate-in fade-in zoom-in-95 duration-500">
                         {/* Hero Section for Discover */}
-                        <div className="relative rounded-2xl sm:rounded-3xl overflow-hidden bg-gradient-to-br from-indigo-600 via-indigo-700 to-violet-800 dark:from-indigo-900 dark:to-slate-900 px-6 py-10 sm:px-12 sm:py-16 flex items-center shadow-xl shadow-indigo-500/10 dark:shadow-indigo-500/5">
+                        <div className="relative rounded-2xl sm:rounded-3xl overflow-hidden bg-primary px-6 py-10 sm:px-12 sm:py-16 flex items-center shadow-xl shadow-primary/10">
                             <div className="absolute inset-0 bg-[url('/noise.svg')] opacity-10 mix-blend-overlay"></div>
                             <div className="absolute -right-20 -top-40 w-96 h-96 bg-white/10 blur-3xl rounded-full pointer-events-none"></div>
-
                             <div className="relative z-10 max-w-2xl">
                                 <Badge className="bg-white/20 hover:bg-white/30 text-white border-white/10 mb-3 sm:mb-4 backdrop-blur-md font-bold px-2 sm:px-3 py-1 text-[10px] sm:text-xs">NCERT Digital Library</Badge>
                                 <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black text-white mb-3 sm:mb-4 leading-tight tracking-tight drop-shadow-sm">
                                     Master Your Syllabus
                                 </h2>
-                                <p className="text-indigo-100/90 text-sm sm:text-xl max-w-xl font-medium">
+                                <p className="text-white/80 text-sm sm:text-xl max-w-xl font-medium">
                                     Read, highlight, and annotate your class {user?.class || '12'} books.
                                 </p>
                             </div>

@@ -98,14 +98,14 @@ export default function DailyTracker({ user }: DailyTrackerProps) {
     return (
         <Card className="border border-border/50 bg-card/50 backdrop-blur-2xl relative overflow-hidden group">
             {/* Animated Background Glow */}
-            <div className="absolute -top-24 -right-24 w-64 h-64 bg-emerald-500/10 dark:bg-emerald-500/5 rounded-full blur-[100px] pointer-events-none group-hover:bg-emerald-500/20 transition-colors duration-700" />
+            <div className="absolute -top-24 -right-24 w-64 h-64 bg-primary/10 dark:bg-primary/5 rounded-full blur-[100px] pointer-events-none group-hover:bg-primary/20 transition-colors duration-700" />
             
             <CardHeader className={cn("relative z-10 space-y-4", isMobile ? "p-4" : "p-6")}>
                 <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                     <div className="space-y-1.5">
                         <div className="flex items-center gap-2 sm:gap-3">
-                            <div className={cn("bg-emerald-500/10 rounded-xl", isMobile ? "p-2" : "p-2.5")}>
-                                <Calendar className={cn("text-emerald-600 dark:text-emerald-400", isMobile ? "w-4 h-4" : "w-5 h-5")} />
+                            <div className={cn("bg-primary/10 rounded-xl", isMobile ? "p-2" : "p-2.5")}>
+                                <Calendar className={cn("text-primary", isMobile ? "w-4 h-4" : "w-5 h-5")} />
                             </div>
                             <div>
                                 <CardTitle className={cn("font-black tracking-tight text-[#334155] dark:text-slate-100", isMobile ? "text-base" : "text-xl")}>
@@ -116,7 +116,7 @@ export default function DailyTracker({ user }: DailyTrackerProps) {
                                         {totalSolved} solved
                                     </span>
                                     <span className="w-1 h-1 rounded-full bg-[#E2E8F0]" />
-                                    <div className="flex items-center gap-1 text-[#059669] dark:text-emerald-400">
+                                    <div className="flex items-center gap-1 text-primary">
                                         <Flame className="w-2.5 h-2.5 fill-current" />
                                         <span className="text-[9px] sm:text-xs font-bold">{user.streak || 0}d streak</span>
                                     </div>
@@ -174,7 +174,7 @@ export default function DailyTracker({ user }: DailyTrackerProps) {
                                                     </TooltipTrigger>
                                                     <TooltipContent 
                                                         side="top" 
-                                                        className="bg-slate-900 dark:bg-white border-none text-white dark:text-slate-900 px-3 py-2 shadow-2xl"
+                                                        className="bg-slate-900 dark:bg-card border-none text-white dark:text-slate-900 px-3 py-2 shadow-2xl"
                                                     >
                                                         <div className="text-center">
                                                             <p className="text-xs font-black">

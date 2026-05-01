@@ -96,12 +96,12 @@ export default function Leaderboard({ currentUser, initialLeaderboard, initialMy
       {/* Background Decoration */}
       <div className="fixed inset-0 z-0 pointer-events-none">
         <div className="absolute top-[10%] right-[-10%] w-[40%] h-[40%] bg-primary/5 rounded-full blur-[120px]" />
-        <div className="absolute bottom-[10%] left-[-10%] w-[30%] h-[30%] bg-blue-500/5 rounded-full blur-[100px]" />
+        <div className="absolute bottom-[10%] left-[-10%] w-[30%] h-[30%] bg-primary/5 rounded-full blur-[100px]" />
       </div>
 
       {/* Main Content */}
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 relative z-10">
-        <Card className="border-0 shadow-2xl bg-gradient-to-br from-primary via-primary/90 to-blue-600 text-primary-foreground mb-8 overflow-hidden relative rounded-[2.5rem]">
+        <Card className="border-0 shadow-2xl bg-gradient-to-br from-primary via-primary/90 to-primary/80 text-primary-foreground mb-8 overflow-hidden relative rounded-[2.5rem]">
           <div className="absolute inset-0 bg-[url('/noise.svg')] opacity-[0.05] mix-blend-overlay pointer-events-none" />
           <CardContent className={cn("relative z-10", isMobile ? "p-6" : "p-8 sm:p-10")}>
             <div className={cn(
@@ -280,7 +280,7 @@ export default function Leaderboard({ currentUser, initialLeaderboard, initialMy
                     "shadow-lg ring-2 ring-background border-2 border-transparent shrink-0",
                     isMobile ? "w-10 h-10" : "w-14 h-14"
                   )}>
-                    <AvatarFallback className="bg-gradient-to-br from-primary to-blue-700 text-white font-black text-lg">
+                    <AvatarFallback className="bg-gradient-to-br from-primary to-primary/80 text-white font-black text-lg">
                       {entry.name.charAt(0).toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
@@ -386,7 +386,7 @@ export default function Leaderboard({ currentUser, initialLeaderboard, initialMy
                       "shadow-lg ring-2 ring-background border-2 border-transparent shrink-0",
                       isMobile ? "w-10 h-10" : "w-14 h-14"
                     )}>
-                      <AvatarFallback className="bg-gradient-to-br from-primary to-blue-700 text-white font-black text-lg">
+                      <AvatarFallback className="bg-gradient-to-br from-primary to-primary/80 text-white font-black text-lg">
                         {entry.name.charAt(0).toUpperCase()}
                       </AvatarFallback>
                     </Avatar>

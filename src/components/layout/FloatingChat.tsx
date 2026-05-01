@@ -94,7 +94,7 @@ export default function FloatingChat({ onOpen, hideMainButton }: FloatingChatPro
                   (event.target as HTMLImageElement).style.display = 'none';
                 }}
               />
-              <div className="absolute right-4 top-4 z-20 h-4 w-4 rounded-full border-2 border-white bg-rose-500 shadow-md dark:border-slate-900" />
+              <div className="absolute right-4 top-4 z-20 h-4 w-4 rounded-full border-2 border-white bg-primary shadow-md dark:border-slate-900" />
             </div>
           </motion.button>
         </div>

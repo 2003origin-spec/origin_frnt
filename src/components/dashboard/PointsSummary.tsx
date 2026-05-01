@@ -29,7 +29,7 @@ const TIER_COLORS: Record<string, string> = {
     'Expert': 'text-purple-400 border-purple-400 bg-purple-400/10',
     'Master': 'text-pink-400 border-pink-400 bg-pink-400/10',
     'Grandmaster': 'text-amber-400 border-amber-400 bg-amber-400/10',
-    'Legend': 'text-rose-500 border-rose-500 bg-rose-500/10',
+    'Legend': 'text-primary border-primary bg-primary/10',
 };
 
 const HOW_EARNED = [
@@ -53,16 +53,16 @@ export default function PointsSummary({ data, onNextSteps }: PointsSummaryProps)
 
 
     return (
-        <div className="w-full h-full bg-white dark:bg-slate-900/40 backdrop-blur-md rounded-[32px] border border-slate-100 dark:border-border/50 p-6 flex flex-col justify-between overflow-hidden relative group shadow-sm">
+        <div className="w-full h-full bg-card dark:bg-slate-900/40 backdrop-blur-md rounded-[32px] border border-primary/20 dark:border-border/50 p-6 flex flex-col justify-between overflow-hidden relative group shadow-sm">
             {/* Background glow */}
-            <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 blur-[50px] pointer-events-none group-hover:bg-blue-500/10 transition-colors duration-500" />
+            <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 blur-[50px] pointer-events-none group-hover:bg-primary/10 transition-colors duration-500" />
 
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-2">
                 <div className="flex items-center gap-4">
-                    <div className="w-14 h-14 rounded-2xl bg-[#EFF6FF] dark:bg-blue-500/10 flex items-center justify-center relative shadow-sm">
-                        <Trophy className="w-8 h-8 text-[#1D4ED8]" />
-                        <div className="absolute -top-1 -right-1 w-5 h-5 bg-[#059669] rounded-full border-2 border-white dark:border-zinc-900 flex items-center justify-center">
+                    <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center relative shadow-sm">
+                        <Trophy className="w-8 h-8 text-primary" />
+                        <div className="absolute -top-1 -right-1 w-5 h-5 bg-[#059669] rounded-full border-2 border-card dark:border-zinc-900 flex items-center justify-center">
                             <Star className="w-3 h-3 text-white fill-current" />
                         </div>
                     </div>

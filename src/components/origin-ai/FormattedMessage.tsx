@@ -191,7 +191,7 @@ export function FormattedMessage({ content, className, isAssistant = true, inlin
       !inline && 'prose-p:leading-relaxed prose-p:my-1',
       !inline && 'prose-ul:my-2 prose-ol:my-2',
       !inline && 'prose-li:my-0.5',
-      !inline && 'prose-strong:text-blue-600 dark:prose-strong:text-blue-400 prose-strong:font-bold',
+      !inline && 'prose-strong:text-primary prose-strong:font-bold',
       className
     )}>
       <ReactMarkdown
@@ -213,7 +213,7 @@ export function FormattedMessage({ content, className, isAssistant = true, inlin
               return (
                 <div
                   className={cn(
-                    'my-4 overflow-x-auto py-2 flex justify-center bg-blue-500/5 rounded-xl border border-blue-500/10',
+                    'my-4 overflow-x-auto py-2 flex justify-center bg-primary/5 rounded-xl border border-primary/10',
                     inline && 'my-1 py-1'
                   )}
                   {...rest}

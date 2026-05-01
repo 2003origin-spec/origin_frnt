@@ -153,8 +153,8 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
   const modes = {
     focus: {
       label: 'Deep Focus',
-      color: 'from-indigo-600 to-indigo-900',
-      shadow: 'shadow-indigo-500/20',
+      color: 'from-primary to-primary/80',
+      shadow: 'shadow-primary/20',
       icon: () => <img src="/ai-bot.png" className="w-8 h-8 object-cover rounded-lg" />,
       defaultTime: settings.focusDuration * 60
     },
@@ -752,7 +752,7 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
   const progress = ((currentMode.defaultTime - timeRemaining) / currentMode.defaultTime) * 100;
 
   return (
-    <div ref={containerRef} className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-500 relative overflow-hidden flex flex-col">
+    <div ref={containerRef} className="min-h-screen bg-background text-foreground transition-colors duration-500 relative overflow-hidden flex flex-col">
       
       {/* ── ATMOSPHERE BACKGROUND ── */}
       <AnimatePresence>
@@ -772,7 +772,7 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
             >
               <source src="/videos/Pomodoro-Focus.mp4" type="video/mp4" />
             </video>
-            <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/10 via-transparent to-amber-500/5 backdrop-blur-[2px]" />
+            <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-primary/5 backdrop-blur-[2px]" />
           </motion.div>
         )}
       </AnimatePresence>
@@ -780,8 +780,8 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
       {/* ── MESH GRADIENT (Fallback/Base) ── */}
       {!showAtmosphere && (
         <div className="fixed inset-0 z-0 pointer-events-none opacity-40">
-          <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-500/20 rounded-full blur-[120px]" />
-          <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-amber-500/20 rounded-full blur-[120px]" />
+          <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary/20 rounded-full blur-[120px]" />
+          <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-primary/20 rounded-full blur-[120px]" />
         </div>
       )}
 
@@ -789,18 +789,18 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
       {showNavLock && (
         <div className="fixed inset-0 z-[9999] bg-black/70 backdrop-blur-md flex items-center justify-center p-6 animate-in fade-in duration-200">
           <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-700 p-8 max-w-sm w-full text-center">
-            <div className="w-16 h-16 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center mx-auto mb-5">
-              <Flame className="w-8 h-8 text-amber-500 animate-pulse" />
+            <div className="w-16 h-16 bg-primary/10 dark:bg-primary/20 rounded-full flex items-center justify-center mx-auto mb-5">
+              <Flame className="w-8 h-8 text-primary animate-pulse" />
             </div>
             <h2 className="text-xl font-black text-slate-900 dark:text-white mb-2">🚫 Focus in Progress</h2>
             <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed mb-6">
-              Your focus timer is still running! Leaving now will <span className="font-bold text-rose-500">interrupt your session</span>. 
+              Your focus timer is still running! Leaving now will <span className="font-bold text-primary">interrupt your session</span>. 
               Stay locked in — you've got this!
             </p>
             <div className="flex flex-col gap-3">
               <button
                 onClick={() => setShowNavLock(false)}
-                className="w-full py-3 px-6 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-900 text-white font-bold hover:opacity-90 transition-all active:scale-95"
+                className="w-full py-3 px-6 rounded-xl bg-gradient-to-r from-primary to-primary/80 text-white font-bold hover:opacity-90 transition-all active:scale-95"
               >
                 🔒 Stay Focused
               </button>
@@ -827,7 +827,7 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
                 <ChevronLeft className="w-5 h-5 text-slate-600 dark:text-slate-400" />
               </button>
               <div className="flex items-center gap-2 sm:gap-3">
-                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-indigo-700 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg shadow-primary/20">
                   <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
                 </div>
                 <div className="hidden xs:block">
@@ -839,7 +839,7 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
             <div className="flex items-center gap-1 sm:gap-2">
               <button
                 onClick={() => setShowAtmosphere(!showAtmosphere)}
-                className={`p-2 sm:p-2.5 rounded-xl transition-all ${showAtmosphere ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/20' : 'hover:bg-white/50 dark:hover:bg-white/5 text-slate-600 dark:text-slate-400'}`}
+                className={`p-2 sm:p-2.5 rounded-xl transition-all ${showAtmosphere ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'hover:bg-white/50 dark:hover:bg-white/5 text-slate-600 dark:text-slate-400'}`}
                 title="Toggle Atmosphere"
               >
                 <Flame className={`w-4 h-4 sm:w-5 sm:h-5 ${showAtmosphere ? 'animate-pulse' : ''}`} />
@@ -882,9 +882,9 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
             </div>
 
             <div className="flex gap-4">
-              <div className="flex items-center gap-3 px-4 py-2 bg-indigo-500/5 border border-indigo-500/20 rounded-2xl">
-                <Flame className="w-4 h-4 text-amber-500" />
-                <span className="text-xs font-black text-indigo-500 uppercase tracking-widest leading-none">
+              <div className="flex items-center gap-3 px-4 py-2 bg-primary/5 border border-primary/20 rounded-2xl">
+                <Flame className="w-4 h-4 text-primary" />
+                <span className="text-xs font-black text-primary uppercase tracking-widest leading-none">
                   {user.streak} Day Study Streak
                 </span>
               </div>
@@ -903,10 +903,10 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
                     <motion.div 
                       initial={{ opacity: 0, y: -20 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="absolute top-8 flex items-center gap-3 p-3 px-6 rounded-full bg-rose-500/10 border border-rose-500/20 backdrop-blur-md z-20"
+                      className="absolute top-8 flex items-center gap-3 p-3 px-6 rounded-full bg-primary/10 border border-primary/20 backdrop-blur-md z-20"
                     >
-                      <ShieldAlert className="w-4 h-4 text-rose-500" />
-                      <p className="text-[10px] font-black text-rose-500 uppercase tracking-widest">Interrupted {interruptionCount}x</p>
+                      <ShieldAlert className="w-4 h-4 text-primary" />
+                      <p className="text-[10px] font-black text-primary uppercase tracking-widest">Interrupted {interruptionCount}x</p>
                     </motion.div>
                   )}
 
@@ -932,7 +932,7 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
                           </h2>
                           <Button
                             onClick={handleStopAlarm}
-                            className="w-full h-14 rounded-2xl bg-indigo-600 text-white font-black text-sm uppercase tracking-widest"
+                            className="w-full h-14 rounded-2xl bg-primary text-white font-black text-sm uppercase tracking-widest"
                           >
                            Next Protocol
                           </Button>
@@ -953,7 +953,7 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
                             cy="50%"
                             r="46%"
                             className={`fill-none ${
-                               mode === 'focus' ? 'stroke-indigo-600' : 'stroke-emerald-500'
+                               mode === 'focus' ? 'stroke-primary' : 'stroke-emerald-500'
                             }`}
                             strokeWidth="4"
                             strokeLinecap="round"
@@ -981,7 +981,7 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
                             </button>
                           )}
                           <div className="flex items-center gap-2 mt-2">
-                             <div className={`p-1 px-3 rounded-full text-[10px] font-black uppercase tracking-widest ${isRunning ? 'animate-pulse text-indigo-500' : 'text-slate-400'}`}>
+                             <div className={`p-1 px-3 rounded-full text-[10px] font-black uppercase tracking-widest ${isRunning ? 'animate-pulse text-primary' : 'text-slate-400'}`}>
                                 {isRunning ? "Active Phase" : "Standby"}
                              </div>
                           </div>
@@ -996,15 +996,15 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
                       disabled={isAlarmRinging}
                       className={`w-16 h-16 sm:w-20 sm:h-20 rounded-full flex items-center justify-center transition-all active:scale-95 shadow-2xl ${
                         isRunning 
-                        ? 'bg-rose-500 text-white shadow-rose-500/20' 
-                        : 'bg-indigo-600 text-white shadow-indigo-600/20'
+                        ? 'bg-primary text-white shadow-primary/20' 
+                        : 'bg-primary/90 text-white shadow-primary/20'
                       }`}
                     >
                       {isRunning ? <Pause className="w-6 h-6 sm:w-8 sm:h-8" /> : <Play className="w-6 h-6 sm:w-8 sm:h-8 ml-1" />}
                     </button>
                     <button
                       onClick={resetTimer}
-                      className="w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-slate-100 dark:bg-white/5 text-slate-500 hover:text-indigo-500 flex items-center justify-center transition-all active:scale-95"
+                      className="w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-slate-100 dark:bg-white/5 text-slate-500 hover:text-primary flex items-center justify-center transition-all active:scale-95"
                     >
                       <RotateCcw className="w-5 h-5 sm:w-6 sm:h-6" />
                     </button>
@@ -1015,7 +1015,7 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
               {/* Analytics Quick View */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                  {[
-                  { label: 'Minutes Focused', value: todayMinutes, icon: History, color: 'text-indigo-500', bg: 'bg-indigo-500/10' },
+                  { label: 'Minutes Focused', value: todayMinutes, icon: History, color: 'text-primary', bg: 'bg-primary/10' },
                   { label: 'Sessions Today', value: todaySessions, icon: Target, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
                  ].map((stat, i) => (
                     <Card key={i} className="border-0 bg-white/40 dark:bg-white/5 backdrop-blur-xl shadow-soft rounded-[24px] sm:rounded-[32px]">
@@ -1050,8 +1050,8 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
                         disabled={isRunning}
                         className={`w-full p-4 rounded-2xl text-left transition-all flex items-center justify-between group border ${
                           selectedTaskId === task.id
-                          ? 'bg-indigo-600 border-indigo-400 text-white shadow-lg'
-                          : 'bg-white/60 dark:bg-slate-900/40 border border-border/40 text-slate-700 dark:text-slate-300 hover:border-indigo-500/30'
+                          ? 'bg-primary border-primary/50 text-white shadow-lg'
+                          : 'bg-white/60 dark:bg-slate-900/40 border border-border/40 text-slate-700 dark:text-slate-300 hover:border-primary/30'
                         }`}
                       >
                         <span className="text-xs font-bold truncate pr-3">{task.title}</span>
@@ -1065,7 +1065,7 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
 
               {/* Zen Engine Card */}
               <Card 
-                  className="border-0 bg-indigo-600 shadow-xl shadow-indigo-500/20 text-white overflow-hidden relative group cursor-pointer rounded-[40px]" 
+                  className="border-0 bg-primary shadow-xl shadow-primary/20 text-white overflow-hidden relative group cursor-pointer rounded-[40px]" 
                   onClick={() => setShowAtmosphere(!showAtmosphere)}
               >
                 <CardContent className="p-8 relative z-10">
@@ -1094,7 +1094,7 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
             <Card className="border-0 bg-white/40 dark:bg-white/5 backdrop-blur-xl shadow-soft rounded-[40px]">
               <CardContent className="p-8">
                 <h3 className="text-sm font-black uppercase tracking-widest text-slate-900 dark:text-white mb-6 flex items-center gap-3">
-                  <ShieldAlert className="w-5 h-5 text-indigo-500" />
+                  <ShieldAlert className="w-5 h-5 text-primary" />
                   Focus Protocol
                 </h3>
                 <ul className="space-y-4">
@@ -1104,7 +1104,7 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
                     "Protect recovery periods from cognitive effort"
                   ].map((tip, i) => (
                     <li key={i} className="flex items-center gap-3 group">
-                       <div className="w-6 h-6 rounded-lg bg-indigo-500/10 flex items-center justify-center text-[10px] font-black group-hover:bg-indigo-500 group-hover:text-white transition-all italic">{i+1}</div>
+                       <div className="w-6 h-6 rounded-lg bg-primary/10 flex items-center justify-center text-[10px] font-black group-hover:bg-primary group-hover:text-white transition-all italic">{i+1}</div>
                        <p className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-tight">{tip}</p>
                     </li>
                   ))}
@@ -1162,7 +1162,7 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
                 </div>
               </div>
 
-              <Button onClick={() => setShowSettings(false)} className="w-full h-14 mt-10 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-sm uppercase tracking-widest">
+              <Button onClick={() => setShowSettings(false)} className="w-full h-14 mt-10 rounded-2xl bg-primary hover:bg-primary/90 text-white font-black text-sm uppercase tracking-widest">
                 Save laboratory settings
               </Button>
             </CardContent>
@@ -1185,7 +1185,7 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
                 <div key={idx} className="p-5 rounded-3xl bg-white/50 dark:bg-white/5 border border-border/40 shadow-sm">
                   <div className="flex items-center justify-between">
                      <div className="flex items-center gap-3">
-                        <div className={`p-2 rounded-xl ${isFocus ? 'bg-indigo-500' : 'bg-emerald-500'} text-white`}>
+                        <div className={`p-2 rounded-xl ${isFocus ? 'bg-primary' : 'bg-emerald-500'} text-white`}>
                            {isFocus ? <Target className="w-4 h-4" /> : <Coffee className="w-4 h-4" />}
                         </div>
                         <div>

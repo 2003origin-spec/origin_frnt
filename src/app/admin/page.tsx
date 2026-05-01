@@ -46,7 +46,7 @@ const StatCard = ({ title, value, change, isPositive, icon: Icon, color }: any) 
             <div className={`p-3 rounded-xl bg-${color}-500/10 border border-${color}-500/20 text-${color}-500`}>
                 <Icon className="w-6 h-6" />
             </div>
-            <div className={`flex items-center gap-1 text-xs font-bold ${isPositive ? 'text-emerald-500' : 'text-rose-500'}`}>
+            <div className={`flex items-center gap-1 text-xs font-bold ${isPositive ? 'text-emerald-500' : 'text-primary'}`}>
                 {isPositive ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
                 {change}
             </div>
@@ -203,10 +203,10 @@ export default function AdminDashboard() {
                             />
                             
                             <div className="mt-8 pt-6 border-t border-white/5">
-                                <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-start gap-4">
-                                    <AlertCircle className="w-5 h-5 text-rose-500 shrink-0" />
+                                <div className="p-4 rounded-xl bg-primary/10 border border-primary/20 flex items-start gap-4">
+                                    <AlertCircle className="w-5 h-5 text-primary shrink-0" />
                                     <div>
-                                        <p className="text-xs font-black uppercase tracking-widest text-rose-500 mb-1">Incident Report</p>
+                                        <p className="text-xs font-black uppercase tracking-widest text-primary mb-1">Incident Report</p>
                                         <p className="text-[10px] text-slate-400 font-bold leading-relaxed uppercase">High latency observed in APAC-South regions. Investigative action required.</p>
                                     </div>
                                 </div>

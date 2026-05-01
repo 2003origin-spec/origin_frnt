@@ -132,8 +132,8 @@ export default function AuthPage({
       {/* Background Decoration */}
       <div className="absolute inset-0 z-0 pointer-events-none opacity-40 mix-blend-multiply dark:mix-blend-screen"
         style={{
-          backgroundImage: `radial-gradient(circle at 80% 30%, rgba(29, 78, 216, 0.25) 0%, transparent 40%),
-                               radial-gradient(circle at 20% 70%, rgba(56, 189, 248, 0.15) 0%, transparent 40%)`
+          backgroundImage: `radial-gradient(circle at 80% 30%, var(--primary) 0%, transparent 40%),
+                               radial-gradient(circle at 20% 70%, var(--primary) 0%, transparent 40%)`
         }}>
         <div className="absolute inset-0 bg-[url('/noise.svg')] opacity-[0.03] mix-blend-overlay"></div>
       </div>
@@ -142,7 +142,7 @@ export default function AuthPage({
         {/* Back Button */}
         <button
           onClick={onBack}
-          className="mb-6 flex items-center gap-2 text-muted-foreground hover:text-blue-500 transition-colors"
+          className="mb-6 flex items-center gap-2 text-muted-foreground hover:text-primary transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
           <span className="text-sm font-medium">Back to home</span>
@@ -176,14 +176,14 @@ export default function AuthPage({
                   <button
                     type="button"
                     onClick={() => setIsLogin(true)}
-                    className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${isLogin ? 'bg-white dark:bg-slate-800 shadow-sm text-blue-600 dark:text-blue-400' : 'text-muted-foreground hover:text-foreground'}`}
+                    className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${isLogin ? 'bg-white dark:bg-slate-800 shadow-sm text-primary' : 'text-muted-foreground hover:text-foreground'}`}
                   >
                     Login
                   </button>
                   <button
                     type="button"
                     onClick={() => setIsLogin(false)}
-                    className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${!isLogin ? 'bg-white dark:bg-slate-800 shadow-sm text-blue-600 dark:text-blue-400' : 'text-muted-foreground hover:text-foreground'}`}
+                    className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${!isLogin ? 'bg-white dark:bg-slate-800 shadow-sm text-primary' : 'text-muted-foreground hover:text-foreground'}`}
                   >
                     Sign Up
                   </button>
@@ -191,7 +191,7 @@ export default function AuthPage({
               )}
 
               {error && (
-                <div className="mt-2 w-full p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-500 text-xs font-bold text-center animate-in fade-in slide-in-from-top-1 duration-300">
+                <div className="mt-2 w-full p-3 rounded-xl bg-primary/10 border border-primary/20 text-primary text-xs font-bold text-center animate-in fade-in slide-in-from-top-1 duration-300">
                   {error}
                 </div>
               )}
@@ -200,12 +200,12 @@ export default function AuthPage({
                 <div className={cn(
                   "mt-4 w-full p-3 rounded-xl border flex items-center justify-center gap-2 animate-in fade-in zoom-in-95 duration-500",
                   regStatus.seatsLeft > 0 
-                    ? "bg-blue-500/10 border-blue-500/20 text-blue-500" 
+                    ? "bg-primary/10 border-primary/20 text-primary" 
                     : "bg-amber-500/10 border-amber-500/20 text-amber-500"
                 )}>
                   {regStatus.seatsLeft > 0 ? (
                     <>
-                      <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+                      <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
                       <span className="text-xs font-black tracking-widest uppercase">
                         Hurry! {regStatus.seatsLeft} Seats Left
                       </span>
@@ -237,7 +237,7 @@ export default function AuthPage({
                         placeholder="Enter your full name"
                         value={name}
                         onChange={(e) => setName(e.target.value)}
-                        className="pl-10 h-12 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 focus:border-[#3CACA3] focus:ring-[#3CACA3]/20 dark:text-white transition-all"
+                        className="pl-10 h-12 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 focus:border-primary focus:ring-primary/20 dark:text-white transition-all"
                         required
                       />
                     </div>
@@ -256,7 +256,7 @@ export default function AuthPage({
                           placeholder="you@example.com"
                           value={email}
                           onChange={(e) => setEmail(e.target.value)}
-                          className="pl-10 h-12 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 focus:border-[#3CACA3] focus:ring-[#3CACA3]/20 dark:text-white transition-all"
+                          className="pl-10 h-12 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 focus:border-primary focus:ring-primary/20 dark:text-white transition-all"
                           required
                         />
                       </div>
@@ -266,7 +266,7 @@ export default function AuthPage({
                       <div className="flex items-center justify-between">
                         <Label htmlFor="password" className="text-slate-700 dark:text-slate-300">Password</Label>
                         {isLogin && (
-                          <button type="button" className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline">
+                          <button type="button" className="text-xs font-bold text-primary hover:underline">
                             Forgot password?
                           </button>
                         )}
@@ -279,7 +279,7 @@ export default function AuthPage({
                           placeholder={isLogin ? "Enter your password" : "Create a password"}
                           value={password}
                           onChange={(e) => setPassword(e.target.value)}
-                          className="px-10 h-12 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 focus:border-[#3CACA3] focus:ring-[#3CACA3]/20 dark:text-white transition-all"
+                          className="px-10 h-12 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 focus:border-primary focus:ring-primary/20 dark:text-white transition-all"
                           required
                         />
                         <button
@@ -295,8 +295,8 @@ export default function AuthPage({
                 ) : (
                   <div className="space-y-6 py-4 animate-in zoom-in-95 fade-in duration-500">
                     <div className="text-center space-y-2">
-                      <div className="mx-auto w-12 h-12 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center mb-4">
-                        <Mail className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+                      <div className="mx-auto w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-4">
+                        <Mail className="w-6 h-6 text-primary" />
                       </div>
                       <h3 className="text-lg font-bold">Check your email</h3>
                       <p className="text-sm text-muted-foreground">
@@ -330,7 +330,7 @@ export default function AuthPage({
                           type="button"
                           disabled={resendCooldown > 0}
                           onClick={handleSendOtp}
-                          className="font-bold text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50 disabled:no-underline flex items-center gap-1"
+                          className="font-bold text-primary hover:underline disabled:opacity-50 disabled:no-underline flex items-center gap-1"
                         >
                           {resendCooldown > 0 ? (
                             `Resend in ${resendCooldown}s`
@@ -366,7 +366,7 @@ export default function AuthPage({
                         id="remember"
                         checked={rememberMe}
                         onChange={(e) => setRememberMe(e.target.checked)}
-                        className="w-4 h-4 rounded border-border bg-muted dark:bg-slate-950 text-blue-600 focus:ring-blue-500/20"
+                        className="w-4 h-4 rounded border-border bg-muted dark:bg-slate-950 text-primary focus:ring-primary/20"
                       />
                       <label
                         htmlFor="remember"
@@ -375,7 +375,7 @@ export default function AuthPage({
                         Remember me
                       </label>
                     </div>
-                    <button type="button" className="text-sm text-blue-500 hover:underline">
+                    <button type="button" className="text-sm text-primary hover:underline">
                       Forgot password?
                     </button>
                   </div>
@@ -384,7 +384,7 @@ export default function AuthPage({
                 <Button
                   type="submit"
                   disabled={isLoading || isVerifying || (!isLogin && regStatus?.seatsLeft === 0)}
-                  className="w-full h-12 bg-gradient-to-r from-blue-600 to-[#1E3A5F] hover:opacity-90 text-white rounded-xl font-medium shadow-lg shadow-blue-500/20"
+                  className="w-full h-12 bg-primary hover:opacity-90 text-primary-foreground rounded-xl font-medium shadow-lg shadow-primary/20"
                 >
                   {isLoading || isVerifying ? (
                     <>

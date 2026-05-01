@@ -106,7 +106,7 @@ function MessageList({ snapshot }: { snapshot: OriginAiSnapshot }) {
           >
             <div className={cn('flex max-w-[88%] gap-3', isAssistant ? 'flex-row' : 'flex-row-reverse')}>
               {isAssistant ? (
-                <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-full border border-indigo-400/20 bg-indigo-900/30 p-1">
+                <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-full border border-primary/20 bg-primary/10 p-1">
                   <img src="/Dipraj-ChatBot.png" alt="Origin AI" className="h-full w-full object-contain" />
                 </div>
               ) : null}
@@ -114,15 +114,15 @@ function MessageList({ snapshot }: { snapshot: OriginAiSnapshot }) {
                 className={cn(
                   'rounded-3xl px-4 py-3 text-sm leading-7 shadow-lg transition-colors',
                   isAssistant
-                    ? 'rounded-tl-md border border-border/60 bg-card text-foreground shadow-slate-200/50 dark:shadow-none'
-                    : 'rounded-tr-md bg-blue-600 text-white shadow-blue-600/10',
+                    ? 'rounded-tl-md border border-border/40 bg-card/40 text-foreground backdrop-blur-md shadow-slate-200/50 dark:shadow-none'
+                    : 'rounded-tr-md bg-primary/40 text-foreground backdrop-blur-md border border-primary/20 shadow-primary/10',
                 )}
               >
                 <FormattedMessage content={message.content} isAssistant={isAssistant} />
                 <div
                   className={cn(
                     'mt-2 text-[10px] uppercase tracking-[0.2em]',
-                    isAssistant ? 'text-muted-foreground' : 'text-blue-100/90',
+                    isAssistant ? 'text-muted-foreground' : 'text-primary/70',
                   )}
                 >
                   {isAssistant ? 'Origin AI' : 'You'} · {formatRelativeTimestamp(message.timestamp)}
@@ -360,9 +360,9 @@ export default function OriginAiMentor({
   const shellClassName = compact
     ? cn(
         'flex h-full flex-col overflow-hidden transition-colors',
-        !isSidebar && 'rounded-[28px] border border-border/40 bg-card shadow-2xl'
+        !isSidebar && 'rounded-[28px] border border-border/40 bg-card/60 backdrop-blur-xl shadow-2xl'
       )
-    : 'flex h-full min-h-[calc(100vh-7rem)] flex-col overflow-hidden rounded-[32px] border border-border/40 bg-card text-foreground shadow-[0_25px_80px_rgba(2,6,23,0.15)] transition-colors';
+    : 'flex h-full min-h-[calc(100vh-7rem)] flex-col overflow-hidden rounded-[32px] border border-border/40 bg-card/60 backdrop-blur-xl text-foreground shadow-[0_25px_80px_rgba(2,6,23,0.15)] transition-colors';
 
   if (compact) {
     return (
@@ -454,10 +454,10 @@ export default function OriginAiMentor({
 
         <div className="shrink-0 border-t border-border/40 bg-card/40 px-3 py-3">
           {isVoiceActive ? (
-            <div className="mb-3 rounded-2xl border border-blue-400/20 bg-blue-500/10 px-3 py-2.5 text-xs transition-colors">
+            <div className="mb-3 rounded-2xl border border-primary/20 bg-primary/10 px-3 py-2.5 text-xs transition-colors">
               <div className="flex items-center justify-between gap-3">
-                <div className="font-bold text-blue-600 dark:text-blue-100">{voiceStatusText}</div>
-                <span className="rounded-full bg-blue-600/15 dark:bg-white/10 px-2 py-1 text-[10px] uppercase tracking-[0.2em] font-black text-blue-700 dark:text-blue-100">
+                <div className="font-bold text-primary">{voiceStatusText}</div>
+                <span className="rounded-full bg-primary/20 px-2 py-1 text-[10px] uppercase tracking-[0.2em] font-black text-primary">
                   {voiceStatus.replace(/_/g, ' ')}
                 </span>
               </div>
@@ -470,13 +470,13 @@ export default function OriginAiMentor({
             </div>
           ) : null}
           {highlightedText ? (
-            <div className="mb-2 flex items-center gap-2 rounded-2xl border border-blue-400/20 bg-blue-600/5 px-3 py-2 text-xs">
-              <span className="shrink-0 font-black tracking-wider text-blue-600 dark:text-blue-200">Selected </span>
+            <div className="mb-2 flex items-center gap-2 rounded-2xl border border-primary/20 bg-primary/5 px-3 py-2 text-xs">
+              <span className="shrink-0 font-black tracking-wider text-primary">Selected </span>
               <FormattedMessage content={highlightedText} inline className="line-clamp-1 flex-1 font-medium text-foreground/80" />
               <button
                 type="button"
                 onClick={() => clearHighlightedText()}
-                className="rounded-full p-1 text-blue-200/70 transition hover:bg-white/10 hover:text-white"
+                className="rounded-full p-1 text-primary/70 transition hover:bg-white/10 hover:text-white"
                 aria-label="Clear highlighted text"
               >
                 <X className="h-3.5 w-3.5" />
@@ -503,7 +503,7 @@ export default function OriginAiMentor({
                       ? 'Ask for a hint or a concept nudge...'
                       : 'Ask Origin AI anything about your studies...'
               }
-              className="no-scrollbar min-w-0 flex-1 resize-none rounded-3xl border border-border/40 bg-muted/40 px-4 py-3 text-sm leading-6 text-foreground outline-none transition focus:border-blue-500/40 focus:bg-muted/60"
+              className="no-scrollbar min-w-0 flex-1 resize-none rounded-3xl border border-border/40 bg-muted/40 px-4 py-3 text-sm leading-6 text-foreground outline-none transition focus:border-primary/40 focus:bg-muted/60"
             />
             <Button
               type="button"
@@ -527,7 +527,7 @@ export default function OriginAiMentor({
               type="button"
               onClick={() => void handleSend()}
               disabled={isSending || (!message.trim() && !highlightedText)}
-              className="h-12 w-12 shrink-0 rounded-3xl bg-blue-600 px-0 py-0 text-white hover:bg-blue-500 disabled:opacity-50"
+              className="h-12 w-12 shrink-0 rounded-3xl bg-primary px-0 py-0 text-white hover:bg-primary/90 disabled:opacity-50"
             >
               {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             </Button>
@@ -539,7 +539,7 @@ export default function OriginAiMentor({
 
   return (
     <div id="tutorial-mentor" className={shellClassName} data-origin-ai-root="true">
-      <div className={cn('flex items-center justify-between border-b border-border/40 bg-indigo-500/10', compact ? 'px-4 py-3' : 'px-5 py-4')}>
+      <div className={cn('flex items-center justify-between border-b border-border/40 bg-primary/10', compact ? 'px-4 py-3' : 'px-5 py-4')}>
         <div className="flex items-center gap-3">
           <div className={cn('relative flex items-center justify-center overflow-hidden rounded-full border border-border/20 bg-muted p-1', compact ? 'h-10 w-10' : 'h-11 w-11')}>
             <img src="/Dipraj-ChatBot.png" alt="Origin AI" className="h-full w-full object-contain drop-shadow-md" />
@@ -673,10 +673,10 @@ export default function OriginAiMentor({
 
           <div className={cn('border-t border-border/40', compact ? 'px-3 py-3' : 'px-5 py-4')}>
             {isVoiceActive ? (
-              <div className="mb-3 rounded-2xl border border-blue-400/20 bg-blue-500/10 px-3 py-2.5 text-xs text-slate-200">
+              <div className="mb-3 rounded-2xl border border-primary/20 bg-primary/10 px-3 py-2.5 text-xs text-foreground">
                 <div className="flex items-center justify-between gap-3">
-                  <div className="font-medium text-blue-100">{voiceStatusText}</div>
-                  <span className="rounded-full bg-white/10 px-2 py-1 text-[10px] uppercase tracking-[0.2em] text-blue-100">
+                  <div className="font-medium text-primary">{voiceStatusText}</div>
+                  <span className="rounded-full bg-primary/10 px-2 py-1 text-[10px] uppercase tracking-[0.2em] text-primary">
                     {voiceStatus.replace(/_/g, ' ')}
                   </span>
                 </div>
@@ -689,8 +689,8 @@ export default function OriginAiMentor({
               </div>
             ) : null}
             {highlightedText ? (
-              <div className="mb-2 flex items-center gap-2 rounded-2xl border border-blue-400/20 bg-blue-500/10 px-3 py-2 text-xs text-blue-200">
-                <span className="shrink-0 font-semibold tracking-wider">Selected </span>
+              <div className="mb-2 flex items-center gap-2 rounded-2xl border border-primary/20 bg-primary/10 px-3 py-2 text-xs text-foreground">
+                <span className="shrink-0 font-semibold tracking-wider text-primary">Selected </span>
                 <FormattedMessage content={highlightedText} inline className="line-clamp-1 flex-1 opacity-80" />
                 <button
                   type="button"
@@ -723,7 +723,7 @@ export default function OriginAiMentor({
                         : 'Ask Origin AI anything about your studies...'
                 }
                 className={cn(
-                  'flex-1 resize-none rounded-3xl border border-border/40 bg-muted/40 px-4 text-sm text-foreground outline-none transition focus:border-blue-500/40 focus:bg-muted/60',
+                  'flex-1 resize-none rounded-3xl border border-border/40 bg-muted/40 px-4 text-sm text-foreground outline-none transition focus:border-primary/40 focus:bg-muted/60',
                   compact ? 'min-h-[48px] max-h-24 py-3 leading-6' : 'min-h-[56px] py-3',
                 )}
               />
@@ -751,7 +751,7 @@ export default function OriginAiMentor({
                 onClick={() => void handleSend()}
                 disabled={isSending || (!message.trim() && !highlightedText)}
                 className={cn(
-                  'rounded-3xl bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-50',
+                  'rounded-3xl bg-primary text-white hover:bg-primary/90 disabled:opacity-50',
                   compact ? 'h-12 w-12 shrink-0 px-0 py-0' : 'h-auto px-4 py-3',
                 )}
               >

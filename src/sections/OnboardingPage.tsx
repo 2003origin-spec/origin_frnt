@@ -92,8 +92,8 @@ export default function OnboardingPage({ onComplete }: OnboardingPageProps) {
                   className="h-16 w-auto"
                 />
               </div>
-              <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-[#3CACA3]/10 to-[#1E3A5F]/10 flex items-center justify-center mb-4">
-                <GraduationCap className="w-8 h-8 text-[#3CACA3]" />
+              <div className="w-16 h-16 mx-auto rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
+                <GraduationCap className="w-8 h-8 text-primary" />
               </div>
               <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Which class are you in?</h2>
               <p className="text-slate-600 dark:text-slate-400">This helps us personalize your learning experience</p>
@@ -119,7 +119,7 @@ export default function OnboardingPage({ onComplete }: OnboardingPageProps) {
                   />
                   <Label
                     htmlFor={option.value}
-                    className="flex flex-col items-center p-4 rounded-xl border-2 border-slate-200 dark:border-slate-700 cursor-pointer transition-all hover:border-indigo-500/50 dark:hover:border-indigo-500/50 peer-data-[state=checked]:border-indigo-500 peer-data-[state=checked]:bg-indigo-500/5 dark:peer-data-[state=checked]:bg-indigo-500/10"
+                    className="flex flex-col items-center p-4 rounded-xl border-2 border-slate-200 dark:border-slate-700 cursor-pointer transition-all hover:border-primary/50 dark:hover:border-primary/50 peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 dark:peer-data-[state=checked]:bg-primary/10"
                   >
                     <span className="font-semibold text-slate-900 dark:text-white">{option.label}</span>
                     <span className="text-xs text-slate-500 dark:text-slate-400 mt-1 text-center">{option.desc}</span>
@@ -134,8 +134,8 @@ export default function OnboardingPage({ onComplete }: OnboardingPageProps) {
         return (
           <div className="space-y-6 animate-fade-in">
             <div className="text-center">
-              <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-indigo-500/10 to-violet-600/10 flex items-center justify-center mb-4">
-                <Target className="w-8 h-8 text-indigo-500" />
+              <div className="w-16 h-16 mx-auto rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
+                <Target className="w-8 h-8 text-primary" />
               </div>
               <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Choose your course</h2>
               <p className="text-slate-600 dark:text-slate-400">Select the exam you are preparing for</p>
@@ -159,13 +159,13 @@ export default function OnboardingPage({ onComplete }: OnboardingPageProps) {
                   />
                   <Label
                     htmlFor={option.value}
-                    className="flex items-center p-4 rounded-xl border-2 border-slate-200 dark:border-slate-700 cursor-pointer transition-all hover:border-indigo-500/50 dark:hover:border-indigo-500/50 peer-data-[state=checked]:border-indigo-500 peer-data-[state=checked]:bg-indigo-500/5 dark:peer-data-[state=checked]:bg-indigo-500/10"
+                    className="flex items-center p-4 rounded-xl border-2 border-slate-200 dark:border-slate-700 cursor-pointer transition-all hover:border-primary/50 dark:hover:border-primary/50 peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 dark:peer-data-[state=checked]:bg-primary/10"
                   >
                     <div className="flex-1">
                       <span className="font-semibold text-slate-900 dark:text-white block">{option.label}</span>
                       <span className="text-sm text-slate-500 dark:text-slate-400">{option.desc}</span>
                     </div>
-                    <CheckCircle2 className="w-5 h-5 text-indigo-500 opacity-0 peer-data-[state=checked]:opacity-100" />
+                    <CheckCircle2 className="w-5 h-5 text-primary opacity-0 peer-data-[state=checked]:opacity-100" />
                   </Label>
                 </div>
               ))}
@@ -177,8 +177,8 @@ export default function OnboardingPage({ onComplete }: OnboardingPageProps) {
         return (
           <div className="space-y-6 animate-fade-in">
             <div className="text-center">
-              <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-indigo-500/10 to-violet-600/10 flex items-center justify-center mb-4 overflow-hidden p-2">
-                <BookOpen className="w-8 h-8 text-indigo-500" />
+              <div className="w-16 h-16 mx-auto rounded-2xl bg-primary/10 flex items-center justify-center mb-4 overflow-hidden p-2">
+                <BookOpen className="w-8 h-8 text-primary" />
               </div>
               <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Select your subjects</h2>
               <p className="text-slate-600 dark:text-slate-400">We will tailor your experience based on these</p>
@@ -225,13 +225,13 @@ export default function OnboardingPage({ onComplete }: OnboardingPageProps) {
                   />
                   <Label
                     htmlFor={subject.value}
-                    className="flex items-center p-4 rounded-xl border-2 border-slate-200 dark:border-slate-700 cursor-pointer transition-all hover:border-indigo-500/50 dark:hover:border-indigo-500/50 peer-data-[state=checked]:border-indigo-500 peer-data-[state=checked]:bg-indigo-500/5 dark:peer-data-[state=checked]:bg-indigo-500/10"
+                    className="flex items-center p-4 rounded-xl border-2 border-slate-200 dark:border-slate-700 cursor-pointer transition-all hover:border-primary/50 dark:hover:border-primary/50 peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 dark:peer-data-[state=checked]:bg-primary/10"
                   >
                     <div className="flex-1">
                       <span className="font-semibold text-slate-900 dark:text-white block">{subject.label}</span>
                       <span className="text-sm text-slate-500 dark:text-slate-400">{subject.desc}</span>
                     </div>
-                    <CheckCircle2 className="w-5 h-5 text-indigo-500 opacity-0 peer-data-[state=checked]:opacity-100" />
+                    <CheckCircle2 className="w-5 h-5 text-primary opacity-0 peer-data-[state=checked]:opacity-100" />
                   </Label>
                 </div>
               ))}
@@ -243,8 +243,8 @@ export default function OnboardingPage({ onComplete }: OnboardingPageProps) {
         return (
           <div className="space-y-6 animate-fade-in">
             <div className="text-center">
-              <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-[#3CACA3]/10 to-[#1E3A5F]/10 flex items-center justify-center mb-4">
-                <Sparkles className="w-8 h-8 text-[#3CACA3]" />
+              <div className="w-16 h-16 mx-auto rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
+                <Sparkles className="w-8 h-8 text-primary" />
               </div>
               <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">How did you hear about ORIGIN?</h2>
               <p className="text-slate-600 dark:text-slate-400">Help us understand our reach</p>
@@ -270,9 +270,9 @@ export default function OnboardingPage({ onComplete }: OnboardingPageProps) {
                   />
                   <Label
                     htmlFor={option.value}
-                    className="flex flex-col items-center p-4 rounded-xl border-2 border-slate-200 dark:border-slate-700 cursor-pointer transition-all hover:border-[#3CACA3]/50 dark:hover:border-[#3CACA3]/50 peer-data-[state=checked]:border-[#3CACA3] peer-data-[state=checked]:bg-[#3CACA3]/5 dark:peer-data-[state=checked]:bg-[#3CACA3]/10"
+                    className="flex flex-col items-center p-4 rounded-xl border-2 border-slate-200 dark:border-slate-700 cursor-pointer transition-all hover:border-primary/50 dark:hover:border-primary/50 peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 dark:peer-data-[state=checked]:bg-primary/10"
                   >
-                    <option.icon className="w-6 h-6 text-[#3CACA3] mb-2" />
+                    <option.icon className="w-6 h-6 text-primary mb-2" />
                     <span className="font-medium text-slate-900 dark:text-white">{option.label}</span>
                   </Label>
                 </div>
@@ -290,8 +290,8 @@ export default function OnboardingPage({ onComplete }: OnboardingPageProps) {
     <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-slate-50 via-white to-teal-50/30 dark:from-slate-950 dark:via-slate-900 dark:to-teal-950/30 transition-colors duration-300">
       {/* Background Decoration */}
       <div className="absolute inset-0 -z-10 overflow-hidden">
-        <div className="absolute top-20 left-10 w-72 h-72 bg-[#3CACA3]/5 dark:bg-[#3CACA3]/10 rounded-full blur-3xl" />
-        <div className="absolute bottom-20 right-10 w-96 h-96 bg-[#1E3A5F]/5 dark:bg-[#1E3A5F]/10 rounded-full blur-3xl" />
+        <div className="absolute top-20 left-10 w-72 h-72 bg-primary/5 dark:bg-primary/10 rounded-full blur-3xl" />
+        <div className="absolute bottom-20 right-10 w-96 h-96 bg-primary/5 dark:bg-primary/10 rounded-full blur-3xl" />
       </div>
 
       <Card className="w-full max-w-lg border-0 shadow-2xl bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl dark:ring-1 dark:ring-white/10">
@@ -300,7 +300,7 @@ export default function OnboardingPage({ onComplete }: OnboardingPageProps) {
           <div className="mb-8">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium text-slate-600 dark:text-slate-400">Step {step} of {totalSteps}</span>
-              <span className="text-sm font-medium text-[#3CACA3]">{Math.round(progress)}%</span>
+              <span className="text-sm font-medium text-primary">{Math.round(progress)}%</span>
             </div>
             <Progress value={progress} className="h-2 bg-slate-100 dark:bg-slate-800" />
           </div>
@@ -322,7 +322,7 @@ export default function OnboardingPage({ onComplete }: OnboardingPageProps) {
             <Button
               onClick={handleNext}
               disabled={!isStepValid()}
-              className="flex-1 h-12 bg-gradient-to-r from-[#3CACA3] to-[#1E3A5F] hover:opacity-90 text-white rounded-xl font-medium disabled:opacity-50"
+              className="flex-1 h-12 bg-primary hover:opacity-90 text-white rounded-xl font-medium disabled:opacity-50"
             >
               {step === totalSteps ? (
                 <>

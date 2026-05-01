@@ -24,7 +24,7 @@ export default function Explore({ onNavigate }: ExploreProps) {
             description: 'Access NCERT books, curated notes, and interactive study material.',
             icon: BookOpen,
             view: 'study-corner' as ViewState,
-            color: 'from-blue-500 to-cyan-500',
+            color: 'from-rose-500 to-pink-500',
             stats: '150+ Resources'
         },
         {
@@ -32,7 +32,7 @@ export default function Explore({ onNavigate }: ExploreProps) {
             description: 'Practice JEE-level mock tests and detailed subject-wise assessments.',
             icon: FileText,
             view: 'test-list' as ViewState,
-            color: 'from-blue-600 to-indigo-600',
+            color: 'from-rose-600 to-pink-600',
             stats: '500+ Questions'
         },
         {
@@ -56,7 +56,7 @@ export default function Explore({ onNavigate }: ExploreProps) {
             description: 'Manage your personal details, plan, and academic preferences.',
             icon: User,
             view: 'profile' as ViewState,
-            color: 'from-slate-600 to-slate-800',
+            color: 'from-rose-700 to-pink-800',
             stats: 'Active'
         },
         {
@@ -104,7 +104,7 @@ export default function Explore({ onNavigate }: ExploreProps) {
             {/* Ambient Background Elements */}
             <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
                 <div className="absolute top-[20%] right-[-5%] w-[40%] h-[40%] bg-primary/5 rounded-full blur-[100px]" />
-                <div className="absolute bottom-[10%] left-[-5%] w-[30%] h-[30%] bg-blue-500/5 rounded-full blur-[80px]" />
+                <div className="absolute bottom-[10%] left-[-5%] w-[30%] h-[30%] bg-rose-500/5 rounded-full blur-[80px]" />
             </div>
 
             {/* Header Section */}

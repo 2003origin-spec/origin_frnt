@@ -134,20 +134,20 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
   // Transform for each step (unchanged logic, just nicer visual)
   const step1Scale = useTransform(scrollYProgress, [0, 0.25], [1, 1.2]);
   const step1Opacity = useTransform(scrollYProgress, [0, 0.25], [0.5, 1]);
-  const step1Border = useTransform(scrollYProgress, [0, 0.25], ["rgba(226, 232, 240, 0.5)", "rgba(59, 130, 246, 1)"]);
-  const step1Glow = useTransform(scrollYProgress, [0, 0.25], ["0px 0px 0px rgba(0,0,0,0)", "0px 0px 30px rgba(59, 130, 246, 0.3)"]);
+  const step1Border = useTransform(scrollYProgress, [0, 0.25], ["rgba(226, 232, 240, 0.5)", "rgba(244, 63, 94, 1)"]);
+  const step1Glow = useTransform(scrollYProgress, [0, 0.25], ["0px 0px 0px rgba(0,0,0,0)", "0px 0px 30px rgba(244, 63, 94, 0.3)"]);
   const step2Scale = useTransform(scrollYProgress, [0.25, 0.5], [1, 1.2]);
   const step2Opacity = useTransform(scrollYProgress, [0.25, 0.5], [0.5, 1]);
-  const step2Border = useTransform(scrollYProgress, [0.25, 0.5], ["rgba(226, 232, 240, 0.5)", "rgba(37, 99, 235, 1)"]);
-  const step2Glow = useTransform(scrollYProgress, [0.25, 0.5], ["0px 0px 0px rgba(0,0,0,0)", "0px 0px 30px rgba(37, 99, 235, 0.3)"]);
+  const step2Border = useTransform(scrollYProgress, [0.25, 0.5], ["rgba(226, 232, 240, 0.5)", "rgba(225, 29, 72, 1)"]);
+  const step2Glow = useTransform(scrollYProgress, [0.25, 0.5], ["0px 0px 0px rgba(0,0,0,0)", "0px 0px 30px rgba(225, 29, 72, 0.3)"]);
   const step3Scale = useTransform(scrollYProgress, [0.5, 0.75], [1, 1.2]);
   const step3Opacity = useTransform(scrollYProgress, [0.5, 0.75], [0.5, 1]);
-  const step3Border = useTransform(scrollYProgress, [0.5, 0.75], ["rgba(226, 232, 240, 0.5)", "rgba(29, 78, 216, 1)"]);
-  const step3Glow = useTransform(scrollYProgress, [0.5, 0.75], ["0px 0px 0px rgba(0,0,0,0)", "0px 0px 30px rgba(29, 78, 216, 0.3)"]);
+  const step3Border = useTransform(scrollYProgress, [0.5, 0.75], ["rgba(226, 232, 240, 0.5)", "rgba(190, 18, 60, 1)"]);
+  const step3Glow = useTransform(scrollYProgress, [0.5, 0.75], ["0px 0px 0px rgba(0,0,0,0)", "0px 0px 30px rgba(190, 18, 60, 0.3)"]);
   const step4Scale = useTransform(scrollYProgress, [0.75, 1], [1, 1.2]);
   const step4Opacity = useTransform(scrollYProgress, [0.75, 1], [0.5, 1]);
-  const step4Border = useTransform(scrollYProgress, [0.75, 1], ["rgba(203, 213, 225, 0.5)", "rgba(30, 58, 138, 1)"]);
-  const step4Glow = useTransform(scrollYProgress, [0.75, 1], ["0px 0px 0px rgba(0,0,0,0)", "0px 0px 30px rgba(30, 58, 138, 0.3)"]);
+  const step4Border = useTransform(scrollYProgress, [0.75, 1], ["rgba(203, 213, 225, 0.5)", "rgba(159, 18, 57, 1)"]);
+  const step4Glow = useTransform(scrollYProgress, [0.75, 1], ["0px 0px 0px rgba(0,0,0,0)", "0px 0px 30px rgba(159, 18, 57, 0.3)"]);
 
   const features = [
     {
@@ -196,16 +196,16 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
 
   // Enhanced FeatureCard with nicer styling, borders, hover effects
   const FeatureCard = ({ feature }: { feature: typeof features[0] }) => (
-    <div className="group relative bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-3xl border border-gray-200/50 dark:border-gray-800/50 shadow-xl hover:shadow-2xl transition-all duration-500 hover:-translate-y-2 overflow-hidden h-full flex flex-col">
+    <div className="group relative bg-card/80 dark:bg-gray-900/80 backdrop-blur-xl rounded-3xl border border-gray-200/50 dark:border-gray-800/50 shadow-xl hover:shadow-2xl transition-all duration-500 hover:-translate-y-2 overflow-hidden h-full flex flex-col">
       {/* Gradient top line */}
-      <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-400 via-indigo-500 to-purple-500 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+      <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-rose-400 via-pink-500 to-rose-600 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
       
       {/* Tab Header */}
       <div className="h-14 bg-gray-50/50 dark:bg-gray-800/30 border-b border-gray-200/30 dark:border-gray-700/30 flex items-center px-6 gap-3 shrink-0">
         <div className="flex gap-2">
           <div className="w-3 h-3 rounded-full bg-red-400/60" />
           <div className="w-3 h-3 rounded-full bg-amber-400/60" />
-          <div className="w-3 h-3 rounded-full bg-emerald-400/60" />
+          <div className="w-3 h-3 rounded-full bg-rose-400/60" />
         </div>
         <span className="text-[10px] font-black text-gray-500 dark:text-gray-400 ml-4 uppercase tracking-[0.2em] truncate">
           {feature.title}
@@ -214,7 +214,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
 
       {/* Card Content */}
       <div className="p-8 flex flex-col justify-center items-start text-left h-full">
-        <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500/10 to-indigo-500/10 flex items-center justify-center mb-6 text-emerald-600 dark:text-emerald-400 shadow-inner ring-1 ring-emerald-500/20">
+        <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-rose-500/10 to-pink-500/10 flex items-center justify-center mb-6 text-rose-600 dark:text-rose-400 shadow-inner ring-1 ring-rose-500/20">
           <feature.icon className="w-7 h-7" />
         </div>
         <h3 className="text-2xl font-black text-gray-900 dark:text-white mb-3 tracking-tight">
@@ -237,7 +237,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
             <source src={feature.video} type="video/mp4" />
           </video>
           <div className="absolute bottom-2 right-2 bg-white/80 dark:bg-black/60 backdrop-blur p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity">
-            <Zap className="w-3 h-3 text-emerald-500 animate-pulse" />
+            <Zap className="w-3 h-3 text-rose-500 animate-pulse" />
           </div>
         </div>
       </div>
@@ -245,32 +245,32 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
   );
 
   return (
-    <div className="min-h-screen bg-white dark:bg-gray-950 text-gray-900 dark:text-white selection:bg-emerald-200 dark:selection:bg-emerald-800/50 font-sans antialiased transition-colors duration-500 relative overflow-x-hidden">
+    <div className="min-h-screen bg-background dark:bg-gray-950 text-gray-900 dark:text-white selection:bg-rose-200 dark:selection:bg-rose-800/50 font-sans antialiased transition-colors duration-500 relative overflow-x-hidden">
       {/* Background Layer: Dark Theme (Evil Eye) */}
       {mounted && actualTheme === 'dark' && (
         <div className="fixed inset-0 z-0 pointer-events-none">
           <EvilEye
-            eyeColor="#0e48d4ff"
+            eyeColor="#0cc6efff"
             intensity={0.6}
             pupilSize={0.65}
-            irisWidth={0.28}
+            irisWidth={0.5}
             glowIntensity={0.25}
             scale={0.85}
             noiseScale={1.2}
-            pupilFollow={1}
-            flameSpeed={1.2}
-            backgroundColor="#020617"
+            pupilFollow={1.5}
+            flameSpeed={1}
+            backgroundColor="#000000ff"
           />
         </div>
       )}
 
       {/* Background Layer: Light Theme – softer wave lines */}
       {mounted && actualTheme === 'light' && (
-        <div className="fixed inset-0 z-0 pointer-events-none">
+        <div className="fixed inset-0 z-0 pointer-events-none opacity-70">
           <FloatingLines
             enabledWaves={['top', 'middle', 'bottom']}
-            linesGradient={['#6ee7b7', '#34d399', '#10b981']}
-            lineCount={[10, 15, 20]}
+            linesGradient={['#fda4af', '#fb7185', '#f43f5e']}
+            lineCount={[8, 12, 16]}
             lineDistance={[8, 6, 4]}
             bendRadius={5.0}
             bendStrength={-0.5}
@@ -279,10 +279,23 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
           />
         </div>
       )}
-
+      {/* {mounted && actualTheme === 'dark' && (
+              <div className="fixed inset-0 z-0 pointer-events-none opacity-40">
+                <FloatingLines
+                  enabledWaves={['top', 'middle', 'bottom']}
+                  linesGradient={['#4559daff', '#3446d3ff', '#8866ddff']}
+                  lineCount={[8, 12, 16]}
+                  lineDistance={[8, 6, 4]}
+                  bendRadius={5.0}
+                  bendStrength={-0.5}
+                  interactive={true}
+                  parallax={true}
+                />
+              </div>
+            )} */}
       {/* Navigation – refined glass with subtle shadow */}
       <nav className="fixed top-6 left-0 right-0 mx-auto z-50 flex justify-center px-4">
-        <div className="bg-white/70 dark:bg-black/50 backdrop-blur-xl px-3 py-2 rounded-full flex items-center justify-between lg:justify-center gap-4 lg:gap-12 shadow-lg border border-white/60 dark:border-white/10 ring-1 ring-black/5 w-full max-w-fit md:w-auto transition-all duration-300 hover:shadow-xl">
+        <div className="bg-card/70 dark:bg-black/50 backdrop-blur-xl px-3 py-2 rounded-full flex items-center justify-between lg:justify-center gap-4 lg:gap-12 shadow-lg border border-rose-100 dark:border-white/10 ring-1 ring-black/5 w-full max-w-fit md:w-auto transition-all duration-300 hover:shadow-xl">
           <div className="flex items-center gap-3">
             <img src="/origin-new.jpg" alt="ORIGIN" className="h-9 w-auto rounded-lg object-contain" />
           </div>
@@ -305,12 +318,12 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
               onClick={() => setTheme(actualTheme === 'dark' ? 'light' : 'dark')}
               className="hidden lg:flex items-center justify-center p-2 rounded-full bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/20 border border-gray-200 dark:border-white/10 transition-all duration-300 active:scale-90"
             >
-              {mounted && (actualTheme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-emerald-600" />)}
+              {mounted && (actualTheme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-rose-600" />)}
             </button>
 
             <Button
               onClick={onGetStarted}
-              className="bg-emerald-600 dark:bg-white text-white dark:text-black hover:bg-emerald-700 dark:hover:bg-white/90 rounded-full px-7 lg:px-10 h-10 lg:h-11 text-[10px] lg:text-[11px] uppercase tracking-[0.2em] font-black shadow-md hover:shadow-xl transition-all duration-300 active:scale-95"
+              className="bg-primary hover:opacity-90 text-primary-foreground rounded-full px-7 lg:px-10 h-10 lg:h-11 text-[10px] lg:text-[11px] uppercase tracking-[0.2em] font-black shadow-md hover:shadow-xl transition-all duration-300 active:scale-95"
             >
               Join Now
             </Button>
@@ -328,7 +341,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -20 }}
-          className="fixed inset-0 z-[45] bg-white/95 dark:bg-black/95 backdrop-blur-2xl flex flex-col items-center justify-center p-8 lg:hidden"
+          className="fixed inset-0 z-[45] bg-background/95 dark:bg-black/95 backdrop-blur-2xl flex flex-col items-center justify-center p-8 lg:hidden"
         >
           <div className="flex flex-col items-center gap-12 w-full max-w-sm">
             {[
@@ -340,7 +353,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
                 key={link.name}
                 href={link.href}
                 onClick={() => setMobileMenuOpen(false)}
-                className="text-3xl font-black uppercase tracking-[0.2em] text-gray-800 dark:text-white hover:text-emerald-600 dark:hover:text-emerald-400 transition-all active:scale-95"
+                className="text-3xl font-black uppercase tracking-[0.2em] text-gray-800 dark:text-white hover:text-primary transition-all active:scale-95"
               >
                 {link.name}
               </a>
@@ -362,50 +375,28 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
       {/* Hero Section – enhanced typography + spacing */}
       <section ref={heroRef} className="relative min-h-[90vh] flex items-center justify-center pt-32 pb-20 overflow-hidden z-10 px-4">
         <div className="max-w-6xl mx-auto text-center space-y-12">
-          {/* Dark mode hero */}
-          <div className="hidden dark:flex flex-col items-center space-y-12">
+          <div className="flex flex-col items-center space-y-12">
             <div className="space-y-6">
-              <h1 className="text-5xl sm:text-7xl lg:text-8xl font-black text-white tracking-tighter leading-[1.1]">
-                <span>The Topper Knew Something</span>
-                <span className="block text-emerald-400 text-3xl sm:text-5xl lg:text-6xl mt-6">You didn't. Now you do.</span>
-              </h1>
-            </div>
-            <p className="text-lg sm:text-xl md:text-2xl text-white/80 max-w-2xl mx-auto font-light leading-relaxed">
-              Crack Every Competitive Exams with Unfair Precision using A.I.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-5 pt-6">
-              <Button onClick={onGetStarted} size="lg" className="w-full sm:w-auto rounded-full px-10 py-7 text-lg bg-emerald-600 hover:bg-emerald-700 shadow-xl shadow-emerald-500/40 transition-all hover:scale-105 font-bold uppercase tracking-wider">
-                Join Origin
-              </Button>
-              <Button variant="outline" size="lg" className="w-full sm:w-auto rounded-full px-10 py-7 text-lg border-white/20 text-white hover:bg-white/10 transition-all hover:scale-105 font-bold" onClick={() => document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })}>
-                Learn More
-              </Button>
-            </div>
-          </div>
-
-          {/* Light mode hero – more refined */}
-          <div className="flex dark:hidden flex-col items-center space-y-10">
-            <div className="space-y-6">
-              {regStatus && regStatus.seatsLeft > 0 && (
-                <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="inline-flex items-center gap-2 px-5 py-2 rounded-full bg-blue-50 border border-emerald-200 text-emerald-700 shadow-sm">
+              {/* {regStatus && regStatus.seatsLeft > 0 && (
+                <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="inline-flex items-center gap-2 px-5 py-2 rounded-full bg-emerald-50 dark:bg-blue-900/30 border border-emerald-200 dark:border-blue-800 text-rose-700 dark:text-blue-300 shadow-sm">
                   <Sparkles className="w-4 h-4 animate-pulse" />
                   <span className="text-[10px] font-black uppercase tracking-[0.2em]">Limited Access: {regStatus.seatsLeft} Seats Left</span>
                 </motion.div>
-              )}
-              <h1 className="text-5xl sm:text-7xl lg:text-8xl font-black tracking-tighter leading-[1.1] text-gray-900">
+              )} */}
+              <h1 className="text-6xl sm:text-8xl lg:text-9xl font-black tracking-tighter leading-[1.1] text-gray-900 dark:text-white">
                 <span>The Topper Knew Something</span>
-                <span className="block bg-gradient-to-r from-emerald-600 to-indigo-600 bg-clip-text text-transparent text-4xl sm:text-6xl lg:text-7xl mt-6">You didn't. Now you do.</span>
+                <span className="block bg-gradient-to-r from-rose-600 to-pink-600 dark:from-blue-400 dark:to-indigo-400 bg-clip-text text-transparent mt-6">You didn't. Now you do.</span>
               </h1>
             </div>
-            <p className="text-lg sm:text-xl md:text-2xl text-gray-600 max-w-2xl mx-auto font-medium leading-relaxed">
-              Premium data-driven prep for elite students. <br className="hidden sm:block" /> Stop guessing, start mastering.
+            <p className="text-lg sm:text-xl md:text-2xl text-gray-600 dark:text-white/80 max-w-2xl mx-auto font-medium leading-relaxed">
+              Crack Every Competitive Exams with Unfair Precision using A.I. <br className="hidden sm:block" /> Stop guessing, start mastering.
             </p>
             <div className="flex flex-col sm:flex-row gap-5 pt-6">
-              <Button onClick={onGetStarted} size="lg" className="w-full sm:w-auto rounded-full px-10 py-7 text-lg bg-emerald-600 hover:bg-emerald-700 shadow-xl shadow-emerald-500/30 transition-all hover:scale-105 group font-black uppercase tracking-wider">
+              <Button onClick={onGetStarted} size="lg" className="w-full sm:w-auto rounded-full px-12 py-9 text-2xl bg-primary hover:opacity-90 shadow-xl shadow-primary/30 transition-all hover:scale-105 group font-black uppercase tracking-wider">
                 Join Origin
-                <ChevronRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
+                <ChevronRight className="w-6 h-6 ml-2 group-hover:translate-x-1 transition-transform" />
               </Button>
-              <Button variant="outline" size="lg" className="w-full sm:w-auto rounded-full px-10 py-7 text-lg border-2 border-gray-300 text-gray-800 hover:bg-gray-50 hover:border-gray-400 transition-all hover:scale-105 font-black uppercase tracking-wider" onClick={() => document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })}>
+              <Button variant="outline" size="lg" className="w-full sm:w-auto rounded-full px-12 py-9 text-2xl border-2 border-gray-300 dark:border-white/20 text-gray-800 dark:text-white hover:bg-gray-50 dark:hover:bg-white/10 transition-all hover:scale-105 font-black uppercase tracking-wider" onClick={() => document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })}>
                 Explore Protocol
               </Button>
             </div>
@@ -431,9 +422,9 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
       <section id="features" className="py-28 lg:py-36 relative z-10 overflow-x-hidden">
         <div className="max-w-7xl mx-auto px-6">
           <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }} viewport={{ once: true }} className="text-center mb-16">
-            <h2 className="text-[10px] font-black text-emerald-600 tracking-[0.4em] uppercase mb-4">Core Capabilities</h2>
+            <h2 className="text-[10px] font-black text-rose-600 tracking-[0.4em] uppercase mb-4">Core Capabilities</h2>
             <h1 className="text-5xl sm:text-6xl lg:text-7xl font-black text-gray-900 dark:text-white mb-6 tracking-tighter">
-              Engineered for <span className="bg-gradient-to-r from-emerald-600 to-indigo-600 bg-clip-text text-transparent">Rankers.</span>
+              Engineered for <span className="bg-gradient-to-r from-rose-600 to-pink-600 dark:from-blue-400 dark:to-indigo-400 bg-clip-text text-transparent">Rankers.</span>
             </h1>
           </motion.div>
 
@@ -450,12 +441,12 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
                       <div className="flex gap-2">
                         <div className="w-3 h-3 rounded-full bg-red-400/60" />
                         <div className="w-3 h-3 rounded-full bg-amber-400/60" />
-                        <div className="w-3 h-3 rounded-full bg-emerald-400/60" />
+                        <div className="w-3 h-3 rounded-full bg-rose-400/60" />
                       </div>
                       <span className="text-[10px] font-black text-gray-500 dark:text-gray-400 ml-4 uppercase tracking-[0.2em] truncate">{feature.title}</span>
                     </div>
                     <div className="p-8 flex flex-col justify-center items-start h-full">
-                      <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500/10 to-indigo-500/10 flex items-center justify-center mb-6 text-emerald-600 dark:text-emerald-400">
+                      <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-rose-500/10 to-pink-500/10 flex items-center justify-center mb-6 text-rose-600 dark:text-rose-400">
                         <feature.icon className="w-7 h-7" />
                       </div>
                       <h3 className="text-2xl font-black text-gray-900 dark:text-white mb-3 tracking-tight">{feature.title}</h3>
@@ -478,9 +469,9 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
       <section id="how-it-works" ref={howItWorksRef} className="py-28 lg:py-40 relative z-10 overflow-hidden">
         <div className="max-w-7xl mx-auto px-6">
           <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} transition={{ duration: 0.8, ease: "easeOut" }} viewport={{ once: true }} className="text-center mb-24">
-            <h2 className="text-[10px] font-black text-emerald-600 tracking-[0.5em] uppercase mb-6">Mastery Framework</h2>
+            <h2 className="text-[10px] font-black text-rose-600 tracking-[0.5em] uppercase mb-6">Mastery Framework</h2>
             <h1 className="text-6xl sm:text-7xl lg:text-8xl font-black text-gray-900 dark:text-white mb-6 tracking-tighter">
-              The <span className="bg-gradient-to-r from-emerald-600 to-indigo-600 bg-clip-text text-transparent">Protocol.</span>
+              The <span className="bg-gradient-to-r from-rose-600 to-pink-600 dark:from-blue-400 dark:to-indigo-400 bg-clip-text text-transparent">Protocol.</span>
             </h1>
             <p className="text-xl sm:text-2xl text-gray-600 dark:text-gray-300 max-w-3xl mx-auto font-medium leading-relaxed">
               A systematic, AI-driven approach to mastering the syllabus and securing your top rank.
@@ -491,7 +482,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
             {/* Step 1 */}
             <div className="flex flex-col lg:flex-row items-center gap-16 lg:gap-32">
               <motion.div initial={{ opacity: 0, x: -50 }} whileInView={{ opacity: 1, x: 0 }} transition={{ duration: 0.8, delay: 0.2 }} viewport={{ once: true, margin: "-100px" }} className="flex-1 space-y-6">
-                <div className="inline-flex items-center gap-3 px-4 py-2 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                <div className="inline-flex items-center gap-3 px-4 py-2 rounded-full bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-emerald-300 border border-emerald-200 dark:border-rose-800">
                   <span className="text-xs font-black uppercase tracking-widest">Step 01</span>
                 </div>
                 <h2 className="text-5xl lg:text-6xl font-black text-gray-900 dark:text-white tracking-tighter">Diagnose.</h2>
@@ -499,13 +490,13 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
                 <ul className="space-y-4 pt-4">
                   {["Real-time gap detection", "Cognitive strength mapping", "Syllabus coverage audit"].map((item, i) => (
                     <li key={i} className="flex items-center gap-3 text-gray-700 dark:text-gray-300 font-bold">
-                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> {item}
+                      <div className="w-1.5 h-1.5 rounded-full bg-rose-500" /> {item}
                     </li>
                   ))}
                 </ul>
               </motion.div>
               <motion.div initial={{ opacity: 0, scale: 0.95 }} whileInView={{ opacity: 1, scale: 1 }} transition={{ duration: 0.8 }} viewport={{ once: true }} className="flex-1 relative group">
-                <div className="absolute inset-0 bg-emerald-500/20 blur-[80px] rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
+                <div className="absolute inset-0 bg-rose-500/20 blur-[80px] rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
                 <div className="relative rounded-3xl overflow-hidden border border-gray-200 dark:border-gray-800 shadow-2xl">
                   <img src="/images/protocol/diagnose.png" alt="Diagnose" className="w-full h-auto object-cover hover:scale-105 transition-transform duration-1000" />
                 </div>
@@ -515,7 +506,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
             {/* Step 2 */}
             <div className="flex flex-col lg:flex-row-reverse items-center gap-16 lg:gap-32">
               <motion.div initial={{ opacity: 0, x: 50 }} whileInView={{ opacity: 1, x: 0 }} transition={{ duration: 0.8, delay: 0.2 }} viewport={{ once: true, margin: "-100px" }} className="flex-1 space-y-6">
-                <div className="inline-flex items-center gap-3 px-4 py-2 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                <div className="inline-flex items-center gap-3 px-4 py-2 rounded-full bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
                   <span className="text-xs font-black uppercase tracking-widest">Step 02</span>
                 </div>
                 <h2 className="text-5xl lg:text-6xl font-black text-gray-900 dark:text-white tracking-tighter">Plan.</h2>
@@ -523,13 +514,13 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
                 <ul className="space-y-4 pt-4">
                   {["Personalized path to AIR < 100", "Dynamic subject re-prioritization", "Time-blocked efficiency maps"].map((item, i) => (
                     <li key={i} className="flex items-center gap-3 text-gray-700 dark:text-gray-300 font-bold">
-                      <div className="w-1.5 h-1.5 rounded-full bg-indigo-500" /> {item}
+                      <div className="w-1.5 h-1.5 rounded-full bg-rose-500" /> {item}
                     </li>
                   ))}
                 </ul>
               </motion.div>
               <motion.div initial={{ opacity: 0, scale: 0.95 }} whileInView={{ opacity: 1, scale: 1 }} transition={{ duration: 0.8 }} viewport={{ once: true }} className="flex-1 relative group">
-                <div className="absolute inset-0 bg-indigo-500/20 blur-[80px] rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
+                <div className="absolute inset-0 bg-rose-500/20 blur-[80px] rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
                 <div className="relative rounded-3xl overflow-hidden border border-gray-200 dark:border-gray-800 shadow-2xl">
                   <img src="/images/protocol/plan.png" alt="Plan" className="w-full h-auto object-cover hover:scale-105 transition-transform duration-1000" />
                 </div>
@@ -593,10 +584,10 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
           <motion.div ref={counterRef} initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} transition={{ duration: 0.8 }} viewport={{ once: true }} className="flex flex-col items-center space-y-10">
             <h2 className="text-5xl sm:text-7xl lg:text-8xl font-black text-gray-900 dark:text-white tracking-tighter leading-none">
               Trusted by the <br />
-              <span className="bg-gradient-to-r from-emerald-600 to-indigo-600 bg-clip-text text-transparent">Top 1%.</span>
+              <span className="bg-gradient-to-r from-rose-600 to-pink-600 dark:from-blue-400 dark:to-indigo-400 bg-clip-text text-transparent">Top 1%.</span>
             </h2>
             <p className="text-xl sm:text-2xl text-gray-600 dark:text-gray-300 max-w-3xl mx-auto font-black leading-relaxed tracking-tight uppercase">
-              <span className="text-emerald-600 dark:text-emerald-400 text-5xl sm:text-7xl md:text-8xl block mb-5 font-black tabular-nums">
+              <span className="text-primary text-5xl sm:text-7xl md:text-8xl block mb-5 font-black tabular-nums">
                 <AnimatedCounter from={1} to={12620} duration={10} inView={isCounterInView} />+
               </span>
               QUESTIONS To Practice FROM NCERT, PYQS, AND Famous Books for JEE and NEET Preparation
@@ -627,9 +618,9 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
       <section id="pricing" className="py-28 lg:py-36 relative z-10">
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center mb-16">
-            <h2 className="text-[10px] font-black text-emerald-600 tracking-[0.4em] uppercase mb-4">Pricing Plans</h2>
+            <h2 className="text-[10px] font-black text-rose-600 tracking-[0.4em] uppercase mb-4">Pricing Plans</h2>
             <h2 className="text-5xl sm:text-6xl lg:text-7xl font-black text-gray-900 dark:text-white mb-6 tracking-tighter">
-              Invest in <span className="bg-gradient-to-r from-emerald-600 to-indigo-600 bg-clip-text text-transparent">Your Future.</span>
+              Invest in <span className="bg-gradient-to-r from-rose-600 to-pink-600 dark:from-blue-400 dark:to-indigo-400 bg-clip-text text-transparent">Your Future.</span>
             </h2>
             <p className="text-xl text-gray-600 dark:text-gray-300 max-w-2xl mx-auto font-medium">Elite training shouldn't be a luxury. Choose the track that fits your ambition.</p>
           </div>
@@ -640,24 +631,26 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
               { name: 'Pro', price: 'Waitlist', desc: 'The complete performance architecture.', features: ['Unlimited AI Research', 'Cognitive Failure Analysis', 'Dynamic Personalized Paths', 'Adaptive Arena Access', 'Rank Improvement Metrics', 'Focus & Velocity Tracking', 'Elite Community Access', 'Priority Support'], cta: 'Join Waitlist', popular: true, comingSoon: true },
               { name: 'Elite', price: 'Waitlist', desc: '1-on-1 performance engineering.', features: ['Everything in Pro', 'Personal AI Tutor Agent', 'Mastery-Based Explanations', 'End-to-End Milestone Maps', 'Rapid Revision Protocols', 'Mental Performance Gear', 'Advanced Predictive Ops'], cta: 'Join Waitlist', popular: false, comingSoon: true },
             ].map((plan, index) => (
-              <div key={index} className={`relative p-8 rounded-3xl transition-all duration-500 hover:scale-[1.02] ${plan.popular ? 'bg-white dark:bg-gray-900 border-2 border-emerald-500 shadow-2xl shadow-emerald-500/10' : 'bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm border border-gray-200 dark:border-gray-800 shadow-xl'}`}>
-                {plan.popular && <div className="absolute -top-4 left-1/2 -translate-x-1/2 px-5 py-2 rounded-full bg-emerald-600 text-white text-[10px] font-black uppercase tracking-[0.2em] shadow-lg">Most Strategic</div>}
+              <div key={index} className={`relative p-10 flex flex-col rounded-3xl transition-all duration-500 hover:scale-[1.02] ${plan.popular ? 'bg-card dark:bg-gray-950 border-2 border-rose-500 shadow-2xl shadow-rose-500/10' : 'bg-card/80 dark:bg-gray-900/80 backdrop-blur-sm border border-gray-200 dark:border-gray-800 shadow-xl'}`}>
+                {plan.popular && <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 px-5 py-2 rounded-full bg-rose-600 text-white text-[10px] font-black uppercase tracking-[0.2em] shadow-lg">Most Strategic</div>}
                 <div className="mb-8">
                   <h3 className="text-2xl font-black mb-2 tracking-tight text-gray-900 dark:text-white">{plan.name}</h3>
                   <div className="text-4xl font-black mb-4 text-gray-900 dark:text-white">{plan.price}</div>
                   <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{plan.desc}</p>
                 </div>
-                <div className="space-y-4 mb-10">
+                <div className="flex-grow space-y-4 mb-10">
                   {plan.features.map((f, i) => (
                     <div key={i} className="flex items-start gap-3 text-sm font-bold text-gray-700 dark:text-gray-300">
-                      <CheckCircle2 className="w-5 h-5 mt-0.5 shrink-0 text-emerald-500" />
+                      <CheckCircle2 className="w-5 h-5 mt-0.5 shrink-0 text-rose-500" />
                       <span>{f}</span>
                     </div>
                   ))}
                 </div>
-                <Button onClick={onGetStarted} className={`w-full py-6 rounded-xl text-[11px] uppercase tracking-[0.2em] font-black transition-all duration-300 ${plan.popular ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg' : 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700'}`}>
-                  {plan.cta}
-                </Button>
+                <div className="mt-auto">
+                  <Button onClick={onGetStarted} className={`w-full py-6 rounded-xl text-[11px] uppercase tracking-[0.2em] font-black transition-all duration-300 ${plan.popular ? 'bg-primary hover:opacity-90 text-primary-foreground shadow-lg shadow-primary/20' : 'bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700'}`}>
+                    {plan.cta}
+                  </Button>
+                </div>
               </div>
             ))}
           </div>
@@ -666,25 +659,25 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
 
       {/* Final CTA – elegant */}
       <section className="py-28 lg:py-36 relative z-10 overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-r from-emerald-100 via-indigo-50 to-emerald-100 dark:from-blue-950/20 dark:via-indigo-950/20 dark:to-blue-950/20 -z-10 blur-3xl" />
+        <div className="absolute inset-0 bg-gradient-to-r from-rose-100 via-indigo-50 to-rose-100 dark:from-blue-950/20 dark:via-indigo-950/20 dark:to-blue-950/20 -z-10 blur-3xl" />
         <div className="max-w-4xl mx-auto px-6 text-center">
           <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }} viewport={{ once: true }} className="space-y-10">
             <h2 className="text-6xl sm:text-8xl lg:text-9xl font-black text-gray-900 dark:text-white tracking-tighter leading-[0.9] mb-8">
               REWRITE YOUR <br />
-              <span className="bg-gradient-to-r from-emerald-600 to-indigo-600 bg-clip-text text-transparent">STORY.</span>
+              <span className="bg-gradient-to-r from-rose-600 to-pink-600 dark:from-blue-400 dark:to-indigo-400 bg-clip-text text-transparent">STORY.</span>
             </h2>
             <div className="flex flex-col items-center gap-6">
-              <div className="bg-emerald-100 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-800 px-6 py-2 rounded-full">
-                <p className="text-sm font-black tracking-[0.2em] text-emerald-700 dark:text-emerald-300 uppercase animate-pulse">
+              <div className="bg-rose-100 dark:bg-rose-900/30 border border-emerald-200 dark:border-rose-800 px-6 py-2 rounded-full">
+                <p className="text-sm font-black tracking-[0.2em] text-rose-700 dark:text-emerald-300 uppercase animate-pulse">
                   {regStatus ? `⚠️ ${regStatus.seatsLeft > 0 ? `Only ${regStatus.seatsLeft} Seats Left` : 'Capacity Reached'}` : '⚠️ Limited Seats Remaining'}
                 </p>
               </div>
-              <Button onClick={onGetStarted} className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-full px-14 py-8 text-2xl font-black shadow-2xl shadow-emerald-500/30 transition-all duration-300 hover:scale-105 group">
+              <Button onClick={onGetStarted} className="bg-primary hover:opacity-90 text-primary-foreground rounded-full px-14 py-8 text-2xl font-black shadow-2xl shadow-primary/30 transition-all duration-300 hover:scale-105 group">
                 START YOUR JOURNEY
                 <Zap className="w-7 h-7 ml-3 group-hover:rotate-12 transition-transform" />
               </Button>
               <p className="text-lg sm:text-xl text-gray-500 dark:text-gray-400 font-black tracking-tight uppercase">
-                Join Success journey with <span className="text-gray-900 dark:text-white border-b-4 border-blue-400/50">O3 Minds</span>
+                Join Success journey with <span className="text-gray-900 dark:text-white border-b-4 border-rose-400/50">O3 Minds</span>
               </p>
             </div>
           </motion.div>
@@ -692,7 +685,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
       </section>
 
       {/* Footer */}
-      <footer className="py-10 relative z-10 border-t border-gray-200 dark:border-gray-800 bg-white/50 dark:bg-black/30 backdrop-blur-md">
+      <footer className="py-10 relative z-10 border-t border-rose-100 dark:border-gray-800 bg-background/50 dark:bg-black/30 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row items-center md:items-end justify-between gap-8">
           <div className="flex flex-col items-center md:items-start gap-2">
             <span className="text-[10px] font-black text-gray-400 uppercase tracking-[0.4em]">© O3 Minds</span>

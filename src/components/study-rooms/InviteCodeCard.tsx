@@ -51,7 +51,7 @@ export function InviteCodeCard({
   };
 
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950">
+    <section className="rounded-lg border border-primary/20 bg-card p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <KeyRound className="h-4 w-4 text-blue-600" />

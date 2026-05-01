@@ -534,7 +534,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
             /* Phase 1: Instructions */
             <div className="max-w-5xl w-full bg-white rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
               {/* Header */}
-              <div className="bg-blue-900 px-6 py-4 flex items-center justify-between">
+              <div className="bg-rose-900 px-6 py-4 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center p-1.5 shadow-md">
                     <img src="/origin-logo.png" alt="O3" className="w-full h-full object-contain" onError={(e) => { e.currentTarget.src = 'https://api.dicebear.com/7.x/initials/svg?seed=O3'; }} />
@@ -555,13 +555,13 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
               <div className="flex-1 overflow-y-auto p-6 sm:p-10 space-y-8 text-gray-700">
                 
                 <section>
-                  <h3 className="text-blue-900 font-bold text-lg mb-4 border-b-2 border-blue-100 pb-2 flex items-center gap-2">
-                    <span className="w-6 h-6 bg-blue-100 text-blue-900 rounded-full flex items-center justify-center text-xs">1</span>
+                  <h3 className="text-rose-900 font-bold text-lg mb-4 border-b-2 border-rose-100 pb-2 flex items-center gap-2">
+                    <span className="w-6 h-6 bg-rose-100 text-rose-900 rounded-full flex items-center justify-center text-xs">1</span>
                     Standard Exam Rules
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
                     <ul className="space-y-3 list-disc pl-5 font-medium">
-                      <li>The total duration of the examination is <span className="font-bold text-blue-600">{test.duration} minutes</span>.</li>
+                      <li>The total duration of the examination is <span className="font-bold text-primary">{test.duration} minutes</span>.</li>
                       <li>The clock will be set at the server. The countdown timer at the top right corner of the screen will display the remaining time available for you to complete the examination.</li>
                       <li>The Question Palette displayed on the right side of the screen will show the status of each question using one of the following symbols:</li>
                     </ul>
@@ -579,11 +579,11 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
                         <span className="text-xs font-bold">You have answered the question.</span>
                       </div>
                       <div className="flex items-center gap-3">
-                        <div className="w-6 h-6 rounded-full bg-[#5B247A] text-white flex items-center justify-center text-[10px] font-bold">00</div>
+                        <div className="w-6 h-6 rounded-full bg-rose-800 text-white flex items-center justify-center text-[10px] font-bold">00</div>
                         <span className="text-xs font-bold">You have NOT answered but marked for review.</span>
                       </div>
                       <div className="flex items-center gap-3">
-                        <div className="w-6 h-6 rounded-full bg-[#5B247A] text-white flex items-center justify-center text-[10px] font-bold relative">00 <div className="absolute right-0 bottom-0 w-2 h-2 bg-green-500 rounded-full border border-white"></div></div>
+                        <div className="w-6 h-6 rounded-full bg-rose-800 text-white flex items-center justify-center text-[10px] font-bold relative">00 <div className="absolute right-0 bottom-0 w-2 h-2 bg-green-500 rounded-full border border-white"></div></div>
                         <span className="text-xs font-bold">The question(s) "Answered and Marked for Review" will be considered for evaluation.</span>
                       </div>
                     </div>
@@ -591,8 +591,8 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
                 </section>
 
                 <section>
-                  <h3 className="text-blue-900 font-bold text-lg mb-4 border-b-2 border-blue-100 pb-2 flex items-center gap-2">
-                    <span className="w-6 h-6 bg-blue-100 text-blue-900 rounded-full flex items-center justify-center text-xs">2</span>
+                  <h3 className="text-rose-900 font-bold text-lg mb-4 border-b-2 border-rose-100 pb-2 flex items-center gap-2">
+                    <span className="w-6 h-6 bg-rose-100 text-rose-900 rounded-full flex items-center justify-center text-xs">2</span>
                     Marking Scheme (NTA Standard)
                   </h3>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -612,8 +612,8 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
                   <p className="text-[10px] text-gray-500 mt-4 italic">* For Numerical Value questions, negative marking may not apply. Please refer to specific question instructions.</p>
                 </section>
 
-                <section className="bg-blue-50/50 p-6 rounded-2xl border border-blue-100">
-                  <h3 className="text-blue-900 font-bold text-base mb-3 flex items-center gap-2">
+                <section className="bg-rose-50/50 p-6 rounded-2xl border border-rose-100">
+                  <h3 className="text-rose-900 font-bold text-base mb-3 flex items-center gap-2">
                     <ShieldCheck className="w-5 h-5" /> AI Proctoring Compliance
                   </h3>
                   <ul className="text-xs space-y-2 text-slate-600 font-medium">
@@ -631,9 +631,9 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
                     type="checkbox" 
                     checked={hasAcceptedRules}
                     onChange={(e) => setHasAcceptedRules(e.target.checked)}
-                    className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer" 
+                    className="w-5 h-5 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer" 
                   />
-                  <span className="text-xs sm:text-sm font-bold text-gray-700 group-hover:text-blue-900 transition-colors">
+                  <span className="text-xs sm:text-sm font-bold text-gray-700 group-hover:text-rose-900 transition-colors">
                     I have read and understood the instructions.
                   </span>
                 </label>
@@ -649,7 +649,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
                     onClick={() => setVerificationStep('proctoring')}
                     className={`flex items-center gap-2 px-10 py-3 rounded-xl font-black uppercase tracking-tight transition-all
                       ${hasAcceptedRules 
-                        ? 'bg-blue-600 text-white shadow-lg hover:bg-blue-700 hover:scale-[1.02] active:scale-95' 
+                        ? 'bg-primary text-white shadow-lg hover:bg-primary/90 hover:scale-[1.02] active:scale-95' 
                         : 'bg-gray-300 text-gray-500 cursor-not-allowed'}
                     `}
                   >
@@ -753,7 +753,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
                     }}
                     className={`w-full group relative flex items-center justify-center gap-3 py-4 rounded-2xl font-black text-lg transition-all
                       ${(isCameraActive && isFaceDetected) 
-                        ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-[0_0_30px_rgba(37,99,235,0.4)] hover:scale-[1.02] active:scale-95' 
+                        ? 'bg-primary hover:bg-rose-500 text-white shadow-[0_0_30px_rgba(225,29,72,0.4)] hover:scale-[1.02] active:scale-95' 
                         : 'bg-slate-700 text-slate-500 cursor-not-allowed opacity-50'}
                     `}
                   >
@@ -779,7 +779,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
             </div>
           </div>
           <div>
-            <h1 className="text-sm sm:text-xl font-bold text-blue-900 leading-tight">O3 ORIGIN TESTING AGENCY</h1>
+            <h1 className="text-sm sm:text-xl font-bold text-rose-900 leading-tight">O3 ORIGIN TESTING AGENCY</h1>
             <p className="text-[10px] sm:text-xs text-green-700 font-semibold italic">Excellence in Assessment</p>
           </div>
         </div>
@@ -818,7 +818,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
           <div className="flex flex-col gap-0.5 sm:gap-1 text-[10px] sm:text-xs">
             <div className="flex"><span className="w-20 sm:w-28 text-gray-500">Candidate:</span> <span className="text-orange-500 truncate max-w-[100px] sm:max-w-none">[Your Name]</span></div>
             <div className="flex"><span className="w-20 sm:w-28 text-gray-500">Subject:</span> <span className="text-orange-500 truncate max-w-[100px] sm:max-w-none">{test.title}</span></div>
-            <div className="flex"><span className="w-20 sm:w-28 text-gray-500">Remaining:</span> <span className="bg-blue-500 text-white px-2 py-0.5 rounded text-[10px] sm:text-xs" suppressHydrationWarning>{formatTime(effectiveTimeRemaining)}</span></div>
+            <div className="flex"><span className="w-20 sm:w-28 text-gray-500">Remaining:</span> <span className="bg-rose-500 text-white px-2 py-0.5 rounded text-[10px] sm:text-xs" suppressHydrationWarning>{formatTime(effectiveTimeRemaining)}</span></div>
           </div>
         </div>
       </header>
@@ -826,7 +826,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
       {/* 2. Section/Subject Header */}
       <div className="bg-[#f08c32] px-3 sm:px-6 py-0 flex justify-between items-center text-[10px] sm:text-xs overflow-visible">
         <div className="flex gap-0 items-center h-[40px]">
-          <div className="flex bg-[#337ab7] text-white px-4 h-full items-center font-bold text-xs border-r border-white/20 whitespace-nowrap">
+          <div className="flex bg-primary text-white px-4 h-full items-center font-bold text-xs border-r border-white/20 whitespace-nowrap">
             SECTION
           </div>
           {subjects.map((subj) => {
@@ -840,7 +840,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
                     if (firstIdx !== -1) navigateToQuestion(firstIdx);
                   }}
                   className={`h-full px-4 text-xs font-bold uppercase transition-all flex items-center gap-2 border-r border-white/20 ${
-                    isActive ? 'bg-white text-black' : 'bg-[#337ab7] text-white hover:bg-[#286090]'
+                    isActive ? 'bg-white text-black' : 'bg-primary text-white hover:bg-primary/90'
                   }`}
                 >
                   {subj}
@@ -865,16 +865,15 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
                       </div>
                       <p className="text-[11px] text-gray-700 font-bold uppercase leading-tight mt-1">You have answered the question.</p>
                     </div>
-
-                    <div className="flex items-start gap-3">
-                      <div className="w-8 h-8 rounded-full bg-[#5B247A] text-white flex-shrink-0 flex items-center justify-center font-bold shadow-sm">
+                     <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-full bg-rose-800 text-white flex-shrink-0 flex items-center justify-center font-bold shadow-sm">
                         {stats.marked_review.toString().padStart(2, '0')}
                       </div>
                       <p className="text-[11px] text-gray-700 font-bold uppercase leading-tight mt-1">You have NOT answered but marked for review.</p>
                     </div>
 
                     <div className="flex items-start gap-3">
-                      <div className="w-8 h-8 rounded-full bg-[#5B247A] text-white flex-shrink-0 flex items-center justify-center font-bold shadow-sm relative">
+                      <div className="w-8 h-8 rounded-full bg-rose-800 text-white flex-shrink-0 flex items-center justify-center font-bold shadow-sm relative">
                         {stats.answered_marked.toString().padStart(2, '0')}
                         <div className="absolute right-0 bottom-0 w-2.5 h-2.5 bg-green-500 rounded-full border border-white"></div>
                       </div>
@@ -905,7 +904,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
           {/* Question Header */}
           <div className="flex justify-between items-center px-4 py-2 border-b border-gray-300 font-bold text-base sm:text-lg border-t-4 border-t-white bg-white sticky top-0 z-20">
             <span>Question {currentQuestionIndex + 1}:</span>
-            <div className="w-6 h-6 bg-blue-600 rounded-full text-white flex items-center justify-center font-bold text-sm">&darr;</div>
+            <div className="w-6 h-6 bg-primary rounded-full text-white flex items-center justify-center font-bold text-sm">&darr;</div>
           </div>
 
           {/* Question Text & Options */}
@@ -917,7 +916,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
               {currentQuestion?.tags && (
                 <div className="flex flex-wrap gap-2 mb-4">
                   {(typeof currentQuestion.tags === 'string' ? currentQuestion.tags.split(',') : Array.isArray(currentQuestion.tags) ? currentQuestion.tags : []).map((tag: string) => (
-                    <span key={tag} className="px-2 py-0.5 bg-indigo-50 text-indigo-600 border border-indigo-100 rounded-md text-[10px] font-bold uppercase tracking-wider">
+                    <span key={tag} className="px-2 py-0.5 bg-rose-50 text-primary border border-rose-100 rounded-md text-[10px] font-bold uppercase tracking-wider">
                       {tag.trim()}
                     </span>
                   ))}
@@ -937,15 +936,15 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
                       className={cn(
                         "w-full p-4 rounded-xl border-2 transition-all duration-200 flex items-start gap-4 text-left group",
                         tempSelection === idx
-                          ? "border-blue-600 bg-blue-50 shadow-md shadow-blue-100"
-                          : "border-slate-100 hover:border-blue-200 hover:bg-slate-50"
+                          ? "border-primary bg-rose-50 shadow-md shadow-rose-100"
+                          : "border-slate-100 hover:border-rose-200 hover:bg-slate-50"
                       )}
                     >
                       <div className={cn(
                         "w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 font-bold border-2 transition-colors",
                         tempSelection === idx
-                          ? "bg-blue-600 border-blue-600 text-white"
-                          : "bg-white border-slate-200 text-slate-500 group-hover:border-blue-300 group-hover:text-blue-600"
+                          ? "bg-primary border-primary text-white"
+                          : "bg-white border-slate-200 text-slate-500 group-hover:border-rose-300 group-hover:text-primary"
                       )}>
                         {String.fromCharCode(65 + idx)}
                       </div>
@@ -959,7 +958,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
 
               {currentQuestion?.questionType === 'msq' && (
                 <div className="space-y-4 font-serif text-base">
-                  <p className="text-xs font-bold text-blue-600 mb-2 uppercase tracking-tight">Multiple Correct Concept</p>
+                  <p className="text-xs font-bold text-primary mb-2 uppercase tracking-tight">Multiple Correct Concept</p>
                   {currentQuestion?.options.map((option, idx) => (
                     <label key={idx} className="flex items-start gap-4 cursor-pointer group">
                       <input
@@ -970,10 +969,10 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
                             prev.includes(idx) ? prev.filter(i => i !== idx) : [...prev, idx]
                           );
                         }}
-                        className="mt-1.5 w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        className="mt-1.5 w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
                       />
-                      <span className="group-hover:text-blue-600 transition-colors">({idx + 1})</span>
-                      <span className="group-hover:text-blue-600 transition-colors">
+                      <span className="group-hover:text-primary transition-colors">({idx + 1})</span>
+                      <span className="group-hover:text-primary transition-colors">
                         {renderInlineSegments(String(option), `test-msq-option-${idx}`, 'plain')}
                       </span>
                     </label>
@@ -983,7 +982,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
 
               {currentQuestion?.questionType === 'matrix_match' && currentQuestion.matrixData && (
                 <div className="space-y-6 font-serif text-base">
-                  <p className="text-xs font-bold text-blue-600 mb-4 uppercase tracking-tight">Matrix Matching</p>
+                  <p className="text-xs font-bold text-primary mb-4 uppercase tracking-tight">Matrix Matching</p>
                   
                   {/* Column B Reference (Sync with OGCode) */}
                   <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-6">
@@ -991,7 +990,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       {currentQuestion.matrixData.column_b.map((term: string, idx: number) => (
                         <div key={idx} className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg p-2 shadow-sm">
-                          <span className="w-5 h-5 rounded bg-blue-50 text-blue-600 flex items-center justify-center text-[10px] font-bold shrink-0">
+                          <span className="w-5 h-5 rounded bg-rose-50 text-primary flex items-center justify-center text-[10px] font-bold shrink-0">
                             {idx + 1}
                           </span>
                           <span className="text-xs text-gray-700">{renderInlineSegments(String(term), `test-matrix-term-${idx}`, 'plain')}</span>
@@ -1004,7 +1003,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
                     {currentQuestion.matrixData.column_a.map((itemA: string, idxA: number) => (
                       <div key={idxA} className="flex flex-col gap-3 p-4 bg-gray-50 rounded-lg border border-gray-100">
                         <div className="flex items-center gap-3">
-                          <span className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px] font-bold">
+                          <span className="w-6 h-6 rounded-full bg-rose-100 text-rose-700 flex items-center justify-center text-[10px] font-bold">
                             {String.fromCharCode(80 + idxA)}
                           </span>
                           <span className="text-sm font-semibold text-gray-800">{renderInlineSegments(String(itemA), `test-matrix-item-${idxA}`, 'plain')}</span>
@@ -1024,8 +1023,8 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
                                 }}
                                 className={`px-4 py-1.5 rounded text-xs font-bold transition-all border
                                   ${isSelected
-                                    ? 'bg-blue-600 border-blue-600 text-white shadow-md'
-                                    : 'bg-white border-gray-300 text-gray-600 hover:border-blue-400'}
+                                    ? 'bg-primary border-primary text-white shadow-md'
+                                    : 'bg-white border-gray-300 text-gray-600 hover:border-rose-400'}
                                 `}
                               >
                                 {idxB + 1}
@@ -1041,14 +1040,14 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
 
               {currentQuestion?.questionType === 'numerical' && (
                 <div className="font-serif text-base">
-                  <p className="text-xs font-bold text-blue-600 mb-4 uppercase tracking-tight">Numerical Value Type</p>
+                  <p className="text-xs font-bold text-primary mb-4 uppercase tracking-tight">Numerical Value Type</p>
                   <div className="flex flex-col gap-4">
                     <input
                       type="number"
                       step="any"
                       value={tempTextAnswer}
                       onChange={handleTextChange}
-                      className="border-2 border-slate-300 rounded-md p-3 w-64 text-2xl font-mono text-center focus:border-blue-600 focus:ring-4 focus:ring-blue-100 outline-none transition-all"
+                      className="border-2 border-slate-300 rounded-md p-3 w-64 text-2xl font-mono text-center focus:border-primary focus:ring-4 focus:ring-rose-100 outline-none transition-all"
                       placeholder="0.00"
                     />
                     <p className="text-[10px] text-gray-500 italic">* Round off to nearest two decimal places if required.</p>
@@ -1062,7 +1061,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
                   <textarea
                     value={tempTextAnswer}
                     onChange={handleTextChange}
-                    className="border-2 border-slate-300 rounded-md p-4 w-full h-32 text-base font-sans focus:border-blue-500 outline-none resize-y"
+                    className="border-2 border-slate-300 rounded-md p-4 w-full h-32 text-base font-sans focus:border-rose-500 outline-none resize-y"
                     placeholder="Type your explanation or answer here..."
                   />
                 </div>
@@ -1073,7 +1072,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
           {/* Action Buttons */}
           <div className="border-t border-gray-300 px-3 sm:px-4 py-2 sm:py-3 flex justify-between items-center bg-white shadow-sm">
             <div className="flex gap-2">
-              <button onClick={markForReviewAndNext} className="bg-[#297FC6] text-white px-2 sm:px-4 py-2 sm:py-2.5 font-bold text-[10px] sm:text-xs rounded-sm hover:opacity-90 uppercase flex flex-col items-center leading-tight">
+              <button onClick={markForReviewAndNext} className="bg-primary text-white px-2 sm:px-4 py-2 sm:py-2.5 font-bold text-[10px] sm:text-xs rounded-sm hover:opacity-90 uppercase flex flex-col items-center leading-tight">
                 MARK FOR REVIEW & NEXT
                 <span className="text-[7px] lowercase font-medium opacity-80">(will be counted for evaluation)</span>
               </button>
@@ -1118,7 +1117,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
               </div>
 
               <div className="flex items-center gap-1.5">
-                <div className="w-8 h-8 rounded-full bg-[#5B247A] text-white flex items-center justify-center font-bold shadow-sm">
+                <div className="w-8 h-8 rounded-full bg-rose-800 text-white flex items-center justify-center font-bold shadow-sm">
                   {stats.marked}
                 </div>
                 <span className="leading-tight">Marked for Review</span>
@@ -1126,7 +1125,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
             </div>
 
             <div className="flex items-center gap-2 text-[10px] text-gray-700 font-semibold mt-1">
-              <div className="w-8 h-8 rounded-full bg-[#5B247A] text-white flex items-center justify-center font-bold shadow-sm relative">
+              <div className="w-8 h-8 rounded-full bg-rose-800 text-white flex items-center justify-center font-bold shadow-sm relative">
                 {stats.answered_marked}
                 <div className="absolute right-0 bottom-0 w-2.5 h-2.5 bg-green-500 rounded-full border border-white"></div>
               </div>
@@ -1135,8 +1134,8 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
           </div>
 
           {/* Palette Grid */}
-          <div className="flex-1 p-4 bg-blue-50/30 overflow-y-auto">
-            <div className="bg-[#EBEBEB] text-[#297FC6] font-bold py-1 px-2 border-b border-[#297FC6] text-xs uppercase mb-2 inline-block">
+          <div className="flex-1 p-4 bg-rose-50/30 overflow-y-auto">
+            <div className="bg-[#EBEBEB] text-primary font-bold py-1 px-2 border-b border-primary text-xs uppercase mb-2 inline-block">
               {test.title}
             </div>
             <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 gap-y-2 gap-x-1 justify-items-center">
@@ -1155,10 +1154,10 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
                   innerContent = <div className="absolute inset-0 bg-[#5CB85C] flex items-center justify-center" style={{ clipPath: 'polygon(0% 0%, 100% 0%, 100% 100%, 30% 100%, 0% 70%)' }}>{innerContent}</div> as any;
                 } else if (status === 'marked_review') {
                   shapeClass += " text-white";
-                  innerContent = <div className="absolute inset-0 bg-[#5B247A] rounded-full flex items-center justify-center w-9 h-9 mx-auto">{innerContent}</div> as any;
+                  innerContent = <div className="absolute inset-0 bg-rose-800 rounded-full flex items-center justify-center w-9 h-9 mx-auto">{innerContent}</div> as any;
                 } else if (status === 'answered_marked') {
                   shapeClass += " text-white";
-                  innerContent = <div className="absolute inset-0 mx-auto w-9 h-9"><div className="w-full h-full bg-[#5B247A] rounded-full flex items-center justify-center">{innerContent}</div><div className="absolute right-0 bottom-0 w-3 h-3 bg-[#5CB85C] rounded-full border border-white"></div></div> as any;
+                  innerContent = <div className="absolute inset-0 mx-auto w-9 h-9"><div className="w-full h-full bg-rose-800 rounded-full flex items-center justify-center">{innerContent}</div><div className="absolute right-0 bottom-0 w-3 h-3 bg-[#5CB85C] rounded-full border border-white"></div></div> as any;
                 }
 
                 return (
@@ -1214,7 +1213,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
                 <p className="text-gray-900 font-bold text-center text-lg italic">"Unauthorized tab switching detected"</p>
                 <p className="text-gray-500 text-sm text-center leading-relaxed">
                   The system has recorded that you attempted to leave the examination screen. 
-                  This is a direct violation of the <span className="font-bold text-blue-600">O3 Testing Agency</span> proctoring guidelines.
+                  This is a direct violation of the <span className="font-bold text-primary">O3 Testing Agency</span> proctoring guidelines.
                 </p>
               </div>
 
@@ -1264,13 +1263,13 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
             <div className="flex justify-center gap-4">
               <button
                 onClick={() => setShowSubmitModal(false)}
-                className="px-6 py-2 border border-blue-600 text-blue-600 font-bold rounded hover:bg-blue-50 transition-colors"
+                className="px-6 py-2 border border-primary text-primary font-bold rounded hover:bg-rose-50 transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={() => finalSubmit()}
-                className="px-6 py-2 bg-blue-600 text-white font-bold rounded hover:bg-blue-700 transition-colors shadow-md"
+                className="px-6 py-2 bg-primary text-white font-bold rounded hover:bg-primary/90 transition-colors shadow-md"
               >
                 Confirm Submit
               </button>

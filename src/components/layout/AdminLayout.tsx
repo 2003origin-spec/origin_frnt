@@ -110,7 +110,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                             </button>
                             <button className="p-2.5 rounded-xl bg-accent text-muted-foreground hover:text-foreground transition-all border border-border relative">
                                 <Bell className="w-5 h-5" />
-                                <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-rose-500 rounded-full ring-4 ring-background animate-pulse" />
+                                <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-primary rounded-full ring-4 ring-background animate-pulse" />
                             </button>
                         </div>
                     </div>

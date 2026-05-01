@@ -222,7 +222,7 @@ export function PastActivitiesCard({ user }: { user: User }) {
                 {/* Header */}
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                        <div className={cn("rounded-xl bg-indigo-50 flex items-center justify-center text-[#4F46E5]", isMobile ? "w-8 h-8" : "w-10 h-10")}>
+                        <div className={cn("rounded-xl bg-primary/10 flex items-center justify-center text-primary", isMobile ? "w-8 h-8" : "w-10 h-10")}>
                             <Clock className={isMobile ? "w-4 h-4" : "w-5 h-5"} />
                         </div>
                         <div>
@@ -247,7 +247,7 @@ export function PastActivitiesCard({ user }: { user: User }) {
                                     </span>
                                     <span className={`text-[11px] font-black ${t.textColor}`}>{toHM(t.secs)}</span>
                                 </div>
-                                <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                                <div className="w-full h-2 bg-primary/10 rounded-full overflow-hidden">
                                     <motion.div
                                         initial={{ width: 0 }}
                                         animate={{ width: `${pct}%` }}
@@ -357,7 +357,7 @@ export function TodoListCard({ tasks, onAddTask, onToggleTask, onRemoveTask, onV
     return (
         <Card className="border-0 shadow-xl shadow-slate-200/50 dark:shadow-slate-900/50 bg-card backdrop-blur-xl h-full relative overflow-hidden flex flex-col ring-1 ring-border">
             {/* Soft decorative background */}
-            <div className="absolute top-0 right-0 w-[40%] h-[40%] bg-gradient-to-bl from-indigo-50/50 to-transparent dark:from-indigo-900/20 pointer-events-none" />
+            <div className="absolute top-0 right-0 w-[40%] h-[40%] bg-gradient-to-bl from-primary/5 to-transparent dark:from-primary/10 pointer-events-none" />
 
             <CardContent className="relative z-10 p-4 sm:p-6 md:p-8 flex-1 flex flex-col min-h-0">
                 <div className="flex items-center justify-between mb-4 sm:mb-8">
@@ -384,7 +384,7 @@ export function TodoListCard({ tasks, onAddTask, onToggleTask, onRemoveTask, onV
                             value={newTaskText}
                             onChange={(e) => setNewTaskText(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-                            className="flex-1 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl sm:rounded-2xl px-4 sm:px-6 py-2.5 sm:py-3 text-xs sm:text-base text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all font-medium shadow-sm"
+                            className="flex-1 bg-primary/5 dark:bg-slate-800/50 border border-primary/10 dark:border-slate-700 rounded-xl sm:rounded-2xl px-4 sm:px-6 py-2.5 sm:py-3 text-xs sm:text-base text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all font-medium shadow-sm"
                         />
                         <Button
                             onClick={handleAdd}
@@ -409,13 +409,13 @@ export function TodoListCard({ tasks, onAddTask, onToggleTask, onRemoveTask, onV
                     {tasks.map((todo) => {
                         const overdue = !todo.completed && isOverdue(todo.due);
                         return (
-                            <div key={todo.id} className={`group flex items-start gap-3 p-2.5 rounded-xl transition-all animate-in fade-in slide-in-from-top-1 duration-300 ${overdue ? 'bg-rose-500/5 border border-rose-500/20' : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'}`}>
+                            <div key={todo.id} className={`group flex items-start gap-3 p-2.5 rounded-xl transition-all animate-in fade-in slide-in-from-top-1 duration-300 ${overdue ? 'bg-primary/5 border border-primary/20' : 'hover:bg-primary/5 dark:hover:bg-slate-800/50'}`}>
                                 <button
                                     onClick={() => onToggleTask(todo.id)}
                                     className={`mt-0.5 w-5 h-5 rounded-md border flex items-center justify-center transition-all ${todo.completed
                                         ? 'bg-indigo-500 border-indigo-500 text-white'
                                         : overdue
-                                            ? 'border-rose-400 dark:border-rose-500/50 text-transparent hover:text-rose-500'
+                                            ? 'border-primary/40 dark:border-primary/50 text-transparent hover:text-primary'
                                             : 'border-slate-300 dark:border-slate-600 hover:border-indigo-500 dark:hover:border-indigo-500 text-transparent hover:text-indigo-500'
                                         }`}>
                                     <CheckCircle2 className="w-3.5 h-3.5" />
@@ -424,7 +424,7 @@ export function TodoListCard({ tasks, onAddTask, onToggleTask, onRemoveTask, onV
                                     <p className={`text-sm font-medium transition-colors truncate ${todo.completed
                                         ? 'text-black/30 dark:text-slate-600 line-through decoration-black/30'
                                         : overdue
-                                            ? 'text-rose-600 dark:text-rose-400'
+                                            ? 'text-primary dark:text-primary/80'
                                             : 'text-black dark:text-slate-200'
                                         }`}>
                                         {todo.text}
@@ -433,7 +433,7 @@ export function TodoListCard({ tasks, onAddTask, onToggleTask, onRemoveTask, onV
                                         <Badge variant="outline" className={`text-[10px] h-4 px-1.5 border-0 font-bold uppercase tracking-wider ${todo.completed
                                             ? 'bg-slate-100 dark:bg-slate-800 text-slate-500'
                                             : overdue
-                                                ? 'bg-rose-100 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400'
+                                                ? 'bg-primary/10 dark:bg-primary/20 text-primary dark:text-primary/80'
                                                 : 'bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400'
                                             }`}>
                                             {overdue ? 'MISSED • ' : ''}{formatDate(todo.due)}
@@ -442,7 +442,7 @@ export function TodoListCard({ tasks, onAddTask, onToggleTask, onRemoveTask, onV
                                 </div>
                                 <button
                                     onClick={() => onRemoveTask(todo.id)}
-                                    className="opacity-0 group-hover:opacity-100 p-1.5 text-slate-400 hover:text-rose-500 transition-all"
+                                    className="opacity-0 group-hover:opacity-100 p-1.5 text-slate-400 hover:text-primary transition-all"
                                 >
                                     <Trash2 className="w-4 h-4" />
                                 </button>
