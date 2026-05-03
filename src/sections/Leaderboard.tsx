@@ -230,7 +230,11 @@ export default function Leaderboard({ currentUser, initialLeaderboard, initialMy
                       index === 1 ? 'bg-slate-300' :
                       'bg-orange-500'
                     )}>
-                      <span className={cn("text-white font-black", isMobile ? "text-xs" : "text-base")}>{index + 1}</span>
+                      <span className={cn(
+                        "font-black", 
+                        isMobile ? "text-xs" : "text-base",
+                        index === 0 ? "text-amber-950" : index === 1 ? "text-slate-900" : "text-white"
+                      )}>{index + 1}</span>
                     </div>
                   </div>
                   <p className={cn(

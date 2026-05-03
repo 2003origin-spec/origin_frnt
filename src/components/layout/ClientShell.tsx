@@ -52,7 +52,12 @@ function ClientShellInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { resolvedTheme, setTheme } = useTheme();
-  const { setSidebarWidth, setIsAiOpen: setContextAiOpen } = useLayout();
+  const { 
+    setSidebarWidth, 
+    setIsAiOpen: setContextAiOpen, 
+    askSelectionNonce: globalAskNonce,
+    triggerAskSelection
+  } = useLayout();
   const [mounted, setMounted] = React.useState(false);
   const [deferredUiReady, setDeferredUiReady] = React.useState(false);
 
@@ -65,7 +70,13 @@ function ClientShellInner({ children }: { children: React.ReactNode }) {
   }, [isAiOpen, setContextAiOpen]);
 
   const [aiSide, setAiSide] = React.useState<'left' | 'right'>('right');
-  const [autoAskSelectionNonce, setAutoAskSelectionNonce] = React.useState(0);
+
+  // Auto-open AI when global ask nonce changes
+  React.useEffect(() => {
+    if (globalAskNonce > 0) {
+      setIsAiOpenInternal(true);
+    }
+  }, [globalAskNonce]);
 
   const { width: aiWidth, isResizing, startResizing } = useResizable({
     initialWidth: typeof window !== 'undefined' ? window.innerWidth * 0.2 : 400,
@@ -81,10 +92,10 @@ function ClientShellInner({ children }: { children: React.ReactNode }) {
 
   const toggleAi = React.useCallback((options?: { autoAskSelection?: boolean }) => {
     if (options?.autoAskSelection) {
-      setAutoAskSelectionNonce((current) => current + 1);
+      triggerAskSelection();
     }
     setIsAiOpenInternal(true);
-  }, []);
+  }, [triggerAskSelection]);
 
   React.useEffect(() => {
     setMounted(true);
@@ -208,14 +219,14 @@ function ClientShellInner({ children }: { children: React.ReactNode }) {
             onResizeStart={startResizing}
             side={aiSide}
             onSideToggle={() => setAiSide(prev => prev === 'left' ? 'right' : 'left')}
-            autoAskSelectionNonce={autoAskSelectionNonce}
+            autoAskSelectionNonce={globalAskNonce}
           />
         )}
 
         {shouldShowFloatingOriginAi && (
           <FloatingChat 
             onOpen={toggleAi} 
-            autoAskSelectionNonce={autoAskSelectionNonce} 
+            autoAskSelectionNonce={globalAskNonce} 
             hideMainButton={isAiOpen} 
           />
         )}

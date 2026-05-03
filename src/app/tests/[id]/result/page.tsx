@@ -34,7 +34,7 @@ async function ResultContent({ params, searchParams }: ResultPageProps) {
   const query = searchParams ? await searchParams : {};
   const requestedResultId = firstParam(query.result) ?? firstParam(query.resultId);
   const user = await getServerUser();
-  if (!user) redirect(`/auth?next=/tests/${id}/result`);
+  if (!user) redirect('/');
 
   let initialHistory: TestResult[] = [];
   let exactResult: TestResult | null = null;

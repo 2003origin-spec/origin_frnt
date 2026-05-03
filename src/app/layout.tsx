@@ -76,11 +76,11 @@ async function AuthBootstrap({ children }: { children: React.ReactNode }) {
   const initialUser = await getServerFrontendUser();
   return (
     <AuthProvider initialUser={initialUser}>
-      <QuotaProvider>
-        <NotificationProvider>
+      <NotificationProvider>
+        <QuotaProvider>
           {children}
-        </NotificationProvider>
-      </QuotaProvider>
+        </QuotaProvider>
+      </NotificationProvider>
     </AuthProvider>
   );
 }

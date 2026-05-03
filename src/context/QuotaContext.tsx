@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext';
+import { useNotifications } from '@/context/NotificationContext';
 
 interface QuotaState {
   voiceSecondsUsed: number;
@@ -42,6 +43,7 @@ export function QuotaProvider({ children }: { children: React.ReactNode }) {
   const voiceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const notifiedThresholds = useRef<Set<string>>(new Set());
   const { user } = useAuth();
+  const { addNotification } = useNotifications();
   const storageKey = user?.id ? `origin_ai_quota_${user.id}` : 'origin_ai_quota_guest';
 
   // Load from localStorage when user or storageKey changes
@@ -97,6 +99,11 @@ export function QuotaProvider({ children }: { children: React.ReactNode }) {
         if (threshold === 100) {
           toast.error(`Daily ${type} quota reached!`, {
             description: `You have used 100% of your daily ${type} limit.`,
+          });
+          addNotification({
+            title: `Daily ${type} Quota Exhausted`,
+            message: `You have reached 100% of your daily ${type} limit for Origin AI.`,
+            type: 'warning'
           });
         } else {
           toast.warning(`Daily ${type} quota alert`, {

@@ -158,7 +158,9 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                                                         : 'text-slate-500 dark:text-slate-400 hover:text-[#334155] dark:hover:text-white'
                                                         }`}
                                                 >
-                                                    {typeof Icon === 'function' ? <Icon /> : <Icon className={`w-4 h-4 transition-transform duration-300 ${isActive ? 'scale-110' : 'group-hover:scale-110'}`} />}
+                                                    <div className={`transition-transform duration-300 ${isActive ? 'scale-110' : 'group-hover:scale-110'}`}>
+                                                        {typeof Icon === 'function' ? <Icon /> : <Icon className="w-4 h-4" />}
+                                                    </div>
                                                     {item.label}
                                                 </button>
 

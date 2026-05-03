@@ -110,9 +110,20 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
 
     const detectionInterval = setInterval(() => {
       // Small chance of simulation every interval
-      if (Math.random() < 0.1) {
+      if (Math.random() < 0.15) { // Increased probability for testing
         setMobileDetected(true);
         setProctorStatus('warning');
+        
+        // Actually trigger a violation in the simulation
+        setViolations(prev => {
+          const next = prev + 1;
+          if (next >= 3) {
+            terminateWithMalpractice();
+          } else {
+            setShowMalpracticeWarning(true);
+          }
+          return next;
+        });
 
         // Auto-clear after 5 seconds
         setTimeout(() => {
@@ -120,7 +131,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
           setProctorStatus('monitoring');
         }, 5000);
       }
-    }, 20000);
+    }, 15000); // More frequent check for demo purposes
 
     return () => clearInterval(detectionInterval);
   }, [isExamStarted]);
@@ -225,10 +236,8 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
   const terminateWithMalpractice = () => {
     setIsMalpracticeTerminated(true);
     stopCamera();
-    // Delay submission slightly to show the overlay
-    setTimeout(() => {
-      finalSubmit({ malpractice: true });
-    }, 4000);
+    // Start submission immediately
+    finalSubmit({ malpractice: true });
   };
 
   const stopCamera = () => {
@@ -471,6 +480,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
   const finalSubmit = async (options?: { malpractice?: boolean }) => {
     if (isSubmitting) return;
     setIsSubmitting(true);
+    const submissionToastId = toast.loading('Submitting your test... Please wait while we process your AI analytics.');
     stopCamera();
     setShowSubmitModal(false);
 
@@ -498,8 +508,10 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
         ? await submitHandler(payload)
         : await submitTestAction(test.id, payload);
 
+      toast.dismiss(submissionToastId);
       onComplete(result as TestResult);
     } catch (error: any) {
+      toast.dismiss(submissionToastId);
       console.error('Test submission failed:', error);
       toast.error('Failed to submit test. Please try again.');
       setIsSubmitting(false);
@@ -695,8 +707,8 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
                   <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 flex items-start gap-3">
                     <AlertTriangle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
                     <div className="text-xs">
-                      <p className="text-red-400 font-bold mb-1 uppercase">Permission Required</p>
-                      <p className="text-slate-300 leading-relaxed">
+                      <p className="text-red-600 font-bold mb-1 uppercase dark:text-red-400">Permission Required</p>
+                      <p className="text-slate-600 leading-relaxed dark:text-slate-300">
                         {cameraError}. Please enable camera access in your browser settings to continue.
                       </p>
                     </div>
@@ -902,9 +914,9 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
         <div className="flex-1 flex flex-col border-r border-gray-300 relative">
 
           {/* Question Header */}
-          <div className="flex justify-between items-center px-4 py-2 border-b border-gray-300 font-bold text-base sm:text-lg border-t-4 border-t-white bg-white sticky top-0 z-20">
+          <div className="flex justify-between items-center px-4 py-2 border-b border-gray-300 font-bold text-base sm:text-lg border-t-4 border-t-white bg-slate-50 dark:bg-slate-900 text-foreground sticky top-0 z-20">
             <span>Question {currentQuestionIndex + 1}:</span>
-            <div className="w-6 h-6 bg-primary rounded-full text-white flex items-center justify-center font-bold text-sm">&darr;</div>
+            <div className="w-6 h-6 bg-primary rounded-full text-white flex items-center justify-center font-bold text-sm shadow-sm">&darr;</div>
           </div>
 
           {/* Question Text & Options */}
@@ -1070,7 +1082,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
           </div>
 
           {/* Action Buttons */}
-          <div className="border-t border-gray-300 px-3 sm:px-4 py-2 sm:py-3 flex justify-between items-center bg-white shadow-sm">
+          <div className="border-t border-gray-300 px-3 sm:px-4 py-2 sm:py-3 flex justify-between items-center bg-slate-50 dark:bg-slate-900 shadow-sm">
             <div className="flex gap-2">
               <button onClick={markForReviewAndNext} className="bg-primary text-white px-2 sm:px-4 py-2 sm:py-2.5 font-bold text-[10px] sm:text-xs rounded-sm hover:opacity-90 uppercase flex flex-col items-center leading-tight">
                 MARK FOR REVIEW & NEXT
@@ -1088,7 +1100,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
         </div>
 
         {/* Right Area - Palette */}
-        <div className="w-full lg:w-[350px] bg-white flex flex-col pt-4 border-t lg:border-t-0 lg:border-l border-gray-300 max-h-[300px] lg:max-h-none">
+        <div className="w-full lg:w-[350px] bg-slate-50 dark:bg-slate-900 flex flex-col pt-4 border-t lg:border-t-0 lg:border-l border-gray-300 max-h-[300px] lg:max-h-none">
 
           {/* Legend */}
           <div className="px-4 pb-4 border-b border-gray-200">
@@ -1275,6 +1287,17 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Submitting overlay for manual submission */}
+      {isSubmitting && !isMalpracticeTerminated && (
+        <div className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-white/90 backdrop-blur-sm p-4 animate-in fade-in duration-300">
+          <Loader2 className="w-16 h-16 text-primary animate-spin mb-6" />
+          <h2 className="text-3xl font-black text-gray-900 uppercase tracking-tighter mb-2">Submitting Exam...</h2>
+          <p className="text-gray-600 font-medium text-center max-w-md">
+            Please wait while we securely submit your answers and generate AI insights.
+          </p>
         </div>
       )}
       {showRefreshWarning && (

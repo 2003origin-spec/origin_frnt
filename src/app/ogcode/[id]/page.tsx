@@ -16,7 +16,7 @@ export default function OGCodeWorkspacePage({ params }: { params: Promise<{ id: 
 async function OGCodeContent({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const user = await getServerUser();
-  if (!user) redirect(`/auth?next=/ogcode/${id}`);
+  if (!user) redirect('/');
 
   let initialQuestion: PracticeQuestion | null = null;
   try {

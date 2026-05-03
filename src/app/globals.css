@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "katex/dist/katex.min.css";
 
 @custom-variant dark (&:where(.dark, .dark *));
 
@@ -167,4 +168,70 @@
 
 .animate-shimmer {
   animation: shimmer 2s infinite;
+}
+
+@layer utilities {
+  .animate-spin-slow {
+    animation: spin 3s linear infinite;
+  }
+
+  .math-highlight, .prose .katex {
+    position: relative;
+    display: inline-block;
+    padding: 0.1rem 0.3rem;
+    margin: 0 0.1rem;
+    border-radius: 6px;
+    background: linear-gradient(135deg, hsl(var(--primary) / 0.08) 0%, hsl(var(--primary) / 0.03) 100%);
+    box-shadow: 0 2px 8px -2px hsl(var(--primary) / 0.15);
+    border: 1px solid hsl(var(--primary) / 0.4);
+    transition: all 0.2s ease;
+  }
+
+  .math-highlight:hover, .prose .katex:hover {
+    background: linear-gradient(135deg, hsl(var(--primary) / 0.12) 0%, hsl(var(--primary) / 0.05) 100%);
+    border-color: hsl(var(--primary) / 0.3);
+    box-shadow: 0 4px 12px -2px hsl(var(--primary) / 0.25);
+  }
+
+  .dark .math-highlight, .dark .prose .katex {
+    background: linear-gradient(135deg, hsl(var(--primary) / 0.15) 0%, hsl(var(--primary) / 0.05) 100%);
+    box-shadow: 0 4px 15px -3px rgba(0, 0, 0, 0.4);
+    border-color: hsl(var(--primary) / 0.5);
+  }
+
+  .prose .katex-display {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 1.5rem;
+    margin: 1.5rem 0;
+    border-radius: 12px;
+    background: linear-gradient(135deg, hsl(var(--primary) / 0.05) 0%, hsl(var(--primary) / 0.02) 100%);
+    box-shadow: inset 0 2px 10px -2px hsl(var(--primary) / 0.05), 0 2px 8px -2px hsl(var(--primary) / 0.1);
+    border: 1px solid hsl(var(--primary) / 0.15);
+    transition: all 0.3s ease;
+  }
+
+  .prose .katex-display:hover {
+    border-color: hsl(var(--primary) / 0.3);
+    box-shadow: inset 0 2px 10px -2px hsl(var(--primary) / 0.1), 0 4px 12px -2px hsl(var(--primary) / 0.2);
+  }
+
+  .dark .prose .katex-display {
+    background: linear-gradient(135deg, hsl(var(--primary) / 0.1) 0%, hsl(var(--primary) / 0.02) 100%);
+    box-shadow: inset 0 2px 15px -5px rgba(0,0,0,0.5), 0 4px 15px -3px rgba(0, 0, 0, 0.4);
+    border-color: hsl(var(--primary) / 0.2);
+  }
+
+  /* Reset inner inline highlighting to prevent double boxes in display blocks */
+  .prose .katex-display .katex {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: inline-block !important;
+  }
 }

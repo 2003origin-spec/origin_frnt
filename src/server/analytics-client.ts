@@ -94,6 +94,7 @@ export interface AnalyticsTestAnalysisRequest {
   question_count: number;
   time_taken_seconds: number;
   graded_attempts: AnalyticsGradedAttempt[];
+  is_malpractice?: boolean;
 }
 
 export interface AnalyticsTestAnalysisResponse {
@@ -155,7 +156,7 @@ async function analyticsRequest<TResponse, TBody extends object>(
     throw new Error('[analytics-client] ANALYTICS_SERVICE_TOKEN must be set when ANALYTICS_SERVICE_URL is configured');
   }
 
-  const timeoutMs = Number(process.env.ANALYTICS_SERVICE_TIMEOUT_MS ?? 7000);
+  const timeoutMs = Number(process.env.ANALYTICS_SERVICE_TIMEOUT_MS ?? 3000);
   const controller = new AbortController();
   const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
 

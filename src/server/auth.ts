@@ -18,7 +18,7 @@ export function extractBearerToken(request: Request): string | null {
   return token.trim();
 }
 
-function extractCookieToken(request: Request): string | null {
+export function extractCookieToken(request: Request): string | null {
   const cookieHeader = request.headers.get("cookie");
   if (!cookieHeader) {
     return null;
@@ -34,6 +34,22 @@ function extractCookieToken(request: Request): string | null {
 
   return null;
 }
+
+export function extractRefreshTokenCookie(request: Request): string | null {
+  const cookieHeader = request.headers.get("cookie");
+  if (!cookieHeader) return null;
+
+  for (const cookie of cookieHeader.split(";")) {
+    const [rawName, ...rawValue] = cookie.trim().split("=");
+    if (rawName === "origin_refresh_token") {
+      const value = rawValue.join("=");
+      return value ? decodeURIComponent(value) : null;
+    }
+  }
+
+  return null;
+}
+
 
 function isTokenExpired(expiresAt: string | undefined): boolean {
   if (!expiresAt) return true; // sessions from before expiry was added are treated as expired
@@ -60,7 +76,8 @@ export function isRefreshTokenValid(store: AppStore, refreshToken: string): Stor
 }
 
 export function requireUserFromRequest(store: AppStore, request: Request): StoredUser | null {
-  return findUserByAccessToken(store, extractBearerToken(request));
+  const token = extractBearerToken(request) ?? extractCookieToken(request);
+  return findUserByAccessToken(store, token);
 }
 
 export function createAuthSession(store: AppStore, userId: string): StoredAuthSession {

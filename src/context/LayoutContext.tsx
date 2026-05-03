@@ -10,6 +10,8 @@ interface LayoutContextType {
   setIsAiOpen: (isOpen: boolean) => void;
   availableWidth: number;
   windowWidth: number;
+  askSelectionNonce: number;
+  triggerAskSelection: () => void;
 }
 
 const LayoutContext = createContext<LayoutContextType | undefined>(undefined);
@@ -17,8 +19,13 @@ const LayoutContext = createContext<LayoutContextType | undefined>(undefined);
 export function LayoutProvider({ children }: { children: React.ReactNode }) {
   const [sidebarWidth, setSidebarWidth] = useState(0);
   const [isAiOpen, setIsAiOpen] = useState(false);
+  const [askSelectionNonce, setAskSelectionNonce] = useState(0);
   const { width: windowWidth } = useWindowSize();
   
+  const triggerAskSelection = () => {
+    setAskSelectionNonce(prev => prev + 1);
+  };
+
   // Use a stable default width for SSR to prevent hydration mismatch
   const [isMounted, setIsMounted] = useState(false);
   
@@ -38,7 +45,9 @@ export function LayoutProvider({ children }: { children: React.ReactNode }) {
       isAiOpen, 
       setIsAiOpen, 
       availableWidth, 
-      windowWidth: effectiveWindowWidth 
+      windowWidth: effectiveWindowWidth,
+      askSelectionNonce,
+      triggerAskSelection
     }}>
       {children}
     </LayoutContext.Provider>

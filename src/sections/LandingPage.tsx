@@ -247,7 +247,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
   return (
     <div className="min-h-screen bg-background dark:bg-gray-950 text-gray-900 dark:text-white selection:bg-rose-200 dark:selection:bg-rose-800/50 font-sans antialiased transition-colors duration-500 relative overflow-x-hidden">
       {/* Background Layer: Dark Theme (Evil Eye) */}
-      {mounted && actualTheme === 'dark' && (
+      {/* {mounted && actualTheme === 'dark' && (
         <div className="fixed inset-0 z-0 pointer-events-none">
           <EvilEye
             eyeColor="#0cc6efff"
@@ -262,7 +262,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
             backgroundColor="#000000ff"
           />
         </div>
-      )}
+      )} */}
 
       {/* Background Layer: Light Theme – softer wave lines */}
       {mounted && actualTheme === 'light' && (
@@ -279,20 +279,23 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
           />
         </div>
       )}
-      {/* {mounted && actualTheme === 'dark' && (
-              <div className="fixed inset-0 z-0 pointer-events-none opacity-40">
-                <FloatingLines
-                  enabledWaves={['top', 'middle', 'bottom']}
-                  linesGradient={['#4559daff', '#3446d3ff', '#8866ddff']}
-                  lineCount={[8, 12, 16]}
-                  lineDistance={[8, 6, 4]}
-                  bendRadius={5.0}
-                  bendStrength={-0.5}
-                  interactive={true}
-                  parallax={true}
-                />
-              </div>
-            )} */}
+      {mounted && actualTheme === 'dark' && (
+        <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
+          {/* Subtle vignette for depth */}
+          <div className="absolute inset-0 z-[1] bg-[radial-gradient(circle_at_center,transparent_0%,rgba(0,0,0,0.4)_100%)]" />
+          
+          <FloatingLines
+            enabledWaves={['top', 'middle', 'bottom']}
+            linesGradient={['#6366f1', '#06b6d4', '#d946ef', '#4f46e5']}
+            lineCount={[8, 12, 16]}
+            lineDistance={[8, 6, 4]}
+            bendRadius={5.0}
+            bendStrength={-0.6}
+            interactive={true}
+            parallax={true}
+          />
+        </div>
+      )}
       {/* Navigation – refined glass with subtle shadow */}
       <nav className="fixed top-6 left-0 right-0 mx-auto z-50 flex justify-center px-4">
         <div className="bg-card/70 dark:bg-black/50 backdrop-blur-xl px-3 py-2 rounded-full flex items-center justify-between lg:justify-center gap-4 lg:gap-12 shadow-lg border border-rose-100 dark:border-white/10 ring-1 ring-black/5 w-full max-w-fit md:w-auto transition-all duration-300 hover:shadow-xl">

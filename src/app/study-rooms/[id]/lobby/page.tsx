@@ -7,7 +7,7 @@ import LobbyClient from './_client';
 export default async function StudyRoomLobbyPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const user = await getServerUser();
-  if (!user) redirect(`/auth?next=/study-rooms/${id}/lobby`);
+  if (!user) redirect('/');
 
   let initialState: RoomState;
   try {

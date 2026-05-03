@@ -86,12 +86,12 @@ export default function DailyTracker({ user }: DailyTrackerProps) {
 
     const getLevelClass = (level: number) => {
         switch (level) {
-            case 1: return 'bg-[#D1FAE5] dark:bg-emerald-900/40 border border-[#A7F3D0]';
-            case 2: return 'bg-[#6EE7B7] dark:bg-emerald-700/60 border border-[#34D399]';
-            case 3: return 'bg-[#10B981] dark:bg-emerald-500/70 border border-[#059669]';
-            case 4: return 'bg-[#059669] dark:bg-emerald-400 shadow-[0_0_8px_rgba(5,150,105,0.3)] border border-[#047857]';
-            case 0: return 'bg-[#F1F5F9] dark:bg-slate-800/50 border border-[#E2E8F0] dark:border-slate-700/50';
-            default: return 'bg-transparent border-dashed border border-slate-200/20 opacity-20';
+            case 1: return 'bg-[#D1FAE5] dark:bg-emerald-900/40 border border-emerald-500/30 dark:border-emerald-500/50';
+            case 2: return 'bg-[#6EE7B7] dark:bg-emerald-700/60 border border-emerald-600/50 dark:border-emerald-400/50';
+            case 3: return 'bg-[#10B981] dark:bg-emerald-500/70 border border-emerald-700/60 dark:border-emerald-300/50';
+            case 4: return 'bg-[#059669] dark:bg-emerald-400 shadow-[0_0_8px_rgba(5,150,105,0.3)] border border-emerald-800 dark:border-emerald-200';
+            case 0: return 'bg-[#F1F5F9] dark:bg-slate-800/50 border border-slate-300 dark:border-slate-600';
+            default: return 'bg-transparent border-dashed border border-slate-300/40 opacity-20';
         }
     };
 

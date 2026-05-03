@@ -8,7 +8,7 @@ export default function RoleSelectionClient() {
   return (
     <RoleSelection
       onSelectRole={(role) => router.push(`/auth?role=${role}`)}
-      onBack={() => router.back()}
+      onBack={() => router.push('/')}
     />
   );
 }

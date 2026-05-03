@@ -108,7 +108,7 @@ export default function ResultClient({ testId, initialHistory, requestedResultId
       showSummary={true}
       onBackToDashboard={() => router.push('/dashboard')}
       onViewDPP={() => router.push('/dpp')}
-      onRetakeTest={() => router.push(`/tests/${testId}`)}
+      onRetakeTest={() => { window.location.href = `/tests/${testId}`; }}
     />
   );
 }

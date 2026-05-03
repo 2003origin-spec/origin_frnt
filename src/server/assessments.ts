@@ -2406,6 +2406,7 @@ export async function submitTest(
   const questionIds = seededTest?.questionIds ?? persistedTest!.questionIds;
   const questionCount = questionIds.length;
 
+  const isMalpractice = payload.isMalpractice || payload.is_malpractice || false;
   const analytics = await buildAnalyticsAttempts(
     store,
     user.id,
@@ -2439,6 +2440,7 @@ export async function submitTest(
       question_count: questionCount,
       time_taken_seconds: payload.timeTaken ?? payload.time_taken ?? 0,
       graded_attempts: analytics.gradedAttempts,
+      is_malpractice: isMalpractice,
     });
 
     if (!response) {
@@ -2476,6 +2478,7 @@ export async function submitTest(
       weakTopics: response.weak_topics,
       strongTopics: response.strong_topics,
       dppPlans: response.dpp_plans,
+      isMalpractice: isMalpractice,
     });
 
     updateUserStreak(store, user.id);

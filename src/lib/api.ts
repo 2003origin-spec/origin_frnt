@@ -14,13 +14,13 @@ export const TOKEN_REFRESHED_EVENT = 'origin:auth:refreshed';
 
 async function attemptTokenRefresh(): Promise<string | null> {
     const refreshToken = localStorage.getItem('origin_refresh_token');
-    if (!refreshToken) return null;
 
     try {
         const response = await fetch(`${API_URL}/users/token/refresh`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ refresh: refreshToken }),
+            body: refreshToken ? JSON.stringify({ refresh: refreshToken }) : JSON.stringify({}),
+            credentials: 'include',
         });
         if (!response.ok) return null;
         const data = await response.json();
@@ -62,16 +62,20 @@ function parseErrorMessage(errorData: Record<string, unknown>): string {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const apiCall = async (endpoint: string, options: RequestInit = {}): Promise<any> => {
+export const apiCall = async (
+    endpoint: string, 
+    options: RequestInit & { silentAuth?: boolean } = {}
+): Promise<any> => {
+    const { silentAuth, ...fetchOptions } = options;
     const normalizedEndpoint = normalizeEndpoint(endpoint);
 
     if (process.env.NODE_ENV === 'development') {
-        console.log(`[API Call] ${options.method || 'GET'} ${normalizedEndpoint}`);
+        console.log(`[API Call] ${fetchOptions.method || 'GET'} ${normalizedEndpoint}`);
     }
 
     const doFetch = (token: string | null) =>
         fetch(`${API_URL}${normalizedEndpoint}`, {
-            ...options,
+            ...fetchOptions,
             cache: 'no-store',
             headers: buildHeaders(token, options.headers),
         });
@@ -89,7 +93,9 @@ export const apiCall = async (endpoint: string, options: RequestInit = {}): Prom
             // Refresh failed — session is fully expired, force logout
             localStorage.removeItem('origin_access_token');
             localStorage.removeItem('origin_refresh_token');
-            window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
+            if (!silentAuth) {
+                window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
+            }
             throw new Error('Session expired. Please log in again.');
         }
     }

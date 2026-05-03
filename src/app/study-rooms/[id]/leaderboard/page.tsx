@@ -15,7 +15,7 @@ import RoomLeaderboardClient from './_client';
 export default async function StudyRoomLeaderboardPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const user = await getServerUser();
-  if (!user) redirect(`/auth?next=/study-rooms/${id}/leaderboard`);
+  if (!user) redirect('/');
 
   let payload: [RoomState, RoomLeaderboardRow[], RoomDppPlanSummary[]];
   try {

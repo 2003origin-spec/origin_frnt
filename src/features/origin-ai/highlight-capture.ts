@@ -126,7 +126,58 @@ export function extractSelectionText(selection: Selection | null): string | null
     document.body.removeChild(div);
   }
   
-  return extractedText.trim() || null;
+  return wrapUnwrappedMath(extractedText.trim()) || null;
+}
+
+/**
+ * Heuristic to wrap common LaTeX-like patterns in $ delimiters if they aren't already.
+ * This handles raw text selections from textareas or restricted PDF text layers.
+ */
+export function wrapUnwrappedMath(text: string): string {
+  if (!text) return text;
+  
+  // Only apply if the text doesn't already have $ delimiters (simple heuristic)
+  if (text.includes('$')) return text;
+
+  // Common LaTeX commands and patterns that strongly imply math
+  const mathCommands = [
+    '\\\\frac', '\\\\sqrt', '\\\\sum', '\\\\int', '\\\\alpha', '\\\\beta', '\\\\gamma',
+    '\\\\delta', '\\\\theta', '\\\\lambda', '\\\\pi', '\\\\sigma', '\\\\omega',
+    '\\\\infty', '\\\\partial', '\\\\nabla', '\\\\times', '\\\\div', '\\\\pm',
+    '\\\\le', '\\\\ge', '\\\\ne', '\\\\approx', '\\\\equiv', '\\\\forall', '\\\\exists',
+    '\\\\cos', '\\\\sin', '\\\\tan', '\\\\log', '\\\\ln'
+  ];
+
+  // Specific patterns like cos^-1, i+j, A=B+C, x^2
+  const mathPatterns = [
+    /[a-zA-Z0-9]\^[0-9\-+]/,         // superscripts: x^2, e^-1
+    /[a-zA-Z0-9]_[0-9]/,            // subscripts: x_1
+    /[ijk]\s*[+-]\s*[ijk]/,         // vectors: i+j, j+k
+    /[a-zA-Z]\s*=\s*[a-zA-Z0-9+-]/,  // assignments: A=B+C
+    /(sin|cos|tan)\^?-?[0-9]?/      // trig functions: cos^-1, sinx
+  ];
+
+  const cmdRegex = new RegExp(`(${mathCommands.join('|')})`, 'i');
+  const hasMathCommand = cmdRegex.test(text);
+  const hasMathPattern = mathPatterns.some(pattern => pattern.test(text));
+  
+  if (hasMathCommand || hasMathPattern) {
+    // If the text has a lot of spaces and doesn't look like pure math, 
+    // it's likely a paragraph mixed with math. We shouldn't wrap the whole thing.
+    // Let the AI or the markdown parser handle the inner math.
+    const spaceCount = (text.match(/ /g) || []).length;
+    if (spaceCount > 5 || text.length > 100) {
+       return text; // It's a paragraph, don't wrap the whole thing.
+    }
+    
+    // If it's a multi-line block or very long, use $$
+    if (text.includes('\n')) {
+      return `$$\n${text}\n$$`;
+    }
+    return `$${text}$`;
+  }
+
+  return text;
 }
 
 function handleSelectionChange() {

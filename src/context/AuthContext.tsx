@@ -210,7 +210,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
       setTasks([]);
       tasksFetched.current = false;
       clearOriginAiBrowserSession();
-      router.push('/');
+      window.location.href = '/';
       toast.error('Your session expired. Please log in again.');
     };
     const handleTokenRefreshed = (e: Event) => {
@@ -242,7 +242,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
       if (process.env.NODE_ENV === 'development') {
         console.log(`[AuthGuard] Unauthenticated user on protected path ${normalizedPath}, redirecting to /`);
       }
-      router.push('/');
+      window.location.href = '/';
       return;
     }
 
@@ -478,21 +478,29 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
     }
   };
 
-  const logout = () => {
-    setUser(null);
-    setUserRole(null);
-    setTasks([]);
-    tasksFetched.current = false;
+  const logout = async () => {
+    // 1. Clear client state immediately
     clearOriginAiBrowserSession();
     localStorage.removeItem('origin_access_token');
     localStorage.removeItem('origin_refresh_token');
-    // Server Action clears the HttpOnly cookies + revalidates the RSC tree.
-    // Fire-and-forget so the UI never waits on the round-trip.
-    void logoutAction().catch(() => {});
     setAccessToken(null);
     setRefreshToken(null);
-    router.push('/');
-    toast.info('Logged out successfully');
+    setTasks([]);
+    tasksFetched.current = false;
+
+    try {
+      // 2. Clear server-side cookies and revalidate
+      await logoutAction();
+    } catch (error) {
+      console.error('Server-side logout failed:', error);
+    }
+
+    // 3. Finally clear the user state which might trigger re-renders
+    setUser(null);
+    setUserRole(null);
+
+    // 4. Force hard redirect to landing page to purge any remaining memory state
+    window.location.href = '/';
   };
 
   const addTask = async (text: string, due: string) => {

@@ -35,6 +35,7 @@ import { toast } from 'sonner';
 import { usePublishOriginAiPageContext } from '@/features/origin-ai/page-context-store';
 import { FormattedMessage } from '@/components/origin-ai/FormattedMessage';
 import { useQuota } from '@/context/QuotaContext';
+import { useNotifications } from '@/context/NotificationContext';
 import {
   Tooltip,
   TooltipContent,
@@ -187,15 +188,29 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
   const [isProcessingImage, setIsProcessingImage] = useState(false);
   const { 
     addTextUsage, 
-    startVoiceTracking, 
-    stopVoiceTracking, 
-    isVoiceQuotaReached, 
-    isTextQuotaReached,
-    getRemainingVoiceTime,
     getRemainingTokens,
+    textProgress,
     voiceProgress,
-    textProgress
+    getRemainingVoiceTime
   } = useQuota();
+  const { addNotification } = useNotifications();
+  const isTextQuotaReached = textProgress >= 100;
+
+  // Track if we've already notified for this session
+  const hasNotifiedRef = useRef(false);
+
+  useEffect(() => {
+    if (isTextQuotaReached && !hasNotifiedRef.current) {
+      addNotification({
+        title: 'Quota Exhausted',
+        message: 'Your daily text quota for AI Explainer has been reached. Upgrade for unlimited access.',
+        type: 'alert'
+      });
+      hasNotifiedRef.current = true;
+    } else if (!isTextQuotaReached) {
+      hasNotifiedRef.current = false;
+    }
+  }, [isTextQuotaReached, addNotification]);
 
   const sessionCacheKey = `${SESSION_CACHE_KEY}_${user.id}`;
   const originAiPageContext = useMemo(() => {
@@ -336,13 +351,8 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
   }, [activeSession?.messages, isTyping]);
 
   useEffect(() => {
-    if (isRecording) {
-      startVoiceTracking();
-    } else {
-      stopVoiceTracking();
-    }
-    return () => stopVoiceTracking();
-  }, [isRecording, startVoiceTracking, stopVoiceTracking]);
+    scrollToBottom();
+  }, [activeSession?.messages, isTyping]);
 
   const handleSendMessage = async (overrideText?: string) => {
     const currentMessage = overrideText ?? message;
@@ -612,7 +622,7 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
                 )}
               </div>
             )}
-            <p className="text-[10px] text-rose-500 font-bold uppercase tracking-widest mt-1">24/7 Academic Mentor</p>
+            {/* <p className="text-[10px] text-rose-500 font-bold uppercase tracking-widest mt-1">24/7 Academic Mentor</p> */}
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -732,7 +742,7 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
                                 if (e.key === 'Escape') setEditingSidebarId(null);
                               }}
                               onClick={(e) => e.stopPropagation()}
-                              className="bg-white/10 border border-rose-500/50 rounded px-2 py-0.5 text-xs text-white w-full focus:outline-none"
+                              className="bg-slate-200/50 dark:bg-white/10 border border-rose-500/50 rounded px-2 py-0.5 text-xs text-foreground dark:text-white w-full focus:outline-none"
                             />
                           ) : (
                             <div className="flex items-start gap-2 justify-between">
@@ -785,7 +795,7 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
                 </div>
 
                 {/* Fixed Bottom Input Bar */}
-                <div className="p-3 sm:p-6 bg-gradient-to-t from-background via-background to-transparent flex-shrink-0">
+                <div className="p-4 border-t border-slate-800 bg-slate-900/50 backdrop-blur-xl">
                   <div className="max-w-4xl mx-auto">
                     {/* Status indicators */}
                     <AnimatePresence>
@@ -927,15 +937,11 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
                               }
                             }}
                           />
-                          <TooltipProvider>
+                          <TooltipProvider delayDuration={0}>
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <button
                                   onClick={() => {
-                                    if (isVoiceQuotaReached) {
-                                      toast.error("Voice quota reached for today.");
-                                      return;
-                                    }
                                     if (isRecording) {
                                       speechRecognitionRef.current?.stop();
                                       return;
@@ -993,25 +999,20 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
                                     setIsRecording(true);
                                     setLiveTranscript('');
                                   }}
-                                  disabled={isVoiceQuotaReached && !isRecording}
-                                  className={`p-3 transition-colors ${isRecording ? 'text-red-500 animate-pulse' : (isVoiceQuotaReached ? 'text-slate-600 cursor-not-allowed' : 'text-slate-400 hover:text-blue-400')}`}
-                                  title={isRecording ? 'Stop recording' : (isVoiceQuotaReached ? 'Voice quota reached' : 'Record voice')}
+                                  className={`p-3 transition-colors ${isRecording ? 'text-red-500 animate-pulse' : 'text-slate-400 hover:text-blue-400'}`}
+                                  title={isRecording ? 'Stop recording' : 'Record voice'}
                                 >
                                   {isRecording ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
                                 </button>
                               </TooltipTrigger>
-                              <TooltipContent side="top" className="bg-slate-900 border-white/10 text-white">
-                                <div className="space-y-1">
-                                  <p className="text-xs font-bold">{isVoiceQuotaReached ? 'Quota Reached' : getRemainingVoiceTime()}</p>
-                                  <div className="w-32 h-1 bg-white/10 rounded-full overflow-hidden">
-                                    <div className="h-full bg-blue-500 transition-all duration-500" style={{ width: `${voiceProgress}%` }} />
-                                  </div>
+                              <TooltipContent side="top" className="bg-slate-900 border-white/20 text-white shadow-2xl">
+                                <div className="p-1">
+                                  <p className="text-xs font-bold">{isRecording ? 'Recording...' : 'Unlimited Voice'}</p>
+                                  <p className="text-[10px] text-white/60">Voice interaction is unlimited in AI Explainer</p>
                                 </div>
                               </TooltipContent>
                             </Tooltip>
-                          </TooltipProvider>
 
-                          <TooltipProvider>
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <textarea
@@ -1034,11 +1035,15 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
                                 />
                               </TooltipTrigger>
                               <TooltipContent side="top" className="bg-slate-900 border-white/10 text-white">
-                                <div className="space-y-1">
-                                  <p className="text-xs font-bold">{isTextQuotaReached ? 'Quota Reached' : getRemainingTokens()}</p>
+                                <div className="space-y-1.5 p-1">
+                                  <div className="flex justify-between items-center gap-4">
+                                    <span className="text-[10px] font-semibold text-white/60 uppercase tracking-wider">Remaining Text</span>
+                                    <span className="text-[10px] font-bold text-emerald-400">{Math.max(0, Math.round(100 - textProgress))}%</span>
+                                  </div>
                                   <div className="w-32 h-1 bg-white/10 rounded-full overflow-hidden">
                                     <div className="h-full bg-emerald-500 transition-all duration-500" style={{ width: `${textProgress}%` }} />
                                   </div>
+                                  <p className="text-[10px] text-white/40">{getRemainingTokens()}</p>
                                 </div>
                               </TooltipContent>
                             </Tooltip>
@@ -1207,7 +1212,7 @@ function SelectionView({ onCreate, onUpload, sessions, onSelectSession, lastSess
 
   return (
     <div className="w-full max-w-5xl mx-auto px-3 sm:px-6 py-4 sm:py-12 overflow-y-auto custom-scrollbar">
-      <div className="relative p-5 sm:p-10 rounded-[24px] sm:rounded-[40px] bg-gradient-to-br from-blue-600/10 to-indigo-600/5 border border-border/60 mb-6 sm:mb-12 overflow-hidden group shadow-xl">
+      <div className="relative p-5 sm:p-10 rounded-[24px] sm:rounded-[40px] bg-gradient-to-br from-blue-600/10 to-indigo-600/5 border border-slate-800 mb-6 sm:mb-12 overflow-hidden group shadow-xl">
         <Sparkles className="absolute top-4 sm:top-6 right-6 sm:right-8 w-6 h-6 sm:w-12 sm:h-12 text-blue-500/10 group-hover:rotate-12 transition-transform duration-700" />
         <h2 className="text-xl sm:text-4xl font-bold text-foreground mb-2 sm:mb-4 leading-tight">Master your subjects<br />with AI precision.</h2>
         <p className="text-muted-foreground text-xs sm:text-lg max-w-xl mb-4 sm:mb-8 leading-relaxed">Stuck on a problem at 2 AM? Get step-by-step guidance and conceptual deep-dives instantly.</p>
@@ -1235,7 +1240,7 @@ function SelectionView({ onCreate, onUpload, sessions, onSelectSession, lastSess
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
         <div>
-          <h3 className="text-xl font-bold text-white mb-6 uppercase tracking-widest text-blue-400/80">Subjects</h3>
+          <h3 className="text-xl font-bold text-foreground dark:text-white mb-6 uppercase tracking-widest text-blue-400/80">Subjects</h3>
           <div className="grid grid-cols-1 gap-4">
             {quickTopics.map((topic) => (
               <button
@@ -1247,7 +1252,7 @@ function SelectionView({ onCreate, onUpload, sessions, onSelectSession, lastSess
                     onCreate(`${topic.name} Doubt Session`, topic.subjectKey as SubjectKey);
                   }
                 }}
-                className="p-4 sm:p-6 rounded-[20px] sm:rounded-[28px] bg-card/40 border border-border/50 hover:border-blue-500/30 transition-all group flex items-center gap-4 sm:gap-6 shadow-sm hover:shadow-md"
+                className="p-4 sm:p-6 rounded-[20px] sm:rounded-[28px] bg-card/40 border border-slate-800 hover:border-blue-500/30 transition-all group flex items-center gap-4 sm:gap-6 shadow-sm hover:shadow-md"
               >
                 <div className="w-10 h-10 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl bg-muted border border-border/50 flex items-center justify-center group-hover:scale-110 transition-transform shadow-inner">
                   <topic.icon className={`w-5 h-5 sm:w-7 sm:h-7 ${topic.color}`} />
@@ -1272,7 +1277,7 @@ function SelectionView({ onCreate, onUpload, sessions, onSelectSession, lastSess
                   e.preventDefault();
                   handleStartEdit(e, s);
                 }}
-                className="w-full p-4 sm:p-5 rounded-2xl sm:rounded-[28px] bg-card/30 border border-border/50 hover:bg-card/50 transition-all text-left flex items-center justify-between group cursor-pointer shadow-sm hover:shadow-md"
+                className="w-full p-4 sm:p-5 rounded-2xl sm:rounded-[28px] bg-card/30 border border-slate-800 hover:bg-card/50 transition-all text-left flex items-center justify-between group cursor-pointer shadow-sm hover:shadow-md"
                 role="button"
                 tabIndex={0}
               >
@@ -1292,7 +1297,7 @@ function SelectionView({ onCreate, onUpload, sessions, onSelectSession, lastSess
                           if (e.key === 'Escape') setEditingId(null);
                         }}
                         onClick={(e) => e.stopPropagation()}
-                        className="bg-white/10 border border-blue-500/50 rounded px-2 py-0.5 text-sm text-white w-full focus:outline-none"
+                        className="bg-slate-200/50 dark:bg-white/10 border border-blue-500/50 rounded px-2 py-0.5 text-sm text-foreground dark:text-white w-full focus:outline-none"
                       />
                     ) : (
                       <>
@@ -1629,7 +1634,7 @@ function ImageUploadModal({ onClose, onUpload }: { onClose: () => void, onUpload
       <div className="absolute inset-0 bg-[#020617]/90 backdrop-blur-md" onClick={onClose} />
       <div className="relative w-full max-w-lg bg-[#0A1128] border border-white/10 rounded-[32px] p-8 shadow-2xl overflow-hidden">
         <div className="flex justify-between items-center mb-8">
-          <h3 className="text-xl font-bold text-white">Visual Problem Solver</h3>
+          <h3 className="text-xl font-bold text-foreground dark:text-white">Visual Problem Solver</h3>
           <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-full"><X className="w-5 h-5 text-slate-400" /></button>
         </div>
 
@@ -1646,7 +1651,7 @@ function ImageUploadModal({ onClose, onUpload }: { onClose: () => void, onUpload
           className="border-2 border-dashed border-white/10 rounded-3xl p-12 text-center group hover:border-blue-500/50 transition-all cursor-pointer bg-white/[0.02]"
         >
           <div className="w-12 h-12 text-blue-500 mx-auto mb-6 group-hover:scale-110 transition-transform flex items-center justify-center">📷</div>
-          <p className="text-lg font-semibold text-white mb-2">Snap or Drag Problem</p>
+          <p className="text-lg font-semibold text-foreground dark:text-white mb-2">Snap or Drag Problem</p>
           <p className="text-sm text-slate-500">Supports handwriting and textbook scans</p>
         </div>
       </div>

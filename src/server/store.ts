@@ -1220,7 +1220,7 @@ export function readStore(): AppStore {
 
 export function writeStore(store: AppStore): void {
   ensureStoreFile();
-  fs.writeFileSync(STORE_PATH, JSON.stringify(store, null, 2), "utf8");
+  fs.writeFileSync(STORE_PATH, JSON.stringify(store), "utf8");
   cachedStore = store;
   lastLoadedTime = fs.statSync(STORE_PATH).mtimeMs;
 }

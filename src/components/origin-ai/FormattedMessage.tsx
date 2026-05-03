@@ -25,7 +25,8 @@ function normalizeDelimiters(content: string): string {
   let result = content
     .replace(/\\\[([\s\S]*?)\\\]/g, '\n$$\n$1\n$$\n')
     .replace(/\\\(([\s\S]*?)\\\)/g, '$$$1$$')
-    .replace(/√/g, '\\sqrt');
+    .replace(/√\(([\s\S]*?)\)/g, '\\sqrt{$1}') // Handle √(x+y) -> \sqrt{x+y}
+    .replace(/√/g, '\\sqrt '); // Fallback for bare symbol
 
   // Step 2: Wrap bare LaTeX expressions with $ delimiters
   result = wrapBareLaTeX(result);
@@ -53,13 +54,21 @@ function wrapBareLaTeX(text: string): string {
 
   // Peek ahead from position pos (skipping spaces) and check if what follows
   // looks like math (LaTeX command, Greek, math symbol, or ^ _)
-  const nextIsMath = (pos: number): boolean => {
-    let k = pos;
-    while (k < len && (text[k] === ' ' || text[k] === '\t')) k++;
-    if (k >= len) return false;
-    const c = text[k];
-    return c === '\\' || isGreek(c) || isMathSymbol(c) || '^_'.includes(c);
-  };
+    const nextIsMath = (pos: number): boolean => {
+      let k = pos;
+      while (k < len && (text[k] === ' ' || text[k] === '\t')) k++;
+      if (k >= len) return false;
+      const c = text[k];
+      
+      // Detection for common math functions like cos, sin, tan, log, ln
+      if (k + 2 < len) {
+        const word = text.slice(k, k + 3).toLowerCase();
+        if (['sin', 'cos', 'tan', 'log'].includes(word)) return true;
+        if (word.startsWith('ln')) return true;
+      }
+      
+      return c === '\\' || isGreek(c) || isMathSymbol(c) || '^_'.includes(c);
+    };
 
   while (i < len) {
     // ── Case 1: $$ ... $$ block ───────────────────────────────────────────
@@ -84,9 +93,17 @@ function wrapBareLaTeX(text: string): string {
 
     // ── Case 3: Bare LaTeX starting point ─────────────────────────────────
     const isLatexCmd = text[i] === '\\' && i + 1 < len && /[a-zA-Z]/.test(text[i + 1]);
-    const isSpecial = isGreek(text[i]) || isMathSymbol(text[i]);
+    const isSpecial = isGreek(text[i]) || isMathSymbol(text[i]) || /[0-9]/.test(text[i]);
+    
+    // Check if we are at the start of a math function like cos, sin, tan
+    let isMathWord = false;
+    if (i + 2 < len) {
+      const word3 = text.slice(i, i + 3).toLowerCase();
+      if (['sin', 'cos', 'tan', 'log'].includes(word3)) isMathWord = true;
+      if (text.slice(i, i + 2).toLowerCase() === 'ln') isMathWord = true;
+    }
 
-    if (isLatexCmd || isSpecial) {
+    if (isLatexCmd || isSpecial || isMathWord) {
       const mathStart = i;
       let braceDepth = 0;
       let j = i;
@@ -127,8 +144,8 @@ function wrapBareLaTeX(text: string): string {
         // Superscript / subscript
         if ('^_'.includes(c)) { j++; continue; }
 
-        // Operators and digits
-        if (/[0-9+\-*\/=<>!|&~%]/.test(c)) { j++; continue; }
+        // Operators, digits, and grouping symbols
+        if (/[0-9+\-*\/=<>!|&~%()[\]]/.test(c)) { j++; continue; }
 
         // Greek or math symbols
         if (isGreek(c) || isMathSymbol(c)) { j++; continue; }
@@ -139,14 +156,23 @@ function wrapBareLaTeX(text: string): string {
         // Space / tab: allow only when next non-space token is math-like
         if (c === ' ' || c === '\t') {
           if (nextIsMath(j + 1)) { j++; continue; }
-          // Also allow if a digit follows and THEN math (e.g. "2\theta")
+          // Allow single letter variables after space, e.g. "\sqrt x"
           let k = j + 1;
+          while (k < len && (text[k] === ' ' || text[k] === '\t')) k++;
+          if (k < len && /[a-zA-Z]/.test(text[k])) {
+             // check if it's a single letter followed by space, punctuation, or math
+             if (k + 1 >= len || /[\s.,;:)\]]/.test(text[k + 1]) || nextIsMath(k + 1)) {
+                 j++; continue;
+             }
+          }
+          // Also allow if a digit follows and THEN math (e.g. "2\theta")
+          k = j + 1;
           while (k < len && /[0-9]/.test(text[k])) k++;
           if (k > j + 1 && nextIsMath(k)) { j++; continue; }
           break;
         }
 
-        // Everything else (parens, commas, colons …) – stop
+        // Everything else – stop
         break;
       }
 
@@ -208,22 +234,6 @@ export function FormattedMessage({ content, className, isAssistant = true, inlin
             <li className="leading-relaxed select-text" {...rest}>{children}</li>,
           strong: ({ children, node, ...rest }: StrongProps) =>
             <strong className="font-bold" {...rest}>{children}</strong>,
-          div: ({ className: cls, children, node, ...rest }: DivProps) => {
-            if (cls?.includes('math-display')) {
-              return (
-                <div
-                  className={cn(
-                    'my-4 overflow-x-auto py-2 flex justify-center bg-primary/5 rounded-xl border border-primary/10',
-                    inline && 'my-1 py-1'
-                  )}
-                  {...rest}
-                >
-                  {children}
-                </div>
-              );
-            }
-            return <div className={cls} {...rest}>{children}</div>;
-          },
         }}
       >
         {normalizedContent}

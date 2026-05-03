@@ -9,7 +9,7 @@ import RoomTestClient from './_client';
 export default async function StudyRoomTestPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const user = await getServerUser();
-  if (!user) redirect(`/auth?next=/study-rooms/${id}/test`);
+  if (!user) redirect('/');
 
   let state: RoomState;
   try {

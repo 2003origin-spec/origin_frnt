@@ -172,10 +172,14 @@ export default function Dashboard({
 
     const fetchPoints = async () => {
       try {
-        const data = await apiCall('/users/points/');
+        const data = await apiCall('/users/points/', { silentAuth: true });
         setPointsData(data);
       } catch (err) {
-        console.error("Failed to fetch points", err);
+        if (err instanceof Error && err.message.includes('Session expired')) {
+          console.warn("[Dashboard] Session expired during background points fetch.");
+        } else {
+          console.error("Failed to fetch points", err);
+        }
       }
     };
     fetchPoints();
@@ -205,7 +209,7 @@ export default function Dashboard({
     // 2. Poll for stats/achievements periodically
     const checkAchievements = async () => {
       try {
-        const stats = await apiCall('/assessments/ogcode/user-stats/');
+        const stats = await apiCall('/assessments/ogcode/user-stats/', { silentAuth: true });
         const newAchievements = stats.achievements || {};
         
         // Initial load - don't notify
@@ -237,7 +241,11 @@ export default function Dashboard({
         });
         achievementsRef.current = newAchievements;
       } catch (err) {
-        console.error("Failed to check achievements", err);
+        if (err instanceof Error && err.message.includes('Session expired')) {
+          console.warn("[Dashboard] Session expired during achievement poll.");
+        } else {
+          console.error("Failed to check achievements", err);
+        }
       }
     };
 

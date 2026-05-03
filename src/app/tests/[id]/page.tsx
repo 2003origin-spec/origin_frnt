@@ -16,7 +16,7 @@ export default function TestPage({ params }: { params: Promise<{ id: string }> }
 async function TestContent({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const user = await getServerUser();
-  if (!user) redirect(`/auth?next=/tests/${id}`);
+  if (!user) redirect('/');
 
   let initialTest: Test;
   try {

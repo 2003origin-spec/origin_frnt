@@ -161,7 +161,7 @@ export async function refreshTokenAction(): Promise<{ ok: boolean }> {
   const refresh = cookieStore.get('origin_refresh_token')?.value;
   if (!refresh) return { ok: false };
 
-  const response = await handleRefresh({ refresh });
+  const response = await handleRefresh(null, { refresh });
   if (!response.ok) return { ok: false };
 
   let body: Record<string, unknown> = {};

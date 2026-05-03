@@ -1,5 +1,5 @@
 import bcrypt from "bcryptjs";
-import { createAuthSession, isRefreshTokenValid, rotateAccessToken, requireUserFromRequest, resolveTokenToUser, refreshAccessToken, createAuthSessionAsync } from "@/server/auth";
+import { createAuthSession, isRefreshTokenValid, rotateAccessToken, requireUserFromRequest, resolveTokenToUser, refreshAccessToken, createAuthSessionAsync, extractRefreshTokenCookie } from "@/server/auth";
 import { isUserPostgresConfigured } from "@/server/user-postgres";
 import { dbLoginUser, dbRegisterUser, dbGetTasks, dbCreateTask, dbUpdateTask, dbDeleteTask, dbFindUserByEmail, dbCreateUser, dbUpdateUser, dbCreateAuthSession, dbGetUserCount } from "@/server/db-users";
 import { OAuth2Client } from "google-auth-library";
@@ -558,8 +558,8 @@ export async function handleGoogleLogin(payload: UserPayload) {
   }
 }
 
-export async function handleRefresh(payload: UserPayload) {
-  const refreshToken = asString(payload.refresh);
+export async function handleRefresh(request: Request | null, payload: UserPayload) {
+  const refreshToken = asString(payload.refresh) ?? (request ? extractRefreshTokenCookie(request) : null);
   if (!refreshToken) {
     return badRequest("Refresh token is required.");
   }
@@ -956,7 +956,7 @@ export async function handleUsersRequest(method: string, slug: string[], request
     return handleGoogleLogin(payload);
   }
   if (slug.length === 2 && slug[0] === "token" && slug[1] === "refresh" && method === "POST") {
-    return handleRefresh(payload);
+    return handleRefresh(request, payload);
   }
   if (slug.length === 1 && slug[0] === "me" && method === "GET") {
     return handleMeGet(request);

@@ -1971,7 +1971,9 @@ export async function sendOriginAiMessage(
   if (currentUsage.tokensUsedToday >= 200000) {
     return { error: "DAILY_TOKEN_LIMIT_EXCEEDED" };
   }
-  if (isVoiceMode && currentUsage.voiceMinutesUsedToday >= 10) {
+
+  const isExplainer = input?.pageKind === "doubt_solver";
+  if (isVoiceMode && currentUsage.voiceMinutesUsedToday >= 10 && !isExplainer) {
     return { error: "DAILY_VOICE_LIMIT_EXCEEDED" };
   }
 

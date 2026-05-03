@@ -674,7 +674,7 @@ export default function StudyCorner({ catalog }: StudyCornerProps) {
                                 >
                                     <Library className="w-3.5 h-3.5" />
                                     {folder}
-                                    <Badge className="ml-1 bg-white/20 text-white border-none text-[10px] h-4 min-w-[16px] px-1 flex items-center justify-center">{folders[folder].length}</Badge>
+                                    <Badge className={`ml-1 border-none text-[10px] h-4 min-w-[16px] px-1 flex items-center justify-center ${selectedFolder === folder ? 'bg-white/20 text-white' : 'bg-primary/10 text-primary'}`}>{folders[folder].length}</Badge>
                                 </button>
                             ))}
                         </div>

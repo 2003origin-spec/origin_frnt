@@ -311,6 +311,7 @@ type PersistTestAnalysisInput = {
   weakTopics: AnalyticsTopicSignal[];
   strongTopics: AnalyticsTopicSignal[];
   dppPlans: AnalyticsDppPlan[];
+  isMalpractice?: boolean;
 };
 
 type PersistDppAttemptInput = {
@@ -632,7 +633,7 @@ export async function persistTestAnalysisResult(input: PersistTestAnalysisInput)
         JSON.stringify(input.weakTopics),
         JSON.stringify(input.strongTopics),
         JSON.stringify(input.aiAnalysis),
-        false,
+        input.isMalpractice || false,
         createdAt,
       ],
     );
@@ -727,7 +728,7 @@ export async function persistTestAnalysisResult(input: PersistTestAnalysisInput)
     strongAreas: input.strongAreas,
     aiAnalysis: input.aiAnalysis,
     subjectStats: input.subjectStats as PersistedTestResultRecord["subjectStats"],
-    isMalpractice: false,
+    isMalpractice: input.isMalpractice || false,
     createdAt,
     answers: input.answers,
   };

@@ -21,7 +21,7 @@ const PROTECTED_PREFIXES = [
   '/admin',
 ];
 
-export function proxy(request: NextRequest) {
+export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const token = request.cookies.get('origin_access_token')?.value;
 

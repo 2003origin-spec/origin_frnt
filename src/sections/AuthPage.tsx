@@ -176,7 +176,7 @@ export default function AuthPage({
               />
             </div>
             <CardTitle className="text-2xl font-bold text-foreground">
-              {userRole === 'teacher' ? 'Teacher Login' : userRole === 'student' ? 'Student Login' : userRole === 'admin' ? 'Admin Portal' : 'Welcome to ORIGIN'}
+              {userRole === 'teacher' ? 'Teacher Login' : userRole === 'admin' ? 'Admin Portal' : 'Student Login'}
             </CardTitle>
             <CardDescription className="text-muted-foreground">
               {userRole === 'teacher' ? 'Access your dashboard and manage classes' : userRole === 'admin' ? 'System administration and platform management' : 'Your AI-powered JEE preparation companion'}
@@ -391,9 +391,6 @@ export default function AuthPage({
                         Remember me
                       </label>
                     </div>
-                    <button type="button" className="text-sm text-primary hover:underline">
-                      Forgot password?
-                    </button>
                   </div>
                 )}
 

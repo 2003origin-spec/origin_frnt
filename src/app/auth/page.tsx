@@ -10,6 +10,8 @@ function AuthPageContent() {
   const { user, userRole, login, loginWithOtp, register, googleLogin, isLoading, authError, sendOtp, verifyOtp } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const next = searchParams.get ? searchParams.get('next') : (searchParams as any).next;
+  const role = searchParams.get ? searchParams.get('role') : (searchParams as any).role;
   const requestedRole = searchParams.get('role');
   const nextParam = searchParams.get('next');
 
@@ -42,7 +44,7 @@ function AuthPageContent() {
           ? user.role === 'student' || user.role === 'teacher' || user.role === 'admin'
             ? user.role
             : null
-          : (selectedRole || (isAdminRedirect ? 'admin' : null)) ?? (userRole as any)
+          : (selectedRole || (isAdminRedirect ? 'admin' : 'student')) ?? (userRole as any)
       }
       onLogin={login}
       onLoginWithOtp={loginWithOtp}
@@ -50,7 +52,7 @@ function AuthPageContent() {
       onGoogleLogin={googleLogin}
       sendOtp={sendOtp}
       verifyOtp={verifyOtp}
-      onBack={() => router.back()}
+      onBack={() => router.push('/')}
       isLoading={isLoading}
       error={authError}
     />
