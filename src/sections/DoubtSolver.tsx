@@ -204,7 +204,7 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
       addNotification({
         title: 'Quota Exhausted',
         message: 'Your daily text quota for AI Explainer has been reached. Upgrade for unlimited access.',
-        type: 'alert'
+        type: 'warning'
       });
       hasNotifiedRef.current = true;
     } else if (!isTextQuotaReached) {

@@ -29,6 +29,7 @@ export async function GET(request: NextRequest, context: IdRouteContext) {
       async start(controller) {
         const encoder = new TextEncoder();
         let cursor = initialCursor;
+        let lastMembershipCheck = Date.now();
 
         controller.enqueue(encoder.encode(": connected\n\n"));
 
@@ -40,6 +41,17 @@ export async function GET(request: NextRequest, context: IdRouteContext) {
               signal,
             });
 
+            const membershipCheckDue = Date.now() - lastMembershipCheck > 15_000;
+            if (membershipCheckDue) {
+              try {
+                await requireRoomMembership(roomId, user.id);
+                lastMembershipCheck = Date.now();
+              } catch {
+                controller.enqueue(encodeSse(cursor, "membership_lost", { type: "membership_lost" }));
+                break;
+              }
+            }
+
             if (events.length === 0) {
               controller.enqueue(encoder.encode(": keepalive\n\n"));
               continue;
@@ -48,6 +60,12 @@ export async function GET(request: NextRequest, context: IdRouteContext) {
             for (const entry of events) {
               controller.enqueue(encodeSse(entry.id, entry.event.type, entry.event));
               cursor = entry.id;
+              if (
+                (entry.event.type === "kicked" && entry.event.user_id === user.id) ||
+                entry.event.type === "room_closed"
+              ) {
+                return;
+              }
             }
           }
         } catch (error) {

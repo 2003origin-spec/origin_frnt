@@ -8,6 +8,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { apiCall } from '@/lib/api';
 import { FormattedMessage } from '@/components/origin-ai/FormattedMessage';
+import { DegradedBanner } from '@/components/DegradedBanner';
 import type { User } from '@/types';
 import {
   ArrowRight,
@@ -39,6 +40,10 @@ interface GeneratedDppAttemptSummary {
   progressScore: number;
   progress_score?: number;
   completed: boolean;
+  analysisStatus?: 'pending' | 'complete' | 'failed';
+  analysis_status?: 'pending' | 'complete' | 'failed';
+  analysisError?: string | null;
+  analysis_error?: string | null;
   createdAt: string;
 }
 
@@ -79,6 +84,9 @@ function getErrorMessage(error: unknown, fallback: string) {
 }
 
 interface DppSubmissionResponse extends GeneratedDppAttemptSummary {
+  degraded?: boolean;
+  degradedReason?: string;
+  degraded_reason?: string;
   answers: Array<{
     questionId: string;
     selectedOption: number | null;
@@ -123,6 +131,7 @@ export default function DPPView({ onBack, initialDpps }: DPPViewProps) {
   const currentQuestion = currentQuestions[currentQuestionIndex] ?? null;
   const progress = currentQuestions.length > 0 ? ((currentQuestionIndex + 1) / currentQuestions.length) * 100 : 0;
   const isCompleted = Boolean(submissionResult);
+  const submissionAnalysisStatus = submissionResult?.analysisStatus ?? submissionResult?.analysis_status ?? 'complete';
 
   useEffect(() => {
     if (initialDpps !== null) {
@@ -180,6 +189,38 @@ export default function DPPView({ onBack, initialDpps }: DPPViewProps) {
     setSubmissionResult(null);
     questionStartedAtRef.current = Date.now();
   }, [selectedDppId, currentDpp?.questions?.length]);
+
+  useEffect(() => {
+    if (!selectedDppId || submissionAnalysisStatus !== 'pending') {
+      return;
+    }
+
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const detail = await apiCall(`/assessments/dpps/${selectedDppId}/`);
+        if (cancelled) {
+          return;
+        }
+        setDpps((previous) => previous.map((entry) => (entry.id === selectedDppId ? detail : entry)));
+        if (detail?.latestAttempt) {
+          setSubmissionResult((previous) => ({
+            ...detail.latestAttempt,
+            answers: previous?.answers ?? [],
+          }));
+        }
+      } catch {
+        // Keep the scored pending attempt visible until a later poll succeeds.
+      }
+    };
+
+    const interval = window.setInterval(poll, 3000);
+    void poll();
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [selectedDppId, submissionAnalysisStatus]);
 
   const getCorrectOption = (index: number) => {
     const result = checkResults[index];
@@ -388,6 +429,18 @@ export default function DPPView({ onBack, initialDpps }: DPPViewProps) {
         ) : isCompleted ? (
           <Card className="border-0 shadow-lg dark:bg-slate-900/60 dark:ring-1 dark:ring-white/10">
             <CardContent className="p-8 text-center">
+              {submissionAnalysisStatus === 'pending' ? (
+                <div className="mb-6 text-left">
+                  <DegradedBanner
+                    title="Analytics processing"
+                    reason="Your DPP score is ready. Detailed progress analysis will update shortly."
+                  />
+                </div>
+              ) : submissionResult?.degraded ? (
+                <div className="mb-6 text-left">
+                  <DegradedBanner reason={submissionResult.degradedReason ?? submissionResult.degraded_reason ?? null} />
+                </div>
+              ) : null}
               <div className="w-24 h-24 mx-auto rounded-full bg-gradient-to-br from-[#3CACA3] to-[#1E3A5F] flex items-center justify-center mb-6">
                 <CheckCircle2 className="w-12 h-12 text-white" />
               </div>

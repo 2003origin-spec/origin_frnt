@@ -1,6 +1,6 @@
 -- ORIGIN user/auth/task schema
 -- Run against USER_DATABASE_URL to activate Postgres-backed storage.
--- The app falls back to the flat-file store when this database is not configured.
+-- Week 2 mutable app collections live in src/db/migrations/20260504_week2_app_store.sql.
 
 CREATE TABLE IF NOT EXISTS origin_users (
   id            TEXT PRIMARY KEY,
@@ -38,15 +38,4 @@ CREATE TABLE IF NOT EXISTS origin_auth_sessions (
 CREATE INDEX IF NOT EXISTS idx_auth_sessions_refresh  ON origin_auth_sessions (refresh_token);
 CREATE INDEX IF NOT EXISTS idx_auth_sessions_user     ON origin_auth_sessions (user_id);
 
-CREATE TABLE IF NOT EXISTS origin_tasks (
-  id         TEXT PRIMARY KEY,
-  user_id    TEXT NOT NULL REFERENCES origin_users(id) ON DELETE CASCADE,
-  text       TEXT NOT NULL,
-  completed  BOOLEAN NOT NULL DEFAULT FALSE,
-  due        TIMESTAMPTZ NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  category   TEXT,
-  priority   TEXT CHECK (priority IN ('low', 'medium', 'high'))
-);
-
-CREATE INDEX IF NOT EXISTS idx_tasks_user ON origin_tasks (user_id);
+CREATE SCHEMA IF NOT EXISTS app;

@@ -1,4 +1,5 @@
 import type { NextRequest } from "next/server";
+import { revalidateTag } from "next/cache";
 
 import { requireUserFromRequest } from "@/server/auth";
 import { submitLimiter, generalLimiter, checkRateLimit } from "@/lib/rate-limit";
@@ -17,6 +18,7 @@ import {
   getOgcodeSubjectRanks,
   getOgcodeUserStats,
   getPracticeQuestionDetail,
+  getSingleResultAnalysis,
   getSingleResult,
   getTestDetail,
   listTestPreviews,
@@ -32,10 +34,38 @@ import {
   updateOgcodeLocation,
 } from "@/server/assessments";
 import { badRequest, created, getSlugSegments, methodNotAllowed, notFound, ok, parseJsonBody, unauthorized } from "@/server/http";
-import { readStore, withStore, withStoreAsync } from "@/server/store";
+import { readStoreAsync, withStoreAsync } from "@/server/store";
 
-function authUser(request: Request) {
-  const store = readStore();
+function revalidateUserProgress(userId: string) {
+  revalidateTag("milestones", "max");
+  revalidateTag("progress", "max");
+  revalidateTag(`progress-user:${userId}`, "max");
+  revalidateTag("leaderboard", "max");
+  revalidateTag("auth-user", "max");
+  revalidateTag(`user:${userId}`, "max");
+}
+
+function revalidateTestMutation(userId: string, testId?: string) {
+  revalidateTag("tests", "max");
+  if (testId) {
+    revalidateTag(`test:${testId}`, "max");
+  }
+  revalidateUserProgress(userId);
+  revalidateTag("ogcode-catalog", "max");
+}
+
+function revalidateOgcodeMutation(userId: string, questionId?: string) {
+  revalidateUserProgress(userId);
+  revalidateTag("ogcode-catalog", "max");
+  revalidateTag(`ogcode-user:${userId}`, "max");
+  revalidateTag("user-stats", "max");
+  if (questionId) {
+    revalidateTag(`ogcode-question:${questionId}`, "max");
+  }
+}
+
+async function authUser(request: Request) {
+  const store = await readStoreAsync();
   const user = requireUserFromRequest(store, request);
   if (!user) {
     return null;
@@ -48,7 +78,7 @@ type RouteContext = {
 };
 
 export async function GET(request: NextRequest, context: RouteContext) {
-  const auth = authUser(request);
+  const auth = await authUser(request);
   if (!auth) {
     return unauthorized();
   }
@@ -72,6 +102,10 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
     if (root === "tests" && first && second === "results") {
       return ok(await listTestResults(store, user, first));
+    }
+
+    if (root === "results" && first && second === "analysis") {
+      return ok(await getSingleResultAnalysis(store, user, first));
     }
 
     if (root === "results" && first) {
@@ -183,7 +217,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
   const slug = getSlugSegments(params);
   const [root, first, second] = slug;
 
-  const auth = authUser(request);
+  const auth = await authUser(request);
   if (!auth) {
     return unauthorized();
   }
@@ -202,6 +236,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
         }
         return createCustomTest(store, user, body);
       });
+      revalidateTag("tests", "max");
+      revalidateTag(`progress-user:${auth.user.id}`, "max");
       return created(response);
     }
 
@@ -214,6 +250,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         }
         return submitTest(store, user, first, body);
       });
+      revalidateTestMutation(auth.user.id, first);
       return created(response);
     }
 
@@ -226,6 +263,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         }
         return submitGeneratedDpp(store, user, first, body);
       });
+      revalidateTestMutation(auth.user.id);
       return created(response);
     }
 
@@ -250,18 +288,21 @@ export async function POST(request: NextRequest, context: RouteContext) {
         }
         return submitPracticeQuestion(store, user, first, body);
       });
+      revalidateOgcodeMutation(auth.user.id, first);
       return ok(response);
     }
 
     if (root === "ogcode" && first === "location") {
       const body = await parseJsonBody<UpdateOgcodeLocationPayload>(request);
-      const response = withStore((store) => {
+      const response = await withStoreAsync(async (store) => {
         const user = requireUserFromRequest(store, request);
         if (!user) {
           throw new Error("Authentication credentials were not provided.");
         }
         return updateOgcodeLocation(store, user, body);
       });
+      revalidateTag("leaderboard", "max");
+      revalidateTag(`progress-user:${auth.user.id}`, "max");
       return ok(response);
     }
   } catch (error) {

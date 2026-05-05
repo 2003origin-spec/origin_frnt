@@ -19,12 +19,12 @@ import {
 } from "@/server/assessments";
 import { dbGetTasks } from "@/server/db-users";
 import { buildPointsSummary } from "@/server/gamification";
-import { readStore } from "@/server/store";
+import { readStoreAsync } from "@/server/store";
 import { isUserPostgresConfigured } from "@/server/user-postgres";
 import { buildUserStatsSnapshot, serializeTask } from "@/server/users";
 
-function requireStoredUser(userId: string) {
-  const store = readStore();
+async function requireStoredUser(userId: string) {
+  const store = await readStoreAsync();
   const user = store.users.find((entry) => entry.id === userId);
   if (!user) {
     throw new Error(`Stored user ${userId} was not found.`);
@@ -37,7 +37,7 @@ export async function listTestsForRender(userId: string) {
   cacheLife('hours');
   cacheTag('tests', `progress-user:${userId}`);
 
-  const { store, user } = requireStoredUser(userId);
+  const { store, user } = await requireStoredUser(userId);
   return listTestPreviews(store, user);
 }
 
@@ -46,7 +46,7 @@ export async function getTestDetailForRender(userId: string, testId: string) {
   cacheLife('hours');
   cacheTag('tests', `test:${testId}`, `progress-user:${userId}`);
 
-  const { store, user } = requireStoredUser(userId);
+  const { store, user } = await requireStoredUser(userId);
   return getTestDetail(store, user, testId);
 }
 
@@ -55,7 +55,7 @@ export async function listTestResultsForRender(userId: string, testId: string) {
   cacheLife('minutes');
   cacheTag('tests', `test:${testId}`, 'progress', `progress-user:${userId}`);
 
-  const { store, user } = requireStoredUser(userId);
+  const { store, user } = await requireStoredUser(userId);
   return listTestResults(store, user, testId);
 }
 
@@ -64,7 +64,7 @@ export async function getSingleResultForRender(userId: string, resultId: string)
   cacheLife('minutes');
   cacheTag('tests', 'progress', `progress-user:${userId}`);
 
-  const { store, user } = requireStoredUser(userId);
+  const { store, user } = await requireStoredUser(userId);
   return getSingleResult(store, user, resultId);
 }
 
@@ -79,13 +79,13 @@ export async function listTasksForRender(userId: string) {
       return tasks.map(serializeTask);
     } catch (error) {
       console.error(
-        '[render-loaders] DB task preload failed, falling back to flat-file',
+        '[render-loaders] DB task preload failed, falling back to in-memory seed',
         error instanceof Error ? error.message : error,
       );
     }
   }
 
-  const store = readStore();
+  const store = await readStoreAsync();
   return store.tasks
     .filter((task) => task.userId === userId)
     .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
@@ -97,7 +97,7 @@ export async function getPointsSummaryForRender(userId: string) {
   cacheLife('minutes');
   cacheTag('milestones', 'progress', `progress-user:${userId}`);
 
-  const { store } = requireStoredUser(userId);
+  const { store } = await requireStoredUser(userId);
   return buildPointsSummary(store, userId);
 }
 
@@ -106,7 +106,7 @@ export async function getProfileStatsForRender(userId: string) {
   cacheLife('minutes');
   cacheTag('auth-user', `user:${userId}`, 'progress', `progress-user:${userId}`);
 
-  const { store, user } = requireStoredUser(userId);
+  const { store, user } = await requireStoredUser(userId);
   return buildUserStatsSnapshot(store, user);
 }
 
@@ -115,7 +115,7 @@ export async function getChallengeOfTheDayForRender(userId: string) {
   cacheLife('hours');
   cacheTag('ogcode-challenge', `ogcode-user:${userId}`);
 
-  const { store, user } = requireStoredUser(userId);
+  const { store, user } = await requireStoredUser(userId);
   return getChallengeOfTheDay(store, user);
 }
 
@@ -126,7 +126,7 @@ export async function listGeneratedDppsForRender(userId: string) {
   cacheLife('minutes');
   cacheTag('progress', `progress-user:${userId}`);
 
-  const { store, user } = requireStoredUser(userId);
+  const { store, user } = await requireStoredUser(userId);
   return listGeneratedDpps(store, user);
 }
 
@@ -138,7 +138,7 @@ export async function listOgcodeQuestionsForRender(
   cacheLife('hours');
   cacheTag('ogcode-catalog', `ogcode-user:${userId}`);
 
-  const { store, user } = requireStoredUser(userId);
+  const { store, user } = await requireStoredUser(userId);
   return listOgcodeQuestions(store, user, filters);
 }
 
@@ -150,7 +150,7 @@ export async function listOgcodeQuestionPageForRender(
   cacheLife('minutes');
   cacheTag('ogcode-catalog', `ogcode-user:${userId}`);
 
-  const { store, user } = requireStoredUser(userId);
+  const { store, user } = await requireStoredUser(userId);
   return listOgcodeQuestionPage(store, user, filters);
 }
 
@@ -162,7 +162,7 @@ export async function getOgcodeIndexDataForRender(
   cacheLife('minutes');
   cacheTag('ogcode-catalog', 'leaderboard', `ogcode-user:${userId}`, `progress-user:${userId}`);
 
-  const { store, user } = requireStoredUser(userId);
+  const { store, user } = await requireStoredUser(userId);
   return getOgcodeIndexData(store, user, filters);
 }
 
@@ -171,7 +171,7 @@ export async function getPracticeQuestionDetailForRender(userId: string, questio
   cacheLife('hours');
   cacheTag('ogcode-catalog', `ogcode-question:${questionId}`, `ogcode-user:${userId}`);
 
-  const { store, user } = requireStoredUser(userId);
+  const { store, user } = await requireStoredUser(userId);
   return getPracticeQuestionDetail(store, user, questionId);
 }
 
@@ -180,7 +180,7 @@ export async function getOgcodeLeaderboardForRender(userId: string, subject: str
   cacheLife('minutes');
   cacheTag('leaderboard', `progress-user:${userId}`);
 
-  const { store, user } = requireStoredUser(userId);
+  const { store, user } = await requireStoredUser(userId);
   return getOgcodeLeaderboard(store, user, subject);
 }
 
@@ -189,7 +189,7 @@ export async function getOgcodeUserStatsForRender(userId: string) {
   cacheLife('minutes');
   cacheTag('leaderboard', `progress-user:${userId}`);
 
-  const { store, user } = requireStoredUser(userId);
+  const { store, user } = await requireStoredUser(userId);
   return getOgcodeUserStats(store, user);
 }
 
@@ -198,7 +198,7 @@ export async function getOgcodeSubjectRanksForRender(userId: string) {
   cacheLife('minutes');
   cacheTag('leaderboard', `progress-user:${userId}`);
 
-  const { store, user } = requireStoredUser(userId);
+  const { store, user } = await requireStoredUser(userId);
   return getOgcodeSubjectRanks(store, user);
 }
 
@@ -207,6 +207,6 @@ export async function listOgcodeQuestionChaptersForRender(userId: string, subjec
   cacheLife('hours');
   cacheTag('ogcode-catalog', `ogcode-user:${userId}`);
 
-  const { store, user } = requireStoredUser(userId);
+  const { store, user } = await requireStoredUser(userId);
   return listOgcodeQuestionChapters(store, user, subject);
 }

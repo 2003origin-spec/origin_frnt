@@ -190,6 +190,13 @@ export interface TestResult {
   }>;
   aiAnalysis: AIAnalysis;
   isMalpractice?: boolean;
+  degraded?: boolean;
+  degradedReason?: string;
+  degraded_reason?: string;
+  analysisStatus?: 'pending' | 'complete' | 'failed';
+  analysis_status?: 'pending' | 'complete' | 'failed';
+  analysisError?: string | null;
+  analysis_error?: string | null;
   percentage?: number;
   createdAt?: string;
 }

@@ -5,7 +5,7 @@ import { revalidateTag } from 'next/cache';
 import { getServerUser } from '@/lib/auth-server';
 import { isUserPostgresConfigured } from '@/server/user-postgres';
 import { dbCreateTask, dbDeleteTask, dbGetTasks, dbUpdateTask } from '@/server/db-users';
-import { createId, withStore } from '@/server/store';
+import { createId, withStoreAsync } from '@/server/store';
 import type { StoredTask } from '@/server/store';
 import { serializeTask } from '@/server/users';
 
@@ -37,11 +37,11 @@ export async function listTasksAction(): Promise<SerializedTask[]> {
       const tasks = await dbGetTasks(userId);
       return tasks.map(serializeTask);
     } catch (err) {
-      console.error('[task-actions] DB list failed, falling back to flat-file', err instanceof Error ? err.message : err);
+      console.error('[task-actions] DB list failed, falling back to in-memory seed', err instanceof Error ? err.message : err);
     }
   }
 
-  return withStore((store) => {
+  return withStoreAsync(async (store) => {
     return store.tasks
       .filter((t) => t.userId === userId)
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
@@ -65,11 +65,11 @@ export async function addTaskAction(input: {
       revalidateTaskSurfaces(userId);
       return serializeTask(task);
     } catch (err) {
-      console.error('[task-actions] DB create failed, falling back to flat-file', err instanceof Error ? err.message : err);
+      console.error('[task-actions] DB create failed, falling back to in-memory seed', err instanceof Error ? err.message : err);
     }
   }
 
-  const created = withStore((store) => {
+  const created = await withStoreAsync(async (store) => {
     const task: StoredTask = {
       id: createId('task'),
       userId,
@@ -97,11 +97,11 @@ export async function toggleTaskAction(id: string, completed: boolean): Promise<
       revalidateTaskSurfaces(userId);
       return serializeTask(updated);
     } catch (err) {
-      console.error('[task-actions] DB toggle failed, falling back to flat-file', err instanceof Error ? err.message : err);
+      console.error('[task-actions] DB toggle failed, falling back to in-memory seed', err instanceof Error ? err.message : err);
     }
   }
 
-  const updated = withStore((store) => {
+  const updated = await withStoreAsync(async (store) => {
     const task = store.tasks.find((t) => t.id === id && t.userId === userId);
     if (!task) throw new Error('Task not found.');
     task.completed = completed;
@@ -121,11 +121,11 @@ export async function removeTaskAction(id: string): Promise<void> {
       revalidateTaskSurfaces(userId);
       return;
     } catch (err) {
-      console.error('[task-actions] DB delete failed, falling back to flat-file', err instanceof Error ? err.message : err);
+      console.error('[task-actions] DB delete failed, falling back to in-memory seed', err instanceof Error ? err.message : err);
     }
   }
 
-  withStore((store) => {
+  await withStoreAsync(async (store) => {
     const idx = store.tasks.findIndex((t) => t.id === id && t.userId === userId);
     if (idx === -1) throw new Error('Task not found.');
     store.tasks.splice(idx, 1);

@@ -555,16 +555,12 @@ export async function sendOriginAiMessage(
     headers: {
       'X-Origin-AI-Session-Id': getOriginAiBrowserSessionId(),
     },
-    body: JSON.stringify((() => {
-      const payload = {
-        message,
-        pageContext,
-        highlightedText: highlightedText || null,
-        threadId: threadId ?? null,
-      };
-      console.log('[client] sendOriginAiMessage payload.highlightedText:', payload.highlightedText?.slice(0, 80) ?? 'NULL');
-      return payload;
-    })()),
+    body: JSON.stringify({
+      message,
+      pageContext,
+      highlightedText: highlightedText || null,
+      threadId: threadId ?? null,
+    }),
   });
 
   if (isServiceReply(data)) {

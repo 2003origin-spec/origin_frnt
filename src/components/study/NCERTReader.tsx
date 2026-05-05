@@ -99,7 +99,7 @@ export default function NCERTReader({ book, onBack, initialNotes = [], activeCha
                     }
                 });
             } catch (e) {
-                console.log("Iframe selection capture restricted");
+                console.warn("Iframe selection capture restricted");
             }
         };
 
@@ -116,16 +116,8 @@ export default function NCERTReader({ book, onBack, initialNotes = [], activeCha
     };
     const [noteId, setNoteId] = useState<number | null>(null);
 
-    // --- Load Saved Strokes and Notes on Mount ---
+    // --- Load Saved Notes on Mount ---
     useEffect(() => {
-        const savedStrokes = localStorage.getItem(`origin_strokes_${book.id}`);
-        if (savedStrokes) {
-            try {
-                setStrokes(JSON.parse(savedStrokes));
-            } catch (e) {
-                console.error("Failed to parse saved strokes", e);
-            }
-        }
         // Fetch real notes from backend API
         const fetchNotes = async () => {
             try {
@@ -142,7 +134,7 @@ export default function NCERTReader({ book, onBack, initialNotes = [], activeCha
         fetchNotes();
     }, [book.id]);
 
-    // --- Auto-save Notes & Strokes ---
+    // --- Auto-save Notes ---
     const handleSave = async () => {
         setIsSaving(true);
         try {
@@ -465,4 +457,3 @@ export default function NCERTReader({ book, onBack, initialNotes = [], activeCha
         </div>
     );
 }
-

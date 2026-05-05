@@ -18,7 +18,7 @@ interface FormattedMessageProps {
  * Normalizes common AI math delimiters to standard Markdown math delimiters ($ and $$).
  * Uses a character-level state machine to avoid the broken protect/restore regex approach.
  */
-function normalizeDelimiters(content: string): string {
+export function normalizeDelimiters(content: string): string {
   if (!content) return '';
 
   // Step 1: Convert \[ ... \] to $$ ... $$ and \( ... \) to $ ... $
@@ -29,9 +29,157 @@ function normalizeDelimiters(content: string): string {
     .replace(/√/g, '\\sqrt '); // Fallback for bare symbol
 
   // Step 2: Wrap bare LaTeX expressions with $ delimiters
+  result = wrapBracketedMathExpressions(result);
   result = wrapBareLaTeX(result);
 
   return result;
+}
+
+function wrapBracketedMathExpressions(text: string): string {
+  const out: string[] = [];
+  let i = 0;
+  const len = text.length;
+
+  const isGreek = (c: string): boolean => {
+    const cp = c.codePointAt(0) ?? 0;
+    return (cp >= 0x0370 && cp <= 0x03FF) || (cp >= 0x1F00 && cp <= 0x1FFF);
+  };
+
+  const hasGreek = (value: string): boolean => Array.from(value).some(isGreek);
+  const hasSuperscript = (value: string): boolean => /[⁰¹²³⁴⁵⁶⁷⁸⁹⁻⁺]/.test(value);
+  const isWeakBracketAtom = (value: string): boolean => /^[A-Za-z]{1,4}$/.test(value.trim());
+  const isStrongBracketMath = (value: string): boolean => {
+    const trimmed = value.trim();
+    if (!trimmed || trimmed.length > 120) return false;
+    if (/\\[a-zA-Z]+/.test(trimmed) || hasGreek(trimmed) || hasSuperscript(trimmed)) return true;
+    if (/[\^_=+*\/<>]|[±∞≈≠≤≥×÷√∝∠∫∬∭∮∇∂∆∑∏]/.test(trimmed)) return true;
+    if (/\d/.test(trimmed)) return true;
+
+    const parts = trimmed.split(/\s+/).filter(Boolean);
+    return parts.length > 1 && parts.every((part) => /^[MLTIKNJSAQΘmolkgcd]+$/i.test(part));
+  };
+
+  const parseBracketToken = (pos: number): { end: number; strong: boolean } | null => {
+    if (text[pos] !== '[') return null;
+    const close = text.indexOf(']', pos + 1);
+    if (close === -1) return null;
+
+    const content = text.slice(pos + 1, close);
+    if (content.includes('\n') || content.length > 120) return null;
+
+    let end = close + 1;
+    while (end < len && '^_'.includes(text[end])) {
+      let scriptEnd = end + 1;
+      if (text[scriptEnd] === '{') {
+        let depth = 1;
+        scriptEnd++;
+        while (scriptEnd < len && depth > 0) {
+          if (text[scriptEnd] === '{') depth++;
+          if (text[scriptEnd] === '}') depth--;
+          scriptEnd++;
+        }
+      } else {
+        if (text[scriptEnd] === '+' || text[scriptEnd] === '-') scriptEnd++;
+        if (text[scriptEnd] === '\\') {
+          scriptEnd++;
+          while (scriptEnd < len && /[a-zA-Z]/.test(text[scriptEnd])) scriptEnd++;
+        } else {
+          while (scriptEnd < len && /[a-zA-Z0-9]/.test(text[scriptEnd])) scriptEnd++;
+        }
+      }
+      if (scriptEnd === end + 1) break;
+      end = scriptEnd;
+    }
+    while (end < len && /[⁰¹²³⁴⁵⁶⁷⁸⁹⁻⁺]/.test(text[end])) end++;
+
+    const hasPostfixScript = end > close + 1;
+    const strong = hasPostfixScript || isStrongBracketMath(content);
+    if (!strong && !isWeakBracketAtom(content)) return null;
+
+    return { end, strong };
+  };
+
+  const skipInlineSpace = (pos: number): number => {
+    let next = pos;
+    while (next < len && (text[next] === ' ' || text[next] === '\t')) next++;
+    return next;
+  };
+
+  const readMathOperator = (pos: number): number | null => {
+    for (const operator of ['\\times', '\\cdot', '\\div', '\\pm']) {
+      if (text.startsWith(operator, pos)) return pos + operator.length;
+    }
+    return '=+*\/<>×÷±≈≠≤≥'.includes(text[pos]) ? pos + 1 : null;
+  };
+
+  while (i < len) {
+    if (text[i] === '$' && i + 1 < len && text[i + 1] === '$') {
+      const end = text.indexOf('$$', i + 2);
+      if (end !== -1) {
+        out.push(text.slice(i, end + 2));
+        i = end + 2;
+        continue;
+      }
+    }
+
+    if (text[i] === '$') {
+      const end = text.indexOf('$', i + 1);
+      if (end !== -1) {
+        out.push(text.slice(i, end + 1));
+        i = end + 1;
+        continue;
+      }
+    }
+
+    const firstToken = parseBracketToken(i);
+    if (!firstToken) {
+      out.push(text[i]);
+      i++;
+      continue;
+    }
+
+    let cursor = firstToken.end;
+    let chainEnd = firstToken.end;
+    let tokenCount = 1;
+    let hasStrongToken = firstToken.strong;
+    let hasOperator = false;
+
+    while (cursor < len) {
+      const nextStart = skipInlineSpace(cursor);
+      const adjacentToken = parseBracketToken(nextStart);
+      if (adjacentToken && (hasStrongToken || adjacentToken.strong)) {
+        tokenCount++;
+        hasStrongToken = hasStrongToken || adjacentToken.strong;
+        chainEnd = adjacentToken.end;
+        cursor = adjacentToken.end;
+        continue;
+      }
+
+      const operatorEnd = readMathOperator(nextStart);
+      if (operatorEnd === null) break;
+
+      const afterOperator = skipInlineSpace(operatorEnd);
+      const nextToken = parseBracketToken(afterOperator);
+      if (!nextToken) break;
+
+      tokenCount++;
+      hasOperator = true;
+      hasStrongToken = hasStrongToken || nextToken.strong;
+      chainEnd = nextToken.end;
+      cursor = nextToken.end;
+    }
+
+    if (hasStrongToken && (firstToken.strong || hasOperator || tokenCount > 1)) {
+      out.push('$' + text.slice(i, chainEnd) + '$');
+      i = chainEnd;
+      continue;
+    }
+
+    out.push(text[i]);
+    i++;
+  }
+
+  return out.join('');
 }
 
 /**
@@ -52,23 +200,86 @@ function wrapBareLaTeX(text: string): string {
   const isMathSymbol = (c: string): boolean =>
     '±∞≈≠≤≥×÷√∝∠∫∬∭∮∇∂∆∑∏'.includes(c);
 
+  const isAsciiWordChar = (c: string | undefined): boolean =>
+    !!c && /[a-zA-Z0-9_]/.test(c);
+
+  const hasWordBoundaryBefore = (pos: number): boolean =>
+    pos === 0 || !isAsciiWordChar(text[pos - 1]);
+
+  const readMathFunction = (pos: number): string | null => {
+    if (!hasWordBoundaryBefore(pos)) return null;
+
+    for (const fn of ['sin', 'cos', 'tan', 'cot', 'sec', 'csc', 'log', 'ln', 'exp']) {
+      if (text.slice(pos, pos + fn.length).toLowerCase() !== fn) continue;
+      if (/[a-zA-Z0-9]/.test(text[pos + fn.length] ?? '')) continue;
+
+      let next = pos + fn.length;
+      while (next < len && (text[next] === ' ' || text[next] === '\t')) next++;
+
+      if (next >= len) return null;
+
+      const nextChar = text[next];
+      if (/[a-zA-Z]/.test(nextChar)) {
+        let tokenEnd = next + 1;
+        while (tokenEnd < len && /[a-zA-Z]/.test(text[tokenEnd])) tokenEnd++;
+
+        const token = text.slice(next, tokenEnd).toLowerCase();
+        const knownWordVariable = ['theta', 'alpha', 'beta', 'gamma', 'delta', 'phi', 'pi'].includes(token);
+        if (token.length > 2 && !knownWordVariable) continue;
+      }
+
+      if (
+        '(^_\\'.includes(nextChar) ||
+        /[a-zA-Z0-9]/.test(nextChar) ||
+        isGreek(nextChar) ||
+        isMathSymbol(nextChar)
+      ) {
+        return fn;
+      }
+    }
+
+    return null;
+  };
+
+  const looksLikeNumericMathStart = (pos: number): boolean => {
+    if (!/[0-9]/.test(text[pos])) return false;
+
+    const candidate = text.slice(pos, Math.min(len, pos + 32));
+    return /(?:\\[a-zA-Z]+|[=+*\/^_<>]|[±∞≈≠≤≥×÷√∝∠∫∬∭∮∇∂∆∑∏])/.test(candidate);
+  };
+
+  const looksLikeVariableMathStart = (pos: number): boolean => {
+    if (!hasWordBoundaryBefore(pos) || !/[a-zA-Z]/.test(text[pos])) return false;
+
+    let end = pos + 1;
+    while (end < len && /[a-zA-Z0-9]/.test(text[end])) end++;
+    if (end - pos > 3) return false;
+
+    let next = end;
+    while (next < len && (text[next] === ' ' || text[next] === '\t')) next++;
+
+    return next < len && '=+*/^_<>'.includes(text[next]);
+  };
+
   // Peek ahead from position pos (skipping spaces) and check if what follows
   // looks like math (LaTeX command, Greek, math symbol, or ^ _)
-    const nextIsMath = (pos: number): boolean => {
-      let k = pos;
-      while (k < len && (text[k] === ' ' || text[k] === '\t')) k++;
-      if (k >= len) return false;
-      const c = text[k];
-      
-      // Detection for common math functions like cos, sin, tan, log, ln
-      if (k + 2 < len) {
-        const word = text.slice(k, k + 3).toLowerCase();
-        if (['sin', 'cos', 'tan', 'log'].includes(word)) return true;
-        if (word.startsWith('ln')) return true;
-      }
-      
-      return c === '\\' || isGreek(c) || isMathSymbol(c) || '^_'.includes(c);
-    };
+  const nextIsMath = (pos: number): boolean => {
+    let k = pos;
+    while (k < len && (text[k] === ' ' || text[k] === '\t')) k++;
+    if (k >= len) return false;
+    const c = text[k];
+
+    return (
+      c === '\\' ||
+      '=+*/<>'.includes(c) ||
+      isGreek(c) ||
+      isMathSymbol(c) ||
+      '^_'.includes(c) ||
+      readMathFunction(k) !== null ||
+      looksLikeNumericMathStart(k) ||
+      looksLikeVariableMathStart(k)
+    );
+  };
 
   while (i < len) {
     // ── Case 1: $$ ... $$ block ───────────────────────────────────────────
@@ -93,17 +304,12 @@ function wrapBareLaTeX(text: string): string {
 
     // ── Case 3: Bare LaTeX starting point ─────────────────────────────────
     const isLatexCmd = text[i] === '\\' && i + 1 < len && /[a-zA-Z]/.test(text[i + 1]);
-    const isSpecial = isGreek(text[i]) || isMathSymbol(text[i]) || /[0-9]/.test(text[i]);
-    
-    // Check if we are at the start of a math function like cos, sin, tan
-    let isMathWord = false;
-    if (i + 2 < len) {
-      const word3 = text.slice(i, i + 3).toLowerCase();
-      if (['sin', 'cos', 'tan', 'log'].includes(word3)) isMathWord = true;
-      if (text.slice(i, i + 2).toLowerCase() === 'ln') isMathWord = true;
-    }
+    const isSpecial = isGreek(text[i]) || isMathSymbol(text[i]);
+    const isNumericMath = looksLikeNumericMathStart(i);
+    const isVariableMath = looksLikeVariableMathStart(i);
+    const isMathWord = readMathFunction(i) !== null;
 
-    if (isLatexCmd || isSpecial || isMathWord) {
+    if (isLatexCmd || isSpecial || isNumericMath || isVariableMath || isMathWord) {
       const mathStart = i;
       let braceDepth = 0;
       let j = i;

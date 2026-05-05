@@ -1,5 +1,5 @@
 import type { AppStore, StoredAuthSession, StoredUser } from "@/server/store";
-import { createId, readStore, writeStore } from "@/server/store";
+import { createId, readStoreAsync } from "@/server/store";
 import { isUserPostgresConfigured } from "@/server/user-postgres";
 import { dbFindUserByAccessToken, dbGetSessionByRefreshToken, dbRotateAccessToken, dbCreateAuthSession } from "@/server/db-users";
 
@@ -109,7 +109,7 @@ export function clearUserSessions(store: AppStore, userId: string): void {
 // ─── Async DB-first helpers (used when USER_DATABASE_URL is configured) ────────
 
 /**
- * Resolves a Bearer token to a user, preferring the mirrored flat-file session
+ * Resolves a Bearer token to a user, preferring the mirrored Postgres session
  * and falling back to Postgres only when the local mirror is stale/missing.
  * Use this in async handlers instead of requireUserFromRequest.
  */
@@ -117,18 +117,12 @@ export async function resolveTokenToUser(request: Request): Promise<StoredUser |
   const token = extractBearerToken(request) ?? extractCookieToken(request);
   if (!token) return null;
 
-  const store = readStore();
-  const localUser = findUserByAccessToken(store, token);
-  if (localUser) {
-    return localUser;
-  }
-
   if (isUserPostgresConfigured()) {
     try {
       const dbUser = await dbFindUserByAccessToken(token);
       if (dbUser) return dbUser;
     } catch (err) {
-      console.error('[auth] DB token check failed, falling back to flat-file', err instanceof Error ? err.message : err);
+      console.error('[auth] DB token check failed, falling back to in-memory seed', err instanceof Error ? err.message : err);
     }
   }
 
@@ -137,54 +131,41 @@ export async function resolveTokenToUser(request: Request): Promise<StoredUser |
 }
 
 /**
- * DB-aware refresh: rotates token in Postgres if configured, else falls back to flat-file.
+ * DB-aware refresh: rotates token in Postgres if configured, else falls back to in-memory seed.
  * Returns { accessToken, refreshToken } or null if the refresh token is invalid/expired.
  */
 export async function refreshAccessToken(refreshToken: string): Promise<{ accessToken: string; refreshToken: string } | null> {
   if (isUserPostgresConfigured()) {
     try {
-      const updated = await dbRotateAccessToken(refreshToken);
+  const updated = await dbRotateAccessToken(refreshToken);
       if (updated) {
-        // Keep the mirrored flat-file session in sync so Server Components and
-        // route handlers can resolve auth without a remote DB round-trip.
-        const store = readStore();
-        const nextSessions = store.authSessions.filter(
-          (entry) => entry.userId !== updated.userId && entry.refreshToken !== refreshToken,
-        );
-        nextSessions.push(updated);
-        store.authSessions = nextSessions;
-        writeStore(store);
         return { accessToken: updated.accessToken, refreshToken: updated.refreshToken };
       }
     } catch (err) {
-      console.error('[auth] DB token rotation failed, falling back to flat-file', err instanceof Error ? err.message : err);
+      console.error('[auth] DB token rotation failed, falling back to in-memory seed', err instanceof Error ? err.message : err);
     }
   }
 
   // Flat-file fallback
-  const store = readStore();
+  const store = await readStoreAsync();
   const session = isRefreshTokenValid(store, refreshToken);
   if (!session) return null;
   rotateAccessToken(session);
-  // Write the rotated token back
-  writeStore(store);
   return { accessToken: session.accessToken, refreshToken: session.refreshToken };
 }
 
 /**
- * DB-aware session creation: writes to Postgres when configured, always writes to flat-file.
- * Dual-write keeps flat-file in sync so gamification handlers that depend on it still work.
+ * DB-aware session creation: writes to Postgres when configured, always writes to in-memory seed.
  */
 export async function createAuthSessionAsync(store: AppStore, userId: string): Promise<StoredAuthSession> {
   if (isUserPostgresConfigured()) {
     try {
       const session = await dbCreateAuthSession(userId);
-      // Mirror to flat-file so gamification/profile endpoints work without changes
       store.authSessions = store.authSessions.filter((s) => s.userId !== userId);
       store.authSessions.push(session);
       return session;
     } catch (err) {
-      console.error('[auth] DB session creation failed, falling back to flat-file', err instanceof Error ? err.message : err);
+      console.error('[auth] DB session creation failed, falling back to in-memory seed', err instanceof Error ? err.message : err);
     }
   }
   return createAuthSession(store, userId);

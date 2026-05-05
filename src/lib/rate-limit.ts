@@ -1,6 +1,8 @@
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 
+import { metric } from "@/lib/metrics";
+
 type AppRateLimitResult = {
   success: boolean;
   limit: number;
@@ -26,12 +28,22 @@ const redis =
 
 let hasWarnedMissingRedis = false;
 
+function isHostedProduction(): boolean {
+  return (
+    process.env.VERCEL_ENV === "production" ||
+    Boolean(process.env.RENDER_SERVICE_ID) ||
+    process.env.RAILWAY_ENVIRONMENT === "production" ||
+    Boolean(process.env.FLY_APP_NAME) ||
+    process.env.ORIGIN_DEPLOYMENT_ENV === "production"
+  );
+}
+
 function createNoopLimiter(limit: number): AppRateLimiter {
-  if (process.env.NODE_ENV !== "production" && !hasWarnedMissingRedis) {
+  if (isHostedProduction() && !hasWarnedMissingRedis) {
     hasWarnedMissingRedis = true;
-    console.warn(
-      "[rate-limit] UPSTASH_REDIS_REST_URL/TOKEN are not set. Using a no-op limiter in local development.",
-    );
+    const message = "[rate-limit] UPSTASH_REDIS_REST_URL/TOKEN are not set. Using degraded no-op limiter.";
+    console.error(message);
+    metric("origin.rate_limit.degraded", { reason: "missing_redis" });
   }
 
   return {
@@ -52,16 +64,6 @@ function createLimiter(
   window: SlidingWindowDuration = "60 s",
 ): AppRateLimiter {
   if (!redis) {
-    if (process.env.NODE_ENV === "production") {
-      return {
-        async limit() {
-          throw new Error(
-            "[rate-limit] UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN must be set in production.",
-          );
-        },
-      };
-    }
-
     return createNoopLimiter(limit);
   }
 
@@ -94,7 +96,16 @@ export async function checkRateLimit(
   limiter: AppRateLimiter,
   identifier: string
 ): Promise<Response | null> {
-  const { success, limit, remaining, reset } = await limiter.limit(identifier);
+  let result: AppRateLimitResult;
+  try {
+    result = await limiter.limit(identifier);
+  } catch (error) {
+    console.error("[rate-limit] limiter backend failed; allowing request in degraded mode", error);
+    metric("origin.rate_limit.degraded", { reason: "backend_error" });
+    return null;
+  }
+
+  const { success, limit, remaining, reset } = result;
   if (!success) {
     return new Response(
       JSON.stringify({ error: "Too many requests. Please slow down." }),

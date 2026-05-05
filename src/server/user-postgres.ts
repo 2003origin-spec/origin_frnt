@@ -4,6 +4,7 @@ const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
 
 declare global {
   var __originUserPool: Pool | undefined;
+  var __originUserPoolConnectionString: string | undefined;
 }
 
 function getConnectionString(): string | null {
@@ -29,12 +30,14 @@ export function getUserPostgresPool(): Pool | null {
   const connectionString = getConnectionString();
   if (!connectionString) return null;
 
-  if (!globalThis.__originUserPool) {
+  if (!globalThis.__originUserPool || globalThis.__originUserPoolConnectionString !== connectionString) {
+    void globalThis.__originUserPool?.end().catch(() => undefined);
     globalThis.__originUserPool = new Pool({
       connectionString,
       ssl: shouldUseSsl(connectionString) ? { rejectUnauthorized: false } : false,
       max: 5,
     });
+    globalThis.__originUserPoolConnectionString = connectionString;
   }
 
   return globalThis.__originUserPool;

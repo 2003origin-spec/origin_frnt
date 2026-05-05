@@ -1,4 +1,8 @@
 const API_URL = (process.env.NEXT_PUBLIC_API_URL || '/api').replace(/\/+$/, '');
+const CSRF_COOKIE_NAME = 'origin_csrf';
+const CSRF_HEADER_NAME = 'X-CSRF-Token';
+
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 function normalizeEndpoint(endpoint: string) {
     const [rawPath, ...queryParts] = endpoint.split('?');
@@ -9,37 +13,52 @@ function normalizeEndpoint(endpoint: string) {
 
 // Dispatched when the refresh token itself is expired — AuthContext listens and logs the user out
 export const AUTH_EXPIRED_EVENT = 'origin:auth:expired';
-// Dispatched when a new access token is obtained via refresh — AuthContext listens and updates its in-memory state
-export const TOKEN_REFRESHED_EVENT = 'origin:auth:refreshed';
 
-async function attemptTokenRefresh(): Promise<string | null> {
-    const refreshToken = localStorage.getItem('origin_refresh_token');
+function readCookie(name: string): string | null {
+    if (typeof document === 'undefined') return null;
+    const prefix = `${name}=`;
+    const match = document.cookie
+        .split(';')
+        .map((cookie) => cookie.trim())
+        .find((cookie) => cookie.startsWith(prefix));
+    return match ? decodeURIComponent(match.slice(prefix.length)) : null;
+}
 
+function isMutatingMethod(method: string | undefined): boolean {
+    return !SAFE_METHODS.has((method ?? 'GET').toUpperCase());
+}
+
+async function attemptTokenRefresh(): Promise<boolean> {
     try {
         const response = await fetch(`${API_URL}/users/token/refresh`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: refreshToken ? JSON.stringify({ refresh: refreshToken }) : JSON.stringify({}),
             credentials: 'include',
+            cache: 'no-store',
         });
-        if (!response.ok) return null;
-        const data = await response.json();
-        if (!data.access) return null;
-        localStorage.setItem('origin_access_token', data.access);
-        if (data.refresh) localStorage.setItem('origin_refresh_token', data.refresh);
-        window.dispatchEvent(new CustomEvent(TOKEN_REFRESHED_EVENT, { detail: { access: data.access, refresh: data.refresh } }));
-        return data.access;
+        return response.ok;
     } catch {
-        return null;
+        return false;
     }
 }
 
-function buildHeaders(token: string | null, overrides?: HeadersInit): Record<string, string> {
-    return {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(overrides as Record<string, string> ?? {}),
-    };
+async function ensureCsrfToken(method: string | undefined): Promise<void> {
+    if (!isMutatingMethod(method) || readCookie(CSRF_COOKIE_NAME)) return;
+    await attemptTokenRefresh();
+}
+
+function buildHeaders(method: string | undefined, body: BodyInit | null | undefined, overrides?: HeadersInit): Headers {
+    const headers = new Headers(overrides);
+    if (!(body instanceof FormData) && !headers.has('Content-Type')) {
+        headers.set('Content-Type', 'application/json');
+    }
+    if (isMutatingMethod(method) && !headers.has(CSRF_HEADER_NAME)) {
+        const csrfToken = readCookie(CSRF_COOKIE_NAME);
+        if (csrfToken) {
+            headers.set(CSRF_HEADER_NAME, csrfToken);
+        }
+    }
+    return headers;
 }
 
 function parseErrorMessage(errorData: Record<string, unknown>): string {
@@ -67,32 +86,28 @@ export const apiCall = async (
     options: RequestInit & { silentAuth?: boolean } = {}
 ): Promise<any> => {
     const { silentAuth, ...fetchOptions } = options;
+    const { cache = 'no-store', ...requestOptions } = fetchOptions;
     const normalizedEndpoint = normalizeEndpoint(endpoint);
 
-    if (process.env.NODE_ENV === 'development') {
-        console.log(`[API Call] ${fetchOptions.method || 'GET'} ${normalizedEndpoint}`);
-    }
+    await ensureCsrfToken(requestOptions.method);
 
-    const doFetch = (token: string | null) =>
+    const doFetch = () =>
         fetch(`${API_URL}${normalizedEndpoint}`, {
-            ...fetchOptions,
-            cache: 'no-store',
-            headers: buildHeaders(token, options.headers),
+            ...requestOptions,
+            cache,
+            credentials: 'include',
+            headers: buildHeaders(requestOptions.method, requestOptions.body, options.headers),
         });
 
-    let token = localStorage.getItem('origin_access_token');
-    let response = await doFetch(token);
+    let response = await doFetch();
 
     // On 401, try refreshing the access token once then retry
     if (response.status === 401) {
-        const newToken = await attemptTokenRefresh();
-        if (newToken) {
-            token = newToken;
-            response = await doFetch(token);
+        const refreshed = await attemptTokenRefresh();
+        if (refreshed) {
+            response = await doFetch();
         } else {
             // Refresh failed — session is fully expired, force logout
-            localStorage.removeItem('origin_access_token');
-            localStorage.removeItem('origin_refresh_token');
             if (!silentAuth) {
                 window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
             }

@@ -20,7 +20,7 @@ import {
   parseJsonBody,
   unauthorized,
 } from "@/server/http";
-import { readStore, withStore, writeStore } from "@/server/store";
+import { readStoreAsync, withStoreAsync } from "@/server/store";
 
 type RouteContext = {
   params: Promise<{ slug?: string[] }>;
@@ -56,7 +56,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
   const limited = await checkRateLimit(generalLimiter, sessionIdentifier(request));
   if (limited) return limited;
 
-  const store = readStore();
+  const store = await readStoreAsync();
   const user = requireUserFromRequest(store, request);
   if (!user) {
     return unauthorized();
@@ -93,7 +93,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     } catch {
       return badRequest("Invalid JSON payload.");
     }
-    const result = withStore((store) => {
+    const result = await withStoreAsync(async (store) => {
       const user = requireUserFromRequest(store, request);
       if (!user) {
         return { status: "unauthorized" as const };
@@ -115,20 +115,26 @@ export async function POST(request: NextRequest, context: RouteContext) {
     } catch {
       return badRequest("Invalid JSON payload.");
     }
-    const store = readStore();
-    const user = requireUserFromRequest(store, request);
-    if (!user) {
-      return unauthorized();
-    }
     try {
-      const reply = await addSessionMessage(store, user, slug[1], payload);
+      const result = await withStoreAsync(async (store) => {
+        const user = requireUserFromRequest(store, request);
+        if (!user) {
+          return { status: "unauthorized" as const };
+        }
+        const reply = await addSessionMessage(store, user, slug[1], payload);
+        return { status: "ok" as const, reply };
+      });
+
+      if (result.status === "unauthorized") {
+        return unauthorized();
+      }
+      const { reply } = result;
       if (!reply) {
         return notFound("Doubt session not found.");
       }
       if ("error" in reply && typeof reply.error === "string") {
         return badRequest(reply.error, { error: reply.error });
       }
-      writeStore(store);
       return created(reply);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unable to solve doubt right now.";
@@ -151,7 +157,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
   try {
     const payload = await parseJsonBody<{ title?: string; subject?: string }>(request);
-    const result = withStore((store) => {
+    const result = await withStoreAsync(async (store) => {
       const user = requireUserFromRequest(store, request);
       if (!user) {
         return { status: "unauthorized" as const };
@@ -184,7 +190,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
   const limited = await checkRateLimit(generalLimiter, sessionIdentifier(request));
   if (limited) return limited;
 
-  const result = withStore((store) => {
+  const result = await withStoreAsync(async (store) => {
     const user = requireUserFromRequest(store, request);
     if (!user) {
       return { status: "unauthorized" as const };

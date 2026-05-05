@@ -750,12 +750,13 @@ export default function OGCodeList({
                     {/* Filter & Table Area */}
                     <div className="space-y-6">
                         {/* Enhanced Subject & Chapter Filter */}
-                        <div id="filter-area" className="space-y-4 bg-slate-50/50 dark:bg-white/[0.02] border border-slate-200 dark:border-white/5 rounded-2xl p-4 sm:p-5 backdrop-blur-sm relative z-[60]">
+                        <div id="filter-area" className="space-y-4 bg-slate-50/50 dark:bg-white/[0.02] border border-slate-200 dark:border-white/5 rounded-2xl p-4 sm:p-5 backdrop-blur-sm relative z-[120]">
                             <div className="flex flex-col sm:flex-row sm:items-end gap-4">
                                 <div className="space-y-1.5 w-full sm:w-auto">
                                     <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-zinc-500 ml-1">Major Subject</label>
                                     <div className="relative">
                                         <button 
+                                            type="button"
                                             id="tutorial-ogcode-subject-filter"
                                             onClick={() => setOpenDropdown(openDropdown === 'subject' ? null : 'subject')}
                                             className={cn(
@@ -776,10 +777,12 @@ export default function OGCodeList({
                                                     initial={{ opacity: 0, y: 10 }} 
                                                     animate={{ opacity: 1, y: 0 }}
                                                     exit={{ opacity: 0, y: 10 }}
-                                                    className="absolute top-full mt-2 left-0 w-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-white/10 rounded-xl shadow-2xl z-[60] overflow-hidden"
+                                                    className="absolute top-full mt-2 left-0 w-full min-w-[200px] bg-white dark:bg-zinc-950 border border-slate-200 dark:border-white/10 rounded-xl shadow-2xl z-[130] overflow-hidden pointer-events-auto backdrop-blur-none"
+                                                    onClick={(event) => event.stopPropagation()}
                                                 >
                                                     {SUBJECTS.map((sub, idx) => (
                                                         <button
+                                                            type="button"
                                                             key={idx}
                                                             onClick={() => {
                                                                 handleSubjectChange(sub.name);
@@ -872,7 +875,7 @@ export default function OGCodeList({
                             </div>
                         </div>
 
-                        <div id="secondary-filter-area" className="flex flex-wrap items-center gap-3 py-2 relative z-[70]">
+                        <div id="secondary-filter-area" className="flex flex-wrap items-center gap-3 py-2 relative z-[40]">
                             <div className="flex-1 min-w-[280px] relative">
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                                 <input

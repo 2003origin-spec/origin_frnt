@@ -3,7 +3,7 @@
  *
  * Reads the access token from the HttpOnly cookie set by the auth API route
  * (or by Server Actions), then resolves it to a user by checking the mirrored
- * flat-file session first and only falling back to Postgres when needed.
+ * Postgres session first and only falling back to Postgres when needed.
  *
  * Safe to call from any async RSC or Server Action — never import this in
  * 'use client' components.
@@ -12,7 +12,7 @@
 import { cookies } from 'next/headers';
 import { isUserPostgresConfigured } from '@/server/user-postgres';
 import { dbFindUserByAccessToken } from '@/server/db-users';
-import { readStore } from '@/server/store';
+import { readStoreAsync } from '@/server/store';
 import { findUserByAccessToken } from '@/server/auth';
 import { serializeUser } from '@/server/users';
 import type { AppStore, StoredUser } from '@/server/store';
@@ -30,22 +30,21 @@ async function resolveServerAuth(): Promise<ServerAuthResolution> {
     return { user: null, store: null };
   }
 
-  const store = readStore();
-  const localUser = findUserByAccessToken(store, token);
-  if (localUser) {
-    return { user: localUser, store };
-  }
-
-  // Fall back to the DB session table when the mirrored local session is stale or missing.
   if (isUserPostgresConfigured()) {
     try {
       const dbUser = await dbFindUserByAccessToken(token);
       if (dbUser) {
-        return { user: dbUser, store };
+        return { user: dbUser, store: null };
       }
     } catch (err) {
-      console.error('[auth-server] DB token check failed, falling back to flat-file', err);
+      console.error('[auth-server] DB token check failed, falling back to in-memory seed', err);
     }
+  }
+
+  const store = await readStoreAsync();
+  const localUser = findUserByAccessToken(store, token);
+  if (localUser) {
+    return { user: localUser, store };
   }
 
   return { user: null, store };
@@ -65,7 +64,7 @@ export async function getServerFrontendUser(): Promise<User | null> {
   const { user: stored, store: resolvedStore } = await resolveServerAuth();
   if (!stored) return null;
 
-  const store = resolvedStore ?? readStore();
+  const store = resolvedStore ?? await readStoreAsync();
   const payload = serializeUser(store, stored.id);
   return (payload as unknown as User) ?? null;
 }

@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { randomBytes } from "crypto";
 
 import { badRequest, getSlugSegments, parseJsonBody } from "@/server/http";
 import { handleUsersRequest } from "@/server/users";
@@ -24,6 +25,18 @@ const COOKIE_OPTS_REFRESH = {
   maxAge: 7 * 24 * 60 * 60, // 7 d — matches REFRESH_TOKEN_TTL_MS
 };
 
+const COOKIE_OPTS_CSRF = {
+  httpOnly: false,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "lax" as const,
+  path: "/",
+  maxAge: 24 * 60 * 60,
+};
+
+function createCsrfToken(): string {
+  return randomBytes(32).toString("base64url");
+}
+
 /**
  * Mirror access + refresh tokens from the JSON response body into HttpOnly
  * cookies so that Server Components and proxy can read them without
@@ -42,11 +55,15 @@ async function withAuthCookies(response: Response): Promise<NextResponse> {
 
   if (!access) return response as NextResponse;
 
-  const cookied = NextResponse.json(data, { status: response.status });
+  const publicData = { ...data };
+  delete publicData.access;
+  delete publicData.refresh;
+  const cookied = NextResponse.json(publicData, { status: response.status });
   cookied.cookies.set("origin_access_token", access, COOKIE_OPTS_ACCESS);
   if (refresh) {
     cookied.cookies.set("origin_refresh_token", refresh, COOKIE_OPTS_REFRESH);
   }
+  cookied.cookies.set("origin_csrf", createCsrfToken(), COOKIE_OPTS_CSRF);
   return cookied;
 }
 
@@ -73,6 +90,7 @@ async function dispatch(method: string, request: NextRequest, context: RouteCont
     const res = NextResponse.json({ ok: true });
     res.cookies.set("origin_access_token", "", { ...COOKIE_OPTS_ACCESS, maxAge: 0 });
     res.cookies.set("origin_refresh_token", "", { ...COOKIE_OPTS_REFRESH, maxAge: 0 });
+    res.cookies.set("origin_csrf", "", { ...COOKIE_OPTS_CSRF, maxAge: 0 });
     return res;
   }
 

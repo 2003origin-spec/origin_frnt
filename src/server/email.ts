@@ -6,6 +6,13 @@ import nodemailer from 'nodemailer';
  * In production, it requires SMTP credentials in environment variables.
  */
 
+function redactEmail(value: unknown): string {
+  const email = typeof value === 'string' ? value : '';
+  const [name, domain] = email.split('@');
+  if (!name || !domain) return '[redacted]';
+  return `${name.slice(0, 2)}***@${domain}`;
+}
+
 const createTransporter = () => {
   // Check for real SMTP credentials
   const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS } = process.env;
@@ -25,12 +32,11 @@ const createTransporter = () => {
   // Fallback to mock/log-only in development
   return {
     sendMail: async (options: any) => {
-      console.log('---------------------------------------');
-      console.log('MOCK EMAIL SENT');
-      console.log(`To: ${options.to}`);
-      console.log(`Subject: ${options.subject}`);
-      console.log(`Body: ${options.text}`);
-      console.log('---------------------------------------');
+      console.warn('[email] Mock email generated', {
+        to: redactEmail(options.to),
+        subjectLength: String(options.subject ?? '').length,
+        bodyLength: String(options.text ?? '').length,
+      });
       return { messageId: 'mock-id-' + Date.now() };
     },
   } as any;

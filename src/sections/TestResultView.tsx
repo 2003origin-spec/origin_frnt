@@ -1,5 +1,5 @@
 'use client';
-import { useRef, useState, useMemo } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -30,6 +30,8 @@ import {
   CartesianGrid
 } from 'recharts';
 import { FormattedMessage } from '@/components/origin-ai/FormattedMessage';
+import { DegradedBanner } from '@/components/DegradedBanner';
+import { apiCall } from '@/lib/api';
 import { buildSubjectTimeBreakdown } from '@/lib/tests/time-stats';
 import type { ReviewEntry, TestResult } from '@/types';
 
@@ -43,17 +45,48 @@ interface TestResultViewProps {
 }
 
 export default function TestResultView({ 
-  result,
+  result: initialResult,
   history = [],
   onBackToDashboard, 
   onViewDPP,
   onRetakeTest,
   showSummary = true
 }: TestResultViewProps) {
+  const [result, setResult] = useState<TestResult>(initialResult);
   const [selectedSubject, setSelectedSubject] = useState<'overall' | string>('overall');
   const [selectedReviewTab, setSelectedReviewTab] = useState<'analysis' | 'mistakes' | 'correct' | 'recommendations'>('analysis');
   const [selectedReviewEntry, setSelectedReviewEntry] = useState(0);
   const reviewSectionRef = useRef<HTMLDivElement>(null);
+  const analysisStatus = result.analysisStatus ?? result.analysis_status ?? 'complete';
+
+  useEffect(() => {
+    setResult(initialResult);
+  }, [initialResult]);
+
+  useEffect(() => {
+    if (analysisStatus !== 'pending' || !result.id) {
+      return;
+    }
+
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const next = await apiCall(`/assessments/results/${result.id}/analysis/`);
+        if (!cancelled) {
+          setResult(next);
+        }
+      } catch {
+        // Keep the locally scored pending result visible until a later poll succeeds.
+      }
+    };
+
+    const interval = window.setInterval(poll, 3000);
+    void poll();
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [analysisStatus, result.id]);
 
   const subjects = useMemo(() => {
     if (!result || !result.subjectStats) return [];
@@ -189,6 +222,8 @@ export default function TestResultView({
   const subjectTimeBreakdown = useMemo(() => {
     return buildSubjectTimeBreakdown(result.subjectStats);
   }, [result.subjectStats]);
+  const degradedReason = result.degradedReason ?? result.degraded_reason ?? null;
+  const isAnalysisPending = analysisStatus === 'pending';
 
   return (
     <div className="min-h-screen bg-background text-foreground font-sans selection:bg-primary/30">
@@ -272,6 +307,14 @@ export default function TestResultView({
 
       {/* Main Content */}
       <main className="max-w-4xl mx-auto px-4 py-6 space-y-8 pb-24">
+        {isAnalysisPending ? (
+          <DegradedBanner
+            title="Analytics processing"
+            reason="Your score is ready. Detailed weak-topic analysis and generated DPPs will update shortly."
+          />
+        ) : result.degraded ? (
+          <DegradedBanner reason={degradedReason} />
+        ) : null}
         {showSummary && (
           <div className="p-4 sm:p-6 bg-primary/10 border border-primary/20 rounded-2xl sm:rounded-3xl flex items-center gap-4 sm:gap-6 animate-in fade-in slide-in-from-top-4 duration-700">
             <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl bg-primary flex items-center justify-center flex-shrink-0 shadow-lg shadow-primary/20">

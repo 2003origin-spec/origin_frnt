@@ -288,11 +288,9 @@ export default function OriginAiMentor({
     }
 
     const selectedText = getPendingHighlightedText()?.trim();
-    console.log('[OriginAiMentor] autoAsk effect: selectedText =', selectedText?.slice(0, 80) ?? 'NULL');
     lastAutoAskedSelectionNonceRef.current = autoAskSelectionNonce;
 
     if (!selectedText) {
-      console.log('[OriginAiMentor] autoAsk effect: no selected text, returning');
       return;
     }
 
@@ -301,7 +299,6 @@ export default function OriginAiMentor({
       setIsSending(true);
 
       try {
-        console.log('[OriginAiMentor] Sending with highlightedText:', selectedText?.slice(0, 80));
         const reply = await sendOriginAiMessage(
           'Explain the selected text in the current screen context.',
           pageContext,

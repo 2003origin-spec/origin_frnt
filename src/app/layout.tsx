@@ -8,13 +8,16 @@ import { Toaster } from "@/components/ui/sonner";
 import ClientShell from "@/components/layout/ClientShell";
 import { getServerFrontendUser } from "@/lib/auth-server";
 
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://origin-ai.vercel.app";
+
 export const metadata: Metadata = {
+  metadataBase: new URL(siteUrl),
   title: "ORIGIN AI - Best Preparation Platform for JEE/NEET",
   description: "The most advanced AI-powered learning platform for JEE, NEET, and Foundation. Personalized guidance, infinite practice, and 24/7 AI mentoring.",
   openGraph: {
     title: "ORIGIN AI - Best Preparation Platform for JEE/NEET",
     description: "Personalized guidance, infinite practice, and 24/7 AI mentoring for JEE and NEET scholars.",
-    url: "https://origin-ai.vercel.app",
+    url: siteUrl,
     siteName: "ORIGIN AI",
     images: [
       {

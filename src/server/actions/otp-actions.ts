@@ -1,6 +1,6 @@
 'use server';
 
-import { readStore, writeStore } from '@/server/store';
+import { withStoreAsync } from '@/server/store';
 import { sendEmail } from '@/server/email';
 
 /**
@@ -22,20 +22,20 @@ export async function sendOtpAction(email: string) {
   const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString(); // 5 minutes from now
 
   try {
-    const store = readStore();
-    
-    // Check if user already exists
-    const userExists = store.users.find(u => u.email.toLowerCase() === email.toLowerCase());
-    if (userExists && userExists.role !== 'admin') {
-      return { ok: false, message: 'An account with this email already exists. Please login instead.' };
+    const preflight = await withStoreAsync(async (store) => {
+      const userExists = store.users.find(u => u.email.toLowerCase() === email.toLowerCase());
+      if (userExists && userExists.role !== 'admin') {
+        return { ok: false as const, message: 'An account with this email already exists. Please login instead.' };
+      }
+
+      store.otps = store.otps.filter(o => o.email !== email);
+      store.otps.push({ email, otp, expiresAt });
+      return { ok: true as const };
+    });
+
+    if (!preflight.ok) {
+      return preflight;
     }
-    
-    // Remove any existing OTPs for this email
-    store.otps = store.otps.filter(o => o.email !== email);
-    
-    // Add new OTP
-    store.otps.push({ email, otp, expiresAt });
-    writeStore(store);
 
     // Send email
     const emailResult = await sendEmail({
@@ -76,29 +76,25 @@ export async function verifyOtpAction(email: string, otp: string) {
   }
 
   try {
-    const store = readStore();
-    const storedOtp = store.otps.find(o => o.email === email && o.otp === otp);
+    return await withStoreAsync(async (store) => {
+      const storedOtp = store.otps.find(o => o.email === email && o.otp === otp);
 
-    if (!storedOtp) {
-      return { ok: false, message: 'Invalid verification code.' };
-    }
+      if (!storedOtp) {
+        return { ok: false, message: 'Invalid verification code.' };
+      }
 
-    const now = new Date();
-    const expiry = new Date(storedOtp.expiresAt);
+      const now = new Date();
+      const expiry = new Date(storedOtp.expiresAt);
 
-    if (now > expiry) {
-      // Clean up expired OTP
-      store.otps = store.otps.filter(o => o.email !== email);
-      writeStore(store);
-      return { ok: false, message: 'Verification code has expired. Please request a new one.' };
-    }
+      if (now > expiry) {
+        store.otps = store.otps.filter(o => o.email !== email);
+        return { ok: false, message: 'Verification code has expired. Please request a new one.' };
+      }
 
-    // OTP is valid! Mark as verified for 10 minutes to allow registration completion
-    storedOtp.verified = true;
-    storedOtp.expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
-    writeStore(store);
-
-    return { ok: true, message: 'Email verified successfully.' };
+      storedOtp.verified = true;
+      storedOtp.expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+      return { ok: true, message: 'Email verified successfully.' };
+    });
   } catch (error) {
     console.error('verifyOtpAction error:', error);
     return { ok: false, message: 'An error occurred while verifying code.' };

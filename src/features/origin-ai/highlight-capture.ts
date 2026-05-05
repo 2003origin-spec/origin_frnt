@@ -231,7 +231,6 @@ function handleSelectionChange() {
       if (richText && richText !== currentHighlight) {
         currentHighlight = richText;
         currentHighlightRect = getSelectionRect(window.getSelection());
-        console.log('[highlight-capture] Rich update:', richText.slice(0, 50));
         emitChange();
       }
     }
@@ -302,17 +301,14 @@ export function snapshotHighlightedText(): void {
 export function getPendingHighlightedText(): string | null {
   // Prefer current live highlight
   if (currentHighlight) {
-    console.log('[highlight-capture] getPending → live:', currentHighlight?.slice(0, 60));
     return currentHighlight;
   }
   // Fall back to the time-buffered last valid highlight
   if (lastValidHighlight && (Date.now() - lastValidHighlightTs) < HIGHLIGHT_RETAIN_MS) {
     const text = lastValidHighlight;
-    console.log('[highlight-capture] getPending → buffered:', text?.slice(0, 60), 'age:', Date.now() - lastValidHighlightTs, 'ms');
     lastValidHighlight = null; // consume
     return text;
   }
-  console.log('[highlight-capture] getPending → NULL (buffer:', lastValidHighlight?.slice(0, 30), 'age:', lastValidHighlight ? Date.now() - lastValidHighlightTs : 'n/a', 'ms)');
   lastValidHighlight = null;
   return null;
 }

@@ -6,6 +6,7 @@ import {
   getRoomId,
   handleStudyRoomError,
   publishPresence,
+  revalidateStudyRoomSurfaces,
   requireStudyRoomUser,
   studyRoomJson,
   type IdRouteContext,
@@ -19,8 +20,10 @@ export async function POST(request: NextRequest, context: IdRouteContext) {
     if (limited) return limited;
     const roomId = await getRoomId(context);
     const result = await leaveRoom(roomId, user.id);
+    revalidateStudyRoomSurfaces(user.id, roomId);
     if (result.new_admin_user_id) {
       await publishRoomEvent(roomId, { type: "admin_changed", new_admin_user_id: result.new_admin_user_id });
+      revalidateStudyRoomSurfaces(result.new_admin_user_id, roomId);
     }
     await publishPresence(roomId);
     if (result.room.status === "closed") {

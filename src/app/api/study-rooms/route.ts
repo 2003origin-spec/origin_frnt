@@ -6,6 +6,7 @@ import { createRoom, generateInviteCode, listRoomsForUser } from "@/server/study
 import {
   handleStudyRoomError,
   publishPresence,
+  revalidateStudyRoomSurfaces,
   requireStudyRoomUser,
   studyRoomJson,
 } from "@/app/api/study-rooms/_utils";
@@ -31,6 +32,7 @@ export async function POST(request: NextRequest) {
     const room = await createRoom(user, body.name ?? "Study Room");
     const invite_code = await generateInviteCode(room.id, user.id);
     await publishPresence(room.id);
+    revalidateStudyRoomSurfaces(user.id, room.id);
     return studyRoomJson({ room, invite_code }, { status: 201 });
   } catch (error) {
     return handleStudyRoomError(error);

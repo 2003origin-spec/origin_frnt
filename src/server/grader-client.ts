@@ -1,4 +1,5 @@
 import type { StoredQuestion, StoredUserAnswer } from "@/server/store";
+import { getRequestId, REQUEST_ID_HEADER } from "@/lib/request-id";
 
 type RemoteEvaluationRequest = {
   question: {
@@ -79,9 +80,10 @@ function buildRequestPayload(question: StoredQuestion, answer: StoredUserAnswer,
   };
 }
 
-function buildHeaders(): HeadersInit {
+function buildHeaders(requestId: string): HeadersInit {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
+    [REQUEST_ID_HEADER]: requestId,
   };
   if (process.env.GRADER_SERVICE_TOKEN) {
     headers.Authorization = `Bearer ${process.env.GRADER_SERVICE_TOKEN}`;
@@ -109,11 +111,12 @@ export async function gradePracticeAnswerWithService(
   const timeoutMs = Number(process.env.GRADER_SERVICE_TIMEOUT_MS ?? 4500);
   const controller = new AbortController();
   const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+  const requestId = getRequestId();
 
   try {
     const response = await fetch(`${process.env.GRADER_SERVICE_URL}/v1/evaluate`, {
       method: "POST",
-      headers: buildHeaders(),
+      headers: buildHeaders(requestId),
       body: JSON.stringify(buildRequestPayload(question, answer, userId)),
       cache: "no-store",
       signal: controller.signal,
@@ -121,6 +124,7 @@ export async function gradePracticeAnswerWithService(
 
     if (!response.ok) {
       console.error('[grader-client] Remote grader returned error status — falling back to local grading', {
+        requestId,
         status: response.status,
         questionId: question.id,
       });
@@ -167,6 +171,7 @@ export async function gradePracticeAnswerWithService(
     };
   } catch (err) {
     console.error('[grader-client] Remote grader call failed — falling back to local grading', {
+      requestId,
       error: err instanceof Error ? err.message : String(err),
       questionId: question.id,
     });

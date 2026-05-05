@@ -9,6 +9,7 @@ import { withStoreAsync } from "@/server/store";
 import {
   getRoomId,
   handleStudyRoomError,
+  revalidateStudyRoomSurfaces,
   requireStudyRoomUser,
   studyRoomJson,
   type IdRouteContext,
@@ -25,6 +26,7 @@ export async function POST(request: NextRequest, context: IdRouteContext) {
     const body = await parseJsonBody<CustomTestPayload>(request);
     const test = await withStoreAsync((store) => createCustomTestForRoom(store, user, roomId, body));
     await publishRoomEvent(roomId, { type: "test_configured", custom_test_id: (test as { id: string }).id });
+    revalidateStudyRoomSurfaces(user.id, roomId);
     return studyRoomJson({ test }, { status: 201 });
   } catch (error) {
     return handleStudyRoomError(error);

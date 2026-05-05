@@ -1,10 +1,11 @@
 'use server';
 
+import { randomBytes } from 'crypto';
 import { cookies } from 'next/headers';
 import { revalidatePath } from 'next/cache';
 
 import { handleGoogleLogin, handleLogin, handleRegister, handleRefresh, serializeUser, handleLoginWithOtp } from '@/server/users';
-import { readStore, writeStore } from '@/server/store';
+import { readStoreAsync, withStoreAsync } from '@/server/store';
 import { getServerUser } from '@/lib/auth-server';
 import type { User } from '@/types';
 
@@ -33,11 +34,30 @@ const COOKIE_OPTS_REFRESH = {
   maxAge: 7 * 24 * 60 * 60,
 };
 
-type AuthSuccess = { ok: true; user: User; access: string; refresh: string };
+const COOKIE_OPTS_CSRF = {
+  httpOnly: false,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'lax' as const,
+  path: '/',
+  maxAge: 24 * 60 * 60,
+};
+
+type InternalAuthSuccess = { ok: true; user: User; access: string; refresh: string };
+type AuthSuccess = { ok: true; user: User };
 type AuthFailure = { ok: false; status: number; message: string };
 type AuthResult = AuthSuccess | AuthFailure;
+type InternalAuthResult = InternalAuthSuccess | AuthFailure;
 
-async function parseAuthResponse(response: Response): Promise<AuthResult> {
+function createCsrfToken(): string {
+  return randomBytes(32).toString('base64url');
+}
+
+function toPublicAuthResult(result: InternalAuthResult): AuthResult {
+  if (!result.ok) return result;
+  return { ok: true, user: result.user };
+}
+
+async function parseAuthResponse(response: Response): Promise<InternalAuthResult> {
   let body: Record<string, unknown> = {};
   try {
     body = (await response.clone().json()) as Record<string, unknown>;
@@ -71,6 +91,7 @@ async function setSessionCookies(access: string, refresh: string): Promise<void>
   if (refresh) {
     cookieStore.set('origin_refresh_token', refresh, COOKIE_OPTS_REFRESH);
   }
+  cookieStore.set('origin_csrf', createCsrfToken(), COOKIE_OPTS_CSRF);
 }
 
 export async function loginAction(input: {
@@ -88,7 +109,7 @@ export async function loginAction(input: {
     await setSessionCookies(parsed.access, parsed.refresh);
     revalidatePath('/', 'layout');
   }
-  return parsed;
+  return toPublicAuthResult(parsed);
 }
 
 export async function loginWithOtpAction(input: {
@@ -104,7 +125,7 @@ export async function loginWithOtpAction(input: {
     await setSessionCookies(parsed.access, parsed.refresh);
     revalidatePath('/', 'layout');
   }
-  return parsed;
+  return toPublicAuthResult(parsed);
 }
 
 export async function registerAction(input: {
@@ -114,7 +135,7 @@ export async function registerAction(input: {
   role?: 'student' | 'teacher' | 'admin' | null;
 }): Promise<AuthResult> {
   // Check if email was verified via OTP
-  const store = readStore();
+  const store = await readStoreAsync();
   const isVerified = store.otps.some(o => o.email.toLowerCase() === input.email.toLowerCase() && o.verified === true);
   
   if (!isVerified) {
@@ -129,15 +150,14 @@ export async function registerAction(input: {
   });
   const parsed = await parseAuthResponse(response);
   if (parsed.ok) {
-    // Clean up verified OTP record after successful registration
-    const cleanupStore = readStore();
-    cleanupStore.otps = cleanupStore.otps.filter(o => o.email.toLowerCase() !== input.email.toLowerCase());
-    writeStore(cleanupStore);
+    await withStoreAsync(async (cleanupStore) => {
+      cleanupStore.otps = cleanupStore.otps.filter(o => o.email.toLowerCase() !== input.email.toLowerCase());
+    });
 
     await setSessionCookies(parsed.access, parsed.refresh);
     revalidatePath('/', 'layout');
   }
-  return parsed;
+  return toPublicAuthResult(parsed);
 }
 
 export async function googleLoginAction(input: { credential: string }): Promise<AuthResult> {
@@ -147,7 +167,7 @@ export async function googleLoginAction(input: { credential: string }): Promise<
     await setSessionCookies(parsed.access, parsed.refresh);
     revalidatePath('/', 'layout');
   }
-  return parsed;
+  return toPublicAuthResult(parsed);
 }
 
 /**
@@ -186,7 +206,7 @@ export async function refreshTokenAction(): Promise<{ ok: boolean }> {
 export async function refreshUserAction(): Promise<User | null> {
   const stored = await getServerUser();
   if (!stored) return null;
-  const store = readStore();
+  const store = await readStoreAsync();
   const payload = serializeUser(store, stored.id);
   return (payload as unknown as User) ?? null;
 }
@@ -195,5 +215,6 @@ export async function logoutAction(): Promise<void> {
   const cookieStore = await cookies();
   cookieStore.set('origin_access_token', '', { ...COOKIE_OPTS_ACCESS, maxAge: 0 });
   cookieStore.set('origin_refresh_token', '', { ...COOKIE_OPTS_REFRESH, maxAge: 0 });
+  cookieStore.set('origin_csrf', '', { ...COOKIE_OPTS_CSRF, maxAge: 0 });
   revalidatePath('/', 'layout');
 }

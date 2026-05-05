@@ -3,7 +3,7 @@
 import { revalidatePath, revalidateTag } from 'next/cache';
 
 import { getServerUser } from '@/lib/auth-server';
-import { withStore } from '@/server/store';
+import { withStoreAsync } from '@/server/store';
 import { serializeUser } from '@/server/users';
 import { isUserPostgresConfigured } from '@/server/user-postgres';
 import { dbUpdateUser } from '@/server/db-users';
@@ -32,8 +32,8 @@ async function requireUser() {
   return user;
 }
 
-function applyProfileUpdates(userId: string, input: UpdateProfileInput): User | null {
-  return withStore((store) => {
+async function applyProfileUpdates(userId: string, input: UpdateProfileInput): Promise<User | null> {
+  return withStoreAsync(async (store) => {
     const user = store.users.find((u) => u.id === userId);
     if (!user) return null;
 
@@ -65,7 +65,7 @@ function applyProfileUpdates(userId: string, input: UpdateProfileInput): User | 
 
 export async function updateProfileAction(input: UpdateProfileInput): Promise<User> {
   const current = await requireUser();
-  const updated = applyProfileUpdates(current.id, input);
+  const updated = await applyProfileUpdates(current.id, input);
 
   if (!updated) {
     throw new Error('Failed to update profile');
@@ -107,7 +107,7 @@ export async function updateProfileAction(input: UpdateProfileInput): Promise<Us
  */
 export async function completeOnboardingAction(input: UpdateProfileInput = {}): Promise<User> {
   const current = await requireUser();
-  const updated = applyProfileUpdates(current.id, { ...input, isOnboarded: true });
+  const updated = await applyProfileUpdates(current.id, { ...input, isOnboarded: true });
   if (!updated) throw new Error('Onboarding completion failed — user missing from store.');
 
   // Persist to Postgres if configured

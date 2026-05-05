@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { revalidatePath, revalidateTag } from "next/cache";
 
 import { resolveTokenToUser } from "@/server/auth";
 import { getRoomParticipants, StudyRoomError } from "@/server/study-rooms";
@@ -37,4 +38,13 @@ export function handleStudyRoomError(error: unknown) {
 export async function publishPresence(roomId: string): Promise<void> {
   const participants = await getRoomParticipants(roomId);
   await publishRoomEvent(roomId, { type: "presence", participants });
+}
+
+export function revalidateStudyRoomSurfaces(userId: string, roomId?: string): void {
+  revalidateTag(`study-rooms-user:${userId}`, "max");
+  revalidatePath("/study-rooms", "page");
+  if (roomId) {
+    revalidatePath(`/study-rooms/${roomId}/lobby`, "page");
+    revalidatePath(`/study-rooms/${roomId}/leaderboard`, "page");
+  }
 }

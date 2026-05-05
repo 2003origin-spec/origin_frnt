@@ -1,4 +1,5 @@
 import type { DifficultyLevel } from "@/server/store";
+import { getRequestId, REQUEST_ID_HEADER } from "@/lib/request-id";
 
 export type AnalyticsDifficulty = DifficultyLevel;
 
@@ -132,9 +133,10 @@ function isAnalyticsConfigured(): boolean {
   return Boolean(process.env.ANALYTICS_SERVICE_URL);
 }
 
-function buildHeaders(): HeadersInit {
+function buildHeaders(requestId: string): HeadersInit {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
+    [REQUEST_ID_HEADER]: requestId,
   };
 
   if (process.env.ANALYTICS_SERVICE_TOKEN) {
@@ -159,11 +161,12 @@ async function analyticsRequest<TResponse, TBody extends object>(
   const timeoutMs = Number(process.env.ANALYTICS_SERVICE_TIMEOUT_MS ?? 3000);
   const controller = new AbortController();
   const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+  const requestId = getRequestId();
 
   try {
     const response = await fetch(`${process.env.ANALYTICS_SERVICE_URL}${path}`, {
       method: "POST",
-      headers: buildHeaders(),
+      headers: buildHeaders(requestId),
       body: JSON.stringify(body),
       cache: "no-store",
       signal: controller.signal,
@@ -173,6 +176,7 @@ async function analyticsRequest<TResponse, TBody extends object>(
       const message = await response.text().catch(() => "");
       const errorMsg = message || `Analytics service request failed for ${path}.`;
       console.error('[analytics-client] Analytics service returned error status — falling back', {
+        requestId,
         status: response.status,
         path,
       });
@@ -185,6 +189,7 @@ async function analyticsRequest<TResponse, TBody extends object>(
       throw err;
     }
     console.error('[analytics-client] Analytics service call failed — falling back', {
+      requestId,
       error: err instanceof Error ? err.message : String(err),
       path,
     });

@@ -6,6 +6,7 @@ import { joinRoomByCode } from "@/server/study-rooms";
 import {
   handleStudyRoomError,
   publishPresence,
+  revalidateStudyRoomSurfaces,
   requireStudyRoomUser,
   studyRoomJson,
 } from "@/app/api/study-rooms/_utils";
@@ -19,6 +20,7 @@ export async function POST(request: NextRequest) {
     const body = await parseJsonBody<{ code?: string }>(request);
     const room = await joinRoomByCode(body.code ?? "", user);
     await publishPresence(room.id);
+    revalidateStudyRoomSurfaces(user.id, room.id);
     return studyRoomJson({ roomId: room.id, room });
   } catch (error) {
     return handleStudyRoomError(error);

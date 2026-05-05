@@ -30,6 +30,12 @@ import {
 } from "@/server/http";
 import { withStoreAsync, type StoredUser } from "@/server/store";
 import { dbUpdateUsageMetrics } from "@/server/db-users";
+import {
+  getCachedChapters,
+  isOriginAiChapterSubject,
+  upsertCachedChapters,
+} from "@/server/catalog-cache";
+import { getRequestId, REQUEST_ID_HEADER } from "@/lib/request-id";
 import { aiLimiter, voiceLimiter, generalLimiter, checkRateLimit } from "@/lib/rate-limit";
 
 export const maxDuration = 120;
@@ -207,6 +213,7 @@ async function proxyToMicroservice(
   }
 
   const browserSessionId = request.headers.get("X-Origin-AI-Session-Id") ?? "";
+  const requestId = getRequestId(request.headers);
 
   const isTts = path.includes('/voice/speak');
   const isImageSolve = path.includes('/image-solve');
@@ -222,7 +229,8 @@ async function proxyToMicroservice(
       signal: controller.signal,
       headers: {
         "Content-Type": "application/json",
-        "X-Service-Token": ORIGIN_AI_SERVICE_TOKEN,
+        "Authorization": `Bearer ${ORIGIN_AI_SERVICE_TOKEN}`,
+        [REQUEST_ID_HEADER]: requestId,
         "X-Origin-AI-Session-Id": browserSessionId,
         "X-Origin-User-Id": user.id,
         "X-Origin-User-Name": user.name,
@@ -279,9 +287,17 @@ async function proxyToMicroservice(
     });
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {
-      console.error(`[origin-ai proxy] microservice call timed out after ${timeoutMs}ms for ${path}`);
+      console.error("[origin-ai proxy] microservice call timed out", {
+        requestId,
+        timeoutMs,
+        path,
+      });
     } else {
-      console.error("[origin-ai proxy] microservice call failed, falling back:", err);
+      console.error("[origin-ai proxy] microservice call failed, falling back:", {
+        requestId,
+        error: err instanceof Error ? err.message : String(err),
+        path,
+      });
     }
     return null; // fallback to in-app implementation
   } finally {
@@ -302,6 +318,66 @@ function userIdentifier(request: NextRequest): string {
   );
 }
 
+function estimateVoiceMinutes(text: string | null | undefined): number {
+  const words = String(text ?? "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
+  if (words === 0) {
+    return 0;
+  }
+  return Math.max(1, Math.ceil(words / 2.5)) / 60;
+}
+
+function extractProxyTokens(payload: unknown): number {
+  if (!payload || typeof payload !== "object") {
+    return 0;
+  }
+  const record = payload as Record<string, unknown>;
+  const value = record.tokens_used ?? record.tokensUsed;
+  const parsed = Number(value ?? 0);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : 0;
+}
+
+function extractVoiceText(payload: unknown, fallback?: string | null): string {
+  if (!payload || typeof payload !== "object") {
+    return fallback ?? "";
+  }
+  const record = payload as Record<string, unknown>;
+  const value = record.answer ?? record.fallbackText ?? record.fallback_text ?? fallback ?? "";
+  return typeof value === "string" ? value : "";
+}
+
+async function checkOriginAiUsageLimit(
+  user: StoredUser,
+  input: { voice?: boolean; pageKind?: string | null } = {},
+) {
+  const usage = await dbUpdateUsageMetrics(user.id, { tokens: 0, voiceMinutes: 0 });
+  if (usage.tokensUsedToday >= 200000) {
+    return forbidden("You've reached your daily AI usage limit (200k tokens). Please try again tomorrow.");
+  }
+  if (input.voice && usage.voiceMinutesUsedToday >= 10 && input.pageKind !== "doubt_solver") {
+    return forbidden("You've reached your daily voice limit (10 minutes). Please try again tomorrow.");
+  }
+  return null;
+}
+
+async function recordOriginAiProxyUsage(
+  userId: string,
+  payload: unknown,
+  input: { voiceText?: string | null; voiceMinutes?: number | null } = {},
+): Promise<void> {
+  const tokens = extractProxyTokens(payload);
+  const voiceMinutes = input.voiceMinutes ?? (input.voiceText !== undefined ? estimateVoiceMinutes(input.voiceText) : 0);
+  if (tokens > 0 || voiceMinutes > 0) {
+    await dbUpdateUsageMetrics(userId, { tokens, voiceMinutes });
+  }
+}
+
+async function proxyJsonResponse(proxyResp: Response): Promise<unknown> {
+  return proxyResp.json().catch(() => null);
+}
+
 export async function GET(request: NextRequest, context: RouteContext) {
   const slug = await resolveSlug(context);
 
@@ -311,7 +387,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     if (limited) return limited;
 
     const subject = request.nextUrl.searchParams.get("subject");
-    if (!subject || !["math", "phy", "chem", "bio"].includes(subject)) {
+    if (!isOriginAiChapterSubject(subject)) {
       return badRequest("Invalid subject. Must be one of: math, phy, chem, bio");
     }
 
@@ -325,11 +401,41 @@ export async function GET(request: NextRequest, context: RouteContext) {
         request,
         proxyUser,
       );
-      if (proxyResp) return proxyResp;
+      if (proxyResp) {
+        const data = await proxyResp.json().catch(() => null);
+        if (proxyResp.ok) {
+          await upsertCachedChapters(subject, data ?? {});
+          return ok(data ?? {}, { headers: { "X-Origin-AI-Catalog-Cache": "refresh" } });
+        }
+
+        const cached = await getCachedChapters(subject);
+        if (cached) {
+          return ok(cached.payload, {
+            headers: {
+              "X-Origin-AI-Catalog-Cache": "stale",
+              "X-Origin-AI-Catalog-Fetched-At": cached.fetchedAt,
+            },
+          });
+        }
+
+        return new Response(JSON.stringify(data ?? { detail: "Origin AI chapter listing failed." }), {
+          status: proxyResp.status,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
     }
 
-    // No local fallback — chapters require the Python backend
-    return badRequest("Chapter listing requires the Origin AI microservice.");
+    const cached = await getCachedChapters(subject);
+    if (cached) {
+      return ok(cached.payload, {
+        headers: {
+          "X-Origin-AI-Catalog-Cache": "stale",
+          "X-Origin-AI-Catalog-Fetched-At": cached.fetchedAt,
+        },
+      });
+    }
+
+    return badRequest("Chapter listing requires the Origin AI microservice and no cached catalog is available.");
   }
 
   // GET /origin-ai/threads — list named Doubt Solver threads for the user.
@@ -540,6 +646,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
         if (!proxyUser) {
           return unauthorized();
         }
+        const quotaResponse = await checkOriginAiUsageLimit(proxyUser, {
+          pageKind: parsedBody.data.pageContext?.pageKind ?? null,
+        });
+        if (quotaResponse) {
+          return quotaResponse;
+        }
         // Enrich the outbound payload with thread metadata the Python service
         // needs: thread_id (so it doesn't write into the floating-avatar
         // session) and subject (so subject_kb scopes its lookup correctly).
@@ -562,14 +674,23 @@ export async function POST(request: NextRequest, context: RouteContext) {
               : {}),
           },
         };
-        console.log("[origin-ai proxy] highlightedText in parsed:", parsedBody.data.highlightedText?.slice(0, 60) ?? "NULL");
-        console.log("[origin-ai proxy] highlightedText in enriched:", (enrichedPayload as Record<string, unknown>).highlightedText ? String((enrichedPayload as Record<string, unknown>).highlightedText).slice(0, 60) : "NULL");
         const proxyResp = await proxyToMicroservice("POST", "/api/v1/chat/message", enrichedPayload, request, proxyUser);
-        if (proxyResp) return proxyResp;
+        if (proxyResp) {
+          const data = await proxyJsonResponse(proxyResp);
+          if (proxyResp.ok) {
+            await recordOriginAiProxyUsage(proxyUser.id, data);
+          }
+          return new Response(JSON.stringify(data ?? {}), {
+            status: proxyResp.status,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
       }
 
       // Fallback
-      console.log("[origin-ai proxy] ⚠️ PROXY RETURNED NULL — running FALLBACK in-app implementation. Highlighted text will use userMetadata path.");
+      if (process.env.NODE_ENV !== "production") {
+        console.warn("[origin-ai proxy] microservice unavailable; using in-app fallback");
+      }
       const result = await withStoreAsync(async (store) => {
         const user = requireUserFromRequest(store, request);
         if (!user) {
@@ -674,8 +795,26 @@ export async function POST(request: NextRequest, context: RouteContext) {
         if (!proxyUser) {
           return unauthorized();
         }
+        const quotaResponse = await checkOriginAiUsageLimit(proxyUser, {
+          voice: true,
+          pageKind: parsedBody.data.pageContext?.pageKind ?? null,
+        });
+        if (quotaResponse) {
+          return quotaResponse;
+        }
         const proxyResp = await proxyToMicroservice("POST", "/api/v1/voice/respond", parsedBody.data, request, proxyUser);
-        if (proxyResp) return proxyResp;
+        if (proxyResp) {
+          const data = await proxyJsonResponse(proxyResp);
+          if (proxyResp.ok) {
+            await recordOriginAiProxyUsage(proxyUser.id, data, {
+              voiceText: parsedBody.data.assistantTranscript,
+            });
+          }
+          return new Response(JSON.stringify(data ?? {}), {
+            status: proxyResp.status,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
       }
 
       // Fallback
@@ -735,8 +874,26 @@ export async function POST(request: NextRequest, context: RouteContext) {
         if (!proxyUser) {
           return unauthorized();
         }
+        const quotaResponse = await checkOriginAiUsageLimit(proxyUser, {
+          voice: true,
+          pageKind: parsedBody.data.pageContext?.pageKind ?? null,
+        });
+        if (quotaResponse) {
+          return quotaResponse;
+        }
         const proxyResp = await proxyToMicroservice("POST", "/api/v1/voice/respond", parsedBody.data, request, proxyUser);
-        if (proxyResp) return proxyResp;
+        if (proxyResp) {
+          const data = await proxyJsonResponse(proxyResp);
+          if (proxyResp.ok) {
+            await recordOriginAiProxyUsage(proxyUser.id, data, {
+              voiceText: extractVoiceText(data),
+            });
+          }
+          return new Response(JSON.stringify(data ?? {}), {
+            status: proxyResp.status,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
       }
 
       // Fallback
@@ -797,8 +954,23 @@ export async function POST(request: NextRequest, context: RouteContext) {
         if (!proxyUser) {
           return unauthorized();
         }
+        const quotaResponse = await checkOriginAiUsageLimit(proxyUser, { voice: true });
+        if (quotaResponse) {
+          return quotaResponse;
+        }
         const proxyResp = await proxyToMicroservice("POST", "/api/v1/voice/speak", parsedBody.data, request, proxyUser);
-        if (proxyResp) return proxyResp;
+        if (proxyResp) {
+          const data = await proxyJsonResponse(proxyResp);
+          if (proxyResp.ok) {
+            await recordOriginAiProxyUsage(proxyUser.id, data, {
+              voiceText: parsedBody.data.text,
+            });
+          }
+          return new Response(JSON.stringify(data ?? {}), {
+            status: proxyResp.status,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
       }
 
       // Fallback

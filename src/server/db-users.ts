@@ -1,7 +1,7 @@
 /**
  * Postgres-backed implementations of user, auth session, and task operations.
  * All functions return null / throw when Postgres is not configured — callers
- * must check isUserPostgresConfigured() and fall back to the flat-file store.
+ * must check isUserPostgresConfigured() and fall back to the Postgres-backed store.
  *
  * Schema: see src/db/schema.sql
  * Activate by setting USER_DATABASE_URL in your environment.
@@ -95,7 +95,27 @@ export async function ensureUserSchema(): Promise<void> {
             priority   TEXT CHECK (priority IN ('low', 'medium', 'high'))
           );
 
-          CREATE INDEX IF NOT EXISTS idx_tasks_user ON origin_tasks (user_id);
+          CREATE SCHEMA IF NOT EXISTS app;
+
+          CREATE TABLE IF NOT EXISTS app.tasks (
+            id         TEXT PRIMARY KEY,
+            user_id    TEXT NOT NULL REFERENCES origin_users(id) ON DELETE CASCADE,
+            text       TEXT NOT NULL,
+            completed  BOOLEAN NOT NULL DEFAULT FALSE,
+            due        TEXT NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            category   TEXT,
+            priority   TEXT CHECK (priority IN ('low', 'medium', 'high')),
+            data       JSONB NOT NULL DEFAULT '{}'::jsonb
+          );
+
+          INSERT INTO app.tasks (id, user_id, text, completed, due, created_at, category, priority)
+          SELECT id, user_id, text, completed, due::TEXT, created_at, category, priority
+          FROM origin_tasks
+          ON CONFLICT (id) DO NOTHING;
+
+          CREATE INDEX IF NOT EXISTS idx_tasks_user_created ON app.tasks (user_id, created_at DESC);
         `);
         globalThis.__originUserSchemaEnsured = true;
       } finally {
@@ -184,6 +204,12 @@ export async function dbFindUserById(id: string): Promise<StoredUser | null> {
   return result.rows[0] ? rowToUser(result.rows[0]) : null;
 }
 
+export async function dbListUsers(): Promise<StoredUser[]> {
+  await ensureUserSchema();
+  const result = await pool().query("SELECT * FROM origin_users ORDER BY joined_at ASC");
+  return result.rows.map(rowToUser);
+}
+
 type DbCreateUserInput = Omit<StoredUserWithOptionalDefaults, "id"> & { id?: string };
 
 export async function dbCreateUser(data: DbCreateUserInput): Promise<StoredUser> {
@@ -264,6 +290,14 @@ export async function dbGetSessionByRefreshToken(refreshToken: string): Promise<
   return result.rows[0] ? rowToSession(result.rows[0]) : null;
 }
 
+export async function dbListAuthSessions(): Promise<StoredAuthSession[]> {
+  await ensureUserSchema();
+  const result = await pool().query(
+    "SELECT * FROM origin_auth_sessions WHERE refresh_token_expires_at > NOW() ORDER BY created_at ASC",
+  );
+  return result.rows.map(rowToSession);
+}
+
 export async function dbCreateAuthSession(userId: string): Promise<StoredAuthSession> {
   await ensureUserSchema();
   const now = Date.now();
@@ -313,7 +347,7 @@ export async function dbClearUserSessions(userId: string): Promise<void> {
 export async function dbGetTasks(userId: string): Promise<StoredTask[]> {
   await ensureUserSchema();
   const result = await pool().query(
-    "SELECT * FROM origin_tasks WHERE user_id = $1 ORDER BY created_at DESC",
+    "SELECT * FROM app.tasks WHERE user_id = $1 ORDER BY created_at DESC",
     [userId],
   );
   return result.rows.map(rowToTask);
@@ -324,8 +358,8 @@ export async function dbCreateTask(userId: string, text: string, due: string, ca
   const id = createId("task");
   const createdAt = new Date().toISOString();
   await pool().query(
-    "INSERT INTO origin_tasks (id, user_id, text, completed, due, created_at, category, priority) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)",
-    [id, userId, text, false, due, createdAt, category ?? null, priority ?? null],
+    "INSERT INTO app.tasks (id, user_id, text, completed, due, created_at, updated_at, category, priority, data) VALUES ($1,$2,$3,$4,$5,$6,$6,$7,$8,$9::jsonb)",
+    [id, userId, text, false, due, createdAt, category ?? null, priority ?? null, JSON.stringify({})],
   );
   return { id, userId, text, completed: false, due, createdAt, category, priority: priority as StoredTask["priority"] };
 }
@@ -343,7 +377,7 @@ export async function dbUpdateTask(id: string, userId: string, patch: { complete
   if (fields.length === 0) return null;
   values.push(id, userId);
   const result = await pool().query(
-    `UPDATE origin_tasks SET ${fields.join(", ")} WHERE id = $${i++} AND user_id = $${i} RETURNING *`,
+    `UPDATE app.tasks SET ${fields.join(", ")}, updated_at = NOW() WHERE id = $${i++} AND user_id = $${i} RETURNING *`,
     values,
   );
   return result.rows[0] ? rowToTask(result.rows[0]) : null;
@@ -352,7 +386,7 @@ export async function dbUpdateTask(id: string, userId: string, patch: { complete
 export async function dbDeleteTask(id: string, userId: string): Promise<boolean> {
   await ensureUserSchema();
   const result = await pool().query(
-    "DELETE FROM origin_tasks WHERE id = $1 AND user_id = $2",
+    "DELETE FROM app.tasks WHERE id = $1 AND user_id = $2",
     [id, userId],
   );
   return (result.rowCount ?? 0) > 0;

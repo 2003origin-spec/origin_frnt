@@ -118,7 +118,7 @@ export function QuotaProvider({ children }: { children: React.ReactNode }) {
     if (progress === 0) {
       notifiedThresholds.current.clear();
     }
-  }, []);
+  }, [addNotification]);
 
   const addTextUsage = useCallback((tokens: number) => {
     setState(prev => {

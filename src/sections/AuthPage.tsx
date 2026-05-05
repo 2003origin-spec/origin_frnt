@@ -56,7 +56,7 @@ export default function AuthPage({
         onGoogleLogin(codeResponse.access_token);
       }
     },
-    onError: (error) => console.log('Google Login Failed:', error)
+    onError: (error) => console.error('Google Login Failed:', error)
   });
 
   // Form state

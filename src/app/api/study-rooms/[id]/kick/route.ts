@@ -8,6 +8,7 @@ import {
   getRoomId,
   handleStudyRoomError,
   publishPresence,
+  revalidateStudyRoomSurfaces,
   requireStudyRoomUser,
   studyRoomJson,
   type IdRouteContext,
@@ -20,9 +21,14 @@ export async function POST(request: NextRequest, context: IdRouteContext) {
     if (limited) return limited;
     const roomId = await getRoomId(context);
     const body = await parseJsonBody<{ user_id?: string }>(request);
-    await kickParticipant(roomId, user.id, body.user_id ?? "");
-    await publishRoomEvent(roomId, { type: "kicked", user_id: body.user_id ?? "" });
+    const targetUserId = body.user_id ?? "";
+    await kickParticipant(roomId, user.id, targetUserId);
+    await publishRoomEvent(roomId, { type: "kicked", user_id: targetUserId });
     await publishPresence(roomId);
+    revalidateStudyRoomSurfaces(user.id, roomId);
+    if (targetUserId) {
+      revalidateStudyRoomSurfaces(targetUserId, roomId);
+    }
     return studyRoomJson({ ok: true });
   } catch (error) {
     return handleStudyRoomError(error);

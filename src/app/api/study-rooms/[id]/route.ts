@@ -6,6 +6,7 @@ import { deleteRoom, getRoomState } from "@/server/study-rooms";
 import {
   getRoomId,
   handleStudyRoomError,
+  revalidateStudyRoomSurfaces,
   requireStudyRoomUser,
   studyRoomJson,
   type IdRouteContext,
@@ -32,6 +33,7 @@ export async function DELETE(request: NextRequest, context: IdRouteContext) {
     const room = await deleteRoom(roomId, user.id);
     await publishRoomEvent(roomId, { type: "room_closed" });
     await clearRoomEvents(roomId);
+    revalidateStudyRoomSurfaces(user.id, roomId);
     return studyRoomJson({ room, deleted: true });
   } catch (error) {
     return handleStudyRoomError(error);

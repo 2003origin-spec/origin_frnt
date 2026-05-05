@@ -6,6 +6,7 @@ import { startRoomTest } from "@/server/study-rooms";
 import {
   getRoomId,
   handleStudyRoomError,
+  revalidateStudyRoomSurfaces,
   requireStudyRoomUser,
   studyRoomJson,
   type IdRouteContext,
@@ -19,6 +20,7 @@ export async function POST(request: NextRequest, context: IdRouteContext) {
     const roomId = await getRoomId(context);
     const event = await startRoomTest(roomId, user.id);
     await publishRoomEvent(roomId, { type: "test_started", ...event });
+    revalidateStudyRoomSurfaces(user.id, roomId);
     return studyRoomJson(event);
   } catch (error) {
     return handleStudyRoomError(error);
