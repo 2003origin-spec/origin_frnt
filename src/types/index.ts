@@ -191,8 +191,8 @@ export interface TestResult {
   aiAnalysis: AIAnalysis;
   isMalpractice?: boolean;
   degraded?: boolean;
-  degradedReason?: string;
-  degraded_reason?: string;
+  degradedReason?: string | null;
+  degraded_reason?: string | null;
   analysisStatus?: 'pending' | 'complete' | 'failed';
   analysis_status?: 'pending' | 'complete' | 'failed';
   analysisError?: string | null;

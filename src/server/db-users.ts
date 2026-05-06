@@ -12,14 +12,18 @@ import bcrypt from "bcryptjs";
 import type { Pool } from "pg";
 import { withStoredUserDefaults, type StoredAuthSession, type StoredTask, type StoredUser, type StoredUserWithOptionalDefaults } from "@/server/store";
 import { getUserPostgresPool } from "@/server/user-postgres";
+import {
+  createRefreshToken,
+  createSessionId,
+  hashRefreshTokenSecret,
+  issueAccessTokenForUser,
+  parseRefreshToken,
+} from "@/server/auth-jwt";
 
 declare global {
   var __originUserSchemaEnsured: boolean | undefined;
   var __originUserSchemaPromise: Promise<void> | undefined;
 }
-
-const ACCESS_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
-const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 function createId(prefix: string): string {
   return `${prefix}_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
@@ -63,6 +67,7 @@ export async function ensureUserSchema(): Promise<void> {
             voice_minutes_used_today FLOAT NOT NULL DEFAULT 0,
             tokens_used_today   INTEGER NOT NULL DEFAULT 0,
             usage_reset_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            auth_token_version  INTEGER NOT NULL DEFAULT 0,
             UNIQUE (email, role)
           );
 
@@ -71,18 +76,73 @@ export async function ensureUserSchema(): Promise<void> {
           ALTER TABLE origin_users ADD COLUMN IF NOT EXISTS voice_minutes_used_today FLOAT NOT NULL DEFAULT 0;
           ALTER TABLE origin_users ADD COLUMN IF NOT EXISTS tokens_used_today INTEGER NOT NULL DEFAULT 0;
           ALTER TABLE origin_users ADD COLUMN IF NOT EXISTS usage_reset_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+          ALTER TABLE origin_users ADD COLUMN IF NOT EXISTS auth_token_version INTEGER NOT NULL DEFAULT 0;
 
           CREATE TABLE IF NOT EXISTS origin_auth_sessions (
-            access_token              TEXT PRIMARY KEY,
-            refresh_token             TEXT NOT NULL UNIQUE,
+            id                        TEXT PRIMARY KEY,
+            access_token              TEXT,
+            refresh_token             TEXT,
+            refresh_token_hash        TEXT UNIQUE,
             user_id                   TEXT NOT NULL REFERENCES origin_users(id) ON DELETE CASCADE,
             created_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             access_token_expires_at   TIMESTAMPTZ NOT NULL,
-            refresh_token_expires_at  TIMESTAMPTZ NOT NULL
+            refresh_token_expires_at  TIMESTAMPTZ NOT NULL,
+            revoked_at                TIMESTAMPTZ,
+            last_used_at              TIMESTAMPTZ,
+            user_agent_hash           TEXT,
+            ip_prefix_hash            TEXT
           );
 
+          ALTER TABLE origin_auth_sessions ADD COLUMN IF NOT EXISTS id TEXT;
+          ALTER TABLE origin_auth_sessions ADD COLUMN IF NOT EXISTS refresh_token_hash TEXT;
+          ALTER TABLE origin_auth_sessions ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMPTZ;
+          ALTER TABLE origin_auth_sessions ADD COLUMN IF NOT EXISTS last_used_at TIMESTAMPTZ;
+          ALTER TABLE origin_auth_sessions ADD COLUMN IF NOT EXISTS user_agent_hash TEXT;
+          ALTER TABLE origin_auth_sessions ADD COLUMN IF NOT EXISTS ip_prefix_hash TEXT;
+          UPDATE origin_auth_sessions SET id = COALESCE(id, access_token, refresh_token)
+          WHERE id IS NULL;
+          ALTER TABLE origin_auth_sessions ALTER COLUMN id SET NOT NULL;
+
+          DO $$
+          DECLARE
+            pk_name TEXT;
+            pk_column TEXT;
+          BEGIN
+            SELECT c.conname, a.attname INTO pk_name, pk_column
+            FROM pg_constraint c
+            JOIN pg_class t ON t.oid = c.conrelid
+            JOIN pg_namespace n ON n.oid = t.relnamespace
+            JOIN unnest(c.conkey) WITH ORDINALITY AS keys(attnum, ordinality) ON TRUE
+            JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = keys.attnum
+            WHERE n.nspname = 'public'
+              AND t.relname = 'origin_auth_sessions'
+              AND c.contype = 'p'
+            LIMIT 1;
+
+            IF pk_name IS NOT NULL AND pk_column <> 'id' THEN
+              EXECUTE format('ALTER TABLE origin_auth_sessions DROP CONSTRAINT %I', pk_name);
+            END IF;
+
+            IF NOT EXISTS (
+              SELECT 1
+              FROM pg_constraint c
+              JOIN pg_class t ON t.oid = c.conrelid
+              JOIN pg_namespace n ON n.oid = t.relnamespace
+              WHERE n.nspname = 'public'
+                AND t.relname = 'origin_auth_sessions'
+                AND c.contype = 'p'
+            ) THEN
+              ALTER TABLE origin_auth_sessions ADD CONSTRAINT origin_auth_sessions_pkey PRIMARY KEY (id);
+            END IF;
+          END $$;
+
+          ALTER TABLE origin_auth_sessions ALTER COLUMN access_token DROP NOT NULL;
+          ALTER TABLE origin_auth_sessions ALTER COLUMN refresh_token DROP NOT NULL;
+
           CREATE INDEX IF NOT EXISTS idx_auth_sessions_refresh ON origin_auth_sessions (refresh_token);
+          CREATE UNIQUE INDEX IF NOT EXISTS idx_auth_sessions_refresh_hash ON origin_auth_sessions (refresh_token_hash);
           CREATE INDEX IF NOT EXISTS idx_auth_sessions_user    ON origin_auth_sessions (user_id);
+          CREATE INDEX IF NOT EXISTS idx_auth_sessions_active_user ON origin_auth_sessions (user_id, revoked_at, refresh_token_expires_at);
 
           CREATE TABLE IF NOT EXISTS origin_tasks (
             id         TEXT PRIMARY KEY,
@@ -158,18 +218,25 @@ function rowToUser(row: any): StoredUser {
     voiceMinutesUsedToday: Number(row.voice_minutes_used_today ?? 0),
     tokensUsedToday: Number(row.tokens_used_today ?? 0),
     usageResetAt: row.usage_reset_at instanceof Date ? row.usage_reset_at.toISOString() : String(row.usage_reset_at),
+    authTokenVersion: Number(row.auth_token_version ?? 0),
   };
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function rowToSession(row: any): StoredAuthSession {
   return {
-    accessToken: row.access_token,
-    refreshToken: row.refresh_token,
+    id: row.id,
+    accessToken: row.access_token ?? "",
+    refreshToken: row.refresh_token ?? "",
+    refreshTokenHash: row.refresh_token_hash ?? undefined,
     userId: row.user_id,
     createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
     accessTokenExpiresAt: row.access_token_expires_at instanceof Date ? row.access_token_expires_at.toISOString() : String(row.access_token_expires_at),
     refreshTokenExpiresAt: row.refresh_token_expires_at instanceof Date ? row.refresh_token_expires_at.toISOString() : String(row.refresh_token_expires_at),
+    revokedAt: row.revoked_at ? (row.revoked_at instanceof Date ? row.revoked_at.toISOString() : String(row.revoked_at)) : null,
+    lastUsedAt: row.last_used_at ? (row.last_used_at instanceof Date ? row.last_used_at.toISOString() : String(row.last_used_at)) : null,
+    userAgentHash: row.user_agent_hash ?? null,
+    ipPrefixHash: row.ip_prefix_hash ?? null,
   };
 }
 
@@ -252,7 +319,7 @@ export async function dbUpdateUser(id: string, patch: Partial<StoredUser>): Prom
     yearsOfExperience: "years_of_experience", subjects: "subjects",
     studentCapacity: "student_capacity", location: "location",
     voiceMinutesUsedToday: "voice_minutes_used_today", tokensUsedToday: "tokens_used_today",
-    usageResetAt: "usage_reset_at",
+    usageResetAt: "usage_reset_at", authTokenVersion: "auth_token_version",
   };
 
   for (const [key, col] of Object.entries(mapping)) {
@@ -270,76 +337,176 @@ export async function dbUpdateUser(id: string, patch: Partial<StoredUser>): Prom
 // ─── Auth session operations ──────────────────────────────────────────────────
 
 export async function dbFindUserByAccessToken(accessToken: string): Promise<StoredUser | null> {
-  await ensureUserSchema();
-  const result = await pool().query(
-    `SELECT u.* FROM origin_users u
-     JOIN origin_auth_sessions s ON s.user_id = u.id
-     WHERE s.access_token = $1 AND s.access_token_expires_at > NOW()
-     LIMIT 1`,
-    [accessToken],
-  );
-  return result.rows[0] ? rowToUser(result.rows[0]) : null;
+  void accessToken;
+  return null;
 }
 
 export async function dbGetSessionByRefreshToken(refreshToken: string): Promise<StoredAuthSession | null> {
   await ensureUserSchema();
+  const parsed = parseRefreshToken(refreshToken);
+  if (!parsed) return null;
+  const refreshTokenHash = await hashRefreshTokenSecret(parsed.secret);
   const result = await pool().query(
-    "SELECT * FROM origin_auth_sessions WHERE refresh_token = $1 AND refresh_token_expires_at > NOW() LIMIT 1",
-    [refreshToken],
+    `SELECT * FROM origin_auth_sessions
+     WHERE id = $1
+       AND refresh_token_hash = $2
+       AND refresh_token_expires_at > NOW()
+       AND revoked_at IS NULL
+     LIMIT 1`,
+    [parsed.sessionId, refreshTokenHash],
   );
-  return result.rows[0] ? rowToSession(result.rows[0]) : null;
+  if (!result.rows[0]) return null;
+  return { ...rowToSession(result.rows[0]), refreshToken };
 }
 
 export async function dbListAuthSessions(): Promise<StoredAuthSession[]> {
   await ensureUserSchema();
   const result = await pool().query(
-    "SELECT * FROM origin_auth_sessions WHERE refresh_token_expires_at > NOW() ORDER BY created_at ASC",
+    "SELECT * FROM origin_auth_sessions WHERE refresh_token_expires_at > NOW() AND revoked_at IS NULL ORDER BY created_at ASC",
   );
   return result.rows.map(rowToSession);
 }
 
 export async function dbCreateAuthSession(userId: string): Promise<StoredAuthSession> {
   await ensureUserSchema();
-  const now = Date.now();
+  const user = await dbFindUserById(userId);
+  if (!user) {
+    throw new Error("Cannot create auth session for missing user.");
+  }
+  const sessionId = createSessionId();
+  const now = new Date();
+  const refresh = await createRefreshToken(sessionId);
+  const access = await issueAccessTokenForUser(user, sessionId);
   const session: StoredAuthSession = {
-    accessToken: createId("access"),
-    refreshToken: createId("refresh"),
+    id: sessionId,
+    accessToken: access.accessToken,
+    accessFingerprint: access.accessFingerprint,
+    refreshToken: refresh.refreshToken,
+    refreshTokenHash: refresh.refreshTokenHash,
     userId,
-    createdAt: new Date(now).toISOString(),
-    accessTokenExpiresAt: new Date(now + ACCESS_TOKEN_TTL_MS).toISOString(),
-    refreshTokenExpiresAt: new Date(now + REFRESH_TOKEN_TTL_MS).toISOString(),
+    createdAt: now.toISOString(),
+    accessTokenExpiresAt: access.accessTokenExpiresAt,
+    refreshTokenExpiresAt: refresh.refreshTokenExpiresAt,
+    revokedAt: null,
+    lastUsedAt: null,
+    userAgentHash: null,
+    ipPrefixHash: null,
   };
 
-  // One active session per user — delete old ones first
-  await pool().query("DELETE FROM origin_auth_sessions WHERE user_id = $1", [userId]);
+  // One active session per user — revoke old ones first.
+  await pool().query("UPDATE origin_auth_sessions SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL", [userId]);
   await pool().query(
     `INSERT INTO origin_auth_sessions
-       (access_token, refresh_token, user_id, created_at, access_token_expires_at, refresh_token_expires_at)
-     VALUES ($1, $2, $3, $4, $5, $6)`,
-    [session.accessToken, session.refreshToken, session.userId, session.createdAt, session.accessTokenExpiresAt, session.refreshTokenExpiresAt],
+       (id, access_token, refresh_token, refresh_token_hash, user_id, created_at,
+        access_token_expires_at, refresh_token_expires_at, revoked_at, last_used_at,
+        user_agent_hash, ip_prefix_hash)
+     VALUES ($1, $2, NULL, $3, $4, $5, $6, $7, NULL, NULL, NULL, NULL)`,
+    [
+      session.id,
+      session.accessToken,
+      session.refreshTokenHash,
+      session.userId,
+      session.createdAt,
+      session.accessTokenExpiresAt,
+      session.refreshTokenExpiresAt,
+    ],
   );
   return session;
 }
 
 export async function dbRotateAccessToken(refreshToken: string): Promise<StoredAuthSession | null> {
   await ensureUserSchema();
-  const now = Date.now();
-  const newAccessToken = createId("access");
-  const newExpiry = new Date(now + ACCESS_TOKEN_TTL_MS).toISOString();
+  const parsed = parseRefreshToken(refreshToken);
+  if (!parsed) return null;
+  const expectedHash = await hashRefreshTokenSecret(parsed.secret);
+  const client = await pool().connect();
+  try {
+    await client.query("BEGIN");
+    const current = await client.query(
+      `SELECT s.*
+       FROM origin_auth_sessions s
+       WHERE s.id = $1
+         AND s.refresh_token_expires_at > NOW()
+         AND s.revoked_at IS NULL
+       FOR UPDATE OF s`,
+      [parsed.sessionId],
+    );
 
-  const result = await pool().query(
-    `UPDATE origin_auth_sessions
-     SET access_token = $1, access_token_expires_at = $2
-     WHERE refresh_token = $3 AND refresh_token_expires_at > NOW()
-     RETURNING *`,
-    [newAccessToken, newExpiry, refreshToken],
-  );
-  return result.rows[0] ? rowToSession(result.rows[0]) : null;
+    const row = current.rows[0];
+    if (!row) {
+      await client.query("ROLLBACK");
+      return null;
+    }
+
+    if (row.refresh_token_hash !== expectedHash) {
+      await client.query("UPDATE origin_auth_sessions SET revoked_at = NOW() WHERE id = $1", [parsed.sessionId]);
+      await client.query("COMMIT");
+      return null;
+    }
+
+    const userResult = await client.query("SELECT * FROM origin_users WHERE id = $1 LIMIT 1", [row.user_id]);
+    if (!userResult.rows[0]) {
+      await client.query("UPDATE origin_auth_sessions SET revoked_at = NOW() WHERE id = $1", [parsed.sessionId]);
+      await client.query("COMMIT");
+      return null;
+    }
+    const user = rowToUser(userResult.rows[0]);
+    const refresh = await createRefreshToken(parsed.sessionId);
+    const access = await issueAccessTokenForUser(user, parsed.sessionId);
+    const result = await client.query(
+      `UPDATE origin_auth_sessions
+       SET access_token = $1,
+           refresh_token = NULL,
+           refresh_token_hash = $2,
+           access_token_expires_at = $3,
+           refresh_token_expires_at = $4,
+           last_used_at = NOW()
+       WHERE id = $5
+       RETURNING *`,
+      [
+        access.accessToken,
+        refresh.refreshTokenHash,
+        access.accessTokenExpiresAt,
+        refresh.refreshTokenExpiresAt,
+        parsed.sessionId,
+      ],
+    );
+    await client.query("COMMIT");
+    return result.rows[0]
+      ? {
+          ...rowToSession(result.rows[0]),
+          accessToken: access.accessToken,
+          accessFingerprint: access.accessFingerprint,
+          refreshToken: refresh.refreshToken,
+          refreshTokenHash: refresh.refreshTokenHash,
+        }
+      : null;
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 export async function dbClearUserSessions(userId: string): Promise<void> {
   await ensureUserSchema();
-  await pool().query("DELETE FROM origin_auth_sessions WHERE user_id = $1", [userId]);
+  await pool().query("UPDATE origin_auth_sessions SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL", [userId]);
+}
+
+export async function dbRevokeAuthSessionByRefreshToken(refreshToken: string): Promise<void> {
+  await ensureUserSchema();
+  const parsed = parseRefreshToken(refreshToken);
+  if (!parsed) return;
+  await pool().query("UPDATE origin_auth_sessions SET revoked_at = NOW() WHERE id = $1 AND revoked_at IS NULL", [
+    parsed.sessionId,
+  ]);
+}
+
+export async function dbIncrementAuthTokenVersionAndRevokeSessions(userId: string): Promise<void> {
+  await ensureUserSchema();
+  await pool().query("UPDATE origin_users SET auth_token_version = auth_token_version + 1 WHERE id = $1", [userId]);
+  await dbClearUserSessions(userId);
 }
 
 // ─── Task operations ──────────────────────────────────────────────────────────

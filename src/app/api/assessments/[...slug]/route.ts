@@ -66,7 +66,7 @@ function revalidateOgcodeMutation(userId: string, questionId?: string) {
 
 async function authUser(request: Request) {
   const store = await readStoreAsync();
-  const user = requireUserFromRequest(store, request);
+  const user = await requireUserFromRequest(store, request);
   if (!user) {
     return null;
   }
@@ -230,7 +230,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     if (root === "tests" && first === "custom") {
       const body = await parseJsonBody<CustomTestPayload>(request);
       const response = await withStoreAsync(async (store) => {
-        const user = requireUserFromRequest(store, request);
+        const user = await requireUserFromRequest(store, request);
         if (!user) {
           throw new Error("Authentication credentials were not provided.");
         }
@@ -244,7 +244,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     if (root === "tests" && first && second === "submit") {
       const body = await parseJsonBody<TestSubmissionPayload>(request);
       const response = await withStoreAsync(async (store) => {
-        const user = requireUserFromRequest(store, request);
+        const user = await requireUserFromRequest(store, request);
         if (!user) {
           throw new Error("Authentication credentials were not provided.");
         }
@@ -257,7 +257,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     if (root === "dpps" && first && second === "submit") {
       const body = await parseJsonBody<TestSubmissionPayload>(request);
       const response = await withStoreAsync(async (store) => {
-        const user = requireUserFromRequest(store, request);
+        const user = await requireUserFromRequest(store, request);
         if (!user) {
           throw new Error("Authentication credentials were not provided.");
         }
@@ -270,7 +270,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     if (root === "dpps" && first && second === "check") {
       const body = await parseJsonBody<DppQuestionCheckPayload>(request);
       const response = await withStoreAsync(async (store) => {
-        const user = requireUserFromRequest(store, request);
+        const user = await requireUserFromRequest(store, request);
         if (!user) {
           throw new Error("Authentication credentials were not provided.");
         }
@@ -282,7 +282,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     if (root === "practice" && first && second === "submit") {
       const body = await parseJsonBody<PracticeSubmissionPayload>(request);
       const response = await withStoreAsync(async (store) => {
-        const user = requireUserFromRequest(store, request);
+        const user = await requireUserFromRequest(store, request);
         if (!user) {
           throw new Error("Authentication credentials were not provided.");
         }
@@ -295,7 +295,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     if (root === "ogcode" && first === "location") {
       const body = await parseJsonBody<UpdateOgcodeLocationPayload>(request);
       const response = await withStoreAsync(async (store) => {
-        const user = requireUserFromRequest(store, request);
+        const user = await requireUserFromRequest(store, request);
         if (!user) {
           throw new Error("Authentication credentials were not provided.");
         }

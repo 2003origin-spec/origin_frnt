@@ -1,41 +1,24 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { randomBytes } from "crypto";
 
 import { badRequest, getSlugSegments, parseJsonBody } from "@/server/http";
 import { handleUsersRequest } from "@/server/users";
+import { revokeRefreshSession } from "@/server/auth";
+import {
+  ACCESS_COOKIE_NAME,
+  ACCESS_FINGERPRINT_COOKIE_NAME,
+  COOKIE_OPTS_ACCESS,
+  COOKIE_OPTS_ACCESS_FINGERPRINT,
+  COOKIE_OPTS_CSRF,
+  COOKIE_OPTS_REFRESH,
+  CSRF_COOKIE_NAME,
+  createCsrfToken,
+  REFRESH_COOKIE_NAME,
+} from "@/server/auth-cookies";
 import { authLimiter, generalLimiter, checkRateLimit } from "@/lib/rate-limit";
 
 type RouteContext = {
   params: Promise<{ slug?: string[] }>;
 };
-
-const COOKIE_OPTS_ACCESS = {
-  httpOnly: true,
-  secure: process.env.NODE_ENV === "production",
-  sameSite: "lax" as const,
-  path: "/",
-  maxAge: 24 * 60 * 60, // 24 h — matches server/auth.ts ACCESS_TOKEN_TTL_MS
-};
-
-const COOKIE_OPTS_REFRESH = {
-  httpOnly: true,
-  secure: process.env.NODE_ENV === "production",
-  sameSite: "lax" as const,
-  path: "/",
-  maxAge: 7 * 24 * 60 * 60, // 7 d — matches REFRESH_TOKEN_TTL_MS
-};
-
-const COOKIE_OPTS_CSRF = {
-  httpOnly: false,
-  secure: process.env.NODE_ENV === "production",
-  sameSite: "lax" as const,
-  path: "/",
-  maxAge: 24 * 60 * 60,
-};
-
-function createCsrfToken(): string {
-  return randomBytes(32).toString("base64url");
-}
 
 /**
  * Mirror access + refresh tokens from the JSON response body into HttpOnly
@@ -52,19 +35,30 @@ async function withAuthCookies(response: Response): Promise<NextResponse> {
 
   const access = typeof data.access === "string" ? data.access : null;
   const refresh = typeof data.refresh === "string" ? data.refresh : null;
+  const accessFingerprint = typeof data.accessFingerprint === "string" ? data.accessFingerprint : null;
 
-  if (!access) return response as NextResponse;
+  if (!access || !accessFingerprint) return response as NextResponse;
 
   const publicData = { ...data };
   delete publicData.access;
   delete publicData.refresh;
+  delete publicData.accessFingerprint;
   const cookied = NextResponse.json(publicData, { status: response.status });
-  cookied.cookies.set("origin_access_token", access, COOKIE_OPTS_ACCESS);
+  cookied.cookies.set(ACCESS_COOKIE_NAME, access, COOKIE_OPTS_ACCESS);
+  cookied.cookies.set(ACCESS_FINGERPRINT_COOKIE_NAME, accessFingerprint, COOKIE_OPTS_ACCESS_FINGERPRINT);
   if (refresh) {
-    cookied.cookies.set("origin_refresh_token", refresh, COOKIE_OPTS_REFRESH);
+    cookied.cookies.set(REFRESH_COOKIE_NAME, refresh, COOKIE_OPTS_REFRESH);
   }
-  cookied.cookies.set("origin_csrf", createCsrfToken(), COOKIE_OPTS_CSRF);
+  cookied.cookies.set(CSRF_COOKIE_NAME, createCsrfToken(), COOKIE_OPTS_CSRF);
   return cookied;
+}
+
+function withClearedAuthCookies(response: NextResponse): NextResponse {
+  response.cookies.set(ACCESS_COOKIE_NAME, "", { ...COOKIE_OPTS_ACCESS, maxAge: 0 });
+  response.cookies.set(ACCESS_FINGERPRINT_COOKIE_NAME, "", { ...COOKIE_OPTS_ACCESS_FINGERPRINT, maxAge: 0 });
+  response.cookies.set(REFRESH_COOKIE_NAME, "", { ...COOKIE_OPTS_REFRESH, maxAge: 0 });
+  response.cookies.set(CSRF_COOKIE_NAME, "", { ...COOKIE_OPTS_CSRF, maxAge: 0 });
+  return response;
 }
 
 async function dispatch(method: string, request: NextRequest, context: RouteContext) {
@@ -87,11 +81,9 @@ async function dispatch(method: string, request: NextRequest, context: RouteCont
 
   // Logout — handled here, no users.ts involvement needed
   if (method === "POST" && slug[0] === "logout") {
+    await revokeRefreshSession(request.cookies.get(REFRESH_COOKIE_NAME)?.value);
     const res = NextResponse.json({ ok: true });
-    res.cookies.set("origin_access_token", "", { ...COOKIE_OPTS_ACCESS, maxAge: 0 });
-    res.cookies.set("origin_refresh_token", "", { ...COOKIE_OPTS_REFRESH, maxAge: 0 });
-    res.cookies.set("origin_csrf", "", { ...COOKIE_OPTS_CSRF, maxAge: 0 });
-    return res;
+    return withClearedAuthCookies(res);
   }
 
   let payload: Record<string, unknown> = {};
@@ -113,6 +105,10 @@ async function dispatch(method: string, request: NextRequest, context: RouteCont
 
   if ((isLogin || isRegister || isGoogleLogin || isRefresh) && response.ok) {
     return withAuthCookies(response);
+  }
+
+  if (isRefresh && !response.ok) {
+    return withClearedAuthCookies(response as NextResponse);
   }
 
   return response;

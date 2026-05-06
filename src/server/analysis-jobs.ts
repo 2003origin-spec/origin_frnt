@@ -1,6 +1,7 @@
 import type { PoolClient } from "pg";
 
 import {
+  AnalyticsContractError,
   analyzeDppAttemptWithService,
   analyzeSubmittedTestWithService,
   type AnalyticsDppAttemptRequest,
@@ -226,7 +227,7 @@ async function completeAnalysisJob(jobId: string, result: Record<string, unknown
 
 async function retryOrFailAnalysisJob(job: AnalysisJobRow, error: unknown): Promise<"retried" | "failed"> {
   const message = errorMessage(error);
-  const exhausted = job.attempts >= MAX_ANALYSIS_ATTEMPTS;
+  const exhausted = job.attempts >= MAX_ANALYSIS_ATTEMPTS || error instanceof AnalyticsContractError;
   const status = exhausted ? "failed" : "pending";
   const pool = getPoolOrThrow();
 
@@ -284,12 +285,17 @@ async function processTestAnalysisJob(job: AnalysisJobRow): Promise<Record<strin
       reviewEntries: payload.persistInput.aiAnalysis.reviewEntries,
       recommendations: response.recommendations,
       dppGenerated: response.dpp_plans.length > 0,
+      degraded: response.degraded ?? payload.persistInput.aiAnalysis.degraded ?? false,
+      degradedReason: response.degraded_reason ?? payload.persistInput.aiAnalysis.degradedReason ?? null,
+      degraded_reason: response.degraded_reason ?? payload.persistInput.aiAnalysis.degraded_reason ?? null,
     },
     recommendations: response.recommendations,
     analyticsContext: response.analytics_context,
     weakTopics: response.weak_topics,
     strongTopics: response.strong_topics,
     dppPlans: response.dpp_plans,
+    degraded: response.degraded ?? payload.persistInput.degraded,
+    degradedReason: response.degraded_reason ?? payload.persistInput.degradedReason,
     analysisStatus: "complete",
     analysisError: null,
   });
@@ -363,4 +369,26 @@ export async function drainAnalysisJobs(limit = 5): Promise<AnalysisWorkerResult
   }
 
   return result;
+}
+
+export async function drainOneAnalysisJobWithTimeout(timeoutMs = 3500): Promise<AnalysisWorkerResult | null> {
+  if (process.env.ORIGIN_ANALYSIS_OPPORTUNISTIC_DRAIN === "false") {
+    return null;
+  }
+
+  let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      drainAnalysisJobs(1),
+      new Promise<null>((resolve) => {
+        timeoutHandle = setTimeout(() => resolve(null), Math.max(250, timeoutMs));
+      }),
+    ]);
+  } catch {
+    return null;
+  } finally {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+  }
 }

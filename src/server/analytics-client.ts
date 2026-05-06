@@ -40,6 +40,8 @@ export interface AnalyticsDppPlan {
   duration_minutes: number;
   target_question_count: number;
   sequence: number;
+  degraded?: boolean;
+  degraded_reason?: string | null;
 }
 
 export interface AnalyticsContextPayload {
@@ -82,6 +84,18 @@ export interface AnalyticsGradedAttempt {
   question_type: string;
   answered: boolean;
   is_correct: boolean;
+  credit_awarded: number;
+  marks_awarded: number;
+  max_marks: number;
+  needs_review?: boolean;
+  grading_source?: string | null;
+  scoring_policy?: {
+    correct_marks: number;
+    incorrect_marks: number;
+    unattempted_marks: number;
+    partial_credit_policy?: string;
+    negative_marking_mode?: string;
+  };
   time_spent_seconds: number;
 }
 
@@ -95,6 +109,15 @@ export interface AnalyticsTestAnalysisRequest {
   question_count: number;
   time_taken_seconds: number;
   graded_attempts: AnalyticsGradedAttempt[];
+  source_type?: string;
+  room_id?: string | null;
+  scoring_policy?: {
+    correct_marks: number;
+    incorrect_marks: number;
+    unattempted_marks: number;
+    partial_credit_policy?: string;
+    negative_marking_mode?: string;
+  };
   is_malpractice?: boolean;
 }
 
@@ -106,6 +129,8 @@ export interface AnalyticsTestAnalysisResponse {
   recommendations: string[];
   dpp_plans: AnalyticsDppPlan[];
   analytics_context: AnalyticsContextPayload;
+  degraded?: boolean;
+  degraded_reason?: string | null;
 }
 
 export interface AnalyticsDppAttemptRequest {
@@ -116,6 +141,14 @@ export interface AnalyticsDppAttemptRequest {
   focus_topics: string[];
   graded_attempts: AnalyticsGradedAttempt[];
   time_taken_seconds: number;
+  source_type?: string;
+  scoring_policy?: {
+    correct_marks: number;
+    incorrect_marks: number;
+    unattempted_marks: number;
+    partial_credit_policy?: string;
+    negative_marking_mode?: string;
+  };
 }
 
 export interface AnalyticsDppAttemptResponse {
@@ -133,6 +166,22 @@ function isAnalyticsConfigured(): boolean {
   return Boolean(process.env.ANALYTICS_SERVICE_URL);
 }
 
+const ANALYTICS_CIRCUIT_FAILURE_THRESHOLD = Number(process.env.ANALYTICS_SERVICE_CIRCUIT_FAILURES ?? 3);
+const ANALYTICS_CIRCUIT_OPEN_MS = Number(process.env.ANALYTICS_SERVICE_CIRCUIT_OPEN_MS ?? 30_000);
+
+let analyticsConsecutiveFailures = 0;
+let analyticsCircuitOpenUntil = 0;
+
+export class AnalyticsContractError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "AnalyticsContractError";
+    this.status = status;
+  }
+}
+
 function buildHeaders(requestId: string): HeadersInit {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -146,16 +195,64 @@ function buildHeaders(requestId: string): HeadersInit {
   return headers;
 }
 
-async function analyticsRequest<TResponse, TBody extends object>(
-  path: string,
-  body: TBody,
-): Promise<TResponse | null> {
+function recordAnalyticsServiceFailure() {
+  analyticsConsecutiveFailures += 1;
+  if (analyticsConsecutiveFailures >= ANALYTICS_CIRCUIT_FAILURE_THRESHOLD) {
+    analyticsCircuitOpenUntil = Date.now() + ANALYTICS_CIRCUIT_OPEN_MS;
+  }
+}
+
+function recordAnalyticsServiceSuccess() {
+  analyticsConsecutiveFailures = 0;
+  analyticsCircuitOpenUntil = 0;
+}
+
+async function checkAnalyticsHealth(): Promise<boolean> {
   if (!isAnalyticsConfigured()) {
-    return null;
+    return false;
+  }
+  const controller = new AbortController();
+  const timeoutHandle = setTimeout(() => controller.abort(), 1000);
+  try {
+    const response = await fetch(`${process.env.ANALYTICS_SERVICE_URL}/health`, {
+      headers: buildHeaders(getRequestId()),
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    return response.ok;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timeoutHandle);
+  }
+}
+
+async function analyticsServiceAvailableForAttempt(): Promise<boolean> {
+  if (!isAnalyticsConfigured()) {
+    return false;
   }
 
   if (!process.env.ANALYTICS_SERVICE_TOKEN) {
     throw new Error('[analytics-client] ANALYTICS_SERVICE_TOKEN must be set when ANALYTICS_SERVICE_URL is configured');
+  }
+
+  if (analyticsCircuitOpenUntil <= Date.now()) {
+    return true;
+  }
+
+  const healthy = await checkAnalyticsHealth();
+  if (healthy) {
+    recordAnalyticsServiceSuccess();
+  }
+  return healthy;
+}
+
+async function analyticsRequest<TResponse, TBody extends object>(
+  path: string,
+  body: TBody,
+): Promise<TResponse | null> {
+  if (!(await analyticsServiceAvailableForAttempt())) {
+    return null;
   }
 
   const timeoutMs = Number(process.env.ANALYTICS_SERVICE_TIMEOUT_MS ?? 3000);
@@ -175,20 +272,26 @@ async function analyticsRequest<TResponse, TBody extends object>(
     if (!response.ok) {
       const message = await response.text().catch(() => "");
       const errorMsg = message || `Analytics service request failed for ${path}.`;
-      console.error('[analytics-client] Analytics service returned error status — falling back', {
+      if (response.status >= 400 && response.status < 500) {
+        throw new AnalyticsContractError(errorMsg, response.status);
+      }
+      console.error('[analytics-client] Analytics service returned error status', {
         requestId,
         status: response.status,
         path,
       });
+      recordAnalyticsServiceFailure();
       throw new Error(errorMsg);
     }
 
+    recordAnalyticsServiceSuccess();
     return (await response.json()) as TResponse;
   } catch (err) {
-    if (err instanceof Error && err.message.includes('Analytics service')) {
+    if (err instanceof AnalyticsContractError) {
       throw err;
     }
-    console.error('[analytics-client] Analytics service call failed — falling back', {
+    recordAnalyticsServiceFailure();
+    console.error('[analytics-client] Analytics service call failed', {
       requestId,
       error: err instanceof Error ? err.message : String(err),
       path,

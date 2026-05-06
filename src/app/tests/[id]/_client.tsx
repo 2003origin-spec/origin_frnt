@@ -15,10 +15,16 @@ export default function TestClient({ testId, initialTest }: Props) {
   const { refreshUser } = useAuth();
   const router = useRouter();
 
-  const handleComplete = async (result: TestResult) => {
+  const handleComplete = (result: TestResult): void => {
     sessionStorage.setItem(`origin_test_result_${testId}`, JSON.stringify(result));
+    if (result.id) {
+      sessionStorage.setItem(`origin_test_result_id_${result.id}`, JSON.stringify(result));
+    }
     void refreshUser();
-    router.push(`/tests/${testId}/result`);
+    const target = result.id
+      ? `/tests/${testId}/result?result=${encodeURIComponent(result.id)}`
+      : `/tests/${testId}/result`;
+    window.location.assign(target);
   };
 
   return (

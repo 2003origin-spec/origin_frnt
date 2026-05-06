@@ -17,6 +17,7 @@ async function dispatch(method: string, request: NextRequest, context: RouteCont
   const slug = await resolveSlug(context);
 
   const identifier =
+    request.headers.get("x-origin-user-id") ??
     request.cookies.get("origin_access_token")?.value ??
     request.headers.get("authorization")?.replace("Bearer ", "") ??
     request.headers.get("x-forwarded-for") ??

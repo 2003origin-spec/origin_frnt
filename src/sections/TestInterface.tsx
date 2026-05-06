@@ -20,7 +20,7 @@ const renderInlineSegments = (text: string, idPrefix: string, type: 'plain' | 'm
 
 interface TestInterfaceProps {
   test: Test;
-  onComplete: (result: TestResult) => void;
+  onComplete: (result: TestResult) => void | Promise<void>;
   onExit: () => void;
   timerSource?: ServerAnchoredTimerSource;
   submitHandler?: (payload: TestSubmissionPayload) => Promise<unknown>;
@@ -54,6 +54,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
   const [hasAcceptedRules, setHasAcceptedRules] = useState(false);
   const [showRefreshWarning, setShowRefreshWarning] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const allowSubmittedNavigationRef = useRef(false);
   const questionStartedAtRef = useRef<number>(Date.now());
 
   // Proctoring setup - gated by verification step
@@ -204,7 +205,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
     };
 
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (isExamStarted) {
+      if (isExamStarted && !allowSubmittedNavigationRef.current) {
         e.preventDefault();
         e.returnValue = "Refreshing the page will automatically SUBMIT your exam. Are you sure?";
         return e.returnValue;
@@ -508,9 +509,11 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
         ? await submitHandler(payload)
         : await submitTestAction(test.id, payload);
 
+      allowSubmittedNavigationRef.current = true;
       toast.dismiss(submissionToastId);
-      onComplete(result as TestResult);
+      await Promise.resolve(onComplete(result as TestResult));
     } catch (error: any) {
+      allowSubmittedNavigationRef.current = false;
       toast.dismiss(submissionToastId);
       console.error('Test submission failed:', error);
       toast.error('Failed to submit test. Please try again.');

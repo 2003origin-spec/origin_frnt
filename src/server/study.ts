@@ -79,7 +79,7 @@ function findBook(store: AppStore, bookId: string): StoredBook | null {
 
 async function handleBooksList(request: Request) {
   return withStoreAsync(async (store) => {
-    const user = requireUserFromRequest(store, request);
+    const user = await requireUserFromRequest(store, request);
     if (!user) {
       return unauthorized();
     }
@@ -92,7 +92,7 @@ async function handleBooksList(request: Request) {
 
 async function handleBookDetail(request: Request, bookId: string) {
   return withStoreAsync(async (store) => {
-    const user = requireUserFromRequest(store, request);
+    const user = await requireUserFromRequest(store, request);
     if (!user) {
       return unauthorized();
     }
@@ -107,7 +107,7 @@ async function handleBookDetail(request: Request, bookId: string) {
 
 async function handleToggleSave(request: Request, bookId: string) {
   return withStoreAsync(async (store) => {
-    const user = requireUserFromRequest(store, request);
+    const user = await requireUserFromRequest(store, request);
     if (!user) {
       return unauthorized();
     }
@@ -139,7 +139,7 @@ async function handleToggleSave(request: Request, bookId: string) {
 
 async function handleLibrary(request: Request) {
   return withStoreAsync(async (store) => {
-    const user = requireUserFromRequest(store, request);
+    const user = await requireUserFromRequest(store, request);
     if (!user) {
       return unauthorized();
     }
@@ -155,7 +155,7 @@ async function handleLibrary(request: Request) {
 
 async function handleNotesList(request: Request) {
   return withStoreAsync(async (store) => {
-    const user = requireUserFromRequest(store, request);
+    const user = await requireUserFromRequest(store, request);
     if (!user) {
       return unauthorized();
     }
@@ -169,7 +169,7 @@ async function handleNotesList(request: Request) {
 
 async function handleNoteCreate(request: Request, payload: StudyPayload) {
   return withStoreAsync(async (store) => {
-    const user = requireUserFromRequest(store, request);
+    const user = await requireUserFromRequest(store, request);
     if (!user) {
       return unauthorized();
     }
@@ -202,7 +202,7 @@ async function handleNoteCreate(request: Request, payload: StudyPayload) {
 
 async function handleNoteDetail(request: Request, noteId: string) {
   return withStoreAsync(async (store) => {
-    const user = requireUserFromRequest(store, request);
+    const user = await requireUserFromRequest(store, request);
     if (!user) {
       return unauthorized();
     }
@@ -216,7 +216,7 @@ async function handleNoteDetail(request: Request, noteId: string) {
 
 async function handleNoteUpdate(request: Request, noteId: string, payload: StudyPayload) {
   return withStoreAsync(async (store) => {
-    const user = requireUserFromRequest(store, request);
+    const user = await requireUserFromRequest(store, request);
     if (!user) {
       return unauthorized();
     }
@@ -251,7 +251,7 @@ async function handleNoteUpdate(request: Request, noteId: string, payload: Study
 
 async function handleNoteDelete(request: Request, noteId: string) {
   return withStoreAsync(async (store) => {
-    const user = requireUserFromRequest(store, request);
+    const user = await requireUserFromRequest(store, request);
     if (!user) {
       return unauthorized();
     }
@@ -266,7 +266,7 @@ async function handleNoteDelete(request: Request, noteId: string) {
 
 async function handleBookmarksList(request: Request) {
   return withStoreAsync(async (store) => {
-    const user = requireUserFromRequest(store, request);
+    const user = await requireUserFromRequest(store, request);
     if (!user) {
       return unauthorized();
     }
@@ -281,7 +281,7 @@ async function handleBookmarksList(request: Request) {
 
 async function handleBookmarkCreate(request: Request, payload: StudyPayload) {
   return withStoreAsync(async (store) => {
-    const user = requireUserFromRequest(store, request);
+    const user = await requireUserFromRequest(store, request);
     if (!user) {
       return unauthorized();
     }
@@ -310,7 +310,7 @@ async function handleBookmarkCreate(request: Request, payload: StudyPayload) {
 
 async function handleBookmarkDetail(request: Request, bookmarkId: string) {
   return withStoreAsync(async (store) => {
-    const user = requireUserFromRequest(store, request);
+    const user = await requireUserFromRequest(store, request);
     if (!user) {
       return unauthorized();
     }
@@ -324,7 +324,7 @@ async function handleBookmarkDetail(request: Request, bookmarkId: string) {
 
 async function handleBookmarkUpdate(request: Request, bookmarkId: string, payload: StudyPayload) {
   return withStoreAsync(async (store) => {
-    const user = requireUserFromRequest(store, request);
+    const user = await requireUserFromRequest(store, request);
     if (!user) {
       return unauthorized();
     }
@@ -350,7 +350,7 @@ async function handleBookmarkUpdate(request: Request, bookmarkId: string, payloa
 
 async function handleBookmarkDelete(request: Request, bookmarkId: string) {
   return withStoreAsync(async (store) => {
-    const user = requireUserFromRequest(store, request);
+    const user = await requireUserFromRequest(store, request);
     if (!user) {
       return unauthorized();
     }

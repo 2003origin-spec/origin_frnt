@@ -311,6 +311,7 @@ async function resolveProxyUser(request: NextRequest): Promise<StoredUser | null
 
 function userIdentifier(request: NextRequest): string {
   return (
+    request.headers.get("x-origin-user-id") ??
     request.cookies.get("origin_access_token")?.value ??
     request.headers.get("authorization")?.replace("Bearer ", "") ??
     request.headers.get("x-forwarded-for") ??
@@ -453,7 +454,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     }
 
     const result = await withStoreAsync(async (store) => {
-      const user = requireUserFromRequest(store, request);
+      const user = await requireUserFromRequest(store, request);
       if (!user) return { status: "unauthorized" as const };
       return { status: "ok" as const, threads: listThreads(store, user.id).map(serializeThread) };
     });
@@ -481,7 +482,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     }
 
     const result = await withStoreAsync(async (store) => {
-      const user = requireUserFromRequest(store, request);
+      const user = await requireUserFromRequest(store, request);
       if (!user) return { status: "unauthorized" as const };
       const snapshot = await getOriginAiSnapshot(store, user, request, toPageContext({}), slug[1]);
       return { status: "ok" as const, snapshot };
@@ -528,7 +529,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
   // Fallback to in-app implementation
   const result = await withStoreAsync(async (store) => {
-    const user = requireUserFromRequest(store, request);
+    const user = await requireUserFromRequest(store, request);
     if (!user) {
       return { status: "unauthorized" as const };
     }
@@ -593,7 +594,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     const result = await withStoreAsync(async (store) => {
-      const user = requireUserFromRequest(store, request);
+      const user = await requireUserFromRequest(store, request);
       if (!user) return { status: "unauthorized" as const };
       const browserSessionId = request.headers.get("X-Origin-AI-Session-Id") ?? `legacy-origin-ai-session-${user.id}`;
       const session = createThread(store, user.id, browserSessionId, {
@@ -692,7 +693,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         console.warn("[origin-ai proxy] microservice unavailable; using in-app fallback");
       }
       const result = await withStoreAsync(async (store) => {
-        const user = requireUserFromRequest(store, request);
+        const user = await requireUserFromRequest(store, request);
         if (!user) {
           return { status: "unauthorized" as const };
         }
@@ -754,7 +755,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
       // Fallback
       const result = await withStoreAsync(async (store) => {
-        const user = requireUserFromRequest(store, request);
+        const user = await requireUserFromRequest(store, request);
         if (!user) {
           return { status: "unauthorized" as const };
         }
@@ -819,7 +820,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
       // Fallback
       const result = await withStoreAsync(async (store) => {
-        const user = requireUserFromRequest(store, request);
+        const user = await requireUserFromRequest(store, request);
         if (!user) {
           return { status: "unauthorized" as const };
         }
@@ -898,7 +899,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
       // Fallback
       const result = await withStoreAsync(async (store) => {
-        const user = requireUserFromRequest(store, request);
+        const user = await requireUserFromRequest(store, request);
         if (!user) {
           return { status: "unauthorized" as const };
         }
@@ -975,7 +976,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
       // Fallback
       const result = await withStoreAsync(async (store) => {
-        const user = requireUserFromRequest(store, request);
+        const user = await requireUserFromRequest(store, request);
         if (!user) {
           return { status: "unauthorized" as const };
         }
@@ -1052,7 +1053,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   }
 
   const result = await withStoreAsync(async (store) => {
-    const user = requireUserFromRequest(store, request);
+    const user = await requireUserFromRequest(store, request);
     if (!user) return { status: "unauthorized" as const };
     const session = updateThread(store, user.id, slug[1], {
       title: parsed.data.title,
@@ -1092,7 +1093,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
   }
 
   const result = await withStoreAsync(async (store) => {
-    const user = requireUserFromRequest(store, request);
+    const user = await requireUserFromRequest(store, request);
     if (!user) return { status: "unauthorized" as const };
     const removed = deleteThread(store, user.id, slug[1]);
     return { status: removed ? ("ok" as const) : ("not_found" as const) };

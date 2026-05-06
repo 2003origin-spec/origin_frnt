@@ -48,6 +48,7 @@ export interface StoredUser {
   voiceMinutesUsedToday: number;
   tokensUsedToday: number;
   usageResetAt: string;
+  authTokenVersion: number;
 }
 
 export interface StoredStreakData {
@@ -202,6 +203,9 @@ export interface StoredTestResult {
     }>;
     recommendations: string[];
     dppGenerated: boolean;
+    degraded?: boolean;
+    degradedReason?: string | null;
+    degraded_reason?: string | null;
   };
   subjectStats: Record<
     string,
@@ -221,7 +225,7 @@ export interface StoredTestResult {
   >;
   isMalpractice: boolean;
   degraded?: boolean;
-  degradedReason?: string;
+  degradedReason?: string | null;
   createdAt: string;
   answers: StoredUserAnswer[];
 }
@@ -379,12 +383,19 @@ export interface StoredOriginAiSession {
 }
 
 export interface StoredAuthSession {
+  id: string;
   accessToken: string;
+  accessFingerprint?: string;
   refreshToken: string;
+  refreshTokenHash?: string;
   userId: string;
   createdAt: string;
   accessTokenExpiresAt: string;
   refreshTokenExpiresAt: string;
+  revokedAt?: string | null;
+  lastUsedAt?: string | null;
+  userAgentHash?: string | null;
+  ipPrefixHash?: string | null;
 }
 
 export interface StoredOtp {
@@ -488,7 +499,7 @@ function nowIso(): string {
 
 type StoredUserDefaultFields = Pick<
   StoredUser,
-  "location" | "voiceMinutesUsedToday" | "tokensUsedToday" | "usageResetAt"
+  "location" | "voiceMinutesUsedToday" | "tokensUsedToday" | "usageResetAt" | "authTokenVersion"
 >;
 
 export type StoredUserWithOptionalDefaults = Omit<StoredUser, keyof StoredUserDefaultFields> &
@@ -501,6 +512,7 @@ export function withStoredUserDefaults(user: StoredUserWithOptionalDefaults): St
     voiceMinutesUsedToday: user.voiceMinutesUsedToday ?? 0,
     tokensUsedToday: user.tokensUsedToday ?? 0,
     usageResetAt: user.usageResetAt ?? nowIso(),
+    authTokenVersion: user.authTokenVersion ?? 0,
   };
 }
 

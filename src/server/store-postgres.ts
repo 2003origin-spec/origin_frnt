@@ -340,9 +340,9 @@ async function upsertUsers(client: PoolClient, users: StoredUser[]): Promise<voi
          referral_source, avatar, streak, total_study_time, joined_at, is_premium,
          premium_expiry, is_onboarded, selected_course, is_dropper,
          years_of_experience, subjects, student_capacity, location,
-         voice_minutes_used_today, tokens_used_today, usage_reset_at
+         voice_minutes_used_today, tokens_used_today, usage_reset_at, auth_token_version
        )
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
        ON CONFLICT (id) DO UPDATE SET
          name = EXCLUDED.name,
          email = EXCLUDED.email,
@@ -365,7 +365,8 @@ async function upsertUsers(client: PoolClient, users: StoredUser[]): Promise<voi
          location = EXCLUDED.location,
          voice_minutes_used_today = EXCLUDED.voice_minutes_used_today,
          tokens_used_today = EXCLUDED.tokens_used_today,
-         usage_reset_at = EXCLUDED.usage_reset_at`,
+         usage_reset_at = EXCLUDED.usage_reset_at,
+         auth_token_version = EXCLUDED.auth_token_version`,
       [
         user.id,
         user.name,
@@ -391,6 +392,7 @@ async function upsertUsers(client: PoolClient, users: StoredUser[]): Promise<voi
         user.voiceMinutesUsedToday,
         user.tokensUsedToday,
         user.usageResetAt,
+        user.authTokenVersion,
       ],
     );
   }
@@ -401,21 +403,33 @@ async function replaceAuthSessions(client: PoolClient, sessions: StoredAuthSessi
   for (const session of sessions) {
     await client.query(
       `INSERT INTO origin_auth_sessions (
-         access_token, refresh_token, user_id, created_at,
-         access_token_expires_at, refresh_token_expires_at
-       ) VALUES ($1,$2,$3,$4,$5,$6)
-       ON CONFLICT (access_token) DO UPDATE SET
+         id, access_token, refresh_token, refresh_token_hash, user_id, created_at,
+         access_token_expires_at, refresh_token_expires_at, revoked_at, last_used_at,
+         user_agent_hash, ip_prefix_hash
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+       ON CONFLICT (id) DO UPDATE SET
          refresh_token = EXCLUDED.refresh_token,
+         refresh_token_hash = EXCLUDED.refresh_token_hash,
          user_id = EXCLUDED.user_id,
          access_token_expires_at = EXCLUDED.access_token_expires_at,
-         refresh_token_expires_at = EXCLUDED.refresh_token_expires_at`,
+         refresh_token_expires_at = EXCLUDED.refresh_token_expires_at,
+         revoked_at = EXCLUDED.revoked_at,
+         last_used_at = EXCLUDED.last_used_at,
+         user_agent_hash = EXCLUDED.user_agent_hash,
+         ip_prefix_hash = EXCLUDED.ip_prefix_hash`,
       [
+        session.id,
         session.accessToken,
         session.refreshToken,
+        session.refreshTokenHash ?? null,
         session.userId,
         session.createdAt,
         session.accessTokenExpiresAt,
         session.refreshTokenExpiresAt,
+        session.revokedAt ?? null,
+        session.lastUsedAt ?? null,
+        session.userAgentHash ?? null,
+        session.ipPrefixHash ?? null,
       ],
     );
   }

@@ -15,6 +15,8 @@ declare global {
   var __originAnalyticsSchemaReady: Promise<void> | undefined;
 }
 
+export const DPP_PLAN_RETENTION_LIMIT = 30;
+
 const ANALYTICS_SCHEMA_SQL = `
 CREATE SCHEMA IF NOT EXISTS analytics;
 
@@ -51,12 +53,12 @@ CREATE TABLE IF NOT EXISTS analytics.test_results (
   difficulty TEXT NOT NULL,
   question_count INTEGER NOT NULL,
   time_taken_seconds INTEGER NOT NULL DEFAULT 0,
-  score INTEGER NOT NULL,
+  score DOUBLE PRECISION NOT NULL,
   percentage INTEGER NOT NULL,
   correct_answers INTEGER NOT NULL,
   wrong_answers INTEGER NOT NULL,
   unattempted INTEGER NOT NULL,
-  total_marks INTEGER NOT NULL,
+  total_marks DOUBLE PRECISION NOT NULL,
   subject_stats JSONB NOT NULL DEFAULT '{}'::jsonb,
   answers JSONB NOT NULL DEFAULT '[]'::jsonb,
   summary TEXT NOT NULL,
@@ -163,6 +165,8 @@ CREATE INDEX IF NOT EXISTS idx_analytics_dpp_attempts_user_created
 
 ALTER TABLE analytics.test_results ADD COLUMN IF NOT EXISTS analysis_status TEXT NOT NULL DEFAULT 'complete';
 ALTER TABLE analytics.test_results ADD COLUMN IF NOT EXISTS analysis_error TEXT;
+ALTER TABLE analytics.test_results ALTER COLUMN score TYPE DOUBLE PRECISION USING score::double precision;
+ALTER TABLE analytics.test_results ALTER COLUMN total_marks TYPE DOUBLE PRECISION USING total_marks::double precision;
 ALTER TABLE analytics.dpp_attempts ADD COLUMN IF NOT EXISTS analysis_status TEXT NOT NULL DEFAULT 'complete';
 ALTER TABLE analytics.dpp_attempts ADD COLUMN IF NOT EXISTS analysis_error TEXT;
 `;
@@ -219,6 +223,9 @@ export interface PersistedTestResultRecord {
     }>;
     recommendations: string[];
     dppGenerated: boolean;
+    degraded?: boolean;
+    degradedReason?: string | null;
+    degraded_reason?: string | null;
   };
   subjectStats: Record<
     string,
@@ -235,7 +242,7 @@ export interface PersistedTestResultRecord {
   >;
   isMalpractice: boolean;
   degraded?: boolean;
-  degradedReason?: string;
+  degradedReason?: string | null;
   analysisStatus?: "pending" | "complete" | "failed";
   analysisError?: string | null;
   createdAt: string;
@@ -329,6 +336,8 @@ export type PersistTestAnalysisInput = {
   strongTopics: AnalyticsTopicSignal[];
   dppPlans: AnalyticsDppPlan[];
   isMalpractice?: boolean;
+  degraded?: boolean;
+  degradedReason?: string | null;
   analysisStatus?: "pending" | "complete" | "failed";
   analysisError?: string | null;
 };
@@ -414,6 +423,40 @@ const ensureSchema = ensureAnalyticsSchema;
 
 export async function ensureAnalyticsTables(): Promise<void> {
   await ensureSchema();
+}
+
+export async function pruneDppPlansForUser(
+  userId: string,
+  limit = DPP_PLAN_RETENTION_LIMIT,
+  client?: PoolClient,
+): Promise<number> {
+  const normalizedLimit = Math.max(0, Math.floor(limit));
+  if (!userId || normalizedLimit < 1) {
+    return 0;
+  }
+
+  if (!client) {
+    await ensureSchema();
+  }
+  const executor = client ?? getPoolOrThrow();
+  const result = await executor.query(
+    `WITH ranked AS (
+       SELECT
+         id,
+         ROW_NUMBER() OVER (ORDER BY created_at DESC, sequence ASC, id DESC) AS dpp_rank
+       FROM analytics.dpp_plans
+       WHERE user_id = $1
+     ),
+     deleted AS (
+       DELETE FROM analytics.dpp_plans d
+       USING ranked r
+       WHERE d.id = r.id AND r.dpp_rank > $2
+       RETURNING d.id
+     )
+     SELECT COUNT(*)::int AS deleted_count FROM deleted`,
+    [userId, normalizedLimit],
+  );
+  return Number(result.rows[0]?.deleted_count ?? 0);
 }
 
 export async function getRecentWeakTopicsForUser(userId: string): Promise<string[]> {
@@ -617,6 +660,12 @@ export async function persistTestAnalysisResult(input: PersistTestAnalysisInput)
   const resultId = input.id ?? createId("result");
   const createdAt = new Date().toISOString();
   const analysisStatus = input.analysisStatus ?? "complete";
+  const aiAnalysis = {
+    ...input.aiAnalysis,
+    degraded: input.degraded ?? input.aiAnalysis.degraded ?? false,
+    degradedReason: input.degradedReason ?? input.aiAnalysis.degradedReason ?? null,
+    degraded_reason: input.degradedReason ?? input.aiAnalysis.degraded_reason ?? null,
+  };
 
   try {
     await client.query("BEGIN");
@@ -679,7 +728,7 @@ export async function persistTestAnalysisResult(input: PersistTestAnalysisInput)
         JSON.stringify(input.analyticsContext),
         JSON.stringify(input.weakTopics),
         JSON.stringify(input.strongTopics),
-        JSON.stringify(input.aiAnalysis),
+        JSON.stringify(aiAnalysis),
         input.isMalpractice || false,
         analysisStatus,
         input.analysisError ?? null,
@@ -755,6 +804,7 @@ export async function persistTestAnalysisResult(input: PersistTestAnalysisInput)
         );
       }
     }
+    await pruneDppPlansForUser(input.userId, DPP_PLAN_RETENTION_LIMIT, client);
 
     await client.query("COMMIT");
   } catch (error) {
@@ -776,11 +826,11 @@ export async function persistTestAnalysisResult(input: PersistTestAnalysisInput)
     timeTaken: input.timeTakenSeconds,
     weakAreas: input.weakAreas,
     strongAreas: input.strongAreas,
-    aiAnalysis: input.aiAnalysis,
+    aiAnalysis,
     subjectStats: input.subjectStats as PersistedTestResultRecord["subjectStats"],
     isMalpractice: input.isMalpractice || false,
-    degraded: analysisStatus === "failed",
-    degradedReason: input.analysisError ?? undefined,
+    degraded: Boolean(input.degraded) || analysisStatus === "failed",
+    degradedReason: input.degradedReason ?? input.analysisError ?? undefined,
     analysisStatus,
     analysisError: input.analysisError ?? null,
     createdAt,
@@ -789,6 +839,14 @@ export async function persistTestAnalysisResult(input: PersistTestAnalysisInput)
 }
 
 function mapPersistedResultRow(row: Record<string, unknown>): PersistedTestResultRecord {
+  const aiAnalysis = fromJsonObject<PersistedTestResultRecord["aiAnalysis"]>(row.ai_analysis, {
+    summary: String(row.summary ?? ""),
+    mistakes: [],
+    reviewEntries: [],
+    recommendations: fromJsonArray<string>(row.recommendations),
+    dppGenerated: true,
+  });
+
   return {
     id: String(row.id),
     testId: String(row.test_id),
@@ -801,15 +859,14 @@ function mapPersistedResultRow(row: Record<string, unknown>): PersistedTestResul
     timeTaken: Number(row.time_taken_seconds ?? 0),
     weakAreas: toTopicAccuracy(fromJsonArray<AnalyticsTopicSignal>(row.weak_topics)),
     strongAreas: toTopicAccuracy(fromJsonArray<AnalyticsTopicSignal>(row.strong_topics)),
-    aiAnalysis: fromJsonObject(row.ai_analysis, {
-      summary: String(row.summary ?? ""),
-      mistakes: [],
-      reviewEntries: [],
-      recommendations: fromJsonArray<string>(row.recommendations),
-      dppGenerated: true,
-    }),
+    aiAnalysis,
     subjectStats: fromJsonObject(row.subject_stats, {}),
     isMalpractice: Boolean(row.is_malpractice),
+    degraded: Boolean(aiAnalysis.degraded) || String(row.analysis_status ?? "complete") === "failed",
+    degradedReason:
+      aiAnalysis.degradedReason ??
+      aiAnalysis.degraded_reason ??
+      (row.analysis_error ? String(row.analysis_error) : null),
     analysisStatus: String(row.analysis_status ?? "complete") as PersistedTestResultRecord["analysisStatus"],
     analysisError: row.analysis_error ? String(row.analysis_error) : null,
     createdAt: String(row.created_at),
@@ -863,6 +920,7 @@ function mapPersistedDppRow(row: Record<string, unknown>): PersistedDppPlanRecor
 export async function listPendingDppPlans(userId: string): Promise<PersistedDppPlanRecord[]> {
   await ensureSchema();
   const pool = getPoolOrThrow();
+  await pruneDppPlansForUser(userId);
   const result = await pool.query(
     `SELECT
        d.*,
@@ -1078,6 +1136,7 @@ export async function listLatestDppAttemptsForPlans(
 
 export async function getOriginAiAnalyticsSnapshot(userId: string): Promise<OriginAiAnalyticsSnapshot | null> {
   await ensureSchema();
+  await pruneDppPlansForUser(userId);
   const pool = getPoolOrThrow();
   const [latestResult, pendingDppRows, latestDppAttempt] = await Promise.all([
     pool.query(

@@ -21,7 +21,20 @@ import {
   listOgcodeCatalogQuestions,
 } from "@/server/ogcode-catalog";
 import { getUserPostgresPool, isUserPostgresConfigured } from "@/server/user-postgres";
-import { gradePracticeAnswerWithService } from "@/server/grader-client";
+import {
+  GraderContractError,
+  gradeAssessmentBatchWithService,
+  gradePracticeAnswerWithService,
+  type AssessmentBatchGradeResult,
+} from "@/server/grader-client";
+import {
+  DEFAULT_TEST_SCORING_POLICY,
+  computeMarksFromCredit,
+  scoringPolicyForQuestion,
+  validateResolvedAssessmentQuestions,
+  type AssessmentResolutionMetadata,
+  type AssessmentSourceType,
+} from "@/server/assessment-orchestrator";
 import {
   generateCustomTestWithService,
   type AnalyticsContextPayload,
@@ -54,7 +67,7 @@ import {
   type PersistDppAttemptInput,
   type PersistTestAnalysisInput,
 } from "@/server/analytics-store";
-import { enqueueAnalysisJob } from "@/server/analysis-jobs";
+import { drainOneAnalysisJobWithTimeout, enqueueAnalysisJob } from "@/server/analysis-jobs";
 import type { PracticeQuestion, TestPreview } from "@/types";
 import { metric } from "@/lib/metrics";
 import type {
@@ -168,6 +181,11 @@ type TopicAccuracy = { topic: string; accuracy: number };
 type GradeResult = {
   isCorrect: boolean;
   info: Record<string, unknown>;
+  creditAwarded?: number;
+  marksAwarded?: number;
+  maxMarks?: number;
+  needsReview?: boolean;
+  evaluationSource?: string;
 };
 
 type SubjectiveMatch = {
@@ -1199,34 +1217,86 @@ function hasResponse(answer: StoredUserAnswer): boolean {
   );
 }
 
-function gradeAnswer(question: StoredQuestion, answer: StoredUserAnswer): GradeResult {
+function withLocalScoring(
+  question: StoredQuestion,
+  answer: StoredUserAnswer,
+  grade: Pick<GradeResult, "isCorrect" | "info"> & { creditAwarded?: number },
+  sourceType: AssessmentSourceType = "test",
+): GradeResult {
+  const policy = scoringPolicyForQuestion(question, sourceType);
+  const creditAwarded = grade.creditAwarded ?? (grade.isCorrect ? 1 : 0);
+  const marksAwarded = computeMarksFromCredit({
+    answered: hasResponse(answer),
+    isCorrect: grade.isCorrect,
+    creditAwarded,
+    policy,
+  });
+  return {
+    ...grade,
+    creditAwarded,
+    marksAwarded,
+    maxMarks: policy.correctMarks,
+    needsReview: Boolean(grade.info.needsReview ?? grade.info.needs_review),
+    evaluationSource: "local_fallback",
+    info: {
+      ...grade.info,
+      creditAwarded,
+      credit_awarded: creditAwarded,
+      marksAwarded,
+      marks_awarded: marksAwarded,
+      maxMarks: policy.correctMarks,
+      max_marks: policy.correctMarks,
+      evaluationSource: "local_fallback",
+      evaluation_source: "local_fallback",
+    },
+  };
+}
+
+function gradeAnswer(question: StoredQuestion, answer: StoredUserAnswer, sourceType: AssessmentSourceType = "test"): GradeResult {
   if (question.questionType === "mcq") {
     const isCorrect =
       question.correctOption !== null &&
       answer.selectedOption !== null &&
       answer.selectedOption === question.correctOption;
-    return {
-      isCorrect,
-      info: {
-        correctOption: question.correctOption,
-        correct_option: question.correctOption,
-        explanation: question.explanation,
+    return withLocalScoring(
+      question,
+      answer,
+      {
+        isCorrect,
+        info: {
+          correctOption: question.correctOption,
+          correct_option: question.correctOption,
+          explanation: question.explanation,
+        },
       },
-    };
+      sourceType,
+    );
   }
 
   if (question.questionType === "msq") {
     const submitted = sortedNumbers(answer.selectedOptions);
     const expected = sortedNumbers(question.correctOptions);
     const isCorrect = expected.length > 0 && JSON.stringify(submitted) === JSON.stringify(expected);
-    return {
-      isCorrect,
-      info: {
-        correctOptions: question.correctOptions,
-        correct_options: question.correctOptions,
-        explanation: question.explanation,
+    const isPartial =
+      !isCorrect &&
+      submitted.length > 0 &&
+      expected.length > 0 &&
+      submitted.every((option) => expected.includes(option));
+    const creditAwarded = isCorrect ? 1 : isPartial ? Number((submitted.length / expected.length).toFixed(3)) : 0;
+    return withLocalScoring(
+      question,
+      answer,
+      {
+        isCorrect,
+        creditAwarded,
+        info: {
+          correctOptions: question.correctOptions,
+          correct_options: question.correctOptions,
+          explanation: question.explanation,
+        },
       },
-    };
+      sourceType,
+    );
   }
 
   if (question.questionType === "numerical") {
@@ -1237,15 +1307,20 @@ function gradeAnswer(question: StoredQuestion, answer: StoredUserAnswer): GradeR
       Number.isFinite(submitted) &&
       Number.isFinite(expected) &&
       Math.abs((submitted ?? 0) - (expected ?? 0)) <= tolerance;
-    return {
-      isCorrect,
-      info: {
-        correctAnswerText: question.answerText,
-        correct_answer_text: question.answerText,
-        tolerance: question.tolerance,
-        explanation: question.explanation,
+    return withLocalScoring(
+      question,
+      answer,
+      {
+        isCorrect,
+        info: {
+          correctAnswerText: question.answerText,
+          correct_answer_text: question.answerText,
+          tolerance: question.tolerance,
+          explanation: question.explanation,
+        },
       },
-    };
+      sourceType,
+    );
   }
 
   if (question.questionType === "matrix_match") {
@@ -1256,14 +1331,23 @@ function gradeAnswer(question: StoredQuestion, answer: StoredUserAnswer): GradeR
       .map((pair) => pair.join(":"))
       .sort();
     const isCorrect = JSON.stringify(submitted) === JSON.stringify(expected);
-    return {
-      isCorrect,
-      info: {
-        correctPairs: question.matrixData?.correct_pairs ?? [],
-        correct_pairs: question.matrixData?.correct_pairs ?? [],
-        explanation: question.explanation,
+    const correctPairSet = new Set(expected);
+    const partialMatches = submitted.filter((pair) => correctPairSet.has(pair)).length;
+    const creditAwarded = isCorrect ? 1 : expected.length > 0 ? Number((partialMatches / expected.length).toFixed(3)) : 0;
+    return withLocalScoring(
+      question,
+      answer,
+      {
+        isCorrect,
+        creditAwarded,
+        info: {
+          correctPairs: question.matrixData?.correct_pairs ?? [],
+          correct_pairs: question.matrixData?.correct_pairs ?? [],
+          explanation: question.explanation,
+        },
       },
-    };
+      sourceType,
+    );
   }
 
   const semanticMatch = answersMatchAsText(question, answer.answerText);
@@ -1282,28 +1366,32 @@ function gradeAnswer(question: StoredQuestion, answer: StoredUserAnswer): GradeR
               : 0
         ).toFixed(3),
       );
-  return {
-    isCorrect: semanticMatch.isCorrect,
-    info: {
-      correctAnswerText: question.answerText,
-      correct_answer_text: question.answerText,
-      explanation: question.explanation,
-      semanticScore: Number(semanticMatch.score.toFixed(3)),
-      semantic_score: Number(semanticMatch.score.toFixed(3)),
-      semanticThreshold: Number(semanticMatch.threshold.toFixed(3)),
-      semantic_threshold: Number(semanticMatch.threshold.toFixed(3)),
-      semanticBand,
-      semantic_band: semanticBand,
+  return withLocalScoring(
+    question,
+    answer,
+    {
+      isCorrect: semanticMatch.isCorrect,
       creditAwarded,
-      credit_awarded: creditAwarded,
-      matchMethod: semanticMatch.matchMethod,
-      match_method: semanticMatch.matchMethod,
-      matchedTerms: semanticMatch.matchedTerms,
-      matched_terms: semanticMatch.matchedTerms,
-      missingTerms: semanticMatch.missingTerms,
-      missing_terms: semanticMatch.missingTerms,
+      info: {
+        correctAnswerText: question.answerText,
+        correct_answer_text: question.answerText,
+        explanation: question.explanation,
+        semanticScore: Number(semanticMatch.score.toFixed(3)),
+        semantic_score: Number(semanticMatch.score.toFixed(3)),
+        semanticThreshold: Number(semanticMatch.threshold.toFixed(3)),
+        semantic_threshold: Number(semanticMatch.threshold.toFixed(3)),
+        semanticBand,
+        semantic_band: semanticBand,
+        matchMethod: semanticMatch.matchMethod,
+        match_method: semanticMatch.matchMethod,
+        matchedTerms: semanticMatch.matchedTerms,
+        matched_terms: semanticMatch.matchedTerms,
+        missingTerms: semanticMatch.missingTerms,
+        missing_terms: semanticMatch.missingTerms,
+      },
     },
-  };
+    sourceType,
+  );
 }
 
 async function gradePracticeAnswer(
@@ -1315,7 +1403,7 @@ async function gradePracticeAnswer(
   if (remoteGrade) {
     return remoteGrade;
   }
-  return gradeAnswer(question, answer);
+  return gradeAnswer(question, answer, "practice");
 }
 
 function questionById(store: AppStore, questionId: string): StoredQuestion {
@@ -1608,6 +1696,53 @@ export function serializeQuestion(
   return base;
 }
 
+function resolveStoredAssessmentQuestions(
+  store: AppStore,
+  questionIds: string[],
+  declaredTotalQuestions?: number | null,
+) {
+  const questionMap = new Map(store.questions.map((question) => [question.id, question]));
+  const questions = questionIds
+    .map((questionId) => questionMap.get(questionId))
+    .filter((question): question is StoredQuestion => Boolean(question));
+  const metadata = validateResolvedAssessmentQuestions({
+    declaredTotalQuestions,
+    questionIds,
+    resolvedQuestionIds: questions.map((question) => question.id),
+  });
+  return { questions, metadata };
+}
+
+type ResolutionMetadataPayload = {
+  totalQuestions: number;
+  total_questions: number;
+  declaredTotalQuestions: number | null;
+  declared_total_questions: number | null;
+  missingQuestionIds: string[];
+  missing_question_ids: string[];
+  degraded: boolean;
+  degradedReason: string | null;
+  degraded_reason: string | null;
+};
+
+function attachResolutionMetadata<T extends Record<string, unknown>>(
+  payload: T,
+  metadata: AssessmentResolutionMetadata,
+): T & ResolutionMetadataPayload {
+  return {
+    ...payload,
+    totalQuestions: metadata.resolvedTotalQuestions,
+    total_questions: metadata.resolvedTotalQuestions,
+    declaredTotalQuestions: metadata.declaredTotalQuestions,
+    declared_total_questions: metadata.declaredTotalQuestions,
+    missingQuestionIds: metadata.missingQuestionIds,
+    missing_question_ids: metadata.missingQuestionIds,
+    degraded: metadata.degraded,
+    degradedReason: metadata.degradedReason,
+    degraded_reason: metadata.degradedReason,
+  };
+}
+
 export function serializeTest(store: AppStore, userId: string, test: StoredTest) {
   const results = store.testResults
     .filter((result) => result.userId === userId && result.testId === test.id)
@@ -1618,8 +1753,9 @@ export function serializeTest(store: AppStore, userId: string, test: StoredTest)
     assessmentId: test.id,
     attemptKey: String(results.length + 1),
   };
-  const questions = test.questionIds.map((questionId) =>
-    serializeQuestion(store, userId, questionById(store, questionId), {
+  const resolved = resolveStoredAssessmentQuestions(store, test.questionIds, test.totalQuestions);
+  const questions = resolved.questions.map((question) =>
+    serializeQuestion(store, userId, question, {
       includeCorrectFields: false,
       presentationContext,
     }),
@@ -1627,7 +1763,7 @@ export function serializeTest(store: AppStore, userId: string, test: StoredTest)
   const averageScore = computeAveragePercentage(results);
   const allScores = results.map((result) => result.percentage);
 
-  return {
+  return attachResolutionMetadata({
     id: test.id,
     title: test.title,
     description: test.description,
@@ -1635,8 +1771,6 @@ export function serializeTest(store: AppStore, userId: string, test: StoredTest)
     chapter: test.chapter ?? undefined,
     difficulty: test.difficulty,
     duration: test.duration,
-    totalQuestions: test.totalQuestions,
-    total_questions: test.totalQuestions,
     isPremium: test.isPremium,
     is_premium: test.isPremium,
     isCustom,
@@ -1648,7 +1782,7 @@ export function serializeTest(store: AppStore, userId: string, test: StoredTest)
     attempt_count: results.length,
     allScores,
     all_scores: allScores,
-  };
+  }, resolved.metadata);
 }
 
 export function serializeTestPreview(store: AppStore, userId: string, test: StoredTest) {
@@ -1658,8 +1792,9 @@ export function serializeTestPreview(store: AppStore, userId: string, test: Stor
   const averageScore = computeAveragePercentage(results);
   const allScores = results.map((result) => result.percentage);
   const isCustom = Boolean(test.createdBy);
+  const resolved = resolveStoredAssessmentQuestions(store, test.questionIds, test.totalQuestions);
 
-  return {
+  return attachResolutionMetadata({
     id: test.id,
     title: test.title,
     description: test.description,
@@ -1667,8 +1802,6 @@ export function serializeTestPreview(store: AppStore, userId: string, test: Stor
     chapter: test.chapter ?? undefined,
     difficulty: test.difficulty,
     duration: test.duration,
-    totalQuestions: test.totalQuestions,
-    total_questions: test.totalQuestions,
     isPremium: test.isPremium,
     is_premium: test.isPremium,
     isCustom,
@@ -1679,7 +1812,7 @@ export function serializeTestPreview(store: AppStore, userId: string, test: Stor
     attempt_count: results.length,
     allScores,
     all_scores: allScores,
-  };
+  }, resolved.metadata);
 }
 
 export function serializeResult(result: StoredTestResult) {
@@ -1748,8 +1881,13 @@ function serializePersistedCustomTestWithLookup(
         presentationContext,
       }),
     );
+  const metadata = validateResolvedAssessmentQuestions({
+    declaredTotalQuestions: test.questionCount,
+    questionIds: test.questionIds,
+    resolvedQuestionIds: questions.map((question) => question.id),
+  });
 
-  return {
+  return attachResolutionMetadata({
     id: test.id,
     title: test.title,
     description: test.description,
@@ -1757,8 +1895,6 @@ function serializePersistedCustomTestWithLookup(
     chapter: test.chapter ?? undefined,
     difficulty: test.difficulty,
     duration: test.durationMinutes,
-    totalQuestions: test.questionCount,
-    total_questions: test.questionCount,
     isPremium: false,
     is_premium: false,
     isCustom: true,
@@ -1778,11 +1914,17 @@ function serializePersistedCustomTestWithLookup(
     recommended_time_per_question_seconds: test.recommendedTimePerQuestionSeconds,
     createdAt: test.createdAt,
     created_at: test.createdAt,
-  };
+  }, metadata);
 }
 
-function serializePersistedCustomTestPreview(test: PersistedCustomTestRecord) {
-  return {
+function serializePersistedCustomTestPreview(test: PersistedCustomTestRecord, resolvedQuestionIds = test.questionIds) {
+  const metadata = validateResolvedAssessmentQuestions({
+    declaredTotalQuestions: test.questionCount,
+    questionIds: test.questionIds,
+    resolvedQuestionIds,
+  });
+
+  return attachResolutionMetadata({
     id: test.id,
     title: test.title,
     description: test.description,
@@ -1790,8 +1932,6 @@ function serializePersistedCustomTestPreview(test: PersistedCustomTestRecord) {
     chapter: test.chapter ?? undefined,
     difficulty: test.difficulty,
     duration: test.durationMinutes,
-    totalQuestions: test.questionCount,
-    total_questions: test.questionCount,
     isPremium: false,
     is_premium: false,
     isCustom: true,
@@ -1802,7 +1942,7 @@ function serializePersistedCustomTestPreview(test: PersistedCustomTestRecord) {
     attempt_count: test.attemptCount,
     allScores: test.allScores,
     all_scores: test.allScores,
-  };
+  }, metadata);
 }
 
 function serializePersistedResult(result: PersistedTestResultRecord) {
@@ -2034,12 +2174,13 @@ function submitTestFallback(store: AppStore, user: StoredUser, testId: string, p
     }
     subjectStats[question.subject].total += 1;
 
-    const { isCorrect } = gradeAnswer(question, answer);
+    const grade = gradeAnswer(question, answer, "test");
+    const { isCorrect } = grade;
     const answered = hasResponse(answer);
+    score += grade.marksAwarded ?? (isCorrect ? 4 : answered ? -1 : 0);
 
     if (isCorrect) {
       correctAnswers += 1;
-      score += 4;
       topicStats[question.concept].correct += 1;
       subjectStats[question.subject].correct += 1;
       subjectStats[question.subject].timeCorrect += answer.timeSpent;
@@ -2050,7 +2191,6 @@ function submitTestFallback(store: AppStore, user: StoredUser, testId: string, p
       subjectStats[question.subject].timeUnattempted += answer.timeSpent;
     } else {
       wrongAnswers += 1;
-      score -= 1;
       subjectStats[question.subject].incorrect += 1;
       subjectStats[question.subject].timeIncorrect += answer.timeSpent;
     }
@@ -2192,32 +2332,12 @@ async function buildAnalyticsAttempts(
   questionIds: string[],
   answersMap: Map<string, StoredUserAnswer>,
   presentationContext: Pick<QuestionPresentationContext, "scope" | "assessmentId">,
+  sourceType: AssessmentSourceType,
 ) {
   const questionLookup = await buildQuestionLookup(store, questionIds);
-  const gradedAttempts: AnalyticsGradedAttempt[] = [];
-  let correctAnswers = 0;
-  let wrongAnswers = 0;
-  let unattempted = 0;
-  let score = 0;
-  const userAnswers: StoredUserAnswer[] = [];
-  const subjectStats: Record<
-    string,
-    {
-      correct: number;
-      incorrect: number;
-      unattempted: number;
-      total: number;
-      timeCorrect: number;
-      timeIncorrect: number;
-      timeUnattempted: number;
-    }
-  > = {};
-
-  for (const questionId of questionIds) {
-    const question = questionLookup.get(questionId);
-    if (!question) {
-      continue;
-    }
+  const resolvedQuestionIds = questionIds.filter((questionId) => questionLookup.has(questionId));
+  const preparedRows = resolvedQuestionIds.map((questionId) => {
+    const question = questionLookup.get(questionId)!;
     const rawAnswer = answersMap.get(questionId) ?? {
       questionId,
       selectedOption: null,
@@ -2228,9 +2348,58 @@ async function buildAnalyticsAttempts(
       isMarkedForReview: false,
     };
     const { answer } = remapPresentedAnswer(userId, question, rawAnswer, presentationContext);
+    return { question, answer };
+  });
 
+  let remoteGrades: AssessmentBatchGradeResult[] | null = null;
+  try {
+    remoteGrades = await gradeAssessmentBatchWithService({
+      userId,
+      assessmentId: presentationContext.assessmentId,
+      assessmentType: sourceType,
+      scoringPolicy: DEFAULT_TEST_SCORING_POLICY,
+      items: preparedRows.map(({ question, answer }) => ({
+        question,
+        answer,
+        attemptRef: question.id,
+        scoringPolicy: scoringPolicyForQuestion(question, sourceType),
+      })),
+    });
+  } catch (error) {
+    if (error instanceof GraderContractError) {
+      throw error;
+    }
+    remoteGrades = null;
+  }
+  const remoteGradeMap = new Map((remoteGrades ?? []).map((grade) => [grade.questionId, grade]));
+
+  const gradedAttempts: AnalyticsGradedAttempt[] = [];
+  let correctAnswers = 0;
+  let wrongAnswers = 0;
+  let unattempted = 0;
+  let score = 0;
+  let totalMarks = 0;
+  const userAnswers: StoredUserAnswer[] = [];
+  const subjectStats: Record<
+    string,
+    {
+      score: number;
+      totalMarks: number;
+      correct: number;
+      incorrect: number;
+      unattempted: number;
+      total: number;
+      timeCorrect: number;
+      timeIncorrect: number;
+      timeUnattempted: number;
+    }
+  > = {};
+
+  for (const { question, answer } of preparedRows) {
     if (!subjectStats[question.subject]) {
       subjectStats[question.subject] = {
+        score: 0,
+        totalMarks: 0,
         correct: 0,
         incorrect: 0,
         unattempted: 0,
@@ -2243,17 +2412,30 @@ async function buildAnalyticsAttempts(
 
     subjectStats[question.subject].total += 1;
     const answered = hasResponse(answer);
-    const { isCorrect } = gradeAnswer(question, answer);
+    const grade = remoteGradeMap.get(question.id) ?? gradeAnswer(question, answer, sourceType);
+    const isCorrect = grade.isCorrect;
+    const policy = scoringPolicyForQuestion(question, sourceType);
+    const maxMarks = grade.maxMarks ?? policy.correctMarks;
+    const marksAwarded = grade.marksAwarded ?? computeMarksFromCredit({
+      answered,
+      isCorrect,
+      creditAwarded: grade.creditAwarded,
+      policy,
+    });
+    const creditAwarded = grade.creditAwarded ?? (isCorrect ? 1 : 0);
+
+    totalMarks += maxMarks;
+    score += marksAwarded;
+    subjectStats[question.subject].score += marksAwarded;
+    subjectStats[question.subject].totalMarks += maxMarks;
 
     if (isCorrect) {
       correctAnswers += 1;
-      score += 4;
       subjectStats[question.subject].correct += 1;
       subjectStats[question.subject].timeCorrect += answer.timeSpent;
       question.totalCorrect += 1;
     } else if (answered) {
       wrongAnswers += 1;
-      score -= 1;
       subjectStats[question.subject].incorrect += 1;
       subjectStats[question.subject].timeIncorrect += answer.timeSpent;
     } else {
@@ -2274,6 +2456,18 @@ async function buildAnalyticsAttempts(
       question_type: question.questionType,
       answered,
       is_correct: isCorrect,
+      credit_awarded: creditAwarded,
+      marks_awarded: marksAwarded,
+      max_marks: maxMarks,
+      needs_review: Boolean(grade.needsReview ?? grade.info.needsReview ?? grade.info.needs_review),
+      grading_source: grade.evaluationSource ?? String(grade.info.evaluationSource ?? grade.info.evaluation_source ?? "local_fallback"),
+      scoring_policy: {
+        correct_marks: policy.correctMarks,
+        incorrect_marks: policy.incorrectMarks,
+        unattempted_marks: policy.unattemptedMarks,
+        partial_credit_policy: policy.partialCreditPolicy,
+        negative_marking_mode: policy.negativeMarkingMode,
+      },
       time_spent_seconds: answer.timeSpent,
     });
     userAnswers.push(answer);
@@ -2281,10 +2475,9 @@ async function buildAnalyticsAttempts(
 
   const finalSubjectStats: StoredTestResult["subjectStats"] = {};
   Object.entries(subjectStats).forEach(([subject, stats]) => {
-    const subScore = stats.correct * 4 - stats.incorrect;
     finalSubjectStats[subject] = {
-      score: subScore,
-      total_marks: stats.total * 4,
+      score: Number(stats.score.toFixed(3)),
+      total_marks: Number(stats.totalMarks.toFixed(3)),
       correct: stats.correct,
       incorrect: stats.incorrect,
       unattempted: stats.unattempted,
@@ -2305,10 +2498,24 @@ async function buildAnalyticsAttempts(
     correctAnswers,
     wrongAnswers,
     unattempted,
-    score,
+    score: Number(score.toFixed(3)),
+    totalMarks: Number(totalMarks.toFixed(3)),
     subjectStats: finalSubjectStats,
     userAnswers,
     questionLookup,
+    resolvedQuestionIds,
+    missingQuestionIds: questionIds.filter((questionId) => !questionLookup.has(questionId)),
+    gradeByQuestionId: new Map(
+      gradedAttempts.map((attempt) => [
+        attempt.question_id,
+        {
+          isCorrect: attempt.is_correct,
+          marksAwarded: attempt.marks_awarded,
+          creditAwarded: attempt.credit_awarded,
+          needsReview: attempt.needs_review ?? false,
+        },
+      ]),
+    ),
   };
 }
 
@@ -2324,13 +2531,14 @@ function buildMistakesFromAnswers(
 function buildReviewEntriesFromAnswers(
   questionLookup: Map<string, StoredQuestion>,
   answers: StoredUserAnswer[],
+  gradeByQuestionId?: Map<string, { isCorrect: boolean }>,
 ): ReviewEntry[] {
   return answers.flatMap((answer) => {
     const question = questionLookup.get(answer.questionId);
     if (!question) {
       return [];
     }
-    const grade = gradeAnswer(question, answer);
+    const grade = gradeByQuestionId?.get(answer.questionId) ?? gradeAnswer(question, answer);
     if (!hasResponse(answer)) {
       return [];
     }
@@ -2479,9 +2687,13 @@ function buildLocalSubmittedTestResult(input: {
   degradedReason?: string;
 }) {
   const { strongAreas, weakAreas } = buildTopicAccuracyFromAttempts(input.analytics.gradedAttempts);
-  const totalMarks = input.questionCount * 4;
+  const totalMarks = input.analytics.totalMarks || input.questionCount * 4;
   const percentage = totalMarks > 0 ? Math.max(0, Math.round((input.analytics.score / totalMarks) * 100)) : 0;
-  const reviewEntries = buildReviewEntriesFromAnswers(input.analytics.questionLookup, input.analytics.userAnswers);
+  const reviewEntries = buildReviewEntriesFromAnswers(
+    input.analytics.questionLookup,
+    input.analytics.userAnswers,
+    input.analytics.gradeByQuestionId,
+  );
   const mistakes = reviewEntries
     .filter((entry) => entry.status === "incorrect")
     .map(({ status: _status, ...entry }) => entry);
@@ -2565,7 +2777,16 @@ export async function listTestPreviews(store: AppStore, user: StoredUser) {
   const seeded = listTestPreviewsFallback(store, user);
   try {
     const persisted = await listPersistedCustomTests(user.id);
-    const persistedSerialized = persisted.map((test) => serializePersistedCustomTestPreview(test));
+    const questionLookup = await buildQuestionLookup(
+      store,
+      persisted.flatMap((test) => test.questionIds),
+    );
+    const persistedSerialized = persisted.map((test) =>
+      serializePersistedCustomTestPreview(
+        test,
+        test.questionIds.filter((questionId) => questionLookup.has(questionId)),
+      ),
+    );
     const deduped = new Map<
       string,
       ReturnType<typeof serializePersistedCustomTestPreview> | ReturnType<typeof serializeTestPreview>
@@ -2671,7 +2892,7 @@ export async function submitTest(
   user: StoredUser,
   testId: string,
   payload: TestSubmissionPayload,
-  options: { allowRoomParticipant?: boolean } = {},
+  options: { allowRoomParticipant?: boolean; sourceType?: AssessmentSourceType; roomId?: string | null } = {},
 ) {
   const seededTest = store.tests.find((entry) => entry.id === testId);
   const persistedTest = seededTest
@@ -2691,12 +2912,21 @@ export async function submitTest(
     }
   });
 
-  const title = seededTest?.title ?? persistedTest!.title;
-  const subject = seededTest?.subject ?? persistedTest!.subject;
-  const chapter = seededTest?.chapter ?? persistedTest!.chapter ?? null;
-  const difficulty = seededTest?.difficulty ?? normalizeDifficulty(persistedTest!.difficulty);
-  const questionIds = seededTest?.questionIds ?? persistedTest!.questionIds;
-  const questionCount = questionIds.length;
+  const title = seededTest ? seededTest.title : persistedTest!.title;
+  const subject = seededTest ? seededTest.subject : persistedTest!.subject;
+  const chapter = seededTest ? seededTest.chapter ?? null : persistedTest!.chapter ?? null;
+  const difficulty = seededTest ? seededTest.difficulty : normalizeDifficulty(persistedTest!.difficulty);
+  const questionIds = seededTest ? seededTest.questionIds : persistedTest!.questionIds;
+  const declaredTotalQuestions = seededTest ? seededTest.totalQuestions : persistedTest!.questionCount;
+  const sourceType =
+    options.sourceType ??
+    (options.allowRoomParticipant
+      ? "room_test"
+      : seededTest?.createdBy
+        ? "custom_test"
+        : seededTest
+          ? "test"
+          : "custom_test");
 
   const isMalpractice = payload.isMalpractice || payload.is_malpractice || false;
   const analytics = await buildAnalyticsAttempts(
@@ -2708,10 +2938,21 @@ export async function submitTest(
       scope: seededTest?.createdBy ? "custom-test" : seededTest ? "test" : "custom-test",
       assessmentId: testId,
     },
+    sourceType,
   );
-  const totalMarks = questionCount * 4;
+  const resolution = validateResolvedAssessmentQuestions({
+    declaredTotalQuestions,
+    questionIds,
+    resolvedQuestionIds: analytics.resolvedQuestionIds,
+  });
+  const questionCount = resolution.resolvedTotalQuestions;
+  const totalMarks = analytics.totalMarks;
   const percentage = totalMarks > 0 ? Math.max(0, Math.round((analytics.score / totalMarks) * 100)) : 0;
-  const reviewEntries = buildReviewEntriesFromAnswers(analytics.questionLookup, analytics.userAnswers);
+  const reviewEntries = buildReviewEntriesFromAnswers(
+    analytics.questionLookup,
+    analytics.userAnswers,
+    analytics.gradeByQuestionId,
+  );
   const mistakes = reviewEntries
     .filter((entry) => entry.status === "incorrect")
     .map(({ status: _status, ...entry }) => entry);
@@ -2723,13 +2964,16 @@ export async function submitTest(
   const timeTakenSeconds = payload.timeTaken ?? payload.time_taken ?? 0;
   const { strongAreas, weakAreas } = buildTopicAccuracyFromAttempts(analytics.gradedAttempts);
   const { weakTopics, strongTopics } = buildLocalTopicSignals(analytics.gradedAttempts);
-  const localSummary =
+  const localSummaryBase =
     weakAreas.length > 0
       ? `${aiSummary} Detailed analytics are being prepared. Focus first on ${weakAreas
           .slice(0, 2)
           .map((row) => row.topic)
           .join(", ")}.`
       : `${aiSummary} Detailed analytics are being prepared.`;
+  const localSummary = resolution.degraded && resolution.degradedReason
+    ? `${localSummaryBase} ${resolution.degradedReason}.`
+    : localSummaryBase;
   const localRecommendations = [
     `Review the ${mistakes.length} answered questions you missed.`,
     "Focus on accuracy before speed.",
@@ -2760,6 +3004,9 @@ export async function submitTest(
       reviewEntries,
       recommendations: localRecommendations,
       dppGenerated: false,
+      degraded: resolution.degraded,
+      degradedReason: resolution.degradedReason,
+      degraded_reason: resolution.degradedReason,
     },
     recommendations: localRecommendations,
     analyticsContext: buildPendingAnalyticsContext(localSummary, weakAreas, strongAreas),
@@ -2767,6 +3014,8 @@ export async function submitTest(
     strongTopics,
     dppPlans: [],
     isMalpractice,
+    degraded: resolution.degraded,
+    degradedReason: resolution.degradedReason,
     analysisStatus: "pending",
     analysisError: null,
   };
@@ -2780,6 +3029,15 @@ export async function submitTest(
     question_count: questionCount,
     time_taken_seconds: timeTakenSeconds,
     graded_attempts: analytics.gradedAttempts,
+    source_type: sourceType,
+    room_id: options.roomId ?? null,
+    scoring_policy: {
+      correct_marks: DEFAULT_TEST_SCORING_POLICY.correctMarks,
+      incorrect_marks: DEFAULT_TEST_SCORING_POLICY.incorrectMarks,
+      unattempted_marks: DEFAULT_TEST_SCORING_POLICY.unattemptedMarks,
+      partial_credit_policy: DEFAULT_TEST_SCORING_POLICY.partialCreditPolicy,
+      negative_marking_mode: DEFAULT_TEST_SCORING_POLICY.negativeMarkingMode,
+    },
     is_malpractice: isMalpractice,
   };
 
@@ -2860,7 +3118,11 @@ export async function listTestResults(store: AppStore, user: StoredUser, testId:
 
 export async function getSingleResult(store: AppStore, user: StoredUser, resultId: string) {
   try {
-    const persisted = await getPersistedResultById(user.id, resultId);
+    let persisted = await getPersistedResultById(user.id, resultId);
+    if (persisted?.analysisStatus === "pending") {
+      await drainOneAnalysisJobWithTimeout();
+      persisted = (await getPersistedResultById(user.id, resultId)) ?? persisted;
+    }
     if (persisted) {
       return serializePersistedResult(persisted);
     }
@@ -2878,6 +3140,7 @@ export async function listGeneratedDpps(store: AppStore, user: StoredUser) {
   if (!isOgcodePostgresConfigured()) {
     return [];
   }
+  await drainOneAnalysisJobWithTimeout();
   const plans = await listPendingDppPlans(user.id);
   if (plans.length === 0) {
     return [];
@@ -2909,6 +3172,7 @@ export async function getGeneratedDppDetail(store: AppStore, user: StoredUser, d
   if (!isOgcodePostgresConfigured()) {
     throw new Error("DPP analytics database is not configured.");
   }
+  await drainOneAnalysisJobWithTimeout();
   const plan = await getDppPlanDetail(user.id, dppId);
   if (!plan) {
     throw new Error(`DPP ${dppId} was not found.`);
@@ -2952,7 +3216,21 @@ export async function checkGeneratedDppQuestion(
     scope: "dpp",
     assessmentId: dppId,
   });
-  const grade = gradeAnswer(question, prepared.answer);
+  const remoteGrades = await gradeAssessmentBatchWithService({
+    userId: user.id,
+    assessmentId: dppId,
+    assessmentType: "dpp",
+    scoringPolicy: DEFAULT_TEST_SCORING_POLICY,
+    items: [
+      {
+        question,
+        answer: prepared.answer,
+        attemptRef: question.id,
+        scoringPolicy: scoringPolicyForQuestion(question, "dpp"),
+      },
+    ],
+  });
+  const grade = remoteGrades?.[0] ?? gradeAnswer(question, prepared.answer, "dpp");
   const info = toPresentedGradeInfo(question, grade.info, prepared.displayOrder);
 
   return {
@@ -2996,6 +3274,7 @@ export async function submitGeneratedDpp(
       scope: "dpp",
       assessmentId: dppId,
     },
+    "dpp",
   );
   const timeTakenSeconds = payload.timeTaken ?? payload.time_taken ?? 0;
   const progressScore =
@@ -3040,6 +3319,14 @@ export async function submitGeneratedDpp(
     focus_topics: plan.weakTopics,
     graded_attempts: analytics.gradedAttempts,
     time_taken_seconds: timeTakenSeconds,
+    source_type: "dpp",
+    scoring_policy: {
+      correct_marks: DEFAULT_TEST_SCORING_POLICY.correctMarks,
+      incorrect_marks: DEFAULT_TEST_SCORING_POLICY.incorrectMarks,
+      unattempted_marks: DEFAULT_TEST_SCORING_POLICY.unattemptedMarks,
+      partial_credit_policy: DEFAULT_TEST_SCORING_POLICY.partialCreditPolicy,
+      negative_marking_mode: DEFAULT_TEST_SCORING_POLICY.negativeMarkingMode,
+    },
   };
 
   let persistedAttempt = await persistDppAttemptResult(persistInput);

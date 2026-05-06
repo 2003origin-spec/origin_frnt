@@ -911,7 +911,11 @@ export async function submitRoomTest(
     throw new StudyRoomError(423, "Room test is not active.");
   }
 
-  const result = await submitTest(store, user, state.room.custom_test_id, payload, { allowRoomParticipant: true });
+  const result = await submitTest(store, user, state.room.custom_test_id, payload, {
+    allowRoomParticipant: true,
+    sourceType: "room_test",
+    roomId,
+  });
   const testResultId = (result as { id?: string }).id ?? null;
   const finish = await finishRoomParticipant(roomId, user.id, {
     testResultId,

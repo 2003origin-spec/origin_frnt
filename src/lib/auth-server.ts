@@ -1,70 +1,44 @@
 /**
- * Server-side auth helpers for React Server Components.
+ * Server-side auth helpers for React Server Components and Server Actions.
  *
- * Reads the access token from the HttpOnly cookie set by the auth API route
- * (or by Server Actions), then resolves it to a user by checking the mirrored
- * Postgres session first and only falling back to Postgres when needed.
- *
- * Safe to call from any async RSC or Server Action — never import this in
- * 'use client' components.
+ * Access cookies now contain short-lived JWTs. This module verifies the JWT,
+ * then hydrates the user from Postgres or the local seed store only when page
+ * rendering actually needs profile data.
  */
 
-import { cookies } from 'next/headers';
-import { isUserPostgresConfigured } from '@/server/user-postgres';
-import { dbFindUserByAccessToken } from '@/server/db-users';
-import { readStoreAsync } from '@/server/store';
-import { findUserByAccessToken } from '@/server/auth';
-import { serializeUser } from '@/server/users';
-import type { AppStore, StoredUser } from '@/server/store';
-import type { User } from '@/types';
+import { cookies } from "next/headers";
 
-type ServerAuthResolution = {
-  user: StoredUser | null;
-  store: AppStore | null;
-};
+import { getAuthenticatedUser } from "@/server/authz";
+import { readStoreAsync } from "@/server/store";
+import { serializeUser } from "@/server/users";
+import type { StoredUser } from "@/server/store";
+import type { User } from "@/types";
 
-async function resolveServerAuth(): Promise<ServerAuthResolution> {
+async function cookieBackedRequest(): Promise<Request> {
   const cookieStore = await cookies();
-  const token = cookieStore.get('origin_access_token')?.value;
-  if (!token) {
-    return { user: null, store: null };
-  }
-
-  if (isUserPostgresConfigured()) {
-    try {
-      const dbUser = await dbFindUserByAccessToken(token);
-      if (dbUser) {
-        return { user: dbUser, store: null };
-      }
-    } catch (err) {
-      console.error('[auth-server] DB token check failed, falling back to in-memory seed', err);
-    }
-  }
-
-  const store = await readStoreAsync();
-  const localUser = findUserByAccessToken(store, token);
-  if (localUser) {
-    return { user: localUser, store };
-  }
-
-  return { user: null, store };
+  const cookieHeader = cookieStore
+    .getAll()
+    .map((cookie) => `${cookie.name}=${encodeURIComponent(cookie.value)}`)
+    .join("; ");
+  return new Request("http://origin.local", {
+    headers: cookieHeader ? { cookie: cookieHeader } : undefined,
+  });
 }
 
 export async function getServerUser(): Promise<StoredUser | null> {
-  return (await resolveServerAuth()).user;
+  return getAuthenticatedUser(await cookieBackedRequest());
 }
 
 /**
  * Resolves the current request to a frontend-shape `User` suitable for
  * seeding `AuthProvider` in the root layout. Returns `null` when the user
- * is not authenticated — callers should handle that case by rendering the
- * public surface of the app.
+ * is not authenticated.
  */
 export async function getServerFrontendUser(): Promise<User | null> {
-  const { user: stored, store: resolvedStore } = await resolveServerAuth();
+  const stored = await getServerUser();
   if (!stored) return null;
 
-  const store = resolvedStore ?? await readStoreAsync();
+  const store = await readStoreAsync();
   const payload = serializeUser(store, stored.id);
   return (payload as unknown as User) ?? null;
 }

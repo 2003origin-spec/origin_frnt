@@ -7,7 +7,7 @@ import {
   presentOptions,
   verifyOptionPresentationToken,
 } from "../../src/server/option-presentation";
-import { submitPracticeQuestion } from "../../src/server/assessments";
+import { serializeTest, serializeTestPreview, submitPracticeQuestion, submitTest } from "../../src/server/assessments";
 import { withStoredUserDefaults, type AppStore, type StoredQuestion, type StoredUser } from "../../src/server/store";
 
 const SECRET = "12345678901234567890123456789012";
@@ -182,4 +182,57 @@ test("answered practice MCQs require a presentation token and grade displayed in
 
   assert.equal(result.isCorrect, true);
   assert.equal(resultInfo.correctOption, displayedCorrectOption);
+});
+
+test("test previews and details use the same resolved question count", () => {
+  const { store, user, question } = buildPracticeStore();
+  const testId = "test_count_mismatch";
+  store.tests.push({
+    id: testId,
+    title: "Count mismatch test",
+    description: "Contains a stale missing question reference.",
+    subject: "physics",
+    chapter: "mechanics",
+    difficulty: "easy",
+    duration: 10,
+    totalQuestions: 2,
+    isPremium: false,
+    questionIds: [question.id, "missing_question"],
+    createdBy: null,
+  });
+
+  const preview = serializeTestPreview(store, user.id, store.tests[0]);
+  const detail = serializeTest(store, user.id, store.tests[0]);
+
+  assert.equal(preview.totalQuestions, 1);
+  assert.equal(detail.totalQuestions, 1);
+  assert.deepEqual((preview as typeof preview & { missingQuestionIds: string[] }).missingQuestionIds, ["missing_question"]);
+  assert.deepEqual((detail as typeof detail & { missingQuestionIds: string[] }).missingQuestionIds, ["missing_question"]);
+});
+
+test("seeded tests without a chapter submit without dereferencing persisted metadata", async () => {
+  const { store, user, question } = buildPracticeStore();
+  const testId = "seed_without_chapter";
+  store.tests.push({
+    id: testId,
+    title: "Seeded mixed test",
+    description: "Seeded assessments can omit chapter metadata.",
+    subject: "mathematics",
+    chapter: null,
+    difficulty: "medium",
+    duration: 10,
+    totalQuestions: 1,
+    isPremium: false,
+    questionIds: [question.id],
+    createdBy: null,
+  });
+
+  const result = await submitTest(store, user, testId, {
+    answers: [],
+    timeTaken: 0,
+    isMalpractice: false,
+  });
+
+  assert.equal(result.testId, testId);
+  assert.equal(result.unattempted, 1);
 });

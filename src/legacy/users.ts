@@ -1,6 +1,6 @@
 // Legacy user implementation kept behind the public server/users barrel.
 import bcrypt from "bcryptjs";
-import { createAuthSession, isRefreshTokenValid, rotateAccessToken, requireUserFromRequest, resolveTokenToUser, refreshAccessToken, createAuthSessionAsync, extractRefreshTokenCookie } from "@/server/auth";
+import { requireUserFromRequest, resolveTokenToUser, refreshAccessToken, createAuthSessionAsync, extractRefreshTokenCookie } from "@/server/auth";
 import { isUserPostgresConfigured } from "@/server/user-postgres";
 import { dbLoginUser, dbRegisterUser, dbGetTasks, dbCreateTask, dbUpdateTask, dbDeleteTask, dbFindUserByEmail, dbCreateUser, dbUpdateUser, dbCreateAuthSession, dbGetUserCount } from "@/server/db-users";
 import { OAuth2Client } from "google-auth-library";
@@ -277,7 +277,7 @@ export async function handleLogin(payload: UserPayload) {
           store.authSessions = store.authSessions.filter((s) => s.userId !== dbResult!.user.id);
           store.authSessions.push(dbResult!.session);
           const userData = serializeUser(store, dbResult!.user.id);
-          return ok({ user: userData, refresh: dbResult!.session.refreshToken, access: dbResult!.session.accessToken });
+          return ok({ user: userData, refresh: dbResult!.session.refreshToken, access: dbResult!.session.accessToken, accessFingerprint: dbResult!.session.accessFingerprint });
         });
       }
       // No matching DB user — fall through to seeded users.
@@ -301,11 +301,11 @@ export async function handleLogin(payload: UserPayload) {
     }
 
     const user = eligibleUsers[0];
-    const session = createAuthSession(store, user.id);
+    const session = await createAuthSessionAsync(store, user.id);
     const userData = serializeUser(store, user.id);
     if (!userData) return notFound("User not found.");
 
-    return ok({ user: userData, refresh: session.refreshToken, access: session.accessToken });
+    return ok({ user: userData, refresh: session.refreshToken, access: session.accessToken, accessFingerprint: session.accessFingerprint });
   });
 }
 
@@ -329,14 +329,14 @@ export async function handleLoginWithOtp(payload: UserPayload) {
       return notFound("User not found.");
     }
 
-    const session = createAuthSession(store, user.id);
+    const session = await createAuthSessionAsync(store, user.id);
     const userData = serializeUser(store, user.id);
     if (!userData) return notFound("User not found.");
 
     // Clean up OTP after successful login
     store.otps = store.otps.filter(o => o.email.toLowerCase() !== email);
 
-    return ok({ user: userData, refresh: session.refreshToken, access: session.accessToken });
+    return ok({ user: userData, refresh: session.refreshToken, access: session.accessToken, accessFingerprint: session.accessFingerprint });
   });
 }
 
@@ -388,7 +388,7 @@ export async function handleRegister(payload: UserPayload) {
         store.authSessions = store.authSessions.filter((s) => s.userId !== dbUser.id);
         store.authSessions.push(session);
         const userData = serializeUser(store, dbUser.id);
-        return created({ user: userData, refresh: session.refreshToken, access: session.accessToken });
+        return created({ user: userData, refresh: session.refreshToken, access: session.accessToken, accessFingerprint: session.accessFingerprint });
       });
     } catch (err) {
       if (err instanceof Error && err.message.includes("already exists")) {
@@ -427,7 +427,7 @@ export async function handleRegister(payload: UserPayload) {
       studentCapacity: null,
     }));
 
-    const session = createAuthSession(store, userId);
+    const session = await createAuthSessionAsync(store, userId);
     const userData = serializeUser(store, userId);
     if (!userData) {
       return notFound("User not found.");
@@ -437,6 +437,7 @@ export async function handleRegister(payload: UserPayload) {
       user: userData,
       refresh: session.refreshToken,
       access: session.accessToken,
+      accessFingerprint: session.accessFingerprint,
     });
   });
 }
@@ -527,7 +528,7 @@ export async function handleGoogleLogin(payload: UserPayload) {
           store.authSessions = store.authSessions.filter((s) => s.userId !== dbUser!.id);
           store.authSessions.push(session);
           const userData = serializeUser(store, dbUser!.id);
-          return ok({ user: userData, refresh: session.refreshToken, access: session.accessToken });
+          return ok({ user: userData, refresh: session.refreshToken, access: session.accessToken, accessFingerprint: session.accessFingerprint });
         });
       } catch (err) {
         console.error('[users] DB google login failed, falling back to in-memory seed', err instanceof Error ? err.message : err);
@@ -557,9 +558,9 @@ export async function handleGoogleLogin(payload: UserPayload) {
         user.avatar = avatar;
       }
 
-      const session = createAuthSession(store, user.id);
+      const session = await createAuthSessionAsync(store, user.id);
       const userData = serializeUser(store, user.id);
-      return ok({ user: userData, refresh: session.refreshToken, access: session.accessToken });
+      return ok({ user: userData, refresh: session.refreshToken, access: session.accessToken, accessFingerprint: session.accessFingerprint });
     });
   } catch (e: any) {
     console.error("Google Auth processing error:", e);
@@ -575,12 +576,12 @@ export async function handleRefresh(request: Request | null, payload: UserPayloa
 
   const tokens = await refreshAccessToken(refreshToken);
   if (!tokens) return unauthorized("Token is invalid or expired.");
-  return ok({ access: tokens.accessToken, refresh: tokens.refreshToken });
+  return ok({ access: tokens.accessToken, refresh: tokens.refreshToken, accessFingerprint: tokens.accessFingerprint });
 }
 
 async function handleMeGet(request: Request) {
   return withStoreAsync(async (store) => {
-    const user = requireUserFromRequest(store, request);
+    const user = await requireUserFromRequest(store, request);
     if (!user) {
       return unauthorized();
     }
@@ -594,7 +595,7 @@ async function handleMeGet(request: Request) {
 
 async function handleMePatch(request: Request, payload: UserPayload) {
   return withStoreAsync(async (store) => {
-    const user = requireUserFromRequest(store, request);
+    const user = await requireUserFromRequest(store, request);
     if (!user) {
       return unauthorized();
     }
@@ -646,7 +647,7 @@ async function handleMePatch(request: Request, payload: UserPayload) {
 
 async function handlePointsGet(request: Request) {
   return withStoreAsync(async (store) => {
-    const user = requireUserFromRequest(store, request);
+    const user = await requireUserFromRequest(store, request);
     if (!user) {
       return unauthorized();
     }
@@ -656,7 +657,7 @@ async function handlePointsGet(request: Request) {
 
 async function handleStatsGet(request: Request) {
   return withStoreAsync(async (store) => {
-    const user = requireUserFromRequest(store, request);
+    const user = await requireUserFromRequest(store, request);
     if (!user) {
       return unauthorized();
     }
@@ -668,7 +669,7 @@ async function handleStatsGet(request: Request) {
 async function handleTimePost(request: Request, payload: UserPayload) {
   try {
     return withStoreAsync(async (store) => {
-      const user = requireUserFromRequest(store, request);
+      const user = await requireUserFromRequest(store, request);
       if (!user) {
         return unauthorized();
       }
@@ -709,7 +710,7 @@ async function handleTimePost(request: Request, payload: UserPayload) {
 
 async function handlePomodoroList(request: Request) {
   return withStoreAsync(async (store) => {
-    const user = requireUserFromRequest(store, request);
+    const user = await requireUserFromRequest(store, request);
     if (!user) {
       return unauthorized();
     }
@@ -726,7 +727,7 @@ async function handlePomodoroList(request: Request) {
 
 async function handlePomodoroCreate(request: Request, payload: UserPayload) {
   return withStoreAsync(async (store) => {
-    const user = requireUserFromRequest(store, request);
+    const user = await requireUserFromRequest(store, request);
     if (!user) {
       return unauthorized();
     }
@@ -770,7 +771,7 @@ async function handlePomodoroCreate(request: Request, payload: UserPayload) {
 
 async function handlePomodoroDetail(request: Request, sessionId: string) {
   return withStoreAsync(async (store) => {
-    const user = requireUserFromRequest(store, request);
+    const user = await requireUserFromRequest(store, request);
     if (!user) {
       return unauthorized();
     }
@@ -784,7 +785,7 @@ async function handlePomodoroDetail(request: Request, sessionId: string) {
 
 async function handlePomodoroUpdate(request: Request, payload: UserPayload, sessionId: string) {
   return withStoreAsync(async (store) => {
-    const user = requireUserFromRequest(store, request);
+    const user = await requireUserFromRequest(store, request);
     if (!user) {
       return unauthorized();
     }

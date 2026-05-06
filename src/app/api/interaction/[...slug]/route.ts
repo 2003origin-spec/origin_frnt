@@ -33,6 +33,7 @@ async function resolveSlug(context: RouteContext): Promise<string[]> {
 
 function sessionIdentifier(request: NextRequest): string {
   return (
+    request.headers.get("x-origin-user-id") ??
     request.cookies.get("origin_access_token")?.value ??
     request.headers.get("authorization")?.replace("Bearer ", "") ??
     request.headers.get("x-forwarded-for") ??
@@ -57,7 +58,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
   if (limited) return limited;
 
   const store = await readStoreAsync();
-  const user = requireUserFromRequest(store, request);
+  const user = await requireUserFromRequest(store, request);
   if (!user) {
     return unauthorized();
   }
@@ -94,7 +95,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       return badRequest("Invalid JSON payload.");
     }
     const result = await withStoreAsync(async (store) => {
-      const user = requireUserFromRequest(store, request);
+      const user = await requireUserFromRequest(store, request);
       if (!user) {
         return { status: "unauthorized" as const };
       }
@@ -117,7 +118,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
     try {
       const result = await withStoreAsync(async (store) => {
-        const user = requireUserFromRequest(store, request);
+        const user = await requireUserFromRequest(store, request);
         if (!user) {
           return { status: "unauthorized" as const };
         }
@@ -158,7 +159,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
     const payload = await parseJsonBody<{ title?: string; subject?: string }>(request);
     const result = await withStoreAsync(async (store) => {
-      const user = requireUserFromRequest(store, request);
+      const user = await requireUserFromRequest(store, request);
       if (!user) {
         return { status: "unauthorized" as const };
       }
@@ -191,7 +192,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
   if (limited) return limited;
 
   const result = await withStoreAsync(async (store) => {
-    const user = requireUserFromRequest(store, request);
+    const user = await requireUserFromRequest(store, request);
     if (!user) {
       return { status: "unauthorized" as const };
     }

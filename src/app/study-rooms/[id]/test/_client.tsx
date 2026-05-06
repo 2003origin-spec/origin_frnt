@@ -88,7 +88,7 @@ export default function RoomTestClient({
     if (result.id) {
       sessionStorage.setItem(`origin_test_result_id_${result.id}`, JSON.stringify(result));
     }
-    router.push(`/study-rooms/${roomId}/leaderboard`);
+    window.location.assign(`/study-rooms/${roomId}/leaderboard`);
   };
 
   return (
