@@ -74,6 +74,7 @@ function pcmChunkToAudioBuffer(
   audioContext: AudioContext,
   base64Data: string,
   sampleRate: number,
+  endian: 'big' | 'little',
 ): AudioBuffer | null {
   if (!base64Data.trim()) {
     return null;
@@ -90,8 +91,10 @@ function pcmChunkToAudioBuffer(
 
   for (let sampleIndex = 0; sampleIndex < sampleCount; sampleIndex += 1) {
     const byteOffset = sampleIndex * 2;
-    const low = bytes[byteOffset] ?? 0;
-    const high = bytes[byteOffset + 1] ?? 0;
+    const first = bytes[byteOffset] ?? 0;
+    const second = bytes[byteOffset + 1] ?? 0;
+    const high = endian === 'big' ? first : second;
+    const low = endian === 'big' ? second : first;
     let value = (high << 8) | low;
     if (value >= 0x8000) {
       value -= 0x10000;
@@ -111,10 +114,11 @@ async function decodeAudioBuffer(
     return null;
   }
 
-  // Gemini TTS returns raw PCM as either 'audio/pcm' or 'audio/L16;codec=pcm;rate=XXXXX'
-  const isRawPcm = mimeType?.includes('audio/pcm') || mimeType?.includes('audio/l16') || mimeType?.includes('audio/L16');
+  // Gemini TTS returns raw 16-bit little-endian PCM, even when the MIME is audio/L16.
+  const normalizedMimeType = mimeType?.toLowerCase();
+  const isRawPcm = normalizedMimeType?.includes('audio/pcm') || normalizedMimeType?.includes('audio/l16');
   if (isRawPcm) {
-    return pcmChunkToAudioBuffer(audioContext, base64Data, parseSampleRate(mimeType));
+    return pcmChunkToAudioBuffer(audioContext, base64Data, parseSampleRate(mimeType), 'little');
   }
 
   const bytes = base64ToBytes(base64Data);

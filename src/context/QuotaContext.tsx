@@ -33,11 +33,48 @@ const TEXT_LIMIT_TOKENS = 200000; // 200k tokens
 
 const QuotaContext = createContext<QuotaContextType | undefined>(undefined);
 
+function todayString(): string {
+  return new Date().toISOString().split('T')[0];
+}
+
+function isToday(value?: string | Date | null): boolean {
+  if (!value) {
+    return true;
+  }
+
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return true;
+  }
+
+  return date.toISOString().split('T')[0] === todayString();
+}
+
+function quotaFromUser(user: ReturnType<typeof useAuth>['user']): QuotaState | null {
+  if (!user) {
+    return null;
+  }
+
+  if (!isToday(user.usageResetAt)) {
+    return {
+      voiceSecondsUsed: 0,
+      textTokensUsed: 0,
+      lastResetDate: todayString(),
+    };
+  }
+
+  return {
+    voiceSecondsUsed: Math.round((user.voiceMinutesUsedToday ?? 0) * 60),
+    textTokensUsed: user.tokensUsedToday ?? 0,
+    lastResetDate: todayString(),
+  };
+}
+
 export function QuotaProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<QuotaState>({
     voiceSecondsUsed: 0,
     textTokensUsed: 0,
-    lastResetDate: new Date().toISOString().split('T')[0],
+    lastResetDate: todayString(),
   });
 
   const voiceTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -46,16 +83,23 @@ export function QuotaProvider({ children }: { children: React.ReactNode }) {
   const { addNotification } = useNotifications();
   const storageKey = user?.id ? `origin_ai_quota_${user.id}` : 'origin_ai_quota_guest';
 
-  // Load from localStorage when user or storageKey changes
+  // Load from localStorage when user or storageKey changes, then anchor to server usage.
   useEffect(() => {
     // Reset thresholds when user changes
     notifiedThresholds.current.clear();
+
+    const serverState = quotaFromUser(user);
+    if (serverState) {
+      setState(serverState);
+      localStorage.setItem(storageKey, JSON.stringify(serverState));
+      return;
+    }
 
     const saved = localStorage.getItem(storageKey);
     if (saved) {
       try {
         const parsed = JSON.parse(saved) as QuotaState;
-        const today = new Date().toISOString().split('T')[0];
+        const today = todayString();
         
         if (parsed.lastResetDate !== today) {
           // Reset for new day
@@ -77,12 +121,12 @@ export function QuotaProvider({ children }: { children: React.ReactNode }) {
       const freshState = {
         voiceSecondsUsed: 0,
         textTokensUsed: 0,
-        lastResetDate: new Date().toISOString().split('T')[0],
+        lastResetDate: todayString(),
       };
       setState(freshState);
       localStorage.setItem(storageKey, JSON.stringify(freshState));
     }
-  }, [storageKey]);
+  }, [storageKey, user]);
 
   // Save to localStorage when state or storageKey changes
   useEffect(() => {

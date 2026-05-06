@@ -34,6 +34,9 @@ export interface User {
     count: number;
   }>;
   location?: string;
+  voiceMinutesUsedToday?: number;
+  tokensUsedToday?: number;
+  usageResetAt?: string;
 }
 
 export interface Classroom {

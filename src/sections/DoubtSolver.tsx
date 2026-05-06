@@ -36,6 +36,7 @@ import { usePublishOriginAiPageContext } from '@/features/origin-ai/page-context
 import { FormattedMessage } from '@/components/origin-ai/FormattedMessage';
 import { useQuota } from '@/context/QuotaContext';
 import { useNotifications } from '@/context/NotificationContext';
+import { useAuth } from '@/context/AuthContext';
 import {
   Tooltip,
   TooltipContent,
@@ -194,6 +195,7 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
     getRemainingVoiceTime
   } = useQuota();
   const { addNotification } = useNotifications();
+  const { refreshUser } = useAuth();
   const isTextQuotaReached = textProgress >= 100;
 
   // Track if we've already notified for this session
@@ -386,6 +388,7 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
       const userTokens = (response.userMessage.metadata?.tokensUsed as number) || 0;
       const aiTokens = (response.aiMessage.metadata?.tokensUsed as number) || 0;
       addTextUsage(userTokens + aiTokens);
+      void refreshUser();
 
       const mergedSession = mergeReplyIntoSession(activeSession, replyToDoubtReply(response));
 
@@ -399,6 +402,9 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
       });
     } catch (error) {
       console.error("Failed to send message", error);
+      if (error instanceof Error && error.message.includes('daily AI usage limit')) {
+        void refreshUser();
+      }
       toast.error("Couldn't send your message — please try again.");
     } finally {
       setIsTyping(false);
@@ -887,6 +893,7 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
 
                                 // Update tokens
                                 addTextUsage(result.tokensUsed || 0);
+                                void refreshUser();
 
                                 // Build AI response
                                 let aiContent = '';

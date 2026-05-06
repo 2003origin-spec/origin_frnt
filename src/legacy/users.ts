@@ -107,6 +107,12 @@ export function serializeUser(store: AppStore, userId: string) {
     contribution_data: buildContributionData(store, user.id),
     points: score.totalPoints,
     location: user.location,
+    voiceMinutesUsedToday: user.voiceMinutesUsedToday,
+    voice_minutes_used_today: user.voiceMinutesUsedToday,
+    tokensUsedToday: user.tokensUsedToday,
+    tokens_used_today: user.tokensUsedToday,
+    usageResetAt: user.usageResetAt,
+    usage_reset_at: user.usageResetAt,
   };
 
   return payload;
