@@ -8,6 +8,7 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "lint": "eslint",
+    "test:unit": "tsx --test tests/**/*.test.ts",
     "db:up": "docker compose -f docker-compose.postgres.yml up -d postgres",
     "db:down": "docker compose -f docker-compose.postgres.yml down",
     "db:logs": "docker compose -f docker-compose.postgres.yml logs -f postgres",
@@ -108,6 +109,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.1",
     "tailwindcss": "^4",
+    "tsx": "^4.21.0",
     "typescript": "^5"
   }
 }

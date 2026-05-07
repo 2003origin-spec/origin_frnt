@@ -1,5 +1,7 @@
 import type { NextConfig } from "next";
 
+const r2PublicHostname = process.env.NEXT_PUBLIC_R2_PUBLIC_HOSTNAME?.trim();
+
 const nextConfig: NextConfig = {
   outputFileTracingRoot: process.cwd(),
   poweredByHeader: false,
@@ -11,6 +13,7 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "avatars.githubusercontent.com" },
       { protocol: "https", hostname: "images.unsplash.com" },
       { protocol: "https", hostname: "origin-ai.vercel.app" },
+      ...(r2PublicHostname ? [{ protocol: "https" as const, hostname: r2PublicHostname }] : []),
     ],
   },
   experimental: {
