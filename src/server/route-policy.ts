@@ -31,6 +31,8 @@ export const MEMBERSHIP_API_PREFIXES = ["/api/study-rooms/[id]"] as const;
 
 export const PUBLIC_APP_PATHS = ["/", "/auth", "/role-selection", "/explore", "/premium"] as const;
 
+export const PUBLIC_APP_PREFIXES = ["/videos"] as const;
+
 export const AUTHENTICATED_APP_PREFIXES = [
   "/dashboard",
   "/tests",
@@ -90,6 +92,9 @@ export function getAppRoutePolicy(rawPathname: string): RoutePolicy {
     return getApiRoutePolicy(pathname);
   }
   if ((PUBLIC_APP_PATHS as readonly string[]).includes(pathname)) {
+    return { kind: "public" };
+  }
+  if (PUBLIC_APP_PREFIXES.some((prefix) => pathMatchesPrefix(pathname, prefix))) {
     return { kind: "public" };
   }
   for (const entry of ROLE_APP_PREFIXES) {

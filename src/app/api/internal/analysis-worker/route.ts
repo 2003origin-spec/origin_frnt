@@ -2,17 +2,10 @@ import type { NextRequest } from "next/server";
 
 import { badRequest, ok, unauthorized } from "@/server/http";
 import { drainAnalysisJobs } from "@/server/analysis-jobs";
-
-function isAuthorized(request: NextRequest): boolean {
-  const token = process.env.INTERNAL_CRON_TOKEN;
-  if (!token) {
-    return true;
-  }
-  return request.headers.get("authorization") === `Bearer ${token}`;
-}
+import { isBearerTokenAuthorized } from "@/server/service-auth";
 
 async function runWorker(request: NextRequest) {
-  if (!isAuthorized(request)) {
+  if (!isBearerTokenAuthorized(request, "INTERNAL_CRON_TOKEN")) {
     return unauthorized("Invalid internal worker token.");
   }
 

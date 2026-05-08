@@ -8,6 +8,7 @@ import { motion } from 'framer-motion';
 import { apiCall } from '@/lib/api';
 import { useEffect } from 'react';
 import { useLayout } from '@/context/LayoutContext';
+import { useHydratedNow } from '@/hooks/useHydratedNow';
 import { cn } from '@/lib/utils';
 
 import type { User, Task } from '@/types';
@@ -318,40 +319,52 @@ interface TodoListCardProps {
     onViewAll: () => void;
 }
 
+const TASK_DUE_FORMATTER = new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'UTC',
+});
+const ONE_DAY_MS = 86_400_000;
+
+function getDefaultDueDate(now: number) {
+    const d = new Date(now + ONE_DAY_MS);
+    return d.toISOString().slice(0, 16);
+}
+
 export function TodoListCard({ tasks, onAddTask, onToggleTask, onRemoveTask, onViewAll }: TodoListCardProps) {
     const [newTaskText, setNewTaskText] = useState('');
-
-    const getDefaultDueDate = () => {
-        const d = new Date(Date.now() + 86400000);
-        return d.toISOString().slice(0, 16);
-    };
-    const [newTaskDue, setNewTaskDue] = useState(getDefaultDueDate());
+    const hydratedNow = useHydratedNow();
+    const [lastMutationNow, setLastMutationNow] = useState<number | null>(null);
+    const [newTaskDue, setNewTaskDue] = useState('');
+    const now = lastMutationNow ?? hydratedNow;
+    const displayedNewTaskDue = newTaskDue || (now === null ? '' : getDefaultDueDate(now));
 
     const handleAdd = () => {
         if (!newTaskText.trim()) return;
-        const dueContent = newTaskDue ? new Date(newTaskDue).toISOString() : new Date(Date.now() + 86400000).toISOString();
+        const current = Date.now();
+        const dueInput = newTaskDue || displayedNewTaskDue;
+        const dueContent = dueInput ? new Date(dueInput).toISOString() : new Date(current + ONE_DAY_MS).toISOString();
         onAddTask(newTaskText.trim(), dueContent);
         setNewTaskText('');
-        setNewTaskDue(getDefaultDueDate());
+        setLastMutationNow(current);
+        setNewTaskDue(getDefaultDueDate(current));
     };
 
     const isOverdue = (dateString: string) => {
+        if (now === null) return false;
         if (!dateString) return false;
         const dueDate = new Date(dateString);
         if (isNaN(dueDate.getTime())) return false;
-        return dueDate.getTime() < Date.now();
+        return dueDate.getTime() < now;
     };
 
     const formatDate = (dateString: string) => {
         if (!dateString) return 'No date';
         const date = new Date(dateString);
         if (isNaN(date.getTime())) return 'Invalid date';
-        return date.toLocaleString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
+        return TASK_DUE_FORMATTER.format(date);
     };
 
     return (
@@ -398,7 +411,7 @@ export function TodoListCard({ tasks, onAddTask, onToggleTask, onRemoveTask, onV
                         <span className="text-[8px] sm:text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider">Deadline:</span>
                         <input
                             type="datetime-local"
-                            value={newTaskDue}
+                            value={displayedNewTaskDue}
                             onChange={(e) => setNewTaskDue(e.target.value)}
                             className="bg-slate-50/80 dark:bg-slate-800/30 border border-slate-100 dark:border-slate-700/50 rounded-lg px-2 py-0.5 sm:py-1 text-[8px] sm:text-[10px] text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-primary/30 transition-all cursor-pointer"
                         />

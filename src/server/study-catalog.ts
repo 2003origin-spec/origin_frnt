@@ -13,8 +13,6 @@
  *   edited, or removed via admin without redeploying.
  */
 
-import { cacheLife, cacheTag } from "next/cache";
-
 import { ncertBooksData } from "@/data/ncertBooks";
 import type { NCERTBook } from "@/data/ncertBooks";
 import { getUserPostgresPool, isUserPostgresConfigured } from "@/server/user-postgres";
@@ -102,10 +100,6 @@ async function seedIfEmpty(): Promise<void> {
  * In production (Neon configured): queries the DB, auto-seeding on first call.
  */
 export async function getNcertCatalog(): Promise<NCERTBook[]> {
-  'use cache';
-  cacheLife('hours');
-  cacheTag('study-catalog', 'ncert-catalog');
-
   if (!isUserPostgresConfigured()) {
     return ncertBooksData;
   }

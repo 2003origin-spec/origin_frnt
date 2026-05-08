@@ -244,7 +244,21 @@ export interface ChatMessage {
   content: string;
   timestamp: Date;
   image?: string;
+  attachments?: ChatAttachment[];
   metadata?: Record<string, unknown>;
+}
+
+export interface ChatAttachment {
+  id?: string;
+  type: 'image' | string;
+  storage?: string;
+  bucket?: string;
+  objectKey?: string;
+  url?: string | null;
+  mimeType?: string;
+  sizeBytes?: number;
+  sha256?: string;
+  uploadedAt?: string;
 }
 
 export interface DoubtSession {

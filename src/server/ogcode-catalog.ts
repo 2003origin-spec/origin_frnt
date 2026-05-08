@@ -1,5 +1,3 @@
-import { cacheLife, cacheTag } from "next/cache";
-
 import type { DifficultyLevel, QuestionType, StoredAnswerSpec, StoredQuestion } from "@/server/store";
 
 import { getOgcodePostgresPool, isOgcodePostgresConfigured } from "@/server/postgres";
@@ -278,10 +276,6 @@ export function isOgcodeCatalogAvailable(): boolean {
 }
 
 export async function listOgcodeCatalogQuestions(filters: CatalogFilters = {}): Promise<StoredQuestion[]> {
-  'use cache';
-  cacheLife('hours');
-  cacheTag('ogcode-catalog');
-
   const pool = getOgcodePostgresPool();
   if (!pool) {
     return [];
@@ -326,10 +320,6 @@ export async function listOgcodeCatalogQuestions(filters: CatalogFilters = {}): 
 }
 
 export async function listOgcodeCatalogQuestionIds(filters: CatalogFilters = {}): Promise<string[]> {
-  'use cache';
-  cacheLife('hours');
-  cacheTag('ogcode-catalog');
-
   const pool = getOgcodePostgresPool();
   if (!pool) {
     return [];
@@ -354,10 +344,6 @@ export async function listOgcodeCatalogQuestionPage(filters: CatalogPageFilters)
   items: StoredQuestion[];
   total: number;
 }> {
-  'use cache';
-  cacheLife('minutes');
-  cacheTag('ogcode-catalog');
-
   const pool = getOgcodePostgresPool();
   if (!pool) {
     return { items: [], total: 0 };
@@ -426,10 +412,6 @@ export async function listOgcodeCatalogQuestionPage(filters: CatalogPageFilters)
 }
 
 export async function listOgcodeCatalogChapters(subject: string): Promise<string[]> {
-  'use cache';
-  cacheLife('hours');
-  cacheTag('ogcode-catalog');
-
   const pool = getOgcodePostgresPool();
   if (!pool) {
     return [];
@@ -452,10 +434,6 @@ export async function listOgcodeCatalogChapters(subject: string): Promise<string
 }
 
 export async function getOgcodeCatalogQuestionById(questionId: string): Promise<StoredQuestion | null> {
-  'use cache';
-  cacheLife('hours');
-  cacheTag('ogcode-catalog', `ogcode-question:${questionId}`);
-
   const pool = getOgcodePostgresPool();
   if (!pool) {
     return null;
@@ -544,10 +522,6 @@ export async function getOgcodeCatalogQuestionMap(questionIds: string[]): Promis
 }
 
 export async function getOgcodeCatalogCounts() {
-  'use cache';
-  cacheLife('hours');
-  cacheTag('ogcode-catalog');
-
   const pool = getOgcodePostgresPool();
   if (!pool) {
     return { total: 0, bySubject: {} as Record<string, number> };
@@ -574,10 +548,6 @@ export async function getOgcodeCatalogCounts() {
 }
 
 export async function getOgcodeChallengeQuestion(): Promise<StoredQuestion | null> {
-  'use cache';
-  cacheLife('hours');
-  cacheTag('ogcode-challenge');
-
   const pool = getOgcodePostgresPool();
   if (!pool) {
     return null;

@@ -6,7 +6,8 @@ import { AuthProvider } from "@/context/AuthContext";
 import { ThemeProvider } from "next-themes";
 import { Toaster } from "@/components/ui/sonner";
 import ClientShell from "@/components/layout/ClientShell";
-import { getServerFrontendUser } from "@/lib/auth-server";
+import { QuotaProvider } from "@/context/QuotaContext";
+import { NotificationProvider } from "@/context/NotificationContext";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://origin-ai.vercel.app";
 
@@ -39,12 +40,9 @@ export const metadata: Metadata = {
 };
 
 /**
- * Root layout is a synchronous shell so the static HTML can be prerendered
- * under `cacheComponents: true`. The cookie read + AuthProvider bootstrap
- * lives inside a Suspense child so the shell can stream before the user is
- * resolved. `cookies()` is local and fast, so the fallback tree rarely
- * shows in practice — but having it as a proper boundary is what Cache
- * Components requires.
+ * Keep the root layout free of request-specific cookie reads.
+ * AuthProvider hydrates the user on the client via /api/users/me so the root
+ * shell never reads request cookies during production rendering.
  */
 export default function RootLayout({
   children,
@@ -61,29 +59,17 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <Suspense fallback={<div className="min-h-screen bg-background" />}>
-            <AuthBootstrap>
-              <ClientShell>{children}</ClientShell>
-            </AuthBootstrap>
+            <AuthProvider initialUser={null}>
+              <NotificationProvider>
+                <QuotaProvider>
+                  <ClientShell>{children}</ClientShell>
+                </QuotaProvider>
+              </NotificationProvider>
+            </AuthProvider>
           </Suspense>
           <Toaster position="top-right" richColors />
         </ThemeProvider>
       </body>
     </html>
-  );
-}
-
-import { QuotaProvider } from "@/context/QuotaContext";
-import { NotificationProvider } from "@/context/NotificationContext";
-
-async function AuthBootstrap({ children }: { children: React.ReactNode }) {
-  const initialUser = await getServerFrontendUser();
-  return (
-    <AuthProvider initialUser={initialUser}>
-      <NotificationProvider>
-        <QuotaProvider>
-          {children}
-        </QuotaProvider>
-      </NotificationProvider>
-    </AuthProvider>
   );
 }

@@ -31,6 +31,20 @@ interface TasksGoalsProps {
 import { useLayout } from '@/context/LayoutContext';
 import { cn } from '@/lib/utils';
 import { FormattedMessage } from '@/components/origin-ai/FormattedMessage';
+import { useHydratedNow } from '@/hooks/useHydratedNow';
+
+const TASK_DUE_FORMATTER = new Intl.DateTimeFormat('en-US', {
+  month: 'short',
+  day: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  timeZone: 'UTC',
+});
+const ONE_DAY_MS = 86_400_000;
+
+function getDefaultDueDate(now: number) {
+  return new Date(now + ONE_DAY_MS).toISOString().slice(0, 16);
+}
 
 export default function TasksGoals({ tasks, onAddTask, onToggleTask, onRemoveTask, onBack, user }: TasksGoalsProps) {
   const { availableWidth } = useLayout();
@@ -40,10 +54,11 @@ export default function TasksGoals({ tasks, onAddTask, onToggleTask, onRemoveTas
   const [filter, setFilter] = useState<'all' | 'active' | 'completed'>('all');
   const [search, setSearch] = useState('');
   const [newTaskText, setNewTaskText] = useState('');
-  const [newTaskDue, setNewTaskDue] = useState(() => {
-    const d = new Date(Date.now() + 86400000);
-    return d.toISOString().slice(0, 16);
-  });
+  const [newTaskDue, setNewTaskDue] = useState('');
+  const hydratedNow = useHydratedNow();
+  const [lastMutationNow, setLastMutationNow] = useState<number | null>(null);
+  const now = lastMutationNow ?? hydratedNow;
+  const displayedNewTaskDue = newTaskDue || (now === null ? '' : getDefaultDueDate(now));
 
   const filteredTasks = tasks.filter(t => {
     const matchesFilter = 
@@ -58,27 +73,27 @@ export default function TasksGoals({ tasks, onAddTask, onToggleTask, onRemoveTas
     total: tasks.length,
     completed: tasks.filter(t => t.completed).length,
     pending: tasks.filter(t => !t.completed).length,
-    overdue: tasks.filter(t => !t.completed && new Date(t.due).getTime() < Date.now()).length
+    overdue: now === null ? 0 : tasks.filter(t => !t.completed && new Date(t.due).getTime() < now).length
   };
 
   const handleAddTask = () => {
     if (!newTaskText.trim()) return;
-    onAddTask(newTaskText.trim(), new Date(newTaskDue).toISOString());
+    const current = Date.now();
+    const dueInput = newTaskDue || displayedNewTaskDue;
+    const due = dueInput ? new Date(dueInput).toISOString() : new Date(current + ONE_DAY_MS).toISOString();
+    onAddTask(newTaskText.trim(), due);
     setNewTaskText('');
+    setLastMutationNow(current);
+    setNewTaskDue(getDefaultDueDate(current));
   };
 
   const isOverdue = (dateString: string) => {
-    return new Date(dateString).getTime() < Date.now();
+    return now !== null && new Date(dateString).getTime() < now;
   };
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    return Number.isNaN(date.getTime()) ? 'Invalid date' : TASK_DUE_FORMATTER.format(date);
   };
 
   return (
@@ -196,7 +211,7 @@ export default function TasksGoals({ tasks, onAddTask, onToggleTask, onRemoveTas
                     <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
                     <input 
                       type="datetime-local" 
-                      value={newTaskDue}
+                      value={displayedNewTaskDue}
                       onChange={(e) => setNewTaskDue(e.target.value)}
                       className="w-full bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-white/5 rounded-xl pl-10 pr-3 py-3 text-xs sm:text-sm font-medium focus:outline-none focus:ring-2 focus:ring-rose-500/20 transition-all cursor-pointer"
                     />

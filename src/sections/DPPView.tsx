@@ -23,6 +23,12 @@ import {
   XCircle,
 } from 'lucide-react';
 
+const DPP_DATE_FORMATTER = new Intl.DateTimeFormat('en-US', {
+  month: 'short',
+  day: 'numeric',
+  timeZone: 'UTC',
+});
+
 interface DPPViewProps {
   onBack: () => void;
   user: User;
@@ -709,7 +715,7 @@ function DppSelectionGrid({
     if (!value) return null;
     const parsed = new Date(value);
     if (Number.isNaN(parsed.getTime())) return null;
-    return parsed.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    return DPP_DATE_FORMATTER.format(parsed);
   };
 
   return (

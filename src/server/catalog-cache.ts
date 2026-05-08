@@ -2,6 +2,7 @@ import type { PoolClient } from "pg";
 
 import { metric } from "@/lib/metrics";
 import { getOgcodePostgresPool } from "@/server/postgres";
+import { readRequiredServiceToken } from "@/server/service-auth";
 
 declare global {
   var __originCatalogCacheSchemaReady: Promise<void> | undefined;
@@ -114,7 +115,7 @@ async function fetchChaptersFromOriginAi(subject: OriginAiChapterSubject): Promi
     method: "GET",
     cache: "no-store",
     headers: {
-      Authorization: `Bearer ${process.env.ORIGIN_AI_SERVICE_TOKEN || "dev-origin-ai-token"}`,
+      Authorization: `Bearer ${readRequiredServiceToken("ORIGIN_AI_SERVICE_TOKEN")}`,
     },
   });
 

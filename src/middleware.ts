@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 
 import { CSRF_COOKIE_NAME, verifyRequestAccessJwt } from "@/server/auth-jwt";
 import { getApiRoutePolicy, getAppRoutePolicy, normalizePathname, type RoutePolicy } from "@/server/route-policy";
+import { isBearerTokenAuthorized } from "@/server/service-auth";
 
 const REQUEST_ID_HEADER = "X-Request-Id";
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
@@ -55,11 +56,7 @@ function nextWithRequestId(
 }
 
 function isInternalAuthorized(request: NextRequest, policy: Extract<RoutePolicy, { kind: "internal" }>): boolean {
-  const expected = process.env[policy.tokenName]?.trim();
-  if (!expected) {
-    return true;
-  }
-  return request.headers.get("authorization") === `Bearer ${expected}`;
+  return isBearerTokenAuthorized(request, policy.tokenName);
 }
 
 export async function middleware(request: NextRequest) {

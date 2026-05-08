@@ -1,6 +1,8 @@
 import { apiCall } from '@/lib/api';
 import { getOriginAiBrowserSessionId } from '@/features/origin-ai/session';
+import { firstImageAttachmentUrl, normalizeAttachments } from '@/features/origin-ai/attachments';
 import type {
+  ChatAttachment,
   ChatMessage,
   OriginAiPageContext,
   OriginAiPageKind,
@@ -208,6 +210,8 @@ const normalizeServiceMessage = (message: ServiceMessage): ChatMessage => ({
   role: message.role,
   content: message.content,
   timestamp: new Date(message.created_at),
+  image: firstImageAttachmentUrl(message.metadata),
+  attachments: normalizeAttachments(message.metadata),
   metadata: {
     ...(message.metadata ?? {}),
     source: message.source ?? 'ai',
@@ -623,18 +627,39 @@ export type ImageSolveResult = {
   matchFound: boolean;
   matchDetails: { source: string; title: string; score: number } | null;
   savedToDb: boolean;
+  sessionId?: string | null;
+  userMessageId?: string | null;
+  aiMessageId?: string | null;
+  attachment?: ChatAttachment | null;
+  userMessage?: ChatMessage | null;
+  aiMessage?: ChatMessage | null;
+};
+
+type ServiceImageSolveResult = Omit<ImageSolveResult, 'userMessage' | 'aiMessage' | 'attachment'> & {
+  attachment?: Record<string, unknown> | null;
+  userMessage?: ServiceMessage | null;
+  aiMessage?: ServiceMessage | null;
 };
 
 export async function solveOriginAiImage(
   imageData: string,
   mimeType: string = 'image/png',
   subject?: string | null,
+  threadId?: string | null,
 ): Promise<ImageSolveResult> {
-  return (await apiCall('/origin-ai/image-solve', {
+  const data = (await apiCall('/origin-ai/image-solve', {
     method: 'POST',
     headers: { 'X-Origin-AI-Session-Id': getOriginAiBrowserSessionId() },
-    body: JSON.stringify({ imageData, mimeType, subject }),
-  })) as ImageSolveResult;
+    body: JSON.stringify({ imageData, mimeType, subject, threadId }),
+  })) as ServiceImageSolveResult;
+
+  const attachment = normalizeAttachments({ attachments: data.attachment ? [data.attachment] : [] })[0] ?? null;
+  return {
+    ...data,
+    attachment,
+    userMessage: data.userMessage ? normalizeServiceMessage(data.userMessage) : null,
+    aiMessage: data.aiMessage ? normalizeServiceMessage(data.aiMessage) : null,
+  };
 }
 
 export async function createOriginAiThread(payload: {

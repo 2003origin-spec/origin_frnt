@@ -65,4 +65,5 @@ test("known protected policies classify role and room-scoped routes", () => {
   assert.equal(getApiRoutePolicy("/api/study-rooms/room_1/messages").kind, "membership");
   assert.equal(getApiRoutePolicy("/api/origin-ai/chat").kind, "authenticated");
   assert.equal(getApiRoutePolicy("/api/internal/refresh-catalog").kind, "internal");
+  assert.equal(getAppRoutePolicy("/videos/Instant-Doubt-Resolution.mp4").kind, "public");
 });

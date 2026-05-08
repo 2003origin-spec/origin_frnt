@@ -37,6 +37,7 @@ import {
 } from "@/server/catalog-cache";
 import { getRequestId, REQUEST_ID_HEADER } from "@/lib/request-id";
 import { aiLimiter, voiceLimiter, generalLimiter, checkRateLimit } from "@/lib/rate-limit";
+import { readRequiredServiceToken, ServiceAuthConfigurationError } from "@/server/service-auth";
 
 export const maxDuration = 120;
 
@@ -48,7 +49,6 @@ const PROXY_TTS_TIMEOUT_MS = 75_000;
 const PROXY_IMAGE_TIMEOUT_MS = 180_000;
 
 const ORIGIN_AI_SERVICE_URL = process.env.ORIGIN_AI_SERVICE_URL || "";
-const ORIGIN_AI_SERVICE_TOKEN = process.env.ORIGIN_AI_SERVICE_TOKEN || "dev-origin-ai-token";
 
 const sessionQuerySchema = z.object({
   pathname: z.string().optional(),
@@ -99,6 +99,13 @@ const messageBodySchema = z.object({
   message: z.string().trim().min(1),
   pageContext: pageContextSchema.optional(),
   highlightedText: z.string().nullable().optional(),
+  threadId: z.string().trim().min(1).nullable().optional(),
+});
+
+const imageSolveBodySchema = z.object({
+  imageData: z.string().trim().min(1),
+  mimeType: z.string().trim().min(1).max(80),
+  subject: z.string().trim().min(1).max(50).nullable().optional(),
   threadId: z.string().trim().min(1).nullable().optional(),
 });
 
@@ -214,6 +221,19 @@ async function proxyToMicroservice(
 
   const browserSessionId = request.headers.get("X-Origin-AI-Session-Id") ?? "";
   const requestId = getRequestId(request.headers);
+  let serviceToken: string;
+  try {
+    serviceToken = readRequiredServiceToken("ORIGIN_AI_SERVICE_TOKEN");
+  } catch (error) {
+    const message = error instanceof ServiceAuthConfigurationError
+      ? error.message
+      : "Origin AI service token is not configured.";
+    console.error("[origin-ai proxy] service token missing", { requestId, path });
+    return new Response(JSON.stringify({ detail: message, requestId }), {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 
   const isTts = path.includes('/voice/speak');
   const isImageSolve = path.includes('/image-solve');
@@ -229,7 +249,7 @@ async function proxyToMicroservice(
       signal: controller.signal,
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${ORIGIN_AI_SERVICE_TOKEN}`,
+        "Authorization": `Bearer ${serviceToken}`,
         [REQUEST_ID_HEADER]: requestId,
         "X-Origin-AI-Session-Id": browserSessionId,
         "X-Origin-User-Id": user.id,
@@ -627,8 +647,30 @@ export async function POST(request: NextRequest, context: RouteContext) {
       if (!proxyUser) return unauthorized();
       let body: unknown;
       try { body = await parseJsonBody(request); } catch { return badRequest("Invalid JSON."); }
-      const proxyResp = await proxyToMicroservice("POST", "/api/v1/chat/image-solve", body, request, proxyUser);
-      if (proxyResp) return proxyResp;
+      const parsedBody = imageSolveBodySchema.safeParse(body);
+      if (!parsedBody.success) {
+        return badRequest("Valid image data, MIME type, and thread metadata are required.");
+      }
+      const quotaResponse = await checkOriginAiUsageLimit(proxyUser, { pageKind: "doubt_solver" });
+      if (quotaResponse) {
+        return quotaResponse;
+      }
+
+      const enrichedPayload = {
+        ...parsedBody.data,
+        subject: parsedBody.data.subject ?? null,
+      };
+      const proxyResp = await proxyToMicroservice("POST", "/api/v1/chat/image-solve", enrichedPayload, request, proxyUser);
+      if (proxyResp) {
+        const data = await proxyJsonResponse(proxyResp);
+        if (proxyResp.ok) {
+          await recordOriginAiProxyUsage(proxyUser.id, data);
+        }
+        return new Response(JSON.stringify(data ?? {}), {
+          status: proxyResp.status,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
     }
     return badRequest("Image solving requires the Origin AI microservice.");
   }
@@ -1007,7 +1049,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       if (!proxyUser) {
         return unauthorized();
       }
-      return ok({ token: `${ORIGIN_AI_SERVICE_TOKEN}|${proxyUser.id}` });
+      return ok({ transport: "server_voice" });
     }
 
     return notFound();

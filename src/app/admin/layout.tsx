@@ -4,8 +4,7 @@ import { getServerUser } from '@/lib/auth-server';
 
 /**
  * Server-side auth guard for every /admin/* route. The cookie read lives
- * inside a Suspense boundary so the static shell can be prerendered under
- * `cacheComponents: true`.
+ * in this protected layout so admin pages do not duplicate role checks.
  */
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const user = await getServerUser();

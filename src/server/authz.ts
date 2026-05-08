@@ -7,6 +7,7 @@ import {
   requireRoomMembership as requireStoredRoomMembership,
   type ParticipantRole,
 } from "@/server/study-rooms";
+import { isBearerTokenAuthorized, type ServiceTokenName } from "@/server/service-auth";
 
 export type AuthContext = {
   userId: string;
@@ -69,12 +70,8 @@ export async function requireAdmin(request: Request): Promise<AuthContext> {
   return requireRole(request, ["admin"]);
 }
 
-export async function requireInternal(request: Request, tokenName = "INTERNAL_CRON_TOKEN"): Promise<void> {
-  const expected = process.env[tokenName]?.trim();
-  if (!expected) {
-    return;
-  }
-  if (request.headers.get("authorization") !== `Bearer ${expected}`) {
+export async function requireInternal(request: Request, tokenName: ServiceTokenName = "INTERNAL_CRON_TOKEN"): Promise<void> {
+  if (!isBearerTokenAuthorized(request, tokenName)) {
     throw new AuthzError(401, "Invalid internal service token.");
   }
 }

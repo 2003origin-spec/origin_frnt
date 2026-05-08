@@ -30,6 +30,11 @@ interface QuotaContextType {
 const VOICE_LIMIT_SECONDS = 10 * 60; // 10 minutes
 const TEXT_LIMIT_TOKENS = 200000; // 200k tokens
 // const QUOTA_STORAGE_KEY = 'origin_ai_quota'; // Replaced by user-specific key
+const EMPTY_QUOTA_STATE: QuotaState = {
+  voiceSecondsUsed: 0,
+  textTokensUsed: 0,
+  lastResetDate: '',
+};
 
 const QuotaContext = createContext<QuotaContextType | undefined>(undefined);
 
@@ -71,11 +76,7 @@ function quotaFromUser(user: ReturnType<typeof useAuth>['user']): QuotaState | n
 }
 
 export function QuotaProvider({ children }: { children: React.ReactNode }) {
-  const [state, setState] = useState<QuotaState>({
-    voiceSecondsUsed: 0,
-    textTokensUsed: 0,
-    lastResetDate: todayString(),
-  });
+  const [state, setState] = useState<QuotaState>(EMPTY_QUOTA_STATE);
 
   const voiceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const notifiedThresholds = useRef<Set<string>>(new Set());
