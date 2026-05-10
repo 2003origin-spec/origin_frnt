@@ -247,7 +247,23 @@ async function insertConceptRows(client, rows) {
   const sql = `
     INSERT INTO origin_ai.concept_embeddings
       (id, concept_name, chapter, subject, embedding, created_at, updated_at)
-    VALUES ($1::uuid, $2, $3, $4, $5::vector, COALESCE($6::timestamptz, NOW()), COALESCE($7::timestamptz, NOW()))
+    SELECT
+      id,
+      concept_name,
+      COALESCE(NULLIF(chapter, ''), 'General'),
+      subject,
+      embedding::vector,
+      COALESCE(created_at, NOW()),
+      COALESCE(updated_at, NOW())
+    FROM jsonb_to_recordset($1::jsonb) AS row(
+      id UUID,
+      concept_name TEXT,
+      chapter TEXT,
+      subject TEXT,
+      embedding TEXT,
+      created_at TIMESTAMPTZ,
+      updated_at TIMESTAMPTZ
+    )
     ON CONFLICT (id) DO UPDATE SET
       concept_name = EXCLUDED.concept_name,
       chapter = EXCLUDED.chapter,
@@ -256,16 +272,9 @@ async function insertConceptRows(client, rows) {
       updated_at = EXCLUDED.updated_at
   `;
 
-  for (const row of rows) {
-    await client.query(sql, [
-      row.id,
-      row.concept_name,
-      row.chapter || "General",
-      row.subject,
-      row.embedding,
-      row.created_at || null,
-      row.updated_at || null,
-    ]);
+  const batchSize = 100;
+  for (let start = 0; start < rows.length; start += batchSize) {
+    await client.query(sql, [JSON.stringify(rows.slice(start, start + batchSize))]);
   }
 }
 
@@ -273,7 +282,25 @@ async function insertOgcodeRows(client, rows) {
   const sql = `
     INSERT INTO origin_ai.ogcode_embeddings
       (id, question_text, chapter, subject, explanation, embedding, created_at, updated_at)
-    VALUES ($1::uuid, $2, $3, $4, $5, $6::vector, COALESCE($7::timestamptz, NOW()), COALESCE($8::timestamptz, NOW()))
+    SELECT
+      id,
+      question_text,
+      COALESCE(NULLIF(chapter, ''), 'General'),
+      subject,
+      explanation,
+      embedding::vector,
+      COALESCE(created_at, NOW()),
+      COALESCE(updated_at, NOW())
+    FROM jsonb_to_recordset($1::jsonb) AS row(
+      id UUID,
+      question_text TEXT,
+      chapter TEXT,
+      subject TEXT,
+      explanation TEXT,
+      embedding TEXT,
+      created_at TIMESTAMPTZ,
+      updated_at TIMESTAMPTZ
+    )
     ON CONFLICT (id) DO UPDATE SET
       question_text = EXCLUDED.question_text,
       chapter = EXCLUDED.chapter,
@@ -283,17 +310,9 @@ async function insertOgcodeRows(client, rows) {
       updated_at = EXCLUDED.updated_at
   `;
 
-  for (const row of rows) {
-    await client.query(sql, [
-      row.id,
-      row.question_text,
-      row.chapter || "General",
-      row.subject,
-      row.explanation,
-      row.embedding,
-      row.created_at || null,
-      row.updated_at || null,
-    ]);
+  const batchSize = 100;
+  for (let start = 0; start < rows.length; start += batchSize) {
+    await client.query(sql, [JSON.stringify(rows.slice(start, start + batchSize))]);
   }
 }
 
