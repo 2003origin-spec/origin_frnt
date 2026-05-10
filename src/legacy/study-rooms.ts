@@ -8,6 +8,7 @@ import {
   type CustomTestPayload,
   type TestSubmissionPayload,
 } from "@/server/assessments";
+import { getPersistedCustomTestById, persistGeneratedCustomTest } from "@/server/analytics-store";
 import { getRoomsPostgresPoolOrThrow, ensureRoomsSchema } from "@/server/rooms-postgres";
 import {
   deleteActiveRoomCode,
@@ -717,6 +718,78 @@ export async function sendRoomMessage(roomId: string, user: StoredUser, content:
   });
 }
 
+type SerializedRoomTest = {
+  id?: string;
+  title?: string;
+  description?: string;
+  subject?: string;
+  chapter?: string | null;
+  difficulty?: string;
+  duration?: number;
+  questions?: Array<{ id?: string | null }>;
+  questionIds?: string[];
+  question_ids?: string[];
+  focusTopics?: string[];
+  focus_topics?: string[];
+  generationSummary?: string;
+  generation_summary?: string;
+  recommendedTimePerQuestionSeconds?: number;
+  recommended_time_per_question_seconds?: number;
+};
+
+function getRoomTestQuestionIds(test: SerializedRoomTest): string[] {
+  const direct = test.questionIds ?? test.question_ids;
+  if (Array.isArray(direct) && direct.length > 0) {
+    return direct.filter((id): id is string => typeof id === "string" && id.length > 0);
+  }
+
+  return (test.questions ?? [])
+    .map((question) => question.id)
+    .filter((id): id is string => typeof id === "string" && id.length > 0);
+}
+
+async function ensureRoomCustomTestIsPersisted(
+  user: StoredUser,
+  rawTest: unknown,
+  payload: CustomTestPayload,
+): Promise<void> {
+  const test = rawTest as SerializedRoomTest;
+  if (!test.id) {
+    throw new StudyRoomError(500, "Custom test generation did not return a test id.");
+  }
+
+  const existing = await getPersistedCustomTestById(test.id);
+  if (existing) {
+    return;
+  }
+
+  const questionIds = getRoomTestQuestionIds(test);
+  if (questionIds.length === 0) {
+    throw new StudyRoomError(500, "Custom test generation did not return persisted questions.");
+  }
+
+  await persistGeneratedCustomTest({
+    id: test.id,
+    userId: user.id,
+    subject: test.subject ?? (payload.subject ?? "mixed").toLowerCase(),
+    chapter: test.chapter ?? payload.chapter?.trim() ?? null,
+    difficulty: test.difficulty ?? (payload.difficulty ?? "medium").toLowerCase(),
+    title: test.title ?? "Room Custom Test",
+    description: test.description ?? "Custom practice set generated for a study room.",
+    questionIds,
+    durationMinutes: Math.max(1, Number(test.duration ?? Math.ceil(questionIds.length * 2))),
+    focusTopics: test.focusTopics ?? test.focus_topics ?? [],
+    generationSummary:
+      test.generationSummary ??
+      test.generation_summary ??
+      "Generated from the local question bank because the analytics provider was unavailable.",
+    recommendedTimePerQuestionSeconds:
+      test.recommendedTimePerQuestionSeconds ??
+      test.recommended_time_per_question_seconds ??
+      120,
+  });
+}
+
 export async function createCustomTestForRoom(
   store: AppStore,
   user: StoredUser,
@@ -728,6 +801,7 @@ export async function createCustomTestForRoom(
   if (!customTestId) {
     throw new StudyRoomError(500, "Custom test generation did not return a test id.");
   }
+  await ensureRoomCustomTestIsPersisted(user, test, payload);
 
   await transaction(async (client) => {
     const room = await getRoomOrThrow(client, roomId, true);
