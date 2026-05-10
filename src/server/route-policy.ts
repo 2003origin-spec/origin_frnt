@@ -47,6 +47,7 @@ export const AUTHENTICATED_APP_PREFIXES = [
   "/dpp",
   "/doubt-solver",
   "/onboarding",
+  "/books",
 ] as const;
 
 export const ROLE_APP_PREFIXES = [
