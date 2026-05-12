@@ -3785,10 +3785,10 @@ async function buildLeaderboardEntriesFromDb(user: StoredUser, subject: string |
   if (!userPool || !ogcodePool) return [];
 
   // 1. Get all students from user pool
-  let users;
+  let users: Array<{ id: string; name: string; avatar?: string | null; total_study_time?: number; streak?: number; location?: string | null }>;
   try {
     const usersResult = await userPool.query(`
-      SELECT id, name, avatar, total_study_time, streak
+      SELECT id, name, avatar, total_study_time, streak, location
       FROM origin_users
       WHERE role = 'student' ${location ? "AND location = $1" : ""}
     `, location ? [location] : []);
@@ -3810,42 +3810,28 @@ async function buildLeaderboardEntriesFromDb(user: StoredUser, subject: string |
     }
   }
 
-  // 2. Get performance data from ogcode pool
-  // We aggregate from test_results. For 'overall', we sum across all subjects.
-  const subjectFilter = subject ? "AND subject = $1" : "";
-  const locationFilter = location ? `AND u.location = $${subject ? 2 : 1}` : "";
-  const queryParams = [];
-  if (subject) queryParams.push(subject);
-  if (location) queryParams.push(location);
-
-  let resultsResult;
-  try {
-    resultsResult = await ogcodePool.query(`
-      SELECT
-        user_id,
-        SUM(correct_answers) as total_solved,
-        AVG(percentage) as avg_accuracy
-      FROM analytics.test_results tr
-      ${location ? "JOIN origin_users u ON tr.user_id = u.id" : ""}
-      WHERE 1=1 ${subjectFilter} ${location ? "AND u.location = $" + (subject ? 2 : 1) : ""}
-      GROUP BY user_id
-    `, queryParams);
-  } catch (err: any) {
-    if (err.message?.includes('column "location" does not exist')) {
-      // Retry without location join/filter
-      resultsResult = await ogcodePool.query(`
-        SELECT
-          user_id,
-          SUM(correct_answers) as total_solved,
-          AVG(percentage) as avg_accuracy
-        FROM analytics.test_results tr
-        WHERE 1=1 ${subjectFilter}
-        GROUP BY user_id
-      `, subject ? [subject] : []);
-    } else {
-      throw err;
-    }
+  if (users.length === 0) {
+    return [];
   }
+
+  // 2. Get performance data from ogcode pool. User/profile data lives in the
+  // user database, so regional filtering must happen before this query instead
+  // of joining origin_users from the OGCode connection.
+  const subjectFilter = subject ? "AND subject = $1" : "";
+  const userIdParamIndex = subject ? 2 : 1;
+  const queryParams: unknown[] = [];
+  if (subject) queryParams.push(subject);
+  queryParams.push(users.map((entry) => entry.id));
+
+  const resultsResult = await ogcodePool.query(`
+    SELECT
+      user_id,
+      SUM(correct_answers) as total_solved,
+      AVG(percentage) as avg_accuracy
+    FROM analytics.test_results tr
+    WHERE tr.user_id = ANY($${userIdParamIndex}::text[]) ${subjectFilter}
+    GROUP BY user_id
+  `, queryParams);
 
   const statsMap = new Map();
   resultsResult.rows.forEach(row => {
@@ -3876,6 +3862,7 @@ async function buildLeaderboardEntriesFromDb(user: StoredUser, subject: string |
       studyTime: studyMinutes,
       questionsSolved: stats.solved,
       accuracy: stats.accuracy,
+      location: u.location ?? null,
       isMe: u.id === user.id,
       is_me: u.id === user.id,
     };

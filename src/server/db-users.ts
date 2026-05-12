@@ -19,6 +19,7 @@ import {
   issueAccessTokenForUser,
   parseRefreshToken,
 } from "@/server/auth-jwt";
+import type { UserImagePurpose } from "@/server/media-storage";
 
 const REFRESH_REPLAY_GRACE_MS = 30_000;
 export const REFRESH_TOKEN_ROTATION_INTERVAL_MS = 24 * 60 * 60 * 1000;
@@ -195,6 +196,24 @@ export async function ensureUserSchema(): Promise<void> {
           ON CONFLICT (id) DO NOTHING;
 
           CREATE INDEX IF NOT EXISTS idx_tasks_user_created ON app.tasks (user_id, created_at DESC);
+
+          CREATE TABLE IF NOT EXISTS origin_media_assets (
+            id               TEXT PRIMARY KEY,
+            user_id          TEXT NOT NULL REFERENCES origin_users(id) ON DELETE CASCADE,
+            purpose          TEXT NOT NULL,
+            storage_provider TEXT NOT NULL DEFAULT 'r2',
+            bucket           TEXT NOT NULL,
+            object_key       TEXT NOT NULL UNIQUE,
+            public_url       TEXT NOT NULL,
+            mime_type        TEXT NOT NULL,
+            size_bytes       INTEGER NOT NULL CHECK (size_bytes > 0),
+            sha256           TEXT NOT NULL,
+            metadata         JSONB NOT NULL DEFAULT '{}'::jsonb,
+            created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          );
+
+          CREATE INDEX IF NOT EXISTS idx_media_assets_user_purpose_created
+            ON origin_media_assets (user_id, purpose, created_at DESC);
         `);
         globalThis.__originUserSchemaEnsured = true;
       } finally {
@@ -352,6 +371,49 @@ export async function dbUpdateUser(id: string, patch: Partial<StoredUser>): Prom
   if (fields.length === 0) return;
   values.push(id);
   await pool().query(`UPDATE origin_users SET ${fields.join(", ")} WHERE id = $${i}`, values);
+}
+
+export type DbMediaAssetInput = {
+  id?: string;
+  userId: string;
+  purpose: UserImagePurpose;
+  storageProvider?: "r2";
+  bucket: string;
+  objectKey: string;
+  publicUrl: string;
+  mimeType: string;
+  sizeBytes: number;
+  sha256: string;
+  metadata?: Record<string, unknown>;
+};
+
+export async function dbCreateMediaAsset(input: DbMediaAssetInput): Promise<{ id: string; createdAt: string }> {
+  await ensureUserSchema();
+  const id = input.id ?? createId("media");
+  const result = await pool().query(
+    `INSERT INTO origin_media_assets
+       (id, user_id, purpose, storage_provider, bucket, object_key, public_url, mime_type, size_bytes, sha256, metadata)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+     RETURNING created_at`,
+    [
+      id,
+      input.userId,
+      input.purpose,
+      input.storageProvider ?? "r2",
+      input.bucket,
+      input.objectKey,
+      input.publicUrl,
+      input.mimeType,
+      input.sizeBytes,
+      input.sha256,
+      JSON.stringify(input.metadata ?? {}),
+    ],
+  );
+  const createdAt = result.rows[0]?.created_at;
+  return {
+    id,
+    createdAt: createdAt instanceof Date ? createdAt.toISOString() : String(createdAt ?? new Date().toISOString()),
+  };
 }
 
 // ─── Auth session operations ──────────────────────────────────────────────────

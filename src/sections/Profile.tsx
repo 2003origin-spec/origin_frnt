@@ -1,10 +1,10 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTheme } from 'next-themes';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   ChevronLeft,
@@ -26,13 +26,15 @@ import {
   Moon,
   Sparkles,
   MapPin,
+  RefreshCw,
 } from 'lucide-react';
 import { apiCall } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
-import { updateProfileAction } from '@/server/actions/profile-actions';
+import { updateProfileAction, uploadUserImageAction } from '@/server/actions/profile-actions';
 import type { User as UserType, StreakData } from '@/types';
 import PhotoBooth from '@/components/profile/PhotoBooth';
 import { INDIAN_STATES } from '@/lib/constants';
+import { toast } from 'sonner';
 
 interface ProfileProps {
   user: UserType;
@@ -72,27 +74,66 @@ export default function Profile({
   const [mounted, setMounted] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [profileStats, setProfileStats] = useState<ProfileStats | null>(initialProfileStats);
+  const [avatarUrl, setAvatarUrl] = useState(user.avatar || '');
+  const [isAvatarUploading, setIsAvatarUploading] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
 
   const title = getUserTitle(user);
   const displayName = title ? `${title} ${user.name}` : user.name;
 
-  const [editData, setEditData] = useState({
-    name: user.name,
-    class: user.class || '',
-    selectedCourse: user.selectedCourse || '',
-    subjects: user.subjects || [],
-    location: user.location || '',
+  const userToEditData = (profile: UserType) => ({
+    name: profile.name,
+    class: profile.class || '',
+    selectedCourse: profile.selectedCourse || '',
+    subjects: profile.subjects || [],
+    location: profile.location || '',
   });
+
+  const [editData, setEditData] = useState(() => userToEditData(user));
+
+  const resetEditData = () => {
+    setEditData(userToEditData(user));
+  };
+
+  const handleCancelEdit = () => {
+    resetEditData();
+    setIsEditing(false);
+  };
+
+  const handleAvatarFile = async (file: File | null | undefined) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please choose an image file.');
+      return;
+    }
+
+    setIsAvatarUploading(true);
+    const previousAvatar = avatarUrl;
+    const previewUrl = URL.createObjectURL(file);
+    setAvatarUrl(previewUrl);
+    try {
+      const formData = new FormData();
+      formData.set('purpose', 'profile_avatar');
+      formData.set('file', file);
+      const uploaded = await uploadUserImageAction(formData);
+      setAvatarUrl(uploaded.url);
+      await refreshUser();
+      toast.success('Profile picture updated.');
+    } catch (error) {
+      setAvatarUrl(previousAvatar);
+      const message = error instanceof Error ? error.message : 'Could not upload profile picture.';
+      toast.error(message);
+    } finally {
+      URL.revokeObjectURL(previewUrl);
+      setIsAvatarUploading(false);
+    }
+  };
 
   // Sync state with user prop if updated externally
   useEffect(() => {
-    setEditData({
-      name: user.name,
-      class: user.class || '',
-      selectedCourse: user.selectedCourse || '',
-      subjects: user.subjects || [],
-      location: user.location || '',
-    });
+    setEditData(userToEditData(user));
+    setAvatarUrl(user.avatar || '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -122,8 +163,11 @@ export default function Profile({
       });
       await refreshUser();
       setIsEditing(false);
+      toast.success('Profile changes saved.');
     } catch (error) {
       console.error('Failed to update profile:', error);
+      const message = error instanceof Error ? error.message : 'Could not save profile changes.';
+      toast.error(message);
     } finally {
       setIsLoading(false);
     }
@@ -202,13 +246,32 @@ export default function Profile({
                 {/* Avatar */}
                 <div className="relative group">
                   <div className="absolute -inset-1 bg-primary rounded-full opacity-30 blur group-hover:opacity-50 transition duration-500" />
+                  <input
+                    ref={avatarInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={async (event) => {
+                      const file = event.currentTarget.files?.[0];
+                      event.currentTarget.value = '';
+                      await handleAvatarFile(file);
+                    }}
+                  />
                   <Avatar className="w-28 h-28 border-4 border-card dark:border-slate-800 relative z-10">
+                    {avatarUrl ? <AvatarImage src={avatarUrl} alt={`${user.name} profile picture`} className="object-cover" /> : null}
                     <AvatarFallback className="bg-primary text-white text-4xl font-black">
                       {user.name.charAt(0).toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
-                  <button className="absolute bottom-1 right-1 w-9 h-9 rounded-full bg-primary text-white flex items-center justify-center shadow-lg border-2 border-card dark:border-slate-800 hover:scale-110 transition-transform z-20">
-                    <Camera className="w-4 h-4" />
+                  <button
+                    type="button"
+                    disabled={isAvatarUploading}
+                    onClick={() => avatarInputRef.current?.click()}
+                    className="absolute bottom-1 right-1 w-9 h-9 rounded-full bg-primary text-white flex items-center justify-center shadow-lg border-2 border-card dark:border-slate-800 hover:scale-110 transition-transform z-20 disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:scale-100"
+                    aria-label="Upload profile picture"
+                    title="Upload profile picture"
+                  >
+                    {isAvatarUploading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
                   </button>
                 </div>
 
@@ -359,7 +422,7 @@ export default function Profile({
                   {isEditing && (
                     <Button
                       variant="ghost"
-                      onClick={() => setIsEditing(false)}
+                      onClick={handleCancelEdit}
                       className="text-xs text-slate-500"
                     >
                       Cancel
