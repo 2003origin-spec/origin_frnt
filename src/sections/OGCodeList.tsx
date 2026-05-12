@@ -608,7 +608,7 @@ export default function OGCodeList({
                         </motion.div>
 
                         {/* AIR Badge & Stats Dropdown */}
-                        <div ref={statsRef} className="relative self-start z-[100]">
+                        <div ref={statsRef} className="relative self-start z-[220]">
                             <motion.button
                                 whileHover={{ scale: 1.05 }}
                                 whileTap={{ scale: 0.95 }}
@@ -638,7 +638,7 @@ export default function OGCodeList({
                                         animate={{ opacity: 1, y: 0, scale: 1 }}
                                         exit={{ opacity: 0, y: 10, scale: 0.95 }}
                                         transition={{ duration: 0.2, ease: "easeOut" }}
-                                        className="absolute top-full right-0 mt-4 w-[320px] md:w-[380px] z-[110] space-y-4 pointer-events-auto"
+                                        className="absolute top-full left-0 sm:left-auto sm:right-0 mt-4 w-[min(calc(100vw-2rem),380px)] z-[230] space-y-4 pointer-events-auto"
                                     >
                                         {/* Mastery Index Card */}
                                         <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-3xl border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-xl">
@@ -750,7 +750,7 @@ export default function OGCodeList({
                     {/* Filter & Table Area */}
                     <div className="space-y-6">
                         {/* Enhanced Subject & Chapter Filter */}
-                        <div id="filter-area" className="space-y-4 bg-slate-50/50 dark:bg-white/[0.02] border border-slate-200 dark:border-white/5 rounded-2xl p-4 sm:p-5 backdrop-blur-sm relative z-[120]">
+                        <div id="filter-area" className="space-y-4 bg-slate-50/50 dark:bg-white/[0.02] border border-slate-200 dark:border-white/5 rounded-2xl p-4 sm:p-5 backdrop-blur-sm relative z-[80]">
                             <div className="flex flex-col sm:flex-row sm:items-end gap-4">
                                 <div className="space-y-1.5 w-full sm:w-auto">
                                     <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-zinc-500 ml-1">Major Subject</label>
@@ -777,7 +777,7 @@ export default function OGCodeList({
                                                     initial={{ opacity: 0, y: 10 }} 
                                                     animate={{ opacity: 1, y: 0 }}
                                                     exit={{ opacity: 0, y: 10 }}
-                                                    className="absolute top-full mt-2 left-0 w-full min-w-[200px] bg-white dark:bg-zinc-950 border border-slate-200 dark:border-white/10 rounded-xl shadow-2xl z-[130] overflow-hidden pointer-events-auto backdrop-blur-none"
+                                                    className="absolute top-full mt-2 left-0 w-full min-w-[200px] bg-white dark:bg-zinc-950 border border-slate-200 dark:border-white/10 rounded-xl shadow-2xl z-[90] overflow-hidden pointer-events-auto backdrop-blur-none"
                                                     onClick={(event) => event.stopPropagation()}
                                                 >
                                                     {SUBJECTS.map((sub, idx) => (

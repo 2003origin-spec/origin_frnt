@@ -24,9 +24,11 @@ import download from 'downloadjs';
 export default function PhotoBooth() {
     const [capturedImage, setCapturedImage] = useState<string | null>(null);
     const [isGenerating, setIsGenerating] = useState(false);
+    const [isApplyingNickname, setIsApplyingNickname] = useState(false);
     const [generatedAvatar, setGeneratedAvatar] = useState<string | null>(null);
     const [framedImage, setFramedImage] = useState<string | null>(null);
     const [nickname, setNickname] = useState('O3.Scholar');
+    const [cardNickname, setCardNickname] = useState('O3.Scholar');
     const [step, setStep] = useState<'hero' | 'preview' | 'result'>('hero');
     const [shareMessage, setShareMessage] = useState("Hey, I found the Best preparation platform for Jee/Neet! Check out ORIGIN AI.");
     const [referralLink, setReferralLink] = useState("https://origin-ai.vercel.app");
@@ -47,34 +49,74 @@ export default function PhotoBooth() {
         }
     };
 
+    const normalizeNickname = (value: string) => {
+        const normalized = value.trim().replace(/\s+/g, ' ');
+        return normalized.length > 0 ? normalized.slice(0, 28) : 'O3.Scholar';
+    };
+
+    const waitForTemplatePaint = async () => {
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    };
+
+    const renderFrameImage = async (nextNickname: string) => {
+        if (!frameTemplateRef.current) {
+            return false;
+        }
+
+        setCardNickname(nextNickname);
+        await waitForTemplatePaint();
+
+        try {
+            const dataUrl = await toPng(frameTemplateRef.current, {
+                quality: 0.95,
+                pixelRatio: 2,
+            });
+            setFramedImage(dataUrl);
+            return true;
+        } catch (err) {
+            console.error('Frame generation failed:', err);
+            return false;
+        }
+    };
+
     const handleGenerate = async () => {
         setIsGenerating(true);
-        // Step 1: Simulated AI processing
+        const nextNickname = normalizeNickname(nickname);
+        setNickname(nextNickname);
+
         await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        // Step 2: Trigger frame generation from template
-        setTimeout(async () => {
-            if (frameTemplateRef.current) {
-                try {
-                    const dataUrl = await toPng(frameTemplateRef.current, {
-                        quality: 0.95,
-                        pixelRatio: 2,
-                    });
-                    setFramedImage(dataUrl);
-                    setIsGenerating(false);
-                    setStep('result');
-                } catch (err) {
-                    console.error('Frame generation failed:', err);
-                    setIsGenerating(false);
-                    setStep('result');
-                }
+
+        const ok = await renderFrameImage(nextNickname);
+        setIsGenerating(false);
+        if (ok) {
+            setStep('result');
+        } else {
+            alert('Could not create the card. Please try again.');
+        }
+    };
+
+    const handleApplyNickname = async () => {
+        if (!capturedImage) return;
+        const nextNickname = normalizeNickname(nickname);
+        setNickname(nextNickname);
+        if (nextNickname === cardNickname) return;
+
+        setIsApplyingNickname(true);
+        try {
+            const ok = await renderFrameImage(nextNickname);
+            if (!ok) {
+                alert('Could not update the card. Please try again.');
             }
-        }, 500);
+        } finally {
+            setIsApplyingNickname(false);
+        }
     };
 
     const handleDownload = () => {
         if (framedImage) {
-            download(framedImage, `Origin_Memory_${Date.now()}.png`);
+            const safeNickname = cardNickname.replace(/[^\w-]+/g, '_');
+            download(framedImage, `Origin_Memory_${safeNickname}_${Date.now()}.png`);
         }
     };
 
@@ -96,7 +138,7 @@ export default function PhotoBooth() {
         try {
             const response = await fetch(framedImage);
             const blob = await response.blob();
-            const filename = `Origin_Scholar_${nickname.replace(/\s+/g, '_')}_${Date.now()}.png`;
+            const filename = `Origin_Scholar_${cardNickname.replace(/[^\w-]+/g, '_')}_${Date.now()}.png`;
             const file = new File([blob], filename, { type: 'image/png' });
 
             // If platform is specified, we try to use native share with the file first
@@ -125,6 +167,8 @@ export default function PhotoBooth() {
         setCapturedImage(null);
         setGeneratedAvatar(null);
         setFramedImage(null);
+        setNickname('O3.Scholar');
+        setCardNickname('O3.Scholar');
         setStep('hero');
     };
 
@@ -158,7 +202,7 @@ export default function PhotoBooth() {
                         {/* Branding Footer */}
                         <div className="pt-10 flex items-center justify-between">
                             <div className="space-y-2">
-                                <h2 className="text-white text-5xl font-black tracking-tight">{nickname}</h2>
+                                <h2 className="max-w-[560px] truncate text-white text-5xl font-black tracking-tight">{cardNickname}</h2>
                                 <p className="text-primary/80 text-xl font-bold uppercase tracking-widest">ORIGIN AI • {new Date().getFullYear()}</p>
                             </div>
                             <div className="flex items-center gap-6">
@@ -381,20 +425,49 @@ export default function PhotoBooth() {
                                     
                                     <div className="space-y-2 text-left pt-2">
                                         <label className="text-[10px] font-black text-primary uppercase tracking-widest ml-1">Nickname on Card</label>
-                                        <input
-                                            type="text"
-                                            value={nickname}
-                                            onChange={(e) => setNickname(e.target.value)}
-                                            className="w-full h-12 px-5 rounded-xl bg-white/5 border border-white/10 text-white font-bold text-sm outline-none focus:border-primary/50 transition-all"
-                                            placeholder="Scholars Name..."
-                                        />
-                                        <p className="text-[10px] text-slate-500 font-medium italic">*Update nickname and click "Apply" again to refresh card</p>
+                                        <div className="flex flex-col sm:flex-row gap-3">
+                                            <input
+                                                type="text"
+                                                value={nickname}
+                                                onChange={(e) => setNickname(e.target.value)}
+                                                onKeyDown={(event) => {
+                                                    if (event.key === 'Enter') {
+                                                        event.preventDefault();
+                                                        void handleApplyNickname();
+                                                    }
+                                                }}
+                                                maxLength={28}
+                                                className="min-w-0 flex-1 h-12 px-5 rounded-xl bg-white/5 border border-white/10 text-white font-bold text-sm outline-none focus:border-primary/50 transition-all"
+                                                placeholder="Scholars Name..."
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={handleApplyNickname}
+                                                disabled={isApplyingNickname || normalizeNickname(nickname) === cardNickname}
+                                                className="h-12 px-5 rounded-xl bg-primary text-white disabled:bg-white/5 disabled:text-slate-500 disabled:border disabled:border-white/10 disabled:shadow-none hover:opacity-90 transition-all flex items-center justify-center gap-2 font-black uppercase tracking-widest text-[10px] shadow-lg shadow-primary/20"
+                                            >
+                                                {isApplyingNickname ? (
+                                                    <>
+                                                        <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Applying
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Wand2 className="w-3.5 h-3.5" /> Apply
+                                                    </>
+                                                )}
+                                            </button>
+                                        </div>
+                                        <div className="flex items-center justify-between gap-3 text-[10px] text-slate-500 font-medium">
+                                            <p>{normalizeNickname(nickname) === cardNickname ? 'Nickname synced' : 'Unsaved nickname'}</p>
+                                            <span>{nickname.trim().length}/28</span>
+                                        </div>
                                     </div>
                                 </div>
 
                                 <div className="space-y-4">
                                     <button 
                                         onClick={handleDownload}
+                                        disabled={isApplyingNickname}
                                         className="w-full h-16 rounded-2xl bg-white/5 text-white border border-white/10 hover:bg-white/10 transition-all flex items-center justify-center gap-3 font-black uppercase tracking-widest shadow-xl group"
                                     >
                                         <Download className="w-5 h-5 group-hover:translate-y-0.5 transition-transform" /> Download Photo
@@ -469,4 +542,3 @@ export default function PhotoBooth() {
         </div>
     );
 }
-
