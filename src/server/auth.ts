@@ -8,6 +8,7 @@ import {
   dbRevokeAuthSessionByRefreshToken,
   dbRotateAccessToken,
 } from "@/server/db-users";
+import { AuthServiceUnavailableError } from "@/server/auth-errors";
 import {
   ACCESS_COOKIE_NAME,
   createRefreshToken,
@@ -160,7 +161,8 @@ export async function resolveTokenToUser(request: Request): Promise<StoredUser |
       }
       return null;
     } catch (err) {
-      console.error("[auth] DB user hydration failed, falling back to in-memory seed", err instanceof Error ? err.message : err);
+      console.error("[auth] DB user hydration failed", err instanceof Error ? err.message : err);
+      throw new AuthServiceUnavailableError();
     }
   }
 
@@ -183,7 +185,8 @@ export async function refreshAccessToken(
       }
       return null;
     } catch (err) {
-      console.error("[auth] DB token rotation failed, falling back to in-memory seed", err instanceof Error ? err.message : err);
+      console.error("[auth] DB token rotation failed", err instanceof Error ? err.message : err);
+      throw new AuthServiceUnavailableError();
     }
   }
 
@@ -207,7 +210,8 @@ export async function createAuthSessionAsync(store: AppStore, userId: string): P
       store.authSessions.push(session);
       return session;
     } catch (err) {
-      console.error("[auth] DB session creation failed, falling back to in-memory seed", err instanceof Error ? err.message : err);
+      console.error("[auth] DB session creation failed", err instanceof Error ? err.message : err);
+      throw new AuthServiceUnavailableError();
     }
   }
 

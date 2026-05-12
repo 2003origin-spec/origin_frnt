@@ -1,4 +1,5 @@
 import { forbidden, unauthorized } from "@/server/http";
+import { AuthServiceUnavailableError } from "@/server/auth-errors";
 import { dbFindUserById } from "@/server/db-users";
 import { isUserPostgresConfigured } from "@/server/user-postgres";
 import { readStoreAsync, type StoredUser } from "@/server/store";
@@ -93,7 +94,8 @@ export async function getAuthenticatedUser(request: Request): Promise<StoredUser
       }
       return user;
     } catch (error) {
-      console.error("[authz] DB user hydration failed, falling back to in-memory store", error);
+      console.error("[authz] DB user hydration failed", error);
+      throw new AuthServiceUnavailableError();
     }
   }
 

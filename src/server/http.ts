@@ -35,6 +35,10 @@ export function forbidden(message = "You do not have permission to perform this 
   return json({ detail: message }, { status: 403 });
 }
 
+export function serviceUnavailable(message = "Service temporarily unavailable. Please try again."): NextResponse {
+  return json({ detail: message }, { status: 503 });
+}
+
 export async function parseJsonBody<T = Record<string, unknown>>(request: Request): Promise<T> {
   const contentLength = request.headers.get("content-length");
   if (contentLength === "0") {

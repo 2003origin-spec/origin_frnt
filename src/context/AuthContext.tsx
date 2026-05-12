@@ -5,7 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { toast } from 'sonner';
 import type { User, StreakData, Task } from '@/types';
 import { clearOriginAiBrowserSession } from '@/features/origin-ai/session';
-import { AUTH_EXPIRED_EVENT } from '@/lib/api';
+import { AUTH_EXPIRED_EVENT, attemptTokenRefresh } from '@/lib/api';
 import {
   addTaskAction,
   listTasksAction,
@@ -79,6 +79,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
   const [streakData, setStreakData] = useState<StreakData>(initialUser?.streakData ?? EMPTY_STREAK);
   const [isLoading, setIsLoading] = useState(false);
   const [isHydrating, setIsHydrating] = useState(typeof window !== 'undefined' && !initialUser);
+  const [authRecoveryBlocked, setAuthRecoveryBlocked] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [tasksLoading, setTasksLoading] = useState(false);
@@ -130,6 +131,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
     const hydrate = async () => {
       // If we have an initial user from the server, we're already hydrated.
       if (initialUser) {
+        setAuthRecoveryBlocked(false);
         setIsHydrating(false);
         return;
       }
@@ -145,15 +147,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
           const userData = data.user ?? data;
           if (userData?.id) {
             applyUserData(userData);
+            setAuthRecoveryBlocked(false);
           }
         } else if (response.status === 401) {
-          const refreshRes = await fetch('/api/users/token/refresh', {
-            method: 'POST',
-            credentials: 'include',
-            cache: 'no-store',
-          });
+          const refreshResult = await attemptTokenRefresh();
           
-          if (refreshRes.ok) {
+          if (refreshResult === 'ok') {
             const retryRes = await fetch('/api/users/me', {
               credentials: 'include',
               cache: 'no-store',
@@ -161,12 +160,22 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
             if (retryRes.ok) {
               const retryData = await retryRes.json();
               const retryUser = retryData.user ?? retryData;
-              if (retryUser?.id) applyUserData(retryUser);
+              if (retryUser?.id) {
+                applyUserData(retryUser);
+                setAuthRecoveryBlocked(false);
+              }
+            } else if (retryRes.status === 429 || retryRes.status >= 500) {
+              setAuthRecoveryBlocked(true);
             }
+          } else if (refreshResult === 'transient') {
+            setAuthRecoveryBlocked(true);
           }
+        } else if (response.status === 429 || response.status >= 500) {
+          setAuthRecoveryBlocked(true);
         }
       } catch (err) {
         console.error('[AuthContext] Hydration failed:', err);
+        setAuthRecoveryBlocked(true);
       } finally {
         setIsHydrating(false);
       }
@@ -197,7 +206,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
   // Runs on every route change and keeps protected and guest-only pages aligned
   // with the current auth state.
   useEffect(() => {
-    if (isLoading || isHydrating) return;
+    if (isLoading || isHydrating || authRecoveryBlocked) return;
 
     // Normalize path for robust matching (remove trailing slash except for root)
     const normalizedPath = pathname === '/' ? '/' : pathname.replace(/\/+$/, '');
@@ -219,7 +228,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
         router.push('/dashboard');
       }
     }
-  }, [pathname, user, isLoading, isHydrating, router]);
+  }, [pathname, user, isLoading, isHydrating, authRecoveryBlocked, router]);
 
   const login = async (email: string, password: string, role?: 'student' | 'teacher' | 'admin' | null) => {
     setIsLoading(true);
@@ -234,6 +243,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
 
       clearOriginAiBrowserSession();
 
+      setAuthRecoveryBlocked(false);
       setUser(result.user);
       if (result.user.streakData) setStreakData(result.user.streakData);
       setUserRole(normalizeRole(result.user.role));
@@ -271,6 +281,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
 
       clearOriginAiBrowserSession();
 
+      setAuthRecoveryBlocked(false);
       setUser(result.user);
       if (result.user.streakData) setStreakData(result.user.streakData);
       setUserRole(normalizeRole(result.user.role));
@@ -304,6 +315,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
 
       clearOriginAiBrowserSession();
 
+      setAuthRecoveryBlocked(false);
       setUser(result.user);
       if (result.user.streakData) setStreakData(result.user.streakData);
       setUserRole(normalizeRole(result.user.role));
@@ -379,6 +391,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
 
       clearOriginAiBrowserSession();
 
+      setAuthRecoveryBlocked(false);
       setUser(result.user);
       if (result.user.streakData) setStreakData(result.user.streakData);
       setUserRole(normalizeRole(result.user.role));
@@ -419,6 +432,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
     // 3. Finally clear the user state which might trigger re-renders
     setUser(null);
     setUserRole(null);
+    setAuthRecoveryBlocked(false);
 
     // 4. Force hard redirect to landing page to purge any remaining memory state
     window.location.href = '/';

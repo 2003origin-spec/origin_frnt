@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { refreshAccessToken } from "@/server/auth";
+import { isAuthServiceUnavailableError } from "@/server/auth-errors";
 import {
   ACCESS_COOKIE_NAME,
   ACCESS_FINGERPRINT_COOKIE_NAME,
@@ -49,6 +50,16 @@ function redirectToAuth(request: NextRequest, requestId: string, next: string): 
   return withResponseHeaders(withClearedAuthCookies(NextResponse.redirect(url)), requestId);
 }
 
+function authServiceUnavailable(requestId: string): NextResponse {
+  return withResponseHeaders(
+    NextResponse.json(
+      { detail: "Session refresh is temporarily unavailable. Please retry in a moment." },
+      { status: 503 },
+    ),
+    requestId,
+  );
+}
+
 export async function GET(request: NextRequest) {
   const requestId = requestIdFor(request);
   const next = safeNext(request.nextUrl.searchParams.get("next"));
@@ -63,7 +74,10 @@ export async function GET(request: NextRequest) {
     tokens = await refreshAccessToken(refreshToken);
   } catch (error) {
     console.error("[auth-refresh] token refresh failed", error instanceof Error ? error.message : error);
-    tokens = null;
+    if (isAuthServiceUnavailableError(error)) {
+      return authServiceUnavailable(requestId);
+    }
+    throw error;
   }
 
   if (!tokens?.accessToken || !tokens.accessFingerprint) {

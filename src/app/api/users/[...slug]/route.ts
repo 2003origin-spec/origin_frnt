@@ -61,19 +61,27 @@ function withClearedAuthCookies(response: NextResponse): NextResponse {
   return response;
 }
 
+function shouldClearCookiesAfterRefreshFailure(status: number): boolean {
+  return status === 400 || status === 401 || status === 403;
+}
+
 async function dispatch(method: string, request: NextRequest, context: RouteContext) {
   const params = await context.params;
   const slug = getSlugSegments(params);
 
   const ip = request.headers.get("x-forwarded-for") ?? "unknown";
+  const isRefreshEndpoint = method === "POST" && slug[0] === "token" && slug[1] === "refresh";
   const isAuthEndpoint =
     method === "POST" &&
-    (slug[0] === "login" || slug[0] === "register" || slug[0] === "google-login" || (slug[0] === "token" && slug[1] === "refresh"));
+    (slug[0] === "login" || slug[0] === "register" || slug[0] === "google-login");
 
-  if (isAuthEndpoint) {
+  // Refresh tokens are high-entropy HttpOnly cookies. Do not put routine
+  // access-token renewal behind the tight login/register limiter; otherwise
+  // bursts across tabs can look like expired sessions on the client.
+  if (!isRefreshEndpoint && isAuthEndpoint) {
     const limited = await checkRateLimit(authLimiter, ip);
     if (limited) return limited;
-  } else {
+  } else if (!isRefreshEndpoint) {
     const userId = request.headers.get("x-origin-user-id") ?? ip;
     const limited = await checkRateLimit(generalLimiter, userId);
     if (limited) return limited;
@@ -107,7 +115,7 @@ async function dispatch(method: string, request: NextRequest, context: RouteCont
     return withAuthCookies(response);
   }
 
-  if (isRefresh && !response.ok) {
+  if (isRefresh && !response.ok && shouldClearCookiesAfterRefreshFailure(response.status)) {
     return withClearedAuthCookies(response as NextResponse);
   }
 

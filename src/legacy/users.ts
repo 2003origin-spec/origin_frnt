@@ -1,6 +1,7 @@
 // Legacy user implementation kept behind the public server/users barrel.
 import bcrypt from "bcryptjs";
 import { requireUserFromRequest, resolveTokenToUser, refreshAccessToken, createAuthSessionAsync, extractRefreshTokenCookie } from "@/server/auth";
+import { isAuthServiceUnavailableError } from "@/server/auth-errors";
 import { isUserPostgresConfigured } from "@/server/user-postgres";
 import { dbLoginUser, dbRegisterUser, dbGetTasks, dbCreateTask, dbUpdateTask, dbDeleteTask, dbFindUserByEmail, dbCreateUser, dbUpdateUser, dbCreateAuthSession, dbGetUserCount } from "@/server/db-users";
 import { OAuth2Client } from "google-auth-library";
@@ -14,7 +15,7 @@ import {
   recordTime,
   updateUserStreak,
 } from "@/server/gamification";
-import { badRequest, created, noContent, notFound, ok, unauthorized } from "@/server/http";
+import { badRequest, created, noContent, notFound, ok, serviceUnavailable, unauthorized } from "@/server/http";
 import type { AppStore, StoredTask, StoredUser } from "@/server/store";
 import { createId, readStoreAsync, withStoreAsync, withStoredUserDefaults } from "@/server/store";
 
@@ -301,8 +302,10 @@ export async function handleLogin(payload: UserPayload) {
       }
       // No matching DB user — fall through to seeded users.
     } catch (err) {
-      console.error('[users] DB login failed, falling back to in-memory seed', err instanceof Error ? err.message : err);
+      console.error('[users] DB login failed', err instanceof Error ? err.message : err);
+      return serviceUnavailable("Login is temporarily unavailable. Please retry in a moment.");
     }
+    return badRequest("Invalid email or password.");
   }
 
   return withStoreAsync(async (store) => {
@@ -409,7 +412,8 @@ export async function handleRegister(payload: UserPayload) {
       if (err instanceof Error && err.message.includes("already exists")) {
         return badRequest(err.message);
       }
-      console.error('[users] DB register failed, falling back to in-memory seed', err instanceof Error ? err.message : err);
+      console.error('[users] DB register failed', err instanceof Error ? err.message : err);
+      return serviceUnavailable("Registration is temporarily unavailable. Please retry in a moment.");
     }
   }
 
@@ -541,7 +545,8 @@ export async function handleGoogleLogin(payload: UserPayload) {
           accessFingerprint: session.accessFingerprint,
         });
       } catch (err) {
-        console.error('[users] DB google login failed, falling back to in-memory seed', err instanceof Error ? err.message : err);
+        console.error('[users] DB google login failed', err instanceof Error ? err.message : err);
+        return serviceUnavailable("Google login is temporarily unavailable. Please retry in a moment.");
       }
     }
 
@@ -584,7 +589,15 @@ export async function handleRefresh(request: Request | null, payload: UserPayloa
     return badRequest("Refresh token is required.");
   }
 
-  const tokens = await refreshAccessToken(refreshToken);
+  let tokens: Awaited<ReturnType<typeof refreshAccessToken>>;
+  try {
+    tokens = await refreshAccessToken(refreshToken);
+  } catch (error) {
+    if (isAuthServiceUnavailableError(error)) {
+      return serviceUnavailable("Session refresh is temporarily unavailable. Please retry in a moment.");
+    }
+    throw error;
+  }
   if (!tokens) return unauthorized("Token is invalid or expired.");
   return ok({
     access: tokens.accessToken,
