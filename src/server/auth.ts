@@ -170,7 +170,7 @@ export async function resolveTokenToUser(request: Request): Promise<StoredUser |
 
 export async function refreshAccessToken(
   refreshToken: string,
-): Promise<{ accessToken: string; accessFingerprint?: string; refreshToken: string } | null> {
+): Promise<{ accessToken: string; accessFingerprint?: string; refreshToken?: string } | null> {
   if (isUserPostgresConfigured()) {
     try {
       const updated = await dbRotateAccessToken(refreshToken);

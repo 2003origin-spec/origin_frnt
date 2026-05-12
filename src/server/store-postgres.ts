@@ -403,11 +403,13 @@ async function replaceAuthSessions(client: PoolClient, sessions: StoredAuthSessi
   for (const session of sessions) {
     await client.query(
       `INSERT INTO origin_auth_sessions (
-         id, access_token, refresh_token, refresh_token_hash, user_id, created_at,
+         id, access_token, access_fingerprint, refresh_token, refresh_token_hash, user_id, created_at,
          access_token_expires_at, refresh_token_expires_at, revoked_at, last_used_at,
          user_agent_hash, ip_prefix_hash
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
        ON CONFLICT (id) DO UPDATE SET
+         access_token = EXCLUDED.access_token,
+         access_fingerprint = EXCLUDED.access_fingerprint,
          refresh_token = EXCLUDED.refresh_token,
          refresh_token_hash = EXCLUDED.refresh_token_hash,
          user_id = EXCLUDED.user_id,
@@ -420,6 +422,7 @@ async function replaceAuthSessions(client: PoolClient, sessions: StoredAuthSessi
       [
         session.id,
         session.accessToken,
+        session.accessFingerprint ?? null,
         session.refreshToken,
         session.refreshTokenHash ?? null,
         session.userId,

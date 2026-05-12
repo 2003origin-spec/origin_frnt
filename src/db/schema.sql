@@ -30,8 +30,11 @@ CREATE TABLE IF NOT EXISTS origin_users (
 CREATE TABLE IF NOT EXISTS origin_auth_sessions (
   id                        TEXT PRIMARY KEY,
   access_token              TEXT,
+  access_fingerprint        TEXT,
   refresh_token             TEXT,
   refresh_token_hash        TEXT UNIQUE,
+  previous_refresh_token_hash TEXT,
+  refresh_rotated_at        TIMESTAMPTZ,
   user_id                   TEXT NOT NULL REFERENCES origin_users(id) ON DELETE CASCADE,
   created_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   access_token_expires_at   TIMESTAMPTZ NOT NULL,

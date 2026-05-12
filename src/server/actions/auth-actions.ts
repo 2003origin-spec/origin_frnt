@@ -219,7 +219,7 @@ export async function refreshTokenAction(): Promise<{ ok: boolean }> {
   const accessFingerprint = typeof body.accessFingerprint === 'string' ? body.accessFingerprint : '';
   if (!access || !accessFingerprint) return { ok: false };
 
-  await setSessionCookies(access, newRefresh || refresh, accessFingerprint);
+  await setSessionCookies(access, newRefresh, accessFingerprint);
   return { ok: true };
 }
 

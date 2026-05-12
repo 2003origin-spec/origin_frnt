@@ -29,7 +29,7 @@ export const AUTHENTICATED_API_PREFIXES = [
 
 export const MEMBERSHIP_API_PREFIXES = ["/api/study-rooms/[id]"] as const;
 
-export const PUBLIC_APP_PATHS = ["/", "/auth", "/role-selection", "/explore", "/premium"] as const;
+export const PUBLIC_APP_PATHS = ["/", "/auth", "/auth/refresh", "/role-selection", "/explore", "/premium"] as const;
 
 export const PUBLIC_APP_PREFIXES = ["/videos"] as const;
 

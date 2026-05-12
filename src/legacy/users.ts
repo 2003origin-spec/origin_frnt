@@ -586,7 +586,11 @@ export async function handleRefresh(request: Request | null, payload: UserPayloa
 
   const tokens = await refreshAccessToken(refreshToken);
   if (!tokens) return unauthorized("Token is invalid or expired.");
-  return ok({ access: tokens.accessToken, refresh: tokens.refreshToken, accessFingerprint: tokens.accessFingerprint });
+  return ok({
+    access: tokens.accessToken,
+    ...(tokens.refreshToken ? { refresh: tokens.refreshToken } : {}),
+    accessFingerprint: tokens.accessFingerprint,
+  });
 }
 
 async function handleMeGet(request: Request) {

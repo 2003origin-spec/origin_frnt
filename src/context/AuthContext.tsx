@@ -219,7 +219,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
         router.push('/dashboard');
       }
     }
-  }, [pathname, user, isLoading, router]);
+  }, [pathname, user, isLoading, isHydrating, router]);
 
   const login = async (email: string, password: string, role?: 'student' | 'teacher' | 'admin' | null) => {
     setIsLoading(true);

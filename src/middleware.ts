@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-import { CSRF_COOKIE_NAME, verifyRequestAccessJwt } from "@/server/auth-jwt";
+import { CSRF_COOKIE_NAME, REFRESH_COOKIE_NAME, verifyRequestAccessJwt } from "@/server/auth-jwt";
 import { getApiRoutePolicy, getAppRoutePolicy, normalizePathname, type RoutePolicy } from "@/server/route-policy";
 import { isBearerTokenAuthorized } from "@/server/service-auth";
 
@@ -37,8 +37,28 @@ function jsonAuthFailure(status: 401 | 403, detail: string, requestId: string): 
 function redirectToAuth(request: NextRequest, requestId: string): NextResponse {
   const url = request.nextUrl.clone();
   url.pathname = "/auth";
-  url.searchParams.set("next", normalizePathname(request.nextUrl.pathname));
+  url.search = "";
+  url.searchParams.set("next", `${normalizePathname(request.nextUrl.pathname)}${request.nextUrl.search}`);
   return withRequestId(NextResponse.redirect(url), requestId);
+}
+
+function hasRefreshCookie(request: NextRequest): boolean {
+  return Boolean(request.cookies.get(REFRESH_COOKIE_NAME)?.value);
+}
+
+function isSafeAppNext(value: string | null | undefined): value is string {
+  return typeof value === "string" && value.startsWith("/") && !value.startsWith("//") && !value.startsWith("/api/");
+}
+
+function redirectToRefresh(request: NextRequest, requestId: string, nextOverride?: string | null): NextResponse {
+  const url = request.nextUrl.clone();
+  const currentPath = `${normalizePathname(request.nextUrl.pathname)}${request.nextUrl.search}`;
+  url.pathname = "/auth/refresh";
+  url.search = "";
+  url.searchParams.set("next", isSafeAppNext(nextOverride) ? nextOverride : currentPath);
+  const response = NextResponse.redirect(url);
+  response.headers.set("X-Robots-Tag", "noindex, nofollow");
+  return withRequestId(response, requestId);
 }
 
 function nextWithRequestId(
@@ -101,7 +121,9 @@ export async function middleware(request: NextRequest) {
         url.search = "";
         return withRequestId(NextResponse.redirect(url), requestId);
       } catch {
-        // no active session; render auth page
+        if (hasRefreshCookie(request)) {
+          return redirectToRefresh(request, requestId, request.nextUrl.searchParams.get("next") ?? "/dashboard");
+        }
       }
     }
     return nextWithRequestId(request, requestId, policy);
@@ -113,6 +135,9 @@ export async function middleware(request: NextRequest) {
   } catch {
     if (isApi) {
       return jsonAuthFailure(401, "Authentication credentials were not provided.", requestId);
+    }
+    if (hasRefreshCookie(request)) {
+      return redirectToRefresh(request, requestId);
     }
     return redirectToAuth(request, requestId);
   }
