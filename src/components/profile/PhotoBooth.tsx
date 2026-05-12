@@ -20,6 +20,10 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { toPng } from 'html-to-image';
 import download from 'downloadjs';
+import { getCanonicalSiteUrl } from '@/lib/site-url';
+
+const PUBLIC_SITE_URL = getCanonicalSiteUrl();
+const SHARE_MESSAGE = `Hey, I found the Best preparation platform for Jee/Neet! Check out ORIGIN AI.\n\nJoin here: ${PUBLIC_SITE_URL}`;
 
 export default function PhotoBooth() {
     const [capturedImage, setCapturedImage] = useState<string | null>(null);
@@ -30,9 +34,6 @@ export default function PhotoBooth() {
     const [nickname, setNickname] = useState('O3.Scholar');
     const [cardNickname, setCardNickname] = useState('O3.Scholar');
     const [step, setStep] = useState<'hero' | 'preview' | 'result'>('hero');
-    const [shareMessage, setShareMessage] = useState("Hey, I found the Best preparation platform for Jee/Neet! Check out ORIGIN AI.");
-    const [referralLink, setReferralLink] = useState("https://origin-ai.vercel.app");
-    
     const fileInputRef = useRef<HTMLInputElement>(null);
     const cameraInputRef = useRef<HTMLInputElement>(null);
     const frameTemplateRef = useRef<HTMLDivElement>(null);
@@ -121,45 +122,52 @@ export default function PhotoBooth() {
     };
 
     const shareToWhatsApp = () => {
-        const text = encodeURIComponent(`Hey, I found the Best preparation platform for Jee/Neet! Check out ORIGIN AI.\n\nJoin here: https://origin-ai.vercel.app`);
-        window.open(`https://wa.me/?text=${text}`, '_blank');
+        window.open(`https://wa.me/?text=${encodeURIComponent(SHARE_MESSAGE)}`, '_blank');
     };
 
     const shareToTwitter = () => {
-        const text = encodeURIComponent(`Hey, I found the Best preparation platform for Jee/Neet! Check out ORIGIN AI.\n\nJoin here: https://origin-ai.vercel.app`);
-        window.open(`https://twitter.com/intent/tweet?text=${text}`, '_blank');
+        window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(SHARE_MESSAGE)}`, '_blank');
     };
 
     const handleShare = async (platform?: 'whatsapp' | 'twitter') => {
         if (!framedImage) return;
-
-        const fullMessage = `Hey, I found the Best preparation platform for Jee/Neet! Check out ORIGIN AI.\n\nJoin here: https://origin-ai.vercel.app`;
 
         try {
             const response = await fetch(framedImage);
             const blob = await response.blob();
             const filename = `Origin_Scholar_${cardNickname.replace(/[^\w-]+/g, '_')}_${Date.now()}.png`;
             const file = new File([blob], filename, { type: 'image/png' });
+            const shareData: ShareData = {
+                files: [file],
+                title: 'ORIGIN AI Scholar Memory Card',
+                text: SHARE_MESSAGE,
+                url: PUBLIC_SITE_URL,
+            };
 
             // If platform is specified, we try to use native share with the file first
             // If it's not supported or fails, we fall back to the platform's URL scheme
-            if (navigator.share && navigator.canShare({ files: [file] })) {
-                await navigator.share({
-                    files: [file],
-                    text: fullMessage
-                });
+            const canNativeShareFile =
+                typeof navigator.share === 'function' &&
+                typeof navigator.canShare === 'function' &&
+                navigator.canShare(shareData);
+
+            if (canNativeShareFile) {
+                await navigator.share(shareData);
             } else {
                 // Fallback to text-only if file sharing isn't supported
                 if (platform === 'whatsapp') {
-                    window.open(`https://wa.me/?text=${encodeURIComponent(fullMessage)}`, '_blank');
+                    shareToWhatsApp();
                 } else if (platform === 'twitter') {
-                    window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(fullMessage)}`, '_blank');
+                    shareToTwitter();
+                } else {
+                    await navigator.clipboard.writeText(SHARE_MESSAGE);
+                    alert('Branded message & link copied!');
                 }
             }
         } catch (err) {
             console.error('Sharing failed:', err);
             // Emergency fallback
-            window.open(`https://wa.me/?text=${encodeURIComponent(fullMessage)}`, '_blank');
+            window.open(`https://wa.me/?text=${encodeURIComponent(SHARE_MESSAGE)}`, '_blank');
         }
     };
 
@@ -497,8 +505,7 @@ export default function PhotoBooth() {
                                         </button>
                                         <button 
                                             onClick={() => {
-                                                const fullMessage = `Hey, I found the Best preparation platform for Jee/Neet! Check out ORIGIN AI.\n\nJoin here: https://origin-ai.vercel.app`;
-                                                navigator.clipboard.writeText(fullMessage);
+                                                navigator.clipboard.writeText(SHARE_MESSAGE);
                                                 alert('Branded message & link copied!');
                                             }}
                                             className="flex-1 h-14 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all flex items-center justify-center gap-2 text-primary font-bold uppercase tracking-widest text-xs"
@@ -532,7 +539,7 @@ export default function PhotoBooth() {
                     </div>
                 </div>
                 <button 
-                    onClick={() => window.open(referralLink, '_blank')}
+                    onClick={() => window.open(PUBLIC_SITE_URL, '_blank')}
                     className="group flex items-center gap-2 px-6 py-3 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 backdrop-blur-md transition-all duration-300"
                 >
                     <span className="text-xs font-bold text-white uppercase tracking-widest">Visit Origin AI</span>
