@@ -8,6 +8,7 @@ import { isBearerTokenAuthorized } from "@/server/service-auth";
 const REQUEST_ID_HEADER = "X-Request-Id";
 const CANONICAL_HOST = "www.o3origin.com";
 const APEX_HOST = "o3origin.com";
+const PRODUCTION_VERCEL_HOST = "origin-frnt.vercel.app";
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 const CSRF_EXEMPT_API_PATHS = new Set([
   "/api/users/login",
@@ -26,7 +27,7 @@ function withRequestId(response: NextResponse, requestId: string): NextResponse 
 }
 
 export function canonicalHostRedirectUrl(requestUrl: URL): URL | null {
-  if (requestUrl.hostname !== APEX_HOST) {
+  if (requestUrl.hostname !== APEX_HOST && requestUrl.hostname !== PRODUCTION_VERCEL_HOST) {
     return null;
   }
   const url = new URL(requestUrl.toString());

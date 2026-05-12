@@ -76,12 +76,35 @@ async function performTokenRefresh(): Promise<TokenRefreshResult> {
         const response = await fetch(`${API_URL}/users/token/refresh`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
             credentials: 'include',
             cache: 'no-store',
         });
-        return classifyTokenRefreshStatus(response.status);
+        const classified = classifyTokenRefreshStatus(response.status);
+        if (classified === 'expired' && await recoverSessionViaRefreshRoute()) {
+            return 'ok';
+        }
+        return classified;
     } catch {
         return 'transient';
+    }
+}
+
+async function recoverSessionViaRefreshRoute(): Promise<boolean> {
+    if (typeof window === 'undefined') return false;
+    try {
+        const next = `${window.location.pathname}${window.location.search}`;
+        await fetch(`/auth/refresh?next=${encodeURIComponent(next || '/dashboard')}`, {
+            credentials: 'include',
+            cache: 'no-store',
+        });
+        const response = await fetch(`${API_URL}/users/me`, {
+            credentials: 'include',
+            cache: 'no-store',
+        });
+        return response.ok;
+    } catch {
+        return false;
     }
 }
 

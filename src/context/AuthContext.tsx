@@ -17,6 +17,7 @@ import {
   loginAction,
   loginWithOtpAction,
   logoutAction,
+  refreshTokenAction,
   refreshUserAction,
   registerAction,
 } from '@/server/actions/auth-actions';
@@ -135,18 +136,27 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
     const now = Date.now();
     if (!force && now - lastSessionRefreshAt.current < ACCESS_REFRESH_MIN_SPACING_MS) return;
 
-    const result = await attemptTokenRefresh();
-    if (result === 'ok') {
+    const result = await refreshTokenAction();
+    if (result.ok) {
       lastSessionRefreshAt.current = Date.now();
       setAuthRecoveryBlocked(false);
       return;
     }
-    if (result === 'transient') {
+
+    const stillAuthenticated = await refreshUserAction();
+    if (stillAuthenticated) {
+      applyUserData(stillAuthenticated);
+      setAuthRecoveryBlocked(false);
+      return;
+    }
+
+    if (result.status === 429 || result.status >= 500) {
       setAuthRecoveryBlocked(true);
       return;
     }
-    window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
-  }, [user]);
+
+    setAuthRecoveryBlocked(true);
+  }, [applyUserData, user]);
 
   // 1. Session Hydration: derive auth from the HttpOnly cookie, never from
   // browser-readable token storage.
