@@ -61,10 +61,6 @@ function withClearedAuthCookies(response: NextResponse): NextResponse {
   return response;
 }
 
-function shouldClearCookiesAfterRefreshFailure(status: number): boolean {
-  return status === 400 || status === 401 || status === 403;
-}
-
 async function dispatch(method: string, request: NextRequest, context: RouteContext) {
   const params = await context.params;
   const slug = getSlugSegments(params);
@@ -113,10 +109,6 @@ async function dispatch(method: string, request: NextRequest, context: RouteCont
 
   if ((isLogin || isRegister || isGoogleLogin || isRefresh) && response.ok) {
     return withAuthCookies(response);
-  }
-
-  if (isRefresh && !response.ok && shouldClearCookiesAfterRefreshFailure(response.status)) {
-    return withClearedAuthCookies(response as NextResponse);
   }
 
   return response;

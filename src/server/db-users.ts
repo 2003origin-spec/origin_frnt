@@ -21,6 +21,17 @@ import {
 } from "@/server/auth-jwt";
 
 const REFRESH_REPLAY_GRACE_MS = 30_000;
+export const REFRESH_TOKEN_ROTATION_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
+export function shouldRotateRefreshToken(
+  lastRotatedAt: Date | string | null | undefined,
+  createdAt: Date | string | null | undefined,
+  nowMs = Date.now(),
+): boolean {
+  const reference = lastRotatedAt ?? createdAt;
+  const referenceMs = reference ? new Date(reference).getTime() : 0;
+  return !Number.isFinite(referenceMs) || nowMs - referenceMs >= REFRESH_TOKEN_ROTATION_INTERVAL_MS;
+}
 
 declare global {
   var __originUserSchemaEnsured: boolean | undefined;
@@ -459,20 +470,10 @@ export async function dbRotateAccessToken(refreshToken: string): Promise<StoredA
         Number.isFinite(rotatedAtMs) &&
         Date.now() - rotatedAtMs <= REFRESH_REPLAY_GRACE_MS;
 
-      if (isGraceReplay) {
-        await client.query("UPDATE origin_auth_sessions SET last_used_at = NOW() WHERE id = $1", [parsed.sessionId]);
+      if (!isGraceReplay) {
         await client.query("COMMIT");
-        return {
-          ...rowToSession(row),
-          accessToken: row.access_token,
-          accessFingerprint: row.access_fingerprint,
-          refreshToken: "",
-        };
+        return null;
       }
-
-      await client.query("UPDATE origin_auth_sessions SET revoked_at = NOW() WHERE id = $1", [parsed.sessionId]);
-      await client.query("COMMIT");
-      return null;
     }
 
     const userResult = await client.query("SELECT * FROM origin_users WHERE id = $1 LIMIT 1", [row.user_id]);
@@ -482,8 +483,39 @@ export async function dbRotateAccessToken(refreshToken: string): Promise<StoredA
       return null;
     }
     const user = rowToUser(userResult.rows[0]);
-    const refresh = await createRefreshToken(parsed.sessionId);
     const access = await issueAccessTokenForUser(user, parsed.sessionId);
+    const rotateRefresh =
+      row.refresh_token_hash !== expectedHash ||
+      shouldRotateRefreshToken(row.refresh_rotated_at, row.created_at);
+
+    if (!rotateRefresh) {
+      const result = await client.query(
+        `UPDATE origin_auth_sessions
+         SET access_token = $1,
+             access_fingerprint = $2,
+             access_token_expires_at = $3,
+             last_used_at = NOW()
+         WHERE id = $4
+         RETURNING *`,
+        [
+          access.accessToken,
+          access.accessFingerprint,
+          access.accessTokenExpiresAt,
+          parsed.sessionId,
+        ],
+      );
+      await client.query("COMMIT");
+      return result.rows[0]
+        ? {
+            ...rowToSession(result.rows[0]),
+            accessToken: access.accessToken,
+            accessFingerprint: access.accessFingerprint,
+            refreshToken: "",
+          }
+        : null;
+    }
+
+    const refresh = await createRefreshToken(parsed.sessionId);
     const result = await client.query(
       `UPDATE origin_auth_sessions
        SET access_token = $1,

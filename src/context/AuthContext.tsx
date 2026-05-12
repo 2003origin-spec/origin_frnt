@@ -71,6 +71,9 @@ interface AuthProviderProps {
   initialUser: User | null;
 }
 
+const ACCESS_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+const ACCESS_REFRESH_MIN_SPACING_MS = 60 * 1000;
+
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUser }) => {
   const [user, setUser] = useState<User | null>(initialUser);
   const [userRole, setUserRole] = useState<'student' | 'teacher' | 'admin' | null>(
@@ -85,10 +88,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
   const [tasksLoading, setTasksLoading] = useState(false);
   const [isNavigationLocked, setIsNavigationLocked] = useState(false);
   const tasksFetched = useRef(false);
+  const lastSessionRefreshAt = useRef(Date.now());
   const router = useRouter();
   const pathname = usePathname();
 
   const applyUserData = useCallback((userData: User) => {
+    lastSessionRefreshAt.current = Date.now();
     setUser(userData);
     if (userData.streakData) setStreakData(userData.streakData);
     setUserRole(normalizeRole(userData.role));
@@ -124,6 +129,24 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
       }
     }
   }, [applyUserData]);
+
+  const refreshActiveSession = useCallback(async (force = false) => {
+    if (!user) return;
+    const now = Date.now();
+    if (!force && now - lastSessionRefreshAt.current < ACCESS_REFRESH_MIN_SPACING_MS) return;
+
+    const result = await attemptTokenRefresh();
+    if (result === 'ok') {
+      lastSessionRefreshAt.current = Date.now();
+      setAuthRecoveryBlocked(false);
+      return;
+    }
+    if (result === 'transient') {
+      setAuthRecoveryBlocked(true);
+      return;
+    }
+    window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
+  }, [user]);
 
   // 1. Session Hydration: derive auth from the HttpOnly cookie, never from
   // browser-readable token storage.
@@ -183,6 +206,32 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
 
     hydrate();
   }, [initialUser, applyUserData]);
+
+  // Keep the short-lived access cookie warm while an authenticated user is
+  // still active, so idle clicks do not have to go through a hard page refresh.
+  useEffect(() => {
+    if (!user) return;
+
+    const refreshIfVisible = () => {
+      if (document.visibilityState === 'visible') {
+        void refreshActiveSession(false);
+      }
+    };
+    const interval = window.setInterval(() => {
+      void refreshActiveSession(true);
+    }, ACCESS_REFRESH_INTERVAL_MS);
+
+    window.addEventListener('focus', refreshIfVisible);
+    document.addEventListener('visibilitychange', refreshIfVisible);
+    document.addEventListener('pointerdown', refreshIfVisible, { capture: true, passive: true });
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', refreshIfVisible);
+      document.removeEventListener('visibilitychange', refreshIfVisible);
+      document.removeEventListener('pointerdown', refreshIfVisible, { capture: true });
+    };
+  }, [user, refreshActiveSession]);
 
   // Auth-expired listener only.
   useEffect(() => {
