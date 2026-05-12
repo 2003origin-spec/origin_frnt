@@ -1,4 +1,38 @@
-const API_URL = (process.env.NEXT_PUBLIC_API_URL || '/api').replace(/\/+$/, '');
+const APP_API_HOSTS = new Set(['o3origin.com', 'www.o3origin.com']);
+
+function isVercelHost(hostname: string): boolean {
+    return hostname === 'vercel.app' || hostname.endsWith('.vercel.app');
+}
+
+export function resolveApiBaseUrl(rawApiUrl = process.env.NEXT_PUBLIC_API_URL, locationOrigin?: string): string {
+    const raw = rawApiUrl?.trim() || '/api';
+    if (!/^https?:\/\//i.test(raw)) {
+        return raw.replace(/\/+$/, '') || '/api';
+    }
+
+    try {
+        const apiUrl = new URL(raw);
+        const locationUrl = locationOrigin ? new URL(locationOrigin) : null;
+        const pointsAtThisApp =
+            apiUrl.hostname === locationUrl?.hostname ||
+            APP_API_HOSTS.has(apiUrl.hostname) ||
+            isVercelHost(apiUrl.hostname);
+
+        if (pointsAtThisApp && apiUrl.pathname.startsWith('/api')) {
+            const path = `${apiUrl.pathname}${apiUrl.search}`.replace(/\/+$/, '');
+            return path || '/api';
+        }
+
+        return raw.replace(/\/+$/, '');
+    } catch {
+        return '/api';
+    }
+}
+
+const API_URL = resolveApiBaseUrl(
+    process.env.NEXT_PUBLIC_API_URL,
+    typeof window !== 'undefined' ? window.location.origin : undefined,
+);
 const CSRF_COOKIE_NAME = 'origin_csrf';
 const CSRF_HEADER_NAME = 'X-CSRF-Token';
 
@@ -13,6 +47,9 @@ function normalizeEndpoint(endpoint: string) {
 
 // Dispatched when the refresh token itself is expired — AuthContext listens and logs the user out
 export const AUTH_EXPIRED_EVENT = 'origin:auth:expired';
+export type TokenRefreshResult = 'ok' | 'expired' | 'transient';
+
+let refreshPromise: Promise<TokenRefreshResult> | null = null;
 
 function readCookie(name: string): string | null {
     if (typeof document === 'undefined') return null;
@@ -28,11 +65,35 @@ function isMutatingMethod(method: string | undefined): boolean {
     return !SAFE_METHODS.has((method ?? 'GET').toUpperCase());
 }
 
-async function attemptTokenRefresh(): Promise<boolean> {
+export function classifyTokenRefreshStatus(status: number): TokenRefreshResult {
+    if (status >= 200 && status < 300) return 'ok';
+    if (status === 400 || status === 401 || status === 403) return 'expired';
+    return 'transient';
+}
+
+async function performTokenRefresh(): Promise<TokenRefreshResult> {
     try {
         const response = await fetch(`${API_URL}/users/token/refresh`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+            credentials: 'include',
+            cache: 'no-store',
+        });
+        const classified = classifyTokenRefreshStatus(response.status);
+        if (classified === 'expired' && await recoverSessionViaMe()) {
+            return 'ok';
+        }
+        return classified;
+    } catch {
+        return 'transient';
+    }
+}
+
+async function recoverSessionViaMe(): Promise<boolean> {
+    if (typeof window === 'undefined') return false;
+    try {
+        const response = await fetch(`${API_URL}/users/me`, {
             credentials: 'include',
             cache: 'no-store',
         });
@@ -42,9 +103,30 @@ async function attemptTokenRefresh(): Promise<boolean> {
     }
 }
 
-async function ensureCsrfToken(method: string | undefined): Promise<void> {
+export async function attemptTokenRefresh(): Promise<TokenRefreshResult> {
+    if (!refreshPromise) {
+        refreshPromise = performTokenRefresh().finally(() => {
+            refreshPromise = null;
+        });
+    }
+    return refreshPromise;
+}
+
+function emitAuthExpired(silentAuth: boolean | undefined): void {
+    if (!silentAuth && typeof window !== 'undefined') {
+        window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
+    }
+}
+
+async function ensureCsrfToken(method: string | undefined, silentAuth: boolean | undefined): Promise<void> {
     if (!isMutatingMethod(method) || readCookie(CSRF_COOKIE_NAME)) return;
-    await attemptTokenRefresh();
+    const refreshed = await attemptTokenRefresh();
+    if (refreshed === 'ok') return;
+    if (refreshed === 'expired') {
+        emitAuthExpired(silentAuth);
+        throw new Error('Session expired. Please log in again.');
+    }
+    throw new Error('Session refresh is temporarily unavailable. Please retry in a moment.');
 }
 
 function buildHeaders(method: string | undefined, body: BodyInit | null | undefined, overrides?: HeadersInit): Headers {
@@ -89,7 +171,7 @@ export const apiCall = async (
     const { cache = 'no-store', ...requestOptions } = fetchOptions;
     const normalizedEndpoint = normalizeEndpoint(endpoint);
 
-    await ensureCsrfToken(requestOptions.method);
+    await ensureCsrfToken(requestOptions.method, silentAuth);
 
     const doFetch = () =>
         fetch(`${API_URL}${normalizedEndpoint}`, {
@@ -104,14 +186,13 @@ export const apiCall = async (
     // On 401, try refreshing the access token once then retry
     if (response.status === 401) {
         const refreshed = await attemptTokenRefresh();
-        if (refreshed) {
+        if (refreshed === 'ok') {
             response = await doFetch();
-        } else {
-            // Refresh failed — session is fully expired, force logout
-            if (!silentAuth) {
-                window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
-            }
+        } else if (refreshed === 'expired') {
+            emitAuthExpired(silentAuth);
             throw new Error('Session expired. Please log in again.');
+        } else {
+            throw new Error('Session refresh is temporarily unavailable. Please retry in a moment.');
         }
     }
 

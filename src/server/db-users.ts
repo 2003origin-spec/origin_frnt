@@ -19,6 +19,25 @@ import {
   issueAccessTokenForUser,
   parseRefreshToken,
 } from "@/server/auth-jwt";
+import type { UserImagePurpose } from "@/server/media-storage";
+
+export const REFRESH_TOKEN_ROTATION_INTERVAL_MS = 24 * 60 * 60 * 1000;
+// Keep the immediately previous refresh hash valid for the session lifetime.
+// Browser tabs can complete refresh responses out of order; accepting the last
+// hash prevents a stale Set-Cookie from logging the user out minutes later.
+const REFRESH_REPLAY_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
+
+export function shouldRotateRefreshToken(
+  lastRotatedAt: Date | string | null | undefined,
+  createdAt: Date | string | null | undefined,
+  nowMs = Date.now(),
+  isGraceReplay = false,
+): boolean {
+  if (isGraceReplay) return false;
+  const reference = lastRotatedAt ?? createdAt;
+  const referenceMs = reference ? new Date(reference).getTime() : 0;
+  return !Number.isFinite(referenceMs) || nowMs - referenceMs >= REFRESH_TOKEN_ROTATION_INTERVAL_MS;
+}
 
 declare global {
   var __originUserSchemaEnsured: boolean | undefined;
@@ -81,8 +100,11 @@ export async function ensureUserSchema(): Promise<void> {
           CREATE TABLE IF NOT EXISTS origin_auth_sessions (
             id                        TEXT PRIMARY KEY,
             access_token              TEXT,
+            access_fingerprint        TEXT,
             refresh_token             TEXT,
             refresh_token_hash        TEXT UNIQUE,
+            previous_refresh_token_hash TEXT,
+            refresh_rotated_at        TIMESTAMPTZ,
             user_id                   TEXT NOT NULL REFERENCES origin_users(id) ON DELETE CASCADE,
             created_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             access_token_expires_at   TIMESTAMPTZ NOT NULL,
@@ -94,7 +116,10 @@ export async function ensureUserSchema(): Promise<void> {
           );
 
           ALTER TABLE origin_auth_sessions ADD COLUMN IF NOT EXISTS id TEXT;
+          ALTER TABLE origin_auth_sessions ADD COLUMN IF NOT EXISTS access_fingerprint TEXT;
           ALTER TABLE origin_auth_sessions ADD COLUMN IF NOT EXISTS refresh_token_hash TEXT;
+          ALTER TABLE origin_auth_sessions ADD COLUMN IF NOT EXISTS previous_refresh_token_hash TEXT;
+          ALTER TABLE origin_auth_sessions ADD COLUMN IF NOT EXISTS refresh_rotated_at TIMESTAMPTZ;
           ALTER TABLE origin_auth_sessions ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMPTZ;
           ALTER TABLE origin_auth_sessions ADD COLUMN IF NOT EXISTS last_used_at TIMESTAMPTZ;
           ALTER TABLE origin_auth_sessions ADD COLUMN IF NOT EXISTS user_agent_hash TEXT;
@@ -176,6 +201,24 @@ export async function ensureUserSchema(): Promise<void> {
           ON CONFLICT (id) DO NOTHING;
 
           CREATE INDEX IF NOT EXISTS idx_tasks_user_created ON app.tasks (user_id, created_at DESC);
+
+          CREATE TABLE IF NOT EXISTS origin_media_assets (
+            id               TEXT PRIMARY KEY,
+            user_id          TEXT NOT NULL REFERENCES origin_users(id) ON DELETE CASCADE,
+            purpose          TEXT NOT NULL,
+            storage_provider TEXT NOT NULL DEFAULT 'r2',
+            bucket           TEXT NOT NULL,
+            object_key       TEXT NOT NULL UNIQUE,
+            public_url       TEXT NOT NULL,
+            mime_type        TEXT NOT NULL,
+            size_bytes       INTEGER NOT NULL CHECK (size_bytes > 0),
+            sha256           TEXT NOT NULL,
+            metadata         JSONB NOT NULL DEFAULT '{}'::jsonb,
+            created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          );
+
+          CREATE INDEX IF NOT EXISTS idx_media_assets_user_purpose_created
+            ON origin_media_assets (user_id, purpose, created_at DESC);
         `);
         globalThis.__originUserSchemaEnsured = true;
       } finally {
@@ -227,6 +270,7 @@ function rowToSession(row: any): StoredAuthSession {
   return {
     id: row.id,
     accessToken: row.access_token ?? "",
+    accessFingerprint: row.access_fingerprint ?? undefined,
     refreshToken: row.refresh_token ?? "",
     refreshTokenHash: row.refresh_token_hash ?? undefined,
     userId: row.user_id,
@@ -334,6 +378,49 @@ export async function dbUpdateUser(id: string, patch: Partial<StoredUser>): Prom
   await pool().query(`UPDATE origin_users SET ${fields.join(", ")} WHERE id = $${i}`, values);
 }
 
+export type DbMediaAssetInput = {
+  id?: string;
+  userId: string;
+  purpose: UserImagePurpose;
+  storageProvider?: "r2";
+  bucket: string;
+  objectKey: string;
+  publicUrl: string;
+  mimeType: string;
+  sizeBytes: number;
+  sha256: string;
+  metadata?: Record<string, unknown>;
+};
+
+export async function dbCreateMediaAsset(input: DbMediaAssetInput): Promise<{ id: string; createdAt: string }> {
+  await ensureUserSchema();
+  const id = input.id ?? createId("media");
+  const result = await pool().query(
+    `INSERT INTO origin_media_assets
+       (id, user_id, purpose, storage_provider, bucket, object_key, public_url, mime_type, size_bytes, sha256, metadata)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+     RETURNING created_at`,
+    [
+      id,
+      input.userId,
+      input.purpose,
+      input.storageProvider ?? "r2",
+      input.bucket,
+      input.objectKey,
+      input.publicUrl,
+      input.mimeType,
+      input.sizeBytes,
+      input.sha256,
+      JSON.stringify(input.metadata ?? {}),
+    ],
+  );
+  const createdAt = result.rows[0]?.created_at;
+  return {
+    id,
+    createdAt: createdAt instanceof Date ? createdAt.toISOString() : String(createdAt ?? new Date().toISOString()),
+  };
+}
+
 // ─── Auth session operations ──────────────────────────────────────────────────
 
 export async function dbFindUserByAccessToken(accessToken: string): Promise<StoredUser | null> {
@@ -393,17 +480,20 @@ export async function dbCreateAuthSession(userId: string): Promise<StoredAuthSes
     ipPrefixHash: null,
   };
 
-  // One active session per user — revoke old ones first.
-  await pool().query("UPDATE origin_auth_sessions SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL", [userId]);
+  await pool().query(
+    "UPDATE origin_auth_sessions SET revoked_at = NOW() WHERE user_id = $1 AND refresh_token_expires_at <= NOW() AND revoked_at IS NULL",
+    [userId],
+  );
   await pool().query(
     `INSERT INTO origin_auth_sessions
-       (id, access_token, refresh_token, refresh_token_hash, user_id, created_at,
+       (id, access_token, access_fingerprint, refresh_token, refresh_token_hash, user_id, created_at,
         access_token_expires_at, refresh_token_expires_at, revoked_at, last_used_at,
         user_agent_hash, ip_prefix_hash)
-     VALUES ($1, $2, NULL, $3, $4, $5, $6, $7, NULL, NULL, NULL, NULL)`,
+     VALUES ($1, $2, $3, NULL, $4, $5, $6, $7, $8, NULL, NULL, NULL, NULL)`,
     [
       session.id,
       session.accessToken,
+      session.accessFingerprint,
       session.refreshTokenHash,
       session.userId,
       session.createdAt,
@@ -438,10 +528,20 @@ export async function dbRotateAccessToken(refreshToken: string): Promise<StoredA
       return null;
     }
 
+    let isGraceReplay = false;
     if (row.refresh_token_hash !== expectedHash) {
-      await client.query("UPDATE origin_auth_sessions SET revoked_at = NOW() WHERE id = $1", [parsed.sessionId]);
-      await client.query("COMMIT");
-      return null;
+      const rotatedAtMs = row.refresh_rotated_at ? new Date(row.refresh_rotated_at).getTime() : 0;
+      isGraceReplay =
+        row.previous_refresh_token_hash === expectedHash &&
+        Boolean(row.access_token) &&
+        Boolean(row.access_fingerprint) &&
+        Number.isFinite(rotatedAtMs) &&
+        Date.now() - rotatedAtMs <= REFRESH_REPLAY_GRACE_MS;
+
+      if (!isGraceReplay) {
+        await client.query("COMMIT");
+        return null;
+      }
     }
 
     const userResult = await client.query("SELECT * FROM origin_users WHERE id = $1 LIMIT 1", [row.user_id]);
@@ -451,20 +551,53 @@ export async function dbRotateAccessToken(refreshToken: string): Promise<StoredA
       return null;
     }
     const user = rowToUser(userResult.rows[0]);
-    const refresh = await createRefreshToken(parsed.sessionId);
     const access = await issueAccessTokenForUser(user, parsed.sessionId);
+    const rotateRefresh = shouldRotateRefreshToken(row.refresh_rotated_at, row.created_at, Date.now(), isGraceReplay);
+
+    if (!rotateRefresh) {
+      const result = await client.query(
+        `UPDATE origin_auth_sessions
+         SET access_token = $1,
+             access_fingerprint = $2,
+             access_token_expires_at = $3,
+             last_used_at = NOW()
+         WHERE id = $4
+         RETURNING *`,
+        [
+          access.accessToken,
+          access.accessFingerprint,
+          access.accessTokenExpiresAt,
+          parsed.sessionId,
+        ],
+      );
+      await client.query("COMMIT");
+      return result.rows[0]
+        ? {
+            ...rowToSession(result.rows[0]),
+            accessToken: access.accessToken,
+            accessFingerprint: access.accessFingerprint,
+            refreshToken: "",
+          }
+        : null;
+    }
+
+    const refresh = await createRefreshToken(parsed.sessionId);
     const result = await client.query(
       `UPDATE origin_auth_sessions
        SET access_token = $1,
+           access_fingerprint = $2,
            refresh_token = NULL,
-           refresh_token_hash = $2,
-           access_token_expires_at = $3,
-           refresh_token_expires_at = $4,
+           previous_refresh_token_hash = refresh_token_hash,
+           refresh_token_hash = $3,
+           access_token_expires_at = $4,
+           refresh_token_expires_at = $5,
+           refresh_rotated_at = NOW(),
            last_used_at = NOW()
-       WHERE id = $5
+       WHERE id = $6
        RETURNING *`,
       [
         access.accessToken,
+        access.accessFingerprint,
         refresh.refreshTokenHash,
         access.accessTokenExpiresAt,
         refresh.refreshTokenExpiresAt,

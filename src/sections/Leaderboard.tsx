@@ -50,10 +50,17 @@ export default function Leaderboard({ currentUser, initialLeaderboard, initialMy
   useEffect(() => {
     if (skipInitialFetch.current && selectedSubject === 'overall') {
       skipInitialFetch.current = false;
+      if (activeTab === 'global') {
+        return;
+      }
+    }
+    if (activeTab === 'local' && !currentUser.location) {
+      setLeaderboard([]);
+      setMyRank(null);
       return;
     }
     fetchLeaderboard();
-  }, [selectedSubject]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedSubject, activeTab, currentUser.location]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchLeaderboard = async () => {
     setIsLoading(true);

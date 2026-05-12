@@ -1,6 +1,6 @@
 import { Pool } from "pg";
 
-const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
+import { createPostgresPoolConfig } from "@/server/postgres-config";
 
 declare global {
   var __originOgcodePool: Pool | undefined;
@@ -16,19 +16,6 @@ function getConnectionString(): string | null {
   );
 }
 
-function shouldUseSsl(connectionString: string): boolean {
-  try {
-    const url = new URL(connectionString);
-    const sslMode = url.searchParams.get("sslmode");
-    if (sslMode) {
-      return sslMode !== "disable";
-    }
-    return !LOCAL_HOSTS.has(url.hostname);
-  } catch {
-    return !connectionString.includes("localhost");
-  }
-}
-
 export function isOgcodePostgresConfigured(): boolean {
   return Boolean(getConnectionString());
 }
@@ -40,11 +27,7 @@ export function getOgcodePostgresPool(): Pool | null {
   }
 
   if (!globalThis.__originOgcodePool) {
-    globalThis.__originOgcodePool = new Pool({
-      connectionString,
-      ssl: shouldUseSsl(connectionString) ? { rejectUnauthorized: false } : false,
-      max: 5,
-    });
+    globalThis.__originOgcodePool = new Pool(createPostgresPoolConfig(connectionString, 5));
   }
 
   return globalThis.__originOgcodePool;

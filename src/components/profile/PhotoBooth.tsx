@@ -15,109 +15,306 @@ import {
     Download,
     MessageCircle,
     Copy,
-    ExternalLink
+    ExternalLink,
+    X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toPng } from 'html-to-image';
 import download from 'downloadjs';
+import { getCanonicalSiteUrl } from '@/lib/site-url';
+import { uploadUserImageAction, type UserImageUploadResult } from '@/server/actions/profile-actions';
+import { toast } from 'sonner';
+
+const PUBLIC_SITE_URL = getCanonicalSiteUrl();
+const SHARE_MESSAGE = `Hey, I found the Best preparation platform for Jee/Neet! Check out ORIGIN AI.\n\nJoin here: ${PUBLIC_SITE_URL}`;
 
 export default function PhotoBooth() {
     const [capturedImage, setCapturedImage] = useState<string | null>(null);
     const [isGenerating, setIsGenerating] = useState(false);
+    const [isApplyingNickname, setIsApplyingNickname] = useState(false);
+    const [isUploadingMedia, setIsUploadingMedia] = useState(false);
     const [generatedAvatar, setGeneratedAvatar] = useState<string | null>(null);
     const [framedImage, setFramedImage] = useState<string | null>(null);
+    const [sourceAsset, setSourceAsset] = useState<UserImageUploadResult | null>(null);
+    const [cardAsset, setCardAsset] = useState<UserImageUploadResult | null>(null);
     const [nickname, setNickname] = useState('O3.Scholar');
+    const [cardNickname, setCardNickname] = useState('O3.Scholar');
     const [step, setStep] = useState<'hero' | 'preview' | 'result'>('hero');
-    const [shareMessage, setShareMessage] = useState("Hey, I found the Best preparation platform for Jee/Neet! Check out ORIGIN AI.");
-    const [referralLink, setReferralLink] = useState("https://origin-ai.vercel.app");
-    
+    const [cameraOpen, setCameraOpen] = useState(false);
+    const [cameraError, setCameraError] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const cameraInputRef = useRef<HTMLInputElement>(null);
     const frameTemplateRef = useRef<HTMLDivElement>(null);
+    const videoRef = useRef<HTMLVideoElement>(null);
+    const cameraStreamRef = useRef<MediaStream | null>(null);
 
-    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const readFileAsDataUrl = (file: File) => new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(String(reader.result ?? ''));
+        reader.onerror = () => reject(new Error('Could not read image file.'));
+        reader.readAsDataURL(file);
+    });
+
+    const dataUrlToFile = async (dataUrl: string, fileName: string): Promise<File> => {
+        const response = await fetch(dataUrl);
+        const blob = await response.blob();
+        return new File([blob], fileName, { type: blob.type || 'image/png' });
+    };
+
+    const uploadImageFile = async (file: File, purpose: 'memory_booth_source' | 'memory_booth_card') => {
+        const formData = new FormData();
+        formData.set('purpose', purpose);
+        formData.set('file', file);
+        return uploadUserImageAction(formData);
+    };
+
+    const handleImageFile = async (file: File, previewDataUrl?: string) => {
+        if (!file.type.startsWith('image/')) {
+            toast.error('Please choose an image file.');
+            return;
+        }
+
+        setIsUploadingMedia(true);
+        try {
+            const dataUrl = previewDataUrl ?? await readFileAsDataUrl(file);
+            setCapturedImage(dataUrl);
+            setSourceAsset(null);
+            setCardAsset(null);
+            setStep('preview');
+            const uploaded = await uploadImageFile(file, 'memory_booth_source');
+            setSourceAsset(uploaded);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Could not save image to cloud storage.';
+            toast.error(message);
+        } finally {
+            setIsUploadingMedia(false);
+        }
+    };
+
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
+        e.currentTarget.value = '';
         if (file) {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                setCapturedImage(reader.result as string);
-                setStep('preview');
-            };
-            reader.readAsDataURL(file);
+            await handleImageFile(file);
+        }
+    };
+
+    const stopCamera = () => {
+        cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
+        cameraStreamRef.current = null;
+        if (videoRef.current) {
+            videoRef.current.srcObject = null;
+        }
+        setCameraOpen(false);
+    };
+
+    const openCamera = async () => {
+        setCameraError(null);
+        try {
+            if (!navigator.mediaDevices?.getUserMedia) {
+                throw new Error('Camera capture is not supported in this browser.');
+            }
+            const stream = await navigator.mediaDevices.getUserMedia({
+                audio: false,
+                video: {
+                    facingMode: 'user',
+                    width: { ideal: 1280 },
+                    height: { ideal: 1280 },
+                },
+            });
+            cameraStreamRef.current = stream;
+            setCameraOpen(true);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Could not open camera.';
+            setCameraError(message);
+            toast.error(message);
+        }
+    };
+
+    const captureCameraFrame = async () => {
+        const video = videoRef.current;
+        if (!video || video.videoWidth === 0 || video.videoHeight === 0) {
+            toast.error('Camera is still starting. Please try again.');
+            return;
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const context = canvas.getContext('2d');
+        if (!context) {
+            toast.error('Could not capture camera frame.');
+            return;
+        }
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+        const file = await dataUrlToFile(dataUrl, `origin-memory-camera-${Date.now()}.jpg`);
+        stopCamera();
+        await handleImageFile(file, dataUrl);
+    };
+
+    useEffect(() => {
+        if (cameraOpen && videoRef.current && cameraStreamRef.current) {
+            videoRef.current.srcObject = cameraStreamRef.current;
+            void videoRef.current.play().catch(() => undefined);
+        }
+    }, [cameraOpen]);
+
+    useEffect(() => () => {
+        cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
+        cameraStreamRef.current = null;
+    }, []);
+
+    const normalizeNickname = (value: string) => {
+        const normalized = value.trim().replace(/\s+/g, ' ');
+        return normalized.length > 0 ? normalized.slice(0, 28) : 'O3.Scholar';
+    };
+
+    const waitForTemplatePaint = async () => {
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    };
+
+    const renderFrameImage = async (nextNickname: string): Promise<string | null> => {
+        if (!frameTemplateRef.current) {
+            return null;
+        }
+
+        setCardNickname(nextNickname);
+        await waitForTemplatePaint();
+
+        try {
+            const dataUrl = await toPng(frameTemplateRef.current, {
+                quality: 0.95,
+                pixelRatio: 2,
+            });
+            setFramedImage(dataUrl);
+            return dataUrl;
+        } catch (err) {
+            console.error('Frame generation failed:', err);
+            return null;
         }
     };
 
     const handleGenerate = async () => {
         setIsGenerating(true);
-        // Step 1: Simulated AI processing
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        // Step 2: Trigger frame generation from template
-        setTimeout(async () => {
-            if (frameTemplateRef.current) {
-                try {
-                    const dataUrl = await toPng(frameTemplateRef.current, {
-                        quality: 0.95,
-                        pixelRatio: 2,
-                    });
-                    setFramedImage(dataUrl);
-                    setIsGenerating(false);
-                    setStep('result');
-                } catch (err) {
-                    console.error('Frame generation failed:', err);
-                    setIsGenerating(false);
-                    setStep('result');
-                }
-            }
-        }, 500);
-    };
+        const nextNickname = normalizeNickname(nickname);
+        setNickname(nextNickname);
 
-    const handleDownload = () => {
-        if (framedImage) {
-            download(framedImage, `Origin_Memory_${Date.now()}.png`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        const dataUrl = await renderFrameImage(nextNickname);
+        if (!dataUrl) {
+            setIsGenerating(false);
+            alert('Could not create the card. Please try again.');
+            return;
+        }
+
+        try {
+            const cardFile = await dataUrlToFile(
+                dataUrl,
+                `origin-memory-card-${nextNickname.replace(/[^\w-]+/g, '_')}-${Date.now()}.png`,
+            );
+            setIsUploadingMedia(true);
+            const uploaded = await uploadImageFile(cardFile, 'memory_booth_card');
+            setCardAsset(uploaded);
+            setStep('result');
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Could not save memory card to cloud storage.';
+            toast.error(message);
+            setStep('result');
+        } finally {
+            setIsUploadingMedia(false);
+            setIsGenerating(false);
         }
     };
 
-    const shareToWhatsApp = () => {
-        const text = encodeURIComponent(`Hey, I found the Best preparation platform for Jee/Neet! Check out ORIGIN AI.\n\nJoin here: https://origin-ai.vercel.app`);
-        window.open(`https://wa.me/?text=${text}`, '_blank');
+    const handleApplyNickname = async () => {
+        if (!capturedImage) return;
+        const nextNickname = normalizeNickname(nickname);
+        setNickname(nextNickname);
+        if (nextNickname === cardNickname) return;
+
+        setIsApplyingNickname(true);
+        try {
+            const dataUrl = await renderFrameImage(nextNickname);
+            if (!dataUrl) {
+                alert('Could not update the card. Please try again.');
+                return;
+            }
+            const cardFile = await dataUrlToFile(
+                dataUrl,
+                `origin-memory-card-${nextNickname.replace(/[^\w-]+/g, '_')}-${Date.now()}.png`,
+            );
+            setIsUploadingMedia(true);
+            const uploaded = await uploadImageFile(cardFile, 'memory_booth_card');
+            setCardAsset(uploaded);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Could not sync updated card to cloud storage.';
+            toast.error(message);
+        } finally {
+            setIsUploadingMedia(false);
+            setIsApplyingNickname(false);
+        }
     };
 
-    const shareToTwitter = () => {
-        const text = encodeURIComponent(`Hey, I found the Best preparation platform for Jee/Neet! Check out ORIGIN AI.\n\nJoin here: https://origin-ai.vercel.app`);
-        window.open(`https://twitter.com/intent/tweet?text=${text}`, '_blank');
+    const shareUrl = cardAsset?.url ?? PUBLIC_SITE_URL;
+
+    const brandedShareMessage = () => {
+        const cardLine = cardAsset?.url ? `\n\nMy Origin Scholar card: ${cardAsset.url}` : '';
+        return `${SHARE_MESSAGE}${cardLine}`;
+    };
+
+    const handleCopyLink = async () => {
+        await navigator.clipboard.writeText(cardAsset?.url ?? SHARE_MESSAGE);
+        alert(cardAsset?.url ? 'Memory card link copied!' : 'Branded message & link copied!');
     };
 
     const handleShare = async (platform?: 'whatsapp' | 'twitter') => {
         if (!framedImage) return;
 
-        const fullMessage = `Hey, I found the Best preparation platform for Jee/Neet! Check out ORIGIN AI.\n\nJoin here: https://origin-ai.vercel.app`;
+        const message = brandedShareMessage();
 
         try {
             const response = await fetch(framedImage);
             const blob = await response.blob();
-            const filename = `Origin_Scholar_${nickname.replace(/\s+/g, '_')}_${Date.now()}.png`;
+            const filename = `Origin_Scholar_${cardNickname.replace(/[^\w-]+/g, '_')}_${Date.now()}.png`;
             const file = new File([blob], filename, { type: 'image/png' });
+            const shareData: ShareData = {
+                files: [file],
+                title: 'ORIGIN AI Scholar Memory Card',
+                text: message,
+                url: shareUrl,
+            };
 
-            // If platform is specified, we try to use native share with the file first
-            // If it's not supported or fails, we fall back to the platform's URL scheme
-            if (navigator.share && navigator.canShare({ files: [file] })) {
-                await navigator.share({
-                    files: [file],
-                    text: fullMessage
-                });
+            const canNativeShareFile =
+                typeof navigator.share === 'function' &&
+                typeof navigator.canShare === 'function' &&
+                navigator.canShare(shareData);
+
+            if (canNativeShareFile) {
+                await navigator.share(shareData);
+            } else if (platform === 'whatsapp') {
+                window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank');
+            } else if (platform === 'twitter') {
+                window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(message)}`, '_blank');
             } else {
-                // Fallback to text-only if file sharing isn't supported
-                if (platform === 'whatsapp') {
-                    window.open(`https://wa.me/?text=${encodeURIComponent(fullMessage)}`, '_blank');
-                } else if (platform === 'twitter') {
-                    window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(fullMessage)}`, '_blank');
-                }
+                await navigator.clipboard.writeText(message);
+                alert('Branded message & link copied!');
             }
-        } catch (err) {
-            console.error('Sharing failed:', err);
-            // Emergency fallback
-            window.open(`https://wa.me/?text=${encodeURIComponent(fullMessage)}`, '_blank');
+        } catch (error) {
+            console.error('Sharing failed:', error);
+            if (platform === 'twitter') {
+                window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(message)}`, '_blank');
+            } else {
+                window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank');
+            }
+        }
+    };
+
+    const handleDownload = () => {
+        if (framedImage) {
+            const safeNickname = cardNickname.replace(/[^\w-]+/g, '_');
+            download(framedImage, `Origin_Memory_${safeNickname}_${Date.now()}.png`);
         }
     };
 
@@ -125,6 +322,10 @@ export default function PhotoBooth() {
         setCapturedImage(null);
         setGeneratedAvatar(null);
         setFramedImage(null);
+        setSourceAsset(null);
+        setCardAsset(null);
+        setNickname('O3.Scholar');
+        setCardNickname('O3.Scholar');
         setStep('hero');
     };
 
@@ -158,7 +359,7 @@ export default function PhotoBooth() {
                         {/* Branding Footer */}
                         <div className="pt-10 flex items-center justify-between">
                             <div className="space-y-2">
-                                <h2 className="text-white text-5xl font-black tracking-tight">{nickname}</h2>
+                                <h2 className="max-w-[560px] truncate text-white text-5xl font-black tracking-tight">{cardNickname}</h2>
                                 <p className="text-primary/80 text-xl font-bold uppercase tracking-widest">ORIGIN AI • {new Date().getFullYear()}</p>
                             </div>
                             <div className="flex items-center gap-6">
@@ -190,14 +391,39 @@ export default function PhotoBooth() {
                 accept="image/*"
                 onChange={handleFileUpload}
             />
-            <input
-                type="file"
-                ref={cameraInputRef}
-                className="hidden"
-                accept="image/*"
-                capture="user"
-                onChange={handleFileUpload}
-            />
+
+            {cameraOpen && (
+                <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 p-4 backdrop-blur-xl">
+                    <div className="relative w-full max-w-2xl overflow-hidden rounded-[2rem] border border-white/10 bg-[#030014] shadow-2xl">
+                        <button
+                            type="button"
+                            onClick={stopCamera}
+                            className="absolute right-4 top-4 z-20 rounded-full bg-black/50 p-3 text-white backdrop-blur-md transition hover:bg-black/70"
+                            aria-label="Close camera"
+                        >
+                            <X className="h-5 w-5" />
+                        </button>
+                        <video
+                            ref={videoRef}
+                            playsInline
+                            muted
+                            className="aspect-video w-full bg-black object-cover"
+                        />
+                        <div className="flex flex-col gap-3 border-t border-white/10 p-4 sm:flex-row sm:items-center sm:justify-between">
+                            <p className="text-xs font-bold uppercase tracking-widest text-slate-400">
+                                {cameraError ?? 'Center your face and capture a scholar memory.'}
+                            </p>
+                            <button
+                                type="button"
+                                onClick={captureCameraFrame}
+                                className="h-12 rounded-full bg-primary px-8 text-sm font-black uppercase tracking-widest text-white shadow-[0_0_30px_var(--primary)] transition hover:opacity-90"
+                            >
+                                Capture Photo
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <div className="relative z-10 flex-1 flex flex-col w-full h-full">
                 <AnimatePresence mode="wait">
@@ -256,7 +482,7 @@ export default function PhotoBooth() {
                                         </span>
                                     </button>
                                     <button 
-                                        onClick={() => cameraInputRef.current?.click()}
+                                        onClick={openCamera}
                                         className="w-full sm:w-auto px-8 py-4 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 font-bold text-white backdrop-blur-md transition-all duration-300 hover:-translate-y-1 flex items-center justify-center gap-2 text-sm"
                                     >
                                         Use Camera <Camera className="w-4 h-4" />
@@ -313,15 +539,15 @@ export default function PhotoBooth() {
                             <div className="relative aspect-square w-full max-w-lg rounded-[2.5rem] overflow-hidden border border-white/10 shadow-[0_0_100px_rgba(0,0,0,0.5)] bg-slate-900">
                                 <img src={capturedImage} alt="Capture" className="w-full h-full object-cover" />
 
-                                {isGenerating && (
+                                {(isGenerating || isUploadingMedia) && (
                                     <div className="absolute inset-0 bg-black/70 backdrop-blur-xl flex flex-col items-center justify-center text-center p-8 z-20">
                                         <div className="relative mb-8">
                                             <div className="w-24 h-24 rounded-full border-4 border-primary/20 border-t-primary animate-[spin_1.5s_linear_infinite]" />
                                             <div className="absolute inset-0 m-auto w-16 h-16 bg-primary/20 rounded-full blur-xl animate-pulse"></div>
                                             <Sparkles className="absolute inset-0 m-auto w-8 h-8 text-primary/80 animate-pulse" />
                                         </div>
-                                        <h3 className="text-transparent bg-clip-text bg-gradient-to-r from-primary via-primary/80 to-primary/60 font-black text-2xl uppercase tracking-[0.2em]">Applying Frame</h3>
-                                        <p className="text-slate-400 text-xs mt-3 uppercase font-bold tracking-widest">Optimizing for sharing...</p>
+                                        <h3 className="text-transparent bg-clip-text bg-gradient-to-r from-primary via-primary/80 to-primary/60 font-black text-2xl uppercase tracking-[0.2em]">{isGenerating ? 'Applying Frame' : 'Saving Image'}</h3>
+                                        <p className="text-slate-400 text-xs mt-3 uppercase font-bold tracking-widest">{isGenerating ? 'Optimizing for sharing...' : 'Syncing to Origin media storage...'}</p>
                                     </div>
                                 )}
 
@@ -329,7 +555,7 @@ export default function PhotoBooth() {
                                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none"></div>
                             </div>
 
-                            {!isGenerating && (
+                            {!isGenerating && !isUploadingMedia && (
                                 <motion.div
                                     initial={{ opacity: 0, y: 20 }}
                                     animate={{ opacity: 1, y: 0 }}
@@ -343,10 +569,11 @@ export default function PhotoBooth() {
                                         <RefreshCw className="w-4 h-4" /> Retake
                                     </button>
                                     <button
-                                        className="flex-[2] h-14 px-8 rounded-full bg-primary hover:opacity-90 text-white font-black uppercase tracking-widest shadow-[0_0_30px_var(--primary)] flex items-center justify-center gap-2 transition-all group"
+                                        className="flex-[2] h-14 px-8 rounded-full bg-primary hover:opacity-90 text-white font-black uppercase tracking-widest shadow-[0_0_30px_var(--primary)] flex items-center justify-center gap-2 transition-all group disabled:cursor-not-allowed disabled:opacity-60"
                                         onClick={handleGenerate}
+                                        disabled={!sourceAsset}
                                     >
-                                        Apply Origin Frame <Sparkles className="w-4 h-4 group-hover:rotate-12 transition-transform" />
+                                        {sourceAsset ? 'Apply Origin Frame' : 'Saving Photo'} <Sparkles className="w-4 h-4 group-hover:rotate-12 transition-transform" />
                                     </button>
                                 </motion.div>
                             )}
@@ -381,21 +608,50 @@ export default function PhotoBooth() {
                                     
                                     <div className="space-y-2 text-left pt-2">
                                         <label className="text-[10px] font-black text-primary uppercase tracking-widest ml-1">Nickname on Card</label>
-                                        <input
-                                            type="text"
-                                            value={nickname}
-                                            onChange={(e) => setNickname(e.target.value)}
-                                            className="w-full h-12 px-5 rounded-xl bg-white/5 border border-white/10 text-white font-bold text-sm outline-none focus:border-primary/50 transition-all"
-                                            placeholder="Scholars Name..."
-                                        />
-                                        <p className="text-[10px] text-slate-500 font-medium italic">*Update nickname and click "Apply" again to refresh card</p>
+                                        <div className="flex flex-col sm:flex-row gap-3">
+                                            <input
+                                                type="text"
+                                                value={nickname}
+                                                onChange={(e) => setNickname(e.target.value)}
+                                                onKeyDown={(event) => {
+                                                    if (event.key === 'Enter') {
+                                                        event.preventDefault();
+                                                        void handleApplyNickname();
+                                                    }
+                                                }}
+                                                maxLength={28}
+                                                className="min-w-0 flex-1 h-12 px-5 rounded-xl bg-white/5 border border-white/10 text-white font-bold text-sm outline-none focus:border-primary/50 transition-all"
+                                                placeholder="Scholars Name..."
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={handleApplyNickname}
+                                                disabled={isApplyingNickname || isUploadingMedia || normalizeNickname(nickname) === cardNickname}
+                                                className="h-12 px-5 rounded-xl bg-primary text-white disabled:bg-white/5 disabled:text-slate-500 disabled:border disabled:border-white/10 disabled:shadow-none hover:opacity-90 transition-all flex items-center justify-center gap-2 font-black uppercase tracking-widest text-[10px] shadow-lg shadow-primary/20"
+                                            >
+                                                {isApplyingNickname || isUploadingMedia ? (
+                                                    <>
+                                                        <RefreshCw className="w-3.5 h-3.5 animate-spin" /> {isUploadingMedia ? 'Syncing' : 'Applying'}
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Wand2 className="w-3.5 h-3.5" /> Apply
+                                                    </>
+                                                )}
+                                            </button>
+                                        </div>
+                                        <div className="flex items-center justify-between gap-3 text-[10px] text-slate-500 font-medium">
+                                            <p>{normalizeNickname(nickname) === cardNickname ? 'Nickname synced' : 'Unsaved nickname'}</p>
+                                            <span>{nickname.trim().length}/28</span>
+                                        </div>
                                     </div>
                                 </div>
 
                                 <div className="space-y-4">
                                     <button 
                                         onClick={handleDownload}
-                                        className="w-full h-16 rounded-2xl bg-white/5 text-white border border-white/10 hover:bg-white/10 transition-all flex items-center justify-center gap-3 font-black uppercase tracking-widest shadow-xl group"
+                                        disabled={isApplyingNickname || isUploadingMedia}
+                                        className="w-full h-16 rounded-2xl bg-white/5 text-white border border-white/10 hover:bg-white/10 transition-all flex items-center justify-center gap-3 font-black uppercase tracking-widest shadow-xl group disabled:cursor-not-allowed disabled:opacity-60"
                                     >
                                         <Download className="w-5 h-5 group-hover:translate-y-0.5 transition-transform" /> Download Photo
                                     </button>
@@ -424,9 +680,7 @@ export default function PhotoBooth() {
                                         </button>
                                         <button 
                                             onClick={() => {
-                                                const fullMessage = `Hey, I found the Best preparation platform for Jee/Neet! Check out ORIGIN AI.\n\nJoin here: https://origin-ai.vercel.app`;
-                                                navigator.clipboard.writeText(fullMessage);
-                                                alert('Branded message & link copied!');
+                                                void handleCopyLink();
                                             }}
                                             className="flex-1 h-14 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all flex items-center justify-center gap-2 text-primary font-bold uppercase tracking-widest text-xs"
                                         >
@@ -459,7 +713,7 @@ export default function PhotoBooth() {
                     </div>
                 </div>
                 <button 
-                    onClick={() => window.open(referralLink, '_blank')}
+                    onClick={() => window.open(PUBLIC_SITE_URL, '_blank')}
                     className="group flex items-center gap-2 px-6 py-3 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 backdrop-blur-md transition-all duration-300"
                 >
                     <span className="text-xs font-bold text-white uppercase tracking-widest">Visit Origin AI</span>
@@ -469,4 +723,3 @@ export default function PhotoBooth() {
         </div>
     );
 }
-

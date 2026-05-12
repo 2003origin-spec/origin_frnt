@@ -5,6 +5,7 @@ import { join } from "node:path";
 
 import {
   PUBLIC_API_PATHS,
+  PUBLIC_APP_PATHS,
   getApiRoutePolicy,
   getAppRoutePolicy,
   isKnownApiRouteFile,
@@ -52,6 +53,11 @@ test("public API allowlist is limited to health and auth entrypoints", () => {
     "/api/users/register",
     "/api/users/token/refresh",
   ]);
+});
+
+test("auth refresh page route is public for expired access-cookie recovery", () => {
+  assert.equal(getAppRoutePolicy("/auth/refresh").kind, "public");
+  assert.ok((PUBLIC_APP_PATHS as readonly string[]).includes("/auth/refresh"));
 });
 
 test("route handlers do not import low-level JWT primitives directly", () => {

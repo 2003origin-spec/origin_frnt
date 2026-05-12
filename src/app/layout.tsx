@@ -8,8 +8,9 @@ import { Toaster } from "@/components/ui/sonner";
 import ClientShell from "@/components/layout/ClientShell";
 import { QuotaProvider } from "@/context/QuotaContext";
 import { NotificationProvider } from "@/context/NotificationContext";
+import { getCanonicalSiteUrl } from "@/lib/site-url";
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://origin-ai.vercel.app";
+const siteUrl = getCanonicalSiteUrl();
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
