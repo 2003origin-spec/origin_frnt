@@ -34,7 +34,7 @@ interface AuthContextType {
   login: (email: string, password: string, role?: 'student' | 'teacher' | 'admin' | null) => Promise<void>;
   loginWithOtp: (email: string, role?: 'student' | 'teacher' | 'admin' | null) => Promise<void>;
   register: (name: string, email: string, password: string, role?: 'student' | 'teacher' | 'admin' | null) => Promise<void>;
-  googleLogin: (credential: string) => Promise<void>;
+  googleLogin: (credential: string, role?: 'student' | 'teacher' | 'admin' | null) => Promise<void>;
   logout: () => void;
   refreshUser: () => Promise<void>;
   addTask: (text: string, due: string) => Promise<void>;
@@ -321,6 +321,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
         router.push('/onboarding');
       } else if (user.role === 'admin') {
         router.push('/admin');
+      } else if (user.role === 'teacher') {
+        router.push('/teacher');
       } else {
         router.push('/dashboard');
       }
@@ -352,6 +354,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
         router.push('/onboarding');
       } else if (result.user.role === 'admin') {
         router.push('/admin');
+      } else if (result.user.role === 'teacher') {
+        router.push('/teacher');
       } else {
         router.push('/dashboard');
       }
@@ -388,6 +392,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
 
       if (result.user.role === 'admin') {
         router.push('/admin');
+      } else if (result.user.role === 'teacher') {
+        router.push('/teacher');
       } else {
         router.push('/dashboard');
       }
@@ -424,6 +430,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
         router.push('/onboarding');
       } else if (result.user.role === 'admin') {
         router.push('/admin');
+      } else if (result.user.role === 'teacher') {
+        router.push('/teacher');
       } else {
         router.push('/dashboard');
       }
@@ -475,11 +483,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
     }
   };
 
-  const googleLogin = async (credential: string) => {
+  const googleLogin = async (credential: string, role?: 'student' | 'teacher' | 'admin' | null) => {
     setIsLoading(true);
     setAuthError(null);
     try {
-      const result = await googleLoginAction({ credential });
+      const result = await googleLoginAction({ credential, role: role ?? null });
       if (!result.ok) {
         setAuthError(result.message);
         toast.error(result.message);
@@ -500,6 +508,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
         router.push('/onboarding');
       } else if (result.user.role === 'admin') {
         router.push('/admin');
+      } else if (result.user.role === 'teacher') {
+        router.push('/teacher');
       } else {
         router.push('/dashboard');
       }
