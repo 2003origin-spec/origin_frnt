@@ -21,7 +21,7 @@ interface AuthPageProps {
   onLogin: (email: string, password: string, role?: 'student' | 'teacher' | 'admin' | null) => void;
   onLoginWithOtp?: (email: string, role?: 'student' | 'teacher' | 'admin' | null) => void;
   onRegister: (name: string, email: string, password: string, role?: 'student' | 'teacher' | 'admin' | null) => void;
-  onGoogleLogin?: (credential: string) => void;
+  onGoogleLogin?: (credential: string, role?: 'student' | 'teacher' | 'admin' | null) => void;
   sendOtp?: (email: string) => Promise<{ ok: boolean; message: string }>;
   verifyOtp?: (email: string, otp: string) => Promise<{ ok: boolean; message: string }>;
   onBack: () => void;
@@ -53,7 +53,7 @@ export default function AuthPage({
   const handleGoogleAuth = useGoogleLogin({
     onSuccess: (codeResponse) => {
       if (onGoogleLogin && codeResponse.access_token) {
-        onGoogleLogin(codeResponse.access_token);
+        onGoogleLogin(codeResponse.access_token, userRole);
       }
     },
     onError: (error) => console.error('Google Login Failed:', error)
