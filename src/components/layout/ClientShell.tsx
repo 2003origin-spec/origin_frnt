@@ -146,7 +146,7 @@ function ClientShellInner({ children }: { children: React.ReactNode }) {
     }
 
     const routesToPrefetch = user.role === 'teacher'
-      ? ['/dashboard', '/profile']
+      ? ['/teacher', '/profile']
       : ['/dashboard', '/ogcode', '/tests', '/dpp', '/tasks', '/study-corner', '/pomodoro', '/leaderboard', '/milestones', '/profile'];
 
     const timeoutId = window.setTimeout(() => {
