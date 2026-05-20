@@ -4,7 +4,7 @@ import { requireUserFromRequest, resolveTokenToUser, refreshAccessToken, createA
 import { isAuthServiceUnavailableError } from "@/server/auth-errors";
 import { extractAccessFingerprint } from "@/server/auth-jwt";
 import { isUserPostgresConfigured } from "@/server/user-postgres";
-import { dbLoginUser, dbRegisterUser, dbGetTasks, dbCreateTask, dbUpdateTask, dbDeleteTask, dbFindUserByEmail, dbCreateUser, dbUpdateUser, dbCreateAuthSession, dbGetUserCount } from "@/server/db-users";
+import { dbLoginUser, dbRegisterUser, dbGetTasks, dbCreateTask, dbUpdateTask, dbDeleteTask, dbFindUserByEmail, dbCreateUser, dbUpdateUser, dbCreateAuthSession, dbGetUserCount, dbGetUserCountByRole } from "@/server/db-users";
 import { OAuth2Client } from "google-auth-library";
 import {
   awardPoints,
@@ -364,20 +364,32 @@ export async function handleLoginWithOtp(payload: UserPayload) {
 }
 
 const REGISTRATION_LIMIT = 62;
+// 5 real signups on top of 4 seed/demo teacher accounts already in origin_users.
+const TEACHER_REGISTRATION_LIMIT = 9;
 
-export async function getRegistrationStatus() {
+function limitForRole(role?: string | null): number {
+  return role === "teacher" ? TEACHER_REGISTRATION_LIMIT : REGISTRATION_LIMIT;
+}
+
+export async function getRegistrationStatus(role?: string | null) {
+  const limit = limitForRole(role);
+
   if (isUserPostgresConfigured()) {
     try {
-      const count = await dbGetUserCount();
-      return { count, limit: REGISTRATION_LIMIT, seatsLeft: Math.max(0, REGISTRATION_LIMIT - count) };
+      const count = role === "teacher"
+        ? await dbGetUserCountByRole("teacher")
+        : await dbGetUserCount();
+      return { count, limit, seatsLeft: Math.max(0, limit - count) };
     } catch (err) {
       console.error('[users] Failed to get user count', err);
     }
   }
 
   return withStoreAsync(async (store) => {
-    const count = store.users.length;
-    return { count, limit: REGISTRATION_LIMIT, seatsLeft: Math.max(0, REGISTRATION_LIMIT - count) };
+    const count = role === "teacher"
+      ? store.users.filter((u) => u.role === "teacher").length
+      : store.users.length;
+    return { count, limit, seatsLeft: Math.max(0, limit - count) };
   });
 }
 
@@ -391,10 +403,11 @@ export async function handleRegister(payload: UserPayload) {
     return badRequest('Must include "email" and "password".');
   }
 
-  // Enforce registration limit
-  const status = await getRegistrationStatus();
+  // Enforce registration limit (role-aware: teachers capped separately)
+  const status = await getRegistrationStatus(role);
   if (status.seatsLeft <= 0) {
-    return badRequest("Registration is currently closed. We've reached our maximum capacity for this phase.");
+    const scope = role === "teacher" ? "teacher" : "user";
+    return badRequest(`Registration is currently closed. We've reached our maximum ${scope} capacity for this phase.`);
   }
 
   // DB-backed registration when Postgres is configured
@@ -466,6 +479,10 @@ export async function handleGoogleLogin(payload: UserPayload) {
   const credential = asString(payload.credential);
   if (!credential) return badRequest("Missing Google credential token.");
 
+  const rawRole = asString(payload.role)?.toLowerCase();
+  const role: "student" | "teacher" | "admin" =
+    rawRole === "teacher" || rawRole === "admin" ? rawRole : "student";
+
   try {
     const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "YOUR_GOOGLE_CLIENT_ID";
     let email: string | undefined;
@@ -514,17 +531,18 @@ export async function handleGoogleLogin(payload: UserPayload) {
 
     if (isUserPostgresConfigured()) {
       try {
-        let dbUser = await dbFindUserByEmail(email, "student");
+        let dbUser = await dbFindUserByEmail(email, role);
         if (!dbUser) {
-          // Enforce registration limit for new users
-          const status = await getRegistrationStatus();
+          // Enforce registration limit for new users (role-aware: teachers capped separately)
+          const status = await getRegistrationStatus(role);
           if (status.seatsLeft <= 0) {
-            return badRequest("Registration is currently closed. We've reached our maximum capacity for this phase.");
+            const scope = role === "teacher" ? "teacher" : "user";
+            return badRequest(`Registration is currently closed. We've reached our maximum ${scope} capacity for this phase.`);
           }
 
           const hashed = bcrypt.hashSync(createId("rand"), 10);
           dbUser = await dbCreateUser({
-            name, email, password: hashed, role: "student",
+            name, email, password: hashed, role,
             studentClass: null, fieldOfInterest: null, referralSource: null,
             avatar, streak: 0, totalStudyTime: 0, joinedAt: new Date().toISOString(),
             isPremium: false, premiumExpiry: null, isOnboarded: false,
@@ -552,18 +570,19 @@ export async function handleGoogleLogin(payload: UserPayload) {
     }
 
     return withStoreAsync(async (store) => {
-      let user = store.users.find((entry) => entry.email.toLowerCase() === email!.toLowerCase() && entry.role === 'student');
+      let user = store.users.find((entry) => entry.email.toLowerCase() === email!.toLowerCase() && entry.role === role);
       if (!user) {
-        // Enforce registration limit for new users
-        const status = await getRegistrationStatus();
+        // Enforce registration limit for new users (role-aware: teachers capped separately)
+        const status = await getRegistrationStatus(role);
         if (status.seatsLeft <= 0) {
-          return badRequest("Registration is currently closed. We've reached our maximum capacity for this phase.");
+          const scope = role === "teacher" ? "teacher" : "user";
+          return badRequest(`Registration is currently closed. We've reached our maximum ${scope} capacity for this phase.`);
         }
 
         const userId = createId("user");
         user = withStoredUserDefaults({
           id: userId, name, email: email!, password: bcrypt.hashSync(createId("rand"), 10),
-          role: "student", studentClass: null, fieldOfInterest: null,
+          role, studentClass: null, fieldOfInterest: null,
           referralSource: null, avatar, streak: 0, totalStudyTime: 0,
           joinedAt: new Date().toISOString(), isPremium: false, premiumExpiry: null,
           isOnboarded: false, selectedCourse: null, isDropper: false,
