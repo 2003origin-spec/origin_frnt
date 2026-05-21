@@ -533,6 +533,23 @@ export async function handleGoogleLogin(payload: UserPayload) {
       try {
         let dbUser = await dbFindUserByEmail(email, role);
         if (!dbUser) {
+          // Same email may already exist under a different role (e.g. user
+          // signed up as a student earlier and is now trying to Google in
+          // on the teacher page). Surface a clear hint instead of silently
+          // creating a second row and consuming a teacher seat.
+          const otherRoles: Array<"student" | "teacher" | "admin"> = role === "teacher"
+            ? ["student", "admin"]
+            : role === "student" ? ["teacher", "admin"]
+            : ["student", "teacher"];
+          for (const otherRole of otherRoles) {
+            const existingOther = await dbFindUserByEmail(email, otherRole);
+            if (existingOther) {
+              return badRequest(
+                `This Google account is already registered as a ${otherRole}. Please use the ${otherRole} login page instead.`,
+              );
+            }
+          }
+
           // Enforce registration limit for new users (role-aware: teachers capped separately)
           const status = await getRegistrationStatus(role);
           if (status.seatsLeft <= 0) {

@@ -43,7 +43,7 @@ interface AuthContextType {
   primeTasks: (seededTasks: Task[]) => void;
   isNavigationLocked: boolean;
   setIsNavigationLocked: (locked: boolean) => void;
-  sendOtp: (email: string) => Promise<{ ok: boolean; message: string }>;
+  sendOtp: (email: string, role?: 'student' | 'teacher' | 'admin' | null) => Promise<{ ok: boolean; message: string }>;
   verifyOtp: (email: string, otp: string) => Promise<{ ok: boolean; message: string }>;
 }
 
@@ -445,10 +445,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
     }
   };
 
-  const sendOtp = async (email: string) => {
+  const sendOtp = async (email: string, role?: 'student' | 'teacher' | 'admin' | null) => {
     setIsLoading(true);
     try {
-      const result = await sendOtpAction(email);
+      const result = await sendOtpAction(email, role ?? null);
       if (result.ok) {
         toast.success(result.message);
       } else {

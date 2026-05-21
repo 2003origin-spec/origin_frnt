@@ -22,7 +22,7 @@ interface AuthPageProps {
   onLoginWithOtp?: (email: string, role?: 'student' | 'teacher' | 'admin' | null) => void;
   onRegister: (name: string, email: string, password: string, role?: 'student' | 'teacher' | 'admin' | null) => void;
   onGoogleLogin?: (credential: string, role?: 'student' | 'teacher' | 'admin' | null) => void;
-  sendOtp?: (email: string) => Promise<{ ok: boolean; message: string }>;
+  sendOtp?: (email: string, role?: 'student' | 'teacher' | 'admin' | null) => Promise<{ ok: boolean; message: string }>;
   verifyOtp?: (email: string, otp: string) => Promise<{ ok: boolean; message: string }>;
   onBack: () => void;
   isLoading: boolean;
@@ -91,7 +91,7 @@ export default function AuthPage({
   const handleSendOtp = async () => {
     if (!email) return;
     if (sendOtp) {
-      const res = await sendOtp(email);
+      const res = await sendOtp(email, userRole);
       if (res.ok) {
         setStep('otp');
         setResendCooldown(60); // 1 minute cooldown
