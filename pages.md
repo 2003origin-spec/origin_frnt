@@ -6,7 +6,15 @@ This document maps all the pages to be generated for the ORIGIN Teacher Platform
 
 ## 1. Page List & Checklists
 
-- [x] **Page 1: Home Dashboard** (`/teacher/workspaces/[workspaceId]`) - [Stitch Screen 57dd90c04136438eae23c2f2c8abd5cf](https://stitch.withgoogle.com/projects/2531893112967424418/screens/57dd90c04136438eae23c2f2c8abd5cf)
+- [x] **Page 1: Home Dashboard** (`/teacher/workspaces/[workspaceId]`)
+  - **Dark Mode (Pure Black base, Cyan accent)**:
+    - [Desktop (Screen c6eb1e95e0f5472288f5daa3ef0da7fa)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/c6eb1e95e0f5472288f5daa3ef0da7fa)
+    - [Tablet (Screen 7b2610f929664eeabf1af87cec4ad80a)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/7b2610f929664eeabf1af87cec4ad80a)
+    - [Mobile (Screen 186ab11fa5c94d838a1f85bf0ad7fca6)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/186ab11fa5c94d838a1f85bf0ad7fca6)
+  - **Light Mode (Pure White base, Cyan accent)**:
+    - [Desktop (Screen 145dc19599404676b2ed2a42fc4000f1)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/145dc19599404676b2ed2a42fc4000f1)
+    - [Tablet (Screen 47f0230a620246aa98ca9970a34e3a69)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/47f0230a620246aa98ca9970a34e3a69)
+    - [Mobile (Screen a4ac34be6d954a6e8932d1c3ccfc7ad1)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/a4ac34be6d954a6e8932d1c3ccfc7ad1)
 - [x] **Page 2: Students Directory & Onboarding Queue** (`/teacher/workspaces/[workspaceId]/students`) - [Stitch Screen 7635c5366f174d8c960de531753f155d](https://stitch.withgoogle.com/projects/2531893112967424418/screens/7635c5366f174d8c960de531753f155d)
 - [x] **Page 3: Batch Details & Syllabus Planner** (`/teacher/workspaces/[workspaceId]/batches/[batchId]`) - [Stitch Screen 724a5abfda3242f08b0b129d08f26eba](https://stitch.withgoogle.com/projects/2531893112967424418/screens/724a5abfda3242f08b0b129d08f26eba)
 - [x] **Page 4: Question Bag Library & Manual Editor** (`/teacher/workspaces/[workspaceId]/question-bag`) - [Stitch Screen 3c190e3c21e84c8ea0ad1fdb2e1608cb](https://stitch.withgoogle.com/projects/2531893112967424418/screens/3c190e3c21e84c8ea0ad1fdb2e1608cb)
