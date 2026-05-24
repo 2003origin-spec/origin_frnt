@@ -15,8 +15,24 @@ This document maps all the pages to be generated for the ORIGIN Teacher Platform
     - [Desktop (Screen 145dc19599404676b2ed2a42fc4000f1)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/145dc19599404676b2ed2a42fc4000f1)
     - [Tablet (Screen 47f0230a620246aa98ca9970a34e3a69)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/47f0230a620246aa98ca9970a34e3a69)
     - [Mobile (Screen a4ac34be6d954a6e8932d1c3ccfc7ad1)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/a4ac34be6d954a6e8932d1c3ccfc7ad1)
-- [x] **Page 2: Students Directory & Onboarding Queue** (`/teacher/workspaces/[workspaceId]/students`) - [Stitch Screen 7635c5366f174d8c960de531753f155d](https://stitch.withgoogle.com/projects/2531893112967424418/screens/7635c5366f174d8c960de531753f155d)
-- [x] **Page 3: Batch Details & Syllabus Planner** (`/teacher/workspaces/[workspaceId]/batches/[batchId]`) - [Stitch Screen 724a5abfda3242f08b0b129d08f26eba](https://stitch.withgoogle.com/projects/2531893112967424418/screens/724a5abfda3242f08b0b129d08f26eba)
+- [x] **Page 2: Students Directory & Onboarding Queue** (`/teacher/workspaces/[workspaceId]/students`)
+  - **Dark Mode (Pure Black base, Cyan accent)**:
+    - [Desktop (Screen ba71e77215914c3099cf096c9d386321)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/ba71e77215914c3099cf096c9d386321)
+    - [Tablet (Screen 4de9f18edcdd4dc6935c8c9e9283a082)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/4de9f18edcdd4dc6935c8c9e9283a082)
+    - [Mobile (Screen 5d88ebf42a1d4a4b89d0fd50e55e6864)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/5d88ebf42a1d4a4b89d0fd50e55e6864)
+  - **Light Mode (Pure White base, Cyan accent)**:
+    - [Desktop (Screen 7e4b9de0a38e4af8bd80960278a49de7)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/7e4b9de0a38e4af8bd80960278a49de7)
+    - [Tablet (Screen 76be26e2daef4619a65f8a6c08837eb4)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/76be26e2daef4619a65f8a6c08837eb4)
+    - [Mobile (Screen e29d5d44211d4c07a7946261a3b195bf)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/e29d5d44211d4c07a7946261a3b195bf)
+- [x] **Page 3: Batch Details & Syllabus Planner** (`/teacher/workspaces/[workspaceId]/batches/[batchId]`)
+  - **Dark Mode (Pure Black base, Cyan accent)**:
+    - [Desktop (Screen f3dc2ee4dfc94ea888250f140bc20d5e)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/f3dc2ee4dfc94ea888250f140bc20d5e)
+    - [Tablet (Screen 8dbedd3cb68e44da9751c6e9a2196c37)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/8dbedd3cb68e44da9751c6e9a2196c37)
+    - [Mobile (Screen a9e7581e502b4276b328b865232c13c4)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/a9e7581e502b4276b328b865232c13c4)
+  - **Light Mode (Pure White base, Cyan accent)**:
+    - [Desktop (Screen 0362a72e36d14bf7901c3992f949d00a)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/0362a72e36d14bf7901c3992f949d00a)
+    - [Tablet (Screen a0f58fc35dc041d285dbc6fe0fc9207a)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/a0f58fc35dc041d285dbc6fe0fc9207a)
+    - [Mobile (Screen 1f01aece38834c598dcd1b977f523361)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/1f01aece38834c598dcd1b977f523361)
 - [x] **Page 4: Question Bag Library & Manual Editor** (`/teacher/workspaces/[workspaceId]/question-bag`) - [Stitch Screen 3c190e3c21e84c8ea0ad1fdb2e1608cb](https://stitch.withgoogle.com/projects/2531893112967424418/screens/3c190e3c21e84c8ea0ad1fdb2e1608cb)
 - [x] **Page 5: Document Import Pipeline & Review Panel** (`/teacher/workspaces/[workspaceId]/question-bag/import`) - [Stitch Screen 13d6001439274de5acc131c5425ddf74](https://stitch.withgoogle.com/projects/2531893112967424418/screens/13d6001439274de5acc131c5425ddf74)
 - [x] **Page 6: Scheduled Test Creator & Builder** (`/teacher/workspaces/[workspaceId]/tests`) - [Stitch Screen 5f83d43051294e208d9485116119842b](https://stitch.withgoogle.com/projects/2531893112967424418/screens/5f83d43051294e208d9485116119842b)
