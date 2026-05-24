@@ -22,9 +22,9 @@ We do not use generic plain colors. We use curated HSL-tailored schemes with sub
 
 #### Dark Theme (Default)
 Designed for low light, reducing eye strain for teachers grading at night.
-*   **Primary Accent:** Electric Indigo (`#818cf8` / HSL `239, 84%, 74%`) transitioning to Violet (`#a78bfa`).
-*   **Background Base:** Deep Space Navy (`#090d16`) and Dark Slate (`#0f172a`).
-*   **Card Surfaces:** Glassmorphic translucent navy (`rgba(15, 23, 42, 0.65)`) with a subtle white border (`rgba(255, 255, 255, 0.08)`), backed by a `backdrop-blur-md` filter.
+*   **Primary Accent:** Electric Blue (`#2563eb` / HSL `221.2, 83.2%, 53.3%`).
+*   **Background Base:** Deep Space Navy/Black (`#02040a` / HSL `224, 71%, 4%`).
+*   **Card Surfaces:** Dark Slate panels (`#02040a` or glassmorphic `rgba(15, 23, 42, 0.65)`) with a subtle white border (`rgba(255, 255, 255, 0.08)`), backed by a `backdrop-blur-md` filter.
 *   **Text Hierarchy:**
     *   Primary: Crisp Cream (`#f8fafc`)
     *   Secondary: Muted Blue-Gray (`#94a3b8`)
@@ -37,9 +37,9 @@ Designed for low light, reducing eye strain for teachers grading at night.
 
 #### Light Theme
 Designed for daytime classroom environments and projections.
-*   **Primary Accent:** Vibrant Indigo (`#4f46e5` / HSL `243, 75%, 59%`) transitioning to Deep Purple (`#7c3aed`).
-*   **Background Base:** Soft Gray-White (`#f8fafc`) and Pure White (`#ffffff`).
-*   **Card Surfaces:** Clean white panels (`rgba(255, 255, 255, 0.8)`) with soft, diffuse gray borders (`rgba(148, 163, 184, 0.12)`) and light ambient dropshadows (`shadow-sm`).
+*   **Primary Accent:** Vibrant Rose/Crimson (`#e11d48` / HSL `346.8, 77.2%, 49.8%`).
+*   **Background Base:** Soft Pinkish White (`#faf5f6` / HSL `345, 60%, 97.5%`).
+*   **Card Surfaces:** Soft Light Pinkish Panels (`#fdfafb` / HSL `345, 50%, 98.5%`) with soft, diffuse gray/pink borders (`rgba(225, 29, 72, 0.08)`) and light ambient dropshadows (`shadow-sm`).
 *   **Text Hierarchy:**
     *   Primary: Dark Slate (`#0f172a`)
     *   Secondary: Charcoal Gray (`#475569`)
@@ -67,18 +67,18 @@ Designed for daytime classroom environments and projections.
 The web platform is desktop-first, with collapsing left sidebar navigation, optimized for wide data tables and side-by-side editing. The mobile view wraps key telemetry and live classroom actions into a responsive bottom bar for teachers on-the-go.
 
 ### Web Layout (Desktop)
-*   **Collapsible Sidebar:** Left side, width `240px` (collapsed to `64px`). Top section displays the **ORIGIN Logo** (`/origin-new.jpg`, 36px) alongside the Workspace selector dropdown.
-*   **Workspace Selector:** Switch between different `app.teacher_workspaces` (Personal Classrooms vs. Multi-branch Coaching Institutes).
-*   **Main Nav Items:**
-    1.  `Home` (Dashboard telemetries, task list)
-    2.  `Students` (Unassigned queue, active directory)
-    3.  `Batches` (Syllabus planner, assigned teachers)
-    4.  `Question Bag` (Question authoring & PDF imports)
-    5.  `Scheduled Tests` (Mock test manager, calendar)
-    6.  `Live Rooms` (Real-time active rooms & leaderboards)
-    7.  `Analytics` (Batch performance dashboards)
-    8.  `OGCode Publish` (Public question submissions)
-*   **Top Bar:** Displays the current active breadcrumb, Search Bar (`Cmd+K`), Theme Toggle, Notification Bell (for new enrollments or completed test alerts), and Profile Avatar with role details.
+*   **Sticky Top Navigation Header:** Height `56px`, fixed at the top of the viewport. Displays the Workspace Selector dropdown on the left, followed by horizontal text navigation links.
+*   **Workspace Selector (`WorkspaceSwitcher`):** Toggle dropdown displaying the current active workspace name (e.g., "Class 12 - Physics A" or "Class 11 - JEE Advanced") and list of other accessible workspaces.
+*   **Horizontal Navigation Links (`NAV_ITEMS`):**
+    1.  `Overview` (Route: `/teacher/workspaces/[workspaceId]`)
+    2.  `Students` (Route: `/teacher/workspaces/[workspaceId]/students`)
+    3.  `Batches` (Route: `/teacher/workspaces/[workspaceId]/batches`)
+    4.  `Question Bag` (Route: `/teacher/workspaces/[workspaceId]/question-bag`)
+    5.  `Tests` (Route: `/teacher/workspaces/[workspaceId]/tests`)
+    6.  `Rooms` (Route: `/teacher/workspaces/[workspaceId]/rooms`)
+    7.  `Settings` (Route: `/teacher/workspaces/[workspaceId]/settings`)
+*   **Header Right Actions:** Displays a role override pill if platform admin, theme toggler, notification bell, and user avatar.
+*   **Main Container:** Margin-less width, full width padding (`px-6 py-8`) centered below the top navigation bar. Uses standard shadcn/ui Card layouts.
 
 ### Mobile Layout (Phone)
 *   **Bottom Navigation Bar:** Floating glassmorphic dock with 5 main options:

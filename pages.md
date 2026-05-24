@@ -25,12 +25,11 @@ This document maps all the pages to be generated for the ORIGIN Teacher Platform
 *Focus:* Active class telemetries and immediate task list.
 
 *   **Responsive Layout Layouts:**
-    *   **Desktop:** Left Sidebar (240px wide) + Main content in a 3-column grid.
-    *   **Tablet:** Left Sidebar collapses to 64px (icons only). Main area in 2 columns (Alerts/Hero spans full-width, Timeline and Schedule stacked).
+    *   **Desktop:** Sticky Top Navigation Header (56px) + Main content area in a 3-column card grid.
+    *   **Tablet:** Sticky Top Navigation Header (56px) + Main content area in 2 columns (Alerts/Hero spans full-width, Timeline and Schedule stacked).
     *   **Mobile:** Bottom Glassmorphic Floating Nav Dock. Full-width vertical card list.
 *   **Components:**
-    *   `SidebarNavigation`: Displays circular logo (`/origin-new.jpg`, 36px), Workspace select dropdown, and sidebar links.
-    *   `TopHeaderBar`: Displays page breadcrumbs, unified search bar (`Cmd+K`), notification bell with counter, and user profile avatar.
+    *   `StickyTopHeaderBar`: Sticky header containing `WorkspaceSwitcher` dropdown, horizontal text links (Overview, Students, Batches, Question Bag, Tests, Rooms, Settings), user profile avatar, and theme toggler.
     *   `WelcomeHeroPanel`: Displays greeting text, summary sentence of active items, and a stylized card showing the active **Workspace Code** (e.g. `ORIGIN-JEE-A1`) with "Copy Link", "WhatsApp Share", and "Rotate Code" action buttons.
     *   `ActiveAlertsGrid`: Group of three status-border cards:
         1.  *Unassigned Student Queue Alert* (Amber indicator)
@@ -45,8 +44,8 @@ This document maps all the pages to be generated for the ORIGIN Teacher Platform
 *Focus:* Approving newly enrolled students and managing batch mappings.
 
 *   **Responsive Layout Layouts:**
-    *   **Desktop:** Sidebar + Main Area split 70:30 (Left pane: Directory/Queue, Right pane: Batch Allocator slide drawer).
-    *   **Tablet:** Stacked vertically (Top: Queue carousel, Bottom: Active Directory grid; Batch Allocator opens in a full-screen overlay/modal).
+    *   **Desktop:** Sticky Top Navigation Header + Main Area split 70:30 (Left pane: Directory/Queue list, Right pane: Batch Allocator slide drawer).
+    *   **Tablet:** Sticky Top Navigation Header + Stacked vertically (Top: Queue carousel, Bottom: Active Directory grid; Batch Allocator opens in a full-screen overlay/modal).
     *   **Mobile:** Bottom Nav + Flat list. Unassigned student requests appear as swipeable cards at the top, followed by a flat search table.
 *   **Components:**
     *   `DirectoryTabSwitcher`: Horizontal tabs: "Active Directory", "Onboarding Queue (X)", "Suspended/Left".
@@ -62,8 +61,8 @@ This document maps all the pages to be generated for the ORIGIN Teacher Platform
 *Focus:* syllabus completion and assigned mock tests/materials.
 
 *   **Responsive Layout Layouts:**
-    *   **Desktop:** Sidebar + Split-Pane 30:70 (Left pane: Batch stats & co-teachers; Right pane: Syllabus tree & planners).
-    *   **Tablet:** Stacked columns (Syllabus rings on top, calendar/tree layout below).
+    *   **Desktop:** Sticky Top Navigation Header + Split-Pane 30:70 (Left pane: Batch stats & co-teachers; Right pane: Syllabus tree & planners).
+    *   **Tablet:** Sticky Top Navigation Header + Stacked columns (Syllabus rings on top, calendar/tree layout below).
     *   **Mobile:** Bottom Nav. Batch header card at top, swipeable subject selectors (Physics, Chemistry, Math), and flat checklist of chapters.
 *   **Components:**
     *   `BatchSummaryCard`: Displays targets, student count, weekly calendar, and assigned co-teachers.
@@ -79,8 +78,8 @@ This document maps all the pages to be generated for the ORIGIN Teacher Platform
 *Focus:* Question bank searching, filtering, and manual creation/editing.
 
 *   **Responsive Layout Layouts:**
-    *   **Desktop:** Sidebar + Split-pane 40:60 (Left pane: library directory; Right pane: authoring editor).
-    *   **Tablet:** Split-pane 50:50 (Vertical list on left, Editor form on right).
+    *   **Desktop:** Sticky Top Navigation Header + Split-pane 40:60 (Left pane: library directory; Right pane: authoring editor).
+    *   **Tablet:** Sticky Top Navigation Header + Split-pane 50:50 (Vertical list on left, Editor form on right).
     *   **Mobile:** Bottom Nav. Library list fills screen; clicking a question slides in the authoring editor as a full-screen overlay.
 *   **Components:**
     *   `QuestionFilters`: Left accordion panel filterable by Subject, Chapter, Topic, Difficulty (Easy, Medium, Hard, Insane), and Question Type (MCQ, MSQ, Numerical, Matrix, Subjective).
@@ -130,8 +129,8 @@ This document maps all the pages to be generated for the ORIGIN Teacher Platform
 *Focus:* Live telemetry and student scoring during ongoing exams.
 
 *   **Responsive Layout Layouts:**
-    *   **Desktop:** Sidebar + Header + Main Area Split 70:30 (Left pane: telemetry charts & presence grids; Right pane: live leaderboard).
-    *   **Tablet:** Header + stacked layout (Leaderboard spans top, telemetry grid below).
+    *   **Desktop:** Sticky Top Navigation Header + Main Area Split 70:30 (Left pane: telemetry charts & presence grids; Right pane: live leaderboard).
+    *   **Tablet:** Sticky Top Navigation Header + stacked layout (Leaderboard spans top, telemetry grid below).
     *   **Mobile:** Bottom Nav. Header countdown timer at top, sliding tab panel displaying "Leaderboard" or "Live Status".
 *   **Components:**
     *   `RoomHeaderWidget`: Displays Room Code in large bold font, ticking countdown timer, and control buttons ("Pause", "+5 Min", "End Test").
@@ -149,8 +148,8 @@ This document maps all the pages to be generated for the ORIGIN Teacher Platform
 *Focus:* Radar charts and assigning remedial worksheets based on topic weaknesses.
 
 *   **Responsive Layout Layouts:**
-    *   **Desktop:** Sidebar + 2-Column Grid (Left: Radar chart; Right: Weakness list & tables).
-    *   **Tablet/Mobile:** Vertical stacked column. Chart at top, followed by intervention cards, followed by tabular grids.
+    *   **Desktop:** Sticky Top Navigation Header + 2-Column Grid (Left: Radar chart; Right: Weakness list & tables).
+    *   **Tablet/Mobile:** Sticky Top Navigation Header + Vertical stacked column. Chart at top, followed by intervention cards, followed by tabular grids.
 *   **Components:**
     *   `OverviewMetricsBanner`: Small stat boxes displaying Average Score, Syllabus Pacing, Attendance, and Active Weak Concepts.
     *   `MasteryRadarChart`: Multi-axis radar visualization tracking chapter accuracy across Mathematics, Physics, and Chemistry.
