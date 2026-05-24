@@ -22,9 +22,9 @@ We do not use generic plain colors. We use curated HSL-tailored schemes with sub
 
 #### Dark Theme (Default)
 Designed for low light, reducing eye strain for teachers grading at night.
-*   **Primary Accent:** Electric Blue (`#2563eb` / HSL `221.2, 83.2%, 53.3%`).
-*   **Background Base:** Deep Space Navy/Black (`#02040a` / HSL `224, 71%, 4%`).
-*   **Card Surfaces:** Dark Slate panels (`#02040a` or glassmorphic `rgba(15, 23, 42, 0.65)`) with a subtle white border (`rgba(255, 255, 255, 0.08)`), backed by a `backdrop-blur-md` filter.
+*   **Primary Accent:** Vibrant Logo Cyan (`#38bdf8` / mixed with HSL `221.2, 83.2%, 53.3%` codebase components).
+*   **Background Base:** Full Black (`#000000`).
+*   **Card Surfaces:** Dark Slate panels (`#0a0a0a` or glassmorphic `rgba(15, 23, 42, 0.65)`) with a subtle white border (`rgba(255, 255, 255, 0.08)`), backed by a `backdrop-blur-md` filter.
 *   **Text Hierarchy:**
     *   Primary: Crisp Cream (`#f8fafc`)
     *   Secondary: Muted Blue-Gray (`#94a3b8`)
@@ -37,9 +37,9 @@ Designed for low light, reducing eye strain for teachers grading at night.
 
 #### Light Theme
 Designed for daytime classroom environments and projections.
-*   **Primary Accent:** Vibrant Rose/Crimson (`#e11d48` / HSL `346.8, 77.2%, 49.8%`).
-*   **Background Base:** Soft Pinkish White (`#faf5f6` / HSL `345, 60%, 97.5%`).
-*   **Card Surfaces:** Soft Light Pinkish Panels (`#fdfafb` / HSL `345, 50%, 98.5%`) with soft, diffuse gray/pink borders (`rgba(225, 29, 72, 0.08)`) and light ambient dropshadows (`shadow-sm`).
+*   **Primary Accent:** Vibrant Logo Cyan (`#38bdf8` / mixed with HSL `346.8, 77.2%, 49.8%` codebase components).
+*   **Background Base:** Pure White (`#ffffff`).
+*   **Card Surfaces:** Pure White Panels (`#ffffff`) with soft, diffuse gray/pink borders (`rgba(225, 29, 72, 0.08)`) and light ambient dropshadows (`shadow-sm`).
 *   **Text Hierarchy:**
     *   Primary: Dark Slate (`#0f172a`)
     *   Secondary: Charcoal Gray (`#475569`)
