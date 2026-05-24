@@ -33,12 +33,60 @@ This document maps all the pages to be generated for the ORIGIN Teacher Platform
     - [Desktop (Screen 0362a72e36d14bf7901c3992f949d00a)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/0362a72e36d14bf7901c3992f949d00a)
     - [Tablet (Screen a0f58fc35dc041d285dbc6fe0fc9207a)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/a0f58fc35dc041d285dbc6fe0fc9207a)
     - [Mobile (Screen 1f01aece38834c598dcd1b977f523361)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/1f01aece38834c598dcd1b977f523361)
-- [x] **Page 4: Question Bag Library & Manual Editor** (`/teacher/workspaces/[workspaceId]/question-bag`) - [Stitch Screen 3c190e3c21e84c8ea0ad1fdb2e1608cb](https://stitch.withgoogle.com/projects/2531893112967424418/screens/3c190e3c21e84c8ea0ad1fdb2e1608cb)
-- [x] **Page 5: Document Import Pipeline & Review Panel** (`/teacher/workspaces/[workspaceId]/question-bag/import`) - [Stitch Screen 13d6001439274de5acc131c5425ddf74](https://stitch.withgoogle.com/projects/2531893112967424418/screens/13d6001439274de5acc131c5425ddf74)
-- [x] **Page 6: Scheduled Test Creator & Builder** (`/teacher/workspaces/[workspaceId]/tests`) - [Stitch Screen 5f83d43051294e208d9485116119842b](https://stitch.withgoogle.com/projects/2531893112967424418/screens/5f83d43051294e208d9485116119842b)
-- [x] **Page 7: Live Study Room Real-Time Dashboard** (`/teacher/workspaces/[workspaceId]/rooms/[roomId]`) - [Stitch Screen a71a524021dd49ad87478dc979ea5787](https://stitch.withgoogle.com/projects/2531893112967424418/screens/a71a524021dd49ad87478dc979ea5787)
-- [x] **Page 8: Analytics Center & Weakness Remediation** (`/teacher/workspaces/[workspaceId]/analytics`) - [Stitch Screen 9e9ba6c9211a412fb84a3d853ae752aa](https://stitch.withgoogle.com/projects/2531893112967424418/screens/9e9ba6c9211a412fb84a3d853ae752aa)
-- [x] **Page 9: OGCode Contributor & Workspace Settings** (`/teacher/workspaces/[workspaceId]/settings`) - [Stitch Screen 6f6c7441f35c4ed3a85e38fd0be63920](https://stitch.withgoogle.com/projects/2531893112967424418/screens/6f6c7441f35c4ed3a85e38fd0be63920)
+- [x] **Page 4: Question Bag Library & Manual Editor** (`/teacher/workspaces/[workspaceId]/question-bag`)
+  - **Dark Mode (Pure Black base, Cyan accent)**:
+    - [Desktop (Screen 395c9e91f09040a290af58e6d1c30635)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/395c9e91f09040a290af58e6d1c30635)
+    - [Tablet (Screen 79e58b17499f4602862f0eb2c447d902)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/79e58b17499f4602862f0eb2c447d902)
+    - [Mobile (Screen 784fcf3184cd4a67baa9dccb6cf2930a)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/784fcf3184cd4a67baa9dccb6cf2930a)
+  - **Light Mode (Pure White base, Cyan accent)**:
+    - [Desktop (Screen c3e62c228c6148a0bc8d88b459aa4508)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/c3e62c228c6148a0bc8d88b459aa4508)
+    - [Tablet (Screen ffd1d745fcdb413da24a604d953df7ec)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/ffd1d745fcdb413da24a604d953df7ec)
+    - [Mobile (Screen 8d70b4bbeae44e4c8a491f5a9846c33d)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/8d70b4bbeae44e4c8a491f5a9846c33d)
+- [x] **Page 5: Document Import Pipeline & Review Panel** (`/teacher/workspaces/[workspaceId]/question-bag/import`)
+  - **Dark Mode (Pure Black base, Cyan accent)**:
+    - [Desktop (Screen a03b9f978ae34ddb9c1e53e42ce53a74)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/a03b9f978ae34ddb9c1e53e42ce53a74)
+    - [Tablet (Screen 8989be57f9a34731a3bc7766c903f2b3)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/8989be57f9a34731a3bc7766c903f2b3)
+    - [Mobile (Screen 42a46229661245c2afb6e5b0c3ce1154)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/42a46229661245c2afb6e5b0c3ce1154)
+  - **Light Mode (Pure White base, Cyan accent)**:
+    - [Desktop (Screen 5f525a15b2434256897d8013f808b77a)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/5f525a15b2434256897d8013f808b77a)
+    - [Tablet (Screen 13c710e448c34bd0bbe74f96be5727ab)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/13c710e448c34bd0bbe74f96be5727ab)
+    - [Mobile (Screen 8d388700b1304e42a20098c5c5a4a857)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/8d388700b1304e42a20098c5c5a4a857)
+- [x] **Page 6: Scheduled Test Creator & Builder** (`/teacher/workspaces/[workspaceId]/tests`)
+  - **Dark Mode (Pure Black base, Cyan accent)**:
+    - [Desktop (Screen fc78b70bbe6a4b3db5c56652065952f8)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/fc78b70bbe6a4b3db5c56652065952f8)
+    - [Tablet (Screen e036ba1eda6a482a972feacfc7b1d9fc)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/e036ba1eda6a482a972feacfc7b1d9fc)
+    - [Mobile (Screen f4a40d0df9b845c5a78c46096502c304)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/f4a40d0df9b845c5a78c46096502c304)
+  - **Light Mode (Pure White base, Cyan accent)**:
+    - [Desktop (Screen 1c0485ad766d4d7baf54d43d831feb22)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/1c0485ad766d4d7baf54d43d831feb22)
+    - [Tablet (Screen 157130635c344d9f933aeddbb3ef47aa)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/157130635c344d9f933aeddbb3ef47aa)
+    - [Mobile (Screen 6c6605a9b67c445585386e5423ebf7f2)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/6c6605a9b67c445585386e5423ebf7f2)
+- [x] **Page 7: Live Study Room Real-Time Dashboard** (`/teacher/workspaces/[workspaceId]/rooms/[roomId]`)
+  - **Dark Mode (Pure Black base, Cyan accent)**:
+    - [Desktop (Screen 002002b7cfa74012b8d691e6d28c24ae)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/002002b7cfa74012b8d691e6d28c24ae)
+    - [Tablet (Screen 9714c28ab98544bd8691e2c3253d81b1)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/9714c28ab98544bd8691e2c3253d81b1)
+    - [Mobile (Screen a02c0c0490f04845bb9b562cd84c768d)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/a02c0c0490f04845bb9b562cd84c768d)
+  - **Light Mode (Pure White base, Cyan accent)**:
+    - [Desktop (Screen 4741957c0e684d50971596ceb5d0b873)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/4741957c0e684d50971596ceb5d0b873)
+    - [Tablet (Screen c84b647bf5184721ac9c0b1715d28a3d)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/c84b647bf5184721ac9c0b1715d28a3d)
+    - [Mobile (Screen 5aed4133d7be4563915b90b98d192409)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/5aed4133d7be4563915b90b98d192409)
+- [x] **Page 8: Analytics Center & Weakness Remediation** (`/teacher/workspaces/[workspaceId]/analytics`)
+  - **Dark Mode (Pure Black base, Cyan accent)**:
+    - [Desktop (Screen 39eb8d9837584d71bb57de3c5fe2b544)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/39eb8d9837584d71bb57de3c5fe2b544)
+    - [Tablet (Screen 8f06849f303f4596811fbe6f9e03d42d)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/8f06849f303f4596811fbe6f9e03d42d)
+    - [Mobile (Screen 6d37612e09084e4e8d71aac11b980827)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/6d37612e09084e4e8d71aac11b980827)
+  - **Light Mode (Pure White base, Cyan accent)**:
+    - [Desktop (Screen 9dbdc1ca40fa41e7871bb409491af7cd)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/9dbdc1ca40fa41e7871bb409491af7cd)
+    - [Tablet (Screen 4582847ca8dd4e0886311334627ff7eb)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/4582847ca8dd4e0886311334627ff7eb)
+    - [Mobile (Screen 748fd88260d74e0989686724266246c1)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/748fd88260d74e0989686724266246c1)
+- [x] **Page 9: OGCode Contributor & Workspace Settings** (`/teacher/workspaces/[workspaceId]/settings`)
+  - **Dark Mode (Pure Black base, Cyan accent)**:
+    - [Desktop (Screen a64a1b5e9d254d0d939436accdecd023)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/a64a1b5e9d254d0d939436accdecd023)
+    - [Tablet (Screen a0c86352794f46d2a45583fbd2fc4a1f)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/a0c86352794f46d2a45583fbd2fc4a1f)
+    - [Mobile (Screen 043567963b054110878a0153c05814ad)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/043567963b054110878a0153c05814ad)
+  - **Light Mode (Pure White base, Cyan accent)**:
+    - [Desktop (Screen 9d9f35b6eaad41d4acb2819e54b394dd)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/9d9f35b6eaad41d4acb2819e54b394dd)
+    - [Tablet (Screen e4780219adbb40a89ffd8992e6aa2318)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/e4780219adbb40a89ffd8992e6aa2318)
+    - [Mobile (Screen 5dd2af9a4f184eb4a5000547644929eb)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/5dd2af9a4f184eb4a5000547644929eb)
 
 ---
 
