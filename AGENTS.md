@@ -226,3 +226,33 @@ installs both.
 
 Both migrations are idempotent and safe to re-run.
 <!-- END:phase-10-12-services -->
+
+<!-- BEGIN:vercel-token -->
+# Vercel access token (for agent sessions)
+
+A Vercel personal access token scoped to the `origin-s-projects` team
+lives at:
+
+```
+/Users/xyx/.config/origin/vercel-token
+```
+
+File is mode 600 (owner-only), outside every git tree, never committed.
+
+Use it from a session like this:
+
+```bash
+export VERCEL_TOKEN="$(cat /Users/xyx/.config/origin/vercel-token)"
+vercel inspect <deployment-id> --logs --scope=origin-s-projects --token="$VERCEL_TOKEN"
+vercel ls origin-frnt --scope=origin-s-projects --token="$VERCEL_TOKEN"
+vercel logs <deployment-url> --scope=origin-s-projects --token="$VERCEL_TOKEN"
+```
+
+The Vercel-deploy project is `origin-frnt` in team scope
+`origin-s-projects`. Production deployments build the `main` branch of
+the `2003origin-spec/origin_frnt` GitHub repo.
+
+If the file is missing or `vercel whoami --token=…` returns
+`Not authorized`, the token was rotated — ask the user to mint a new
+one at https://vercel.com/account/tokens and overwrite the file.
+<!-- END:vercel-token -->
