@@ -6,15 +6,15 @@ This document maps all the pages to be generated for the ORIGIN Teacher Platform
 
 ## 1. Page List & Checklists
 
-- [ ] **Page 1: Home Dashboard** (`/teacher/workspaces/[workspaceId]`)
-- [ ] **Page 2: Students Directory & Onboarding Queue** (`/teacher/workspaces/[workspaceId]/students`)
-- [ ] **Page 3: Batch Details & Syllabus Planner** (`/teacher/workspaces/[workspaceId]/batches/[batchId]`)
-- [ ] **Page 4: Question Bag Library & Manual Editor** (`/teacher/workspaces/[workspaceId]/question-bag`)
-- [ ] **Page 5: Document Import Pipeline & Review Panel** (`/teacher/workspaces/[workspaceId]/question-bag/import`)
-- [ ] **Page 6: Scheduled Test Creator & Builder** (`/teacher/workspaces/[workspaceId]/tests`)
-- [ ] **Page 7: Live Study Room Real-Time Dashboard** (`/teacher/workspaces/[workspaceId]/rooms/[roomId]`)
-- [ ] **Page 8: Analytics Center & Weakness Remediation** (`/teacher/workspaces/[workspaceId]/analytics`)
-- [ ] **Page 9: OGCode Contributor & Workspace Settings** (`/teacher/workspaces/[workspaceId]/settings`)
+- [x] **Page 1: Home Dashboard** (`/teacher/workspaces/[workspaceId]`) - [Stitch Screen 57dd90c04136438eae23c2f2c8abd5cf](https://stitch.withgoogle.com/projects/2531893112967424418/screens/57dd90c04136438eae23c2f2c8abd5cf)
+- [x] **Page 2: Students Directory & Onboarding Queue** (`/teacher/workspaces/[workspaceId]/students`) - [Stitch Screen 7635c5366f174d8c960de531753f155d](https://stitch.withgoogle.com/projects/2531893112967424418/screens/7635c5366f174d8c960de531753f155d)
+- [x] **Page 3: Batch Details & Syllabus Planner** (`/teacher/workspaces/[workspaceId]/batches/[batchId]`) - [Stitch Screen 724a5abfda3242f08b0b129d08f26eba](https://stitch.withgoogle.com/projects/2531893112967424418/screens/724a5abfda3242f08b0b129d08f26eba)
+- [x] **Page 4: Question Bag Library & Manual Editor** (`/teacher/workspaces/[workspaceId]/question-bag`) - [Stitch Screen 3c190e3c21e84c8ea0ad1fdb2e1608cb](https://stitch.withgoogle.com/projects/2531893112967424418/screens/3c190e3c21e84c8ea0ad1fdb2e1608cb)
+- [x] **Page 5: Document Import Pipeline & Review Panel** (`/teacher/workspaces/[workspaceId]/question-bag/import`) - [Stitch Screen 13d6001439274de5acc131c5425ddf74](https://stitch.withgoogle.com/projects/2531893112967424418/screens/13d6001439274de5acc131c5425ddf74)
+- [x] **Page 6: Scheduled Test Creator & Builder** (`/teacher/workspaces/[workspaceId]/tests`) - [Stitch Screen 5f83d43051294e208d9485116119842b](https://stitch.withgoogle.com/projects/2531893112967424418/screens/5f83d43051294e208d9485116119842b)
+- [x] **Page 7: Live Study Room Real-Time Dashboard** (`/teacher/workspaces/[workspaceId]/rooms/[roomId]`) - [Stitch Screen a71a524021dd49ad87478dc979ea5787](https://stitch.withgoogle.com/projects/2531893112967424418/screens/a71a524021dd49ad87478dc979ea5787)
+- [x] **Page 8: Analytics Center & Weakness Remediation** (`/teacher/workspaces/[workspaceId]/analytics`) - [Stitch Screen 9e9ba6c9211a412fb84a3d853ae752aa](https://stitch.withgoogle.com/projects/2531893112967424418/screens/9e9ba6c9211a412fb84a3d853ae752aa)
+- [x] **Page 9: OGCode Contributor & Workspace Settings** (`/teacher/workspaces/[workspaceId]/settings`) - [Stitch Screen 6f6c7441f35c4ed3a85e38fd0be63920](https://stitch.withgoogle.com/projects/2531893112967424418/screens/6f6c7441f35c4ed3a85e38fd0be63920)
 
 ---
 
