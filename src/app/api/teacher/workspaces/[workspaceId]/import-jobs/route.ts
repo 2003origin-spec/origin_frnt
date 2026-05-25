@@ -11,6 +11,7 @@ import { requireFeatureEnabled } from "@/lib/feature-flags";
 import { requireWorkspaceMember } from "@/server/workspaces/authz";
 import {
   createImportJob,
+  ImportJobBackpressureError,
   listWorkspaceImportJobs,
 } from "@/server/workspaces/document-import-service";
 
@@ -30,6 +31,12 @@ const createJobSchema = z.object({
   chunkSize: z.number().int().positive().nullable().optional(),
   overlap: z.number().int().min(0).nullable().optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
+  /** Plan: target_surface CHECK on import.document_import_jobs. */
+  targetSurface: z.enum(["question_bag", "ogcode_draft", "admin_ogcode"]).optional(),
+  /** FK to content.assets when the caller has pre-uploaded the source. */
+  sourceAssetId: z.string().nullable().optional(),
+  /** Hint to the verifier — accepts a fuzzy match within ±max(2, n/10). */
+  requestedQuestionCount: z.number().int().positive().max(2000).nullable().optional(),
 });
 
 const JOB_STATUS_VALUES = [
@@ -90,9 +97,26 @@ export async function POST(request: NextRequest, context: WorkspaceIdRouteContex
       chunkSize: parsed.data.chunkSize,
       overlap: parsed.data.overlap,
       metadata: parsed.data.metadata,
+      targetSurface: parsed.data.targetSurface,
+      sourceAssetId: parsed.data.sourceAssetId,
+      requestedQuestionCount: parsed.data.requestedQuestionCount,
     });
     return teacherJson({ job }, { status: 201 });
   } catch (error) {
+    if (error instanceof ImportJobBackpressureError) {
+      return teacherJson(
+        {
+          detail: error.message,
+          errorCode: error.errorCode,
+          activeJobs: error.active,
+          concurrencyCap: error.cap,
+        },
+        {
+          status: error.status,
+          headers: { "Retry-After": "30" },
+        },
+      );
+    }
     return handleTeacherError(error);
   }
 }

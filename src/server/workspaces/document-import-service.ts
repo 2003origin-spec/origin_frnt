@@ -8,6 +8,7 @@ import { recordAuditEvent } from "./audit";
 import {
   addJobPage,
   addJobQuestion,
+  countActiveImportJobs,
   createImportJob as storeCreateImportJob,
   getImportJob,
   getJobPages as storeGetJobPages,
@@ -18,29 +19,106 @@ import {
   updateQuestionStatus,
 } from "./document-import-store";
 import { getActiveMembership } from "./store";
-import type { DocumentImportJob, ImportJobQuestion, ImportJobStatus, ImportJobWithProgress, ImportPageStatus, ImportQuestionStatus, ImportSourceType } from "./types";
+import type { DocumentImportJob, ImportJobQuestion, ImportJobStatus, ImportJobWithProgress, ImportPageStatus, ImportQuestionStatus, ImportSourceType, ImportTargetSurface } from "./types";
+
+/** Cap on simultaneously queued+processing jobs per workspace. Phase 13
+ * backpressure — protects the document-import worker from being swamped
+ * by a single workspace bulk-uploading. Tunable via env. */
+function importJobConcurrencyCap(): number {
+  const raw = process.env.DOCUMENT_IMPORT_WORKSPACE_CONCURRENCY?.trim();
+  const parsed = raw ? Number.parseInt(raw, 10) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 5;
+}
+
+export class ImportJobBackpressureError extends Error {
+  status = 429 as const;
+  errorCode = "IMPORT_JOB_BACKPRESSURE" as const;
+  constructor(public readonly active: number, public readonly cap: number) {
+    super(
+      `Import queue is at capacity (${active}/${cap} active jobs). Wait for in-flight jobs to finish before submitting more.`,
+    );
+    this.name = "ImportJobBackpressureError";
+  }
+}
 
 export async function createImportJob(input: {
   workspaceId: string; userId: string; sourceType: ImportSourceType; fileName: string;
   mimeType?: string | null; content?: string | null; fileUrl?: string | null;
   chunkSize?: number | null; overlap?: number | null; metadata?: Record<string, unknown>;
+  targetSurface?: ImportTargetSurface;
+  sourceAssetId?: string | null;
+  requestedQuestionCount?: number | null;
+  /** When true, fire-and-forget kicks off the FastAPI worker after the
+   * job row is committed. Defaults to true — set false in tests to keep
+   * the pipeline call out of the request. */
+  triggerPipeline?: boolean;
 }): Promise<DocumentImportJob> {
   const membership = await getActiveMembership(input.workspaceId, input.userId);
-  if (!membership || !["owner", "admin", "teacher"].includes(membership.role)) {
+  if (!membership || !["owner", "admin", "teacher", "content_manager"].includes(membership.role)) {
     throw new AuthzError(403, "Insufficient permissions to create import jobs.");
   }
+  const cap = importJobConcurrencyCap();
+  const active = await countActiveImportJobs(input.workspaceId);
+  if (active >= cap) {
+    throw new ImportJobBackpressureError(active, cap);
+  }
   const job = await storeCreateImportJob({
-    workspaceId: input.workspaceId, userId: input.userId, sourceType: input.sourceType,
-    fileName: input.fileName, mimeType: input.mimeType, content: input.content,
-    fileUrl: input.fileUrl, chunkSize: input.chunkSize, overlap: input.overlap,
+    workspaceId: input.workspaceId,
+    userId: input.userId,
+    sourceType: input.sourceType,
+    fileName: input.fileName,
+    mimeType: input.mimeType,
+    content: input.content,
+    fileUrl: input.fileUrl,
+    chunkSize: input.chunkSize,
+    overlap: input.overlap,
     metadata: input.metadata,
+    targetSurface: input.targetSurface,
+    sourceAssetId: input.sourceAssetId,
+    requestedQuestionCount: input.requestedQuestionCount,
   });
   await recordAuditEvent({
     actorUserId: input.userId, workspaceId: input.workspaceId,
     entityType: "document_import_job", entityId: job.id, action: "import_job.created",
     after: { id: job.id, sourceType: job.sourceType, fileName: job.sourceFileName },
   });
+
+  if (input.triggerPipeline !== false) {
+    // Fire-and-forget the pipeline so callers don't block on it.
+    triggerImportPipeline(job).catch((err: unknown) => {
+      // Swallowed deliberately — pipeline failures are reflected in the
+      // job row (status='failed', error_code/message set by the worker).
+      console.warn(`[document-import] pipeline trigger failed for ${job.id}:`, err);
+    });
+  }
+
   return job;
+}
+
+/** POST /v1/import-jobs/{id}/run on the document-import-service.
+ * No-op when DOCUMENT_IMPORT_SERVICE_URL isn't configured (dev env). */
+export async function triggerImportPipeline(job: DocumentImportJob): Promise<void> {
+  const baseUrl = process.env.DOCUMENT_IMPORT_SERVICE_URL?.trim();
+  const token = process.env.DOCUMENT_IMPORT_SERVICE_TOKEN?.trim();
+  if (!baseUrl || !token) return;
+
+  const requestId =
+    typeof globalThis.crypto?.randomUUID === "function"
+      ? globalThis.crypto.randomUUID()
+      : `${Date.now()}-${Math.random()}`;
+  await fetch(`${baseUrl.replace(/\/$/, "")}/v1/import-jobs/${job.id}/run`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${token}`,
+      "x-request-id": requestId,
+    },
+    body: JSON.stringify({
+      job_id: job.id,
+      requested_by: job.requestedBy,
+      workspace_id: job.workspaceId,
+    }),
+  });
 }
 
 export async function listWorkspaceImportJobs(workspaceId: string, filter?: { status?: ImportJobStatus; limit?: number }): Promise<DocumentImportJob[]> {

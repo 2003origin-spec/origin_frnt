@@ -1,3 +1,8 @@
+export const dynamic = "force-dynamic";
+
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { isFeatureEnabled } from "@/lib/feature-flags";
 import { QuestionBagManagerHighFidelity } from "@/components/teacher/QuestionBagManagerHighFidelity";
 import { listTeacherQuestions } from "@/server/workspaces/questions-service";
 import { loadWorkspaceForRender } from "@/server/workspaces/server-loader";
@@ -19,6 +24,7 @@ export default async function QuestionBagPage({ params }: Props) {
 
   // Fetch all questions
   const questions = await listTeacherQuestions(workspaceId, { status: "all" });
+  const importEnabled = isFeatureEnabled("documentImport");
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto animate-fade-in">
@@ -31,6 +37,13 @@ export default async function QuestionBagPage({ params }: Props) {
             Author and publish question items to your workspace or contribute to the public OGCode database.
           </p>
         </div>
+        {canEdit && importEnabled && (
+          <Button asChild variant="outline" className="rounded-xl h-9">
+            <Link href={`/teacher/workspaces/${workspaceId}/question-bag/import`}>
+              Import from PDF
+            </Link>
+          </Button>
+        )}
       </div>
 
       <QuestionBagManagerHighFidelity

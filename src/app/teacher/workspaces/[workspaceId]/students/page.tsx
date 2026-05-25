@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { StudentsManagerHighFidelity } from "@/components/teacher/StudentsManagerHighFidelity";
 import { listBatches } from "@/server/workspaces/batches";
 import { listEnrollments } from "@/server/workspaces/enrollments";

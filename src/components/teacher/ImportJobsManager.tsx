@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
@@ -31,6 +31,7 @@ import { toast } from "sonner";
 type Props = {
   workspaceId: string;
   initialJobs: DocumentImportJob[];
+  defaultJobId?: string;
 };
 
 const JOB_STATUS_COLORS: Record<string, string> = {
@@ -42,10 +43,12 @@ const JOB_STATUS_COLORS: Record<string, string> = {
   cancelled: "bg-muted text-muted-foreground border-muted",
 };
 
-export function ImportJobsManager({ workspaceId, initialJobs }: Props) {
+export function ImportJobsManager({ workspaceId, initialJobs, defaultJobId }: Props) {
   const router = useRouter();
   const [jobs, setJobs] = useState<DocumentImportJob[]>(initialJobs);
-  const [selectedJob, setSelectedJob] = useState<DocumentImportJob | null>(null);
+  const [selectedJob, setSelectedJob] = useState<DocumentImportJob | null>(
+    defaultJobId ? (initialJobs.find(j => j.id === defaultJobId) ?? null) : null
+  );
   const [questions, setQuestions] = useState<ImportJobQuestion[]>([]);
   const [loadingQuestions, setLoadingQuestions] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -59,92 +62,101 @@ export function ImportJobsManager({ workspaceId, initialJobs }: Props) {
   const [editOptions, setEditOptions] = useState<string[]>([]);
   const [editCorrectOption, setEditCorrectOption] = useState<number>(0);
 
-  const selectJob = async (job: DocumentImportJob) => {
-    setSelectedJob(job);
-    setLoadingQuestions(true);
-    
-    // Fetch parsed questions for this job
-    const result = await apiJson<ImportJobQuestion[]>(
-      `/api/teacher/workspaces/${workspaceId}/import-jobs/${job.id}`,
-      { method: "GET" }
-    );
-    
-    if (result.ok) {
-      // API returns job summary or array; handle based on endpoint schema
-      const list = (result.data as any).questionsPreview || result.data || [];
-      
-      // Seed with mock parsed questions if empty (greenfield simulation)
-      if (list.length === 0) {
-        const mockQuestions: ImportJobQuestion[] = [
-          {
-            id: "q-mock-1",
-            jobId: job.id,
-            pageId: "page-1",
-            questionNumber: 1,
-            questionType: "mcq",
-            subject: "Physics",
-            chapter: "Electrostatics",
-            concept: "Coulomb's Law",
-            questionText: "Two point charges $q_1$ and $q_2$ are placed at a distance $r$ in vacuum. The force $F$ between them is given by:",
-            options: { a: "$\\frac{1}{4\\pi\\varepsilon_0} \\frac{q_1q_2}{r^2}$", b: "$\\frac{1}{4\\pi\\varepsilon_0} \\frac{q_1q_2}{r}$", c: "$\\frac{q_1q_2}{r^2}$", d: "None" },
-            correctOption: 0,
-            correctOptions: null,
-            answerText: null,
-            explanation: null,
-            hint: null,
-            hasDiagram: false,
-            diagramDescription: null,
-            status: "review_required",
-            confidenceScore: 0.62, // Low confidence trigger
-            reviewNotes: "OCR confidence low: verify LaTeX math rendering",
-            rejectionReason: null,
-            questionBagQuestionId: null,
-            metadata: {},
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          },
-          {
-            id: "q-mock-2",
-            jobId: job.id,
-            pageId: "page-1",
-            questionNumber: 2,
-            questionType: "mcq",
-            subject: "Physics",
-            chapter: "Electrostatics",
-            concept: "Electric Field",
-            questionText: "The electric field intensity at a distance $r$ from an infinite line charge of linear density $\\lambda$ is:",
-            options: { a: "$\\frac{\\lambda}{2\\pi\\varepsilon_0 r}$", b: "$\\frac{\\lambda}{4\\pi\\varepsilon_0 r^2}$", c: "$\\frac{\\lambda}{2\\pi\\varepsilon_0 r^2}$", d: "Zero" },
-            correctOption: 0,
-            correctOptions: null,
-            answerText: null,
-            explanation: null,
-            hint: null,
-            hasDiagram: true,
-            diagramDescription: "Coordinate axis with linear line charge along Z axis",
-            status: "draft",
-            confidenceScore: 0.94,
-            reviewNotes: null,
-            rejectionReason: null,
-            questionBagQuestionId: null,
-            metadata: {},
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
+  useEffect(() => {
+    if (!selectedJob) return;
+    let active = true;
+
+    async function fetchQuestions() {
+      setLoadingQuestions(true);
+      const result = await apiJson<ImportJobQuestion[]>(
+        `/api/teacher/workspaces/${workspaceId}/import-jobs/${selectedJob.id}`,
+        { method: "GET" }
+      );
+      if (!active) return;
+
+      if (result.ok) {
+        const list = (result.data as any).questionsPreview || result.data || [];
+        if (list.length === 0) {
+          const mockQuestions: ImportJobQuestion[] = [
+            {
+              id: "q-mock-1",
+              jobId: selectedJob.id,
+              pageId: "page-1",
+              questionNumber: 1,
+              questionType: "mcq",
+              subject: "Physics",
+              chapter: "Electrostatics",
+              concept: "Coulomb's Law",
+              questionText: "Two point charges $q_1$ and $q_2$ are placed at a distance $r$ in vacuum. The force $F$ between them is given by:",
+              options: { a: "$\\frac{1}{4\\pi\\varepsilon_0} \\frac{q_1q_2}{r^2}$", b: "$\\frac{1}{4\\pi\\varepsilon_0} \\frac{q_1q_2}{r}$", c: "$\\frac{q_1q_2}{r^2}$", d: "None" },
+              correctOption: 0,
+              correctOptions: null,
+              answerText: null,
+              explanation: null,
+              hint: null,
+              hasDiagram: false,
+              diagramDescription: null,
+              status: "review_required",
+              confidenceScore: 0.62,
+              reviewNotes: "OCR confidence low: verify LaTeX math rendering",
+              rejectionReason: null,
+              questionBagQuestionId: null,
+              metadata: {},
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            },
+            {
+              id: "q-mock-2",
+              jobId: selectedJob.id,
+              pageId: "page-1",
+              questionNumber: 2,
+              questionType: "mcq",
+              subject: "Physics",
+              chapter: "Electrostatics",
+              concept: "Electric Field",
+              questionText: "The electric field intensity at a distance $r$ from an infinite line charge of linear density $\\lambda$ is:",
+              options: { a: "$\\frac{\\lambda}{2\\pi\\varepsilon_0 r}$", b: "$\\frac{\\lambda}{4\\pi\\varepsilon_0 r^2}$", c: "$\\frac{\\lambda}{2\\pi\\varepsilon_0 r^2}$", d: "Zero" },
+              correctOption: 0,
+              correctOptions: null,
+              answerText: null,
+              explanation: null,
+              hint: null,
+              hasDiagram: true,
+              diagramDescription: "Coordinate axis with linear line charge along Z axis",
+              status: "draft",
+              confidenceScore: 0.94,
+              reviewNotes: null,
+              rejectionReason: null,
+              questionBagQuestionId: null,
+              metadata: {},
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            }
+          ];
+          setQuestions(mockQuestions);
+          setActiveQuestion(mockQuestions[0]);
+          seedEditor(mockQuestions[0]);
+        } else {
+          setQuestions(list);
+          if (list.length > 0) {
+            setActiveQuestion(list[0]);
+            seedEditor(list[0]);
           }
-        ];
-        setQuestions(mockQuestions);
-        setActiveQuestion(mockQuestions[0]);
-        seedEditor(mockQuestions[0]);
-      } else {
-        setQuestions(list);
-        if (list.length > 0) {
-          setActiveQuestion(list[0]);
-          seedEditor(list[0]);
         }
+      } else {
+        toast.error("Failed to load parsed questions.");
       }
-    } else {
-      toast.error("Failed to load parsed questions.");
+      setLoadingQuestions(false);
     }
-    setLoadingQuestions(false);
+
+    void fetchQuestions();
+    return () => {
+      active = false;
+    };
+  }, [selectedJob?.id, workspaceId]);
+
+  const selectJob = (job: DocumentImportJob) => {
+    setSelectedJob(job);
   };
 
   const seedEditor = (q: ImportJobQuestion) => {

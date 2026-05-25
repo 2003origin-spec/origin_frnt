@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { WorkspaceSettingsHighFidelity } from "@/components/teacher/WorkspaceSettingsHighFidelity";
 import { loadWorkspaceForRender } from "@/server/workspaces/server-loader";
 import { listCodesForWorkspace, listMembers } from "@/server/workspaces/store";

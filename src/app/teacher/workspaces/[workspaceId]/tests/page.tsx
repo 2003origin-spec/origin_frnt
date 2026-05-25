@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { TestsManagerHighFidelity } from "@/components/teacher/TestsManagerHighFidelity";
 import { listTeacherTests } from "@/server/workspaces/tests-service";
 import { listTeacherQuestions } from "@/server/workspaces/questions-service";
