@@ -1592,8 +1592,8 @@ function ImageUploadModal({ onClose, onUpload }: { onClose: () => void, onUpload
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-[#020617]/90 backdrop-blur-md" onClick={onClose} />
-      <div className="relative w-full max-w-lg bg-[#0A1128] border border-white/10 rounded-[32px] p-8 shadow-2xl overflow-hidden">
+      <div className="absolute inset-0 bg-background/90 backdrop-blur-md" onClick={onClose} />
+      <div className="relative w-full max-w-lg bg-card border border-border/40 rounded-[32px] p-8 shadow-2xl overflow-hidden">
         <div className="flex justify-between items-center mb-8">
           <h3 className="text-xl font-bold text-foreground dark:text-white">Visual Problem Solver</h3>
           <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-full"><X className="w-5 h-5 text-slate-400" /></button>

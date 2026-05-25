@@ -313,7 +313,7 @@ export default function StudyCorner({ catalog }: StudyCornerProps) {
     );
 
     const renderBookCard = (book: Book, inLibrary: boolean = false) => (
-        <Card key={book.id} className="group flex flex-col overflow-hidden border border-primary/20 dark:border-slate-800 shadow-sm bg-card dark:bg-[#0B1120] hover:shadow-2xl hover:shadow-primary/10 transition-all duration-500 hover:-translate-y-1 rounded-2xl">
+        <Card key={book.id} className="group flex flex-col overflow-hidden border border-primary/20 dark:border-slate-800 shadow-sm bg-card hover:shadow-2xl hover:shadow-primary/10 transition-all duration-500 hover:-translate-y-1 rounded-2xl">
             <div className="relative aspect-[3/4] overflow-hidden bg-slate-100 dark:bg-slate-800">
                 <img
                     src={book.coverImage}
@@ -841,7 +841,7 @@ export default function StudyCorner({ catalog }: StudyCornerProps) {
                                 })}
 
                                 {aggregatedNotes.length === 0 && (
-                                    <div className="col-span-full py-32 text-center rounded-[3rem] border border-slate-200 dark:border-white/5 bg-white/40 dark:bg-[#030712]/40 backdrop-blur-3xl">
+                                    <div className="col-span-full py-32 text-center rounded-[3rem] border border-slate-200 dark:border-white/5 bg-card/40 backdrop-blur-3xl">
                                         <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center mx-auto mb-8 border border-white/10 opacity-30">
                                             <PenTool className="w-10 h-10 text-slate-400" />
                                         </div>

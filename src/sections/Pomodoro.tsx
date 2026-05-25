@@ -1131,7 +1131,7 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
 
       {/* Settings Modal */}
       {showSettings && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-md p-4 animate-in fade-in duration-300">
           <Card className="w-full max-w-lg border-0 bg-white dark:bg-slate-900 shadow-2xl rounded-[40px] overflow-hidden">
             <CardContent className="p-10">
               <div className="flex items-center justify-between mb-10">
@@ -1172,7 +1172,7 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
 
       {/* History Side Panel */}
       <Sheet open={showHistory} onOpenChange={setShowHistory}>
-        <SheetContent side="right" className="w-full sm:max-w-md bg-white/80 dark:bg-slate-950/80 backdrop-blur-2xl border-l border-border/40 p-0 overflow-hidden flex flex-col">
+        <SheetContent side="right" className="w-full sm:max-w-md bg-card/80 backdrop-blur-2xl border-l border-border/40 p-0 overflow-hidden flex flex-col">
           <SheetHeader className="p-8 border-b border-border/40">
             <h3 className="text-2xl font-black tracking-tighter dark:text-white uppercase">Focus Log</h3>
           </SheetHeader>
@@ -1206,7 +1206,7 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
 
       {/* Break Reason Modal */}
       {showReasonModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-md p-4 animate-in fade-in duration-300">
           <Card className="w-full max-w-lg border-0 bg-white dark:bg-slate-900 shadow-2xl rounded-[40px] overflow-hidden transform animate-in zoom-in-95">
             <CardContent className="p-10 text-center">
               <h3 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tighter mb-8">Rest Intel</h3>
