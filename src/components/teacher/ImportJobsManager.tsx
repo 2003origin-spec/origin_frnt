@@ -63,13 +63,15 @@ export function ImportJobsManager({ workspaceId, initialJobs, defaultJobId }: Pr
   const [editCorrectOption, setEditCorrectOption] = useState<number>(0);
 
   useEffect(() => {
-    if (!selectedJob) return;
+    const job = selectedJob;
+    if (!job) return;
+    const jobId = job.id;
     let active = true;
 
     async function fetchQuestions() {
       setLoadingQuestions(true);
       const result = await apiJson<ImportJobQuestion[]>(
-        `/api/teacher/workspaces/${workspaceId}/import-jobs/${selectedJob.id}`,
+        `/api/teacher/workspaces/${workspaceId}/import-jobs/${jobId}`,
         { method: "GET" }
       );
       if (!active) return;
@@ -80,7 +82,7 @@ export function ImportJobsManager({ workspaceId, initialJobs, defaultJobId }: Pr
           const mockQuestions: ImportJobQuestion[] = [
             {
               id: "q-mock-1",
-              jobId: selectedJob.id,
+              jobId: jobId,
               pageId: "page-1",
               questionNumber: 1,
               questionType: "mcq",
@@ -107,7 +109,7 @@ export function ImportJobsManager({ workspaceId, initialJobs, defaultJobId }: Pr
             },
             {
               id: "q-mock-2",
-              jobId: selectedJob.id,
+              jobId: jobId,
               pageId: "page-1",
               questionNumber: 2,
               questionType: "mcq",
