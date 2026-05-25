@@ -17,6 +17,8 @@ function readCsrfCookie(): string | null {
 
 export type ApiResult<T> = { ok: true; data: T } | { ok: false; status: number; detail: string };
 
+const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
 export async function apiJson<T>(
   path: string,
   init: RequestInit & { json?: unknown } = {},
@@ -29,6 +31,13 @@ export async function apiJson<T>(
   };
   if (json !== undefined) {
     requestHeaders["Content-Type"] = "application/json";
+  }
+  // The middleware enforces the double-submit CSRF check on every
+  // mutating /api/* request, body or no body. The original guard only
+  // attached the header when a JSON body was present, which made
+  // bare DELETEs (e.g. batch delete) 403 with "Invalid CSRF token."
+  const method = (rest.method ?? "GET").toUpperCase();
+  if (MUTATING_METHODS.has(method)) {
     const csrf = readCsrfCookie();
     if (csrf) requestHeaders["x-csrf-token"] = csrf;
   }
