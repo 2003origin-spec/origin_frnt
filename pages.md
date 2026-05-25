@@ -242,3 +242,109 @@ This document maps all the pages to be generated for the ORIGIN Teacher Platform
     *   `StaffManagementPanel`: Table listing members, role dropdowns (`Owner`, `Admin`, `Teacher`, `Content Manager`), status pills, and "Invite Staff" email modal.
     *   `OGCodeSubmissionList`: List of contributed questions showing verification history, reviewer comments, and moderation badges ("Approved", "Changes Requested", "Rejected").
     *   `AttributionBuilder`: Panel to set teacher display profile and upload academy logo (`/origin-new.jpg`) for public questions.
+
+---
+
+## 3. API Integration Contract Mapping
+
+This section defines the mapping between each page and component on the ORIGIN Teacher Platform and their corresponding backend API contracts defined in [Teacher-admin-api.md](file:///Users/snaveen/Desktop/Origin/V1/Teacher-admin-api.md).
+
+### Page 1: Home Dashboard (`/teacher/workspaces/[workspaceId]`)
+*   **WorkspaceSwitcher**:
+    *   `GET /api/teacher/workspaces` (to list available workspaces)
+    *   `GET /api/teacher/workspaces/{workspaceId}` (to load current workspace configuration)
+*   **WelcomeHeroPanel**:
+    *   `POST /api/teacher/workspaces/{workspaceId}/codes` (to generate/refresh a new join code)
+    *   `POST /api/teacher/workspaces/{workspaceId}/codes/{codeId}/revoke` (to revoke access keys)
+*   **ActiveAlertsGrid**:
+    *   `GET /api/teacher/workspaces/{workspaceId}/students` (to check the onboarding queue count)
+    *   `GET /api/teacher/workspaces/{workspaceId}/import-jobs` (to check the status of document import parsing tasks)
+    *   `GET /api/teacher/workspaces/{workspaceId}/rooms` (to retrieve currently active live classroom study rooms)
+
+### Page 2: Students Directory & Onboarding Queue (`/teacher/workspaces/[workspaceId]/students`)
+*   **DirectoryTabSwitcher / StudentDirectoryTable**:
+    *   `GET /api/teacher/workspaces/{workspaceId}/students` (fetch active, onboarding, and suspended student enrollments)
+    *   `PATCH /api/teacher/workspaces/{workspaceId}/students/{studentId}` (approve onboarding queue request, suspend student, or mark as left)
+*   **BatchAllocatorDrawer**:
+    *   `GET /api/teacher/workspaces/{workspaceId}/batches` (to fetch batch options)
+    *   `POST /api/teacher/workspaces/{workspaceId}/students/{studentId}/assign-batches` (to bind students to selected batches)
+
+### Page 3: Batch Details & Syllabus Planner (`/teacher/workspaces/[workspaceId]/batches/[batchId]`)
+*   **BatchSummaryCard / SyllabusChapterTree**:
+    *   `GET /api/teacher/workspaces/{workspaceId}/batches/{batchId}` (fetch syllabus completion tree, weekly calendar, and metadata)
+    *   `PATCH /api/teacher/workspaces/{workspaceId}/batches/{batchId}` (to modify batch target course, level, schedule, or co-teachers)
+    *   `GET /api/teacher/workspaces/{workspaceId}/batches/{batchId}/students` (fetch roster list assigned to this specific batch)
+*   **StudyMaterialsUploader / Attachments**:
+    *   `GET /api/teacher/workspaces/{workspaceId}/study-materials` (retrieve attached PDFs or homework sheets)
+    *   `POST /api/teacher/workspaces/{workspaceId}/study-materials` (to upload new revision materials to Cloudflare R2)
+    *   `DELETE /api/teacher/workspaces/{workspaceId}/study-materials/{materialId}` (to remove syllabus resources)
+
+### Page 4: Question Bag Library & Manual Editor (`/teacher/workspaces/[workspaceId]/question-bag`)
+*   **LibraryQuestionCardList**:
+    *   `GET /api/teacher/workspaces/{workspaceId}/questions` (to query/filter question entries by subject, difficulty, or tag)
+    *   `DELETE /api/teacher/workspaces/{workspaceId}/questions/{questionId}` (delete questions from local question bank)
+*   **LaTeXStemEditor / DynamicOptionsGrid**:
+    *   `POST /api/teacher/workspaces/{workspaceId}/questions` (create new MCQ, MSQ, Numerical, or Matrix Match questions)
+    *   `PATCH /api/teacher/workspaces/{workspaceId}/questions/{questionId}` (to modify question stem, solutions, options, or hints)
+    *   `GET /api/teacher/workspaces/{workspaceId}/questions/{questionId}/versions` (to retrieve edit history of questions)
+*   **OGCode publisher buttons**:
+    *   `POST /api/teacher/workspaces/{workspaceId}/questions/{questionId}/submit-ogcode` (to submit question to the public community pool)
+    *   `POST /api/teacher/workspaces/{workspaceId}/questions/{questionId}/publish-private` (toggle private publishing)
+
+### Page 5: Document Import Pipeline & Review Panel (`/teacher/workspaces/[workspaceId]/question-bag/import`)
+*   **ImportProgressBar**:
+    *   `GET /api/teacher/workspaces/{workspaceId}/import-jobs` (track list of active, parsing, or completed PDF upload jobs)
+*   **PDFViewerOverlay / ParsedQuestionsList**:
+    *   `POST /api/teacher/workspaces/{workspaceId}/import-jobs` (trigger new multi-page PDF ingestion task)
+    *   `GET /api/teacher/workspaces/{workspaceId}/import-jobs/{jobId}` (retrieve OCR extractions, bounding boxes, and low confidence warnings)
+    *   `POST /api/teacher/workspaces/{workspaceId}/import-jobs/{jobId}` (reconcile OCR changes, link cropped diagram assets from PDF, and approve items in bulk)
+
+### Page 6: Scheduled Test Creator & Builder (`/teacher/workspaces/[workspaceId]/tests`)
+*   **TestSettingsForm**:
+    *   `POST /api/teacher/workspaces/{workspaceId}/tests` (create test details, scoring rules, and instructions)
+    *   `PATCH /api/teacher/workspaces/{workspaceId}/tests/{testId}` (edit drafts)
+*   **QuestionSelectorCart**:
+    *   `GET /api/teacher/workspaces/{workspaceId}/questions` (query private bank question objects)
+*   **TargetSchedulerCard**:
+    *   `POST /api/teacher/workspaces/{workspaceId}/tests/{testId}/assign` (bind mock test to student batches)
+    *   `POST /api/teacher/workspaces/{workspaceId}/tests/{testId}/schedule` (define test window, start date, end date, and shuffling configurations)
+
+### Page 7: Live Study Room Real-Time Dashboard (`/teacher/workspaces/[workspaceId]/rooms/[roomId]`)
+*   **RoomHeaderWidget / PresenceGrid**:
+    *   `GET /api/teacher/workspaces/{workspaceId}/rooms/{roomId}` (retrieve real-time web socket state, ticking test timer, and presence indicators)
+    *   `DELETE /api/teacher/workspaces/{workspaceId}/rooms/{roomId}` (close/destroy active classroom room)
+*   **LiveAccuracyMatrix / LiveLeaderboard**:
+    *   `POST /api/teacher/workspaces/{workspaceId}/rooms/{roomId}/configure-test` (link test to active room)
+    *   `GET /api/teacher/workspaces/{workspaceId}/tests/{testId}/leaderboard` (poll student scores, completion rates, and speed profiles)
+
+### Page 8: Analytics Center & Weakness Remediation (`/teacher/workspaces/[workspaceId]/analytics`)
+*   **OverviewMetricsBanner / MasteryRadarChart**:
+    *   `GET /api/teacher/workspaces/{workspaceId}/analytics/batches/{batchId}` (retrieve radar metrics, concepts under 55% accuracy, and completion pacing)
+*   **WeakConceptInterventionList / StrugglingStudentsDirectory**:
+    *   `GET /api/teacher/workspaces/{workspaceId}/analytics/students/{studentId}` (query individual performance sparklines and answer analytics)
+    *   `POST /api/teacher/workspaces/{workspaceId}/batches/{batchId}` (to trigger custom remedial worksheets dynamically)
+
+### Page 9: OGCode Contributor & Workspace Settings (`/teacher/workspaces/[workspaceId]/settings`)
+*   **AttributionBuilder / StaffManagementPanel**:
+    *   `PATCH /api/teacher/workspaces/{workspaceId}` (to update Display profile information or uploader logo)
+    *   `GET /api/teacher/workspaces/{workspaceId}/students` (to retrieve workspace co-teachers/staff directory list)
+*   **OGCodeSubmissionList**:
+    *   `GET /api/teacher/workspaces/{workspaceId}/ogcode-publications` (retrieve Moderation history and review comments for contributed questions)
+    *   `GET /api/teacher/ogcode-moderation` (check system-wide moderation status queues)
+
+---
+
+### Platform Administrator Console Mappings
+Although not represented in the Teacher portal views, the administrator API contracts connect as follows for platform moderations:
+*   **Workspace Suspension & Control**:
+    *   `GET /api/admin/workspaces` (list system workspaces)
+    *   `POST /api/admin/workspaces/{workspaceId}` (suspend, unsuspend, or force close active workspaces)
+    *   `POST /api/admin/workspaces/{workspaceId}/codes/{codeId}/revoke` (force-revoke join keys)
+    *   `GET /api/admin/workspaces/{workspaceId}/export` (dump workspace schema elements)
+*   **OGCode Moderation & Ingestion Audit**:
+    *   `GET /api/admin/ogcode/moderation` (list contributed question tickets awaiting approval)
+    *   `POST /api/admin/ogcode/moderation/{publicationId}/approve` (approve publication, merge to public database)
+    *   `POST /api/admin/ogcode/moderation/{publicationId}/reject` (flag changes requested or reject contribution)
+*   **Incident Response & Kill Switches**:
+    *   `GET /api/admin/incidents` (monitor server incidents, error logs, and metrics)
+    *   `POST /api/admin/incidents/{action}` (trigger `kill_switch`, `force_logout`, or workspace rate limits)
