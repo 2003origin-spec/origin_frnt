@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { notFound } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { BatchDeleteButton } from "@/components/teacher/BatchDeleteButton";
 import { BatchRosterManager } from "@/components/teacher/BatchRosterManager";
 import { BatchPlannerHighFidelity } from "@/components/teacher/BatchPlannerHighFidelity";
 import { getBatch, listBatchMembers } from "@/server/workspaces/batches";
@@ -61,6 +62,13 @@ export default async function BatchDetailPage({ params }: Props) {
             Status: <span className="font-semibold text-foreground uppercase text-xs">{batch.status}</span>
           </p>
         </div>
+        {canManage ? (
+          <BatchDeleteButton
+            workspaceId={workspaceId}
+            batchId={batchId}
+            batchName={batch.name}
+          />
+        ) : null}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
