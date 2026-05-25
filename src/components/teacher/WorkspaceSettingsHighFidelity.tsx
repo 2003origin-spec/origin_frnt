@@ -308,7 +308,7 @@ export function WorkspaceSettingsHighFidelity({ workspace, initialCodes, initial
                 <CardContent className="space-y-6">
                   {/* Logo Attribution Builder */}
                   <div className="flex flex-col sm:flex-row items-center gap-6 border-b pb-6">
-                    <div className="relative w-20 h-20 rounded-full border-2 border-primary/40 overflow-hidden bg-card group shrink-0">
+                    <label htmlFor="settings-logo-upload" className="relative w-20 h-20 rounded-full border-2 border-primary/40 overflow-hidden bg-card group shrink-0 cursor-pointer block">
                       {logoPreview ? (
                         <img src={logoPreview} alt="Logo" className="w-full h-full object-cover" />
                       ) : (
@@ -316,17 +316,35 @@ export function WorkspaceSettingsHighFidelity({ workspace, initialCodes, initial
                           No Logo
                         </div>
                       )}
-                      <div className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+                      <div className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                         <Upload className="w-4 h-4 text-white" />
                       </div>
-                    </div>
+                    </label>
+                    <input
+                      type="file"
+                      id="settings-logo-upload"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onloadend = () => {
+                            setLogoPreview(reader.result as string);
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                    />
                     <div className="space-y-1 w-full text-center sm:text-left">
                       <h4 className="text-sm font-semibold">Academy Attribution Brand Logo</h4>
                       <p className="text-xs text-muted-foreground">This logo will be displayed next to your contributed questions in the public OGCode database.</p>
                       <div className="flex justify-center sm:justify-start gap-2 pt-2">
-                        <Button variant="outline" size="sm" className="h-8 rounded-lg text-xs font-bold">
-                          Upload New JPEG
-                        </Button>
+                        <label htmlFor="settings-logo-upload" className="cursor-pointer">
+                          <span className="inline-flex items-center justify-center rounded-lg text-xs font-bold border border-input bg-background hover:bg-accent hover:text-accent-foreground h-8 px-3 transition-colors">
+                            Upload New JPEG
+                          </span>
+                        </label>
                         <Button 
                           variant="ghost" 
                           size="sm" 

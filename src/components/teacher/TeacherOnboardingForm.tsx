@@ -36,6 +36,41 @@ const STEPS = [
   { id: "attribution", label: "Attribution & Confirm" }
 ];
 
+const STATE_CITIES: Record<string, string[]> = {
+  "Andhra Pradesh": ["Visakhapatnam", "Vijayawada", "Guntur", "Nellore", "Tirupati"],
+  "Arunachal Pradesh": ["Itanagar", "Naharlagun"],
+  "Assam": ["Guwahati", "Dibrugarh", "Silchar", "Jorhat", "Nagaon"],
+  "Bihar": ["Patna", "Gaya", "Bhagalpur", "Muzaffarpur", "Darbhanga"],
+  "Chhattisgarh": ["Raipur", "Bhilai", "Bilaspur", "Korba", "Durg"],
+  "Goa": ["Panaji", "Margao", "Vasco da Gama", "Mapusa"],
+  "Gujarat": ["Ahmedabad", "Surat", "Vadodara", "Rajkot", "Bhavnagar", "Jamnagar", "Gandhinagar"],
+  "Haryana": ["Faridabad", "Gurugram", "Panipat", "Ambala", "Yamunanagar", "Rohtak", "Hisar"],
+  "Himachal Pradesh": ["Shimla", "Dharamshala", "Solan", "Mandi"],
+  "Jharkhand": ["Ranchi", "Jamshedpur", "Dhanbad", "Bokaro", "Hazaribagh"],
+  "Karnataka": ["Bengaluru", "Mysuru", "Hubballi-Dharwad", "Mangaluru", "Belagavi", "Davangere", "Ballari"],
+  "Kerala": ["Thiruvananthapuram", "Kochi", "Kozhikode", "Thrissur", "Kollam", "Alappuzha"],
+  "Madhya Pradesh": ["Bhopal", "Indore", "Jabalpur", "Gwalior", "Ujjain", "Sagar"],
+  "Maharashtra": ["Mumbai", "Pune", "Nagpur", "Thane", "Nashik", "Aurangabad", "Solapur", "Kolhapur", "Navi Mumbai"],
+  "Manipur": ["Imphal"],
+  "Meghalaya": ["Shillong"],
+  "Mizoram": ["Aizawl"],
+  "Nagaland": ["Kohima", "Dimapur"],
+  "Odisha": ["Bhubaneswar", "Cuttack", "Rourkela", "Sambalpur", "Puri"],
+  "Punjab": ["Ludhiana", "Amritsar", "Jalandhar", "Patiala", "Bathinda", "Mohali"],
+  "Rajasthan": ["Jaipur", "Jodhpur", "Udaipur", "Kota", "Bikaner", "Ajmer", "Alwar"],
+  "Sikkim": ["Gangtok"],
+  "Tamil Nadu": ["Chennai", "Coimbatore", "Madurai", "Tiruchirappalli", "Salem", "Tirunelveli", "Vellore"],
+  "Telangana": ["Hyderabad", "Warangal", "Nizamabad", "Karimnagar", "Khammam"],
+  "Tripura": ["Agartala"],
+  "Uttar Pradesh": ["Lucknow", "Kanpur", "Noida", "Ghaziabad", "Agra", "Varanasi", "Meerut", "Allahabad", "Bareilly", "Aligarh"],
+  "Uttarakhand": ["Dehradun", "Haridwar", "Roorkee", "Haldwani"],
+  "West Bengal": ["Kolkata", "Howrah", "Darjeeling", "Siliguri", "Asansol", "Durgapur", "Kharagpur"],
+  "Delhi": ["New Delhi", "Dwarka", "Rohini"],
+  "Jammu & Kashmir": ["Srinagar", "Jammu", "Anantnag"],
+  "Ladakh": ["Leh", "Kargil"],
+  "Puducherry": ["Puducherry", "Karaikal"]
+};
+
 export function TeacherOnboardingForm() {
   const router = useRouter();
   const [currentStep, setCurrentStep] = useState(0);
@@ -49,6 +84,7 @@ export function TeacherOnboardingForm() {
   const [selectedCourses, setSelectedCourses] = useState<string[]>([]);
   const [city, setCity] = useState("");
   const [state, setState] = useState("");
+  const [showCitySuggestions, setShowCitySuggestions] = useState(false);
   const [capacity, setCapacity] = useState<number>(50);
   const [logoPreview, setLogoPreview] = useState<string>("/origin-new.jpg"); // Bind to origin logo asset
   
@@ -124,6 +160,13 @@ export function TeacherOnboardingForm() {
     if (currentStep > 0) {
       setCurrentStep(currentStep - 1);
     }
+  };
+
+  const getFilteredCities = () => {
+    if (!state) return [];
+    const cities = STATE_CITIES[state] ?? [];
+    if (!city.trim()) return cities;
+    return cities.filter(c => c.toLowerCase().includes(city.toLowerCase()));
   };
 
   async function submit() {
@@ -379,24 +422,65 @@ export function TeacherOnboardingForm() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
+                    <Label htmlFor="state">State</Label>
+                    <select
+                      id="state"
+                      value={state}
+                      onChange={(e) => {
+                        setState(e.target.value);
+                        setCity(""); // Clear city on state change
+                      }}
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 border-border/80 focus-visible:ring-primary focus-visible:border-primary"
+                    >
+                      <option value="">Select State</option>
+                      {Object.keys(STATE_CITIES).map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2 relative">
                     <Label htmlFor="city">City</Label>
                     <Input
                       id="city"
                       value={city}
-                      onChange={(e) => setCity(e.target.value)}
-                      placeholder="Mumbai"
-                      className="border-border/80"
+                      onChange={(e) => {
+                        setCity(e.target.value);
+                        setShowCitySuggestions(true);
+                      }}
+                      onFocus={() => setShowCitySuggestions(true)}
+                      onBlur={() => {
+                        // Delay hide to allow click handler to trigger
+                        setTimeout(() => setShowCitySuggestions(false), 200);
+                      }}
+                      placeholder="Enter city"
+                      className="border-border/80 focus-visible:ring-primary focus-visible:border-primary w-full"
+                      autoComplete="off"
                     />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="state">State</Label>
-                    <Input
-                      id="state"
-                      value={state}
-                      onChange={(e) => setState(e.target.value)}
-                      placeholder="Maharashtra"
-                      className="border-border/80"
-                    />
+                    {showCitySuggestions && state && (
+                      <div className="absolute z-50 w-full mt-1 max-h-48 overflow-y-auto rounded-lg border border-border bg-popover text-popover-foreground shadow-md custom-scrollbar">
+                        {getFilteredCities().length > 0 ? (
+                          getFilteredCities().map((c) => (
+                            <button
+                              key={c}
+                              type="button"
+                              onClick={() => {
+                                setCity(c);
+                                setShowCitySuggestions(false);
+                              }}
+                              className="w-full text-left px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground transition-colors cursor-pointer"
+                            >
+                              {c}
+                            </button>
+                          ))
+                        ) : (
+                          <div className="px-3 py-2 text-xs text-muted-foreground">
+                            Press tab/enter to use custom city &quot;{city}&quot;
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -443,21 +527,39 @@ export function TeacherOnboardingForm() {
                 {/* AttributionUploader */}
                 <div className="space-y-2 flex flex-col items-center w-full">
                   <Label className="text-center mb-1">Academy / Display Logo</Label>
-                  <div className="relative group cursor-pointer">
-                    <div className="w-28 h-28 rounded-full border-2 border-dashed border-primary/50 bg-muted/30 overflow-hidden flex items-center justify-center transition-all duration-300 group-hover:border-primary">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img 
-                        src={logoPreview} 
-                        alt="Academy Logo Preview" 
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                    <div className="absolute inset-0 rounded-full bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity duration-300">
-                      <Upload className="w-5 h-5 text-white" />
-                    </div>
+                  <div className="relative group">
+                    <label htmlFor="onboarding-logo-upload" className="cursor-pointer block relative">
+                      <div className="w-28 h-28 rounded-full border-2 border-dashed border-primary/50 bg-muted/30 overflow-hidden flex items-center justify-center transition-all duration-300 group-hover:border-primary">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img 
+                          src={logoPreview} 
+                          alt="Academy Logo Preview" 
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      <div className="absolute inset-0 rounded-full bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity duration-300">
+                        <Upload className="w-5 h-5 text-white" />
+                      </div>
+                    </label>
+                    <input
+                      type="file"
+                      id="onboarding-logo-upload"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onloadend = () => {
+                            setLogoPreview(reader.result as string);
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                    />
                   </div>
                   <p className="text-xs text-muted-foreground text-center max-w-xs mt-1">
-                    Using the default workspace branding file (`origin-new.jpg`). You can upload custom logos inside settings.
+                    Click the preview above to upload a custom logo, or continue with the default workspace branding file (`origin-new.jpg`).
                   </p>
                 </div>
 
