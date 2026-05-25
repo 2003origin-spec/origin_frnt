@@ -904,7 +904,7 @@ export default function OGCodeList({
                                         <ChevronRight className={cn("w-3.5 h-3.5 transition-transform", openDropdown === 'difficulty' ? "-rotate-90" : "rotate-90")} />
                                     </button>
                                     {openDropdown === 'difficulty' && (
-                                        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="absolute top-full mt-2 left-0 w-40 bg-white dark:bg-[#1a1a1a] border border-slate-200 dark:border-white/10 rounded-xl shadow-xl z-50 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                                        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="absolute top-full mt-2 left-0 w-40 bg-card border border-slate-200 dark:border-white/10 rounded-xl shadow-xl z-50 overflow-hidden" onClick={(e) => e.stopPropagation()}>
                                             {['All', 'Easy', 'Medium', 'Hard', 'Insane'].map((diff) => (
                                                 <button key={diff} onClick={() => { handleDifficultyChange(diff); setOpenDropdown(null); }} className={cn("w-full text-left px-4 py-2.5 text-[13px] transition-colors hover:bg-slate-50 dark:hover:bg-white/5", activeDifficulty === diff ? "text-blue-500 font-bold bg-blue-500/5" : "text-slate-600 dark:text-slate-400")}>{diff}</button>
                                             ))}
@@ -917,7 +917,7 @@ export default function OGCodeList({
                                         <ChevronRight className={cn("w-3.5 h-3.5 transition-transform", openDropdown === 'status' ? "-rotate-90" : "rotate-90")} />
                                     </button>
                                     {openDropdown === 'status' && (
-                                        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="absolute top-full mt-2 left-0 w-40 bg-white dark:bg-[#1a1a1a] border border-slate-200 dark:border-white/10 rounded-xl shadow-xl z-50 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                                        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="absolute top-full mt-2 left-0 w-40 bg-card border border-slate-200 dark:border-white/10 rounded-xl shadow-xl z-50 overflow-hidden" onClick={(e) => e.stopPropagation()}>
                                             {['All', 'Solved', 'Unsolved'].map((stat) => (
                                                 <button key={stat} onClick={() => { handleStatusChange(stat); setOpenDropdown(null); }} className={cn("w-full text-left px-4 py-2.5 text-[13px] transition-colors hover:bg-slate-50 dark:hover:bg-white/5", activeStatus === stat ? "text-blue-500 font-bold bg-blue-500/5" : "text-slate-600 dark:text-slate-400")}>{stat}</button>
                                             ))}
@@ -928,7 +928,7 @@ export default function OGCodeList({
                             </div>
                         </div>
 
-                        <div className="bg-white dark:bg-[#1a1a1a] rounded-2xl border border-slate-200 dark:border-white/5 shadow-sm overflow-hidden">
+                        <div className="bg-card rounded-2xl border border-slate-200 dark:border-white/5 shadow-sm overflow-hidden">
                             {/* Table view for Desktop */}
                             <div className="hidden md:block overflow-x-auto">
                                 <table className="w-full text-left border-collapse">
