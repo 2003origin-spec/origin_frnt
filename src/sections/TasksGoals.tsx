@@ -190,7 +190,7 @@ export default function TasksGoals({ tasks, onAddTask, onToggleTask, onRemoveTas
           </div>
 
           {/* New Task Form - Moved here */}
-          <Card className="border-0 shadow-2xl shadow-rose-500/5 bg-card dark:bg-slate-900/60 backdrop-blur-xl relative overflow-hidden rounded-2xl sm:rounded-3xl ring-1 ring-rose-100 dark:ring-white/5">
+          <Card className="border border-border shadow-2xl bg-card relative overflow-hidden rounded-2xl sm:rounded-3xl">
             <div className="absolute top-0 right-0 w-32 h-32 bg-rose-500/5 blur-3xl -mr-16 -mt-16" />
             <CardContent className="p-4 sm:p-6">
               <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">

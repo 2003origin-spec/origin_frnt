@@ -102,7 +102,7 @@ function LobbyContent({ currentUserId }: { currentUserId: string }) {
             onSend={room.sendChat}
           />
 
-          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950">
+          <section className="rounded-lg border border-border bg-card p-5 shadow-sm">
             <h2 className="mb-4 text-sm font-black uppercase tracking-[0.18em] text-slate-500">Test Status</h2>
             {room.room.custom_test_id ? (
               <div className="rounded-lg bg-green-50 p-4 text-sm font-bold text-green-800 dark:bg-green-950/30 dark:text-green-300">

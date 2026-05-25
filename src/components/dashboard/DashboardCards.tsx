@@ -368,7 +368,7 @@ export function TodoListCard({ tasks, onAddTask, onToggleTask, onRemoveTask, onV
     };
 
     return (
-        <Card className="border-0 shadow-xl shadow-slate-200/50 dark:shadow-slate-900/50 bg-card backdrop-blur-xl h-full relative overflow-hidden flex flex-col ring-1 ring-border">
+        <Card className="border border-border shadow-xl bg-card backdrop-blur-xl h-full relative overflow-hidden flex flex-col">
             {/* Soft decorative background */}
             <div className="absolute top-0 right-0 w-[40%] h-[40%] bg-gradient-to-bl from-primary/5 to-transparent dark:from-primary/10 pointer-events-none" />
 

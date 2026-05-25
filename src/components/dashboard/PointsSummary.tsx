@@ -43,7 +43,7 @@ export default function PointsSummary({ data, onNextSteps }: PointsSummaryProps)
     const [showInfo, setShowInfo] = useState(false);
 
     if (!data || data.totalPoints === undefined) return (
-        <div className="w-full h-full bg-white/5 dark:bg-slate-900/50 rounded-3xl border border-white/10 p-6 flex flex-col justify-center items-center gap-3 animate-pulse">
+        <div className="w-full h-full bg-white/5 dark:bg-slate-900/50 rounded-3xl border border-border p-6 flex flex-col justify-center items-center gap-3 animate-pulse">
             <div className="w-12 h-12 rounded-full bg-slate-700/50" />
             <div className="w-24 h-4 bg-slate-700/50 rounded" />
         </div>
@@ -53,7 +53,7 @@ export default function PointsSummary({ data, onNextSteps }: PointsSummaryProps)
 
 
     return (
-        <div className="w-full h-full bg-card dark:bg-slate-900/40 backdrop-blur-md rounded-[32px] border border-primary/20 dark:border-border/50 p-6 flex flex-col justify-between overflow-hidden relative group shadow-sm">
+        <div className="w-full h-full bg-card dark:bg-slate-900/40 backdrop-blur-md rounded-[32px] border border-border p-6 flex flex-col justify-between overflow-hidden relative group shadow-sm">
             {/* Background glow */}
             <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 blur-[50px] pointer-events-none group-hover:bg-primary/10 transition-colors duration-500" />
 

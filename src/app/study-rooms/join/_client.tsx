@@ -31,7 +31,7 @@ export default function JoinStudyRoomClient() {
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-background px-4 py-8 text-foreground">
-      <section className="w-full max-w-lg rounded-lg border border-slate-200 bg-white p-6 text-center shadow-sm dark:border-slate-800 dark:bg-slate-950">
+      <section className="w-full max-w-lg rounded-lg border border-border bg-card p-6 text-center shadow-sm">
         <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-blue-600 text-white">
           <LogIn className="h-5 w-5" />
         </div>

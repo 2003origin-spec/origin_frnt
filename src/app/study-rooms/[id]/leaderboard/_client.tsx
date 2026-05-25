@@ -97,14 +97,14 @@ export default function RoomLeaderboardClient({
           </div>
         </header>
 
-        <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950">
+        <section className="rounded-lg border border-border bg-card p-5 shadow-sm">
           <div className="space-y-3">
             {leaderboard.map((entry) => (
               <div
                 key={entry.user_id}
                 className={cn(
                   'flex items-center gap-4 rounded-lg border p-4',
-                  entry.is_me ? 'border-blue-300 bg-blue-50 dark:border-blue-900 dark:bg-blue-950/30' : 'border-slate-100 dark:border-slate-800',
+                  entry.is_me ? 'border-blue-300 bg-blue-50 dark:border-blue-900 dark:bg-blue-950/30' : 'border-border bg-card',
                 )}
               >
                 <div className="w-8"><RankIcon rank={entry.rank} /></div>

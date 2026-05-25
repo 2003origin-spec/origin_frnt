@@ -581,7 +581,7 @@ export default function Profile({
             </TabsContent>
 
             <TabsContent value="settings" className="mt-8">
-              <Card className="border-0 shadow-xl bg-card dark:bg-slate-900/60 backdrop-blur-xl ring-1 ring-slate-100 dark:ring-white/5">
+              <Card className="border border-border shadow-xl bg-card">
                 <CardContent className="p-6">
                   <div className="space-y-3">
                     {[

@@ -17,7 +17,7 @@ export type RoomDppSummary = {
 
 export function RoomDppPanel({ dpps }: { dpps: RoomDppSummary[] }) {
   return (
-    <section className="rounded-lg border border-primary/20 bg-card p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950">
+    <section className="rounded-lg border border-border bg-card p-5 shadow-sm">
       <div className="mb-4 flex items-center gap-2">
         <BookOpenCheck className="h-4 w-4 text-blue-600" />
         <h2 className="text-sm font-black uppercase tracking-[0.18em] text-slate-500">Your DPPs</h2>
@@ -27,7 +27,7 @@ export function RoomDppPanel({ dpps }: { dpps: RoomDppSummary[] }) {
       ) : (
         <div className="grid gap-3 md:grid-cols-3">
           {dpps.map((dpp) => (
-            <div key={dpp.id} className="rounded-lg border border-slate-100 p-4 dark:border-slate-800">
+            <div key={dpp.id} className="rounded-lg border border-border p-4">
               <div className="mb-3 flex items-center justify-between">
                 <Badge variant="secondary" className="rounded-md">DPP {dpp.sequence}</Badge>
                 <span className="text-xs font-bold text-slate-500">{dpp.duration_minutes}m</span>

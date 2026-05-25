@@ -90,7 +90,7 @@ export default function DailyTracker({ user }: DailyTrackerProps) {
             case 2: return 'bg-[#6EE7B7] dark:bg-emerald-700/60 border border-emerald-600/50 dark:border-emerald-400/50';
             case 3: return 'bg-[#10B981] dark:bg-emerald-500/70 border border-emerald-700/60 dark:border-emerald-300/50';
             case 4: return 'bg-[#059669] dark:bg-emerald-400 shadow-[0_0_8px_rgba(5,150,105,0.3)] border border-emerald-800 dark:border-emerald-200';
-            case 0: return 'bg-[#F1F5F9] dark:bg-slate-800/50 border border-slate-300 dark:border-slate-600';
+            case 0: return 'bg-[#F1F5F9] dark:bg-slate-800/50 border border-emerald-500/10 dark:border-emerald-500/5';
             default: return 'bg-transparent border-dashed border border-slate-300/40 opacity-20';
         }
     };

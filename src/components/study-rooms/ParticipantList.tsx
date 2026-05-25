@@ -34,7 +34,7 @@ export function ParticipantList({
   };
 
   return (
-    <section className="rounded-lg border border-primary/20 bg-card p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950">
+    <section className="rounded-lg border border-border bg-card p-5 shadow-sm">
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-sm font-black uppercase tracking-[0.18em] text-slate-500">Participants</h2>
         <Badge variant="secondary" className="rounded-md">{activeParticipants.length}/100</Badge>
@@ -45,7 +45,7 @@ export function ParticipantList({
           const isSelf = participant.user_id === currentUserId;
           const participantIsAdmin = participant.role === 'admin';
           return (
-            <div key={participant.user_id} className="flex items-center gap-3 rounded-lg border border-slate-100 p-3 dark:border-slate-800">
+            <div key={participant.user_id} className="flex items-center gap-3 rounded-lg border border-border p-3">
               <Avatar className="h-10 w-10">
                 <AvatarFallback className="bg-blue-600 text-sm font-black text-white">
                   {participant.display_name.charAt(0).toUpperCase()}

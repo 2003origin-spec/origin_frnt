@@ -36,8 +36,8 @@ export function LobbyChat({
   };
 
   return (
-    <section className="flex min-h-[420px] flex-col rounded-lg border border-primary/20 bg-card/40 backdrop-blur-md shadow-sm dark:border-slate-800 dark:bg-slate-950/40">
-      <div className="border-b border-slate-100 px-5 py-4 dark:border-slate-800">
+    <section className="flex min-h-[420px] flex-col rounded-lg border border-border bg-card/40 backdrop-blur-md shadow-sm">
+      <div className="border-b border-border px-5 py-4">
         <h2 className="text-sm font-black uppercase tracking-[0.18em] text-slate-500">Lobby Chat</h2>
       </div>
       <div className="flex-1 space-y-3 overflow-y-auto px-5 py-4">
@@ -61,7 +61,7 @@ export function LobbyChat({
         })}
       </div>
       {!locked && (
-        <div className="border-t border-slate-100 p-4 dark:border-slate-800">
+        <div className="border-t border-border p-4">
           <div className="flex gap-2">
             <Textarea
               value={content}

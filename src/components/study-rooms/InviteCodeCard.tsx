@@ -51,7 +51,7 @@ export function InviteCodeCard({
   };
 
   return (
-    <section className="rounded-lg border border-primary/20 bg-card p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950">
+    <section className="rounded-lg border border-border bg-card p-5 shadow-sm">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <KeyRound className="h-4 w-4 text-blue-600" />
@@ -62,7 +62,7 @@ export function InviteCodeCard({
         </Badge>
       </div>
 
-      <div className="flex items-center justify-between gap-3 rounded-lg bg-slate-100 px-4 py-4 dark:bg-slate-900">
+      <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/50 px-4 py-4">
         <div className="font-mono text-3xl font-black tracking-[0.32em] text-slate-950 dark:text-white">
           {inviteCode?.code ?? '------'}
         </div>
