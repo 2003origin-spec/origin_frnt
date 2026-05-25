@@ -87,6 +87,24 @@ This document maps all the pages to be generated for the ORIGIN Teacher Platform
     - [Desktop (Screen 9d9f35b6eaad41d4acb2819e54b394dd)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/9d9f35b6eaad41d4acb2819e54b394dd)
     - [Tablet (Screen e4780219adbb40a89ffd8992e6aa2318)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/e4780219adbb40a89ffd8992e6aa2318)
     - [Mobile (Screen 5dd2af9a4f184eb4a5000547644929eb)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/5dd2af9a4f184eb4a5000547644929eb)
+- [x] **Page 10: Teacher Onboarding & Signup Flow** (`/teacher/onboarding`)
+  - **Dark Mode (Pure Black base, Cyan accent)**:
+    - [Desktop (Screen 3ceeb8088e784f79bd5c102f9594d3c8)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/3ceeb8088e784f79bd5c102f9594d3c8)
+    - [Tablet (Screen 55408c41fea7412f91e1eb86ddd1d0d7)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/55408c41fea7412f91e1eb86ddd1d0d7)
+    - [Mobile (Screen c4257bca601f45e38ce031a7282e0273)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/c4257bca601f45e38ce031a7282e0273)
+  - **Light Mode (Pure White base, Cyan accent)**:
+    - [Desktop (Screen 544cf90eec3f43ad93cac671c944b88d)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/544cf90eec3f43ad93cac671c944b88d)
+    - [Tablet (Screen 2cf121b8fc404f60972e7f4e17fd22d2)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/2cf121b8fc404f60972e7f4e17fd22d2)
+    - [Mobile (Screen c86e38cb43434ec49a080600cf6728f8)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/c86e38cb43434ec49a080600cf6728f8)
+- [x] **Page 11: Platform Admin Control Center & Moderation Console** (`/admin/moderation`)
+  - **Dark Mode (Pure Black base, Cyan accent)**:
+    - [Desktop (Screen af166e7164934c408917025017972920)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/af166e7164934c408917025017972920)
+    - [Tablet (Screen e023bb80880a48859651188bba7e68a8)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/e023bb80880a48859651188bba7e68a8)
+    - [Mobile (Screen 8e5109231763444a8dc4f59b5cb47a87)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/8e5109231763444a8dc4f59b5cb47a87)
+  - **Light Mode (Pure White base, Cyan accent)**:
+    - [Desktop (Screen 4f5b922c58e64775a5d9de0e9c124ece)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/4f5b922c58e64775a5d9de0e9c124ece)
+    - [Tablet (Screen e75cca4d986d4f6092ae0ed8a886bfd0)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/e75cca4d986d4f6092ae0ed8a886bfd0)
+    - [Mobile (Screen ed8082138c034bbca03ca82f93a545bd)](https://stitch.withgoogle.com/projects/2531893112967424418/screens/ed8082138c034bbca03ca82f93a545bd)
 
 ---
 
@@ -245,6 +263,39 @@ This document maps all the pages to be generated for the ORIGIN Teacher Platform
 
 ---
 
+### Page 10: Teacher Onboarding & Signup Flow
+**Route:** `/teacher/onboarding`  
+*Focus:* Educator/institute registration, profile details, and organization code checks.
+
+*   **Responsive Layout Layouts:**
+    *   **Desktop:** Minimal TopNavBar + Centered onboarding form card (800px max-width).
+    *   **Tablet:** Centered onboarding card (700px width), stacked selector layout.
+    *   **Mobile:** Full-bleed vertical scroll layout, single column inputs.
+*   **Components:**
+    *   `WorkspaceTypeSelector`: Side-by-side select cards displaying "Personal Teacher Workspace" and "Coaching Institute Workspace" with highlight selections.
+    *   `OnboardingProgressBar`: Step indicators for "Workspace Type -> Details -> Profile Attribution".
+    *   `OnboardingForm`: Input fields for Name, Email (with inline success indicator), Subjects checkboxes, and capacity.
+    *   `OrgCodeChecker`: Real-time availability indicator showing "Code available!" (emerald) or "Code taken" (coral) next to code inputs.
+    *   `AttributionUploader`: Circular display uploader logo frame mapped to the uploader profile image uploader.
+
+---
+
+### Page 11: Platform Admin Control Center & Moderation Console
+**Route:** `/admin/moderation`  
+*Focus:* Multi-workspace management, public OGCode question approval, and incident handling.
+
+*   **Responsive Layout Layouts:**
+    *   **Desktop:** TopNavBar + Left-side vertical navigation menu + Right-side dashboard panel.
+    *   **Tablet:** Landscape optimized split navigation grid.
+    *   **Mobile:** Horizontal tab menu header + single-column scrollable metric & roster cards.
+*   **Components:**
+    *   `PlatformMetricsRow`: Dashboard card group for active users, suspended workspaces, pending moderation requests, and active incidents.
+    *   `WorkspaceRosterDirectory`: Tabular roster mapping workspace details, status pills, and toggle keys for suspension/revocation and streaming JSON exports.
+    *   `OGCodeModerationQueueCard`: Contributed question card showing stem, LaTeX equation render, teacher attribution uploader, and solid green Approve / Amber Reject action buttons.
+    *   `IncidentKillSwitchConsole`: High-priority status log displaying system errors and red alert dropdown options for Rate Limits or Kill-Switches.
+
+---
+
 ## 3. API Integration Contract Mapping
 
 This section defines the mapping between each page and component on the ORIGIN Teacher Platform and their corresponding backend API contracts defined in [Teacher-admin-api.md](file:///Users/snaveen/Desktop/Origin/V1/Teacher-admin-api.md).
@@ -332,19 +383,24 @@ This section defines the mapping between each page and component on the ORIGIN T
     *   `GET /api/teacher/workspaces/{workspaceId}/ogcode-publications` (retrieve Moderation history and review comments for contributed questions)
     *   `GET /api/teacher/ogcode-moderation` (check system-wide moderation status queues)
 
----
+### Page 10: Teacher Onboarding & Signup Flow (`/teacher/onboarding`)
+*   **WorkspaceTypeSelector / OnboardingForm**:
+    *   `POST /api/teacher/onboarding` (create personal or institute teacher user and initial workspace)
+*   **OrgCodeChecker**:
+    *   `POST /api/teacher/codes/check` (queryAvailability for custom unique coaching identifiers before signup transaction)
 
-### Platform Administrator Console Mappings
-Although not represented in the Teacher portal views, the administrator API contracts connect as follows for platform moderations:
-*   **Workspace Suspension & Control**:
-    *   `GET /api/admin/workspaces` (list system workspaces)
-    *   `POST /api/admin/workspaces/{workspaceId}` (suspend, unsuspend, or force close active workspaces)
-    *   `POST /api/admin/workspaces/{workspaceId}/codes/{codeId}/revoke` (force-revoke join keys)
-    *   `GET /api/admin/workspaces/{workspaceId}/export` (dump workspace schema elements)
-*   **OGCode Moderation & Ingestion Audit**:
-    *   `GET /api/admin/ogcode/moderation` (list contributed question tickets awaiting approval)
-    *   `POST /api/admin/ogcode/moderation/{publicationId}/approve` (approve publication, merge to public database)
+### Page 11: Platform Admin Control Center & Moderation Console (`/admin/moderation`)
+*   **WorkspaceRosterDirectory**:
+    *   `GET /api/admin/workspaces` (fetch system workspaces roster)
+    *   `POST /api/admin/workspaces/{workspaceId}` (suspend, unsuspend, or close workspaces)
+    *   `POST /api/admin/workspaces/{workspaceId}/codes/{codeId}/revoke` (revoke access keys)
+    *   `GET /api/admin/workspaces/{workspaceId}/export` (extract database schemas via JSON streaming)
+*   **OGCodeModerationQueueCard**:
+    *   `GET /api/admin/ogcode/moderation` (list contributed questions awaiting public pool approval)
+    *   `POST /api/admin/ogcode/moderation/{publicationId}/approve` (approve publication and sync)
     *   `POST /api/admin/ogcode/moderation/{publicationId}/reject` (flag changes requested or reject contribution)
-*   **Incident Response & Kill Switches**:
-    *   `GET /api/admin/incidents` (monitor server incidents, error logs, and metrics)
-    *   `POST /api/admin/incidents/{action}` (trigger `kill_switch`, `force_logout`, or workspace rate limits)
+*   **IncidentKillSwitchConsole**:
+    *   `GET /api/admin/incidents` (view system incidents and logs)
+    *   `POST /api/admin/incidents/{action}` (execute emergency `kill_switch`, `force_logout`, or rate limits)
+    *   `GET /api/admin/audit-events` (audit control log details)
+    *   `GET /api/admin/import-jobs` & `GET /api/admin/import-jobs/{jobId}` (audit failed ingestion parsing logs)
