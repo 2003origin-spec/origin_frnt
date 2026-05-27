@@ -1,7 +1,7 @@
 'use client';
 import { useRef, useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { motion, useScroll, useTransform, useSpring, useInView } from 'framer-motion';
+import { motion, useScroll, useTransform, useSpring, useInView, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import CrystalBackground from '@/components/ui/CrystalBackground';
 import { Card } from '@/components/ui/CardSwap';
@@ -113,6 +113,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
   const isCounterInView = useInView(counterRef, { once: true, amount: 0.5 });
   const [isTransitioning, setIsTransitioning] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [showStickyCTA, setShowStickyCTA] = useState(false);
 
   const handleBeginJourney = (e?: React.MouseEvent) => {
     if (e) e.preventDefault();
@@ -175,6 +176,16 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
     checkMobile();
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleScroll = () => {
+      // Show sticky CTA once scrolled past hero section (~400px)
+      setShowStickyCTA(window.scrollY > 400);
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
   const actualTheme = mounted ? resolvedTheme : (theme === 'system' ? 'dark' : theme);
@@ -752,6 +763,27 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
           </div>
         </div>
       </footer>
+
+      {/* Mobile & Tablet Sticky bottom CTA */}
+      <AnimatePresence>
+        {showStickyCTA && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 50, scale: 0.95 }}
+            transition={{ duration: 0.25, ease: "easeOut" }}
+            className="fixed bottom-4 left-4 right-4 z-40 lg:hidden"
+          >
+            <button
+              onClick={() => handleBeginJourney()}
+              className="w-full bg-primary text-black font-semibold rounded-full py-4 text-base hover:scale-[1.01] active:scale-[0.99] transition-all shadow-xl shadow-primary/25 flex items-center justify-center gap-2 border border-primary/25 backdrop-blur-md"
+            >
+              <span>Begin Journey</span>
+              <ChevronRight className="w-5 h-5 text-black" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
