@@ -14,5 +14,8 @@ export default function DoubtSolverPage() {
 async function DoubtSolverGate() {
   const user = await getServerFrontendUser();
   if (!user) redirect('/');
+  if (user.role === 'student' && !user.isPremium) {
+    redirect('/premium');
+  }
   return <DoubtSolverClient />;
 }
