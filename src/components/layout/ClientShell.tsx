@@ -54,8 +54,9 @@ function ClientShellInner({ children }: { children: React.ReactNode }) {
   
   const isTestsPath = pathname === '/tests' || pathname.startsWith('/tests/');
   const isStudyRoomTestPath = /^\/study-rooms\/[^/]+\/test/.test(pathname);
+  const isResultPath = pathname.endsWith('/result');
   const isSpecialPath = pathname.startsWith('/tests/') || pathname.startsWith('/ogcode/') || isStudyRoomTestPath;
-  const isFullViewportApp = pathname === '/doubt-solver' || pathname.startsWith('/tests/') || pathname.startsWith('/ogcode/') || isStudyRoomTestPath;
+  const isFullViewportApp = pathname === '/doubt-solver' || (pathname.startsWith('/tests/') && !isResultPath) || pathname.startsWith('/ogcode/') || isStudyRoomTestPath;
   const shouldHideOriginAi = isTestsPath || isStudyRoomTestPath;
 
   const { resolvedTheme, setTheme } = useTheme();
