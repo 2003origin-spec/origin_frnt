@@ -5,8 +5,7 @@ import { useRouter } from 'next/navigation';
 import { ArrowLeft, Play, Wifi, WifiOff } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 import { InviteCodeCard } from '@/components/study-rooms/InviteCodeCard';
 import { LobbyChat } from '@/components/study-rooms/LobbyChat';
 import { ParticipantList } from '@/components/study-rooms/ParticipantList';
@@ -50,22 +49,35 @@ function LobbyContent({ currentUserId }: { currentUserId: string }) {
     }
   };
 
+  const statusLabel = roomStatus.replace('_', ' ');
+
   return (
-    <main className="min-h-screen bg-background px-4 py-8 text-foreground">
+    <main className="min-h-screen neu-surface px-4 py-8 text-foreground">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
         <header className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
           <div>
-            <Button variant="ghost" size="sm" className="mb-3" onClick={() => router.push('/study-rooms')}>
+            <button
+              type="button"
+              onClick={() => router.push('/study-rooms')}
+              className="mb-3 flex items-center gap-1.5 text-sm font-bold text-muted-foreground hover:text-primary transition-colors"
+            >
               <ArrowLeft className="h-4 w-4" />
               Rooms
-            </Button>
+            </button>
             <div className="flex flex-wrap items-center gap-3">
               <h1 className="text-3xl font-black tracking-tight">{room.room.name}</h1>
-              <Badge className="rounded-md">{room.room.status.replace('_', ' ')}</Badge>
-              <Badge variant="secondary" className="rounded-md">
-                {room.isConnected ? <Wifi className="mr-1 h-3 w-3" /> : <WifiOff className="mr-1 h-3 w-3" />}
+              <span className="rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider bg-primary/10 text-primary">
+                {statusLabel}
+              </span>
+              <span className={cn(
+                'flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider',
+                room.isConnected
+                  ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                  : 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
+              )}>
+                {room.isConnected ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
                 {room.isConnected ? 'Live' : 'Reconnecting'}
-              </Badge>
+              </span>
             </div>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row">
@@ -73,13 +85,24 @@ function LobbyContent({ currentUserId }: { currentUserId: string }) {
               <>
                 <TestConfigDrawer disabled={room.room.status !== 'lobby'} onConfigure={room.configureTest} />
                 <DeleteRoomButton roomName={room.room.name} onDelete={room.deleteRoom} />
-                <Button disabled={!room.room.custom_test_id || room.room.status !== 'lobby'} onClick={start}>
+                <button
+                  type="button"
+                  disabled={!room.room.custom_test_id || room.room.status !== 'lobby'}
+                  onClick={start}
+                  className="flex items-center gap-2 bg-primary text-primary-foreground rounded-xl px-4 py-2.5 text-sm font-bold shadow-[3px_3px_8px_hsl(var(--neu-shadow))] hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
+                >
                   <Play className="h-4 w-4" />
                   Start Test
-                </Button>
+                </button>
               </>
             )}
-            <Button variant="outline" onClick={room.leaveRoom}>Leave</Button>
+            <button
+              type="button"
+              onClick={room.leaveRoom}
+              className="neu-raised rounded-xl px-4 py-2.5 text-sm font-bold hover:-translate-y-0.5 transition-all"
+            >
+              Leave
+            </button>
           </div>
         </header>
 
@@ -100,16 +123,19 @@ function LobbyContent({ currentUserId }: { currentUserId: string }) {
             locked={room.room.status !== 'lobby'}
             currentUserId={currentUserId}
             onSend={room.sendChat}
+            pendingMessages={room.pending}
+            typingUsers={room.typingUsers}
+            onTyping={room.sendTyping}
           />
 
-          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950">
-            <h2 className="mb-4 text-sm font-black uppercase tracking-[0.18em] text-slate-500">Test Status</h2>
+          <section className="neu-raised rounded-2xl p-5">
+            <h2 className="mb-4 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Test Status</h2>
             {room.room.custom_test_id ? (
-              <div className="rounded-lg bg-green-50 p-4 text-sm font-bold text-green-800 dark:bg-green-950/30 dark:text-green-300">
+              <div className="neu-inset rounded-xl p-4 text-sm font-bold text-emerald-600 dark:text-emerald-400">
                 Test ready. The admin can start when participants are prepared.
               </div>
             ) : (
-              <div className="rounded-lg bg-slate-100 p-4 text-sm font-bold text-slate-600 dark:bg-slate-900 dark:text-slate-300">
+              <div className="neu-inset rounded-xl p-4 text-sm font-bold text-muted-foreground">
                 Waiting for the admin to configure a custom test.
               </div>
             )}

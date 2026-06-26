@@ -9,12 +9,15 @@
  */
 
 import { useRouter } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import { ChevronLeft, Atom, FlaskConical, Sigma, Dna, Shield, Check } from 'lucide-react';
 
-import { Card, CardContent } from '@/components/ui/card';
+const OriMascot = dynamic(() => import('@/features/mascot/Ori2D'), { ssr: false });
+
 import { useAuth } from '@/context/AuthContext';
 import { ALL_SUBJECTS, getEntitledSubjects, hasAnyPremium, type Subject } from '@/lib/entitlements';
 import { ActiveBadge, SubjectCheckout } from '@/components/subscriptions/SubjectCheckout';
+import { cn } from '@/lib/utils';
 
 interface PremiumProps {
   onBack?: () => void;
@@ -39,19 +42,19 @@ export default function Premium({ onBack }: PremiumProps) {
   const onChanged = () => void refreshUser();
 
   return (
-    <div className="min-h-screen bg-background text-foreground transition-colors duration-300">
-      <header className="sticky top-0 z-40 glass border-b border-border backdrop-blur-md">
+    <div className="min-h-screen neu-surface text-foreground transition-colors duration-300">
+      <header className="sticky top-0 z-40 bg-[hsl(var(--neu-bg))] border-b border-border/40 shadow-[0_2px_8px_hsl(var(--neu-shadow)/30%)]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-4">
               <button
                 onClick={handleBack}
-                className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                className="p-2 neu-raised rounded-xl hover:-translate-y-0.5 transition-all"
                 aria-label="Go back"
               >
-                <ChevronLeft className="w-5 h-5 text-slate-600 dark:text-slate-400" />
+                <ChevronLeft className="w-5 h-5 text-muted-foreground" />
               </button>
-              <h1 className="text-xl font-bold text-slate-900 dark:text-white">Origin Premium</h1>
+              <h1 className="text-xl font-bold text-foreground">Origin Premium</h1>
             </div>
           </div>
         </div>
@@ -59,73 +62,80 @@ export default function Premium({ onBack }: PremiumProps) {
 
       <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="text-center mb-10">
-          <h2 className="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white mb-4">
+          <div className="mb-4 flex justify-center">
+            <div className="h-24 w-24 sm:h-28 sm:w-28">
+              <OriMascot expression="thumbsup" title="Origin AI" />
+            </div>
+          </div>
+          <h2 className="text-3xl sm:text-4xl font-bold text-foreground mb-4">
             Subscribe by subject
           </h2>
-          <p className="text-lg text-slate-600 dark:text-slate-400 max-w-2xl mx-auto">
+          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
             ₹499 / month per subject, billed monthly. Subscribe to any one subject and the global
             tools below unlock instantly. Cancel anytime — access lasts to the end of the period.
           </p>
         </div>
 
         {/* Global tools unlock banner */}
-        <Card className="border-0 shadow-soft mb-10 dark:bg-slate-900/60 dark:ring-1 dark:ring-white/10">
-          <CardContent className="p-6 flex flex-col sm:flex-row sm:items-center gap-4 justify-between">
-            <div>
-              <h3 className="font-semibold text-slate-900 dark:text-white mb-1">
-                Owning any subject unlocks
-              </h3>
-              <div className="flex flex-wrap gap-2">
-                {GLOBAL_TOOLS.map((tool) => (
-                  <span
-                    key={tool}
-                    className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-3 py-1 text-sm text-primary"
-                  >
-                    <Check className="w-3 h-3" /> {tool}
-                  </span>
-                ))}
-              </div>
+        <div className="neu-raised rounded-2xl p-6 flex flex-col sm:flex-row sm:items-center gap-4 justify-between mb-8 sm:mb-10">
+          <div>
+            <h3 className="font-semibold text-foreground mb-2">
+              Owning any subject unlocks
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {GLOBAL_TOOLS.map((tool) => (
+                <span
+                  key={tool}
+                  className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-3 py-1 text-sm text-primary font-medium"
+                >
+                  <Check className="w-3 h-3" /> {tool}
+                </span>
+              ))}
             </div>
-            <span
-              className={`text-sm font-medium ${anyPremium ? 'text-green-600 dark:text-green-400' : 'text-slate-500 dark:text-slate-400'}`}
-            >
-              {anyPremium ? 'Unlocked' : 'Locked'}
-            </span>
-          </CardContent>
-        </Card>
+          </div>
+          <span className={cn(
+            'text-sm font-bold',
+            anyPremium ? 'text-emerald-500' : 'text-muted-foreground'
+          )}>
+            {anyPremium ? '✓ Unlocked' : 'Locked'}
+          </span>
+        </div>
 
         {/* Subject cards */}
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6 mb-10 sm:mb-12">
           {ALL_SUBJECTS.map((subject) => {
             const meta = SUBJECT_META[subject];
             const isOwned = owned.has(subject);
             const Icon = meta.Icon;
             return (
-              <Card
+              <div
                 key={subject}
-                className={`relative border-0 shadow-lg overflow-hidden dark:bg-slate-900/60 dark:ring-1 dark:ring-white/10 ${isOwned ? 'ring-2 ring-green-500/40' : ''}`}
+                className={cn(
+                  'relative neu-raised rounded-2xl overflow-hidden',
+                  isOwned ? 'ring-2 ring-emerald-500/40' : ''
+                )}
               >
-                <CardContent className="p-6 flex flex-col h-full">
+                <div className="p-6 flex flex-col h-full">
                   <div className="flex items-center justify-between mb-4">
-                    <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
+                    <div className="w-12 h-12 rounded-xl bg-primary/10 neu-inset flex items-center justify-center">
                       <Icon className="w-6 h-6 text-primary" />
                     </div>
                     {isOwned ? <ActiveBadge /> : null}
                   </div>
-                  <h3 className="text-lg font-bold text-slate-900 dark:text-white">{meta.label}</h3>
+                  <h3 className="text-lg font-bold text-foreground">{meta.label}</h3>
                   <div className="flex items-baseline gap-1 mt-1 mb-3">
-                    <span className="text-2xl font-bold text-slate-900 dark:text-white">₹499</span>
-                    <span className="text-sm text-slate-500 dark:text-slate-400">/month</span>
+                    <span className="text-2xl font-black text-primary">₹499</span>
+                    <span className="text-sm text-muted-foreground">/month</span>
                   </div>
-                  <p className="text-sm text-slate-500 dark:text-slate-400 flex-1 mb-5">{meta.blurb}</p>
+                  <p className="text-sm text-muted-foreground flex-1 mb-5">{meta.blurb}</p>
                   <SubjectCheckout subject={subject} label={meta.label} owned={isOwned} onChanged={onChanged} />
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             );
           })}
         </div>
 
-        <div className="flex flex-wrap justify-center gap-6 text-slate-400">
+        <div className="flex flex-wrap justify-center gap-6 text-muted-foreground">
           <div className="flex items-center gap-2">
             <Shield className="w-5 h-5" />
             <span className="text-sm">Secure payments by Razorpay</span>

@@ -21,10 +21,10 @@ function Countdown({ startedAt }: { startedAt: string }) {
   const remaining = Math.max(0, Math.ceil((new Date(startedAt).getTime() - now) / 1000));
   if (remaining <= 0) return null;
   return (
-    <div className="fixed inset-0 z-[300] flex items-center justify-center bg-slate-950 text-white">
+    <div className="fixed inset-0 z-[300] flex items-center justify-center neu-surface text-foreground">
       <div className="text-center">
-        <p className="mb-4 text-xs font-black uppercase tracking-[0.3em] text-blue-300">Starting In</p>
-        <div className="text-8xl font-black tabular-nums">{remaining}</div>
+        <p className="mb-4 text-xs font-black uppercase tracking-[0.3em] text-primary">Starting In</p>
+        <div className="text-8xl font-black tabular-nums text-foreground">{remaining}</div>
       </div>
     </div>
   );
@@ -45,6 +45,23 @@ export default function RoomTestClient({
     durationSeconds: room.duration_seconds ?? initialTest.duration * 60,
     skewMs: 0,
   };
+
+  // Teacher Live Rooms: stamp `entered_test_at` and keep `last_seen_at` fresh so
+  // the teacher's live student list shows this student as "giving the test".
+  useEffect(() => {
+    let cancelled = false;
+    const ping = (): void => {
+      void apiCall(`/study-rooms/${roomId}`, { method: 'POST', body: JSON.stringify({ on_test: true }) }).catch(() => undefined);
+    };
+    ping();
+    const interval = window.setInterval(() => {
+      if (!cancelled) ping();
+    }, 15000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [roomId]);
 
   useEffect(() => {
     let isDisposed = false;

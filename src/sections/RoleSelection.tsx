@@ -1,156 +1,135 @@
 'use client';
-import { Button } from '@/components/ui/button';
 import { GraduationCap, BookOpen, ArrowLeft, CheckCircle2 } from 'lucide-react';
 import { useState } from 'react';
 import { motion } from 'framer-motion';
+import { cn } from '@/lib/utils';
 
 interface RoleSelectionProps {
     onSelectRole: (role: 'student' | 'teacher') => void;
     onBack: () => void;
 }
 
+const ROLES = [
+    {
+        id: 'student' as const,
+        Icon: GraduationCap,
+        title: 'Student',
+        subtitle: 'Prepare for JEE with AI-powered tools and adaptive practice.',
+        features: ['Personalised Study Plan', 'AI Mock Tests', 'Concept Mastery Tracking', '24/7 Doubt Solving'],
+        cta: 'Continue as Student',
+    },
+    {
+        id: 'teacher' as const,
+        Icon: BookOpen,
+        title: 'Teacher / Institution',
+        subtitle: 'Create tests, manage students, and analyse class performance.',
+        features: ['Create Custom Tests', 'Monitor Student Progress', 'Detailed Class Analytics', 'Assignment Management'],
+        cta: 'Continue as Teacher',
+    },
+];
+
 export default function RoleSelection({ onSelectRole, onBack }: RoleSelectionProps) {
-    const [hoveredRole, setHoveredRole] = useState<'student' | 'teacher' | null>(null);
+    const [selected, setSelected] = useState<'student' | 'teacher' | null>(null);
 
     return (
-        <div className="min-h-screen flex items-center justify-center p-4 bg-background text-foreground transition-colors duration-500 overflow-hidden relative">
-            {/* Background Decoration */}
-            <div className="absolute inset-0 z-0 pointer-events-none opacity-40 mix-blend-multiply dark:mix-blend-screen"
-                style={{
-                    backgroundImage: `radial-gradient(circle at 80% 30%, var(--primary) 0%, transparent 40%),
-                                     radial-gradient(circle at 20% 70%, var(--primary) 0%, transparent 40%)`
-                }}>
-                <div className="absolute inset-0 bg-[url('/noise.svg')] opacity-[0.03] mix-blend-overlay"></div>
-            </div>
-
-            <motion.div
-                initial={{ scale: 0.3, opacity: 0, filter: 'blur(10px)' }}
-                animate={{ scale: 1, opacity: 1, filter: 'blur(0px)' }}
-                transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
-                style={{ transformOrigin: 'center' }}
-                className="w-full max-w-3xl relative z-10"
-            >
-                {/* Back Button */}
+        <div className="min-h-screen neu-surface flex flex-col items-center justify-center p-6 text-foreground">
+            {/* Back */}
+            <div className="w-full max-w-2xl mb-8">
                 <button
                     onClick={onBack}
-                    className="mb-8 flex items-center gap-2 text-slate-600 dark:text-slate-400 hover:text-primary transition-colors"
+                    className="flex items-center gap-2 text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors"
                 >
                     <ArrowLeft className="w-4 h-4" />
-                    <span className="text-sm font-medium">Back to home</span>
+                    Back to home
                 </button>
+            </div>
 
-                <div className="text-center mb-12">
-                    <h1 className="text-4xl font-bold text-foreground mb-4 tracking-tight">
-                        How will you use ORIGIN?
-                    </h1>
-                    <p className="text-lg text-muted-foreground">
-                        Select your role to get a personalized experience
-                    </p>
-                </div>
-
-                <div className="grid md:grid-cols-2 gap-8">
-                    {/* Student Card */}
-                    <div
-                        className={`group relative p-8 rounded-3xl border transition-all duration-500 cursor-pointer overflow-hidden ${hoveredRole === 'student'
-                            ? 'bg-card border-primary/50 shadow-[0_0_40px_rgba(var(--primary-rgb),0.1)] dark:shadow-[0_0_40px_rgba(var(--primary-rgb),0.2)] scale-[1.02]'
-                            : 'bg-card/40 backdrop-blur-xl border-border/40 hover:border-black/5 dark:hover:border-white/10 hover:bg-card/80 shadow-xl'
-                            }`}
-                        onMouseEnter={() => setHoveredRole('student')}
-                        onMouseLeave={() => setHoveredRole(null)}
-                        onClick={() => onSelectRole('student')}
-                    >
-                        <div className={`absolute top-6 right-6 transition-opacity duration-300 ${hoveredRole === 'student' ? 'opacity-100' : 'opacity-0'
-                            }`}>
-                            <CheckCircle2 className="w-6 h-6 text-primary" />
-                        </div>
-
-                        <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-6 transition-colors duration-300 ${hoveredRole === 'student' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
-                            }`}>
-                            <GraduationCap className="w-8 h-8" />
-                        </div>
-
-                        <h3 className="text-2xl font-bold text-foreground mb-3">Student</h3>
-                        <p className="text-muted-foreground mb-6 leading-relaxed">
-                            I want to prepare for JEE exams, take AI-powered tests, and track my progress.
-                        </p>
-
-                        <ul className="space-y-3 mb-8">
-                            {[
-                                'Personalized Study Plan',
-                                'AI-Driven Mock Tests',
-                                'Concept Mastery Tracking',
-                                '24/7 Doubt Solving'
-                            ].map((feature, i) => (
-                                <li key={i} className="flex items-center gap-3 text-sm text-muted-foreground">
-                                    <div className={`w-1.5 h-1.5 rounded-full ${hoveredRole === 'student' ? 'bg-primary' : 'bg-muted-foreground/30'
-                                        }`} />
-                                    {feature}
-                                </li>
-                            ))}
-                        </ul>
-
-                        <Button
-                            className={`w-full py-6 text-base font-semibold transition-all duration-300 ${hoveredRole === 'student'
-                                ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20'
-                                : 'bg-muted text-muted-foreground hover:bg-muted/80'
-                                }`}
-                        >
-                            Continue as Student
-                        </Button>
-                    </div>
-
-                    {/* Teacher Card */}
-                    <div
-                        className={`group relative p-8 rounded-3xl border transition-all duration-500 cursor-pointer overflow-hidden ${hoveredRole === 'teacher'
-                            ? 'bg-card border-primary/50 shadow-[0_0_40px_rgba(var(--primary-rgb),0.1)] dark:shadow-[0_0_40px_rgba(var(--primary-rgb),0.2)] scale-[1.02]'
-                            : 'bg-card/40 backdrop-blur-xl border-border/40 hover:border-black/5 dark:hover:border-white/10 hover:bg-card/80 shadow-xl'
-                            }`}
-                        onMouseEnter={() => setHoveredRole('teacher')}
-                        onMouseLeave={() => setHoveredRole(null)}
-                        onClick={() => onSelectRole('teacher')}
-                    >
-                        <div className={`absolute top-6 right-6 transition-opacity duration-300 ${hoveredRole === 'teacher' ? 'opacity-100' : 'opacity-0'
-                            }`}>
-                            <CheckCircle2 className="w-6 h-6 text-primary" />
-                        </div>
-
-                        <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-6 transition-colors duration-300 ${hoveredRole === 'teacher' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
-                            }`}>
-                            <BookOpen className="w-8 h-8" />
-                        </div>
-
-                        <h3 className="text-2xl font-bold text-foreground mb-3">Teacher / Institution</h3>
-                        <p className="text-muted-foreground mb-6 leading-relaxed">
-                            I want to create tests, manage students, and analyze class performance.
-                        </p>
-
-                        <ul className="space-y-3 mb-8">
-                            {[
-                                'Create Custom Tests',
-                                'Monitor Student Progress',
-                                'Detailed Class Analytics',
-                                'Assignment Management'
-                            ].map((feature, i) => (
-                                <li key={i} className="flex items-center gap-3 text-sm text-muted-foreground">
-                                    <div className={`w-1.5 h-1.5 rounded-full ${hoveredRole === 'teacher' ? 'bg-primary' : 'bg-muted-foreground/30'
-                                        }`} />
-                                    {feature}
-                                </li>
-                            ))}
-                        </ul>
-
-                        <Button
-                            className={`w-full py-6 text-base font-semibold transition-all duration-300 ${hoveredRole === 'teacher'
-                                ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20'
-                                : 'bg-muted text-muted-foreground hover:bg-muted/80'
-                                }`}
-                        >
-                            Continue as Teacher
-                        </Button>
-                    </div>
-
-                </div>
+            {/* Heading */}
+            <motion.div
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+                className="text-center mb-12"
+            >
+                <h1 className="text-3xl sm:text-4xl font-black tracking-tight mb-3 text-foreground">
+                    How will you use <span className="text-primary">ORIGIN</span>?
+                </h1>
+                <p className="text-base text-muted-foreground">
+                    Select your role to get a personalised experience
+                </p>
             </motion.div>
+
+            {/* Cards */}
+            <div className="flex flex-col sm:flex-row gap-8 w-full max-w-2xl justify-center">
+                {ROLES.map((role, i) => {
+                    const isActive = selected === role.id;
+                    return (
+                        <motion.div
+                            key={role.id}
+                            initial={{ opacity: 0, y: 28 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.5, delay: 0.1 + 0.12 * i, ease: [0.22, 1, 0.36, 1] }}
+                            onClick={() => { setSelected(role.id); onSelectRole(role.id); }}
+                            className={cn(
+                                'flex-1 flex flex-col gap-5 p-7 cursor-pointer select-none rounded-[30px] transition-all duration-200',
+                                isActive
+                                    ? 'neu-inset ring-2 ring-primary scale-[0.98]'
+                                    : 'neu-raised hover:scale-[1.02]'
+                            )}
+                            style={{ minWidth: 260 }}
+                        >
+                            {/* Icon */}
+                            <div className={cn(
+                                'w-14 h-14 flex items-center justify-center rounded-2xl transition-all',
+                                isActive ? 'neu-inset' : 'neu-raised'
+                            )}>
+                                <role.Icon
+                                    className={cn(
+                                        'w-7 h-7 transition-colors duration-300',
+                                        isActive ? 'text-primary' : 'text-muted-foreground'
+                                    )}
+                                />
+                            </div>
+
+                            {/* Text */}
+                            <div>
+                                <h3 className="text-xl font-black mb-1.5 text-foreground">{role.title}</h3>
+                                <p className="text-sm leading-relaxed text-muted-foreground">{role.subtitle}</p>
+                            </div>
+
+                            {/* Features */}
+                            <ul className="space-y-2.5">
+                                {role.features.map((f) => (
+                                    <li key={f} className="flex items-center gap-3 text-sm text-muted-foreground">
+                                        <div className={cn(
+                                            'w-1.5 h-1.5 rounded-full shrink-0 transition-colors duration-300',
+                                            isActive ? 'bg-primary' : 'bg-muted-foreground/40'
+                                        )} />
+                                        {f}
+                                    </li>
+                                ))}
+                            </ul>
+
+                            {/* CTA */}
+                            <button
+                                type="button"
+                                className={cn(
+                                    'mt-2 w-full py-3 rounded-[16px] text-sm font-black uppercase tracking-widest transition-all duration-300',
+                                    isActive
+                                        ? 'bg-primary text-primary-foreground shadow-[0_8px_24px_hsl(var(--primary)/0.35)]'
+                                        : 'neu-raised text-muted-foreground hover:text-primary hover:-translate-y-0.5'
+                                )}
+                            >
+                                {isActive ? (
+                                    <span className="flex items-center justify-center gap-2">
+                                        <CheckCircle2 className="w-4 h-4" /> Selected
+                                    </span>
+                                ) : role.cta}
+                            </button>
+                        </motion.div>
+                    );
+                })}
+            </div>
         </div>
     );
 }
