@@ -36,6 +36,7 @@ const ROUTES: Record<string, string> = {
   'tasks-goals': '/tasks',
   'explore': '/explore',
   'connect': '/connect',
+  'social': '/social',
   'profile': '/profile',
   'premium': '/premium',
   'study-corner': '/study-corner',
@@ -49,7 +50,7 @@ function resolveRoute(view: string) {
   return ROUTES[view] || `/${view}`;
 }
 
-function ClientShellInner({ children, connectEnabled, premiumEnabled }: { children: React.ReactNode; connectEnabled?: boolean; premiumEnabled?: boolean }) {
+function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnabled }: { children: React.ReactNode; connectEnabled?: boolean; premiumEnabled?: boolean; socialEnabled?: boolean }) {
   const { user, logout, isNavigationLocked } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
@@ -144,29 +145,6 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled }: { childr
     return () => window.clearTimeout(timeoutId);
   }, [mounted]);
 
-  // Route-based default theme initialization
-  React.useEffect(() => {
-    if (!mounted) return;
-
-    const isLanding = pathname === '/';
-    // Define app routes as anything authenticated and not a public/auth page
-    const isApp = !!user && !['/', '/auth', '/role-selection'].includes(pathname);
-
-    if (isLanding) {
-      const landingInit = localStorage.getItem('origin-landing-init');
-      if (!landingInit) {
-        setTheme('dark');
-        localStorage.setItem('origin-landing-init', 'true');
-      }
-    } else if (isApp) {
-      const appInit = localStorage.getItem('origin-app-init');
-      if (!appInit) {
-        setTheme('light');
-        localStorage.setItem('origin-app-init', 'true');
-      }
-    }
-  }, [pathname, user, mounted, setTheme]);
-
   const prefetchRoute = React.useCallback((view: string) => {
     router.prefetch(resolveRoute(view));
   }, [router]);
@@ -198,7 +176,7 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled }: { childr
     !noNavbarPaths.includes(pathname) &&
     !shouldHideOriginAi;
   
-  const currentTheme = (mounted ? resolvedTheme : 'dark') || 'dark';
+  const currentTheme = (mounted ? resolvedTheme : 'light') || 'light';
   const showNavbar = mounted && !!user && user.role === 'student' && !isNavigationLocked && !noNavbarPaths.includes(pathname) && !isSpecialPath;
 
   return (
@@ -230,6 +208,7 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled }: { childr
               setTheme={setTheme}
               connectEnabled={connectEnabled}
               premiumEnabled={premiumEnabled}
+              socialEnabled={socialEnabled}
               leftOffset={aiSide === 'left' && isAiOpen ? aiWidth : 0}
             />
           )}
@@ -239,7 +218,7 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled }: { childr
               "flex-1 flex flex-col relative z-10 overflow-x-hidden custom-scrollbar",
               isFullViewportApp ? "overflow-hidden" : "overflow-y-auto",
               "transition-all duration-300 min-w-[320px]",
-              mounted && showNavbar ? 'md:pl-[72px] pt-14 md:pt-0' : ''
+              mounted && showNavbar ? 'md:pl-[72px] pt-14 md:pt-0 pb-14 md:pb-0' : ''
             )}
           >
             <div className={cn(
@@ -266,10 +245,11 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled }: { childr
         )}
 
         {shouldShowFloatingOriginAi && (
-          <FloatingChat 
-            onOpen={toggleAi} 
-            autoAskSelectionNonce={globalAskNonce} 
-            hideMainButton={isAiOpen} 
+          <FloatingChat
+            onOpen={toggleAi}
+            autoAskSelectionNonce={globalAskNonce}
+            hideMainButton={isAiOpen}
+            userName={user?.name}
           />
         )}
 
@@ -279,11 +259,11 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled }: { childr
   );
 }
 
-export default function ClientShell({ children, connectEnabled, premiumEnabled }: { children: React.ReactNode; connectEnabled?: boolean; premiumEnabled?: boolean }) {
+export default function ClientShell({ children, connectEnabled, premiumEnabled, socialEnabled }: { children: React.ReactNode; connectEnabled?: boolean; premiumEnabled?: boolean; socialEnabled?: boolean }) {
   return (
     <LayoutProvider>
       <TimeTrackerProvider>
-        <ClientShellInner connectEnabled={connectEnabled} premiumEnabled={premiumEnabled}>{children}</ClientShellInner>
+        <ClientShellInner connectEnabled={connectEnabled} premiumEnabled={premiumEnabled} socialEnabled={socialEnabled}>{children}</ClientShellInner>
       </TimeTrackerProvider>
     </LayoutProvider>
   );

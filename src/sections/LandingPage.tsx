@@ -297,7 +297,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const { text: typewriterText, isTyping } = useTypewriter();
-  const actualTheme = mounted ? resolvedTheme : (theme === 'system' ? 'dark' : theme);
+  const actualTheme = mounted ? resolvedTheme : (theme === 'system' ? 'light' : theme) ?? 'light';
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [regStatus, setRegStatus] = useState<{ count: number; limit: number; seatsLeft: number } | null>(null);
   const counterRef = useRef<HTMLDivElement>(null);
