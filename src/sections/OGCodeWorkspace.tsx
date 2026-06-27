@@ -24,6 +24,13 @@ const SUBJECT_META: Record<string, { label: string; emoji: string; param: string
     bio:  { label: 'Biology',     emoji: '🌿', param: 'subject=bio'  },
 };
 
+const SUBJECT_ORI_MAP: Record<string, string> = {
+    phy:  '/ori2d/ori-physics.png',
+    chem: '/ori2d/ori-chemistry.png',
+    math: '/ori2d/ori-maths.png',
+    bio:  '/ori2d/ori-biology.png',
+};
+
 interface OGCodeWorkspaceProps {
     questionId: string | number;
     onBack: () => void;
@@ -682,6 +689,15 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                     {/* Question Content */}
                     <div id="tutorial-ogcode-content" className="space-y-4">
                         <div className="flex items-center justify-end gap-2">
+                            {/* Subject Ori avatar */}
+                            {question.subject && SUBJECT_ORI_MAP[question.subject] && (
+                                <img
+                                    src={SUBJECT_ORI_MAP[question.subject]}
+                                    alt={question.subject}
+                                    draggable={false}
+                                    className="w-8 h-8 object-contain select-none"
+                                />
+                            )}
                             <span className="text-[10px] font-bold text-primary px-2 py-1 bg-primary/10 rounded uppercase tracking-wider">
                                 {question.subject}
                             </span>

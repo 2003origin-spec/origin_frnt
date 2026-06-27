@@ -29,6 +29,17 @@ const DPP_DATE_FORMATTER = new Intl.DateTimeFormat('en-US', {
   timeZone: 'UTC',
 });
 
+const DPP_SUBJECT_ORI: Record<string, string> = {
+  phy:     '/ori2d/ori-physics.png',
+  physics: '/ori2d/ori-physics.png',
+  chem:     '/ori2d/ori-chemistry.png',
+  chemistry: '/ori2d/ori-chemistry.png',
+  math:     '/ori2d/ori-maths.png',
+  mathematics: '/ori2d/ori-maths.png',
+  bio:      '/ori2d/ori-biology.png',
+  biology:  '/ori2d/ori-biology.png',
+};
+
 interface DPPViewProps {
   onBack: () => void;
   user: User;
@@ -756,6 +767,14 @@ function DppSelectionGrid({
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-2">
+                        {DPP_SUBJECT_ORI[dpp.subject] && (
+                          <img
+                            src={DPP_SUBJECT_ORI[dpp.subject]}
+                            alt={dpp.subject}
+                            draggable={false}
+                            className="w-8 h-8 object-contain select-none flex-shrink-0"
+                          />
+                        )}
                         <Badge variant="secondary" className="capitalize">
                           {dpp.subject}
                         </Badge>
