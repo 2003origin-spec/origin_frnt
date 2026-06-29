@@ -79,9 +79,7 @@ export async function POST(request: NextRequest, context: Context) {
         r2Bucket: "external",
         publicUrl: linkUrl,
         mimeType: "text/uri-list",
-        // External links have no bytes, but study_material_assets enforces
-        // CHECK (size_bytes > 0); use the URL length as a non-zero sentinel.
-        sizeBytes: Math.max(1, Buffer.byteLength(linkUrl, "utf8")),
+        sizeBytes: 0,
         sha256: "external",
         displayName: title,
         actorUserId: userId,
