@@ -8,7 +8,7 @@ import {
     CheckCircle2, Search,
     Trophy, Zap, Flame, Brain, Circle,
     TrendingUp, Atom, Beaker, Calculator, Leaf,
-    ChevronRight, Target, Shuffle, ArrowRight, X, Info
+    ChevronRight, Target, Shuffle, ArrowRight, X, Info, Building2
 } from 'lucide-react';
 import { apiCall } from '@/lib/api';
 import type { PracticeQuestion, PracticeQuestionPage, SubjectRank, User } from '@/types';
@@ -253,6 +253,9 @@ export default function OGCodeList({
     
     const [activeDifficulty, setActiveDifficulty] = useState(initialDifficulty);
     const [activeStatus, setActiveStatus] = useState(initialStatus);
+    // Institute hallmark (Admin Control Plane): client-side filter to show only
+    // questions contributed by coaching centers.
+    const [showContributedOnly, setShowContributedOnly] = useState(false);
     const [selectedChapters, setSelectedChapters] = useState<string[]>(initialSelectedChapters);
     const [availableChapters, setAvailableChapters] = useState<string[]>(
         initialChapters ?? deriveChapterOptions(initialSubject, prefetchedQuestionPage?.items ?? []),
@@ -556,8 +559,10 @@ export default function OGCodeList({
         const isSolved = q.status === 'solved' || q.isSolved;
         const matchesStatus = activeStatus === 'All' || (activeStatus === 'Solved' ? isSolved : !isSolved);
 
-        return matchesSearch && matchesSubject && matchesChapter && matchesDifficulty && matchesStatus;
-    }), [questions, searchQuery, activeSubject, selectedChapters, activeDifficulty, activeStatus]);
+        const matchesContributed = !showContributedOnly || Boolean(q.isContributed);
+
+        return matchesSearch && matchesSubject && matchesChapter && matchesDifficulty && matchesStatus && matchesContributed;
+    }), [questions, searchQuery, activeSubject, selectedChapters, activeDifficulty, activeStatus, showContributedOnly]);
 
     const originAiPageContext = useMemo(() => ({
         pathname: '/ogcode',
@@ -953,6 +958,15 @@ export default function OGCodeList({
                             )}
                         </div>
 
+                        {/* Institute-contributed filter (Admin Control Plane hallmark) */}
+                        <button
+                            onClick={() => setShowContributedOnly(v => !v)}
+                            className={cn('neu-btn flex items-center gap-2 px-4 py-2 text-[12px] font-black', showContributedOnly ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground')}
+                            title="Show only questions contributed by institutes"
+                        >
+                            <Building2 className="w-3.5 h-3.5" /> Institute
+                        </button>
+
                         {/* Random pick */}
                         <button
                             onClick={() => { if (filteredQuestions.length > 0) onSelectQuestion(filteredQuestions[Math.floor(Math.random() * filteredQuestions.length)].id); }}
@@ -981,11 +995,22 @@ export default function OGCodeList({
                                         className="neu-raised neu-pressable cursor-pointer group flex flex-col gap-3 p-4 sm:p-5 min-h-[148px]"
                                     >
                                         <div className="flex items-center justify-between gap-2">
-                                            <div className="flex items-center gap-2">
+                                            <div className="flex items-center gap-2 min-w-0">
                                                 <span className="text-[10px] font-black text-muted-foreground">#{idx + 1}</span>
                                                 <span className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black border', conf.bg, conf.darkBg, conf.textColor, conf.darkText, conf.border, conf.darkBorder)}>
                                                     {conf.icon}{conf.label}
                                                 </span>
+                                                {q.isContributed && q.attributionName && (
+                                                    <span
+                                                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black border bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 min-w-0 max-w-[120px]"
+                                                        title={`Contributed by ${q.attributionName}`}
+                                                    >
+                                                        {q.attributionLogoUrl
+                                                            ? <img src={q.attributionLogoUrl} alt="" className="w-3 h-3 rounded-sm object-cover flex-shrink-0" />
+                                                            : <Building2 className="w-3 h-3 flex-shrink-0" />}
+                                                        <span className="truncate">{q.attributionName}</span>
+                                                    </span>
+                                                )}
                                             </div>
                                             {solved && <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0" />}
                                         </div>

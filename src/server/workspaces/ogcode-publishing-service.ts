@@ -9,6 +9,8 @@
  */
 
 import { AuthzError } from "@/server/authz";
+import { isFeatureEnabled } from "@/lib/feature-flags";
+import { upsertContributedCatalogQuestion } from "@/server/ogcode-catalog";
 
 import { recordAuditEvent } from "./audit";
 import {
@@ -247,6 +249,14 @@ export async function reviewPublication(input: {
         reviewerUserId: input.reviewerUserId,
       });
       auditAction = "ogcode_publication.published";
+      // Hallmark (Admin Control Plane Phase 3): copy the approved question into
+      // the student OG-Code catalog with institute attribution. Best-effort — a
+      // catalog hiccup must not undo the publish transition.
+      if (result && isFeatureEnabled("ogcodeHallmark")) {
+        await writeContributedCatalogQuestion(result).catch((error) => {
+          console.error("[reviewPublication] hallmark catalog write failed (non-fatal):", error);
+        });
+      }
       // After publishing a republish, archive the previous live row.
       if (result) {
         const prior = await findPriorPublishedForQuestion(result.questionId, result.id);
@@ -302,6 +312,42 @@ async function findPriorPublishedForQuestion(
   const latest = await getPublishedPublicationForQuestion(questionId);
   if (!latest || latest.id === excludeId) return null;
   return latest;
+}
+
+/** Maps a workspace QuestionType onto the student catalog's narrower set. */
+function toCatalogQuestionType(t: string): string {
+  if (t === "mcq" || t === "msq" || t === "matrix_match" || t === "subjective") return t;
+  if (t === "numerical" || t === "numerical_with_units") return "numerical";
+  return "subjective";
+}
+
+/** Reads the published version's content and writes it into the student OG-Code
+ * catalog with the publication's institute attribution. */
+async function writeContributedCatalogQuestion(publication: OgcodePublication): Promise<void> {
+  const version = await getVersionById(publication.questionVersionId);
+  if (!version) return;
+  await upsertContributedCatalogQuestion({
+    id: publication.questionId,
+    text: version.stem,
+    options: version.options ? version.options.map((o) => o.text) : null,
+    correctOption: version.correctOption,
+    correctOptions: version.correctOptions,
+    answerText: version.answerText,
+    answerSpec: version.answerSpec,
+    tolerance: null,
+    matrixData: version.matrixData,
+    explanation: version.fullSolution ?? version.explanation ?? "",
+    hint: version.hint,
+    subject: version.subject,
+    chapter: version.chapter,
+    concept: version.concept,
+    difficulty: version.difficulty,
+    questionType: toCatalogQuestionType(version.questionType),
+    tags: version.tags,
+    contributorWorkspaceId: publication.contributorWorkspaceId,
+    attributionName: publication.attributionName,
+    attributionLogoUrl: null,
+  });
 }
 
 // ─── Read operations ──────────────────────────────────────────────────────────

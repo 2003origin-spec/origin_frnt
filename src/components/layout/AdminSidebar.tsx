@@ -5,20 +5,22 @@ import {
     Users,
     BookOpen,
     CreditCard,
-    Activity,
     BarChart3,
-    MessageSquare,
     Settings,
     ChevronLeft,
     LogOut,
     LayoutDashboard,
-    Zap,
     ShieldCheck,
     Siren,
     FileText,
-    Building2
+    Building2,
+    Store,
+    BadgeCheck,
+    FileUp,
+    IndianRupee,
+    Ticket,
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { usePathname, useRouter } from 'next/navigation';
 
 interface AdminSidebarProps {
@@ -27,19 +29,24 @@ interface AdminSidebarProps {
     onLogout: () => void;
 }
 
+// Admin Control Plane nav. Every entry resolves to a real, data-backed page.
+// Pricing / Coupons / Admins are added by their phases (4/5/6).
 const navItems = [
     { id: 'dashboard', label: 'Mission Control', icon: LayoutDashboard, path: '/admin' },
     { id: 'users', label: 'User Management', icon: Users, path: '/admin/users' },
+    { id: 'admins', label: 'Admins', icon: ShieldCheck, path: '/admin/admins' },
+    // Phase 2F.3 — institute/teacher approval queue (the student-visibility gate).
+    { id: 'collaborations', label: 'Institute Approvals', icon: Building2, path: '/admin/collaborations' },
+    { id: 'workspaces', label: 'Institutes', icon: Store, path: '/admin/workspaces' },
+    { id: 'ogcode-moderation', label: 'OG-Code Review', icon: BadgeCheck, path: '/admin/ogcode/moderation' },
+    { id: 'moderation', label: 'Moderation', icon: ShieldCheck, path: '/admin/moderation' },
     { id: 'content', label: 'Content & LMS', icon: BookOpen, path: '/admin/content' },
+    { id: 'import-jobs', label: 'Imports', icon: FileUp, path: '/admin/import-jobs' },
     { id: 'financials', label: 'Financials', icon: CreditCard, path: '/admin/financials' },
-    { id: 'monitoring', label: 'Classroom Audit', icon: Activity, path: '/admin/monitoring' },
-    // Phase 2F.3 — teacher/institute collaboration approvals (404s when teacherConnect is off).
-    { id: 'collaborations', label: 'Collaborations', icon: Building2, path: '/admin/collaborations' },
+    { id: 'pricing', label: 'Pricing', icon: IndianRupee, path: '/admin/pricing' },
+    { id: 'coupons', label: 'Coupons', icon: Ticket, path: '/admin/coupons' },
     { id: 'analytics', label: 'Global Analytics', icon: BarChart3, path: '/admin/analytics' },
-    { id: 'marketing', label: 'Broadcast Center', icon: Zap, path: '/admin/marketing' },
-    // Audit fix R-5 (A-15): /admin/incidents and /admin/audit-events
-    // shipped in Phase 13 but had no sidebar entry. Operators were
-    // typing the URL.
+    // Audit fix R-5 (A-15): incidents + audit log had no sidebar entry.
     { id: 'incidents', label: 'Incidents', icon: Siren, path: '/admin/incidents' },
     { id: 'audit-events', label: 'Audit Log', icon: FileText, path: '/admin/audit-events' },
     { id: 'settings', label: 'System Config', icon: Settings, path: '/admin/settings' },

@@ -154,6 +154,11 @@ export interface StoredQuestion {
   totalCorrect: number;
   frequency: number;
   isChallengeOfTheDay: boolean;
+  /** Institute hallmark (Admin Control Plane): set on teacher-contributed catalog rows. */
+  contributorWorkspaceId?: string | null;
+  attributionName?: string | null;
+  attributionLogoUrl?: string | null;
+  isContributed?: boolean;
 }
 
 export interface StoredTest {

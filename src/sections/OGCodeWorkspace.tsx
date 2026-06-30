@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from 'react';
 import {
     ArrowLeft, Play, Clock, Loader2, CheckCircle2,
-    XCircle, RotateCcw, Trophy, X, HelpCircle, ChevronLeft, ChevronRight
+    XCircle, RotateCcw, Trophy, X, HelpCircle, ChevronLeft, ChevronRight, Building2
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { apiCall } from '@/lib/api';
@@ -697,6 +697,17 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                     draggable={false}
                                     className="w-8 h-8 object-contain select-none"
                                 />
+                            )}
+                            {question.isContributed && question.attributionName && (
+                                <span
+                                    className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 px-2 py-1 bg-emerald-500/10 rounded uppercase tracking-wider max-w-[160px]"
+                                    title={`Contributed by ${question.attributionName}`}
+                                >
+                                    {question.attributionLogoUrl
+                                        ? <img src={question.attributionLogoUrl} alt="" className="w-3.5 h-3.5 rounded-sm object-cover flex-shrink-0" />
+                                        : <Building2 className="w-3 h-3 flex-shrink-0" />}
+                                    <span className="truncate">{question.attributionName}</span>
+                                </span>
                             )}
                             <span className="text-[10px] font-bold text-primary px-2 py-1 bg-primary/10 rounded uppercase tracking-wider">
                                 {question.subject}

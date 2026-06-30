@@ -13,6 +13,8 @@ import {
   validateCodeFormat,
   WorkspaceCodeError,
 } from "./codes";
+import { recordAuditEvent } from "./audit";
+import { upsertCollaborationRequest } from "../connect/collaboration-store";
 import type { TeacherWorkspace, WorkspaceCode } from "./types";
 
 export type PersonalOnboardingInput = {
@@ -106,6 +108,30 @@ export async function onboardInstitute(
     requestId: input.requestId,
     metadata: { source: "institute_signup" },
   });
+
+  // Every new institute lands in the admin approval queue as `pending` so a
+  // platform admin must approve it before it becomes browsable to students
+  // (instituteApprovalGate). Best-effort: a hiccup here must never fail signup.
+  try {
+    const { collaboration, created } = await upsertCollaborationRequest({
+      workspaceId: workspace.id,
+      requestedBy: input.ownerUserId,
+      metadata: { source: "institute_onboarding_auto" },
+    });
+    if (created) {
+      await recordAuditEvent({
+        actorUserId: input.ownerUserId,
+        workspaceId: workspace.id,
+        entityType: "origin_collaboration",
+        entityId: collaboration.id,
+        action: "collaboration.requested",
+        after: collaboration,
+        requestId: input.requestId,
+      });
+    }
+  } catch (error) {
+    console.error("[onboardInstitute] auto-create pending collaboration failed:", error);
+  }
 
   return { workspace, joinCode: code };
 }

@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 
 import Link from "next/link";
 
-import { listPublicInstitutesService } from "@/server/workspaces/marketplace-service";
+import { listBrowsableInstitutes } from "@/server/connect/connect-service";
 
 type Props = {
   searchParams: Promise<{
@@ -21,7 +21,8 @@ type Props = {
 
 export default async function MarketplacePage({ searchParams }: Props) {
   const sp = await searchParams;
-  const institutes = await listPublicInstitutesService({
+  // Gated browse — only admin-approved institutes when instituteApprovalGate is on.
+  const institutes = await listBrowsableInstitutes({
     subject: sp.subject,
     city: sp.city,
     limit: 60,

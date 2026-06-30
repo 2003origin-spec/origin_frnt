@@ -22,11 +22,14 @@ import {
   createSubjectSubscription,
   listMySubscriptions,
 } from "@/server/subscriptions/subscriptions-service";
+import { getPublicPricing, getSubjectPriceResolved } from "@/server/pricing/pricing-service";
+import { validateCoupon } from "@/server/pricing/coupons-service";
 
 import { handleTeacherError, teacherJson } from "@/app/api/teacher/_utils";
 
 const SubjectSchema = z.object({
   subject: z.enum(ALL_SUBJECTS as [string, ...string[]]),
+  couponCode: z.string().trim().min(1).max(40).optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -46,8 +49,19 @@ export async function POST(request: NextRequest) {
       return teacherJson({ ok: true });
     }
 
+    if (action === "validate_coupon") {
+      if (!parsed.data.couponCode) return teacherJson({ valid: false, reason: "Enter a coupon code." });
+      const resolved = await getSubjectPriceResolved(subject);
+      const result = await validateCoupon({
+        code: parsed.data.couponCode,
+        userId: ctx.userId,
+        target: { kind: "subject", subject, baseAmountMinor: resolved.amountMinor },
+      });
+      return teacherJson(result);
+    }
+
     // Default action: create_subscription.
-    const result = await createSubjectSubscription({ userId: ctx.userId, subject });
+    const result = await createSubjectSubscription({ userId: ctx.userId, subject, couponCode: parsed.data.couponCode });
     return teacherJson(result, { status: 201 });
   } catch (error) {
     return handleTeacherError(error);
@@ -58,8 +72,11 @@ export async function GET(request: NextRequest) {
   try {
     requireFeatureEnabled("premiumSubscriptions");
     const ctx = await requireRole(request, ["student"]);
-    const subscriptions = await listMySubscriptions(ctx.userId);
-    return teacherJson({ subscriptions });
+    const [subscriptions, pricing] = await Promise.all([
+      listMySubscriptions(ctx.userId),
+      getPublicPricing(),
+    ]);
+    return teacherJson({ subscriptions, pricing });
   } catch (error) {
     return handleTeacherError(error);
   }

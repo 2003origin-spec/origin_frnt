@@ -6,7 +6,7 @@
 import type { NextRequest } from "next/server";
 
 import { requireFeatureEnabled } from "@/lib/feature-flags";
-import { listPublicInstitutesService } from "@/server/workspaces/marketplace-service";
+import { listBrowsableInstitutes } from "@/server/connect/connect-service";
 
 import { handleTeacherError, teacherJson } from "@/app/api/teacher/_utils";
 
@@ -18,7 +18,9 @@ export async function GET(request: NextRequest) {
     const city = url.searchParams.get("city");
     const rawLimit = url.searchParams.get("limit");
     const limit = rawLimit ? Math.min(Math.max(Number(rawLimit) || 0, 1), 100) : undefined;
-    const institutes = await listPublicInstitutesService({
+    // Routed through the gated browse fn so the approval gate applies to this
+    // discovery surface too (active-collaborators-only when the flag is on).
+    const institutes = await listBrowsableInstitutes({
       subject: subject ?? undefined,
       city: city ?? undefined,
       limit,

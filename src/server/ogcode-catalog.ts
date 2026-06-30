@@ -1,4 +1,4 @@
-import { unstable_cache } from "next/cache";
+import { unstable_cache, revalidateTag } from "next/cache";
 import type { DifficultyLevel, QuestionType, StoredAnswerSpec, StoredQuestion } from "@/server/store";
 
 import { getOgcodePostgresPool, isOgcodePostgresConfigured } from "@/server/postgres";
@@ -48,6 +48,10 @@ type CatalogRow = {
   total_correct: number | string | null;
   frequency: number | string | null;
   is_challenge_of_day: boolean;
+  contributor_workspace_id: string | null;
+  attribution_name: string | null;
+  attribution_logo_url: string | null;
+  is_contributed: boolean | null;
 };
 
 const CREATE_TABLE_SQL = `
@@ -83,6 +87,13 @@ const CREATE_TABLE_SQL = `
   CREATE INDEX IF NOT EXISTS ogcode_questions_difficulty_idx ON ogcode_questions (difficulty);
   CREATE INDEX IF NOT EXISTS ogcode_questions_question_type_idx ON ogcode_questions (question_type);
   ALTER TABLE ogcode_questions ADD COLUMN IF NOT EXISTS answer_spec JSONB;
+  -- Institute hallmark (Admin Control Plane Phase 3): attribution for questions
+  -- contributed by a coaching center and published via admin moderation.
+  ALTER TABLE ogcode_questions ADD COLUMN IF NOT EXISTS contributor_workspace_id TEXT;
+  ALTER TABLE ogcode_questions ADD COLUMN IF NOT EXISTS attribution_name TEXT;
+  ALTER TABLE ogcode_questions ADD COLUMN IF NOT EXISTS attribution_logo_url TEXT;
+  ALTER TABLE ogcode_questions ADD COLUMN IF NOT EXISTS is_contributed BOOLEAN NOT NULL DEFAULT FALSE;
+  CREATE INDEX IF NOT EXISTS ogcode_questions_contributed_idx ON ogcode_questions (is_contributed);
 `;
 
 function normalizeDifficulty(value: string): DifficultyLevel {
@@ -213,6 +224,10 @@ function mapCatalogRow(row: CatalogRow): StoredQuestion {
     totalCorrect: Number(row.total_correct ?? 0),
     frequency: Number(row.frequency ?? 0),
     isChallengeOfTheDay: Boolean(row.is_challenge_of_day),
+    contributorWorkspaceId: row.contributor_workspace_id ?? null,
+    attributionName: row.attribution_name ?? null,
+    attributionLogoUrl: row.attribution_logo_url ?? null,
+    isContributed: Boolean(row.is_contributed),
   };
 }
 
@@ -319,7 +334,11 @@ async function _listOgcodeCatalogQuestions(filters: CatalogFilters = {}): Promis
         acceptance_rate,
         total_correct,
         frequency,
-        is_challenge_of_day
+        is_challenge_of_day,
+        contributor_workspace_id,
+        attribution_name,
+        attribution_logo_url,
+        is_contributed
       FROM ogcode_questions
       ${sql}
       ORDER BY source_index ASC
@@ -415,6 +434,10 @@ export async function listOgcodeCatalogQuestionPage(filters: CatalogPageFilters)
         total_correct,
         frequency,
         is_challenge_of_day,
+        contributor_workspace_id,
+        attribution_name,
+        attribution_logo_url,
+        is_contributed,
         COUNT(*) OVER() AS total_count
       FROM ogcode_questions
       ${where}
@@ -485,7 +508,11 @@ export async function getOgcodeCatalogQuestionById(questionId: string): Promise<
         acceptance_rate,
         total_correct,
         frequency,
-        is_challenge_of_day
+        is_challenge_of_day,
+        contributor_workspace_id,
+        attribution_name,
+        attribution_logo_url,
+        is_contributed
       FROM ogcode_questions
       WHERE id = $1
       LIMIT 1
@@ -529,7 +556,11 @@ export async function getOgcodeCatalogQuestionMap(questionIds: string[]): Promis
         acceptance_rate,
         total_correct,
         frequency,
-        is_challenge_of_day
+        is_challenge_of_day,
+        contributor_workspace_id,
+        attribution_name,
+        attribution_logo_url,
+        is_contributed
       FROM ogcode_questions
       WHERE id = ANY($1::text[])
     `,
@@ -623,7 +654,11 @@ export async function getOgcodeChallengeQuestion(): Promise<StoredQuestion | nul
         acceptance_rate,
         total_correct,
         frequency,
-        is_challenge_of_day
+        is_challenge_of_day,
+        contributor_workspace_id,
+        attribution_name,
+        attribution_logo_url,
+        is_contributed
       FROM ogcode_questions
       ${baseFilter}
       ORDER BY source_index ASC, id ASC
@@ -658,4 +693,102 @@ export async function incrementOgcodeCatalogQuestionStats(questionId: string, is
     `,
     [questionId, isCorrect],
   );
+}
+
+export type ContributedCatalogInput = {
+  /** Catalog row id = source content.questions id (so re-publish updates in place). */
+  id: string;
+  text: string;
+  options: string[] | null;
+  correctOption: number | null;
+  correctOptions: number[] | null;
+  answerText: string | null;
+  answerSpec: unknown | null;
+  tolerance: number | null;
+  matrixData: unknown | null;
+  explanation: string;
+  hint: string | null;
+  subject: string;
+  chapter: string;
+  concept: string;
+  difficulty: string;
+  questionType: string;
+  tags: string[];
+  contributorWorkspaceId: string | null;
+  attributionName: string | null;
+  attributionLogoUrl: string | null;
+};
+
+/**
+ * Inserts (or refreshes) an admin-approved, teacher-contributed question into the
+ * student OG-Code catalog with institute attribution (the "hallmark"). Called from
+ * the publish step. `source_index` is MAX+1 on first insert and preserved on
+ * conflict. No-op when the OGCODE pool is not configured. Revalidates the catalog
+ * cache so the question appears promptly in the student pool.
+ */
+export async function upsertContributedCatalogQuestion(input: ContributedCatalogInput): Promise<void> {
+  const pool = getOgcodePostgresPool();
+  if (!pool) return;
+
+  await ensureCatalogSchema();
+  await pool.query(
+    `
+      INSERT INTO ogcode_questions (
+        id, source_index, text, options, correct_option, correct_options,
+        answer_text, answer_spec, tolerance, matrix_data, explanation, hint,
+        subject, chapter, concept, difficulty, tags, question_type,
+        contributor_workspace_id, attribution_name, attribution_logo_url, is_contributed
+      ) VALUES (
+        $1,
+        (SELECT COALESCE(MAX(source_index), 0) + 1 FROM ogcode_questions),
+        $2, $3::jsonb, $4, $5::jsonb, $6, $7::jsonb, $8, $9::jsonb, $10, $11,
+        $12, $13, $14, $15, $16::jsonb, $17, $18, $19, $20, TRUE
+      )
+      ON CONFLICT (id) DO UPDATE SET
+        text = EXCLUDED.text,
+        options = EXCLUDED.options,
+        correct_option = EXCLUDED.correct_option,
+        correct_options = EXCLUDED.correct_options,
+        answer_text = EXCLUDED.answer_text,
+        answer_spec = EXCLUDED.answer_spec,
+        tolerance = EXCLUDED.tolerance,
+        matrix_data = EXCLUDED.matrix_data,
+        explanation = EXCLUDED.explanation,
+        hint = EXCLUDED.hint,
+        subject = EXCLUDED.subject,
+        chapter = EXCLUDED.chapter,
+        concept = EXCLUDED.concept,
+        difficulty = EXCLUDED.difficulty,
+        tags = EXCLUDED.tags,
+        question_type = EXCLUDED.question_type,
+        contributor_workspace_id = EXCLUDED.contributor_workspace_id,
+        attribution_name = EXCLUDED.attribution_name,
+        attribution_logo_url = EXCLUDED.attribution_logo_url,
+        is_contributed = TRUE,
+        updated_at = NOW()
+    `,
+    [
+      input.id,
+      input.text,
+      JSON.stringify(input.options ?? null),
+      input.correctOption,
+      JSON.stringify(input.correctOptions ?? null),
+      input.answerText,
+      input.answerSpec ? JSON.stringify(input.answerSpec) : null,
+      input.tolerance,
+      input.matrixData ? JSON.stringify(input.matrixData) : null,
+      input.explanation,
+      input.hint,
+      normalizeSubject(input.subject),
+      input.chapter,
+      input.concept,
+      String(input.difficulty || "medium").toLowerCase(),
+      JSON.stringify(input.tags ?? []),
+      input.questionType,
+      input.contributorWorkspaceId,
+      input.attributionName,
+      input.attributionLogoUrl,
+    ],
+  );
+  revalidateTag("ogcode-catalog", "max");
 }

@@ -8,8 +8,11 @@
  */
 
 import { AuthzError } from "@/server/authz";
+import { isFeatureEnabled } from "@/lib/feature-flags";
 
 import { recordAuditEvent } from "./audit";
+import { getWorkspaceById } from "./store";
+import { submitForPublication } from "./ogcode-publishing-service";
 import {
   createQuestion,
   createVersion,
@@ -254,6 +257,27 @@ export async function submitToOgCode(input: OgCodePublishInput): Promise<Questio
     after: { question: updated, attributionName: input.attributionName },
     requestId: input.requestId,
   });
+
+  // Hallmark (Admin Control Plane): also create an admin-moderation publication so
+  // this question can be approved into the student OG-Code pool with the institute's
+  // name attached. Attribution is server-derived from the workspace (cannot be
+  // spoofed). Best-effort — the status flip above is the primary action.
+  if (isFeatureEnabled("ogcodeHallmark") && question.currentVersionId) {
+    try {
+      const workspace = await getWorkspaceById(input.workspaceId);
+      await submitForPublication({
+        workspaceId: input.workspaceId,
+        questionId: input.questionId,
+        questionVersionId: question.currentVersionId,
+        contributorUserId: input.actorUserId,
+        attributionName: workspace?.displayName ?? input.attributionName,
+        attributionLogoAssetId: workspace?.logoAssetId ?? null,
+        requestId: input.requestId,
+      });
+    } catch (error) {
+      console.error("[submitToOgCode] moderation publication creation failed (non-fatal):", error);
+    }
+  }
 
   return updated;
 }

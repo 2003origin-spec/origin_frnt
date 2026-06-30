@@ -26,15 +26,30 @@ async function parseError(res: Response): Promise<string> {
   return data?.detail ?? `Request failed with status ${res.status}`;
 }
 
-export async function createSubscription(subject: Subject): Promise<CreateSubscriptionResponse> {
+export async function createSubscription(subject: Subject, couponCode?: string): Promise<CreateSubscriptionResponse> {
   const res = await fetch("/api/subscriptions?action=create_subscription", {
     method: "POST",
     credentials: "include",
     headers: { "content-type": "application/json", ...csrfHeaders() },
-    body: JSON.stringify({ subject }),
+    body: JSON.stringify(couponCode ? { subject, couponCode } : { subject }),
   });
   if (!res.ok) throw new Error(await parseError(res));
   return (await res.json()) as CreateSubscriptionResponse;
+}
+
+export type CouponValidation =
+  | { valid: false; reason: string }
+  | { valid: true; code: string; discountMinor: number; finalMinor: number };
+
+export async function validateCouponForSubject(subject: Subject, couponCode: string): Promise<CouponValidation> {
+  const res = await fetch("/api/subscriptions?action=validate_coupon", {
+    method: "POST",
+    credentials: "include",
+    headers: { "content-type": "application/json", ...csrfHeaders() },
+    body: JSON.stringify({ subject, couponCode }),
+  });
+  if (!res.ok) throw new Error(await parseError(res));
+  return (await res.json()) as CouponValidation;
 }
 
 export async function cancelSubscription(subject: Subject): Promise<void> {

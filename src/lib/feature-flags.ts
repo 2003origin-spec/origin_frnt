@@ -35,7 +35,12 @@ type FlagKey =
   | "studentSocial"
   | "dppQuestionBank"
   | "batchSyllabus"
-  | "batchHub";
+  | "batchHub"
+  | "instituteApprovalGate"
+  | "ogcodeHallmark"
+  | "adminPricing"
+  | "adminCoupons"
+  | "adminSubAdmins";
 
 type FlagSpec = {
   envSuffix: string;
@@ -96,7 +101,35 @@ const FLAG_SPECS: Record<FlagKey, FlagSpec> = {
   // and a polling-based message feed visible to teacher and enrolled students
   // (teacher batch detail + student /connect batch view). Live in prod.
   batchHub: { envSuffix: "BATCH_HUB", defaultDev: true, defaultProd: true },
+  // Admin Control Plane — institute approval gate. When ON, student Browse only
+  // shows institutes/teachers with an `active` collaboration (admin-approved),
+  // and every new workspace lands in /admin/collaborations as `pending`. When
+  // OFF, Browse falls back to the pre-#201 behaviour (all active institutes).
+  // LIVE in prod (default on). Existing institutes are auto-backfilled to
+  // `pending` by the collaboration runtime-ensure, so the admin reviews them.
+  instituteApprovalGate: { envSuffix: "INSTITUTE_APPROVAL_GATE", defaultDev: true, defaultProd: true },
+  // Admin Control Plane — OG-Code hallmark. Gates the teacher→publication submit
+  // path, the publish→student-catalog writer, and the student-side institute
+  // attribution badge + contributed filter. LIVE in prod (default on).
+  ogcodeHallmark: { envSuffix: "OGCODE_HALLMARK", defaultDev: true, defaultProd: true },
+  // Admin Control Plane — admin-editable per-subject + bundle pricing. Gates the
+  // /admin/pricing surface and the DB-backed price resolution in checkout.
+  // LIVE in prod (default on). Price display falls back to ₹499 + env plan until
+  // an admin sets an override, so it is safe before any Razorpay plan is created.
+  adminPricing: { envSuffix: "ADMIN_PRICING", defaultDev: true, defaultProd: true },
+  // Admin Control Plane — coupon codes for platform subject/bundle subscriptions.
+  // Gates /admin/coupons, validation/redemption, and the student coupon input.
+  // LIVE in prod (default on).
+  adminCoupons: { envSuffix: "ADMIN_COUPONS", defaultDev: true, defaultProd: true },
+  // Admin Control Plane — sub-admin management (main-admin creates sub-admins by
+  // name+email). Gates /api/admin/admins + the admins UI. LIVE in prod (default
+  // on). The main admin is recognised by PLATFORM_MAIN_ADMIN_EMAIL even without
+  // the is_main_admin flag set, so no seed run is required.
+  adminSubAdmins: { envSuffix: "ADMIN_SUB_ADMINS", defaultDev: true, defaultProd: true },
 };
+
+/** Every feature-flag key, in declaration order (admin System Config view). */
+export const ALL_FLAG_KEYS = Object.keys(FLAG_SPECS) as FlagKey[];
 
 function parseFlag(raw: string | undefined): boolean | null {
   if (raw == null) return null;

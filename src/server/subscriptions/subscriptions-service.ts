@@ -9,8 +9,11 @@
  */
 
 import { getRazorpayClient, getRazorpayKeyId } from "@/server/payments/razorpay-client";
-import { getSubjectPlanId, SUBJECT_BILLING_CYCLES, SUBJECT_PRICE_MINOR } from "@/server/payments/subject-plans";
+import { SUBJECT_BILLING_CYCLES } from "@/server/payments/subject-plans";
+import { getSubjectPriceResolved, createMonthlyPlan } from "@/server/pricing/pricing-service";
+import { validateCoupon, redeemCoupon } from "@/server/pricing/coupons-service";
 import { recomputeUserPremiumFlags } from "@/server/entitlements";
+import { isFeatureEnabled } from "@/lib/feature-flags";
 import { type Subject } from "@/lib/entitlements";
 
 import {
@@ -37,9 +40,43 @@ export type CreateSubscriptionResult = {
 export async function createSubjectSubscription(input: {
   userId: string;
   subject: Subject;
+  couponCode?: string | null;
 }): Promise<CreateSubscriptionResult> {
   const { userId, subject } = input;
-  const planId = getSubjectPlanId(subject);
+  // Resolve the admin-set price + plan (falls back to the legacy ₹499 + env plan
+  // when no override exists — identical to the pre-pricing behaviour).
+  const resolved = await getSubjectPriceResolved(subject);
+  if (!resolved.razorpayPlanId) {
+    throw new Error(`No Razorpay plan configured for ${subject}.`);
+  }
+  let planId = resolved.razorpayPlanId;
+  let amountMinor = resolved.amountMinor;
+  let appliedCoupon: { code: string; discountMinor: number } | null = null;
+
+  // Coupon (platform subscriptions only). A valid coupon bakes the discount into a
+  // one-off Razorpay plan used for this subscription; redemption is recorded below.
+  if (input.couponCode && isFeatureEnabled("adminCoupons")) {
+    const v = await validateCoupon({
+      code: input.couponCode,
+      userId,
+      target: { kind: "subject", subject, baseAmountMinor: resolved.amountMinor },
+    });
+    if (!v.valid) {
+      const err = new Error(v.reason);
+      (err as { status?: number }).status = 400;
+      throw err;
+    }
+    if (v.discountMinor > 0) {
+      planId = await createMonthlyPlan(
+        `Origin Premium — ${subject} (coupon ${v.code})`,
+        v.finalMinor,
+        { origin_kind: "subject_coupon", origin_subject: subject, origin_coupon: v.code },
+      );
+      amountMinor = v.finalMinor;
+      appliedCoupon = { code: v.code, discountMinor: v.discountMinor };
+    }
+  }
+
   const client = getRazorpayClient();
 
   const subscription = await client.subscriptions.create({
@@ -55,8 +92,18 @@ export async function createSubjectSubscription(input: {
     razorpayPlanId: planId,
     razorpaySubscriptionId: subscription.id,
     shortUrl: subscription.short_url ?? null,
-    amountMinor: SUBJECT_PRICE_MINOR,
+    amountMinor,
   });
+
+  if (appliedCoupon) {
+    await redeemCoupon({
+      code: appliedCoupon.code,
+      userId,
+      subject,
+      subscriptionId: subscription.id,
+      amountDiscountedMinor: appliedCoupon.discountMinor,
+    }).catch((error) => console.error("[createSubjectSubscription] coupon redemption record failed:", error));
+  }
 
   return {
     subscriptionId: subscription.id,

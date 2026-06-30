@@ -9,13 +9,13 @@
  * let the unlock land when the `subscription.activated` webhook is processed.
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Check, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import type { Subject } from '@/lib/entitlements';
-import { cancelSubscription, createSubscription } from '@/features/subscriptions/client';
+import { cancelSubscription, createSubscription, validateCouponForSubject } from '@/features/subscriptions/client';
 
 const RAZORPAY_SCRIPT = 'https://checkout.razorpay.com/v1/checkout.js';
 
@@ -51,12 +51,29 @@ export type SubjectCheckoutProps = {
   subject: Subject;
   label: string;
   owned: boolean;
+  /** Live monthly price in paise (admin-configurable). Defaults to ₹499. */
+  priceMinor?: number;
+  /** Applied coupon code (validated per-subject; discounts this checkout). */
+  couponCode?: string;
   /** Called after a successful subscribe/cancel so the parent can refreshUser(). */
   onChanged: () => void;
 };
 
-export function SubjectCheckout({ subject, label, owned, onChanged }: SubjectCheckoutProps) {
+export function SubjectCheckout({ subject, label, owned, priceMinor = 49900, couponCode, onChanged }: SubjectCheckoutProps) {
   const [busy, setBusy] = useState(false);
+  const [coupon, setCoupon] = useState<{ code: string; finalMinor: number } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!couponCode) { setCoupon(null); return; }
+    validateCouponForSubject(subject, couponCode)
+      .then((v) => { if (!cancelled) setCoupon(v.valid ? { code: v.code, finalMinor: v.finalMinor } : null); })
+      .catch(() => { if (!cancelled) setCoupon(null); });
+    return () => { cancelled = true; };
+  }, [subject, couponCode]);
+
+  const effectiveMinor = coupon ? coupon.finalMinor : priceMinor;
+  const rupees = Math.round(effectiveMinor / 100).toLocaleString('en-IN');
 
   const handleSubscribe = useCallback(async () => {
     setBusy(true);
@@ -65,12 +82,12 @@ export function SubjectCheckout({ subject, label, owned, onChanged }: SubjectChe
       if (!scriptReady || !window.Razorpay) {
         throw new Error('Could not load the secure checkout. Please try again.');
       }
-      const { subscriptionId, razorpayKeyId } = await createSubscription(subject);
+      const { subscriptionId, razorpayKeyId } = await createSubscription(subject, coupon?.code);
       const checkout = new window.Razorpay({
         key: razorpayKeyId,
         subscription_id: subscriptionId,
         name: 'Origin',
-        description: `${label} — Premium (₹499/month)`,
+        description: `${label} — Premium (₹${rupees}/month)`,
         theme: { color: '#4f46e5' },
         handler: () => {
           toast.success('Payment received — unlocking your subject shortly.');
@@ -84,7 +101,7 @@ export function SubjectCheckout({ subject, label, owned, onChanged }: SubjectChe
       toast.error(error instanceof Error ? error.message : 'Could not start checkout.');
       setBusy(false);
     }
-  }, [subject, label, onChanged]);
+  }, [subject, label, rupees, coupon, onChanged]);
 
   const handleCancel = useCallback(async () => {
     setBusy(true);
@@ -120,7 +137,7 @@ export function SubjectCheckout({ subject, label, owned, onChanged }: SubjectChe
       disabled={busy}
     >
       {busy ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-      Subscribe · ₹499/mo
+      Subscribe · ₹{rupees}/mo
     </Button>
   );
 }
