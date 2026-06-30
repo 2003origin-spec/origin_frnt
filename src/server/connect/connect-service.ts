@@ -35,6 +35,7 @@ import type {
 } from "@/server/workspaces/types";
 import { recomputeUserPremiumFlags } from "@/server/entitlements";
 import { ALL_SUBJECTS, normalizeSubject, type Subject } from "@/lib/entitlements";
+import { isFeatureEnabled } from "@/lib/feature-flags";
 
 import { assertActiveCollaborator } from "./collaboration-service";
 import { listActiveCollaborationWorkspaceIds } from "./collaboration-store";
@@ -75,16 +76,21 @@ export async function getCollaboratorProfile(
 }
 
 /**
- * Browse directory: ALL active institute-type workspaces (not just approved
- * collaborators). Discovery is open — students join non-collaborator institutes
- * via a join code (Flow 1). Paid Flow-2 enrollment still requires an active
- * collaboration, gated separately at checkout.
+ * Browse directory. When `instituteApprovalGate` is ON (the trust default),
+ * students only see admin-approved (active-collaboration) institutes, so a newly
+ * signed-up / unapproved / fake institute is invisible until an admin approves
+ * it in /admin/collaborations. When the flag is OFF, discovery falls back to the
+ * pre-#201 behaviour: ALL active institute-type workspaces (students still join
+ * non-collaborators via a join code; paid Flow-2 stays gated at checkout).
  */
 export async function listBrowsableInstitutes(filter?: {
   subject?: string;
   city?: string;
   limit?: number;
 }): Promise<InstitutePublicProfile[]> {
+  if (isFeatureEnabled("instituteApprovalGate")) {
+    return listActiveCollaborators(filter);
+  }
   return listPublicInstitutesService({
     subject: filter?.subject,
     city: filter?.city,
@@ -92,11 +98,18 @@ export async function listBrowsableInstitutes(filter?: {
   });
 }
 
-/** Public profile for ANY active institute (no collaboration gate) — for the
- * Browse "View institute" view. Checkout keeps using getCollaboratorProfile. */
+/**
+ * Public profile for the Browse "View institute" view. With `instituteApprovalGate`
+ * ON it returns null unless the institute is an active collaborator (so an
+ * unapproved institute can't be deep-linked either); OFF → any active institute.
+ * Checkout keeps using getCollaboratorProfile regardless.
+ */
 export async function getBrowsableInstituteProfile(
   workspaceId: string,
 ): Promise<InstitutePublicProfile | null> {
+  if (isFeatureEnabled("instituteApprovalGate")) {
+    return getCollaboratorProfile(workspaceId);
+  }
   return getInstituteProfileService(workspaceId);
 }
 

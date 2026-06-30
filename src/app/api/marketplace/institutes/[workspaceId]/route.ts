@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 
 import { requireFeatureEnabled } from "@/lib/feature-flags";
-import { getInstituteProfileService } from "@/server/workspaces/marketplace-service";
+import { getBrowsableInstituteProfile } from "@/server/connect/connect-service";
 
 import { handleTeacherError, teacherJson } from "@/app/api/teacher/_utils";
 
@@ -12,7 +12,8 @@ export async function GET(
   try {
     requireFeatureEnabled("paidEnrollment");
     const { workspaceId } = await context.params;
-    const profile = await getInstituteProfileService(workspaceId);
+    // Gated browse profile — null/404 for an unapproved institute when the gate is on.
+    const profile = await getBrowsableInstituteProfile(workspaceId);
     if (!profile) {
       return teacherJson({ detail: "Institute not found or not public." }, { status: 404 });
     }

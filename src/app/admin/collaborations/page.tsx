@@ -2,7 +2,6 @@ export const dynamic = "force-dynamic";
 
 import { notFound, redirect } from "next/navigation";
 
-import AdminLayout from "@/components/layout/AdminLayout";
 import { AdminCollaborationsPanel } from "@/components/admin/AdminCollaborationsPanel";
 import { isFeatureEnabled } from "@/lib/feature-flags";
 import { getServerUser } from "@/lib/auth-server";
@@ -20,9 +19,5 @@ export default async function AdminCollaborationsPage() {
 
   const collaborations = await listCollaborationsService({ status: "all" });
 
-  return (
-    <AdminLayout>
-      <AdminCollaborationsPanel initial={collaborations} />
-    </AdminLayout>
-  );
+  return <AdminCollaborationsPanel initial={collaborations} />;
 }

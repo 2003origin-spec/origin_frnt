@@ -17,7 +17,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { getInstituteProfileService } from "@/server/workspaces/marketplace-service";
+import { getBrowsableInstituteProfile } from "@/server/connect/connect-service";
 
 type Props = {
   params: Promise<{ workspaceId: string }>;
@@ -30,7 +30,8 @@ function formatPrice(minor: number, currency: string): string {
 
 export default async function InstituteProfilePage({ params }: Props) {
   const { workspaceId } = await params;
-  const profile = await getInstituteProfileService(workspaceId);
+  // Gated browse profile — 404 for an unapproved institute when the gate is on.
+  const profile = await getBrowsableInstituteProfile(workspaceId);
   if (!profile) notFound();
 
   return (

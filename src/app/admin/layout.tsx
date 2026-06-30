@@ -1,21 +1,19 @@
-import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
 import { getServerUser } from '@/lib/auth-server';
+import AdminLayout from '@/components/layout/AdminLayout';
 
 /**
- * Server-side auth guard for every /admin/* route. The cookie read lives
- * in this protected layout so admin pages do not duplicate role checks.
+ * Server-side auth guard + shared admin shell for every /admin/* route. The
+ * cookie read happens here (server) and the sidebar/top-bar chrome is rendered
+ * once via AdminLayout, so individual admin pages render only their own content
+ * (no per-page <AdminLayout> wrapper — that would double up the sidebar).
  */
-export default async function AdminLayout({ children }: { children: React.ReactNode }) {
+export default async function AdminRouteLayout({ children }: { children: React.ReactNode }) {
   const user = await getServerUser();
 
   if (!user || user.role !== 'admin') {
     redirect('/auth?role=admin');
   }
 
-  return (
-    <Suspense fallback={<div className="min-h-screen bg-background" />}>
-      {children}
-    </Suspense>
-  );
+  return <AdminLayout>{children}</AdminLayout>;
 }

@@ -7,12 +7,9 @@ import AdminSidebar from './AdminSidebar';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from 'next-themes';
 import { Sun, Moon } from 'lucide-react';
-import { 
-    Bell, 
-    Search, 
-    ShieldCheck, 
-    Activity, 
-    Globe,
+import {
+    Bell,
+    Search,
     ExternalLink
 } from 'lucide-react';
 
@@ -78,24 +75,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     </div>
 
                     <div className="flex items-center gap-6">
-                        {/* System Health / Real-time stats marquee placeholder */}
-                        <div className="hidden lg:flex items-center gap-4 px-4 py-2 bg-accent/50 rounded-full border border-border text-[10px] font-bold tracking-widest uppercase text-muted-foreground">
-                            <div className="flex items-center gap-2">
-                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)] animate-pulse" />
-                                API: 42ms
-                            </div>
-                            <div className="w-1 h-1 rounded-full bg-border" />
-                            <div className="flex items-center gap-2">
-                                <Activity className="w-3 h-3 text-cyan-400" />
-                                LOAD: 14%
-                            </div>
-                            <div className="w-1 h-1 rounded-full bg-border" />
-                            <div className="flex items-center gap-2">
-                                <Globe className="w-3 h-3 text-amber-500" />
-                                ACTIVE: 1,402
-                            </div>
-                        </div>
-
                         <div className="flex items-center gap-3">
                             {mounted && (
                                 <button

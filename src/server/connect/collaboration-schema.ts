@@ -20,6 +20,7 @@ declare global {
 }
 
 const MIGRATION_ID = "20260604_phase14_collaborations";
+const BACKFILL_ID = "20260630_backfill_pending_collaborations";
 
 function pool() {
   const p = getUserPostgresPool();
@@ -69,6 +70,34 @@ export async function ensureCollaborationSchema(): Promise<void> {
         `);
 
         await recordMigration(client);
+
+        // One-time auto-backfill (Admin Control Plane): every existing INSTITUTE
+        // workspace gets a `pending` collaboration row so it appears in the admin
+        // approval queue (and is gated out of student Browse once approvals are on).
+        // Runs exactly once across all pods via the migrations ledger; never
+        // resurrects a reviewed institute (a row, in any status, suppresses re-insert).
+        const backfillDone = await client.query(
+          "SELECT 1 FROM app.migrations WHERE id = $1",
+          [BACKFILL_ID],
+        );
+        if (backfillDone.rowCount === 0) {
+          await client.query(`
+            INSERT INTO app.origin_collaborations (id, workspace_id, status, requested_by, metadata)
+            SELECT 'collab_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 14),
+                   w.id, 'pending', w.owner_user_id, '{"source":"auto_backfill"}'::jsonb
+              FROM app.teacher_workspaces w
+             WHERE w.workspace_type = 'institute'
+               AND NOT EXISTS (
+                 SELECT 1 FROM app.origin_collaborations c WHERE c.workspace_id = w.id
+               )
+            ON CONFLICT (workspace_id) DO NOTHING;
+          `);
+          await client.query(
+            "INSERT INTO app.migrations (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING",
+            [BACKFILL_ID, "auto-backfill pending collaborations for existing institutes"],
+          );
+        }
+
         await client.query("COMMIT");
         globalThis.__originCollaborationSchemaEnsured = true;
       } catch (error) {

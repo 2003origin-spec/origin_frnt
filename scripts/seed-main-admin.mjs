@@ -33,6 +33,9 @@ const c = new Client({ connectionString, ssl: { rejectUnauthorized: false } });
 async function main() {
   await c.connect();
 
+  // 0. Ensure the admin-tier column exists (mirrors the app's runtime-ensure).
+  await c.query(`ALTER TABLE origin_users ADD COLUMN IF NOT EXISTS is_main_admin BOOLEAN NOT NULL DEFAULT FALSE`);
+
   // 1. Source a NOT-NULL-satisfying password_hash from any existing account for
   //    this email (teacher first, then student), since admin login won't use it.
   const src = await c.query(
@@ -44,30 +47,24 @@ async function main() {
   const passwordHash = src.rows[0]?.password_hash ?? "otp-only-no-password";
 
   await c.query(
-    `INSERT INTO origin_users (id, name, email, password_hash, role, is_onboarded)
-     VALUES ($1, $2, $3, $4, 'admin', true)
-     ON CONFLICT (email, role) DO UPDATE SET is_onboarded = true`,
+    `INSERT INTO origin_users (id, name, email, password_hash, role, is_onboarded, is_main_admin)
+     VALUES ($1, $2, $3, $4, 'admin', true, true)
+     ON CONFLICT (email, role) DO UPDATE SET is_onboarded = true, is_main_admin = true`,
     [MAIN_ADMIN_ID, MAIN_ADMIN_NAME, MAIN_ADMIN_EMAIL, passwordHash],
   );
-  console.log(`✓ main admin ensured: ${MAIN_ADMIN_EMAIL}`);
+  console.log(`✓ main admin ensured (is_main_admin=true): ${MAIN_ADMIN_EMAIL}`);
 
-  // 2. Remove all OTHER admins.
-  const others = await c.query(
-    `SELECT id, email FROM origin_users WHERE role = 'admin' AND LOWER(email) <> $1`,
+  // 2. Exactly one MAIN admin: clear the flag on every other admin. Sub-admins are
+  //    now a supported tier, so they are PRESERVED (not deleted) — the main admin
+  //    removes unwanted ones from /admin/admins.
+  const cleared = await c.query(
+    `UPDATE origin_users SET is_main_admin = FALSE
+      WHERE role = 'admin' AND LOWER(email) <> $1 AND is_main_admin = TRUE`,
     [MAIN_ADMIN_EMAIL],
   );
-  for (const row of others.rows) {
-    try {
-      await c.query("DELETE FROM origin_users WHERE id = $1", [row.id]);
-      console.log(`✓ deleted legacy admin: ${row.email} (${row.id})`);
-    } catch (err) {
-      // FK-referenced (created_by / audit etc.) — demote instead of leaving admin.
-      await c.query("UPDATE origin_users SET role = 'student' WHERE id = $1", [row.id]);
-      console.log(`✓ delete blocked by FK; demoted to student instead: ${row.email} (${row.id}) — ${err.message}`);
-    }
-  }
+  console.log(`✓ cleared main-admin flag on ${cleared.rowCount} other admin(s); sub-admins preserved.`);
 
-  const final = await c.query("SELECT id, name, email, role FROM origin_users WHERE role = 'admin'");
+  const final = await c.query("SELECT id, name, email, role, is_main_admin FROM origin_users WHERE role = 'admin'");
   console.log("Final admins:", JSON.stringify(final.rows, null, 2));
   await c.end();
 }

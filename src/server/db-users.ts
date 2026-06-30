@@ -99,6 +99,8 @@ export async function ensureUserSchema(): Promise<void> {
           ALTER TABLE origin_users ADD COLUMN IF NOT EXISTS auth_token_version INTEGER NOT NULL DEFAULT 0;
           ALTER TABLE origin_users ADD COLUMN IF NOT EXISTS username TEXT;
           ALTER TABLE origin_users ADD COLUMN IF NOT EXISTS profile_private BOOLEAN NOT NULL DEFAULT FALSE;
+          -- Admin Control Plane: distinguishes the single main admin from sub-admins.
+          ALTER TABLE origin_users ADD COLUMN IF NOT EXISTS is_main_admin BOOLEAN NOT NULL DEFAULT FALSE;
 
           CREATE TABLE IF NOT EXISTS origin_auth_sessions (
             id                        TEXT PRIMARY KEY,

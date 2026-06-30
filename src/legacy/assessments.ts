@@ -1741,6 +1741,11 @@ export function serializeQuestion(
     attempt_count: attempts.length,
     isSolved: isSolved,
     status: isSolved ? "solved" : isAttempted ? "attempted" : "unattempted",
+    // Institute hallmark (Admin Control Plane) — carried through for the badge.
+    isContributed: question.isContributed ?? false,
+    attributionName: question.attributionName ?? undefined,
+    attributionLogoUrl: question.attributionLogoUrl ?? undefined,
+    contributorWorkspaceId: question.contributorWorkspaceId ?? undefined,
   };
 
   return base;

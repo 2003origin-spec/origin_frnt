@@ -8,9 +8,10 @@
  * full OG Code bank, Tests and DPP. Reads entitlement from useAuth().user.
  */
 
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
-import { ChevronLeft, Atom, FlaskConical, Sigma, Dna, Shield, Check } from 'lucide-react';
+import { ChevronLeft, Atom, FlaskConical, Sigma, Dna, Shield, Check, Package } from 'lucide-react';
 
 const OriMascot = dynamic(() => import('@/features/mascot/Ori2D'), { ssr: false });
 
@@ -40,6 +41,29 @@ export default function Premium({ onBack }: PremiumProps) {
   const anyPremium = hasAnyPremium(user);
   const handleBack = onBack ?? (() => router.back());
   const onChanged = () => void refreshUser();
+
+  // Live pricing (admin-configurable). Falls back to ₹499 until loaded.
+  const [pricing, setPricing] = useState<{
+    subjects: { subject: string; amountMinor: number }[];
+    bundle: { name: string; subjects: string[]; amountMinor: number } | null;
+  } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/subscriptions', { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (!cancelled && d?.pricing) setPricing(d.pricing); })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
+
+  const priceMinorFor = (subject: Subject): number =>
+    pricing?.subjects.find((s) => s.subject === subject)?.amountMinor ?? 49900;
+  const rupees = (minor: number) => Math.round(minor / 100).toLocaleString('en-IN');
+
+  // Coupon (validated per-subject inside each SubjectCheckout).
+  const [couponInput, setCouponInput] = useState('');
+  const [appliedCoupon, setAppliedCoupon] = useState<string | undefined>(undefined);
 
   return (
     <div className="min-h-screen neu-surface text-foreground transition-colors duration-300">
@@ -71,9 +95,35 @@ export default function Premium({ onBack }: PremiumProps) {
             Subscribe by subject
           </h2>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-            ₹499 / month per subject, billed monthly. Subscribe to any one subject and the global
+            Per-subject monthly subscription. Subscribe to any one subject and the global
             tools below unlock instantly. Cancel anytime — access lasts to the end of the period.
           </p>
+
+          {/* Coupon code */}
+          <div className="mt-6 flex items-center justify-center gap-2">
+            <input
+              value={couponInput}
+              onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+              placeholder="Coupon code"
+              className="neu-inset rounded-xl px-4 py-2 text-sm text-foreground bg-transparent outline-none w-44 text-center tracking-wider"
+            />
+            <button
+              onClick={() => setAppliedCoupon(couponInput.trim() ? couponInput.trim() : undefined)}
+              className="neu-btn px-4 py-2 text-sm font-bold text-primary"
+            >
+              Apply
+            </button>
+            {appliedCoupon && (
+              <button onClick={() => { setAppliedCoupon(undefined); setCouponInput(''); }} className="text-xs text-muted-foreground underline">
+                Clear
+              </button>
+            )}
+          </div>
+          {appliedCoupon && (
+            <p className="mt-2 text-xs text-emerald-600 dark:text-emerald-400">
+              Coupon <strong>{appliedCoupon}</strong> applied — discounted prices show on eligible subjects.
+            </p>
+          )}
         </div>
 
         {/* Global tools unlock banner */}
@@ -124,16 +174,39 @@ export default function Premium({ onBack }: PremiumProps) {
                   </div>
                   <h3 className="text-lg font-bold text-foreground">{meta.label}</h3>
                   <div className="flex items-baseline gap-1 mt-1 mb-3">
-                    <span className="text-2xl font-black text-primary">₹499</span>
+                    <span className="text-2xl font-black text-primary">₹{rupees(priceMinorFor(subject))}</span>
                     <span className="text-sm text-muted-foreground">/month</span>
                   </div>
                   <p className="text-sm text-muted-foreground flex-1 mb-5">{meta.blurb}</p>
-                  <SubjectCheckout subject={subject} label={meta.label} owned={isOwned} onChanged={onChanged} />
+                  <SubjectCheckout subject={subject} label={meta.label} owned={isOwned} onChanged={onChanged} priceMinor={priceMinorFor(subject)} couponCode={appliedCoupon} />
                 </div>
               </div>
             );
           })}
         </div>
+
+        {/* All-subjects bundle offer (admin-configured) */}
+        {pricing?.bundle && (
+          <div className="neu-raised rounded-2xl p-6 mb-10 sm:mb-12 flex flex-col sm:flex-row sm:items-center justify-between gap-4 ring-2 ring-primary/30">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl bg-primary/10 neu-inset flex items-center justify-center">
+                <Package className="w-6 h-6 text-primary" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-foreground">{pricing.bundle.name}</h3>
+                <p className="text-sm text-muted-foreground">
+                  Unlocks all {pricing.bundle.subjects.length} subjects — better value than buying separately.
+                </p>
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="flex items-baseline gap-1 justify-end">
+                <span className="text-2xl font-black text-primary">₹{rupees(pricing.bundle.amountMinor)}</span>
+                <span className="text-sm text-muted-foreground">/month</span>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="flex flex-wrap justify-center gap-6 text-muted-foreground">
           <div className="flex items-center gap-2">

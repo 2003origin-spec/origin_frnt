@@ -148,6 +148,11 @@ export interface PracticeQuestion {
   hint?: string;
   explanation?: string;
   answerText?: string;
+  /** Institute hallmark (Admin Control Plane): teacher-contributed OG-Code questions. */
+  isContributed?: boolean;
+  attributionName?: string | null;
+  attributionLogoUrl?: string | null;
+  contributorWorkspaceId?: string | null;
 }
 
 export interface PracticeQuestionPage {
