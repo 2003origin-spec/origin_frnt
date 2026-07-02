@@ -29,6 +29,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { searchWorkspacesService } from "@/server/workspaces/admin-service";
+import { AdminWorkspacesFilter } from "@/components/admin/AdminWorkspacesFilter";
 
 type Props = {
   searchParams: Promise<{
@@ -61,41 +62,14 @@ export default async function AdminWorkspacesPage({ searchParams }: Props) {
       <Card>
         <CardHeader>
           <CardTitle>Filter</CardTitle>
-          <CardDescription>
-            Use query string params: <code>?query=&workspaceType=&status=</code>.
-          </CardDescription>
+          <CardDescription>Search as you type — filters apply automatically.</CardDescription>
         </CardHeader>
         <CardContent>
-          <form className="flex flex-wrap gap-3" method="get">
-            <input
-              type="text"
-              name="query"
-              placeholder="Search by name or slug"
-              defaultValue={sp.query ?? ""}
-              className="rounded-md border bg-background px-3 py-2 text-sm"
-            />
-            <select
-              name="workspaceType"
-              defaultValue={sp.workspaceType ?? ""}
-              className="rounded-md border bg-background px-3 py-2 text-sm"
-            >
-              <option value="">All types</option>
-              <option value="personal">Personal</option>
-              <option value="institute">Institute</option>
-            </select>
-            <select
-              name="status"
-              defaultValue={sp.status ?? ""}
-              className="rounded-md border bg-background px-3 py-2 text-sm"
-            >
-              <option value="">All statuses</option>
-              <option value="active">Active</option>
-              <option value="suspended">Suspended</option>
-            </select>
-            <Button type="submit" size="sm">
-              Apply
-            </Button>
-          </form>
+          <AdminWorkspacesFilter
+            initialQuery={sp.query ?? ""}
+            initialType={sp.workspaceType ?? ""}
+            initialStatus={sp.status ?? ""}
+          />
         </CardContent>
       </Card>
 

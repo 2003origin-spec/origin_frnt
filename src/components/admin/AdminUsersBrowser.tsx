@@ -1,13 +1,17 @@
 'use client';
 
 /**
- * Admin user directory — live search over GET /api/admin/search?type=user.
- * Replaces the old mock `mockUsers` table and connects the previously orphaned
- * admin search endpoint (searchUsersService). Read-only inspect + filter by role.
+ * Admin user directory — industry-grade search over GET /api/admin/search?type=user.
+ * Search-as-you-type is DEBOUNCED (queries the server only after the user pauses,
+ * not on every keystroke) and each request is ABORTABLE, so a slower earlier
+ * response can never clobber a newer one. Connects the previously orphaned admin
+ * search endpoint (searchUsersService). Read-only inspect + filter by role.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Search, Loader2, Users as UsersIcon } from 'lucide-react';
+
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 
 type Role = 'student' | 'teacher' | 'admin';
 type RoleFilter = 'all' | Role;
@@ -31,31 +35,44 @@ export function AdminUsersBrowser({ initialRole = 'all' }: { initialRole?: RoleF
   const [query, setQuery] = useState('');
   const [role, setRole] = useState<RoleFilter>(initialRole);
   const [rows, setRows] = useState<AdminUser[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  // Debounce the typed query so the server is hit only when the user pauses.
+  const debouncedQuery = useDebouncedValue(query.trim(), 300);
+  const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    // Cancel any in-flight request so responses can't arrive out of order.
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     setLoading(true);
     setError(null);
-    try {
-      const params = new URLSearchParams({ type: 'user', query, limit: '100' });
-      if (role !== 'all') params.set('role', role);
-      const res = await fetch(`/api/admin/search?${params.toString()}`, { credentials: 'include' });
-      if (!res.ok) throw new Error(`Search failed (${res.status})`);
-      const data = (await res.json()) as AdminUser[];
-      setRows(Array.isArray(data) ? data : []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Search failed.');
-    } finally {
-      setLoading(false);
-    }
-  }, [query, role]);
+    const params = new URLSearchParams({ type: 'user', query: debouncedQuery, limit: '50' });
+    if (role !== 'all') params.set('role', role);
 
-  // Initial load + reload on role change.
-  useEffect(() => {
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [role]);
+    fetch(`/api/admin/search?${params.toString()}`, { credentials: 'include', signal: controller.signal })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`Search failed (${res.status})`);
+        return (await res.json()) as AdminUser[];
+      })
+      .then((data) => {
+        setRows(Array.isArray(data) ? data : []);
+        setLoading(false);
+      })
+      .catch((err: unknown) => {
+        if (err instanceof DOMException && err.name === 'AbortError') return; // superseded — ignore
+        setError(err instanceof Error ? err.message : 'Search failed.');
+        setLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [debouncedQuery, role]);
+
+  // A query the user typed that hasn't been searched yet (debounce in flight).
+  const pending = query.trim() !== debouncedQuery;
 
   return (
     <div className="space-y-6 max-w-6xl">
@@ -66,21 +83,17 @@ export function AdminUsersBrowser({ initialRole = 'all' }: { initialRole?: RoleF
         <p className="text-sm text-muted-foreground mt-1">Search and inspect every account on the platform.</p>
       </div>
 
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          void load();
-        }}
-        className="flex flex-wrap items-center gap-3"
-      >
-        <div className="flex items-center gap-2 flex-1 min-w-[220px] rounded-xl border border-border bg-card px-3 py-2">
-          <Search className="w-4 h-4 text-muted-foreground" />
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2 flex-1 min-w-[220px] rounded-xl border border-border bg-card px-3 py-2 focus-within:border-emerald-500/50 transition-colors">
+          <Search className="w-4 h-4 text-muted-foreground shrink-0" />
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search by name or email…"
+            autoFocus
             className="w-full bg-transparent outline-none text-sm text-foreground placeholder:text-muted-foreground"
           />
+          {(loading || pending) && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground shrink-0" />}
         </div>
         <select
           value={role}
@@ -92,14 +105,7 @@ export function AdminUsersBrowser({ initialRole = 'all' }: { initialRole?: RoleF
           <option value="teacher">Teachers</option>
           <option value="admin">Admins</option>
         </select>
-        <button
-          type="submit"
-          disabled={loading}
-          className="rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 text-sm font-bold disabled:opacity-50"
-        >
-          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Search'}
-        </button>
-      </form>
+      </div>
 
       {error && <div className="rounded-xl border border-rose-500/30 bg-rose-500/5 p-4 text-sm text-rose-600 dark:text-rose-400">{error}</div>}
 
@@ -139,7 +145,7 @@ export function AdminUsersBrowser({ initialRole = 'all' }: { initialRole?: RoleF
           </tbody>
         </table>
       </div>
-      <p className="text-xs text-muted-foreground">{rows.length} result{rows.length === 1 ? '' : 's'}.</p>
+      <p className="text-xs text-muted-foreground">{loading ? 'Searching…' : `${rows.length} result${rows.length === 1 ? '' : 's'}.`}</p>
     </div>
   );
 }

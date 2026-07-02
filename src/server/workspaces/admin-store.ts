@@ -72,7 +72,7 @@ export async function searchUsers(query: string, filter?: { role?: "student" | "
   if (filter?.role) { params.push(filter.role); conditions.push(`u.role = $${params.length}`); }
   const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
   const maxLimit = limit ?? 50;
-  const result = await pool().query(`SELECT u.id, u.name, u.email, u.role, u.created_at FROM origin_users u ${where} ORDER BY u.created_at DESC LIMIT $${params.length + 1}`, [...params, maxLimit]);
+  const result = await pool().query(`SELECT u.id, u.name, u.email, u.role, u.joined_at AS created_at FROM origin_users u ${where} ORDER BY u.joined_at DESC LIMIT $${params.length + 1}`, [...params, maxLimit]);
   const users = result.rows.map((row) => ({
     id: row.id as string, name: row.name as string, email: row.email as string,
     role: row.role as "student" | "teacher" | "admin",

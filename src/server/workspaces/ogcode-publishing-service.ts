@@ -267,14 +267,15 @@ export async function reviewPublication(input: {
           });
           await recordAuditEvent({
             actorUserId: input.reviewerUserId,
-            workspaceId: prior.contributorWorkspaceId ?? "",
+            // Nullable FK → app.teacher_workspaces; an empty string would violate it.
+            workspaceId: prior.contributorWorkspaceId ?? null,
             entityType: "ogcode_publication",
             entityId: prior.id,
             action: "ogcode_publication.archived_by_republish",
             before: prior,
             after: { archivedById: result.id },
             requestId: input.requestId,
-          });
+          }).catch((error) => console.error("[reviewPublication] archive audit failed (non-fatal):", error));
         }
       }
       break;
@@ -291,13 +292,15 @@ export async function reviewPublication(input: {
 
   await recordAuditEvent({
     actorUserId: input.reviewerUserId,
-    workspaceId: result.contributorWorkspaceId ?? "",
+    // Nullable FK → app.teacher_workspaces; an empty string would violate it and
+    // (before this fix) fail the whole moderation action with a generic 400.
+    workspaceId: result.contributorWorkspaceId ?? null,
     entityType: "ogcode_publication",
     entityId: input.publicationId,
     action: auditAction,
     after: result,
     requestId: input.requestId,
-  });
+  }).catch((error) => console.error("[reviewPublication] audit failed (non-fatal):", error));
 
   return result;
 }
