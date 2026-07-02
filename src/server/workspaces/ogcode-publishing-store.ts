@@ -148,7 +148,7 @@ export async function listSubmittedPublications(
             qv.chapter AS question_chapter
      FROM content.ogcode_publications p
      LEFT JOIN content.question_versions qv ON qv.id = p.question_version_id
-     WHERE p.status = 'submitted'
+     WHERE p.status IN ('submitted', 'approved')
      ORDER BY p.submitted_at ASC NULLS LAST, p.created_at ASC
      LIMIT $1`,
     [maxLimit],

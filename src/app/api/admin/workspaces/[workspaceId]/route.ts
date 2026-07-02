@@ -6,6 +6,7 @@ import { requireFeatureEnabled } from "@/lib/feature-flags";
 import { requireRole } from "@/server/authz";
 import {
   closeWorkspaceService,
+  setWorkspaceTypeService,
   suspendWorkspaceService,
   unsuspendWorkspaceService,
   updateWorkspaceAdminService,
@@ -15,9 +16,10 @@ import { getWorkspaceById } from "@/server/workspaces/store";
 import { handleTeacherError, requestIdOf, teacherJson } from "@/app/api/teacher/_utils";
 
 const actionSchema = z.object({
-  action: z.enum(["suspend", "unsuspend", "close"]),
+  action: z.enum(["suspend", "unsuspend", "close", "set_type"]),
   reason: z.enum(["policy_violation", "fraud", "inactivity", "admin_request", "other"]).optional(),
   notes: z.string().max(500).nullable().optional(),
+  workspaceType: z.enum(["personal", "institute"]).optional(),
 });
 
 const patchSchema = z.object({
@@ -113,6 +115,18 @@ export async function POST(
           requestId: requestIdOf(request),
         });
         break;
+      case "set_type": {
+        if (!parsed.workspaceType) {
+          return teacherJson({ detail: "workspaceType is required." }, { status: 400 });
+        }
+        const workspace = await setWorkspaceTypeService({
+          workspaceId,
+          workspaceType: parsed.workspaceType,
+          adminUserId: auth.userId,
+          requestId: requestIdOf(request),
+        });
+        return teacherJson({ success: true, action: parsed.action, workspace });
+      }
       default:
         return teacherJson({ detail: "Invalid action." }, { status: 400 });
     }

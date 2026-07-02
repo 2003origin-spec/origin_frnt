@@ -242,6 +242,27 @@ export async function updateWorkspace(
   return result.rows[0] ? rowToWorkspace(result.rows[0]) : null;
 }
 
+/**
+ * Admin-only: change a workspace's type (personal ↔ institute). Only institutes
+ * are browsable in the marketplace / student Connect Browse, so this is how a
+ * coaching center is promoted (or demoted). workspace_type is not part of the
+ * general UpdateWorkspaceInput because it is a privileged, gated transition.
+ */
+export async function setWorkspaceType(
+  workspaceId: string,
+  workspaceType: "personal" | "institute",
+): Promise<TeacherWorkspace | null> {
+  await ensureWorkspaceSchema();
+  const result = await pool().query(
+    `UPDATE app.teacher_workspaces
+     SET workspace_type = $2, updated_at = NOW()
+     WHERE id = $1
+     RETURNING *`,
+    [workspaceId, workspaceType],
+  );
+  return result.rows[0] ? rowToWorkspace(result.rows[0]) : null;
+}
+
 export async function listMembers(workspaceId: string): Promise<WorkspaceMember[]> {
   await ensureWorkspaceSchema();
   const result = await pool().query(
