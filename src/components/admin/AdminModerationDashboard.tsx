@@ -59,33 +59,12 @@ export function AdminModerationDashboard({ initialWorkspaces, pendingPublication
     return true;
   });
 
-  // Mock moderation queue if empty for demonstration
-  const displayQueue = queue.length > 0 ? queue : [
-    {
-      id: "pub-mock-1",
-      questionId: "q-1",
-      questionVersionId: "v-1",
-      contributorWorkspaceId: "w-1",
-      contributorUserId: "u-1",
-      attributionName: "Physics Catalyst Academy",
-      attributionLogoAssetId: null,
-      status: "submitted" as const,
-      version: 1,
-      moderationNotes: null,
-      submittedAt: new Date().toISOString(),
-      reviewedBy: null,
-      reviewedAt: null,
-      publishedAt: null,
-      archivedAt: null,
-      supersededBy: null,
-      metadata: {},
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      questionStem: "Determine the magnetic moment $\\vec{M}$ of a loop carrying a steady current $I$ around a hemisphere of radius $R$:",
-      questionSubject: "Physics",
-      questionChapter: "Magnetism"
-    }
-  ];
+  // Real moderation queue only. (Previously fell back to a hardcoded mock
+  // publication when empty — that phantom card could never be approved:
+  // `pub-mock-1` matches no DB row, so Approve returned 409 "Failed to approve
+  // publication". It also masked the true empty state and, when a real stranded
+  // `approved` row existed, made operators think the queue was empty.)
+  const displayQueue = queue;
 
   // Actions
   async function handleSuspendWorkspace(workspaceId: string) {
@@ -122,6 +101,29 @@ export function AdminModerationDashboard({ initialWorkspaces, pendingPublication
         router.refresh();
       } else {
         toast.error("Failed to unsuspend workspace");
+      }
+    });
+  }
+
+  async function handleConvertWorkspaceType(workspaceId: string, current: "personal" | "institute") {
+    const target = current === "institute" ? "personal" : "institute";
+    const ok = window.confirm(
+      target === "institute"
+        ? "Convert to INSTITUTE? It enters the approval queue and becomes browsable to students once approved in Institute Approvals."
+        : "Convert to PERSONAL? It will no longer appear in the marketplace / student Browse.",
+    );
+    if (!ok) return;
+    startTransition(async () => {
+      const result = await apiJson(
+        `/api/admin/workspaces/${workspaceId}`,
+        { method: "POST", json: { action: "set_type", workspaceType: target } }
+      );
+      if (result.ok) {
+        toast.success(`Converted to ${target}.`);
+        setWorkspaces(prev => prev.map(w => w.id === workspaceId ? { ...w, workspaceType: target } : w));
+        router.refresh();
+      } else {
+        toast.error(result.detail || "Failed to convert workspace type");
       }
     });
   }
@@ -319,6 +321,10 @@ export function AdminModerationDashboard({ initialWorkspaces, pendingPublication
                                   Reinstate Workspace
                                 </DropdownMenuItem>
                               )}
+                              <DropdownMenuItem onClick={() => handleConvertWorkspaceType(w.id, w.workspaceType)} className="gap-2">
+                                <Building2 className="w-4 h-4" />
+                                {w.workspaceType === "institute" ? "Convert to personal" : "Convert to institute"}
+                              </DropdownMenuItem>
                               <DropdownMenuItem className="gap-2">
                                 <Download className="w-4 h-4" /> Export schema JSON
                               </DropdownMenuItem>
@@ -336,6 +342,18 @@ export function AdminModerationDashboard({ initialWorkspaces, pendingPublication
 
         {activeTab === "queue" && (
           <div className="space-y-4 animate-fade-in">
+            {displayQueue.length === 0 ? (
+              <Card className="border bg-card">
+                <CardContent className="p-10 flex flex-col items-center justify-center text-center gap-2">
+                  <CheckSquare className="w-8 h-8 text-muted-foreground/50" />
+                  <p className="text-sm font-semibold">No pending submissions</p>
+                  <p className="text-xs text-muted-foreground max-w-sm">
+                    Teacher-contributed OG-Code questions awaiting review appear here. Approving one
+                    publishes it to the student OG-Code pool with its institute hallmark.
+                  </p>
+                </CardContent>
+              </Card>
+            ) : null}
             {displayQueue.map((pub) => (
               /* OGCodeModerationQueueCard */
               <Card key={pub.id} className="border bg-card">

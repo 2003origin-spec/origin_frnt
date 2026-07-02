@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/table";
 import { searchWorkspacesService } from "@/server/workspaces/admin-service";
 import { AdminWorkspacesFilter } from "@/components/admin/AdminWorkspacesFilter";
+import { AdminWorkspaceConvertButton } from "@/components/admin/AdminWorkspaceConvertButton";
 
 type Props = {
   searchParams: Promise<{
@@ -115,9 +116,15 @@ export default async function AdminWorkspacesPage({ searchParams }: Props) {
                       {new Date(ws.createdAt).toLocaleDateString()}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button asChild size="sm" variant="ghost">
-                        <Link href={`/admin/workspaces/${ws.id}`}>Open</Link>
-                      </Button>
+                      <div className="flex items-center justify-end gap-2">
+                        <AdminWorkspaceConvertButton
+                          workspaceId={ws.id}
+                          currentType={ws.workspaceType}
+                        />
+                        <Button asChild size="sm" variant="ghost">
+                          <Link href={`/admin/workspaces/${ws.id}`}>Open</Link>
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
