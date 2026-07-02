@@ -790,5 +790,13 @@ export async function upsertContributedCatalogQuestion(input: ContributedCatalog
       input.attributionLogoUrl,
     ],
   );
-  revalidateTag("ogcode-catalog", "max");
+  // Bust the catalog cache so the question appears promptly. Never let a
+  // revalidation failure fail the write itself: revalidateTag throws
+  // "static generation store missing" when called outside a request context
+  // (e.g. the one-time backfill script), and the row is already committed above.
+  try {
+    revalidateTag("ogcode-catalog", "max");
+  } catch (error) {
+    console.warn("[upsertContributedCatalogQuestion] revalidateTag skipped:", error instanceof Error ? error.message : error);
+  }
 }

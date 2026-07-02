@@ -253,8 +253,22 @@ export async function reviewPublication(input: {
       // the student OG-Code catalog with institute attribution. Best-effort — a
       // catalog hiccup must not undo the publish transition.
       if (result && isFeatureEnabled("ogcodeHallmark")) {
-        await writeContributedCatalogQuestion(result).catch((error) => {
+        const publishedResult = result;
+        await writeContributedCatalogQuestion(publishedResult).catch(async (error) => {
+          // Non-fatal for the publish transition, but never silent: a swallowed
+          // catalog write is exactly why contributions "published" yet never
+          // appeared in the student pool. Surface it in the audit log so ops can
+          // spot (and re-run the backfill for) a dropped sync.
           console.error("[reviewPublication] hallmark catalog write failed (non-fatal):", error);
+          await recordAuditEvent({
+            actorUserId: input.reviewerUserId,
+            workspaceId: publishedResult.contributorWorkspaceId ?? null,
+            entityType: "ogcode_publication",
+            entityId: publishedResult.id,
+            action: "ogcode_publication.catalog_sync_failed",
+            after: { error: error instanceof Error ? error.message : String(error) },
+            requestId: input.requestId,
+          }).catch(() => {});
         });
       }
       // After publishing a republish, archive the previous live row.
