@@ -11,6 +11,7 @@ type Props =
   | {
       workspaceId: string;
       currentStatus: WorkspaceStatus;
+      currentType: "personal" | "institute";
       mode?: "workspace";
     }
   | {
@@ -81,6 +82,27 @@ export function AdminWorkspaceActions(props: Props) {
     router.refresh();
   }
 
+  async function changeType(target: "personal" | "institute") {
+    const ok = window.confirm(
+      target === "institute"
+        ? "Convert to INSTITUTE? It will enter the approval queue and become browsable to students once you approve it in Institute Approvals."
+        : "Convert to PERSONAL? It will no longer appear in the marketplace / student Browse.",
+    );
+    if (!ok) return;
+    const res = await fetch(`/api/admin/workspaces/${props.workspaceId}`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...csrfHeaders() },
+      credentials: "include",
+      body: JSON.stringify({ action: "set_type", workspaceType: target }),
+    });
+    if (!res.ok) {
+      const data = (await res.json().catch(() => ({}))) as { detail?: string };
+      setError(data.detail ?? `Type change failed (${res.status})`);
+      return;
+    }
+    router.refresh();
+  }
+
   return (
     <div className="flex flex-wrap gap-2">
       {props.currentStatus !== "suspended" && props.currentStatus !== "closed" ? (
@@ -111,6 +133,20 @@ export function AdminWorkspaceActions(props: Props) {
           onClick={() => startTransition(() => callAction("close"))}
         >
           Close workspace
+        </Button>
+      ) : null}
+      {props.currentStatus !== "closed" ? (
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={isPending}
+          onClick={() =>
+            startTransition(() =>
+              changeType(props.currentType === "institute" ? "personal" : "institute"),
+            )
+          }
+        >
+          {props.currentType === "institute" ? "Convert to personal" : "Convert to institute"}
         </Button>
       ) : null}
       {error ? (

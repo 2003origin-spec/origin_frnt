@@ -6,7 +6,8 @@ import { AuthzError } from "@/server/authz";
 
 import { recordAuditEvent } from "./audit";
 import { closeWorkspace, getImportJobAdmin, listAllImportJobs, listAuditEvents, searchUsers, searchWorkspaces, suspendWorkspace, unsuspendWorkspace } from "./admin-store";
-import { getWorkspaceById, revokeWorkspaceCode, updateWorkspace, type UpdateWorkspaceInput } from "./store";
+import { getWorkspaceById, revokeWorkspaceCode, setWorkspaceType, updateWorkspace, type UpdateWorkspaceInput } from "./store";
+import { upsertCollaborationRequest } from "../connect/collaboration-store";
 import type { AdminAuditEvent, AdminUserSearchResult, DocumentImportJob, ImportJobStatus, TeacherWorkspace, WorkspaceAdminSummary, WorkspaceCode, WorkspaceSuspensionReason } from "./types";
 
 export async function searchWorkspacesService(query: string, filter?: { workspaceType?: "personal" | "institute"; status?: "active" | "suspended" | "all" }, limit?: number): Promise<WorkspaceAdminSummary[]> {
@@ -41,6 +42,49 @@ export async function closeWorkspaceService(input: { workspaceId: string; adminU
 
 export async function searchUsersService(query: string, filter?: { role?: "student" | "teacher" | "admin" }, limit?: number): Promise<AdminUserSearchResult[]> {
   return searchUsers(query, filter, limit);
+}
+
+/**
+ * Admin-only: convert a workspace between `personal` and `institute`. Only
+ * institutes are browsable (marketplace + student Connect Browse). Promoting to
+ * `institute` also ensures a `pending` collaboration row so the institute lands
+ * in the approval queue (it only becomes browsable once an admin approves it).
+ * Idempotent for the same type.
+ */
+export async function setWorkspaceTypeService(input: {
+  workspaceId: string;
+  workspaceType: "personal" | "institute";
+  adminUserId: string;
+  requestId?: string | null;
+}): Promise<TeacherWorkspace> {
+  const before = await getWorkspaceById(input.workspaceId);
+  if (!before) throw new AuthzError(404, "Workspace not found.");
+  if (before.workspaceType === input.workspaceType) return before;
+
+  const after = await setWorkspaceType(input.workspaceId, input.workspaceType);
+  if (!after) throw new Error("Failed to change workspace type.");
+
+  // Promotion to institute → ensure it appears in the admin approval queue.
+  if (input.workspaceType === "institute") {
+    await upsertCollaborationRequest({
+      workspaceId: input.workspaceId,
+      requestedBy: input.adminUserId,
+      metadata: { source: "admin_type_change" },
+    }).catch((error) => console.error("[setWorkspaceTypeService] ensure collaboration failed:", error));
+  }
+
+  await recordAuditEvent({
+    actorUserId: input.adminUserId,
+    workspaceId: input.workspaceId,
+    entityType: "teacher_workspace",
+    entityId: input.workspaceId,
+    action: "workspace.type_changed",
+    before,
+    after,
+    requestId: input.requestId,
+  });
+
+  return after;
 }
 
 export async function listAuditEventsService(filter?: { workspaceId?: string; entityType?: string; actorUserId?: string; action?: string; limit?: number; offset?: number }): Promise<AdminAuditEvent[]> {

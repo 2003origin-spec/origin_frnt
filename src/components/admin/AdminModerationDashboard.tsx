@@ -128,16 +128,19 @@ export function AdminModerationDashboard({ initialWorkspaces, pendingPublication
 
   async function handleApproveOGCode(publicationId: string) {
     startTransition(async () => {
+      // publish:true → approve AND publish in one click, so the question lands in
+      // the student OG-Code pool with its institute hallmark. (Plain approve only
+      // set status='approved' and left the row stranded, never reaching the pool.)
       const result = await apiJson(
         `/api/admin/ogcode/moderation/${publicationId}/approve`,
-        { method: "POST", json: {} }
+        { method: "POST", json: { publish: true } }
       );
       if (result.ok) {
-        toast.success("Contributed question approved & synchronized to public pool!");
+        toast.success("Contributed question approved & published to the OG-Code pool!");
         setQueue(prev => prev.filter(p => p.id !== publicationId));
         router.refresh();
       } else {
-        toast.error("Failed to approve publication");
+        toast.error(result.detail || "Failed to approve publication");
       }
     });
   }

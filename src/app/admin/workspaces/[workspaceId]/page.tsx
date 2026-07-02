@@ -85,6 +85,7 @@ export default async function AdminWorkspaceDetailPage({ params }: Props) {
           <AdminWorkspaceActions
             workspaceId={workspaceId}
             currentStatus={workspace.status}
+            currentType={workspace.workspaceType}
           />
         </CardContent>
       </Card>
