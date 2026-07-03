@@ -17,6 +17,8 @@ import {
   updateUserStreak,
 } from "@/server/gamification";
 import { badRequest, created, noContent, notFound, ok, serviceUnavailable, unauthorized } from "@/server/http";
+import { searchAll, type SearchScope } from "@/server/search/search-service";
+import { listNotifications, markNotificationsRead } from "@/server/notifications";
 import { withEntitledSubjects } from "@/server/entitlements";
 import type { AppStore, StoredTask, StoredUser } from "@/server/store";
 import { createId, readStoreAsync, withStoreAsync, withStoredUserDefaults } from "@/server/store";
@@ -867,6 +869,47 @@ async function handleStatsGet(request: Request) {
   });
 }
 
+async function handleSearchGet(request: Request) {
+  // Read-only: use readStoreAsync (no persist) rather than withStoreAsync.
+  const store = await readStoreAsync();
+  const user = await requireUserFromRequest(store, request);
+  if (!user) {
+    return unauthorized();
+  }
+  const url = new URL(request.url);
+  const query = (url.searchParams.get("q") ?? "").trim();
+  const scopeParam = (url.searchParams.get("scope") ?? "all") as SearchScope;
+  const scope: SearchScope = ["all", "tests", "questions", "people", "ai", "books"].includes(scopeParam)
+    ? scopeParam
+    : "all";
+  const limitParam = Number(url.searchParams.get("limit"));
+  const limit = Number.isFinite(limitParam) && limitParam > 0 ? Math.min(20, Math.floor(limitParam)) : undefined;
+  const response = await searchAll({ store, user, query, scope, limit });
+  return ok(response);
+}
+
+async function handleNotificationsList(request: Request) {
+  const store = await readStoreAsync();
+  const user = await requireUserFromRequest(store, request);
+  if (!user) {
+    return unauthorized();
+  }
+  const limitParam = Number(new URL(request.url).searchParams.get("limit"));
+  const limit = Number.isFinite(limitParam) && limitParam > 0 ? limitParam : undefined;
+  return ok(await listNotifications(user.id, { limit }));
+}
+
+async function handleNotificationsMarkRead(request: Request, payload: UserPayload) {
+  const store = await readStoreAsync();
+  const user = await requireUserFromRequest(store, request);
+  if (!user) {
+    return unauthorized();
+  }
+  const id = asString(payload.id ?? payload.notificationId) ?? undefined;
+  await markNotificationsRead(user.id, id);
+  return ok({ ok: true });
+}
+
 async function handleTimePost(request: Request, payload: UserPayload) {
   try {
     return withStoreAsync(async (store) => {
@@ -1187,6 +1230,15 @@ export async function handleUsersRequest(method: string, slug: string[], request
   }
   if (slug.length === 1 && slug[0] === "stats" && method === "GET") {
     return handleStatsGet(request);
+  }
+  if (slug.length === 1 && slug[0] === "search" && method === "GET") {
+    return handleSearchGet(request);
+  }
+  if (slug.length === 1 && slug[0] === "notifications" && method === "GET") {
+    return handleNotificationsList(request);
+  }
+  if (slug.length === 1 && slug[0] === "notifications" && method === "POST") {
+    return handleNotificationsMarkRead(request, payload);
   }
   if (slug.length === 1 && slug[0] === "time" && method === "POST") {
     return handleTimePost(request, payload);

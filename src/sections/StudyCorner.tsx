@@ -24,6 +24,7 @@ import { toast } from 'sonner';
 import type { ViewState, Book } from '@/types';
 import type { NCERTBook } from '@/data/ncertBooks';
 import { mockBooks, mockNotes } from '@/data/mockData';
+import { apiCall } from '@/lib/api';
 import NCERTReader from '@/components/study/NCERTReader';
 import NCERTCorner from '@/components/study/NCERTCorner';
 import { useAuth } from '@/context/AuthContext';
@@ -40,9 +41,11 @@ export default function StudyCorner({ catalog }: StudyCornerProps) {
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedBook, setSelectedBook] = useState<Book | null>(null);
 
-    // Local state for library management (would be DB in real app)
+    // Local state for library management. The saved library is hydrated from the
+    // study backend (`/study/books/library`) on mount and persisted on toggle, so
+    // it survives a device change instead of being local-only.
     const [localBooks] = useState<Book[]>(mockBooks);
-    const [userLibrary, setUserLibrary] = useState<Set<string>>(new Set(['book-1', 'book-3'])); // Default mock library
+    const [userLibrary, setUserLibrary] = useState<Set<string>>(new Set());
     const [likedBooks, setLikedBooks] = useState<Set<string>>(
         new Set(localBooks.filter(b => b.isLiked).map(b => b.id))
     );
@@ -118,14 +121,43 @@ export default function StudyCorner({ catalog }: StudyCornerProps) {
         setLikedBooks(newLiked);
     };
 
+    // Hydrate the saved library from the study backend on mount.
+    useEffect(() => {
+        if (!user?.id) return;
+        let cancelled = false;
+        (async () => {
+            try {
+                const books = await apiCall('/study/books/library/', { silentAuth: true });
+                if (!cancelled && Array.isArray(books)) {
+                    setUserLibrary(new Set(books.map((b: { id: string }) => b.id)));
+                }
+            } catch {
+                // keep whatever we have (empty) — library just won't prefill
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [user?.id]);
+
     const toggleLibrary = (bookId: string) => {
+        const wasInLibrary = userLibrary.has(bookId);
         const newLib = new Set(userLibrary);
-        if (newLib.has(bookId)) {
+        if (wasInLibrary) {
             newLib.delete(bookId);
         } else {
             newLib.add(bookId);
         }
         setUserLibrary(newLib);
+        // Persist to the backend; revert optimistic update on failure.
+        apiCall(`/study/books/${bookId}/toggle_save/`, { method: 'POST', body: JSON.stringify({}) })
+            .catch(() => {
+                setUserLibrary((prev) => {
+                    const reverted = new Set(prev);
+                    if (wasInLibrary) reverted.add(bookId);
+                    else reverted.delete(bookId);
+                    return reverted;
+                });
+                toast.error('Could not update your library. Please try again.');
+            });
     };
 
     const filteredBooks = mockBooks.filter(book =>

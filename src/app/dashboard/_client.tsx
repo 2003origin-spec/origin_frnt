@@ -2,7 +2,6 @@
 
 import { useEffect } from 'react';
 import Dashboard from '@/sections/Dashboard';
-import TeacherDashboard from '@/sections/TeacherDashboard';
 import type { DashboardChallengePreview } from '@/components/dashboard/DashboardCards';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
@@ -39,8 +38,12 @@ export default function DashboardClient({
 
   if (!user) return null;
 
+  // Teachers and admins never see the student dashboard — the server already
+  // redirects them (dashboard/page.tsx). This is a defensive client-side guard
+  // that bounces them to the correct app instead of rendering student UI.
   if (user.role === 'teacher') {
-    return <TeacherDashboard user={user} />;
+    router.push('/teacher');
+    return null;
   }
 
   if (user.role === 'admin') {

@@ -94,7 +94,81 @@ const CREATE_TABLE_SQL = `
   ALTER TABLE ogcode_questions ADD COLUMN IF NOT EXISTS attribution_logo_url TEXT;
   ALTER TABLE ogcode_questions ADD COLUMN IF NOT EXISTS is_contributed BOOLEAN NOT NULL DEFAULT FALSE;
   CREATE INDEX IF NOT EXISTS ogcode_questions_contributed_idx ON ogcode_questions (is_contributed);
+
+  -- Daily Mission (Phase 1): one persisted challenge question per calendar day.
+  -- Recording the per-day pick makes the challenge stable for the whole day
+  -- (immune to catalog edits) and lets the selector enforce a no-repeat window
+  -- so the same question can't surface two days running.
+  CREATE TABLE IF NOT EXISTS ogcode_daily_challenges (
+    challenge_date DATE PRIMARY KEY,
+    question_id TEXT NOT NULL,
+    was_curated BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+  CREATE INDEX IF NOT EXISTS ogcode_daily_challenges_question_idx ON ogcode_daily_challenges (question_id);
 `;
+
+/** Columns selected into `CatalogRow` — shared by the by-id + daily-challenge reads. */
+const CATALOG_COLUMNS = `
+  id, source_index, text, options, correct_option, correct_options, answer_text,
+  answer_spec, tolerance, matrix_data, explanation, hint, subject, chapter, concept,
+  difficulty, image, tags, question_type, acceptance_rate, total_correct, frequency,
+  is_challenge_of_day, contributor_workspace_id, attribution_name, attribution_logo_url,
+  is_contributed
+`;
+
+/**
+ * No-repeat window for the Daily Mission. A question used as the daily challenge
+ * within this many days is excluded from re-selection, so the challenge rotates
+ * even when only a handful of questions are curated. If the eligible pool is
+ * smaller than the window the exclusion relaxes automatically (see
+ * `pickDailyChallengeId`).
+ */
+export const DAILY_CHALLENGE_NO_REPEAT_DAYS = 60;
+
+export type DailyChallengeCandidate = {
+  id: string;
+  sourceIndex: number;
+  isCurated: boolean;
+};
+
+/**
+ * Pure, deterministic per-day selection of the daily-challenge question.
+ *
+ * Rules (see PLATFORM_GAP_AUDIT_AND_COMPLETION_PLAN.md, Phase 1):
+ *  - rotate over the FULL eligible pool, not just curated rows;
+ *  - skip questions used within the no-repeat window (unless that empties the
+ *    pool, in which case repeats are allowed again);
+ *  - prefer curated (`is_challenge_of_day`) rows when any remain eligible, so
+ *    hand-picked questions surface first without ever collapsing the pool to one;
+ *  - pick a stable-per-day row via `epochDay % count` over a deterministic order.
+ */
+export function pickDailyChallengeId(
+  eligible: readonly DailyChallengeCandidate[],
+  usedIds: ReadonlySet<string>,
+  epochDay: number,
+): string | null {
+  if (eligible.length === 0) {
+    return null;
+  }
+  let candidates = eligible.filter((question) => !usedIds.has(question.id));
+  if (candidates.length === 0) {
+    candidates = [...eligible];
+  }
+  const curated = candidates.filter((question) => question.isCurated);
+  const chosen = curated.length > 0 ? curated : candidates;
+  const sorted = [...chosen].sort((left, right) =>
+    left.sourceIndex !== right.sourceIndex
+      ? left.sourceIndex - right.sourceIndex
+      : left.id < right.id
+        ? -1
+        : left.id > right.id
+          ? 1
+          : 0,
+  );
+  const offset = ((epochDay % sorted.length) + sorted.length) % sorted.length;
+  return sorted[offset].id;
+}
 
 function normalizeDifficulty(value: string): DifficultyLevel {
   const normalized = String(value ?? "").trim().toLowerCase();
@@ -598,7 +672,31 @@ export async function getOgcodeCatalogCounts() {
   return { total, bySubject };
 }
 
-export async function getOgcodeChallengeQuestion(): Promise<StoredQuestion | null> {
+async function fetchCatalogQuestionById(
+  pool: NonNullable<ReturnType<typeof getOgcodePostgresPool>>,
+  id: string,
+): Promise<StoredQuestion | null> {
+  const result = await pool.query<CatalogRow>(
+    `SELECT ${CATALOG_COLUMNS} FROM ogcode_questions WHERE id = $1 LIMIT 1`,
+    [id],
+  );
+  return result.rows[0] ? mapCatalogRow(result.rows[0]) : null;
+}
+
+/**
+ * Resolve the Daily Mission question for a given day (defaults to today, UTC).
+ *
+ * The pick is recorded in `ogcode_daily_challenges`, so:
+ *  - the challenge is stable for the whole day even if the catalog is edited;
+ *  - the no-repeat window can be computed from prior days;
+ *  - concurrent first-hits of a fresh day converge on one row via
+ *    `ON CONFLICT DO NOTHING` + read-back.
+ *
+ * Rotation now walks the full eligible pool (curated preferred) instead of the
+ * old `epochDay % curatedCount`, which surfaced the same question forever
+ * whenever a single row was flagged `is_challenge_of_day`.
+ */
+export async function getOgcodeChallengeQuestion(dateKey?: string): Promise<StoredQuestion | null> {
   const pool = getOgcodePostgresPool();
   if (!pool) {
     return null;
@@ -606,69 +704,63 @@ export async function getOgcodeChallengeQuestion(): Promise<StoredQuestion | nul
 
   await ensureCatalogSchema();
 
-  // Pool 1: explicitly curated challenge questions. Pool 2: full MCQ catalog.
-  // Whichever pool is non-empty, pick a stable-per-day row using today's
-  // epoch-day as an offset so the challenge rotates automatically each day.
-  const curatedCountResult = await pool.query<{ total: number | string }>(
-    `SELECT COUNT(*)::int AS total FROM ogcode_questions WHERE is_challenge_of_day = true`,
-  );
-  const curatedCount = Number(curatedCountResult.rows[0]?.total ?? 0);
+  const today = dateKey ?? new Date().toISOString().slice(0, 10);
 
-  const baseFilter = curatedCount > 0
-    ? `WHERE is_challenge_of_day = true`
-    : `WHERE question_type = 'mcq' AND correct_option IS NOT NULL`;
-
-  const totalResult = await pool.query<{ total: number | string }>(
-    `SELECT COUNT(*)::int AS total FROM ogcode_questions ${baseFilter}`,
+  // 1. Already scheduled for today → return it verbatim (stable for the day).
+  const existing = await pool.query<{ question_id: string }>(
+    `SELECT question_id FROM ogcode_daily_challenges WHERE challenge_date = $1`,
+    [today],
   );
-  const total = Number(totalResult.rows[0]?.total ?? 0);
-  if (total <= 0) {
+  if (existing.rows[0]?.question_id) {
+    const scheduled = await fetchCatalogQuestionById(pool, existing.rows[0].question_id);
+    if (scheduled) {
+      return scheduled;
+    }
+    // The recorded question was deleted from the catalog — fall through and re-pick.
+  }
+
+  // 2. Build the eligible pool (curated OR answerable MCQ) + the no-repeat window.
+  const eligibleResult = await pool.query<{ id: string; source_index: number | string; is_challenge_of_day: boolean }>(
+    `SELECT id, source_index, is_challenge_of_day
+       FROM ogcode_questions
+      WHERE is_challenge_of_day = true
+         OR (question_type = 'mcq' AND correct_option IS NOT NULL)`,
+  );
+  const eligible: DailyChallengeCandidate[] = eligibleResult.rows.map((row) => ({
+    id: row.id,
+    sourceIndex: Number(row.source_index),
+    isCurated: Boolean(row.is_challenge_of_day),
+  }));
+  if (eligible.length === 0) {
     return null;
   }
 
-  const epochDay = Math.floor(Date.now() / 86_400_000);
-  const offset = ((epochDay % total) + total) % total;
-
-  const result = await pool.query<CatalogRow>(
-    `
-      SELECT
-        id,
-        source_index,
-        text,
-        options,
-        correct_option,
-        correct_options,
-        answer_text,
-        answer_spec,
-        tolerance,
-        matrix_data,
-        explanation,
-        hint,
-        subject,
-        chapter,
-        concept,
-        difficulty,
-        image,
-        tags,
-        question_type,
-        acceptance_rate,
-        total_correct,
-        frequency,
-        is_challenge_of_day,
-        contributor_workspace_id,
-        attribution_name,
-        attribution_logo_url,
-        is_contributed
-      FROM ogcode_questions
-      ${baseFilter}
-      ORDER BY source_index ASC, id ASC
-      OFFSET $1
-      LIMIT 1
-    `,
-    [offset],
+  const usedResult = await pool.query<{ question_id: string }>(
+    `SELECT question_id FROM ogcode_daily_challenges WHERE challenge_date > ($1::date - $2::int)`,
+    [today, DAILY_CHALLENGE_NO_REPEAT_DAYS],
   );
+  const usedIds = new Set(usedResult.rows.map((row) => row.question_id));
 
-  return result.rows[0] ? mapCatalogRow(result.rows[0]) : null;
+  const epochDay = Math.floor(new Date(`${today}T00:00:00Z`).getTime() / 86_400_000);
+  const chosenId = pickDailyChallengeId(eligible, usedIds, epochDay);
+  if (!chosenId) {
+    return null;
+  }
+  const wasCurated = eligible.find((question) => question.id === chosenId)?.isCurated ?? false;
+
+  // 3. Persist the pick (idempotent under concurrency), then read back the winner.
+  await pool.query(
+    `INSERT INTO ogcode_daily_challenges (challenge_date, question_id, was_curated)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (challenge_date) DO NOTHING`,
+    [today, chosenId, wasCurated],
+  );
+  const authoritative = await pool.query<{ question_id: string }>(
+    `SELECT question_id FROM ogcode_daily_challenges WHERE challenge_date = $1`,
+    [today],
+  );
+  const finalId = authoritative.rows[0]?.question_id ?? chosenId;
+  return fetchCatalogQuestionById(pool, finalId);
 }
 
 export async function incrementOgcodeCatalogQuestionStats(questionId: string, isCorrect: boolean): Promise<void> {

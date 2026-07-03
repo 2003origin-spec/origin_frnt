@@ -206,42 +206,71 @@ export function WorkspaceSettingsHighFidelity({ workspace, initialCodes, initial
     }
   }
 
-  // Actions: Staff management
+  // Actions: Staff management (real — persists to app.workspace_members).
   async function handleInviteStaff() {
     if (!inviteEmail.trim()) return;
     startTransition(async () => {
-      // Simulate inviting staff
-      const mockNewMember: WorkspaceMember = {
-        workspaceId: workspace.id,
-        userId: `usr-${Math.random().toString(36).substr(2, 6)}`,
-        role: inviteRole,
-        status: "invited",
-        invitedBy: "Owner",
-        joinedAt: null,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-      
-      setMembers(prev => [...prev, mockNewMember]);
-      toast.success(`Invitation email sent to ${inviteEmail}!`);
-      setInviteOpen(false);
-      setInviteEmail("");
+      const res = await apiJson<{ member: WorkspaceMember; name: string }>(
+        `/api/teacher/workspaces/${workspace.id}/members`,
+        { method: "POST", json: { email: inviteEmail.trim(), role: inviteRole } },
+      );
+      if (res.ok) {
+        setMembers(prev => {
+          const without = prev.filter(m => m.userId !== res.data.member.userId);
+          return [...without, res.data.member];
+        });
+        toast.success(`${res.data.name} added as staff.`);
+        setInviteOpen(false);
+        setInviteEmail("");
+      } else {
+        toast.error(res.detail || "Failed to add staff member.");
+      }
     });
   }
 
   function handleDeactivateStaff(userId: string) {
-    setMembers(prev => prev.map(m => m.userId === userId ? { ...m, status: "disabled" as const } : m));
-    toast.info("Staff member access disabled");
+    startTransition(async () => {
+      const res = await apiJson<{ member: WorkspaceMember }>(
+        `/api/teacher/workspaces/${workspace.id}/members`,
+        { method: "PATCH", json: { userId, status: "disabled" } },
+      );
+      if (res.ok) {
+        setMembers(prev => prev.map(m => (m.userId === userId ? res.data.member : m)));
+        toast.info("Staff member access disabled");
+      } else {
+        toast.error(res.detail || "Failed to update staff member.");
+      }
+    });
   }
 
   function handleReactivateStaff(userId: string) {
-    setMembers(prev => prev.map(m => m.userId === userId ? { ...m, status: "active" as const } : m));
-    toast.success("Staff member access restored");
+    startTransition(async () => {
+      const res = await apiJson<{ member: WorkspaceMember }>(
+        `/api/teacher/workspaces/${workspace.id}/members`,
+        { method: "PATCH", json: { userId, status: "active" } },
+      );
+      if (res.ok) {
+        setMembers(prev => prev.map(m => (m.userId === userId ? res.data.member : m)));
+        toast.success("Staff member access restored");
+      } else {
+        toast.error(res.detail || "Failed to update staff member.");
+      }
+    });
   }
 
   function handleRoleChange(userId: string, newRole: WorkspaceMemberRole) {
-    setMembers(prev => prev.map(m => m.userId === userId ? { ...m, role: newRole } : m));
-    toast.success(`Role updated to ${ROLE_LABELS[newRole]}`);
+    startTransition(async () => {
+      const res = await apiJson<{ member: WorkspaceMember }>(
+        `/api/teacher/workspaces/${workspace.id}/members`,
+        { method: "PATCH", json: { userId, role: newRole } },
+      );
+      if (res.ok) {
+        setMembers(prev => prev.map(m => (m.userId === userId ? res.data.member : m)));
+        toast.success(`Role updated to ${ROLE_LABELS[newRole]}`);
+      } else {
+        toast.error(res.detail || "Failed to update role.");
+      }
+    });
   }
 
   return (

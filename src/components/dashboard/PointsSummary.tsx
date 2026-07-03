@@ -33,14 +33,28 @@ const TIER_COLORS: Record<string, string> = {
 };
 
 const HOW_EARNED = [
-    { icon: BookOpen, color: 'text-blue-400', label: 'Practice Questions', pts: '+10–100 pts', desc: 'Based on difficulty: Easy=10, Medium=25, Hard=50, Insane=100. First-solve bonus +5 pts.' },
+    { icon: BookOpen, color: 'text-blue-400', label: 'Practice Questions', pts: 'Base × Speed + 5', desc: 'Base (Easy 10 · Medium 25 · Hard 50 · Insane 100) × speed multiplier (0.55×–1.35× by solve time) + 5. Only your first solve counts.' },
     { icon: Target, color: 'text-green-400', label: 'Completing Tests', pts: '+4 pts/correct', desc: 'Score = 4 × correct - 1 × wrong. Positive score awards the net points.' },
     { icon: MessageCircle, color: 'text-purple-400', label: 'AI Explainer', pts: '+5 pts', desc: 'Every AI session grants +5 pts, capped at 25 pts per day.' },
     { icon: Zap, color: 'text-amber-400', label: 'Daily Streak', pts: 'Bonus', desc: 'Maintain your daily streak to earn tier-specific bonuses in future updates.' },
 ];
 
+function formatLogTime(timestamp: string): string {
+    const then = new Date(timestamp).getTime();
+    if (Number.isNaN(then)) return '';
+    const diffMs = Date.now() - then;
+    const mins = Math.floor(diffMs / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    const days = Math.floor(hrs / 24);
+    return days === 1 ? 'yesterday' : `${days}d ago`;
+}
+
 export default function PointsSummary({ data, onNextSteps }: PointsSummaryProps) {
     const [showInfo, setShowInfo] = useState(false);
+    const [showRecent, setShowRecent] = useState(false);
 
     if (!data || data.totalPoints === undefined) return (
         <div className="w-full h-full bg-white/5 dark:bg-slate-900/50 rounded-3xl border border-white/10 p-6 flex flex-col justify-center items-center gap-3 animate-pulse">
@@ -101,7 +115,11 @@ export default function PointsSummary({ data, onNextSteps }: PointsSummaryProps)
 
             {/* Footer buttons */}
             <div className="mt-4 flex items-center justify-between">
-                <div className="flex items-center gap-2 cursor-pointer group/btn">
+                <button
+                    onClick={() => setShowRecent(true)}
+                    className="flex items-center gap-2 cursor-pointer group/btn"
+                    title="Recent point activity"
+                >
                     <div className="flex -space-x-2">
                         {[1, 2, 3].map(i => (
                             <div key={i} className="w-6 h-6 rounded-full border-2 border-slate-900 bg-slate-800 flex items-center justify-center">
@@ -112,7 +130,7 @@ export default function PointsSummary({ data, onNextSteps }: PointsSummaryProps)
                     <span className="text-[10px] font-bold text-slate-400 group-hover/btn:text-white transition-colors uppercase tracking-widest flex items-center gap-1">
                         Recent <TrendingUp className="w-3 h-3" />
                     </span>
-                </div>
+                </button>
 
                 <button
                     onClick={() => onNextSteps?.()}
@@ -121,6 +139,46 @@ export default function PointsSummary({ data, onNextSteps }: PointsSummaryProps)
                     Next Steps <ChevronRight className="w-3 h-3" />
                 </button>
             </div>
+
+            {/* Recent point activity */}
+            <AnimatePresence>
+                {showRecent && (
+                    <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 20 }}
+                        transition={{ duration: 0.25 }}
+                        className="absolute inset-0 bg-slate-900/95 backdrop-blur-sm rounded-[32px] p-5 flex flex-col z-10"
+                    >
+                        <div className="flex items-center justify-between mb-4">
+                            <h4 className="text-sm font-black text-white uppercase tracking-widest">Recent Activity</h4>
+                            <button onClick={() => setShowRecent(false)} className="p-1 hover:bg-white/10 rounded-lg transition-colors">
+                                <X className="w-4 h-4 text-slate-400" />
+                            </button>
+                        </div>
+                        <div className="space-y-2 overflow-y-auto flex-1 pr-1">
+                            {data.recentLogs && data.recentLogs.length > 0 ? (
+                                data.recentLogs.map((log, i) => (
+                                    <div key={i} className="flex items-center justify-between gap-3 p-2.5 bg-white/5 rounded-xl border border-white/5">
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-[11px] font-bold text-white truncate">{log.description}</p>
+                                            <p className="text-[10px] text-slate-400">{formatLogTime(log.timestamp)}</p>
+                                        </div>
+                                        <span className={`text-xs font-black shrink-0 ${log.points >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                            {log.points >= 0 ? '+' : ''}{log.points}
+                                        </span>
+                                    </div>
+                                ))
+                            ) : (
+                                <div className="flex flex-col items-center justify-center h-full gap-2 text-center">
+                                    <TrendingUp className="w-8 h-8 text-slate-600" />
+                                    <p className="text-[11px] text-slate-400">No recent point activity yet.<br />Solve a question to get started.</p>
+                                </div>
+                            )}
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             {/* Info Panel */}
             <AnimatePresence>

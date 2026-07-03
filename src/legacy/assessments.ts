@@ -82,6 +82,8 @@ import type {
 } from "@/server/store";
 import { createId } from "@/server/store";
 import { isOgcodePostgresConfigured, getOgcodePostgresPool } from "@/server/postgres";
+import { getGlobalPointsLeaderboard } from "@/server/leaderboard-points";
+import { buildTestClassificationFields } from "@/server/test-classification";
 import { getStudentGate, type StudentGate } from "@/server/entitlements";
 import { FREE_SAMPLE_POOL_SIZE, normalizeSubject as canonicalSubject } from "@/lib/entitlements";
 import { isFeatureEnabled } from "@/lib/feature-flags";
@@ -1861,6 +1863,7 @@ export function serializeTestPreview(store: AppStore, userId: string, test: Stor
     is_premium: test.isPremium,
     isCustom,
     is_custom: isCustom,
+    ...buildTestClassificationFields({ title: test.title, description: test.description, isCustom }),
     attempted: results.length > 0,
     score: averageScore ?? undefined,
     attemptCount: results.length,
@@ -1991,6 +1994,7 @@ function serializePersistedCustomTestPreview(test: PersistedCustomTestRecord, re
     is_premium: false,
     isCustom: true,
     is_custom: true,
+    ...buildTestClassificationFields({ title: test.title, description: test.description, isCustom: true }),
     attempted: test.attemptCount > 0,
     score: test.averageScore ?? undefined,
     attemptCount: test.attemptCount,
@@ -2892,6 +2896,7 @@ async function withAssignedTeacherTests(
         is_premium: false,
         isCustom: false,
         is_custom: false,
+        ...buildTestClassificationFields({ title: a.title, description: a.description ?? "", createdByTeacher: true }),
         attempted: false,
         attemptCount: 0,
         attempt_count: 0,
@@ -4180,6 +4185,13 @@ async function buildLeaderboardEntriesFromDb(user: StoredUser, subject: string |
 }
 
 export async function getOgcodeLeaderboard(store: AppStore, user: StoredUser, subject: string | null, location?: string | null) {
+  // Overall / regional Hall-of-Fame + the "national AIR" now rank by prestige
+  // points (Phase 2) so OG-Code solves actually count toward rank, matching the
+  // scoring modal. Subject "arena" boards keep their efficiency ranking below.
+  if (!subject && isUserPostgresConfigured()) {
+    return getGlobalPointsLeaderboard(user.id, location);
+  }
+
   let entries;
   if (isUserPostgresConfigured() && isOgcodePostgresConfigured()) {
     entries = await buildLeaderboardEntriesFromDb(user, subject, location);

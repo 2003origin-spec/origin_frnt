@@ -312,6 +312,34 @@ export async function setMemberStatus(
   return result.rows[0] ? rowToMember(result.rows[0]) : null;
 }
 
+export async function setMemberRole(
+  workspaceId: string,
+  userId: string,
+  role: WorkspaceMemberRole,
+): Promise<WorkspaceMember | null> {
+  await ensureWorkspaceSchema();
+  const result = await pool().query(
+    `UPDATE app.workspace_members
+     SET role = $3, updated_at = NOW()
+     WHERE workspace_id = $1 AND user_id = $2
+     RETURNING *`,
+    [workspaceId, userId, role],
+  );
+  return result.rows[0] ? rowToMember(result.rows[0]) : null;
+}
+
+export async function findMember(
+  workspaceId: string,
+  userId: string,
+): Promise<WorkspaceMember | null> {
+  await ensureWorkspaceSchema();
+  const result = await pool().query(
+    `SELECT * FROM app.workspace_members WHERE workspace_id = $1 AND user_id = $2 LIMIT 1`,
+    [workspaceId, userId],
+  );
+  return result.rows[0] ? rowToMember(result.rows[0]) : null;
+}
+
 // ─── Codes ────────────────────────────────────────────────────────────────────
 
 export async function findActiveCodeByNormalized(

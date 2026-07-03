@@ -16,11 +16,12 @@ import { cn } from '@/lib/utils';
 
 const HOW_EARNED = [
   {
-    icon: BookOpen, color: 'text-blue-400', bg: 'bg-blue-400/10', border: 'border-blue-400/20', label: 'Practice Questions', pts: 'Up to +105 pts', rows: [
-      { label: 'Easy Question (First Solve)', pts: '+15', note: '10 base + 5 bonus' },
-      { label: 'Medium Question (First Solve)', pts: '+30', note: '25 base + 5 bonus' },
-      { label: 'Hard Question (First Solve)', pts: '+55', note: '50 base + 5 bonus' },
-      { label: 'Insane Question (First Solve)', pts: '+105', note: '100 base + 5 bonus' },
+    icon: BookOpen, color: 'text-blue-400', bg: 'bg-blue-400/10', border: 'border-blue-400/20', label: 'Practice Questions', pts: 'Base × Speed + 5', rows: [
+      { label: 'Easy Question', pts: '+11–19', note: 'Base 10 × speed (0.55–1.35×) + 5' },
+      { label: 'Medium Question', pts: '+19–39', note: 'Base 25 × speed (0.55–1.35×) + 5' },
+      { label: 'Hard Question', pts: '+33–73', note: 'Base 50 × speed (0.55–1.35×) + 5' },
+      { label: 'Insane Question', pts: '+60–140', note: 'Base 100 × speed (0.55–1.35×) + 5' },
+      { label: 'Solve faster to earn more', pts: '↑', note: 'Full points ≤ ½ target time; only your first solve counts.' },
     ]
   },
   {
