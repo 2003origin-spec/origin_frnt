@@ -126,6 +126,10 @@ export default function Leaderboard({ currentUser, initialLeaderboard, initialMy
 
   const myEntry = leaderboard.find(e => e.isMe);
   const myScore = myEntry ? myEntry.rankScore : 0;
+  // Overall board ranks by prestige points (Phase 2); subject "arenas" keep the
+  // efficiency % metric. Drives the headline number + row labels below.
+  const pointsMode = selectedSubject === 'overall';
+  const myHeadline = pointsMode ? Math.round(myEntry?.points ?? myEntry?.score ?? 0) : Number(myScore ?? 0);
 
   const LeaderboardRow = ({ entry }: { entry: any }) => (
     <div
@@ -162,9 +166,15 @@ export default function Leaderboard({ currentUser, initialLeaderboard, initialMy
           )}
         </div>
         <div className="flex items-center gap-3 text-[10px] text-muted-foreground mt-1 font-black uppercase tracking-widest opacity-60">
-          <span className={isMobile ? "hidden" : "block"}>Efficiency: {(entry.rankScore ?? 0).toFixed(1)}%</span>
-          {!isMobile && <span className="w-1 h-1 rounded-full bg-border" />}
-          <span>{entry.questionsSolved || 0} Questions Solved</span>
+          {pointsMode ? (
+            <span>{entry.streak || 0} Day Streak</span>
+          ) : (
+            <>
+              <span className={isMobile ? "hidden" : "block"}>Efficiency: {(entry.rankScore ?? 0).toFixed(1)}%</span>
+              {!isMobile && <span className="w-1 h-1 rounded-full bg-border" />}
+              <span>{entry.questionsSolved || 0} Questions Solved</span>
+            </>
+          )}
         </div>
       </div>
 
@@ -179,8 +189,8 @@ export default function Leaderboard({ currentUser, initialLeaderboard, initialMy
           </div>
         )}
         <div className="text-right">
-          <p className={cn("font-black text-primary leading-none tracking-tighter", isMobile ? "text-xl" : "text-3xl")}>{entry.score || 0}</p>
-          <p className="text-[10px] font-black text-muted-foreground/40 uppercase tracking-widest mt-1">XP Points</p>
+          <p className={cn("font-black text-primary leading-none tracking-tighter", isMobile ? "text-xl" : "text-3xl")}>{(entry.score || 0).toLocaleString()}</p>
+          <p className="text-[10px] font-black text-muted-foreground/40 uppercase tracking-widest mt-1">{pointsMode ? 'Prestige Pts' : 'XP Points'}</p>
         </div>
       </div>
     </div>
@@ -216,8 +226,8 @@ export default function Leaderboard({ currentUser, initialLeaderboard, initialMy
                 </div>
               </div>
               <div className={cn("text-center", isMobile ? "" : "sm:text-right")}>
-                <p className={cn("font-black tracking-tighter drop-shadow-md", isMobile ? "text-4xl" : "text-5xl")}>{(myScore ?? 0).toFixed(1)}%</p>
-                <p className="text-white/70 text-[10px] font-black uppercase tracking-[0.2em]">Efficiency Rating</p>
+                <p className={cn("font-black tracking-tighter drop-shadow-md", isMobile ? "text-4xl" : "text-5xl")}>{pointsMode ? myHeadline.toLocaleString() : `${(myScore ?? 0).toFixed(1)}%`}</p>
+                <p className="text-white/70 text-[10px] font-black uppercase tracking-[0.2em]">{pointsMode ? 'Prestige Points' : 'Efficiency Rating'}</p>
               </div>
             </div>
           </div>
@@ -336,7 +346,9 @@ export default function Leaderboard({ currentUser, initialLeaderboard, initialMy
                     {entry.name}
                   </p>
                   <p className="text-[10px] font-black text-primary/80 mt-1">
-                    {(entry.rankScore ?? 0).toFixed(1)}% Efficiency
+                    {pointsMode
+                      ? `${Math.round(entry.points ?? entry.score ?? 0).toLocaleString()} pts`
+                      : `${(entry.rankScore ?? 0).toFixed(1)}% Efficiency`}
                   </p>
                 </div>
               ))}

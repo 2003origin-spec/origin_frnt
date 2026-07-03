@@ -932,6 +932,24 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                     </div>
                                 </div>
 
+                                {/* Scoring breakdown — mirrors the "Base × Speed + 5" modal */}
+                                {result.isCorrect && typeof result.basePoints === 'number' && typeof result.speedMultiplier === 'number' && (
+                                    <div className="mb-4 flex flex-wrap items-center gap-x-1.5 gap-y-1 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px] sm:text-xs font-bold">
+                                        <span className="mr-1 text-[9px] sm:text-[10px] uppercase tracking-widest text-slate-500">How</span>
+                                        <span className="text-slate-900 dark:text-slate-100">{result.basePoints}</span>
+                                        <span className="font-medium text-slate-400">base</span>
+                                        <span className="text-slate-400">×</span>
+                                        <span className="text-primary">{result.speedMultiplier.toFixed(2)}×</span>
+                                        <span className="font-medium text-slate-400">speed</span>
+                                        <span className="text-slate-400">+ 5</span>
+                                        <span className="text-slate-400">=</span>
+                                        <span className="text-emerald-500">{result.resultScore ?? 0} pts</span>
+                                        {result.already_solved && (
+                                            <span className="ml-auto font-semibold normal-case text-amber-400/90">Already solved — counts once, no new points</span>
+                                        )}
+                                    </div>
+                                )}
+
                                 {result.isCorrect ? (
                                     result.explanation && (
                                         <div className="pt-4 border-t border-white/5">

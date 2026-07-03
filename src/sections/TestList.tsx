@@ -81,7 +81,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
     try {
       const response = (await createCustomTestAction(customTestConfig)) as Test;
       // Add the new test to the top of the list and mark as custom
-      const newTest = { ...toTestPreview(response), isCustom: true };
+      const newTest: TestPreview = { ...toTestPreview(response), isCustom: true, origin: 'custom', isPyq: false, examType: null };
       setTests((prev) => [newTest, ...prev]);
       // Auto-start the test after creating it
       onStartTest(newTest);
@@ -310,16 +310,9 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                   </div>
 
                   {(['jee-main', 'jee-advanced', 'neet'] as const).map(exam => {
-                    const examTests = standardTests.filter(t => {
-                       const title = t.title.toLowerCase();
-                       const desc = t.description.toLowerCase();
-                       const isPyq = title.includes('pyq') || desc.includes('pyq') || title.includes('previous year') || desc.includes('previous year');
-                       if (!isPyq) return false;
-                       if (exam === 'jee-main') return title.includes('jee main') || title.includes('mains') || desc.includes('jee main');
-                       if (exam === 'jee-advanced') return title.includes('jee adv') || title.includes('advanced') || desc.includes('advanced');
-                       if (exam === 'neet') return title.includes('neet') || desc.includes('neet');
-                       return false;
-                    });
+                    // Filter on the server-derived classification (Phase 4) rather
+                    // than re-matching title strings in the client.
+                    const examTests = standardTests.filter(t => t.isPyq && t.examType === exam);
                     
                     return (
                       <TabsContent key={exam} value={exam} className="mt-0 outline-none">

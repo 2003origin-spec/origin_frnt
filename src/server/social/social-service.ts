@@ -17,6 +17,7 @@ import { buildUserStatsSnapshot, type UserStatsSnapshot } from "@/server/users";
 import { buildContributionData, getOrCreateStreak } from "@/server/gamification";
 import { getUserPostgresPool } from "@/server/user-postgres";
 import { ensureSocialSchema } from "@/server/social/social-schema";
+import { createNotification } from "@/server/notifications";
 
 export type SocialUserCard = {
   id: string;
@@ -311,11 +312,31 @@ export async function followUser(
   if (!target) throw new SocialServiceError(404, "Profile not found.");
   if (target.id === followerId) throw new SocialServiceError(400, "You cannot follow yourself.");
 
-  await p.query(
+  const inserted = await p.query(
     `INSERT INTO social.follows (follower_id, following_id)
-       VALUES ($1, $2) ON CONFLICT (follower_id, following_id) DO NOTHING`,
+       VALUES ($1, $2) ON CONFLICT (follower_id, following_id) DO NOTHING
+       RETURNING follower_id`,
     [followerId, target.id],
   );
+  // Notify the followee — but only on a genuinely new edge (not a re-follow),
+  // and never let a notification failure break the follow itself.
+  if ((inserted.rowCount ?? 0) > 0) {
+    try {
+      const me = await p.query<{ name: string | null; username: string | null }>(
+        `SELECT name, username FROM origin_users WHERE id = $1`,
+        [followerId],
+      );
+      const follower = me.rows[0];
+      await createNotification(target.id, {
+        type: "info",
+        title: "New follower",
+        message: `${follower?.name ?? "Someone"} started following you`,
+        href: follower?.username ? `/u/${follower.username}` : "/social",
+      });
+    } catch {
+      // best-effort
+    }
+  }
   const counts = await getFollowCounts(target.id);
   return { following: true, followerCount: counts.followerCount };
 }

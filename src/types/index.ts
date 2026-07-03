@@ -87,6 +87,12 @@ export interface TestPreview {
   totalQuestions: number;
   isPremium: boolean;
   isCustom?: boolean;
+  // Phase 4 — derived classification for the Tests hub tabs (Institute / PYQ /
+  // My Tests). Server-computed; the client filters on these instead of matching
+  // raw title strings.
+  origin?: "platform" | "teacher" | "custom";
+  isPyq?: boolean;
+  examType?: "jee-main" | "jee-advanced" | "neet" | null;
   attempted?: boolean;
   score?: number;
   attemptCount?: number;
@@ -331,6 +337,8 @@ export interface Notification {
   type: 'info' | 'success' | 'warning';
   read: boolean;
   createdAt: Date;
+  /** Optional deep link for server-emitted notifications (Phase 6). */
+  href?: string;
 }
 export interface Task {
   id: string;
