@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { revalidateTag } from "next/cache";
 
+import { listOgcodeCatalogFacets } from "@/server/ogcode-catalog";
 import { requireUserFromRequest } from "@/server/auth";
 import { submitLimiter, generalLimiter, checkRateLimit } from "@/lib/rate-limit";
 import {
@@ -152,6 +153,10 @@ export async function GET(request: NextRequest, context: RouteContext) {
         .getAll("chapters")
         .map((entry) => entry.trim())
         .filter(Boolean);
+      const classes = url.searchParams.getAll("classes").map(Number).filter(n => !isNaN(n) && n > 0);
+      const occurrences = url.searchParams.getAll("occurrences").filter(Boolean);
+      const subjects = url.searchParams.getAll("subjects").filter(Boolean);
+      const concepts = url.searchParams.getAll("concepts").filter(Boolean);
 
       if (limit) {
         return ok(
@@ -164,6 +169,10 @@ export async function GET(request: NextRequest, context: RouteContext) {
             chapters,
             limit: Number(limit),
             offset: offset ? Number(offset) : 0,
+            classes: classes.length ? classes : null,
+            occurrences: occurrences.length ? occurrences : null,
+            subjects: subjects.length ? subjects : null,
+            concepts: concepts.length ? concepts : null,
           }),
         );
       }
@@ -175,6 +184,157 @@ export async function GET(request: NextRequest, context: RouteContext) {
           type: url.searchParams.get("type"),
         }),
       );
+    }
+
+    if (root === "ogcode" && first === "seed-temp") {
+      const fs = await import("node:fs");
+      const path = await import("node:path");
+      const { getOgcodePostgresPool } = await import("@/server/postgres");
+
+      const jsonPath = path.resolve(process.cwd(), "data/ogcode/ogcode_questions.json");
+      if (!fs.existsSync(jsonPath)) {
+        return badRequest("ogcode_questions.json file not found");
+      }
+      
+      const raw = fs.readFileSync(jsonPath, "utf8");
+      const questions = JSON.parse(raw);
+
+      const pool = getOgcodePostgresPool();
+      if (!pool) {
+        return badRequest("Postgres pool not available");
+      }
+
+      const CREATE_TABLE_SQL = `
+        CREATE TABLE IF NOT EXISTS ogcode_questions (
+          id TEXT PRIMARY KEY,
+          source_index INTEGER NOT NULL UNIQUE,
+          text TEXT NOT NULL,
+          options JSONB,
+          correct_option INTEGER,
+          correct_options JSONB,
+          answer_text TEXT,
+          answer_spec JSONB,
+          tolerance DOUBLE PRECISION,
+          matrix_data JSONB,
+          explanation TEXT NOT NULL,
+          hint TEXT,
+          subject TEXT NOT NULL,
+          chapter TEXT NOT NULL,
+          concept TEXT NOT NULL,
+          difficulty TEXT NOT NULL,
+          image TEXT,
+          tags JSONB NOT NULL DEFAULT '[]'::jsonb,
+          question_type TEXT NOT NULL,
+          acceptance_rate DOUBLE PRECISION NOT NULL DEFAULT 0,
+          total_correct INTEGER NOT NULL DEFAULT 0,
+          frequency INTEGER NOT NULL DEFAULT 0,
+          is_challenge_of_day BOOLEAN NOT NULL DEFAULT FALSE,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          contributor_workspace_id TEXT,
+          attribution_name TEXT,
+          attribution_logo_url TEXT,
+          is_contributed BOOLEAN NOT NULL DEFAULT FALSE,
+          occurrence TEXT,
+          class INTEGER,
+          previous_year_question TEXT
+        );
+        CREATE INDEX IF NOT EXISTS ogcode_questions_subject_idx ON ogcode_questions (subject);
+        CREATE INDEX IF NOT EXISTS ogcode_questions_difficulty_idx ON ogcode_questions (difficulty);
+        CREATE INDEX IF NOT EXISTS ogcode_questions_question_type_idx ON ogcode_questions (question_type);
+        CREATE INDEX IF NOT EXISTS ogcode_questions_contributed_idx ON ogcode_questions (is_contributed);
+      `;
+      await pool.query(CREATE_TABLE_SQL);
+      await pool.query("DELETE FROM ogcode_questions");
+
+      const batchSize = 100;
+      let insertedCount = 0;
+
+      for (let i = 0; i < questions.length; i += batchSize) {
+        const batch = questions.slice(i, i + batchSize);
+        const valuesPlaceholder: string[] = [];
+        const valuesArray: any[] = [];
+        let pIndex = 1;
+
+        for (const q of batch) {
+          const rowPlaceholders: string[] = [];
+          const cols = [
+            q.id,
+            q.source_index,
+            q.text,
+            q.options ? JSON.stringify(q.options) : null,
+            q.correct_option,
+            q.correct_options ? JSON.stringify(q.correct_options) : null,
+            q.answer_text,
+            q.answer_spec ? JSON.stringify(q.answer_spec) : null,
+            q.tolerance,
+            q.matrix_data ? JSON.stringify(q.matrix_data) : null,
+            q.explanation,
+            q.hint,
+            q.subject,
+            q.chapter,
+            q.concept,
+            q.difficulty,
+            q.image,
+            q.tags ? JSON.stringify(q.tags) : '[]',
+            q.question_type,
+            q.acceptance_rate ?? 0,
+            q.total_correct ?? 0,
+            q.frequency ?? 0,
+            q.is_challenge_of_day ?? false,
+            q.contributor_workspace_id,
+            q.attribution_name,
+            q.attribution_logo_url,
+            q.is_contributed ?? false,
+            q.occurrence,
+            q.class,
+            q.previous_year_question
+          ];
+
+          for (const val of cols) {
+            rowPlaceholders.push(`$${pIndex++}`);
+            valuesArray.push(val);
+          }
+          valuesPlaceholder.push(`(${rowPlaceholders.join(",")})`);
+        }
+
+        const query = `
+          INSERT INTO ogcode_questions (
+            id, source_index, text, options, correct_option, correct_options, answer_text,
+            answer_spec, tolerance, matrix_data, explanation, hint, subject, chapter, concept,
+            difficulty, image, tags, question_type, acceptance_rate, total_correct, frequency,
+            is_challenge_of_day, contributor_workspace_id, attribution_name, attribution_logo_url,
+            is_contributed, occurrence, class, previous_year_question
+          ) VALUES ${valuesPlaceholder.join(",")}
+          ON CONFLICT (id) DO NOTHING
+        `;
+
+        await pool.query(query, valuesArray);
+        insertedCount += batch.length;
+      }
+
+      revalidateTag("ogcode-catalog", "max");
+      return ok({ success: true, count: insertedCount });
+    }
+
+    if (root === "ogcode" && first === "facets") {
+      const url = new URL(request.url);
+      const level = url.searchParams.get("level");
+      const validLevels = ['class', 'occurrence', 'subject', 'chapter', 'concept'];
+      if (!level || !validLevels.includes(level)) {
+        return badRequest("Missing or invalid level parameter");
+      }
+      const facetClasses = url.searchParams.getAll("classes").map(Number).filter(n => !isNaN(n) && n > 0);
+      const facetOccurrences = url.searchParams.getAll("occurrences").filter(Boolean);
+      const facetSubjects = url.searchParams.getAll("subjects").filter(Boolean);
+      const facetChapters = url.searchParams.getAll("chapters").filter(Boolean);
+      return ok(await listOgcodeCatalogFacets({
+        level: level as 'class' | 'occurrence' | 'subject' | 'chapter' | 'concept',
+        classes: facetClasses,
+        occurrences: facetOccurrences,
+        subjects: facetSubjects,
+        chapters: facetChapters,
+      }));
     }
 
     if (root === "ogcode" && first === "challenge") {

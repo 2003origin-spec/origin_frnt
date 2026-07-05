@@ -15,6 +15,9 @@ type CatalogFilters = {
   type?: string | null;
   search?: string | null;
   chapters?: string[] | null;
+  classes?: number[] | null;
+  occurrences?: string[] | null;
+  concepts?: string[] | null;
 };
 
 type CatalogPageFilters = CatalogFilters & {
@@ -367,6 +370,24 @@ function buildFilterClause(filters: CatalogFilters) {
     clauses.push(`chapter = ANY($${values.length}::text[])`);
   }
 
+  const classes = (filters.classes ?? []).map(c => Number(c)).filter(c => !isNaN(c) && c > 0);
+  if (classes.length) {
+    values.push(classes);
+    clauses.push(`class = ANY($${values.length}::integer[])`);
+  }
+
+  const occurrences = (filters.occurrences ?? []).map(o => String(o).trim()).filter(Boolean);
+  if (occurrences.length) {
+    values.push(occurrences);
+    clauses.push(`occurrence = ANY($${values.length}::text[])`);
+  }
+
+  const concepts = (filters.concepts ?? []).map(c => String(c).trim()).filter(Boolean);
+  if (concepts.length) {
+    values.push(concepts);
+    clauses.push(`concept = ANY($${values.length}::text[])`);
+  }
+
   const search = String(filters.search ?? "").trim();
   if (search) {
     values.push(`%${search.toLowerCase()}%`);
@@ -565,6 +586,56 @@ export async function listOgcodeCatalogChapters(subject: string): Promise<string
   return result.rows
     .map((row) => row.chapter.trim())
     .filter(Boolean);
+}
+
+export async function listOgcodeCatalogFacets(params: {
+  level: 'class' | 'occurrence' | 'subject' | 'chapter' | 'concept';
+  classes?: number[];
+  occurrences?: string[];
+  subjects?: string[];
+  chapters?: string[];
+}): Promise<string[]> {
+  const pool = getOgcodePostgresPool();
+  if (!pool) return [];
+  await ensureCatalogSchema();
+
+  const conds: string[] = [];
+  const vals: unknown[] = [];
+
+  const parsedClasses = (params.classes ?? []).map(Number).filter(n => !isNaN(n) && n > 0);
+  if (parsedClasses.length) {
+    vals.push(parsedClasses);
+    conds.push(`class = ANY($${vals.length}::integer[])`);
+  }
+  const parsedOccurrences = (params.occurrences ?? []).map(s => String(s).trim()).filter(Boolean);
+  if (parsedOccurrences.length) {
+    vals.push(parsedOccurrences);
+    conds.push(`occurrence = ANY($${vals.length}::text[])`);
+  }
+  const parsedSubjects = (params.subjects ?? []).map(s => normalizeSubject(String(s))).filter(Boolean);
+  if (parsedSubjects.length) {
+    vals.push(parsedSubjects);
+    conds.push(`subject = ANY($${vals.length}::text[])`);
+  }
+  const parsedChapters = (params.chapters ?? []).map(s => String(s).trim()).filter(Boolean);
+  if (parsedChapters.length) {
+    vals.push(parsedChapters);
+    conds.push(`chapter = ANY($${vals.length}::text[])`);
+  }
+
+  const col = params.level === 'class' ? 'class::text' : params.level;
+  const colRaw = params.level === 'class' ? 'class' : params.level;
+  conds.push(`${colRaw} IS NOT NULL`);
+  if (params.level !== 'class') {
+    conds.push(`${params.level} <> ''`);
+  }
+
+  const where = `WHERE ${conds.join(' AND ')}`;
+  const result = await pool.query<{ val: string }>(
+    `SELECT DISTINCT ${col} AS val FROM ogcode_questions ${where} ORDER BY val ASC`,
+    vals,
+  );
+  return result.rows.map(r => String(r.val)).filter(Boolean);
 }
 
 export async function getOgcodeCatalogQuestionById(questionId: string): Promise<StoredQuestion | null> {

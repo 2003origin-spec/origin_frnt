@@ -4,7 +4,7 @@ import Image from 'next/image';
 import {
     ArrowLeft, Play, Clock, Loader2, CheckCircle2,
     XCircle, RotateCcw, Trophy, X, HelpCircle, ChevronLeft, ChevronRight, Building2,
-    ZoomIn, ZoomOut, ImageOff, Hash, Layers, AlignLeft, GitMerge, BookOpen,
+    ZoomIn, ZoomOut, ImageOff, Hash, Layers, AlignLeft, GitMerge, BookOpen, Flag,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { apiCall } from '@/lib/api';
@@ -661,6 +661,19 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                         <Clock className="w-3.5 h-3.5" /> {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')}
                     </div>
                 </div>
+
+                {/* Report button — far right */}
+                <button
+                    onClick={() => window.open(
+                        `https://github.com/diprajorigin/ORIGIN-V1.0/issues/new?title=${encodeURIComponent(`[OGCode] Question report: ${questionId}`)}`,
+                        '_blank',
+                    )}
+                    className="ml-auto p-2 neu-raised rounded-lg transition-all hover:-translate-y-0.5 group"
+                    aria-label="Report this question"
+                    title="Report / Raise PR"
+                >
+                    <Flag className="w-4 h-4 text-muted-foreground group-hover:text-rose-500 transition-colors" />
+                </button>
             </div>
 
             <div className="flex-1 overflow-y-auto bg-background">

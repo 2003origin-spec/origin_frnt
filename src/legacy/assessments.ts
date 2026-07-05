@@ -177,6 +177,10 @@ export type OgcodeQuestionListFilters = {
   status?: "solved" | "unsolved" | null;
   limit?: number | null;
   offset?: number | null;
+  classes?: number[] | null;
+  occurrences?: string[] | null;
+  subjects?: string[] | null;
+  concepts?: string[] | null;
 };
 
 export type OgcodeQuestionPage = {
@@ -3785,11 +3789,14 @@ export async function listOgcodeQuestionPage(
     ? await listOgcodeCatalogQuestionPage({
         subject: filters.subject,
         // Premium with no specific subject → restrict to entitled subjects.
-        subjects: isPremium ? gate.subjects : null,
+        subjects: isPremium ? gate.subjects : (filters.subjects ?? null),
         difficulty: filters.difficulty,
         type: filters.type,
         search: filters.search,
         chapters,
+        classes: filters.classes ?? null,
+        occurrences: filters.occurrences ?? null,
+        concepts: filters.concepts ?? null,
         includeIds: status === "solved" ? solvedCatalogIds : null,
         excludeIds: status === "unsolved" ? solvedCatalogIds : null,
         limit: remainingLimit,

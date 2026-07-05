@@ -9,7 +9,7 @@ import {
     CheckCircle2, Search,
     Trophy, Zap, Flame, Brain, Circle,
     TrendingUp, Atom, Beaker, Calculator, Leaf,
-    ChevronRight, Target, Shuffle, ArrowRight, X, Info, Building2
+    ChevronRight, Target, Shuffle, ArrowRight, X, Info, Building2, Check, ChevronDown
 } from 'lucide-react';
 import { apiCall } from '@/lib/api';
 import type { PracticeQuestion, PracticeQuestionPage, SubjectRank, User } from '@/types';
@@ -59,6 +59,12 @@ const SUBJECT_ICONS: Record<string, React.ReactNode> = {
     Chemistry: <Beaker className="w-3.5 h-3.5" />,
     Mathematics: <Calculator className="w-3.5 h-3.5" />,
     Biology: <Leaf className="w-3.5 h-3.5" />,
+};
+
+const EXAM_MAPPING: Record<string, string[]> = {
+    'JEE': ['JEE', 'JEE / NEET', 'NEET / JEE'],
+    'NEET': ['NEET', 'JEE / NEET', 'NEET / JEE'],
+    'AIPMT': ['AIPMT'],
 };
 
 const SUBJECT_COLORS: Record<string, string> = {
@@ -196,6 +202,12 @@ function buildOgcodeUrl(filters: {
     status: string;
     chapters: string[];
     search: string;
+    classes: string[];
+    occurrences: string[];
+    subjects: string[];
+    h_chapters: string[];
+    concepts: string[];
+    type: string;
 }) {
     const params = new URLSearchParams();
 
@@ -207,15 +219,20 @@ function buildOgcodeUrl(filters: {
             params.set('status', mappedStatus);
         }
     }
-    // Use repeated ?chapters=… params instead of a comma-joined list.
-    // Chapter names contain commas (e.g. "Acids, Bases, and Volumetric Analysis"),
-    // so a CSV round-trip corrupts them and fights the state.
     for (const chapter of filters.chapters) {
         params.append('chapters', chapter);
     }
 
     const normalizedSearch = filters.search.trim();
     if (normalizedSearch) params.set('search', normalizedSearch);
+
+    // Hierarchy filters
+    for (const c of filters.classes) params.append('classes', c);
+    for (const o of filters.occurrences) params.append('occurrences', o);
+    for (const s of filters.subjects) params.append('subjects', s);
+    for (const ch of filters.h_chapters) params.append('h_chapters', ch);
+    for (const concept of filters.concepts) params.append('concepts', concept);
+    if (filters.type !== 'All') params.set('type', filters.type);
 
     const query = params.toString();
     return query ? `/ogcode?${query}` : '/ogcode';
@@ -239,6 +256,21 @@ export default function OGCodeList({
     const initialSelectedChapters = searchParams.getAll('chapters').filter(Boolean);
     const prefetchedQuestionPage = initialQuestionPage ? normalizeQuestionPage(initialQuestionPage) : null;
 
+    const urlClasses = searchParams.getAll('classes').filter(Boolean);
+    const urlOccurrences = searchParams.getAll('occurrences').filter(Boolean);
+    const urlSubjects = searchParams.getAll('subjects').filter(Boolean);
+    const urlHierChapters = searchParams.getAll('h_chapters').filter(Boolean);
+    const urlConcepts = searchParams.getAll('concepts').filter(Boolean);
+    const urlType = searchParams.get('type') || 'All';
+
+    const urlClassesKey = urlClasses.join(',');
+    const urlOccurrencesKey = urlOccurrences.join(',');
+    const urlSubjectsKey = urlSubjects.join(',');
+    const urlHierChaptersKey = urlHierChapters.join(',');
+    const urlConceptsKey = urlConcepts.join(',');
+    const urlSelectedChaptersKey = searchParams.getAll('chapters').filter(Boolean).join(',');
+
+
     const [questions, setQuestions] = useState<PracticeQuestion[]>(prefetchedQuestionPage?.items ?? []);
     const [totalQuestions, setTotalQuestions] = useState(prefetchedQuestionPage?.total ?? 0);
     const [hasMoreQuestions, setHasMoreQuestions] = useState(prefetchedQuestionPage?.hasMore ?? false);
@@ -261,9 +293,27 @@ export default function OGCodeList({
     const [availableChapters, setAvailableChapters] = useState<string[]>(
         initialChapters ?? deriveChapterOptions(initialSubject, prefetchedQuestionPage?.items ?? []),
     );
-    const [openDropdown, setOpenDropdown] = useState<'difficulty' | 'status' | 'subject' | null>(null);
+    const [openDropdown, setOpenDropdown] = useState<'difficulty' | 'status' | 'subject' | 'type' | 'class' | 'occurrence' | 'hier-subject' | 'hier-chapter' | 'hier-concept' | null>(null);
+    const [chapterSearchQuery, setChapterSearchQuery] = useState('');
+    const [conceptSearchQuery, setConceptSearchQuery] = useState('');
     const [isStatsExpanded, setIsStatsExpanded] = useState(false);
     const [showScoreInfo, setShowScoreInfo] = useState(false);
+
+    // Hierarchical cascade filter state
+    const [hierClasses, setHierClasses] = useState<string[]>(urlClasses);
+    const [hierOccurrences, setHierOccurrences] = useState<string[]>(urlOccurrences);
+    const [hierSubjects, setHierSubjects] = useState<string[]>(urlSubjects);
+    const [hierChapters, setHierChapters] = useState<string[]>(urlHierChapters);
+    const [hierConcepts, setHierConcepts] = useState<string[]>(urlConcepts);
+    // Available options fetched from /facets
+    const [facetClasses, setFacetClasses] = useState<string[]>([]);
+    const [facetsReady, setFacetsReady] = useState(false);
+    const [facetOccurrences, setFacetOccurrences] = useState<string[]>([]);
+    const [facetSubjects, setFacetSubjects] = useState<string[]>([]);
+    const [facetChapters, setFacetChapters] = useState<string[]>([]);
+    const [facetConcepts, setFacetConcepts] = useState<string[]>([]);
+    // Question type filter
+    const [activeQuestionType, setActiveQuestionType] = useState(urlType);
 
     const handleQuestionClick = useCallback((questionId: string) => {
         if (typeof window !== 'undefined') {
@@ -296,7 +346,19 @@ export default function OGCodeList({
     const urlSelectedChapters = searchParams.getAll('chapters').filter(Boolean);
 
     const syncUrlParams = useCallback((
-        updates: Partial<{ subject: string; difficulty: string; status: string; chapters: string[]; search: string }>,
+        updates: Partial<{
+            subject: string;
+            difficulty: string;
+            status: string;
+            chapters: string[];
+            search: string;
+            classes: string[];
+            occurrences: string[];
+            subjects: string[];
+            h_chapters: string[];
+            concepts: string[];
+            type: string;
+        }>,
         mode: 'push' | 'replace' = 'push',
     ) => {
         if (typeof window === 'undefined') {
@@ -304,11 +366,17 @@ export default function OGCodeList({
         }
 
         const url = buildOgcodeUrl({
-            subject: updates.subject ?? activeSubject,
-            difficulty: updates.difficulty ?? activeDifficulty,
-            status: updates.status ?? activeStatus,
-            chapters: updates.chapters ?? selectedChapters,
-            search: updates.search ?? searchQuery,
+            subject: updates.subject !== undefined ? updates.subject : activeSubject,
+            difficulty: updates.difficulty !== undefined ? updates.difficulty : activeDifficulty,
+            status: updates.status !== undefined ? updates.status : activeStatus,
+            chapters: updates.chapters !== undefined ? updates.chapters : selectedChapters,
+            search: updates.search !== undefined ? updates.search : searchQuery,
+            classes: updates.classes !== undefined ? updates.classes : hierClasses,
+            occurrences: updates.occurrences !== undefined ? updates.occurrences : hierOccurrences,
+            subjects: updates.subjects !== undefined ? updates.subjects : hierSubjects,
+            h_chapters: updates.h_chapters !== undefined ? updates.h_chapters : hierChapters,
+            concepts: updates.concepts !== undefined ? updates.concepts : hierConcepts,
+            type: updates.type !== undefined ? updates.type : activeQuestionType,
         });
         
         if (updates.search !== undefined) {
@@ -321,7 +389,10 @@ export default function OGCodeList({
 
         selfInitiatedUrlChange.current = true;
         window.history[mode === 'replace' ? 'replaceState' : 'pushState'](null, '', url);
-    }, [activeDifficulty, activeStatus, activeSubject, searchQuery, selectedChapters]);
+    }, [
+        activeDifficulty, activeStatus, activeSubject, searchQuery, selectedChapters,
+        hierClasses, hierOccurrences, hierSubjects, hierChapters, hierConcepts, activeQuestionType
+    ]);
 
     useEffect(() => {
         if (selfInitiatedUrlChange.current) {
@@ -342,20 +413,48 @@ export default function OGCodeList({
             setSearchQuery(urlSearch);
             lastSyncedSearch.current = urlSearch;
         }
+        
+        const urlSelectedChapters = urlSelectedChaptersKey ? urlSelectedChaptersKey.split(',') : [];
         if (!sameStringArray(selectedChapters, urlSelectedChapters)) {
             setSelectedChapters(urlSelectedChapters);
         }
+
+        const urlClassesArr = urlClassesKey ? urlClassesKey.split(',') : [];
+        const urlOccurrencesArr = urlOccurrencesKey ? urlOccurrencesKey.split(',') : [];
+        const urlSubjectsArr = urlSubjectsKey ? urlSubjectsKey.split(',') : [];
+        const urlHierChaptersArr = urlHierChaptersKey ? urlHierChaptersKey.split(',') : [];
+        const urlConceptsArr = urlConceptsKey ? urlConceptsKey.split(',') : [];
+
+        if (!sameStringArray(hierClasses, urlClassesArr)) {
+            setHierClasses(urlClassesArr);
+        }
+        if (!sameStringArray(hierOccurrences, urlOccurrencesArr)) {
+            setHierOccurrences(urlOccurrencesArr);
+        }
+        if (!sameStringArray(hierSubjects, urlSubjectsArr)) {
+            setHierSubjects(urlSubjectsArr);
+        }
+        if (!sameStringArray(hierChapters, urlHierChaptersArr)) {
+            setHierChapters(urlHierChaptersArr);
+        }
+        if (!sameStringArray(hierConcepts, urlConceptsArr)) {
+            setHierConcepts(urlConceptsArr);
+        }
+        if (activeQuestionType !== urlType) {
+            setActiveQuestionType(urlType);
+        }
     }, [
-        activeDifficulty,
-        activeStatus,
-        activeSubject,
-        searchQuery,
-        selectedChapters,
         urlDifficulty,
         urlSearch,
-        urlSelectedChapters,
+        urlSelectedChaptersKey,
         urlStatus,
         urlSubject,
+        urlClassesKey,
+        urlOccurrencesKey,
+        urlSubjectsKey,
+        urlHierChaptersKey,
+        urlConceptsKey,
+        urlType,
     ]);
 
     // Handle filter changes
@@ -388,6 +487,125 @@ export default function OGCodeList({
         setSelectedChapters([]);
         syncUrlParams({ chapters: [] }, 'push');
     };
+
+    useEffect(() => {
+        syncUrlParams({
+            classes: hierClasses,
+            occurrences: hierOccurrences,
+            subjects: hierSubjects,
+            h_chapters: hierChapters,
+            concepts: hierConcepts,
+            type: activeQuestionType
+        }, 'replace');
+    }, [hierClasses, hierOccurrences, hierSubjects, hierChapters, hierConcepts, activeQuestionType, syncUrlParams]);
+
+    const handleHierarchySubmit = () => {
+        syncUrlParams({
+            classes: hierClasses,
+            occurrences: hierOccurrences,
+            subjects: hierSubjects,
+            h_chapters: hierChapters,
+            concepts: hierConcepts,
+            type: activeQuestionType
+        }, 'push');
+        void fetchQuestionPage({ offset: 0, append: false });
+    };
+
+    const fetchFacets = useCallback(async (
+        level: string,
+        params: { classes?: string[]; occurrences?: string[]; subjects?: string[]; chapters?: string[] }
+    ) => {
+        const qs = new URLSearchParams();
+        qs.set('level', level);
+        for (const c of (params.classes ?? [])) qs.append('classes', c);
+        
+        const dbOccs = new Set<string>();
+        for (const o of (params.occurrences ?? [])) {
+            const mapped = EXAM_MAPPING[o] ?? [o];
+            for (const m of mapped) dbOccs.add(m);
+        }
+        for (const o of dbOccs) qs.append('occurrences', o);
+
+        for (const s of (params.subjects ?? [])) qs.append('subjects', s);
+        for (const ch of (params.chapters ?? [])) qs.append('chapters', ch);
+        try {
+            const data = await apiCall(`/assessments/ogcode/facets?${qs.toString()}`);
+            return Array.isArray(data) ? data as string[] : [];
+        } catch {
+            return [];
+        }
+    }, []);
+
+    // On mount: fetch available class and occurrence values
+    useEffect(() => {
+        void fetchFacets('class', {}).then(vals => {
+            setFacetClasses(vals);
+            setFacetsReady(true);
+        });
+        void fetchFacets('occurrence', {}).then(setFacetOccurrences);
+    }, [fetchFacets]);
+
+    const subjectsLoaded = useRef(false);
+    const chaptersLoaded = useRef(false);
+    const conceptsLoaded = useRef(false);
+
+    // When hierClasses or hierOccurrences changes: fetch subjects
+    useEffect(() => {
+        if (hierClasses.length === 0 && hierOccurrences.length === 0) {
+            if (subjectsLoaded.current) {
+                setFacetSubjects([]); setHierSubjects([]);
+                setFacetChapters([]); setHierChapters([]);
+                setFacetConcepts([]); setHierConcepts([]);
+            }
+            return;
+        }
+        void fetchFacets('subject', { classes: hierClasses, occurrences: hierOccurrences }).then(vals => {
+            setFacetSubjects(vals);
+            if (subjectsLoaded.current) {
+                setHierSubjects(prev => prev.filter(s => vals.includes(s)));
+            } else {
+                subjectsLoaded.current = true;
+            }
+        });
+    }, [hierClasses, hierOccurrences, fetchFacets]);
+
+    // When hierSubjects changes: fetch chapters
+    useEffect(() => {
+        if (hierSubjects.length === 0) {
+            if (chaptersLoaded.current) {
+                setFacetChapters([]); setHierChapters([]);
+                setFacetConcepts([]); setHierConcepts([]);
+            }
+            return;
+        }
+        void fetchFacets('chapter', { classes: hierClasses, occurrences: hierOccurrences, subjects: hierSubjects }).then(vals => {
+            setFacetChapters(vals);
+            if (chaptersLoaded.current) {
+                setHierChapters(prev => prev.filter(c => vals.includes(c)));
+            } else {
+                chaptersLoaded.current = true;
+            }
+        });
+    }, [hierSubjects, hierClasses, hierOccurrences, fetchFacets]);
+
+    // When hierChapters changes: fetch concepts
+    useEffect(() => {
+        if (hierChapters.length === 0) {
+            if (conceptsLoaded.current) {
+                setFacetConcepts([]); setHierConcepts([]);
+            }
+            return;
+        }
+        void fetchFacets('concept', { classes: hierClasses, occurrences: hierOccurrences, subjects: hierSubjects, chapters: hierChapters }).then(vals => {
+            setFacetConcepts(vals);
+            if (conceptsLoaded.current) {
+                setHierConcepts(prev => prev.filter(c => vals.includes(c)));
+            } else {
+                conceptsLoaded.current = true;
+            }
+        });
+    }, [hierChapters, hierSubjects, hierClasses, hierOccurrences, fetchFacets]);
+
     // Refs for click-outside detection
     const statsRef = useRef<HTMLDivElement>(null);
 
@@ -428,11 +646,30 @@ export default function OGCodeList({
             params.append('chapters', chapter);
         }
 
+        // Hierarchy filters
+        for (const c of hierClasses) params.append('classes', c);
+        
+        const dbOccs = new Set<string>();
+        for (const o of hierOccurrences) {
+            const mapped = EXAM_MAPPING[o] ?? [o];
+            for (const m of mapped) dbOccs.add(m);
+        }
+        for (const o of dbOccs) params.append('occurrences', o);
+
+        for (const s of hierSubjects) params.append('subjects', s);
+        for (const ch of hierChapters) params.append('chapters', ch);
+        for (const concept of hierConcepts) params.append('concepts', concept);
+
+        // Question type
+        const typeMap: Record<string, string> = { 'MCQ': 'mcq', 'MSQ': 'msq', 'Integer': 'numerical', 'Range': 'range', 'Matrix Match': 'matrix_match' };
+        const mappedType = typeMap[activeQuestionType];
+        if (mappedType) params.set('type', mappedType);
+
         const normalizedSearch = searchQuery.trim();
         if (normalizedSearch) params.set('search', normalizedSearch);
 
         return params.toString();
-    }, [activeDifficulty, activeStatus, activeSubject, searchQuery, selectedChapters]);
+    }, [activeDifficulty, activeStatus, activeSubject, searchQuery, selectedChapters, hierClasses, hierOccurrences, hierSubjects, hierChapters, hierConcepts, activeQuestionType]);
 
     const fetchQuestionPage = useCallback(async ({ offset = 0, append = false }: { offset?: number; append?: boolean } = {}) => {
         setQuestionsLoading(true);
@@ -562,8 +799,12 @@ export default function OGCodeList({
 
         const matchesContributed = !showContributedOnly || Boolean(q.isContributed);
 
-        return matchesSearch && matchesSubject && matchesChapter && matchesDifficulty && matchesStatus && matchesContributed;
-    }), [questions, searchQuery, activeSubject, selectedChapters, activeDifficulty, activeStatus, showContributedOnly]);
+        const typeFilterMap: Record<string, string> = { 'MCQ': 'mcq', 'MSQ': 'msq', 'Integer': 'numerical', 'Range': 'range', 'Matrix Match': 'matrix_match' };
+        const mappedActiveType = typeFilterMap[activeQuestionType];
+        const matchesType = !mappedActiveType || ((q as { questionType?: string; type?: string }).questionType ?? (q as { questionType?: string; type?: string }).type ?? '').toLowerCase() === mappedActiveType;
+
+        return matchesSearch && matchesSubject && matchesChapter && matchesDifficulty && matchesStatus && matchesContributed && matchesType;
+    }), [questions, searchQuery, activeSubject, selectedChapters, activeDifficulty, activeStatus, showContributedOnly, activeQuestionType]);
 
     const originAiPageContext = useMemo(() => ({
         pathname: '/ogcode',
@@ -591,6 +832,31 @@ export default function OGCodeList({
 
     // Persist the current filtered ordering so the question workspace can offer
     // Previous / Next that respect whatever filter is applied here.
+    const getFilterParamsString = useCallback(() => {
+        const params = new URLSearchParams();
+        if (activeSubject !== 'Subject') params.set('subject', activeSubject);
+        if (activeDifficulty !== 'All') params.set('difficulty', activeDifficulty.toLowerCase());
+        if (activeStatus !== 'All') {
+            const mappedStatus = mapStatusFilter(activeStatus);
+            if (mappedStatus) params.set('status', mappedStatus);
+        }
+        for (const chapter of selectedChapters) {
+            params.append('chapters', chapter);
+        }
+        const normalizedSearch = searchQuery.trim();
+        if (normalizedSearch) params.set('search', normalizedSearch);
+
+        // Hierarchy filters
+        for (const c of hierClasses) params.append('classes', c);
+        for (const o of hierOccurrences) params.append('occurrences', o);
+        for (const s of hierSubjects) params.append('subjects', s);
+        for (const ch of hierChapters) params.append('h_chapters', ch);
+        for (const concept of hierConcepts) params.append('concepts', concept);
+        if (activeQuestionType !== 'All') params.set('type', activeQuestionType);
+
+        return params.toString();
+    }, [activeSubject, activeDifficulty, activeStatus, selectedChapters, searchQuery, hierClasses, hierOccurrences, hierSubjects, hierChapters, hierConcepts, activeQuestionType]);
+
     const filteredIdsKey = useMemo(
         () => filteredQuestions.map(q => q.id).join(','),
         [filteredQuestions],
@@ -602,11 +868,31 @@ export default function OGCodeList({
             activeStatus !== 'All' ? activeStatus : null,
             selectedChapters.length ? `${selectedChapters.length} chapter${selectedChapters.length > 1 ? 's' : ''}` : null,
             searchQuery.trim() ? `“${searchQuery.trim()}”` : null,
+            hierClasses.length ? `Classes: ${hierClasses.join(',')}` : null,
+            hierOccurrences.length ? `Exams: ${hierOccurrences.join(',')}` : null,
+            hierSubjects.length ? `Subjects: ${hierSubjects.join(',')}` : null,
+            hierChapters.length ? `Chapters: ${hierChapters.length}` : null,
+            hierConcepts.length ? `Concepts: ${hierConcepts.length}` : null,
+            activeQuestionType !== 'All' ? `Type: ${activeQuestionType}` : null,
         ].filter(Boolean).join(' · ') || 'All questions';
-        saveOgcodeNavQueue({ ids: filteredQuestions.map(q => String(q.id)), label, filterParams: searchParams.toString() || null });
+        saveOgcodeNavQueue({ ids: filteredQuestions.map(q => String(q.id)), label, filterParams: getFilterParamsString() || null });
         // filteredIdsKey captures order+membership; other deps feed the label.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [filteredIdsKey, activeSubject, activeDifficulty, activeStatus, selectedChapters, searchQuery]);
+    }, [
+        filteredIdsKey,
+        activeSubject,
+        activeDifficulty,
+        activeStatus,
+        selectedChapters,
+        searchQuery,
+        hierClasses,
+        hierOccurrences,
+        hierSubjects,
+        hierChapters,
+        hierConcepts,
+        activeQuestionType,
+        getFilterParamsString,
+    ]);
 
     const solvedCount = userStats?.solvedCount ?? questions.filter(q => q.status === 'solved' || q.isSolved).length;
     const myRank = userStats?.rank;
@@ -778,115 +1064,432 @@ export default function OGCodeList({
 
                 {/* ── Filters ── */}
                 <div className="space-y-3">
-                    {/* Subject + Chapter picker */}
-                    <div id="filter-area" className="neu-inset rounded-2xl p-4 sm:p-5 relative z-[80]">
-                        <div className="flex flex-col sm:flex-row sm:items-end gap-4">
-                            {/* Subject dropdown */}
-                            <div className="space-y-1.5 w-full sm:w-auto">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Major Subject</label>
-                                <div className="relative">
-                                    <button
-                                        type="button"
-                                        id="tutorial-ogcode-subject-filter"
-                                        onClick={() => setOpenDropdown(openDropdown === 'subject' ? null : 'subject')}
-                                        className={cn(
-                                            'w-full sm:min-w-[200px] flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl transition-all neu-raised',
-                                            activeSubject !== 'Subject' && 'ring-2 ring-primary/30',
-                                        )}
-                                    >
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-primary">{SUBJECTS.find(s => s.name === activeSubject)?.icon}</span>
-                                            <span className="text-[13px] font-bold text-foreground">{activeSubject}</span>
-                                        </div>
-                                        <ChevronRight className={cn('w-4 h-4 text-muted-foreground transition-transform', openDropdown === 'subject' ? '-rotate-90' : 'rotate-90')} />
-                                    </button>
-
-                                    <AnimatePresence>
-                                        {openDropdown === 'subject' && (
-                                            <motion.div
-                                                initial={{ opacity: 0, y: 8 }}
-                                                animate={{ opacity: 1, y: 0 }}
-                                                exit={{ opacity: 0, y: 8 }}
-                                                className="absolute top-full mt-2 left-0 w-full min-w-[200px] neu-raised rounded-xl z-[90] overflow-hidden pointer-events-auto"
-                                                onClick={e => e.stopPropagation()}
-                                            >
-                                                {SUBJECTS.map((sub, idx) => (
-                                                    <button
-                                                        type="button"
-                                                        key={idx}
-                                                        onClick={() => { handleSubjectChange(sub.name); setOpenDropdown(null); }}
-                                                        className={cn(
-                                                            'w-full flex items-center gap-3 px-4 py-3 text-[13px] transition-colors hover:bg-primary/5',
-                                                            activeSubject === sub.name ? 'text-primary font-bold' : 'text-muted-foreground',
-                                                        )}
-                                                    >
-                                                        <span className={cn(activeSubject === sub.name ? 'text-primary' : 'text-muted-foreground/60')}>{sub.icon}</span>
-                                                        {sub.name}
-                                                    </button>
-                                                ))}
-                                            </motion.div>
-                                        )}
-                                    </AnimatePresence>
-                                </div>
-                            </div>
-
-                            {/* Chapter chips */}
-                            {activeSubject !== 'Subject' && (
-                                <motion.div
-                                    initial={{ opacity: 0 }}
-                                    animate={{ opacity: 1 }}
-                                    className="min-w-0 w-full sm:flex-1 sm:min-w-[200px] space-y-1.5"
+                    {/* Hierarchical Cascade Filters */}
+                    <div id="filter-area" className="neu-inset rounded-2xl p-4 sm:p-5 relative z-[80] space-y-4">
+                        <div className="flex items-center justify-between">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Smart Filter</label>
+                            {(hierClasses.length > 0 || hierOccurrences.length > 0 || hierSubjects.length > 0 || hierChapters.length > 0 || hierConcepts.length > 0) && (
+                                <button
+                                    type="button"
+                                    onClick={() => { setHierClasses([]); setHierOccurrences([]); setHierSubjects([]); setHierChapters([]); setHierConcepts([]); }}
+                                    className="text-[9px] font-black uppercase text-primary transition-opacity hover:opacity-70"
                                 >
-                                    <div className="flex items-center justify-between ml-1">
-                                        <div className="flex items-center gap-2">
-                                            <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Target Chapters</label>
-                                            <span className="px-1.5 py-0.5 rounded-md bg-primary/10 text-primary text-[8px] font-black uppercase tracking-tighter">Multi-select</span>
-                                        </div>
-                                        <button onClick={handleClearChapters} className="text-[9px] font-black uppercase text-primary disabled:opacity-30 transition-opacity" disabled={selectedChapters.length === 0}>
-                                            Clear All
-                                        </button>
-                                    </div>
-                                    <div className="flex flex-wrap gap-2 max-h-[130px] overflow-y-auto pr-1">
-                                        {chaptersLoading ? (
-                                            <span className="text-[11px] text-muted-foreground italic py-2">Loading chapters…</span>
-                                        ) : availableChapters.length > 0 ? (
-                                            availableChapters.map((chapter) => {
-                                                const active = selectedChapters.includes(chapter);
-                                                return (
-                                                    <button
-                                                        key={chapter}
-                                                        onClick={() => handleToggleChapter(chapter)}
-                                                        className={cn(
-                                                            'flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all',
-                                                            active ? 'neu-inset text-primary' : 'neu-raised text-muted-foreground hover:text-foreground',
-                                                        )}
-                                                    >
-                                                        <div className={cn('w-2.5 h-2.5 rounded-sm border-2 flex items-center justify-center', active ? 'bg-primary border-primary' : 'border-muted-foreground/40')}>
-                                                            {active && <div className="w-1 h-1 bg-white rounded-[1px]" />}
-                                                        </div>
-                                                        {chapter}
-                                                    </button>
-                                                );
-                                            })
-                                        ) : (
-                                            <span className="text-[11px] text-muted-foreground italic py-2">No chapters found.</span>
-                                        )}
-                                    </div>
-                                </motion.div>
-                            )}
-
-                            {selectedChapters.length > 0 && (
-                                <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="flex items-end pb-0.5">
-                                    <button
-                                        onClick={() => { toast.success(`Filters applied for ${selectedChapters.length} chapters`); }}
-                                        className="neu-btn px-5 py-2.5 text-[11px] font-black uppercase tracking-widest text-primary flex items-center gap-2 group"
-                                    >
-                                        Proceed to Arena
-                                        <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-                                    </button>
-                                </motion.div>
+                                    Reset All
+                                </button>
                             )}
                         </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+                            {/* Class Dropdown */}
+                            <div className="space-y-2 relative">
+                                <div className="text-[9px] font-black uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                                    <span>Class</span>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setOpenDropdown(openDropdown === 'class' ? null : 'class')}
+                                    className={cn(
+                                        'w-full flex items-center justify-between gap-2 px-4 py-2.5 rounded-xl text-[12px] font-bold transition-all truncate text-left',
+                                        hierClasses.length > 0 ? 'neu-inset text-primary' : 'neu-raised text-muted-foreground hover:text-foreground'
+                                    )}
+                                >
+                                    <span className="truncate">
+                                        {hierClasses.length === 0 ? 'Select Class' : `Classes: ${hierClasses.join(', ')}`}
+                                    </span>
+                                    <ChevronDown className={cn('w-3.5 h-3.5 shrink-0 transition-transform duration-200', openDropdown === 'class' && 'rotate-180')} />
+                                </button>
+                                {openDropdown === 'class' && (
+                                    <motion.div
+                                        initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+                                        className="absolute left-0 right-0 mt-2 min-w-[200px] max-h-96 overflow-y-auto neu-raised rounded-xl z-50 p-2 space-y-1 bg-background/95 backdrop-blur-md"
+                                        onClick={e => e.stopPropagation()}
+                                    >
+                                        {!facetsReady ? (
+                                            <div className="text-[10px] text-muted-foreground italic p-2 text-center">Loading…</div>
+                                        ) : (
+                                            <>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const classes = facetClasses.length > 0 ? facetClasses : ['11', '12'];
+                                                        const allSelected = hierClasses.length === classes.length;
+                                                        setHierClasses(allSelected ? [] : [...classes]);
+                                                    }}
+                                                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[12px] font-black text-primary hover:bg-primary/5 transition-colors text-left border-b border-border/20 mb-1"
+                                                >
+                                                    <div className={cn('w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-all', hierClasses.length === (facetClasses.length > 0 ? facetClasses.length : 2) ? 'bg-primary border-primary' : 'border-muted-foreground/30')}>
+                                                        {hierClasses.length === (facetClasses.length > 0 ? facetClasses.length : 2) && <Check className="w-3 h-3 text-white" />}
+                                                    </div>
+                                                    Select All
+                                                </button>
+                                                {(facetClasses.length > 0 ? facetClasses : ['11', '12']).map(cls => {
+                                                    const active = hierClasses.includes(cls);
+                                                    return (
+                                                        <button
+                                                            key={cls}
+                                                            type="button"
+                                                            onClick={() => setHierClasses(prev => active ? prev.filter(c => c !== cls) : [...prev, cls])}
+                                                            className={cn(
+                                                                'w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[12px] font-semibold transition-colors text-left hover:bg-primary/5',
+                                                                active ? 'text-primary font-bold bg-primary/5' : 'text-muted-foreground'
+                                                            )}
+                                                        >
+                                                            <div className={cn('w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-all', active ? 'bg-primary border-primary' : 'border-muted-foreground/30')}>
+                                                                {active && <Check className="w-3 h-3 text-white" />}
+                                                            </div>
+                                                            Class {cls}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </>
+                                        )}
+                                    </motion.div>
+                                )}
+                            </div>
+
+                            {/* Exam/Occurrence Dropdown */}
+                            <div className="space-y-2 relative">
+                                <div className="text-[9px] font-black uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                                    <span>Exam</span>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setOpenDropdown(openDropdown === 'occurrence' ? null : 'occurrence')}
+                                    className={cn(
+                                        'w-full flex items-center justify-between gap-2 px-4 py-2.5 rounded-xl text-[12px] font-bold transition-all truncate text-left',
+                                        hierOccurrences.length > 0 ? 'neu-inset text-primary' : 'neu-raised text-muted-foreground hover:text-foreground'
+                                    )}
+                                >
+                                    <span className="truncate">
+                                        {hierOccurrences.length === 0 ? 'Select Exam' : `Exams: ${hierOccurrences.join(', ')}`}
+                                    </span>
+                                    <ChevronDown className={cn('w-3.5 h-3.5 shrink-0 transition-transform duration-200', openDropdown === 'occurrence' && 'rotate-180')} />
+                                </button>
+                                {openDropdown === 'occurrence' && (
+                                    <motion.div
+                                        initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+                                        className="absolute left-0 right-0 mt-2 min-w-[200px] max-h-96 overflow-y-auto neu-raised rounded-xl z-50 p-2 space-y-1 bg-background/95 backdrop-blur-md"
+                                        onClick={e => e.stopPropagation()}
+                                    >
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const exams = ['JEE', 'NEET', 'AIPMT'];
+                                                const allSelected = hierOccurrences.length === exams.length;
+                                                setHierOccurrences(allSelected ? [] : [...exams]);
+                                            }}
+                                            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[12px] font-black text-primary hover:bg-primary/5 transition-colors text-left border-b border-border/20 mb-1"
+                                        >
+                                            <div className={cn('w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-all', hierOccurrences.length === 3 ? 'bg-primary border-primary' : 'border-muted-foreground/30')}>
+                                                {hierOccurrences.length === 3 && <Check className="w-3 h-3 text-white" />}
+                                            </div>
+                                            Select All
+                                        </button>
+                                        {['JEE', 'NEET', 'AIPMT'].map(occ => {
+                                            const active = hierOccurrences.includes(occ);
+                                            return (
+                                                <button
+                                                    key={occ}
+                                                    type="button"
+                                                    onClick={() => setHierOccurrences(prev => active ? prev.filter(o => o !== occ) : [...prev, occ])}
+                                                    className={cn(
+                                                        'w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[12px] font-semibold transition-colors text-left hover:bg-primary/5',
+                                                        active ? 'text-primary font-bold bg-primary/5' : 'text-muted-foreground'
+                                                    )}
+                                                >
+                                                    <div className={cn('w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-all', active ? 'bg-primary border-primary' : 'border-muted-foreground/30')}>
+                                                        {active && <Check className="w-3 h-3 text-white" />}
+                                                    </div>
+                                                    <span className="truncate">{occ}</span>
+                                                </button>
+                                            );
+                                        })}
+                                    </motion.div>
+                                )}
+                            </div>
+
+                            {/* Subject Dropdown */}
+                            <div className="space-y-2 relative">
+                                <div className="text-[9px] font-black uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                                    <span>Subject</span>
+                                </div>
+                                <button
+                                    type="button"
+                                    disabled={hierClasses.length === 0 && hierOccurrences.length === 0}
+                                    onClick={() => setOpenDropdown(openDropdown === 'hier-subject' ? null : 'hier-subject')}
+                                    className={cn(
+                                        'w-full flex items-center justify-between gap-2 px-4 py-2.5 rounded-xl text-[12px] font-bold transition-all truncate text-left',
+                                        (hierClasses.length === 0 && hierOccurrences.length === 0) ? 'opacity-40 cursor-not-allowed neu-raised' :
+                                        hierSubjects.length > 0 ? 'neu-inset text-primary' : 'neu-raised text-muted-foreground hover:text-foreground'
+                                    )}
+                                >
+                                    <span className="truncate">
+                                        {(hierClasses.length === 0 && hierOccurrences.length === 0) ? 'Select Class or Exam first' :
+                                         hierSubjects.length === 0 ? 'Select Subject' : `Subjects: ${hierSubjects.map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(', ')}`}
+                                    </span>
+                                    <ChevronDown className={cn('w-3.5 h-3.5 shrink-0 transition-transform duration-200', openDropdown === 'hier-subject' && 'rotate-180')} />
+                                </button>
+                                {openDropdown === 'hier-subject' && (hierClasses.length > 0 || hierOccurrences.length > 0) && (
+                                    <motion.div
+                                        initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+                                        className="absolute left-0 right-0 mt-2 min-w-[200px] max-h-96 overflow-y-auto neu-raised rounded-xl z-50 p-2 space-y-1 bg-background/95 backdrop-blur-md"
+                                        onClick={e => e.stopPropagation()}
+                                    >
+                                        {facetSubjects.length === 0 ? (
+                                            <div className="text-[10px] text-muted-foreground italic p-2 text-center">
+                                                No subjects found
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const allSelected = hierSubjects.length === facetSubjects.length;
+                                                        setHierSubjects(allSelected ? [] : [...facetSubjects]);
+                                                    }}
+                                                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[12px] font-black text-primary hover:bg-primary/5 transition-colors text-left border-b border-border/20 mb-1"
+                                                >
+                                                    <div className={cn('w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-all', hierSubjects.length === facetSubjects.length ? 'bg-primary border-primary' : 'border-muted-foreground/30')}>
+                                                        {hierSubjects.length === facetSubjects.length && <Check className="w-3 h-3 text-white" />}
+                                                    </div>
+                                                    Select All
+                                                </button>
+                                                {facetSubjects.map(sub => {
+                                                    const capName = sub.charAt(0).toUpperCase() + sub.slice(1);
+                                                    const icon = SUBJECT_ICONS[capName] ?? null;
+                                                    const active = hierSubjects.includes(sub);
+                                                    return (
+                                                        <button
+                                                            key={sub}
+                                                            type="button"
+                                                            onClick={() => setHierSubjects(prev => active ? prev.filter(s => s !== sub) : [...prev, sub])}
+                                                            className={cn(
+                                                                'w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[12px] font-semibold transition-colors text-left hover:bg-primary/5',
+                                                                active ? 'text-primary font-bold bg-primary/5' : 'text-muted-foreground'
+                                                            )}
+                                                        >
+                                                            <div className={cn('w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-all', active ? 'bg-primary border-primary' : 'border-muted-foreground/30')}>
+                                                                {active && <Check className="w-3 h-3 text-white" />}
+                                                            </div>
+                                                            {icon && <span className="w-3 h-3 shrink-0">{icon}</span>}
+                                                            <span>{capName}</span>
+                                                        </button>
+                                                    );
+                                                })}
+                                            </>
+                                        )}
+                                    </motion.div>
+                                )}
+                            </div>
+
+                            {/* Chapter Dropdown */}
+                            <div className="space-y-2 relative">
+                                <div className="text-[9px] font-black uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                                    <span>Chapter</span>
+                                </div>
+                                <button
+                                    type="button"
+                                    disabled={hierSubjects.length === 0}
+                                    onClick={() => {
+                                        setOpenDropdown(openDropdown === 'hier-chapter' ? null : 'hier-chapter');
+                                        setChapterSearchQuery('');
+                                    }}
+                                    className={cn(
+                                        'w-full flex items-center justify-between gap-2 px-4 py-2.5 rounded-xl text-[12px] font-bold transition-all truncate text-left',
+                                        hierSubjects.length === 0 ? 'opacity-40 cursor-not-allowed neu-raised' :
+                                        hierChapters.length > 0 ? 'neu-inset text-primary' : 'neu-raised text-muted-foreground hover:text-foreground'
+                                    )}
+                                >
+                                    <span className="truncate">
+                                        {hierSubjects.length === 0 ? 'Select Subject first' :
+                                         hierChapters.length === 0 ? 'Select Chapter' : `Chapters: ${hierChapters.length} selected`}
+                                    </span>
+                                    <ChevronDown className={cn('w-3.5 h-3.5 shrink-0 transition-transform duration-200', openDropdown === 'hier-chapter' && 'rotate-180')} />
+                                </button>
+                                {openDropdown === 'hier-chapter' && hierSubjects.length > 0 && (
+                                    <motion.div
+                                        initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+                                        className="absolute left-0 right-0 mt-2 min-w-[240px] max-h-[450px] flex flex-col neu-raised rounded-xl z-50 bg-background/95 backdrop-blur-md overflow-hidden"
+                                        onClick={e => e.stopPropagation()}
+                                    >
+                                        <div className="p-2 border-b border-border/40 shrink-0">
+                                            <input
+                                                type="text"
+                                                placeholder="Search chapters..."
+                                                value={chapterSearchQuery}
+                                                onChange={e => setChapterSearchQuery(e.target.value)}
+                                                className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-[11px] outline-none focus:border-primary/50"
+                                            />
+                                        </div>
+                                        <div className="overflow-y-auto p-2 flex-1 space-y-1 max-h-[380px]">
+                                            {(() => {
+                                                const filtered = facetChapters.filter(ch => ch.toLowerCase().includes(chapterSearchQuery.toLowerCase()));
+                                                if (filtered.length === 0) {
+                                                    return <div className="text-[10px] text-muted-foreground italic p-2 text-center">No chapters found</div>;
+                                                }
+                                                const allSelected = filtered.every(ch => hierChapters.includes(ch));
+                                                return (
+                                                    <>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setHierChapters(prev => {
+                                                                    if (allSelected) {
+                                                                        return prev.filter(c => !filtered.includes(c));
+                                                                    } else {
+                                                                        const nextCh = [...prev];
+                                                                        for (const ch of filtered) {
+                                                                            if (!nextCh.includes(ch)) nextCh.push(ch);
+                                                                        }
+                                                                        return nextCh;
+                                                                    }
+                                                                });
+                                                            }}
+                                                            className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-[11px] font-black text-primary hover:bg-primary/5 transition-colors text-left border-b border-border/20 mb-1 shrink-0"
+                                                        >
+                                                            <div className={cn('w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-all', allSelected ? 'bg-primary border-primary' : 'border-muted-foreground/30')}>
+                                                                {allSelected && <Check className="w-3 h-3 text-white" />}
+                                                            </div>
+                                                            Select All
+                                                        </button>
+                                                        {filtered.map(ch => {
+                                                            const active = hierChapters.includes(ch);
+                                                            return (
+                                                                <button
+                                                                    key={ch}
+                                                                    type="button"
+                                                                    onClick={() => setHierChapters(prev => active ? prev.filter(c => c !== ch) : [...prev, ch])}
+                                                                    className={cn(
+                                                                        'w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-[11px] font-semibold transition-colors text-left hover:bg-primary/5',
+                                                                        active ? 'text-primary font-bold bg-primary/5' : 'text-slate-700 dark:text-slate-300'
+                                                                    )}
+                                                                >
+                                                                    <div className={cn('w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-all', active ? 'bg-primary border-primary' : 'border-muted-foreground/30')}>
+                                                                        {active && <Check className="w-3 h-3 text-white" />}
+                                                                    </div>
+                                                                    <span className="line-clamp-2 leading-tight">{ch}</span>
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </>
+                                                );
+                                            })()}
+                                        </div>
+                                    </motion.div>
+                                )}
+                            </div>
+
+                            {/* Concept Dropdown */}
+                            <div className="space-y-2 relative">
+                                <div className="text-[9px] font-black uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                                    <span>Concept</span>
+                                </div>
+                                <button
+                                    type="button"
+                                    disabled={hierChapters.length === 0}
+                                    onClick={() => {
+                                        setOpenDropdown(openDropdown === 'hier-concept' ? null : 'hier-concept');
+                                        setConceptSearchQuery('');
+                                    }}
+                                    className={cn(
+                                        'w-full flex items-center justify-between gap-2 px-4 py-2.5 rounded-xl text-[12px] font-bold transition-all truncate text-left',
+                                        hierChapters.length === 0 ? 'opacity-40 cursor-not-allowed neu-raised' :
+                                        hierConcepts.length > 0 ? 'neu-inset text-primary' : 'neu-raised text-muted-foreground hover:text-foreground'
+                                    )}
+                                >
+                                    <span className="truncate">
+                                        {hierChapters.length === 0 ? 'Select Chapter first' :
+                                         hierConcepts.length === 0 ? 'Select Concept' : `Concepts: ${hierConcepts.length} selected`}
+                                    </span>
+                                    <ChevronDown className={cn('w-3.5 h-3.5 shrink-0 transition-transform duration-200', openDropdown === 'hier-concept' && 'rotate-180')} />
+                                </button>
+                                {openDropdown === 'hier-concept' && hierChapters.length > 0 && (
+                                    <motion.div
+                                        initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+                                        className="absolute left-0 right-0 mt-2 min-w-[240px] max-h-[450px] flex flex-col neu-raised rounded-xl z-50 bg-background/95 backdrop-blur-md overflow-hidden"
+                                        onClick={e => e.stopPropagation()}
+                                    >
+                                        <div className="p-2 border-b border-border/40 shrink-0">
+                                            <input
+                                                type="text"
+                                                placeholder="Search concepts..."
+                                                value={conceptSearchQuery}
+                                                onChange={e => setConceptSearchQuery(e.target.value)}
+                                                className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-lg px-2.5 py-1.5 text-[11px] outline-none focus:border-primary/50"
+                                            />
+                                        </div>
+                                        <div className="overflow-y-auto p-2 flex-1 space-y-1 max-h-[380px]">
+                                            {(() => {
+                                                const filtered = facetConcepts.filter(concept => concept.toLowerCase().includes(conceptSearchQuery.toLowerCase()));
+                                                if (filtered.length === 0) {
+                                                    return <div className="text-[10px] text-muted-foreground italic p-2 text-center">No concepts found</div>;
+                                                }
+                                                const allSelected = filtered.every(co => hierConcepts.includes(co));
+                                                return (
+                                                    <>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setHierConcepts(prev => {
+                                                                    if (allSelected) {
+                                                                        return prev.filter(c => !filtered.includes(c));
+                                                                    } else {
+                                                                        const nextCo = [...prev];
+                                                                        for (const co of filtered) {
+                                                                            if (!nextCo.includes(co)) nextCo.push(co);
+                                                                        }
+                                                                        return nextCo;
+                                                                    }
+                                                                });
+                                                            }}
+                                                            className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-[11px] font-black text-primary hover:bg-primary/5 transition-colors text-left border-b border-border/20 mb-1 shrink-0"
+                                                        >
+                                                            <div className={cn('w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-all', allSelected ? 'bg-primary border-primary' : 'border-muted-foreground/30')}>
+                                                                {allSelected && <Check className="w-3 h-3 text-white" />}
+                                                            </div>
+                                                            Select All
+                                                        </button>
+                                                        {filtered.map(concept => {
+                                                            const active = hierConcepts.includes(concept);
+                                                            return (
+                                                                <button
+                                                                    key={concept}
+                                                                    type="button"
+                                                                    onClick={() => setHierConcepts(prev => active ? prev.filter(c => c !== concept) : [...prev, concept])}
+                                                                    className={cn(
+                                                                        'w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-[11px] font-semibold transition-colors text-left hover:bg-primary/5',
+                                                                        active ? 'text-primary font-bold bg-primary/5' : 'text-slate-700 dark:text-slate-300'
+                                                                    )}
+                                                                >
+                                                                    <div className={cn('w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-all', active ? 'bg-primary border-primary' : 'border-muted-foreground/30')}>
+                                                                        {active && <Check className="w-3 h-3 text-white" />}
+                                                                    </div>
+                                                                    <span className="line-clamp-2 leading-tight">{concept}</span>
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </>
+                                                );
+                                            })()}
+                                        </div>
+                                    </motion.div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Submit button */}
+                        {(hierClasses.length > 0 || hierSubjects.length > 0 || hierChapters.length > 0 || hierConcepts.length > 0) && (
+                            <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} className="flex justify-end pt-2 border-t border-border/20">
+                                <button
+                                    type="button"
+                                    onClick={handleHierarchySubmit}
+                                    className="neu-btn px-6 py-2.5 text-[11px] font-black uppercase tracking-widest text-primary flex items-center gap-2 group"
+                                >
+                                    Apply Filters
+                                    <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                                </button>
+                            </motion.div>
+                        )}
                     </div>
 
                     {/* Search + secondary filters */}
@@ -931,6 +1534,33 @@ export default function OGCodeList({
                                         <button key={diff} onClick={() => { handleDifficultyChange(diff); setOpenDropdown(null); }}
                                             className={cn('w-full text-left px-4 py-2.5 text-[12px] transition-colors hover:bg-primary/5', activeDifficulty === diff ? 'text-primary font-bold' : 'text-muted-foreground')}
                                         >{diff}</button>
+                                    ))}
+                                </motion.div>
+                            )}
+                        </div>
+
+                        {/* Question Type */}
+                        <div className="relative">
+                            <button
+                                onClick={() => setOpenDropdown(openDropdown === 'type' ? null : 'type')}
+                                className={cn(
+                                    'flex items-center gap-2 px-4 py-2 rounded-xl text-[12px] font-bold transition-all',
+                                    activeQuestionType !== 'All' ? 'neu-inset text-primary' : 'neu-raised text-muted-foreground hover:text-foreground',
+                                )}
+                            >
+                                {activeQuestionType === 'All' ? 'Type' : activeQuestionType}
+                                <ChevronRight className={cn('w-3.5 h-3.5 transition-transform', openDropdown === 'type' ? '-rotate-90' : 'rotate-90')} />
+                            </button>
+                            {openDropdown === 'type' && (
+                                <motion.div
+                                    initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+                                    className="absolute top-full mt-2 left-0 w-44 neu-raised rounded-xl z-50 overflow-hidden"
+                                    onClick={e => e.stopPropagation()}
+                                >
+                                    {['All', 'MCQ', 'MSQ', 'Integer', 'Range', 'Matrix Match'].map(qt => (
+                                        <button key={qt} onClick={() => { setActiveQuestionType(qt); setOpenDropdown(null); }}
+                                            className={cn('w-full text-left px-4 py-2.5 text-[12px] transition-colors hover:bg-primary/5', activeQuestionType === qt ? 'text-primary font-bold' : 'text-muted-foreground')}
+                                        >{qt}</button>
                                     ))}
                                 </motion.div>
                             )}
@@ -1049,20 +1679,20 @@ export default function OGCodeList({
                         </div>
                     )}
 
-                    <div className="flex flex-col gap-3 pt-5 sm:flex-row sm:items-center sm:justify-between">
-                        <div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                            {questionsLoading && questions.length > 0 ? 'Updating question list…' : questionSummaryLabel}
-                        </div>
+                    <div className="flex flex-col items-center gap-4 pt-6">
                         {hasMoreQuestions && (
                             <button
                                 type="button"
                                 onClick={handleLoadMore}
                                 disabled={questionsLoading}
-                                className="neu-btn inline-flex items-center justify-center gap-2 px-5 py-2 text-[11px] font-black uppercase tracking-wider text-primary disabled:cursor-not-allowed disabled:opacity-60"
+                                className="neu-btn inline-flex items-center justify-center gap-2 px-6 py-2.5 text-[11px] font-black uppercase tracking-wider text-primary disabled:cursor-not-allowed disabled:opacity-60"
                             >
                                 {questionsLoading ? 'Loading…' : `Load ${QUESTION_PAGE_SIZE} More`}
                             </button>
                         )}
+                        <div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground text-center">
+                            {questionsLoading && questions.length > 0 ? 'Updating question list…' : questionSummaryLabel}
+                        </div>
                     </div>
                 </div>
             </div>
