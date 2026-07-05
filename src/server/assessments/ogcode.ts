@@ -11,3 +11,5 @@ export {
   listOgcodeQuestionPage,
   listOgcodeQuestions,
 } from "@/legacy/assessments";
+
+export { listOgcodeCatalogFacets } from "@/server/ogcode-catalog";
