@@ -201,7 +201,7 @@ export default function PrivacyPolicyPage() {
                         "Test responses, scores, time spent per question, and performance history",
                         "Study session data including duration, frequency, and topic coverage",
                         "Device information, IP address, and browser type for security purposes",
-                        "Voluntary information provided in conversations with Origin AI"
+                        "Voluntary information provided in conversations with Ori"
                       ].map((item, idx) => (
                         <li key={idx} className="flex items-start gap-2.5">
                           <CheckCircle2 className="w-4 h-4 text-primary shrink-0 mt-1" />
@@ -245,7 +245,7 @@ export default function PrivacyPolicyPage() {
                     {[
                       "To create and manage your account and provide access to the platform",
                       "To diagnose learning gaps and generate personalised practice materials",
-                      "To power the Origin AI mentor and teacher AI agents",
+                      "To power the Ori mentor and teacher AI agents",
                       "To track academic progress and generate performance reports",
                       "To communicate important updates, feature announcements, and support responses",
                       "To improve our AI models and platform functionality using anonymised, aggregated data",

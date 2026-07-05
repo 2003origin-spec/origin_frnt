@@ -9,15 +9,26 @@ import type {
 import { createId } from "@/server/store";
 
 export const RANK_TIERS: Array<[number, string]> = [
-  [0, "Novice"],
-  [50, "Beginner"],
-  [150, "Apprentice"],
-  [300, "Intermediate"],
-  [600, "Advanced"],
-  [1200, "Expert"],
-  [2500, "Master"],
-  [5000, "Grandmaster"],
-  [10000, "Legend"],
+  [0,      "Novice"],
+  [100,    "Beginner"],
+  [300,    "Apprentice"],
+  [600,    "Intermediate"],
+  [1000,   "Advanced"],
+  [1500,   "Elite"],
+  [2200,   "Expert"],
+  [3200,   "Veteran"],
+  [4500,   "Master"],
+  [6000,   "Grandmaster"],
+  [8000,   "Legend"],
+  [12000,  "Mythic"],
+  [18000,  "Immortal"],
+  [25000,  "Eternal"],
+  [40000,  "Prime"],
+  [60000,  "Celestial"],
+  [90000,  "Ascendant"],
+  [130000, "Divine"],
+  [200000, "Omniscient"],
+  [300000, "Origin"],
 ];
 
 export const DIFFICULTY_POINTS: Record<string, number> = {
@@ -235,9 +246,19 @@ export function awardPoints(
   }
 
   const score = getOrCreateUserScore(store, userId);
+  const prevPoints = score.totalPoints;
   score.totalPoints += points;
   score.currentTier = getTierForPoints(score.totalPoints);
   score.lastUpdated = new Date().toISOString();
+
+  // Detect newly crossed badge thresholds
+  const newlyUnlocked = RANK_TIERS
+    .filter(([threshold]) => threshold > 0 && prevPoints < threshold && score.totalPoints >= threshold)
+    .map(([, name]) => name);
+  if (newlyUnlocked.length > 0) {
+    if (!score.pendingBadges) score.pendingBadges = [];
+    score.pendingBadges.push(...newlyUnlocked);
+  }
 
   const log: StoredPointLog = {
     id: createId("point_log"),
@@ -321,8 +342,8 @@ export function buildPointsSummary(store: AppStore, userId: string) {
     total_points: score.totalPoints,
     currentTier: score.currentTier,
     current_tier: score.currentTier,
-    nextTier: nextTier?.[1] ?? "Legend",
-    next_tier: nextTier?.[1] ?? "Legend",
+    nextTier: nextTier?.[1] ?? "Origin",
+    next_tier: nextTier?.[1] ?? "Origin",
     pointsToNext: nextTier ? Math.max(0, nextTier[0] - score.totalPoints) : 0,
     points_to_next: nextTier ? Math.max(0, nextTier[0] - score.totalPoints) : 0,
     progressPercent: nextTier ? Math.min(100, (score.totalPoints / nextTier[0]) * 100) : 100,

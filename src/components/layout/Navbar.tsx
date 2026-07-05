@@ -1,5 +1,6 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
+import Image from 'next/image';
 import { useLayout } from '@/context/LayoutContext';
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -89,7 +90,7 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
 
     const navItems = isTeacher ? [] : [
         { label: 'OGCode', icon: Code, view: 'ogcode' as ViewState },
-        { label: 'AI Explainer', icon: () => <img src="/iconsax/Ai-Icon.png" className="w-5 h-5 object-contain" />, view: 'doubt-solver' as ViewState },
+        { label: 'AI Explainer', icon: () => <Image src="/iconsax/Ai-Icon.png" alt="AI Explainer" width={20} height={20} className="object-contain" />, view: 'doubt-solver' as ViewState },
         { label: 'Tests', icon: FileText, view: 'test-list' as ViewState },
         { label: 'Rooms', icon: Crown, view: 'study-rooms' as ViewState },
         { label: 'DPP', icon: Target, view: 'dpp' as ViewState },
@@ -495,9 +496,9 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                     <NotificationBell />
 
                     <button
-                        onMouseEnter={() => onPrefetch?.('profile')}
-                        onClick={() => onNavigate('profile')}
+                        onClick={() => setShowMobileMenu(true)}
                         className="ml-1 p-1"
+                        aria-label="Open menu"
                     >
                         <Avatar className="w-7 h-7 border border-primary/20">
                             <AvatarFallback className="bg-primary text-white text-[10px] font-bold">
@@ -545,8 +546,26 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                                 </button>
                             </div>
 
+                            {/* User identity strip */}
+                            <div className="mx-4 mb-3 flex items-center gap-3 px-4 py-3 rounded-2xl bg-primary/5 border border-primary/10">
+                                <Avatar className="w-9 h-9 border border-primary/20 flex-shrink-0">
+                                    <AvatarFallback className="bg-primary text-white text-sm font-bold">
+                                        {user.name.charAt(0).toUpperCase()}
+                                    </AvatarFallback>
+                                </Avatar>
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-black text-foreground truncate">{user.name}</p>
+                                    <p className="text-[11px] text-muted-foreground truncate">{user.email}</p>
+                                </div>
+                                {premiumEnabled && (
+                                    <Badge className="text-[10px] h-5 px-1.5 bg-rose-600 text-white border-none font-bold shrink-0">
+                                        {user.isPremium ? 'PRO' : 'FREE'}
+                                    </Badge>
+                                )}
+                            </div>
+
                             {/* Nav items — 2-column grid */}
-                            <div className="grid grid-cols-2 gap-2 px-4 pb-8">
+                            <div className="grid grid-cols-2 gap-2 px-4 pb-3">
                                 {navItems.map((item) => {
                                     const Icon = item.icon as React.ComponentType<{ className?: string }>;
                                     const active = isActive(item);
@@ -576,6 +595,29 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                                         </button>
                                     );
                                 })}
+                            </div>
+
+                            {/* Bottom actions */}
+                            <div className="px-4 pb-8 pt-1 flex flex-col gap-2 border-t border-border/40 mt-1">
+                                <button
+                                    onClick={() => { onNavigate('profile'); setShowMobileMenu(false); }}
+                                    onTouchStart={() => onPrefetch?.('profile')}
+                                    className="flex items-center gap-3 px-4 py-3 rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-900 transition-colors text-slate-700 dark:text-slate-300"
+                                >
+                                    <div className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800">
+                                        <Settings className="w-5 h-5" />
+                                    </div>
+                                    <span className="font-bold text-sm">Settings &amp; Profile</span>
+                                </button>
+                                <button
+                                    onClick={() => { onLogout(); setShowMobileMenu(false); }}
+                                    className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-rose-50 dark:bg-rose-900/20 hover:bg-rose-100 dark:hover:bg-rose-900/30 transition-colors text-rose-600 dark:text-rose-400"
+                                >
+                                    <div className="p-2 rounded-xl bg-rose-100 dark:bg-rose-900/40">
+                                        <LogOut className="w-5 h-5" />
+                                    </div>
+                                    <span className="font-bold text-sm">Logout</span>
+                                </button>
                             </div>
                         </motion.div>
                     </>

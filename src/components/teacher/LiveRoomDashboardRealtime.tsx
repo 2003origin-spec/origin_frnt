@@ -15,7 +15,7 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Award, BarChart3, Clock, Loader2, Radio, Search, Square, UserX, Users } from "lucide-react";
+import { Award, BarChart3, Clock, Loader2, Plus, Radio, Search, Square, UserX, Users } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -101,6 +101,7 @@ function DashboardInner({
   const live = useStudyRoom();
   const { room, participants, messages, pending, typingUsers, sendChat, sendTyping, kickParticipant, refresh, isConnected, is_admin } = live;
   const [closing, startClose] = useTransition();
+  const [extending, startExtend] = useTransition();
   const [now, setNow] = useState(() => Date.now());
   const [query, setQuery] = useState("");
 
@@ -180,6 +181,17 @@ function DashboardInner({
     [active],
   );
 
+  function handleExtend(): void {
+    startExtend(async () => {
+      const result = await apiJson(`/api/teacher/workspaces/${workspaceId}/rooms/${roomId}/extend`, { method: "POST" });
+      if (result.ok) {
+        toast.success("+5 minutes added.");
+      } else {
+        toast.error(result.detail || "Failed to extend duration.");
+      }
+    });
+  }
+
   function handleEndTest(): void {
     if (!window.confirm("End this live room for everyone? Students will be returned to their rooms list.")) return;
     startClose(async () => {
@@ -241,6 +253,12 @@ function DashboardInner({
                 <Clock className="h-5 w-5 text-primary" />
                 <span className="font-mono text-xl font-bold tracking-widest tabular-nums">{formatClock(remaining)}</span>
               </div>
+            )}
+            {inTest && !isClosed && (
+              <Button variant="outline" size="sm" disabled={extending} onClick={handleExtend} className="gap-1.5 font-bold">
+                {extending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                +5 Min
+              </Button>
             )}
             {!isClosed && (
               <Button variant="destructive" size="sm" disabled={closing} onClick={handleEndTest} className="gap-1.5 font-bold">

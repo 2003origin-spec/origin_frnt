@@ -121,7 +121,7 @@ async function fetchChaptersFromOriginAi(subject: OriginAiChapterSubject): Promi
 
   if (!response.ok) {
     const text = await response.text().catch(() => "");
-    throw new Error(text || `Origin AI chapter refresh failed with status ${response.status}.`);
+    throw new Error(text || `Ori chapter refresh failed with status ${response.status}.`);
   }
 
   return response.json();

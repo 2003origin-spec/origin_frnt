@@ -18,7 +18,7 @@ const TOPPERS: TopperCard[] = [
     initials: 'AK',
     name: 'Aarav K.',
     detail: 'AIR 234 · JEE Advanced',
-    quote: '"Origin AI explained what 3 tuition teachers couldn\'t in 2 years."',
+    quote: '"Ori explained what 3 tuition teachers couldn\'t in 2 years."',
     streakDays: 62,
     accentColor: 'from-primary/20 to-primary/5',
     photoNote: 'PHOTO · Student portrait, 200×200px, JPG — place at /images/toppers/aarav.jpg',
@@ -122,8 +122,8 @@ export default function TopperWall() {
   const x = useMotionValue(0);
 
   return (
-    <section className="py-14 sm:py-24 lg:py-32 relative z-10 overflow-hidden">
-      <div className="max-w-7xl mx-auto px-6 mb-12">
+    <section className="py-10 sm:py-16 lg:py-20 relative z-10 overflow-hidden">
+      <div className="max-w-7xl mx-auto px-6 mb-8">
         <motion.div
           initial={{ opacity: 0, y: 24 }}
           whileInView={{ opacity: 1, y: 0 }}

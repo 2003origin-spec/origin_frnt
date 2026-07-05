@@ -74,7 +74,7 @@ export interface Ori2DProps {
   float?: boolean;
 }
 
-export default function Ori2D({ expression, state, className, title = 'Origin AI', float = true }: Ori2DProps) {
+export default function Ori2D({ expression, state, className, title = 'Ori', float = true }: Ori2DProps) {
   const reduce = useReducedMotion();
   const expr: Ori2DExpression = expression ?? (state ? STATE_2D[state] : 'happy');
   const src = FILES[expr];

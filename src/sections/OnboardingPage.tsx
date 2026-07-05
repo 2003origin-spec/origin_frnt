@@ -83,6 +83,7 @@ export default function OnboardingPage({ onComplete }: OnboardingPageProps) {
               <div className="flex justify-center mb-6">
                 <img src="/origin-new.jpg" alt="ORIGIN Student" className="h-16 w-auto" />
               </div>
+              <img src="/ori2d/ori-exited.png" alt="Ori" className="w-32 h-32 sm:w-44 sm:h-44 object-contain drop-shadow-xl mx-auto mb-4" />
               <div className="w-16 h-16 mx-auto rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
                 <GraduationCap className="w-8 h-8 text-primary" />
               </div>
@@ -160,6 +161,7 @@ export default function OnboardingPage({ onComplete }: OnboardingPageProps) {
         return (
           <div className="space-y-6 animate-fade-in">
             <div className="text-center">
+              <img src="/ori2d/ori-curious.png" alt="Ori" className="w-24 h-24 object-contain mx-auto mb-3 drop-shadow-md" />
               <div className="w-16 h-16 mx-auto rounded-2xl bg-primary/10 flex items-center justify-center mb-4 overflow-hidden p-2">
                 <BookOpen className="w-8 h-8 text-primary" />
               </div>
@@ -271,7 +273,7 @@ export default function OnboardingPage({ onComplete }: OnboardingPageProps) {
         {/* Ori greeting */}
         <div className="mb-6 flex justify-center">
           <div className="h-20 w-20">
-            <OriMascot expression="curious" title="Origin AI" />
+            <OriMascot expression="curious" title="Ori" />
           </div>
         </div>
 

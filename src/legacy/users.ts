@@ -115,6 +115,8 @@ export function serializeUser(store: AppStore, userId: string) {
     contributionData: buildContributionData(store, user.id),
     contribution_data: buildContributionData(store, user.id),
     points: score.totalPoints,
+    pendingBadges: score.pendingBadges ?? [],
+    pending_badges: score.pendingBadges ?? [],
     location: user.location,
     voiceMinutesUsedToday: user.voiceMinutesUsedToday,
     voice_minutes_used_today: user.voiceMinutesUsedToday,
@@ -1267,6 +1269,19 @@ export async function handleUsersRequest(method: string, slug: string[], request
   if (slug.length === 2 && slug[0] === "tasks" && method === "DELETE") {
     return handleTaskDelete(request, slug[1]);
   }
+  if (slug.length === 2 && slug[0] === "badges" && slug[1] === "seen" && method === "POST") {
+    return handleBadgesSeen(request);
+  }
 
   return notFound("Endpoint not found.");
+}
+
+async function handleBadgesSeen(request: Request) {
+  return withStoreAsync(async (store) => {
+    const user = await requireUserFromRequest(store, request);
+    if (!user) return unauthorized();
+    const score = store.userScores.find((s) => s.userId === user.id);
+    if (score) score.pendingBadges = [];
+    return ok({ ok: true });
+  });
 }

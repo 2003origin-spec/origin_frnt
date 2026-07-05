@@ -193,35 +193,35 @@ export function AnalyticsCenterHighFidelity({ workspaceId, batchId }: Props) {
       <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
         <Card className="border bg-card">
           <CardContent className="p-4 flex flex-col justify-between h-24">
-            <span className="text-xs font-semibold text-muted-foreground uppercase">Average Score</span>
+            <span className="text-xs font-semibold text-muted-foreground uppercase break-words">Average Score</span>
             <div className="flex items-baseline justify-between mt-1">
-              <span className="text-2xl font-bold">{averageScore === null ? "—" : `${averageScore}%`}</span>
+              <span className="text-2xl font-bold min-w-0">{averageScore === null ? "—" : `${averageScore}%`}</span>
             </div>
           </CardContent>
         </Card>
         <Card className="border bg-card">
           <CardContent className="p-4 flex flex-col justify-between h-24">
-            <span className="text-xs font-semibold text-muted-foreground uppercase">Ranked Students</span>
+            <span className="text-xs font-semibold text-muted-foreground uppercase break-words">Ranked Students</span>
             <div className="flex items-baseline justify-between mt-1">
-              <span className="text-2xl font-bold">{leaderboard.length}</span>
+              <span className="text-2xl font-bold min-w-0">{leaderboard.length}</span>
               <Users className="w-4 h-4 text-muted-foreground" />
             </div>
           </CardContent>
         </Card>
         <Card className="border bg-card">
           <CardContent className="p-4 flex flex-col justify-between h-24">
-            <span className="text-xs font-semibold text-muted-foreground uppercase">Top Score</span>
+            <span className="text-xs font-semibold text-muted-foreground uppercase break-words">Top Score</span>
             <div className="flex items-baseline justify-between mt-1">
-              <span className="text-2xl font-bold">{topScore === null ? "—" : `${topScore}%`}</span>
+              <span className="text-2xl font-bold min-w-0">{topScore === null ? "—" : `${topScore}%`}</span>
               <TrendingUp className="w-4 h-4 text-emerald-500" />
             </div>
           </CardContent>
         </Card>
         <Card className="border bg-card">
           <CardContent className="p-4 flex flex-col justify-between h-24">
-            <span className="text-xs font-semibold text-muted-foreground uppercase">Weak Concepts</span>
+            <span className="text-xs font-semibold text-muted-foreground uppercase break-words">Weak Concepts</span>
             <div className="flex items-baseline justify-between mt-1">
-              <span className="text-2xl font-bold text-destructive">{uncoveredWeakCount} Topics</span>
+              <span className="text-2xl font-bold text-destructive min-w-0">{uncoveredWeakCount} Topics</span>
               <AlertTriangle className="w-3.5 h-3.5 text-destructive" />
             </div>
           </CardContent>
@@ -240,7 +240,7 @@ export function AnalyticsCenterHighFidelity({ workspaceId, batchId }: Props) {
               class, <span className="text-destructive">red = still to cover</span>.
             </CardDescription>
           </CardHeader>
-          <CardContent className="h-80 flex items-center justify-center p-2">
+          <CardContent className="h-80 flex items-center justify-center p-2 overflow-hidden">
             {radarData.length === 0 ? (
               <p className="text-xs text-muted-foreground">No topic snapshots yet for this batch.</p>
             ) : (
@@ -287,7 +287,7 @@ export function AnalyticsCenterHighFidelity({ workspaceId, batchId }: Props) {
                     />
                     <div className="space-y-0.5">
                       <h4
-                        className={`font-semibold text-sm ${
+                        className={`font-semibold text-sm line-clamp-1 min-w-0 ${
                           concept.covered ? "line-through text-muted-foreground" : ""
                         }`}
                       >
@@ -343,7 +343,7 @@ export function AnalyticsCenterHighFidelity({ workspaceId, batchId }: Props) {
                       onClick={() => openStudent(student)}
                       className="cursor-pointer hover:bg-muted/10 transition-colors"
                     >
-                      <td className="p-4 font-semibold text-sm">{student.displayName}</td>
+                      <td className="p-4 font-semibold text-sm truncate min-w-0 max-w-[160px]">{student.displayName}</td>
                       <td className="p-4 font-bold text-destructive">{Math.round(student.meanPercentage)}%</td>
                       <td className="p-4 text-center text-muted-foreground font-semibold">{student.attempts}</td>
                       <td className="p-4 text-center">
@@ -397,7 +397,7 @@ export function AnalyticsCenterHighFidelity({ workspaceId, batchId }: Props) {
                       }`}
                     >
                       <td className="p-4 text-center font-bold">#{student.rank}</td>
-                      <td className="p-4 font-semibold text-sm">{student.displayName}</td>
+                      <td className="p-4 font-semibold text-sm truncate min-w-0 max-w-[160px]">{student.displayName}</td>
                       <td className="p-4 font-bold">{Math.round(student.meanPercentage)}%</td>
                       <td className="p-4 text-center text-muted-foreground font-semibold">{student.attempts}</td>
                       <td className="p-4 text-center text-muted-foreground">
@@ -466,7 +466,7 @@ export function AnalyticsCenterHighFidelity({ workspaceId, batchId }: Props) {
                       const acc = Math.round((row.accuracy ?? 0) * 100);
                       return (
                         <tr key={`${row.subject}-${row.topic}`} className="hover:bg-muted/10 transition-colors">
-                          <td className="p-4 font-semibold text-sm">{row.topic}</td>
+                          <td className="p-4 font-semibold text-sm truncate min-w-0 max-w-[160px]">{row.topic}</td>
                           <td className="p-4 capitalize text-muted-foreground">{row.subject}</td>
                           <td
                             className={`p-4 text-center font-bold ${

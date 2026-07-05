@@ -390,7 +390,7 @@ export async function getPublicationDetail(
 }
 
 /**
- * Origin AI uses this to fetch the stored full solution before generation.
+ * Ori uses this to fetch the stored full solution before generation.
  * Returns the question version so callers can read hint/full_solution/etc.
  */
 export async function getPublishedSolutionForQuestion(

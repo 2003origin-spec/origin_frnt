@@ -17,7 +17,7 @@ const SYNTHETIC: { emoji: string; text: string }[] = [
   { emoji: '🎯', text: 'Sneha cracked a JEE-level electrostatics problem' },
   { emoji: '🏆', text: 'Arjun topped this week\'s Physics leaderboard' },
   { emoji: '📚', text: '847 students completed their DPP today' },
-  { emoji: '⚡', text: 'Origin AI explained thermodynamics in 12 seconds' },
+  { emoji: '⚡', text: 'Ori explained thermodynamics in 12 seconds' },
   { emoji: '🔥', text: 'Meera extended her streak to 34 days' },
   { emoji: '📈', text: 'Vikram moved from 87th → 94th percentile this week' },
   { emoji: '🧠', text: '2,341 students are solving right now' },

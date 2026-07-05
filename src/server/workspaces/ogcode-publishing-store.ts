@@ -283,7 +283,7 @@ export async function archiveAsSuperseded(input: {
 
 /**
  * Returns the latest published row for a given question (the public
- * face of the OGCode contribution). Origin AI uses this to read the
+ * face of the OGCode contribution). Ori uses this to read the
  * stored full_solution before generation.
  */
 export async function getPublishedPublicationForQuestion(

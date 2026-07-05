@@ -21,13 +21,13 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import type { ViewState, Book } from '@/types';
+import type { ViewState, Book, Note } from '@/types';
 import type { NCERTBook } from '@/data/ncertBooks';
-import { mockBooks, mockNotes } from '@/data/mockData';
-import { apiCall } from '@/lib/api';
+import { mockBooks } from '@/data/mockData';
 import NCERTReader from '@/components/study/NCERTReader';
 import NCERTCorner from '@/components/study/NCERTCorner';
 import { useAuth } from '@/context/AuthContext';
+import { apiCall } from '@/lib/api';
 
 interface StudyCornerProps {
     catalog: NCERTBook[];
@@ -41,14 +41,11 @@ export default function StudyCorner({ catalog }: StudyCornerProps) {
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedBook, setSelectedBook] = useState<Book | null>(null);
 
-    // Local state for library management. The saved library is hydrated from the
-    // study backend (`/study/books/library`) on mount and persisted on toggle, so
-    // it survives a device change instead of being local-only.
-    const [localBooks] = useState<Book[]>(mockBooks);
+    // Books & library state — populated from API, fall back to mock on error
+    const [localBooks, setLocalBooks] = useState<Book[]>([]);
+    const [booksLoading, setBooksLoading] = useState(true);
     const [userLibrary, setUserLibrary] = useState<Set<string>>(new Set());
-    const [likedBooks, setLikedBooks] = useState<Set<string>>(
-        new Set(localBooks.filter(b => b.isLiked).map(b => b.id))
-    );
+    const [likedBooks, setLikedBooks] = useState<Set<string>>(new Set());
 
     // --- Folder & Organization State ---
     const [folders, setFolders] = useState<Record<string, string[]>>({
@@ -57,58 +54,69 @@ export default function StudyCorner({ catalog }: StudyCornerProps) {
     });
     const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
 
-    // --- Dynamic Note Aggregation Logic ---
-    // Reads localStorage, so must run client-side only (skipped during SSR prerender).
-    const getAggregatedNotes = () => {
-        const aggregated: any[] = [];
-        if (typeof window === 'undefined') return mockNotes;
-
-        mockBooks.forEach(book => {
-            const savedNote = localStorage.getItem(`origin_notes_${book.id}`);
+    // Returns pen-highlight annotations from localStorage for the given books list
+    const getLocalHighlights = (books: Book[]) => {
+        if (typeof window === 'undefined') return [];
+        const highlights: any[] = [];
+        books.forEach(book => {
             const savedStrokes = localStorage.getItem(`origin_strokes_${book.id}`);
-
-            // If user has typed notes
-            if (savedNote && savedNote.trim() !== '' && !savedNote.includes("Start typing here...")) {
-                aggregated.push({
-                    id: `note-${book.id}`,
-                    bookId: book.id,
-                    content: savedNote.substring(0, 200) + (savedNote.length > 200 ? '...' : ''),
-                    fullContent: savedNote,
-                    type: 'notebook',
-                    color: '#e11d48',
-                    createdAt: new Date(), // Mock date since we don't store it yet
-                    tags: ['myself', book.subject.toLowerCase()]
-                });
-            }
-
-            // If user has highlights/strokes
-            if (savedStrokes) {
-                try {
-                    const strokes = JSON.parse(savedStrokes);
-                    if (strokes.length > 0) {
-                        const highlightsCount = strokes.filter((s: any) => s.type === 'highlight').length;
-                        if (highlightsCount > 0) {
-                            aggregated.push({
-                                id: `highlight-${book.id}`,
-                                bookId: book.id,
-                                content: `Successfully highlighted ${highlightsCount} important segments in this book.`,
-                                type: 'highlight',
-                                color: '#fbbf24',
-                                createdAt: new Date(),
-                                tags: ['highlight', 'important']
-                            });
-                        }
-                    }
-                } catch (e) { console.error(e); }
-            }
+            if (!savedStrokes) return;
+            try {
+                const strokes = JSON.parse(savedStrokes);
+                const count = strokes.filter((s: any) => s.type === 'highlight').length;
+                if (count > 0) {
+                    highlights.push({
+                        id: `highlight-${book.id}`,
+                        bookId: book.id,
+                        content: `Successfully highlighted ${count} important segments in this book.`,
+                        type: 'highlight',
+                        color: '#fbbf24',
+                        createdAt: new Date(),
+                        tags: ['highlight', 'important']
+                    });
+                }
+            } catch { /* ignore */ }
         });
-
-        return aggregated.length > 0 ? aggregated : mockNotes; // Fallback to mock if empty
+        return highlights;
     };
 
-    const [aggregatedNotes, setAggregatedNotes] = useState<any[]>(mockNotes);
+    const [aggregatedNotes, setAggregatedNotes] = useState<any[]>([]);
+
+    // Fetch books + notes from backend on mount
     useEffect(() => {
-        setAggregatedNotes(getAggregatedNotes());
+        let cancelled = false;
+        setBooksLoading(true);
+        apiCall('/study/books')
+            .then(async (data: Book[]) => {
+                if (cancelled) return;
+                setLocalBooks(data);
+                const savedIds = new Set(data.filter((b: Book) => b.isLiked).map((b: Book) => b.id));
+                setUserLibrary(savedIds);
+                setLikedBooks(new Set(savedIds));
+
+                // Fetch notes and merge with localStorage highlights
+                try {
+                    const apiNotes: Note[] = await apiCall('/study/notes');
+                    if (cancelled) return;
+                    const merged = [
+                        ...apiNotes.map((n: Note) => ({ ...n, type: 'notebook' })),
+                        ...getLocalHighlights(data),
+                    ];
+                    setAggregatedNotes(merged);
+                } catch {
+                    if (!cancelled) setAggregatedNotes(getLocalHighlights(data));
+                }
+            })
+            .catch(() => {
+                if (!cancelled) {
+                    // Fall back to mock data when offline / unauthenticated
+                    setLocalBooks(mockBooks);
+                    setUserLibrary(new Set(['book-1', 'book-3']));
+                    setAggregatedNotes(getLocalHighlights(mockBooks));
+                }
+            })
+            .finally(() => { if (!cancelled) setBooksLoading(false); });
+        return () => { cancelled = true; };
     }, []);
 
     const toggleLike = (bookId: string) => {
@@ -139,28 +147,22 @@ export default function StudyCorner({ catalog }: StudyCornerProps) {
     }, [user?.id]);
 
     const toggleLibrary = (bookId: string) => {
-        const wasInLibrary = userLibrary.has(bookId);
-        const newLib = new Set(userLibrary);
-        if (wasInLibrary) {
-            newLib.delete(bookId);
+        const prev = new Set(userLibrary);
+        const next = new Set(userLibrary);
+        if (next.has(bookId)) {
+            next.delete(bookId);
         } else {
-            newLib.add(bookId);
+            next.add(bookId);
         }
-        setUserLibrary(newLib);
-        // Persist to the backend; revert optimistic update on failure.
-        apiCall(`/study/books/${bookId}/toggle_save/`, { method: 'POST', body: JSON.stringify({}) })
+        setUserLibrary(next); // optimistic
+        apiCall(`/study/books/${bookId}/toggle_save`, { method: 'POST' })
             .catch(() => {
-                setUserLibrary((prev) => {
-                    const reverted = new Set(prev);
-                    if (wasInLibrary) reverted.add(bookId);
-                    else reverted.delete(bookId);
-                    return reverted;
-                });
-                toast.error('Could not update your library. Please try again.');
+                setUserLibrary(prev); // revert on failure
+                toast.error('Failed to update library');
             });
     };
 
-    const filteredBooks = mockBooks.filter(book =>
+    const filteredBooks = localBooks.filter(book =>
         book.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         book.subject.toLowerCase().includes(searchQuery.toLowerCase())
     );
@@ -405,7 +407,7 @@ export default function StudyCorner({ catalog }: StudyCornerProps) {
             <NCERTReader
                 book={selectedBook}
                 onBack={() => setSelectedBook(null)}
-                initialNotes={mockNotes.filter(n => n.bookId === selectedBook.id)}
+                initialNotes={(aggregatedNotes.filter((n: any) => n.bookId === selectedBook.id && n.type === 'notebook') as Note[])}
             />
         );
     }
@@ -602,7 +604,7 @@ export default function StudyCorner({ catalog }: StudyCornerProps) {
                                         {aggregatedNotes.slice(0, 3).map((note, idx) => (
                                             <RecentNoteCard
                                                 key={idx}
-                                                title={note.bookId ? mockBooks.find(b => b.id === note.bookId)?.title || "Unknown Book" : note.title || "Quick Note"}
+                                                title={note.bookId ? localBooks.find(b => b.id === note.bookId)?.title || "Unknown Book" : note.title || "Quick Note"}
                                                 date={note.type === 'highlight' ? 'Recent Highlight' : '2h ago'}
                                             />
                                         ))}
@@ -619,7 +621,7 @@ export default function StudyCorner({ catalog }: StudyCornerProps) {
                                         <Share2 className="w-4 h-4 sm:w-5 sm:h-5" /> Suggested
                                     </h3>
                                     <div className="space-y-4">
-                                        {mockBooks.slice(0, 3).map((book, idx) => (
+                                        {localBooks.slice(0, 3).map((book, idx) => (
                                             <div
                                                 key={idx}
                                                 onClick={() => setSelectedBook(book)}
@@ -829,7 +831,7 @@ export default function StudyCorner({ catalog }: StudyCornerProps) {
                             <div className="md:col-span-3 grid grid-cols-1 lg:grid-cols-2 gap-8">
                                 {aggregatedNotes.filter(n =>
                                     n.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                                    mockBooks.find(b => b.id === n.bookId)?.title.toLowerCase().includes(searchQuery.toLowerCase())
+                                    localBooks.find(b => b.id === n.bookId)?.title.toLowerCase().includes(searchQuery.toLowerCase())
                                 ).map((note, i) => {
                                     const book = localBooks.find(b => b.id === note.bookId);
                                     return (

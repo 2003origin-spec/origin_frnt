@@ -172,7 +172,7 @@ async function callExternalOriginAiService(
  method: "POST",
  headers: originAiServiceHeaders(payload.requestId),
  body: JSON.stringify(payload),
- }), "Origin AI service text provider timed out.");
+ }), "Ori service text provider timed out.");
 
  if (!response.ok) {
  return null;
@@ -262,23 +262,23 @@ export async function transcribeOriginAiVoiceAudio(
 ): Promise<OriginAiVoiceTranscriptionResponse> {
  const endpoint = originAiServiceEndpoint("/v1/origin-ai/transcribe");
  if (!endpoint) {
- throw new Error("Origin AI service is not configured for voice transcription.");
+ throw new Error("Ori service is not configured for voice transcription.");
  }
 
  const response = await withTimeout(fetch(endpoint, {
  method: "POST",
  headers: originAiServiceHeaders(requestId),
  body: JSON.stringify({ audioData, mimeType }),
- }), "Origin AI voice transcription timed out.");
+ }), "Ori voice transcription timed out.");
 
  if (!response.ok) {
- throw new Error("Origin AI voice transcription service returned an error.");
+ throw new Error("Ori voice transcription service returned an error.");
  }
 
  const data = (await response.json()) as { transcript?: string; model?: string };
  const transcript = data.transcript?.trim() || "";
  if (!transcript) {
- throw new Error("Origin AI could not transcribe the voice message.");
+ throw new Error("Ori could not transcribe the voice message.");
  }
 
  return {
@@ -296,12 +296,12 @@ export async function synthesizeOriginAiVoiceAudio(
  const cleaned = cleanTextForSpeech(text);
 
  if (!cleaned) {
- throw new Error("Origin AI voice synthesis text is empty after cleaning.");
+ throw new Error("Ori voice synthesis text is empty after cleaning.");
  }
 
  const endpoint = originAiServiceEndpoint("/v1/origin-ai/speak");
  if (!endpoint) {
- throw new Error("Origin AI service is not configured for voice synthesis.");
+ throw new Error("Ori service is not configured for voice synthesis.");
  }
 
  const voiceName = voiceNameOverride?.trim() || process.env.GEMINI_LIVE_VOICE_NAME?.trim() || DEFAULT_GEMINI_LIVE_VOICE;
@@ -313,18 +313,18 @@ export async function synthesizeOriginAiVoiceAudio(
  headers: originAiServiceHeaders(requestId),
  body: JSON.stringify({ text: cleaned, voiceName }),
  }),
- "Origin AI voice synthesis timed out.",
+ "Ori voice synthesis timed out.",
  );
  } catch (error) {
  const detail = error instanceof Error ? error.message : String(error);
  console.error(
  `[OriginAI TTS] service synthesis failed (voice=${voiceName}, req=${requestId}): ${detail}`,
  );
- throw new Error(`Origin AI voice synthesis failed: ${detail}`);
+ throw new Error(`Ori voice synthesis failed: ${detail}`);
  }
 
  if (!response.ok) {
- throw new Error("Origin AI voice synthesis service returned an error.");
+ throw new Error("Ori voice synthesis service returned an error.");
  }
 
  const data = (await response.json()) as {
@@ -336,7 +336,7 @@ export async function synthesizeOriginAiVoiceAudio(
  console.error(
  `[OriginAI TTS] No audio in service response (voice=${voiceName}, req=${requestId})`,
  );
- throw new Error("Origin AI could not extract audio from the synthesis response.");
+ throw new Error("Ori could not extract audio from the synthesis response.");
  }
 
  return {
@@ -356,7 +356,7 @@ export async function synthesizeOriginAiVoiceAudioSegments(
 ): Promise<OriginAiVoiceSynthesisResponse[]> {
  const segments = splitTextForSpeech(text);
  if (segments.length === 0) {
- throw new Error("Origin AI voice synthesis text is empty.");
+ throw new Error("Ori voice synthesis text is empty.");
  }
 
  // Synthesize sequentially so a quota/rate error on segment N does not

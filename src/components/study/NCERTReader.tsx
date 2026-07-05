@@ -269,7 +269,7 @@ export default function NCERTReader({ book, onBack, initialNotes = [], activeCha
                         className="bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 rounded-full px-4 h-9 flex items-center gap-2 group transition-all"
                     >
                         <Sparkles className="w-4 h-4 group-hover:animate-spin-slow" />
-                        <span className="text-xs font-bold tracking-tight">Ask Origin AI</span>
+                        <span className="text-xs font-bold tracking-tight">Ask Ori</span>
                     </Button>
                     
                     <Button
@@ -283,7 +283,7 @@ export default function NCERTReader({ book, onBack, initialNotes = [], activeCha
                 </div>
             </header>
 
-            {/* Floating "Ask Origin AI" Action Menu */}
+            {/* Floating "Ask Ori" Action Menu */}
             {floatingMenuPos && (
                 <div 
                     className="fixed z-[100] animate-in fade-in zoom-in-95 duration-200 floating-menu-container"
@@ -349,7 +349,7 @@ export default function NCERTReader({ book, onBack, initialNotes = [], activeCha
                                 }
                                 return (
                                     <div className="flex flex-col items-center justify-center h-full p-10 text-center">
-                                        <p className="text-lg text-muted-foreground font-serif">PDF source unavailable.</p>
+                                        <p className="text-lg text-muted-foreground font-sans">PDF source unavailable.</p>
                                     </div>
                                 );
                             })()}
@@ -409,7 +409,7 @@ export default function NCERTReader({ book, onBack, initialNotes = [], activeCha
                                 onClick={() => insertFormatting('*', '*')}
                                 title="Italic"
                             >
-                                <span className="italic text-sm font-serif">I</span>
+                                <span className="italic text-sm font-sans">I</span>
                             </Button>
                             <Button 
                                 variant="ghost" 

@@ -203,7 +203,7 @@ function captureSelection(paint: boolean): void {
     return;
   }
 
-  // Selections that originate inside the Origin AI panel are chat content, not page context.
+  // Selections that originate inside the Ori panel are chat content, not page context.
   const anchorNode = selection?.anchorNode;
   const anchorEl = anchorNode instanceof Element ? anchorNode : anchorNode?.parentElement ?? null;
   if (anchorEl?.closest('[data-origin-ai-root="true"]')) {
@@ -285,7 +285,7 @@ function handleTouchEnd() {
 
 /**
  * Returns true only for a click on a genuinely empty / layout area of the
- * page — not on text, interactive elements, or the Origin AI panel.
+ * page — not on text, interactive elements, or the Ori panel.
  *
  * Key rule: we check DIRECT text nodes of the clicked element, not its full
  * subtree. A layout <div> wrapping paragraphs has no direct text → blank.
@@ -294,7 +294,7 @@ function handleTouchEnd() {
 function isBlankSpace(target: Element | null): boolean {
   if (!target) return true;
 
-  // Never clear inside Origin AI, sidebars, dialogs, or tutorial overlays.
+  // Never clear inside Ori, sidebars, dialogs, or tutorial overlays.
   if (
     target.closest('[data-origin-ai-root="true"]') ||
     target.closest('aside') ||

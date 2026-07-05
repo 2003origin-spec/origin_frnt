@@ -21,15 +21,26 @@ interface PointsSummaryProps {
 }
 
 const TIER_COLORS: Record<string, string> = {
-    'Novice': 'text-slate-400 border-slate-400 bg-slate-400/10',
-    'Beginner': 'text-green-400 border-green-400 bg-green-400/10',
-    'Apprentice': 'text-teal-400 border-teal-400 bg-teal-400/10',
-    'Intermediate': 'text-blue-400 border-blue-400 bg-blue-400/10',
-    'Advanced': 'text-indigo-400 border-indigo-400 bg-indigo-400/10',
-    'Expert': 'text-purple-400 border-purple-400 bg-purple-400/10',
-    'Master': 'text-pink-400 border-pink-400 bg-pink-400/10',
-    'Grandmaster': 'text-amber-400 border-amber-400 bg-amber-400/10',
-    'Legend': 'text-primary border-primary bg-primary/10',
+    'Novice':       'text-amber-700  border-amber-700  bg-amber-700/10',
+    'Beginner':     'text-slate-400  border-slate-400  bg-slate-400/10',
+    'Apprentice':   'text-yellow-500 border-yellow-500 bg-yellow-500/10',
+    'Intermediate': 'text-teal-400   border-teal-400   bg-teal-400/10',
+    'Advanced':     'text-blue-400   border-blue-400   bg-blue-400/10',
+    'Elite':        'text-violet-400 border-violet-400 bg-violet-400/10',
+    'Expert':       'text-red-400    border-red-400    bg-red-400/10',
+    'Veteran':      'text-pink-400   border-pink-400   bg-pink-400/10',
+    'Master':       'text-purple-400 border-purple-400 bg-purple-400/10',
+    'Grandmaster':  'text-amber-400  border-amber-400  bg-amber-400/10',
+    'Legend':       'text-rose-400   border-rose-400   bg-rose-400/10',
+    'Mythic':       'text-indigo-400 border-indigo-400 bg-indigo-400/10',
+    'Immortal':     'text-sky-400    border-sky-400    bg-sky-400/10',
+    'Eternal':      'text-cyan-400   border-cyan-400   bg-cyan-400/10',
+    'Prime':        'text-emerald-400 border-emerald-400 bg-emerald-400/10',
+    'Celestial':    'text-blue-300   border-blue-300   bg-blue-300/10',
+    'Ascendant':    'text-violet-300 border-violet-300 bg-violet-300/10',
+    'Divine':       'text-orange-400 border-orange-400 bg-orange-400/10',
+    'Omniscient':   'text-fuchsia-400 border-fuchsia-400 bg-fuchsia-400/10',
+    'Origin':       'text-primary    border-primary    bg-primary/10',
 };
 
 const HOW_EARNED = [
@@ -67,7 +78,7 @@ export default function PointsSummary({ data, onNextSteps }: PointsSummaryProps)
 
 
     return (
-        <div className="w-full h-full neu-raised p-5 flex flex-col justify-between">
+        <div className="relative w-full h-full neu-raised p-5 flex flex-col justify-between">
 
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-2">

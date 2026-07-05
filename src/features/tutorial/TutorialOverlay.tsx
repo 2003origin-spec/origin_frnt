@@ -1,10 +1,29 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTutorial } from './TutorialProvider';
-import { ChevronRight, ChevronLeft, X, Sparkles } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { ChevronRight, ChevronLeft, X } from 'lucide-react';
+
+// Cycle through different Ori expressions per step for variety
+const ORI_IMAGES = [
+  '/ori2d/ori-happy.png',
+  '/ori2d/ori-thubmsup.png',
+  '/ori2d/ori-exited.png',
+  '/ori2d/ori-curious.png',
+  '/ori2d/ori-winking.png',
+  '/ori2d/ori-proud.png',
+  '/ori2d/ori-cheerful.png',
+  '/ori2d/ori-reading.png',
+  '/ori2d/ori-thinking.png',
+  '/ori2d/ori-determined.png',
+  '/ori2d/ori-surprise.png',
+  '/ori2d/ori-laptop.png',
+];
+
+function getOriImage(stepIndex: number): string {
+  return ORI_IMAGES[stepIndex % ORI_IMAGES.length];
+}
 
 export const TutorialOverlay: React.FC = () => {
   const { isActive, currentStep, steps, nextStep, prevStep, skipTutorial } = useTutorial();
@@ -12,244 +31,333 @@ export const TutorialOverlay: React.FC = () => {
   const step = steps[currentStep];
 
   useEffect(() => {
-    if (!isActive) return;
+    if (!isActive || !step) return;
 
-    const updatePosition = () => {
+    let rafId: number;
+    let roCleanup: (() => void) | null = null;
+
+    const measure = () => {
       if (step.targetId === 'tutorial-welcome') {
         setTargetRect(null);
         return;
       }
-
       const element = document.getElementById(step.targetId);
-      
-      // Auto-open mentor if we are on the mentor detail step
-      if (step.targetId === 'tutorial-mentor' && !element) {
-        document.getElementById('tutorial-mentor-trigger')?.click();
-        // Wait a bit for the animation to start and element to appear
-        setTimeout(updatePosition, 300);
-        return;
-      }
-
       if (element) {
         setTargetRect(element.getBoundingClientRect());
-        // Scroll element into view smoothly if needed
-        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
       } else {
         setTargetRect(null);
       }
     };
 
-    updatePosition();
-    window.addEventListener('resize', updatePosition);
-    window.addEventListener('scroll', updatePosition, { passive: true });
+    const scheduleUpdate = () => {
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(measure);
+    };
+
+    const init = () => {
+      if (step.targetId === 'tutorial-welcome') {
+        setTargetRect(null);
+        return;
+      }
+
+      // Handle mentor panel trigger
+      if (step.targetId === 'tutorial-mentor') {
+        const el = document.getElementById(step.targetId);
+        if (!el) {
+          document.getElementById('tutorial-mentor-trigger')?.click();
+          setTimeout(init, 350);
+          return;
+        }
+      }
+
+      const element = document.getElementById(step.targetId);
+      if (element) {
+        // Scroll first, then re-measure after scroll settles
+        element.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        // Measure immediately for a quick first paint
+        setTargetRect(element.getBoundingClientRect());
+        // Re-measure after smooth scroll finishes (~400ms)
+        const t = setTimeout(measure, 420);
+
+        // Keep tracking if element resizes (e.g. panel expands)
+        if (typeof ResizeObserver !== 'undefined') {
+          const ro = new ResizeObserver(scheduleUpdate);
+          ro.observe(element);
+          roCleanup = () => ro.disconnect();
+        }
+
+        return () => clearTimeout(t);
+      } else {
+        setTargetRect(null);
+      }
+    };
+
+    init();
+    window.addEventListener('resize', scheduleUpdate);
+    window.addEventListener('scroll', scheduleUpdate, { passive: true });
 
     return () => {
-      window.removeEventListener('resize', updatePosition);
-      window.removeEventListener('scroll', updatePosition);
+      cancelAnimationFrame(rafId);
+      roCleanup?.();
+      window.removeEventListener('resize', scheduleUpdate);
+      window.removeEventListener('scroll', scheduleUpdate);
     };
   }, [isActive, step, currentStep]);
 
-  if (!isActive) return null;
+  if (!isActive || !step) return null;
+
+  const placement = step.placement ?? 'bottom';
+  const pos = calculateTooltipPosition(targetRect, placement);
+  const isLast = currentStep === steps.length - 1;
 
   return (
     <div className="fixed inset-0 z-[9999] pointer-events-none overflow-hidden">
-      {/* Dimmed Background with SVG Mask (Spotlight) */}
-      <svg className="absolute inset-0 w-full h-full pointer-events-auto">
+      {/* Spotlight overlay */}
+      <svg className="absolute inset-0 w-full h-full pointer-events-auto" onClick={skipTutorial}>
         <defs>
-          <mask id="spotlight-mask">
+          <mask id="tutorial-spotlight-mask">
             <rect x="0" y="0" width="100%" height="100%" fill="white" />
             {targetRect && (
               <motion.rect
                 initial={false}
                 animate={{
-                  x: targetRect.x - 8,
-                  y: targetRect.y - 8,
-                  width: targetRect.width + 16,
-                  height: targetRect.height + 16,
-                  rx: 16
+                  x: targetRect.x - 10,
+                  y: targetRect.y - 10,
+                  width: targetRect.width + 20,
+                  height: targetRect.height + 20,
+                  rx: 14,
                 }}
-                transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+                transition={{ type: 'spring', stiffness: 280, damping: 28 }}
                 fill="black"
               />
             )}
           </mask>
         </defs>
         <rect
-          x="0"
-          y="0"
-          width="100%"
-          height="100%"
-          fill="rgba(0, 0, 0, 0.7)"
-          mask="url(#spotlight-mask)"
+          x="0" y="0" width="100%" height="100%"
+          fill="rgba(0,0,0,0.62)"
+          mask="url(#tutorial-spotlight-mask)"
         />
       </svg>
 
-      {/* Tooltip Content */}
+      {/* Tooltip card */}
       <AnimatePresence mode="wait">
         <motion.div
           key={currentStep}
-          initial={{ opacity: 0, scale: 0.9, y: 10 }}
-          animate={{ 
-            opacity: 1, 
-            scale: 1, 
-            y: 0,
-            transition: { type: 'spring', stiffness: 500, damping: 35 }
-          }}
-          exit={{ opacity: 0, scale: 0.9, y: 10 }}
-          className="pointer-events-none fixed inset-0 z-[10000] flex items-start justify-start p-4"
+          initial={{ opacity: 0, scale: 0.94, y: 8 }}
+          animate={{ opacity: 1, scale: 1, y: 0, transition: { type: 'spring', stiffness: 420, damping: 32 } }}
+          exit={{ opacity: 0, scale: 0.94, y: 8 }}
+          className="pointer-events-none fixed inset-0 z-[10000]"
         >
-          <div 
-            className="pointer-events-auto"
-            style={calculateTooltipPosition(targetRect, step.placement || 'bottom')}
+          <div
+            className="pointer-events-auto absolute neu-raised"
+            style={{
+              ...pos,
+              width: 'min(360px, calc(100vw - 32px))',
+              borderRadius: 20,
+              padding: '20px 22px 18px',
+            }}
           >
-            <div className="w-[calc(100vw-32px)] sm:w-[380px] max-h-[80vh] overflow-y-auto custom-scrollbar premium-card bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border border-blue-200/50 dark:border-white/10 p-4 sm:p-6 shadow-2xl ring-1 ring-black/5 dark:ring-white/5 relative">
-            {/* Ambient Background Glow in Tooltip */}
-            <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-3xl -z-10" />
-            
-            <div className="flex items-start justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
-                  <Sparkles className="w-4 h-4 text-primary" />
-                </div>
-                <h3 className="text-sm font-black uppercase tracking-widest text-[#1e293b] dark:text-white">
+            {/* Directional arrow caret pointing at the target */}
+            {targetRect && placement !== 'center' && (
+              <div
+                aria-hidden
+                style={{
+                  position: 'absolute',
+                  ...(placement === 'bottom' || placement === 'top'
+                    ? {
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        [placement === 'bottom' ? 'top' : 'bottom']: -8,
+                        borderLeft: '8px solid transparent',
+                        borderRight: '8px solid transparent',
+                        ...(placement === 'bottom'
+                          ? { borderBottom: '8px solid hsl(var(--neu-bg))' }
+                          : { borderTop: '8px solid hsl(var(--neu-bg))' }),
+                      }
+                    : {
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        [placement === 'right' ? 'left' : 'right']: -8,
+                        borderTop: '8px solid transparent',
+                        borderBottom: '8px solid transparent',
+                        ...(placement === 'right'
+                          ? { borderRight: '8px solid hsl(var(--neu-bg))' }
+                          : { borderLeft: '8px solid hsl(var(--neu-bg))' }),
+                      }),
+                  width: 0,
+                  height: 0,
+                  pointerEvents: 'none',
+                }}
+              />
+            )}
+            {/* Subtle primary glow */}
+            <div
+              className="absolute inset-0 rounded-[20px] pointer-events-none overflow-hidden"
+              aria-hidden
+            >
+              <div
+                className="absolute -top-8 -right-8 w-32 h-32 rounded-full blur-[48px] opacity-20"
+                style={{ background: 'radial-gradient(circle, var(--color-primary, #0066ff), transparent)' }}
+              />
+            </div>
+
+            {/* Header row */}
+            <div className="relative flex items-start justify-between gap-3 mb-3">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <motion.img
+                  key={currentStep}
+                  src={getOriImage(currentStep)}
+                  alt="Ori"
+                  className="w-10 h-10 object-contain shrink-0 select-none"
+                  initial={{ scale: 0.7, rotate: -12, opacity: 0 }}
+                  animate={{ scale: 1, rotate: 0, opacity: 1 }}
+                  transition={{ type: 'spring', stiffness: 380, damping: 22 }}
+                  draggable={false}
+                />
+                <h3 className="text-[11px] font-black uppercase tracking-[0.18em] text-foreground truncate">
                   {step.title}
                 </h3>
               </div>
-              <button 
+              <button
                 onClick={skipTutorial}
-                className="group flex items-center gap-1.5 px-3 py-1.5 hover:bg-slate-100 dark:hover:bg-white/5 rounded-full transition-all duration-300"
-                title="Skip Tutorial"
+                className="shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-full text-muted-foreground hover:text-foreground hover:bg-black/5 transition-all text-[10px] font-black uppercase tracking-widest"
               >
-                <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground group-hover:text-primary transition-colors">Skip</span>
-                <X className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary transition-colors" />
+                Skip <X className="w-3 h-3" />
               </button>
             </div>
 
-            <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed font-medium mb-8">
+            {/* Description */}
+            <p className="relative text-sm text-muted-foreground leading-relaxed font-medium mb-5">
               {step.description}
             </p>
 
-            <div className="flex items-center justify-between">
-              <div className="flex gap-1.5">
+            {/* Footer: dots + nav */}
+            <div className="relative flex items-center justify-between">
+              {/* Progress dots */}
+              <div className="flex items-center gap-1.5">
                 {steps.map((_, i) => (
-                  <div 
-                    key={i} 
-                    className={`h-1.5 rounded-full transition-all duration-300 ${i === currentStep ? 'w-6 bg-primary' : 'w-1.5 bg-slate-200 dark:bg-white/10'}`}
+                  <div
+                    key={i}
+                    className="h-1.5 rounded-full transition-all duration-300"
+                    style={{
+                      width: i === currentStep ? 20 : 6,
+                      background: i === currentStep
+                        ? 'var(--color-primary, #0066ff)'
+                        : 'hsl(var(--neu-shadow, 215 28% 17%) / 0.18)',
+                    }}
                   />
                 ))}
               </div>
 
-              <div className="flex items-center gap-3">
+              {/* Navigation buttons */}
+              <div className="flex items-center gap-2">
                 {currentStep > 0 && (
                   <button
                     onClick={prevStep}
-                    className="p-3 text-slate-400 hover:text-slate-600 dark:hover:text-white transition-all hover:scale-110 active:scale-90"
+                    className="p-2 rounded-xl text-muted-foreground hover:text-foreground hover:bg-black/5 transition-all"
+                    aria-label="Previous"
                   >
-                    <ChevronLeft className="w-5 h-5" />
+                    <ChevronLeft className="w-4 h-4" />
                   </button>
                 )}
-                <Button 
+                <button
                   onClick={nextStep}
-                  className="relative overflow-hidden bg-primary hover:opacity-90 text-white rounded-full px-6 h-10 text-[11px] font-black uppercase tracking-[0.2em] shadow-lg shadow-primary/20 transition-all hover:scale-105 active:scale-95 group border-none"
+                  className="flex items-center gap-1.5 px-5 py-2 rounded-full text-white text-[11px] font-black uppercase tracking-[0.15em] transition-all hover:opacity-90 active:scale-95"
+                  style={{
+                    background: 'var(--color-primary, #0066ff)',
+                    boxShadow: '0 4px 14px rgba(0,102,255,0.30)',
+                  }}
                 >
-                  <span className="relative z-10 flex items-center">
-                    {currentStep === steps.length - 1 ? 'Finish' : 'Next'}
-                    <ChevronRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
-                  </span>
-                  {/* Subtle shimmer effect on hover */}
-                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:animate-[shimmer_2s_infinite] transition-transform" />
-                </Button>
+                  {isLast ? 'Done' : 'Next'}
+                  {!isLast && <ChevronRight className="w-3.5 h-3.5" />}
+                </button>
               </div>
             </div>
+
+            {/* Step counter */}
+            {steps.length > 1 && (
+              <div className="relative mt-3 text-center text-[9px] font-black text-muted-foreground/50 uppercase tracking-widest">
+                {currentStep + 1} / {steps.length}
+              </div>
+            )}
           </div>
-        </div>
-      </motion.div>
+        </motion.div>
       </AnimatePresence>
     </div>
   );
 };
 
-function calculateTooltipPosition(rect: DOMRect | null, placement: string) {
+function calculateTooltipPosition(rect: DOMRect | null, placement: string): React.CSSProperties {
   if (!rect) {
-    return { position: 'fixed' as const, top: '50%', left: '50%', transform: 'translate(-50%, -50%)' };
+    return { position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)' };
   }
 
-  const gap = 20;
-  const margin = 20;
-  const tooltipWidth = 380;
-  const tooltipEstimatedHeight = 250;
+  const GAP = 18;
+  const MARGIN = 16;
+  const TW = 360;
+  const TH = 230;
 
-  // Initial calculations
-  let top = rect.top + rect.height + gap;
-  let left = rect.left + rect.width / 2;
-  let transformX = '-50%';
-  let transformY = '0%';
+  let top: number;
+  let left: number;
+  let tx = '-50%';
+  let ty = '0%';
 
-  const currentPlacement = placement;
-
-  if (currentPlacement === 'top') {
-    top = rect.top - gap;
-    transformY = '-100%';
-  } else if (currentPlacement === 'left') {
-    left = rect.left - gap;
+  if (placement === 'top') {
+    top = rect.top - GAP;
+    left = rect.left + rect.width / 2;
+    ty = '-100%';
+  } else if (placement === 'left') {
     top = rect.top + rect.height / 2;
-    transformX = '-100%';
-    transformY = '-50%';
-  } else if (currentPlacement === 'right') {
-    left = rect.left + rect.width + gap;
+    left = rect.left - GAP;
+    tx = '-100%';
+    ty = '-50%';
+  } else if (placement === 'right') {
     top = rect.top + rect.height / 2;
-    transformX = '0%';
-    transformY = '-50%';
+    left = rect.right + GAP;
+    tx = '0%';
+    ty = '-50%';
+  } else {
+    // bottom (default)
+    top = rect.bottom + GAP;
+    left = rect.left + rect.width / 2;
   }
 
-  // SMART FLIP: If bottom placement goes off screen, flip to top
-  if (currentPlacement === 'bottom' && top + tooltipEstimatedHeight > window.innerHeight - margin) {
-    top = rect.top - gap;
-    transformY = '-100%';
+  // flip bottom→top if off screen
+  if (placement === 'bottom' && top + TH > window.innerHeight - MARGIN) {
+    top = rect.top - GAP;
+    ty = '-100%';
   }
-  // SMART FLIP: If top placement goes off screen top, flip to bottom
-  if (currentPlacement === 'top' && top - tooltipEstimatedHeight < margin) {
-    top = rect.top + rect.height + gap;
-    transformY = '0%';
-  }
-
-  // FINAL CLAMPING to ensure viewport visibility
-  // Horizontal clamping
-  const minLeft = margin;
-  const maxLeft = window.innerWidth - margin;
-  
-  // Adjust transform if we hit horizontal edges
-  const estimatedLeft = left + (transformX === '-50%' ? -tooltipWidth / 2 : transformX === '-100%' ? -tooltipWidth : 0);
-  const estimatedRight = estimatedLeft + tooltipWidth;
-
-  if (estimatedLeft < minLeft) {
-    left = minLeft;
-    transformX = '0%';
-  } else if (estimatedRight > maxLeft) {
-    left = maxLeft;
-    transformX = '-100%';
+  // flip top→bottom if off screen
+  if (placement === 'top' && top - TH < MARGIN) {
+    top = rect.bottom + GAP;
+    ty = '0%';
   }
 
-  // Vertical clamping
-  const minTop = margin;
-  const maxTop = window.innerHeight - margin;
+  // horizontal clamp
+  const estLeft = left + (tx === '-50%' ? -TW / 2 : tx === '-100%' ? -TW : 0);
+  if (estLeft < MARGIN) {
+    left = MARGIN;
+    tx = '0%';
+  } else if (estLeft + TW > window.innerWidth - MARGIN) {
+    left = window.innerWidth - MARGIN;
+    tx = '-100%';
+  }
 
-  const estimatedTop = top + (transformY === '-50%' ? -tooltipEstimatedHeight / 2 : transformY === '-100%' ? -tooltipEstimatedHeight : 0);
-  const estimatedBottom = estimatedTop + tooltipEstimatedHeight;
-
-  if (estimatedTop < minTop) {
-    top = minTop;
-    transformY = '0%';
-  } else if (estimatedBottom > maxTop) {
-    top = maxTop;
-    transformY = '-100%';
+  // vertical clamp
+  const estTop = top + (ty === '-50%' ? -TH / 2 : ty === '-100%' ? -TH : 0);
+  if (estTop < MARGIN) {
+    top = MARGIN;
+    ty = '0%';
+  } else if (estTop + TH > window.innerHeight - MARGIN) {
+    top = window.innerHeight - MARGIN;
+    ty = '-100%';
   }
 
   return {
-    position: 'fixed' as const,
+    position: 'fixed',
     top: `${top}px`,
     left: `${left}px`,
-    transform: `translate(${transformX}, ${transformY})`,
-    maxWidth: 'calc(100vw - 40px)'
+    transform: `translate(${tx}, ${ty})`,
   };
 }

@@ -44,10 +44,10 @@ export default function ManifestoReveal({ onBeginJourney }: { onBeginJourney?: (
   return (
     <section
       ref={containerRef}
-      className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden py-16 sm:py-32 z-10"
+      className="relative min-h-[55vh] flex flex-col items-center justify-center overflow-hidden py-10 sm:py-16 z-10"
     >
       <div className="relative z-10 max-w-5xl mx-auto px-6 text-center">
-        <div className="flex flex-wrap justify-center gap-x-5 gap-y-2 mb-16">
+        <div className="flex flex-wrap justify-center gap-x-5 gap-y-2 mb-10">
           {WORDS.map((word, i) => (
             <WordReveal
               key={i}

@@ -944,6 +944,34 @@ function mapPersistedResultRow(row: Record<string, unknown>): PersistedTestResul
   };
 }
 
+/** Bulk attempt summary for a list of test IDs — single query, used to enrich teacher-assigned test previews. */
+export async function getAttemptSummaryBulk(
+  userId: string,
+  testIds: string[],
+): Promise<Map<string, { attemptCount: number; allScores: number[] }>> {
+  if (testIds.length === 0) return new Map();
+  await ensureSchema();
+  const pool = getPoolOrThrow();
+  const placeholders = testIds.map((_, i) => `$${i + 2}`).join(", ");
+  const result = await pool.query(
+    `SELECT test_id,
+            COUNT(*)::int AS attempt_count,
+            COALESCE(json_agg(percentage ORDER BY created_at DESC), '[]'::json) AS all_scores
+       FROM analytics.test_results
+      WHERE user_id = $1 AND test_id IN (${placeholders}) AND is_malpractice = FALSE
+      GROUP BY test_id`,
+    [userId, ...testIds],
+  );
+  const map = new Map<string, { attemptCount: number; allScores: number[] }>();
+  for (const row of result.rows) {
+    map.set(row.test_id as string, {
+      attemptCount: Number(row.attempt_count) || 0,
+      allScores: fromJsonArray<number>(row.all_scores),
+    });
+  }
+  return map;
+}
+
 export async function listPersistedTestResults(userId: string, testId: string): Promise<PersistedTestResultRecord[]> {
   await ensureSchema();
   const pool = getPoolOrThrow();

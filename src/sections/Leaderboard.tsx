@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { motion } from 'framer-motion';
@@ -85,6 +85,25 @@ export default function Leaderboard({ currentUser, initialLeaderboard, initialMy
   const [isLoading, setIsLoading] = useState(!initialLeaderboard);
   const skipInitialFetch = useRef(!!initialLeaderboard);
 
+  const fetchLeaderboard = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (selectedSubject !== 'overall') params.append('subject', selectedSubject);
+      if (activeTab === 'local' && currentUser?.location) {
+        params.append('location', currentUser.location);
+      }
+      const url = `/assessments/ogcode/leaderboard/?${params.toString()}`;
+      const data = await apiCall(url);
+      setLeaderboard(data.leaderboard || []);
+      setMyRank(data.myRank);
+    } catch (error: unknown) {
+      console.error('Failed to fetch leaderboard:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [selectedSubject, activeTab, currentUser?.location]);
+
   useEffect(() => {
     if (skipInitialFetch.current && selectedSubject === 'overall') {
       skipInitialFetch.current = false;
@@ -96,26 +115,7 @@ export default function Leaderboard({ currentUser, initialLeaderboard, initialMy
       return;
     }
     fetchLeaderboard();
-  }, [selectedSubject, activeTab, currentUser?.location]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const fetchLeaderboard = async () => {
-    setIsLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (selectedSubject !== 'overall') params.append('subject', selectedSubject);
-      if (activeTab === 'local' && currentUser?.location) {
-        params.append('location', currentUser?.location);
-      }
-      const url = `/assessments/ogcode/leaderboard/?${params.toString()}`;
-      const data = await apiCall(url);
-      setLeaderboard(data.leaderboard || []);
-      setMyRank(data.myRank);
-    } catch (error) {
-      console.error('Failed to fetch leaderboard:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  }, [fetchLeaderboard, selectedSubject, activeTab, currentUser?.location]);
 
   const getRankIcon = (rank: number) => {
     if (rank === 1) return <Crown className={cn(isMobile ? "w-4 h-4" : "w-5 h-5", "text-amber-500")} />;
@@ -236,7 +236,7 @@ export default function Leaderboard({ currentUser, initialLeaderboard, initialMy
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8 px-2">
           <h2 className="text-2xl font-black flex items-center gap-3 tracking-tight">
             <div className="h-12 w-12 shrink-0">
-              <OriMascot expression="thumbsup" title="Origin AI" />
+              <OriMascot expression="thumbsup" title="Ori" />
             </div>
             <div className="w-2 h-8 bg-primary rounded-full" />
             Hall of Fame

@@ -33,7 +33,6 @@ import {
   CheckCircle2,
   Sun,
   Moon,
-  Crown,
   Gamepad2,
 } from 'lucide-react';
 import LandingCTABtn from '@/components/landing/LandingCTABtn';
@@ -163,9 +162,9 @@ function BookGallerySection({ ncertBooks }: { ncertBooks: { image: string; text:
   const loopBooks = [...ncertBooks, ...ncertBooks, ...ncertBooks];
 
   return (
-    <section id="how-it-works" ref={sectionRef} className="py-14 sm:py-28 lg:py-40 relative z-10 overflow-hidden">
+    <section id="how-it-works" ref={sectionRef} className="py-10 sm:py-16 lg:py-20 relative z-10 overflow-hidden">
       <div className="max-w-7xl mx-auto px-5 sm:px-6">
-        <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} transition={{ duration: 0.8, ease: 'easeOut' }} viewport={{ once: true }} className="text-center mb-10 sm:mb-16">
+        <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} transition={{ duration: 0.8, ease: 'easeOut' }} viewport={{ once: true }} className="text-center mb-8 sm:mb-12">
           <h2 className="text-[10px] font-heading font-black text-primary tracking-[0.5em] uppercase mb-4 sm:mb-6">Our Knowledge Base</h2>
           <h1 className="text-3xl xs:text-4xl sm:text-7xl lg:text-8xl font-heading font-black mb-4 sm:mb-6 tracking-tighter">
             <span className="text-outline">Trained on</span>{' '}<span className="bg-gradient-to-r from-primary via-primary/90 to-primary bg-clip-text text-transparent">Gold Standards.</span>
@@ -340,12 +339,13 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
   };
 
 
+  // Landing-page section scroll links — each name maps to a section id on this page
   const navLinks = [
-    { name: 'Dashboard', path: '/dashboard', isPremium: false },
-    { name: 'OGCode', path: '/ogcode', isPremium: false },
-    { name: 'AI Explainer', path: '/doubt-solver', isPremium: false },
-    { name: 'Study Rooms', path: '/study-rooms', isPremium: false },
-    { name: 'Tests', path: '/tests', isPremium: false },
+    { name: 'How it Works', sectionId: 'how-it-works' },
+    { name: 'Knowledge Base', sectionId: 'knowledge-base' },
+    { name: 'AI Demo', sectionId: 'demo' },
+    { name: 'Features', sectionId: 'features' },
+    { name: 'Pricing', sectionId: 'pricing' },
   ];
 
   const ncertBooks = [
@@ -359,21 +359,17 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
     { image: '/images/ncert/Mathematics-class-12-part-1.png', text: 'Maths Class 12 & Exemplar' }
   ];
 
-  const handleNavLinkClick = (e: React.MouseEvent, path: string, isPremiumLink: boolean) => {
+  const scrollToSection = (sectionId: string) => {
+    const el = document.getElementById(sectionId);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
+  const handleNavLinkClick = (e: React.MouseEvent, sectionId: string) => {
     e.preventDefault();
-    if (!user) {
-      router.push('/role-selection');
-      return;
-    }
-    if (user.role === 'teacher') {
-      router.push('/teacher');
-      return;
-    }
-    if (user.role === 'admin') {
-      router.push('/admin');
-      return;
-    }
-    router.push(path);
+    setMobileMenuOpen(false);
+    scrollToSection(sectionId);
   };
 
   useEffect(() => {
@@ -443,9 +439,9 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
     return () => window.removeEventListener('resize', calc);
   }, []);
 
-  // Swap the mascot's emotion model by whichever section is most in view.
-  // Replaces the old hover-driven swap (which couldn't fire — the mascot sits
-  // behind pointer-events-none content). Skipped on phones (no live mascot).
+  // Scroll-driven mascot: change emotion model + side as sections come into view.
+  // No hover triggers — only scroll position determines the model. The hero section
+  // uses data-mascot-state="idle" so ori-hi-opt.glb always shows there.
   useEffect(() => {
     if (!show3DMascot) return;
     const root = scrollContainer.current;
@@ -623,19 +619,16 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
               </span>
             </div>
 
-            {/* Desktop Links (hidden on mobile, md:flex) */}
+            {/* Desktop Links (hidden on mobile, md:flex) — scroll to page sections */}
             <div className="hidden md:flex items-center gap-8">
               {navLinks.map((link) => (
                 <a
                   key={link.name}
-                  href={link.path}
-                  onClick={(e) => handleNavLinkClick(e, link.path, link.isPremium)}
-                  className={`text-sm font-semibold transition-colors hover:text-foreground flex items-center gap-1.5 ${link.path === '/dashboard' ? 'text-primary font-bold' : 'text-muted-foreground'}`}
+                  href={`#${link.sectionId}`}
+                  onClick={(e) => handleNavLinkClick(e, link.sectionId)}
+                  className="text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground"
                 >
                   {link.name}
-                  {link.isPremium && (
-                    <Crown className="w-3.5 h-3.5 text-amber-500 fill-amber-500/20" />
-                  )}
                 </a>
               ))}
             </div>
@@ -696,12 +689,11 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
                   {navLinks.map((link) => (
                     <a
                       key={link.name}
-                      href={link.path}
-                      onClick={(e) => { setMobileMenuOpen(false); handleNavLinkClick(e, link.path, link.isPremium); }}
-                      className={`flex items-center gap-2 px-4 py-3.5 rounded-2xl text-base font-heading font-black uppercase tracking-[0.12em] transition-all active:scale-95 ${link.path === '/dashboard' ? 'text-primary neu-inset' : 'text-muted-foreground hover:text-foreground hover:neu-raised'}`}
+                      href={`#${link.sectionId}`}
+                      onClick={(e) => handleNavLinkClick(e, link.sectionId)}
+                      className="flex items-center gap-2 px-4 py-3.5 rounded-2xl text-base font-heading font-black uppercase tracking-[0.12em] transition-all active:scale-95 text-muted-foreground hover:text-foreground hover:neu-raised"
                     >
                       {link.name}
-                      {link.isPremium && <Crown className="w-4 h-4 text-amber-500 fill-amber-500/20" />}
                     </a>
                   ))}
                 </div>
@@ -754,11 +746,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
             </div>
 
             {/* Live student counter */}
-            <div
-              onMouseEnter={() => setMascotState('answering')}
-              onMouseLeave={() => setMascotState('idle')}
-              className="w-full flex justify-center"
-            >
+            <div className="w-full flex justify-center">
               <LiveCounter />
             </div>
 
@@ -766,8 +754,6 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
             <LandingCTABtn
               label="ORIGINATE"
               onClick={handleBeginJourney}
-              onMouseEnter={() => setMascotState('success')}
-              onMouseLeave={() => setMascotState('idle')}
               className="mt-6 sm:mt-12"
               initial={{ opacity: 0, y: 24 }}
               animate={{ opacity: 1, y: 0 }}
@@ -777,11 +763,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
           </section>
 
           {/* Stats row with neumorphic raised cards */}
-          <div
-            className="relative z-10 w-full pb-4 sm:pb-8 md:pb-16"
-            onMouseEnter={() => setMascotState('curious')}
-            onMouseLeave={() => setMascotState('idle')}
-          >
+          <div className="relative z-10 w-full pb-4 sm:pb-8 md:pb-16">
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -829,9 +811,9 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
         </div>
 
         {/* Features Section - Responsive: Rotating cards on desktop, grid on mobile */}
-        <section id="features" data-mascot-state="curious" data-mascot-side="left" className="py-14 sm:py-28 lg:py-36 relative z-10 overflow-x-hidden">
+        <section id="features" data-mascot-state="curious" data-mascot-side="left" className="py-10 sm:py-16 lg:py-20 relative z-10 overflow-x-hidden">
           <div className="max-w-7xl mx-auto px-5 sm:px-6">
-            <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }} viewport={{ once: true }} className="text-center mb-10 sm:mb-16">
+            <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }} viewport={{ once: true }} className="text-center mb-8 sm:mb-12">
               <div className="inline-flex items-center gap-2 neu-inset px-4 py-2 rounded-full mb-5 sm:mb-8">
                 <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
                 <h2 className="text-[10px] font-heading font-black text-primary tracking-[0.4em] uppercase">Core Capabilities</h2>
@@ -860,7 +842,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
         </div>
 
         {/* Immersive Book Gallery Section */}
-        <div className="relative z-10" data-mascot-state="answering" data-mascot-side="right">
+        <div id="knowledge-base" className="relative z-10" data-mascot-state="answering" data-mascot-side="right">
           <BookGallerySection ncertBooks={ncertBooks} />
         </div>
 
@@ -881,9 +863,9 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
         </div>
 
         {/* Testimonials – nicer counter and CTA */}
-        <section data-mascot-state="success" data-mascot-side="right" className="py-14 sm:py-28 lg:py-40 relative z-10 overflow-hidden">
+        <section data-mascot-state="success" data-mascot-side="right" className="py-10 sm:py-16 lg:py-20 relative z-10 overflow-hidden">
           <div className="max-w-7xl mx-auto px-5 sm:px-6 text-center">
-            <motion.div ref={counterRef} initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} transition={{ duration: 0.8 }} viewport={{ once: true }} className="flex flex-col items-center space-y-6 sm:space-y-10">
+            <motion.div ref={counterRef} initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} transition={{ duration: 0.8 }} viewport={{ once: true }} className="flex flex-col items-center space-y-4 sm:space-y-6">
               <h2 className="text-3xl xs:text-4xl sm:text-7xl lg:text-8xl font-black tracking-tighter leading-none">
                 <span className="text-outline">Trusted by the</span> <br />
                 <span className="bg-gradient-to-r from-primary via-primary/90 to-primary bg-clip-text text-transparent">Top 1%.</span>
@@ -902,9 +884,9 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
         </section>
 
         {/* Pricing – refined cards */}
-        <section id="pricing" data-mascot-state="thinking" data-mascot-side="left" className="py-14 sm:py-28 lg:py-36 relative z-10">
+        <section id="pricing" data-mascot-state="thinking" data-mascot-side="left" className="py-10 sm:py-16 lg:py-20 relative z-10">
           <div className="max-w-7xl mx-auto px-5 sm:px-6">
-            <motion.div initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }} viewport={{ once: true }} className="text-center mb-10 sm:mb-20">
+            <motion.div initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }} viewport={{ once: true }} className="text-center mb-8 sm:mb-12">
               <div className="inline-flex items-center gap-2 neu-inset px-4 py-2 rounded-full mb-5 sm:mb-8">
                 <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
                 <h2 className="text-[10px] font-heading font-black text-primary tracking-[0.4em] uppercase">Pricing Plans</h2>
@@ -957,11 +939,20 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
                     ))}
                   </div>
                   <div className="mt-auto">
-                    <LandingCTABtn
-                      label={plan.cta}
-                      onClick={handleBeginJourney}
-                      className="w-full"
-                    />
+                    {plan.comingSoon ? (
+                      <LandingCTABtn
+                        label={plan.cta}
+                        href="https://docs.google.com/forms/d/e/1FAIpQLScnovE3Jd-qiqr6BmeNdrfDG6JDZVEHhVf93xeSyW8H80SNsA/viewform"
+                        target="_blank"
+                        className="w-full"
+                      />
+                    ) : (
+                      <LandingCTABtn
+                        label={plan.cta}
+                        onClick={handleBeginJourney}
+                        className="w-full"
+                      />
+                    )}
                   </div>
                 </motion.div>
               ))}

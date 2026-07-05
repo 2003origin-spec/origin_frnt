@@ -1,4 +1,4 @@
-// Legacy Origin AI implementation kept intact while the public server module
+// Legacy Ori implementation kept intact while the public server module
 // remains a small compatibility barrel.
 import fs from "node:fs";
 import path from "node:path";
@@ -361,7 +361,7 @@ function resolvePagePolicy(pageContext: OriginAiResolvedPageContext): OriginAiPo
       mode: "answer_blocked",
       title: "Integrity Mode",
       reason:
-        "You are on a live test page, so Origin AI will not provide direct answers. It can help with time strategy, calming nerves, and what to review after submission.",
+        "You are on a live test page, so Ori will not provide direct answers. It can help with time strategy, calming nerves, and what to review after submission.",
     };
   }
 
@@ -370,7 +370,7 @@ function resolvePagePolicy(pageContext: OriginAiResolvedPageContext): OriginAiPo
       mode: "hint_only",
       title: "Hint Mode",
       reason:
-        "You are on an OGCode practice question that has not been submitted yet, so Origin AI should coach with hints and concept nudges first. After you attempt it, Origin AI can switch into full mentor mode and explain the whole solution.",
+        "You are on an OGCode practice question that has not been submitted yet, so Ori should coach with hints and concept nudges first. After you attempt it, Ori can switch into full mentor mode and explain the whole solution.",
     };
   }
 
@@ -379,8 +379,8 @@ function resolvePagePolicy(pageContext: OriginAiResolvedPageContext): OriginAiPo
     title: "Mentor Mode",
     reason:
       pageContext.pageKind === "ogcode_question"
-        ? "You are in OGCode practice mode, so Origin AI can coach, explain, and help you work through the current question like a mentor."
-        : "Origin AI can coach, explain, plan revision, and help with study strategy here.",
+        ? "You are in OGCode practice mode, so Ori can coach, explain, and help you work through the current question like a mentor."
+        : "Ori can coach, explain, plan revision, and help with study strategy here.",
   };
 }
 
@@ -436,7 +436,7 @@ function getOrCreateMentorSession(
       id: createId("origin_ai"),
       userId: user.id,
       browserSessionId,
-      title: threadId ? "Doubt Thread" : "Origin AI Mentor",
+      title: threadId ? "Doubt Thread" : "Ori Mentor",
       summary: threadId ? null : "Persistent mentor chat for study guidance and revision planning.",
       lastPathname: null,
       lastPageKind: null,
@@ -766,7 +766,7 @@ function buildVoiceConversationContext(turns: OriginAiVoiceConversationSeedTurn[
 
   const transcript = turns
     .slice(-8)
-    .map((turn) => `${turn.role === "assistant" ? "Origin AI" : "Student"}: ${turn.content}`)
+    .map((turn) => `${turn.role === "assistant" ? "Ori" : "Student"}: ${turn.content}`)
     .join("\n");
 
   return [
@@ -843,7 +843,7 @@ function buildWelcomeMessage(
   const topReminders = reminders.slice(0, 2).map((row) => row.title);
   const weakTopics = memory.lastWeakTopics.slice(0, 2);
   const pieces = [
-    `Hey ${memory.preferredName}, I’m Origin AI.`,
+    `Hey ${memory.preferredName}, I’m Ori.`,
     "I keep the useful study receipts, not the embarrassing ones.",
   ];
 
@@ -1623,7 +1623,7 @@ function maybeAwardOriginAiPoints(store: AppStore, user: StoredUser, referenceId
     return;
   }
 
-  awardPoints(store, user.id, points, "origin_ai", "Checked in with Origin AI mentor", referenceId);
+  awardPoints(store, user.id, points, "origin_ai", "Checked in with Ori mentor", referenceId);
 }
 
 export async function getOriginAiSnapshot(
@@ -1679,7 +1679,7 @@ export async function getOriginAiVoiceBootstrap(
       requestId: createId("origin_ai_voice"),
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Origin AI voice mode is not configured yet.";
+    const message = error instanceof Error ? error.message : "Ori voice mode is not configured yet.";
     return { error: message };
   }
 
@@ -1745,7 +1745,7 @@ export async function commitOriginAiVoiceTurn(
     return { error: "Voice transcript is required." };
   }
   if (!rawAssistantTranscript) {
-    return { error: "Origin AI reply transcript is required." };
+    return { error: "Ori reply transcript is required." };
   }
 
   const [userTranscript, assistantTranscript] = await Promise.all([
@@ -1757,7 +1757,7 @@ export async function commitOriginAiVoiceTurn(
     return { error: "Voice transcript is required." };
   }
   if (!assistantTranscript.trim()) {
-    return { error: "Origin AI reply transcript is required." };
+    return { error: "Ori reply transcript is required." };
   }
 
   const runtime = await prepareOriginAiRuntime(store, user, request, input);
@@ -1862,13 +1862,13 @@ export async function respondOriginAiVoiceTurn(
     transcriptionModel = transcription.model;
   } catch (error) {
     return {
-      error: error instanceof Error ? error.message : "Origin AI could not transcribe the voice message.",
+      error: error instanceof Error ? error.message : "Ori could not transcribe the voice message.",
     };
   }
 
   const userTranscript = await normalizeVoiceTranscriptForChat(rawTranscript, "user");
   if (!userTranscript.trim()) {
-    return { error: "Origin AI could not understand the voice message clearly enough." };
+    return { error: "Ori could not understand the voice message clearly enough." };
   }
 
   const reply = await sendOriginAiMessage(
@@ -1913,7 +1913,7 @@ export async function speakOriginAiVoiceText(
       voiceAudio: null,
       voiceAudioSegments: [],
       fallbackText: null,
-      synthesisError: "Origin AI voice text is required.",
+      synthesisError: "Ori voice text is required.",
     };
   }
 
@@ -1939,7 +1939,7 @@ export async function speakOriginAiVoiceText(
       totalDurationSeconds,
     };
   } catch (error) {
-    const detail = error instanceof Error ? error.message : "Origin AI could not synthesize the voice reply.";
+    const detail = error instanceof Error ? error.message : "Ori could not synthesize the voice reply.";
     console.error(`[OriginAI TTS] speakOriginAiVoiceText failed (req=${requestId}): ${detail}`);
     // Return a successful payload with no audio so the client can use
     // browser speech fallback instead of receiving a 400.

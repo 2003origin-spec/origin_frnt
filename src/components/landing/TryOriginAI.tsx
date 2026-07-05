@@ -6,6 +6,7 @@ import { Loader2, Mic, MicOff, Send, MessageSquare } from 'lucide-react';
 import { ContainerScroll } from '@/components/ui/container-scroll-animation';
 import { ChatBackdrop } from '@/components/chat/ChatBackdrop';
 import LandingCTABtn from '@/components/landing/LandingCTABtn';
+import { FormattedMessage } from '@/components/origin-ai/FormattedMessage';
 
 interface SpeechRecognitionAlternative {
   readonly transcript: string;
@@ -72,22 +73,13 @@ interface Message {
   isLimitMsg?: boolean;
 }
 
-function formatInline(text: string): string {
-  return text
-    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.*?)\*/g, '<em>$1</em>')
-    .replace(/^(\d+)\.\s/gm, '<span class="text-primary font-black mr-1">$1.</span> ');
-}
-
-// Shows the full AI answer — no blur until quota is gone
+// Shows the full AI answer with proper Markdown + LaTeX rendering
 function AiResponse({ text }: { text: string }) {
-  const paras = text.split(/\n{2,}/).filter(Boolean);
   return (
-    <div className="text-sm text-gray-700 dark:text-white/80 leading-relaxed space-y-3 font-medium">
-      {paras.map((p, i) => (
-        <p key={i} dangerouslySetInnerHTML={{ __html: formatInline(p) }} />
-      ))}
-    </div>
+    <FormattedMessage
+      content={text}
+      className="text-sm text-gray-700 dark:text-white/80 leading-relaxed font-medium prose-p:text-gray-700 dark:prose-p:text-white/80 prose-strong:text-primary prose-li:text-gray-700 dark:prose-li:text-white/80"
+    />
   );
 }
 
@@ -99,7 +91,7 @@ function LimitCard() {
         You&apos;ve used your free preview quota for this week.
       </p>
       <p className="text-xs text-gray-500 dark:text-white/40">
-        Sign up free to ask unlimited questions, use voice anytime, and unlock the full Origin AI inside.
+        Sign up free to ask unlimited questions, use voice anytime, and unlock the full Ori inside.
       </p>
       <LandingCTABtn
         label="Unlock Free Access"
@@ -116,7 +108,7 @@ export default function TryOriginAI() {
       id: '0',
       role: 'ai',
       content:
-        "Hi! I'm Origin AI — your JEE & NEET mentor. Ask me any question from Physics, Chemistry, Maths, or Biology and I'll solve it step by step.",
+        "Hi! I'm Ori — your JEE & NEET mentor. Ask me any question from Physics, Chemistry, Maths, or Biology and I'll solve it step by step.",
     },
   ]);
   const [input, setInput] = useState('');
@@ -229,7 +221,7 @@ export default function TryOriginAI() {
     }
     const currentUsage = getUsage();
     if (currentUsage.voice >= VOICE_LIMIT) {
-      setVoiceError(`Voice trials used up (${VOICE_LIMIT}/week). Sign up to talk with Origin AI anytime!`);
+      setVoiceError(`Voice trials used up (${VOICE_LIMIT}/week). Sign up to talk with Ori anytime!`);
       return;
     }
 
@@ -289,7 +281,7 @@ export default function TryOriginAI() {
             <h2 className="text-4xl sm:text-5xl lg:text-6xl font-black tracking-tighter leading-none mb-4">
               <span className="text-outline">Talk to</span>{' '}
               <span className="bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
-                Origin AI
+                Ori
               </span>{' '}
               <span className="text-outline">now.</span>
             </h2>
@@ -310,7 +302,7 @@ export default function TryOriginAI() {
               </div>
               <div className="flex items-center gap-1.5 ml-1">
                 <img src="/ori2d/ori-happy.png" alt="Ori" draggable={false} className="w-4 h-4 object-contain select-none" />
-                <span className="text-[10px] font-black uppercase tracking-[0.25em] text-gray-600 dark:text-white/50">Origin AI</span>
+                <span className="text-[10px] font-black uppercase tracking-[0.25em] text-gray-600 dark:text-white/50">Ori</span>
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -471,7 +463,7 @@ export default function TryOriginAI() {
 
             <p className="text-[9px] text-gray-400 dark:text-white/20 mt-2 text-center">
               {isListening
-                ? 'Speak now — Origin AI is listening'
+                ? 'Speak now — Ori is listening'
                 : 'Enter to send · Shift+Enter for new line · 🎤 for voice input'}
             </p>
           </div>

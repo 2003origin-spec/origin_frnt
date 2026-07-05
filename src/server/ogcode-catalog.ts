@@ -52,6 +52,9 @@ type CatalogRow = {
   attribution_name: string | null;
   attribution_logo_url: string | null;
   is_contributed: boolean | null;
+  occurrence: string | null;
+  class: number | null;
+  previous_year_question: string | null;
 };
 
 const CREATE_TABLE_SQL = `
@@ -95,6 +98,11 @@ const CREATE_TABLE_SQL = `
   ALTER TABLE ogcode_questions ADD COLUMN IF NOT EXISTS is_contributed BOOLEAN NOT NULL DEFAULT FALSE;
   CREATE INDEX IF NOT EXISTS ogcode_questions_contributed_idx ON ogcode_questions (is_contributed);
 
+  -- Exam provenance fields (added later; idempotent ALTER TABLE guards backcompat).
+  ALTER TABLE ogcode_questions ADD COLUMN IF NOT EXISTS occurrence TEXT;
+  ALTER TABLE ogcode_questions ADD COLUMN IF NOT EXISTS class INTEGER;
+  ALTER TABLE ogcode_questions ADD COLUMN IF NOT EXISTS previous_year_question TEXT;
+
   -- Daily Mission (Phase 1): one persisted challenge question per calendar day.
   -- Recording the per-day pick makes the challenge stable for the whole day
   -- (immune to catalog edits) and lets the selector enforce a no-repeat window
@@ -114,7 +122,7 @@ const CATALOG_COLUMNS = `
   answer_spec, tolerance, matrix_data, explanation, hint, subject, chapter, concept,
   difficulty, image, tags, question_type, acceptance_rate, total_correct, frequency,
   is_challenge_of_day, contributor_workspace_id, attribution_name, attribution_logo_url,
-  is_contributed
+  is_contributed, occurrence, class, previous_year_question
 `;
 
 /**
@@ -302,6 +310,9 @@ function mapCatalogRow(row: CatalogRow): StoredQuestion {
     attributionName: row.attribution_name ?? null,
     attributionLogoUrl: row.attribution_logo_url ?? null,
     isContributed: Boolean(row.is_contributed),
+    occurrence: row.occurrence ?? null,
+    classLevel: row.class == null ? null : Number(row.class),
+    previousYearQuestion: row.previous_year_question ?? null,
   };
 }
 
@@ -412,7 +423,10 @@ async function _listOgcodeCatalogQuestions(filters: CatalogFilters = {}): Promis
         contributor_workspace_id,
         attribution_name,
         attribution_logo_url,
-        is_contributed
+        is_contributed,
+        occurrence,
+        class,
+        previous_year_question
       FROM ogcode_questions
       ${sql}
       ORDER BY source_index ASC
@@ -512,6 +526,9 @@ export async function listOgcodeCatalogQuestionPage(filters: CatalogPageFilters)
         attribution_name,
         attribution_logo_url,
         is_contributed,
+        occurrence,
+        class,
+        previous_year_question,
         COUNT(*) OVER() AS total_count
       FROM ogcode_questions
       ${where}
@@ -809,6 +826,9 @@ export type ContributedCatalogInput = {
   contributorWorkspaceId: string | null;
   attributionName: string | null;
   attributionLogoUrl: string | null;
+  occurrence?: string | null;
+  classLevel?: number | null;
+  previousYearQuestion?: string | null;
 };
 
 /**

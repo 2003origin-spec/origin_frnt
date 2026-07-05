@@ -49,6 +49,8 @@ export type RoomEvent =
   | { type: "participant_finished"; user_id: string; rank?: number }
   | { type: "test_ended"; ended_at: string }
   | { type: "room_closed" }
+  // Teacher extends the live test duration (+N seconds, broadcast to all clients).
+  | { type: "time_extended"; duration_seconds: number }
   // Ephemeral "who is typing" ping (WhatsApp-style). Never persisted; debounced
   // on the client and auto-expired by the reducer.
   | { type: "typing"; user_id: string; display_name: string; is_typing: boolean };
@@ -69,6 +71,7 @@ export const roomEventSchema: z.ZodType<RoomEvent> = z.discriminatedUnion("type"
   z.object({ type: z.literal("participant_finished"), user_id: z.string(), rank: z.number().optional() }),
   z.object({ type: z.literal("test_ended"), ended_at: z.string() }),
   z.object({ type: z.literal("room_closed") }),
+  z.object({ type: z.literal("time_extended"), duration_seconds: z.number() }),
   z.object({ type: z.literal("typing"), user_id: z.string(), display_name: z.string(), is_typing: z.boolean() }),
 ]);
 

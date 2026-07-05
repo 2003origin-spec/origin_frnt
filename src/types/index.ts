@@ -46,6 +46,8 @@ export interface User {
   username?: string;
   /** When true the public profile shows only the minimal card. */
   profilePrivate?: boolean;
+  /** Badge tier names newly unlocked since the user last dismissed the popup. */
+  pendingBadges?: string[];
 }
 
 export interface Classroom {
@@ -159,6 +161,12 @@ export interface PracticeQuestion {
   attributionName?: string | null;
   attributionLogoUrl?: string | null;
   contributorWorkspaceId?: string | null;
+  /** Exam / book the question appeared in, e.g. "JEE Main 2023". */
+  occurrence?: string | null;
+  /** Target class level (11 or 12). */
+  classLevel?: number | null;
+  /** Previous year exam identifier, e.g. "JEE Advanced 2019". */
+  previousYearQuestion?: string | null;
 }
 
 export interface PracticeQuestionPage {

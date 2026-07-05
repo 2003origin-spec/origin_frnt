@@ -101,6 +101,7 @@ export interface StoredUserScore {
   totalPoints: number;
   currentTier: string;
   lastUpdated: string;
+  pendingBadges?: string[];
 }
 
 export interface StoredPointLog {
@@ -159,6 +160,12 @@ export interface StoredQuestion {
   attributionName?: string | null;
   attributionLogoUrl?: string | null;
   isContributed?: boolean;
+  /** Exam / book the question appeared in, e.g. "JEE Main 2023". */
+  occurrence?: string | null;
+  /** Target class level (11 or 12). */
+  classLevel?: number | null;
+  /** Previous year exam identifier, e.g. "JEE Advanced 2019". */
+  previousYearQuestion?: string | null;
 }
 
 export interface StoredTest {

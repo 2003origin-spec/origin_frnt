@@ -29,7 +29,7 @@ function OdometerDigit({ value }: { value: string }) {
 }
 
 function OdometerNumber({ value }: { value: number }) {
-  const formatted = value.toLocaleString('en-IN');
+  const formatted = Math.max(0, value).toLocaleString('en-IN');
   return (
     <span className="font-mono tabular-nums inline-flex items-center align-middle">
       {formatted.split('').map((ch, i) => (
@@ -55,11 +55,14 @@ export default function LiveCounter() {
   useEffect(() => {
     fetchStats();
     intervalRef.current = setInterval(() => {
-      // Client-side jitter so the number visibly breathes without hitting the server every 5s
+      // activeNow breathes ±3, doubtsToday only increments (0–2/tick), streaksActive rarely ticks up
       setStats((prev) => {
         if (!prev) return prev;
-        const delta = (n: number) => n + Math.floor((Math.random() - 0.5) * 6);
-        return { ...prev, activeNow: delta(prev.activeNow) };
+        return {
+          activeNow: Math.max(0, prev.activeNow + Math.floor((Math.random() - 0.5) * 6)),
+          doubtsToday: prev.doubtsToday + Math.floor(Math.random() * 3),
+          streaksActive: prev.streaksActive + (Math.random() < 0.3 ? 1 : 0),
+        };
       });
     }, 5000);
     return () => {

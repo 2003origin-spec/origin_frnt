@@ -9,6 +9,7 @@ import { deleteRoom, startRoomTest } from "@/server/study-rooms";
 import { recordAuditEvent } from "./audit";
 import {
   createTeacherRoom,
+  extendRoomDuration,
   getTeacherRoomById,
   listTeacherRooms,
   updateTeacherRoom,
@@ -169,6 +170,25 @@ export async function closeTeacherRoom(input: {
     requestId: input.requestId,
   });
 
+  return updated;
+}
+
+export async function extendTeacherRoomDuration(input: {
+  actorUserId: string;
+  workspaceId: string;
+  roomId: string;
+  additionalSeconds: number;
+}): Promise<TeacherRoomSummary> {
+  const room = await getTeacherRoomById(input.workspaceId, input.roomId);
+  if (!room) throw new AuthzError(404, "Room not found.");
+  if (room.adminUserId !== input.actorUserId) {
+    throw new AuthzError(403, "Only the room admin can extend the duration.");
+  }
+  if (room.status !== "in_test") {
+    throw new AuthzError(400, "Duration can only be extended while the test is in progress.");
+  }
+  const updated = await extendRoomDuration(input.workspaceId, input.roomId, input.additionalSeconds);
+  if (!updated || updated.durationSeconds == null) throw new Error("Failed to extend room duration.");
   return updated;
 }
 

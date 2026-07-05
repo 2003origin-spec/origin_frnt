@@ -20,7 +20,7 @@ const FEATURES: CinemaFeature[] = [
     eyebrow: 'AI Mentor',
     title: 'Ask anything.\nIt remembers\neverything.',
     description:
-      "Origin AI knows your history — every doubt you've asked, every concept you've struggled with. It doesn't just answer; it builds on what you already know.",
+      "Ori knows your history — every doubt you've asked, every concept you've struggled with. It doesn't just answer; it builds on what you already know.",
     stat: '24,000+',
     statLabel: 'doubts resolved this month',
     video: '/videos/Instant-Doubt-Resolution.mp4',

@@ -76,17 +76,17 @@ const FLAG_SPECS: Record<FlagKey, FlagSpec> = {
   teacherOgcode: { envSuffix: "TEACHER_OGCODE", defaultDev: true, defaultProd: true },
   // Teacher Live Rooms — real-time room shell (chat + typing + presence),
   // 60s rotating / permanent join codes, kick + participant search, Start-Test
-  // auto-stop, post-test leaderboard + analytics, and hard delete. Ships **dark**
-  // in prod (TEACHER_LAUNCH_LIVE_ROOMS=1 to enable) until verified end-to-end;
-  // enabled in dev by default. Gates the new live surfaces/routes; the existing
-  // teacherRooms CRUD stays independently flagged.
-  liveRooms: { envSuffix: "LIVE_ROOMS", defaultDev: true, defaultProd: false },
+  // auto-stop, post-test leaderboard + analytics, and hard delete. Shipped +
+  // enabled in production; defaults flipped ON. Gates the new live surfaces/routes;
+  // the existing teacherRooms CRUD stays independently flagged.
+  liveRooms: { envSuffix: "LIVE_ROOMS", defaultDev: true, defaultProd: true },
   // Student Social — LeetCode/GitHub-style follow: @username handles, public
   // profiles at /u/<username> (rank + badges + Activity Vault + recent activity),
   // one-way follow/unfollow, follower/following lists, and student search.
-  // Gates /u/[username], /social, and all /api/social/* routes. Ships dark in
-  // prod (TEACHER_LAUNCH_STUDENT_SOCIAL=1 to enable); on by default in dev.
-  studentSocial: { envSuffix: "STUDENT_SOCIAL", defaultDev: true, defaultProd: false },
+  // Gates /u/[username], /social, and all /api/social/* routes. Shipped +
+  // enabled in production; defaults flipped ON. Migration 20260623_student_social.sql
+  // must be applied against Neon before the first prod deploy with this enabled.
+  studentSocial: { envSuffix: "STUDENT_SOCIAL", defaultDev: true, defaultProd: true },
   // Question-Bag-aware DPP generation — after a teacher-assigned test, prefer the
   // owning workspace's Question Bag for the relevant weak topics, fall back to OG
   // Code with a provenance note, and tenant-isolate bag-sourced DPPs to students

@@ -37,6 +37,64 @@ export const NeuButton = React.forwardRef<HTMLButtonElement, NeuButtonProps>(
 );
 NeuButton.displayName = 'NeuButton';
 
+/* ── Icon button ────────────────────────────────────────────────────────── */
+export interface NeuIconButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  /** Cyan accent icon instead of neutral. */
+  accent?: boolean;
+  /** Round (circle) instead of the default rounded square. */
+  round?: boolean;
+}
+export const NeuIconButton = React.forwardRef<HTMLButtonElement, NeuIconButtonProps>(
+  ({ className, accent, round, children, ...props }, ref) => (
+    <button
+      ref={ref}
+      className={cn(
+        'neu-icon-btn inline-flex h-11 w-11 items-center justify-center',
+        round && 'rounded-full',
+        accent ? 'text-primary' : 'text-muted-foreground hover:text-foreground',
+        focusRing,
+        'disabled:opacity-50 disabled:pointer-events-none',
+        className,
+      )}
+      {...props}
+    >
+      {children}
+    </button>
+  ),
+);
+NeuIconButton.displayName = 'NeuIconButton';
+
+/* ── Chip / tag ─────────────────────────────────────────────────────────── */
+export interface NeuChipProps {
+  children: React.ReactNode;
+  /** Leading icon, rendered in the accent colour. */
+  icon?: React.ReactNode;
+  /** When provided, shows a dismiss (×) button that calls this. */
+  onDismiss?: () => void;
+  className?: string;
+}
+export function NeuChip({ children, icon, onDismiss, className }: NeuChipProps) {
+  return (
+    <div className={cn('neu-chip inline-flex items-center gap-2 px-3 py-2', className)}>
+      {icon ? <span className="flex shrink-0 items-center text-primary">{icon}</span> : null}
+      <span className="text-sm font-medium text-foreground">{children}</span>
+      {onDismiss ? (
+        <button
+          type="button"
+          onClick={onDismiss}
+          aria-label="Remove"
+          className={cn('flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:text-foreground', focusRing)}
+        >
+          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <path d="M18 6 6 18M6 6l12 12" />
+          </svg>
+        </button>
+      ) : null}
+    </div>
+  );
+}
+NeuChip.displayName = 'NeuChip';
+
 /* ── Toggle switch ──────────────────────────────────────────────────────── */
 export interface NeuToggleProps {
   checked: boolean;

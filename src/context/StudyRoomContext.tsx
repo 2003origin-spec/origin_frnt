@@ -160,6 +160,9 @@ function reducer(state: State, action: Action): State {
   if (event.type === 'room_closed') {
     return { ...state, room: { ...state.room, status: 'closed' } };
   }
+  if (event.type === 'time_extended') {
+    return { ...state, room: { ...state.room, duration_seconds: event.duration_seconds } };
+  }
   return state;
 }
 
@@ -247,6 +250,7 @@ export function StudyRoomProvider({
       'participant_finished',
       'test_ended',
       'room_closed',
+      'time_extended',
     ];
 
     for (const eventType of eventTypes) {

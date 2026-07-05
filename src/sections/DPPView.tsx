@@ -215,18 +215,29 @@ export default function DPPView({ onBack, initialDpps }: DPPViewProps) {
     }
 
     let cancelled = false;
+    let attempts = 0;
+    const MAX_ATTEMPTS = 20;
+
     const poll = async () => {
+      if (attempts >= MAX_ATTEMPTS) {
+        window.clearInterval(interval);
+        return;
+      }
+      attempts++;
       try {
         const detail = await apiCall(`/assessments/dpps/${selectedDppId}/`);
-        if (cancelled) {
-          return;
-        }
+        if (cancelled) return;
         setDpps((previous) => previous.map((entry) => (entry.id === selectedDppId ? detail : entry)));
         if (detail?.latestAttempt) {
           setSubmissionResult((previous) => ({
             ...detail.latestAttempt,
             answers: previous?.answers ?? [],
           }));
+          // Stop polling once analysis is no longer pending
+          if (detail.latestAttempt?.analysisStatus !== 'pending' &&
+              detail.latestAttempt?.analysis_status !== 'pending') {
+            window.clearInterval(interval);
+          }
         }
       } catch {
         // Keep the scored pending attempt visible until a later poll succeeds.
@@ -388,7 +399,7 @@ export default function DPPView({ onBack, initialDpps }: DPPViewProps) {
       <header className="z-40 bg-[hsl(var(--neu-bg)/0.9)] border-b border-border/40 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-14 sm:h-16">
-            <div className="flex items-center gap-2 sm:gap-4 truncate">
+            <div className="flex items-center gap-2 sm:gap-4 truncate min-w-0">
               <button
                 onClick={() => (selectedDppId ? setSelectedDppId(null) : onBack())}
                 className="p-2 rounded-xl hover:bg-primary/5 transition-colors"
@@ -396,6 +407,13 @@ export default function DPPView({ onBack, initialDpps }: DPPViewProps) {
               >
                 <ChevronLeft className="w-5 h-5 text-slate-600" />
               </button>
+              {currentDpp && DPP_SUBJECT_ORI[currentDpp.subject] ? (
+                <img
+                  src={DPP_SUBJECT_ORI[currentDpp.subject]}
+                  alt="Ori"
+                  className="w-16 h-16 sm:w-20 sm:h-20 object-contain drop-shadow-md flex-shrink-0"
+                />
+              ) : null}
               <div className="truncate">
                 <h1 className="text-base sm:text-xl font-bold text-slate-900 dark:text-white truncate">Daily Practice Problems</h1>
                 <p className="text-[10px] sm:text-sm text-slate-500 dark:text-slate-400 truncate">
@@ -429,7 +447,7 @@ export default function DPPView({ onBack, initialDpps }: DPPViewProps) {
         ) : dpps.length === 0 ? (
           <Card className="neu-raised border-0 shadow-none">
             <CardContent className="p-8 text-center space-y-3">
-              <Target className="w-10 h-10 text-primary mx-auto" />
+              <img src="/ori2d/ori-cheerful.png" alt="Ori" className="w-28 h-28 object-contain mx-auto mb-3 drop-shadow-md" />
               <h2 className="text-2xl font-bold text-slate-900 dark:text-white">No DPPs generated yet</h2>
               <p className="text-slate-500 dark:text-slate-400">
                 Submit a custom or regular test first so the analytics pipeline can generate targeted DPPs.
@@ -470,17 +488,17 @@ export default function DPPView({ onBack, initialDpps }: DPPViewProps) {
               <div className="grid grid-cols-3 gap-2 sm:gap-4 max-w-md mx-auto mb-8">
                 <div className="p-3 sm:p-4 rounded-xl bg-primary/5 dark:bg-primary/10">
                   <div className="text-xl sm:text-3xl font-bold text-primary">{correctCount}</div>
-                  <div className="text-[10px] sm:text-sm text-slate-500 dark:text-slate-400 font-bold uppercase tracking-widest">Correct</div>
+                  <div className="text-[10px] sm:text-sm text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wide sm:tracking-widest">Correct</div>
                 </div>
                 <div className="p-3 sm:p-4 rounded-xl bg-red-50 dark:bg-red-900/20">
                   <div className="text-xl sm:text-3xl font-bold text-red-600">{currentQuestions.length - correctCount}</div>
-                  <div className="text-[10px] sm:text-sm text-slate-500 dark:text-slate-400 font-bold uppercase tracking-widest">Wrong</div>
+                  <div className="text-[10px] sm:text-sm text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wide sm:tracking-widest">Wrong</div>
                 </div>
                 <div className="p-3 sm:p-4 rounded-xl bg-primary/10 dark:bg-primary/20">
                   <div className="text-xl sm:text-3xl font-bold text-primary">
                     {Math.round(submissionResult?.progress_score ?? submissionResult?.progressScore ?? 0)}%
                   </div>
-                  <div className="text-[10px] sm:text-sm text-slate-500 dark:text-slate-400 font-bold uppercase tracking-widest">Score</div>
+                  <div className="text-[10px] sm:text-sm text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wide sm:tracking-widest">Score</div>
                 </div>
               </div>
 
@@ -558,7 +576,7 @@ export default function DPPView({ onBack, initialDpps }: DPPViewProps) {
                                   : 'border-border/40 hover:border-primary/50 hover:bg-primary/5'
                             }`}
                           >
-                            <div className="flex items-center gap-4">
+                            <div className="flex items-center gap-4 min-w-0">
                               <div
                                 className={`w-8 h-8 rounded-full flex items-center justify-center font-medium ${
                                   showSolution
@@ -581,7 +599,7 @@ export default function DPPView({ onBack, initialDpps }: DPPViewProps) {
                                 )}
                               </div>
                               <span
-                                className={`text-base sm:text-lg ${
+                                className={`text-base sm:text-lg min-w-0 break-words ${
                                   showSolution && index === getCorrectOption(currentQuestionIndex)
                                     ? 'text-primary'
                                     : showSolution && selectedOption === index
@@ -613,7 +631,7 @@ export default function DPPView({ onBack, initialDpps }: DPPViewProps) {
                         </div>
                       )}
 
-                      <div className="flex items-center justify-between">
+                      <div className="flex items-center justify-between flex-wrap gap-2">
                         <Button variant="outline" onClick={handlePrevious} disabled={currentQuestionIndex === 0} className="rounded-full">
                           <ChevronLeft className="w-4 h-4 mr-2" />
                           Previous
@@ -649,13 +667,13 @@ export default function DPPView({ onBack, initialDpps }: DPPViewProps) {
             <div className="space-y-4">
               <Card className="neu-raised border-0 shadow-none">
                 <CardContent className="p-4">
-                  <h3 className="font-semibold text-slate-900 dark:text-white mb-3">{currentDpp.title}</h3>
+                  <h3 className="font-semibold text-slate-900 dark:text-white mb-3 line-clamp-2">{currentDpp.title}</h3>
                   <p className="text-sm text-slate-500 dark:text-slate-400 mb-2">
                     {currentDpp.summary ?? 'Targeted practice generated from your latest weak-topic analytics.'}
                   </p>
                   {(currentDpp.provenanceNote ?? currentDpp.provenance_note) ? (
-                    <p className="text-xs text-primary/80 font-medium mb-4 flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5" />
+                    <p className="text-xs text-primary/80 font-medium mb-4 flex items-center gap-1.5 min-w-0">
+                      <Sparkles className="w-3.5 h-3.5 flex-shrink-0" />
                       {currentDpp.provenanceNote ?? currentDpp.provenance_note}
                     </p>
                   ) : null}
@@ -688,7 +706,7 @@ export default function DPPView({ onBack, initialDpps }: DPPViewProps) {
                     <h3 className="font-semibold">AI Mentor</h3>
                   </div>
                   <p className="text-white/80 text-sm">
-                    Origin AI will pick up these weak topics automatically once you submit this DPP.
+                    Ori will pick up these weak topics automatically once you submit this DPP.
                   </p>
                 </CardContent>
               </Card>
@@ -704,7 +722,7 @@ export default function DPPView({ onBack, initialDpps }: DPPViewProps) {
                       <Badge
                         key={topic}
                         variant="secondary"
-                        className="bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 mr-2"
+                        className="bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 mr-2 max-w-full truncate"
                       >
                         {topic}
                       </Badge>
@@ -798,7 +816,7 @@ function DppSelectionGrid({
                           </Badge>
                         )}
                       </div>
-                      <h3 className="text-lg font-semibold text-slate-900 dark:text-white leading-snug">
+                      <h3 className="text-lg font-semibold text-slate-900 dark:text-white leading-snug break-words">
                         {dpp.title}
                       </h3>
                       {dpp.summary ? (
@@ -824,7 +842,7 @@ function DppSelectionGrid({
                     ) : null}
                   </div>
 
-                  <div className="flex items-center justify-between text-sm text-slate-600 dark:text-slate-400">
+                  <div className="flex items-center justify-between flex-wrap gap-2 text-sm text-slate-600 dark:text-slate-400">
                     <div className="flex items-center gap-4">
                       <span className="inline-flex items-center gap-1">
                         <Target className="w-4 h-4" />

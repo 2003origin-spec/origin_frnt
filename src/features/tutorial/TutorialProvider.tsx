@@ -17,7 +17,30 @@ interface TutorialContextType {
 
 const TutorialContext = createContext<TutorialContextType | undefined>(undefined);
 
-const getPageFromPath = (path: string) => {
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+const getStorageKey = (userId: string | number, page: string) =>
+  `origin_tutorial_${userId}_${page}_seen_at`;
+
+function shouldShowTutorial(userId: string | number, page: string): boolean {
+  try {
+    const raw = localStorage.getItem(getStorageKey(userId, page));
+    if (!raw) return true; // never seen — first login
+    const lastSeen = Number(raw);
+    if (isNaN(lastSeen)) return true; // corrupted
+    return Date.now() - lastSeen > WEEK_MS;
+  } catch {
+    return false;
+  }
+}
+
+function markTutorialSeen(userId: string | number, page: string): void {
+  try {
+    localStorage.setItem(getStorageKey(userId, page), String(Date.now()));
+  } catch { /* ignore storage errors */ }
+}
+
+const getPageFromPath = (path: string): string | null => {
   if (path === '/dashboard') return 'dashboard';
   if (path === '/ogcode') return 'ogcode-list';
   if (path.startsWith('/ogcode')) return 'ogcode-workspace';
@@ -27,8 +50,6 @@ const getPageFromPath = (path: string) => {
   if (path.includes('tasks-goals')) return 'tasks-goals';
   return null;
 };
-
-const getStorageKey = (userId: string | number, page: string) => `origin_tutorial_${userId}_${page}_completed`;
 
 export const TutorialProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isActive, setIsActive] = useState(false);
@@ -48,46 +69,33 @@ export const TutorialProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setActivePage(page);
     setCurrentStep(0);
 
-    // Persistence Check
-    const isCompleted = localStorage.getItem(getStorageKey(user.id, page));
-    
-    // Set to false to enable persistence, true for testing
-    const forceShow = false; 
-
-    if (!isCompleted || forceShow) {
-      const timer = setTimeout(() => {
-        setIsActive(true);
-      }, 1500);
-      return () => clearTimeout(timer);
-    } else {
+    if (!shouldShowTutorial(user.id, page)) {
       setIsActive(false);
+      return;
     }
+
+    const timer = setTimeout(() => setIsActive(true), 1200);
+    return () => clearTimeout(timer);
   }, [pathname, user]);
 
-  const steps = activePage ? PAGES_STEPS[activePage] || [] : [];
+  const steps = activePage ? (PAGES_STEPS[activePage] ?? []) : [];
 
   const nextStep = useCallback(() => {
     if (currentStep < steps.length - 1) {
       setCurrentStep(prev => prev + 1);
     } else {
       setIsActive(false);
-      if (activePage && user) {
-        localStorage.setItem(getStorageKey(user.id, activePage), 'true');
-      }
+      if (activePage && user) markTutorialSeen(user.id, activePage);
     }
-  }, [currentStep, steps, activePage, user]);
+  }, [currentStep, steps.length, activePage, user]);
 
   const prevStep = useCallback(() => {
-    if (currentStep > 0) {
-      setCurrentStep(prev => prev - 1);
-    }
+    if (currentStep > 0) setCurrentStep(prev => prev - 1);
   }, [currentStep]);
 
   const skipTutorial = useCallback(() => {
     setIsActive(false);
-    if (activePage && user) {
-      localStorage.setItem(getStorageKey(user.id, activePage), 'true');
-    }
+    if (activePage && user) markTutorialSeen(user.id, activePage);
   }, [activePage, user]);
 
   const startTutorial = useCallback(() => {
@@ -96,15 +104,7 @@ export const TutorialProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, []);
 
   return (
-    <TutorialContext.Provider value={{
-      isActive,
-      currentStep,
-      steps,
-      nextStep,
-      prevStep,
-      skipTutorial,
-      startTutorial
-    }}>
+    <TutorialContext.Provider value={{ isActive, currentStep, steps, nextStep, prevStep, skipTutorial, startTutorial }}>
       {children}
     </TutorialContext.Provider>
   );
@@ -112,8 +112,6 @@ export const TutorialProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
 export const useTutorial = () => {
   const context = useContext(TutorialContext);
-  if (context === undefined) {
-    throw new Error('useTutorial must be used within a TutorialProvider');
-  }
+  if (!context) throw new Error('useTutorial must be used within a TutorialProvider');
   return context;
 };
