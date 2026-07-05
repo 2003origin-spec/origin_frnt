@@ -16,47 +16,44 @@ interface Props {
 
 export default function ResultClient({ testId, initialHistory, requestedResultId }: Props) {
   const router = useRouter();
-  // Prefer the hot result stashed in sessionStorage by TestPage right before navigation;
-  // fall back to server-seeded history.
+  // Initialize from SSR-stable data only — no window/sessionStorage access here to
+  // avoid a hydration mismatch (server can't read sessionStorage).
   const [testResult, setTestResult] = useState<TestResult | null>(() => {
-    if (typeof window !== 'undefined') {
-      const cached = window.sessionStorage.getItem(`origin_test_result_${testId}`);
-      if (cached) {
-        try {
-          const parsed: TestResult = JSON.parse(cached);
-          window.sessionStorage.removeItem(`origin_test_result_${testId}`);
-          if (!requestedResultId || parsed.id === requestedResultId) {
-            return parsed;
-          }
-        } catch {
-          window.sessionStorage.removeItem(`origin_test_result_${testId}`);
-        }
-      }
-
-      if (requestedResultId) {
-        const exactCached = window.sessionStorage.getItem(`origin_test_result_id_${requestedResultId}`);
-        if (exactCached) {
-          try {
-            const parsed: TestResult = JSON.parse(exactCached);
-            window.sessionStorage.removeItem(`origin_test_result_id_${requestedResultId}`);
-            if (parsed.id === requestedResultId) {
-              return parsed;
-            }
-          } catch {
-            window.sessionStorage.removeItem(`origin_test_result_id_${requestedResultId}`);
-          }
-        }
-      }
-    }
-
     if (requestedResultId) {
-      return initialHistory.find((result) => result.id === requestedResultId) ?? null;
+      return initialHistory.find((r) => r.id === requestedResultId) ?? null;
     }
     return initialHistory[0] ?? null;
   });
   const [testHistory, setTestHistory] = useState<TestResult[]>(() =>
     testResult ? [testResult, ...initialHistory.filter((r) => r.id !== testResult.id)] : initialHistory,
   );
+
+  // After hydration, swap in the hot result stashed in sessionStorage by TestPage.
+  // Running in useEffect guarantees SSR output matches initial client render.
+  useEffect(() => {
+    const trySession = (key: string, matchId?: string): TestResult | null => {
+      const raw = window.sessionStorage.getItem(key);
+      if (!raw) return null;
+      window.sessionStorage.removeItem(key);
+      try {
+        const parsed: TestResult = JSON.parse(raw);
+        if (!matchId || parsed.id === matchId) return parsed;
+      } catch {
+        // ignore corrupt cache
+      }
+      return null;
+    };
+
+    const hot =
+      trySession(`origin_test_result_${testId}`, requestedResultId ?? undefined) ??
+      (requestedResultId ? trySession(`origin_test_result_id_${requestedResultId}`, requestedResultId) : null);
+
+    if (hot) {
+      setTestResult(hot);
+      setTestHistory((prev) => [hot, ...prev.filter((r) => r.id !== hot.id)]);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // intentionally empty — runs once after first paint
 
   useEffect(() => {
     if (!requestedResultId || testResult?.id === requestedResultId) return;

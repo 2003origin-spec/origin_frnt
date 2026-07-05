@@ -34,6 +34,8 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { getUserTitle } from '@/lib/achievements';
 import SocialSettingsCard from '@/components/social/SocialSettingsCard';
+import { BADGE_TIERS } from '@/lib/badges';
+import Image from 'next/image';
 
 interface ProfileProps {
   user: UserType;
@@ -373,10 +375,47 @@ export default function Profile({
               </div>
             </motion.div>
 
+            {/* Current Badge Card */}
+            {(() => {
+              const userPts = user.points ?? 0;
+              const currentBadge = [...BADGE_TIERS].reverse().find(b => userPts >= b.points) ?? BADGE_TIERS[0];
+              const nextBadge = BADGE_TIERS[BADGE_TIERS.findIndex(b => b.name === currentBadge.name) + 1];
+              const unlockedCount = BADGE_TIERS.filter(b => userPts >= b.points).length;
+              return (
+                <motion.div {...stagger(1)} className={`neu-raised p-4 flex items-center gap-4 rounded-[20px] relative overflow-hidden`}>
+                  <div className={`absolute inset-0 bg-gradient-to-br ${currentBadge.theme} opacity-10 pointer-events-none`} />
+                  <motion.div
+                    className="relative shrink-0"
+                    animate={{ y: [0, -4, 0] }}
+                    transition={{ repeat: Infinity, duration: 3, ease: 'easeInOut' }}
+                  >
+                    <Image
+                      src={currentBadge.image}
+                      alt={currentBadge.name}
+                      width={64}
+                      height={64}
+                      className="drop-shadow-xl"
+                      priority
+                    />
+                  </motion.div>
+                  <div className="flex-1 min-w-0 relative">
+                    <p className="text-[9px] font-black uppercase tracking-[0.18em] text-muted-foreground">Current Rank</p>
+                    <p className="text-lg font-black text-foreground leading-tight truncate">{currentBadge.name}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">{unlockedCount} / {BADGE_TIERS.length} badges</p>
+                    {nextBadge && (
+                      <p className="text-[9px] font-bold text-primary/70 mt-1 truncate">
+                        +{(nextBadge.points - userPts).toLocaleString()} pts → {nextBadge.name}
+                      </p>
+                    )}
+                  </div>
+                </motion.div>
+              );
+            })()}
+
             {/* Stats — vertical on desktop (2×2 grid) */}
             <div className="grid grid-cols-2 gap-3">
               {STATS.map((stat, i) => (
-                <motion.div key={stat.label} {...stagger(i + 1)} className="neu-raised p-4 flex flex-col gap-1.5">
+                <motion.div key={stat.label} {...stagger(i + 2)} className="neu-raised p-4 flex flex-col gap-1.5">
                   <div className={cn('w-8 h-8 rounded-xl flex items-center justify-center', stat.accentBg)}>
                     <stat.icon className={cn('w-4 h-4', stat.accent)} />
                   </div>
@@ -494,32 +533,51 @@ export default function Profile({
               {/* AI Photobooth */}
               {activeTab === 'photobooth' && <PhotoBooth />}
 
-              {/* Achievements */}
+              {/* Badges */}
               {activeTab === 'achievements' && (
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                  {achievements.map((a, i) => (
-                    <motion.div
-                      key={a.name}
-                      {...stagger(i)}
-                      className={cn(
-                        'neu-raised p-5 text-center flex flex-col items-center gap-2.5',
-                        !a.unlocked && 'opacity-40 grayscale'
-                      )}
-                    >
-                      <div className={cn('w-12 h-12 rounded-2xl flex items-center justify-center', a.unlocked ? 'bg-primary/15' : 'bg-muted')}>
-                        <a.icon className={cn('w-6 h-6', a.unlocked ? 'text-primary' : 'text-muted-foreground')} />
-                      </div>
-                      <div>
-                        <p className="font-black text-sm text-foreground">{a.name}</p>
-                        <p className="text-[10px] text-muted-foreground mt-0.5">{a.description}</p>
-                      </div>
-                      {a.unlocked && (
-                        <span className="text-[9px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/25 text-emerald-600 flex items-center gap-1">
-                          <Check className="w-2.5 h-2.5" />Unlocked
-                        </span>
-                      )}
-                    </motion.div>
-                  ))}
+                <div className="space-y-3">
+                  <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest px-1">
+                    {BADGE_TIERS.filter(b => (user.points ?? 0) >= b.points).length} / {BADGE_TIERS.length} Badges Unlocked
+                  </p>
+                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+                    {BADGE_TIERS.map((badge, i) => {
+                      const unlocked = (user.points ?? 0) >= badge.points;
+                      return (
+                        <motion.div
+                          key={badge.name}
+                          {...stagger(i)}
+                          className={cn(
+                            'neu-raised p-3 text-center flex flex-col items-center gap-2 rounded-2xl relative overflow-hidden',
+                            !unlocked && 'opacity-40'
+                          )}
+                        >
+                          {unlocked && (
+                            <div className={`absolute inset-0 bg-gradient-to-br ${badge.theme} opacity-10 pointer-events-none`} />
+                          )}
+                          <div className={cn('relative', !unlocked && 'grayscale')}>
+                            <Image
+                              src={badge.image}
+                              alt={badge.name}
+                              width={64}
+                              height={64}
+                              className="drop-shadow-md"
+                            />
+                          </div>
+                          <div className="relative">
+                            <p className="font-black text-[11px] text-foreground leading-tight">{badge.name}</p>
+                            <p className="text-[9px] text-muted-foreground mt-0.5">
+                              {badge.points === 0 ? 'Free' : `${badge.points.toLocaleString()} pts`}
+                            </p>
+                          </div>
+                          {unlocked && (
+                            <span className="relative text-[8px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/25 text-emerald-600 flex items-center gap-1">
+                              <Check className="w-2 h-2" />Unlocked
+                            </span>
+                          )}
+                        </motion.div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
 

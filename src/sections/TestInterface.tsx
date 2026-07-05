@@ -52,10 +52,49 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [verificationStep, setVerificationStep] = useState<'instructions' | 'proctoring'>('instructions');
   const [hasAcceptedRules, setHasAcceptedRules] = useState(false);
+  const [cameraEnabled, setCameraEnabled] = useState(false);
   const [showRefreshWarning, setShowRefreshWarning] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Ref-based guard so simultaneous triggers (timer + malpractice) never both pass
+  const isSubmittingRef = useRef(false);
+  const [isPortrait, setIsPortrait] = useState(false);
   const allowSubmittedNavigationRef = useRef(false);
   const questionStartedAtRef = useRef<number>(Date.now());
+  // Always holds the latest finalSubmit so timer callbacks never use a stale closure
+  const finalSubmitRef = useRef<((opts?: { malpractice?: boolean }) => Promise<void>) | null>(null);
+
+  // Force light theme for the exam — remove dark class from <html> while mounted
+  useEffect(() => {
+    const html = document.documentElement;
+    const wasDark = html.classList.contains('dark');
+    html.classList.remove('dark');
+    return () => {
+      if (wasDark) html.classList.add('dark');
+    };
+  }, []);
+
+  // Portrait / landscape detection — tests must be in landscape on mobile
+  useEffect(() => {
+    const check = () => {
+      setIsPortrait(window.innerWidth < window.innerHeight && window.innerWidth < 1024);
+    };
+    check();
+    window.addEventListener('resize', check);
+    window.addEventListener('orientationchange', check);
+    return () => {
+      window.removeEventListener('resize', check);
+      window.removeEventListener('orientationchange', check);
+    };
+  }, []);
+
+  const enterFullscreen = () => {
+    const el = document.documentElement;
+    try {
+      if (el.requestFullscreen) { void el.requestFullscreen(); }
+      else if ((el as any).webkitRequestFullscreen) { (el as any).webkitRequestFullscreen(); }
+      else if ((el as any).mozRequestFullScreen) { (el as any).mozRequestFullScreen(); }
+    } catch { /* ignore if browser blocks */ }
+  };
 
   // Proctoring setup - gated by verification step
   useEffect(() => {
@@ -105,37 +144,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
     };
   }, [verificationStep]);
 
-  // Mock detection logic - only when exam started
-  useEffect(() => {
-    if (!isExamStarted) return;
-
-    const detectionInterval = setInterval(() => {
-      // Small chance of simulation every interval
-      if (Math.random() < 0.15) { // Increased probability for testing
-        setMobileDetected(true);
-        setProctorStatus('warning');
-        
-        // Actually trigger a violation in the simulation
-        setViolations(prev => {
-          const next = prev + 1;
-          if (next >= 3) {
-            terminateWithMalpractice();
-          } else {
-            setShowMalpracticeWarning(true);
-          }
-          return next;
-        });
-
-        // Auto-clear after 5 seconds
-        setTimeout(() => {
-          setMobileDetected(false);
-          setProctorStatus('monitoring');
-        }, 5000);
-      }
-    }, 15000); // More frequent check for demo purposes
-
-    return () => clearInterval(detectionInterval);
-  }, [isExamStarted]);
+  // (Removed: random mock malpractice detection that caused false violations in production)
 
   // Malpractice Detection Logic
   useEffect(() => {
@@ -145,9 +154,14 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
       setViolations(prev => {
         const next = prev + 1;
         if (next >= 3) {
-          terminateWithMalpractice();
+          // Schedule outside state updater; use ref so we always have latest finalSubmit
+          setTimeout(() => {
+            setIsMalpracticeTerminated(true);
+            stopCamera();
+            finalSubmitRef.current?.({ malpractice: true });
+          }, 0);
         } else {
-          setShowMalpracticeWarning(true);
+          setTimeout(() => setShowMalpracticeWarning(true), 0);
         }
         return next;
       });
@@ -217,12 +231,20 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
       toast.error("Right-click disabled during examination");
     };
 
+    const handleFullscreenChange = () => {
+      if (!document.fullscreenElement && !(document as any).webkitFullscreenElement) {
+        handleViolation();
+      }
+    };
+
     window.addEventListener('beforeunload', handleBeforeUnload);
     window.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('blur', handleBlur);
     window.addEventListener('focus', handleFocus);
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('contextmenu', handleContextMenu);
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
 
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
@@ -231,14 +253,15 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
       window.removeEventListener('focus', handleFocus);
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('contextmenu', handleContextMenu);
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
     };
   }, [isExamStarted, isMalpracticeTerminated]);
 
   const terminateWithMalpractice = () => {
     setIsMalpracticeTerminated(true);
     stopCamera();
-    // Start submission immediately
-    finalSubmit({ malpractice: true });
+    finalSubmitRef.current?.({ malpractice: true });
   };
 
   const stopCamera = () => {
@@ -286,7 +309,9 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
   useEffect(() => {
     if (!timerSource || !isExamStarted) return;
     if (serverTimeRemaining <= 0) {
-      finalSubmit();
+      // Use ref so the latest answers are always captured, even if this effect
+      // fires from a stale closure before the next render with fresh finalSubmit
+      finalSubmitRef.current?.();
     }
   }, [isExamStarted, serverTimeRemaining, timerSource]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -297,7 +322,9 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
       setTimeRemaining((prev) => {
         if (prev <= 1) {
           clearInterval(timer);
-          finalSubmit();
+          // Schedule outside the state updater so it never fires twice in Strict Mode
+          // and always uses the latest finalSubmit (via ref) with current answers
+          setTimeout(() => finalSubmitRef.current?.(), 0);
           return 0;
         }
         return prev - 1;
@@ -489,7 +516,9 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
   };
 
   const finalSubmit = async (options?: { malpractice?: boolean }) => {
-    if (isSubmitting) return;
+    // Use ref-based guard so simultaneous calls (timer + malpractice race) are safe
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
     setIsSubmitting(true);
     const submissionToastId = toast.loading('Submitting your test... Please wait while we process your AI analytics.');
     stopCamera();
@@ -523,13 +552,16 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
       toast.dismiss(submissionToastId);
       await Promise.resolve(onComplete(result as TestResult));
     } catch (error: any) {
+      isSubmittingRef.current = false;
+      setIsSubmitting(false);
       allowSubmittedNavigationRef.current = false;
       toast.dismiss(submissionToastId);
       console.error('Test submission failed:', error);
       toast.error('Failed to submit test. Please try again.');
-      setIsSubmitting(false);
     }
   };
+  // Keep ref current so timer callbacks always invoke the latest version (captures latest answers)
+  finalSubmitRef.current = finalSubmit;
 
   // Stats for Legend
   const stats = {
@@ -550,7 +582,22 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
   });
 
   return (
-    <div className="h-dvh overflow-hidden bg-background text-foreground font-sans text-sm selection:bg-blue-200/30 flex flex-col relative">
+    <div className="h-dvh overflow-hidden bg-white text-gray-900 font-sans text-sm selection:bg-blue-200/30 flex flex-col relative" style={{ colorScheme: 'light' }}>
+
+      {/* Portrait orientation guard — mobile must be landscape */}
+      {isPortrait && (
+        <div className="fixed inset-0 z-[999] bg-slate-900 flex flex-col items-center justify-center text-white p-8 text-center">
+          <div className="text-7xl mb-6">📱</div>
+          <h2 className="text-2xl font-black uppercase tracking-tight mb-3">Rotate Your Device</h2>
+          <p className="text-slate-300 text-sm font-medium leading-relaxed max-w-xs">
+            This exam must be taken in landscape mode. Please rotate your phone horizontally to continue.
+          </p>
+          <div className="mt-8 inline-flex items-center gap-4 border border-white/20 rounded-2xl px-6 py-4">
+            <span className="text-3xl">↺</span>
+            <span className="text-sm font-bold text-slate-300">Turn sideways to unlock the test</span>
+          </div>
+        </div>
+      )}
 
       {/* 0. Verification Overlay */}
       {!isExamStarted && (
@@ -639,47 +686,77 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
 
                 <section className="bg-rose-50/50 p-6 rounded-2xl border border-rose-100">
                   <h3 className="text-rose-900 font-bold text-base mb-3 flex items-center gap-2">
-                    <ShieldCheck className="w-5 h-5" /> AI Proctoring Compliance
+                    <ShieldCheck className="w-5 h-5" /> Exam Integrity Rules
                   </h3>
                   <ul className="text-xs space-y-2 text-slate-600 font-medium">
+                    <li>• The exam opens in <span className="text-red-600 font-bold">full-screen mode</span>. Exiting full-screen counts as a violation.</li>
                     <li>• Switching tabs or minimizing the browser will trigger a malpractice warning.</li>
                     <li>• After <span className="text-red-600 font-bold">3 violations</span>, the test will be automatically terminated.</li>
-                    <li>• Your camera must be active and your face must be clearly visible throughout the exam.</li>
+                    <li>• Camera proctoring is <span className="font-bold text-slate-700">optional</span> — you may enable it below for AI face monitoring.</li>
                   </ul>
                 </section>
               </div>
 
               {/* Footer */}
-              <div className="bg-slate-50 px-6 py-6 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4">
-                <label className="flex items-center gap-3 cursor-pointer group">
-                  <input 
-                    type="checkbox" 
-                    checked={hasAcceptedRules}
-                    onChange={(e) => setHasAcceptedRules(e.target.checked)}
-                    className="w-5 h-5 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer" 
+              <div className="bg-slate-50 px-6 py-5 border-t border-slate-200 flex flex-col gap-4">
+                {/* Camera toggle */}
+                <label className="flex items-start gap-3 cursor-pointer group p-3 rounded-xl border border-slate-200 hover:border-rose-200 hover:bg-rose-50/40 transition-all">
+                  <input
+                    type="checkbox"
+                    checked={cameraEnabled}
+                    onChange={(e) => setCameraEnabled(e.target.checked)}
+                    className="w-5 h-5 mt-0.5 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
                   />
-                  <span className="text-xs sm:text-sm font-bold text-gray-700 group-hover:text-rose-900 transition-colors">
-                    I have read and understood the instructions.
-                  </span>
+                  <div>
+                    <span className="text-xs sm:text-sm font-bold text-gray-700 flex items-center gap-2">
+                      <Camera className="w-4 h-4 text-primary" />
+                      Enable Camera Proctoring <span className="text-[10px] font-medium text-gray-400 uppercase tracking-widest">(Optional)</span>
+                    </span>
+                    <p className="text-[10px] text-gray-400 font-medium mt-0.5">
+                      Enables AI face-monitoring during the exam. Your face must be clearly visible if enabled.
+                    </p>
+                  </div>
                 </label>
-                <div className="flex gap-3 w-full sm:w-auto">
-                  <button 
-                    onClick={onExit}
-                    className="px-8 py-3 border border-slate-300 text-slate-600 font-bold rounded-xl hover:bg-slate-100 transition-all uppercase text-sm"
-                  >
-                    Exit
-                  </button>
-                  <button
-                    disabled={!hasAcceptedRules}
-                    onClick={() => setVerificationStep('proctoring')}
-                    className={`flex items-center gap-2 px-10 py-3 rounded-xl font-black uppercase tracking-tight transition-all
-                      ${hasAcceptedRules 
-                        ? 'bg-primary text-white shadow-lg hover:bg-primary/90 hover:scale-[1.02] active:scale-95' 
-                        : 'bg-gray-300 text-gray-500 cursor-not-allowed'}
-                    `}
-                  >
-                    Proceed <Play className="w-4 h-4 fill-current" />
-                  </button>
+
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <label className="flex items-center gap-3 cursor-pointer group">
+                    <input
+                      type="checkbox"
+                      checked={hasAcceptedRules}
+                      onChange={(e) => setHasAcceptedRules(e.target.checked)}
+                      className="w-5 h-5 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
+                    />
+                    <span className="text-xs sm:text-sm font-bold text-gray-700 group-hover:text-rose-900 transition-colors">
+                      I have read and understood the instructions.
+                    </span>
+                  </label>
+                  <div className="flex gap-3 w-full sm:w-auto">
+                    <button
+                      onClick={onExit}
+                      className="px-8 py-3 border border-slate-300 text-slate-600 font-bold rounded-xl hover:bg-slate-100 transition-all uppercase text-sm"
+                    >
+                      Exit
+                    </button>
+                    <button
+                      disabled={!hasAcceptedRules}
+                      onClick={() => {
+                        if (cameraEnabled) {
+                          setVerificationStep('proctoring');
+                        } else {
+                          setIsExamStarted(true);
+                          questionStartedAtRef.current = Date.now();
+                          enterFullscreen();
+                        }
+                      }}
+                      className={`flex items-center gap-2 px-10 py-3 rounded-xl font-black uppercase tracking-tight transition-all
+                        ${hasAcceptedRules
+                          ? 'bg-primary text-white shadow-lg hover:bg-primary/90 hover:scale-[1.02] active:scale-95'
+                          : 'bg-gray-300 text-gray-500 cursor-not-allowed'}
+                      `}
+                    >
+                      {cameraEnabled ? 'Proceed' : 'Start Exam'} <Play className="w-4 h-4 fill-current" />
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -775,6 +852,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
                     onClick={() => {
                       setIsExamStarted(true);
                       questionStartedAtRef.current = Date.now();
+                      enterFullscreen();
                     }}
                     className={`w-full group relative flex items-center justify-center gap-3 py-4 rounded-2xl font-black text-lg transition-all
                       ${(isCameraActive && isFaceDetected) 
@@ -810,36 +888,38 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
         </div>
 
         <div className="flex items-center justify-between w-full sm:w-auto gap-4 text-xs font-semibold">
-          <div className="w-16 h-20 sm:w-24 sm:h-28 bg-gray-600 rounded-lg flex flex-col items-center justify-center overflow-hidden relative shadow-inner border-2 border-gray-400">
-            {proctorStatus === 'error' ? (
-              <div className="flex flex-col items-center justify-center text-red-100 p-2 bg-red-900/50 w-full h-full">
-                <Camera className="w-5 h-5 sm:w-6 sm:h-6 mb-2" />
-                <span className="text-[8px] sm:text-[10px] text-center font-bold tracking-tighter">ACCESS DENIED</span>
-              </div>
-            ) : (
-              <>
-                <video
-                  ref={videoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  className="w-full h-full object-cover opacity-100 -scale-x-100"
-                />
-                <div className="absolute top-1 right-1 w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse shadow-[0_0_5px_rgba(239,68,68,0.8)]"></div>
-                <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-[8px] text-white py-0.5 text-center flex items-center justify-center gap-1">
-                  {proctorStatus === 'warning' ? (
-                    <span className="text-yellow-400 flex items-center">
-                      <AlertTriangle className="w-2 h-2 mr-0.5" /> MOBILE?
-                    </span>
-                  ) : (
-                    <span className="flex items-center">
-                      <ShieldCheck className="w-2 h-2 mr-0.5 text-green-400" /> PROCTORING
-                    </span>
-                  )}
+          {cameraEnabled && (
+            <div className="w-16 h-20 sm:w-24 sm:h-28 bg-gray-600 rounded-lg flex flex-col items-center justify-center overflow-hidden relative shadow-inner border-2 border-gray-400">
+              {proctorStatus === 'error' ? (
+                <div className="flex flex-col items-center justify-center text-red-100 p-2 bg-red-900/50 w-full h-full">
+                  <Camera className="w-5 h-5 sm:w-6 sm:h-6 mb-2" />
+                  <span className="text-[8px] sm:text-[10px] text-center font-bold tracking-tighter">ACCESS DENIED</span>
                 </div>
-              </>
-            )}
-          </div>
+              ) : (
+                <>
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="w-full h-full object-cover opacity-100 -scale-x-100"
+                  />
+                  <div className="absolute top-1 right-1 w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse shadow-[0_0_5px_rgba(239,68,68,0.8)]"></div>
+                  <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-[8px] text-white py-0.5 text-center flex items-center justify-center gap-1">
+                    {proctorStatus === 'warning' ? (
+                      <span className="text-yellow-400 flex items-center">
+                        <AlertTriangle className="w-2 h-2 mr-0.5" /> MOBILE?
+                      </span>
+                    ) : (
+                      <span className="flex items-center">
+                        <ShieldCheck className="w-2 h-2 mr-0.5 text-green-400" /> PROCTORING
+                      </span>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
           <div className="flex flex-col gap-0.5 sm:gap-1 text-[10px] sm:text-xs">
             <div className="flex"><span className="w-20 sm:w-28 text-gray-500">Candidate:</span> <span className="text-orange-500 truncate max-w-[100px] sm:max-w-none">[Your Name]</span></div>
             <div className="flex"><span className="w-20 sm:w-28 text-gray-500">Subject:</span> <span className="text-orange-500 truncate max-w-[100px] sm:max-w-none">{test.title}</span></div>
@@ -927,7 +1007,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
         <div className="flex-1 flex flex-col border-r border-gray-300 relative">
 
           {/* Question Header */}
-          <div className="flex justify-between items-center px-4 py-2 border-b border-gray-300 font-bold text-base sm:text-lg border-t-4 border-t-white bg-slate-50 dark:bg-slate-900 text-foreground sticky top-0 z-20">
+          <div className="flex justify-between items-center px-4 py-2 border-b border-gray-300 font-bold text-base sm:text-lg border-t-4 border-t-white bg-slate-50 text-gray-900 sticky top-0 z-20">
             <span>Question {currentQuestionIndex + 1}:</span>
             <div className="w-6 h-6 bg-primary rounded-full text-white flex items-center justify-center font-bold text-sm shadow-sm">&darr;</div>
           </div>
@@ -948,12 +1028,12 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
                 </div>
               )}
 
-              <div className="text-base text-gray-800 leading-relaxed font-serif mb-8 select-text cursor-text">
+              <div className="text-base text-gray-800 leading-relaxed font-sans mb-8 select-text cursor-text">
                 {renderQuestionText(currentQuestion?.text || '', 'test-question')}
               </div>
 
               {effectiveType === 'mcq' && (
-                <div className="space-y-4 font-serif text-base">
+                <div className="space-y-4 font-sans text-base">
                   {currentOptions.map((option, idx) => (
                     <button
                       key={idx}
@@ -982,7 +1062,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
               )}
 
               {effectiveType === 'msq' && (
-                <div className="space-y-4 font-serif text-base">
+                <div className="space-y-4 font-sans text-base">
                   <p className="text-xs font-bold text-primary mb-2 uppercase tracking-tight">Multiple Correct Concept</p>
                   {currentOptions.map((option, idx) => (
                     <label key={idx} className="flex items-start gap-4 cursor-pointer group">
@@ -1006,7 +1086,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
               )}
 
               {effectiveType === 'matrix_match' && currentQuestion.matrixData && (
-                <div className="space-y-6 font-serif text-base">
+                <div className="space-y-6 font-sans text-base">
                   <p className="text-xs font-bold text-primary mb-4 uppercase tracking-tight">Matrix Matching</p>
                   
                   {/* Column B Reference (Sync with OGCode) */}
@@ -1064,7 +1144,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
               )}
 
               {effectiveType === 'numerical' && (
-                <div className="font-serif text-base">
+                <div className="font-sans text-base">
                   <p className="text-xs font-bold text-primary mb-4 uppercase tracking-tight">Numerical Value Type</p>
                   <div className="flex flex-col gap-4">
                     <input
@@ -1081,7 +1161,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
               )}
 
               {effectiveType === 'subjective' && (
-                <div className="font-serif text-base w-full">
+                <div className="font-sans text-base w-full">
                   <p className="text-sm font-bold text-slate-500 mb-2 uppercase">Write your answer:</p>
                   <textarea
                     value={tempTextAnswer}
@@ -1095,7 +1175,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
           </div>
 
           {/* Action Buttons */}
-          <div className="border-t border-gray-300 px-3 sm:px-4 py-2 sm:py-3 flex justify-between items-center bg-slate-50 dark:bg-slate-900 shadow-sm">
+          <div className="border-t border-gray-300 px-3 sm:px-4 py-2 sm:py-3 flex justify-between items-center bg-slate-50 shadow-sm">
             <div className="flex gap-2">
               <button onClick={markForReviewAndNext} className="bg-primary text-white px-2 sm:px-4 py-2 sm:py-2.5 font-bold text-[10px] sm:text-xs rounded-sm hover:opacity-90 uppercase flex flex-col items-center leading-tight">
                 MARK FOR REVIEW & NEXT
@@ -1113,7 +1193,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
         </div>
 
         {/* Right Area - Palette */}
-        <div className="w-full lg:w-[350px] bg-slate-50 dark:bg-slate-900 flex flex-col pt-4 border-t lg:border-t-0 lg:border-l border-gray-300 max-h-[300px] lg:max-h-none">
+        <div className="w-full lg:w-[350px] bg-slate-50 flex flex-col pt-4 border-t lg:border-t-0 lg:border-l border-gray-300 max-h-[300px] lg:max-h-none">
 
           {/* Legend */}
           <div className="px-4 pb-4 border-b border-gray-200">
@@ -1170,7 +1250,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
                 let innerContent = (i + 1).toString().padStart(2, '0');
 
                 if (status === 'not_visited') {
-                  shapeClass += " bg-card border border-border text-foreground rounded-sm";
+                  shapeClass += " bg-white border border-gray-300 text-gray-700 rounded-sm";
                 } else if (status === 'not_answered') {
                   shapeClass += " text-white";
                   innerContent = <div className="absolute inset-0 bg-[#D9534F] flex items-center justify-center" style={{ clipPath: 'polygon(0% 0%, 100% 0%, 100% 70%, 70% 100%, 0% 100%)' }}>{innerContent}</div> as any;
@@ -1235,10 +1315,10 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
             
             <div className="p-8 space-y-6">
               <div className="space-y-3">
-                <p className="text-gray-900 font-bold text-center text-lg italic">"Unauthorized tab switching detected"</p>
+                <p className="text-gray-900 font-bold text-center text-lg italic">"Security violation detected"</p>
                 <p className="text-gray-500 text-sm text-center leading-relaxed">
-                  The system has recorded that you attempted to leave the examination screen. 
-                  This is a direct violation of the <span className="font-bold text-primary">O3 Testing Agency</span> proctoring guidelines.
+                  The system detected that you left full-screen or switched tabs.
+                  This is a direct violation of the <span className="font-bold text-primary">O3 Testing Agency</span> exam rules.
                 </p>
               </div>
 

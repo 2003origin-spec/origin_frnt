@@ -22,14 +22,13 @@ import { cn } from '@/lib/utils';
 import { NeuButton } from '@/components/ui/neu';
 import type { TimeType } from '@/hooks/useTimeTracker';
 import { getRegistrationStatusAction } from '@/server/actions/system-actions';
+import { BADGE_TIERS } from '@/lib/badges';
 
 const SLIDES = [
-  { id: 1, title: 'Origin V1.0 is Live!',        image: '/carousel/launch.png'           },
-  { id: 2, title: 'Beta Launch',                  image: '/carousel/beta_launch.png'      },
-  { id: 3, title: 'IPL vs JEE',                   image: '/carousel/ipl.png'              },
-  { id: 4, title: 'IPL Comparison',               image: '/carousel/ipl_comparison.png'   },
-  { id: 5, title: 'Study Plan vs Reality',        image: '/carousel/study.png'            },
-  { id: 6, title: 'Student Comparison',           image: '/carousel/student_comparison.png'},
+  { id: 1, title: 'Welcome',             image: '/carousel/Welcome.png'             },
+  { id: 2, title: 'Announcement',        image: '/carousel/Announcement-date.png'   },
+  { id: 3, title: 'Announcement',        image: '/carousel/Announcement-date-2.png' },
+  { id: 4, title: 'Legendary',           image: '/carousel/Legendary.png'           },
 ];
 
 function EventsCarousel() {
@@ -44,7 +43,7 @@ function EventsCarousel() {
   const next = () => setCurrent(c => (c + 1) % SLIDES.length);
 
   return (
-    <div className="relative w-full h-[200px] sm:h-[260px] overflow-hidden group neu-raised">
+    <div className="relative w-full overflow-hidden group rounded-[var(--neu-radius)]" style={{ aspectRatio: '2172 / 724' }}>
       {SLIDES.map((slide, idx) => (
         <div
           key={slide.id}
@@ -54,8 +53,8 @@ function EventsCarousel() {
             src={slide.image}
             alt={slide.title}
             fill
-            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 60vw, 760px"
-            className="object-cover"
+            sizes="100vw"
+            className="object-contain"
             priority={idx === 0}
             loading={idx === 0 ? undefined : 'lazy'}
           />
@@ -222,7 +221,7 @@ export default function Dashboard({
       
       addNotification({
         title: `${greeting}, ${title ? title + ' ' : ''}${name}! 👋`,
-        message: `Welcome back to Origin AI. Ready to push your boundaries today?`,
+        message: `Welcome back to Ori. Ready to push your boundaries today?`,
         type: 'info'
       });
       localStorage.setItem(`welcome_${user.id}`, today);
@@ -298,27 +297,8 @@ export default function Dashboard({
     : user.name.split(' ')[0];
 
   /* ── Derived stats ─────────────────────────────────────────────── */
-  const streakCount = useMemo(() => {
-    const data = user.contributionData;
-    if (!data?.length) return 0;
-    const active = new Set(
-      data.filter(c => c.count > 0)
-          .map(c => (typeof c.date === 'string' ? c.date.split('T')[0] : ''))
-          .filter(Boolean)
-    );
-    const ref = new Date();
-    // allow today to still be empty — count from yesterday in that case
-    const todayKey = ref.toISOString().split('T')[0];
-    if (!active.has(todayKey)) ref.setDate(ref.getDate() - 1);
-    let s = 0;
-    for (let i = 0; i < 365; i++) {
-      const d = new Date(ref);
-      d.setDate(d.getDate() - i);
-      if (active.has(d.toISOString().split('T')[0])) s++;
-      else break;
-    }
-    return s;
-  }, [user.contributionData]);
+  // Canonical streak: DB-backed user.streak, overridden by live userStats if available.
+  // All other streak displays (OGCodeList, DailyTracker, Profile) use user.streak — keep in sync.
 
   const totalSolved = useMemo(() =>
     (user.contributionData || []).reduce((sum, c) => sum + (c.count || 0), 0),
@@ -336,14 +316,14 @@ export default function Dashboard({
 
   return (
     <div className="min-h-screen neu-surface font-sans selection:bg-primary/20 selection:text-primary">
-      <main className="max-w-[1400px] mx-auto px-3 sm:px-6 lg:px-8 py-6 space-y-4">
+      <div className="max-w-[1400px] mx-auto px-3 sm:px-6 lg:px-8 py-6 flex flex-col gap-4">
 
         {/* ── Seats banner ──────────────────────────────────────── */}
         {regStatus && regStatus.seatsLeft > 0 && regStatus.seatsLeft <= 50 && (
-          <motion.div {...stagger(0)} className="neu-raised px-4 py-3 flex items-center justify-between gap-4">
-            <div className="flex items-center gap-2.5">
+          <motion.div {...stagger(0)} className="neu-raised px-4 py-3 flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-2.5 min-w-0">
               <Zap className="w-4 h-4 text-primary shrink-0" />
-              <p className="text-xs font-bold text-foreground">
+              <p className="text-xs font-bold text-foreground min-w-0">
                 Only <span className="text-primary font-black">{regStatus.seatsLeft}</span> of {regStatus.limit} seats left.
               </p>
             </div>
@@ -355,32 +335,59 @@ export default function Dashboard({
 
         {/* ── HERO ──────────────────────────────────────────────── */}
         <motion.div {...stagger(1)} id="tutorial-welcome" className="neu-raised p-5 sm:p-6">
-          <div className="flex items-start justify-between gap-4">
-            {/* Left */}
-            <div className="flex-1 min-w-0 space-y-1">
-              <h1 className="text-2xl sm:text-3xl font-black text-foreground tracking-tight leading-tight">
-                {getGreeting()},<br className="sm:hidden" /> {displayName}!
-              </h1>
+          <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
+            {/* Left — greeting */}
+            <div className="min-w-0 space-y-1">
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl sm:text-3xl font-black text-foreground tracking-tight leading-tight break-words">
+                  {getGreeting()},<br className="sm:hidden" /> {displayName}!
+                </h1>
+                <img src="/ori2d/ori-winking.png" alt="Ori" className="w-12 h-12 object-contain drop-shadow-md hidden sm:block" />
+              </div>
               {pointsData && pointsData.pointsToNext > 0 && (
-                <p className="text-xs text-muted-foreground">
-                  {pointsData.pointsToNext.toLocaleString()} pts away from <span className="font-bold text-foreground">{pointsData.nextTier}</span>
+                <p className="text-sm sm:text-base text-muted-foreground mt-1">
+                  <span className="font-black text-foreground">{pointsData.pointsToNext.toLocaleString()}</span> pts away from{' '}
+                  <span className="font-black text-primary">{pointsData.nextTier}</span>
                 </p>
               )}
             </div>
-            {/* Ori */}
-            <div className="h-16 w-16 sm:h-24 sm:w-24 shrink-0">
-              <OriMascot expression="winking" title="Origin AI" />
+
+            {/* Centre — highest unlocked badge derived directly from points */}
+            {(() => {
+              const pts = pointsData?.totalPoints ?? user.points ?? 0;
+              const currentBadge = [...BADGE_TIERS].reverse().find(b => pts >= b.points) ?? BADGE_TIERS[0];
+              return (
+                <div className="relative w-[125px] h-[121px] flex items-center justify-center">
+                  <div className={`absolute inset-0 rounded-full bg-gradient-to-br ${currentBadge.theme} opacity-20 blur-xl`} />
+                  <div className="relative w-full h-full">
+                    <Image
+                      src={currentBadge.image}
+                      alt={currentBadge.name}
+                      fill
+                      className="object-contain drop-shadow-xl"
+                      priority
+                    />
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Right — Ori mascot */}
+            <div className="h-16 w-16 sm:h-24 sm:w-24 shrink-0 justify-self-end">
+              <OriMascot expression="winking" title="Ori" />
             </div>
           </div>
 
-          {/* Tier progress bar */}
+          {/* Points — minimal inline summary */}
           {pointsData && (
-            <div className="mt-4 space-y-1.5">
+            <div className="mt-4 space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">
-                  {pointsData.totalPoints.toLocaleString()} pts
+                <span className="text-xs font-black text-muted-foreground uppercase tracking-widest">
+                  {pointsData.totalPoints.toLocaleString()} pts · {pointsData.currentTier}
                 </span>
-                <span className="text-[10px] font-black text-primary">{pointsData.nextTier}</span>
+                <span className="text-xs font-black text-primary">
+                  {pointsData.pointsToNext > 0 ? `+${pointsData.pointsToNext.toLocaleString()} → ${pointsData.nextTier}` : '✦ Max rank'}
+                </span>
               </div>
               <div className="h-2 rounded-full overflow-hidden neu-inset">
                 <motion.div
@@ -390,47 +397,55 @@ export default function Dashboard({
                   className="h-full rounded-full bg-primary"
                 />
               </div>
+              <div className="flex items-center justify-end">
+                <button
+                  onClick={() => onNavigate('prestige-milestones')}
+                  className="text-[10px] font-black text-primary/60 hover:text-primary uppercase tracking-widest transition-colors"
+                >
+                  View Milestones →
+                </button>
+              </div>
             </div>
           )}
+        </motion.div>
+
+        {/* ── CAROUSEL ──────────────────────────────────────────── */}
+        <motion.div {...stagger(2)} id="tutorial-events">
+          <EventsCarousel />
         </motion.div>
 
         {/* ── QUICK STATS STRIP ─────────────────────────────────── */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {(() => {
             const solved = userStats?.solvedCount ?? totalSolved;
-            const streak = userStats?.streak ?? streakCount;
+            const streak = userStats?.streak ?? user.streak ?? 0;
             return [
-              { icon: BookOpen,   color: 'text-emerald-500', label: 'Solved',     value: solved.toLocaleString() },
-              { icon: Flame,      color: 'text-orange-500',  label: 'Day Streak', value: streak > 0 ? String(streak) : '—' },
-              { icon: Award,      color: 'text-violet-500',  label: 'Rank',       value: pointsData?.currentTier ?? '—' },
-              { icon: TrendingUp, color: 'text-cyan-500',    label: 'Today',      value: todayStudyMins > 0 ? `${todayStudyMins}m` : '—' },
+              { icon: BookOpen,   color: 'text-emerald-500', label: 'Solved',     value: solved.toLocaleString(), showOri: false },
+              { icon: Flame,      color: 'text-orange-500',  label: 'Day Streak', value: streak > 0 ? String(streak) : '—', showOri: streak > 0 },
+              { icon: Award,      color: 'text-violet-500',  label: 'Rank',       value: pointsData?.currentTier ?? '—', showOri: false },
+              { icon: TrendingUp, color: 'text-cyan-500',    label: 'Today',      value: todayStudyMins > 0 ? `${todayStudyMins}m` : '—', showOri: false },
             ];
           })().map((s, i) => (
-            <motion.div key={s.label} {...stagger(i + 2)} className="neu-raised p-4 flex flex-col gap-1.5">
+            <motion.div key={s.label} {...stagger(i + 3)} className="neu-raised p-4 flex flex-col gap-1.5 min-w-0">
               <s.icon className={`w-4 h-4 ${s.color}`} />
-              <p className="text-xl font-black text-foreground leading-none">{s.value}</p>
+              <div className="flex items-center gap-1.5">
+                <p className="text-xl font-black text-foreground leading-none truncate">{s.value}</p>
+                {s.showOri && <img src="/ori2d/ori-exited.png" alt="Ori" className="w-10 h-10 object-contain drop-shadow" />}
+              </div>
               <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{s.label}</p>
             </motion.div>
           ))}
         </div>
 
-        {/* ── CAROUSEL ──────────────────────────────────────────── */}
-        <motion.div {...stagger(6)} id="tutorial-events">
-          <EventsCarousel />
-        </motion.div>
-
         {/* ── MAIN GRID: heatmap + week-rings | challenge + points ─ */}
         <div className={cn('grid gap-4', isConstrained ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-12')}>
-          <div className={cn('flex flex-col gap-4', isConstrained ? '' : 'lg:col-span-8')}>
+          <div className={cn('relative flex flex-col gap-4 min-w-0', isConstrained ? '' : 'lg:col-span-8')}>
             <motion.div {...stagger(7)} id="tutorial-tracker"><DailyTracker user={user} /></motion.div>
             <motion.div {...stagger(8)} id="tutorial-progress"><PastWeekProgress user={user} /></motion.div>
           </div>
-          <div className={cn('flex flex-col gap-4', isConstrained ? '' : 'lg:col-span-4')}>
+          <div className={cn('relative flex flex-col gap-4 min-w-0', isConstrained ? '' : 'lg:col-span-4')}>
             <motion.div {...stagger(9)} id="tutorial-challenge">
               <ChallengeCard user={user} initialChallenge={initialChallenge} onStartChallenge={onStartChallenge} />
-            </motion.div>
-            <motion.div {...stagger(10)} id="tutorial-points">
-              <PointsSummary data={pointsData} onNextSteps={() => onNavigate('prestige-milestones')} />
             </motion.div>
           </div>
         </div>
@@ -453,7 +468,7 @@ export default function Dashboard({
           />
         </motion.div>
 
-      </main>
+      </div>
     </div>
   );
 }

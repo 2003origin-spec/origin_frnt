@@ -1,8 +1,9 @@
 'use client';
 import { useState } from 'react';
 import dynamic from 'next/dynamic';
-import { ChevronLeft, Trophy, Check, BookOpen, Target, MessageCircle, TrendingUp, Crown } from 'lucide-react';
-import { motion } from 'framer-motion';
+import Image from 'next/image';
+import { ChevronLeft, Trophy, Check, BookOpen, Target, MessageCircle, TrendingUp, Crown, Lock } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const OriMascot = dynamic(() => import('@/features/mascot/Ori2D'), { ssr: false });
 
@@ -12,6 +13,7 @@ interface MilestonesPageProps {
 }
 
 import { TIER_THRESHOLDS } from '@/lib/achievements';
+import { BADGE_TIERS } from '@/lib/badges';
 import { cn } from '@/lib/utils';
 
 const HOW_EARNED = [
@@ -41,8 +43,11 @@ const HOW_EARNED = [
 export default function MilestonesPage({ onBack, userPoints }: MilestonesPageProps) {
   const totalPoints = userPoints;
   const [activeTab, setActiveTab] = useState<'milestones' | 'how'>('milestones');
+  const [expandedTier, setExpandedTier] = useState<string | null>(null);
 
   const currentTier = [...TIER_THRESHOLDS].reverse().find(t => totalPoints >= t.min) || TIER_THRESHOLDS[0];
+  const currentBadge = BADGE_TIERS.find(b => b.name === currentTier.tier);
+  const unlockedCount = BADGE_TIERS.filter(b => totalPoints >= b.points).length;
 
   return (
     <div className="min-h-screen neu-surface text-foreground relative overflow-x-hidden">
@@ -61,9 +66,12 @@ export default function MilestonesPage({ onBack, userPoints }: MilestonesPagePro
           >
             <ChevronLeft className="w-5 h-5 text-muted-foreground" />
           </button>
-          <div>
-            <h1 className="text-xl font-black text-foreground">Prestige Journey</h1>
-            <p className="text-[10px] text-primary/80 font-bold uppercase tracking-widest">Your path to greatness</p>
+          <div className="flex items-center gap-3">
+            <img src="/ori2d/ori-proud.png" alt="Ori" className="w-16 h-16 object-contain drop-shadow-md" />
+            <div>
+              <h1 className="text-xl font-black text-foreground">Prestige Journey</h1>
+              <p className="text-[10px] text-primary/80 font-bold uppercase tracking-widest">Your path to greatness</p>
+            </div>
           </div>
         </div>
 
@@ -75,27 +83,56 @@ export default function MilestonesPage({ onBack, userPoints }: MilestonesPagePro
       </header>
 
       <main className="max-w-2xl mx-auto px-3 sm:px-6 py-4 sm:py-8 pb-24 md:pb-10 relative z-10">
-        {/* Current Rank Hero */}
+
+        {/* Current Rank Hero — now with badge image */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className={cn(`neu-raised rounded-[32px] p-4 sm:p-6 mb-6 sm:mb-8 relative overflow-hidden`, currentTier.border ? `ring-1 ${currentTier.border}` : '')}
+          className={cn(
+            'neu-raised rounded-[32px] p-4 sm:p-6 mb-6 sm:mb-8 relative overflow-hidden',
+            currentTier.border ? `ring-1 ${currentTier.border}` : ''
+          )}
         >
-          <div className={cn("absolute top-0 right-0 w-40 h-40 blur-[60px] opacity-10 pointer-events-none", currentTier.bg)} />
-          <div className="flex items-center gap-4 mb-4">
-            <div className="w-16 h-16 shrink-0">
-              <OriMascot expression="proud" title="Origin AI" />
+          <div className={cn('absolute top-0 right-0 w-48 h-48 blur-[70px] opacity-15 pointer-events-none', currentTier.bg)} />
+
+          <div className="flex items-center gap-5 mb-4">
+            {/* Badge image */}
+            <div className="relative shrink-0 w-20 h-20">
+              {currentBadge ? (
+                <motion.div
+                  animate={{ y: [0, -4, 0] }}
+                  transition={{ repeat: Infinity, duration: 3, ease: 'easeInOut' }}
+                >
+                  <Image
+                    src={currentBadge.image}
+                    alt={currentBadge.name}
+                    width={80}
+                    height={80}
+                    className="drop-shadow-xl"
+                    priority
+                  />
+                </motion.div>
+              ) : (
+                <div className="w-20 h-20 shrink-0">
+                  <OriMascot expression="proud" title="Ori" />
+                </div>
+              )}
             </div>
-            <div>
+
+            <div className="flex-1 min-w-0">
               <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Current Rank</p>
-              <h2 className={cn(`text-2xl sm:text-3xl font-black`, currentTier.color)}>{currentTier.tier}</h2>
+              <h2 className={cn('text-2xl sm:text-3xl font-black', currentTier.color)}>{currentTier.tier}</h2>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                {unlockedCount} / {BADGE_TIERS.length} badges unlocked
+              </p>
             </div>
           </div>
+
           {currentTier.next !== Infinity && (
             <div className="space-y-2">
               <div className="flex justify-between text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
                 <span>{totalPoints.toLocaleString()} pts</span>
-                <span>{currentTier.next.toLocaleString()} pts to next rank</span>
+                <span>{(currentTier.next - totalPoints).toLocaleString()} pts to next rank</span>
               </div>
               <div className="w-full h-3 neu-inset rounded-full overflow-hidden">
                 <motion.div
@@ -107,6 +144,7 @@ export default function MilestonesPage({ onBack, userPoints }: MilestonesPagePro
               </div>
             </div>
           )}
+
           {currentTier.next === Infinity && (
             <div className="flex items-center gap-2 mt-2">
               <Crown className="w-4 h-4 text-amber-400" />
@@ -133,65 +171,122 @@ export default function MilestonesPage({ onBack, userPoints }: MilestonesPagePro
           ))}
         </div>
 
-        {/* Milestones list */}
+        {/* Milestones list — badge-driven */}
         {activeTab === 'milestones' && (
           <div className="space-y-3">
-            {TIER_THRESHOLDS.map((t, i) => {
-              const unlocked = totalPoints >= t.min;
-              const isCurrent = t.tier === currentTier.tier;
-              const ptsNeeded = Math.max(0, t.min - totalPoints);
-              const TierIcon = t.icon;
+            {BADGE_TIERS.map((badge, i) => {
+              const tier = TIER_THRESHOLDS.find(t => t.tier === badge.name);
+              const unlocked = totalPoints >= badge.points;
+              const isCurrent = badge.name === currentTier.tier;
+              const ptsNeeded = Math.max(0, badge.points - totalPoints);
+              const isExpanded = expandedTier === badge.name;
 
               return (
                 <motion.div
-                  key={t.tier}
+                  key={badge.name}
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: i * 0.06, duration: 0.35 }}
-                  className={cn(
-                    'flex items-center gap-4 p-4 rounded-[24px] transition-all',
-                    isCurrent
-                      ? `neu-raised ring-1 ${t.border}`
-                      : unlocked
-                        ? 'neu-raised'
-                        : 'neu-inset opacity-60'
-                  )}
+                  transition={{ delay: i * 0.04, duration: 0.35 }}
                 >
-                  {/* Icon */}
-                  <div className={cn(`w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0`, t.bg)}>
-                    <TierIcon className={cn(`w-6 h-6`, t.color)} />
-                  </div>
+                  <button
+                    onClick={() => setExpandedTier(isExpanded ? null : badge.name)}
+                    className={cn(
+                      'relative w-full flex items-center gap-4 p-4 rounded-[24px] transition-all text-left',
+                      isCurrent
+                        ? cn('neu-raised ring-1', tier?.border ?? 'border-primary/30')
+                        : unlocked
+                          ? 'neu-raised'
+                          : 'neu-inset opacity-70'
+                    )}
+                  >
+                    {/* Ori cheerful pop for unlocked */}
+                    {isCurrent && (
+                      <img
+                        src="/ori2d/ori-cheerful.png"
+                        alt="Ori"
+                        className="w-8 h-8 object-contain absolute -top-2 -right-2 drop-shadow"
+                      />
+                    )}
 
-                  {/* Info */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className={cn(`text-sm font-black`, isCurrent ? t.color : unlocked ? 'text-foreground' : 'text-muted-foreground')}>
-                        {t.tier}
-                      </p>
-                      {isCurrent && (
-                        <span className={cn(`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full`, t.bg, t.color)}>
-                          Current
-                        </span>
+                    {/* Badge image */}
+                    <div className="relative w-14 h-14 shrink-0 flex items-center justify-center">
+                      <Image
+                        src={badge.image}
+                        alt={badge.name}
+                        width={56}
+                        height={56}
+                        className={cn(
+                          'drop-shadow-md transition-all duration-300',
+                          unlocked ? '' : 'grayscale opacity-40'
+                        )}
+                      />
+                      {!unlocked && (
+                        <div className="absolute inset-0 flex items-end justify-end pr-0.5 pb-0.5">
+                          <Lock className="w-3 h-3 text-muted-foreground" />
+                        </div>
                       )}
                     </div>
-                    <p className="text-[11px] text-muted-foreground mt-0.5">
-                      {t.min.toLocaleString()} pts required
-                    </p>
-                  </div>
 
-                  {/* Status */}
-                  <div className="text-right flex-shrink-0">
-                    {unlocked ? (
-                      <div className="w-8 h-8 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center">
-                        <Check className="w-4 h-4 text-emerald-400" />
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className={cn(
+                          'text-sm font-black',
+                          isCurrent
+                            ? (tier?.color ?? 'text-primary')
+                            : unlocked
+                              ? 'text-foreground'
+                              : 'text-muted-foreground'
+                        )}>
+                          {badge.name}
+                        </p>
+                        {isCurrent && tier && (
+                          <span className={cn('text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full', tier.bg, tier.color)}>
+                            Current
+                          </span>
+                        )}
+                        {unlocked && !isCurrent && (
+                          <span className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400">
+                            Unlocked
+                          </span>
+                        )}
                       </div>
-                    ) : (
-                      <div className="text-right">
-                        <p className={cn(`text-sm font-black`, t.color)}>+{ptsNeeded.toLocaleString()}</p>
-                        <p className="text-[9px] text-muted-foreground uppercase tracking-wider">pts to unlock</p>
-                      </div>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        {badge.points === 0 ? 'Starting rank' : `${badge.points.toLocaleString()} pts required`}
+                      </p>
+                    </div>
+
+                    {/* Status */}
+                    <div className="text-right shrink-0">
+                      {unlocked ? (
+                        <div className="w-8 h-8 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center">
+                          <Check className="w-4 h-4 text-emerald-400" />
+                        </div>
+                      ) : (
+                        <div>
+                          <p className={cn('text-sm font-black', tier?.color ?? 'text-primary')}>+{ptsNeeded.toLocaleString()}</p>
+                          <p className="text-[9px] text-muted-foreground uppercase tracking-wider">pts to unlock</p>
+                        </div>
+                      )}
+                    </div>
+                  </button>
+
+                  {/* Expanded description */}
+                  <AnimatePresence>
+                    {isExpanded && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.22 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="mx-2 mt-1 mb-1 px-4 py-3 rounded-[16px] neu-inset text-[11px] text-muted-foreground italic">
+                          {badge.description}
+                        </div>
+                      </motion.div>
                     )}
-                  </div>
+                  </AnimatePresence>
                 </motion.div>
               );
             })}
@@ -207,15 +302,15 @@ export default function MilestonesPage({ onBack, userPoints }: MilestonesPagePro
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: si * 0.1 }}
-                className={cn(`neu-raised rounded-[24px] p-5`)}
+                className={cn('neu-raised rounded-[24px] p-5')}
               >
                 <div className="flex items-center gap-3 mb-4">
-                  <div className={cn(`w-10 h-10 rounded-xl flex items-center justify-center`, section.bg)}>
-                    <section.icon className={cn(`w-5 h-5`, section.color)} />
+                  <div className={cn('w-10 h-10 rounded-xl flex items-center justify-center', section.bg)}>
+                    <section.icon className={cn('w-5 h-5', section.color)} />
                   </div>
                   <div>
                     <h3 className="text-sm font-black text-foreground">{section.label}</h3>
-                    <p className={cn(`text-[10px] font-bold`, section.color)}>{section.pts}</p>
+                    <p className={cn('text-[10px] font-bold', section.color)}>{section.pts}</p>
                   </div>
                 </div>
                 <div className="space-y-2">
@@ -225,7 +320,7 @@ export default function MilestonesPage({ onBack, userPoints }: MilestonesPagePro
                         <p className="text-[12px] font-bold text-foreground">{row.label}</p>
                         <p className="text-[10px] text-muted-foreground">{row.note}</p>
                       </div>
-                      <span className={cn(`text-sm font-black`, row.pts.startsWith('−') ? 'text-rose-400' : row.pts === '0' ? 'text-muted-foreground' : section.color)}>
+                      <span className={cn('text-sm font-black', row.pts.startsWith('−') ? 'text-rose-400' : row.pts === '0' ? 'text-muted-foreground' : section.color)}>
                         {row.pts}
                       </span>
                     </div>

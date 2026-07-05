@@ -108,13 +108,13 @@ export default function FloatingChat({ onOpen, hideMainButton, userName }: Float
               left: `${selectionActionStyle.left}px`,
               transform: 'translate(-50%, -100%)',
             }}
-            aria-label="Ask Origin AI about the selected text"
+            aria-label="Ask Ori about the selected text"
           >
             <div className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-primary/10 p-0.5">
               <OriMascotStatic className="h-full w-full" />
             </div>
             <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-900 dark:text-primary/80">
-              Ask Origin AI
+              Ask Ori
             </span>
           </motion.button>
         ) : null}
@@ -192,7 +192,7 @@ export default function FloatingChat({ onOpen, hideMainButton, userName }: Float
             onClick={() => onOpen()}
             id="tutorial-mentor-trigger"
             className="relative outline-none"
-            aria-label="Open Origin AI"
+            aria-label="Open Ori"
           >
             <div className="relative group">
               <div className="absolute inset-0 rounded-full bg-primary/20 blur-2xl scale-0 transition-transform duration-500 group-hover:scale-150" />
@@ -200,7 +200,7 @@ export default function FloatingChat({ onOpen, hideMainButton, userName }: Float
                 <Sparkles className="h-4 w-4 lg:h-5 lg:w-5" />
               </div>
               <div className="relative z-10 block h-24 w-24 drop-shadow-2xl lg:h-28 lg:w-28">
-                <OriMascot state={hovered ? 'curious' : 'idle'} title="Origin AI" preload={false} />
+                <OriMascot state="idle" title="Ori" preload={false} />
               </div>
               <div className="absolute right-1.5 top-1.5 z-20 h-3 w-3 rounded-full border-2 border-white bg-primary shadow-md dark:border-slate-900 lg:right-2 lg:top-2 lg:h-3.5 lg:w-3.5" />
             </div>
