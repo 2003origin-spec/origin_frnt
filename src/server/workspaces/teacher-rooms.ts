@@ -186,6 +186,23 @@ export async function listJoinableRoomsForStudent(studentId: string): Promise<Jo
   });
 }
 
+export async function extendRoomDuration(
+  workspaceId: string,
+  roomId: string,
+  additionalSeconds: number,
+): Promise<TeacherRoomSummary | null> {
+  return withClient(async (client) => {
+    const result = await client.query(
+      `UPDATE rooms.rooms
+       SET duration_seconds = COALESCE(duration_seconds, 0) + $1, updated_at = NOW()
+       WHERE id = $2 AND workspace_id = $3
+       RETURNING *`,
+      [additionalSeconds, roomId, workspaceId],
+    );
+    return result.rows[0] ? rowToTeacherRoom(result.rows[0]) : null;
+  });
+}
+
 export async function updateTeacherRoom(
   workspaceId: string,
   roomId: string,

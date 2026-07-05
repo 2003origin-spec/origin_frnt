@@ -129,16 +129,22 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
 
     startProctoring();
 
-    // Secondary sync: if refs attach late, try to set srcObject again
-    const syncInterval = setInterval(() => {
-      if (streamRef.current) {
-        if (videoRef.current && !videoRef.current.srcObject) videoRef.current.srcObject = streamRef.current;
-        if (previewVideoRef.current && !previewVideoRef.current.srcObject) previewVideoRef.current.srcObject = streamRef.current;
-      }
-    }, 500);
+    // Attach stream to any video ref that missed the initial assignment.
+    // Uses a one-shot MutationObserver on the container instead of a polling
+    // interval — fires exactly once when the video element is inserted.
+    const attachStream = () => {
+      if (!streamRef.current) return;
+      if (videoRef.current && !videoRef.current.srcObject) videoRef.current.srcObject = streamRef.current;
+      if (previewVideoRef.current && !previewVideoRef.current.srcObject) previewVideoRef.current.srcObject = streamRef.current;
+    };
+    // Attempt immediately (refs may already be attached)
+    attachStream();
+    // Then observe the DOM for late-mounted video elements
+    const observer = new MutationObserver(attachStream);
+    observer.observe(document.body, { childList: true, subtree: true });
 
     return () => {
-      clearInterval(syncInterval);
+      observer.disconnect();
       stopCamera();
       if (malpracticeTimerRef.current) clearTimeout(malpracticeTimerRef.current);
     };

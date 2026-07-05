@@ -1,8 +1,10 @@
 'use client';
-import { useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from 'react';
+import Image from 'next/image';
 import {
     ArrowLeft, Play, Clock, Loader2, CheckCircle2,
-    XCircle, RotateCcw, Trophy, X, HelpCircle, ChevronLeft, ChevronRight, Building2
+    XCircle, RotateCcw, Trophy, X, HelpCircle, ChevronLeft, ChevronRight, Building2,
+    ZoomIn, ZoomOut, ImageOff, Hash, Layers, AlignLeft, GitMerge, BookOpen,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { apiCall } from '@/lib/api';
@@ -81,6 +83,9 @@ type PracticeQuestionApi = PracticeQuestion & {
     answerText?: string;
     attempted?: boolean;
     attemptCount?: number;
+    occurrence?: string | null;
+    classLevel?: number | null;
+    previousYearQuestion?: string | null;
 };
 
 type SubmitResultApi = SubmitResult & {
@@ -101,6 +106,14 @@ const SPEED_BAND_LABELS = {
     deliberate: 'Deliberate',
     slow: 'Slow',
 } as const;
+
+const QTYPE_META: Record<string, { label: string; hint: string; Icon: React.ComponentType<{ className?: string }> }> = {
+    mcq:          { label: 'Single Correct',   hint: 'Choose exactly one option.',               Icon: AlignLeft },
+    msq:          { label: 'Multi Correct',    hint: 'One or more options may be correct.',      Icon: Layers },
+    numerical:    { label: 'Integer / Decimal', hint: 'Enter the exact numeric value.',           Icon: Hash },
+    matrix_match: { label: 'Match the Column', hint: 'Match each item in List I to List II.',    Icon: GitMerge },
+    subjective:   { label: 'Descriptive',      hint: 'Write your answer in the box.',            Icon: AlignLeft },
+};
 
 const LATEX_COMMAND_MAP: Record<string, string> = {
     alpha: 'α',
@@ -341,6 +354,8 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
     const [showHint, setShowHint] = useState(false);
     const [showSolution, setShowSolution] = useState(false);
     const [answerInput, setAnswerInput] = useState('');
+    const [imgZoomed, setImgZoomed] = useState(false);
+    const [imgError, setImgError] = useState(false);
 
     const [elapsed, setElapsed] = useState(0);
     const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -522,6 +537,8 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
         setShowHint(false);
         setShowSolution(false);
         setAnswerInput('');
+        setImgZoomed(false);
+        setImgError(false);
         setElapsed(0);
         if (initialQuestion && String(initialQuestion.id) === idStr) {
             setQuestion(initialQuestion);
@@ -635,10 +652,10 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                 </button>
 
                 {/* Stats — pinned to the centre of the header */}
-                <div id="tutorial-ogcode-stats" className="absolute left-1/2 -translate-x-1/2 flex items-center gap-3 sm:gap-4">
+                <div id="tutorial-ogcode-stats" className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2 max-w-[calc(100%-6rem)] overflow-hidden">
                     <div className="flex items-center gap-1.5 text-[10px] sm:text-xs font-bold text-amber-500 font-mono bg-amber-500/5 px-2 py-1 rounded-md border border-amber-500/10">
                         <Trophy className="w-3.5 h-3.5" />
-                        {user?.points || 0} <span className="hidden xs:inline">PTS</span>
+                        {user?.points || 0} <span className="hidden sm:inline">PTS</span>
                     </div>
                     <div className="flex items-center gap-2 text-xs sm:text-sm text-slate-400 font-mono bg-white/5 px-2 py-1 rounded-md border border-white/5">
                         <Clock className="w-3.5 h-3.5" /> {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')}
@@ -655,12 +672,12 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                             disabled={!prevId}
                             aria-label="Previous question"
                             title={navQueue?.label ? `Previous · ${navQueue.label}` : 'Previous question'}
-                            className="neu-raised flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-foreground transition-all hover:-translate-y-0.5 disabled:opacity-30 disabled:cursor-not-allowed disabled:translate-y-0"
+                            className="shrink-0 neu-raised flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-foreground transition-all hover:-translate-y-0.5 disabled:opacity-30 disabled:cursor-not-allowed disabled:translate-y-0"
                         >
                             <ChevronLeft className="w-3.5 h-3.5" />
                             Prev
                         </button>
-                        <span className="text-[10px] font-mono text-muted-foreground tabular-nums">
+                        <span className="truncate max-w-[8rem] shrink text-[10px] font-mono text-muted-foreground tabular-nums">
                             {total > 0 && index >= 0 ? `${index + 1} / ${total}` : `# ${questionId}`}
                         </span>
                         {nextId ? (
@@ -668,7 +685,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                 onClick={() => goToQuestion(nextId)}
                                 aria-label="Next question"
                                 title={navQueue?.label ? `Next · ${navQueue.label}` : 'Next question'}
-                                className="neu-raised flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-foreground transition-all hover:-translate-y-0.5"
+                                className="shrink-0 neu-raised flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-foreground transition-all hover:-translate-y-0.5"
                             >
                                 Next
                                 <ChevronRight className="w-3.5 h-3.5" />
@@ -678,7 +695,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                 onClick={loadMoreQuestions}
                                 disabled={isLoadingMore}
                                 aria-label="Load more questions"
-                                className="neu-raised flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-primary transition-all hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:translate-y-0"
+                                className="shrink-0 neu-raised flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-primary transition-all hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:translate-y-0"
                             >
                                 {isLoadingMore ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ChevronRight className="w-3.5 h-3.5" />}
                                 {isLoadingMore ? 'Loading…' : 'Load More'}
@@ -688,37 +705,90 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
 
                     {/* Question Content */}
                     <div id="tutorial-ogcode-content" className="space-y-4">
-                        <div className="flex items-center justify-end gap-2">
+                        {/* Meta row: subject · difficulty · question type · PYQ */}
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <div className="flex items-center gap-2 flex-wrap">
+                                {question.isContributed && question.attributionName && (
+                                    <span
+                                        className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 px-2 py-1 bg-emerald-500/10 rounded uppercase tracking-wider max-w-[160px]"
+                                        title={`Contributed by ${question.attributionName}`}
+                                    >
+                                        {question.attributionLogoUrl
+                                            ? <Image src={question.attributionLogoUrl} alt="" width={14} height={14} className="rounded-sm object-cover flex-shrink-0" unoptimized />
+                                            : <Building2 className="w-3 h-3 flex-shrink-0" />}
+                                        <span className="truncate">{question.attributionName}</span>
+                                    </span>
+                                )}
+                                <span className="text-[10px] font-bold text-primary px-2 py-1 bg-primary/10 rounded uppercase tracking-wider">
+                                    {question.subject}
+                                </span>
+                                {question.classLevel && (
+                                    <span className="text-[10px] font-bold text-sky-600 dark:text-sky-400 px-2 py-1 bg-sky-500/10 rounded uppercase tracking-wider">
+                                        Class {question.classLevel}
+                                    </span>
+                                )}
+                                <span className={`text-[10px] font-bold ${diff.color} px-2 py-1 ${diff.bg} rounded uppercase tracking-wider`}>
+                                    {diff.label}
+                                </span>
+                                {/* Question type badge */}
+                                {(() => {
+                                    const meta = QTYPE_META[qType] ?? QTYPE_META.mcq;
+                                    return (
+                                        <span className="flex items-center gap-1 text-[10px] font-bold text-slate-500 dark:text-slate-400 px-2 py-1 bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded uppercase tracking-wider">
+                                            <meta.Icon className="w-3 h-3" />
+                                            {meta.label}
+                                        </span>
+                                    );
+                                })()}
+                                {/* PYQ badge — show occurrence or previous_year_question */}
+                                {(question.previousYearQuestion || question.occurrence) && (
+                                    <span className="flex items-center gap-1 text-[10px] font-bold text-violet-600 dark:text-violet-400 px-2 py-1 bg-violet-500/10 border border-violet-500/20 rounded uppercase tracking-wider max-w-[180px]" title={question.previousYearQuestion || question.occurrence || ''}>
+                                        <BookOpen className="w-3 h-3 flex-shrink-0" />
+                                        <span className="truncate">{question.previousYearQuestion || question.occurrence}</span>
+                                    </span>
+                                )}
+                            </div>
                             {/* Subject Ori avatar */}
                             {question.subject && SUBJECT_ORI_MAP[question.subject] && (
-                                <img
+                                <Image
                                     src={SUBJECT_ORI_MAP[question.subject]}
                                     alt={question.subject}
+                                    width={32}
+                                    height={32}
                                     draggable={false}
-                                    className="w-8 h-8 object-contain select-none"
+                                    className="object-contain select-none shrink-0"
                                 />
                             )}
-                            {question.isContributed && question.attributionName && (
-                                <span
-                                    className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 px-2 py-1 bg-emerald-500/10 rounded uppercase tracking-wider max-w-[160px]"
-                                    title={`Contributed by ${question.attributionName}`}
-                                >
-                                    {question.attributionLogoUrl
-                                        ? <img src={question.attributionLogoUrl} alt="" className="w-3.5 h-3.5 rounded-sm object-cover flex-shrink-0" />
-                                        : <Building2 className="w-3 h-3 flex-shrink-0" />}
-                                    <span className="truncate">{question.attributionName}</span>
-                                </span>
-                            )}
-                            <span className="text-[10px] font-bold text-primary px-2 py-1 bg-primary/10 rounded uppercase tracking-wider">
-                                {question.subject}
-                            </span>
-                            <span className={`text-[10px] font-bold ${diff.color} px-2 py-1 ${diff.bg} rounded uppercase tracking-wider`}>
-                                {diff.label}
-                            </span>
                         </div>
-                        <div className="text-xl sm:text-2xl font-serif leading-relaxed text-slate-900 dark:text-slate-100 select-text cursor-text">
+
+                        {/* Question text */}
+                        <div className="text-xl sm:text-2xl font-sans leading-relaxed text-slate-900 dark:text-slate-100 select-text cursor-text">
                             {renderQuestionText(question.text, 'question-text')}
                         </div>
+
+                        {/* Question image — shown when available */}
+                        {question.image && !imgError && (
+                            <div className="relative">
+                                <div className="relative rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/[0.02] overflow-hidden">
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img
+                                        src={question.image}
+                                        alt="Question diagram"
+                                        className="w-full h-auto max-h-[360px] object-contain cursor-zoom-in"
+                                        onError={() => setImgError(true)}
+                                        onClick={() => setImgZoomed(true)}
+                                    />
+                                    <button
+                                        onClick={() => setImgZoomed(true)}
+                                        className="absolute top-2 right-2 p-1.5 bg-black/40 hover:bg-black/60 rounded-lg text-white transition-colors"
+                                        aria-label="Zoom image"
+                                    >
+                                        <ZoomIn className="w-3.5 h-3.5" />
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
                         <div className="flex flex-wrap gap-2">
                             {safeTags.map((tag, i) => (
                                 <span key={i} className="text-[10px] px-2 py-0.5 bg-slate-200 dark:bg-white/5 border border-slate-300 dark:border-white/10 rounded text-slate-600 dark:text-slate-400">
@@ -728,6 +798,29 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                         </div>
                     </div>
 
+                    {/* Image lightbox */}
+                    {imgZoomed && question.image && (
+                        <div
+                            className="fixed inset-0 z-[200] bg-black/90 flex items-center justify-center p-4"
+                            onClick={() => setImgZoomed(false)}
+                        >
+                            <button
+                                onClick={() => setImgZoomed(false)}
+                                className="absolute top-4 right-4 p-2 bg-white/10 hover:bg-white/20 rounded-xl text-white transition-colors"
+                                aria-label="Close"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                                src={question.image}
+                                alt="Question diagram (zoomed)"
+                                className="max-w-full max-h-[90vh] object-contain rounded-xl"
+                                onClick={(e) => e.stopPropagation()}
+                            />
+                        </div>
+                    )}
+
                     {/* Subtle Divider */}
                     <div className="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
 
@@ -736,12 +829,23 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
 
                         {/* 1. INPUT SECTION */}
                         <div className="space-y-4">
+                            {/* Question type guidance */}
+                            {!result && (() => {
+                                const meta = QTYPE_META[qType] ?? QTYPE_META.mcq;
+                                return (
+                                    <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
+                                        <meta.Icon className="w-3 h-3" />
+                                        {meta.hint}
+                                    </p>
+                                );
+                            })()}
+
                             {qType === 'mcq' && (question.options || []).map((opt, idx) => (
                                 <button
                                     key={idx}
                                     disabled={!!result || isSubmitting}
                                     onClick={() => setSelectedOption(idx)}
-                                    className={`w-full text-left p-4 rounded-xl border-2 transition-all font-serif backdrop-blur-md
+                                    className={`w-full text-left p-4 rounded-xl border-2 transition-all font-sans backdrop-blur-md
                                         ${selectedOption === idx ? 'border-primary bg-primary/10' : 'border-slate-200 dark:border-white/10 bg-white/40 dark:bg-white/[0.02]'}
                                         ${result?.isCorrect && result?.correctOption === idx ? 'border-emerald-500 bg-emerald-500/5 text-emerald-600 dark:text-emerald-400' : ''}
                                         ${result && !result.isCorrect && selectedOption === idx ? 'border-rose-500 bg-rose-500/5 text-rose-600 dark:text-rose-400' : ''}
@@ -761,7 +865,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                             prev.includes(idx) ? prev.filter(i => i !== idx) : [...prev, idx]
                                         );
                                     }}
-                                    className={`w-full text-left p-4 rounded-xl border-2 transition-all font-serif backdrop-blur-md
+                                    className={`w-full text-left p-4 rounded-xl border-2 transition-all font-sans backdrop-blur-md
                                         ${selectedOptions.includes(idx) ? 'border-primary bg-primary/10' : 'border-slate-200 dark:border-white/10 bg-white/40 dark:bg-white/[0.02]'}
                                         ${result?.isCorrect && result?.correctOptions?.includes(idx) ? 'border-emerald-500 bg-emerald-500/5 text-emerald-600 dark:text-emerald-400' : ''}
                                         ${result && !result.isCorrect && selectedOptions.includes(idx) ? 'border-rose-500 bg-rose-500/5 text-rose-600 dark:text-rose-400' : ''}
@@ -796,7 +900,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                                     <span className="w-5 h-5 rounded-md bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold shrink-0">
                                                         {idx + 1}
                                                     </span>
-                                                    <span className="text-xs text-slate-300 truncate">
+                                                    <span className="text-xs text-slate-300 overflow-hidden min-w-0 w-full">
                                                         {renderInlineSegments(String(term), `matrix-term-${idx}`)}
                                                     </span>
                                                 </div>
@@ -808,11 +912,11 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                         {(colA).map((itemA: string, idxA: number) => (
                                             <div key={idxA} className="p-5 rounded-2xl bg-white/[0.03] border border-white/5 space-y-4 hover:border-white/10 transition-colors shadow-sm">
                                                 <div className="flex items-center justify-between">
-                                                    <div className="flex items-center gap-4">
+                                                    <div className="flex items-center gap-4 min-w-0">
                                                         <span className="w-7 h-7 rounded-lg bg-white/10 text-slate-400 flex items-center justify-center text-[12px] font-black shrink-0 border border-white/5 shadow-inner">
                                                             {String.fromCharCode(65 + idxA)}
                                                         </span>
-                                                        <span className="text-[15px] font-bold text-slate-200 tracking-tight leading-relaxed">
+                                                        <span className="text-[15px] font-bold text-slate-200 tracking-tight leading-relaxed min-w-0 overflow-hidden">
                                                             {renderInlineSegments(String(itemA), `matrix-item-${idxA}`)}
                                                         </span>
                                                     </div>
@@ -855,16 +959,49 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
 
                             {(qType === 'numerical' || qType === 'subjective') && (
                                 <div className="space-y-3">
-                                    <input
-                                        type={qType === 'numerical' ? "number" : "text"}
-                                        disabled={!!result || isSubmitting}
-                                        value={answerInput}
-                                        onChange={(e) => setAnswerInput(e.target.value)}
-                                        className="w-full bg-white/5 border-2 border-white/10 p-5 rounded-2xl text-2xl text-center font-mono focus:border-primary outline-none transition-all backdrop-blur-md"
-                                        placeholder={qType === 'numerical' ? "Enter value..." : "Type answer..."}
-                                    />
+                                    {qType === 'numerical' ? (
+                                        <>
+                                            <div className="relative">
+                                                <input
+                                                    type="text"
+                                                    inputMode="decimal"
+                                                    disabled={!!result || isSubmitting}
+                                                    value={answerInput}
+                                                    onChange={(e) => setAnswerInput(e.target.value)}
+                                                    onKeyDown={(e) => {
+                                                        // Allow: digits, dot, minus, backspace, arrows, delete
+                                                        const allowed = /[0-9.\-]|Backspace|Delete|Arrow|Tab|Enter/;
+                                                        if (!allowed.test(e.key)) e.preventDefault();
+                                                    }}
+                                                    className="w-full bg-slate-50 dark:bg-white/5 border-2 border-slate-200 dark:border-white/10 p-4 sm:p-6 rounded-2xl text-2xl sm:text-3xl text-center font-mono focus:border-primary dark:focus:border-primary outline-none transition-all"
+                                                    placeholder="0"
+                                                    autoComplete="off"
+                                                    spellCheck={false}
+                                                />
+                                                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-black text-muted-foreground uppercase tracking-widest pointer-events-none">
+                                                    numeric
+                                                </span>
+                                            </div>
+                                            <p className="text-[11px] text-muted-foreground text-center">
+                                                Enter integer or decimal (e.g. <span className="font-mono font-bold">4</span> or <span className="font-mono font-bold">3.14</span>).
+                                                Negative values allowed.
+                                            </p>
+                                        </>
+                                    ) : (
+                                        <textarea
+                                            disabled={!!result || isSubmitting}
+                                            value={answerInput}
+                                            onChange={(e) => setAnswerInput(e.target.value)}
+                                            rows={3}
+                                            className="w-full bg-slate-50 dark:bg-white/5 border-2 border-slate-200 dark:border-white/10 p-4 rounded-2xl text-base font-sans focus:border-primary dark:focus:border-primary outline-none transition-all resize-none"
+                                            placeholder="Type your answer here..."
+                                        />
+                                    )}
                                     {result && !result.isCorrect && result.correctAnswerText && (
-                                        <p className="text-xs text-rose-400 text-center">Incorrect. The value you entered doesn&apos;t match the expected answer.</p>
+                                        <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20">
+                                            <p className="text-xs font-bold text-rose-400 uppercase tracking-widest mb-1">Correct Answer</p>
+                                            <p className="text-sm font-mono font-bold text-slate-900 dark:text-slate-100">{result.correctAnswerText}</p>
+                                        </div>
                                     )}
                                 </div>
                             )}
@@ -906,20 +1043,20 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                 </div>
 
                                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3 mb-4">
-                                    <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
+                                    <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 min-h-[3.5rem]">
                                         <p className="text-[9px] sm:text-[10px] uppercase tracking-widest text-slate-500">Result Score</p>
                                         <p className="text-base sm:text-lg font-black text-slate-900 dark:text-slate-100">
                                             {result.resultScore ?? 0}
                                             <span className="ml-1 text-[10px] sm:text-xs font-medium text-slate-500 dark:text-slate-500">/ {result.maxPoints ?? result.basePoints ?? 0}</span>
                                         </p>
                                     </div>
-                                    <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
+                                    <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 min-h-[3.5rem]">
                                         <p className="text-[9px] sm:text-[10px] uppercase tracking-widest text-slate-500">Points Earned</p>
                                         <p className={`text-base sm:text-lg font-black ${result.pointsAwarded ? 'text-amber-400' : 'text-slate-400'}`}>
                                             +{result.pointsAwarded ?? 0}
                                         </p>
                                     </div>
-                                    <div className="col-span-2 sm:col-span-1 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2">
+                                    <div className="col-span-2 sm:col-span-1 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 min-h-[3.5rem]">
                                         <p className="text-[9px] sm:text-[10px] uppercase tracking-widest text-slate-500">Speed Rating</p>
                                         <p className="text-base sm:text-lg font-black text-slate-900 dark:text-slate-100 uppercase tracking-tighter">
                                             {result.speedBand ? SPEED_BAND_LABELS[result.speedBand] : 'Recorded'}
@@ -987,7 +1124,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                                 <p className="text-xs font-bold text-amber-500 uppercase tracking-widest mb-2 flex items-center gap-2">
                                                     <HelpCircle className="w-3.5 h-3.5" /> Hint
                                                 </p>
-                                                <div className="text-sm text-slate-300 leading-relaxed whitespace-pre-line font-serif italic">
+                                                <div className="text-sm text-slate-300 leading-relaxed whitespace-pre-line font-sans italic">
                                                     {renderQuestionText(question.hint, 'hint-text')}
                                                 </div>
                                             </div>
@@ -1017,7 +1154,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                     </div>
                                 )}
 
-                                <div className="flex gap-3 mt-6">
+                                <div className="flex flex-wrap gap-3 mt-6">
                                     {!result.isCorrect && (
                                         <button
                                             onClick={handleTryAgain}

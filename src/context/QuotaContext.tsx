@@ -147,7 +147,7 @@ export function QuotaProvider({ children }: { children: React.ReactNode }) {
           });
           addNotification({
             title: `Daily ${type} Quota Exhausted`,
-            message: `You have reached 100% of your daily ${type} limit for Origin AI.`,
+            message: `You have reached 100% of your daily ${type} limit for Ori.`,
             type: 'warning'
           });
         } else {

@@ -66,7 +66,7 @@ const STATS: Stat[] = [
     value: '24000',
     suffix: '+',
     label: 'Doubts Resolved',
-    sublabel: 'By Origin AI, 24 / 7, across all subjects',
+    sublabel: 'By Ori, 24 / 7, across all subjects',
     accent: 'from-emerald-500/20 to-emerald-500/5',
   },
   {
@@ -90,7 +90,7 @@ export default function NumbersWall() {
   const inView = useInView(ref, { once: true, margin: '-100px' });
 
   return (
-    <section ref={ref} className="py-14 sm:py-24 lg:py-32 relative z-10 overflow-hidden">
+    <section ref={ref} className="py-10 sm:py-16 lg:py-20 relative z-10 overflow-hidden">
       {/* Radial glow */}
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_50%,rgba(0,102,255,0.07),transparent)] pointer-events-none" />
 
@@ -100,7 +100,7 @@ export default function NumbersWall() {
           whileInView={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
           viewport={{ once: true, margin: '-80px' }}
-          className="text-center mb-16"
+          className="text-center mb-10"
         >
           <span className="text-[10px] font-black text-primary tracking-[0.4em] uppercase block mb-4">By the Numbers</span>
           <h2 className="text-3xl xs:text-4xl sm:text-6xl lg:text-7xl font-black tracking-tighter">

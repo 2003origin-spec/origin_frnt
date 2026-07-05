@@ -83,7 +83,7 @@ export default function OriMascot({
   state = 'idle',
   className,
   style,
-  title = 'Origin AI',
+  title = 'Ori',
   preload = false,
   interactive = false,
   onOrbitChange,

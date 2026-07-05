@@ -15,7 +15,7 @@ export interface OriMascotStaticProps {
   state?: MascotState;
 }
 
-export default function OriMascotStatic({ className, title = 'Origin AI', expression, state }: OriMascotStaticProps) {
+export default function OriMascotStatic({ className, title = 'Ori', expression, state }: OriMascotStaticProps) {
   return (
     <div className={className} style={{ position: 'relative', width: '100%', height: '100%' }}>
       <Ori2D expression={expression} state={state} title={title} />

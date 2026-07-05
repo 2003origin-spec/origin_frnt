@@ -235,7 +235,7 @@ export function TeacherHeader({
               animate={{ y: 0 }}
               exit={{ y: "100%" }}
               transition={{ type: "spring", stiffness: 300, damping: 28 }}
-              className="fixed bottom-16 left-0 right-0 z-40 lg:hidden bg-card rounded-t-3xl border-t border-border/85 shadow-2xl p-4 max-h-[75vh] overflow-y-auto pb-10"
+              className="fixed bottom-16 left-0 right-0 z-40 lg:hidden bg-card rounded-t-3xl border-t border-border/85 shadow-lg shadow-black/5 p-4 max-h-[75vh] overflow-y-auto pb-10"
             >
               {/* Drag Handle Indicator */}
               <div className="w-12 h-1 bg-muted rounded-full mx-auto mb-4" />

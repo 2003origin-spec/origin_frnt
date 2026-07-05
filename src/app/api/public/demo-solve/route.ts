@@ -35,7 +35,7 @@ const FALLBACK_ANSWER = `Here's how to approach this problem:
 3. Substitute values carefully with correct units
 4. Simplify and verify the answer
 
-**Answer:** Origin AI would solve this step-by-step with full explanations, diagrams, and follow-up insights — just for you.
+**Answer:** Ori would solve this step-by-step with full explanations, diagrams, and follow-up insights — just for you.
 
 *Create a free account to get the complete solution with AI that remembers your strengths and weaknesses.*`;
 

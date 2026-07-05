@@ -94,8 +94,8 @@ export default function TeacherOnboardingPage({ onComplete }: TeacherOnboardingP
                             <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-[#3CACA3]/10 to-[#1E3A5F]/10 flex items-center justify-center mb-4">
                                 <Briefcase className="w-8 h-8 text-[#3CACA3]" />
                             </div>
-                            <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Years of Experience</h2>
-                            <p className="text-slate-600 dark:text-slate-400">How long have you been teaching?</p>
+                            <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2 break-words">Years of Experience</h2>
+                            <p className="text-slate-600 dark:text-slate-400 break-words max-w-prose mx-auto">How long have you been teaching?</p>
                         </div>
 
                         <RadioGroup
@@ -117,7 +117,7 @@ export default function TeacherOnboardingPage({ onComplete }: TeacherOnboardingP
                                     />
                                     <Label
                                         htmlFor={option.value}
-                                        className="flex flex-col items-center p-4 rounded-xl border-2 border-slate-200 dark:border-slate-700 cursor-pointer transition-all hover:border-[#3CACA3]/50 dark:hover:border-[#3CACA3]/50 peer-data-[state=checked]:border-[#3CACA3] peer-data-[state=checked]:bg-[#3CACA3]/5 dark:peer-data-[state=checked]:bg-[#3CACA3]/10"
+                                        className="flex flex-col items-center p-4 rounded-xl border-2 border-slate-200 dark:border-slate-700 cursor-pointer transition-all hover:border-[#3CACA3]/50 dark:hover:border-[#3CACA3]/50 peer-data-[state=checked]:border-[#3CACA3] peer-data-[state=checked]:bg-[#3CACA3]/5 dark:peer-data-[state=checked]:bg-[#3CACA3]/10 break-words min-w-0"
                                     >
                                         <span className="font-semibold text-slate-900 dark:text-white">{option.label}</span>
                                         <span className="text-xs text-slate-500 dark:text-slate-400 mt-1">{option.desc}</span>
@@ -135,8 +135,8 @@ export default function TeacherOnboardingPage({ onComplete }: TeacherOnboardingP
                             <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-[#3CACA3]/10 to-[#1E3A5F]/10 flex items-center justify-center mb-4">
                                 <BookOpen className="w-8 h-8 text-[#3CACA3]" />
                             </div>
-                            <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Subject Expertise</h2>
-                            <p className="text-slate-600 dark:text-slate-400">Select subjects you are an expert in</p>
+                            <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2 break-words">Subject Expertise</h2>
+                            <p className="text-slate-600 dark:text-slate-400 break-words max-w-prose mx-auto">Select subjects you are an expert in</p>
                         </div>
 
                         <div className="space-y-3">
@@ -167,11 +167,11 @@ export default function TeacherOnboardingPage({ onComplete }: TeacherOnboardingP
                                     />
                                     <Label
                                         htmlFor={subject.value}
-                                        className="flex items-center p-4 rounded-xl border-2 border-slate-200 dark:border-slate-700 cursor-pointer transition-all hover:border-[#3CACA3]/50 dark:hover:border-[#3CACA3]/50 peer-data-[state=checked]:border-[#3CACA3] peer-data-[state=checked]:bg-[#3CACA3]/5 dark:peer-data-[state=checked]:bg-[#3CACA3]/10"
+                                        className="flex items-center p-4 rounded-xl border-2 border-slate-200 dark:border-slate-700 cursor-pointer transition-all hover:border-[#3CACA3]/50 dark:hover:border-[#3CACA3]/50 peer-data-[state=checked]:border-[#3CACA3] peer-data-[state=checked]:bg-[#3CACA3]/5 dark:peer-data-[state=checked]:bg-[#3CACA3]/10 break-words min-w-0"
                                     >
-                                        <div className="flex-1">
-                                            <span className="font-semibold text-slate-900 dark:text-white block">{subject.label}</span>
-                                            <span className="text-sm text-slate-500 dark:text-slate-400">{subject.desc}</span>
+                                        <div className="flex-1 min-w-0">
+                                            <span className="font-semibold text-slate-900 dark:text-white block break-words">{subject.label}</span>
+                                            <span className="text-sm text-slate-500 dark:text-slate-400 break-words">{subject.desc}</span>
                                         </div>
                                         <CheckCircle2 className="w-5 h-5 text-[#3CACA3] opacity-0 peer-data-[state=checked]:opacity-100" />
                                     </Label>
@@ -188,8 +188,8 @@ export default function TeacherOnboardingPage({ onComplete }: TeacherOnboardingP
                             <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-[#3CACA3]/10 to-[#1E3A5F]/10 flex items-center justify-center mb-4">
                                 <Sparkles className="w-8 h-8 text-[#3CACA3]" />
                             </div>
-                            <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">How did you hear about us?</h2>
-                            <p className="text-slate-600 dark:text-slate-400">Help us understand our reach</p>
+                            <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2 break-words">How did you hear about us?</h2>
+                            <p className="text-slate-600 dark:text-slate-400 break-words max-w-prose mx-auto">Help us understand our reach</p>
                         </div>
 
                         <RadioGroup
@@ -212,10 +212,10 @@ export default function TeacherOnboardingPage({ onComplete }: TeacherOnboardingP
                                     />
                                     <Label
                                         htmlFor={option.value}
-                                        className="flex flex-col items-center p-4 rounded-xl border-2 border-slate-200 dark:border-slate-700 cursor-pointer transition-all hover:border-[#3CACA3]/50 dark:hover:border-[#3CACA3]/50 peer-data-[state=checked]:border-[#3CACA3] peer-data-[state=checked]:bg-[#3CACA3]/5 dark:peer-data-[state=checked]:bg-[#3CACA3]/10"
+                                        className="flex flex-col items-center p-4 rounded-xl border-2 border-slate-200 dark:border-slate-700 cursor-pointer transition-all hover:border-[#3CACA3]/50 dark:hover:border-[#3CACA3]/50 peer-data-[state=checked]:border-[#3CACA3] peer-data-[state=checked]:bg-[#3CACA3]/5 dark:peer-data-[state=checked]:bg-[#3CACA3]/10 break-words min-w-0"
                                     >
                                         <option.icon className="w-6 h-6 text-[#3CACA3] mb-2" />
-                                        <span className="font-medium text-slate-900 dark:text-white">{option.label}</span>
+                                        <span className="font-medium text-slate-900 dark:text-white break-words">{option.label}</span>
                                     </Label>
                                 </div>
                             ))}
@@ -230,8 +230,8 @@ export default function TeacherOnboardingPage({ onComplete }: TeacherOnboardingP
                             <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-[#3CACA3]/10 to-[#1E3A5F]/10 flex items-center justify-center mb-4">
                                 <School className="w-8 h-8 text-[#3CACA3]" />
                             </div>
-                            <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Student Capacity</h2>
-                            <p className="text-slate-600 dark:text-slate-400">How many students can you bring to joy?</p>
+                            <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2 break-words">Student Capacity</h2>
+                            <p className="text-slate-600 dark:text-slate-400 break-words max-w-prose mx-auto">How many students can you bring to joy?</p>
                         </div>
 
                         <RadioGroup
@@ -253,11 +253,11 @@ export default function TeacherOnboardingPage({ onComplete }: TeacherOnboardingP
                                     />
                                     <Label
                                         htmlFor={option.value}
-                                        className="flex items-center p-4 rounded-xl border-2 border-slate-200 dark:border-slate-700 cursor-pointer transition-all hover:border-[#3CACA3]/50 dark:hover:border-[#3CACA3]/50 peer-data-[state=checked]:border-[#3CACA3] peer-data-[state=checked]:bg-[#3CACA3]/5 dark:peer-data-[state=checked]:bg-[#3CACA3]/10"
+                                        className="flex items-center p-4 rounded-xl border-2 border-slate-200 dark:border-slate-700 cursor-pointer transition-all hover:border-[#3CACA3]/50 dark:hover:border-[#3CACA3]/50 peer-data-[state=checked]:border-[#3CACA3] peer-data-[state=checked]:bg-[#3CACA3]/5 dark:peer-data-[state=checked]:bg-[#3CACA3]/10 break-words min-w-0"
                                     >
-                                        <div className="flex-1">
-                                            <span className="font-semibold text-slate-900 dark:text-white block">{option.label}</span>
-                                            <span className="text-sm text-slate-500 dark:text-slate-400">{option.desc}</span>
+                                        <div className="flex-1 min-w-0">
+                                            <span className="font-semibold text-slate-900 dark:text-white block break-words">{option.label}</span>
+                                            <span className="text-sm text-slate-500 dark:text-slate-400 break-words">{option.desc}</span>
                                         </div>
                                         <GraduationCap className="w-5 h-5 text-[#3CACA3] opacity-0 peer-data-[state=checked]:opacity-100" />
                                     </Label>
@@ -279,22 +279,22 @@ export default function TeacherOnboardingPage({ onComplete }: TeacherOnboardingP
                     {/* Progress */}
                     <div className="mb-8">
                         <div className="flex items-center justify-between mb-2">
-                            <span className="text-sm font-medium text-slate-600 dark:text-slate-400">Step {step} of {totalSteps}</span>
+                            <span className="text-sm font-medium text-muted-foreground">Step {step} of {totalSteps}</span>
                             <span className="text-sm font-medium text-[#3CACA3]">{Math.round(progress)}%</span>
                         </div>
-                        <Progress value={progress} className="h-2 bg-slate-100 dark:bg-slate-800" />
+                        <Progress value={progress} className="h-2 bg-muted" />
                     </div>
 
                     {/* Step Content */}
                     {renderStep()}
 
                     {/* Navigation */}
-                    <div className="flex gap-4 mt-8">
+                    <div className="flex flex-wrap gap-2 mt-8">
                         {step > 1 && (
                             <Button
                                 variant="outline"
                                 onClick={handleBack}
-                                className="flex-1 h-12 rounded-xl border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 dark:text-slate-300"
+                                className="flex-1 h-12 rounded-xl border-border hover:bg-muted text-foreground"
                             >
                                 Back
                             </Button>

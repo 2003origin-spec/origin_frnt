@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import Image from 'next/image';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   CheckCircle2,
@@ -129,11 +130,12 @@ export default function TasksGoals({ tasks, onAddTask, onEditTask, onToggleTask,
               <ArrowLeft className="w-4 h-4" />
               Back to Dashboard
             </button>
-            <h1 className="text-xl sm:text-4xl font-black tracking-tight text-foreground flex items-center gap-2 sm:gap-3">
+            <h1 className="text-xl sm:text-4xl font-black tracking-tight text-foreground flex items-center gap-2 sm:gap-3 break-words">
               <div className="p-1.5 bg-primary/10 rounded-lg sm:rounded-2xl">
                 <Target className="w-5 h-5 sm:w-8 sm:h-8 text-primary" />
               </div>
               Tasks & Goals
+              <Image src="/ori2d/ori-determined.png" alt="Ori" width={56} height={56} className="object-contain drop-shadow-md" priority />
             </h1>
             <p className="text-muted-foreground font-medium pl-9 sm:pl-14 text-[10px] sm:text-sm">
               Hey {user.name}, stay on top of your milestones.
@@ -144,7 +146,7 @@ export default function TasksGoals({ tasks, onAddTask, onEditTask, onToggleTask,
         {/* Stats Grid */}
         <div className={cn(
           "grid gap-4",
-          isConstrained ? "grid-cols-2" : "grid-cols-2 md:grid-cols-4"
+          isConstrained ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1 sm:grid-cols-2 md:grid-cols-4"
         )}>
           {[
             { label: 'Total Tasks', value: stats.total, icon: ListTodo, color: 'text-primary bg-primary/10' },
@@ -157,7 +159,7 @@ export default function TasksGoals({ tasks, onAddTask, onEditTask, onToggleTask,
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.1 }}
-              className="neu-raised rounded-2xl p-3 sm:p-5 hover:-translate-y-0.5 transition-all group"
+              className="neu-raised rounded-2xl p-3 sm:p-5 hover:-translate-y-0.5 transition-all group overflow-hidden"
             >
               <div className={cn(
                 "rounded-lg sm:rounded-xl flex items-center justify-center mb-1.5 sm:mb-3 group-hover:scale-110 transition-transform",
@@ -167,7 +169,7 @@ export default function TasksGoals({ tasks, onAddTask, onEditTask, onToggleTask,
                 <stat.icon className={cn(isMobile ? "w-3.5 h-3.5" : "w-5 h-5")} />
               </div>
               <p className={cn("font-black text-foreground", isMobile ? "text-lg" : "text-2xl")}>{stat.value}</p>
-              <p className="text-[8px] sm:text-xs font-bold text-muted-foreground uppercase tracking-wider">{stat.label}</p>
+              <p className="text-[8px] sm:text-xs font-bold text-muted-foreground uppercase tracking-wider break-words">{stat.label}</p>
             </motion.div>
           ))}
         </div>
@@ -288,7 +290,7 @@ export default function TasksGoals({ tasks, onAddTask, onEditTask, onToggleTask,
                       />
                     ) : (
                       <div className={cn(
-                        "text-sm sm:text-base font-bold transition-all",
+                        "text-sm sm:text-base font-bold transition-all break-words",
                         task.completed ? 'text-muted-foreground line-through' : 'text-foreground'
                       )}>
                         <FormattedMessage content={task.text} inline isAssistant={false} />
@@ -303,7 +305,11 @@ export default function TasksGoals({ tasks, onAddTask, onEditTask, onToggleTask,
                             ? 'bg-rose-500/10 text-rose-500'
                             : 'bg-primary/10 text-primary'
                       )}>
-                        <Calendar className="w-3 h-3" />
+                        {task.completed ? (
+                          <Image src="/ori2d/ori-cheerful.png" alt="Ori" width={32} height={32} className="object-contain drop-shadow" />
+                        ) : (
+                          <Calendar className="w-3 h-3" />
+                        )}
                         {task.completed ? 'Completed' : isOverdue(task.due) ? `Missed: ${formatDate(task.due)}` : `Due: ${formatDate(task.due)}`}
                       </span>
                     </div>
@@ -349,6 +355,7 @@ export default function TasksGoals({ tasks, onAddTask, onEditTask, onToggleTask,
 
             {filteredTasks.length === 0 && (
               <div className="py-20 flex flex-col items-center justify-center text-center space-y-4">
+                <Image src="/ori2d/ori-curious.png" alt="Ori" width={112} height={112} className="object-contain mx-auto mb-3 drop-shadow-md" />
                 <div className="w-16 h-16 neu-inset rounded-full flex items-center justify-center text-muted-foreground">
                   <LayoutGrid className="w-8 h-8" />
                 </div>

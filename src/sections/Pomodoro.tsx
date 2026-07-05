@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useRef, useMemo } from 'react';
+import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
@@ -53,7 +54,7 @@ const NO_OBJECTIVE = '__none__';
 
 
 export interface PomodoroSession {
-  id?: number;
+  id?: string;
   start_time: string;
   end_time?: string;
   duration: number;
@@ -155,12 +156,17 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
   const [interruptionCount, setInterruptionCount] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const modes = {
+  const FocusIcon = useMemo(() => function FocusIcon() {
+    return <Image src="/iconsax/Ai-Icon.png" alt="Focus" width={32} height={32} className="object-contain" />;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const modes = useMemo(() => ({
     focus: {
       label: 'Deep Focus',
       color: 'from-primary to-primary/80',
       shadow: 'shadow-primary/20',
-      icon: () => <img src="/iconsax/Ai-Icon.png" className="w-8 h-8 object-contain" />,
+      icon: FocusIcon,
       defaultTime: settings.focusDuration * 60
     },
     shortBreak: {
@@ -177,7 +183,7 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
       icon: Coffee,
       defaultTime: settings.longBreakDuration * 60
     },
-  };
+  }), [FocusIcon, settings.focusDuration, settings.shortBreakDuration, settings.longBreakDuration]);
 
   // Today's Stats Calculation
   const { todaySessions, todayMinutes, focusRate } = useMemo(() => {
@@ -448,13 +454,13 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
     }
   };
 
-  const updateBackendSession = async (sessionId: number, data: Partial<PomodoroSession>) => {
+  const updateBackendSession = async (sessionId: string, data: Partial<PomodoroSession>) => {
     try {
       await apiCall(`/users/pomodoro/${sessionId}/`, {
         method: 'PATCH',
         body: JSON.stringify(data)
       });
-      fetchHistory(); // Refresh
+      await fetchHistory();
     } catch (error) {
       console.error('Failed to update session:', error);
     }
@@ -572,17 +578,18 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
   };
 
 
-  const handleStopAlarm = () => {
+  const handleStopAlarm = async () => {
     stopContinuousAlarm();
     setIsAlarmRinging(false);
 
     if (currentSession?.id) {
-      updateBackendSession(currentSession.id, {
+      await updateBackendSession(currentSession.id, {
         is_completed: true,
         duration: Math.max(0, modes[mode].defaultTime - timeRemaining),
         interruption_count: interruptionCount,
         end_time: new Date().toISOString()
       });
+      setCurrentSession(null);
     }
 
     if (mode === 'focus') {
@@ -594,7 +601,6 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
         setTimeRemaining(modes[nextMode].defaultTime);
         setNextMode(null);
       }
-      setCurrentSession(null);
     }
   };
 
@@ -1075,7 +1081,7 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
                         <SelectItem value={NO_OBJECTIVE} className="text-xs font-bold">No objective</SelectItem>
                         {tasks.map((task) => (
                           <SelectItem key={task.id} value={task.id} className="text-xs font-bold">
-                            {task.title}
+                            {task.text}
                           </SelectItem>
                         ))}
                       </SelectContent>

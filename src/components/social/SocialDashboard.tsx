@@ -47,7 +47,7 @@ function badgeClasses(badge: string): string {
     case 'Dropper':
       return 'bg-orange-500/15 text-orange-500 dark:text-orange-400 border-orange-500/30';
     default:
-      return 'bg-slate-500/15 text-slate-500 dark:text-slate-400 border-slate-500/30';
+      return 'bg-muted text-muted-foreground border-border/50';
   }
 }
 
@@ -309,7 +309,7 @@ export default function SocialDashboard({
                       <p className="truncate text-sm font-black group-hover:text-primary transition-colors">{c.name}</p>
                       <p className="truncate text-[11px] text-muted-foreground">@{c.username}</p>
                       {c.badge && (
-                        <span className={cn('mt-1 inline-block rounded border px-2 py-0.5 text-[10px] font-bold', badgeClasses(c.badge))}>
+                        <span className={cn('mt-1 inline-block truncate max-w-[120px] sm:max-w-none rounded border px-2 py-0.5 text-[10px] font-bold', badgeClasses(c.badge))}>
                           {c.badge}
                         </span>
                       )}
@@ -388,13 +388,13 @@ export default function SocialDashboard({
                         {selected.name.charAt(0).toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
-                    <h2 className="mt-3 flex items-center gap-1.5 text-xl font-black">
-                      {selected.name}
-                      <CheckCircle2 className="h-4 w-4 text-primary" />
+                    <h2 className="mt-3 flex min-w-0 items-center gap-1.5 text-xl font-black">
+                      <span className="truncate">{selected.name}</span>
+                      <CheckCircle2 className="h-4 w-4 shrink-0 text-primary" />
                     </h2>
-                    <p className="text-sm text-muted-foreground">@{selected.username}</p>
+                    <p className="truncate text-sm text-muted-foreground">@{selected.username}</p>
                     {selected.badge && (
-                      <span className={cn('mt-2 inline-block rounded border px-3 py-1 text-xs font-bold', badgeClasses(selected.badge))}>
+                      <span className={cn('mt-2 inline-block truncate max-w-[120px] sm:max-w-none rounded border px-3 py-1 text-xs font-bold', badgeClasses(selected.badge))}>
                         {selected.badge}
                       </span>
                     )}
@@ -402,7 +402,7 @@ export default function SocialDashboard({
 
                   {/* Stat trio */}
                   <div className={cn(
-                    'mt-5 flex items-center justify-between rounded-xl p-3',
+                    'mt-5 flex items-center justify-between overflow-hidden rounded-xl p-3',
                     isDark ? 'border border-white/10 bg-white/[0.03]' : 'neu-inset',
                   )}>
                     {[
@@ -450,7 +450,7 @@ export default function SocialDashboard({
                     <Sparkles className="h-4 w-4 text-primary" />
                     Highlights
                   </h3>
-                  <div className="grid grid-cols-4 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     {[
                       { icon: Flame, tint: 'text-orange-500', value: preview.streak, label: 'Streak' },
                       { icon: Target, tint: 'text-rose-500', value: `${preview.accuracy}%`, label: 'Accuracy' },

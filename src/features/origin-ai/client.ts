@@ -253,7 +253,7 @@ function buildIdentitySummary(memory: ServiceSnapshot['memory']): string {
   if (typeof memory.streak === 'number' && memory.streak > 0) {
     parts.push(`streak: ${memory.streak}`);
   }
-  return parts.join(' | ') || 'Origin AI is building your learning memory.';
+  return parts.join(' | ') || 'Ori is building your learning memory.';
 }
 
 function normalizeServiceSnapshot(
@@ -366,7 +366,7 @@ function toReplyFromSnapshot(
     reversed.find((message) => message.role === 'assistant');
 
   if (!userMessage || !aiMessage) {
-    throw new Error('Origin AI conversation sync did not return the latest messages.');
+    throw new Error('Ori conversation sync did not return the latest messages.');
   }
 
   return {

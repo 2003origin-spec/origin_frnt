@@ -206,7 +206,7 @@ function toPageContext(input?: PageContextLike): OriginAiPageContextInput {
 }
 
 /* --------------------------------------------------------------------------
- * Proxy helper: forwards requests to the Origin AI Python microservice
+ * Proxy helper: forwards requests to the Ori Python microservice
  * when ORIGIN_AI_SERVICE_URL is configured. Falls back to the in-app
  * TypeScript implementation otherwise.
  * ----------------------------------------------------------------------- */
@@ -230,7 +230,7 @@ async function proxyToMicroservice(
   } catch (error) {
     const message = error instanceof ServiceAuthConfigurationError
       ? error.message
-      : "Origin AI service token is not configured.";
+      : "Ori service token is not configured.";
     console.error("[origin-ai proxy] service token missing", { requestId, path });
     return new Response(JSON.stringify({ detail: message, requestId }), {
       status: 503,
@@ -298,7 +298,7 @@ async function proxyToMicroservice(
         data = resp.ok
           ? { raw: text }
           : {
-              error: text.trim() || `Origin AI service error (${resp.status})`,
+              error: text.trim() || `Ori service error (${resp.status})`,
               upstreamStatus: resp.status,
             };
       }
@@ -333,7 +333,7 @@ async function resolveProxyUser(request: NextRequest): Promise<StoredUser | null
 }
 
 /**
- * Origin AI + AI Explainer are global-unlock premium features (Phase 1.4): a
+ * Ori + AI Explainer are global-unlock premium features (Phase 1.4): a
  * student who owns ANY subject gets full access. This is the single BFF
  * chokepoint — a free student is refused here before any proxy / in-app
  * fallback runs. No-op when the feature is dark or the caller is not a student.
@@ -344,7 +344,7 @@ async function enforceOriginAiPremium(request: NextRequest): Promise<Response | 
   if (!ctx || ctx.role !== "student") return null;
   const entitled = await getEntitledSubjects(ctx.userId);
   if (entitled.length === 0) {
-    return forbidden("Origin AI is a premium feature. Subscribe to any subject to unlock it.");
+    return forbidden("Ori is a premium feature. Subscribe to any subject to unlock it.");
   }
   return null;
 }
@@ -462,7 +462,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
           });
         }
 
-        return new Response(JSON.stringify(data ?? { detail: "Origin AI chapter listing failed." }), {
+        return new Response(JSON.stringify(data ?? { detail: "Ori chapter listing failed." }), {
           status: proxyResp.status,
           headers: { "Content-Type": "application/json" },
         });
@@ -479,7 +479,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       });
     }
 
-    return badRequest("Chapter listing requires the Origin AI microservice and no cached catalog is available.");
+    return badRequest("Chapter listing requires the Ori microservice and no cached catalog is available.");
   }
 
   // GET /origin-ai/threads — list named Doubt Solver threads for the user.
@@ -552,7 +552,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
   });
 
   if (!parsedQuery.success) {
-    return badRequest("Invalid Origin AI page context.");
+    return badRequest("Invalid Ori page context.");
   }
 
   const proxyUser = await resolveProxyUser(request);
@@ -664,7 +664,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       const proxyResp = await proxyToMicroservice("POST", "/api/v1/chat/transcribe", body, request, proxyUser);
       if (proxyResp) return proxyResp;
     }
-    return badRequest("Transcription requires the Origin AI microservice.");
+    return badRequest("Transcription requires the Ori microservice.");
   }
 
   // POST /origin-ai/image-solve — Image problem solver
@@ -699,7 +699,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         });
       }
     }
-    return badRequest("Image solving requires the Origin AI microservice.");
+    return badRequest("Image solving requires the Ori microservice.");
   }
 
   try {

@@ -20,6 +20,7 @@ const TutorialOverlay = dynamic(() =>
   import('@/features/tutorial/TutorialOverlay').then((module) => module.TutorialOverlay),
   { ssr: false },
 );
+const BadgeUnlockPopup = dynamic(() => import('@/components/BadgeUnlockPopup'), { ssr: false });
 
 const ROUTES: Record<string, string> = {
   'landing': '/',
@@ -51,7 +52,7 @@ function resolveRoute(view: string) {
 }
 
 function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnabled }: { children: React.ReactNode; connectEnabled?: boolean; premiumEnabled?: boolean; socialEnabled?: boolean }) {
-  const { user, logout, isNavigationLocked } = useAuth();
+  const { user, logout, isNavigationLocked, refreshUser } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
   
@@ -72,6 +73,13 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnab
   } = useLayout();
   const [mounted, setMounted] = React.useState(false);
   const [deferredUiReady, setDeferredUiReady] = React.useState(false);
+  const [badgePopupNames, setBadgePopupNames] = React.useState<string[]>([]);
+
+  // Show badge unlock popup whenever the server delivers pending badges
+  React.useEffect(() => {
+    const pending = user?.pendingBadges ?? [];
+    if (pending.length > 0) setBadgePopupNames(pending);
+  }, [user?.pendingBadges]);
 
   const mainRef = React.useRef<HTMLElement | null>(null);
 
@@ -255,6 +263,17 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnab
         )}
 
         {deferredUiReady ? <TutorialOverlay /> : null}
+
+        {/* Badge unlock celebration popup */}
+        {badgePopupNames.length > 0 && (
+          <BadgeUnlockPopup
+            badgeNames={badgePopupNames}
+            onDismiss={() => {
+              setBadgePopupNames([]);
+              refreshUser();
+            }}
+          />
+        )}
       </div>
     </TutorialProvider>
   );

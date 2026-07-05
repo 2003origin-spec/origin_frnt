@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
-import { Inter, Syne, Instrument_Serif } from "next/font/google";
+import { Darker_Grotesque } from "next/font/google";
 import "./globals.css";
 import AgentationLoader from "@/components/layout/AgentationLoader";
 import "katex/dist/katex.min.css";
@@ -14,13 +14,12 @@ import { getCanonicalSiteUrl } from "@/lib/site-url";
 import { isFeatureEnabled } from "@/lib/feature-flags";
 import { getServerFrontendUser } from "@/lib/auth-server";
 
-const inter = Inter({ subsets: ["latin"], variable: "--font-body", display: "swap" });
-const syne = Syne({ subsets: ["latin"], variable: "--font-heading", display: "swap" });
-const instrumentSerif = Instrument_Serif({
+// Single typeface per brand spec: Darker Grotesque (Regular 400, SemiBold 600, Bold 700+)
+// Wordmark → 700-900, Headlines & Taglines → 600, Body → 400-500
+const darkerGrotesque = Darker_Grotesque({
   subsets: ["latin"],
-  weight: "400",
-  style: ["normal", "italic"],
-  variable: "--font-display",
+  weight: ["300", "400", "500", "600", "700", "800", "900"],
+  variable: "--font-grotesque",
   display: "swap",
 });
 
@@ -66,7 +65,7 @@ export default async function RootLayout({
   // skips the /api/users/me waterfall on every page load.
   const initialUser = await getServerFrontendUser().catch(() => null);
   return (
-    <html lang="en" suppressHydrationWarning className={`${inter.variable} ${syne.variable} ${instrumentSerif.variable}`}>
+    <html lang="en" suppressHydrationWarning className={darkerGrotesque.variable}>
       <body className="antialiased" suppressHydrationWarning>
         <ThemeProvider
           attribute="class"

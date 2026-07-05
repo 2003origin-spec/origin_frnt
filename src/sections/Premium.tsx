@@ -4,16 +4,13 @@
  * Phase 1.5 — Premium surface.
  *
  * Four per-subject cards (₹499/mo each). Owning ANY subject unlocks the global
- * tools (Origin AI, AI Explainer, Study Rooms); each owned subject unlocks its
+ * tools (Ori, AI Explainer, Study Rooms); each owned subject unlocks its
  * full OG Code bank, Tests and DPP. Reads entitlement from useAuth().user.
  */
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import dynamic from 'next/dynamic';
 import { ChevronLeft, Atom, FlaskConical, Sigma, Dna, Shield, Check, Package } from 'lucide-react';
-
-const OriMascot = dynamic(() => import('@/features/mascot/Ori2D'), { ssr: false });
 
 import { useAuth } from '@/context/AuthContext';
 import { ALL_SUBJECTS, getEntitledSubjects, hasAnyPremium, type Subject } from '@/lib/entitlements';
@@ -31,7 +28,7 @@ const SUBJECT_META: Record<Subject, { label: string; Icon: typeof Atom; blurb: s
   biology: { label: 'Biology', Icon: Dna, blurb: 'Full OG Code bank, Tests & DPP for Biology.' },
 };
 
-const GLOBAL_TOOLS = ['Origin AI', 'AI Explainer', 'Study Rooms'];
+const GLOBAL_TOOLS = ['Ori', 'AI Explainer', 'Study Rooms'];
 
 export default function Premium({ onBack }: PremiumProps) {
   const router = useRouter();
@@ -87,9 +84,7 @@ export default function Premium({ onBack }: PremiumProps) {
       <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="text-center mb-10">
           <div className="mb-4 flex justify-center">
-            <div className="h-24 w-24 sm:h-28 sm:w-28">
-              <OriMascot expression="thumbsup" title="Origin AI" />
-            </div>
+            <img src="/ori2d/ori-thubmsup.png" alt="Ori" className="w-36 h-36 sm:w-48 sm:h-48 object-contain drop-shadow-2xl mx-auto mb-4" />
           </div>
           <h2 className="text-3xl sm:text-4xl font-bold text-foreground mb-4">
             Subscribe by subject
@@ -143,12 +138,17 @@ export default function Premium({ onBack }: PremiumProps) {
               ))}
             </div>
           </div>
-          <span className={cn(
-            'text-sm font-bold',
-            anyPremium ? 'text-emerald-500' : 'text-muted-foreground'
-          )}>
-            {anyPremium ? '✓ Unlocked' : 'Locked'}
-          </span>
+          <div className="flex flex-col items-center gap-1">
+            {anyPremium && (
+              <img src="/ori2d/ori-proud.png" alt="Ori" className="w-28 h-28 object-contain mx-auto mb-3 drop-shadow-xl" />
+            )}
+            <span className={cn(
+              'text-sm font-bold',
+              anyPremium ? 'text-emerald-500' : 'text-muted-foreground'
+            )}>
+              {anyPremium ? '✓ Unlocked' : 'Locked'}
+            </span>
+          </div>
         </div>
 
         {/* Subject cards */}

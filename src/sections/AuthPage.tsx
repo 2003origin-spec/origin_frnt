@@ -10,7 +10,6 @@
  */
 
 import { useState, useEffect } from 'react';
-import dynamic from 'next/dynamic';
 import { Eye, EyeOff, ArrowLeft, Loader2, Mail, Lock, RefreshCw, User } from 'lucide-react';
 import { useGoogleLogin } from '@react-oauth/google';
 import {
@@ -24,7 +23,6 @@ import { getRegistrationStatusAction } from '@/server/actions/system-actions';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 
-const OriMascot = dynamic(() => import('@/features/mascot/Ori2D'), { ssr: false });
 
 interface AuthPageProps {
   userRole: 'student' | 'teacher' | 'admin' | null;
@@ -241,18 +239,29 @@ export default function AuthPage({
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src="/Origin-Teacher-Logo.png" alt="ORIGIN" className="h-14 w-auto rounded-2xl" />
               ) : (
-                <div className="h-20 w-20">
-                  <OriMascot expression={isLogin ? 'winking' : 'cheerful'} title="Origin AI" />
-                </div>
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={isLogin ? '/ori2d/ori-winking.png' : '/ori2d/ori-cheerful.png'}
+                  alt="Ori"
+                  className="w-32 h-32 object-contain drop-shadow-2xl"
+                />
               )}
             </div>
 
             {/* Heading */}
             <h2
               id="auth-heading"
-              className="text-center text-xl font-black tracking-tight mb-1"
+              className="text-center text-xl font-black tracking-tight mb-1 flex items-center justify-center gap-2"
               style={{ color: D.text }}
             >
+              {userRole == null && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={isLogin ? '/ori2d/ori-happy.png' : '/ori2d/ori-winking.png'}
+                  alt="Ori"
+                  className="w-10 h-10 object-contain drop-shadow"
+                />
+              )}
               {headingText}
             </h2>
             <p className="text-center text-xs mb-5" style={{ color: D.muted }}>
@@ -307,7 +316,19 @@ export default function AuthPage({
               >
                 {regStatus.seatsLeft > 0
                   ? `🔥 Hurry! Only ${regStatus.seatsLeft} seats left`
-                  : 'Beta registrations closed. Stay tuned for the next batch!'}
+                  : (
+                    <div className="space-y-1">
+                      <div>Beta registrations closed. Stay tuned for the next batch!</div>
+                      <a
+                        href="https://docs.google.com/forms/d/e/1FAIpQLScnovE3Jd-qiqr6BmeNdrfDG6JDZVEHhVf93xeSyW8H80SNsA/viewform"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline text-amber-400 hover:text-amber-300 transition-colors block mt-1"
+                      >
+                        Join Waitlist →
+                      </a>
+                    </div>
+                  )}
               </div>
             )}
 
@@ -436,21 +457,39 @@ export default function AuthPage({
               )}
 
               {/* Submit */}
-              <div className="flex justify-center mt-6">
-                <DarkBtn
-                  type="submit"
-                  disabled={isLoading || isVerifying || (!isLogin && regStatus?.seatsLeft === 0)}
-                  accent
-                  className="w-full h-11 flex items-center justify-center gap-2 text-sm font-bold"
-                >
-                  {isLoading || isVerifying ? (
-                    <><Loader2 className="w-4 h-4 animate-spin" />{step === 'otp' ? 'Verifying…' : isLogin ? 'Logging in…' : 'Sending code…'}</>
-                  ) : userRole === 'admin' ? (
-                    step === 'form' ? 'Send OTP' : 'Verify & Login'
-                  ) : isLogin ? 'Login' : (
-                    step === 'form' ? 'Create Account' : 'Verify & Complete'
-                  )}
-                </DarkBtn>
+              <div className="flex flex-col items-center justify-center mt-6 w-full">
+                {!isLogin && regStatus && regStatus.seatsLeft <= 0 ? (
+                  <a
+                    href="https://docs.google.com/forms/d/e/1FAIpQLScnovE3Jd-qiqr6BmeNdrfDG6JDZVEHhVf93xeSyW8H80SNsA/viewform"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full h-11 rounded-[5px] font-semibold text-sm transition-all duration-300 flex items-center justify-center gap-2"
+                    style={{
+                      background: 'hsl(var(--primary))',
+                      color: D.text,
+                      border: 'none',
+                      outline: 'none',
+                      boxShadow: D.raised,
+                    }}
+                  >
+                    Join Waitlist
+                  </a>
+                ) : (
+                  <DarkBtn
+                    type="submit"
+                    disabled={isLoading || isVerifying || (!isLogin && regStatus?.seatsLeft === 0)}
+                    accent
+                    className="w-full h-11 flex items-center justify-center gap-2 text-sm font-bold"
+                  >
+                    {isLoading || isVerifying ? (
+                      <><Loader2 className="w-4 h-4 animate-spin" />{step === 'otp' ? 'Verifying…' : isLogin ? 'Logging in…' : 'Sending code…'}</>
+                    ) : userRole === 'admin' ? (
+                      step === 'form' ? 'Send OTP' : 'Verify & Login'
+                    ) : isLogin ? 'Login' : (
+                      step === 'form' ? 'Create Account' : 'Verify & Complete'
+                    )}
+                  </DarkBtn>
+                )}
               </div>
             </form>
 

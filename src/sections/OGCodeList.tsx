@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
@@ -590,7 +591,10 @@ export default function OGCodeList({
 
     // Persist the current filtered ordering so the question workspace can offer
     // Previous / Next that respect whatever filter is applied here.
-    const filteredIdsKey = filteredQuestions.map(q => q.id).join(',');
+    const filteredIdsKey = useMemo(
+        () => filteredQuestions.map(q => q.id).join(','),
+        [filteredQuestions],
+    );
     useEffect(() => {
         const label = [
             activeSubject !== 'Subject' ? activeSubject : null,
@@ -626,8 +630,9 @@ export default function OGCodeList({
                         transition={{ duration: 0.45 }}
                         className="space-y-1.5"
                     >
-                        <div className="flex items-center gap-2.5">
-                            <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-foreground leading-tight">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                            <Image src="/ori2d/ori-laptop.png" alt="Ori" width={56} height={56} className="object-contain drop-shadow-md flex-shrink-0" priority />
+                            <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-foreground leading-tight break-words">
                                 OG<span className="text-primary">CODE</span> Workspace
                             </h1>
                             <button
@@ -830,7 +835,7 @@ export default function OGCodeList({
                                 <motion.div
                                     initial={{ opacity: 0 }}
                                     animate={{ opacity: 1 }}
-                                    className="flex-1 space-y-1.5 min-w-[260px]"
+                                    className="min-w-0 w-full sm:flex-1 sm:min-w-[200px] space-y-1.5"
                                 >
                                     <div className="flex items-center justify-between ml-1">
                                         <div className="flex items-center gap-2">
@@ -887,7 +892,7 @@ export default function OGCodeList({
                     {/* Search + secondary filters */}
                     <div id="secondary-filter-area" className="flex flex-wrap items-center gap-3 relative z-[40]">
                         {/* Search */}
-                        <div className="flex-1 min-w-[260px] neu-raised rounded-2xl flex items-center gap-3 px-4 h-11">
+                        <div className="min-w-0 w-full sm:flex-1 sm:min-w-[200px] neu-raised rounded-2xl flex items-center gap-3 px-4 h-11">
                             <Search className="w-4 h-4 text-muted-foreground/60 shrink-0" />
                             <input
                                 type="text"
@@ -1006,13 +1011,18 @@ export default function OGCodeList({
                                                         title={`Contributed by ${q.attributionName}`}
                                                     >
                                                         {q.attributionLogoUrl
-                                                            ? <img src={q.attributionLogoUrl} alt="" className="w-3 h-3 rounded-sm object-cover flex-shrink-0" />
+                                                            ? <Image src={q.attributionLogoUrl} alt="" width={12} height={12} className="rounded-sm object-cover flex-shrink-0" unoptimized />
                                                             : <Building2 className="w-3 h-3 flex-shrink-0" />}
                                                         <span className="truncate">{q.attributionName}</span>
                                                     </span>
                                                 )}
                                             </div>
-                                            {solved && <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0" />}
+                                            {solved && (
+                                                <div className="flex items-center gap-1 flex-shrink-0">
+                                                    <Image src="/ori2d/ori-thubmsup.png" alt="Ori" width={24} height={24} className="object-contain drop-shadow" />
+                                                    <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                                                </div>
+                                            )}
                                         </div>
 
                                         <div className="flex-1 text-[13px] font-bold text-foreground leading-snug line-clamp-3 group-hover:text-primary transition-colors duration-150">
@@ -1033,7 +1043,10 @@ export default function OGCodeList({
                             })}
                         </div>
                     ) : (
-                        <div className="py-20 text-center text-muted-foreground text-sm">No questions found matching your criteria.</div>
+                        <div className="py-20 text-center text-muted-foreground text-sm">
+                            <Image src="/ori2d/ori-curious.png" alt="Ori" width={112} height={112} className="object-contain mx-auto mb-3 drop-shadow-md" />
+                            No questions found matching your criteria.
+                        </div>
                     )}
 
                     <div className="flex flex-col gap-3 pt-5 sm:flex-row sm:items-center sm:justify-between">
@@ -1070,13 +1083,13 @@ export default function OGCodeList({
                             animate={{ opacity: 1, scale: 1, y: 0 }}
                             exit={{ opacity: 0, scale: 0.94, y: 18 }}
                             transition={{ type: 'spring', stiffness: 260, damping: 26 }}
-                            className="relative z-10 w-full max-w-md max-h-[85vh] overflow-y-auto custom-scrollbar neu-surface rounded-2xl border border-border/40 p-6 shadow-2xl"
+                            className="relative z-10 w-full max-w-md max-h-[85vh] overflow-y-auto custom-scrollbar neu-surface rounded-2xl border border-border/40 p-6"
                         >
                             {/* Header */}
                             <div className="flex items-start justify-between gap-4 mb-5">
                                 <div className="flex items-center gap-3">
                                     <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-primary/10 p-1">
-                                        <img src="/ori2d/ori-curious.png" alt="" draggable={false} className="h-full w-full object-contain select-none" />
+                                        <Image src="/ori2d/ori-curious.png" alt="" width={40} height={40} draggable={false} className="object-contain select-none" />
                                     </div>
                                     <div>
                                         <h2 className="text-lg font-black tracking-tight text-foreground leading-tight">How points are scored</h2>

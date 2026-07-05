@@ -236,7 +236,7 @@ export function StudentsManagerHighFidelity({ workspaceId, students, batches, ca
       
       {/* DirectoryTabSwitcher */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b pb-4 gap-4 w-full">
-        <div className="flex items-center gap-1 bg-muted/30 p-1 rounded-xl border overflow-x-auto max-w-full scrollbar-none whitespace-nowrap shrink-0 w-full sm:w-auto">
+        <div className="flex flex-wrap items-center gap-1 bg-muted/30 p-1 rounded-xl border overflow-x-auto max-w-full scrollbar-none shrink-0 w-full sm:w-auto">
           <Button 
             variant={activeTab === "active" ? "default" : "ghost"}
             size="sm"
@@ -372,10 +372,10 @@ export function StudentsManagerHighFidelity({ workspaceId, students, batches, ca
                           />
                         </td>
                       )}
-                      <td className="p-4 font-medium">
-                        <div className="flex flex-col">
-                          <span>{student.studentName || student.studentId}</span>
-                          <span className="text-xs text-muted-foreground font-normal">{student.studentEmail || "—"}</span>
+                      <td className="p-4 font-medium min-w-0">
+                        <div className="flex flex-col min-w-0">
+                          <span className="truncate">{student.studentName || student.studentId}</span>
+                          <span className="text-xs text-muted-foreground font-normal truncate">{student.studentEmail || "—"}</span>
                         </div>
                       </td>
                       <td className="p-4">
@@ -487,7 +487,7 @@ export function StudentsManagerHighFidelity({ workspaceId, students, batches, ca
               animate={{ x: 0 }}
               exit={{ x: "100%" }}
               transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="fixed top-0 right-0 bottom-0 w-full max-w-sm bg-background border-l z-50 p-6 flex flex-col justify-between shadow-2xl"
+              className="fixed top-0 right-0 bottom-0 w-full max-w-sm bg-background border-l z-50 p-6 flex flex-col justify-between shadow-lg shadow-black/5"
             >
               <div className="space-y-6">
                 <div className="flex justify-between items-center border-b pb-4">

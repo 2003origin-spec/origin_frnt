@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useRef, useState, useMemo } from 'react';
+import Image from 'next/image';
 import dynamic from 'next/dynamic';
 import { Button } from '@/components/ui/button';
 
@@ -233,7 +234,7 @@ export default function TestResultView({
       <header className="sticky top-0 z-50 bg-[hsl(var(--neu-bg)/0.9)] backdrop-blur-xl border-b border-border/40">
         <div className="max-w-6xl mx-auto px-4">
           <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-2 sm:gap-4 truncate">
+            <div className="flex items-center gap-2 sm:gap-4 truncate min-w-0">
               <button
                 onClick={onBackToDashboard}
                 className="p-1.5 sm:p-2 rounded-lg sm:xl bg-white/5 hover:bg-white/10 transition-all border border-white/10"
@@ -241,7 +242,7 @@ export default function TestResultView({
                 <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5 text-slate-600 dark:text-slate-400" />
               </button>
               <div className="h-10 w-10 shrink-0 sm:h-12 sm:w-12">
-                <OriMascot expression="thumbsup" title="Origin AI" />
+                <OriMascot expression="thumbsup" title="Ori" />
               </div>
               <div className="truncate">
                 <h1 className="text-base sm:text-lg font-bold text-foreground leading-tight truncate">Report Card</h1>
@@ -250,8 +251,8 @@ export default function TestResultView({
                 </p>
               </div>
             </div>
-            
-            <div className="flex items-center gap-3">
+
+            <div className="flex items-center gap-3 shrink-0">
                <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 px-3 py-1 rounded-lg">
                 Attempt {history.length || 1} <ArrowRight className="w-3 h-3 ml-2 rotate-90" />
               </Badge>
@@ -313,10 +314,19 @@ export default function TestResultView({
       {/* Main Content */}
       <main className="max-w-6xl mx-auto px-4 py-5 space-y-5 pb-24">
         {isAnalysisPending ? (
-          <DegradedBanner
-            title="Analytics processing"
-            reason="Your score is ready. Detailed weak-topic analysis and generated DPPs will update shortly."
-          />
+          <div className="flex items-center gap-3">
+            <img
+              src="/ori2d/ori-thinking.png"
+              alt="Ori thinking"
+              className="w-10 h-10 shrink-0 object-contain animate-pulse"
+            />
+            <div className="flex-1">
+              <DegradedBanner
+                title="Analytics processing"
+                reason="Your score is ready. Detailed weak-topic analysis and generated DPPs will update shortly."
+              />
+            </div>
+          </div>
         ) : result.degraded ? (
           <DegradedBanner reason={degradedReason} />
         ) : null}
@@ -354,13 +364,22 @@ export default function TestResultView({
               <div className="text-[9px] sm:text-[10px] uppercase tracking-[0.3em] font-black text-muted-foreground mb-3 bg-primary/5 px-4 py-1.5 rounded-full border border-primary/10">
                 Marks Obtained
               </div>
+              <img
+                src={
+                  (result.percentage ?? 0) >= 80 ? '/ori2d/ori-proud.png' :
+                  (result.percentage ?? 0) >= 50 ? '/ori2d/ori-cheerful.png' :
+                  '/ori2d/ori-determined.png'
+                }
+                alt="Ori"
+                className="w-20 h-20 sm:w-28 sm:h-28 object-contain drop-shadow-lg mx-auto mb-2"
+              />
               <div className="flex items-baseline gap-2">
                 <span className="text-5xl sm:text-6xl font-black text-foreground tracking-tighter">
                   {currentStats.score}
                 </span>
                 <span className="text-lg sm:text-2xl font-bold text-muted-foreground">/ {currentStats.totalMarks}</span>
               </div>
-              <div className="mt-4 flex w-full max-w-[260px] items-center gap-2">
+              <div className="mt-4 flex w-full max-w-xs items-center gap-2">
                 <div className="h-1.5 flex-1 bg-muted rounded-full overflow-hidden border border-border/10">
                   <div
                     className="h-full bg-gradient-to-r from-primary to-primary/80 transition-all duration-1000 ease-out"
@@ -502,7 +521,7 @@ export default function TestResultView({
                   </div>
                   <div className="group flex items-center justify-between p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-primary/5 border border-border/5 hover:bg-primary/10 transition-all">
                     <div className="flex items-center gap-3">
-                      <div className="w-2.5 h-2.5 rounded-full bg-slate-500" />
+                      <div className="w-2.5 h-2.5 rounded-full bg-muted-foreground/50" />
                       <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Skipped</span>
                     </div>
                     <span className="text-lg sm:text-xl font-black text-foreground">{currentStats.unattempted}</span>
@@ -579,21 +598,21 @@ export default function TestResultView({
               </ResponsiveContainer>
             </div>
 
-            <div className="mt-6 grid grid-cols-3 gap-3">
+            <div className="mt-6 grid grid-cols-3 gap-2 sm:gap-3">
                <div className="bg-primary/5 border border-border/5 rounded-2xl p-4 flex flex-col items-center">
                  <div className="w-2 h-2 rounded-full bg-primary mb-2 shadow-[0_0_8px_var(--primary)]" />
-                 <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mb-1">On Correct</span>
-                 <span className="text-sm font-black text-foreground">{formatTimeDigital(currentStats.timeSpentCorrect)}</span>
+                 <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mb-1 text-center break-words">On Correct</span>
+                 <span className="text-sm font-black text-foreground text-center break-words">{formatTimeDigital(currentStats.timeSpentCorrect)}</span>
                </div>
                <div className="bg-primary/5 border border-border/5 rounded-2xl p-4 flex flex-col items-center">
                  <div className="w-2 h-2 rounded-full bg-primary mb-2 shadow-[0_0_8px_var(--primary)]" />
-                 <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mb-1">On Incorrect</span>
-                 <span className="text-sm font-black text-foreground">{formatTimeDigital(currentStats.timeSpentIncorrect)}</span>
+                 <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mb-1 text-center break-words">On Incorrect</span>
+                 <span className="text-sm font-black text-foreground text-center break-words">{formatTimeDigital(currentStats.timeSpentIncorrect)}</span>
                </div>
                <div className="bg-primary/5 border border-border/5 rounded-2xl p-4 flex flex-col items-center">
-                 <div className="w-2 h-2 rounded-full bg-slate-500 mb-2" />
-                 <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mb-1">On Skipped</span>
-                 <span className="text-sm font-black text-foreground">{formatTimeDigital(currentStats.timeSpentUnattempted)}</span>
+                 <div className="w-2 h-2 rounded-full bg-muted-foreground/50 mb-2" />
+                 <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mb-1 text-center break-words">On Skipped</span>
+                 <span className="text-sm font-black text-foreground text-center break-words">{formatTimeDigital(currentStats.timeSpentUnattempted)}</span>
                </div>
             </div>
           </Card>
@@ -612,19 +631,19 @@ export default function TestResultView({
           className="relative"
         >
           <TabsList className="bg-card/40 backdrop-blur-lg border border-border/5 p-1 mb-6 rounded-2xl w-full flex overflow-x-auto no-scrollbar">
-            <TabsTrigger value="analysis" className="flex-1 data-[state=active]:bg-primary data-[state=active]:text-white rounded-xl transition-all font-bold py-3">
-              <img src="/ori2d/ori-reading.png" alt="" draggable={false} className="w-4 h-4 mr-2 object-contain" />
+            <TabsTrigger value="analysis" className="flex-1 shrink-0 whitespace-nowrap data-[state=active]:bg-primary data-[state=active]:text-white rounded-xl transition-all font-bold py-3">
+              <Image src="/ori2d/ori-reading.png" alt="" width={16} height={16} draggable={false} className="mr-2 object-contain" />
               Insights
             </TabsTrigger>
-            <TabsTrigger value="mistakes" className="flex-1 data-[state=active]:bg-primary data-[state=active]:text-white rounded-xl transition-all font-bold py-3">
+            <TabsTrigger value="mistakes" className="flex-1 shrink-0 whitespace-nowrap data-[state=active]:bg-primary data-[state=active]:text-white rounded-xl transition-all font-bold py-3">
               <AlertCircle className="w-4 h-4 mr-2" />
               Mistake Log
             </TabsTrigger>
-            <TabsTrigger value="correct" className="flex-1 data-[state=active]:bg-primary data-[state=active]:text-white rounded-xl transition-all font-bold py-3">
+            <TabsTrigger value="correct" className="flex-1 shrink-0 whitespace-nowrap data-[state=active]:bg-primary data-[state=active]:text-white rounded-xl transition-all font-bold py-3">
               <CheckCircle2 className="w-4 h-4 mr-2" />
               Correct Log
             </TabsTrigger>
-            <TabsTrigger value="recommendations" className="flex-1 data-[state=active]:bg-primary data-[state=active]:text-white rounded-xl transition-all font-bold py-3">
+            <TabsTrigger value="recommendations" className="flex-1 shrink-0 whitespace-nowrap data-[state=active]:bg-primary data-[state=active]:text-white rounded-xl transition-all font-bold py-3">
               <Target className="w-4 h-4 mr-2" />
               Next Steps
             </TabsTrigger>
@@ -694,7 +713,7 @@ export default function TestResultView({
 
 
           <TabsContent value="mistakes">
-            <div className="grid lg:grid-cols-3 gap-6">
+            <div className="grid md:grid-cols-3 lg:grid-cols-3 gap-6">
               {/* Mistake List */}
               <div className="lg:col-span-1 space-y-3">
                 {mistakeEntries.length > 0 ? (
@@ -711,11 +730,11 @@ export default function TestResultView({
                         <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${selectedReviewEntry === index ? 'bg-primary text-white' : 'bg-primary/10 text-primary'}`}>
                           <AlertCircle className="w-5 h-5" />
                         </div>
-                        <div>
+                        <div className="min-w-0">
                           <p className={`font-black uppercase tracking-tighter text-sm ${selectedReviewEntry === index ? 'text-primary' : 'text-foreground'}`}>
                             Question {index + 1}
                           </p>
-                          <p className="text-xs text-muted-foreground font-bold truncate max-w-[150px]">{mistake.concept}</p>
+                          <p className="text-xs text-muted-foreground font-bold truncate">{mistake.concept}</p>
                         </div>
                       </div>
                       {selectedReviewEntry === index && <div className="absolute right-0 top-0 bottom-0 w-1 bg-primary" />}
@@ -725,7 +744,7 @@ export default function TestResultView({
                   <div className="p-8 text-center bg-card/40 border border-border/5 rounded-2xl">
                     {(!result.aiAnalysis || !result.aiAnalysis.summary) ? (
                       <>
-                        <img src="/ori2d/ori-reading.png" alt="" draggable={false} className="w-14 h-14 mx-auto mb-4 object-contain animate-pulse" />
+                        <Image src="/ori2d/ori-reading.png" alt="" width={56} height={56} draggable={false} className="mx-auto mb-4 object-contain animate-pulse" />
                         <p className="text-sm text-foreground font-bold uppercase tracking-[0.15em] leading-relaxed">
                           Analysing your attempt — insights are loading
                         </p>
@@ -782,14 +801,14 @@ export default function TestResultView({
                           Fix Concept
                         </Button>
                         <Button variant="outline" className="rounded-2xl bg-primary/10 border border-primary/20 text-primary font-black uppercase tracking-widest text-xs px-8 h-14 hover:bg-primary/20 transition-colors">
-                          <img src="/ori2d/ori-happy.png" alt="" draggable={false} className="w-4 h-4 mr-3 object-contain" />
+                          <Image src="/ori2d/ori-happy.png" alt="" width={16} height={16} draggable={false} className="mr-3 object-contain" />
                           Explain with Ori
                         </Button>
                       </div>
                     </div>
                   ) : (
                     <div className="h-full flex flex-col items-center justify-center text-center space-y-4 opacity-50">
-                      <img src="/ori2d/ori-thinking.png" alt="" draggable={false} className="w-20 h-20 object-contain" />
+                      <Image src="/ori2d/ori-thinking.png" alt="" width={80} height={80} draggable={false} className="object-contain" />
                       <p className="text-lg font-bold text-foreground">Select a mistake to see deep analysis</p>
                     </div>
                   )}
@@ -799,7 +818,7 @@ export default function TestResultView({
           </TabsContent>
 
           <TabsContent value="correct">
-            <div className="grid lg:grid-cols-3 gap-6">
+            <div className="grid md:grid-cols-3 lg:grid-cols-3 gap-6">
               <div className="lg:col-span-1 space-y-3">
                 {correctEntries.length > 0 ? (
                   correctEntries.map((correct, index) => (
@@ -815,11 +834,11 @@ export default function TestResultView({
                         <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${selectedReviewEntry === index ? 'bg-primary text-white' : 'bg-primary/10 text-primary'}`}>
                           <CheckCircle2 className="w-5 h-5" />
                         </div>
-                        <div>
+                        <div className="min-w-0">
                           <p className={`font-black uppercase tracking-tighter text-sm ${selectedReviewEntry === index ? 'text-primary' : 'text-foreground'}`}>
                             Question {index + 1}
                           </p>
-                          <p className="text-xs text-muted-foreground font-bold truncate max-w-[150px]">{correct.concept}</p>
+                          <p className="text-xs text-muted-foreground font-bold truncate">{correct.concept}</p>
                         </div>
                       </div>
                       {selectedReviewEntry === index && <div className="absolute right-0 top-0 bottom-0 w-1 bg-primary" />}
@@ -879,7 +898,7 @@ export default function TestResultView({
                       <div className="w-10 h-10 rounded-full bg-primary/15 text-primary flex items-center justify-center flex-shrink-0 font-black text-sm">
                         {index + 1}
                       </div>
-                      <p className="text-foreground/80 font-medium leading-relaxed">{rec}</p>
+                      <p className="text-foreground/80 font-medium leading-relaxed min-w-0">{rec}</p>
                       <ArrowRight className="w-5 h-5 text-primary ml-auto opacity-0 group-hover/item:opacity-100 transition-opacity" />
                     </div>
                   ))}
@@ -887,7 +906,7 @@ export default function TestResultView({
 
                 <div className="mt-8 p-6 sm:p-8 rounded-2xl bg-gradient-to-br from-primary/15 to-primary/20 border border-primary/20 relative overflow-hidden group/dpp">
                   <div className="absolute -top-2 right-2 opacity-20 group-hover/dpp:scale-110 transition-transform pointer-events-none">
-                    <img src="/ori2d/ori-determined.png" alt="" draggable={false} className="w-28 h-28 object-contain" />
+                    <Image src="/ori2d/ori-determined.png" alt="" width={112} height={112} draggable={false} className="object-contain" />
                   </div>
                   <div className="relative z-10 flex flex-col md:flex-row items-center gap-8">
                     <div className="flex-1 text-center md:text-left">
@@ -902,7 +921,7 @@ export default function TestResultView({
                     </div>
                     <Button
                       onClick={onViewDPP}
-                      className="bg-white text-[#0F172A] hover:bg-slate-200 font-black uppercase tracking-widest text-xs h-14 px-10 rounded-2xl shadow-xl transition-all hover:scale-105 active:scale-95 whitespace-nowrap"
+                      className="w-full sm:w-auto bg-white text-[#0F172A] hover:bg-slate-200 font-black uppercase tracking-widest text-xs h-14 px-10 rounded-2xl shadow-xl transition-all hover:scale-105 active:scale-95 whitespace-nowrap"
                     >
                       <FileText className="w-4 h-4 mr-3" />
                       Open DPPs

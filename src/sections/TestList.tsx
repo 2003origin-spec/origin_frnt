@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -107,16 +107,22 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
     fetchTests();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const filteredTests = tests.filter((test) => {
+  const filteredTests = useMemo(() => tests.filter((test) => {
     const matchesSearch = test.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       test.description.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesSubject = selectedSubject === 'all' || test.subject === selectedSubject;
     const matchesDifficulty = selectedDifficulty === 'all' || test.difficulty === selectedDifficulty;
     return matchesSearch && matchesSubject && matchesDifficulty;
-  });
+  }), [tests, searchQuery, selectedSubject, selectedDifficulty]);
 
-  const standardTests = filteredTests.filter(t => !t.isCustom && !(t as any).is_custom && !t.id.startsWith('custom_'));
-  const customTests = filteredTests.filter(t => t.isCustom || (t as any).is_custom || t.id.startsWith('custom_'));
+  const standardTests = useMemo(
+    () => filteredTests.filter(t => !t.isCustom && !(t as any).is_custom && !t.id.startsWith('custom_')),
+    [filteredTests],
+  );
+  const customTests = useMemo(
+    () => filteredTests.filter(t => t.isCustom || (t as any).is_custom || t.id.startsWith('custom_')),
+    [filteredTests],
+  );
 
   const getSubjectIcon = (subject: string) => {
     switch (subject) {
@@ -170,13 +176,13 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
             <div className="flex items-center gap-4">
               <button
                 onClick={onBack}
-                className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                className="p-2 rounded-lg hover:bg-muted transition-colors"
               >
-                <ChevronLeft className="w-5 h-5 text-slate-600 dark:text-slate-400" />
+                <ChevronLeft className="w-5 h-5 text-muted-foreground" />
               </button>
-              <div>
-                <h1 className="text-xl font-bold text-slate-900 dark:text-white">Test Series</h1>
-                <p className="text-sm text-slate-500 dark:text-slate-400">Choose a test to begin</p>
+              <div className="min-w-0">
+                <h1 className="text-xl font-bold text-foreground">Test Series</h1>
+                <p className="text-sm text-muted-foreground">Choose a test to begin</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -193,7 +199,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
       <main className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8 pb-24 md:pb-10">
 
         {loading ? (
-          <div className="text-center py-16 text-slate-500">Loading tests...</div>
+          <div className="text-center py-16 text-muted-foreground">Loading tests...</div>
         ) : (
           <>
             {/* Filters moved to tab */}
@@ -207,7 +213,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                     <TabsTrigger
                       key={tab}
                       value={tab}
-                      className="px-3 sm:px-6 py-2 sm:py-2.5 rounded-lg sm:rounded-xl text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-primary/20 text-slate-500 hover:text-slate-900 dark:hover:text-white"
+                      className="px-3 sm:px-6 py-2 sm:py-2.5 rounded-lg sm:rounded-xl text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-primary/20 text-muted-foreground hover:text-foreground"
                     >
                       {tab === 'all' ? 'Institute' : 
                        tab === 'recommended' ? 'Daily' : 
@@ -243,8 +249,9 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                   ))}
                   {standardTests.length === 0 && (
                     <div className="col-span-full py-20 text-center">
+                      <img src="/ori2d/ori-curious.png" alt="Ori" className="w-28 h-28 object-contain mx-auto mb-3 drop-shadow-md" />
                       <Loader2 className="w-10 h-10 text-primary animate-spin mx-auto mb-4" />
-                      <p className="text-sm font-bold text-slate-500 uppercase tracking-widest">Calibrating Mocks...</p>
+                      <p className="text-sm font-bold text-muted-foreground uppercase tracking-widest">Calibrating Mocks...</p>
                     </div>
                   )}
                 </div>
@@ -255,7 +262,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                 <div className="mb-8 p-6 rounded-[32px] bg-primary text-white relative overflow-hidden shadow-xl shadow-primary/20">
                   <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
                     <div>
-                      <h2 className="text-2xl font-black uppercase tracking-tighter mb-1">Personalized Intelligence</h2>
+                      <h2 className="text-xl sm:text-2xl font-black uppercase tracking-tighter mb-1">Personalized Intelligence</h2>
                       <p className="text-xs font-bold opacity-80 uppercase tracking-widest flex items-center gap-2">
                         <Sparkles className="w-4 h-4" />
                         Tests curated for your primary subjects
@@ -302,10 +309,10 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
               <TabsContent value="pyq" className="mt-0 outline-none">
                 <Tabs defaultValue="jee-main" className="w-full">
                   <div className="flex justify-center mb-8">
-                    <TabsList className="bg-slate-100/50 dark:bg-slate-800/50 p-1 rounded-2xl">
-                      <TabsTrigger value="jee-main" className="rounded-xl px-6 py-2 text-xs font-bold uppercase tracking-widest data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:shadow-sm">JEE Main</TabsTrigger>
-                      <TabsTrigger value="jee-advanced" className="rounded-xl px-6 py-2 text-xs font-bold uppercase tracking-widest data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:shadow-sm">JEE Advanced</TabsTrigger>
-                      <TabsTrigger value="neet" className="rounded-xl px-6 py-2 text-xs font-bold uppercase tracking-widest data-[state=active]:bg-white dark:data-[state=active]:bg-slate-700 data-[state=active]:shadow-sm">NEET</TabsTrigger>
+                    <TabsList className="bg-muted/50 p-1 rounded-2xl">
+                      <TabsTrigger value="jee-main" className="rounded-xl px-6 py-2 text-xs font-bold uppercase tracking-widest data-[state=active]:bg-background data-[state=active]:shadow-sm">JEE Main</TabsTrigger>
+                      <TabsTrigger value="jee-advanced" className="rounded-xl px-6 py-2 text-xs font-bold uppercase tracking-widest data-[state=active]:bg-background data-[state=active]:shadow-sm">JEE Advanced</TabsTrigger>
+                      <TabsTrigger value="neet" className="rounded-xl px-6 py-2 text-xs font-bold uppercase tracking-widest data-[state=active]:bg-background data-[state=active]:shadow-sm">NEET</TabsTrigger>
                     </TabsList>
                   </div>
 
@@ -330,9 +337,10 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                             />
                           ))}
                           {examTests.length === 0 && (
-                            <div className="col-span-full py-20 text-center border-2 border-dashed border-border/40 rounded-[40px] bg-slate-50/50 dark:bg-white/5">
-                              <BookOpen className="w-12 h-12 text-slate-300 mx-auto mb-4 opacity-50" />
-                              <p className="text-sm font-bold text-slate-500 uppercase tracking-widest">No PYQ tests available for this category</p>
+                            <div className="col-span-full py-20 text-center border-2 border-dashed border-border/40 rounded-[40px] bg-muted/30">
+                              <img src="/ori2d/ori-curious.png" alt="Ori" className="w-28 h-28 object-contain mx-auto mb-3 drop-shadow-md" />
+                              <BookOpen className="w-12 h-12 text-muted-foreground/40 mx-auto mb-4 opacity-50" />
+                              <p className="text-sm font-bold text-muted-foreground uppercase tracking-widest">No PYQ tests available for this category</p>
                             </div>
                           )}
                         </div>
@@ -357,11 +365,12 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                     />
                   ))}
                   {filteredTests.filter(t => t.attempted).length === 0 && (
-                    <div className="col-span-full py-24 text-center border-2 border-dashed border-border/40 rounded-[40px] bg-slate-50/50 dark:bg-white/5">
-                      <div className="w-16 h-16 bg-slate-100 dark:bg-white/5 rounded-3xl flex items-center justify-center mx-auto mb-4">
-                        <BarChart3 className="w-8 h-8 text-slate-300" />
+                    <div className="col-span-full py-24 text-center border-2 border-dashed border-border/40 rounded-[40px] bg-muted/30">
+                      <img src="/ori2d/ori-determined.png" alt="Ori" className="w-28 h-28 object-contain mx-auto mb-3 drop-shadow-md" />
+                      <div className="w-16 h-16 bg-muted rounded-3xl flex items-center justify-center mx-auto mb-4">
+                        <BarChart3 className="w-8 h-8 text-muted-foreground/40" />
                       </div>
-                      <p className="text-sm font-black text-slate-500 uppercase tracking-widest">No Attempt History</p>
+                      <p className="text-sm font-black text-muted-foreground uppercase tracking-widest">No Attempt History</p>
                     </div>
                   )}
                 </div>
@@ -385,13 +394,13 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                   {customTests.length === 0 && !creatingTest && (
                     <Card 
                       onClick={() => {}} // Tab switch logic handled by defaultValue or programmatic change would be better
-                      className="col-span-full border-2 border-dashed border-border/40 bg-slate-50/50 dark:bg-white/5 rounded-[40px] flex flex-col items-center justify-center p-20 text-center"
+                      className="col-span-full border-2 border-dashed border-border/40 bg-muted/30 rounded-[40px] flex flex-col items-center justify-center p-8 sm:p-20 text-center"
                     >
                       <div className="w-20 h-20 rounded-3xl bg-primary/10 text-primary flex items-center justify-center mb-6">
                         <Plus className="w-10 h-10" />
                       </div>
-                      <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-2 uppercase tracking-tighter">Generator Empty</h3>
-                      <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-8">No custom tests found in your gallery.</p>
+                      <h3 className="text-2xl font-black text-foreground mb-2 uppercase tracking-tighter">Generator Empty</h3>
+                      <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-8">No custom tests found in your gallery.</p>
                     </Card>
                   )}
                 </div>
@@ -411,11 +420,11 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                         <div className="p-6 sm:p-10 space-y-6 sm:space-y-10">
                             <div className="grid sm:grid-cols-2 gap-10">
                                 <div className="space-y-4">
-                                    <Label className="text-[10px] uppercase font-black tracking-widest text-slate-500">Domain Calibration</Label>
+                                    <Label className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">Domain Calibration</Label>
                                     <select
                                         value={customTestConfig.subject}
                                         onChange={(e) => setCustomTestConfig({ ...customTestConfig, subject: e.target.value })}
-                                        className="w-full h-14 px-5 rounded-2xl bg-white dark:bg-white/5 border border-border/40 text-slate-900 dark:text-white font-black text-sm outline-none focus:border-rose-500 transition-all"
+                                        className="w-full h-14 px-5 rounded-2xl bg-background border border-border/40 text-foreground font-black text-sm outline-none focus:border-rose-500 transition-all"
                                     >
                                         <option value="mixed">All Subjects (Mixed)</option>
                                         <option value="physics">Physics</option>
@@ -425,11 +434,11 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                                     </select>
                                 </div>
                                 <div className="space-y-4">
-                                    <Label className="text-[10px] uppercase font-black tracking-widest text-slate-500">Intensity Level</Label>
+                                    <Label className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">Intensity Level</Label>
                                     <select
                                         value={customTestConfig.difficulty}
                                         onChange={(e) => setCustomTestConfig({ ...customTestConfig, difficulty: e.target.value })}
-                                        className="w-full h-14 px-5 rounded-2xl bg-white dark:bg-white/5 border border-border/40 text-slate-900 dark:text-white font-black text-sm outline-none focus:border-rose-500 transition-all"
+                                        className="w-full h-14 px-5 rounded-2xl bg-background border border-border/40 text-foreground font-black text-sm outline-none focus:border-rose-500 transition-all"
                                     >
                                         <option value="all">Dynamic Difficulty</option>
                                         <option value="easy">Introductory (Easy)</option>
@@ -440,7 +449,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                             </div>
 
                             <div className="space-y-4">
-                                <Label className="text-[10px] uppercase font-black tracking-widest text-slate-500">Chapter Specificity (Optional)</Label>
+                                <Label className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">Chapter Specificity (Optional)</Label>
                                 <Input
                                     placeholder="e.g. Kinematics, Thermodynamics..."
                                     value={customTestConfig.chapter}
@@ -451,7 +460,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
 
                             <div className="space-y-6">
                                 <div className="flex justify-between items-center">
-                                    <Label className="text-[10px] uppercase font-black tracking-widest text-slate-500">Question Load</Label>
+                                    <Label className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">Question Load</Label>
                                     <span className="text-sm font-black text-rose-600 dark:text-rose-400">{customTestConfig.question_count} UNITS</span>
                                 </div>
                                 <Slider
@@ -497,25 +506,25 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                 <Card className="neu-raised border-0 shadow-none rounded-[2rem] sm:rounded-[40px] p-6 sm:p-10">
                   <div className="space-y-8">
                     <div className="space-y-4">
-                      <Label className="text-[10px] uppercase font-black tracking-widest text-slate-500">Query Input</Label>
+                      <Label className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">Query Input</Label>
                       <div className="relative">
-                        <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                        <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                         <Input
                           placeholder="Search tests by title or description..."
                           value={searchQuery}
                           onChange={(e) => setSearchQuery(e.target.value)}
-                          className="pl-14 h-14 rounded-2xl border-border/40 bg-white dark:bg-white/10 focus:border-rose-500/50 font-bold"
+                          className="pl-14 h-14 rounded-2xl border-border/40 bg-background focus:border-rose-500/50 font-bold"
                         />
                       </div>
                     </div>
 
                     <div className="grid sm:grid-cols-2 gap-8">
                       <div className="space-y-4">
-                        <Label className="text-[10px] uppercase font-black tracking-widest text-slate-500">Subject Filtering</Label>
+                        <Label className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">Subject Filtering</Label>
                         <select
                           value={selectedSubject}
                           onChange={(e) => setSelectedSubject(e.target.value)}
-                          className="w-full h-14 px-5 rounded-2xl border border-border/40 bg-white dark:bg-white/5 font-bold outline-none focus:border-rose-500 transition-all"
+                          className="w-full h-14 px-5 rounded-2xl border border-border/40 bg-background font-bold outline-none focus:border-rose-500 transition-all"
                         >
                           <option value="all">All Subjects</option>
                           <option value="physics">Physics</option>
@@ -526,11 +535,11 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                         </select>
                       </div>
                       <div className="space-y-4">
-                        <Label className="text-[10px] uppercase font-black tracking-widest text-slate-500">Complexity Selection</Label>
+                        <Label className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">Complexity Selection</Label>
                         <select
                           value={selectedDifficulty}
                           onChange={(e) => setSelectedDifficulty(e.target.value)}
-                          className="w-full h-14 px-5 rounded-2xl border border-border/40 bg-white dark:bg-white/5 font-bold outline-none focus:border-rose-500 transition-all"
+                          className="w-full h-14 px-5 rounded-2xl border border-border/40 bg-background font-bold outline-none focus:border-rose-500 transition-all"
                         >
                           <option value="all">All Levels</option>
                           <option value="easy">Easy</option>
@@ -541,7 +550,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                     </div>
 
                     <div className="pt-4 flex justify-between items-center">
-                      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
                         Match Found: <span className="text-rose-600 dark:text-rose-400">{filteredTests.length} tests</span>
                       </p>
                       <Button
@@ -570,7 +579,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
 
                 {filteredTests.length > 0 ? (
                   <div className="mt-12">
-                    <h3 className="text-xs font-black uppercase tracking-[0.2em] text-slate-500 mb-8 flex items-center gap-4">
+                    <h3 className="text-xs font-black uppercase tracking-[0.2em] text-muted-foreground mb-8 flex items-center gap-4">
                       Query Results
                       <div className="flex-1 h-px bg-border/40" />
                     </h3>
@@ -588,6 +597,11 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                         />
                       ))}
                     </div>
+                  </div>
+                ) : (searchQuery || selectedSubject !== 'all' || selectedDifficulty !== 'all') ? (
+                  <div className="mt-12 py-20 text-center border-2 border-dashed border-border/40 rounded-[40px] bg-muted/30">
+                    <img src="/ori2d/ori-confused.png" alt="Ori" className="w-24 h-24 object-contain mx-auto mb-3 drop-shadow-md" />
+                    <p className="text-sm font-black text-muted-foreground uppercase tracking-widest">No tests match your filters</p>
                   </div>
                 ) : null}
               </TabsContent>
@@ -616,7 +630,7 @@ function TestCard({ test, onStart, onViewAnalysis, user, getDifficultyColor }: T
     <Card className={`group relative flex flex-col border-0 neu-raised neu-pressable transition-all duration-300 overflow-hidden ${isLocked ? 'grayscale opacity-80' : ''}`}>
       <CardContent className="flex flex-1 flex-col p-5">
         {/* Title + description */}
-        <h3 className="text-base sm:text-lg font-black text-foreground leading-tight tracking-tight transition-colors group-hover:text-primary">
+        <h3 className="text-base sm:text-lg font-black text-foreground leading-tight tracking-tight transition-colors group-hover:text-primary line-clamp-2">
           {test.title}
         </h3>
         <p className="mt-1.5 text-xs font-medium text-muted-foreground line-clamp-2 leading-relaxed">
@@ -624,7 +638,7 @@ function TestCard({ test, onStart, onViewAnalysis, user, getDifficultyColor }: T
         </p>
 
         {/* Inline meta stats — difficulty + status sit alongside to save vertical space */}
-        <div className="mt-4 flex items-center gap-3 text-xs">
+        <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
           <span className="flex items-center gap-1.5 font-bold text-foreground">
             <HelpCircle className="w-3.5 h-3.5 text-primary" />
             {test.totalQuestions}
@@ -674,7 +688,7 @@ function TestCard({ test, onStart, onViewAnalysis, user, getDifficultyColor }: T
               Subscribe to Unlock
             </Button>
           ) : test.attempted ? (
-            <div className="flex gap-2">
+            <div className="flex gap-2 min-w-0">
               <Button
                 onClick={onViewAnalysis}
                 className="flex-1 h-11 rounded-xl bg-primary text-primary-foreground font-black uppercase text-[11px] tracking-widest transition-all shadow-lg shadow-primary/20 hover:bg-primary/90 group/btn"

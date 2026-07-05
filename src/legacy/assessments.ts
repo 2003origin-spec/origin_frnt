@@ -47,6 +47,7 @@ import {
 import {
   getAttemptedQuestionIdsForUser,
   getDppPlanDetail,
+  getAttemptSummaryBulk,
   getLatestDppAttemptForPlan,
   listLatestDppAttemptsForPlans,
   getPersistedCustomTest,
@@ -1748,6 +1749,9 @@ export function serializeQuestion(
     attributionName: question.attributionName ?? undefined,
     attributionLogoUrl: question.attributionLogoUrl ?? undefined,
     contributorWorkspaceId: question.contributorWorkspaceId ?? undefined,
+    occurrence: question.occurrence ?? undefined,
+    classLevel: question.classLevel ?? undefined,
+    previousYearQuestion: question.previousYearQuestion ?? undefined,
   };
 
   return base;
@@ -2880,9 +2884,14 @@ async function withAssignedTeacherTests(
   try {
     const assigned = await listAssignedTestPreviewsForStudent(userId);
     if (assigned.length === 0) return base;
+
+    // Fetch real attempt data for all assigned tests in one query.
+    const attemptMap = await getAttemptSummaryBulk(userId, assigned.map((a) => a.id));
+
     const byId = new Map<string, unknown>();
     for (const test of base) byId.set(test.id, test);
     for (const a of assigned) {
+      const attempts = attemptMap.get(a.id) ?? { attemptCount: 0, allScores: [] };
       byId.set(a.id, {
         id: a.id,
         title: a.title,
@@ -2897,11 +2906,11 @@ async function withAssignedTeacherTests(
         isCustom: false,
         is_custom: false,
         ...buildTestClassificationFields({ title: a.title, description: a.description ?? "", createdByTeacher: true }),
-        attempted: false,
-        attemptCount: 0,
-        attempt_count: 0,
-        allScores: [],
-        all_scores: [],
+        attempted: attempts.attemptCount > 0,
+        attemptCount: attempts.attemptCount,
+        attempt_count: attempts.attemptCount,
+        allScores: attempts.allScores,
+        all_scores: attempts.allScores,
         createdByTeacher: true,
         assignmentId: a.assignmentId,
         workspaceId: a.workspaceId ?? undefined,

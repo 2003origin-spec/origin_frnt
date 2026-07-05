@@ -412,14 +412,18 @@ export default function Profile({
               );
             })()}
 
-            {/* Stats — vertical on desktop (2×2 grid) */}
+            {/* Stats — 2×2 grid with shimmer skeleton while profileStats loads */}
             <div className="grid grid-cols-2 gap-3">
               {STATS.map((stat, i) => (
                 <motion.div key={stat.label} {...stagger(i + 2)} className="neu-raised p-4 flex flex-col gap-1.5">
                   <div className={cn('w-8 h-8 rounded-xl flex items-center justify-center', stat.accentBg)}>
                     <stat.icon className={cn('w-4 h-4', stat.accent)} />
                   </div>
-                  <p className={cn('text-2xl font-black leading-none', stat.accent)}>{stat.value}</p>
+                  {!profileStats && stat.label !== 'Day Streak' ? (
+                    <div className="h-7 w-12 rounded-md bg-muted animate-pulse" />
+                  ) : (
+                    <p className={cn('text-2xl font-black leading-none', stat.accent)}>{stat.value}</p>
+                  )}
                   <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">{stat.label}</p>
                 </motion.div>
               ))}

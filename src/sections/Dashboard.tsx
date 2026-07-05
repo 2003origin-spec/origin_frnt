@@ -119,6 +119,8 @@ import { useNotifications } from '@/context/NotificationContext';
 import { TIER_THRESHOLDS, getUserTitle } from '@/lib/achievements';
 import { useRef } from 'react';
 
+const stagger = (i: number) => ({ initial: { opacity: 0, y: 14 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.35, delay: 0.06 * i } });
+
 export default function Dashboard({
   user,
   onStartChallenge,
@@ -216,7 +218,7 @@ export default function Dashboard({
     
     if (lastWelcome !== today) {
       const title = getUserTitle(user);
-      const greeting = getGreeting();
+      // greeting is derived from useMemo above
       const name = user.name.split(' ')[0];
       
       addNotification({
@@ -281,12 +283,12 @@ export default function Dashboard({
     return () => clearInterval(interval);
   }, [user, addNotification]);
 
-  const getGreeting = () => {
+  const greeting = useMemo(() => {
     const hour = new Date().getHours();
     if (hour < 12) return 'Good Morning';
     if (hour < 17) return 'Good Afternoon';
     return 'Good Evening';
-  };
+  }, []);
 
   useEffect(() => {
     setTimeMode('webpage');
@@ -312,7 +314,7 @@ export default function Dashboard({
     return Math.floor(((t.practiceTime || 0) + (t.webpageTime || 0) + (t.pomodoroTime || 0)) / 60);
   }, [user.timeAnalytics]);
 
-  const stagger = (i: number) => ({ initial: { opacity: 0, y: 14 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.35, delay: 0.06 * i } });
+  // stagger is defined at module scope — see below the component
 
   return (
     <div className="min-h-screen neu-surface font-sans selection:bg-primary/20 selection:text-primary">
@@ -340,9 +342,9 @@ export default function Dashboard({
             <div className="min-w-0 space-y-1">
               <div className="flex items-center gap-2">
                 <h1 className="text-2xl sm:text-3xl font-black text-foreground tracking-tight leading-tight break-words">
-                  {getGreeting()},<br className="sm:hidden" /> {displayName}!
+                  {greeting},<br className="sm:hidden" /> {displayName}!
                 </h1>
-                <img src="/ori2d/ori-winking.png" alt="Ori" className="w-12 h-12 object-contain drop-shadow-md hidden sm:block" />
+                <Image src="/ori2d/ori-winking.png" alt="Ori" width={48} height={48} className="object-contain drop-shadow-md hidden sm:block" />
               </div>
               {pointsData && pointsData.pointsToNext > 0 && (
                 <p className="text-sm sm:text-base text-muted-foreground mt-1">
@@ -430,7 +432,7 @@ export default function Dashboard({
               <s.icon className={`w-4 h-4 ${s.color}`} />
               <div className="flex items-center gap-1.5">
                 <p className="text-xl font-black text-foreground leading-none truncate">{s.value}</p>
-                {s.showOri && <img src="/ori2d/ori-exited.png" alt="Ori" className="w-10 h-10 object-contain drop-shadow" />}
+                {s.showOri && <Image src="/ori2d/ori-exited.png" alt="Ori" width={40} height={40} className="object-contain drop-shadow" />}
               </div>
               <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{s.label}</p>
             </motion.div>

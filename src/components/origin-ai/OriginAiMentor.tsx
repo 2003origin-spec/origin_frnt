@@ -127,7 +127,7 @@ function ReminderCards({ snapshot, compact = false }: { snapshot: OriginAiSnapsh
               {reminder.priority}
             </span>
           </div>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">{reminder.message}</p>
+          <p className="mt-2 line-clamp-2 text-sm leading-6 text-muted-foreground">{reminder.message}</p>
         </div>
       ))}
     </div>
@@ -144,7 +144,7 @@ function MessageList({ snapshot }: { snapshot: OriginAiSnapshot }) {
             key={message.id}
             className={cn('flex', isAssistant ? 'justify-start' : 'justify-end')}
           >
-            <div className={cn('flex max-w-[92%] gap-2.5', isAssistant ? 'flex-row' : 'flex-row-reverse')}>
+            <div className={cn('flex max-w-[92%] gap-2.5 min-w-0', isAssistant ? 'flex-row' : 'flex-row-reverse')}>
               {isAssistant ? (
                 <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-full border border-primary/20 bg-primary/10 self-start">
                   <OriMascotStatic className="h-full w-full" />
@@ -152,7 +152,7 @@ function MessageList({ snapshot }: { snapshot: OriginAiSnapshot }) {
               ) : null}
               <div
                 className={cn(
-                  'rounded-2xl px-3.5 py-2 text-sm leading-6 shadow-sm transition-colors',
+                  'rounded-2xl px-3.5 py-2 text-sm leading-6 shadow-sm transition-colors break-words overflow-hidden',
                   isAssistant
                     ? 'rounded-tl-md border border-border/40 bg-card/40 text-foreground backdrop-blur-md shadow-slate-200/50 dark:shadow-none'
                     : 'rounded-tr-md bg-primary/40 text-foreground backdrop-blur-md border border-primary/20 shadow-primary/10',
@@ -165,7 +165,7 @@ function MessageList({ snapshot }: { snapshot: OriginAiSnapshot }) {
                     isAssistant ? 'text-muted-foreground/70' : 'text-primary/60',
                   )}
                 >
-                  {isAssistant ? 'Origin AI' : 'You'} · {formatRelativeTimestamp(message.timestamp)}
+                  {isAssistant ? 'Ori' : 'You'} · {formatRelativeTimestamp(message.timestamp)}
                 </div>
               </div>
             </div>
@@ -196,7 +196,7 @@ const MENTOR_STATE_LABEL: Record<MascotState, string> = {
 };
 
 /**
- * The pending bubble shown while Origin AI works on a reply. Instead of a bare
+ * The pending bubble shown while Ori works on a reply. Instead of a bare
  * spinner it shows the matching 2D Ori (bobbing) so the wait feels alive.
  */
 function MentorThinkingBubble({ state }: { state: MascotState }) {
@@ -260,7 +260,7 @@ const SAMPLE_CHIPS: { label: string; prompt: string }[] = [
 
 function SuggestedQuestions({ onPick }: { onPick: (q: string) => void }) {
   return (
-    <div className="no-scrollbar flex items-center gap-1.5 overflow-x-auto pb-0.5 pt-2">
+    <div className="no-scrollbar flex flex-wrap items-center gap-1.5 overflow-x-auto pb-0.5 pt-2">
       <Sparkles className="h-3 w-3 shrink-0 text-primary/60" />
       {SAMPLE_CHIPS.map((c) => (
         <button
@@ -281,7 +281,7 @@ function describeVoiceStatus(status: OriginAiVoiceStatus): string {
     case 'bootstrapping':
       return 'Preparing your voice session...';
     case 'connecting':
-      return 'Connecting to Origin AI voice...';
+      return 'Connecting to Ori voice...';
     case 'listening':
       return 'Listening. Speak naturally.';
     case 'thinking':
@@ -364,8 +364,8 @@ export default function OriginAiMentor({
       const data = await getOriginAiSession(pageContext);
       setSnapshot(data);
     } catch (error) {
-      console.error('Failed to load Origin AI session', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to load Origin AI');
+      console.error('Failed to load Ori session', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to load Ori');
     } finally {
       setIsLoading(false);
     }
@@ -459,8 +459,8 @@ export default function OriginAiMentor({
         );
         setSnapshot(reply);
       } catch (error) {
-        console.error('Failed to send highlighted Origin AI prompt', error);
-        toast.error(error instanceof Error ? error.message : 'Origin AI could not explain the selected text');
+        console.error('Failed to send highlighted Ori prompt', error);
+        toast.error(error instanceof Error ? error.message : 'Ori could not explain the selected text');
       } finally {
         setIsSending(false);
       }
@@ -485,6 +485,22 @@ export default function OriginAiMentor({
     setMessage('');
     setIsSending(true);
 
+    // Optimistic user message — show it immediately so turns stay interleaved.
+    const tempId = `pending-${Date.now()}`;
+    setSnapshot(prev => {
+      if (!prev) return prev;
+      const tempMsg = {
+        id: tempId,
+        role: 'user' as const,
+        content: outboundMessage,
+        timestamp: new Date(),
+      };
+      return {
+        ...prev,
+        session: { ...prev.session, messages: [...prev.session.messages, tempMsg] },
+      };
+    });
+
     try {
       const reply = await sendOriginAiMessage(outboundMessage, pageContext, snappedHighlight);
       setSnapshot(reply);
@@ -492,8 +508,16 @@ export default function OriginAiMentor({
       const tokens = (reply.aiMessage.metadata?.tokensUsed as number) || 0;
       addTextUsage(tokens);
     } catch (error) {
-      console.error('Failed to send Origin AI message', error);
-      toast.error(error instanceof Error ? error.message : 'Origin AI could not reply');
+      // Roll back the optimistic message on failure.
+      setSnapshot(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          session: { ...prev.session, messages: prev.session.messages.filter(m => m.id !== tempId) },
+        };
+      });
+      console.error('Failed to send Ori message', error);
+      toast.error(error instanceof Error ? error.message : 'Ori could not reply');
       setMessage(trimmed);
     } finally {
       setIsSending(false);
@@ -553,7 +577,7 @@ export default function OriginAiMentor({
 
       voiceControllerRef.current = controller;
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Origin AI voice mode could not start.');
+      toast.error(error instanceof Error ? error.message : 'Ori voice mode could not start.');
       setVoiceStatus('error');
     }
   };
@@ -575,12 +599,12 @@ export default function OriginAiMentor({
           {/* Identity */}
           <div className="flex min-w-0 items-center gap-3">
             <div className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border/30 bg-muted p-1">
-              <OriMascot state={mascotState} title="Origin AI" className="h-full w-full" />
+              <OriMascot state={mascotState} title="Ori" className="h-full w-full" />
               <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-card bg-emerald-500" />
             </div>
             <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <h2 className="truncate text-sm font-bold leading-tight text-foreground">Origin AI</h2>
+              <div className="flex min-w-0 items-center gap-2">
+                <h2 className="truncate min-w-0 text-sm font-bold leading-tight text-foreground">Ori</h2>
                 <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
                   Online
                 </span>
@@ -609,7 +633,7 @@ export default function OriginAiMentor({
                 onClick={onClose}
                 className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
                 title="Close"
-                aria-label="Close Origin AI"
+                aria-label="Close Ori"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -628,13 +652,13 @@ export default function OriginAiMentor({
             {isLoading ? (
               <div className="flex h-full min-h-[140px] items-center justify-center text-slate-400">
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Loading Origin AI...
+                Loading Ori...
               </div>
             ) : snapshot ? (
               <MessageList snapshot={snapshot} />
             ) : (
               <div className="flex h-full min-h-[140px] items-center justify-center text-slate-400">
-                Origin AI could not load.
+                Ori could not load.
               </div>
             )}
             <AnimatePresence>
@@ -657,7 +681,7 @@ export default function OriginAiMentor({
                 <p className="mt-2 line-clamp-2 text-foreground/80 overflow-hidden">You: {liveUserTranscript}</p>
               ) : null}
               {liveAssistantTranscript ? (
-                <p className="mt-1 line-clamp-2 text-muted-foreground overflow-hidden">Origin AI: {liveAssistantTranscript}</p>
+                <p className="mt-1 line-clamp-2 text-muted-foreground overflow-hidden">Ori: {liveAssistantTranscript}</p>
               ) : null}
             </div>
           ) : null}
@@ -778,11 +802,11 @@ export default function OriginAiMentor({
       <div className={cn('flex items-center justify-between border-b border-border/40 bg-primary/10', compact ? 'px-4 py-3' : 'px-5 py-4')}>
         <div className="flex items-center gap-3">
           <div className={cn('relative flex items-center justify-center overflow-hidden rounded-full border border-border/20 bg-muted p-1', compact ? 'h-10 w-10' : 'h-11 w-11')}>
-            <OriMascot state={mascotState} title="Origin AI" className="h-full w-full" />
+            <OriMascot state={mascotState} title="Ori" className="h-full w-full" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-base font-semibold text-foreground">Origin AI</h2>
+              <h2 className="text-base font-semibold text-foreground">Ori</h2>
               <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.25em] text-emerald-600 dark:text-emerald-300">
                 online
               </span>
@@ -846,13 +870,13 @@ export default function OriginAiMentor({
                 {isLoading ? (
                   <div className="flex h-full min-h-[160px] items-center justify-center text-slate-400">
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Loading Origin AI...
+                    Loading Ori...
                   </div>
                 ) : snapshot ? (
                   <MessageList snapshot={snapshot} />
                 ) : (
                   <div className="flex h-full min-h-[160px] items-center justify-center text-slate-400">
-                    Origin AI could not load.
+                    Ori could not load.
                   </div>
                 )}
                 <AnimatePresence>
@@ -868,13 +892,13 @@ export default function OriginAiMentor({
                 {isLoading ? (
                   <div className="flex h-full min-h-[240px] items-center justify-center text-slate-400">
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Loading Origin AI...
+                    Loading Ori...
                   </div>
                 ) : snapshot ? (
                   <MessageList snapshot={snapshot} />
                 ) : (
                   <div className="flex h-full min-h-[240px] items-center justify-center text-slate-400">
-                    Origin AI could not load.
+                    Ori could not load.
                   </div>
                 )}
                 <AnimatePresence>
@@ -898,7 +922,7 @@ export default function OriginAiMentor({
                   <p className="mt-2 line-clamp-2 text-foreground/80">You: {liveUserTranscript}</p>
                 ) : null}
                 {liveAssistantTranscript ? (
-                  <p className="mt-1 line-clamp-2 text-muted-foreground">Origin AI: {liveAssistantTranscript}</p>
+                  <p className="mt-1 line-clamp-2 text-muted-foreground">Ori: {liveAssistantTranscript}</p>
                 ) : null}
               </div>
             ) : null}
@@ -945,7 +969,7 @@ export default function OriginAiMentor({
                               ? 'Ask for strategy, not answers...'
                               : snapshot?.pagePolicy.mode === 'hint_only'
                                 ? 'Ask for a hint or a concept nudge...'
-                                : 'Ask Origin AI anything about your studies...'
+                                : 'Ask Ori anything about your studies...'
                         }
                         className={cn(
                           'min-w-0 w-full resize-none bg-transparent px-4 text-sm text-foreground outline-none transition disabled:cursor-not-allowed',
@@ -1022,7 +1046,7 @@ export default function OriginAiMentor({
             {compact ? null : (
               <div className="mt-3 flex items-center justify-between gap-3">
                 <p className="text-xs text-slate-500">
-                  Origin AI knows your recent performance, pending DPPs, the page you are on, and now supports beta voice mode.
+                  Ori knows your recent performance, pending DPPs, the page you are on, and now supports beta voice mode.
                 </p>
               </div>
             )}

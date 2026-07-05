@@ -716,7 +716,7 @@ export default function PhotoBooth() {
                     onClick={() => window.open(PUBLIC_SITE_URL, '_blank')}
                     className="group flex items-center gap-2 px-6 py-3 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 backdrop-blur-md transition-all duration-300"
                 >
-                    <span className="text-xs font-bold text-white uppercase tracking-widest">Visit Origin AI</span>
+                    <span className="text-xs font-bold text-white uppercase tracking-widest">Visit Ori</span>
                     <ExternalLink className="w-4 h-4 text-white group-hover:translate-x-1 transition-transform duration-300" />
                 </button>
             </div>

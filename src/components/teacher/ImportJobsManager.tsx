@@ -382,16 +382,16 @@ export function ImportJobsManager({ workspaceId, initialJobs, defaultJobId }: Pr
                     onClick={() => selectJob(job)}
                     className="p-4 hover:bg-muted/10 cursor-pointer flex items-center justify-between transition-colors"
                   >
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <FileText className="w-4 h-4 text-primary" />
-                        <span className="font-semibold text-sm">{job.sourceFileName}</span>
+                    <div className="min-w-0 space-y-1">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <FileText className="w-4 h-4 text-primary shrink-0" />
+                        <span className="font-semibold text-sm truncate min-w-0">{job.sourceFileName}</span>
                       </div>
                       <p className="text-xs text-muted-foreground">
                         Ingested {new Date(job.createdAt).toLocaleDateString()} · Pages: {job.totalPages || "Calculating"} · Questions: {job.totalQuestions || "Detecting"}
                       </p>
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex flex-wrap items-center gap-3">
                       <span className={`text-[10px] font-bold uppercase px-2.5 py-0.5 border rounded-full ${JOB_STATUS_COLORS[job.status]}`}>
                         {job.status}
                       </span>
@@ -413,12 +413,12 @@ export function ImportJobsManager({ workspaceId, initialJobs, defaultJobId }: Pr
           >
             {/* Header controls */}
             <div className="p-4 border-b flex justify-between items-center shrink-0">
-              <div className="flex items-center gap-3">
-                <Button variant="ghost" size="icon" onClick={() => setSelectedJob(null)} className="h-8 w-8 rounded-full">
+              <div className="flex items-center gap-3 min-w-0">
+                <Button variant="ghost" size="icon" onClick={() => setSelectedJob(null)} className="h-8 w-8 rounded-full shrink-0">
                   <ArrowLeft className="w-5 h-5" />
                 </Button>
-                <div>
-                  <h3 className="font-bold text-sm">{selectedJob.sourceFileName}</h3>
+                <div className="min-w-0 overflow-hidden">
+                  <h3 className="font-bold text-sm truncate">{selectedJob.sourceFileName}</h3>
                   {/* Animated ingestion progress stepper */}
                   {(() => {
                     const status = selectedJob.status;
@@ -575,7 +575,7 @@ export function ImportJobsManager({ workspaceId, initialJobs, defaultJobId }: Pr
                       <AlertTriangle className="w-10 h-10 text-muted-foreground/50" />
                       <div>
                         <p className="text-sm font-semibold">No questions extracted yet</p>
-                        <p className="text-xs text-muted-foreground mt-1 max-w-sm">
+                        <p className="text-xs text-muted-foreground mt-1 max-w-sm line-clamp-3 break-words">
                           {selectedJob.status === "failed"
                             ? selectedJob.errorMessage || "The import pipeline failed before questions could be parsed."
                             : selectedJob.status === "queued" || selectedJob.status === "processing"
@@ -729,7 +729,7 @@ export function ImportJobsManager({ workspaceId, initialJobs, defaultJobId }: Pr
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
               onClick={(e) => e.stopPropagation()}
-              className="w-full max-w-lg rounded-2xl border bg-card shadow-2xl p-6 space-y-5"
+              className="w-full max-w-lg rounded-2xl border bg-card shadow-lg shadow-black/5 p-6 space-y-5"
             >
               <div className="space-y-1">
                 <h3 className="font-bold text-lg">Approve reviewed questions</h3>

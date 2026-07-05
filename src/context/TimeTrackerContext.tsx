@@ -27,13 +27,15 @@ export function TimeTrackerProvider({ children }: { children: React.ReactNode })
 
     const syncNow = useCallback(() => {
         const types: TimeType[] = ['webpage', 'practice', 'pomodoro'];
+        let hasDelta = false;
         for (const tType of types) {
             const secs = accumulators.current[tType];
             if (secs > 0) {
+                hasDelta = true;
                 const currentSecs = secs;
-                accumulators.current[tType] = 0; // Clear immediately
+                accumulators.current[tType] = 0;
 
-                const payload: any = { time_type: tType, time_spent: currentSecs };
+                const payload: Record<string, unknown> = { time_type: tType, time_spent: currentSecs };
                 if (activeSubjectRef.current) {
                     payload.subject = activeSubjectRef.current;
                 }
@@ -41,13 +43,14 @@ export function TimeTrackerProvider({ children }: { children: React.ReactNode })
                 apiCall('/users/time/', {
                     method: 'POST',
                     body: JSON.stringify(payload)
-                }).then(() => {
-                    if (refreshUser) refreshUser();
                 }).catch(err => {
                     console.error('[TimeTracker] Sync failed:', err);
                 });
             }
         }
+        // Only refresh the user object when there was an actual delta — avoids
+        // a full re-render of every useAuth() consumer on every 60-second tick.
+        if (hasDelta && refreshUser) refreshUser();
     }, [refreshUser]);
 
     const setTimeMode = useCallback((mode: TimeType, subject?: string) => {
@@ -87,13 +90,11 @@ export function TimeTrackerProvider({ children }: { children: React.ReactNode })
         return () => clearInterval(interval);
     }, [user, syncNow]);
 
-    // 3. Sync on unload
+    // 3. Sync on unload — re-registers whenever syncNow identity changes so the
+    //    closure always holds the latest refreshUser reference (fixes #13/#15).
     useEffect(() => {
-        const handleBeforeUnload = () => {
-            syncNow();
-        };
-        window.addEventListener('beforeunload', handleBeforeUnload);
-        return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+        window.addEventListener('beforeunload', syncNow);
+        return () => window.removeEventListener('beforeunload', syncNow);
     }, [syncNow]);
 
     return (

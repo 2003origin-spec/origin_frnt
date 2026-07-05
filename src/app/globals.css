@@ -26,9 +26,10 @@
 
   --radius: 0.75rem;
 
-  --font-display: var(--font-display);
-  --font-heading: var(--font-heading);
-  --font-sans: var(--font-body);
+  /* Single typeface: Darker Grotesque — weights carry the hierarchy, not different families */
+  --font-sans: var(--font-grotesque);
+  --font-display: var(--font-grotesque);
+  --font-heading: var(--font-grotesque);
 
   --color-origin-blue: #2563eb;
   --color-origin-dark: #020617;
@@ -37,9 +38,11 @@
 }
 
 :root {
-  --font-display: var(--font-display, 'Instrument Serif', serif);
-  --font-heading: var(--font-heading, 'Syne', system-ui, sans-serif);
-  --font-body: var(--font-body, 'Inter', system-ui, sans-serif);
+  /* Origin typeface — Darker Grotesque only; weights encode hierarchy */
+  --font-grotesque: 'Darker Grotesque', system-ui, sans-serif;
+  --font-display: var(--font-grotesque);
+  --font-heading: var(--font-grotesque);
+  --font-body: var(--font-grotesque);
   --background: 220 16% 91%;
   --foreground: 222.2 84% 4.9%;
   --card: 220 16% 91%;
@@ -104,7 +107,7 @@
   }
   body {
     @apply bg-background text-foreground antialiased transition-colors duration-500;
-    font-family: var(--font-body), system-ui, sans-serif;
+    font-family: var(--font-grotesque), system-ui, sans-serif;
   }
 }
 
@@ -236,9 +239,57 @@
     border-radius: 999px;
     box-shadow: 3px 3px 6px hsl(var(--neu-shadow)), -3px -3px 6px hsl(var(--neu-light));
   }
+
+  /* ── Extended Soft UI primitives (pill button, icon button, chip, segmented
+     control). Imported from the neumorphism component kits and adapted to the
+     --neu-* tokens so they work in light AND dark. Raised at rest, inset on
+     press. See .github/skills/neumorphism-guidelines.md. */
+  .neu-pill {
+    background-color: hsl(var(--neu-bg));
+    border-radius: 999px;
+    box-shadow: 4px 4px 10px hsl(var(--neu-shadow)), -4px -4px 10px hsl(var(--neu-light));
+    transition: box-shadow 0.2s ease, transform 0.1s ease, color 0.2s ease;
+  }
+  .neu-pill:hover { box-shadow: 3px 3px 8px hsl(var(--neu-shadow)), -3px -3px 8px hsl(var(--neu-light)); }
+  .neu-pill:active {
+    box-shadow: inset 4px 4px 8px hsl(var(--neu-shadow)), inset -4px -4px 8px hsl(var(--neu-light));
+    transform: translateY(1px);
+  }
+  .neu-icon-btn {
+    background-color: hsl(var(--neu-bg));
+    border-radius: 14px;
+    box-shadow: 4px 4px 10px hsl(var(--neu-shadow)), -4px -4px 10px hsl(var(--neu-light));
+    transition: box-shadow 0.2s ease, transform 0.1s ease, color 0.2s ease;
+  }
+  .neu-icon-btn:hover { box-shadow: 3px 3px 8px hsl(var(--neu-shadow)), -3px -3px 8px hsl(var(--neu-light)); }
+  .neu-icon-btn:active {
+    box-shadow: inset 3px 3px 7px hsl(var(--neu-shadow)), inset -3px -3px 7px hsl(var(--neu-light));
+    transform: translateY(1px);
+  }
+  .neu-chip {
+    background-color: hsl(var(--neu-bg));
+    border-radius: 14px;
+    box-shadow: 4px 4px 10px hsl(var(--neu-shadow)), -4px -4px 10px hsl(var(--neu-light));
+  }
+  /* Segmented control: concave rail; the active item lifts (raised) + accent. */
+  .neu-segmented {
+    background-color: hsl(var(--neu-bg));
+    border-radius: 14px;
+    box-shadow: inset 3px 3px 7px hsl(var(--neu-shadow)), inset -3px -3px 7px hsl(var(--neu-light));
+  }
+  .neu-segmented__item {
+    color: hsl(var(--muted-foreground));
+    transition: box-shadow 0.3s ease, color 0.3s ease;
+  }
+  .neu-segmented__item[data-active="true"] {
+    box-shadow: 3px 3px 6px hsl(var(--neu-shadow)), -3px -3px 6px hsl(var(--neu-light));
+    color: hsl(var(--primary));
+  }
   @media (prefers-reduced-motion: reduce) {
     .neu-btn { transition: none; }
     .neu-btn:active { transform: none; }
+    .neu-pill, .neu-icon-btn { transition: none; }
+    .neu-pill:active, .neu-icon-btn:active { transform: none; }
   }
 
   .glass {

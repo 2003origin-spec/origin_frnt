@@ -243,7 +243,7 @@ async function speakWithBrowserFallback(text: string): Promise<void> {
     utterance.onend = () => resolve();
     utterance.onerror = (e) => {
       console.warn('[OriginAI Voice] Browser speech error:', e);
-      reject(new Error('Origin AI browser speech fallback failed.'));
+      reject(new Error('Ori browser speech fallback failed.'));
     };
     window.speechSynthesis.cancel();
     
@@ -467,7 +467,7 @@ export async function startOriginAiVoiceMode(
           const reply = await withTimeout(
             sendOriginAiMessage(finalText, pageContext, highlightedText),
             VOICE_RESPOND_TIMEOUT_MS,
-            'Origin AI took too long to prepare the voice reply.',
+            'Ori took too long to prepare the voice reply.',
           );
 
           if (!isActive) {
@@ -552,7 +552,7 @@ export async function startOriginAiVoiceMode(
           }
         } catch (error) {
           const message =
-            error instanceof Error ? error.message : 'Origin AI voice mode could not finish the turn.';
+            error instanceof Error ? error.message : 'Ori voice mode could not finish the turn.';
           callbacks.onError?.(message);
         } finally {
           isAwaitingResponse = false;
