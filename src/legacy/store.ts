@@ -101,6 +101,7 @@ export interface StoredUserScore {
   totalPoints: number;
   currentTier: string;
   lastUpdated: string;
+  pendingBadges?: string[];
 }
 
 export interface StoredPointLog {
