@@ -2,7 +2,16 @@ import type { Test, TestResult, DoubtSession, StreakData, LeaderboardEntry, Ques
 
 export const mockQuestions: Question[] = [
   {
-  }
+    id: '1',
+    text: 'A particle moves in a circular path of radius r with uniform speed v. The magnitude of its acceleration is:',
+    options: ['v²/r', 'v/r', 'v/r²', 'zero'],
+    correctOption: 0,
+    explanation: 'In uniform circular motion, the acceleration is directed towards the center and has magnitude v²/r, called centripetal acceleration.',
+    subject: 'physics',
+    chapter: 'Circular Motion',
+    concept: 'Centripetal Acceleration',
+    difficulty: 'medium',
+  },
 ];
 
 export const mockTests: Test[] = [
