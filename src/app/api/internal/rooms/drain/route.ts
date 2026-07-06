@@ -14,6 +14,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import { requireInternal } from "@/server/authz";
 import { publishRoomEvent } from "@/server/rooms-pubsub";
 import { sweepExpiredRooms } from "@/server/study-rooms";
+import { isFeatureEnabled } from "@/lib/feature-flags";
+import { sweepExpiredCbtRooms } from "@/server/cbt/cbt-attempts-service";
 
 import { handleTeacherError } from "@/app/api/teacher/_utils";
 
@@ -27,7 +29,20 @@ export async function POST(request: NextRequest) {
     await Promise.all(
       finalized.map((roomId) => publishRoomEvent(roomId, { type: "test_ended", ended_at: endedAt })),
     );
-    return NextResponse.json({ ok: true, finalized: finalized.length });
+
+    // Piggyback the CBT auto-submit sweep on the same (already-scheduled) drain
+    // so it runs automatically without a separate cron. Best-effort + flag-gated:
+    // a CBT failure must never break the study-rooms drain.
+    let cbt: { roomsSwept: number; participantsSubmitted: number } | null = null;
+    if (isFeatureEnabled("cbtModule")) {
+      try {
+        cbt = await sweepExpiredCbtRooms(limit);
+      } catch (cbtError) {
+        console.error("[rooms/drain] CBT sweep failed", cbtError);
+      }
+    }
+
+    return NextResponse.json({ ok: true, finalized: finalized.length, cbt });
   } catch (error) {
     return handleTeacherError(error);
   }
