@@ -181,6 +181,7 @@ export type OgcodeQuestionListFilters = {
   occurrences?: string[] | null;
   subjects?: string[] | null;
   concepts?: string[] | null;
+  pyqOnly?: boolean;
 };
 
 export type OgcodeQuestionPage = {
@@ -3807,6 +3808,7 @@ export async function listOgcodeQuestionPage(
         classes: filters.classes ?? null,
         occurrences: filters.occurrences ?? null,
         concepts: filters.concepts ?? null,
+        pyqOnly: filters.pyqOnly ?? false,
         includeIds: status === "solved" ? solvedCatalogIds : null,
         excludeIds: status === "unsolved" ? solvedCatalogIds : null,
         limit: remainingLimit,

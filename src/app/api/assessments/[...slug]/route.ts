@@ -157,6 +157,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       const occurrences = url.searchParams.getAll("occurrences").filter(Boolean);
       const subjects = url.searchParams.getAll("subjects").filter(Boolean);
       const concepts = url.searchParams.getAll("concepts").filter(Boolean);
+      const pyqOnly = url.searchParams.get("pyq_only") === "true";
 
       if (limit) {
         return ok(
@@ -173,6 +174,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
             occurrences: occurrences.length ? occurrences : null,
             subjects: subjects.length ? subjects : null,
             concepts: concepts.length ? concepts : null,
+            pyqOnly,
           }),
         );
       }

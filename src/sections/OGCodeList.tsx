@@ -208,6 +208,7 @@ function buildOgcodeUrl(filters: {
     h_chapters: string[];
     concepts: string[];
     type: string;
+    pyqOnly: boolean;
 }) {
     const params = new URLSearchParams();
 
@@ -233,6 +234,7 @@ function buildOgcodeUrl(filters: {
     for (const ch of filters.h_chapters) params.append('h_chapters', ch);
     for (const concept of filters.concepts) params.append('concepts', concept);
     if (filters.type !== 'All') params.set('type', filters.type);
+    if (filters.pyqOnly) params.set('pyq_only', 'true');
 
     const query = params.toString();
     return query ? `/ogcode?${query}` : '/ogcode';
@@ -262,6 +264,7 @@ export default function OGCodeList({
     const urlHierChapters = searchParams.getAll('h_chapters').filter(Boolean);
     const urlConcepts = searchParams.getAll('concepts').filter(Boolean);
     const urlType = searchParams.get('type') || 'All';
+    const urlPyqOnly = searchParams.get('pyq_only') === 'true';
 
     const urlClassesKey = urlClasses.join(',');
     const urlOccurrencesKey = urlOccurrences.join(',');
@@ -314,6 +317,7 @@ export default function OGCodeList({
     const [facetConcepts, setFacetConcepts] = useState<string[]>([]);
     // Question type filter
     const [activeQuestionType, setActiveQuestionType] = useState(urlType);
+    const [pyqOnly, setPyqOnly] = useState(urlPyqOnly);
 
     const handleQuestionClick = useCallback((questionId: string) => {
         if (typeof window !== 'undefined') {
@@ -358,6 +362,7 @@ export default function OGCodeList({
             h_chapters: string[];
             concepts: string[];
             type: string;
+            pyqOnly: boolean;
         }>,
         mode: 'push' | 'replace' = 'push',
     ) => {
@@ -377,6 +382,7 @@ export default function OGCodeList({
             h_chapters: updates.h_chapters !== undefined ? updates.h_chapters : hierChapters,
             concepts: updates.concepts !== undefined ? updates.concepts : hierConcepts,
             type: updates.type !== undefined ? updates.type : activeQuestionType,
+            pyqOnly: updates.pyqOnly !== undefined ? updates.pyqOnly : pyqOnly,
         });
         
         if (updates.search !== undefined) {
@@ -391,7 +397,7 @@ export default function OGCodeList({
         window.history[mode === 'replace' ? 'replaceState' : 'pushState'](null, '', url);
     }, [
         activeDifficulty, activeStatus, activeSubject, searchQuery, selectedChapters,
-        hierClasses, hierOccurrences, hierSubjects, hierChapters, hierConcepts, activeQuestionType
+        hierClasses, hierOccurrences, hierSubjects, hierChapters, hierConcepts, activeQuestionType, pyqOnly
     ]);
 
     useEffect(() => {
@@ -495,9 +501,10 @@ export default function OGCodeList({
             subjects: hierSubjects,
             h_chapters: hierChapters,
             concepts: hierConcepts,
-            type: activeQuestionType
+            type: activeQuestionType,
+            pyqOnly,
         }, 'replace');
-    }, [hierClasses, hierOccurrences, hierSubjects, hierChapters, hierConcepts, activeQuestionType, syncUrlParams]);
+    }, [hierClasses, hierOccurrences, hierSubjects, hierChapters, hierConcepts, activeQuestionType, pyqOnly, syncUrlParams]);
 
     const handleHierarchySubmit = () => {
         syncUrlParams({
@@ -506,7 +513,8 @@ export default function OGCodeList({
             subjects: hierSubjects,
             h_chapters: hierChapters,
             concepts: hierConcepts,
-            type: activeQuestionType
+            type: activeQuestionType,
+            pyqOnly,
         }, 'push');
         void fetchQuestionPage({ offset: 0, append: false });
     };
@@ -665,11 +673,13 @@ export default function OGCodeList({
         const mappedType = typeMap[activeQuestionType];
         if (mappedType) params.set('type', mappedType);
 
+        if (pyqOnly) params.set('pyq_only', 'true');
+
         const normalizedSearch = searchQuery.trim();
         if (normalizedSearch) params.set('search', normalizedSearch);
 
         return params.toString();
-    }, [activeDifficulty, activeStatus, activeSubject, searchQuery, selectedChapters, hierClasses, hierOccurrences, hierSubjects, hierChapters, hierConcepts, activeQuestionType]);
+    }, [activeDifficulty, activeStatus, activeSubject, searchQuery, selectedChapters, hierClasses, hierOccurrences, hierSubjects, hierChapters, hierConcepts, activeQuestionType, pyqOnly]);
 
     const fetchQuestionPage = useCallback(async ({ offset = 0, append = false }: { offset?: number; append?: boolean } = {}) => {
         setQuestionsLoading(true);
@@ -1477,19 +1487,43 @@ export default function OGCodeList({
                             </div>
                         </div>
 
-                        {/* Submit button */}
-                        {(hierClasses.length > 0 || hierSubjects.length > 0 || hierChapters.length > 0 || hierConcepts.length > 0) && (
-                            <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} className="flex justify-end pt-2 border-t border-border/20">
+                        {/* PYQs Only toggle + Apply Filters */}
+                        <div className="flex items-center justify-between pt-2 border-t border-border/20">
+                            <label className="flex items-center gap-2 cursor-pointer select-none group">
                                 <button
                                     type="button"
-                                    onClick={handleHierarchySubmit}
-                                    className="neu-btn px-6 py-2.5 text-[11px] font-black uppercase tracking-widest text-primary flex items-center gap-2 group"
+                                    role="checkbox"
+                                    aria-checked={pyqOnly}
+                                    onClick={() => setPyqOnly(v => !v)}
+                                    className={cn(
+                                        'w-4 h-4 rounded border-2 flex items-center justify-center transition-colors shrink-0',
+                                        pyqOnly
+                                            ? 'bg-violet-500 border-violet-500'
+                                            : 'border-muted-foreground/40 bg-transparent hover:border-violet-400'
+                                    )}
                                 >
-                                    Apply Filters
-                                    <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                                    {pyqOnly && <Check className="w-2.5 h-2.5 text-white" />}
                                 </button>
-                            </motion.div>
-                        )}
+                                <span className={cn(
+                                    'text-[11px] font-black uppercase tracking-widest transition-colors',
+                                    pyqOnly ? 'text-violet-500' : 'text-muted-foreground group-hover:text-primary'
+                                )}>
+                                    PYQs Only
+                                </span>
+                            </label>
+                            {(hierClasses.length > 0 || hierSubjects.length > 0 || hierChapters.length > 0 || hierConcepts.length > 0) && (
+                                <motion.div initial={{ opacity: 0, x: 4 }} animate={{ opacity: 1, x: 0 }}>
+                                    <button
+                                        type="button"
+                                        onClick={handleHierarchySubmit}
+                                        className="neu-btn px-6 py-2.5 text-[11px] font-black uppercase tracking-widest text-primary flex items-center gap-2 group"
+                                    >
+                                        Apply Filters
+                                        <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                                    </button>
+                                </motion.div>
+                            )}
+                        </div>
                     </div>
 
                     {/* Search + secondary filters */}
