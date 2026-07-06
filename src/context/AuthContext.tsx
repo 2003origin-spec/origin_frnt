@@ -312,9 +312,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
     const normalizedPath = pathname === '/' ? '/' : pathname.replace(/\/+$/, '');
     const isGuestOnlyPath = GUEST_ONLY_PATHS.some(p => normalizedPath === p);
     const isSharedPublicPath = SHARED_PUBLIC_PATHS.some(p => normalizedPath === p);
+    // The CBT surface (/cbt, /cbt/login, /cbt/r/*) is a fully separate app with
+    // its own auth: cbt_teacher sessions + anonymous participant tokens, gated
+    // server-side by the middleware role policy. This Origin AuthContext never
+    // tracks a cbt_teacher, so — exactly like /admin — it must not apply its
+    // "unauthenticated → home" guard here, or it bounces the OTP login page and
+    // logged-in CBT teachers back to the Origin landing page.
+    const isCbtSurface = normalizedPath === '/cbt' || normalizedPath.startsWith('/cbt/');
 
     // 1. Unauthenticated users: redirect away from protected pages
-    if (!user && !isGuestOnlyPath && !isSharedPublicPath && !normalizedPath.startsWith('/admin')) {
+    if (!user && !isGuestOnlyPath && !isSharedPublicPath && !normalizedPath.startsWith('/admin') && !isCbtSurface) {
       window.location.href = '/';
       return;
     }
