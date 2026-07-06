@@ -181,6 +181,7 @@ export type OgcodeQuestionListFilters = {
   occurrences?: string[] | null;
   subjects?: string[] | null;
   concepts?: string[] | null;
+  pyqOnly?: boolean;
 };
 
 export type OgcodeQuestionPage = {
@@ -3755,6 +3756,16 @@ export async function listOgcodeQuestionPage(
     const requested = canonicalSubject(filters.subject);
     if (requested && !gate.subjects.includes(requested)) return emptyPage(0);
   }
+  // Multi-subject filter: strip subjects the user is not entitled to.
+  if (isPremium && filters.subjects?.length) {
+    const entitled = filters.subjects.filter((s) => {
+      const c = canonicalSubject(s);
+      return c != null && gate.subjects.includes(c);
+    });
+    if (!entitled.length) return emptyPage(0);
+    // eslint-disable-next-line no-param-reassign
+    filters = { ...filters, subjects: entitled };
+  }
   // Free pool is capped at the first FREE_SAMPLE_POOL_SIZE questions.
   if (isFree && offset >= FREE_SAMPLE_POOL_SIZE) return emptyPage(FREE_SAMPLE_POOL_SIZE);
   const limit = isFree ? Math.min(requestedLimit, FREE_SAMPLE_POOL_SIZE - offset) : requestedLimit;
@@ -3797,6 +3808,7 @@ export async function listOgcodeQuestionPage(
         classes: filters.classes ?? null,
         occurrences: filters.occurrences ?? null,
         concepts: filters.concepts ?? null,
+        pyqOnly: filters.pyqOnly ?? false,
         includeIds: status === "solved" ? solvedCatalogIds : null,
         excludeIds: status === "unsolved" ? solvedCatalogIds : null,
         limit: remainingLimit,

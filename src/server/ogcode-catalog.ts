@@ -18,6 +18,7 @@ type CatalogFilters = {
   classes?: number[] | null;
   occurrences?: string[] | null;
   concepts?: string[] | null;
+  pyqOnly?: boolean;
 };
 
 type CatalogPageFilters = CatalogFilters & {
@@ -386,6 +387,10 @@ function buildFilterClause(filters: CatalogFilters) {
   if (concepts.length) {
     values.push(concepts);
     clauses.push(`concept = ANY($${values.length}::text[])`);
+  }
+
+  if (filters.pyqOnly) {
+    clauses.push(`previous_year_question = 'YES'`);
   }
 
   const search = String(filters.search ?? "").trim();

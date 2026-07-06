@@ -13,6 +13,14 @@ const DEFAULT_BANKS = [
   { subject: "biology", code: "bio", file: "extracted_bio_questions.json" },
 ];
 
+const NF_BANK_DIR = path.resolve(process.cwd(), "../../Question-Formats-in-Json");
+const NF_BANKS = [
+  { subject: "physics",     code: "nf_phy",  file: "Physics_questions.json" },
+  { subject: "chemistry",   code: "nf_chem", file: "Chemistry_questions.json" },
+  { subject: "mathematics", code: "nf_math", file: "Maths_questions.json" },
+  { subject: "biology",     code: "nf_bio",  file: "Biology_questions.json" },
+];
+
 const CREATE_TABLE_SQL = `
   CREATE TABLE IF NOT EXISTS ogcode_questions (
     id TEXT PRIMARY KEY,
@@ -46,6 +54,11 @@ const CREATE_TABLE_SQL = `
   CREATE INDEX IF NOT EXISTS ogcode_questions_difficulty_idx ON ogcode_questions (difficulty);
   CREATE INDEX IF NOT EXISTS ogcode_questions_question_type_idx ON ogcode_questions (question_type);
   ALTER TABLE ogcode_questions ADD COLUMN IF NOT EXISTS answer_spec JSONB;
+  ALTER TABLE ogcode_questions ADD COLUMN IF NOT EXISTS occurrence TEXT;
+  ALTER TABLE ogcode_questions ADD COLUMN IF NOT EXISTS class INTEGER;
+  ALTER TABLE ogcode_questions ADD COLUMN IF NOT EXISTS previous_year_question TEXT;
+  CREATE INDEX IF NOT EXISTS ogcode_questions_class_idx ON ogcode_questions (class);
+  CREATE INDEX IF NOT EXISTS ogcode_questions_occurrence_idx ON ogcode_questions (occurrence);
 `;
 
 function normalizeSubject(value) {
@@ -118,7 +131,7 @@ function parseSubjectFileArg(value) {
 }
 
 function parseArgs(argv) {
-  const args = { dryRun: false, replace: false, banks: [] };
+  const args = { dryRun: false, replace: false, includeNewFormat: false, jsonOut: null, banks: [] };
 
   for (let index = 0; index < argv.length; index += 1) {
     const value = argv[index];
@@ -128,6 +141,17 @@ function parseArgs(argv) {
     }
     if (value === "--replace") {
       args.replace = true;
+      continue;
+    }
+    if (value === "--include-new-format") {
+      args.includeNewFormat = true;
+      continue;
+    }
+    if (value === "--json-out") {
+      const outArg = argv[index + 1];
+      if (!outArg) throw new Error("Missing value for --json-out.");
+      args.jsonOut = path.resolve(outArg);
+      index += 1;
       continue;
     }
     if (value === "--subject-file") {
@@ -258,6 +282,8 @@ function normalizeOptionText(value) {
   return String(value ?? "")
     .trim()
     .toLowerCase()
+    .replace(/^\$\$([\s\S]*?)\$\$$/, "$1") // strip $$…$$ display-math wrappers
+    .replace(/^\$(.*)\$$/, "$1")            // strip $…$ inline-math wrappers
     .replace(/^[a-d]\s*[).:-]\s*/i, "")
     .replace(/\s+/g, " ");
 }
@@ -298,6 +324,214 @@ function normalizeOptions(rawOptions) {
   return normalized.length ? normalized : null;
 }
 
+// ─── Math normalisation helpers ────────────────────────────────────────────────
+// Wraps bare LaTeX commands and dimensional-bracket expressions with $ delimiters
+// before storing in the DB, so rehype-katex can render them without heuristics.
+
+function consumeBracesAt(text, start) {
+  let i = start + 1;
+  let depth = 1;
+  while (i < text.length && depth > 0) {
+    if (text[i] === "{") depth++;
+    if (text[i] === "}") depth--;
+    i++;
+  }
+  return i;
+}
+
+// From position `start` (must be `\` beginning a LaTeX command), consume the
+// full math chain — commands, brace-groups, scripts, operators, adjacent math.
+function consumeLatexChain(text, start) {
+  const len = text.length;
+  let i = start;
+  while (i < len) {
+    // LaTeX command \cmd
+    if (text[i] === "\\" && i + 1 < len && /[a-zA-Z]/.test(text[i + 1])) {
+      i += 2;
+      while (i < len && /[a-zA-Z]/.test(text[i])) i++;
+      while (i < len && text[i] === "{") i = consumeBracesAt(text, i);
+      continue;
+    }
+    // Brace group {…}
+    if (text[i] === "{") { i = consumeBracesAt(text, i); continue; }
+    // Superscript / subscript
+    if (text[i] === "^" || text[i] === "_") {
+      i++;
+      if (i < len && text[i] === "{") { i = consumeBracesAt(text, i); continue; }
+      if (i < len && /[a-zA-Z0-9\-]/.test(text[i])) { i++; continue; }
+      continue;
+    }
+    // Digits and decimals
+    if (/[0-9]/.test(text[i])) {
+      while (i < len && /[0-9.,]/.test(text[i])) i++;
+      continue;
+    }
+    // Single variable letter in clear math context
+    if (/[a-zA-Z]/.test(text[i])) {
+      if (i + 1 < len && /[_^{\\+\-*/=]/.test(text[i + 1])) { i++; continue; }
+      if (i > 0 && /[{^_=]/.test(text[i - 1])) { i++; continue; }
+      break;
+    }
+    // Operators: keep going only when followed by more math
+    if (/[+\-*/=<>!]/.test(text[i])) {
+      const opPos = i;
+      i++;
+      while (i < len && (text[i] === " " || text[i] === "\t")) i++;
+      if (i < len && (text[i] === "\\" || /[0-9(]/.test(text[i]) || text[i] === "{")) continue;
+      i = opPos;
+      break;
+    }
+    // Parentheses
+    if (text[i] === "(" || text[i] === ")") { i++; continue; }
+    // Space: continue only when next non-space is unambiguously math
+    if (text[i] === " " || text[i] === "\t") {
+      let k = i + 1;
+      while (k < len && (text[k] === " " || text[k] === "\t")) k++;
+      if (k < len && (
+        text[k] === "\\" ||
+        /[0-9+\-*/=^_]/.test(text[k]) ||
+        (text[k] === "-" && k + 1 < len && /[0-9\\]/.test(text[k + 1]))
+      )) { i++; continue; }
+      // Single variable letter followed by math operator or script
+      if (k < len && /[a-zA-Z]/.test(text[k]) && k + 1 < len && /[_^{\\+\-*/=]/.test(text[k + 1])) {
+        i++; continue;
+      }
+      break;
+    }
+    break;
+  }
+  // Trim trailing whitespace and sentence punctuation
+  while (i > start && /[\s.,;:!?]/.test(text[i - 1])) i--;
+  return i;
+}
+
+// Wrap bare LaTeX commands (\cmd…), set-brace notation (\{…\}), and dimensional
+// bracket expressions ([M^x L^y T^{-z}]) in $…$ within a plain text segment.
+function wrapBareLatexInSegment(text) {
+  const out = [];
+  let i = 0;
+  const len = text.length;
+  while (i < len) {
+    // \{ or \}: set brace notation — scan to matching \}
+    if (text[i] === "\\" && i + 1 < len && (text[i + 1] === "{" || text[i + 1] === "}")) {
+      const start = i;
+      let depth = text[i + 1] === "{" ? 1 : 0;
+      i += 2;
+      while (i < len && depth > 0) {
+        if (text[i] === "\\" && i + 1 < len) {
+          if (text[i + 1] === "{") { depth++; i += 2; continue; }
+          if (text[i + 1] === "}") { depth--; i += 2; continue; }
+          i += 2; continue;
+        }
+        i++;
+      }
+      out.push("$" + text.slice(start, i) + "$");
+      continue;
+    }
+    // \command: bare LaTeX command chain
+    if (text[i] === "\\" && i + 1 < len && /[a-zA-Z]/.test(text[i + 1])) {
+      const start = i;
+      i = consumeLatexChain(text, i);
+      const math = text.slice(start, i).trim();
+      if (math) out.push("$" + math + "$");
+      continue;
+    }
+    // [X^m Y^{-n}]: dimensional bracket notation
+    if (text[i] === "[") {
+      const closeIdx = text.indexOf("]", i + 1);
+      if (closeIdx !== -1 && closeIdx - i <= 80) {
+        const inner = text.slice(i + 1, closeIdx);
+        if (/[\^_]/.test(inner) || /\\[a-zA-Z]/.test(inner)) {
+          let end = closeIdx + 1;
+          // Absorb any trailing ^{…} or _{…} after the closing ]
+          const scriptRe = /^[_^](?:\{[^}]*\}|[a-zA-Z0-9])/;
+          while (end < len) {
+            const m = scriptRe.exec(text.slice(end));
+            if (!m) break;
+            end += m[0].length;
+          }
+          out.push("$" + text.slice(i, end) + "$");
+          i = end;
+          continue;
+        }
+      }
+    }
+    out.push(text[i]);
+    i++;
+  }
+  return out.join("");
+}
+
+// Full normaliser: pass 1 converts explicit \[…\]/\(…\)/√ delimiters;
+// pass 2 skips already-wrapped $…$ blocks and wraps bare LaTeX in the rest.
+function normalizeMathForStorage(text) {
+  if (!text || typeof text !== "string") return text;
+
+  // Pass 1: explicit environment delimiters
+  let s = text
+    .replace(/\\\[([\s\S]*?)\\\]/g, (_, b) => `\n$$${b.trim()}$$\n`)
+    .replace(/\\\(([\s\S]*?)\\\)/g, (_, b) => `$${b.trim()}$`)
+    .replace(/√\(([^)\n]+)\)/g, (_, b) => `$\\sqrt{${b}}$`)
+    .replace(/√([A-Za-z0-9])/g, (_, c) => `$\\sqrt{${c}}$`);
+
+  // Pass 2: process only plain spans (skip existing $…$ / $$…$$ blocks)
+  const out = [];
+  let i = 0;
+  const len = s.length;
+  let plainStart = 0;
+  while (i < len) {
+    if (s[i] !== "$") { i++; continue; }
+    if (i > plainStart) out.push(wrapBareLatexInSegment(s.slice(plainStart, i)));
+    if (s[i + 1] === "$") {
+      const end = s.indexOf("$$", i + 2);
+      if (end !== -1) { out.push(s.slice(i, end + 2)); i = end + 2; plainStart = i; continue; }
+    }
+    const end = s.indexOf("$", i + 1);
+    if (end !== -1) { out.push(s.slice(i, end + 1)); i = end + 1; plainStart = i; continue; }
+    i++;
+  }
+  if (plainStart < len) out.push(wrapBareLatexInSegment(s.slice(plainStart)));
+  return out.join("");
+}
+
+// Normalise a single MCQ option. If the option is a pure-math expression
+// (contains LaTeX commands but no English prose words), the entire option is
+// wrapped as one $…$ block so it renders as a single contiguous expression.
+// Mixed prose+math options (e.g. "…dimensions [L T^{-1}]") use the segment
+// normaliser instead, which only wraps the math fragment.
+function normalizeOptionForStorage(option) {
+  if (!option || typeof option !== "string") return option;
+  const s = option.trim();
+  if (!s) return s;
+
+  // Already has $ delimiters — use segment normaliser to avoid double-wrapping
+  if (s.includes("$")) return normalizeMathForStorage(s);
+
+  const hasBareLatex = /\\[a-zA-Z{]/.test(s);
+  const hasDimBracket = /\[[^\]]*[\^_][^\]]*\]/.test(s);
+  if (!hasBareLatex && !hasDimBracket) return s;
+
+  // Strip LaTeX commands + math-only chars; prose words longer than 2 chars remain
+  const noLatex = s
+    .replace(/\\[a-zA-Z]+(?:\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\})?(?:[_^](?:\{[^{}]*\}|[a-zA-Z0-9]))?/g, " ")
+    .replace(/[0-9+\-*/=<>()[\]^_{},.|!\\]/g, " ");
+  const proseWords = noLatex.trim().split(/\s+/).filter((w) => w.length > 2);
+
+  if (proseWords.length === 0) {
+    // Pure-math option: wrap the whole thing as one $…$ block
+    const pass1 = s
+      .replace(/\\\[([\s\S]*?)\\\]/g, (_, b) => b.trim())
+      .replace(/\\\(([\s\S]*?)\\\)/g, (_, b) => b.trim())
+      .replace(/√\(([^)\n]+)\)/g, (_, b) => `\\sqrt{${b}}`)
+      .replace(/√([A-Za-z0-9])/g, (_, c) => `\\sqrt{${c}}`);
+    return "$" + pass1 + "$";
+  }
+
+  // Mixed: segment-level wrapping
+  return normalizeMathForStorage(s);
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 function buildSeedRowsForSubject(rawQuestions, subject, subjectCode) {
   const hardQuestionIndex = rawQuestions.findIndex(
     (question) => normalizeDifficulty(question.Difficulty_Level) === "hard",
@@ -305,24 +539,26 @@ function buildSeedRowsForSubject(rawQuestions, subject, subjectCode) {
 
   return rawQuestions.map((question, index) => {
     const answer = String(question.Answer ?? "").trim();
-    const options = normalizeOptions(question.MCQ_Options);
-    const inferredQuestionType = options?.length ? "mcq" : isNumericalAnswer(answer) ? "numerical" : "subjective";
+    // Correct-option matching uses raw option text; stored options are normalised separately.
+    const rawOptions = normalizeOptions(question.MCQ_Options);
+    const inferredQuestionType = rawOptions?.length ? "mcq" : isNumericalAnswer(answer) ? "numerical" : "subjective";
     const tolerance = inferredQuestionType === "numerical" ? deriveTolerance(answer) : null;
-    const correctOption = inferredQuestionType === "mcq" ? findCorrectOptionIndex(options, answer) : null;
+    const correctOption = inferredQuestionType === "mcq" ? findCorrectOptionIndex(rawOptions, answer) : null;
+    const options = rawOptions?.map(normalizeOptionForStorage) ?? null;
 
     return {
       id: `ogcode_${subjectCode}_${String(index + 1).padStart(4, "0")}`,
       source_index: 0,
-      text: String(question.Question ?? "").trim(),
+      text: normalizeMathForStorage(String(question.Question ?? "").trim()),
       options,
       correct_option: correctOption,
       correct_options: null,
-      answer_text: answer || null,
+      answer_text: normalizeMathForStorage(answer) || null,
       answer_spec: inferredQuestionType === "mcq" ? null : deriveAnswerSpec(answer, inferredQuestionType, tolerance),
       tolerance,
       matrix_data: null,
-      explanation: String(question.Detailed_Explanation ?? "").trim() || "Explanation unavailable.",
-      hint: String(question.Hint ?? "").trim() || null,
+      explanation: normalizeMathForStorage(String(question.Detailed_Explanation ?? "").trim()) || "Explanation unavailable.",
+      hint: normalizeMathForStorage(String(question.Hint ?? "").trim()) || null,
       subject,
       chapter: String(question.Chapter ?? "General").trim() || "General",
       concept: String(question.Concept ?? "General Practice").trim() || "General Practice",
@@ -338,7 +574,94 @@ function buildSeedRowsForSubject(rawQuestions, subject, subjectCode) {
       acceptance_rate: 0,
       total_correct: 0,
       frequency: 0,
+      occurrence: null,
+      class: null,
+      previous_year_question: null,
       _isSubjectChallengeCandidate: index === hardQuestionIndex,
+    };
+  });
+}
+
+function buildSeedRowsForNewFormat(rawQuestions, subject, subjectCode) {
+  const LETTER_IDX = { A: 0, B: 1, C: 2, D: 3 };
+
+  return rawQuestions.map((question, index) => {
+    // MCQ_Options is an object {A:…, B:…, C:…, D:…} — convert to ordered array
+    const optObj = question.MCQ_Options;
+    let rawOptions = null;
+    if (optObj && typeof optObj === "object" && !Array.isArray(optObj)) {
+      const ordered = ["A", "B", "C", "D"]
+        .map((k) => optObj[k])
+        .filter((v) => v != null && String(v).trim() !== "");
+      rawOptions = ordered.length ? ordered : null;
+    }
+    const options = rawOptions?.map(normalizeOptionForStorage) ?? null;
+
+    // correct_options is a letter array e.g. ["B"] or ["A","C"]
+    const correctLetters = Array.isArray(question.correct_options) ? question.correct_options : [];
+    const correctIndices = correctLetters
+      .map((l) => LETTER_IDX[String(l).trim().toUpperCase()])
+      .filter((i) => i !== undefined);
+
+    let questionType;
+    if (options?.length) {
+      questionType = correctIndices.length > 1 ? "msq" : "mcq";
+    } else {
+      questionType = "numerical";
+    }
+
+    const correctOption =
+      questionType === "mcq" && correctIndices.length === 1 ? correctIndices[0] : null;
+    const correctOptionsArr =
+      questionType === "msq" && correctIndices.length > 1 ? correctIndices : null;
+
+    // Occurrence: "NA" → null; keep everything else (JEE, NEET, AIPMT, etc.)
+    const rawOcc = String(question.Occurence ?? "").trim();
+    const occurrence = !rawOcc || rawOcc === "NA" ? null : rawOcc;
+
+    const pyqRaw = String(question["previous year question"] ?? "").trim().toUpperCase();
+    const previousYearQuestion = pyqRaw === "YES" ? "YES" : null;
+
+    const rawImage = String(question["r2 image link"] ?? "").trim();
+    const image = rawImage || null;
+
+    const classLevel = Number(question.class) || null;
+    const chapter = String(question.TOPIC ?? "General").trim() || "General";
+    const concept = String(question["sub topic"] ?? "General Practice").trim() || "General Practice";
+    const difficulty = normalizeDifficulty(question["difficulty level"]);
+    const text = normalizeMathForStorage(String(question.question ?? "").trim());
+    const explanation =
+      normalizeMathForStorage(String(question["full detailed solution"] ?? "").trim()) ||
+      "Explanation unavailable.";
+    const hint = normalizeMathForStorage(String(question["small hint"] ?? "").trim()) || null;
+
+    return {
+      id: `ogcode_${subjectCode}_${String(index + 1).padStart(4, "0")}`,
+      source_index: 0,
+      text,
+      options,
+      correct_option: correctOption,
+      correct_options: correctOptionsArr,
+      answer_text: null,
+      answer_spec: null,
+      tolerance: null,
+      matrix_data: null,
+      explanation,
+      hint,
+      subject,
+      chapter,
+      concept,
+      difficulty,
+      image,
+      tags: [subject, chapter, concept, difficulty].filter(Boolean),
+      question_type: questionType,
+      acceptance_rate: 0,
+      total_correct: 0,
+      frequency: 0,
+      occurrence,
+      class: classLevel,
+      previous_year_question: previousYearQuestion,
+      _isSubjectChallengeCandidate: false,
     };
   });
 }
@@ -392,6 +715,7 @@ function getClientConfig(connectionString) {
 function loadQuestions(filePath) {
   const rawFile = fs.readFileSync(filePath, "utf8");
   const parsed = JSON.parse(rawFile);
+  if (Array.isArray(parsed)) return parsed;
   return Array.isArray(parsed.questions) ? parsed.questions : [];
 }
 
@@ -449,6 +773,23 @@ async function main() {
     rows.push(...buildSeedRowsForSubject(rawQuestions, bank.subject, bank.code));
   }
 
+  if (args.includeNewFormat) {
+    for (const bank of NF_BANKS) {
+      const filePath = path.join(NF_BANK_DIR, bank.file);
+      if (!fs.existsSync(filePath)) {
+        console.warn(`Skipping missing new-format file: ${filePath}`);
+        continue;
+      }
+      const rawQuestions = loadQuestions(filePath);
+      if (!rawQuestions.length) {
+        console.warn(`No questions found in ${filePath}`);
+        continue;
+      }
+      console.log(`Loading new-format bank: ${bank.subject} (${rawQuestions.length} questions)`);
+      rows.push(...buildSeedRowsForNewFormat(rawQuestions, bank.subject, bank.code));
+    }
+  }
+
   if (!rows.length) {
     throw new Error("No OGCode questions prepared.");
   }
@@ -470,6 +811,13 @@ async function main() {
     console.warn(
       `Warning: ${summary.totals.mcq.firstTwoOptionShare}% of MCQs with a correct option resolve to A/B. Runtime option shuffling is required.`,
     );
+  }
+
+  if (args.jsonOut) {
+    // Strip internal-only fields before writing
+    const exportRows = rows.map(({ _isSubjectChallengeCandidate, ...rest }) => rest);
+    fs.writeFileSync(args.jsonOut, JSON.stringify(exportRows, null, 2), "utf8");
+    console.log(`Exported ${exportRows.length} normalised rows → ${args.jsonOut}`);
   }
 
   if (args.dryRun) {
@@ -520,6 +868,9 @@ async function main() {
             total_correct,
             frequency,
             is_challenge_of_day,
+            occurrence,
+            class,
+            previous_year_question,
             updated_at
           )
           SELECT
@@ -546,6 +897,9 @@ async function main() {
             total_correct,
             frequency,
             is_challenge_of_day,
+            occurrence,
+            class,
+            previous_year_question,
             NOW()
           FROM jsonb_to_recordset($1::jsonb) AS row(
             id TEXT,
@@ -570,7 +924,10 @@ async function main() {
             acceptance_rate DOUBLE PRECISION,
             total_correct INTEGER,
             frequency INTEGER,
-            is_challenge_of_day BOOLEAN
+            is_challenge_of_day BOOLEAN,
+            occurrence TEXT,
+            class INTEGER,
+            previous_year_question TEXT
           )
           ON CONFLICT (id) DO UPDATE SET
             source_index = EXCLUDED.source_index,
@@ -592,6 +949,9 @@ async function main() {
             tags = EXCLUDED.tags,
             question_type = EXCLUDED.question_type,
             is_challenge_of_day = EXCLUDED.is_challenge_of_day,
+            occurrence = EXCLUDED.occurrence,
+            class = EXCLUDED.class,
+            previous_year_question = EXCLUDED.previous_year_question,
             updated_at = NOW()
         `,
         [JSON.stringify(batch)],
