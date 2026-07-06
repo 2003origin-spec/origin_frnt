@@ -114,6 +114,17 @@ export function normalizePathname(pathname: string): string {
   return pathname === "/" ? pathname : pathname.replace(/\/+$/u, "");
 }
 
+/**
+ * The login page an unauthenticated user should be sent to for a protected app
+ * path. CBT teachers authenticate via the OTP page (/cbt/login), never the main
+ * password form (/auth) — they have no password and handleLogin rejects the
+ * cbt_teacher role. Everything else uses /auth.
+ */
+export function loginPathForTarget(pathname: string): string {
+  if (pathname === "/cbt/login") return "/auth"; // public in practice; never self-redirect
+  return pathname === "/cbt" || pathname.startsWith("/cbt/") ? "/cbt/login" : "/auth";
+}
+
 function pathMatchesPrefix(pathname: string, prefix: string): boolean {
   return pathname === prefix || pathname.startsWith(`${prefix}/`);
 }

@@ -10,6 +10,7 @@ import {
   getAppRoutePolicy,
   isKnownApiRouteFile,
   isKnownAppPageFile,
+  loginPathForTarget,
 } from "../src/server/route-policy";
 
 const root = new URL("..", import.meta.url).pathname;
@@ -102,4 +103,20 @@ test("CBT surfaces classify as role/public per the mutual-lockout design", () =>
   assert.notDeepEqual(getApiRoutePolicy("/api/cbt-student/join"), { kind: "role", roles: ["cbt_teacher"] });
   // Admin CBT rides the existing authenticated /api/admin prefix + requireAdmin.
   assert.equal(getApiRoutePolicy("/api/admin/cbt/teachers").kind, "authenticated");
+});
+
+test("unauthenticated /cbt visits redirect to the CBT OTP login, not the password /auth", () => {
+  // Role-gated CBT teacher surfaces → the OTP page.
+  assert.equal(loginPathForTarget("/cbt"), "/cbt/login");
+  assert.equal(loginPathForTarget("/cbt/rooms"), "/cbt/login");
+  assert.equal(loginPathForTarget("/cbt/rooms/cbtroom_123"), "/cbt/login");
+  assert.equal(loginPathForTarget("/cbt/questions"), "/cbt/login");
+  // The OTP page itself must never self-redirect.
+  assert.equal(loginPathForTarget("/cbt/login"), "/auth");
+  // Everything else keeps the main password login.
+  assert.equal(loginPathForTarget("/teacher"), "/auth");
+  assert.equal(loginPathForTarget("/dashboard"), "/auth");
+  assert.equal(loginPathForTarget("/admin"), "/auth");
+  // A path merely containing "cbt" but not under /cbt must not match.
+  assert.equal(loginPathForTarget("/cbtx"), "/auth");
 });

@@ -4,7 +4,7 @@ import type { NextRequest } from "next/server";
 import { CSRF_COOKIE_NAME, REFRESH_COOKIE_NAME, verifyRequestAccessJwt } from "@/server/auth-jwt";
 import { checkRateLimit, mutationLimiter } from "@/lib/rate-limit";
 import { findKillSwitchForPath } from "@/server/incidents";
-import { getApiRoutePolicy, getAppRoutePolicy, normalizePathname, type RoutePolicy } from "@/server/route-policy";
+import { getApiRoutePolicy, getAppRoutePolicy, loginPathForTarget, normalizePathname, type RoutePolicy } from "@/server/route-policy";
 import { isBearerTokenAuthorized } from "@/server/service-auth";
 
 const RATE_LIMITED_MUTATION_PREFIXES = [
@@ -76,9 +76,10 @@ function homePathForRole(role: string | undefined | null): string {
 
 function redirectToAuth(request: NextRequest, requestId: string): NextResponse {
   const url = request.nextUrl.clone();
-  url.pathname = "/auth";
+  const targetPath = normalizePathname(request.nextUrl.pathname);
+  url.pathname = loginPathForTarget(targetPath);
   url.search = "";
-  url.searchParams.set("next", `${normalizePathname(request.nextUrl.pathname)}${request.nextUrl.search}`);
+  url.searchParams.set("next", `${targetPath}${request.nextUrl.search}`);
   return withRequestId(NextResponse.redirect(url), requestId);
 }
 
