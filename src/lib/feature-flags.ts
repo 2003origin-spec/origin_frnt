@@ -33,6 +33,7 @@ type FlagKey =
   | "teacherOgcode"
   | "liveRooms"
   | "studentSocial"
+  | "cbtModule"
   | "dppQuestionBank"
   | "batchSyllabus"
   | "batchHub"
@@ -87,6 +88,14 @@ const FLAG_SPECS: Record<FlagKey, FlagSpec> = {
   // enabled in production; defaults flipped ON. Migration 20260623_student_social.sql
   // must be applied against Neon before the first prod deploy with this enabled.
   studentSocial: { envSuffix: "STUDENT_SOCIAL", defaultDev: true, defaultProd: true },
+  // CBT Platform (o3origin.com/cbt) — standalone Computer-Based-Test SaaS for
+  // allowlisted CBT teachers + anonymous students. Gates /cbt, /cbt/r,
+  // /api/cbt/*, /api/cbt-student/*, /api/admin/cbt/*. Shipped + enabled in
+  // production; defaults flipped ON (per the launch convention). REQUIRES
+  // CBT_PARTICIPANT_TOKEN_SECRET (>=32 chars) set in prod and the
+  // 20260705_cbt_module.sql origin_users role-CHECK applied to Neon before the
+  // first prod deploy with this enabled. Per-env env var still overrides.
+  cbtModule: { envSuffix: "CBT", defaultDev: true, defaultProd: true },
   // Question-Bag-aware DPP generation — after a teacher-assigned test, prefer the
   // owning workspace's Question Bag for the relevant weak topics, fall back to OG
   // Code with a provenance note, and tenant-isolate bag-sourced DPPs to students

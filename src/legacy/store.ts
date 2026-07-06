@@ -24,7 +24,7 @@ import {
   type MutableCollectionKey,
 } from "@/server/store-postgres";
 
-export type UserRole = "student" | "teacher" | "admin";
+export type UserRole = "student" | "teacher" | "admin" | "cbt_teacher";
 export type QuestionType = "mcq" | "msq" | "numerical" | "matrix_match" | "subjective";
 export type DifficultyLevel = "easy" | "medium" | "hard" | "insane";
 

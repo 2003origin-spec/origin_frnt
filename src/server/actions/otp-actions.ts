@@ -25,6 +25,13 @@ export async function sendOtpAction(
     return { ok: false, message: 'Email is required' };
   }
 
+  // Server Actions bypass middleware. CBT teachers use the dedicated /cbt OTP
+  // flow (cbt-auth-actions); this main-Origin OTP path must never issue codes
+  // for a cbt_teacher role. (Cast: cbt_teacher is outside the declared union.)
+  if ((role as string | null | undefined) === 'cbt_teacher') {
+    return { ok: false, message: 'Unsupported account type.' };
+  }
+
   const normalizedEmail = normalizeEmail(email);
   let otp = generateOTP();
   let expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString(); // 5 minutes from now

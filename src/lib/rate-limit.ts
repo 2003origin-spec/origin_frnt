@@ -104,6 +104,17 @@ export const roomJoinLimiter = createLimiter(30, "rl:room-join", "1 h");
 
 export const roomChatLimiter = createLimiter(10, "rl:room-chat", "60 s");
 
+// CBT surface limiters. OTP is checked in the CBT auth server actions (which
+// bypass middleware); the rest are applied in-handler on the public student
+// surface. Keyed per-email/per-ip/per-room/per-participant by the caller.
+export const cbtOtpLimiter = createLimiter(5, "rl:cbt-otp", "15 m");
+
+// CBT student surface (in-handler; keyed per ip+room / ip+code / participant).
+export const cbtJoinLimiter = createLimiter(10, "rl:cbt-join", "1 h");
+export const cbtResumeLimiter = createLimiter(5, "rl:cbt-resume", "15 m");
+export const cbtAutosaveLimiter = createLimiter(60, "rl:cbt-autosave", "60 s");
+export const cbtExportLimiter = createLimiter(6, "rl:cbt-export", "1 h");
+
 export async function checkRateLimit(
   limiter: AppRateLimiter,
   identifier: string,

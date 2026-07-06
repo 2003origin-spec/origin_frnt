@@ -1,4 +1,4 @@
-export type UserRole = "student" | "teacher" | "admin";
+export type UserRole = "student" | "teacher" | "admin" | "cbt_teacher";
 
 export type RoutePolicy =
   | { kind: "public" }
@@ -52,6 +52,17 @@ export const AUTHENTICATED_API_PREFIXES = [
 
 export const MEMBERSHIP_API_PREFIXES = ["/api/study-rooms/[id]"] as const;
 
+// CBT student surface: public at the edge, gated in-handler by a signed
+// room-bound participant JWT. Checked before role/authenticated prefixes.
+export const PUBLIC_API_PREFIXES = ["/api/cbt-student"] as const;
+
+// CBT teacher surface: role-gated to cbt_teacher. Checked before the
+// authenticated prefixes (there is no `authenticated` policy on any CBT
+// surface — that is what enforces the mutual-lockout invariant).
+export const ROLE_API_PREFIXES = [
+  { prefix: "/api/cbt", roles: ["cbt_teacher"] as UserRole[] },
+] as const;
+
 export const PUBLIC_APP_PATHS = [
   "/",
   "/auth",
@@ -63,9 +74,14 @@ export const PUBLIC_APP_PATHS = [
   "/privacy-policy",
   "/childrens-policy",
   "/faq",
+  // CBT teacher OTP login page — public so allowlisted teachers can reach it.
+  "/cbt/login",
 ] as const;
 
-export const PUBLIC_APP_PREFIXES = ["/videos"] as const;
+// `/cbt/r` = student join/test pages, public at the edge (participant-token
+// gated in-handler). Public is checked before the `/cbt` role prefix, so the
+// student surface stays reachable under the role-gated `/cbt` tree.
+export const PUBLIC_APP_PREFIXES = ["/videos", "/cbt/r"] as const;
 
 export const AUTHENTICATED_APP_PREFIXES = [
   "/dashboard",
@@ -91,6 +107,7 @@ export const AUTHENTICATED_APP_PREFIXES = [
 
 export const ROLE_APP_PREFIXES = [
   { prefix: "/admin", roles: ["admin"] as UserRole[] },
+  { prefix: "/cbt", roles: ["cbt_teacher"] as UserRole[] },
 ] as const;
 
 export function normalizePathname(pathname: string): string {
@@ -117,8 +134,16 @@ export function getApiRoutePolicy(rawPathname: string): RoutePolicy {
   if (INTERNAL_API_PREFIXES.some((prefix) => pathMatchesPrefix(pathname, prefix))) {
     return { kind: "internal", tokenName: "INTERNAL_CRON_TOKEN" };
   }
+  if (PUBLIC_API_PREFIXES.some((prefix) => pathMatchesPrefix(pathname, prefix))) {
+    return { kind: "public" };
+  }
   if (isRoomScopedApi(pathname)) {
     return { kind: "membership" };
+  }
+  for (const entry of ROLE_API_PREFIXES) {
+    if (pathMatchesPrefix(pathname, entry.prefix)) {
+      return { kind: "role", roles: [...entry.roles] };
+    }
   }
   if (AUTHENTICATED_API_PREFIXES.some((prefix) => pathMatchesPrefix(pathname, prefix))) {
     return { kind: "authenticated" };

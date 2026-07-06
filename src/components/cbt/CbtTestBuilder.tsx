@@ -1,0 +1,240 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+import { useMemo, useState, useTransition } from "react";
+
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { csrfHeaders } from "@/lib/csrf";
+import type { CbtQuestion } from "@/lib/cbt/question-model";
+import type { CbtTestWithQuestions } from "@/lib/cbt/test-model";
+
+type Row = { questionId: string; marks: number; negativeMarks: number };
+
+export function CbtTestBuilder({
+  initialTest,
+  allQuestions,
+}: {
+  initialTest: CbtTestWithQuestions;
+  allQuestions: CbtQuestion[];
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const [savedNote, setSavedNote] = useState<string | null>(null);
+
+  const [title, setTitle] = useState(initialTest.title);
+  const [description, setDescription] = useState(initialTest.description ?? "");
+  const [duration, setDuration] = useState(String(initialTest.durationMinutes));
+  const [status, setStatus] = useState(initialTest.status);
+  const [rows, setRows] = useState<Row[]>(
+    initialTest.questions.map((q) => ({ questionId: q.questionId, marks: q.marks, negativeMarks: q.negativeMarks })),
+  );
+
+  const questionById = useMemo(() => {
+    const m = new Map<string, CbtQuestion>();
+    for (const q of allQuestions) m.set(q.id, q);
+    return m;
+  }, [allQuestions]);
+
+  const selectedIds = useMemo(() => new Set(rows.map((r) => r.questionId)), [rows]);
+  const available = allQuestions.filter((q) => !selectedIds.has(q.id));
+  const maxScore = rows.reduce((sum, r) => sum + (Number(r.marks) || 0), 0);
+
+  function move(index: number, dir: -1 | 1) {
+    setRows((prev) => {
+      const next = [...prev];
+      const target = index + dir;
+      if (target < 0 || target >= next.length) return prev;
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+  }
+
+  function updateRow(index: number, patch: Partial<Row>) {
+    setRows((prev) => prev.map((r, i) => (i === index ? { ...r, ...patch } : r)));
+  }
+
+  async function saveMeta(nextStatus?: string) {
+    setError(null);
+    const res = await fetch(`/api/cbt/tests/${initialTest.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", ...csrfHeaders() },
+      credentials: "include",
+      body: JSON.stringify({
+        title: title.trim(),
+        description: description.trim() || null,
+        durationMinutes: Number(duration) || 60,
+        status: nextStatus ?? status,
+      }),
+    });
+    const data = (await res.json().catch(() => ({}))) as { detail?: string };
+    if (!res.ok) {
+      setError(data.detail ?? `Save failed (${res.status})`);
+      return false;
+    }
+    if (nextStatus) setStatus(nextStatus as typeof status);
+    return true;
+  }
+
+  async function saveQuestions() {
+    setError(null);
+    const res = await fetch(`/api/cbt/tests/${initialTest.id}/questions`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", ...csrfHeaders() },
+      credentials: "include",
+      body: JSON.stringify({
+        questions: rows.map((r) => ({
+          questionId: r.questionId,
+          marks: Number(r.marks) || 0,
+          negativeMarks: Number(r.negativeMarks) || 0,
+        })),
+      }),
+    });
+    const data = (await res.json().catch(() => ({}))) as { detail?: string };
+    if (!res.ok) {
+      setError(data.detail ?? `Save failed (${res.status})`);
+      return false;
+    }
+    return true;
+  }
+
+  function saveAll() {
+    startTransition(async () => {
+      const okMeta = await saveMeta();
+      if (!okMeta) return;
+      const okQ = await saveQuestions();
+      if (!okQ) return;
+      setSavedNote("Saved.");
+      router.refresh();
+      setTimeout(() => setSavedNote(null), 2000);
+    });
+  }
+
+  function markReady() {
+    startTransition(async () => {
+      if (!(await saveMeta())) return;
+      if (!(await saveQuestions())) return;
+      await saveMeta("ready");
+      router.refresh();
+    });
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-bold text-foreground">Edit test</h1>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">Status: {status}</span>
+          <Button size="sm" variant="outline" disabled={pending} onClick={saveAll}>
+            Save
+          </Button>
+          {status !== "ready" ? (
+            <Button size="sm" disabled={pending || rows.length === 0} onClick={markReady}>
+              Mark ready
+            </Button>
+          ) : (
+            <Button size="sm" variant="outline" disabled={pending} onClick={() => startTransition(() => saveMeta("draft").then(() => {}))}>
+              Back to draft
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {error ? <p className="text-xs text-destructive" role="alert">{error}</p> : null}
+      {savedNote ? <p className="text-xs text-emerald-600 dark:text-emerald-400">{savedNote}</p> : null}
+
+      <section className="grid gap-3 rounded-lg border border-border bg-card p-4 sm:grid-cols-2">
+        <div className="space-y-1 sm:col-span-2">
+          <Label>Title</Label>
+          <Input value={title} onChange={(e) => setTitle(e.target.value)} />
+        </div>
+        <div className="space-y-1 sm:col-span-2">
+          <Label>Description</Label>
+          <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
+        </div>
+        <div className="space-y-1">
+          <Label>Duration (minutes)</Label>
+          <Input value={duration} onChange={(e) => setDuration(e.target.value)} inputMode="numeric" />
+        </div>
+        <div className="flex items-end text-sm text-muted-foreground">Max score: {maxScore}</div>
+      </section>
+
+      <section className="space-y-2">
+        <h2 className="text-sm font-semibold text-foreground">Questions ({rows.length})</h2>
+        {rows.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No questions added yet.</p>
+        ) : (
+          <ul className="space-y-2">
+            {rows.map((r, i) => {
+              const q = questionById.get(r.questionId);
+              return (
+                <li key={r.questionId} className="flex items-center gap-3 rounded-lg border border-border bg-card p-3">
+                  <span className="w-6 text-xs text-muted-foreground">{i + 1}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="line-clamp-1 text-sm text-foreground">{q?.stem ?? r.questionId}</div>
+                    <div className="text-xs text-muted-foreground">{q?.questionType}</div>
+                  </div>
+                  <label className="text-xs text-muted-foreground">
+                    +
+                    <input
+                      className="ml-1 w-14 rounded border border-border bg-background px-1 py-0.5 text-foreground"
+                      value={r.marks}
+                      onChange={(e) => updateRow(i, { marks: Number(e.target.value) })}
+                    />
+                  </label>
+                  <label className="text-xs text-muted-foreground">
+                    −
+                    <input
+                      className="ml-1 w-14 rounded border border-border bg-background px-1 py-0.5 text-foreground"
+                      value={r.negativeMarks}
+                      onChange={(e) => updateRow(i, { negativeMarks: Number(e.target.value) })}
+                    />
+                  </label>
+                  <div className="flex flex-col">
+                    <button type="button" className="text-xs" onClick={() => move(i, -1)} aria-label="Move up">▲</button>
+                    <button type="button" className="text-xs" onClick={() => move(i, 1)} aria-label="Move down">▼</button>
+                  </div>
+                  <button
+                    type="button"
+                    className="text-xs text-destructive"
+                    onClick={() => setRows((prev) => prev.filter((_, j) => j !== i))}
+                  >
+                    Remove
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
+
+      <section className="space-y-2">
+        <h2 className="text-sm font-semibold text-foreground">Add from your bank ({available.length})</h2>
+        {available.length === 0 ? (
+          <p className="text-sm text-muted-foreground">All your questions are already in this test.</p>
+        ) : (
+          <ul className="max-h-72 space-y-2 overflow-y-auto">
+            {available.map((q) => (
+              <li key={q.id} className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card p-3">
+                <div className="min-w-0">
+                  <div className="line-clamp-1 text-sm text-foreground">{q.stem}</div>
+                  <div className="text-xs text-muted-foreground">{q.questionType}</div>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setRows((prev) => [...prev, { questionId: q.id, marks: 4, negativeMarks: -1 }])}
+                >
+                  Add
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </div>
+  );
+}

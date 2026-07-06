@@ -154,7 +154,12 @@ function assertAccessClaims(payload: JWTPayload): asserts payload is AccessJwtCl
   if (typeof payload.sid !== "string" || payload.sid.length === 0) {
     throw new Error("Access JWT is missing sid.");
   }
-  if (payload.role !== "student" && payload.role !== "teacher" && payload.role !== "admin") {
+  if (
+    payload.role !== "student" &&
+    payload.role !== "teacher" &&
+    payload.role !== "admin" &&
+    payload.role !== "cbt_teacher"
+  ) {
     throw new Error("Access JWT has an invalid role.");
   }
   if (!Number.isInteger(payload.tokenVersion)) {

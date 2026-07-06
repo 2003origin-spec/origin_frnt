@@ -11,6 +11,7 @@ const RATE_LIMITED_MUTATION_PREFIXES = [
   "/api/teacher/",
   "/api/admin/",
   "/api/enrollments/",
+  "/api/cbt/",
 ];
 
 const REQUEST_ID_HEADER = "X-Request-Id";
@@ -69,6 +70,7 @@ function jsonAuthFailure(status: 401 | 403, detail: string, requestId: string): 
 function homePathForRole(role: string | undefined | null): string {
   if (role === "teacher") return "/teacher";
   if (role === "admin") return "/admin";
+  if (role === "cbt_teacher") return "/cbt";
   return "/dashboard";
 }
 
@@ -153,7 +155,11 @@ export async function middleware(request: NextRequest) {
     !SAFE_METHODS.has(request.method.toUpperCase()) &&
     !CSRF_EXEMPT_API_PATHS.has(pathname) &&
     // /api/public/* routes are unauthenticated; they have no session cookie so CSRF is meaningless
-    !pathname.startsWith('/api/public/')
+    !pathname.startsWith('/api/public/') &&
+    // /api/cbt-student/* is the anonymous student surface: no Origin session
+    // cookie, protected instead by the participant token + SameSite=Lax +
+    // JSON content-type requirement enforced in-handler.
+    !pathname.startsWith('/api/cbt-student/')
   ) {
     const csrfCookie = request.cookies.get(CSRF_COOKIE_NAME)?.value;
     const csrfHeader = request.headers.get("x-csrf-token");
@@ -205,6 +211,21 @@ export async function middleware(request: NextRequest) {
       return redirectToRefresh(request, requestId);
     }
     return redirectToAuth(request, requestId);
+  }
+
+  // Mutual lockout invariant: a cbt_teacher session may only pass `public` and
+  // `role:[cbt_teacher]` policies. Every `authenticated`/`membership` Origin
+  // surface is off-limits to it (and, conversely, existing roles fail the
+  // `/cbt` role policy below) — CBT teachers stay fully partitioned from the
+  // main app. No CBT surface ever uses the `authenticated` policy kind.
+  if (claims.role === "cbt_teacher" && (policy.kind === "authenticated" || policy.kind === "membership")) {
+    if (isApi) {
+      return jsonAuthFailure(403, "You do not have permission to perform this action.", requestId);
+    }
+    const url = request.nextUrl.clone();
+    url.pathname = "/cbt";
+    url.search = "";
+    return withNoIndex(withRequestId(NextResponse.redirect(url), requestId), policy);
   }
 
   if (policy.kind === "role" && !policy.roles.includes(claims.role)) {

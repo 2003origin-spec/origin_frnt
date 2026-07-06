@@ -4,7 +4,7 @@ export interface User {
   id: string;
   name: string;
   email: string;
-  role: 'student' | 'teacher' | 'admin';
+  role: 'student' | 'teacher' | 'admin' | 'cbt_teacher';
   class?: '9' | '10' | '11' | '12' | 'dropper';
   fieldOfInterest?: string;
   referralSource?: string;

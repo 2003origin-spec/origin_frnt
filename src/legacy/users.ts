@@ -337,6 +337,12 @@ export async function handleLogin(payload: UserPayload) {
   const email = asString(payload.email)?.trim().toLowerCase();
   const password = asString(payload.password);
   const requestedRole = asString(payload.role)?.trim().toLowerCase();
+  // CBT teachers authenticate exclusively through the dedicated /cbt OTP flow
+  // (cbt-auth-actions). The legacy password/OTP paths must never authenticate
+  // or mint a cbt_teacher session.
+  if (requestedRole === "cbt_teacher") {
+    return badRequest("Unsupported account type for this login.");
+  }
   const role =
     requestedRole === "student" || requestedRole === "teacher" || requestedRole === "admin"
       ? requestedRole
@@ -404,6 +410,13 @@ export async function handleLogin(payload: UserPayload) {
 export async function handleLoginWithOtp(payload: UserPayload) {
   const email = asString(payload.email)?.trim().toLowerCase();
   const role = asString(payload.role)?.trim().toLowerCase();
+
+  // CBT teachers authenticate exclusively through the dedicated /cbt OTP flow
+  // (cbt-auth-actions). This legacy store-backed OTP path selects a user row by
+  // role, so it must never resolve or mint a cbt_teacher session.
+  if (role === "cbt_teacher") {
+    return badRequest("Unsupported account type for this login.");
+  }
 
   if (!email) {
     return badRequest('Must include "email".');
@@ -506,7 +519,14 @@ export async function handleRegister(payload: UserPayload) {
   const email = asString(payload.email)?.trim().toLowerCase();
   const password = asString(payload.password);
   const name = asString(payload.name)?.trim() ?? "";
-  const role = (asString(payload.role)?.toLowerCase() as "student" | "teacher" | "admin" | undefined) ?? "student";
+  // Public registration may only ever create a student or teacher account.
+  // NEVER trust payload.role: the DB-backed path (dbRegisterUser) writes this
+  // value straight into origin_users.role, so an unwhitelisted value like
+  // "admin" or "cbt_teacher" (once the role CHECK is widened for the CBT
+  // module) would let public signup mint a privileged account and bypass the
+  // CBT allowlist. Anything other than "teacher" collapses to "student".
+  const requestedRole = asString(payload.role)?.toLowerCase();
+  const role: "student" | "teacher" = requestedRole === "teacher" ? "teacher" : "student";
 
   if (!email || !password) {
     return badRequest('Must include "email" and "password".');
@@ -551,7 +571,7 @@ export async function handleRegister(payload: UserPayload) {
       name,
       email,
       password: bcrypt.hashSync(password, 10),
-      role: role === "teacher" || role === "admin" ? role : "student",
+      role,
       studentClass: null,
       fieldOfInterest: null,
       referralSource: null,
