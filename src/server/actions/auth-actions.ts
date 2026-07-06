@@ -116,6 +116,13 @@ export async function loginWithOtpAction(input: {
   role?: 'student' | 'teacher' | 'admin' | null;
 }): Promise<AuthResult> {
   try {
+    // Server Actions bypass middleware, so guard the role here too: CBT
+    // teachers use the dedicated /cbt OTP flow and must never authenticate
+    // through the main-Origin OTP path. (Cast: cbt_teacher is intentionally
+    // outside this action's declared role union.)
+    if ((input.role as string | null | undefined) === 'cbt_teacher') {
+      return { ok: false, status: 400, message: 'Unsupported account type for this login.' };
+    }
     const response = await handleLoginWithOtp({
       email: input.email,
       role: input.role ?? undefined,

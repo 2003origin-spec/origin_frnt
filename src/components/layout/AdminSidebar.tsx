@@ -19,6 +19,7 @@ import {
     FileUp,
     IndianRupee,
     Ticket,
+    ClipboardCheck,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { usePathname, useRouter } from 'next/navigation';
@@ -45,6 +46,8 @@ const navItems = [
     { id: 'financials', label: 'Financials', icon: CreditCard, path: '/admin/financials' },
     { id: 'pricing', label: 'Pricing', icon: IndianRupee, path: '/admin/pricing' },
     { id: 'coupons', label: 'Coupons', icon: Ticket, path: '/admin/coupons' },
+    // CBT teacher allowlist (404s when cbtModule is off).
+    { id: 'cbt', label: 'CBT', icon: ClipboardCheck, path: '/admin/cbt' },
     { id: 'analytics', label: 'Global Analytics', icon: BarChart3, path: '/admin/analytics' },
     // Audit fix R-5 (A-15): incidents + audit log had no sidebar entry.
     { id: 'incidents', label: 'Incidents', icon: Siren, path: '/admin/incidents' },

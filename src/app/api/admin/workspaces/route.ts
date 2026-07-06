@@ -35,7 +35,12 @@ export async function GET(request: NextRequest) {
         : undefined;
     const limit = rawLimit ? Math.min(Math.max(Number(rawLimit) || 0, 1), 200) : undefined;
 
-    const workspaces = await searchWorkspacesService(query, { workspaceType, status }, limit);
+    const found = await searchWorkspacesService(query, { workspaceType, status }, limit);
+    // Hide the per-teacher synthetic CBT import workspaces ("[CBT] <email>") —
+    // they are an internal reuse of the import pipeline, not real institutes.
+    const workspaces = (found as Array<{ name?: string | null }>).filter(
+      (w) => !String(w?.name ?? "").startsWith("[CBT] "),
+    );
     return teacherJson({ workspaces });
   } catch (error) {
     return handleTeacherError(error);

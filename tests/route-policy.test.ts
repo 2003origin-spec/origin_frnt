@@ -84,3 +84,22 @@ test("known protected policies classify role and room-scoped routes", () => {
   assert.equal(getAppRoutePolicy("/videos/Instant-Doubt-Resolution.mp4").kind, "public");
   assert.equal(getAppRoutePolicy("/books/12/Biology/Chapter%201.pdf").kind, "authenticated");
 });
+
+test("CBT surfaces classify as role/public per the mutual-lockout design", () => {
+  // Teacher app + API: role-gated to cbt_teacher (no `authenticated` policy on
+  // any CBT surface — that is what locks cbt_teacher out of every Origin route
+  // and every other role out of /cbt).
+  assert.deepEqual(getAppRoutePolicy("/cbt"), { kind: "role", roles: ["cbt_teacher"] });
+  assert.deepEqual(getApiRoutePolicy("/api/cbt/health"), { kind: "role", roles: ["cbt_teacher"] });
+  assert.deepEqual(getApiRoutePolicy("/api/cbt/rooms"), { kind: "role", roles: ["cbt_teacher"] });
+  // Public exceptions inside the role-gated /cbt app tree.
+  assert.equal(getAppRoutePolicy("/cbt/login").kind, "public");
+  assert.equal(getAppRoutePolicy("/cbt/r/abcd1234").kind, "public");
+  // Student API surface: public at the edge, participant-token gated in-handler.
+  assert.equal(getApiRoutePolicy("/api/cbt-student/health").kind, "public");
+  assert.equal(getApiRoutePolicy("/api/cbt-student/join").kind, "public");
+  // The student prefix must NOT be swallowed by the /api/cbt role prefix.
+  assert.notDeepEqual(getApiRoutePolicy("/api/cbt-student/join"), { kind: "role", roles: ["cbt_teacher"] });
+  // Admin CBT rides the existing authenticated /api/admin prefix + requireAdmin.
+  assert.equal(getApiRoutePolicy("/api/admin/cbt/teachers").kind, "authenticated");
+});

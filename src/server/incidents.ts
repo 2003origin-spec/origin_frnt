@@ -231,6 +231,10 @@ export const FLAG_KILL_PREFIXES: Partial<Record<FlagKey, FlagKillMatcher>> = {
     /^\/api\/admin\/import-jobs(?:\/|$)/.test(path),
   adminControlCenter: ["/api/admin"],
   paidEnrollment: ["/api/enrollments"],
+  // Killing cbtModule 404s every CBT API surface. "/api/cbt" also covers
+  // "/api/cbt-student" (startsWith), but both are listed for clarity; the admin
+  // allowlist routes live under "/api/admin/cbt".
+  cbtModule: ["/api/cbt", "/api/cbt-student", "/api/admin/cbt"],
 };
 
 function matchKillSwitch(matcher: FlagKillMatcher, pathname: string): boolean {

@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS origin_users (
   name          TEXT NOT NULL,
   email         TEXT NOT NULL,
   password_hash TEXT NOT NULL,
-  role          TEXT NOT NULL CHECK (role IN ('student', 'teacher', 'admin')),
+  role          TEXT NOT NULL CHECK (role IN ('student', 'teacher', 'admin', 'cbt_teacher')),
   student_class TEXT,
   field_of_interest TEXT,
   referral_source TEXT,
