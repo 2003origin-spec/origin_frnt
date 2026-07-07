@@ -23,6 +23,7 @@ import type {
 } from "@/server/workspaces/types";
 import type { CbtQuestionInput, CbtQuestionType } from "@/lib/cbt/question-model";
 import { CBT_QUESTION_TYPES } from "@/lib/cbt/question-model";
+import { parseNumericAnswer } from "@/lib/cbt/answer-format";
 
 import { ensureCbtSchema } from "./cbt-schema";
 import {
@@ -145,7 +146,7 @@ function mapImportType(iq: ImportJobQuestion): CbtQuestionType {
 
 /** Maps a worker-extracted question into CBT question input. */
 export function importQuestionToCbtInput(iq: ImportJobQuestion): CbtQuestionInput {
-  const questionType = mapImportType(iq);
+  let questionType = mapImportType(iq);
   const options = normalizeImportOptions(iq.options);
   const answer: Record<string, unknown> = {};
   switch (questionType) {
@@ -156,7 +157,32 @@ export function importQuestionToCbtInput(iq: ImportJobQuestion): CbtQuestionInpu
       answer.correctOptions = toIndexArray(iq.correctOptions);
       break;
     case "numerical":
-    case "numerical_with_units":
+    case "numerical_with_units": {
+      // The worker often extracts a "number + unit" answer ("3F", "9.8 m/s^2")
+      // for a numerical question. Route it to numerical_with_units (split into
+      // number + unit) so it passes CBT validation and grades on the leading
+      // number. A purely non-numeric answer becomes an exact-match expression;
+      // a missing answer stays numerical for the teacher to fill in.
+      const parsed = parseNumericAnswer(iq.answerText);
+      if (parsed.kind === "number_unit") {
+        questionType = "numerical_with_units";
+        answer.answerText = parsed.number;
+        answer.units = parsed.unit;
+        answer.tolerance = 0;
+      } else if (parsed.kind === "number") {
+        questionType = "numerical";
+        answer.answerText = parsed.number;
+        answer.tolerance = 0;
+      } else if ((iq.answerText ?? "").trim()) {
+        questionType = "symbolic_expression";
+        answer.answerText = (iq.answerText ?? "").trim();
+      } else {
+        questionType = "numerical";
+        answer.answerText = "";
+        answer.tolerance = 0;
+      }
+      break;
+    }
     case "symbolic_expression":
     case "equation":
       answer.answerText = iq.answerText ?? "";

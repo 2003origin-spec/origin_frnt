@@ -30,6 +30,7 @@ import {
   type CbtQuestionInput,
   type CbtQuestionType,
 } from "@/lib/cbt/question-model";
+import { parseNumericAnswer } from "@/lib/cbt/answer-format";
 
 const TYPE_LABELS: Record<CbtQuestionType, string> = {
   mcq: "MCQ (single correct)",
@@ -43,6 +44,27 @@ const TYPE_LABELS: Record<CbtQuestionType, string> = {
 };
 
 const DIFFICULTIES = ["easy", "medium", "hard", "insane"];
+
+// A numerical answer that carries a unit (e.g. "3F", "9.8 m/s^2") is stored as
+// numerical_with_units so it grades on the number with the unit as a display
+// label. New imports arrive already split; this re-splits any legacy combined
+// answer so the dialog opens it in the correct, saveable shape.
+function seedNumericAnswer(q?: CbtQuestion | null): {
+  questionType: CbtQuestionType;
+  answerText: string;
+  units: string;
+} {
+  const questionType = q?.questionType ?? "mcq";
+  const answerText = q?.answer.answerText ?? "";
+  const units = q?.answer.units ?? "";
+  if (questionType === "numerical" && !units.trim()) {
+    const parsed = parseNumericAnswer(answerText);
+    if (parsed.kind === "number_unit") {
+      return { questionType: "numerical_with_units", answerText: parsed.number, units: parsed.unit };
+    }
+  }
+  return { questionType, answerText, units };
+}
 
 type Props = {
   initialQuestion?: CbtQuestion | null;
@@ -66,18 +88,19 @@ export function CbtQuestionEditorDialog({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  const [questionType, setQuestionType] = useState<CbtQuestionType>(initialQuestion?.questionType ?? "mcq");
+  const seed = seedNumericAnswer(initialQuestion);
+  const [questionType, setQuestionType] = useState<CbtQuestionType>(seed.questionType);
   const [stem, setStem] = useState(initialQuestion?.stem ?? "");
   const [options, setOptions] = useState<string[]>(
     initialQuestion?.options.length ? initialQuestion.options.map((o) => o.text) : ["", ""],
   );
   const [correctOption, setCorrectOption] = useState<number>(initialQuestion?.answer.correctOption ?? 0);
   const [correctOptions, setCorrectOptions] = useState<number[]>(initialQuestion?.answer.correctOptions ?? []);
-  const [answerText, setAnswerText] = useState<string>(initialQuestion?.answer.answerText ?? "");
+  const [answerText, setAnswerText] = useState<string>(seed.answerText);
   const [tolerance, setTolerance] = useState<string>(
     initialQuestion?.answer.tolerance != null ? String(initialQuestion.answer.tolerance) : "0",
   );
-  const [units, setUnits] = useState<string>(initialQuestion?.answer.units ?? "");
+  const [units, setUnits] = useState<string>(seed.units);
   const [matrixJson, setMatrixJson] = useState<string>(
     initialQuestion?.answer.matrixData ? JSON.stringify(initialQuestion.answer.matrixData, null, 2) : "",
   );
@@ -170,6 +193,19 @@ export function CbtQuestionEditorDialog({
     setCorrectOptions((prev) => (prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index]));
   }
 
+  // Switching to "Numerical with units" auto-splits a combined answer like "3F"
+  // into the number ("3") + unit ("F") so the teacher doesn't split it by hand.
+  function changeType(next: CbtQuestionType) {
+    if (next === "numerical_with_units") {
+      const parsed = parseNumericAnswer(answerText);
+      if (parsed.kind === "number_unit") {
+        setAnswerText(parsed.number);
+        if (!units.trim()) setUnits(parsed.unit);
+      }
+    }
+    setQuestionType(next);
+  }
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{trigger ?? <Button size="sm">New question</Button>}</DialogTrigger>
@@ -181,7 +217,7 @@ export function CbtQuestionEditorDialog({
         <div className="space-y-4">
           <div className="space-y-1">
             <Label>Type</Label>
-            <Select value={questionType} onValueChange={(v) => setQuestionType(v as CbtQuestionType)}>
+            <Select value={questionType} onValueChange={(v) => changeType(v as CbtQuestionType)}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
