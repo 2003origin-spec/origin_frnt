@@ -25,7 +25,13 @@ import type { CbtQuestionInput, CbtQuestionType } from "@/lib/cbt/question-model
 import { CBT_QUESTION_TYPES } from "@/lib/cbt/question-model";
 
 import { ensureCbtSchema } from "./cbt-schema";
-import { createCbtQuestion, type CbtQuestion } from "./cbt-questions-service";
+import {
+  createCbtQuestion,
+  listCbtQuestionIdsByImportJob,
+  type CbtQuestion,
+} from "./cbt-questions-service";
+import { createCbtTest, listQuestionIdsUsedInOtherTests, setTestQuestions } from "./cbt-tests-service";
+import { addQuestionsToCluster, createCluster } from "./cbt-clusters-service";
 import type { CbtTeacher } from "./cbt-teachers-service";
 
 function pool() {
@@ -234,6 +240,48 @@ export async function commitImportJobToBank(input: {
     published += 1;
   }
   return { published };
+}
+
+/**
+ * Builds a ready-to-run test from an import job (mirrors the Origin teacher
+ * "create test from import"): commits every accepted question to the bank, groups
+ * the job's questions into a new cluster named after the source file (D3), and
+ * creates a test seeded with those questions. Questions already used by another
+ * test are skipped (D2 hard-block) so re-running never 409s. Returns the new
+ * test id for the caller to redirect into the builder.
+ */
+export async function createTestFromImportJob(input: {
+  teacher: CbtTeacher;
+  jobId: string;
+}): Promise<{ testId: string; clusterId: string; questionsAdded: number }> {
+  const data = await getCbtImportJob(input.teacher, input.jobId);
+  if (!data) throw cbtError(404, "Import job not found.");
+  const title = (data.job.sourceFileName || "Imported test").slice(0, 120);
+
+  await commitImportJobToBank({ teacher: input.teacher, jobId: input.jobId });
+
+  const questionIds = await listCbtQuestionIdsByImportJob(input.teacher.id, input.jobId);
+  if (questionIds.length === 0) {
+    throw cbtError(400, "No accepted questions to build a test from. Accept some questions first.");
+  }
+
+  // Reusable cluster from the import (collections may overlap freely).
+  const cluster = await createCluster(input.teacher.id, { name: title });
+  await addQuestionsToCluster(input.teacher.id, cluster.id, questionIds);
+
+  const test = await createCbtTest(input.teacher.id, { title });
+  // Only add questions not already used by another test (hard-block safe).
+  const usedElsewhere = new Set(await listQuestionIdsUsedInOtherTests(input.teacher.id, test.id));
+  const addable = questionIds.filter((id) => !usedElsewhere.has(id));
+  if (addable.length > 0) {
+    await setTestQuestions(
+      input.teacher.id,
+      test.id,
+      addable.map((questionId) => ({ questionId, marks: 4, negativeMarks: -1 })),
+    );
+  }
+
+  return { testId: test.id, clusterId: cluster.id, questionsAdded: addable.length };
 }
 
 export async function rejectImportQuestion(input: {

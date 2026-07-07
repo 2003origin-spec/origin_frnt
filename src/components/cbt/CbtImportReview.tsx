@@ -62,6 +62,23 @@ export function CbtImportReview({
     });
   }
 
+  function createTest() {
+    setError(null);
+    startTransition(async () => {
+      const res = await fetch(`/api/cbt/import-jobs/${job.id}/create-test`, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...csrfHeaders() },
+        credentials: "include",
+      });
+      const data = (await res.json().catch(() => ({}))) as { detail?: string; testId?: string };
+      if (!res.ok || !data.testId) {
+        setError(data.detail ?? `Could not create the test (${res.status})`);
+        return;
+      }
+      router.push(`/cbt/tests/${data.testId}`);
+    });
+  }
+
   const pendingReview = questions.filter((q) => q.status === "draft" || q.status === "review_required");
   const done = questions.filter((q) => q.status === "published" || q.status === "accepted" || q.status === "rejected");
   // `accepted` = staged by the AI (or a manual accept) but NOT yet in the bank —
@@ -79,10 +96,17 @@ export function CbtImportReview({
             {stagedCount > 0 ? ` · ${stagedCount} staged` : ""}
           </p>
         </div>
-        {stagedCount > 0 ? (
-          <Button disabled={pending} onClick={commitAll}>
-            {pending ? "Pushing…" : `Push ${stagedCount} to Questions bank`}
-          </Button>
+        {stagedCount + inBankCount > 0 ? (
+          <div className="flex flex-wrap items-center gap-2">
+            {stagedCount > 0 ? (
+              <Button variant="outline" disabled={pending} onClick={commitAll}>
+                {pending ? "Pushing…" : `Push ${stagedCount} to Questions bank`}
+              </Button>
+            ) : null}
+            <Button disabled={pending} onClick={createTest}>
+              {pending ? "Working…" : "Create a test from these"}
+            </Button>
+          </div>
         ) : null}
       </header>
 

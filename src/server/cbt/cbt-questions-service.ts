@@ -180,6 +180,16 @@ export async function getCbtQuestion(teacherId: string, questionId: string): Pro
   return res.rows[0] ? mapQuestion(res.rows[0]) : null;
 }
 
+/** Ids of bank questions that originated from a given import job (teacher-scoped). */
+export async function listCbtQuestionIdsByImportJob(teacherId: string, jobId: string): Promise<string[]> {
+  await ensureCbtSchema();
+  const res = await pool().query(
+    `SELECT id FROM cbt.questions WHERE teacher_id = $1 AND import_job_id = $2 ORDER BY created_at ASC`,
+    [teacherId, jobId],
+  );
+  return res.rows.map((r) => String(r.id));
+}
+
 export async function createCbtQuestion(
   teacherId: string,
   input: CbtQuestionInput,
