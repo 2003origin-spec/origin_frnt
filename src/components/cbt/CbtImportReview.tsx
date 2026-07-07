@@ -6,7 +6,10 @@ import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { LatexRenderer } from "@/components/ui/LatexRenderer";
 import { csrfHeaders } from "@/lib/csrf";
+import type { CbtQuestion, CbtQuestionInput } from "@/lib/cbt/question-model";
 import type { ImportJobQuestion, ImportJobWithProgress } from "@/server/workspaces/types";
+
+import { CbtQuestionEditorDialog } from "./CbtQuestionEditorDialog";
 
 function optionTexts(options: Record<string, unknown> | null): string[] {
   if (!options) return [];
@@ -19,16 +22,20 @@ function optionTexts(options: Record<string, unknown> | null): string[] {
 export function CbtImportReview({
   job,
   questions,
+  editableByQuestion,
 }: {
   job: ImportJobWithProgress;
   questions: ImportJobQuestion[];
+  editableByQuestion: Record<string, CbtQuestion>;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
 
   function act(question: ImportJobQuestion, action: "accept" | "reject") {
     setError(null);
+    setNote(null);
     startTransition(async () => {
       const res = await fetch(`/api/cbt/import-jobs/${job.id}/questions/${question.id}`, {
         method: "PATCH",
@@ -45,25 +52,48 @@ export function CbtImportReview({
     });
   }
 
+  // Publish a single edited import question via the accept-override route. Shape
+  // matches CbtQuestionEditorDialog's onCustomSubmit.
+  async function publishOverride(questionId: string, payload: CbtQuestionInput): Promise<{ ok: boolean; detail?: string }> {
+    const res = await fetch(`/api/cbt/import-jobs/${job.id}/questions/${questionId}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", ...csrfHeaders() },
+      credentials: "include",
+      body: JSON.stringify({ action: "accept", question: payload }),
+    });
+    if (!res.ok) {
+      const data = (await res.json().catch(() => ({}))) as { detail?: string };
+      return { ok: false, detail: data.detail ?? `Save failed (${res.status})` };
+    }
+    return { ok: true };
+  }
+
   function commitAll() {
     setError(null);
+    setNote(null);
     startTransition(async () => {
       const res = await fetch(`/api/cbt/import-jobs/${job.id}/commit`, {
         method: "POST",
         headers: { "content-type": "application/json", ...csrfHeaders() },
         credentials: "include",
       });
+      const data = (await res.json().catch(() => ({}))) as { published?: number; failed?: number; detail?: string };
       if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as { detail?: string };
         setError(data.detail ?? `Could not push to bank (${res.status})`);
         return;
       }
+      setNote(
+        data.failed
+          ? `Pushed ${data.published ?? 0} to your bank. ${data.failed} couldn’t be added automatically — click Edit on each to fix its type/answer.`
+          : `Pushed ${data.published ?? 0} to your Questions bank.`,
+      );
       router.refresh();
     });
   }
 
   function createTest() {
     setError(null);
+    setNote(null);
     startTransition(async () => {
       const res = await fetch(`/api/cbt/import-jobs/${job.id}/create-test`, {
         method: "POST",
@@ -85,6 +115,24 @@ export function CbtImportReview({
   // only `published` rows are in cbt.questions. These are the ones commitAll pushes.
   const stagedCount = questions.filter((q) => q.status === "accepted").length;
   const inBankCount = questions.filter((q) => q.status === "published").length;
+
+  function editTrigger(q: ImportJobQuestion, label = "Edit") {
+    const initial = editableByQuestion[q.id];
+    if (!initial) return null;
+    return (
+      <CbtQuestionEditorDialog
+        initialQuestion={initial}
+        onCustomSubmit={(payload) => publishOverride(q.id, payload)}
+        dialogTitle="Edit & add to Questions bank"
+        submitLabel="Save to bank"
+        trigger={
+          <Button size="sm" variant="outline" disabled={pending}>
+            {label}
+          </Button>
+        }
+      />
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -113,10 +161,12 @@ export function CbtImportReview({
       {stagedCount > 0 ? (
         <p className="rounded-md border border-amber-500/30 bg-amber-500/10 p-2 text-xs text-amber-700 dark:text-amber-400">
           {stagedCount} accepted {stagedCount === 1 ? "question is" : "questions are"} staged but not
-          yet in your Questions bank. Click “Push to Questions bank” to add them.
+          yet in your Questions bank. Click “Push to Questions bank” to add them, or Edit any question to
+          fix its type/answer first.
         </p>
       ) : null}
 
+      {note ? <p className="text-xs text-emerald-600 dark:text-emerald-400">{note}</p> : null}
       {error ? <p className="text-xs text-destructive" role="alert">{error}</p> : null}
 
       {job.status !== "succeeded" && job.status !== "needs_review" && pendingReview.length === 0 ? (
@@ -149,6 +199,7 @@ export function CbtImportReview({
               <Button size="sm" disabled={pending} onClick={() => act(q, "accept")}>
                 Accept
               </Button>
+              {editTrigger(q)}
               <Button size="sm" variant="outline" disabled={pending} onClick={() => act(q, "reject")}>
                 Reject
               </Button>
@@ -178,7 +229,8 @@ export function CbtImportReview({
                 >
                   {q.status === "accepted" ? "staged" : q.status === "published" ? "in bank" : q.status}
                 </span>
-                <span className="truncate">{q.questionText}</span>
+                <span className="min-w-0 flex-1 truncate">{q.questionText}</span>
+                {q.status === "accepted" ? editTrigger(q, "Edit") : null}
               </li>
             ))}
           </ul>

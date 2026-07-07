@@ -24,7 +24,12 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { LatexRenderer } from "@/components/ui/LatexRenderer";
 import { csrfHeaders } from "@/lib/csrf";
-import { CBT_QUESTION_TYPES, type CbtQuestion, type CbtQuestionType } from "@/lib/cbt/question-model";
+import {
+  CBT_QUESTION_TYPES,
+  type CbtQuestion,
+  type CbtQuestionInput,
+  type CbtQuestionType,
+} from "@/lib/cbt/question-model";
 
 const TYPE_LABELS: Record<CbtQuestionType, string> = {
   mcq: "MCQ (single correct)",
@@ -42,9 +47,20 @@ const DIFFICULTIES = ["easy", "medium", "hard", "insane"];
 type Props = {
   initialQuestion?: CbtQuestion | null;
   trigger?: React.ReactNode;
+  // When provided, saving calls this instead of the /api/cbt/questions endpoints
+  // (used to publish an edited import question via the accept-override route).
+  onCustomSubmit?: (payload: CbtQuestionInput) => Promise<{ ok: boolean; detail?: string }>;
+  dialogTitle?: string;
+  submitLabel?: string;
 };
 
-export function CbtQuestionEditorDialog({ initialQuestion, trigger }: Props) {
+export function CbtQuestionEditorDialog({
+  initialQuestion,
+  trigger,
+  onCustomSubmit,
+  dialogTitle,
+  submitLabel,
+}: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -121,8 +137,18 @@ export function CbtQuestionEditorDialog({ initialQuestion, trigger }: Props) {
       chapter: chapter || null,
       concept: concept || null,
       difficulty: difficulty || null,
-    };
+    } as CbtQuestionInput;
     startTransition(async () => {
+      if (onCustomSubmit) {
+        const result = await onCustomSubmit(payload);
+        if (!result.ok) {
+          setError(result.detail ?? "Save failed.");
+          return;
+        }
+        setOpen(false);
+        router.refresh();
+        return;
+      }
       const res = await fetch(
         initialQuestion ? `/api/cbt/questions/${initialQuestion.id}` : "/api/cbt/questions",
         {
@@ -151,7 +177,7 @@ export function CbtQuestionEditorDialog({ initialQuestion, trigger }: Props) {
       <DialogTrigger asChild>{trigger ?? <Button size="sm">New question</Button>}</DialogTrigger>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>{initialQuestion ? "Edit question" : "New question"}</DialogTitle>
+          <DialogTitle>{dialogTitle ?? (initialQuestion ? "Edit question" : "New question")}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
@@ -311,7 +337,7 @@ export function CbtQuestionEditorDialog({ initialQuestion, trigger }: Props) {
             Cancel
           </Button>
           <Button onClick={save} disabled={pending || !stem.trim()}>
-            {pending ? "Saving…" : "Save"}
+            {pending ? "Saving…" : submitLabel ?? "Save"}
           </Button>
         </DialogFooter>
       </DialogContent>
