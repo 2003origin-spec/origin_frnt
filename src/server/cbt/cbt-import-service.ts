@@ -203,6 +203,39 @@ export async function publishImportQuestionToCbt(input: {
   return created;
 }
 
+/**
+ * Bulk-commits every already-`accepted` import question (the worker's
+ * high-confidence auto-approvals) into cbt.questions. This is the missing path
+ * that left auto-accepted questions visible as "reviewed" but never in the bank:
+ * only per-question accept published them before. Idempotent — rows already
+ * `published` are not returned by the `accepted` filter, so re-running is safe;
+ * rows still needing review (`draft`/`review_required`) and `rejected` rows are
+ * left untouched for the teacher to handle.
+ */
+export async function commitImportJobToBank(input: {
+  teacher: CbtTeacher;
+  jobId: string;
+}): Promise<{ published: number }> {
+  const workspaceId = input.teacher.importWorkspaceId;
+  if (!workspaceId) throw cbtError(404, "Import job not found.");
+  const job = await getImportJob(workspaceId, input.jobId);
+  if (!job) throw cbtError(404, "Import job not found.");
+
+  const accepted = await getJobQuestions(input.jobId, { status: "accepted" });
+  let published = 0;
+  for (const iq of accepted) {
+    const created = await createCbtQuestion(input.teacher.id, importQuestionToCbtInput(iq), {
+      source: "imported",
+      importJobId: input.jobId,
+    });
+    await updateQuestionStatus(input.jobId, iq.id, "published", {
+      questionBagQuestionId: created.id,
+    });
+    published += 1;
+  }
+  return { published };
+}
+
 export async function rejectImportQuestion(input: {
   teacher: CbtTeacher;
   jobId: string;

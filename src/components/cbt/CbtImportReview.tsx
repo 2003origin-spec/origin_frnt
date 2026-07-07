@@ -45,17 +45,53 @@ export function CbtImportReview({
     });
   }
 
+  function commitAll() {
+    setError(null);
+    startTransition(async () => {
+      const res = await fetch(`/api/cbt/import-jobs/${job.id}/commit`, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...csrfHeaders() },
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { detail?: string };
+        setError(data.detail ?? `Could not push to bank (${res.status})`);
+        return;
+      }
+      router.refresh();
+    });
+  }
+
   const pendingReview = questions.filter((q) => q.status === "draft" || q.status === "review_required");
   const done = questions.filter((q) => q.status === "published" || q.status === "accepted" || q.status === "rejected");
+  // `accepted` = staged by the AI (or a manual accept) but NOT yet in the bank —
+  // only `published` rows are in cbt.questions. These are the ones commitAll pushes.
+  const stagedCount = questions.filter((q) => q.status === "accepted").length;
+  const inBankCount = questions.filter((q) => q.status === "published").length;
 
   return (
     <div className="space-y-4">
-      <header>
-        <h1 className="text-xl font-bold text-foreground">{job.sourceFileName}</h1>
-        <p className="text-sm text-muted-foreground">
-          Status: {job.status} · {job.progressPercent}% · {questions.length} extracted
-        </p>
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold text-foreground">{job.sourceFileName}</h1>
+          <p className="text-sm text-muted-foreground">
+            Status: {job.status} · {questions.length} extracted · {inBankCount} in bank
+            {stagedCount > 0 ? ` · ${stagedCount} staged` : ""}
+          </p>
+        </div>
+        {stagedCount > 0 ? (
+          <Button disabled={pending} onClick={commitAll}>
+            {pending ? "Pushing…" : `Push ${stagedCount} to Questions bank`}
+          </Button>
+        ) : null}
       </header>
+
+      {stagedCount > 0 ? (
+        <p className="rounded-md border border-amber-500/30 bg-amber-500/10 p-2 text-xs text-amber-700 dark:text-amber-400">
+          {stagedCount} accepted {stagedCount === 1 ? "question is" : "questions are"} staged but not
+          yet in your Questions bank. Click “Push to Questions bank” to add them.
+        </p>
+      ) : null}
 
       {error ? <p className="text-xs text-destructive" role="alert">{error}</p> : null}
 
@@ -111,10 +147,12 @@ export function CbtImportReview({
                   className={
                     q.status === "rejected"
                       ? "rounded bg-muted px-1.5 py-0.5"
-                      : "rounded bg-emerald-500/15 px-1.5 py-0.5 text-emerald-600 dark:text-emerald-400"
+                      : q.status === "accepted"
+                        ? "rounded bg-amber-500/15 px-1.5 py-0.5 text-amber-700 dark:text-amber-400"
+                        : "rounded bg-emerald-500/15 px-1.5 py-0.5 text-emerald-600 dark:text-emerald-400"
                   }
                 >
-                  {q.status}
+                  {q.status === "accepted" ? "staged" : q.status === "published" ? "in bank" : q.status}
                 </span>
                 <span className="truncate">{q.questionText}</span>
               </li>
