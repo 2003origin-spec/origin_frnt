@@ -6,6 +6,7 @@ import { isFeatureEnabled } from "@/lib/feature-flags";
 import { getServerUser } from "@/lib/auth-server";
 import { findActiveCbtTeacherByUserId } from "@/server/cbt/cbt-teachers-service";
 import { listCbtQuestions } from "@/server/cbt/cbt-questions-service";
+import { listClusters, listQuestionClusterMap } from "@/server/cbt/cbt-clusters-service";
 import { CbtQuestionBank } from "@/components/cbt/CbtQuestionBank";
 
 export default async function CbtQuestionsPage() {
@@ -15,6 +16,12 @@ export default async function CbtQuestionsPage() {
   const teacher = await findActiveCbtTeacherByUserId(user.id);
   if (!teacher) redirect("/cbt/login");
 
-  const questions = await listCbtQuestions(teacher.id);
-  return <CbtQuestionBank initialQuestions={questions} />;
+  const [questions, clusters, membership] = await Promise.all([
+    listCbtQuestions(teacher.id),
+    listClusters(teacher.id),
+    listQuestionClusterMap(teacher.id),
+  ]);
+  return (
+    <CbtQuestionBank initialQuestions={questions} initialClusters={clusters} membershipByQuestion={membership} />
+  );
 }

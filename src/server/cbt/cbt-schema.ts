@@ -176,13 +176,36 @@ export async function ensureCbtSchema(): Promise<void> {
             PRIMARY KEY (room_id, participant_id, position)
           );
 
+          -- Question clusters (many-to-many collections; see 20260707_cbt_clusters.sql).
+          CREATE TABLE IF NOT EXISTS cbt.question_clusters (
+            id          TEXT PRIMARY KEY,
+            teacher_id  TEXT NOT NULL REFERENCES cbt.teachers(id) ON DELETE CASCADE,
+            name        TEXT NOT NULL,
+            description TEXT,
+            created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          );
+
+          CREATE TABLE IF NOT EXISTS cbt.question_cluster_members (
+            cluster_id  TEXT NOT NULL REFERENCES cbt.question_clusters(id) ON DELETE CASCADE,
+            question_id TEXT NOT NULL REFERENCES cbt.questions(id) ON DELETE CASCADE,
+            added_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            PRIMARY KEY (cluster_id, question_id)
+          );
+
           CREATE INDEX IF NOT EXISTS idx_cbt_rooms_teacher ON cbt.rooms (teacher_id, created_at DESC);
           CREATE INDEX IF NOT EXISTS idx_cbt_participants_room_seen ON cbt.room_participants (room_id, last_seen_at);
           CREATE INDEX IF NOT EXISTS idx_cbt_questions_teacher ON cbt.questions (teacher_id, created_at DESC);
           CREATE INDEX IF NOT EXISTS idx_cbt_tests_teacher ON cbt.tests (teacher_id);
+          CREATE INDEX IF NOT EXISTS idx_cbt_clusters_teacher ON cbt.question_clusters (teacher_id, created_at DESC);
+          CREATE INDEX IF NOT EXISTS idx_cbt_cluster_members_q ON cbt.question_cluster_members (question_id);
         `);
 
         await recordMigration(client);
+        await client.query(
+          "INSERT INTO app.migrations (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING",
+          ["20260707_cbt_clusters", "cbt question clusters"],
+        );
         await client.query("COMMIT");
         globalThis.__originCbtSchemaEnsured = true;
       } catch (error) {
