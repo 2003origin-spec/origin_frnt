@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { csrfHeaders } from "@/lib/csrf";
+import { mutateJson } from "@/lib/csrf";
 import type { CbtParticipantSummary } from "@/lib/cbt/events";
 import type { CbtRoom } from "@/lib/cbt/room-model";
 
@@ -46,10 +46,8 @@ export function CbtRoomConsole({
     if (!selectedTestId) return;
     setError(null);
     startTransition(async () => {
-      const res = await fetch(`/api/cbt/rooms/${room.id}/configure-test`, {
+      const res = await mutateJson(`/api/cbt/rooms/${room.id}/configure-test`, {
         method: "POST",
-        headers: { "content-type": "application/json", ...csrfHeaders() },
-        credentials: "include",
         body: JSON.stringify({ testId: selectedTestId }),
       });
       const data = (await res.json().catch(() => ({}))) as { detail?: string };
@@ -65,10 +63,8 @@ export function CbtRoomConsole({
     if (!confirm("Start the test now? Students will begin in 3 seconds.")) return;
     setError(null);
     startTransition(async () => {
-      const res = await fetch(`/api/cbt/rooms/${room.id}/start`, {
+      const res = await mutateJson(`/api/cbt/rooms/${room.id}/start`, {
         method: "POST",
-        headers: csrfHeaders(),
-        credentials: "include",
       });
       const data = (await res.json().catch(() => ({}))) as { detail?: string };
       if (!res.ok) {
@@ -97,10 +93,8 @@ export function CbtRoomConsole({
   function regenerate() {
     setError(null);
     startTransition(async () => {
-      const res = await fetch(`/api/cbt/rooms/${room.id}/code`, {
+      const res = await mutateJson(`/api/cbt/rooms/${room.id}/code`, {
         method: "POST",
-        headers: csrfHeaders(),
-        credentials: "include",
       });
       const data = (await res.json().catch(() => ({}))) as { code?: string; detail?: string };
       if (!res.ok || !data.code) {
@@ -113,10 +107,8 @@ export function CbtRoomConsole({
 
   function kick(participantId: string) {
     startTransition(async () => {
-      await fetch(`/api/cbt/rooms/${room.id}/kick`, {
+      await mutateJson(`/api/cbt/rooms/${room.id}/kick`, {
         method: "POST",
-        headers: { "content-type": "application/json", ...csrfHeaders() },
-        credentials: "include",
         body: JSON.stringify({ participantId }),
       });
     });
@@ -125,10 +117,8 @@ export function CbtRoomConsole({
   function closeRoom() {
     if (!confirm("Close this room? Students will be disconnected.")) return;
     startTransition(async () => {
-      const res = await fetch(`/api/cbt/rooms/${room.id}`, {
+      const res = await mutateJson(`/api/cbt/rooms/${room.id}`, {
         method: "PATCH",
-        headers: { "content-type": "application/json", ...csrfHeaders() },
-        credentials: "include",
         body: JSON.stringify({ action: "close" }),
       });
       if (res.ok) router.refresh();
