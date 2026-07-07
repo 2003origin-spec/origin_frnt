@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { csrfHeaders } from "@/lib/csrf";
 import type { CbtQuestion } from "@/lib/cbt/question-model";
+import type { CbtCluster } from "@/lib/cbt/cluster-model";
 import type { CbtTestWithQuestions } from "@/lib/cbt/test-model";
 
 type Row = { questionId: string; marks: number; negativeMarks: number };
@@ -16,14 +17,24 @@ type Row = { questionId: string; marks: number; negativeMarks: number };
 export function CbtTestBuilder({
   initialTest,
   allQuestions,
+  clusters,
+  membershipByQuestion,
+  usedElsewhere,
 }: {
   initialTest: CbtTestWithQuestions;
   allQuestions: CbtQuestion[];
+  clusters: CbtCluster[];
+  membershipByQuestion: Record<string, string[]>;
+  usedElsewhere: string[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [savedNote, setSavedNote] = useState<string | null>(null);
+  const [addFilter, setAddFilter] = useState<string | null>(null); // cluster id or null (All)
+
+  // D2 hard-block: a question already in another test can never be added here.
+  const usedSet = useMemo(() => new Set(usedElsewhere), [usedElsewhere]);
 
   const [title, setTitle] = useState(initialTest.title);
   const [description, setDescription] = useState(initialTest.description ?? "");
@@ -40,8 +51,29 @@ export function CbtTestBuilder({
   }, [allQuestions]);
 
   const selectedIds = useMemo(() => new Set(rows.map((r) => r.questionId)), [rows]);
-  const available = allQuestions.filter((q) => !selectedIds.has(q.id));
+  const available = useMemo(
+    () =>
+      allQuestions.filter(
+        (q) =>
+          !selectedIds.has(q.id) &&
+          (addFilter === null || (membershipByQuestion[q.id] ?? []).includes(addFilter)),
+      ),
+    [allQuestions, selectedIds, addFilter, membershipByQuestion],
+  );
   const maxScore = rows.reduce((sum, r) => sum + (Number(r.marks) || 0), 0);
+
+  function addQuestion(id: string) {
+    if (usedSet.has(id) || selectedIds.has(id)) return;
+    setRows((prev) => [...prev, { questionId: id, marks: 4, negativeMarks: -1 }]);
+  }
+
+  // Add every addable question in the current cluster filter at once. Questions
+  // already used by another test are skipped (hard-block).
+  function addAllVisible() {
+    const toAdd = available.filter((q) => !usedSet.has(q.id));
+    if (toAdd.length === 0) return;
+    setRows((prev) => [...prev, ...toAdd.map((q) => ({ questionId: q.id, marks: 4, negativeMarks: -1 }))]);
+  }
 
   function move(index: number, dir: -1 | 1) {
     setRows((prev) => {
@@ -212,26 +244,58 @@ export function CbtTestBuilder({
       </section>
 
       <section className="space-y-2">
-        <h2 className="text-sm font-semibold text-foreground">Add from your bank ({available.length})</h2>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-foreground">Add from your bank ({available.length})</h2>
+          <div className="flex items-center gap-2">
+            <select
+              className="rounded-md border border-border bg-background px-2 py-1 text-xs"
+              value={addFilter ?? ""}
+              onChange={(e) => setAddFilter(e.target.value || null)}
+            >
+              <option value="">All questions</option>
+              {clusters.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name} ({c.questionCount})
+                </option>
+              ))}
+            </select>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={available.filter((q) => !usedSet.has(q.id)).length === 0}
+              onClick={addAllVisible}
+            >
+              Add all{addFilter ? " in cluster" : ""}
+            </Button>
+          </div>
+        </div>
         {available.length === 0 ? (
-          <p className="text-sm text-muted-foreground">All your questions are already in this test.</p>
+          <p className="text-sm text-muted-foreground">
+            {addFilter ? "No addable questions in this cluster." : "All your questions are already in this test."}
+          </p>
         ) : (
           <ul className="max-h-72 space-y-2 overflow-y-auto">
-            {available.map((q) => (
-              <li key={q.id} className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card p-3">
-                <div className="min-w-0">
-                  <div className="line-clamp-1 text-sm text-foreground">{q.stem}</div>
-                  <div className="text-xs text-muted-foreground">{q.questionType}</div>
-                </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setRows((prev) => [...prev, { questionId: q.id, marks: 4, negativeMarks: -1 }])}
-                >
-                  Add
-                </Button>
-              </li>
-            ))}
+            {available.map((q) => {
+              const blocked = usedSet.has(q.id);
+              return (
+                <li key={q.id} className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card p-3">
+                  <div className="min-w-0">
+                    <div className="line-clamp-1 text-sm text-foreground">{q.stem}</div>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <span>{q.questionType}</span>
+                      {blocked ? (
+                        <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-amber-700 dark:text-amber-400">
+                          already in another test
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+                  <Button size="sm" variant="outline" disabled={blocked} onClick={() => addQuestion(q.id)}>
+                    Add
+                  </Button>
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>

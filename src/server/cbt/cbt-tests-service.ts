@@ -187,6 +187,22 @@ export async function deleteCbtTest(teacherId: string, testId: string): Promise<
  * Replaces the test's full ordered question list. Positions are the array
  * order. Validates that the test AND every question belong to the teacher.
  */
+/** Question ids already used by *other* tests of this teacher (excludes excludeTestId). */
+export async function listQuestionIdsUsedInOtherTests(
+  teacherId: string,
+  excludeTestId: string,
+): Promise<string[]> {
+  await ensureCbtSchema();
+  const res = await pool().query(
+    `SELECT DISTINCT tq.question_id
+       FROM cbt.test_questions tq
+       JOIN cbt.tests t ON t.id = tq.test_id
+      WHERE t.teacher_id = $1 AND tq.test_id <> $2`,
+    [teacherId, excludeTestId],
+  );
+  return res.rows.map((r) => String(r.question_id));
+}
+
 export async function setTestQuestions(
   teacherId: string,
   testId: string,
@@ -219,6 +235,24 @@ export async function setTestQuestions(
       const missing = ids.filter((id) => !ownedSet.has(id));
       if (missing.length > 0 || new Set(ids).size !== ids.length) {
         throw cbtError(400, "One or more questions are invalid or duplicated.");
+      }
+
+      // Hard-block (design decision D2): a question may live in at most one test,
+      // so no two tests ever share questions. Reject if any incoming question is
+      // already used by a different test of this teacher.
+      const clash = await client.query(
+        `SELECT t.title
+           FROM cbt.test_questions tq
+           JOIN cbt.tests t ON t.id = tq.test_id
+          WHERE t.teacher_id = $1 AND tq.test_id <> $2 AND tq.question_id = ANY($3::text[])
+          LIMIT 1`,
+        [teacherId, testId, ids],
+      );
+      if (clash.rows[0]) {
+        throw cbtError(
+          409,
+          `One or more questions are already used in test “${String(clash.rows[0].title)}”. A question can only belong to one test.`,
+        );
       }
     }
 
