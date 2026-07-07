@@ -2,14 +2,9 @@
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 
-export type CbtStudentPhase =
-  | "checking"
-  | "join"
-  | "lobby"
-  | "in_test"
-  | "submitted"
-  | "closed"
-  | "kicked";
+import { type CbtStudentPhase, nextPhase, phaseFromState } from "@/lib/cbt/student-phase";
+
+export type { CbtStudentPhase };
 
 type CbtRoomView = {
   id: string;
@@ -41,6 +36,7 @@ export type CbtRoomContextValue = {
   roomId: string;
   roomName: string;
   markJoined: (studentCode: string) => void;
+  markSubmitted: () => void;
   refresh: () => Promise<void>;
 };
 
@@ -50,13 +46,6 @@ export function useCbtRoom(): CbtRoomContextValue {
   const ctx = useContext(CbtRoomContext);
   if (!ctx) throw new Error("useCbtRoom must be used within CbtRoomProvider");
   return ctx;
-}
-
-function phaseFromState(state: StateResponse): CbtStudentPhase {
-  if (state.room.status === "closed") return "closed";
-  if (state.participant.finishedAt) return "submitted";
-  if (state.room.status === "in_test") return "in_test";
-  return "lobby";
 }
 
 export function CbtRoomProvider({
@@ -93,11 +82,20 @@ export function CbtRoomProvider({
       setRoom(data.room);
       setStudentCode(data.participant.studentCode);
       setDisplayName(data.participant.displayName);
-      setPhase(phaseFromState(data));
+      // nextPhase keeps terminal phases sticky: a finished attempt can never be
+      // pulled back into the test by a later refresh.
+      setPhase((prev) => nextPhase(prev, phaseFromState(data)));
     } catch {
       if (!joinedRef.current) setPhase("join");
     }
   }, [roomId]);
+
+  // Once submitted, stay submitted. Called by the player right after it posts
+  // the submission so the context unmounts the player immediately (belt-and-
+  // suspenders with the server's finished_at gate + the refresh() below).
+  const markSubmitted = useCallback(() => {
+    setPhase((prev) => nextPhase(prev, "submitted"));
+  }, []);
 
   const markJoined = useCallback(
     (code: string) => {
@@ -112,6 +110,27 @@ export function CbtRoomProvider({
   // Initial state probe (do we already hold a valid cookie for this room?).
   useEffect(() => {
     void refresh();
+  }, [refresh]);
+
+  // Re-check authoritative state when the page is restored from the browser
+  // back-forward cache (bfcache) or the tab is refocused. A browser Back can
+  // restore a frozen mid-test snapshot without re-running effects; without this
+  // a submitted student would see the old player and appear to re-attempt.
+  // refresh() re-derives the (sticky) terminal "submitted" phase and unmounts
+  // the player.
+  useEffect(() => {
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) void refresh();
+    };
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+    window.addEventListener("pageshow", onPageShow);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener("pageshow", onPageShow);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [refresh]);
 
   // Realtime + heartbeat, active only once joined.
@@ -138,15 +157,15 @@ export function CbtRoomProvider({
       } catch {
         // ignore malformed
       }
-      setPhase("in_test");
+      setPhase((prev) => nextPhase(prev, "in_test"));
     });
-    es.addEventListener("test_ended", () => !disposed && setPhase("submitted"));
+    es.addEventListener("test_ended", () => !disposed && setPhase((prev) => nextPhase(prev, "submitted")));
     es.addEventListener("room_closed", () => {
-      if (!disposed) setPhase("closed");
+      if (!disposed) setPhase((prev) => nextPhase(prev, "closed"));
       es.close();
     });
     es.addEventListener("kicked", () => {
-      if (!disposed) setPhase("kicked");
+      if (!disposed) setPhase((prev) => nextPhase(prev, "kicked"));
       es.close();
     });
 
@@ -166,6 +185,7 @@ export function CbtRoomProvider({
     roomId,
     roomName,
     markJoined,
+    markSubmitted,
     refresh,
   };
 

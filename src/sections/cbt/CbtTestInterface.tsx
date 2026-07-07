@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { LatexRenderer } from "@/components/ui/LatexRenderer";
+import { useCbtRoom } from "@/context/CbtRoomContext";
 import { useServerAnchoredTimer } from "@/hooks/useServerAnchoredTimer";
 import {
   isAnswered,
@@ -48,6 +49,7 @@ function paletteFor(hasAnswer: boolean, marked: boolean): CbtPaletteStatus {
 }
 
 export function CbtTestInterface() {
+  const { markSubmitted } = useCbtRoom();
   const [phase, setPhase] = useState<Phase>("loading");
   const [error, setError] = useState<string | null>(null);
   const [payload, setPayload] = useState<CbtTestPayload | null>(null);
@@ -194,8 +196,12 @@ export function CbtTestInterface() {
       }
       if (document.fullscreenElement) document.exitFullscreen?.().catch(() => undefined);
       setPhase("submitted");
+      // Promote to the room-level terminal phase so the context unmounts this
+      // player: a submitted student must never re-enter the test (e.g. via a
+      // browser Back / bfcache restore of this frozen mid-test view).
+      markSubmitted();
     },
-    [flushSave],
+    [flushSave, markSubmitted],
   );
 
   // Auto-submit when the server-anchored timer hits zero.
