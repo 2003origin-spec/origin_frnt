@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { LatexRenderer } from "@/components/ui/LatexRenderer";
-import { csrfHeaders } from "@/lib/csrf";
+import { mutateJson } from "@/lib/csrf";
 import {
   CBT_QUESTION_TYPES,
   type CbtQuestion,
@@ -149,12 +149,10 @@ export function CbtQuestionEditorDialog({
         router.refresh();
         return;
       }
-      const res = await fetch(
+      const res = await mutateJson(
         initialQuestion ? `/api/cbt/questions/${initialQuestion.id}` : "/api/cbt/questions",
         {
           method: initialQuestion ? "PATCH" : "POST",
-          headers: { "content-type": "application/json", ...csrfHeaders() },
-          credentials: "include",
           body: JSON.stringify(payload),
         },
       );

@@ -5,7 +5,7 @@ import { useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
 import { LatexRenderer } from "@/components/ui/LatexRenderer";
-import { csrfHeaders } from "@/lib/csrf";
+import { mutateJson } from "@/lib/csrf";
 import type { CbtQuestion, CbtQuestionInput } from "@/lib/cbt/question-model";
 import type { ImportJobQuestion, ImportJobWithProgress } from "@/server/workspaces/types";
 
@@ -37,10 +37,8 @@ export function CbtImportReview({
     setError(null);
     setNote(null);
     startTransition(async () => {
-      const res = await fetch(`/api/cbt/import-jobs/${job.id}/questions/${question.id}`, {
+      const res = await mutateJson(`/api/cbt/import-jobs/${job.id}/questions/${question.id}`, {
         method: "PATCH",
-        headers: { "content-type": "application/json", ...csrfHeaders() },
-        credentials: "include",
         body: JSON.stringify({ action }),
       });
       if (!res.ok) {
@@ -55,10 +53,8 @@ export function CbtImportReview({
   // Publish a single edited import question via the accept-override route. Shape
   // matches CbtQuestionEditorDialog's onCustomSubmit.
   async function publishOverride(questionId: string, payload: CbtQuestionInput): Promise<{ ok: boolean; detail?: string }> {
-    const res = await fetch(`/api/cbt/import-jobs/${job.id}/questions/${questionId}`, {
+    const res = await mutateJson(`/api/cbt/import-jobs/${job.id}/questions/${questionId}`, {
       method: "PATCH",
-      headers: { "content-type": "application/json", ...csrfHeaders() },
-      credentials: "include",
       body: JSON.stringify({ action: "accept", question: payload }),
     });
     if (!res.ok) {
@@ -72,10 +68,8 @@ export function CbtImportReview({
     setError(null);
     setNote(null);
     startTransition(async () => {
-      const res = await fetch(`/api/cbt/import-jobs/${job.id}/commit`, {
+      const res = await mutateJson(`/api/cbt/import-jobs/${job.id}/commit`, {
         method: "POST",
-        headers: { "content-type": "application/json", ...csrfHeaders() },
-        credentials: "include",
       });
       const data = (await res.json().catch(() => ({}))) as { published?: number; failed?: number; detail?: string };
       if (!res.ok) {
@@ -95,10 +89,8 @@ export function CbtImportReview({
     setError(null);
     setNote(null);
     startTransition(async () => {
-      const res = await fetch(`/api/cbt/import-jobs/${job.id}/create-test`, {
+      const res = await mutateJson(`/api/cbt/import-jobs/${job.id}/create-test`, {
         method: "POST",
-        headers: { "content-type": "application/json", ...csrfHeaders() },
-        credentials: "include",
       });
       const data = (await res.json().catch(() => ({}))) as { detail?: string; testId?: string };
       if (!res.ok || !data.testId) {

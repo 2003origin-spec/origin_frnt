@@ -5,7 +5,7 @@ import { useMemo, useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
 import { LatexRenderer } from "@/components/ui/LatexRenderer";
-import { csrfHeaders } from "@/lib/csrf";
+import { mutateJson } from "@/lib/csrf";
 import type { CbtQuestion } from "@/lib/cbt/question-model";
 import type { CbtCluster } from "@/lib/cbt/cluster-model";
 
@@ -48,10 +48,8 @@ export function CbtQuestionBank({
   }, [initialQuestions, membershipByQuestion, activeCluster]);
 
   async function call(url: string, method: string, body?: unknown): Promise<boolean> {
-    const res = await fetch(url, {
+    const res = await mutateJson(url, {
       method,
-      headers: { "content-type": "application/json", ...csrfHeaders() },
-      credentials: "include",
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     if (!res.ok) {

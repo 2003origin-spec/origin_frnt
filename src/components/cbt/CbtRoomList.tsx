@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
-import { csrfHeaders } from "@/lib/csrf";
+import { mutateJson } from "@/lib/csrf";
 import type { CbtRoom } from "@/lib/cbt/room-model";
 
 import { CbtRoomCreateDialog } from "./CbtRoomCreateDialog";
@@ -27,10 +27,8 @@ export function CbtRoomList({ initialRooms }: { initialRooms: RoomRow[] }) {
   function remove(id: string) {
     if (!confirm("Delete this room and all its participants? This cannot be undone.")) return;
     startTransition(async () => {
-      const res = await fetch(`/api/cbt/rooms/${id}`, {
+      const res = await mutateJson(`/api/cbt/rooms/${id}`, {
         method: "DELETE",
-        headers: csrfHeaders(),
-        credentials: "include",
       });
       if (res.ok) {
         setRooms((prev) => prev.filter((r) => r.id !== id));

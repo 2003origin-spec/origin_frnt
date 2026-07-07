@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { csrfHeaders } from "@/lib/csrf";
+import { mutateJson } from "@/lib/csrf";
 
 export function CbtRoomCreateDialog() {
   const router = useRouter();
@@ -30,10 +30,8 @@ export function CbtRoomCreateDialog() {
   function create() {
     setError(null);
     startTransition(async () => {
-      const res = await fetch("/api/cbt/rooms", {
+      const res = await mutateJson("/api/cbt/rooms", {
         method: "POST",
-        headers: { "content-type": "application/json", ...csrfHeaders() },
-        credentials: "include",
         body: JSON.stringify({ name: name.trim(), capacity: Number(capacity) || 200 }),
       });
       const data = (await res.json().catch(() => ({}))) as {

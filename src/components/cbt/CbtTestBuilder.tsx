@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { csrfHeaders } from "@/lib/csrf";
+import { mutateJson } from "@/lib/csrf";
 import type { CbtQuestion } from "@/lib/cbt/question-model";
 import type { CbtCluster } from "@/lib/cbt/cluster-model";
 import type { CbtTestWithQuestions } from "@/lib/cbt/test-model";
@@ -91,10 +91,8 @@ export function CbtTestBuilder({
 
   async function saveMeta(nextStatus?: string) {
     setError(null);
-    const res = await fetch(`/api/cbt/tests/${initialTest.id}`, {
+    const res = await mutateJson(`/api/cbt/tests/${initialTest.id}`, {
       method: "PATCH",
-      headers: { "content-type": "application/json", ...csrfHeaders() },
-      credentials: "include",
       body: JSON.stringify({
         title: title.trim(),
         description: description.trim() || null,
@@ -113,10 +111,8 @@ export function CbtTestBuilder({
 
   async function saveQuestions() {
     setError(null);
-    const res = await fetch(`/api/cbt/tests/${initialTest.id}/questions`, {
+    const res = await mutateJson(`/api/cbt/tests/${initialTest.id}/questions`, {
       method: "PUT",
-      headers: { "content-type": "application/json", ...csrfHeaders() },
-      credentials: "include",
       body: JSON.stringify({
         questions: rows.map((r) => ({
           questionId: r.questionId,

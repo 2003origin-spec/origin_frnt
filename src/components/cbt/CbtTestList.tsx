@@ -6,7 +6,7 @@ import { useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { csrfHeaders } from "@/lib/csrf";
+import { mutateJson } from "@/lib/csrf";
 import type { CbtTest } from "@/lib/cbt/test-model";
 
 export function CbtTestList({ initialTests }: { initialTests: CbtTest[] }) {
@@ -19,10 +19,8 @@ export function CbtTestList({ initialTests }: { initialTests: CbtTest[] }) {
   function create() {
     setError(null);
     startTransition(async () => {
-      const res = await fetch("/api/cbt/tests", {
+      const res = await mutateJson("/api/cbt/tests", {
         method: "POST",
-        headers: { "content-type": "application/json", ...csrfHeaders() },
-        credentials: "include",
         body: JSON.stringify({ title: title.trim(), durationMinutes: Number(duration) || 60 }),
       });
       const data = (await res.json().catch(() => ({}))) as { detail?: string; test?: { id: string } };

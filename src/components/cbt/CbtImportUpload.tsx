@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
-import { csrfHeaders } from "@/lib/csrf";
+import { mutateJson } from "@/lib/csrf";
 import type { DocumentImportJob } from "@/server/workspaces/types";
 
 export function CbtImportUpload({ initialJobs }: { initialJobs: DocumentImportJob[] }) {
@@ -19,11 +19,10 @@ export function CbtImportUpload({ initialJobs }: { initialJobs: DocumentImportJo
     const form = new FormData();
     form.append("file", file);
     startTransition(async () => {
-      // No content-type header — the browser sets the multipart boundary.
-      const res = await fetch("/api/cbt/import-jobs", {
+      // mutateJson leaves content-type unset for FormData so the browser sets
+      // the multipart boundary.
+      const res = await mutateJson("/api/cbt/import-jobs", {
         method: "POST",
-        headers: { ...csrfHeaders() },
-        credentials: "include",
         body: form,
       });
       const data = (await res.json().catch(() => ({}))) as { detail?: string; job?: { id: string } };
