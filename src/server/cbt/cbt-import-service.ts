@@ -221,7 +221,7 @@ export async function publishImportQuestionToCbt(input: {
 export async function commitImportJobToBank(input: {
   teacher: CbtTeacher;
   jobId: string;
-}): Promise<{ published: number }> {
+}): Promise<{ published: number; failed: number }> {
   const workspaceId = input.teacher.importWorkspaceId;
   if (!workspaceId) throw cbtError(404, "Import job not found.");
   const job = await getImportJob(workspaceId, input.jobId);
@@ -229,17 +229,25 @@ export async function commitImportJobToBank(input: {
 
   const accepted = await getJobQuestions(input.jobId, { status: "accepted" });
   let published = 0;
+  let failed = 0;
   for (const iq of accepted) {
-    const created = await createCbtQuestion(input.teacher.id, importQuestionToCbtInput(iq), {
-      source: "imported",
-      importJobId: input.jobId,
-    });
-    await updateQuestionStatus(input.jobId, iq.id, "published", {
-      questionBagQuestionId: created.id,
-    });
-    published += 1;
+    try {
+      const created = await createCbtQuestion(input.teacher.id, importQuestionToCbtInput(iq), {
+        source: "imported",
+        importJobId: input.jobId,
+      });
+      await updateQuestionStatus(input.jobId, iq.id, "published", {
+        questionBagQuestionId: created.id,
+      });
+      published += 1;
+    } catch {
+      // A question that fails CBT validation (e.g. a numerical mapped without an
+      // extracted answer) must not abort the whole batch. Leave it `accepted`
+      // (staged) so the teacher can edit + accept it individually.
+      failed += 1;
+    }
   }
-  return { published };
+  return { published, failed };
 }
 
 /**
