@@ -8,6 +8,7 @@
 import type { PoolClient } from "pg";
 
 import { getUserPostgresPool } from "@/server/user-postgres";
+import { invalidateUserAiContext } from "@/server/ai-access";
 
 import { ensureEnrollmentSchema } from "./enrollment-schema";
 import { createEnrollmentId } from "./ids";
@@ -71,6 +72,9 @@ export async function enrollStudent(
     [id, input.workspaceId, input.studentId, input.source, input.joinCodeId ?? null, status],
   );
   const row = result.rows[0];
+  // AI Feature Toggle epic — new/reactivated enrollment adds a workspace scope;
+  // drop the cached uctx so workspace-scoped rules apply at once (doc 03 §6).
+  void invalidateUserAiContext(input.studentId).catch(() => {});
   return {
     enrollment: rowToEnrollment(row),
     isNew: row.inserted === true,
@@ -186,6 +190,9 @@ export async function setEnrollmentStatus(
      RETURNING *`,
     params,
   );
+  // AI Feature Toggle epic — enrollment status change flips whether the
+  // workspace scope applies to this student; drop the cached uctx (doc 03 §6).
+  void invalidateUserAiContext(studentId).catch(() => {});
   return result.rows[0] ? rowToEnrollment(result.rows[0]) : null;
 }
 

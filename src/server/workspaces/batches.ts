@@ -9,6 +9,7 @@
  */
 
 import { getUserPostgresPool } from "@/server/user-postgres";
+import { invalidateUserAiContext } from "@/server/ai-access";
 
 import { ensureEnrollmentSchema } from "./enrollment-schema";
 import { setEnrollmentStatus } from "./enrollments";
@@ -242,6 +243,11 @@ export async function addStudentsToBatches(input: {
   } finally {
     client.release();
   }
+  // AI Feature Toggle epic — batch membership changed; drop each student's
+  // cached uctx so batch-scoped rules re-resolve immediately (doc 03 §6).
+  for (const studentId of input.studentIds) {
+    void invalidateUserAiContext(studentId).catch(() => {});
+  }
   return created;
 }
 
@@ -258,7 +264,9 @@ export async function removeStudentFromBatch(input: {
      RETURNING student_id`,
     [input.workspaceId, input.batchId, input.studentId],
   );
-  return (result.rowCount ?? 0) > 0;
+  const changed = (result.rowCount ?? 0) > 0;
+  if (changed) void invalidateUserAiContext(input.studentId).catch(() => {});
+  return changed;
 }
 
 export async function listBatchMembers(

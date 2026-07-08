@@ -1,4 +1,5 @@
 import { apiCall } from '@/lib/api';
+import { notifyAiDisabled } from '@/features/origin-ai/ai-access-client';
 import { getOriginAiBrowserSessionId } from '@/features/origin-ai/session';
 import { firstImageAttachmentUrl, normalizeAttachments } from '@/features/origin-ai/attachments';
 import type {
@@ -16,6 +17,24 @@ import type {
   OriginAiVoiceBootstrap,
   OriginAiVisibleQuestion,
 } from '@/types';
+
+/**
+ * AI Feature Toggle epic — every Origin AI request funnels through here. When
+ * the server 403s with code AI_DISABLED (an admin/institute/global toggle
+ * flipped mid-session), tell the provider so the UI hides instantly, then
+ * rethrow so the existing per-call error handling still runs. doc 06 §4.
+ */
+async function aiApiCall(
+  endpoint: string,
+  options?: Parameters<typeof apiCall>[1],
+): ReturnType<typeof apiCall> {
+  try {
+    return await apiCall(endpoint, options);
+  } catch (err) {
+    if ((err as { code?: string } | null)?.code === 'AI_DISABLED') notifyAiDisabled();
+    throw err;
+  }
+}
 
 type RawThread = Omit<OriginAiThread, 'createdAt' | 'updatedAt'> & {
   createdAt: string | Date;
@@ -377,7 +396,7 @@ function toReplyFromSnapshot(
 }
 
 async function fetchSessionSnapshot(pageContext?: OriginAiClientPageContext): Promise<OriginAiSnapshot> {
-  const data = await apiCall(`/origin-ai/session${buildQuery(pageContext)}`, {
+  const data = await aiApiCall(`/origin-ai/session${buildQuery(pageContext)}`, {
     headers: {
       'X-Origin-AI-Session-Id': getOriginAiBrowserSessionId(),
     },
@@ -398,7 +417,7 @@ async function fetchThreadSnapshot(
     activeConcept?: string | null;
   },
 ): Promise<OriginAiSnapshot> {
-  const data = await apiCall(`/origin-ai/threads/${encodeURIComponent(threadId)}`, {
+  const data = await aiApiCall(`/origin-ai/threads/${encodeURIComponent(threadId)}`, {
     method: 'GET',
     headers: { 'X-Origin-AI-Session-Id': getOriginAiBrowserSessionId() },
   });
@@ -554,7 +573,7 @@ export async function sendOriginAiMessage(
   highlightedText?: string | null,
   threadId?: string | null,
 ): Promise<OriginAiReply> {
-  const data = await apiCall('/origin-ai/session/message', {
+  const data = await aiApiCall('/origin-ai/session/message', {
     method: 'POST',
     headers: {
       'X-Origin-AI-Session-Id': getOriginAiBrowserSessionId(),
@@ -582,7 +601,7 @@ export async function sendOriginAiMessage(
 // ---------- Thread CRUD (full-window Doubt Solver) ----------
 
 export async function listOriginAiThreads(): Promise<OriginAiThread[]> {
-  const data = (await apiCall('/origin-ai/threads', {
+  const data = (await aiApiCall('/origin-ai/threads', {
     method: 'GET',
     headers: { 'X-Origin-AI-Session-Id': getOriginAiBrowserSessionId() },
   })) as { threads?: RawThread[] };
@@ -596,7 +615,7 @@ export type ChapterItem = {
 };
 
 export async function listOriginAiChapters(subject: string): Promise<ChapterItem[]> {
-  const data = (await apiCall(`/origin-ai/chapters?subject=${encodeURIComponent(subject)}`, {
+  const data = (await aiApiCall(`/origin-ai/chapters?subject=${encodeURIComponent(subject)}`, {
     method: 'GET',
     headers: { 'X-Origin-AI-Session-Id': getOriginAiBrowserSessionId() },
   })) as { chapters?: ChapterItem[] };
@@ -608,7 +627,7 @@ export async function transcribeOriginAiAudio(
   audioData: string,
   mimeType: string = 'audio/wav',
 ): Promise<string> {
-  const data = (await apiCall('/origin-ai/transcribe', {
+  const data = (await aiApiCall('/origin-ai/transcribe', {
     method: 'POST',
     headers: { 'X-Origin-AI-Session-Id': getOriginAiBrowserSessionId() },
     body: JSON.stringify({ audioData, mimeType }),
@@ -647,7 +666,7 @@ export async function solveOriginAiImage(
   subject?: string | null,
   threadId?: string | null,
 ): Promise<ImageSolveResult> {
-  const data = (await apiCall('/origin-ai/image-solve', {
+  const data = (await aiApiCall('/origin-ai/image-solve', {
     method: 'POST',
     headers: { 'X-Origin-AI-Session-Id': getOriginAiBrowserSessionId() },
     body: JSON.stringify({ imageData, mimeType, subject, threadId }),
@@ -666,7 +685,7 @@ export async function createOriginAiThread(payload: {
   title?: string;
   subject?: string | null;
 }): Promise<OriginAiThread> {
-  const data = (await apiCall('/origin-ai/threads', {
+  const data = (await aiApiCall('/origin-ai/threads', {
     method: 'POST',
     headers: { 'X-Origin-AI-Session-Id': getOriginAiBrowserSessionId() },
     body: JSON.stringify(payload),
@@ -678,7 +697,7 @@ export async function renameOriginAiThread(
   threadId: string,
   payload: { title?: string; subject?: string | null },
 ): Promise<OriginAiThread> {
-  const data = (await apiCall(`/origin-ai/threads/${encodeURIComponent(threadId)}`, {
+  const data = (await aiApiCall(`/origin-ai/threads/${encodeURIComponent(threadId)}`, {
     method: 'PATCH',
     headers: { 'X-Origin-AI-Session-Id': getOriginAiBrowserSessionId() },
     body: JSON.stringify(payload),
@@ -687,7 +706,7 @@ export async function renameOriginAiThread(
 }
 
 export async function deleteOriginAiThread(threadId: string): Promise<void> {
-  await apiCall(`/origin-ai/threads/${encodeURIComponent(threadId)}`, {
+  await aiApiCall(`/origin-ai/threads/${encodeURIComponent(threadId)}`, {
     method: 'DELETE',
     headers: { 'X-Origin-AI-Session-Id': getOriginAiBrowserSessionId() },
   });
@@ -707,7 +726,7 @@ export async function getOriginAiThreadSnapshot(
 export async function getOriginAiVoiceBootstrap(
   pageContext?: OriginAiClientPageContext,
 ): Promise<OriginAiVoiceBootstrap> {
-  const data = await apiCall('/origin-ai/voice/bootstrap', {
+  const data = await aiApiCall('/origin-ai/voice/bootstrap', {
     method: 'POST',
     headers: {
       'X-Origin-AI-Session-Id': getOriginAiBrowserSessionId(),
@@ -758,7 +777,7 @@ export async function persistOriginAiVoiceTurn(
     hadOutputTranscript?: boolean;
   },
 ): Promise<OriginAiReply> {
-  const data = await apiCall('/origin-ai/voice/turn', {
+  const data = await aiApiCall('/origin-ai/voice/turn', {
     method: 'POST',
     headers: {
       'X-Origin-AI-Session-Id': getOriginAiBrowserSessionId(),
@@ -790,7 +809,7 @@ export async function respondOriginAiVoiceAudio(
   voiceName?: string | null,
   highlightedText?: string | null,
 ): Promise<OriginAiVoiceReply> {
-  const data = await apiCall('/origin-ai/voice/respond', {
+  const data = await aiApiCall('/origin-ai/voice/respond', {
     method: 'POST',
     headers: {
       'X-Origin-AI-Session-Id': getOriginAiBrowserSessionId(),
@@ -822,7 +841,7 @@ export async function synthesizeOriginAiVoiceText(
   text: string,
   voiceName?: string | null,
 ): Promise<OriginAiVoiceSpeakResponse> {
-  const data = await apiCall('/origin-ai/voice/speak', {
+  const data = await aiApiCall('/origin-ai/voice/speak', {
     method: 'POST',
     headers: {
       'X-Origin-AI-Session-Id': getOriginAiBrowserSessionId(),

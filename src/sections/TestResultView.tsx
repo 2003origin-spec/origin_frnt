@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, useMemo } from 'react';
 import Image from 'next/image';
 import dynamic from 'next/dynamic';
 import { Button } from '@/components/ui/button';
+import { useAiAccess } from '@/context/AiAccessContext';
 
 const OriMascot = dynamic(() => import('@/features/mascot/Ori2D'), { ssr: false });
 import { Card, CardContent } from '@/components/ui/card';
@@ -59,6 +60,8 @@ export default function TestResultView({
   const [selectedSubject, setSelectedSubject] = useState<'overall' | string>('overall');
   const [selectedReviewTab, setSelectedReviewTab] = useState<'analysis' | 'mistakes' | 'correct' | 'recommendations'>('analysis');
   const [selectedReviewEntry, setSelectedReviewEntry] = useState(0);
+  // AI Feature Toggle epic — the "Explain with Ori" action needs the Explainer.
+  const { aiExplainer } = useAiAccess();
   const reviewSectionRef = useRef<HTMLDivElement>(null);
   const analysisStatus = result.analysisStatus ?? result.analysis_status ?? 'complete';
 
@@ -800,10 +803,12 @@ export default function TestResultView({
                           <BookOpen className="w-4 h-4 mr-3" />
                           Fix Concept
                         </Button>
-                        <Button variant="outline" className="rounded-2xl bg-primary/10 border border-primary/20 text-primary font-black uppercase tracking-widest text-xs px-8 h-14 hover:bg-primary/20 transition-colors">
-                          <Image src="/ori2d/ori-happy.png" alt="" width={16} height={16} draggable={false} className="mr-3 object-contain" />
-                          Explain with Ori
-                        </Button>
+                        {aiExplainer && (
+                          <Button variant="outline" className="rounded-2xl bg-primary/10 border border-primary/20 text-primary font-black uppercase tracking-widest text-xs px-8 h-14 hover:bg-primary/20 transition-colors">
+                            <Image src="/ori2d/ori-happy.png" alt="" width={16} height={16} draggable={false} className="mr-3 object-contain" />
+                            Explain with Ori
+                          </Button>
+                        )}
                       </div>
                     </div>
                   ) : (

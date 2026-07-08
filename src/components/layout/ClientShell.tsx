@@ -14,6 +14,7 @@ import AiSidebar from './AiSidebar';
 import { LayoutProvider, useLayout } from '@/context/LayoutContext';
 import { TimeTrackerProvider } from '@/context/TimeTrackerContext';
 import { startHighlightCapture, stopHighlightCapture } from '@/features/origin-ai/highlight-capture';
+import { useAiAccess } from '@/context/AiAccessContext';
 
 const FloatingChat = dynamic(() => import('./FloatingChat'), { ssr: false });
 const TutorialOverlay = dynamic(() =>
@@ -53,9 +54,14 @@ function resolveRoute(view: string) {
 
 function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnabled }: { children: React.ReactNode; connectEnabled?: boolean; premiumEnabled?: boolean; socialEnabled?: boolean }) {
   const { user, logout, isNavigationLocked, refreshUser } = useAuth();
+  const aiAccess = useAiAccess();
   const pathname = usePathname();
   const router = useRouter();
-  
+  // AI Feature Toggle epic — AI UI is students-only and only when Ori is enabled
+  // for them. This single flag gates the sidebar, mascot, Ask-Ori pill, and the
+  // selection-capture engine app-wide (doc 06 §2).
+  const aiUiAllowed = !!user && user.role === 'student' && aiAccess.originAi;
+
   const isTestsPath = pathname === '/tests' || pathname.startsWith('/tests/');
   const isStudyRoomTestPath = /^\/study-rooms\/[^/]+\/test/.test(pathname);
   const isResultPath = pathname.endsWith('/result');
@@ -95,12 +101,12 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnab
   // persist across navigation and would still paint the selection highlight and
   // hold captured text. Tear the engine down on test routes; restore it after.
   React.useEffect(() => {
-    if (shouldHideOriginAi) {
+    if (shouldHideOriginAi || !aiUiAllowed) {
       stopHighlightCapture();
     } else {
       startHighlightCapture();
     }
-  }, [shouldHideOriginAi]);
+  }, [shouldHideOriginAi, aiUiAllowed]);
 
   // Side AI State
   const [isAiOpen, setIsAiOpenInternal] = React.useState(false);
@@ -109,6 +115,12 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnab
   React.useEffect(() => {
     setContextAiOpen(isAiOpen);
   }, [isAiOpen, setContextAiOpen]);
+
+  // AI Feature Toggle epic — if access flips off while the sidebar is open,
+  // close it (the render gate unmounts it; this keeps reopen state clean).
+  React.useEffect(() => {
+    if (!aiUiAllowed) setIsAiOpenInternal(false);
+  }, [aiUiAllowed]);
 
   const [aiSide, setAiSide] = React.useState<'left' | 'right'>('right');
 
@@ -181,7 +193,7 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnab
   const noNavbarPaths = ['/', '/auth', '/onboarding', '/role-selection'];
   const shouldShowFloatingOriginAi =
     deferredUiReady &&
-    !!user &&
+    aiUiAllowed &&
     !noNavbarPaths.includes(pathname) &&
     !shouldHideOriginAi;
   
@@ -192,7 +204,7 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnab
     <TutorialProvider>
       {/* CSS Highlight API — PostCSS rejects ::highlight() so we inject it at runtime.
           Withheld on test surfaces so no selection mark can paint during an attempt. */}
-      {!shouldHideOriginAi && (
+      {!shouldHideOriginAi && aiUiAllowed && (
         <style dangerouslySetInnerHTML={{ __html: `::highlight(origin-ai-selection){background-color:rgba(244,63,94,.22);color:inherit;text-decoration:none}` }} />
       )}
       <div id="tutorial-welcome" className={cn(

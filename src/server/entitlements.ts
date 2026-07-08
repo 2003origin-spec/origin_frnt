@@ -15,6 +15,7 @@
  */
 
 import { getUserPostgresPool, isUserPostgresConfigured } from "@/server/user-postgres";
+import { invalidateUserAiContext } from "@/server/ai-access";
 import { isFeatureEnabled } from "@/lib/feature-flags";
 import { dbUpdateUser } from "@/server/db-users";
 import type { StoredUser } from "@/legacy/store";
@@ -203,4 +204,7 @@ export async function recomputeUserPremiumFlags(userId: string): Promise<void> {
 
   await dbUpdateUser(userId, { isPremium, premiumExpiry } as Partial<StoredUser>);
   await revalidateUserCache(userId);
+  // AI Feature Toggle epic — tier (is_premium) changed; drop the cached uctx so
+  // any tier-scoped rule re-resolves immediately rather than in ≤120s (doc 03 §6).
+  void invalidateUserAiContext(userId).catch(() => {});
 }

@@ -41,6 +41,7 @@ import { readRequiredServiceToken, ServiceAuthConfigurationError } from "@/serve
 import { getAuthContext } from "@/server/authz";
 import { isFeatureEnabled } from "@/lib/feature-flags";
 import { getEntitledSubjects } from "@/server/entitlements";
+import { requireAiFeature, type AiFeature } from "@/server/ai-access";
 
 export const maxDuration = 120;
 
@@ -419,8 +420,22 @@ async function proxyJsonResponse(proxyResp: Response): Promise<unknown> {
   return proxyResp.json().catch(() => null);
 }
 
+// AI Feature Toggle epic — which toggle feature does this request draw on?
+// Doubt-Solver traffic carries pageKind=doubt_solver (query); everything else
+// is Ori chat. In v1 both toggles move in lockstep, so this only shapes the 403
+// `feature` field and which client surface reacts (doc 04 §2.1).
+function featureForAiRequest(request: NextRequest): AiFeature {
+  const pageKind =
+    request.nextUrl.searchParams.get("pageKind") ??
+    request.nextUrl.searchParams.get("page_kind");
+  return pageKind === "doubt_solver" ? "aiExplainer" : "originAi";
+}
+
 export async function GET(request: NextRequest, context: RouteContext) {
   const slug = await resolveSlug(context);
+
+  const aiBlock = await requireAiFeature(request, featureForAiRequest(request));
+  if (aiBlock) return aiBlock;
 
   const premiumBlock = await enforceOriginAiPremium(request);
   if (premiumBlock) return premiumBlock;
@@ -598,6 +613,9 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
 export async function POST(request: NextRequest, context: RouteContext) {
   const slug = await resolveSlug(context);
+
+  const aiBlock = await requireAiFeature(request, featureForAiRequest(request));
+  if (aiBlock) return aiBlock;
 
   const premiumBlock = await enforceOriginAiPremium(request);
   if (premiumBlock) return premiumBlock;
@@ -1091,6 +1109,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   if (slug.length !== 2 || slug[0] !== "threads") {
     return notFound();
   }
+  const aiBlock = await requireAiFeature(request, featureForAiRequest(request));
+  if (aiBlock) return aiBlock;
   const limited = await checkRateLimit(generalLimiter, userIdentifier(request));
   if (limited) return limited;
 
@@ -1143,6 +1163,8 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
   if (slug.length !== 2 || slug[0] !== "threads") {
     return notFound();
   }
+  const aiBlock = await requireAiFeature(request, featureForAiRequest(request));
+  if (aiBlock) return aiBlock;
   const limited = await checkRateLimit(generalLimiter, userIdentifier(request));
   if (limited) return limited;
 

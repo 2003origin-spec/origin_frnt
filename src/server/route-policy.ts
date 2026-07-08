@@ -48,6 +48,9 @@ export const AUTHENTICATED_API_PREFIXES = [
   "/api/subscriptions",
   "/api/connect",
   "/api/social",
+  // AI Feature Toggle epic — student poll endpoint /api/ai-access/me (JWT only,
+  // no DB). /api/admin/ai-access/* is already covered by the "/api/admin" prefix.
+  "/api/ai-access",
 ] as const;
 
 export const MEMBERSHIP_API_PREFIXES = ["/api/study-rooms/[id]"] as const;

@@ -13,6 +13,8 @@ import { NotificationProvider } from "@/context/NotificationContext";
 import { getCanonicalSiteUrl } from "@/lib/site-url";
 import { isFeatureEnabled } from "@/lib/feature-flags";
 import { getServerFrontendUser } from "@/lib/auth-server";
+import { resolveAiAccessForUser } from "@/server/ai-access";
+import { AiAccessProvider } from "@/context/AiAccessContext";
 
 // Single typeface per brand spec: Darker Grotesque (Regular 400, SemiBold 600, Bold 700+)
 // Wordmark → 700-900, Headlines & Taglines → 600, Body → 400-500
@@ -64,6 +66,11 @@ export default async function RootLayout({
   // Seed the client AuthProvider with the server-resolved user so the client
   // skips the /api/users/me waterfall on every page load.
   const initialUser = await getServerFrontendUser().catch(() => null);
+  // AI Feature Toggle epic — seed the client provider from the server-resolved
+  // decision so the AI surfaces don't flash before the first poll (doc 06 §1.1).
+  const initialAiAccess = initialUser
+    ? await resolveAiAccessForUser({ id: initialUser.id, role: initialUser.role })
+    : { originAi: false, aiExplainer: false };
   return (
     <html lang="en" suppressHydrationWarning className={darkerGrotesque.variable}>
       <body className="antialiased" suppressHydrationWarning>
@@ -76,7 +83,9 @@ export default async function RootLayout({
             <AuthProvider initialUser={initialUser}>
               <NotificationProvider>
                 <QuotaProvider>
-                  <ClientShell connectEnabled={connectEnabled} premiumEnabled={premiumEnabled} socialEnabled={socialEnabled}>{children}</ClientShell>
+                  <AiAccessProvider initial={{ originAi: initialAiAccess.originAi, aiExplainer: initialAiAccess.aiExplainer }}>
+                    <ClientShell connectEnabled={connectEnabled} premiumEnabled={premiumEnabled} socialEnabled={socialEnabled}>{children}</ClientShell>
+                  </AiAccessProvider>
                 </QuotaProvider>
               </NotificationProvider>
             </AuthProvider>
