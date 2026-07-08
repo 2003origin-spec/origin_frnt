@@ -42,7 +42,8 @@ type FlagKey =
   | "adminPricing"
   | "adminCoupons"
   | "adminSubAdmins"
-  | "odgTeacherRanking";
+  | "odgTeacherRanking"
+  | "aiAccessControls";
 
 type FlagSpec = {
   envSuffix: string;
@@ -142,6 +143,11 @@ const FLAG_SPECS: Record<FlagKey, FlagSpec> = {
   // verification/recency order. Ships DARK: coefficients are shadow-computed first
   // and validated before this is enabled. Requires ANALYTICS_SERVICE_URL.
   odgTeacherRanking: { envSuffix: "ODG_TEACHER_RANKING", defaultDev: false, defaultProd: false },
+  // AI Feature Toggle epic — admin-controlled per-scope AI kill switches
+  // (V1/ai-feature-toggle/). Gates the toggle subsystem + /admin/ai-access +
+  // /api/admin/ai-access. Compiled defaults ON → zero new env vars. The
+  // student-only role rule (D4) is deliberately NOT behind this flag.
+  aiAccessControls: { envSuffix: "AI_ACCESS_CONTROLS", defaultDev: true, defaultProd: true },
 };
 
 /** Every feature-flag key, in declaration order (admin System Config view). */
