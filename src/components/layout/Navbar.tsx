@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect } from 'react';
 import Image from 'next/image';
 import { useLayout } from '@/context/LayoutContext';
+import { useAiAccess } from '@/context/AiAccessContext';
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -57,6 +58,9 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
     const [isSearchOpen, setIsSearchOpen] = useState(false);
     const profileMenuRef = useRef<HTMLDivElement>(null);
     const exploreMenuRef = useRef<HTMLDivElement>(null);
+    // AI Feature Toggle epic — hide the AI Explainer nav entry when the Explainer
+    // is disabled for this student (or for non-students). doc 06 §3.
+    const { aiExplainer } = useAiAccess();
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -90,7 +94,7 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
 
     const navItems = isTeacher ? [] : [
         { label: 'OGCode', icon: Code, view: 'ogcode' as ViewState },
-        { label: 'AI Explainer', icon: () => <Image src="/iconsax/Ai-Icon.png" alt="AI Explainer" width={20} height={20} className="object-contain" />, view: 'doubt-solver' as ViewState },
+        ...(aiExplainer ? [{ label: 'AI Explainer', icon: () => <Image src="/iconsax/Ai-Icon.png" alt="AI Explainer" width={20} height={20} className="object-contain" />, view: 'doubt-solver' as ViewState }] : []),
         { label: 'Tests', icon: FileText, view: 'test-list' as ViewState },
         { label: 'Rooms', icon: Crown, view: 'study-rooms' as ViewState },
         { label: 'DPP', icon: Target, view: 'dpp' as ViewState },
@@ -646,7 +650,9 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                             { label: 'OGCode', icon: Code, view: 'ogcode' as ViewState },
                             { label: 'AI', icon: Sparkles, view: 'doubt-solver' as ViewState, iconSrc: '/iconsax/Ai-Icon.png' },
                             { label: 'More', icon: Menu, view: null },
-                        ] as { label: string; icon: typeof LayoutGrid; view: ViewState | null; iconSrc?: string }[]).map((item) => {
+                        ] as { label: string; icon: typeof LayoutGrid; view: ViewState | null; iconSrc?: string }[])
+                          .filter((item) => aiExplainer || item.view !== 'doubt-solver')
+                          .map((item) => {
                             const active = item.view ? isActive({ label: item.label, view: item.view }) : false;
                             const Icon = item.icon;
                             return (

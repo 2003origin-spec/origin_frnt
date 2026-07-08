@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Redis } from '@upstash/redis';
 import { Ratelimit } from '@upstash/ratelimit';
 
+import { getGlobalAiAccess } from '@/server/ai-access';
+
 const redis =
   process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
     ? new Redis({
@@ -59,6 +61,14 @@ export async function POST(req: NextRequest) {
   }
   if (isBlocked(question)) {
     return NextResponse.json({ error: 'Invalid question content' }, { status: 400 });
+  }
+
+  // AI Feature Toggle epic — the global kill switch also silences this public
+  // demo widget. Return the canned fallback with no AI spend (and without
+  // consuming the visitor's weekly quota). doc 04 §2.3.
+  const globalAccess = await getGlobalAiAccess();
+  if (!globalAccess.originAi) {
+    return NextResponse.json({ answer: FALLBACK_ANSWER });
   }
 
   // Rate limit by IP: 8 solves per IP per week (matches client 5 text + 3 voice)

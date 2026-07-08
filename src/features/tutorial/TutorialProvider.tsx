@@ -4,6 +4,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { PAGES_STEPS, TutorialStep } from './steps';
+import { useAiAccess } from '@/context/AiAccessContext';
 
 interface TutorialContextType {
   isActive: boolean;
@@ -78,7 +79,12 @@ export const TutorialProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return () => clearTimeout(timer);
   }, [pathname, user]);
 
-  const steps = activePage ? (PAGES_STEPS[activePage] ?? []) : [];
+  // AI Feature Toggle epic — drop the AI Explainer walkthrough step when the
+  // Explainer is disabled for this student (its target nav item is hidden). doc 06 §3.
+  const { aiExplainer } = useAiAccess();
+  const steps = (activePage ? (PAGES_STEPS[activePage] ?? []) : []).filter(
+    (s) => aiExplainer || s.targetId !== 'tutorial-nav-doubt-solver',
+  );
 
   const nextStep = useCallback(() => {
     if (currentStep < steps.length - 1) {

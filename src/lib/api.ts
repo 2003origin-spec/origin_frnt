@@ -201,7 +201,22 @@ export const apiCall = async (
             console.error(`[API Error] ${response.status} ${normalizedEndpoint}`);
         }
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(parseErrorMessage(errorData));
+        // Preserve the HTTP status and any machine-readable `code` on the thrown
+        // error so callers can react (e.g. AI Feature Toggle's AI_DISABLED).
+        // Backward-compatible: still an Error with the same message.
+        const error = new Error(parseErrorMessage(errorData)) as Error & {
+            status?: number;
+            code?: string;
+        };
+        error.status = response.status;
+        if (
+            errorData &&
+            typeof errorData === 'object' &&
+            typeof (errorData as { code?: unknown }).code === 'string'
+        ) {
+            error.code = (errorData as { code: string }).code;
+        }
+        throw error;
     }
 
     const text = await response.text();
