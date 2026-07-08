@@ -399,5 +399,36 @@ export async function getInstituteProfileService(workspaceId: string): Promise<I
 export async function listPublicInstitutesService(
   filter?: { subject?: string; city?: string; limit?: number },
 ): Promise<InstitutePublicProfile[]> {
-  return listPublicInstitutes(filter);
+  const institutes = await listPublicInstitutes(filter);
+
+  // ODG Phase 3: re-rank by node-activation score when enabled. The base list is
+  // already ordered by verification/recency; we apply a stable sort that keeps
+  // verified-first but promotes institutes whose teaching demonstrably lifts
+  // mastery. Best-effort: any failure leaves the base order untouched.
+  if (!isFeatureEnabled("odgTeacherRanking") || institutes.length < 2) {
+    return institutes;
+  }
+  try {
+    const { getOdgTeacherRanking } = await import("@/server/analytics-client");
+    const ranking = await getOdgTeacherRanking({ subject: filter?.subject });
+    if (ranking.length === 0) return institutes;
+
+    const scoreByWorkspace = new Map(ranking.map((entry) => [entry.workspace_id, entry.score]));
+    return institutes
+      .map((institute, index) => ({ institute, index }))
+      .sort((a, b) => {
+        // Keep verified institutes ahead of unverified ones.
+        if (a.institute.verified !== b.institute.verified) {
+          return a.institute.verified ? -1 : 1;
+        }
+        const scoreA = scoreByWorkspace.get(a.institute.workspaceId) ?? -1;
+        const scoreB = scoreByWorkspace.get(b.institute.workspaceId) ?? -1;
+        if (scoreA !== scoreB) return scoreB - scoreA;
+        return a.index - b.index; // stable: preserve original order on ties
+      })
+      .map((entry) => entry.institute);
+  } catch (error) {
+    console.error("[marketplace] ODG ranking re-rank failed", error);
+    return institutes;
+  }
 }
