@@ -96,6 +96,7 @@ import {
   type AssignedTestForStudent,
 } from "@/server/workspaces/tests-store";
 import { getContentQuestionStoredMap } from "@/server/workspaces/test-question-resolver";
+import { getWorkspaceById } from "@/server/workspaces/store";
 import {
   listStudentInstituteEnrollments,
   studentHasActiveEnrollment,
@@ -3595,6 +3596,23 @@ export async function submitGeneratedDpp(
     analysisStatus: "pending",
     analysisError: null,
   };
+  // ODG Phase 3: a Question-Bag-sourced DPP carries its owning workspace; the
+  // workspace owner is the teacher credited when this DPP resolves weak topics.
+  // Best-effort — a failed lookup just skips teacher crediting, never the analysis.
+  let dppTeacherId: string | null = null;
+  if (plan.workspaceId) {
+    try {
+      const workspace = await getWorkspaceById(plan.workspaceId);
+      dppTeacherId = workspace?.ownerUserId ?? null;
+    } catch (error) {
+      console.error("[assessments] ODG teacher lookup failed for DPP workspace", {
+        dppId,
+        workspaceId: plan.workspaceId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   const analysisRequest: AnalyticsDppAttemptRequest = {
     user_id: user.id,
     dpp_id: dppId,
@@ -3611,6 +3629,8 @@ export async function submitGeneratedDpp(
       partial_credit_policy: DEFAULT_TEST_SCORING_POLICY.partialCreditPolicy,
       negative_marking_mode: DEFAULT_TEST_SCORING_POLICY.negativeMarkingMode,
     },
+    workspace_id: dppTeacherId ? plan.workspaceId : null,
+    teacher_id: dppTeacherId,
   };
 
   let persistedAttempt = await persistDppAttemptResult(persistInput);
