@@ -97,6 +97,10 @@ export interface AnalyticsGradedAttempt {
     negative_marking_mode?: string;
   };
   time_spent_seconds: number;
+  // ODG Phase 2: grader diagnostics forwarded to analytics for error-type
+  // classification. Optional; absent for locally-graded fallbacks.
+  reason_codes?: string[];
+  semantic_band?: string | null;
 }
 
 export interface AnalyticsTestAnalysisRequest {
@@ -327,4 +331,54 @@ export async function analyzeDppAttemptWithService(
     "/v1/dpps/analyze-attempt",
     payload,
   );
+}
+
+export interface OdgTeacherRankingEntry {
+  workspace_id: string;
+  score: number;
+  samples: number;
+}
+
+/**
+ * ODG Phase 3: fetch the per-workspace node-activation ranking. Best-effort read
+ * used to re-order the public institute browse; returns [] when the analytics
+ * service is unconfigured, the circuit is open, or the call fails, so the caller
+ * always falls back to the existing verification/recency order.
+ */
+export async function getOdgTeacherRanking(
+  filter?: { subject?: string; limit?: number },
+): Promise<OdgTeacherRankingEntry[]> {
+  if (!(await analyticsServiceAvailableForAttempt())) {
+    return [];
+  }
+
+  const params = new URLSearchParams();
+  if (filter?.subject) params.set("subject", filter.subject);
+  if (filter?.limit) params.set("limit", String(filter.limit));
+  const query = params.toString();
+  const path = `/v1/odg/teacher-ranking${query ? `?${query}` : ""}`;
+
+  const timeoutMs = Number(process.env.ANALYTICS_SERVICE_TIMEOUT_MS ?? 3000);
+  const controller = new AbortController();
+  const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(`${process.env.ANALYTICS_SERVICE_URL}${path}`, {
+      method: "GET",
+      headers: buildHeaders(getRequestId()),
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      recordAnalyticsServiceFailure();
+      return [];
+    }
+    recordAnalyticsServiceSuccess();
+    const data = (await response.json()) as { ranking?: OdgTeacherRankingEntry[] };
+    return Array.isArray(data.ranking) ? data.ranking : [];
+  } catch {
+    recordAnalyticsServiceFailure();
+    return [];
+  } finally {
+    clearTimeout(timeoutHandle);
+  }
 }

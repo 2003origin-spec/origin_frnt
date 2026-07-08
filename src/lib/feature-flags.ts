@@ -41,7 +41,8 @@ type FlagKey =
   | "ogcodeHallmark"
   | "adminPricing"
   | "adminCoupons"
-  | "adminSubAdmins";
+  | "adminSubAdmins"
+  | "odgTeacherRanking";
 
 type FlagSpec = {
   envSuffix: string;
@@ -135,6 +136,12 @@ const FLAG_SPECS: Record<FlagKey, FlagSpec> = {
   // on). The main admin is recognised by PLATFORM_MAIN_ADMIN_EMAIL even without
   // the is_main_admin flag set, so no seed run is required.
   adminSubAdmins: { envSuffix: "ADMIN_SUB_ADMINS", defaultDev: true, defaultProd: true },
+  // Origin Diagnostic Graph — teacher-coefficient marketplace ranking (Phase 3).
+  // When ON, public institute browse is re-ranked by ODG node-activation scores
+  // (which teacher's content most reliably lifts mastery) on top of the existing
+  // verification/recency order. Ships DARK: coefficients are shadow-computed first
+  // and validated before this is enabled. Requires ANALYTICS_SERVICE_URL.
+  odgTeacherRanking: { envSuffix: "ODG_TEACHER_RANKING", defaultDev: false, defaultProd: false },
 };
 
 /** Every feature-flag key, in declaration order (admin System Config view). */

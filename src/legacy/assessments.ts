@@ -2539,6 +2539,11 @@ async function buildAnalyticsAttempts(
         negative_marking_mode: policy.negativeMarkingMode,
       },
       time_spent_seconds: answer.timeSpent,
+      reason_codes: Array.isArray(grade.info.reason_codes)
+        ? (grade.info.reason_codes as string[])
+        : [],
+      semantic_band:
+        typeof grade.info.semantic_band === "string" ? (grade.info.semantic_band as string) : null,
     });
     userAnswers.push(answer);
   }
