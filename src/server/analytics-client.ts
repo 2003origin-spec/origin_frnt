@@ -153,6 +153,11 @@ export interface AnalyticsDppAttemptRequest {
     partial_credit_policy?: string;
     negative_marking_mode?: string;
   };
+  // ODG Phase 3: when the DPP was sourced from a teacher workspace's Question
+  // Bag, these credit that teacher's node-activation coefficients on resolution.
+  // Null/omitted for pure OG Code DPPs — analytics skips teacher crediting.
+  workspace_id?: string | null;
+  teacher_id?: string | null;
 }
 
 export interface AnalyticsDppAttemptResponse {
