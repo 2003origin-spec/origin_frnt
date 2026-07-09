@@ -33,6 +33,9 @@ import { useAuth } from '@/context/AuthContext';
 import { updateProfileAction, uploadUserImageAction } from '@/server/actions/profile-actions';
 import type { User as UserType, StreakData } from '@/types';
 import PhotoBooth from '@/components/profile/PhotoBooth';
+import DailyTracker from '@/components/dashboard/DailyTracker';
+import PastWeekProgress from '@/components/dashboard/PastWeekProgress';
+import { PastActivitiesCard } from '@/components/dashboard/DashboardCards';
 import { INDIAN_STATES } from '@/lib/constants';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -635,6 +638,11 @@ export default function Profile({
               {/* Progress */}
               {activeTab === 'progress' && (
                 <div className="space-y-4">
+                  {/* Activity, weekly time, and today's breakdown */}
+                  <DailyTracker user={user} view="year" />
+                  <PastWeekProgress user={user} />
+                  <PastActivitiesCard user={user} />
+
                   <div className="neu-raised p-5 sm:p-6 space-y-4">
                     <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground flex items-center gap-2">
                       <span className="w-1.5 h-4 bg-primary rounded-full inline-block" />

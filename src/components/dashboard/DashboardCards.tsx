@@ -24,9 +24,11 @@ interface ChallengeCardProps {
     user?: User;
     onStartChallenge?: (questionId: string) => void;
     initialChallenge?: DashboardChallengePreview | null;
+    /** 'full' = calendar + CTA card (panel); 'compact' = single quest button (dashboard) */
+    variant?: 'full' | 'compact';
 }
 
-export function ChallengeCard({ user, onStartChallenge, initialChallenge }: ChallengeCardProps) {
+export function ChallengeCard({ user, onStartChallenge, initialChallenge, variant = 'full' }: ChallengeCardProps) {
     const { availableWidth } = useLayout();
     const isMobile = availableWidth < 640;
 
@@ -85,8 +87,44 @@ export function ChallengeCard({ user, onStartChallenge, initialChallenge }: Chal
     const nextMonth = () => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1));
     const prevMonth = () => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1));
 
+    // Compact quest button — shown on the main dashboard
+    if (variant === 'compact') {
+        const label = isLoadingChallenge
+            ? 'Fetching quest…'
+            : challenge
+                ? (challenge.concept || challenge.subject || "Today's Challenge")
+                : 'No quest today';
+        return (
+            <button
+                disabled={isLoadingChallenge || !challenge || challenge.isSolved}
+                onClick={() => challenge && onStartChallenge?.(challenge.id.toString())}
+                className="neu-raised w-full flex items-center gap-3 p-4 rounded-2xl group hover:bg-primary/5 transition-colors text-left disabled:cursor-default"
+            >
+                <div className="w-10 h-10 rounded-xl bg-primary/15 flex items-center justify-center shrink-0">
+                    <Target className="w-5 h-5 text-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                    <p className="text-[9px] font-black text-primary uppercase tracking-[0.15em] leading-none mb-1">Origin Quest</p>
+                    <p className="text-sm font-bold text-foreground truncate">{label}</p>
+                </div>
+                <span
+                    className={cn(
+                        'shrink-0 h-9 px-4 rounded-lg text-[11px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all',
+                        challenge?.isSolved
+                            ? 'bg-emerald-500/15 text-emerald-600 border border-emerald-500/30'
+                            : isLoadingChallenge || !challenge
+                                ? 'bg-muted text-muted-foreground opacity-50'
+                                : 'neu-btn text-primary group-hover:bg-primary group-hover:text-primary-foreground'
+                    )}
+                >
+                    {challenge?.isSolved ? '✓ Completed' : <>Accept <ChevronRight className="w-3.5 h-3.5" /></>}
+                </span>
+            </button>
+        );
+    }
+
     return (
-        <Card className="neu-raised border-0 relative flex flex-col group min-h-[350px] sm:min-h-[400px]">
+        <Card className="neu-raised border border-border/60 relative flex flex-col group min-h-[350px] sm:min-h-[400px]">
             {/* Header: Month Navigation */}
             <div className={cn("flex items-center justify-between pt-5 pb-2", isMobile ? "px-3" : "px-5")}>
                 <div>
@@ -151,7 +189,7 @@ export function ChallengeCard({ user, onStartChallenge, initialChallenge }: Chal
                         </div>
                         <div className="flex-1 min-w-0">
                             <p className="text-[9px] font-black text-primary uppercase tracking-[0.15em] leading-none mb-0.5">
-                                Daily Mission
+                                Origin Quest
                             </p>
                             <p className="text-[11px] font-bold text-foreground truncate">
                                 {isLoadingChallenge ? (
@@ -207,7 +245,7 @@ export function PastActivitiesCard({ user }: { user: User }) {
     const totalSecs = bars.reduce((s, b) => s + b.secs, 0);
 
     return (
-        <Card className="neu-raised border-0">
+        <Card className="neu-raised border border-border/60">
             <CardContent className="px-5 py-4 flex flex-col gap-3">
                 {/* Header */}
                 <div className="flex items-center justify-between">

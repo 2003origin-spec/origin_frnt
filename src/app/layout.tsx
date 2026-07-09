@@ -38,9 +38,7 @@ export const metadata: Metadata = {
     siteName: "ORIGIN AI",
     images: [
       {
-        url: "/og-image.jpg",
-        width: 1200,
-        height: 630,
+        url: "/origin-new.jpg",
         alt: "ORIGIN AI - Best Prep Platform",
       },
     ],
@@ -51,7 +49,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "ORIGIN AI - Best Preparation Platform for JEE/NEET",
     description: "The most advanced AI-powered learning platform for JEE, NEET, and Foundation.",
-    images: ["/og-image.jpg"],
+    images: ["/origin-new.jpg"],
   },
 };
 

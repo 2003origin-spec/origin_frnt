@@ -61,6 +61,18 @@ const SUBJECT_ICONS: Record<string, React.ReactNode> = {
     Biology: <Leaf className="w-3.5 h-3.5" />,
 };
 
+// Subject-specific Ori mascot images, keyed by NORMALISED (lowercase) subject
+// name so lookups are casing/variant tolerant (e.g. "physics", "PHYSICS", "Maths").
+const SUBJECT_ORI: Record<string, string> = {
+    physics: '/ori2d/ori-physics.png',
+    chemistry: '/ori2d/ori-chemistry.png',
+    mathematics: '/ori2d/ori-maths.png',
+    maths: '/ori2d/ori-maths.png',
+    math: '/ori2d/ori-maths.png',
+    biology: '/ori2d/ori-biology.png',
+    bio: '/ori2d/ori-biology.png',
+};
+
 const EXAM_MAPPING: Record<string, string[]> = {
     'JEE': ['JEE', 'JEE / NEET', 'NEET / JEE'],
     'NEET': ['NEET', 'JEE / NEET', 'NEET / JEE'],
@@ -947,7 +959,7 @@ export default function OGCodeList({
                     </motion.div>
 
                     {/* Right side: OG Points + AIR stats */}
-                    <div className="flex items-center gap-3 self-start">
+                    <div className="flex items-center gap-2 sm:gap-3 self-start w-full md:w-auto justify-end">
 
                     {/* OG Points chip */}
                     <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl neu-raised border border-amber-500/15 bg-amber-500/5 shrink-0">
@@ -961,18 +973,18 @@ export default function OGCodeList({
                         <button
                             onClick={() => setIsStatsExpanded(!isStatsExpanded)}
                             className={cn(
-                                'neu-raised flex items-center gap-3 px-5 py-3 rounded-2xl transition-all duration-300',
-                                isStatsExpanded && 'bg-primary text-primary-foreground',
+                                'neu-raised flex items-center gap-2 sm:gap-3 px-3 py-2 sm:px-5 sm:py-3 rounded-2xl transition-all duration-300 text-foreground',
+                                isStatsExpanded && 'bg-primary !text-white',
                             )}
                         >
-                            <div className={cn('w-9 h-9 rounded-xl flex items-center justify-center', isStatsExpanded ? 'bg-white/20' : 'bg-amber-500/10')}>
-                                <Trophy className={cn('w-4.5 h-4.5', isStatsExpanded ? 'text-white' : 'text-amber-500')} />
+                            <div className={cn('w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shrink-0', isStatsExpanded ? 'bg-white/20' : 'bg-amber-500/10')}>
+                                <Trophy className={cn('w-4 h-4 sm:w-4.5 sm:h-4.5', isStatsExpanded ? 'text-white' : 'text-amber-500')} />
                             </div>
                             <div className="text-left">
                                 <div className="text-[9px] font-black uppercase tracking-wider opacity-60">National Rank</div>
-                                <div className="text-lg font-black leading-none">AIR {myRank ? `#${myRank}` : '—'}</div>
+                                <div className="text-base sm:text-lg font-black leading-none">AIR {myRank ? `#${myRank}` : '—'}</div>
                             </div>
-                            <ChevronRight className={cn('w-4 h-4 ml-1 transition-transform duration-300', isStatsExpanded && 'rotate-90')} />
+                            <ChevronRight className={cn('w-4 h-4 sm:ml-1 shrink-0 transition-transform duration-300', isStatsExpanded && 'rotate-90')} />
                         </button>
 
                         <AnimatePresence>
@@ -982,7 +994,7 @@ export default function OGCodeList({
                                     animate={{ opacity: 1, y: 0, scale: 1 }}
                                     exit={{ opacity: 0, y: 8, scale: 0.95 }}
                                     transition={{ duration: 0.2 }}
-                                    className="absolute top-full left-0 sm:left-auto sm:right-0 mt-3 w-[min(calc(100vw-2rem),380px)] z-[230] space-y-3 pointer-events-auto"
+                                    className="absolute top-full right-0 mt-3 w-[min(calc(100vw-1.5rem),380px)] max-w-[calc(100vw-1.5rem)] z-[230] space-y-3 pointer-events-auto"
                                 >
                                     {/* Mastery Card */}
                                     <div className="neu-raised p-5">
@@ -994,15 +1006,19 @@ export default function OGCodeList({
                                         </h3>
                                         <div className="space-y-3">
                                             {[
-                                                { label: 'Current Streak', val: `${streak}d`, icon: Flame, color: 'text-orange-500', bg: 'bg-orange-500/10' },
-                                                { label: 'Solved Questions', val: solvedCount, icon: CheckCircle2, color: 'text-primary', bg: 'bg-primary/10' },
-                                                { label: 'Accuracy Rate', val: `${accuracy}%`, icon: Target, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
-                                                { label: 'Prestige Points', val: user.points || 0, icon: Zap, color: 'text-indigo-500', bg: 'bg-indigo-500/10' },
+                                                { label: 'Current Streak', val: `${streak}d`, icon: Flame, color: 'text-orange-500', bg: 'bg-orange-500/10', ori: '/ori2d/ori-exited.png' },
+                                                { label: 'Solved Questions', val: solvedCount, icon: CheckCircle2, color: 'text-primary', bg: 'bg-primary/10', ori: '/ori2d/ori-thubmsup.png' },
+                                                { label: 'Accuracy Rate', val: `${accuracy}%`, icon: Target, color: 'text-emerald-500', bg: 'bg-emerald-500/10', ori: '/ori2d/ori-proud.png' },
+                                                { label: 'Prestige Points', val: user.points || 0, icon: Zap, color: 'text-indigo-500', bg: 'bg-indigo-500/10', ori: '/ori2d/ori-cheerful.png' },
                                             ].map((stat) => (
                                                 <div key={stat.label} className="flex items-center justify-between">
                                                     <div className="flex items-center gap-2.5">
-                                                        <div className={cn('w-8 h-8 rounded-xl flex items-center justify-center', stat.bg, stat.color)}>
-                                                            <stat.icon className="w-3.5 h-3.5" />
+                                                        <div className={cn('relative w-8 h-8 rounded-xl overflow-hidden flex items-center justify-center', stat.bg, stat.color)}>
+                                                            {stat.ori ? (
+                                                                <Image src={stat.ori} alt="" aria-hidden fill sizes="32px" className="object-contain p-0.5" />
+                                                            ) : (
+                                                                <stat.icon className="w-3.5 h-3.5" />
+                                                            )}
                                                         </div>
                                                         <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">{stat.label}</span>
                                                     </div>
@@ -1053,8 +1069,18 @@ export default function OGCodeList({
                                                 subjectRanks.map((rank, i) => (
                                                     <div key={i} className="flex items-center justify-between">
                                                         <div className="flex items-center gap-2.5">
-                                                            <div className={cn('w-8 h-8 rounded-xl flex items-center justify-center bg-primary/10', SUBJECT_COLORS[rank.subject])}>
-                                                                {SUBJECT_ICONS[rank.subject]}
+                                                            <div className="relative w-8 h-8 rounded-xl bg-primary/10 overflow-hidden shrink-0">
+                                                                {SUBJECT_ORI[normalizeSubject(rank.subject)] ? (
+                                                                    <Image
+                                                                        src={SUBJECT_ORI[normalizeSubject(rank.subject)]}
+                                                                        alt={rank.subject}
+                                                                        fill
+                                                                        sizes="32px"
+                                                                        className="object-contain p-0.5 drop-shadow-sm"
+                                                                    />
+                                                                ) : (
+                                                                    <span className={cn('absolute inset-0 flex items-center justify-center', SUBJECT_COLORS[rank.subject])}>{SUBJECT_ICONS[rank.subject]}</span>
+                                                                )}
                                                             </div>
                                                             <span className="text-[11px] font-bold text-foreground uppercase tracking-wider">{rank.subject}</span>
                                                         </div>

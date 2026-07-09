@@ -179,7 +179,7 @@ export function LobbyChat({
               rows={2}
               maxLength={1000}
               placeholder="Message the room…"
-              className="flex-1 bg-transparent outline-none text-sm px-2 py-1 resize-none placeholder:text-muted-foreground/50"
+              className="flex-1 min-w-0 bg-transparent outline-none text-sm px-2 py-1 resize-none placeholder:text-muted-foreground/50"
             />
             <button
               type="button"
