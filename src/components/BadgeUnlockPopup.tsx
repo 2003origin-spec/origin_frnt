@@ -77,15 +77,15 @@ export default function BadgeUnlockPopup({ badgeNames, onDismiss, onAfterSeen }:
 
   return (
     <motion.div
-      className="fixed inset-0 z-[9999] flex items-center justify-center"
+      className="fixed inset-0 z-[9999] flex items-center justify-center cursor-pointer select-none"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.3 }}
-      onClick={advance}
+      onTap={advance}
     >
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={advance} />
+      <div className="absolute inset-0 bg-black/80 backdrop-blur-md" />
 
       {/* Particles */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden flex items-center justify-center">

@@ -28,10 +28,14 @@ const SUBJECT_META: Record<string, { label: string; emoji: string; param: string
 };
 
 const SUBJECT_ORI_MAP: Record<string, string> = {
-    phy:  '/ori2d/ori-physics.png',
-    chem: '/ori2d/ori-chemistry.png',
-    math: '/ori2d/ori-maths.png',
-    bio:  '/ori2d/ori-biology.png',
+    phy:         '/ori2d/ori-physics.png',
+    physics:     '/ori2d/ori-physics.png',
+    chem:        '/ori2d/ori-chemistry.png',
+    chemistry:   '/ori2d/ori-chemistry.png',
+    math:        '/ori2d/ori-maths.png',
+    mathematics: '/ori2d/ori-maths.png',
+    bio:         '/ori2d/ori-biology.png',
+    biology:     '/ori2d/ori-biology.png',
 };
 
 interface OGCodeWorkspaceProps {
@@ -374,6 +378,20 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
     const pointsEarnedRef = useRef<HTMLDivElement>(null);
     const ptsCounterRef = useRef<HTMLDivElement>(null);
 
+    // Sound prefs — mirrored into refs so the submit handler always reads the
+    // latest value without needing `user` in its dependency array (avoids the
+    // stale-closure that silenced sounds after the first question). Mirrors the
+    // exact value including null, so selecting "None" is respected.
+    const correctSoundRef = useRef<string | null>(user?.ogcodeCorrectSound ?? null);
+    const wrongSoundRef   = useRef<string | null>(user?.ogcodeWrongSound   ?? null);
+    const audioRef = useRef<HTMLAudioElement | null>(null);
+    useEffect(() => {
+        correctSoundRef.current = user?.ogcodeCorrectSound ?? null;
+        wrongSoundRef.current   = user?.ogcodeWrongSound   ?? null;
+    }, [user?.ogcodeCorrectSound, user?.ogcodeWrongSound]);
+    // Stop any playing answer sound when leaving the question / unmounting.
+    useEffect(() => () => { audioRef.current?.pause(); }, []);
+
     // Previous / Next navigation that follows the filter applied on the list.
     const router = useRouter();
     const [navQueue, setNavQueue] = useState<OgcodeNavQueue | null>(null);
@@ -597,7 +615,17 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
             if (timerRef.current) clearInterval(timerRef.current);
             setResult(res); // This triggers the result UI
             toast.success(res.isCorrect ? "Brilliant! Correct Answer" : "Not quite right. Try again?");
-            
+
+            // Play answer sound using refs so stale-closure / refreshUser can't clear the pref
+            const soundFile = res.isCorrect ? correctSoundRef.current : wrongSoundRef.current;
+            if (soundFile) {
+                const dir = res.isCorrect ? 'correct' : 'wrong';
+                audioRef.current?.pause();
+                audioRef.current = new Audio(`/sounds/${dir}/${soundFile}`);
+                audioRef.current.volume = 0.7;
+                audioRef.current.play().catch(() => {});
+            }
+
             // Refresh user data if solved
             if (res.isCorrect && !res.already_solved) {
                 onRefreshUser?.();
@@ -631,7 +659,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
 
     // Trigger the Ori fly-to-pts animation on a fresh correct solve
     useEffect(() => {
-        if (!result?.isCorrect || result.already_solved || !(result.pointsAwarded ?? 0)) return;
+        if (!result?.isCorrect) return;
         const t = setTimeout(() => {
             const card = pointsEarnedRef.current;
             const ptsEl = ptsCounterRef.current;

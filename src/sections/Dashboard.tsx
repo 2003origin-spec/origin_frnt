@@ -2,8 +2,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import Image from 'next/image';
-import { motion } from 'framer-motion';
-import { Zap, ChevronLeft, ChevronRight, Flame, BookOpen, TrendingUp, Award } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Zap, ChevronLeft, ChevronRight, Flame, BookOpen, TrendingUp, Award, BarChart3, X } from 'lucide-react';
 
 const OriMascot = dynamic(() => import('@/features/mascot/Ori2D'), { ssr: false });
 import type { Task, User, ViewState } from '@/types';
@@ -56,7 +56,7 @@ function EventsCarousel() {
             sizes="100vw"
             className="object-contain"
             priority={idx === 0}
-            loading={idx === 0 ? undefined : 'lazy'}
+            loading={idx === 0 ? 'eager' : 'lazy'}
           />
         </div>
       ))}
@@ -314,6 +314,11 @@ export default function Dashboard({
     return Math.floor(((t.practiceTime || 0) + (t.webpageTime || 0) + (t.pomodoroTime || 0)) / 60);
   }, [user.timeAnalytics]);
 
+  const [badgeZoom, setBadgeZoom] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const currentBadgePts = pointsData?.totalPoints ?? user.points ?? 0;
+  const currentBadge = [...BADGE_TIERS].reverse().find(b => currentBadgePts >= b.points) ?? BADGE_TIERS[0];
+
   // stagger is defined at module scope — see below the component
 
   return (
@@ -344,7 +349,7 @@ export default function Dashboard({
                 <h1 className="text-2xl sm:text-3xl font-black text-foreground tracking-tight leading-tight break-words">
                   {greeting},<br className="sm:hidden" /> {displayName}!
                 </h1>
-                <Image src="/ori2d/ori-winking.png" alt="Ori" width={48} height={48} className="object-contain drop-shadow-md hidden sm:block" />
+                <Image src="/ori2d/ori-winking.png" alt="Ori" width={48} height={48} style={{ width: 'auto', height: 48 }} className="object-contain drop-shadow-md hidden sm:block" />
               </div>
               {pointsData && pointsData.pointsToNext > 0 && (
                 <p className="text-sm sm:text-base text-muted-foreground mt-1">
@@ -355,24 +360,28 @@ export default function Dashboard({
             </div>
 
             {/* Centre — highest unlocked badge derived directly from points */}
-            {(() => {
-              const pts = pointsData?.totalPoints ?? user.points ?? 0;
-              const currentBadge = [...BADGE_TIERS].reverse().find(b => pts >= b.points) ?? BADGE_TIERS[0];
-              return (
-                <div className="relative w-[125px] h-[121px] flex items-center justify-center">
-                  <div className={`absolute inset-0 rounded-full bg-gradient-to-br ${currentBadge.theme} opacity-20 blur-xl`} />
-                  <div className="relative w-full h-full">
-                    <Image
-                      src={currentBadge.image}
-                      alt={currentBadge.name}
-                      fill
-                      className="object-contain drop-shadow-xl"
-                      priority
-                    />
-                  </div>
-                </div>
-              );
-            })()}
+            <button
+              onClick={() => setBadgeZoom(true)}
+              className="relative w-[125px] h-[121px] flex items-center justify-center focus:outline-none"
+              aria-label={`View ${currentBadge.name} badge`}
+            >
+              <div className={`absolute inset-0 rounded-full bg-gradient-to-br ${currentBadge.theme} opacity-20 blur-xl`} />
+              <motion.div
+                className="relative w-full h-full"
+                whileHover={{ scale: 1.08 }}
+                whileTap={{ scale: 0.95 }}
+                transition={{ type: 'spring', stiffness: 300, damping: 22 }}
+              >
+                <Image
+                  src={currentBadge.image}
+                  alt={currentBadge.name}
+                  fill
+                  sizes="125px"
+                  className="object-contain drop-shadow-xl"
+                  priority
+                />
+              </motion.div>
+            </button>
 
             {/* Right — Ori mascot */}
             <div className="h-16 w-16 sm:h-24 sm:w-24 shrink-0 justify-self-end">
@@ -416,8 +425,8 @@ export default function Dashboard({
           <EventsCarousel />
         </motion.div>
 
-        {/* ── QUICK STATS STRIP ─────────────────────────────────── */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {/* ── QUICK STATS STRIP + progress trigger ──────────────── */}
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           {(() => {
             const solved = userStats?.solvedCount ?? totalSolved;
             const streak = userStats?.streak ?? user.streak ?? 0;
@@ -432,28 +441,27 @@ export default function Dashboard({
               <s.icon className={`w-4 h-4 ${s.color}`} />
               <div className="flex items-center gap-1.5">
                 <p className="text-xl font-black text-foreground leading-none truncate">{s.value}</p>
-                {s.showOri && <Image src="/ori2d/ori-exited.png" alt="Ori" width={40} height={40} className="object-contain drop-shadow" />}
+                {s.showOri && <Image src="/ori2d/ori-exited.png" alt="Ori" width={40} height={40} style={{ width: 'auto', height: 'auto', maxHeight: 40, maxWidth: 40 }} className="object-contain drop-shadow" />}
               </div>
               <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{s.label}</p>
             </motion.div>
           ))}
+          {/* Progress panel trigger — simple tile beside stats */}
+          <motion.button
+            {...stagger(7)}
+            onClick={() => setPanelOpen(true)}
+            className="neu-raised p-4 flex flex-col gap-1.5 min-w-0 group hover:bg-primary/5 transition-colors col-span-2 sm:col-span-1"
+          >
+            <BarChart3 className="w-4 h-4 text-primary" />
+            <p className="text-xl font-black text-primary leading-none">→</p>
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Progress</p>
+          </motion.button>
         </div>
 
-        {/* ── MAIN GRID: heatmap + week-rings | challenge + points ─ */}
-        <div className={cn('grid gap-4', isConstrained ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-12')}>
-          <div className={cn('relative flex flex-col gap-4 min-w-0', isConstrained ? '' : 'lg:col-span-8')}>
-            <motion.div {...stagger(7)} id="tutorial-tracker"><DailyTracker user={user} /></motion.div>
-            <motion.div {...stagger(8)} id="tutorial-progress"><PastWeekProgress user={user} /></motion.div>
-          </div>
-          <div className={cn('relative flex flex-col gap-4 min-w-0', isConstrained ? '' : 'lg:col-span-4')}>
-            <motion.div {...stagger(9)} id="tutorial-challenge">
-              <ChallengeCard user={user} initialChallenge={initialChallenge} onStartChallenge={onStartChallenge} />
-            </motion.div>
-          </div>
-        </div>
-
-        {/* ── ACTIVITY ──────────────────────────────────────────── */}
-        <motion.div {...stagger(11)} id="tutorial-activities"><PastActivitiesCard user={user} /></motion.div>
+        {/* ── CHALLENGE ─────────────────────────────────────────── */}
+        <motion.div {...stagger(9)} id="tutorial-challenge">
+          <ChallengeCard user={user} initialChallenge={initialChallenge} onStartChallenge={onStartChallenge} />
+        </motion.div>
 
         {/* ── TASKS ─────────────────────────────────────────────── */}
         <motion.div {...stagger(13)} id="tutorial-todo">
@@ -471,6 +479,111 @@ export default function Dashboard({
         </motion.div>
 
       </div>
+
+      {/* Progress & Activity left panel */}
+      <AnimatePresence>
+        {panelOpen && (
+          <>
+            <motion.div
+              key="panel-backdrop"
+              className="fixed inset-0 z-[490] bg-black/40 backdrop-blur-sm"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              onClick={() => setPanelOpen(false)}
+            />
+            <motion.div
+              key="progress-panel"
+              className="fixed left-0 md:left-[72px] top-14 md:top-0 bottom-14 md:bottom-0 z-[500] w-full md:w-[480px] bg-background border-r border-border shadow-2xl flex flex-col"
+              initial={{ x: '-100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '-100%' }}
+              transition={{ type: 'spring', stiffness: 320, damping: 32 }}
+            >
+              {/* Panel header */}
+              <div className="flex items-center justify-between px-5 py-3.5 border-b border-border shrink-0 bg-background/95 backdrop-blur-sm">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <BarChart3 className="w-3.5 h-3.5 text-primary" />
+                  </div>
+                  <div>
+                    <h2 className="text-xs font-black text-foreground uppercase tracking-widest leading-none">Progress</h2>
+                    <p className="text-[10px] text-muted-foreground font-medium mt-0.5">Activity · Time · Sessions</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setPanelOpen(false)}
+                  className="neu-btn p-1.5 rounded-xl text-muted-foreground hover:text-foreground"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-3">
+                <DailyTracker user={user} />
+                <PastWeekProgress user={user} />
+                <PastActivitiesCard user={user} />
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Badge zoom overlay */}
+      <AnimatePresence>
+        {badgeZoom && (
+          <motion.div
+            key="badge-zoom"
+            className="fixed inset-0 z-[9999] flex flex-col items-center justify-center"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.25 }}
+            onClick={() => setBadgeZoom(false)}
+          >
+            <div className="absolute inset-0 bg-black/85 backdrop-blur-lg" />
+            <motion.div
+              className="relative z-10 flex flex-col items-center gap-5 pointer-events-none"
+              initial={{ scale: 0.5, y: 40, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 0.8, y: 20, opacity: 0 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 24 }}
+            >
+              <div className={`absolute w-72 h-72 rounded-full bg-gradient-to-br ${currentBadge.theme} blur-3xl opacity-35`} />
+              <motion.div
+                animate={{ y: [0, -8, 0] }}
+                transition={{ repeat: Infinity, duration: 3, ease: 'easeInOut' }}
+              >
+                <Image
+                  src={currentBadge.image}
+                  alt={currentBadge.name}
+                  width={260}
+                  height={260}
+                  className="relative drop-shadow-2xl"
+                  style={{ height: 'auto' }}
+                  priority
+                />
+              </motion.div>
+              <h2
+                className="relative text-4xl font-black text-white tracking-tight text-center"
+                style={{ textShadow: '0 0 40px rgba(255,255,255,0.4)' }}
+              >
+                {currentBadge.name}
+              </h2>
+              <p className="relative text-sm text-white/50 font-medium text-center max-w-[200px]">
+                {currentBadge.description}
+              </p>
+              <motion.p
+                className="relative text-[10px] text-white/30 uppercase tracking-widest font-bold"
+                animate={{ opacity: [0.3, 0.7, 0.3] }}
+                transition={{ repeat: Infinity, duration: 2 }}
+              >
+                Tap to close
+              </motion.p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

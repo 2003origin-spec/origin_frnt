@@ -219,6 +219,7 @@ export default function MilestonesPage({ onBack, userPoints }: MilestonesPagePro
                           'drop-shadow-md transition-all duration-300',
                           unlocked ? '' : 'grayscale opacity-40'
                         )}
+                        style={{ height: 'auto' }}
                       />
                       {!unlocked && (
                         <div className="absolute inset-0 flex items-end justify-end pr-0.5 pb-0.5">

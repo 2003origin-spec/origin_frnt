@@ -48,6 +48,9 @@ export interface User {
   profilePrivate?: boolean;
   /** Badge tier names newly unlocked since the user last dismissed the popup. */
   pendingBadges?: string[];
+  /** OGCode answer sound preferences */
+  ogcodeCorrectSound?: string | null;
+  ogcodeWrongSound?: string | null;
 }
 
 export interface Classroom {

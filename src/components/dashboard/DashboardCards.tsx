@@ -4,7 +4,6 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Clock, Target, CheckCircle2, Plus, Trash2, ChevronLeft, ChevronRight, Pencil } from 'lucide-react';
-import dynamic from 'next/dynamic';
 import { apiCall } from '@/lib/api';
 import { useEffect } from 'react';
 import { useLayout } from '@/context/LayoutContext';
@@ -13,11 +12,6 @@ import { cn } from '@/lib/utils';
 
 import type { User, Task } from '@/types';
 
-// Lazy-loaded so recharts is fetched only when the Time-Spent donut renders.
-const ActivityDonut = dynamic(() => import('./ActivityDonut'), {
-  ssr: false,
-  loading: () => <div className="h-full w-full animate-pulse rounded-full bg-muted/40" />,
-});
 
 export interface DashboardChallengePreview {
     id: string | number;
@@ -192,76 +186,68 @@ export function ChallengeCard({ user, onStartChallenge, initialChallenge }: Chal
 }
 
 export function PastActivitiesCard({ user }: { user: User }) {
-    const { availableWidth } = useLayout();
-    const isMobile = availableWidth < 640;
-
     const analytics = user.timeAnalytics || [];
     const today = analytics[analytics.length - 1] || { practiceTime: 0, webpageTime: 0, pomodoroTime: 0 };
 
     const toHM = (secs: number) => {
+        if (secs <= 0) return '0m';
         const h = Math.floor(secs / 3600);
         const m = Math.floor((secs % 3600) / 60);
-        if (h > 0) return `${h}h ${m}m`;
+        if (h > 0) return `${h}h ${m > 0 ? `${m}m` : ''}`.trim();
         return `${m}m`;
     };
 
-    const types = [
-        { label: 'Webpage',  secs: today.webpageTime || 0,  color: '#6366f1' },
-        { label: 'Practice', secs: today.practiceTime || 0, color: '#10b981' },
-        { label: 'Pomodoro', secs: today.pomodoroTime || 0, color: '#f59e0b' },
+    const bars = [
+        { label: 'Practice', secs: today.practiceTime || 0, color: '#10b981', bg: 'bg-emerald-500' },
+        { label: 'Webpage',  secs: today.webpageTime  || 0, color: '#6366f1', bg: 'bg-indigo-500'  },
+        { label: 'Pomodoro', secs: today.pomodoroTime || 0, color: '#f59e0b', bg: 'bg-amber-500'   },
     ];
 
-    const totalSecs = types.reduce((a, t) => a + t.secs, 0);
-    const chartData = types.map((t) => ({ name: t.label, value: t.secs, color: t.color }));
+    const maxSecs = Math.max(...bars.map(b => b.secs), 1);
+    const totalSecs = bars.reduce((s, b) => s + b.secs, 0);
 
     return (
         <Card className="neu-raised border-0">
-            <CardContent className={cn("flex flex-col gap-5", isMobile ? "p-4" : "p-5")}>
+            <CardContent className="px-5 py-4 flex flex-col gap-3">
                 {/* Header */}
-                <div className="flex items-center gap-3">
-                    <div className={cn("rounded-xl bg-primary/10 flex items-center justify-center text-primary", isMobile ? "w-8 h-8" : "w-10 h-10")}>
-                        <Clock className={isMobile ? "w-4 h-4" : "w-5 h-5"} />
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center">
+                            <Clock className="w-3.5 h-3.5 text-primary" />
+                        </div>
+                        <div>
+                            <h3 className="text-sm font-black text-foreground leading-none">Time Spent</h3>
+                            <p className="text-[10px] text-muted-foreground font-medium mt-0.5">Today · histogram</p>
+                        </div>
                     </div>
-                    <div>
-                        <h3 className="text-sm font-bold text-foreground">Time Spent</h3>
-                        <p className="text-[10px] text-muted-foreground font-medium">Today&apos;s breakdown</p>
-                    </div>
+                    {totalSecs > 0 && (
+                        <span className="text-sm font-black text-foreground tabular-nums">{toHM(totalSecs)}</span>
+                    )}
                 </div>
 
                 {totalSecs === 0 ? (
-                    <div className="flex items-center gap-4 py-2">
-                        <div className="w-11 h-11 rounded-full bg-muted flex items-center justify-center shrink-0">
-                            <Clock className="w-5 h-5 text-muted-foreground/40" />
-                        </div>
-                        <p className="text-xs font-medium text-muted-foreground">No activity tracked yet today — start a session to see your breakdown.</p>
-                    </div>
+                    <p className="text-xs text-muted-foreground py-2">No activity tracked yet today.</p>
                 ) : (
-                    <div className="flex items-center gap-5 sm:gap-6">
-                        {/* Donut */}
-                        <div className="relative w-[112px] h-[112px] shrink-0">
-                            <ActivityDonut data={chartData} formatValue={toHM} />
-                            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                                <span className="text-base font-black text-foreground leading-none tabular-nums">{toHM(totalSecs)}</span>
-                                <span className="text-[8px] font-bold uppercase tracking-widest text-muted-foreground mt-1">Total</span>
-                            </div>
-                        </div>
-
-                        {/* Stat tiles spread across the remaining width */}
-                        <div className="grid grid-cols-3 gap-2.5 sm:gap-3 flex-1 min-w-0">
-                            {types.map((t) => {
-                                const pct = totalSecs > 0 ? Math.round((t.secs / totalSecs) * 100) : 0;
-                                return (
-                                    <div key={t.label} className="neu-inset rounded-xl px-3 py-2.5 flex flex-col gap-1 min-w-0">
-                                        <div className="flex items-center gap-1.5 min-w-0">
-                                            <span className="w-2 h-2 rounded-full shrink-0" style={{ background: t.color }} />
-                                            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground truncate">{t.label}</span>
-                                        </div>
-                                        <span className="text-base font-black text-foreground leading-none tabular-nums">{toHM(t.secs)}</span>
-                                        <span className="text-[10px] font-bold tabular-nums" style={{ color: t.color }}>{pct}%</span>
+                    <div className="flex flex-col gap-2.5">
+                        {bars.map(b => {
+                            const pct = Math.round((b.secs / maxSecs) * 100);
+                            const timePct = Math.round((b.secs / totalSecs) * 100);
+                            return (
+                                <div key={b.label} className="flex items-center gap-3">
+                                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider w-14 shrink-0">{b.label}</span>
+                                    <div className="flex-1 h-5 neu-inset rounded-md overflow-hidden">
+                                        <div
+                                            className="h-full rounded-md transition-all duration-700"
+                                            style={{ width: `${pct}%`, background: b.color }}
+                                        />
                                     </div>
-                                );
-                            })}
-                        </div>
+                                    <div className="flex items-baseline gap-1 w-20 shrink-0 text-right justify-end">
+                                        <span className="text-xs font-black text-foreground tabular-nums">{toHM(b.secs)}</span>
+                                        <span className="text-[9px] font-bold tabular-nums" style={{ color: b.color }}>{timePct}%</span>
+                                    </div>
+                                </div>
+                            );
+                        })}
                     </div>
                 )}
             </CardContent>
