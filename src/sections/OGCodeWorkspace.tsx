@@ -1,6 +1,7 @@
 'use client';
 import React, { useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from 'react';
 import Image from 'next/image';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
     ArrowLeft, Play, Clock, Loader2, CheckCircle2,
     XCircle, RotateCcw, Trophy, X, HelpCircle, ChevronLeft, ChevronRight, Building2,
@@ -361,6 +362,18 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
     const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const hasFetched = useRef(Boolean(initialQuestion));
 
+    // Points animation — Ori flies from the result card to the PTS counter in the header
+    const [oriAnim, setOriAnim] = useState<{
+        fromX: number; fromY: number;
+        toX: number; toY: number;
+        points: number;
+        oriImg: string;
+    } | null>(null);
+    const [ptsPulse, setPtsPulse] = useState(false);
+    const [localPoints, setLocalPoints] = useState<number | null>(null);
+    const pointsEarnedRef = useRef<HTMLDivElement>(null);
+    const ptsCounterRef = useRef<HTMLDivElement>(null);
+
     // Previous / Next navigation that follows the filter applied on the list.
     const router = useRouter();
     const [navQueue, setNavQueue] = useState<OgcodeNavQueue | null>(null);
@@ -613,6 +626,32 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
         }
     }, [question?.subject, setTimeMode]);
 
+    // Reset local points when moving to a new question
+    useEffect(() => { setLocalPoints(null); }, [question?.id]);
+
+    // Trigger the Ori fly-to-pts animation on a fresh correct solve
+    useEffect(() => {
+        if (!result?.isCorrect || result.already_solved || !(result.pointsAwarded ?? 0)) return;
+        const t = setTimeout(() => {
+            const card = pointsEarnedRef.current;
+            const ptsEl = ptsCounterRef.current;
+            if (!card || !ptsEl) return;
+            const cardRect = card.getBoundingClientRect();
+            const ptsRect = ptsEl.getBoundingClientRect();
+            const subjectKey = (question?.subject ?? 'phy') as string;
+            setOriAnim({
+                fromX: cardRect.left + cardRect.width / 2,
+                fromY: cardRect.top,
+                toX: ptsRect.left + ptsRect.width / 2,
+                toY: ptsRect.top + ptsRect.height / 2,
+                points: result.pointsAwarded ?? 0,
+                oriImg: SUBJECT_ORI_MAP[subjectKey] ?? '/ori2d/ori-cheerful.png',
+            });
+        }, 500);
+        return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [result]);
+
     if (isLoading) return (
         <div className="min-h-screen bg-background flex items-center justify-center">
             <Loader2 className="w-8 h-8 text-primary animate-spin" />
@@ -653,10 +692,19 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
 
                 {/* Stats — pinned to the centre of the header */}
                 <div id="tutorial-ogcode-stats" className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2 max-w-[calc(100%-6rem)] overflow-hidden">
-                    <div className="flex items-center gap-1.5 text-[10px] sm:text-xs font-bold text-amber-500 font-mono bg-amber-500/5 px-2 py-1 rounded-md border border-amber-500/10">
+                    <motion.div
+                        ref={ptsCounterRef}
+                        className="flex items-center gap-1.5 text-[10px] sm:text-xs font-bold text-amber-500 font-mono bg-amber-500/5 px-2 py-1 rounded-md border border-amber-500/10"
+                        animate={ptsPulse ? {
+                            scale: [1, 1.4, 0.92, 1.18, 1],
+                            borderColor: ['rgba(245,158,11,0.1)', 'rgba(245,158,11,0.6)', 'rgba(245,158,11,0.1)'],
+                            backgroundColor: ['rgba(245,158,11,0.05)', 'rgba(245,158,11,0.2)', 'rgba(245,158,11,0.05)'],
+                        } : {}}
+                        transition={{ duration: 0.5 }}
+                    >
                         <Trophy className="w-3.5 h-3.5" />
-                        {user?.points || 0} <span className="hidden sm:inline">PTS</span>
-                    </div>
+                        {localPoints !== null ? localPoints : (user?.points || 0)} <span className="hidden sm:inline">PTS</span>
+                    </motion.div>
                     <div className="flex items-center gap-2 text-xs sm:text-sm text-slate-400 font-mono bg-white/5 px-2 py-1 rounded-md border border-white/5">
                         <Clock className="w-3.5 h-3.5" /> {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')}
                     </div>
@@ -1063,7 +1111,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                             <span className="ml-1 text-[10px] sm:text-xs font-medium text-slate-500 dark:text-slate-500">/ {result.maxPoints ?? result.basePoints ?? 0}</span>
                                         </p>
                                     </div>
-                                    <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 min-h-[3.5rem]">
+                                    <div ref={pointsEarnedRef} className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 min-h-[3.5rem]">
                                         <p className="text-[9px] sm:text-[10px] uppercase tracking-widest text-slate-500">Points Earned</p>
                                         <p className={`text-base sm:text-lg font-black ${result.pointsAwarded ? 'text-amber-400' : 'text-slate-400'}`}>
                                             +{result.pointsAwarded ?? 0}
@@ -1189,6 +1237,62 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                     </div>
                 </div>
             </div>
+
+            {/* Ori points-collection animation — fixed overlay, pointer-events none */}
+            <AnimatePresence>
+                {oriAnim && (
+                    <motion.div
+                        key="ori-pts-anim"
+                        style={{
+                            position: 'fixed',
+                            left: oriAnim.fromX - 44,
+                            top: oriAnim.fromY - 44,
+                            zIndex: 9999,
+                            pointerEvents: 'none',
+                            width: 88,
+                            height: 88,
+                        }}
+                        initial={{ scale: 0, opacity: 0, x: 0, y: 0, rotate: 0 }}
+                        animate={{
+                            x: [0, 10, -8, 6, oriAnim.toX - oriAnim.fromX],
+                            y: [0, -20, -30, -20, oriAnim.toY - oriAnim.fromY + 44],
+                            scale: [0, 1.25, 1.1, 1.15, 0.25],
+                            opacity: [0, 1, 1, 1, 0],
+                            rotate: [0, -15, 12, -8, 0],
+                        }}
+                        transition={{
+                            duration: 1.5,
+                            times: [0, 0.18, 0.35, 0.52, 1],
+                            ease: 'easeInOut',
+                        }}
+                        onAnimationComplete={() => {
+                            setOriAnim(prev => {
+                                if (!prev) return null;
+                                setPtsPulse(true);
+                                setLocalPoints((user?.points ?? 0) + prev.points);
+                                setTimeout(() => setPtsPulse(false), 700);
+                                return null;
+                            });
+                        }}
+                    >
+                        <Image
+                            src={oriAnim.oriImg}
+                            alt="Ori collecting points"
+                            width={88}
+                            height={88}
+                            className="drop-shadow-2xl"
+                            unoptimized
+                        />
+                        <motion.div
+                            className="absolute -top-4 left-1/2 -translate-x-1/2 bg-amber-400 text-amber-900 text-[11px] font-black px-2.5 py-0.5 rounded-full whitespace-nowrap shadow-lg"
+                            animate={{ y: [0, -4, 0] }}
+                            transition={{ repeat: Infinity, duration: 0.7, ease: 'easeInOut' }}
+                        >
+                            +{oriAnim.points} PTS
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div>
     );
 }
