@@ -654,6 +654,12 @@ function hashSeedPassword(id: string): string {
 }
 
 function buildSeedUsers(joinedAt: string): StoredUser[] {
+  // Demo seed accounts (incl. admin@origin.com / user_admin_legacy) must NEVER be
+  // materialised in production. Otherwise the hydrate(seed ∪ DB) + upsertUsers cycle
+  // re-inserts them into origin_users after the main admin deletes them from the
+  // console — the reported "deleted sub-admin comes back on reload" bug. The
+  // incremental ensureSeedUsers() was already gated; this closes the base-seed hole.
+  if (!isDemoSeedingEnabled()) return [];
   return [
     createSeedUser({
       id: "user_student_demo",
@@ -1248,6 +1254,18 @@ export function readStore(): AppStore {
     cachedStore = getSeedStore();
   }
   return cachedStore;
+}
+
+/**
+ * Drops the in-memory store cache so the next readStoreAsync() re-hydrates from
+ * Postgres. Call this after a write that bypasses the store (direct SQL on
+ * origin_users, e.g. sub-admin create/delete in admins-service) so the change is
+ * reflected immediately instead of after the 5-minute TTL — and so a stale
+ * cached store can't re-persist a just-deleted row via upsertUsers.
+ */
+export function invalidateStoreCache(): void {
+  cachedStore = null;
+  lastHydratedAt = 0;
 }
 
 export async function readStoreAsync(forceFresh = false): Promise<AppStore> {

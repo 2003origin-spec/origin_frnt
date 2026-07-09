@@ -13,6 +13,7 @@ import { AuthzError, requireRole, type AuthContext } from "@/server/authz";
 import { getUserPostgresPool, isUserPostgresConfigured } from "@/server/user-postgres";
 import { ensureUserSchema } from "@/server/db-users";
 import { createPrefixedId } from "@/server/workspaces/ids";
+import { invalidateStoreCache } from "@/server/store";
 
 const MAIN_ADMIN_EMAIL = (
   process.env.PLATFORM_MAIN_ADMIN_EMAIL ||
@@ -101,6 +102,8 @@ export async function createSubAdmin(input: { name: string; email: string }): Pr
   if (!res.rows[0]) {
     throw new AuthzError(409, "An admin with this email already exists.");
   }
+  // Reflect the direct-SQL insert in the legacy store cache immediately.
+  invalidateStoreCache();
   return rowToAdmin(res.rows[0]);
 }
 
@@ -122,4 +125,7 @@ export async function deleteSubAdmin(id: string): Promise<void> {
     // FK-referenced (audit/created_by) — demote to student instead of leaving admin.
     await pool().query(`UPDATE origin_users SET role = 'student' WHERE id = $1`, [id]);
   }
+  // Drop the legacy store cache so the next read re-hydrates from Postgres and a
+  // stale cached store can't re-persist this row via upsertUsers on the next write.
+  invalidateStoreCache();
 }
