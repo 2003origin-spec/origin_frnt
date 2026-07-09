@@ -666,7 +666,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
             if (!card || !ptsEl) return;
             const cardRect = card.getBoundingClientRect();
             const ptsRect = ptsEl.getBoundingClientRect();
-            const subjectKey = (question?.subject ?? 'phy') as string;
+            const subjectKey = String(question?.subject ?? 'phy').toLowerCase();
             setOriAnim({
                 fromX: cardRect.left + cardRect.width / 2,
                 fromY: cardRect.top,
