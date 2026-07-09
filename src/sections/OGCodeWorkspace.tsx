@@ -801,11 +801,17 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                         </span>
                                     );
                                 })()}
-                                {/* PYQ badge — show occurrence or previous_year_question */}
-                                {(question.previousYearQuestion || question.occurrence) && (
-                                    <span className="flex items-center gap-1 text-[10px] font-bold text-violet-600 dark:text-violet-400 px-2 py-1 bg-violet-500/10 border border-violet-500/20 rounded uppercase tracking-wider max-w-[180px]" title={question.previousYearQuestion || question.occurrence || ''}>
+                                {/* PYQ badge */}
+                                {question.previousYearQuestion && (
+                                    <span className="flex items-center gap-1 text-[10px] font-bold text-violet-600 dark:text-violet-400 px-2 py-1 bg-violet-500/10 border border-violet-500/20 rounded uppercase tracking-wider">
                                         <BookOpen className="w-3 h-3 flex-shrink-0" />
-                                        <span className="truncate">{question.previousYearQuestion || question.occurrence}</span>
+                                        PYQ
+                                    </span>
+                                )}
+                                {/* Exam / occurrence badge (JEE / NEET / AIPMT etc.) */}
+                                {question.occurrence && question.occurrence !== 'NA' && (
+                                    <span className="flex items-center gap-1 text-[10px] font-bold text-amber-600 dark:text-amber-400 px-2 py-1 bg-amber-500/10 border border-amber-500/20 rounded uppercase tracking-wider max-w-[200px]" title={question.occurrence}>
+                                        <span className="truncate">{question.occurrence}</span>
                                     </span>
                                 )}
                             </div>
