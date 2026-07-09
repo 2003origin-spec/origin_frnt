@@ -3,6 +3,7 @@
 import React from 'react';
 import {
     Users,
+    Bot,
     BookOpen,
     CreditCard,
     BarChart3,
@@ -35,6 +36,7 @@ interface AdminSidebarProps {
 const navItems = [
     { id: 'dashboard', label: 'Mission Control', icon: LayoutDashboard, path: '/admin' },
     { id: 'users', label: 'User Management', icon: Users, path: '/admin/users' },
+    { id: 'ai-access', label: 'AI Access', icon: Bot, path: '/admin/ai-access' },
     { id: 'admins', label: 'Admins', icon: ShieldCheck, path: '/admin/admins' },
     // Phase 2F.3 — institute/teacher approval queue (the student-visibility gate).
     { id: 'collaborations', label: 'Institute Approvals', icon: Building2, path: '/admin/collaborations' },
