@@ -10,6 +10,8 @@ import { useState } from 'react';
 import { IndianRupee, Loader2, Package } from 'lucide-react';
 import { toast } from 'sonner';
 
+import { mutateJson } from '@/lib/csrf';
+
 type SubjectPrice = { subject: string; amountMinor: number; razorpayPlanId: string | null; overridden: boolean };
 type Bundle = { id: string; name: string; subjects: string[]; amountMinor: number; active: boolean } | null;
 
@@ -35,10 +37,8 @@ export function AdminPricingPanel({ initial }: { initial: { subjects: SubjectPri
     if (!Number.isFinite(rupees) || rupees < 0) return toast.error('Enter a valid amount.');
     setBusy(`subject:${subject}`);
     try {
-      const res = await fetch('/api/admin/pricing', {
+      const res = await mutateJson('/api/admin/pricing', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ subject, amountMinor: Math.round(rupees * 100) }),
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.detail || `Save failed (${res.status})`);
@@ -58,10 +58,8 @@ export function AdminPricingPanel({ initial }: { initial: { subjects: SubjectPri
     if (bundleSubjects.length === 0) return toast.error('Pick at least one subject.');
     setBusy('bundle');
     try {
-      const res = await fetch('/api/admin/pricing', {
+      const res = await mutateJson('/api/admin/pricing', {
         method: 'PATCH',
-        headers: { 'content-type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
           id: initial.bundle?.id,
           name: bundleName,

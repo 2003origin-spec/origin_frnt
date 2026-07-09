@@ -5,9 +5,47 @@
 import type { Pool } from "pg";
 
 import { getUserPostgresPool } from "@/server/user-postgres";
+import { ensureSubjectGrantsSchema } from "@/server/connect/subject-grants-schema";
+import { ensureSubscriptionsSchema } from "@/server/subscriptions/subscriptions-schema";
 
 import { ensureDocumentImportSchema } from "./document-import-schema";
-import type { AdminAuditEvent, AdminUserSearchResult, DocumentImportJob, ImportJobStage, ImportJobStatus, ImportTargetSurface, WorkspaceAdminSummary, WorkspaceSuspensionReason } from "./types";
+import type { AdminAuditEvent, AdminUserPlan, AdminUserSearchResult, DocumentImportJob, ImportJobStage, ImportJobStatus, ImportTargetSurface, WorkspaceAdminSummary, WorkspaceSuspensionReason } from "./types";
+
+export type UserPlanFilter = "free" | "premium" | "paid" | "comp" | "teacher";
+
+// "Currently entitled" paid subscription — verbatim from entitlements.ts
+// ENTITLED_CLAUSE; `status`/`current_period_end` resolve to the `s` alias.
+const PAID_ENTITLED = `(
+  (status = 'active' AND (current_period_end IS NULL OR current_period_end > NOW()))
+  OR (status IN ('pending', 'halted', 'cancelled')
+      AND current_period_end IS NOT NULL AND current_period_end > NOW())
+)`;
+
+/** WHERE predicate (over the flag CTE below) for a user plan filter; null = none. */
+function userPlanPredicate(plan: UserPlanFilter | undefined): string | null {
+  switch (plan) {
+    case "paid":
+      return "has_paid";
+    case "comp":
+      return "has_comp AND NOT has_paid";
+    case "teacher":
+      return "has_teacher AND NOT has_paid AND NOT has_comp";
+    case "free":
+      return "role = 'student' AND NOT has_paid AND NOT has_comp AND NOT has_teacher";
+    case "premium":
+      return "has_paid OR has_comp OR has_teacher";
+    default:
+      return null;
+  }
+}
+
+function userPlanFromRow(row: Record<string, unknown>): AdminUserPlan | null {
+  if (row.role !== "student") return null;
+  if (row.has_paid) return "paid";
+  if (row.has_comp) return "comp";
+  if (row.has_teacher) return "teacher";
+  return "free";
+}
 
 function pool(): Pool {
   const p = getUserPostgresPool();
@@ -64,20 +102,50 @@ export async function closeWorkspace(workspaceId: string): Promise<boolean> {
   return (result.rowCount ?? 0) > 0;
 }
 
-export async function searchUsers(query: string, filter?: { role?: "student" | "teacher" | "admin" }, limit?: number): Promise<AdminUserSearchResult[]> {
+export async function searchUsers(query: string, filter?: { role?: "student" | "teacher" | "admin"; plan?: UserPlanFilter }, limit?: number): Promise<AdminUserSearchResult[]> {
   await ensureDocumentImportSchema();
+  // Plan flags read cross-schema; make sure both source schemas exist.
+  await Promise.all([ensureSubjectGrantsSchema(), ensureSubscriptionsSchema()]);
   const params: unknown[] = [];
   const conditions: string[] = [];
   if (query) { params.push(`%${query}%`); conditions.push(`(u.name ILIKE $${params.length} OR u.email ILIKE $${params.length})`); }
   if (filter?.role) { params.push(filter.role); conditions.push(`u.role = $${params.length}`); }
   const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+  const planPredicate = userPlanPredicate(filter?.plan);
+  const outerWhere = planPredicate ? `WHERE ${planPredicate}` : "";
   const maxLimit = limit ?? 50;
-  const result = await pool().query(`SELECT u.id, u.name, u.email, u.role, u.joined_at AS created_at FROM origin_users u ${where} ORDER BY u.joined_at DESC LIMIT $${params.length + 1}`, [...params, maxLimit]);
+  // Derive each student's plan (paid > comp > teacher > free) via indexed EXISTS
+  // probes over the two entitlement sources; non-students get all-false flags.
+  const result = await pool().query(
+    `WITH base AS (
+       SELECT u.id, u.name, u.email, u.role, u.joined_at AS created_at,
+         (u.role = 'student' AND EXISTS(
+            SELECT 1 FROM subscriptions.user_subscriptions s
+             WHERE s.user_id = u.id
+               AND s.subject IN ('physics', 'chemistry', 'mathematics', 'biology')
+               AND ${PAID_ENTITLED})) AS has_paid,
+         (u.role = 'student' AND EXISTS(
+            SELECT 1 FROM entitlements.subject_grants g
+             WHERE g.user_id = u.id AND g.source = 'admin_comp' AND g.status = 'active'
+               AND (g.expires_at IS NULL OR g.expires_at > NOW()))) AS has_comp,
+         (u.role = 'student' AND EXISTS(
+            SELECT 1 FROM entitlements.subject_grants g
+             WHERE g.user_id = u.id AND g.source = 'teacher_code' AND g.status = 'active'
+               AND (g.expires_at IS NULL OR g.expires_at > NOW()))) AS has_teacher
+       FROM origin_users u ${where}
+     )
+     SELECT id, name, email, role, created_at, has_paid, has_comp, has_teacher
+       FROM base ${outerWhere}
+      ORDER BY created_at DESC
+      LIMIT $${params.length + 1}`,
+    [...params, maxLimit],
+  );
   const users = result.rows.map((row) => ({
     id: row.id as string, name: row.name as string, email: row.email as string,
     role: row.role as "student" | "teacher" | "admin",
     workspaceMemberships: [] as { workspaceId: string; workspaceName: string; role: string }[],
     createdAt: new Date(row.created_at as string).toISOString(),
+    plan: userPlanFromRow(row),
   }));
   if (users.length > 0) {
     const userIds = users.map((u) => u.id);

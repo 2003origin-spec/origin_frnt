@@ -42,6 +42,7 @@ type FlagKey =
   | "adminPricing"
   | "adminCoupons"
   | "adminSubAdmins"
+  | "adminPremiumAccess"
   | "odgTeacherRanking"
   | "aiAccessControls";
 
@@ -137,6 +138,12 @@ const FLAG_SPECS: Record<FlagKey, FlagSpec> = {
   // on). The main admin is recognised by PLATFORM_MAIN_ADMIN_EMAIL even without
   // the is_main_admin flag set, so no seed run is required.
   adminSubAdmins: { envSuffix: "ADMIN_SUB_ADMINS", defaultDev: true, defaultProd: true },
+  // Admin Premium Pro access console — the /admin/premium-access toggle that
+  // grants/revokes admin_comp Premium Pro to free students (+ Event Mode). Gates
+  // /api/admin/premium-access/* and the page. Kill-switch parity with the other
+  // admin tools; LIVE in prod (default on). Note: granted comp only UNLOCKS
+  // premium features for students while premiumSubscriptions/teacherConnect is on.
+  adminPremiumAccess: { envSuffix: "ADMIN_PREMIUM_ACCESS", defaultDev: true, defaultProd: true },
   // Origin Diagnostic Graph — teacher-coefficient marketplace ranking (Phase 3).
   // When ON, public institute browse is re-ranked by ODG node-activation scores
   // (which teacher's content most reliably lifts mastery) on top of the existing

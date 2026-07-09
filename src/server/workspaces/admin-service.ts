@@ -5,7 +5,7 @@
 import { AuthzError } from "@/server/authz";
 
 import { recordAuditEvent } from "./audit";
-import { closeWorkspace, getImportJobAdmin, listAllImportJobs, listAuditEvents, searchUsers, searchWorkspaces, suspendWorkspace, unsuspendWorkspace } from "./admin-store";
+import { closeWorkspace, getImportJobAdmin, listAllImportJobs, listAuditEvents, searchUsers, searchWorkspaces, suspendWorkspace, unsuspendWorkspace, type UserPlanFilter } from "./admin-store";
 import { getWorkspaceById, revokeWorkspaceCode, setWorkspaceType, updateWorkspace, type UpdateWorkspaceInput } from "./store";
 import { upsertCollaborationRequest } from "../connect/collaboration-store";
 import type { AdminAuditEvent, AdminUserSearchResult, DocumentImportJob, ImportJobStatus, TeacherWorkspace, WorkspaceAdminSummary, WorkspaceCode, WorkspaceSuspensionReason } from "./types";
@@ -40,7 +40,7 @@ export async function closeWorkspaceService(input: { workspaceId: string; adminU
   return closed;
 }
 
-export async function searchUsersService(query: string, filter?: { role?: "student" | "teacher" | "admin" }, limit?: number): Promise<AdminUserSearchResult[]> {
+export async function searchUsersService(query: string, filter?: { role?: "student" | "teacher" | "admin"; plan?: UserPlanFilter }, limit?: number): Promise<AdminUserSearchResult[]> {
   return searchUsers(query, filter, limit);
 }
 

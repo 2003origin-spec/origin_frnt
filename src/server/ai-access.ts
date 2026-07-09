@@ -208,6 +208,22 @@ export async function invalidateUserAiContext(userId: string): Promise<void> {
   }
 }
 
+/** Bulk uctx invalidation for set-based tier changes (e.g. an admin granting
+ * Premium Pro to thousands of free students at once). `redis.del` is variadic;
+ * we chunk to keep each command bounded. Fire-and-forget safe. */
+export async function invalidateUserAiContexts(userIds: string[]): Promise<void> {
+  if (!redis || userIds.length === 0) return;
+  const CHUNK = 500;
+  try {
+    for (let i = 0; i < userIds.length; i += CHUNK) {
+      const keys = userIds.slice(i, i + CHUNK).map(uctxKey);
+      await redis.del(...keys);
+    }
+  } catch (err) {
+    console.error("[ai-access] failed to bulk-invalidate uctx", err);
+  }
+}
+
 async function getUserContext(userId: string): Promise<AiUserContext> {
   if (redis) {
     try {

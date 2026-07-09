@@ -21,6 +21,7 @@ import {
     IndianRupee,
     Ticket,
     ClipboardCheck,
+    Crown,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { usePathname, useRouter } from 'next/navigation';
@@ -36,6 +37,7 @@ interface AdminSidebarProps {
 const navItems = [
     { id: 'dashboard', label: 'Mission Control', icon: LayoutDashboard, path: '/admin' },
     { id: 'users', label: 'User Management', icon: Users, path: '/admin/users' },
+    { id: 'premium-access', label: 'Premium Access', icon: Crown, path: '/admin/premium-access' },
     { id: 'ai-access', label: 'AI Access', icon: Bot, path: '/admin/ai-access' },
     { id: 'admins', label: 'Admins', icon: ShieldCheck, path: '/admin/admins' },
     // Phase 2F.3 — institute/teacher approval queue (the student-visibility gate).

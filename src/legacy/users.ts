@@ -20,6 +20,7 @@ import { badRequest, created, noContent, notFound, ok, serviceUnavailable, unaut
 import { searchAll, type SearchScope } from "@/server/search/search-service";
 import { listNotifications, markNotificationsRead } from "@/server/notifications";
 import { withEntitledSubjects } from "@/server/entitlements";
+import { maybeGrantEventModePremiumOnSignup } from "@/server/premium-access-admin-service";
 import type { AppStore, StoredTask, StoredUser } from "@/server/store";
 import { createId, readStoreAsync, withStoreAsync, withStoreAsyncScoped, withStoredUserDefaults } from "@/server/store";
 import { persistUserCollections } from "@/server/store-postgres";
@@ -545,6 +546,9 @@ export async function handleRegister(payload: UserPayload) {
   if (isUserPostgresConfigured()) {
     try {
       const { user: dbUser, session } = await dbRegisterUser({ name, email, password, role });
+      // Event Mode: auto-grant Premium Pro to students who sign up during a launch
+      // event. Best-effort; never blocks/aborts registration.
+      await maybeGrantEventModePremiumOnSignup(dbUser.id, dbUser.role);
       const userData = await serializeDbUser(dbUser);
       if (!userData) return notFound("User not found.");
       return created({
@@ -711,6 +715,9 @@ export async function handleGoogleLogin(payload: UserPayload) {
             selectedCourse: null, isDropper: false, yearsOfExperience: null,
             subjects: [], studentCapacity: null,
           });
+          // Event Mode: auto-grant Premium Pro to students signing up during a
+          // launch event. Best-effort; never blocks Google signup.
+          await maybeGrantEventModePremiumOnSignup(dbUser.id, dbUser.role);
         } else if (!dbUser.avatar && avatar) {
           await dbUpdateUser(dbUser.id, { avatar });
           dbUser.avatar = avatar;
