@@ -15,12 +15,15 @@ import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 
 type Role = 'student' | 'teacher' | 'admin';
 type RoleFilter = 'all' | Role;
+type Plan = 'paid' | 'comp' | 'teacher' | 'free';
+type PlanFilter = 'all' | 'free' | 'premium' | 'paid' | 'comp' | 'teacher';
 
 type AdminUser = {
   id: string;
   name: string;
   email: string;
   role: Role;
+  plan: Plan | null;
   workspaceMemberships: { workspaceId: string; workspaceName: string; role: string }[];
   createdAt: string;
 };
@@ -31,9 +34,26 @@ const ROLE_TONE: Record<Role, string> = {
   admin: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
 };
 
-export function AdminUsersBrowser({ initialRole = 'all' }: { initialRole?: RoleFilter }) {
+const PLAN_TONE: Record<Plan, string> = {
+  paid: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
+  comp: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+  teacher: 'bg-blue-500/10 text-blue-600 dark:text-blue-400',
+  free: 'bg-muted text-muted-foreground',
+};
+const PLAN_LABEL: Record<Plan, string> = { paid: 'Paid', comp: 'Granted', teacher: 'Teacher', free: 'Free' };
+
+const PLAN_FILTERS: { value: PlanFilter; label: string }[] = [
+  { value: 'all', label: 'All plans' },
+  { value: 'free', label: 'Free' },
+  { value: 'paid', label: 'Paid premium' },
+  { value: 'comp', label: 'Granted (comp)' },
+  { value: 'teacher', label: 'Teacher grant' },
+];
+
+export function AdminUsersBrowser({ initialRole = 'all', initialPlan = 'all' }: { initialRole?: RoleFilter; initialPlan?: PlanFilter }) {
   const [query, setQuery] = useState('');
   const [role, setRole] = useState<RoleFilter>(initialRole);
+  const [planFilter, setPlanFilter] = useState<PlanFilter>(initialPlan);
   const [rows, setRows] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -52,6 +72,7 @@ export function AdminUsersBrowser({ initialRole = 'all' }: { initialRole?: RoleF
     setError(null);
     const params = new URLSearchParams({ type: 'user', query: debouncedQuery, limit: '50' });
     if (role !== 'all') params.set('role', role);
+    if (planFilter !== 'all') params.set('plan', planFilter);
 
     fetch(`/api/admin/search?${params.toString()}`, { credentials: 'include', signal: controller.signal })
       .then(async (res) => {
@@ -69,7 +90,7 @@ export function AdminUsersBrowser({ initialRole = 'all' }: { initialRole?: RoleF
       });
 
     return () => controller.abort();
-  }, [debouncedQuery, role]);
+  }, [debouncedQuery, role, planFilter]);
 
   // A query the user typed that hasn't been searched yet (debounce in flight).
   const pending = query.trim() !== debouncedQuery;
@@ -105,6 +126,14 @@ export function AdminUsersBrowser({ initialRole = 'all' }: { initialRole?: RoleF
           <option value="teacher">Teachers</option>
           <option value="admin">Admins</option>
         </select>
+        <select
+          value={planFilter}
+          onChange={(e) => setPlanFilter(e.target.value as PlanFilter)}
+          className="rounded-xl border border-border bg-card px-3 py-2 text-sm text-foreground"
+          title="Filter students by premium plan"
+        >
+          {PLAN_FILTERS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
+        </select>
       </div>
 
       {error && <div className="rounded-xl border border-rose-500/30 bg-rose-500/5 p-4 text-sm text-rose-600 dark:text-rose-400">{error}</div>}
@@ -116,6 +145,7 @@ export function AdminUsersBrowser({ initialRole = 'all' }: { initialRole?: RoleF
               <th className="text-left font-bold px-4 py-3">Name</th>
               <th className="text-left font-bold px-4 py-3">Email</th>
               <th className="text-left font-bold px-4 py-3">Role</th>
+              <th className="text-left font-bold px-4 py-3">Plan</th>
               <th className="text-left font-bold px-4 py-3">Workspaces</th>
               <th className="text-left font-bold px-4 py-3">Joined</th>
             </tr>
@@ -123,7 +153,7 @@ export function AdminUsersBrowser({ initialRole = 'all' }: { initialRole?: RoleF
           <tbody>
             {rows.length === 0 && !loading ? (
               <tr>
-                <td colSpan={5} className="px-4 py-12 text-center text-muted-foreground">No users found.</td>
+                <td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">No users found.</td>
               </tr>
             ) : (
               rows.map((u) => (
@@ -132,6 +162,13 @@ export function AdminUsersBrowser({ initialRole = 'all' }: { initialRole?: RoleF
                   <td className="px-4 py-3 text-muted-foreground">{u.email}</td>
                   <td className="px-4 py-3">
                     <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${ROLE_TONE[u.role]}`}>{u.role}</span>
+                  </td>
+                  <td className="px-4 py-3">
+                    {u.plan ? (
+                      <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${PLAN_TONE[u.plan]}`}>{PLAN_LABEL[u.plan]}</span>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">
                     {u.workspaceMemberships.length === 0

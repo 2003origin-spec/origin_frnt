@@ -10,6 +10,8 @@ import { useState } from 'react';
 import { ShieldCheck, Loader2, Trash2, UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
 
+import { mutateJson } from '@/lib/csrf';
+
 type Admin = { id: string; name: string; email: string; isMainAdmin: boolean; joinedAt: string };
 
 export function AdminAdminsPanel({ initial }: { initial: Admin[] }) {
@@ -22,10 +24,8 @@ export function AdminAdminsPanel({ initial }: { initial: Admin[] }) {
     if (!name.trim() || !email.trim()) return toast.error('Enter a name and email.');
     setBusy(true);
     try {
-      const res = await fetch('/api/admin/admins', {
+      const res = await mutateJson('/api/admin/admins', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ name: name.trim(), email: email.trim() }),
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.detail || `Failed (${res.status})`);
@@ -43,7 +43,7 @@ export function AdminAdminsPanel({ initial }: { initial: Admin[] }) {
   async function remove(a: Admin) {
     if (!confirm(`Remove admin access for ${a.email}?`)) return;
     try {
-      const res = await fetch(`/api/admin/admins?id=${encodeURIComponent(a.id)}`, { method: 'DELETE', credentials: 'include' });
+      const res = await mutateJson(`/api/admin/admins?id=${encodeURIComponent(a.id)}`, { method: 'DELETE' });
       if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.detail || `Failed (${res.status})`);
       setAdmins((prev) => prev.filter((x) => x.id !== a.id));
       toast.success('Admin removed.');

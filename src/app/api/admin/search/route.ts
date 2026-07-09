@@ -19,6 +19,7 @@ const SearchSchema = z.object({
   workspaceType: z.enum(["personal", "institute"]).optional(),
   status: z.enum(["active", "suspended", "all"]).optional(),
   role: z.enum(["student", "teacher", "admin"]).optional(),
+  plan: z.enum(["free", "premium", "paid", "comp", "teacher"]).optional(),
   limit: z.number().int().min(1).max(100).optional(),
 });
 
@@ -30,7 +31,7 @@ export async function POST(request: NextRequest) {
     const parsed = SearchSchema.safeParse(body);
     if (!parsed.success) return teacherJson({ error: parsed.error.message }, { status: 400 });
     if (parsed.data.type === "user") {
-      const users = await searchUsersService(parsed.data.query ?? "", { role: parsed.data.role }, parsed.data.limit);
+      const users = await searchUsersService(parsed.data.query ?? "", { role: parsed.data.role, plan: parsed.data.plan }, parsed.data.limit);
       return teacherJson(users);
     }
     const workspaces = await searchWorkspacesService(parsed.data.query ?? "", {
@@ -53,9 +54,10 @@ export async function GET(request: NextRequest) {
     const workspaceType = url.searchParams.get("workspaceType") as "personal" | "institute" | null;
     const status = url.searchParams.get("status") as "active" | "suspended" | "all" | null;
     const role = url.searchParams.get("role") as "student" | "teacher" | "admin" | null;
+    const plan = url.searchParams.get("plan") as "free" | "premium" | "paid" | "comp" | "teacher" | null;
     const limit = url.searchParams.has("limit") ? Number(url.searchParams.get("limit")) : undefined;
     if (type === "user") {
-      const users = await searchUsersService(query, { role: role ?? undefined }, limit);
+      const users = await searchUsersService(query, { role: role ?? undefined, plan: plan ?? undefined }, limit);
       return teacherJson(users);
     }
     const workspaces = await searchWorkspacesService(query, {

@@ -612,10 +612,14 @@ export type WorkspaceAdminSummary = {
   createdAt: string; suspendedAt: string | null; suspensionReason: WorkspaceSuspensionReason | null;
 };
 
+export type AdminUserPlan = "paid" | "comp" | "teacher" | "free";
+
 export type AdminUserSearchResult = {
   id: string; name: string; email: string; role: "student" | "teacher" | "admin";
   workspaceMemberships: { workspaceId: string; workspaceName: string; role: string }[];
   createdAt: string;
+  /** Premium plan label for students (paid > comp > teacher > free); null for non-students. */
+  plan: AdminUserPlan | null;
 };
 
 export type AdminAuditEvent = {

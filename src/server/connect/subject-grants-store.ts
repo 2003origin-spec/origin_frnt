@@ -248,6 +248,163 @@ export async function backfillAdminCompGrants(): Promise<number> {
   return res.rowCount ?? 0;
 }
 
+// ─── Admin comp (Premium Pro) grant/revoke — set-based, admin console ─────────
+//
+// Powers the /admin/premium-access toggle: an admin grants a free student the
+// full Premium Pro plan (all four subjects) as an `admin_comp` grant, or revokes
+// it. Everything is set-based so "select all free students" is a single INSERT /
+// UPDATE, never a per-user loop. Real paid premium lives in a different table
+// (subscriptions.user_subscriptions) and is NEVER touched here — a comp revoke
+// can only mark `source='admin_comp'` rows revoked, so a Razorpay payer stays
+// premium. The caller MUST recompute the is_premium/premium_expiry mirror for the
+// returned user ids afterwards (recomputePremiumFlagsForUsers in entitlements.ts).
+
+export type BulkGrantResult = { userIds: string[]; rowsInserted: number };
+
+const ADMIN_COMP_SUBJECTS = `(VALUES ('physics'), ('chemistry'), ('mathematics'), ('biology')) AS s(subject)`;
+
+function distinct(ids: Array<string | null | undefined>): string[] {
+  return [...new Set(ids.filter((id): id is string => Boolean(id)))];
+}
+
+/**
+ * Grants the full Premium Pro plan (all four subjects, `source='admin_comp'`) to
+ * the given student user ids. Idempotent per (user, subject) via the NOT EXISTS
+ * guard (matching uq_subject_grants_active_admin_comp), so re-granting is a no-op
+ * and only missing subjects are inserted. Non-student ids are ignored.
+ * `grantedBy` must be a real origin_users id (the acting admin) or null — never a
+ * synthetic string, since granted_by has an FK to origin_users(id).
+ */
+export async function grantAdminCompToUsers(input: {
+  userIds: string[];
+  grantedBy: string | null;
+  expiresAt?: string | null;
+}): Promise<BulkGrantResult> {
+  await ensureSubjectGrantsSchema();
+  if (input.userIds.length === 0) return { userIds: [], rowsInserted: 0 };
+  const res = await pool().query<{ user_id: string }>(
+    `INSERT INTO entitlements.subject_grants
+       (id, user_id, subject, source, status, expires_at, granted_by, created_at)
+     SELECT 'grant_' || replace(gen_random_uuid()::text, '-', ''),
+            u.id, s.subject, 'admin_comp', 'active', $2, $3, NOW()
+     FROM origin_users u
+     CROSS JOIN ${ADMIN_COMP_SUBJECTS}
+     WHERE u.role = 'student'
+       AND u.id = ANY($1::text[])
+       AND NOT EXISTS (
+         SELECT 1 FROM entitlements.subject_grants g
+         WHERE g.user_id = u.id AND g.subject = s.subject
+           AND g.source = 'admin_comp' AND g.status = 'active'
+       )
+     RETURNING user_id`,
+    [input.userIds, input.expiresAt ?? null, input.grantedBy ?? null],
+  );
+  return { userIds: distinct(res.rows.map((r) => r.user_id)), rowsInserted: res.rowCount ?? 0 };
+}
+
+/**
+ * Grants Premium Pro (`admin_comp`, all four subjects) to EVERY currently-free
+ * student in one statement — the "select all free students" bulk action. `query`
+ * optionally scopes to name/email matches (so the admin can grant a filtered
+ * view). Free = role student AND is_premium = FALSE (indexed by
+ * idx_origin_users_role_premium). Idempotent per subject via the NOT EXISTS guard.
+ */
+export async function grantAdminCompToAllFreeStudents(input: {
+  grantedBy: string | null;
+  expiresAt?: string | null;
+  query?: string;
+}): Promise<BulkGrantResult> {
+  await ensureSubjectGrantsSchema();
+  const params: unknown[] = [input.expiresAt ?? null, input.grantedBy ?? null];
+  let queryClause = "";
+  if (input.query && input.query.trim()) {
+    params.push(`%${input.query.trim()}%`);
+    queryClause = `AND (u.name ILIKE $${params.length} OR u.email ILIKE $${params.length})`;
+  }
+  const res = await pool().query<{ user_id: string }>(
+    `INSERT INTO entitlements.subject_grants
+       (id, user_id, subject, source, status, expires_at, granted_by, created_at)
+     SELECT 'grant_' || replace(gen_random_uuid()::text, '-', ''),
+            u.id, s.subject, 'admin_comp', 'active', $1, $2, NOW()
+     FROM origin_users u
+     CROSS JOIN ${ADMIN_COMP_SUBJECTS}
+     WHERE u.role = 'student'
+       AND u.is_premium = FALSE
+       ${queryClause}
+       AND NOT EXISTS (
+         SELECT 1 FROM entitlements.subject_grants g
+         WHERE g.user_id = u.id AND g.subject = s.subject
+           AND g.source = 'admin_comp' AND g.status = 'active'
+       )
+     RETURNING user_id`,
+    params,
+  );
+  return { userIds: distinct(res.rows.map((r) => r.user_id)), rowsInserted: res.rowCount ?? 0 };
+}
+
+/**
+ * Revokes all active `admin_comp` grants for the given users (marks them
+ * `revoked`). Only touches admin_comp rows, so paid subscriptions and teacher_code
+ * grants are untouched. Returns the distinct users whose grants changed.
+ */
+export async function revokeAdminCompForUsers(userIds: string[]): Promise<{ userIds: string[] }> {
+  await ensureSubjectGrantsSchema();
+  if (userIds.length === 0) return { userIds: [] };
+  const res = await pool().query<{ user_id: string }>(
+    `UPDATE entitlements.subject_grants
+        SET status = 'revoked', updated_at = NOW()
+      WHERE source = 'admin_comp' AND status = 'active'
+        AND user_id = ANY($1::text[])
+      RETURNING user_id`,
+    [userIds],
+  );
+  return { userIds: distinct(res.rows.map((r) => r.user_id)) };
+}
+
+/**
+ * Revokes EVERY active `admin_comp` grant (the "revoke all granted" bulk action),
+ * optionally scoped to name/email matches. Paid subscriptions are never touched.
+ */
+export async function revokeAllAdminComp(query?: string): Promise<{ userIds: string[] }> {
+  await ensureSubjectGrantsSchema();
+  const params: unknown[] = [];
+  let queryClause = "";
+  if (query && query.trim()) {
+    params.push(`%${query.trim()}%`);
+    queryClause = `AND g.user_id IN (
+      SELECT id FROM origin_users u WHERE u.name ILIKE $${params.length} OR u.email ILIKE $${params.length}
+    )`;
+  }
+  const res = await pool().query<{ user_id: string }>(
+    `UPDATE entitlements.subject_grants g
+        SET status = 'revoked', updated_at = NOW()
+      WHERE g.source = 'admin_comp' AND g.status = 'active'
+        ${queryClause}
+      RETURNING g.user_id`,
+    params,
+  );
+  return { userIds: distinct(res.rows.map((r) => r.user_id)) };
+}
+
+/**
+ * Marks lapsed active grants (any source) `expired` — nothing else in the app
+ * expires them, so the is_premium mirror would otherwise stay stale-true after an
+ * admin_comp auto-revert window passes. Returns the distinct affected users; the
+ * caller must recompute their mirror. Wired into the connect-jobs drain cron.
+ */
+export async function expireLapsedSubjectGrants(): Promise<{ userIds: string[] }> {
+  await ensureSubjectGrantsSchema();
+  const res = await pool().query<{ user_id: string }>(
+    `UPDATE entitlements.subject_grants
+        SET status = 'expired', updated_at = NOW()
+      WHERE status = 'active'
+        AND expires_at IS NOT NULL
+        AND expires_at <= NOW()
+      RETURNING user_id`,
+  );
+  return { userIds: distinct(res.rows.map((r) => r.user_id)) };
+}
+
 /** All user ids currently flagged is_premium — recomputed after the backfill. */
 export async function listPremiumUserIds(): Promise<string[]> {
   await ensureSubjectGrantsSchema();

@@ -10,6 +10,8 @@ import { useState } from 'react';
 import { Ticket, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
+import { mutateJson } from '@/lib/csrf';
+
 type Coupon = {
   code: string;
   description: string | null;
@@ -58,10 +60,8 @@ export function AdminCouponsPanel({ initial }: { initial: Coupon[] }) {
       if (maxRedemptions) body.maxRedemptions = Number(maxRedemptions);
       if (validTo) body.validTo = new Date(validTo).toISOString();
 
-      const res = await fetch('/api/admin/coupons', {
+      const res = await mutateJson('/api/admin/coupons', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.detail || `Failed (${res.status})`);
@@ -78,10 +78,8 @@ export function AdminCouponsPanel({ initial }: { initial: Coupon[] }) {
 
   async function toggle(c: Coupon) {
     try {
-      const res = await fetch('/api/admin/coupons', {
+      const res = await mutateJson('/api/admin/coupons', {
         method: 'PATCH',
-        headers: { 'content-type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({ code: c.code, active: !c.active }),
       });
       if (!res.ok) throw new Error(`Failed (${res.status})`);

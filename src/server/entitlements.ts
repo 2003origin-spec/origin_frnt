@@ -15,7 +15,7 @@
  */
 
 import { getUserPostgresPool, isUserPostgresConfigured } from "@/server/user-postgres";
-import { invalidateUserAiContext } from "@/server/ai-access";
+import { invalidateUserAiContext, invalidateUserAiContexts } from "@/server/ai-access";
 import { isFeatureEnabled } from "@/lib/feature-flags";
 import { dbUpdateUser } from "@/server/db-users";
 import type { StoredUser } from "@/legacy/store";
@@ -207,4 +207,75 @@ export async function recomputeUserPremiumFlags(userId: string): Promise<void> {
   // AI Feature Toggle epic — tier (is_premium) changed; drop the cached uctx so
   // any tier-scoped rule re-resolves immediately rather than in ≤120s (doc 03 §6).
   void invalidateUserAiContext(userId).catch(() => {});
+}
+
+/**
+ * Set-based sibling of `recomputeUserPremiumFlags` for bulk admin operations
+ * (e.g. granting/revoking Premium Pro comp to thousands of free students at once
+ * from /admin/premium-access). Recomputes is_premium / premium_expiry for every
+ * given user in ONE statement per ~5k-id chunk — the exact same semantics as the
+ * single-user path (ENTITLED_CLAUSE for paid subs + active grants; is_premium =
+ * owns ≥1 subject; premium_expiry = NULL when any active entitlement never
+ * expires, else the latest finite expiry). Never loops the per-user recompute.
+ * No feature-flag gate — the mirror must stay correct even while surfaces are dark.
+ */
+export async function recomputePremiumFlagsForUsers(userIds: string[]): Promise<void> {
+  if (!isUserPostgresConfigured()) return;
+  const ids = [...new Set(userIds.filter(Boolean))];
+  if (ids.length === 0) return;
+  const p = pool();
+  if (!p) return;
+
+  const CHUNK = 5000;
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const chunk = ids.slice(i, i + CHUNK);
+    await p.query(
+      `WITH affected AS (SELECT unnest($1::text[]) AS user_id),
+       ent AS (
+         SELECT s.user_id, s.current_period_end AS expires_at
+           FROM subscriptions.user_subscriptions s
+           JOIN affected f ON f.user_id = s.user_id
+          WHERE s.subject IN ('physics', 'chemistry', 'mathematics', 'biology')
+            AND ${ENTITLED_CLAUSE}
+         UNION ALL
+         SELECT g.user_id, g.expires_at
+           FROM entitlements.subject_grants g
+           JOIN affected f ON f.user_id = g.user_id
+          WHERE g.status = 'active'
+            AND g.subject IN ('physics', 'chemistry', 'mathematics', 'biology')
+            AND (g.expires_at IS NULL OR g.expires_at > NOW())
+       ),
+       agg AS (
+         SELECT user_id,
+                BOOL_OR(expires_at IS NULL) AS has_never_expires,
+                MAX(expires_at)             AS latest_expiry
+           FROM ent GROUP BY user_id
+       )
+       UPDATE origin_users u
+          SET is_premium     = (a.user_id IS NOT NULL),
+              premium_expiry = CASE WHEN a.user_id IS NULL OR a.has_never_expires THEN NULL
+                                    ELSE a.latest_expiry END
+         FROM affected f
+         LEFT JOIN agg a ON a.user_id = f.user_id
+        WHERE u.id = f.user_id`,
+      [chunk],
+    );
+  }
+
+  // Propagate: small batches per-user (precise), large batches once + bulk uctx
+  // drop (the ≤120s uctx TTL is the backstop either way).
+  if (ids.length <= 100) {
+    for (const id of ids) {
+      await revalidateUserCache(id);
+      void invalidateUserAiContext(id).catch(() => {});
+    }
+  } else {
+    try {
+      const { revalidateTag } = await import("next/cache");
+      revalidateTag("auth-user", "max");
+    } catch {
+      /* not in a request scope — nothing to revalidate */
+    }
+    void invalidateUserAiContexts(ids).catch(() => {});
+  }
 }
