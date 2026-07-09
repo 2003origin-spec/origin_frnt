@@ -58,6 +58,9 @@ export interface StoredUser {
   username: string | null;
   /** When true the public profile shows only the minimal card (Phase: student social). */
   profilePrivate: boolean;
+  /** OGCode answer sound preferences — filename under /sounds/correct/ and /sounds/wrong/ */
+  ogcodeCorrectSound: string | null;
+  ogcodeWrongSound: string | null;
 }
 
 export interface StoredStreakData {
@@ -527,6 +530,8 @@ type StoredUserDefaultFields = Pick<
   | "authTokenVersion"
   | "username"
   | "profilePrivate"
+  | "ogcodeCorrectSound"
+  | "ogcodeWrongSound"
 >;
 
 export type StoredUserWithOptionalDefaults = Omit<StoredUser, keyof StoredUserDefaultFields> &
@@ -542,6 +547,8 @@ export function withStoredUserDefaults(user: StoredUserWithOptionalDefaults): St
     authTokenVersion: user.authTokenVersion ?? 0,
     username: user.username ?? null,
     profilePrivate: user.profilePrivate ?? false,
+    ogcodeCorrectSound: user.ogcodeCorrectSound ?? null,
+    ogcodeWrongSound: user.ogcodeWrongSound ?? null,
   };
 }
 

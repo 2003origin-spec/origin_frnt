@@ -21,7 +21,7 @@ import { searchAll, type SearchScope } from "@/server/search/search-service";
 import { listNotifications, markNotificationsRead } from "@/server/notifications";
 import { withEntitledSubjects } from "@/server/entitlements";
 import type { AppStore, StoredTask, StoredUser } from "@/server/store";
-import { createId, readStoreAsync, withStoreAsync, withStoredUserDefaults } from "@/server/store";
+import { createId, readStoreAsync, withStoreAsync, withStoreAsyncScoped, withStoredUserDefaults } from "@/server/store";
 import { persistUserCollections } from "@/server/store-postgres";
 
 type UserPayload = Record<string, unknown>;
@@ -124,6 +124,8 @@ export function serializeUser(store: AppStore, userId: string) {
     tokens_used_today: user.tokensUsedToday,
     usageResetAt: user.usageResetAt,
     usage_reset_at: user.usageResetAt,
+    ogcodeCorrectSound: user.ogcodeCorrectSound ?? null,
+    ogcodeWrongSound: user.ogcodeWrongSound ?? null,
   };
 
   return payload;
@@ -1297,11 +1299,16 @@ export async function handleUsersRequest(method: string, slug: string[], request
 }
 
 async function handleBadgesSeen(request: Request) {
-  return withStoreAsync(async (store) => {
-    const user = await requireUserFromRequest(store, request);
-    if (!user) return unauthorized();
-    const score = store.userScores.find((s) => s.userId === user.id);
-    if (score) score.pendingBadges = [];
-    return ok({ ok: true });
-  });
+  const store = await readStoreAsync();
+  const user = await requireUserFromRequest(store, request);
+  if (!user) return unauthorized();
+
+  return withStoreAsyncScoped(
+    async (store) => {
+      const score = store.userScores.find((s) => s.userId === user.id);
+      if (score) score.pendingBadges = [];
+      return ok({ ok: true });
+    },
+    { userId: user.id, collections: ['userScores'], persistUser: false }
+  );
 }

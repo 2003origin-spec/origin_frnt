@@ -23,6 +23,10 @@ import {
   RefreshCw,
   Check,
   ChevronRight,
+  Volume2,
+  Play,
+  CheckCircle,
+  XCircle,
 } from 'lucide-react';
 import { apiCall } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
@@ -36,6 +40,165 @@ import { getUserTitle } from '@/lib/achievements';
 import SocialSettingsCard from '@/components/social/SocialSettingsCard';
 import { BADGE_TIERS } from '@/lib/badges';
 import Image from 'next/image';
+
+const CORRECT_SOUNDS = [
+  { id: 'success-bell',       label: 'Bell',        file: 'success-bell.mp3' },
+  { id: 'success-chime',      label: 'Chime',       file: 'success-chime.mp3' },
+  { id: 'success-synth',      label: 'Synth',       file: 'success-synth.mp3' },
+  { id: 'success-vocal-fun',  label: 'Fun',         file: 'success-vocal-fun.mp3' },
+  { id: 'success-vocal-wah',  label: 'Wah',         file: 'success-vocal-wah.mp3' },
+  { id: 'success-vocal-wahoo',label: 'Wahoo',       file: 'success-vocal-wahoo.mp3' },
+];
+
+const WRONG_SOUNDS = [
+  { id: 'fail-alert',          label: 'Alert',      file: 'fail-alert.mp3' },
+  { id: 'fail-buzzer',         label: 'Buzzer',     file: 'fail-buzzer.mp3' },
+  { id: 'fail-chime',          label: 'Chime',      file: 'fail-chime.mp3' },
+  { id: 'fail-clang',          label: 'Clang',      file: 'fail-clang.mp3' },
+  { id: 'fail-drop',           label: 'Drop',       file: 'fail-drop.mp3' },
+  { id: 'fail-sad-bgm',        label: 'Sad BGM',    file: 'fail-sad-bgm.mp3' },
+  { id: 'fail-synth',          label: 'Synth',      file: 'fail-synth.mp3' },
+  { id: 'fail-vocal-aayein',   label: 'Aayein',     file: 'fail-vocal-aayein.mp3' },
+  { id: 'fail-vocal-complaint',label: 'Complaint',  file: 'fail-vocal-complaint.mp3' },
+  { id: 'fail-vocal-groan',    label: 'Groan',      file: 'fail-vocal-groan.mp3' },
+  { id: 'fail-vocal-mock',     label: 'Mock',       file: 'fail-vocal-mock.mp3' },
+];
+
+let previewAudio: HTMLAudioElement | null = null;
+function playPreview(path: string) {
+  try {
+    previewAudio?.pause();
+    previewAudio = new Audio(path);
+    previewAudio.volume = 0.6;
+    previewAudio.play().catch(() => {});
+  } catch {
+    /* ignore playback errors */
+  }
+}
+
+function SoundRow({
+  label, icon, color, sounds, selected, onSelect, dir,
+}: {
+  label: string;
+  icon: React.ReactNode;
+  color: string;
+  sounds: typeof CORRECT_SOUNDS;
+  selected: string | null;
+  onSelect: (f: string | null) => void;
+  dir: 'correct' | 'wrong';
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <span className={cn('text-[10px] font-black uppercase tracking-widest', color)}>{label}</span>
+        {icon}
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        {/* None option */}
+        <button
+          onClick={() => onSelect(null)}
+          className={cn(
+            'flex items-center gap-1.5 px-2.5 py-2 rounded-xl border text-left transition-all text-xs font-bold',
+            selected === null
+              ? 'border-slate-400 bg-slate-100 dark:bg-slate-800 text-foreground'
+              : 'border-border/60 bg-background text-muted-foreground hover:border-border hover:text-foreground'
+          )}
+        >
+          <Volume2 className="w-3 h-3 shrink-0 opacity-40" />
+          <span className="truncate">None</span>
+          {selected === null && <Check className="w-3 h-3 ml-auto shrink-0" />}
+        </button>
+        {sounds.map(s => {
+          const isActive = selected === s.file;
+          return (
+            <button
+              key={s.id}
+              onClick={() => {
+                const next = isActive ? null : s.file;
+                if (next) playPreview(`/sounds/${dir}/${s.file}`);
+                onSelect(next);
+              }}
+              className={cn(
+                'flex items-center gap-1.5 px-2.5 py-2 rounded-xl border text-left transition-all text-xs font-bold',
+                isActive
+                  ? dir === 'correct'
+                    ? 'border-emerald-500 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                    : 'border-rose-500 bg-rose-500/10 text-rose-600 dark:text-rose-400'
+                  : 'border-border/60 bg-background text-muted-foreground hover:border-border hover:text-foreground'
+              )}
+            >
+              <Play className="w-3 h-3 shrink-0" />
+              <span className="truncate">{s.label}</span>
+              {isActive && <Check className="w-3 h-3 ml-auto shrink-0" />}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function SoundPickerCard({ user }: { user: UserType }) {
+  const { refreshUser } = useAuth();
+  const [correctSound, setCorrectSound] = useState<string | null>(user.ogcodeCorrectSound ?? null);
+  const [wrongSound, setWrongSound]     = useState<string | null>(user.ogcodeWrongSound   ?? null);
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await updateProfileAction({ ogcodeCorrectSound: correctSound, ogcodeWrongSound: wrongSound });
+      await refreshUser();
+      toast.success('Sound preferences saved');
+    } catch {
+      toast.error('Failed to save sound preferences');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="neu-raised p-5 space-y-5">
+      <div className="flex items-center gap-3">
+        <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
+          <Volume2 className="w-4 h-4 text-primary" />
+        </div>
+        <div>
+          <p className="text-sm font-black text-foreground">OGCode Sounds</p>
+          <p className="text-[10px] text-muted-foreground font-medium">Choose sounds played on correct / wrong answers</p>
+        </div>
+      </div>
+
+      <SoundRow
+        label="Correct answer"
+        icon={<CheckCircle className="w-3.5 h-3.5 text-emerald-500" />}
+        color="text-emerald-600 dark:text-emerald-400"
+        sounds={CORRECT_SOUNDS}
+        selected={correctSound}
+        onSelect={setCorrectSound}
+        dir="correct"
+      />
+
+      <SoundRow
+        label="Wrong answer"
+        icon={<XCircle className="w-3.5 h-3.5 text-rose-500" />}
+        color="text-rose-600 dark:text-rose-400"
+        sounds={WRONG_SOUNDS}
+        selected={wrongSound}
+        onSelect={setWrongSound}
+        dir="wrong"
+      />
+
+      <button
+        onClick={handleSave}
+        disabled={saving}
+        className="w-full h-10 rounded-xl bg-primary text-primary-foreground text-xs font-black uppercase tracking-wider disabled:opacity-50 transition-opacity"
+      >
+        {saving ? 'Saving…' : 'Save Sound Preferences'}
+      </button>
+    </div>
+  );
+}
 
 interface ProfileProps {
   user: UserType;
@@ -174,12 +337,12 @@ export default function Profile({
   }));
 
   const achievements = [
-    { name: 'First Test',    description: 'Completed your first test',  icon: BookOpen,   unlocked: profileStats?.achievements.first_test   ?? false },
-    { name: '7-Day Streak',  description: 'Studied 7 days in a row',    icon: TrendingUp, unlocked: profileStats?.achievements.streak_7      ?? false },
-    { name: 'Doubt Master',  description: 'Solved 50 doubts',           icon: Target,     unlocked: profileStats?.achievements.doubt_master  ?? false },
-    { name: 'Top 100',       description: 'Reached top 100 rank',       icon: Trophy,     unlocked: profileStats?.achievements.top_100       ?? false },
-    { name: 'Perfect Score', description: 'Scored 100% on a test',      icon: Crown,      unlocked: profileStats?.achievements.perfect_score ?? false },
-    { name: '30-Day Streak', description: 'Studied 30 days in a row',   icon: Calendar,   unlocked: profileStats?.achievements.streak_30     ?? false },
+    { name: 'First Test',    description: 'Completed your first test',  icon: BookOpen,   unlocked: profileStats?.achievements?.first_test   ?? false },
+    { name: '7-Day Streak',  description: 'Studied 7 days in a row',    icon: TrendingUp, unlocked: profileStats?.achievements?.streak_7      ?? false },
+    { name: 'Doubt Master',  description: 'Solved 50 doubts',           icon: Target,     unlocked: profileStats?.achievements?.doubt_master  ?? false },
+    { name: 'Top 100',       description: 'Reached top 100 rank',       icon: Trophy,     unlocked: profileStats?.achievements?.top_100       ?? false },
+    { name: 'Perfect Score', description: 'Scored 100% on a test',      icon: Crown,      unlocked: profileStats?.achievements?.perfect_score ?? false },
+    { name: '30-Day Streak', description: 'Studied 30 days in a row',   icon: Calendar,   unlocked: profileStats?.achievements?.streak_30     ?? false },
   ];
 
   const STATS = [
@@ -565,6 +728,7 @@ export default function Profile({
                               width={64}
                               height={64}
                               className="drop-shadow-md"
+                              style={{ height: 'auto' }}
                             />
                           </div>
                           <div className="relative">
@@ -594,6 +758,7 @@ export default function Profile({
                       initialPrivate={Boolean(user.profilePrivate)}
                     />
                   )}
+                  <SoundPickerCard user={user} />
                   {[
                     { icon: User,   label: 'Personal Information', desc: 'Update your name, email, and bio',  accent: 'text-primary',    accentBg: 'bg-primary/10'    },
                     { icon: Bell,   label: 'Notifications',        desc: 'Manage your alert preferences',     accent: 'text-blue-500',   accentBg: 'bg-blue-500/10'   },

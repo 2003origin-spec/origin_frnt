@@ -946,8 +946,18 @@ export default function OGCodeList({
                         </p>
                     </motion.div>
 
+                    {/* Right side: OG Points + AIR stats */}
+                    <div className="flex items-center gap-3 self-start">
+
+                    {/* OG Points chip */}
+                    <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl neu-raised border border-amber-500/15 bg-amber-500/5 shrink-0">
+                        <Trophy className="w-3.5 h-3.5 text-amber-500" />
+                        <span className="text-sm font-black text-amber-500 font-mono">{user.points || 0}</span>
+                        <span className="text-[9px] font-black text-amber-500/60 uppercase tracking-widest">PTS</span>
+                    </div>
+
                     {/* AIR Badge & Stats Dropdown */}
-                    <div ref={statsRef} className="relative self-start z-[220]">
+                    <div ref={statsRef} className="relative z-[220]">
                         <button
                             onClick={() => setIsStatsExpanded(!isStatsExpanded)}
                             className={cn(
@@ -1070,6 +1080,8 @@ export default function OGCodeList({
                             )}
                         </AnimatePresence>
                     </div>
+
+                    </div>{/* end right-side flex */}
                 </div>
 
                 {/* ── Filters ── */}

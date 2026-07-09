@@ -90,11 +90,11 @@ export default function ParticleBackground({ visible }: ParticleBackgroundProps)
     scene.add(particles);
 
     let animId: number;
-    const clock = new THREE.Clock();
+    const startTime = performance.now();
 
     const animate = () => {
       animId = requestAnimationFrame(animate);
-      const t = clock.getElapsedTime();
+      const t = (performance.now() - startTime) / 1000;
       material.uniforms.uTime.value = t;
       particles.rotation.y = t * 0.04;
       particles.rotation.x = Math.sin(t * 0.025) * 0.15;

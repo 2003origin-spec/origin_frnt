@@ -3,7 +3,7 @@
 import { revalidatePath, revalidateTag } from 'next/cache';
 
 import { getServerUser } from '@/lib/auth-server';
-import { withStoreAsync } from '@/server/store';
+import { withStoreAsync, withStoreAsyncScoped, type StoredUser } from '@/server/store';
 import { serializeUser } from '@/server/users';
 import { isUserPostgresConfigured } from '@/server/user-postgres';
 import { dbCreateMediaAsset, dbUpdateUser } from '@/server/db-users';
@@ -25,6 +25,8 @@ type UpdateProfileInput = Partial<{
   isDropper: boolean;
   subjects: string[];
   location: string;
+  ogcodeCorrectSound: string | null;
+  ogcodeWrongSound: string | null;
 }>;
 
 export type UserImageUploadResult = {
@@ -53,34 +55,39 @@ async function requireUser() {
 }
 
 async function applyProfileUpdates(userId: string, input: UpdateProfileInput): Promise<User | null> {
-  return withStoreAsync(async (store) => {
-    const user = store.users.find((u) => u.id === userId);
-    if (!user) return null;
+  return withStoreAsyncScoped(
+    async (store) => {
+      const user = store.users.find((u) => u.id === userId);
+      if (!user) return null;
 
-    const stringFields: Array<[keyof typeof user, string | undefined]> = [
-      ['name', input.name],
-      ['fieldOfInterest', input.fieldOfInterest],
-      ['referralSource', input.referralSource],
-      ['avatar', input.avatar],
-      ['selectedCourse', input.selectedCourse],
-      ['yearsOfExperience', input.yearsOfExperience],
-      ['studentCapacity', input.studentCapacity],
-      ['location', input.location],
-    ];
+      const stringFields: Array<[keyof typeof user, string | undefined]> = [
+        ['name', input.name],
+        ['fieldOfInterest', input.fieldOfInterest],
+        ['referralSource', input.referralSource],
+        ['avatar', input.avatar],
+        ['selectedCourse', input.selectedCourse],
+        ['yearsOfExperience', input.yearsOfExperience],
+        ['studentCapacity', input.studentCapacity],
+        ['location', input.location],
+      ];
 
-    for (const [field, value] of stringFields) {
-      if (typeof value === 'string') (user[field] as unknown) = value;
-    }
+      for (const [field, value] of stringFields) {
+        if (typeof value === 'string') (user[field] as unknown) = value;
+      }
 
-    const studentClass = input.studentClass ?? input.student_class ?? input.class;
-    if (typeof studentClass === 'string') user.studentClass = studentClass;
-    if (typeof input.isOnboarded === 'boolean') user.isOnboarded = input.isOnboarded;
-    if (typeof input.isDropper === 'boolean') user.isDropper = input.isDropper;
-    if (Array.isArray(input.subjects)) user.subjects = input.subjects;
+      const studentClass = input.studentClass ?? input.student_class ?? input.class;
+      if (typeof studentClass === 'string') user.studentClass = studentClass;
+      if (typeof input.isOnboarded === 'boolean') user.isOnboarded = input.isOnboarded;
+      if (typeof input.isDropper === 'boolean') user.isDropper = input.isDropper;
+      if (Array.isArray(input.subjects)) user.subjects = input.subjects;
+      if ('ogcodeCorrectSound' in input) user.ogcodeCorrectSound = input.ogcodeCorrectSound ?? null;
+      if ('ogcodeWrongSound' in input) user.ogcodeWrongSound = input.ogcodeWrongSound ?? null;
 
-    const serialized = serializeUser(store, userId);
-    return (serialized as unknown as User) ?? null;
-  });
+      const serialized = serializeUser(store, userId);
+      return (serialized as unknown as User) ?? null;
+    },
+    { userId, collections: [], persistUser: true }
+  );
 }
 
 export async function updateProfileAction(input: UpdateProfileInput): Promise<User> {
@@ -94,17 +101,24 @@ export async function updateProfileAction(input: UpdateProfileInput): Promise<Us
   // Persist to Postgres if configured
   if (isUserPostgresConfigured()) {
     try {
-      await dbUpdateUser(current.id, {
-        name: input.name,
-        studentClass: input.studentClass ?? input.class ?? input.student_class,
-        fieldOfInterest: input.fieldOfInterest,
-        referralSource: input.referralSource,
-        avatar: input.avatar,
-        selectedCourse: input.selectedCourse,
-        yearsOfExperience: input.yearsOfExperience,
-        studentCapacity: input.studentCapacity,
-        location: input.location,
-      });
+      const patch: Partial<StoredUser> = {};
+      if (input.name !== undefined) patch.name = input.name;
+      
+      const studentClass = input.studentClass ?? input.class ?? input.student_class;
+      if (studentClass !== undefined) patch.studentClass = studentClass;
+      
+      if (input.fieldOfInterest !== undefined) patch.fieldOfInterest = input.fieldOfInterest;
+      if (input.referralSource !== undefined) patch.referralSource = input.referralSource;
+      if (input.avatar !== undefined) patch.avatar = input.avatar;
+      if (input.selectedCourse !== undefined) patch.selectedCourse = input.selectedCourse;
+      if (input.yearsOfExperience !== undefined) patch.yearsOfExperience = input.yearsOfExperience;
+      if (input.studentCapacity !== undefined) patch.studentCapacity = input.studentCapacity;
+      if (input.location !== undefined) patch.location = input.location;
+      
+      if ('ogcodeCorrectSound' in input) patch.ogcodeCorrectSound = input.ogcodeCorrectSound ?? null;
+      if ('ogcodeWrongSound' in input) patch.ogcodeWrongSound = input.ogcodeWrongSound ?? null;
+
+      await dbUpdateUser(current.id, patch);
     } catch (err) {
       console.error('[profile-actions] Failed to persist updates to DB:', err);
       throw new Error('Could not save profile changes. Please try again.');

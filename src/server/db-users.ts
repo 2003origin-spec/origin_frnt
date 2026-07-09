@@ -99,6 +99,9 @@ export async function ensureUserSchema(): Promise<void> {
           ALTER TABLE origin_users ADD COLUMN IF NOT EXISTS auth_token_version INTEGER NOT NULL DEFAULT 0;
           ALTER TABLE origin_users ADD COLUMN IF NOT EXISTS username TEXT;
           ALTER TABLE origin_users ADD COLUMN IF NOT EXISTS profile_private BOOLEAN NOT NULL DEFAULT FALSE;
+          -- OGCode answer sound preferences (filename under /sounds/correct|wrong/).
+          ALTER TABLE origin_users ADD COLUMN IF NOT EXISTS ogcode_correct_sound TEXT;
+          ALTER TABLE origin_users ADD COLUMN IF NOT EXISTS ogcode_wrong_sound TEXT;
           -- Admin Control Plane: distinguishes the single main admin from sub-admins.
           ALTER TABLE origin_users ADD COLUMN IF NOT EXISTS is_main_admin BOOLEAN NOT NULL DEFAULT FALSE;
 
@@ -269,6 +272,8 @@ function rowToUser(row: any): StoredUser {
     authTokenVersion: Number(row.auth_token_version ?? 0),
     username: row.username ?? null,
     profilePrivate: Boolean(row.profile_private),
+    ogcodeCorrectSound: row.ogcode_correct_sound ?? null,
+    ogcodeWrongSound: row.ogcode_wrong_sound ?? null,
   };
 }
 
@@ -377,6 +382,7 @@ export async function dbUpdateUser(id: string, patch: Partial<StoredUser>): Prom
     voiceMinutesUsedToday: "voice_minutes_used_today", tokensUsedToday: "tokens_used_today",
     usageResetAt: "usage_reset_at", authTokenVersion: "auth_token_version",
     username: "username", profilePrivate: "profile_private",
+    ogcodeCorrectSound: "ogcode_correct_sound", ogcodeWrongSound: "ogcode_wrong_sound",
   };
 
   for (const [key, col] of Object.entries(mapping)) {
