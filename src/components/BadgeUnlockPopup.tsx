@@ -9,6 +9,7 @@ import { apiCall } from '@/lib/api';
 interface BadgeUnlockPopupProps {
   badgeNames: string[];
   onDismiss: () => void;
+  onAfterSeen?: () => void;
 }
 
 function Particle({ x, y, color }: { x: number; y: number; color: string }) {
@@ -34,7 +35,7 @@ function generateParticles(count: number) {
   }));
 }
 
-export default function BadgeUnlockPopup({ badgeNames, onDismiss }: BadgeUnlockPopupProps) {
+export default function BadgeUnlockPopup({ badgeNames, onDismiss, onAfterSeen }: BadgeUnlockPopupProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [particles] = useState(() => generateParticles(40));
   const [showParticles, setShowParticles] = useState(false);
@@ -57,8 +58,10 @@ export default function BadgeUnlockPopup({ badgeNames, onDismiss }: BadgeUnlockP
   };
 
   const handleDismiss = () => {
-    apiCall('/users/badges/seen/', { method: 'POST' }).catch(() => {});
-    onDismiss();
+    onDismiss(); // close immediately — don't wait for the API
+    apiCall('/users/badges/seen/', { method: 'POST' })
+      .catch(() => {})
+      .finally(() => onAfterSeen?.());
   };
 
   useEffect(() => {
@@ -82,7 +85,7 @@ export default function BadgeUnlockPopup({ badgeNames, onDismiss }: BadgeUnlockP
       onClick={advance}
     >
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/80 backdrop-blur-md" />
+      <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={advance} />
 
       {/* Particles */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden flex items-center justify-center">

@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { AnimatePresence } from 'framer-motion';
 import dynamic from 'next/dynamic';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
@@ -277,15 +278,16 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnab
         {deferredUiReady ? <TutorialOverlay /> : null}
 
         {/* Badge unlock celebration popup */}
-        {badgePopupNames.length > 0 && (
-          <BadgeUnlockPopup
-            badgeNames={badgePopupNames}
-            onDismiss={() => {
-              setBadgePopupNames([]);
-              refreshUser();
-            }}
-          />
-        )}
+        <AnimatePresence>
+          {badgePopupNames.length > 0 && (
+            <BadgeUnlockPopup
+              key="badge-popup"
+              badgeNames={badgePopupNames}
+              onDismiss={() => setBadgePopupNames([])}
+              onAfterSeen={() => refreshUser()}
+            />
+          )}
+        </AnimatePresence>
       </div>
     </TutorialProvider>
   );
