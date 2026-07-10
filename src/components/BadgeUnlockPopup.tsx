@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Image from 'next/image';
+import { X } from 'lucide-react';
 import { getBadgeForTier } from '@/lib/badges';
 import { apiCall } from '@/lib/api';
 
@@ -49,6 +50,18 @@ export default function BadgeUnlockPopup({ badgeNames, onDismiss, onAfterSeen }:
     return () => clearTimeout(t);
   }, [currentIndex]);
 
+  // Guard so a fast double-tap / overlapping handlers can't fire dismiss twice.
+  const dismissedRef = useRef(false);
+
+  const handleDismiss = () => {
+    if (dismissedRef.current) return;
+    dismissedRef.current = true;
+    onDismiss(); // close immediately — don't wait for the API
+    apiCall('/users/badges/seen/', { method: 'POST' })
+      .catch(() => {})
+      .finally(() => onAfterSeen?.());
+  };
+
   const advance = () => {
     if (currentIndex < badgeNames.length - 1) {
       setCurrentIndex((i) => i + 1);
@@ -57,23 +70,19 @@ export default function BadgeUnlockPopup({ badgeNames, onDismiss, onAfterSeen }:
     }
   };
 
-  const handleDismiss = () => {
-    onDismiss(); // close immediately — don't wait for the API
-    apiCall('/users/badges/seen/', { method: 'POST' })
-      .catch(() => {})
-      .finally(() => onAfterSeen?.());
-  };
-
   useEffect(() => {
     timerRef.current = setTimeout(advance, 6000);
     return () => { if (timerRef.current) clearTimeout(timerRef.current); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentIndex]);
 
-  if (!currentBadge) {
-    handleDismiss();
-    return null;
-  }
+  // Invalid/unknown badge name — dismiss via an effect (never call setState during render).
+  useEffect(() => {
+    if (!currentBadge) handleDismiss();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentBadge]);
+
+  if (!currentBadge) return null;
 
   return (
     <motion.div
@@ -82,10 +91,22 @@ export default function BadgeUnlockPopup({ badgeNames, onDismiss, onAfterSeen }:
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.3 }}
-      onTap={advance}
+      onClick={advance}
+      role="button"
+      tabIndex={0}
     >
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/80 backdrop-blur-md" />
+
+      {/* Explicit close button — guaranteed dismissal */}
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); handleDismiss(); }}
+        aria-label="Close"
+        className="absolute top-5 right-5 z-20 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white/70 hover:bg-white/20 hover:text-white transition-colors"
+      >
+        <X className="h-5 w-5" />
+      </button>
 
       {/* Particles */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden flex items-center justify-center">

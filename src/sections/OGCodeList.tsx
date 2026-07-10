@@ -569,16 +569,8 @@ export default function OGCodeList({
     const chaptersLoaded = useRef(false);
     const conceptsLoaded = useRef(false);
 
-    // When hierClasses or hierOccurrences changes: fetch subjects
+    // Subjects — always available (narrowed by class/exam when selected, else all).
     useEffect(() => {
-        if (hierClasses.length === 0 && hierOccurrences.length === 0) {
-            if (subjectsLoaded.current) {
-                setFacetSubjects([]); setHierSubjects([]);
-                setFacetChapters([]); setHierChapters([]);
-                setFacetConcepts([]); setHierConcepts([]);
-            }
-            return;
-        }
         void fetchFacets('subject', { classes: hierClasses, occurrences: hierOccurrences }).then(vals => {
             setFacetSubjects(vals);
             if (subjectsLoaded.current) {
@@ -589,15 +581,8 @@ export default function OGCodeList({
         });
     }, [hierClasses, hierOccurrences, fetchFacets]);
 
-    // When hierSubjects changes: fetch chapters
+    // Chapters — always available (narrowed by class/exam/subject when selected, else all).
     useEffect(() => {
-        if (hierSubjects.length === 0) {
-            if (chaptersLoaded.current) {
-                setFacetChapters([]); setHierChapters([]);
-                setFacetConcepts([]); setHierConcepts([]);
-            }
-            return;
-        }
         void fetchFacets('chapter', { classes: hierClasses, occurrences: hierOccurrences, subjects: hierSubjects }).then(vals => {
             setFacetChapters(vals);
             if (chaptersLoaded.current) {
@@ -608,14 +593,8 @@ export default function OGCodeList({
         });
     }, [hierSubjects, hierClasses, hierOccurrences, fetchFacets]);
 
-    // When hierChapters changes: fetch concepts
+    // Concepts — always available (narrowed by any selected level above, else all).
     useEffect(() => {
-        if (hierChapters.length === 0) {
-            if (conceptsLoaded.current) {
-                setFacetConcepts([]); setHierConcepts([]);
-            }
-            return;
-        }
         void fetchFacets('concept', { classes: hierClasses, occurrences: hierOccurrences, subjects: hierSubjects, chapters: hierChapters }).then(vals => {
             setFacetConcepts(vals);
             if (conceptsLoaded.current) {
@@ -632,18 +611,16 @@ export default function OGCodeList({
     // Combined click-outside detection for stats and dropdowns
     useEffect(() => {
         function handleClickOutside(event: MouseEvent) {
-            const target = event.target as Node;
+            const target = event.target as HTMLElement;
             // Stats dropdown
             if (statsRef.current && !statsRef.current.contains(target)) {
                 setIsStatsExpanded(false);
             }
-            // General filter dropdowns
-            const filterArea = document.getElementById('filter-area');
-            const secondaryFilterArea = document.getElementById('secondary-filter-area');
-            const isInsideFilters = (filterArea && filterArea.contains(target)) || 
-                                   (secondaryFilterArea && secondaryFilterArea.contains(target));
-            
-            if (!isInsideFilters) {
+            // Close any open filter dropdown when tapping anywhere that isn't inside
+            // an open dropdown menu. Trigger buttons are not marked, so their own
+            // click still toggles correctly (mousedown here fires first, the button's
+            // click then applies the toggle against the pre-close state).
+            if (!target.closest('[data-filter-dropdown]')) {
                 setOpenDropdown(null);
             }
         }
@@ -722,7 +699,7 @@ export default function OGCodeList({
                 setQuestions([]);
             }
             void fetchQuestionPage();
-        }, searchQuery.trim() ? 300 : 0);
+        }, searchQuery.trim() ? 300 : 700);
 
         return () => window.clearTimeout(timeout);
     }, [fetchQuestionPage, searchQuery]);
@@ -1135,6 +1112,7 @@ export default function OGCodeList({
                                 </div>
                                 <button
                                     type="button"
+                                    data-filter-dropdown
                                     onClick={() => setOpenDropdown(openDropdown === 'class' ? null : 'class')}
                                     className={cn(
                                         'w-full flex items-center justify-between gap-2 px-4 py-2.5 rounded-xl text-[12px] font-bold transition-all truncate text-left',
@@ -1150,7 +1128,8 @@ export default function OGCodeList({
                                     <motion.div
                                         initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
                                         className="absolute left-0 right-0 mt-2 min-w-[200px] max-h-96 overflow-y-auto neu-raised rounded-xl z-50 p-2 space-y-1 bg-background/95 backdrop-blur-md"
-                                        onClick={e => e.stopPropagation()}
+                                        data-filter-dropdown
+                                    onClick={e => e.stopPropagation()}
                                     >
                                         {!facetsReady ? (
                                             <div className="text-[10px] text-muted-foreground italic p-2 text-center">Loading…</div>
@@ -1202,6 +1181,7 @@ export default function OGCodeList({
                                 </div>
                                 <button
                                     type="button"
+                                    data-filter-dropdown
                                     onClick={() => setOpenDropdown(openDropdown === 'occurrence' ? null : 'occurrence')}
                                     className={cn(
                                         'w-full flex items-center justify-between gap-2 px-4 py-2.5 rounded-xl text-[12px] font-bold transition-all truncate text-left',
@@ -1217,7 +1197,8 @@ export default function OGCodeList({
                                     <motion.div
                                         initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
                                         className="absolute left-0 right-0 mt-2 min-w-[200px] max-h-96 overflow-y-auto neu-raised rounded-xl z-50 p-2 space-y-1 bg-background/95 backdrop-blur-md"
-                                        onClick={e => e.stopPropagation()}
+                                        data-filter-dropdown
+                                    onClick={e => e.stopPropagation()}
                                     >
                                         <button
                                             type="button"
@@ -1263,25 +1244,24 @@ export default function OGCodeList({
                                 </div>
                                 <button
                                     type="button"
-                                    disabled={hierClasses.length === 0 && hierOccurrences.length === 0}
+                                    data-filter-dropdown
                                     onClick={() => setOpenDropdown(openDropdown === 'hier-subject' ? null : 'hier-subject')}
                                     className={cn(
                                         'w-full flex items-center justify-between gap-2 px-4 py-2.5 rounded-xl text-[12px] font-bold transition-all truncate text-left',
-                                        (hierClasses.length === 0 && hierOccurrences.length === 0) ? 'opacity-40 cursor-not-allowed neu-raised' :
                                         hierSubjects.length > 0 ? 'neu-inset text-primary' : 'neu-raised text-muted-foreground hover:text-foreground'
                                     )}
                                 >
                                     <span className="truncate">
-                                        {(hierClasses.length === 0 && hierOccurrences.length === 0) ? 'Select Class or Exam first' :
-                                         hierSubjects.length === 0 ? 'Select Subject' : `Subjects: ${hierSubjects.map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(', ')}`}
+                                        {hierSubjects.length === 0 ? 'Select Subject' : `Subjects: ${hierSubjects.map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(', ')}`}
                                     </span>
                                     <ChevronDown className={cn('w-3.5 h-3.5 shrink-0 transition-transform duration-200', openDropdown === 'hier-subject' && 'rotate-180')} />
                                 </button>
-                                {openDropdown === 'hier-subject' && (hierClasses.length > 0 || hierOccurrences.length > 0) && (
+                                {openDropdown === 'hier-subject' && (
                                     <motion.div
                                         initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
                                         className="absolute left-0 right-0 mt-2 min-w-[200px] max-h-96 overflow-y-auto neu-raised rounded-xl z-50 p-2 space-y-1 bg-background/95 backdrop-blur-md"
-                                        onClick={e => e.stopPropagation()}
+                                        data-filter-dropdown
+                                    onClick={e => e.stopPropagation()}
                                     >
                                         {facetSubjects.length === 0 ? (
                                             <div className="text-[10px] text-muted-foreground italic p-2 text-center">
@@ -1337,28 +1317,27 @@ export default function OGCodeList({
                                 </div>
                                 <button
                                     type="button"
-                                    disabled={hierSubjects.length === 0}
+                                    data-filter-dropdown
                                     onClick={() => {
                                         setOpenDropdown(openDropdown === 'hier-chapter' ? null : 'hier-chapter');
                                         setChapterSearchQuery('');
                                     }}
                                     className={cn(
                                         'w-full flex items-center justify-between gap-2 px-4 py-2.5 rounded-xl text-[12px] font-bold transition-all truncate text-left',
-                                        hierSubjects.length === 0 ? 'opacity-40 cursor-not-allowed neu-raised' :
                                         hierChapters.length > 0 ? 'neu-inset text-primary' : 'neu-raised text-muted-foreground hover:text-foreground'
                                     )}
                                 >
                                     <span className="truncate">
-                                        {hierSubjects.length === 0 ? 'Select Subject first' :
-                                         hierChapters.length === 0 ? 'Select Chapter' : `Chapters: ${hierChapters.length} selected`}
+                                        {hierChapters.length === 0 ? 'Select Chapter' : `Chapters: ${hierChapters.length} selected`}
                                     </span>
                                     <ChevronDown className={cn('w-3.5 h-3.5 shrink-0 transition-transform duration-200', openDropdown === 'hier-chapter' && 'rotate-180')} />
                                 </button>
-                                {openDropdown === 'hier-chapter' && hierSubjects.length > 0 && (
+                                {openDropdown === 'hier-chapter' && (
                                     <motion.div
                                         initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
                                         className="absolute left-0 right-0 mt-2 min-w-[240px] max-h-[450px] flex flex-col neu-raised rounded-xl z-50 bg-background/95 backdrop-blur-md overflow-hidden"
-                                        onClick={e => e.stopPropagation()}
+                                        data-filter-dropdown
+                                    onClick={e => e.stopPropagation()}
                                     >
                                         <div className="p-2 border-b border-border/40 shrink-0">
                                             <input
@@ -1434,28 +1413,27 @@ export default function OGCodeList({
                                 </div>
                                 <button
                                     type="button"
-                                    disabled={hierChapters.length === 0}
+                                    data-filter-dropdown
                                     onClick={() => {
                                         setOpenDropdown(openDropdown === 'hier-concept' ? null : 'hier-concept');
                                         setConceptSearchQuery('');
                                     }}
                                     className={cn(
                                         'w-full flex items-center justify-between gap-2 px-4 py-2.5 rounded-xl text-[12px] font-bold transition-all truncate text-left',
-                                        hierChapters.length === 0 ? 'opacity-40 cursor-not-allowed neu-raised' :
                                         hierConcepts.length > 0 ? 'neu-inset text-primary' : 'neu-raised text-muted-foreground hover:text-foreground'
                                     )}
                                 >
                                     <span className="truncate">
-                                        {hierChapters.length === 0 ? 'Select Chapter first' :
-                                         hierConcepts.length === 0 ? 'Select Concept' : `Concepts: ${hierConcepts.length} selected`}
+                                        {hierConcepts.length === 0 ? 'Select Concept' : `Concepts: ${hierConcepts.length} selected`}
                                     </span>
                                     <ChevronDown className={cn('w-3.5 h-3.5 shrink-0 transition-transform duration-200', openDropdown === 'hier-concept' && 'rotate-180')} />
                                 </button>
-                                {openDropdown === 'hier-concept' && hierChapters.length > 0 && (
+                                {openDropdown === 'hier-concept' && (
                                     <motion.div
                                         initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
                                         className="absolute left-0 right-0 mt-2 min-w-[240px] max-h-[450px] flex flex-col neu-raised rounded-xl z-50 bg-background/95 backdrop-blur-md overflow-hidden"
-                                        onClick={e => e.stopPropagation()}
+                                        data-filter-dropdown
+                                    onClick={e => e.stopPropagation()}
                                     >
                                         <div className="p-2 border-b border-border/40 shrink-0">
                                             <input
@@ -1587,6 +1565,7 @@ export default function OGCodeList({
                         <div className="relative">
                             <button
                                 id="tutorial-ogcode-difficulty-filter"
+                                data-filter-dropdown
                                 onClick={() => setOpenDropdown(openDropdown === 'difficulty' ? null : 'difficulty')}
                                 className={cn(
                                     'flex items-center gap-2 px-4 py-2 rounded-xl text-[12px] font-bold transition-all',
@@ -1600,6 +1579,7 @@ export default function OGCodeList({
                                 <motion.div
                                     initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
                                     className="absolute top-full mt-2 left-0 w-40 neu-raised rounded-xl z-50 overflow-hidden"
+                                    data-filter-dropdown
                                     onClick={e => e.stopPropagation()}
                                 >
                                     {['All', 'Easy', 'Medium', 'Hard', 'Insane'].map(diff => (
@@ -1614,6 +1594,7 @@ export default function OGCodeList({
                         {/* Question Type */}
                         <div className="relative">
                             <button
+                                data-filter-dropdown
                                 onClick={() => setOpenDropdown(openDropdown === 'type' ? null : 'type')}
                                 className={cn(
                                     'flex items-center gap-2 px-4 py-2 rounded-xl text-[12px] font-bold transition-all',
@@ -1627,6 +1608,7 @@ export default function OGCodeList({
                                 <motion.div
                                     initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
                                     className="absolute top-full mt-2 left-0 w-44 neu-raised rounded-xl z-50 overflow-hidden"
+                                    data-filter-dropdown
                                     onClick={e => e.stopPropagation()}
                                 >
                                     {['All', 'MCQ', 'MSQ', 'Integer', 'Range', 'Matrix Match'].map(qt => (
@@ -1641,6 +1623,7 @@ export default function OGCodeList({
                         {/* Status */}
                         <div className="relative">
                             <button
+                                data-filter-dropdown
                                 onClick={() => setOpenDropdown(openDropdown === 'status' ? null : 'status')}
                                 className={cn(
                                     'flex items-center gap-2 px-4 py-2 rounded-xl text-[12px] font-bold transition-all',
@@ -1654,6 +1637,7 @@ export default function OGCodeList({
                                 <motion.div
                                     initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
                                     className="absolute top-full mt-2 left-0 w-40 neu-raised rounded-xl z-50 overflow-hidden"
+                                    data-filter-dropdown
                                     onClick={e => e.stopPropagation()}
                                 >
                                     {['All', 'Solved', 'Unsolved'].map(stat => (
