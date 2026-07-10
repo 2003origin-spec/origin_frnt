@@ -69,3 +69,20 @@ test("does not treat ordinary bracketed prose as math", () => {
 
   assert.equal(normalized, "Reference [see also] remains text.");
 });
+
+test("decodes literal \\n escapes instead of manufacturing $$$ runs (OG-code explanations)", () => {
+  // Real production shape: literal "\n" escapes around $$…$$ blocks.
+  const normalized = normalizeDelimiters(
+    "energy is conserved:\\n$$\\text{Loss in PE} = \\text{Gain in KE}$$\\n$$Mg(h_i - h_f) = \\frac{1}{2} I \\omega^2$$\\n\\nHere the moment of inertia",
+  );
+
+  // No manufactured 3+ dollar runs.
+  assert.doesNotMatch(normalized, /\${3,}/);
+  // The literal "\n" escapes became real newlines, not "\n" LaTeX commands
+  // (so nothing like "\nHere" or "$\n$" survives).
+  assert.doesNotMatch(normalized, /\\n[A-Za-z0-9]/);
+  assert.match(normalized, /conserved:\n\$\$/);
+  // Both display blocks survive intact.
+  assert.match(normalized, /\$\$\\text\{Loss in PE\} = \\text\{Gain in KE\}\$\$/);
+  assert.match(normalized, /Mg\(h_i - h_f\) = \\frac\{1\}\{2\} I \\omega\^2/);
+});

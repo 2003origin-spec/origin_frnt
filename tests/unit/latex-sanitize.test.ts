@@ -2,7 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import katex from "katex";
 
-import { repairMathTex, repairMathSpans } from "../../src/lib/latex-sanitize";
+import {
+  repairMathTex,
+  repairMathSpans,
+  decodeEscapedWhitespace,
+  collapseDollarRuns,
+} from "../../src/lib/latex-sanitize";
 
 /** Asserts KaTeX renders the (repaired) tex without throwing. */
 function assertRenders(tex: string, display = false) {
@@ -56,6 +61,24 @@ test("strips inline-hostile \\tag and \\label", () => {
   assert.equal(repairMathTex("E = mc^2 \\tag{1}").includes("\\tag"), false);
 });
 
+test("collapses doubled-backslash command artifacts outside environments", () => {
+  assertRenders("30^\\\\circ");
+  assertRenders("\\\\pi/6");
+  assertRenders("2 \\\\times 30^\\\\circ = 60^\\\\circ");
+  assert.equal(repairMathTex("30^\\\\circ"), "30^\\circ");
+});
+
+test("keeps \\\\ row separators inside a matrix/aligned environment", () => {
+  const tex = "\\begin{matrix} a \\\\ b \\end{matrix}";
+  assert.equal(repairMathTex(tex), tex);
+  assertRenders(tex);
+});
+
+test("strips a dangling trailing backslash", () => {
+  assertRenders("i = \\frac{3.72}{1.86} = 2\\");
+  assert.equal(repairMathTex("x = 2\\"), "x = 2");
+});
+
 test("escapes a lone alignment ampersand outside an environment", () => {
   assertRenders("x & y");
   assert.equal(repairMathTex("x & y"), "x \\& y");
@@ -76,6 +99,33 @@ test("balances unmatched \\left / \\right", () => {
 test("auto-closes a truncated environment", () => {
   assertRenders("\\begin{matrix} a & b");
   assert.match(repairMathTex("\\begin{matrix} a & b"), /\\end\{matrix\}/);
+});
+
+// ── Literal escape decoding (OG-code "\n" / "$$$" artifacts) ──────────────────
+
+test("decodes literal \\n / \\t / \\r into real whitespace", () => {
+  // In JS source, "\\n" is the two chars backslash+n — the literal escape.
+  assert.equal(decodeEscapedWhitespace("Line1\\nLine2"), "Line1\nLine2");
+  assert.equal(decodeEscapedWhitespace("a\\n\\nb"), "a\n\nb");
+  assert.equal(decodeEscapedWhitespace("\\nSince energy is conserved"), "\nSince energy is conserved");
+  assert.equal(decodeEscapedWhitespace("col1\\tcol2"), "col1\tcol2");
+  assert.equal(decodeEscapedWhitespace("x\\n1"), "x\n1");
+});
+
+test("does NOT mangle real LaTeX commands starting with n/t/r", () => {
+  for (const cmd of ["\\nabla f", "a \\neq b", "\\nu", "\\ne", "\\ni", "\\text{x}", "\\times", "\\theta", "\\tan x", "\\to", "\\tau", "\\rho", "\\right)", "\\rightarrow x"]) {
+    assert.equal(decodeEscapedWhitespace(cmd), cmd, `mangled ${cmd}`);
+  }
+  // Uppercase-continuing real commands stay intact too.
+  assert.equal(decodeEscapedWhitespace("\\nRightarrow"), "\\nRightarrow");
+  assert.equal(decodeEscapedWhitespace("\\rVert"), "\\rVert");
+});
+
+test("collapses malformed multi-dollar runs to $$", () => {
+  assert.equal(collapseDollarRuns("$$$x$$$"), "$$x$$");
+  assert.equal(collapseDollarRuns("$$$$y$$$$"), "$$y$$");
+  assert.equal(collapseDollarRuns("$$a$$"), "$$a$$"); // untouched
+  assert.equal(collapseDollarRuns("$5 and $6"), "$5 and $6"); // untouched
 });
 
 // ── Must NOT corrupt already-valid LaTeX ──────────────────────────────────────
