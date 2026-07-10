@@ -5,6 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { cn } from '@/lib/utils';
+import { repairMathSpans } from '@/lib/latex-sanitize';
 import type { ExtraProps } from 'react-markdown';
 import type { HTMLAttributes, OlHTMLAttributes, LiHTMLAttributes, ClassAttributes } from 'react';
 
@@ -32,6 +33,11 @@ export function normalizeDelimiters(content: string): string {
   // Step 2: Wrap bare LaTeX expressions with $ delimiters
   result = wrapBracketedMathExpressions(result);
   result = wrapBareLaTeX(result);
+
+  // Step 3: Repair the interior of every math span so messy real-world LaTeX
+  // (stray %, unbalanced braces, display-only environments, \tag, lone &, …)
+  // renders instead of throwing a red KaTeX error at the student.
+  result = repairMathSpans(result);
 
   return result;
 }
