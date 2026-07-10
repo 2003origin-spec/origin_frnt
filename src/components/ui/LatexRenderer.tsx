@@ -17,7 +17,7 @@
 import React, { useMemo } from 'react';
 import katex from 'katex';
 import { cn } from '@/lib/utils';
-import { repairMathTex } from '@/lib/latex-sanitize';
+import { repairMathTex, decodeEscapedWhitespace, collapseDollarRuns } from '@/lib/latex-sanitize';
 
 // ─── DOMPurify (browser-only, defence-in-depth) ─────────────────────────────
 
@@ -51,7 +51,9 @@ type Segment = TextSeg | MathSeg;
 // ─── Delimiter normalisation ─────────────────────────────────────────────────
 
 function normalise(raw: string): string {
-  return raw
+  // Decode literal "\n"/"\t"/"\r" escapes and collapse "$$$"+ runs before any
+  // delimiter handling (same rationale as FormattedMessage.normalizeDelimiters).
+  return collapseDollarRuns(decodeEscapedWhitespace(raw))
     // \[…\] → block math
     .replace(/\\\[([\s\S]*?)\\\]/g, (_m, body: string) => `\n$$${body}$$\n`)
     // \(…\) → inline math

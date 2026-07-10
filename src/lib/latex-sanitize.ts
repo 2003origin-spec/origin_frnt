@@ -20,6 +20,71 @@
  *  • LatexRenderer.renderKatex — repairs each segment before katex.renderToString.
  */
 
+// ── Decode literal escape sequences ("\n", "\t", "\r") ────────────────────────
+// OG-code / AI content frequently arrives with *literal* two-character escape
+// sequences (a backslash followed by `n`/`t`/`r`) instead of real whitespace —
+// a JSON-decoding artifact from the import pipeline. Left as-is, the delimiter
+// wrapper (`wrapBareLaTeX`) mistakes each `\n` for a LaTeX command and wraps it
+// in `$…$`, which then collides with adjacent real `$$…$$` blocks to manufacture
+// `$$$` runs that KaTeX/remark-math cannot parse. Decoding must therefore run
+// *before* any delimiter wrapping.
+//
+// The tricky part is not clobbering genuine LaTeX commands that start with
+// n/t/r (`\nabla`, `\text`, `\times`, `\rho`, `\right`, …). We distinguish them
+// with an explicit whitelist of KaTeX-supported n/t/r control words: if the full
+// letter-run is a known command it is left untouched, otherwise the leading
+// `\n`/`\t`/`\r` is treated as a literal escape and decoded ("\nSince" → newline
+// + "Since", "\n\nHere" → two newlines + "Here").
+const KNOWN_NTR_COMMANDS = new Set([
+  // n
+  'nabla', 'natural', 'ncong', 'ne', 'nearrow', 'neg', 'negthickspace',
+  'negthinspace', 'negmedspace', 'neq', 'nequiv', 'newline', 'nexists', 'ngeq',
+  'ngeqq', 'ngeqslant', 'ngtr', 'ni', 'nleftarrow', 'nLeftarrow',
+  'nleftrightarrow', 'nLeftrightarrow', 'nleq', 'nleqq', 'nleqslant', 'nless',
+  'nmid', 'nobreakspace', 'nolimits', 'nonumber', 'normalsize', 'not', 'notin',
+  'notni', 'nparallel', 'nprec', 'npreceq', 'nrightarrow', 'nRightarrow',
+  'nshortmid', 'nshortparallel', 'nsim', 'nsubseteq', 'nsubseteqq', 'nsucc',
+  'nsucceq', 'nsupseteq', 'nsupseteqq', 'ntriangleleft', 'ntrianglelefteq',
+  'ntriangleright', 'ntrianglerighteq', 'nu', 'nvdash', 'nvDash', 'nVdash',
+  'nVDash', 'nwarrow',
+  // t
+  'tan', 'tanh', 'tau', 'tbinom', 'text', 'textbf', 'textcolor', 'textit',
+  'textmd', 'textnormal', 'textrm', 'textsf', 'textstyle', 'texttt', 'textup',
+  'tfrac', 'therefore', 'theta', 'thetasym', 'thickapprox', 'thickspace',
+  'thinspace', 'tilde', 'times', 'tiny', 'to', 'top', 'triangle', 'triangledown',
+  'triangleleft', 'trianglelefteq', 'triangleq', 'triangleright',
+  'trianglerighteq', 'tt', 'twoheadleftarrow', 'twoheadrightarrow',
+  // r
+  'rangle', 'rbrace', 'rbrack', 'rceil', 'real', 'restriction', 'rfloor',
+  'rgroup', 'rho', 'right', 'rightarrow', 'rightarrowtail', 'rightharpoondown',
+  'rightharpoonup', 'rightleftarrows', 'rightleftharpoons', 'rightrightarrows',
+  'rightsquigarrow', 'rightthreetimes', 'risingdotseq', 'rlap', 'rmoustache',
+  'root', 'rq', 'rtimes', 'rvert', 'rVert',
+]);
+
+const ESCAPE_WHITESPACE: Record<string, string> = { n: '\n', t: '\t', r: '\r' };
+
+export function decodeEscapedWhitespace(input: string): string {
+  if (!input || input.indexOf('\\') === -1) return input;
+  return input.replace(/\\([ntr])([A-Za-z]*)/g, (match, ch: string, rest: string) => {
+    // A known LaTeX command (\nabla, \text, \rho, \rightarrow, …) is kept verbatim.
+    if (KNOWN_NTR_COMMANDS.has(ch + rest)) return match;
+    // Otherwise the leading \n/\t/\r is a literal escape: decode it and keep any
+    // trailing letters as ordinary text.
+    return ESCAPE_WHITESPACE[ch] + rest;
+  });
+}
+
+// ── Collapse malformed multi-dollar delimiter runs ────────────────────────────
+// `$$$`, `$$$$`, … are never valid math delimiters; remark-math/KaTeX cannot pair
+// them, so the whole span falls out as raw text. Collapse any run of 3+ dollars
+// to a display `$$`. (A function replacement avoids the `$$`→`$` substitution
+// footgun in String.replace patterns.)
+export function collapseDollarRuns(input: string): string {
+  if (!input || input.indexOf('$') === -1) return input;
+  return input.replace(/\${3,}/g, () => '$$');
+}
+
 // ── Display-only environments → inline-safe equivalents ───────────────────────
 // align / gather / equation / eqnarray / multline only work in *display* mode
 // and throw ("can be used only in display mode") when they land in an inline
@@ -156,12 +221,34 @@ function balanceEnvironments(tex: string): string {
 // ("Expected 'EOF', got '&'"). If the segment has no environment that gives `&`
 // meaning, treat it as a literal ampersand (`\&`). Inside such an environment
 // (matrix, aligned, cases, …) `&` is left untouched.
-function escapeStrayAmpersands(tex: string): string {
-  const hasTabularEnv = [...tex.matchAll(/\\begin\s*\{([a-zA-Z]+\*?)\}/g)].some(
+function hasTabularEnvironment(tex: string): boolean {
+  return [...tex.matchAll(/\\begin\s*\{([a-zA-Z]+\*?)\}/g)].some(
     ([, env]) => TABULAR_ENVIRONMENTS.has(env),
   );
-  if (hasTabularEnv) return tex;
+}
+
+function escapeStrayAmpersands(tex: string): string {
+  if (hasTabularEnvironment(tex)) return tex;
   return tex.replace(/(^|[^\\])&/g, '$1\\&');
+}
+
+// ── Collapse doubled-backslash command artifacts ("\\circ" → "\circ") ─────────
+// The OG-code import double-escaped many commands, so `\pi`/`\circ`/`\times`
+// arrive as `\\pi`/`\\circ`/`\\times`. KaTeX reads `\\` as a line break, so
+// `$30^\\circ$` throws and `$\\pi$` renders a stray break + the letters "pi".
+// A genuine inline line break `\\` is followed by whitespace, `[`, `*` or end —
+// never a letter — so outside a tabular/alignment environment (where `\\` is a
+// legitimate row separator) we collapse `\\`+letter back to `\`+letter.
+function collapseDoubledBackslashCommands(tex: string): string {
+  if (hasTabularEnvironment(tex)) return tex;
+  return tex.replace(/\\\\(?=[a-zA-Z])/g, '\\');
+}
+
+// ── Strip a dangling trailing backslash ───────────────────────────────────────
+// A lone `\` at the very end of a segment (a truncation artifact, e.g. "= 2\")
+// throws "Unexpected character '\'". A genuine "\\" line break is left intact.
+function stripDanglingBackslash(tex: string): string {
+  return tex.replace(/(?<!\\)\\\s*$/, '');
 }
 
 /**
@@ -173,6 +260,8 @@ export function repairMathTex(tex: string): string {
   if (!tex) return tex;
   let out = tex;
   out = remapDisplayOnlyEnvironments(out);
+  out = collapseDoubledBackslashCommands(out);
+  out = stripDanglingBackslash(out);
   out = stripEquationNumbering(out);
   out = escapePercent(out);
   out = escapeStrayAmpersands(out);

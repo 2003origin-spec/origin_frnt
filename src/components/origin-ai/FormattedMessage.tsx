@@ -5,7 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { cn } from '@/lib/utils';
-import { repairMathSpans } from '@/lib/latex-sanitize';
+import { repairMathSpans, decodeEscapedWhitespace, collapseDollarRuns } from '@/lib/latex-sanitize';
 import type { ExtraProps } from 'react-markdown';
 import type { HTMLAttributes, OlHTMLAttributes, LiHTMLAttributes, ClassAttributes } from 'react';
 
@@ -23,8 +23,14 @@ interface FormattedMessageProps {
 export function normalizeDelimiters(content: string): string {
   if (!content) return '';
 
+  // Step 0: Decode literal "\n"/"\t"/"\r" escapes into real whitespace and
+  // collapse malformed "$$$"+ runs. Must run BEFORE any delimiter wrapping so a
+  // literal "\n" is never mistaken for a LaTeX command by wrapBareLaTeX (which
+  // is what manufactures the unparseable "$$$" runs in OG-code explanations).
+  const cleaned = collapseDollarRuns(decodeEscapedWhitespace(content));
+
   // Step 1: Convert \[ ... \] to $$ ... $$ and \( ... \) to $ ... $
-  let result = content
+  let result = cleaned
     .replace(/\\\[([\s\S]*?)\\\]/g, '\n$$\n$1\n$$\n')
     .replace(/\\\(([\s\S]*?)\\\)/g, '$$$1$$')
     .replace(/√\(([\s\S]*?)\)/g, '\\sqrt{$1}') // Handle √(x+y) -> \sqrt{x+y}
