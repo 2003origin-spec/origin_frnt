@@ -208,7 +208,7 @@ export function CbtQuestionEditorDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>{trigger ?? <Button size="sm">New question</Button>}</DialogTrigger>
+      <DialogTrigger asChild>{trigger ?? <Button size="sm" className="shadow-lg shadow-primary/20 transition-transform hover:-translate-y-0.5">New question</Button>}</DialogTrigger>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{dialogTitle ?? (initialQuestion ? "Edit question" : "New question")}</DialogTitle>
@@ -235,7 +235,7 @@ export function CbtQuestionEditorDialog({
             <Label>Question (supports $LaTeX$)</Label>
             <Textarea value={stem} onChange={(e) => setStem(e.target.value)} rows={3} />
             {stemPreview.trim() ? (
-              <div className="rounded-md border border-border bg-muted/40 p-2 text-sm">
+              <div className="neu-inset rounded-xl p-3 text-sm">
                 <LatexRenderer content={stemPreview} />
               </div>
             ) : null}
@@ -272,7 +272,7 @@ export function CbtQuestionEditorDialog({
                   ) : null}
                 </div>
               ))}
-              <Button type="button" size="sm" variant="outline" onClick={() => setOptions((p) => [...p, ""])}>
+              <Button type="button" size="sm" variant="outline" className="neu-raised border-0 shadow-none transition-transform hover:-translate-y-0.5" onClick={() => setOptions((p) => [...p, ""])}>
                 Add option
               </Button>
             </div>
@@ -367,10 +367,10 @@ export function CbtQuestionEditorDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>
+          <Button variant="outline" className="neu-raised border-0 shadow-none transition-transform hover:-translate-y-0.5" onClick={() => setOpen(false)} disabled={pending}>
             Cancel
           </Button>
-          <Button onClick={save} disabled={pending || !stem.trim()}>
+          <Button className="shadow-lg shadow-primary/20 transition-transform hover:-translate-y-0.5" onClick={save} disabled={pending || !stem.trim()}>
             {pending ? "Saving…" : submitLabel ?? "Save"}
           </Button>
         </DialogFooter>

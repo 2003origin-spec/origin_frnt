@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AlertTriangle, CheckCircle2, Play } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
 import { LatexRenderer } from "@/components/ui/LatexRenderer";
 import { useCbtRoom } from "@/context/CbtRoomContext";
 import { useServerAnchoredTimer } from "@/hooks/useServerAnchoredTimer";
@@ -58,6 +58,7 @@ export function CbtTestInterface() {
   const [palette, setPalette] = useState<Record<number, CbtPaletteStatus>>({});
   const [index, setIndex] = useState(0);
   const [showWarning, setShowWarning] = useState(false);
+  const [showSubmitModal, setShowSubmitModal] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const stateRef = useRef({ answers, palette });
@@ -253,131 +254,256 @@ export function CbtTestInterface() {
     [answers, goTo, index, markDirtyAndDebounce],
   );
 
+  // Ordered, de-duplicated subject list for the section bar.
+  const subjects = useMemo(() => {
+    const seen: string[] = [];
+    for (const f of flat) {
+      const s = f.subject || "General";
+      if (!seen.includes(s)) seen.push(s);
+    }
+    return seen;
+  }, [flat]);
+
+  const jumpToSubject = useCallback(
+    (subject: string) => {
+      const idx = flat.findIndex((f) => (f.subject || "General") === subject);
+      if (idx !== -1) goTo(idx);
+    },
+    [flat, goTo],
+  );
+
   // ── Render ─────────────────────────────────────────────────────────────────
   if (phase === "loading") {
-    return <CenteredMessage>Loading your test…</CenteredMessage>;
+    return <CenteredMessage><OriBrandMark /><p className="mt-4 text-sm font-bold text-muted-foreground">Loading your test…</p></CenteredMessage>;
   }
   if (phase === "error") {
-    return <CenteredMessage>{error ?? "Something went wrong."}</CenteredMessage>;
+    return (
+      <CenteredMessage>
+        <OriBrandMark />
+        <p className="mt-4 text-base font-black text-foreground">Unable to load the test</p>
+        <p className="mt-1 text-sm text-muted-foreground">{error ?? "Something went wrong."}</p>
+      </CenteredMessage>
+    );
   }
   if (phase === "submitted") {
     return (
       <CenteredMessage>
-        <p className="text-xl font-semibold">Test submitted</p>
-        <p className="mt-2 text-sm text-muted-foreground">Your ID</p>
-        <p className="font-mono text-2xl font-bold tracking-[0.2em]">{studentCode}</p>
+        <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full neu-raised text-emerald-500">
+          <CheckCircle2 className="h-8 w-8" />
+        </div>
+        <p className="text-xl font-black text-foreground">Test Submitted</p>
+        <p className="mt-3 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Your Candidate ID</p>
+        <p className="mt-1 font-mono text-2xl font-black tracking-[0.25em] text-primary">{studentCode}</p>
+        <p className="mt-4 text-xs text-muted-foreground">You may now close this window.</p>
       </CenteredMessage>
     );
   }
   if (phase === "ready" && payload) {
     return (
-      <CenteredMessage>
-        <p className="text-xl font-semibold">{payload.title}</p>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {payload.totalQuestions} questions · {Math.round(payload.durationSeconds / 60)} min
-        </p>
-        <Button
-          className="mt-4"
-          onClick={() => {
-            enterFullscreen();
-            setPhase("running");
-          }}
+      <CenteredMessage wide>
+        <OriBrandMark />
+        <h1 className="mt-4 text-2xl font-black tracking-tight text-foreground">{payload.title}</h1>
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          <div className="neu-inset rounded-2xl p-4">
+            <p className="text-2xl font-black text-foreground">{payload.totalQuestions}</p>
+            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Questions</p>
+          </div>
+          <div className="neu-inset rounded-2xl p-4">
+            <p className="text-2xl font-black text-foreground">{Math.round(payload.durationSeconds / 60)}<span className="text-sm"> min</span></p>
+            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Duration</p>
+          </div>
+        </div>
+        <div className="neu-inset mt-4 rounded-2xl p-4 text-left">
+          <p className="mb-2 text-[10px] font-black uppercase tracking-widest text-primary">Instructions</p>
+          <ul className="space-y-1.5 text-xs font-medium text-muted-foreground">
+            <li>• The exam opens in <span className="font-bold text-foreground">full-screen</span>. Your answers autosave.</li>
+            <li>• Leaving full-screen keeps your timer running — return to continue.</li>
+            <li>• The test auto-submits when the timer reaches zero.</li>
+          </ul>
+        </div>
+        <button
+          onClick={() => { enterFullscreen(); setPhase("running"); }}
+          className="mt-5 flex w-full items-center justify-center gap-2 rounded-2xl bg-primary py-4 text-lg font-black uppercase tracking-tight text-primary-foreground shadow-lg shadow-primary/25 transition-all hover:bg-primary/90 active:scale-[0.98]"
         >
-          Enter fullscreen &amp; begin
-        </Button>
+          <Play className="h-5 w-5 fill-current" /> Enter Full-screen & Begin
+        </button>
       </CenteredMessage>
     );
   }
 
   const current = flat[index];
-  if (!current || !payload) return <CenteredMessage>Loading…</CenteredMessage>;
+  if (!current || !payload) return <CenteredMessage><OriBrandMark /></CenteredMessage>;
+  const activeSubject = current.subject || "General";
 
   return (
-    <div ref={containerRef} className="flex min-h-screen flex-col bg-background text-foreground">
-      <header className="flex items-center justify-between border-b border-border px-4 py-2">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold">{payload.title}</p>
-          <p className="text-xs text-muted-foreground">{current.subject}</p>
+    <div ref={containerRef} className="flex min-h-screen flex-col neu-surface text-foreground">
+      {/* 1. Branded header */}
+      <header className="flex flex-col items-center justify-between gap-3 border-b border-border/60 px-3 py-2 sm:flex-row sm:gap-0 sm:px-6">
+        <div className="flex w-full items-center justify-between gap-3 sm:w-auto">
+          <OriBrandMark compact />
+          <div>
+            <h1 className="text-sm font-black leading-tight text-rose-900 dark:text-rose-300 sm:text-xl">O3 ORIGIN TESTING AGENCY</h1>
+            <p className="text-[10px] font-semibold italic text-emerald-700 dark:text-emerald-400 sm:text-xs">Excellence in Assessment</p>
+          </div>
         </div>
-        <div className={`rounded-md px-3 py-1 font-mono text-lg font-bold ${remaining <= 60 ? "text-red-600" : ""}`}>
-          {formatClock(remaining)}
+        <div className="flex flex-col gap-0.5 text-[10px] font-semibold sm:gap-1 sm:text-xs">
+          <div className="flex"><span className="w-20 text-muted-foreground sm:w-28">Candidate:</span> <span className="truncate font-mono text-primary">{studentCode || "—"}</span></div>
+          <div className="flex"><span className="w-20 text-muted-foreground sm:w-28">Subject:</span> <span className="truncate text-primary">{activeSubject}</span></div>
+          <div className="flex items-center"><span className="w-20 text-muted-foreground sm:w-28">Remaining:</span> <span className={`rounded px-2 py-0.5 font-mono font-bold text-white ${remaining <= 60 ? "bg-red-600 animate-pulse" : "bg-rose-500"}`} suppressHydrationWarning>{formatClock(remaining)}</span></div>
         </div>
       </header>
 
-      <div className="flex flex-1 flex-col gap-4 p-4 lg:flex-row">
+      {/* 2. Section / subject bar */}
+      <div className="flex items-center gap-0 overflow-x-auto bg-[#f08c32] px-0 no-scrollbar">
+        <div className="flex h-[38px] shrink-0 items-center border-r border-white/20 bg-primary px-4 text-xs font-bold text-white">SECTION</div>
+        {subjects.map((subj) => {
+          const isActive = activeSubject === subj;
+          return (
+            <button
+              key={subj}
+              onClick={() => jumpToSubject(subj)}
+              className={`h-[38px] shrink-0 border-r border-white/20 px-4 text-xs font-bold uppercase transition-all ${isActive ? "bg-white text-black" : "bg-primary text-white hover:bg-primary/90"}`}
+            >
+              {subj}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="flex flex-1 flex-col gap-4 p-3 sm:p-4 lg:flex-row">
+        {/* Main question column */}
         <main className="flex-1 space-y-4">
-          <div className="flex items-center justify-between text-sm text-muted-foreground">
-            <span>
-              Question {index + 1} of {flat.length}
-            </span>
-            <span>
-              {current.q.marks > 0 ? `+${current.q.marks}` : current.q.marks} / {current.q.negativeMarks}
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-black text-foreground">Question {index + 1} <span className="text-muted-foreground">of {flat.length}</span></span>
+            <span className="flex items-center gap-2 text-[11px] font-bold">
+              <span className="rounded-md bg-emerald-500/15 px-2 py-0.5 text-emerald-600 dark:text-emerald-400">+{current.q.marks}</span>
+              <span className="rounded-md bg-red-500/15 px-2 py-0.5 text-red-600 dark:text-red-400">{current.q.negativeMarks}</span>
             </span>
           </div>
-          <div className="rounded-lg border border-border p-4">
+
+          <div className="neu-raised rounded-2xl p-4 sm:p-5 text-base leading-relaxed">
             <LatexRenderer content={current.q.stem} />
           </div>
+
           <QuestionInput question={current.q} answer={answers[current.q.position]} onChange={(a) => setAnswer(current.q.position, a)} />
 
           <div className="flex flex-wrap gap-2 pt-2">
-            <Button variant="outline" size="sm" onClick={() => clearResponse(current.q.position)}>
-              Clear
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => markForReviewNext(current.q.position)}>
-              Mark for review &amp; next
-            </Button>
-            <Button size="sm" onClick={() => goTo(index + 1)}>
-              Save &amp; next
-            </Button>
+            <button onClick={() => clearResponse(current.q.position)} className="neu-raised rounded-xl px-4 py-2.5 text-[11px] font-black uppercase tracking-wider text-muted-foreground transition-all hover:text-foreground active:scale-95">Clear</button>
+            <button onClick={() => markForReviewNext(current.q.position)} className="neu-raised rounded-xl px-4 py-2.5 text-[11px] font-black uppercase tracking-wider text-violet-600 dark:text-violet-400 transition-all hover:-translate-y-0.5 active:scale-95">Mark & Next</button>
+            <button onClick={() => goTo(index + 1)} className="ml-auto rounded-xl bg-primary px-6 py-2.5 text-[11px] font-black uppercase tracking-wider text-primary-foreground shadow-lg shadow-primary/25 transition-all hover:bg-primary/90 active:scale-95">Save & Next</button>
           </div>
         </main>
 
-        <aside className="w-full shrink-0 space-y-3 lg:w-64">
-          <div className="grid grid-cols-6 gap-1.5">
-            {flat.map((f, i) => {
-              const status = palette[f.q.position] ?? "not_visited";
-              return (
-                <button
-                  key={f.q.position}
-                  onClick={() => goTo(i)}
-                  className={`h-8 rounded text-xs font-semibold ${PALETTE_STYLE[status]} ${i === index ? "outline outline-2 outline-primary" : ""}`}
-                  title={`Question ${i + 1}`}
-                >
-                  {i + 1}
-                </button>
-              );
-            })}
+        {/* Palette sidebar */}
+        <aside className="w-full shrink-0 space-y-4 lg:w-72">
+          {/* Legend */}
+          <div className="neu-raised rounded-2xl p-4">
+            <p className="mb-3 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Legend</p>
+            <div className="grid grid-cols-1 gap-2 text-[11px] font-bold text-muted-foreground">
+              <LegendRow className="bg-emerald-500/20 text-emerald-700 dark:text-emerald-400" label="Answered" />
+              <LegendRow className="bg-red-500/15 text-red-600 dark:text-red-400" label="Not Answered" />
+              <LegendRow className="bg-violet-500/20 text-violet-700 dark:text-violet-400" label="Marked for Review" />
+              <LegendRow className="bg-violet-500/30 text-violet-800 dark:text-violet-300 ring-2 ring-emerald-500" label="Answered & Marked" />
+              <LegendRow className="bg-muted text-muted-foreground" label="Not Visited" />
+            </div>
           </div>
-          <Button className="w-full" variant="destructive" onClick={() => submit(false)} disabled={phase === "submitting"}>
-            {phase === "submitting" ? "Submitting…" : "Submit test"}
-          </Button>
+
+          {/* Grid */}
+          <div className="neu-raised rounded-2xl p-4">
+            <p className="mb-3 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Question Palette</p>
+            <div className="grid grid-cols-6 gap-1.5">
+              {flat.map((f, i) => {
+                const status = palette[f.q.position] ?? "not_visited";
+                return (
+                  <button
+                    key={f.q.position}
+                    onClick={() => goTo(i)}
+                    className={`h-8 rounded-lg text-xs font-bold transition-all ${PALETTE_STYLE[status]} ${i === index ? "outline outline-2 outline-primary" : ""}`}
+                    title={`Question ${i + 1}`}
+                  >
+                    {i + 1}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <button
+            onClick={() => setShowSubmitModal(true)}
+            disabled={phase === "submitting"}
+            className="w-full rounded-2xl bg-rose-600 py-3.5 text-sm font-black uppercase tracking-widest text-white shadow-lg shadow-rose-600/25 transition-all hover:bg-rose-700 active:scale-[0.98] disabled:opacity-50"
+          >
+            {phase === "submitting" ? "Submitting…" : "Submit Test"}
+          </button>
         </aside>
       </div>
 
+      {/* Submit confirmation modal */}
+      {showSubmitModal ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="neu-raised w-full max-w-md rounded-3xl p-6 text-center">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-rose-500/15 text-rose-500">
+              <AlertTriangle className="h-6 w-6" />
+            </div>
+            <h2 className="text-lg font-black text-foreground">Submit your test?</h2>
+            <p className="mt-2 text-sm text-muted-foreground">Once submitted you cannot change your answers. This action is final.</p>
+            <div className="mt-5 flex gap-3">
+              <button onClick={() => setShowSubmitModal(false)} className="flex-1 neu-raised rounded-xl py-3 text-xs font-black uppercase tracking-widest text-muted-foreground hover:text-foreground">Cancel</button>
+              <button onClick={() => { setShowSubmitModal(false); void submit(false); }} className="flex-1 rounded-xl bg-rose-600 py-3 text-xs font-black uppercase tracking-widest text-white hover:bg-rose-700">Submit</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Fullscreen re-enter warning */}
       {showWarning ? (
-        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-background/95 p-6 text-center">
-          <p className="text-lg font-semibold">Please return to the test</p>
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-background/95 p-6 text-center backdrop-blur-sm">
+          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-500/15 text-amber-500">
+            <AlertTriangle className="h-7 w-7" />
+          </div>
+          <p className="text-lg font-black text-foreground">Please return to the test</p>
           <p className="max-w-sm text-sm text-muted-foreground">
-            You left the test window. Your answers are saved — return to fullscreen to continue. Your timer keeps running.
+            You left the test window. Your answers are saved — return to full-screen to continue. Your timer keeps running.
           </p>
-          <Button
-            onClick={() => {
-              enterFullscreen();
-              setShowWarning(false);
-            }}
+          <button
+            onClick={() => { enterFullscreen(); setShowWarning(false); }}
+            className="rounded-xl bg-primary px-6 py-3 text-sm font-black uppercase tracking-widest text-primary-foreground hover:bg-primary/90"
           >
-            Return to fullscreen
-          </Button>
+            Return to Full-screen
+          </button>
         </div>
       ) : null}
     </div>
   );
 }
 
-function CenteredMessage({ children }: { children: React.ReactNode }) {
+/** O3 Origin brand mark — the green-ring + orange-wedge logo used on the exam header. */
+function OriBrandMark({ compact = false }: { compact?: boolean }) {
+  const size = compact ? "h-12 w-12" : "mx-auto h-16 w-16";
+  const inner = compact ? "h-8 w-8" : "h-10 w-10";
+  const wedge = compact ? "h-6 w-6" : "h-7 w-7";
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center bg-background p-6 text-center text-foreground">
-      <div className="max-w-sm">{children}</div>
+    <div className={`${size} flex items-center justify-center rounded-full bg-green-600`}>
+      <div className={`${inner} flex items-center justify-center rounded-full bg-white`}>
+        <div className={`${wedge} rounded-tr-xl rounded-bl-xl bg-orange-500`} style={{ clipPath: "polygon(0% 100%, 100% 100%, 100% 0%)" }} />
+      </div>
+    </div>
+  );
+}
+
+function LegendRow({ className, label }: { className: string; label: string }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className={`h-5 w-6 shrink-0 rounded ${className}`} />
+      <span>{label}</span>
+    </div>
+  );
+}
+
+function CenteredMessage({ children, wide = false }: { children: React.ReactNode; wide?: boolean }) {
+  return (
+    <main className="flex min-h-screen flex-col items-center justify-center neu-surface p-6 text-center text-foreground">
+      <div className={`neu-raised w-full rounded-3xl p-6 sm:p-8 ${wide ? "max-w-md" : "max-w-sm"}`}>{children}</div>
     </main>
   );
 }
@@ -396,43 +522,48 @@ function QuestionInput({
   switch (question.questionType) {
     case "mcq":
       return (
-        <div className="space-y-2">
-          {question.options.map((opt, i) => (
-            <label
-              key={i}
-              className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 ${a.selectedOption === i ? "border-primary bg-primary/5" : "border-border"}`}
-            >
-              <input
-                type="radio"
-                name={`q-${question.position}`}
-                checked={a.selectedOption === i}
-                onChange={() => onChange({ selectedOption: i })}
-              />
-              <LatexRenderer content={opt} />
-            </label>
-          ))}
+        <div className="space-y-3">
+          {question.options.map((opt, i) => {
+            const active = a.selectedOption === i;
+            return (
+              <button
+                key={i}
+                type="button"
+                onClick={() => onChange({ selectedOption: i })}
+                className={`flex w-full items-start gap-4 rounded-2xl p-4 text-left transition-all ${active ? "neu-inset ring-2 ring-primary" : "neu-raised hover:-translate-y-0.5"}`}
+              >
+                <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-black transition-colors ${active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+                  {String.fromCharCode(65 + i)}
+                </span>
+                <span className="pt-0.5"><LatexRenderer content={opt} /></span>
+              </button>
+            );
+          })}
         </div>
       );
     case "msq": {
       const selected = a.selectedOptions ?? [];
       return (
-        <div className="space-y-2">
-          {question.options.map((opt, i) => (
-            <label
-              key={i}
-              className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 ${selected.includes(i) ? "border-primary bg-primary/5" : "border-border"}`}
-            >
-              <input
-                type="checkbox"
-                checked={selected.includes(i)}
-                onChange={(e) => {
-                  const next = e.target.checked ? [...selected, i] : selected.filter((x) => x !== i);
+        <div className="space-y-3">
+          {question.options.map((opt, i) => {
+            const active = selected.includes(i);
+            return (
+              <button
+                key={i}
+                type="button"
+                onClick={() => {
+                  const next = active ? selected.filter((x) => x !== i) : [...selected, i];
                   onChange({ selectedOptions: next.sort((x, y) => x - y) });
                 }}
-              />
-              <LatexRenderer content={opt} />
-            </label>
-          ))}
+                className={`flex w-full items-start gap-4 rounded-2xl p-4 text-left transition-all ${active ? "neu-inset ring-2 ring-primary" : "neu-raised hover:-translate-y-0.5"}`}
+              >
+                <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sm font-black transition-colors ${active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+                  {String.fromCharCode(65 + i)}
+                </span>
+                <span className="pt-0.5"><LatexRenderer content={opt} /></span>
+              </button>
+            );
+          })}
         </div>
       );
     }
@@ -441,7 +572,7 @@ function QuestionInput({
     case "subjective":
       return (
         <textarea
-          className="min-h-32 w-full rounded-lg border border-border bg-background p-3 text-sm"
+          className="neu-inset min-h-32 w-full rounded-2xl bg-transparent p-4 text-sm outline-none focus:ring-1 focus:ring-primary/30"
           value={a.answerText ?? ""}
           onChange={(e) => onChange({ answerText: e.target.value })}
           placeholder="Type your answer…"
@@ -451,7 +582,7 @@ function QuestionInput({
       // numerical, numerical_with_units, symbolic_expression, equation
       return (
         <input
-          className="w-full rounded-lg border border-border bg-background p-3 text-sm"
+          className="neu-inset w-full rounded-2xl bg-transparent p-4 text-sm outline-none focus:ring-1 focus:ring-primary/30"
           value={a.answerText ?? ""}
           onChange={(e) => onChange({ answerText: e.target.value })}
           placeholder={question.questionType === "numerical_with_units" ? "Value with units" : "Your answer"}
@@ -480,14 +611,14 @@ function MatrixInput({
   }
 
   return (
-    <div className="space-y-2">
+    <div className="neu-raised space-y-2 rounded-2xl p-4">
       {rows.map((row, rowIdx) => (
         <div key={rowIdx} className="flex items-center gap-3">
           <span className="w-24 shrink-0">
             <LatexRenderer content={row} />
           </span>
           <select
-            className="rounded-md border border-border bg-background px-2 py-1 text-sm"
+            className="neu-inset rounded-lg bg-transparent px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-primary/30"
             value={selectedFor(rowIdx) ?? ""}
             onChange={(e) => {
               const colIdx = e.target.value === "" ? null : Number(e.target.value);

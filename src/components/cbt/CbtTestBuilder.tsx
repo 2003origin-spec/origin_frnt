@@ -156,15 +156,15 @@ export function CbtTestBuilder({
         <h1 className="text-xl font-bold text-foreground">Edit test</h1>
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground">Status: {status}</span>
-          <Button size="sm" variant="outline" disabled={pending} onClick={saveAll}>
+          <Button size="sm" variant="outline" className="neu-raised border-0 shadow-none transition-transform hover:-translate-y-0.5" disabled={pending} onClick={saveAll}>
             Save
           </Button>
           {status !== "ready" ? (
-            <Button size="sm" disabled={pending || rows.length === 0} onClick={markReady}>
+            <Button size="sm" className="shadow-lg shadow-primary/20 transition-transform hover:-translate-y-0.5" disabled={pending || rows.length === 0} onClick={markReady}>
               Mark ready
             </Button>
           ) : (
-            <Button size="sm" variant="outline" disabled={pending} onClick={() => startTransition(() => saveMeta("draft").then(() => {}))}>
+            <Button size="sm" variant="outline" className="neu-raised border-0 shadow-none transition-transform hover:-translate-y-0.5" disabled={pending} onClick={() => startTransition(() => saveMeta("draft").then(() => {}))}>
               Back to draft
             </Button>
           )}
@@ -174,7 +174,7 @@ export function CbtTestBuilder({
       {error ? <p className="text-xs text-destructive" role="alert">{error}</p> : null}
       {savedNote ? <p className="text-xs text-emerald-600 dark:text-emerald-400">{savedNote}</p> : null}
 
-      <section className="grid gap-3 rounded-lg border border-border bg-card p-4 sm:grid-cols-2">
+      <section className="neu-raised grid gap-3 p-4 sm:grid-cols-2">
         <div className="space-y-1 sm:col-span-2">
           <Label>Title</Label>
           <Input value={title} onChange={(e) => setTitle(e.target.value)} />
@@ -199,7 +199,7 @@ export function CbtTestBuilder({
             {rows.map((r, i) => {
               const q = questionById.get(r.questionId);
               return (
-                <li key={r.questionId} className="flex items-center gap-3 rounded-lg border border-border bg-card p-3">
+                <li key={r.questionId} className="neu-raised flex items-center gap-3 p-3">
                   <span className="w-6 text-xs text-muted-foreground">{i + 1}</span>
                   <div className="min-w-0 flex-1">
                     <div className="line-clamp-1 text-sm text-foreground">{q?.stem ?? r.questionId}</div>
@@ -208,7 +208,7 @@ export function CbtTestBuilder({
                   <label className="text-xs text-muted-foreground">
                     +
                     <input
-                      className="ml-1 w-14 rounded border border-border bg-background px-1 py-0.5 text-foreground"
+                      className="neu-inset ml-1 w-14 rounded-lg bg-transparent px-1.5 py-1 text-foreground outline-none focus:ring-1 focus:ring-primary/30"
                       value={r.marks}
                       onChange={(e) => updateRow(i, { marks: Number(e.target.value) })}
                     />
@@ -216,7 +216,7 @@ export function CbtTestBuilder({
                   <label className="text-xs text-muted-foreground">
                     −
                     <input
-                      className="ml-1 w-14 rounded border border-border bg-background px-1 py-0.5 text-foreground"
+                      className="neu-inset ml-1 w-14 rounded-lg bg-transparent px-1.5 py-1 text-foreground outline-none focus:ring-1 focus:ring-primary/30"
                       value={r.negativeMarks}
                       onChange={(e) => updateRow(i, { negativeMarks: Number(e.target.value) })}
                     />
@@ -244,7 +244,7 @@ export function CbtTestBuilder({
           <h2 className="text-sm font-semibold text-foreground">Add from your bank ({available.length})</h2>
           <div className="flex items-center gap-2">
             <select
-              className="rounded-md border border-border bg-background px-2 py-1 text-xs"
+              className="neu-inset rounded-lg bg-transparent px-2 py-1.5 text-xs outline-none focus:ring-1 focus:ring-primary/30"
               value={addFilter ?? ""}
               onChange={(e) => setAddFilter(e.target.value || null)}
             >
@@ -258,6 +258,7 @@ export function CbtTestBuilder({
             <Button
               size="sm"
               variant="outline"
+              className="neu-raised border-0 shadow-none transition-transform hover:-translate-y-0.5"
               disabled={available.filter((q) => !usedSet.has(q.id)).length === 0}
               onClick={addAllVisible}
             >
@@ -274,7 +275,7 @@ export function CbtTestBuilder({
             {available.map((q) => {
               const blocked = usedSet.has(q.id);
               return (
-                <li key={q.id} className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card p-3">
+                <li key={q.id} className="neu-raised flex items-center justify-between gap-3 p-3">
                   <div className="min-w-0">
                     <div className="line-clamp-1 text-sm text-foreground">{q.stem}</div>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -286,7 +287,7 @@ export function CbtTestBuilder({
                       ) : null}
                     </div>
                   </div>
-                  <Button size="sm" variant="outline" disabled={blocked} onClick={() => addQuestion(q.id)}>
+                  <Button size="sm" variant="outline" className="neu-raised border-0 shadow-none transition-transform hover:-translate-y-0.5" disabled={blocked} onClick={() => addQuestion(q.id)}>
                     Add
                   </Button>
                 </li>

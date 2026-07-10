@@ -3,7 +3,7 @@
 import { revalidatePath, revalidateTag } from 'next/cache';
 
 import { getServerUser } from '@/lib/auth-server';
-import { withStoreAsync, withStoreAsyncScoped, type StoredUser } from '@/server/store';
+import { withStoreAsyncScoped, type StoredUser } from '@/server/store';
 import { serializeUser } from '@/server/users';
 import { isUserPostgresConfigured } from '@/server/user-postgres';
 import { dbCreateMediaAsset, dbUpdateUser } from '@/server/db-users';

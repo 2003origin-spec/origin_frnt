@@ -180,11 +180,11 @@ export function CbtQuestionBank({
 
       {/* Selection toolbar */}
       {selected.size > 0 ? (
-        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card p-2 text-sm">
+        <div className="neu-raised flex flex-wrap items-center gap-2 p-3 text-sm">
           <span className="text-muted-foreground">{selected.size} selected</span>
           {initialClusters.length > 0 ? (
             <select
-              className="rounded-md border border-border bg-background px-2 py-1 text-xs"
+              className="neu-inset rounded-lg bg-transparent px-2 py-1.5 text-xs outline-none focus:ring-1 focus:ring-primary/30"
               defaultValue=""
               disabled={pending}
               onChange={(e) => {
@@ -217,7 +217,7 @@ export function CbtQuestionBank({
       ) : null}
 
       {visible.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border p-10 text-center text-muted-foreground">
+        <div className="neu-inset rounded-2xl border border-dashed border-border/50 p-10 text-center text-muted-foreground">
           {activeCluster ? "No questions in this cluster yet." : "No questions yet. Create one or import from a document."}
         </div>
       ) : (
@@ -225,7 +225,7 @@ export function CbtQuestionBank({
           {visible.map((q) => (
             <li
               key={q.id}
-              className="flex items-start justify-between gap-4 rounded-lg border border-border bg-card p-4"
+              className="neu-raised flex items-start justify-between gap-4 p-4"
             >
               <div className="flex min-w-0 gap-3">
                 <input
@@ -259,19 +259,19 @@ export function CbtQuestionBank({
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 {activeCluster ? (
-                  <Button size="sm" variant="outline" disabled={pending} onClick={() => removeFromActive(q.id)}>
+                  <Button size="sm" variant="outline" className="neu-raised border-0 shadow-none transition-transform hover:-translate-y-0.5" disabled={pending} onClick={() => removeFromActive(q.id)}>
                     Remove
                   </Button>
                 ) : null}
                 <CbtQuestionEditorDialog
                   initialQuestion={q}
                   trigger={
-                    <Button size="sm" variant="outline">
+                    <Button size="sm" variant="outline" className="neu-raised border-0 shadow-none transition-transform hover:-translate-y-0.5">
                       Edit
                     </Button>
                   }
                 />
-                <Button size="sm" variant="destructive" disabled={pending} onClick={() => remove(q)}>
+                <Button size="sm" variant="destructive" className="shadow-lg shadow-red-600/20 transition-transform hover:-translate-y-0.5" disabled={pending} onClick={() => remove(q)}>
                   Delete
                 </Button>
               </div>

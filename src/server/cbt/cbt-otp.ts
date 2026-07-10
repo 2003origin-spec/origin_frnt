@@ -46,16 +46,22 @@ function normalize(email: string): string {
  * resend cooldown to prevent inbox spam. Returns whether an email was sent
  * (callers should not surface this to avoid leaking allowlist membership).
  */
-export async function issueCbtOtp(email: string): Promise<{ sent: boolean }> {
+export async function issueCbtOtp(email: string): Promise<{ sent: boolean; devCode?: string }> {
   await ensureCbtSchema();
   const to = normalize(email);
+  // DEV-ONLY: when no SMTP is configured the code is never delivered, so we
+  // return it to the caller (which surfaces it in the login UI). Guarded to
+  // non-production AND missing SMTP so it can NEVER leak in a real deployment.
+  const devSurface = process.env.NODE_ENV !== "production" && !process.env.SMTP_HOST;
 
   const existing = await pool().query<{ last_sent_at: string | null }>(
     "SELECT last_sent_at FROM cbt.login_otps WHERE email = $1",
     [to],
   );
   const lastSent = existing.rows[0]?.last_sent_at;
-  if (lastSent && Date.now() - new Date(lastSent).getTime() < RESEND_COOLDOWN_MS) {
+  // In dev-surface mode skip the cooldown so a fresh code is always minted and
+  // returned — otherwise the returned code could mismatch the stored one.
+  if (!devSurface && lastSent && Date.now() - new Date(lastSent).getTime() < RESEND_COOLDOWN_MS) {
     // Within cooldown — do not rotate or resend (anti-spam / anti-rotation).
     return { sent: false };
   }
@@ -88,7 +94,7 @@ export async function issueCbtOtp(email: string): Promise<{ sent: boolean }> {
       </div>
     `,
   });
-  return { sent: result.success };
+  return { sent: result.success, devCode: devSurface ? code : undefined };
 }
 
 export type CbtOtpVerifyResult = "ok" | "invalid" | "expired" | "locked" | "not_found";

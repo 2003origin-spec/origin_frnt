@@ -48,11 +48,11 @@ export function CbtRoomList({ initialRooms }: { initialRooms: RoomRow[] }) {
       </div>
 
       {rooms.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-border py-12 text-center text-sm text-muted-foreground">
+        <p className="neu-inset rounded-2xl border border-dashed border-border/50 py-12 text-center text-sm text-muted-foreground">
           No rooms yet. Create one to get a student link and code.
         </p>
       ) : (
-        <ul className="divide-y divide-border rounded-lg border border-border">
+        <ul className="neu-raised divide-y divide-border/40 overflow-hidden">
           {rooms.map((room) => (
             <li key={room.id} className="flex items-center justify-between gap-3 px-4 py-3">
               <Link href={`/cbt/rooms/${room.id}`} className="min-w-0 flex-1">

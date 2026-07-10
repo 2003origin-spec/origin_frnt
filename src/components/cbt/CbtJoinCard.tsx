@@ -48,7 +48,7 @@ export function CbtJoinCard({
   }
 
   return (
-    <div className="w-full max-w-sm space-y-4 rounded-xl border border-border bg-card p-6 shadow-sm">
+    <div className="neu-raised w-full max-w-sm space-y-4 rounded-3xl p-6">
       <div className="space-y-1 text-center">
         <h1 className="text-xl font-semibold">{roomName || "Join test"}</h1>
         <p className="text-sm text-muted-foreground">Enter the code your teacher shared.</p>
@@ -81,7 +81,7 @@ export function CbtJoinCard({
             {error}
           </p>
         ) : null}
-        <Button className="w-full" onClick={join} disabled={pending}>
+        <Button className="w-full shadow-lg shadow-primary/20 transition-transform hover:-translate-y-0.5" onClick={join} disabled={pending}>
           {pending ? "Joining…" : "Join"}
         </Button>
       </div>

@@ -118,7 +118,7 @@ export function CbtImportReview({
         dialogTitle="Edit & add to Questions bank"
         submitLabel="Save to bank"
         trigger={
-          <Button size="sm" variant="outline" disabled={pending}>
+          <Button size="sm" variant="outline" className="neu-raised border-0 shadow-none transition-transform hover:-translate-y-0.5" disabled={pending}>
             {label}
           </Button>
         }
@@ -139,11 +139,11 @@ export function CbtImportReview({
         {stagedCount + inBankCount > 0 ? (
           <div className="flex flex-wrap items-center gap-2">
             {stagedCount > 0 ? (
-              <Button variant="outline" disabled={pending} onClick={commitAll}>
+              <Button variant="outline" className="neu-raised border-0 shadow-none transition-transform hover:-translate-y-0.5" disabled={pending} onClick={commitAll}>
                 {pending ? "Pushing…" : `Push ${stagedCount} to Questions bank`}
               </Button>
             ) : null}
-            <Button disabled={pending} onClick={createTest}>
+            <Button className="shadow-lg shadow-primary/20 transition-transform hover:-translate-y-0.5" disabled={pending} onClick={createTest}>
               {pending ? "Working…" : "Create a test from these"}
             </Button>
           </div>
@@ -169,7 +169,7 @@ export function CbtImportReview({
 
       <ul className="space-y-3">
         {pendingReview.map((q) => (
-          <li key={q.id} className="rounded-lg border border-border bg-card p-4">
+          <li key={q.id} className="neu-raised p-4">
             <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
               <span className="rounded bg-muted px-2 py-0.5">{q.questionType ?? "?"}</span>
               {q.subject ? <span>{q.subject}</span> : null}
@@ -188,11 +188,11 @@ export function CbtImportReview({
               </ol>
             ) : null}
             <div className="mt-3 flex gap-2">
-              <Button size="sm" disabled={pending} onClick={() => act(q, "accept")}>
+              <Button size="sm" className="shadow-lg shadow-primary/20 transition-transform hover:-translate-y-0.5" disabled={pending} onClick={() => act(q, "accept")}>
                 Accept
               </Button>
               {editTrigger(q)}
-              <Button size="sm" variant="outline" disabled={pending} onClick={() => act(q, "reject")}>
+              <Button size="sm" variant="outline" className="neu-raised border-0 shadow-none transition-transform hover:-translate-y-0.5" disabled={pending} onClick={() => act(q, "reject")}>
                 Reject
               </Button>
             </div>
