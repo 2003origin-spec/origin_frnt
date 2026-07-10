@@ -151,29 +151,21 @@ export function verifyOptionPresentationToken(
   return payload;
 }
 
-function rankIndex(payload: OptionPresentationPayload, index: number, secret: string): string {
-  return createHmac("sha256", secret)
-    .update(`${payload.v}:${payload.u}:${payload.s}:${payload.a}:${payload.q}:${payload.k}:${payload.n}:${index}`)
-    .digest("hex");
-}
-
 export function getOptionDisplayOrder(
   payload: OptionPresentationPayload,
   explicitSecret?: string,
 ): number[] {
-  const secret = getOptionPresentationSecret(explicitSecret);
-  const order = Array.from({ length: payload.n }, (_, index) => index).sort((left, right) => {
-    const leftRank = rankIndex(payload, left, secret);
-    const rightRank = rankIndex(payload, right, secret);
-    return leftRank.localeCompare(rightRank);
-  });
-
-  if (order.length > 1 && order.every((value, index) => value === index)) {
-    const rotation = (Number.parseInt(rankIndex(payload, payload.n, secret).slice(0, 8), 16) % (order.length - 1)) + 1;
-    return order.slice(rotation).concat(order.slice(0, rotation));
-  }
-
-  return order;
+  // Option shuffling is intentionally DISABLED — options are presented in their
+  // authored order. This is the single chokepoint used by both option
+  // presentation (serializeQuestion → presentOptions) and answer grading
+  // (remapPresentedAnswer / toPresentedGradeInfo), so returning the identity
+  // order keeps the two sides self-consistent and grading correct while the
+  // signed presentation-token contract stays intact.
+  //
+  // To re-enable a deterministic per-attempt shuffle, restore the HMAC rank
+  // sort below (kept in git history) instead of this identity order.
+  void explicitSecret;
+  return Array.from({ length: payload.n }, (_, index) => index);
 }
 
 export function presentOptions<T>(

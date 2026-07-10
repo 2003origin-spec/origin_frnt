@@ -17,6 +17,7 @@
 import React, { useMemo } from 'react';
 import katex from 'katex';
 import { cn } from '@/lib/utils';
+import { repairMathTex } from '@/lib/latex-sanitize';
 
 // ─── DOMPurify (browser-only, defence-in-depth) ─────────────────────────────
 
@@ -98,24 +99,38 @@ interface KatexResult {
   ok: boolean;
 }
 
+function renderOnce(tex: string, display: boolean, throwOnError: boolean): string {
+  return sanitize(
+    katex.renderToString(tex, {
+      displayMode: display,
+      throwOnError,
+      strict: false,      // allow unknown commands gracefully
+      trust: false,       // never trust user-controlled tex
+      output: 'htmlAndMathml', // MathML needed by highlight-capture.ts
+    }),
+  );
+}
+
 function renderKatex(tex: string, display: boolean): KatexResult {
   if (!tex.trim()) return { html: '', ok: true };
+
+  // First repair the source (stray %, unbalanced braces/environments, display-
+  // only environments, \tag, lone &, …) so most "invalid" LaTeX renders cleanly.
+  const repaired = repairMathTex(tex);
   try {
-    const html = sanitize(
-      katex.renderToString(tex, {
-        displayMode: display,
-        throwOnError: true,
-        strict: false,      // allow unknown commands gracefully
-        trust: false,       // never trust user-controlled tex
-        output: 'htmlAndMathml', // MathML needed by highlight-capture.ts
-      }),
-    );
-    return { html, ok: true };
+    return { html: renderOnce(repaired, display, true), ok: true };
   } catch {
     if (process.env.NODE_ENV === 'development') {
       // eslint-disable-next-line no-console
-      console.warn('[LatexRenderer] KaTeX parse error:', tex);
+      console.warn('[LatexRenderer] KaTeX parse error, using best-effort render:', tex);
     }
+  }
+
+  // Second pass: let KaTeX render its own best effort (partial output with the
+  // failing token flagged in red) instead of dumping raw $…$ source at the user.
+  try {
+    return { html: renderOnce(repaired, display, false), ok: true };
+  } catch {
     return { html: '', ok: false };
   }
 }

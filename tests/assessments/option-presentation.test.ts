@@ -22,11 +22,13 @@ const CONTEXT = {
   optionCount: 4,
 };
 
-test("option presentation tokens verify and produce stable display order", () => {
+test("option presentation tokens verify and produce identity display order (shuffle disabled)", () => {
   const token = createOptionPresentationToken(CONTEXT, SECRET);
   const payload = verifyOptionPresentationToken(token, CONTEXT, SECRET);
 
   assert.ok(payload);
+  // Shuffling is disabled — options are always presented in their authored order.
+  assert.deepEqual(getOptionDisplayOrder(payload, SECRET), [0, 1, 2, 3]);
   assert.deepEqual(getOptionDisplayOrder(payload, SECRET), getOptionDisplayOrder(payload, SECRET));
 });
 
@@ -44,7 +46,7 @@ test("option presentation rejects tampering and wrong question context", () => {
   );
 });
 
-test("presentOptions returns shuffled options without exposing the order in the token", () => {
+test("presentOptions preserves authored option order (shuffle disabled) and still issues a token", () => {
   const options = ["A", "B", "C", "D"];
   const first = presentOptions(options, {
     userId: CONTEXT.userId,
@@ -63,8 +65,10 @@ test("presentOptions returns shuffled options without exposing the order in the 
 
   assert.deepEqual(first.options, second.options);
   assert.equal(first.presentationId, second.presentationId);
-  assert.notDeepEqual(first.options, options);
-  assert.equal(first.presentationId?.includes("0,1,2,3"), false);
+  // Options are presented exactly as authored — no reordering.
+  assert.deepEqual(first.options, options);
+  // A signed presentation token is still issued (grading/anti-tamper contract intact).
+  assert.ok(first.presentationId);
 });
 
 function buildPracticeStore() {
