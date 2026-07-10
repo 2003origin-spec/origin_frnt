@@ -124,11 +124,11 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                 onClick={onToggleExpanded}
                 aria-label={expanded ? 'Collapse navigation' : 'Expand navigation'}
                 title={expanded ? 'Collapse navigation' : 'Expand navigation'}
-                style={leftOffset > 0 ? { left: leftOffset + (expanded ? 224 : 72) - 12 } : undefined}
+                style={leftOffset > 0 ? { left: leftOffset + (expanded ? 150 : 72) - 12 } : undefined}
                 className={cn(
                     'fixed top-1/2 -translate-y-1/2 z-[55] hidden md:flex items-center justify-center h-10 w-6 rounded-r-lg',
                     'bg-[hsl(var(--neu-bg))] border border-l-0 border-primary/20 shadow-lg text-muted-foreground hover:text-primary transition-all duration-300',
-                    leftOffset > 0 ? '' : (expanded ? 'left-[212px]' : 'left-[60px]'),
+                    leftOffset > 0 ? '' : (expanded ? 'left-[138px]' : 'left-[60px]'),
                 )}
             >
                 {expanded ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
@@ -140,7 +140,7 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                 style={leftOffset > 0 ? { left: leftOffset } : undefined}
                 className={cn(
                     'fixed left-0 top-0 h-dvh z-50 hidden md:flex flex-col transition-[width] duration-300',
-                    expanded ? 'w-56' : 'w-[72px]',
+                    expanded ? 'w-[150px]' : 'w-[72px]',
                     sidebarBg
                 )}
             >
@@ -323,7 +323,7 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                                                 animate={{ opacity: 1, x: 0, scale: 1 }}
                                                 exit={{ opacity: 0, x: 10, scale: 0.95 }}
                                                 transition={{ duration: 0.2, ease: 'easeOut' }}
-                                                className={cn('absolute top-0 w-80 bg-[hsl(var(--neu-bg))] backdrop-blur-2xl rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.2)] border border-primary/20 dark:border-zinc-800 p-2 z-50 origin-left', expanded ? 'left-[228px]' : 'left-[76px]')}
+                                                className={cn('absolute top-0 w-80 bg-[hsl(var(--neu-bg))] backdrop-blur-2xl rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.2)] border border-primary/20 dark:border-zinc-800 p-2 z-50 origin-left', expanded ? 'left-[154px]' : 'left-[76px]')}
                                             >
                                                 <div className="px-3 py-2 mb-2">
                                                     <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-zinc-500">Learning Hub</h3>
@@ -432,7 +432,7 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                                 animate={{ opacity: 1, x: 0, scale: 1 }}
                                 exit={{ opacity: 0, x: 10, scale: 0.95 }}
                                 onMouseLeave={() => setShowProfileMenu(false)}
-                                className={cn('absolute bottom-0 w-64 bg-[hsl(var(--neu-bg))] backdrop-blur-2xl rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.2)] border border-primary/20 dark:border-zinc-800 py-2 z-50 origin-bottom-left', expanded ? 'left-[228px]' : 'left-[76px]')}
+                                className={cn('absolute bottom-0 w-64 bg-[hsl(var(--neu-bg))] backdrop-blur-2xl rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.2)] border border-primary/20 dark:border-zinc-800 py-2 z-50 origin-bottom-left', expanded ? 'left-[154px]' : 'left-[76px]')}
                             >
                                 <div className="px-5 py-4 border-b border-slate-100 dark:border-zinc-800 mb-2">
                                     <p className="text-sm font-black text-black dark:text-white">{user.name}</p>

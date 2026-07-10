@@ -98,11 +98,23 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnab
     });
   }, []);
 
-  // Show badge unlock popup whenever the server delivers pending badges
+  // Badges the user has already dismissed this session. Prevents the popup from
+  // re-appearing when refreshUser() returns a user whose pendingBadges the server
+  // hasn't cleared yet (or the badges/seen call lagged/failed).
+  const dismissedBadgesRef = React.useRef<Set<string>>(new Set());
+
+  // Show badge unlock popup whenever the server delivers *new* pending badges.
   React.useEffect(() => {
-    const pending = user?.pendingBadges ?? [];
+    const pending = (user?.pendingBadges ?? []).filter((n) => !dismissedBadgesRef.current.has(n));
     if (pending.length > 0) setBadgePopupNames(pending);
   }, [user?.pendingBadges]);
+
+  const dismissBadgePopup = React.useCallback(() => {
+    setBadgePopupNames((current) => {
+      current.forEach((n) => dismissedBadgesRef.current.add(n));
+      return [];
+    });
+  }, []);
 
   const mainRef = React.useRef<HTMLElement | null>(null);
 
@@ -258,7 +270,7 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnab
               "flex-1 flex flex-col relative z-10 overflow-x-hidden custom-scrollbar",
               isFullViewportApp ? "overflow-hidden" : "overflow-y-auto",
               "transition-all duration-300 min-w-[320px]",
-              mounted && showNavbar ? (navExpanded ? 'md:pl-56' : 'md:pl-[72px]') + ' pt-14 md:pt-0 pb-14 md:pb-0' : ''
+              mounted && showNavbar ? (navExpanded ? 'md:pl-[150px]' : 'md:pl-[72px]') + ' pt-14 md:pt-0 pb-14 md:pb-0' : ''
             )}
           >
             <div className={cn(
@@ -301,7 +313,7 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnab
             <BadgeUnlockPopup
               key="badge-popup"
               badgeNames={badgePopupNames}
-              onDismiss={() => setBadgePopupNames([])}
+              onDismiss={dismissBadgePopup}
               onAfterSeen={() => refreshUser()}
             />
           )}

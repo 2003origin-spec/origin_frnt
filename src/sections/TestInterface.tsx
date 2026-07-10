@@ -110,7 +110,9 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
       setCameraError(null);
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: 320, height: 240, frameRate: 15 }
+          // facingMode 'user' → front camera for proctoring (mobile defaults to
+          // rear otherwise); `ideal` so it still works on webcams without a facing mode.
+          video: { width: 320, height: 240, frameRate: 15, facingMode: { ideal: 'user' } }
         });
         streamRef.current = stream;
         

@@ -393,81 +393,63 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
     // Stop any playing answer sound when leaving the question / unmounting.
     useEffect(() => () => { audioRef.current?.pause(); }, []);
 
-    // ── Answer-sound playback permission (mobile browsers block audio that isn't
-    // started inside a user gesture, so sounds silently failed on phones). We keep
-    // an explicit, persisted opt-in and "unlock" a reusable <audio> element during
-    // a real tap so later programmatic playback is allowed. ──────────────────────
+    // ── Answer sounds ──────────────────────────────────────────────────────────
+    // The student's chosen sound (set in Profile) plays on submit — on by default.
+    // Mobile browsers block audio not started in a user gesture, so we unlock a
+    // reusable <audio> element on the first tap. A persisted mute toggle silences it.
     const hasSoundPref = Boolean(user?.ogcodeCorrectSound || user?.ogcodeWrongSound);
-    const [soundEnabled, setSoundEnabled] = useState(false);
-    const soundEnabledRef = useRef(false);
+    const [muted, setMuted] = useState(false);
+    const mutedRef = useRef(false);
+    const audioUnlockedRef = useRef(false);
 
-    const primeAudioElement = useCallback((muted: boolean) => {
+    // Unlock the reusable audio element inside a user gesture so later
+    // programmatic playback is permitted (mobile autoplay policy).
+    const unlockAudio = useCallback(() => {
+        if (audioUnlockedRef.current) return;
+        const file = correctSoundRef.current || wrongSoundRef.current;
+        if (!file) return;
         const el = audioRef.current ?? new Audio();
         audioRef.current = el;
-        const file = correctSoundRef.current || wrongSoundRef.current;
-        if (!file) return el;
         const dir = correctSoundRef.current ? 'correct' : 'wrong';
-        el.src = `/sounds/${dir}/${file}`;
-        el.muted = muted;
-        el.play().then(() => { if (muted) { el.pause(); el.currentTime = 0; el.muted = false; } }).catch(() => { el.muted = false; });
-        return el;
-    }, []);
-
-    // Restore the persisted opt-in on mount.
-    useEffect(() => {
         try {
-            if (localStorage.getItem('ogcode_sound_enabled') === '1') {
-                setSoundEnabled(true);
-                soundEnabledRef.current = true;
-            }
+            el.src = `/sounds/${dir}/${file}`;
+            el.muted = true;
+            el.play()
+                .then(() => { el.pause(); el.currentTime = 0; el.muted = false; audioUnlockedRef.current = true; })
+                .catch(() => { el.muted = false; });
         } catch { /* ignore */ }
     }, []);
 
-    // If sounds are enabled, re-unlock the audio element on this session's first
-    // real tap (mobile requires a fresh gesture each page load).
+    // Restore mute preference (default: sounds ON).
     useEffect(() => {
-        if (!soundEnabled || !hasSoundPref) return;
-        const unlock = () => primeAudioElement(true);
-        window.addEventListener('pointerdown', unlock, { once: true });
-        return () => window.removeEventListener('pointerdown', unlock);
-    }, [soundEnabled, hasSoundPref, primeAudioElement]);
+        try {
+            if (localStorage.getItem('ogcode_sound_muted') === '1') { setMuted(true); mutedRef.current = true; }
+        } catch { /* ignore */ }
+    }, []);
 
-    const toggleSounds = useCallback(() => {
-        if (soundEnabledRef.current) {
-            setSoundEnabled(false);
-            soundEnabledRef.current = false;
-            audioRef.current?.pause();
-            try { localStorage.setItem('ogcode_sound_enabled', '0'); } catch { /* ignore */ }
-            toast('Answer sounds muted');
-        } else {
-            // This runs inside the tap gesture — unlock playback for mobile.
-            primeAudioElement(true);
-            setSoundEnabled(true);
-            soundEnabledRef.current = true;
-            try { localStorage.setItem('ogcode_sound_enabled', '1'); } catch { /* ignore */ }
-            toast.success('Answer sounds on', { description: 'A sound will play when you submit an answer.' });
-        }
-    }, [primeAudioElement]);
-
-    // One-time explicit prompt when the student has chosen sounds but hasn't
-    // enabled playback yet (tapping "Enable" runs inside the gesture → unlocks audio).
+    // Unlock audio on the first tap anywhere (mobile needs a fresh gesture each load).
     useEffect(() => {
         if (!hasSoundPref) return;
-        try {
-            if (localStorage.getItem('ogcode_sound_enabled') === '1') return;
-            if (localStorage.getItem('ogcode_sound_prompted') === '1') return;
-            localStorage.setItem('ogcode_sound_prompted', '1');
-        } catch { return; }
-        const t = setTimeout(() => {
-            toast('Enable answer sounds?', {
-                description: 'Play your chosen sound each time you submit an answer.',
-                action: { label: 'Enable', onClick: () => toggleSounds() },
-                duration: 8000,
-            });
-        }, 800);
-        return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [hasSoundPref]);
+        const onGesture = () => unlockAudio();
+        window.addEventListener('pointerdown', onGesture, { once: true });
+        return () => window.removeEventListener('pointerdown', onGesture);
+    }, [hasSoundPref, unlockAudio]);
+
+    const toggleMute = useCallback(() => {
+        setMuted(prev => {
+            const next = !prev;
+            mutedRef.current = next;
+            try { localStorage.setItem('ogcode_sound_muted', next ? '1' : '0'); } catch { /* ignore */ }
+            if (next) {
+                audioRef.current?.pause();
+                toast('Answer sounds muted');
+            } else {
+                unlockAudio(); // runs inside the tap gesture
+                toast.success('Answer sounds on');
+            }
+            return next;
+        });
+    }, [unlockAudio]);
 
     // Previous / Next navigation that follows the filter applied on the list.
     const router = useRouter();
@@ -684,6 +666,10 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
         else if (qType === 'matrix_match') payload.matrixPairs = matrixPairs;
         else payload.answerText = answerInput;
 
+        // Submit is a user gesture — unlock audio now so post-await playback is
+        // allowed on mobile (the gesture context is otherwise lost after await).
+        unlockAudio();
+
         setIsSubmitting(true);
         try {
             setShowHint(false);
@@ -693,11 +679,10 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
             setResult(res); // This triggers the result UI
             toast.success(res.isCorrect ? "Brilliant! Correct Answer" : "Not quite right. Try again?");
 
-            // Play answer sound — only when the student has explicitly enabled sounds
-            // (soundEnabledRef avoids stale closure; the element was unlocked on a tap
-            // so playback works on mobile). Reuse the same <audio> element.
+            // Play the student's chosen answer sound (on by default; refs avoid stale
+            // closure; the element was unlocked in this gesture so it works on mobile).
             const soundFile = res.isCorrect ? correctSoundRef.current : wrongSoundRef.current;
-            if (soundEnabledRef.current && soundFile) {
+            if (!mutedRef.current && soundFile) {
                 const dir = res.isCorrect ? 'correct' : 'wrong';
                 const el = audioRef.current ?? new Audio();
                 audioRef.current = el;
@@ -718,7 +703,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
         } finally {
             setIsSubmitting(false);
         }
-    }, [question, result, isSubmitting, elapsed, selectedOption, selectedOptions, matrixPairs, answerInput]);
+    }, [question, result, isSubmitting, elapsed, selectedOption, selectedOptions, matrixPairs, answerInput, unlockAudio]);
 
     const handleTryAgain = () => {
         setResult(null);
@@ -823,15 +808,15 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
 
                 {/* Right-side controls */}
                 <div className="ml-auto flex items-center gap-2">
-                    {/* Answer-sound toggle — only when the student has picked sounds */}
+                    {/* Answer-sound mute toggle — only when the student has picked sounds */}
                     {hasSoundPref && (
                         <button
-                            onClick={toggleSounds}
-                            className={`p-2 neu-raised rounded-lg transition-all hover:-translate-y-0.5 group ${soundEnabled ? 'text-primary' : 'text-muted-foreground'}`}
-                            aria-label={soundEnabled ? 'Mute answer sounds' : 'Enable answer sounds'}
-                            title={soundEnabled ? 'Answer sounds on — tap to mute' : 'Enable answer sounds (plays on submit)'}
+                            onClick={toggleMute}
+                            className={`p-2 neu-raised rounded-lg transition-all hover:-translate-y-0.5 group ${muted ? 'text-muted-foreground' : 'text-primary'}`}
+                            aria-label={muted ? 'Unmute answer sounds' : 'Mute answer sounds'}
+                            title={muted ? 'Answer sounds muted — tap to unmute' : 'Answer sounds on — tap to mute'}
                         >
-                            {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+                            {muted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
                         </button>
                     )}
 
