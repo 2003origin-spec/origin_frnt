@@ -6,6 +6,7 @@ import {
     ArrowLeft, Play, Clock, Loader2, CheckCircle2,
     XCircle, RotateCcw, Trophy, X, HelpCircle, ChevronLeft, ChevronRight, Building2,
     ZoomIn, ZoomOut, ImageOff, Hash, Layers, AlignLeft, GitMerge, BookOpen, Flag,
+    Volume2, VolumeX,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { apiCall } from '@/lib/api';
@@ -392,6 +393,82 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
     // Stop any playing answer sound when leaving the question / unmounting.
     useEffect(() => () => { audioRef.current?.pause(); }, []);
 
+    // ── Answer-sound playback permission (mobile browsers block audio that isn't
+    // started inside a user gesture, so sounds silently failed on phones). We keep
+    // an explicit, persisted opt-in and "unlock" a reusable <audio> element during
+    // a real tap so later programmatic playback is allowed. ──────────────────────
+    const hasSoundPref = Boolean(user?.ogcodeCorrectSound || user?.ogcodeWrongSound);
+    const [soundEnabled, setSoundEnabled] = useState(false);
+    const soundEnabledRef = useRef(false);
+
+    const primeAudioElement = useCallback((muted: boolean) => {
+        const el = audioRef.current ?? new Audio();
+        audioRef.current = el;
+        const file = correctSoundRef.current || wrongSoundRef.current;
+        if (!file) return el;
+        const dir = correctSoundRef.current ? 'correct' : 'wrong';
+        el.src = `/sounds/${dir}/${file}`;
+        el.muted = muted;
+        el.play().then(() => { if (muted) { el.pause(); el.currentTime = 0; el.muted = false; } }).catch(() => { el.muted = false; });
+        return el;
+    }, []);
+
+    // Restore the persisted opt-in on mount.
+    useEffect(() => {
+        try {
+            if (localStorage.getItem('ogcode_sound_enabled') === '1') {
+                setSoundEnabled(true);
+                soundEnabledRef.current = true;
+            }
+        } catch { /* ignore */ }
+    }, []);
+
+    // If sounds are enabled, re-unlock the audio element on this session's first
+    // real tap (mobile requires a fresh gesture each page load).
+    useEffect(() => {
+        if (!soundEnabled || !hasSoundPref) return;
+        const unlock = () => primeAudioElement(true);
+        window.addEventListener('pointerdown', unlock, { once: true });
+        return () => window.removeEventListener('pointerdown', unlock);
+    }, [soundEnabled, hasSoundPref, primeAudioElement]);
+
+    const toggleSounds = useCallback(() => {
+        if (soundEnabledRef.current) {
+            setSoundEnabled(false);
+            soundEnabledRef.current = false;
+            audioRef.current?.pause();
+            try { localStorage.setItem('ogcode_sound_enabled', '0'); } catch { /* ignore */ }
+            toast('Answer sounds muted');
+        } else {
+            // This runs inside the tap gesture — unlock playback for mobile.
+            primeAudioElement(true);
+            setSoundEnabled(true);
+            soundEnabledRef.current = true;
+            try { localStorage.setItem('ogcode_sound_enabled', '1'); } catch { /* ignore */ }
+            toast.success('Answer sounds on', { description: 'A sound will play when you submit an answer.' });
+        }
+    }, [primeAudioElement]);
+
+    // One-time explicit prompt when the student has chosen sounds but hasn't
+    // enabled playback yet (tapping "Enable" runs inside the gesture → unlocks audio).
+    useEffect(() => {
+        if (!hasSoundPref) return;
+        try {
+            if (localStorage.getItem('ogcode_sound_enabled') === '1') return;
+            if (localStorage.getItem('ogcode_sound_prompted') === '1') return;
+            localStorage.setItem('ogcode_sound_prompted', '1');
+        } catch { return; }
+        const t = setTimeout(() => {
+            toast('Enable answer sounds?', {
+                description: 'Play your chosen sound each time you submit an answer.',
+                action: { label: 'Enable', onClick: () => toggleSounds() },
+                duration: 8000,
+            });
+        }, 800);
+        return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [hasSoundPref]);
+
     // Previous / Next navigation that follows the filter applied on the list.
     const router = useRouter();
     const [navQueue, setNavQueue] = useState<OgcodeNavQueue | null>(null);
@@ -616,14 +693,20 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
             setResult(res); // This triggers the result UI
             toast.success(res.isCorrect ? "Brilliant! Correct Answer" : "Not quite right. Try again?");
 
-            // Play answer sound using refs so stale-closure / refreshUser can't clear the pref
+            // Play answer sound — only when the student has explicitly enabled sounds
+            // (soundEnabledRef avoids stale closure; the element was unlocked on a tap
+            // so playback works on mobile). Reuse the same <audio> element.
             const soundFile = res.isCorrect ? correctSoundRef.current : wrongSoundRef.current;
-            if (soundFile) {
+            if (soundEnabledRef.current && soundFile) {
                 const dir = res.isCorrect ? 'correct' : 'wrong';
-                audioRef.current?.pause();
-                audioRef.current = new Audio(`/sounds/${dir}/${soundFile}`);
-                audioRef.current.volume = 0.7;
-                audioRef.current.play().catch(() => {});
+                const el = audioRef.current ?? new Audio();
+                audioRef.current = el;
+                el.pause();
+                el.src = `/sounds/${dir}/${soundFile}`;
+                el.currentTime = 0;
+                el.muted = false;
+                el.volume = 0.7;
+                el.play().catch(() => {});
             }
 
             // Refresh user data if solved
@@ -738,18 +821,33 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                     </div>
                 </div>
 
-                {/* Report button — far right */}
-                <button
-                    onClick={() => window.open(
-                        `https://github.com/diprajorigin/ORIGIN-V1.0/issues/new?title=${encodeURIComponent(`[OGCode] Question report: ${questionId}`)}`,
-                        '_blank',
+                {/* Right-side controls */}
+                <div className="ml-auto flex items-center gap-2">
+                    {/* Answer-sound toggle — only when the student has picked sounds */}
+                    {hasSoundPref && (
+                        <button
+                            onClick={toggleSounds}
+                            className={`p-2 neu-raised rounded-lg transition-all hover:-translate-y-0.5 group ${soundEnabled ? 'text-primary' : 'text-muted-foreground'}`}
+                            aria-label={soundEnabled ? 'Mute answer sounds' : 'Enable answer sounds'}
+                            title={soundEnabled ? 'Answer sounds on — tap to mute' : 'Enable answer sounds (plays on submit)'}
+                        >
+                            {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+                        </button>
                     )}
-                    className="ml-auto p-2 neu-raised rounded-lg transition-all hover:-translate-y-0.5 group"
-                    aria-label="Report this question"
-                    title="Report / Raise PR"
-                >
-                    <Flag className="w-4 h-4 text-muted-foreground group-hover:text-rose-500 transition-colors" />
-                </button>
+
+                    {/* Report button */}
+                    <button
+                        onClick={() => window.open(
+                            `https://github.com/diprajorigin/ORIGIN-V1.0/issues/new?title=${encodeURIComponent(`[OGCode] Question report: ${questionId}`)}`,
+                            '_blank',
+                        )}
+                        className="p-2 neu-raised rounded-lg transition-all hover:-translate-y-0.5 group"
+                        aria-label="Report this question"
+                        title="Report / Raise PR"
+                    >
+                        <Flag className="w-4 h-4 text-muted-foreground group-hover:text-rose-500 transition-colors" />
+                    </button>
+                </div>
             </div>
 
             <div className="flex-1 overflow-y-auto bg-background">
@@ -812,7 +910,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                     {question.subject}
                                 </span>
                                 {question.classLevel && (
-                                    <span className="text-[10px] font-bold text-sky-600 dark:text-sky-400 px-2 py-1 bg-sky-500/10 rounded uppercase tracking-wider">
+                                    <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 px-2 py-1 bg-indigo-500/10 rounded uppercase tracking-wider">
                                         Class {question.classLevel}
                                     </span>
                                 )}
@@ -836,12 +934,44 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                         PYQ
                                     </span>
                                 )}
-                                {/* Exam / occurrence badge (JEE / NEET / AIPMT etc.) */}
-                                {question.occurrence && question.occurrence !== 'NA' && (
-                                    <span className="flex items-center gap-1 text-[10px] font-bold text-amber-600 dark:text-amber-400 px-2 py-1 bg-amber-500/10 border border-amber-500/20 rounded uppercase tracking-wider max-w-[200px]" title={question.occurrence}>
-                                        <span className="truncate">{question.occurrence}</span>
-                                    </span>
-                                )}
+                                {/* Exam / occurrence badge (e.g. "NEET 2015") — coloured by its exam, shown once */}
+                                {question.occurrence && question.occurrence !== 'NA' && (() => {
+                                    const up = question.occurrence.toUpperCase();
+                                    const style = up.includes('NEET')
+                                        ? 'text-teal-600 dark:text-teal-400 bg-teal-500/10 border-teal-500/25'
+                                        : up.includes('AIPMT')
+                                            ? 'text-fuchsia-600 dark:text-fuchsia-400 bg-fuchsia-500/10 border-fuchsia-500/25'
+                                            : up.includes('JEE')
+                                                ? 'text-blue-600 dark:text-blue-400 bg-blue-500/10 border-blue-500/25'
+                                                : 'text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/25';
+                                    return (
+                                        <span className={`flex items-center gap-1 text-[10px] font-bold px-2 py-1 border rounded uppercase tracking-wider max-w-[200px] ${style}`} title={question.occurrence}>
+                                            <span className="truncate">{question.occurrence}</span>
+                                        </span>
+                                    );
+                                })()}
+                                {/* Attempted / Solved status badge */}
+                                {(() => {
+                                    const solved = Boolean(result?.isCorrect || question.isSolved || question.status === 'solved');
+                                    const attempted = Boolean(question.attempted || question.status === 'attempted' || (question.attemptCount ?? 0) > 0);
+                                    if (solved) {
+                                        return (
+                                            <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 px-2 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded uppercase tracking-wider">
+                                                <CheckCircle2 className="w-3 h-3 flex-shrink-0" />
+                                                Solved
+                                            </span>
+                                        );
+                                    }
+                                    if (attempted) {
+                                        return (
+                                            <span className="flex items-center gap-1 text-[10px] font-bold text-cyan-600 dark:text-cyan-400 px-2 py-1 bg-cyan-500/10 border border-cyan-500/20 rounded uppercase tracking-wider">
+                                                <RotateCcw className="w-3 h-3 flex-shrink-0" />
+                                                Attempted
+                                            </span>
+                                        );
+                                    }
+                                    return null;
+                                })()}
                             </div>
                             {/* Subject Ori avatar */}
                             {question.subject && SUBJECT_ORI_MAP[question.subject] && (

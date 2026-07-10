@@ -714,7 +714,7 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
 
       {/* Fixed Header */}
       <header className="relative z-30 flex items-center justify-between px-3 sm:px-6 py-3 sm:py-4 border-b border-border/30 bg-background flex-shrink-0">
-        <div className="flex items-center gap-3 sm:gap-4">
+        <div className="flex items-center gap-3 sm:gap-4 min-w-0">
           <button
             onClick={() => {
               if (viewMode === 'chat') {
@@ -789,7 +789,7 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
             {/* <p className="text-[10px] text-rose-500 font-bold uppercase tracking-widest mt-1">24/7 Academic Mentor</p> */}
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 shrink-0">
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-full neu-raised">
             <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
             <span className="text-[10px] font-bold text-green-400 uppercase">System Online</span>
@@ -1016,7 +1016,7 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
                         <>
                           <button
                             onClick={() => fileInputRef.current?.click()}
-                            className="p-3 text-muted-foreground hover:text-primary transition-colors"
+                            className="p-2 sm:p-3 shrink-0 text-muted-foreground hover:text-primary transition-colors"
                             title="Upload image of a problem"
                           >
                             <ImagePlus className="w-5 h-5" />
@@ -1095,7 +1095,7 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
                                     setIsRecording(true);
                                     setLiveTranscript('');
                                   }}
-                                  className={`p-3 transition-colors ${isRecording ? 'text-red-500 animate-pulse' : 'text-muted-foreground hover:text-primary'}`}
+                                  className={`p-2 sm:p-3 shrink-0 transition-colors ${isRecording ? 'text-red-500 animate-pulse' : 'text-muted-foreground hover:text-primary'}`}
                                   title={isRecording ? 'Stop recording' : 'Record voice'}
                                 >
                                   {isRecording ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
@@ -1127,7 +1127,7 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
                                     }
                                   }}
                                   placeholder={isTextQuotaReached ? 'Text quota reached for today' : (highlightedText ? 'Ask about the selected text...' : 'Type your question here...')}
-                                  className={`flex-1 bg-transparent border-none focus:ring-0 text-foreground placeholder:text-muted-foreground/60 py-3 text-[15px] resize-none max-h-40 ${isTextQuotaReached ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                  className={`flex-1 min-w-0 bg-transparent border-none focus:ring-0 text-foreground placeholder:text-muted-foreground/60 py-3 text-[15px] resize-none max-h-40 ${isTextQuotaReached ? 'opacity-50 cursor-not-allowed' : ''}`}
                                 />
                               </TooltipTrigger>
                               <TooltipContent side="top" className="bg-popover border-border text-popover-foreground">
@@ -1146,7 +1146,7 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
                           </TooltipProvider>
                         </>
                       ) : (
-                        <div className="flex-1 flex items-center gap-3 px-4 py-3">
+                        <div className="flex-1 min-w-0 flex items-center gap-3 px-4 py-3">
                           <div className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse flex-shrink-0" />
                           <span className="flex-1 text-sm text-foreground/80 italic truncate">
                             {liveTranscript || 'Listening...'}
@@ -1173,7 +1173,7 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
                           }
                         }}
                         disabled={!isRecording && (!message.trim() && !highlightedText || isTyping || isProcessingImage)}
-                        className={`p-3 rounded-2xl transition-all ${isRecording
+                        className={`p-2.5 sm:p-3 shrink-0 rounded-2xl transition-all ${isRecording
                           ? 'bg-red-500 text-white shadow-lg shadow-red-600/30'
                           : (isTyping || isProcessingImage)
                             ? 'bg-muted/30 text-muted-foreground/40 cursor-not-allowed'

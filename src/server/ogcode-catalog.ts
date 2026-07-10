@@ -679,7 +679,10 @@ export async function getOgcodeCatalogQuestionById(questionId: string): Promise<
         contributor_workspace_id,
         attribution_name,
         attribution_logo_url,
-        is_contributed
+        is_contributed,
+        occurrence,
+        class,
+        previous_year_question
       FROM ogcode_questions
       WHERE id = $1
       LIMIT 1
@@ -727,7 +730,10 @@ export async function getOgcodeCatalogQuestionMap(questionIds: string[]): Promis
         contributor_workspace_id,
         attribution_name,
         attribution_logo_url,
-        is_contributed
+        is_contributed,
+        occurrence,
+        class,
+        previous_year_question
       FROM ogcode_questions
       WHERE id = ANY($1::text[])
     `,

@@ -27,6 +27,7 @@ import {
     Sparkles,
     UsersRound,
     ChevronRight,
+    ChevronLeft,
     Trophy,
     ArrowRight,
     Menu,
@@ -49,9 +50,11 @@ interface NavbarProps {
     premiumEnabled?: boolean;
     socialEnabled?: boolean;
     leftOffset?: number;
+    expanded?: boolean;
+    onToggleExpanded?: () => void;
 }
 
-export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLogout, theme, setTheme, connectEnabled, premiumEnabled, socialEnabled, leftOffset = 0 }: NavbarProps) {
+export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLogout, theme, setTheme, connectEnabled, premiumEnabled, socialEnabled, leftOffset = 0, expanded = false, onToggleExpanded }: NavbarProps) {
     const [showProfileMenu, setShowProfileMenu] = useState(false);
     const [showExploreMenu, setShowExploreMenu] = useState(false);
     const [showMobileMenu, setShowMobileMenu] = useState(false);
@@ -115,12 +118,29 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
 
     return (
         <>
+            {/* ── DESKTOP SIDEBAR expand/collapse handle (md+) ─────────────── */}
+            <button
+                type="button"
+                onClick={onToggleExpanded}
+                aria-label={expanded ? 'Collapse navigation' : 'Expand navigation'}
+                title={expanded ? 'Collapse navigation' : 'Expand navigation'}
+                style={leftOffset > 0 ? { left: leftOffset + (expanded ? 224 : 72) - 12 } : undefined}
+                className={cn(
+                    'fixed top-1/2 -translate-y-1/2 z-[55] hidden md:flex items-center justify-center h-10 w-6 rounded-r-lg',
+                    'bg-[hsl(var(--neu-bg))] border border-l-0 border-primary/20 shadow-lg text-muted-foreground hover:text-primary transition-all duration-300',
+                    leftOffset > 0 ? '' : (expanded ? 'left-[212px]' : 'left-[60px]'),
+                )}
+            >
+                {expanded ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+            </button>
+
             {/* ── DESKTOP SIDEBAR (md+) ────────────────────────────────────── */}
             <nav
                 id="tutorial-nav"
                 style={leftOffset > 0 ? { left: leftOffset } : undefined}
                 className={cn(
-                    'fixed left-0 top-0 h-dvh z-50 hidden md:flex flex-col w-[72px] transition-[left] duration-300',
+                    'fixed left-0 top-0 h-dvh z-50 hidden md:flex flex-col transition-[width] duration-300',
+                    expanded ? 'w-56' : 'w-[72px]',
                     sidebarBg
                 )}
             >
@@ -149,11 +169,15 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                         whileTap={{ scale: 0.9 }}
                         onClick={() => setIsSearchOpen(true)}
                         title="Search (⌘K)"
-                        className="flex flex-col items-center gap-0.5 py-2 px-1 w-full rounded-xl text-slate-400 hover:text-primary hover:bg-primary/5 transition-all"
+                        className={cn(
+                            'flex w-full rounded-xl text-slate-400 hover:text-primary hover:bg-primary/5 transition-all',
+                            expanded ? 'flex-row items-center gap-3 py-2 px-3' : 'flex-col items-center gap-0.5 py-2 px-1',
+                        )}
                     >
-                        <Search className="w-5 h-5" />
-                        <span className="text-[9px] font-bold leading-none">Search</span>
+                        <Search className="w-5 h-5 shrink-0" />
+                        <span className={cn('font-bold', expanded ? 'text-sm flex-1 text-left' : 'text-[9px] leading-none')}>Search</span>
                     </motion.button>
+                    {!expanded && (
                     <div className="absolute left-[72px] top-1/2 -translate-y-1/2 pointer-events-none z-[60] flex items-center">
                         <div className={cn(
                             'flex items-center h-9 rounded-r-xl bg-[hsl(var(--neu-bg))] backdrop-blur-xl',
@@ -163,14 +187,19 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                             <span className="whitespace-nowrap text-xs font-bold text-foreground px-3">Search</span>
                         </div>
                     </div>
+                    )}
                 </div>
 
                 {/* Notifications — near top */}
                 <div className="relative w-full group/alerts px-1 pb-1 flex-shrink-0">
-                    <div className="flex flex-col items-center gap-0.5 py-2 px-1 w-full rounded-xl text-slate-400 hover:text-primary hover:bg-primary/5 transition-all">
-                        <NotificationBell />
-                        <span className="text-[9px] font-bold leading-none">Alerts</span>
+                    <div className={cn(
+                        'flex w-full rounded-xl text-slate-400 hover:text-primary hover:bg-primary/5 transition-all',
+                        expanded ? 'flex-row items-center gap-3 py-2 px-3' : 'flex-col items-center gap-0.5 py-2 px-1',
+                    )}>
+                        <div className="shrink-0"><NotificationBell /></div>
+                        <span className={cn('font-bold', expanded ? 'text-sm flex-1 text-left' : 'text-[9px] leading-none')}>Alerts</span>
                     </div>
+                    {!expanded && (
                     <div className="absolute left-[72px] top-1/2 -translate-y-1/2 pointer-events-none z-[60] flex items-center">
                         <div className={cn(
                             'flex items-center h-9 rounded-r-xl bg-[hsl(var(--neu-bg))] backdrop-blur-xl',
@@ -180,6 +209,7 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                             <span className="whitespace-nowrap text-xs font-bold text-foreground px-3">Alerts</span>
                         </div>
                     </div>
+                    )}
                 </div>
 
                 {/* Divider */}
@@ -193,15 +223,19 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                         onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
                         title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
                         className={cn(
-                            'flex flex-col items-center gap-0.5 py-2.5 px-1 w-full rounded-xl transition-all',
+                            'flex w-full rounded-xl transition-all',
+                            expanded ? 'flex-row items-center gap-3 py-2.5 px-3' : 'flex-col items-center gap-0.5 py-2.5 px-1',
                             theme === 'light'
                                 ? 'text-primary bg-primary/10'
                                 : 'text-slate-400 hover:text-amber-500 hover:bg-primary/5'
                         )}
                     >
-                        {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-                        <span className="text-[9px] font-bold leading-none">Theme</span>
+                        {theme === 'dark' ? <Sun className="w-5 h-5 shrink-0" /> : <Moon className="w-5 h-5 shrink-0" />}
+                        <span className={cn('font-bold', expanded ? 'text-sm flex-1 text-left' : 'text-[9px] leading-none')}>
+                            {expanded ? (theme === 'dark' ? 'Light Mode' : 'Dark Mode') : 'Theme'}
+                        </span>
                     </motion.button>
+                    {!expanded && (
                     <div className="absolute left-[72px] top-1/2 -translate-y-1/2 pointer-events-none z-[60] flex items-center">
                         <div className={cn(
                             'flex items-center h-9 rounded-r-xl bg-[hsl(var(--neu-bg))] backdrop-blur-xl',
@@ -213,6 +247,7 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                             </span>
                         </div>
                     </div>
+                    )}
                 </div>
 
                 <div className="w-10 mx-auto h-px bg-primary/10 flex-shrink-0 mt-2" />
@@ -243,7 +278,8 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                                     onFocus={() => onPrefetch?.(item.view)}
                                     title={item.label}
                                     className={cn(
-                                        'relative flex flex-col items-center gap-0.5 py-2.5 px-1 w-full rounded-xl transition-all duration-200 group',
+                                        'relative flex w-full rounded-xl transition-all duration-200 group',
+                                        expanded ? 'flex-row items-center gap-3 py-2.5 px-3' : 'flex-col items-center gap-0.5 py-2.5 px-1',
                                         active
                                             ? 'bg-primary/10 text-primary'
                                             : 'text-slate-400 dark:text-slate-500 hover:bg-primary/5 hover:text-primary'
@@ -253,17 +289,20 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                                     {active && (
                                         <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-primary rounded-r-full" />
                                     )}
-                                    <div className="w-5 h-5 flex items-center justify-center">
+                                    <div className="w-5 h-5 flex items-center justify-center shrink-0">
                                         {typeof item.icon === 'function' && item.icon.toString().includes('img')
                                             ? <Icon />
                                             : <Icon className="w-5 h-5" />
                                         }
                                     </div>
-                                    <span className="text-[9px] font-bold leading-none truncate w-full text-center">{item.label}</span>
+                                    <span className={cn(
+                                        'font-bold truncate',
+                                        expanded ? 'text-sm flex-1 text-left' : 'text-[9px] leading-none w-full text-center',
+                                    )}>{item.label}</span>
                                 </button>
 
-                                {/* Hover expand tooltip — hidden once sub-menu is open for Explore */}
-                                {!(item.label === 'Explore' && showExploreMenu) && (
+                                {/* Hover expand tooltip — only in collapsed rail; hidden once Explore sub-menu is open */}
+                                {!expanded && !(item.label === 'Explore' && showExploreMenu) && (
                                     <div className="absolute left-[72px] top-1/2 -translate-y-1/2 pointer-events-none z-[60] flex items-center">
                                         <div className={cn(
                                             'flex items-center h-9 rounded-r-xl bg-[hsl(var(--neu-bg))] backdrop-blur-xl',
@@ -284,7 +323,7 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                                                 animate={{ opacity: 1, x: 0, scale: 1 }}
                                                 exit={{ opacity: 0, x: 10, scale: 0.95 }}
                                                 transition={{ duration: 0.2, ease: 'easeOut' }}
-                                                className="absolute left-[76px] top-0 w-80 bg-[hsl(var(--neu-bg))] backdrop-blur-2xl rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.2)] border border-primary/20 dark:border-zinc-800 p-2 z-50 origin-left"
+                                                className={cn('absolute top-0 w-80 bg-[hsl(var(--neu-bg))] backdrop-blur-2xl rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.2)] border border-primary/20 dark:border-zinc-800 p-2 z-50 origin-left', expanded ? 'left-[228px]' : 'left-[76px]')}
                                             >
                                                 <div className="px-3 py-2 mb-2">
                                                     <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-zinc-500">Learning Hub</h3>
@@ -360,16 +399,22 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                             onClick={() => onNavigate('profile')}
                             onFocus={() => onPrefetch?.('profile')}
                             title="Profile"
-                            className="flex flex-col items-center gap-0.5 py-2.5 px-1 w-full rounded-xl text-slate-400 hover:text-primary hover:bg-primary/5 transition-all"
+                            className={cn(
+                                'flex w-full rounded-xl text-slate-400 hover:text-primary hover:bg-primary/5 transition-all',
+                                expanded ? 'flex-row items-center gap-3 py-2 px-3' : 'flex-col items-center gap-0.5 py-2.5 px-1',
+                            )}
                         >
-                            <Avatar className="w-6 h-6 border border-primary/20 shadow-sm">
+                            <Avatar className="w-6 h-6 border border-primary/20 shadow-sm shrink-0">
                                 <AvatarFallback className="bg-primary text-white text-[10px] font-bold">
                                     {user.name.charAt(0).toUpperCase()}
                                 </AvatarFallback>
                             </Avatar>
-                            <span className="text-[9px] font-bold leading-none">Profile</span>
+                            <span className={cn('font-bold truncate', expanded ? 'text-sm flex-1 text-left' : 'text-[9px] leading-none')}>
+                                {expanded ? (user.name.split(' ')[0] || 'Profile') : 'Profile'}
+                            </span>
                         </button>
                         {/* Hover expand tooltip */}
+                        {!expanded && (
                         <div className="absolute left-[72px] bottom-0 pointer-events-none z-[60] flex items-center">
                             <div className={cn(
                                 'flex items-center h-9 rounded-r-xl bg-[hsl(var(--neu-bg))] backdrop-blur-xl',
@@ -379,6 +424,7 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                                 <span className="whitespace-nowrap text-xs font-bold text-foreground px-3">{user.name.split(' ')[0]}</span>
                             </div>
                         </div>
+                        )}
 
                         {showProfileMenu && (
                             <motion.div
@@ -386,7 +432,7 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                                 animate={{ opacity: 1, x: 0, scale: 1 }}
                                 exit={{ opacity: 0, x: 10, scale: 0.95 }}
                                 onMouseLeave={() => setShowProfileMenu(false)}
-                                className="absolute left-[76px] bottom-0 w-64 bg-[hsl(var(--neu-bg))] backdrop-blur-2xl rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.2)] border border-primary/20 dark:border-zinc-800 py-2 z-50 origin-bottom-left"
+                                className={cn('absolute bottom-0 w-64 bg-[hsl(var(--neu-bg))] backdrop-blur-2xl rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.2)] border border-primary/20 dark:border-zinc-800 py-2 z-50 origin-bottom-left', expanded ? 'left-[228px]' : 'left-[76px]')}
                             >
                                 <div className="px-5 py-4 border-b border-slate-100 dark:border-zinc-800 mb-2">
                                     <p className="text-sm font-black text-black dark:text-white">{user.name}</p>

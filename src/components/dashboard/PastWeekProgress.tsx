@@ -31,7 +31,7 @@ export default function PastWeekProgress({ user }: PastWeekProgressProps) {
     );
 
     return (
-        <Card className="neu-raised border-0">
+        <Card className="neu-raised border border-border/60">
             <CardContent className="px-5 py-4">
                 {/* Header */}
                 <div className="flex items-center justify-between mb-4">

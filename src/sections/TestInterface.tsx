@@ -1,11 +1,12 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
-import { Camera, AlertTriangle, ShieldCheck, CheckCircle2, Loader2, Play, Info, X } from 'lucide-react';
+import { Camera, AlertTriangle, ShieldCheck, CheckCircle2, Loader2, Play, Info, X, ZoomIn } from 'lucide-react';
 import type { Test, TestResult, UserAnswer } from '@/types';
 import { FormattedMessage } from '@/components/origin-ai/FormattedMessage';
 import { submitTestAction } from '@/server/actions/test-actions';
 import type { TestSubmissionPayload } from '@/server/assessments';
 import { useServerAnchoredTimer, type ServerAnchoredTimerSource } from '@/hooks/useServerAnchoredTimer';
+import { useAuth } from '@/context/AuthContext';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { shouldSubmitTestAnswer } from '@/lib/tests/time-stats';
@@ -30,7 +31,11 @@ interface TestInterfaceProps {
 type QuestionStatus = 'not_visited' | 'not_answered' | 'answered' | 'marked_review' | 'answered_marked';
 
 export default function TestInterface({ test, onComplete, onExit, timerSource, submitHandler }: TestInterfaceProps) {
+  const { user } = useAuth();
+  const candidateName = user?.name?.trim() || 'Candidate';
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [imgZoomed, setImgZoomed] = useState(false);
+  const [imgError, setImgError] = useState(false);
   const [answers, setAnswers] = useState<UserAnswer[]>([]);
   const durationSeconds = timerSource?.durationSeconds ?? test.duration * 60;
   const [timeRemaining, setTimeRemaining] = useState(durationSeconds);
@@ -50,6 +55,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [isFaceDetected, setIsFaceDetected] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [cameraRetryNonce, setCameraRetryNonce] = useState(0);
   const [verificationStep, setVerificationStep] = useState<'instructions' | 'proctoring'>('instructions');
   const [hasAcceptedRules, setHasAcceptedRules] = useState(false);
   const [cameraEnabled, setCameraEnabled] = useState(false);
@@ -123,7 +129,20 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
         console.error("Camera access failed", err);
         setProctorStatus('error');
         setIsCameraActive(false);
-        setCameraError(err.message || "Could not access camera");
+        const denied = err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError';
+        setCameraError(
+          denied
+            ? 'Camera permission was blocked'
+            : (err?.message || 'Could not access camera'),
+        );
+        // Raise an explicit notification prompting the student to grant access.
+        toast.error('Camera permission required', {
+          description: denied
+            ? 'This test uses camera proctoring. Please allow camera access, then tap Retry.'
+            : 'We could not start your camera. Check that no other app is using it, then tap Retry.',
+          action: { label: 'Retry', onClick: () => setCameraRetryNonce((n) => n + 1) },
+          duration: 10000,
+        });
       }
     }
 
@@ -148,7 +167,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
       stopCamera();
       if (malpracticeTimerRef.current) clearTimeout(malpracticeTimerRef.current);
     };
-  }, [verificationStep]);
+  }, [verificationStep, cameraRetryNonce]);
 
   // (Removed: random mock malpractice detection that caused false violations in production)
 
@@ -386,6 +405,12 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
   };
 
   const currentQuestion = test.questions[currentQuestionIndex];
+
+  // Reset image view state when moving to a new question
+  useEffect(() => {
+    setImgError(false);
+    setImgZoomed(false);
+  }, [currentQuestionIndex]);
 
   // Resolve the question type robustly: if the type is missing (e.g. an imported
   // question that wasn't tagged), infer it from the data shape so a subjective
@@ -802,11 +827,19 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
                 {cameraError && (
                   <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 flex items-start gap-3">
                     <AlertTriangle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
-                    <div className="text-xs">
-                      <p className="text-red-600 font-bold mb-1 uppercase dark:text-red-400">Permission Required</p>
-                      <p className="text-slate-600 leading-relaxed dark:text-slate-300">
-                        {cameraError}. Please enable camera access in your browser settings to continue.
+                    <div className="text-xs flex-1">
+                      <p className="text-red-600 font-bold mb-1 uppercase dark:text-red-400">Camera Permission Required</p>
+                      <p className="text-slate-600 leading-relaxed dark:text-slate-300 mb-3">
+                        {cameraError}. This proctored test needs your camera. Allow camera access in your browser
+                        (tap the 🎥/lock icon in the address bar), then retry.
                       </p>
+                      <button
+                        type="button"
+                        onClick={() => setCameraRetryNonce((n) => n + 1)}
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-white text-[11px] font-black uppercase tracking-wider rounded-lg hover:bg-primary/90 transition-colors"
+                      >
+                        <Camera className="w-3.5 h-3.5" /> Grant Camera Access
+                      </button>
                     </div>
                   </div>
                 )}
@@ -927,7 +960,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
             </div>
           )}
           <div className="flex flex-col gap-0.5 sm:gap-1 text-[10px] sm:text-xs">
-            <div className="flex"><span className="w-20 sm:w-28 text-gray-500">Candidate:</span> <span className="text-orange-500 truncate max-w-[100px] sm:max-w-none">[Your Name]</span></div>
+            <div className="flex"><span className="w-20 sm:w-28 text-gray-500">Candidate:</span> <span className="text-orange-500 truncate max-w-[100px] sm:max-w-none">{candidateName}</span></div>
             <div className="flex"><span className="w-20 sm:w-28 text-gray-500">Subject:</span> <span className="text-orange-500 truncate max-w-[100px] sm:max-w-none">{test.title}</span></div>
             <div className="flex"><span className="w-20 sm:w-28 text-gray-500">Remaining:</span> <span className="bg-rose-500 text-white px-2 py-0.5 rounded text-[10px] sm:text-xs" suppressHydrationWarning>{formatTime(effectiveTimeRemaining)}</span></div>
           </div>
@@ -1034,9 +1067,31 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
                 </div>
               )}
 
-              <div className="text-base text-gray-800 leading-relaxed font-sans mb-8 select-text cursor-text">
+              <div className="text-base text-gray-800 leading-relaxed font-sans mb-4 select-text cursor-text">
                 {renderQuestionText(currentQuestion?.text || '', 'test-question')}
               </div>
+
+              {/* Question image — shown when available */}
+              {currentQuestion?.image && !imgError && (
+                <div className="relative mb-8 rounded-xl border border-slate-200 bg-slate-50 overflow-hidden max-w-2xl">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={currentQuestion.image}
+                    alt="Question diagram"
+                    className="w-full h-auto max-h-[360px] object-contain cursor-zoom-in"
+                    onError={() => setImgError(true)}
+                    onClick={() => setImgZoomed(true)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setImgZoomed(true)}
+                    className="absolute top-2 right-2 p-1.5 bg-black/40 hover:bg-black/60 rounded-lg text-white transition-colors"
+                    aria-label="Zoom image"
+                  >
+                    <ZoomIn className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
 
               {effectiveType === 'mcq' && (
                 <div className="space-y-4 font-sans text-base">
@@ -1428,6 +1483,30 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Question image lightbox */}
+      {imgZoomed && currentQuestion?.image && (
+        <div
+          className="fixed inset-0 z-[200] bg-black/90 flex items-center justify-center p-4"
+          onClick={() => setImgZoomed(false)}
+        >
+          <button
+            type="button"
+            onClick={() => setImgZoomed(false)}
+            className="absolute top-4 right-4 p-2 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors"
+            aria-label="Close image"
+          >
+            <X className="w-5 h-5" />
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={currentQuestion.image}
+            alt="Question diagram"
+            className="max-w-full max-h-full object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
         </div>
       )}
     </div>

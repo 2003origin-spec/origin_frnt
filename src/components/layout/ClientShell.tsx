@@ -81,6 +81,22 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnab
   const [mounted, setMounted] = React.useState(false);
   const [deferredUiReady, setDeferredUiReady] = React.useState(false);
   const [badgePopupNames, setBadgePopupNames] = React.useState<string[]>([]);
+  const [navExpanded, setNavExpanded] = React.useState(false);
+
+  // Restore the nav expanded preference.
+  React.useEffect(() => {
+    try {
+      if (localStorage.getItem('nav_expanded') === '1') setNavExpanded(true);
+    } catch { /* ignore */ }
+  }, []);
+
+  const toggleNavExpanded = React.useCallback(() => {
+    setNavExpanded((prev) => {
+      const next = !prev;
+      try { localStorage.setItem('nav_expanded', next ? '1' : '0'); } catch { /* ignore */ }
+      return next;
+    });
+  }, []);
 
   // Show badge unlock popup whenever the server delivers pending badges
   React.useEffect(() => {
@@ -232,15 +248,17 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnab
               premiumEnabled={premiumEnabled}
               socialEnabled={socialEnabled}
               leftOffset={aiSide === 'left' && isAiOpen ? aiWidth : 0}
+              expanded={navExpanded}
+              onToggleExpanded={toggleNavExpanded}
             />
           )}
-          <main 
+          <main
             ref={mainRef}
             className={cn(
               "flex-1 flex flex-col relative z-10 overflow-x-hidden custom-scrollbar",
               isFullViewportApp ? "overflow-hidden" : "overflow-y-auto",
               "transition-all duration-300 min-w-[320px]",
-              mounted && showNavbar ? 'md:pl-[72px] pt-14 md:pt-0 pb-14 md:pb-0' : ''
+              mounted && showNavbar ? (navExpanded ? 'md:pl-56' : 'md:pl-[72px]') + ' pt-14 md:pt-0 pb-14 md:pb-0' : ''
             )}
           >
             <div className={cn(

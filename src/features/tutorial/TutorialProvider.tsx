@@ -18,26 +18,22 @@ interface TutorialContextType {
 
 const TutorialContext = createContext<TutorialContextType | undefined>(undefined);
 
-const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+// One-time-ever, per user. Once the user has seen (completed or skipped) the
+// tutorial on any page, it never shows again on any page.
+const getStorageKey = (userId: string | number) =>
+  `origin_tutorial_${userId}_seen`;
 
-const getStorageKey = (userId: string | number, page: string) =>
-  `origin_tutorial_${userId}_${page}_seen_at`;
-
-function shouldShowTutorial(userId: string | number, page: string): boolean {
+function shouldShowTutorial(userId: string | number): boolean {
   try {
-    const raw = localStorage.getItem(getStorageKey(userId, page));
-    if (!raw) return true; // never seen — first login
-    const lastSeen = Number(raw);
-    if (isNaN(lastSeen)) return true; // corrupted
-    return Date.now() - lastSeen > WEEK_MS;
+    return !localStorage.getItem(getStorageKey(userId)); // show only if never seen
   } catch {
     return false;
   }
 }
 
-function markTutorialSeen(userId: string | number, page: string): void {
+function markTutorialSeen(userId: string | number): void {
   try {
-    localStorage.setItem(getStorageKey(userId, page), String(Date.now()));
+    localStorage.setItem(getStorageKey(userId), String(Date.now()));
   } catch { /* ignore storage errors */ }
 }
 
@@ -70,7 +66,7 @@ export const TutorialProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setActivePage(page);
     setCurrentStep(0);
 
-    if (!shouldShowTutorial(user.id, page)) {
+    if (!shouldShowTutorial(user.id)) {
       setIsActive(false);
       return;
     }
@@ -91,7 +87,7 @@ export const TutorialProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setCurrentStep(prev => prev + 1);
     } else {
       setIsActive(false);
-      if (activePage && user) markTutorialSeen(user.id, activePage);
+      if (user) markTutorialSeen(user.id);
     }
   }, [currentStep, steps.length, activePage, user]);
 
@@ -101,8 +97,8 @@ export const TutorialProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const skipTutorial = useCallback(() => {
     setIsActive(false);
-    if (activePage && user) markTutorialSeen(user.id, activePage);
-  }, [activePage, user]);
+    if (user) markTutorialSeen(user.id);
+  }, [user]);
 
   const startTutorial = useCallback(() => {
     setCurrentStep(0);

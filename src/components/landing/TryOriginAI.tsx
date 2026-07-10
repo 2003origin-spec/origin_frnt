@@ -347,7 +347,7 @@ export default function TryOriginAI() {
                   </div>
                 ) : (
                   <div
-                    className={`max-w-[82%] rounded-2xl px-4 py-3 ${
+                    className={`max-w-[82%] min-w-0 break-words rounded-2xl px-4 py-3 ${
                       msg.role === 'user'
                         ? 'bg-primary/20 border border-primary/20 text-gray-900 dark:text-white text-sm font-medium'
                         : 'bg-gray-100 dark:bg-white/[0.06] border border-black/[0.08] dark:border-white/[0.08]'
@@ -423,7 +423,7 @@ export default function TryOriginAI() {
                 {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
               </button>
 
-              <div className="flex-1 relative">
+              <div className="flex-1 min-w-0 relative">
                 <textarea
                   ref={inputRef}
                   value={input}

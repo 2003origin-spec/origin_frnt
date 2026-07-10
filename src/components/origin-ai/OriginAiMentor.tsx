@@ -1003,7 +1003,7 @@ export default function OriginAiMentor({
                         isVoiceActive
                           ? 'border border-rose-500/40 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400'
                           : 'border border-muted dark:border-slate-800 bg-muted/40 hover:bg-muted/80',
-                        compact ? 'h-12 w-12 shrink-0 px-0 py-0' : 'h-auto px-4 py-3',
+                        compact ? 'h-12 w-12 shrink-0 px-0 py-0' : 'h-auto shrink-0 px-4 py-3',
                         isVoiceQuotaReached && !isVoiceActive && 'opacity-50 cursor-not-allowed'
                       )}
                     >
