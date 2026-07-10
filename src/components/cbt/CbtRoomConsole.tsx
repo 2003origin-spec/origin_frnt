@@ -141,7 +141,7 @@ export function CbtRoomConsole({
             title={connected ? "Live" : "Reconnecting…"}
           />
           {!closed ? (
-            <Button variant="destructive" size="sm" onClick={closeRoom} disabled={pending}>
+            <Button variant="destructive" size="sm" className="shadow-lg shadow-red-600/20 transition-transform hover:-translate-y-0.5" onClick={closeRoom} disabled={pending}>
               Close room
             </Button>
           ) : null}
@@ -149,7 +149,7 @@ export function CbtRoomConsole({
       </div>
 
       {!closed ? (
-        <div className="grid gap-4 rounded-lg border border-border p-4 sm:grid-cols-2">
+        <div className="neu-raised grid gap-4 p-4 sm:grid-cols-2">
           <div className="space-y-1">
             <p className="text-xs font-medium text-muted-foreground">Student link</p>
             <Input readOnly value={joinUrl} onFocus={(e) => e.currentTarget.select()} />
@@ -157,10 +157,10 @@ export function CbtRoomConsole({
           <div className="space-y-1">
             <p className="text-xs font-medium text-muted-foreground">Room code</p>
             <div className="flex items-center gap-2">
-              <div className="flex-1 rounded-md border border-border bg-muted/40 px-3 py-2 text-center text-lg font-bold tracking-[0.3em]">
+              <div className="neu-inset flex-1 rounded-xl px-3 py-2 text-center text-lg font-bold tracking-[0.3em]">
                 {code ?? "••••••"}
               </div>
-              <Button variant="outline" size="sm" onClick={regenerate} disabled={pending}>
+              <Button variant="outline" size="sm" className="neu-raised border-0 shadow-none transition-transform hover:-translate-y-0.5" onClick={regenerate} disabled={pending}>
                 {code ? "New code" : "Reveal"}
               </Button>
             </div>
@@ -170,11 +170,11 @@ export function CbtRoomConsole({
       ) : null}
 
       {room.status === "lobby" ? (
-        <div className="flex flex-wrap items-end gap-3 rounded-lg border border-border p-4">
+        <div className="neu-raised flex flex-wrap items-end gap-3 p-4">
           <div className="flex-1 space-y-1">
             <p className="text-xs font-medium text-muted-foreground">Test</p>
             <select
-              className="w-full rounded-md border border-border bg-background px-2 py-2 text-sm"
+              className="neu-inset w-full rounded-xl bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-primary/30"
               value={selectedTestId}
               onChange={(e) => setSelectedTestId(e.target.value)}
             >
@@ -186,15 +186,15 @@ export function CbtRoomConsole({
               ))}
             </select>
           </div>
-          <Button variant="outline" onClick={assignTest} disabled={pending || !selectedTestId}>
+          <Button variant="outline" className="neu-raised border-0 shadow-none transition-transform hover:-translate-y-0.5" onClick={assignTest} disabled={pending || !selectedTestId}>
             {assignedTestId === selectedTestId && selectedTestId ? "Assigned" : "Assign"}
           </Button>
-          <Button onClick={startTest} disabled={pending || !assignedTestId}>
+          <Button className="shadow-lg shadow-primary/20 transition-transform hover:-translate-y-0.5" onClick={startTest} disabled={pending || !assignedTestId}>
             Start test
           </Button>
         </div>
       ) : room.status === "in_test" ? (
-        <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 text-sm">
+        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm">
           Test in progress. Students are answering now.
         </div>
       ) : null}

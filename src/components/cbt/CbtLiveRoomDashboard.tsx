@@ -124,8 +124,8 @@ export function CbtLiveRoomDashboard({
   const showScores = roomStatus === "in_test" || roomStatus === "finished" || closed;
 
   return (
-    <div className="rounded-lg border border-border">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-2">
+    <div className="neu-raised overflow-hidden">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/40 px-4 py-3">
         <span className="text-sm font-medium">Participants ({rows.length})</span>
         <div className="flex items-center gap-2">
           <Input

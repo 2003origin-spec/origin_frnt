@@ -16,7 +16,7 @@ function StudentIdBadge({ studentCode }: { studentCode: string }) {
 }
 
 function Centered({ children }: { children: React.ReactNode }) {
-  return <div className="w-full max-w-sm space-y-6 rounded-xl border border-border bg-card p-6 text-center shadow-sm">{children}</div>;
+  return <div className="neu-raised w-full max-w-sm space-y-6 rounded-3xl p-6 text-center">{children}</div>;
 }
 
 function Inner() {
@@ -28,7 +28,7 @@ function Inner() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center bg-background p-6">
+    <main className="flex min-h-screen flex-col items-center justify-center neu-surface p-6">
       <PhaseCard />
     </main>
   );

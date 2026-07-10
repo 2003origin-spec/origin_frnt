@@ -101,7 +101,7 @@ export function CbtParticipantDrilldown({
                 <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-violet-600">{data.summary.needsReview} to review</span>
               ) : null}
             </div>
-            <ul className="divide-y divide-border rounded-lg border border-border text-sm">
+            <ul className="neu-raised divide-y divide-border/40 text-sm">
               {data.questions.map((q) => {
                 const v = verdict(q);
                 return (

@@ -31,7 +31,7 @@ import { findActiveCbtTeacherByEmail, linkCbtTeacherUser } from '@/server/cbt/cb
  * verify re-check the cbt.teachers allowlist.
  */
 
-type CbtActionResult = { ok: boolean; message?: string };
+type CbtActionResult = { ok: boolean; message?: string; devCode?: string };
 
 // Same generic copy whether or not the email is allowlisted — no oracle.
 const GENERIC_SENT = 'If this email is on the CBT allowlist, a sign-in code has been sent.';
@@ -75,12 +75,14 @@ export async function sendCbtOtpAction(email: string): Promise<CbtActionResult> 
       return { ok: false, message: 'Too many requests. Please try again in a few minutes.' };
     }
 
+    let devCode: string | undefined;
     const teacher = await findActiveCbtTeacherByEmail(normalized);
     if (teacher) {
-      await issueCbtOtp(normalized);
+      const issued = await issueCbtOtp(normalized);
+      devCode = issued.devCode;
     }
     // Generic response regardless of allowlist membership.
-    return { ok: true, message: GENERIC_SENT };
+    return { ok: true, message: GENERIC_SENT, devCode };
   } catch (error) {
     console.error('[cbt-auth] sendCbtOtpAction failed:', error instanceof Error ? error.message : error);
     return { ok: false, message: 'Unable to send a code right now. Please try again.' };

@@ -42,7 +42,7 @@ export function CbtImportUpload({ initialJobs }: { initialJobs: DocumentImportJo
         <p className="text-sm text-muted-foreground">Upload a PDF or DOCX. AI extracts questions for your review.</p>
       </header>
 
-      <div className="rounded-lg border border-dashed border-border bg-card p-6 text-center">
+      <div className="neu-inset rounded-2xl border border-dashed border-border/50 p-6 text-center">
         <input
           ref={inputRef}
           type="file"
@@ -53,7 +53,7 @@ export function CbtImportUpload({ initialJobs }: { initialJobs: DocumentImportJo
             if (f) upload(f);
           }}
         />
-        <Button disabled={pending} onClick={() => inputRef.current?.click()}>
+        <Button className="shadow-lg shadow-primary/20 transition-transform hover:-translate-y-0.5" disabled={pending} onClick={() => inputRef.current?.click()}>
           {pending ? "Uploading…" : "Choose file"}
         </Button>
         {error ? (
@@ -70,7 +70,7 @@ export function CbtImportUpload({ initialJobs }: { initialJobs: DocumentImportJo
         ) : (
           <ul className="space-y-2">
             {initialJobs.map((job) => (
-              <li key={job.id} className="rounded-lg border border-border bg-card p-3">
+              <li key={job.id} className="neu-raised p-3">
                 <Link href={`/cbt/import/${job.id}`} className="flex items-center justify-between gap-3">
                   <span className="min-w-0 truncate text-sm text-foreground">{job.sourceFileName}</span>
                   <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">

@@ -76,14 +76,14 @@ export function AdminCbtTeachers({ initialTeachers, initialStats }: Props) {
 
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         {STAT_CARDS.map((card) => (
-          <div key={card.key} className="rounded-lg border border-border bg-card p-4">
-            <div className="text-2xl font-bold text-foreground">{initialStats[card.key]}</div>
+          <div key={card.key} className="neu-raised p-4">
+            <div className="text-2xl font-black text-foreground">{initialStats[card.key]}</div>
             <div className="text-xs text-muted-foreground">{card.label}</div>
           </div>
         ))}
       </section>
 
-      <section className="rounded-lg border border-border bg-card p-4">
+      <section className="neu-raised p-4">
         <h2 className="mb-3 text-sm font-semibold text-foreground">Add a teacher</h2>
         <div className="flex flex-col gap-2 sm:flex-row">
           <input
@@ -91,16 +91,17 @@ export function AdminCbtTeachers({ initialTeachers, initialStats }: Props) {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="teacher@example.com"
-            className="flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+            className="neu-inset flex-1 rounded-xl bg-transparent px-3 py-2 text-sm text-foreground outline-none focus:ring-1 focus:ring-primary/30"
           />
           <input
             type="text"
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
             placeholder="Display name (optional)"
-            className="flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+            className="neu-inset flex-1 rounded-xl bg-transparent px-3 py-2 text-sm text-foreground outline-none focus:ring-1 focus:ring-primary/30"
           />
           <Button
+            className="shadow-lg shadow-primary/20 transition-transform hover:-translate-y-0.5"
             disabled={isPending || !email.trim()}
             onClick={() => startTransition(() => addTeacher())}
           >
@@ -114,9 +115,9 @@ export function AdminCbtTeachers({ initialTeachers, initialStats }: Props) {
         ) : null}
       </section>
 
-      <section className="overflow-x-auto rounded-lg border border-border bg-card">
+      <section className="neu-raised overflow-x-auto">
         <table className="w-full text-left text-sm">
-          <thead className="border-b border-border text-xs text-muted-foreground">
+          <thead className="border-b border-border/40 text-xs text-muted-foreground">
             <tr>
               <th className="px-4 py-3 font-medium">Email</th>
               <th className="px-4 py-3 font-medium">Display name</th>
@@ -134,7 +135,7 @@ export function AdminCbtTeachers({ initialTeachers, initialStats }: Props) {
               </tr>
             ) : (
               initialTeachers.map((teacher) => (
-                <tr key={teacher.id} className="border-b border-border last:border-0">
+                <tr key={teacher.id} className="border-b border-border/40 last:border-0">
                   <td className="px-4 py-3 text-foreground">{teacher.email}</td>
                   <td className="px-4 py-3 text-muted-foreground">{teacher.displayName ?? "—"}</td>
                   <td className="px-4 py-3">
@@ -156,6 +157,7 @@ export function AdminCbtTeachers({ initialTeachers, initialStats }: Props) {
                       <Button
                         size="sm"
                         variant="destructive"
+                        className="shadow-lg shadow-red-600/20 transition-transform hover:-translate-y-0.5"
                         disabled={isPending}
                         onClick={() => startTransition(() => removeTeacher(teacher))}
                       >

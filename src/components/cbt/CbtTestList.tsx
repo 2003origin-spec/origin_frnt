@@ -39,7 +39,7 @@ export function CbtTestList({ initialTests }: { initialTests: CbtTest[] }) {
         <p className="text-sm text-muted-foreground">{initialTests.length} test(s)</p>
       </header>
 
-      <div className="flex flex-col gap-2 rounded-lg border border-border bg-card p-4 sm:flex-row">
+      <div className="neu-raised flex flex-col gap-2 p-4 sm:flex-row">
         <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="New test title" className="flex-1" />
         <Input
           value={duration}
@@ -48,7 +48,7 @@ export function CbtTestList({ initialTests }: { initialTests: CbtTest[] }) {
           placeholder="Minutes"
           inputMode="numeric"
         />
-        <Button disabled={pending || !title.trim()} onClick={create}>
+        <Button className="shadow-lg shadow-primary/20 transition-transform hover:-translate-y-0.5" disabled={pending || !title.trim()} onClick={create}>
           Create
         </Button>
       </div>
@@ -59,13 +59,13 @@ export function CbtTestList({ initialTests }: { initialTests: CbtTest[] }) {
       ) : null}
 
       {initialTests.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border p-10 text-center text-muted-foreground">
+        <div className="neu-inset rounded-2xl border border-dashed border-border/50 p-10 text-center text-muted-foreground">
           No tests yet.
         </div>
       ) : (
         <ul className="space-y-2">
           {initialTests.map((t) => (
-            <li key={t.id} className="rounded-lg border border-border bg-card p-4">
+            <li key={t.id} className="neu-raised p-4">
               <Link href={`/cbt/tests/${t.id}`} className="flex items-center justify-between gap-4">
                 <div>
                   <div className="font-medium text-foreground">{t.title}</div>

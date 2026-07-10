@@ -50,7 +50,7 @@ export function CbtRoomCreateDialog() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm">New room</Button>
+        <Button size="sm" className="shadow-lg shadow-primary/20 transition-transform hover:-translate-y-0.5">New room</Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
@@ -65,7 +65,7 @@ export function CbtRoomCreateDialog() {
             </div>
             <div className="space-y-1">
               <Label>Room code</Label>
-              <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-center text-2xl font-bold tracking-[0.3em]">
+              <div className="neu-inset rounded-xl px-3 py-2 text-center text-2xl font-bold tracking-[0.3em]">
                 {created.code}
               </div>
             </div>
@@ -86,13 +86,13 @@ export function CbtRoomCreateDialog() {
         )}
         <DialogFooter>
           {created ? (
-            <Button onClick={() => router.push(`/cbt/rooms/${created.id}`)}>Open room</Button>
+            <Button className="shadow-lg shadow-primary/20 transition-transform hover:-translate-y-0.5" onClick={() => router.push(`/cbt/rooms/${created.id}`)}>Open room</Button>
           ) : (
             <>
-              <Button variant="outline" onClick={() => setOpen(false)} disabled={pending}>
+              <Button variant="outline" className="neu-raised border-0 shadow-none transition-transform hover:-translate-y-0.5" onClick={() => setOpen(false)} disabled={pending}>
                 Cancel
               </Button>
-              <Button onClick={create} disabled={pending}>
+              <Button className="shadow-lg shadow-primary/20 transition-transform hover:-translate-y-0.5" onClick={create} disabled={pending}>
                 {pending ? "Creating…" : "Create"}
               </Button>
             </>

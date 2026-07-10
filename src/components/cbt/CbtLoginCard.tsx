@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { useTheme } from "next-themes";
+import { Moon, Sun } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { loginWithCbtOtpAction, sendCbtOtpAction } from "@/server/actions/cbt-auth-actions";
@@ -19,6 +21,10 @@ export function CbtLoginCard() {
   const [code, setCode] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { resolvedTheme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const currentTheme = (mounted ? resolvedTheme : "light") || "light";
 
   function submitEmail(e: React.FormEvent) {
     e.preventDefault();
@@ -30,7 +36,13 @@ export function CbtLoginCard() {
         setError(res.message ?? "Something went wrong.");
         return;
       }
-      setMessage(res.message ?? "If eligible, a code has been sent.");
+      // Dev-only: no SMTP configured, so the server returns the code to prefill.
+      if (res.devCode) {
+        setCode(res.devCode);
+        setMessage(`Dev mode — no email configured. Code auto-filled: ${res.devCode}`);
+      } else {
+        setMessage(res.message ?? "If eligible, a code has been sent.");
+      }
       setStep("code");
     });
   }
@@ -50,11 +62,24 @@ export function CbtLoginCard() {
   }
 
   return (
-    <div className="w-full max-w-sm rounded-xl border border-border bg-card p-6 shadow-sm">
-      <h1 className="text-xl font-semibold text-foreground">CBT teacher sign in</h1>
-      <p className="mt-1 text-sm text-muted-foreground">
-        Enter your allowlisted email to receive a one-time code.
-      </p>
+    <div className="neu-raised w-full max-w-sm rounded-3xl p-6">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold text-foreground">CBT teacher sign in</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Enter your allowlisted email to receive a one-time code.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setTheme(currentTheme === "dark" ? "light" : "dark")}
+          title={currentTheme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          aria-label={currentTheme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          className="neu-raised flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition-all hover:-translate-y-0.5 hover:text-amber-500"
+        >
+          {currentTheme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+        </button>
+      </div>
 
       {step === "email" ? (
         <form className="mt-5 space-y-3" onSubmit={submitEmail}>
@@ -65,9 +90,9 @@ export function CbtLoginCard() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="you@example.com"
-            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+            className="neu-inset w-full rounded-xl bg-transparent px-3 py-2.5 text-sm text-foreground outline-none focus:ring-1 focus:ring-primary/30"
           />
-          <Button type="submit" className="w-full" disabled={isPending || !email.trim()}>
+          <Button type="submit" className="w-full shadow-lg shadow-primary/20 transition-transform hover:-translate-y-0.5" disabled={isPending || !email.trim()}>
             {isPending ? "Sending…" : "Send code"}
           </Button>
         </form>
@@ -81,9 +106,9 @@ export function CbtLoginCard() {
             value={code}
             onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
             placeholder="6-digit code"
-            className="w-full rounded-md border border-border bg-background px-3 py-2 text-center text-lg tracking-[0.4em] text-foreground"
+            className="neu-inset w-full rounded-xl bg-transparent px-3 py-2.5 text-center text-lg tracking-[0.4em] text-foreground outline-none focus:ring-1 focus:ring-primary/30"
           />
-          <Button type="submit" className="w-full" disabled={isPending || code.trim().length < 6}>
+          <Button type="submit" className="w-full shadow-lg shadow-primary/20 transition-transform hover:-translate-y-0.5" disabled={isPending || code.trim().length < 6}>
             {isPending ? "Verifying…" : "Sign in"}
           </Button>
           <button
