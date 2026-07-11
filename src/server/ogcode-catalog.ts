@@ -191,15 +191,19 @@ function normalizeDifficulty(value: string): DifficultyLevel {
 }
 
 function normalizeQuestionType(value: string): QuestionType {
+  // Case-insensitive: live rows exist with e.g. "MSQ" (manual/imported inserts),
+  // which previously fell through to the "subjective" fallback and rendered as
+  // a text box instead of a multi-select. Mirrored by LOWER() in buildFilterClause.
+  const normalized = String(value ?? "").trim().toLowerCase();
   if (
-    value === "mcq" ||
-    value === "msq" ||
-    value === "numerical" ||
-    value === "matrix_match" ||
-    value === "subjective" ||
-    value === "range"
+    normalized === "mcq" ||
+    normalized === "msq" ||
+    normalized === "numerical" ||
+    normalized === "matrix_match" ||
+    normalized === "subjective" ||
+    normalized === "range"
   ) {
-    return value;
+    return normalized;
   }
   return "subjective";
 }
@@ -381,7 +385,7 @@ function buildFilterClause(filters: CatalogFilters) {
 
   if (filters.subject) {
     values.push(normalizeSubject(filters.subject));
-    clauses.push(`subject = $${values.length}`);
+    clauses.push(`LOWER(subject) = $${values.length}`);
   }
 
   const subjects = (filters.subjects ?? [])
@@ -389,12 +393,12 @@ function buildFilterClause(filters: CatalogFilters) {
     .filter(Boolean);
   if (subjects.length) {
     values.push(subjects);
-    clauses.push(`subject = ANY($${values.length}::text[])`);
+    clauses.push(`LOWER(subject) = ANY($${values.length}::text[])`);
   }
 
   if (filters.difficulty) {
     values.push(String(filters.difficulty).trim().toLowerCase());
-    clauses.push(`difficulty = $${values.length}`);
+    clauses.push(`LOWER(difficulty) = $${values.length}`);
   }
 
   if (filters.type) {
@@ -406,14 +410,14 @@ function buildFilterClause(filters: CatalogFilters) {
     const optionless = `(options IS NULL OR jsonb_typeof(options) <> 'array' OR jsonb_array_length(options) = 0)`;
     const hasStoredAnswer = `(NULLIF(TRIM(answer_text), '') IS NOT NULL OR (correct_options IS NOT NULL AND jsonb_typeof(correct_options) = 'array' AND jsonb_array_length(correct_options) > 0))`;
     if (type === "mcq") {
-      clauses.push(`(question_type = 'mcq' AND NOT ${optionless})`);
+      clauses.push(`(LOWER(question_type) = 'mcq' AND NOT ${optionless})`);
     } else if (type === "numerical") {
-      clauses.push(`(question_type = 'numerical' OR (question_type = 'mcq' AND ${optionless} AND ${hasStoredAnswer}))`);
+      clauses.push(`(LOWER(question_type) = 'numerical' OR (LOWER(question_type) = 'mcq' AND ${optionless} AND ${hasStoredAnswer}))`);
     } else if (type === "subjective") {
-      clauses.push(`(question_type = 'subjective' OR (question_type = 'mcq' AND ${optionless} AND NOT ${hasStoredAnswer}))`);
+      clauses.push(`(LOWER(question_type) = 'subjective' OR (LOWER(question_type) = 'mcq' AND ${optionless} AND NOT ${hasStoredAnswer}))`);
     } else {
       values.push(type);
-      clauses.push(`question_type = $${values.length}`);
+      clauses.push(`LOWER(question_type) = $${values.length}`);
     }
   }
 
