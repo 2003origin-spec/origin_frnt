@@ -701,6 +701,19 @@ function extractNumericValues(value: string | null | undefined): number[] {
     .filter((entry) => Number.isFinite(entry));
 }
 
+// Range answers are encoded "from|to" (see OGCodeWorkspace.tsx). Pipe-delimited
+// rather than comma-delimited because extractNumericValues() strips commas
+// before parsing, which would corrupt a comma-joined "3.5,4.2" into [3.54, 0.2].
+function parseRangeAnswer(value: string | null | undefined): { from: number; to: number } | null {
+  const [rawFrom, rawTo] = (value ?? "").split("|");
+  const from = extractNumericValues(rawFrom)[0];
+  const to = extractNumericValues(rawTo)[0];
+  if (!Number.isFinite(from) || !Number.isFinite(to)) {
+    return null;
+  }
+  return { from, to };
+}
+
 function stemToken(token: string): string {
   if (token.endsWith("ies") && token.length > 4) {
     return `${token.slice(0, -3)}y`;
@@ -1363,6 +1376,29 @@ function gradeAnswer(question: StoredQuestion, answer: StoredUserAnswer, sourceT
           correctAnswerText: question.answerText,
           correct_answer_text: question.answerText,
           tolerance: question.tolerance,
+          explanation: question.explanation,
+        },
+      },
+      sourceType,
+    );
+  }
+
+  if (question.questionType === "range") {
+    const range = parseRangeAnswer(answer.answerText);
+    const expected = extractNumericValues(question.answerText)[0];
+    const isCorrect =
+      range !== null &&
+      Number.isFinite(expected) &&
+      expected >= Math.min(range.from, range.to) &&
+      expected <= Math.max(range.from, range.to);
+    return withLocalScoring(
+      question,
+      answer,
+      {
+        isCorrect,
+        info: {
+          correctAnswerText: question.answerText,
+          correct_answer_text: question.answerText,
           explanation: question.explanation,
         },
       },

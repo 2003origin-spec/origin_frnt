@@ -119,6 +119,7 @@ const QTYPE_META: Record<string, { label: string; hint: string; Icon: React.Comp
     numerical:    { label: 'Integer / Decimal', hint: 'Enter the exact numeric value.',           Icon: Hash },
     matrix_match: { label: 'Match the Column', hint: 'Match each item in List I to List II.',    Icon: GitMerge },
     subjective:   { label: 'Descriptive',      hint: 'Write your answer in the box.',            Icon: AlignLeft },
+    range:        { label: 'Range',            hint: 'Enter a from and to value — any correct answer inside the range counts.', Icon: Hash },
 };
 
 const LATEX_COMMAND_MAP: Record<string, string> = {
@@ -360,6 +361,8 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
     const [showHint, setShowHint] = useState(false);
     const [showSolution, setShowSolution] = useState(false);
     const [answerInput, setAnswerInput] = useState('');
+    const [rangeFrom, setRangeFrom] = useState('');
+    const [rangeTo, setRangeTo] = useState('');
     const [imgZoomed, setImgZoomed] = useState(false);
     const [imgError, setImgError] = useState(false);
 
@@ -627,6 +630,8 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
         setShowHint(false);
         setShowSolution(false);
         setAnswerInput('');
+        setRangeFrom('');
+        setRangeTo('');
         setImgZoomed(false);
         setImgError(false);
         setElapsed(0);
@@ -664,6 +669,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
         if (qType === 'mcq') payload.selectedOption = selectedOption;
         else if (qType === 'msq') payload.selectedOptions = selectedOptions;
         else if (qType === 'matrix_match') payload.matrixPairs = matrixPairs;
+        else if (qType === 'range') payload.answerText = `${rangeFrom}|${rangeTo}`;
         else payload.answerText = answerInput;
 
         // Submit is a user gesture — unlock audio now so post-await playback is
@@ -703,7 +709,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
         } finally {
             setIsSubmitting(false);
         }
-    }, [question, result, isSubmitting, elapsed, selectedOption, selectedOptions, matrixPairs, answerInput, unlockAudio]);
+    }, [question, result, isSubmitting, elapsed, selectedOption, selectedOptions, matrixPairs, answerInput, rangeFrom, rangeTo, unlockAudio]);
 
     const handleTryAgain = () => {
         setResult(null);
@@ -1215,6 +1221,53 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                     )}
                                 </div>
                             )}
+
+                            {qType === 'range' && (
+                                <div className="space-y-3">
+                                    <div className="flex items-center gap-3">
+                                        <input
+                                            type="text"
+                                            inputMode="decimal"
+                                            disabled={!!result || isSubmitting}
+                                            value={rangeFrom}
+                                            onChange={(e) => setRangeFrom(e.target.value)}
+                                            onKeyDown={(e) => {
+                                                const allowed = /[0-9.\-]|Backspace|Delete|Arrow|Tab|Enter/;
+                                                if (!allowed.test(e.key)) e.preventDefault();
+                                            }}
+                                            className="w-full bg-slate-50 dark:bg-white/5 border-2 border-slate-200 dark:border-white/10 p-4 sm:p-6 rounded-2xl text-xl sm:text-2xl text-center font-mono focus:border-primary dark:focus:border-primary outline-none transition-all"
+                                            placeholder="From"
+                                            autoComplete="off"
+                                            spellCheck={false}
+                                        />
+                                        <span className="text-sm font-black text-muted-foreground uppercase tracking-widest shrink-0">to</span>
+                                        <input
+                                            type="text"
+                                            inputMode="decimal"
+                                            disabled={!!result || isSubmitting}
+                                            value={rangeTo}
+                                            onChange={(e) => setRangeTo(e.target.value)}
+                                            onKeyDown={(e) => {
+                                                const allowed = /[0-9.\-]|Backspace|Delete|Arrow|Tab|Enter/;
+                                                if (!allowed.test(e.key)) e.preventDefault();
+                                            }}
+                                            className="w-full bg-slate-50 dark:bg-white/5 border-2 border-slate-200 dark:border-white/10 p-4 sm:p-6 rounded-2xl text-xl sm:text-2xl text-center font-mono focus:border-primary dark:focus:border-primary outline-none transition-all"
+                                            placeholder="To"
+                                            autoComplete="off"
+                                            spellCheck={false}
+                                        />
+                                    </div>
+                                    <p className="text-[11px] text-muted-foreground text-center">
+                                        Enter a from/to range (integer or decimal). Correct if the actual answer falls inside it.
+                                    </p>
+                                    {result && !result.isCorrect && result.correctAnswerText && (
+                                        <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20">
+                                            <p className="text-xs font-bold text-rose-400 uppercase tracking-widest mb-1">Correct Answer</p>
+                                            <p className="text-sm font-mono font-bold text-slate-900 dark:text-slate-100">{result.correctAnswerText}</p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
 
                         {/* 2. SUBMIT BUTTON (Hidden after result) */}
@@ -1226,7 +1279,8 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                     qType === 'mcq' ? selectedOption === null :
                                         qType === 'msq' ? selectedOptions.length === 0 :
                                             qType === 'matrix_match' ? matrixPairs.length === 0 :
-                                                !answerInput
+                                                qType === 'range' ? (!rangeFrom || !rangeTo) :
+                                                    !answerInput
                                 )}
                                 className="w-full py-4 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded-xl font-bold text-white flex items-center justify-center gap-2 shadow-lg shadow-primary/20 transition-all active:scale-[0.98] backdrop-blur-md"
                             >

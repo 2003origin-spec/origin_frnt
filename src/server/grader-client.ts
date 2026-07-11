@@ -425,7 +425,7 @@ export async function gradePracticeAnswerWithService(
     assessmentType: "practice",
     items: [{ question, answer, attemptRef: question.id }],
     scoringPolicy:
-      question.questionType === "numerical"
+      question.questionType === "numerical" || question.questionType === "range"
         ? { correctMarks: 4, incorrectMarks: 0, unattemptedMarks: 0, negativeMarkingMode: "none" }
         : DEFAULT_SCORING_POLICY,
   });
