@@ -122,7 +122,7 @@ export interface Question {
   concept: string;
   difficulty: 'easy' | 'medium' | 'hard' | 'insane';
   image?: string;
-  questionType?: 'mcq' | 'subjective' | 'numerical' | 'msq' | 'matrix_match';
+  questionType?: 'mcq' | 'subjective' | 'numerical' | 'msq' | 'matrix_match' | 'range';
   answerText?: string;
   tags?: string[] | string;
   matrixData?: { column_a: string[]; column_b: string[]; correct_pairs: number[][] };
@@ -142,7 +142,7 @@ export interface PracticeQuestion {
   status?: 'unattempted' | 'solved' | 'attempted';
   attempted?: boolean;
   attemptCount?: number;
-  questionType: 'mcq' | 'msq' | 'numerical' | 'matrix_match' | 'subjective';
+  questionType: 'mcq' | 'msq' | 'numerical' | 'matrix_match' | 'subjective' | 'range';
   options?: string[];
   presentationId?: string;
   presentation_id?: string;
