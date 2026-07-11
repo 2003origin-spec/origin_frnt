@@ -268,7 +268,6 @@ export default function OGCodeList({
     const initialStatus = parseStatusFilter(searchParams.get('status'));
     const initialSearch = searchParams.get('search') || '';
     const initialSelectedChapters = searchParams.getAll('chapters').filter(Boolean);
-    const prefetchedQuestionPage = initialQuestionPage ? normalizeQuestionPage(initialQuestionPage) : null;
 
     const urlClasses = searchParams.getAll('classes').filter(Boolean);
     const urlOccurrences = searchParams.getAll('occurrences').filter(Boolean);
@@ -277,6 +276,25 @@ export default function OGCodeList({
     const urlConcepts = searchParams.getAll('concepts').filter(Boolean);
     const urlType = searchParams.get('type') || 'All';
     const urlPyqOnly = searchParams.get('pyq_only') === 'true';
+
+    // The server prefetch (app/ogcode/page.tsx) only honors subject/difficulty/
+    // status/chapters/search. If the URL carries any filter beyond that set
+    // (hierarchy cascade, question type, PYQ-only), the prefetched page was
+    // built WITHOUT those filters — using it would show unfiltered questions
+    // under correctly-restored filter chips (e.g. returning from a question)
+    // until the user re-applies. Treat the prefetch as absent in that case so
+    // the normal client fetch, which honors every filter, runs on mount.
+    const prefetchHonorsUrlFilters =
+        urlClasses.length === 0 &&
+        urlOccurrences.length === 0 &&
+        urlSubjects.length === 0 &&
+        urlHierChapters.length === 0 &&
+        urlConcepts.length === 0 &&
+        urlType === 'All' &&
+        !urlPyqOnly;
+    const prefetchedQuestionPage = initialQuestionPage && prefetchHonorsUrlFilters
+        ? normalizeQuestionPage(initialQuestionPage)
+        : null;
 
     const urlClassesKey = urlClasses.join(',');
     const urlOccurrencesKey = urlOccurrences.join(',');
