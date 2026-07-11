@@ -196,7 +196,8 @@ function normalizeQuestionType(value: string): QuestionType {
     value === "msq" ||
     value === "numerical" ||
     value === "matrix_match" ||
-    value === "subjective"
+    value === "subjective" ||
+    value === "range"
   ) {
     return value;
   }
@@ -277,10 +278,48 @@ function reconcileCorrectOption(
   return textMatchIndex;
 }
 
+/**
+ * ~1,800 catalog rows are numerical fill-in-the-blank questions mislabeled as
+ * "mcq": no options, answer_text NULL, and the accepted numeric answer stored
+ * in correct_options as strings (e.g. ["2500"]). Left as-is they render as
+ * un-answerable empty MCQs and never match the Integer type filter. Reconcile
+ * at read time (same pattern as reconcileCorrectOption above); the SQL type
+ * filter in buildFilterClause mirrors this derivation so filtered pages and
+ * rendered rows classify identically.
+ */
+function reconcileQuestionType(
+  questionType: QuestionType,
+  options: string[] | null,
+  answerText: string | null,
+  rawCorrectOptions: unknown,
+): { questionType: QuestionType; answerText: string | null; dropCorrectOptions: boolean } {
+  if (questionType !== "mcq" || (options && options.length > 0)) {
+    return { questionType, answerText, dropCorrectOptions: false };
+  }
+  const normalizedAnswer = answerText && answerText.trim() ? answerText : null;
+  const storedAnswers = (toTextArray(rawCorrectOptions) ?? [])
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  if (normalizedAnswer || storedAnswers.length) {
+    return {
+      questionType: "numerical",
+      answerText: normalizedAnswer ?? storedAnswers[0],
+      dropCorrectOptions: true,
+    };
+  }
+  return { questionType: "subjective", answerText, dropCorrectOptions: false };
+}
+
 function mapCatalogRow(row: CatalogRow): StoredQuestion {
   const options = toTextArray(row.options);
   const rawCorrectOption = row.correct_option == null ? null : Number(row.correct_option);
-  const questionType = normalizeQuestionType(String(row.question_type));
+  const reconciledType = reconcileQuestionType(
+    normalizeQuestionType(String(row.question_type)),
+    options,
+    row.answer_text ?? null,
+    row.correct_options,
+  );
+  const questionType = reconciledType.questionType;
   const reconciledCorrectOption = reconcileCorrectOption(
     questionType,
     options,
@@ -292,8 +331,8 @@ function mapCatalogRow(row: CatalogRow): StoredQuestion {
     text: row.text,
     options,
     correctOption: reconciledCorrectOption,
-    correctOptions: toNumberArray(row.correct_options),
-    answerText: row.answer_text ?? null,
+    correctOptions: reconciledType.dropCorrectOptions ? null : toNumberArray(row.correct_options),
+    answerText: reconciledType.answerText,
     answerSpec: row.answer_spec ?? null,
     tolerance: row.tolerance == null ? null : Number(row.tolerance),
     matrixData: row.matrix_data ?? null,
@@ -359,8 +398,23 @@ function buildFilterClause(filters: CatalogFilters) {
   }
 
   if (filters.type) {
-    values.push(String(filters.type).trim().toLowerCase());
-    clauses.push(`question_type = $${values.length}`);
+    const type = String(filters.type).trim().toLowerCase();
+    // Mirrors reconcileQuestionType(): option-less "mcq" rows are really
+    // numerical (or subjective when they carry no answer at all). The SQL
+    // filter must classify them the same way mapCatalogRow will, or filtered
+    // pages would return rows that morph to a different type after mapping.
+    const optionless = `(options IS NULL OR jsonb_typeof(options) <> 'array' OR jsonb_array_length(options) = 0)`;
+    const hasStoredAnswer = `(NULLIF(TRIM(answer_text), '') IS NOT NULL OR (correct_options IS NOT NULL AND jsonb_typeof(correct_options) = 'array' AND jsonb_array_length(correct_options) > 0))`;
+    if (type === "mcq") {
+      clauses.push(`(question_type = 'mcq' AND NOT ${optionless})`);
+    } else if (type === "numerical") {
+      clauses.push(`(question_type = 'numerical' OR (question_type = 'mcq' AND ${optionless} AND ${hasStoredAnswer}))`);
+    } else if (type === "subjective") {
+      clauses.push(`(question_type = 'subjective' OR (question_type = 'mcq' AND ${optionless} AND NOT ${hasStoredAnswer}))`);
+    } else {
+      values.push(type);
+      clauses.push(`question_type = $${values.length}`);
+    }
   }
 
   const chapters = (filters.chapters ?? [])

@@ -25,7 +25,7 @@ import {
 } from "@/server/store-postgres";
 
 export type UserRole = "student" | "teacher" | "admin" | "cbt_teacher";
-export type QuestionType = "mcq" | "msq" | "numerical" | "matrix_match" | "subjective";
+export type QuestionType = "mcq" | "msq" | "numerical" | "matrix_match" | "subjective" | "range";
 export type DifficultyLevel = "easy" | "medium" | "hard" | "insane";
 
 export interface StoredUser {
