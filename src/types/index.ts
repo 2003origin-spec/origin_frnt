@@ -170,6 +170,9 @@ export interface PracticeQuestion {
   classLevel?: number | null;
   /** Previous year exam identifier, e.g. "JEE Advanced 2019". */
   previousYearQuestion?: string | null;
+  /** §10 Liked Questions: public like count + whether the viewer liked it. */
+  likeCount?: number;
+  likedByMe?: boolean;
 }
 
 export interface PracticeQuestionPage {

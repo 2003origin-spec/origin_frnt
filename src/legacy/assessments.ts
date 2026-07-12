@@ -9,12 +9,33 @@ import {
   updateUserStreak,
   updateUserStudyTime,
   awardPoints,
+  applyOgcodeScoreDelta,
 } from "@/server/gamification";
+import {
+  getOgcodeQuestionProgress,
+  getOgcodeQuestionProgressMap,
+  incrementOgcodeAttempt,
+  markOgcodeRevealed,
+  recordOgcodeTerminal,
+} from "@/server/ogcode-progress";
+import { getOgcodeLikeInfo, getOgcodeLikeInfoMap } from "@/server/ogcode-likes";
+import {
+  getOgcodeOptionCounts,
+  recordOgcodeOptionChoices,
+  toDisplayedOptionDistribution,
+} from "@/server/ogcode-option-stats";
+import { completeOgcodeChallengesForAttempt } from "@/server/ogcode-challenges";
+import { createNotification } from "@/server/notifications";
+import {
+  OGCODE_ATTEMPT_CAPS,
+  computeOgcodeScore,
+} from "@/server/ogcode-scoring";
 import {
   getOgcodeCatalogCounts,
   getOgcodeCatalogQuestionById,
   getOgcodeCatalogQuestionMap,
   getOgcodeChallengeQuestion,
+  getOgcodeQuestionStatsMessage,
   incrementOgcodeCatalogQuestionStats,
   listOgcodeCatalogChapters,
   listOgcodeCatalogQuestionPage,
@@ -183,6 +204,10 @@ export type OgcodeQuestionListFilters = {
   subjects?: string[] | null;
   concepts?: string[] | null;
   pyqOnly?: boolean;
+  /** §10 "Liked" filter axis — only questions the current user has liked. */
+  likedOnly?: boolean;
+  /** Institute-hallmark filter — only coaching-centre-contributed questions. */
+  contributedOnly?: boolean;
 };
 
 export type OgcodeQuestionPage = {
@@ -699,6 +724,19 @@ function extractNumericValues(value: string | null | undefined): number[] {
   return (matches ?? [])
     .map((entry) => Number(entry))
     .filter((entry) => Number.isFinite(entry));
+}
+
+// Range answers are encoded "from|to" (see OGCodeWorkspace.tsx). Pipe-delimited
+// rather than comma-delimited because extractNumericValues() strips commas
+// before parsing, which would corrupt a comma-joined "3.5,4.2" into [3.54, 0.2].
+function parseRangeAnswer(value: string | null | undefined): { from: number; to: number } | null {
+  const [rawFrom, rawTo] = (value ?? "").split("|");
+  const from = extractNumericValues(rawFrom)[0];
+  const to = extractNumericValues(rawTo)[0];
+  if (!Number.isFinite(from) || !Number.isFinite(to)) {
+    return null;
+  }
+  return { from, to };
 }
 
 function stemToken(token: string): string {
@@ -1370,6 +1408,29 @@ function gradeAnswer(question: StoredQuestion, answer: StoredUserAnswer, sourceT
     );
   }
 
+  if (question.questionType === "range") {
+    const range = parseRangeAnswer(answer.answerText);
+    const expected = extractNumericValues(question.answerText)[0];
+    const isCorrect =
+      range !== null &&
+      Number.isFinite(expected) &&
+      expected >= Math.min(range.from, range.to) &&
+      expected <= Math.max(range.from, range.to);
+    return withLocalScoring(
+      question,
+      answer,
+      {
+        isCorrect,
+        info: {
+          correctAnswerText: question.answerText,
+          correct_answer_text: question.answerText,
+          explanation: question.explanation,
+        },
+      },
+      sourceType,
+    );
+  }
+
   if (question.questionType === "matrix_match") {
     const expected = [...(question.matrixData?.correct_pairs ?? [])]
       .map((pair) => pair.join(":"))
@@ -1620,8 +1681,18 @@ function matchesLocalOgcodeQuestion(
   const type = filters.type ? String(filters.type).trim().toLowerCase() : null;
   const chapters = normalizeOgcodeChaptersFilter(filters.chapters);
   const status = normalizeOgcodeStatusFilter(filters.status);
+  // Hierarchy cascade filters — the local-fixture path previously ignored these,
+  // so dev/test fixtures leaked through subjects/classes/occurrences/concepts
+  // filters that the catalog path (SQL) enforced. Mirror them here.
+  const subjects = (filters.subjects ?? []).map((s) => normalizeSubject(String(s))).filter(Boolean);
+  const classes = (filters.classes ?? []).map(Number).filter((n) => Number.isFinite(n));
+  const occurrences = (filters.occurrences ?? []).map((o) => String(o).trim().toLowerCase()).filter(Boolean);
+  const concepts = (filters.concepts ?? []).map((c) => String(c).trim()).filter(Boolean);
 
   if (subject && question.subject !== subject) {
+    return false;
+  }
+  if (subjects.length && !subjects.includes(question.subject)) {
     return false;
   }
   if (difficulty && question.difficulty !== difficulty) {
@@ -1631,6 +1702,26 @@ function matchesLocalOgcodeQuestion(
     return false;
   }
   if (chapters.length && !chapters.includes(question.chapter)) {
+    return false;
+  }
+  if (classes.length && (question.classLevel == null || !classes.includes(question.classLevel))) {
+    return false;
+  }
+  // Exam/occurrence uses containment to match family values ("JEE") against
+  // year/variant-suffixed rows ("JEE (2020)"), same as the SQL ILIKE clause.
+  if (occurrences.length) {
+    const occ = (question.occurrence ?? "").toLowerCase();
+    if (!occ || !occurrences.some((o) => occ.includes(o))) {
+      return false;
+    }
+  }
+  if (concepts.length && !concepts.includes(question.concept)) {
+    return false;
+  }
+  if (filters.pyqOnly && question.previousYearQuestion !== "YES") {
+    return false;
+  }
+  if (filters.contributedOnly && !question.isContributed) {
     return false;
   }
   if (!matchesOgcodeSearch(question, filters.search)) {
@@ -3811,6 +3902,20 @@ export async function listOgcodeQuestionPage(
     }
   });
 
+  // §10 Liked filter for the local-fixture path (the catalog path filters in
+  // SQL via likedByUserId). Restrict local IDs to the user's liked set.
+  if (filters.likedOnly && localIds.length) {
+    try {
+      const likedLocal = await getOgcodeLikeInfoMap(user.id, localIds);
+      const kept = localIds.filter((id) => likedLocal.get(id)?.likedByMe);
+      localIds.length = 0;
+      localIds.push(...kept);
+    } catch {
+      // On a likes-store failure, fall back to showing none rather than all.
+      localIds.length = 0;
+    }
+  }
+
   let catalogOverlap = new Map<string, StoredQuestion>();
   try {
     catalogOverlap = localIds.length ? await getOgcodeCatalogQuestionMap(localIds) : new Map<string, StoredQuestion>();
@@ -3827,8 +3932,18 @@ export async function listOgcodeQuestionPage(
   const remotePage = remainingLimit && !(status === "solved" && solvedCatalogIds.length === 0)
     ? await listOgcodeCatalogQuestionPage({
         subject: filters.subject,
-        // Premium with no specific subject → restrict to entitled subjects.
-        subjects: isPremium ? gate.subjects : (filters.subjects ?? null),
+        // Subject scoping for premium (gated) users:
+        //   - explicit subject picks (already intersected with entitlements
+        //     above) → honor them, so "select Biology" shows only Biology;
+        //   - a singular ?subject= filter → let it apply alone (entitlement
+        //     already checked), don't also clamp to the full entitled set;
+        //   - no subject filter at all → restrict to entitled subjects.
+        // Non-premium users pass their picks straight through.
+        subjects: isPremium
+          ? (filters.subjects?.length
+              ? filters.subjects
+              : (filters.subject ? null : gate.subjects))
+          : (filters.subjects ?? null),
         difficulty: filters.difficulty,
         type: filters.type,
         search: filters.search,
@@ -3837,8 +3952,10 @@ export async function listOgcodeQuestionPage(
         occurrences: filters.occurrences ?? null,
         concepts: filters.concepts ?? null,
         pyqOnly: filters.pyqOnly ?? false,
+        contributedOnly: filters.contributedOnly ?? false,
         includeIds: status === "solved" ? solvedCatalogIds : null,
         excludeIds: status === "unsolved" ? solvedCatalogIds : null,
+        likedByUserId: filters.likedOnly ? user.id : null,
         limit: remainingLimit,
         offset: remoteOffset,
       }).catch(() => ({ items: [], total: 0 }))
@@ -3851,6 +3968,40 @@ export async function listOgcodeQuestionPage(
       .map((question) => serializeOgcodeQuestionPreview(question, attemptState)),
     ...remotePage.items.map((question) => serializeOgcodeQuestionPreview(question, attemptState)),
   ];
+
+  // OGCode Scoring V2: the "Attempted" badge derives from the persisted
+  // progress flag, which also covers hint/answer reveals without a submission
+  // — practice_attempts alone only records terminal outcomes under V2.
+  if (isFeatureEnabled("ogcodeScoringV2") && items.length) {
+    try {
+      const progressMap = await getOgcodeQuestionProgressMap(
+        user.id,
+        items.map((item) => item.id),
+      );
+      for (const item of items) {
+        if (progressMap.get(item.id)?.attempted && item.status === "unattempted") {
+          item.attempted = true;
+          item.status = "attempted";
+        }
+      }
+    } catch {
+      // Badge enrichment is best-effort; the list must render regardless.
+    }
+  }
+
+  // §10 Liked enrichment: public like count + this viewer's liked flag per card.
+  if (items.length) {
+    try {
+      const likeMap = await getOgcodeLikeInfoMap(user.id, items.map((item) => item.id));
+      for (const item of items) {
+        const info = likeMap.get(item.id);
+        item.likeCount = info?.count ?? 0;
+        item.likedByMe = info?.likedByMe ?? false;
+      }
+    } catch {
+      // Best-effort; cards render without like counts on a likes-store failure.
+    }
+  }
 
   // Free pool: clamp the reported total to the sample-pool size.
   const total = isFree
@@ -3900,7 +4051,7 @@ export async function listOgcodeQuestions(
 
 export async function getPracticeQuestionDetail(store: AppStore, user: StoredUser, questionId: string) {
   const resolved = await resolvePracticeQuestion(store, questionId);
-  return serializeQuestion(store, user.id, resolved.question, {
+  const base = serializeQuestion(store, user.id, resolved.question, {
     includeCorrectFields: false,
     presentationContext: {
       scope: "practice",
@@ -3910,6 +4061,47 @@ export async function getPracticeQuestionDetail(store: AppStore, user: StoredUse
       ).length + 1,
     },
   });
+
+  // §10 Liked Questions: public count + this viewer's flag (flag-independent).
+  let serialized: typeof base & { likeCount?: number; likedByMe?: boolean } = base;
+  try {
+    const like = await getOgcodeLikeInfo(user.id, resolved.question.id);
+    serialized = { ...base, likeCount: like.count, likedByMe: like.likedByMe };
+  } catch {
+    // Best-effort; the question renders without a like count on a store failure.
+  }
+
+  // OGCode Scoring V2: surface the persisted attempt/reveal state so the client
+  // can restore a mid-loop session (attempts already burned survive a refresh)
+  // and knows which decay already applies. Catalog questions only.
+  if (isFeatureEnabled("ogcodeScoringV2") && resolved.source === "catalog") {
+    const progress = await getOgcodeQuestionProgress(user.id, resolved.question.id);
+    const cap = OGCODE_ATTEMPT_CAPS[resolved.question.questionType];
+    const terminal = progress.firstTerminalAt !== null;
+    const attemptsRemaining =
+      cap === undefined ? (terminal ? 0 : 1) : Math.max(0, cap - progress.totalAttempts);
+    return {
+      ...serialized,
+      scoringV2: true,
+      scoring_v2: true,
+      attemptsUsed: progress.totalAttempts,
+      attempts_used: progress.totalAttempts,
+      attemptsRemaining: terminal ? 0 : attemptsRemaining,
+      attempts_remaining: terminal ? 0 : attemptsRemaining,
+      attemptCap: cap ?? 1,
+      attempt_cap: cap ?? 1,
+      progressAttempted: progress.attempted,
+      progress_attempted: progress.attempted,
+      hintRevealed: progress.hintRevealed,
+      hint_revealed: progress.hintRevealed,
+      answerRevealed: progress.answerRevealed,
+      answer_revealed: progress.answerRevealed,
+      terminalReached: terminal,
+      terminal_reached: terminal,
+    };
+  }
+
+  return serialized;
 }
 
 function getOrCreateSubjectRank(store: AppStore, userId: string, subject: string): StoredSubjectRank {
@@ -3928,6 +4120,286 @@ function getOrCreateSubjectRank(store: AppStore, userId: string, subject: string
     store.subjectRanks.push(entry);
   }
   return entry;
+}
+
+/** JEE MSQ tier inputs: the student's selection split against the correct set. */
+function msqSelectionBreakdown(question: StoredQuestion, answer: StoredUserAnswer) {
+  const correct = new Set(question.correctOptions ?? []);
+  let correctChosen = 0;
+  let wrongChosen = 0;
+  for (const option of new Set(answer.selectedOptions ?? [])) {
+    if (correct.has(option)) {
+      correctChosen += 1;
+    } else {
+      wrongChosen += 1;
+    }
+  }
+  return { totalCorrectOptions: correct.size, correctChosen, wrongChosen };
+}
+
+/** JEE Matrix Match per-row inputs: submitted pairs split against correct_pairs. */
+function matrixRowBreakdown(question: StoredQuestion, answer: StoredUserAnswer) {
+  const correctPairs = question.matrixData?.correct_pairs ?? [];
+  const correctSet = new Set(correctPairs.map(([a, b]) => `${a}:${b}`));
+  let correctRows = 0;
+  let wrongRows = 0;
+  for (const key of new Set((answer.matrixPairs ?? []).map(([a, b]) => `${a}:${b}`))) {
+    if (correctSet.has(key)) {
+      correctRows += 1;
+    } else {
+      wrongRows += 1;
+    }
+  }
+  return { totalRows: correctPairs.length, correctRows, wrongRows };
+}
+
+/**
+ * OGCode Scoring V2 submission flow (V1/OGCODE_SCORING_ALGORITHM.md, Phase 3).
+ * Correctness has already been decided by the untouched grading pipeline; this
+ * owns the attempt loop and the CS_core points.
+ *
+ * Loop shape: MCQ gets 3 graded tries, Numerical/Range get 4; MSQ, Matrix
+ * Match, and Subjective are terminal on their only submission. A session is
+ * terminal on a correct answer or on cap exhaustion (checked against the
+ * ATOMICALLY returned attempt count — never read-then-check). Everything with
+ * blast radius beyond this session (practice_attempts row → AI-mentor history
+ * + profile accuracy, ogcode_questions global counters, streaks, points) fires
+ * ONLY on the terminal outcome, never on a mid-loop retry (§0.4 rule).
+ */
+async function submitPracticeQuestionScoringV2(
+  store: AppStore,
+  user: StoredUser,
+  question: StoredQuestion,
+  answer: StoredUserAnswer,
+  context: {
+    isCorrect: boolean;
+    info: ReturnType<typeof toPresentedGradeInfo>;
+    attemptedBefore: boolean;
+    solvedBefore: boolean;
+  },
+) {
+  const { isCorrect, info, attemptedBefore, solvedBefore } = context;
+
+  const progress = await incrementOgcodeAttempt(user.id, question.id);
+  // Re-attempts of a finished question still grade + record, but never
+  // re-score (rule 1). A mid-session hint reveal flips `attempted` without
+  // finishing the question, so the re-attempt signal is first_terminal_at,
+  // not the attempted flag.
+  const hadTerminalBefore = progress.firstTerminalAt !== null;
+
+  const cap = OGCODE_ATTEMPT_CAPS[question.questionType];
+  const capExhausted = !isCorrect && cap !== undefined && progress.totalAttempts >= cap;
+  const isTerminal = hadTerminalBefore || cap === undefined || isCorrect || capExhausted;
+
+  if (!isTerminal) {
+    // Mid-loop wrong answer: retries remain. Deliberately NO `info` spread —
+    // correctAnswerText/explanation must not leak while the student can still
+    // try again — and no attempt-log/stats/points writes.
+    const remaining = Math.max(0, (cap ?? 0) - progress.totalAttempts);
+    return {
+      isCorrect: false,
+      is_correct: false,
+      terminal: false,
+      attemptsUsed: progress.totalAttempts,
+      attempts_used: progress.totalAttempts,
+      attemptsRemaining: remaining,
+      attempts_remaining: remaining,
+      already_solved: solvedBefore,
+      resultScore: 0,
+      result_score: 0,
+      pointsAwarded: 0,
+      points_awarded: 0,
+    };
+  }
+
+  if (capExhausted) {
+    // Forced "Show Answer" routes through the same reveal implementation as a
+    // manual hint/answer click, so `attempted` + `answer_revealed` persist and
+    // reopening the question later can never earn a fresh full-score run.
+    await markOgcodeRevealed(user.id, question.id, "answer");
+  }
+
+  const scored = computeOgcodeScore({
+    questionType: question.questionType,
+    difficulty: question.difficulty,
+    isCorrect,
+    timeSpentSeconds: answer.timeSpent,
+    totalAttempts: progress.totalAttempts,
+    hintRevealed: progress.hintRevealed,
+    answerRevealed: progress.answerRevealed || capExhausted,
+    attemptedBeforeSession: hadTerminalBefore,
+    msq: question.questionType === "msq" ? msqSelectionBreakdown(question, answer) : undefined,
+    matrix: question.questionType === "matrix_match" ? matrixRowBreakdown(question, answer) : undefined,
+  });
+
+  store.practiceAttempts.unshift({
+    id: createId("practice"),
+    userId: user.id,
+    questionId: question.id,
+    isCorrect,
+    timeSpent: answer.timeSpent,
+    selectedOptions: answer.selectedOptions,
+    matrixPairs: answer.matrixPairs,
+    answerSubmitted:
+      answer.answerText ??
+      (answer.selectedOption !== null ? String(answer.selectedOption) : null),
+    createdAt: new Date().toISOString(),
+    attemptNumber: progress.totalAttempts,
+    hintUsed: progress.hintRevealed,
+    answerRevealed: progress.answerRevealed || capExhausted,
+  });
+
+  // §9 stats: this is a first-ever terminal outcome iff no prior terminal
+  // existed; first-try-correct iff that first outcome was correct on attempt 1.
+  const firstAttempt = !hadTerminalBefore;
+  const firstAttemptCorrect = firstAttempt && isCorrect && progress.totalAttempts === 1;
+  try {
+    await incrementOgcodeCatalogQuestionStats(question.id, isCorrect, {
+      timeSpentSeconds: answer.timeSpent,
+      firstAttempt,
+      firstAttemptCorrect,
+    });
+  } catch {
+    // Keep the attempt flow working even when the catalog DB is temporarily unavailable.
+  }
+
+  let statsMessage: Awaited<ReturnType<typeof getOgcodeQuestionStatsMessage>> = null;
+  try {
+    statsMessage = await getOgcodeQuestionStatsMessage(question.id, {
+      timeSpentSeconds: answer.timeSpent,
+      isCorrect,
+    });
+  } catch {
+    statsMessage = null;
+  }
+
+  const dailyActivity = getOrCreateDailyActivity(store, user.id);
+  if (!attemptedBefore) {
+    dailyActivity.questionsPracticed += 1;
+    updateUserStreak(store, user.id);
+  }
+
+  const awarded = hadTerminalBefore ? 0 : scored.score;
+  if (awarded !== 0) {
+    applyOgcodeScoreDelta(
+      store,
+      user.id,
+      awarded,
+      `${isCorrect ? "Solved" : "Attempted"} ${question.difficulty} ${question.subject} question in ${answer.timeSpent}s (attempt ${progress.totalAttempts})`,
+      question.id,
+    );
+  }
+  if (isCorrect && !solvedBefore) {
+    const subjectRank = getOrCreateSubjectRank(store, user.id, question.subject);
+    subjectRank.questionsSolved += 1;
+    subjectRank.rankScore += Math.max(0, awarded);
+    subjectRank.updatedAt = new Date().toISOString();
+  }
+
+  await recordOgcodeTerminal(user.id, question.id, scored.score);
+
+  // §13 Friend Challenge: on a first-ever terminal outcome, complete any
+  // pending challenges this student had for the question and notify each
+  // sender. Only on the first terminal (not re-attempts) to avoid re-notifying.
+  if (!hadTerminalBefore) {
+    try {
+      const senders = await completeOgcodeChallengesForAttempt(
+        user.id,
+        question.id,
+        scored.score,
+        answer.timeSpent,
+      );
+      const mins = Math.floor(answer.timeSpent / 60);
+      const secs = answer.timeSpent % 60;
+      const timeLabel = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+      await Promise.all(
+        senders.map((s) =>
+          createNotification(s.fromUserId, {
+            type: "info",
+            title: "OG Challenge attempted",
+            message: `${user.name} attempted the OG challenge in ${timeLabel} and scored ${scored.score}`,
+            href: `/ogcode/${question.id}`,
+          }).catch(() => undefined),
+        ),
+      );
+    } catch {
+      // Challenge completion is best-effort; never block the submission.
+    }
+  }
+
+  return {
+    isCorrect,
+    is_correct: isCorrect,
+    terminal: true,
+    attemptsUsed: progress.totalAttempts,
+    attempts_used: progress.totalAttempts,
+    attemptsRemaining: 0,
+    attempts_remaining: 0,
+    already_solved: solvedBefore || hadTerminalBefore,
+    resultScore: scored.score,
+    result_score: scored.score,
+    pointsAwarded: awarded,
+    points_awarded: awarded,
+    basePoints: scored.maxScore,
+    base_points: scored.maxScore,
+    maxPoints: scored.maxScore,
+    max_points: scored.maxScore,
+    timeSpentSeconds: answer.timeSpent,
+    time_spent_seconds: answer.timeSpent,
+    scoreReasons: scored.reasons,
+    score_reasons: scored.reasons,
+    statsMessage,
+    stats_message: statsMessage,
+    ...info,
+  };
+}
+
+/**
+ * §9 add-on: record this student's option choice(s) on EVERY submission and
+ * attach the public per-option response distribution (in the viewer's displayed
+ * order) to the result so the UI can show "N% of submissions chose this".
+ *
+ * Every submit is counted — including a mid-loop wrong submit in the V2 retry
+ * loop — so the denominator is all submissions of the question, and each
+ * option's percentage is its share of those submissions. The distribution is
+ * only attached to a terminal result (that's the only time the result view,
+ * and therefore the pills, is shown). Choice questions only. Best-effort;
+ * never blocks the submission.
+ */
+async function attachOgcodeOptionDistribution(
+  result: Record<string, unknown>,
+  question: StoredQuestion,
+  answer: StoredUserAnswer,
+  displayOrder: number[] | null,
+): Promise<void> {
+  if (question.questionType !== "mcq" && question.questionType !== "msq") return;
+  const optionCount = question.options?.length ?? 0;
+  if (optionCount <= 0) return;
+
+  // selectedOption(s) are already remapped to canonical order by remapPresentedAnswer.
+  const canonical =
+    question.questionType === "msq"
+      ? answer.selectedOptions ?? []
+      : answer.selectedOption !== null && answer.selectedOption !== undefined
+        ? [answer.selectedOption]
+        : [];
+
+  try {
+    // Count this submission's option(s), terminal or not.
+    await recordOgcodeOptionChoices(question.id, canonical);
+
+    // Only compute + attach the distribution for a terminal outcome — a
+    // non-terminal V2 retry stays in the question and shows no result view.
+    if (result.terminal === false) return;
+    const counts = await getOgcodeOptionCounts(question.id);
+    const distribution = toDisplayedOptionDistribution(counts, optionCount, displayOrder);
+    if (distribution) {
+      result.optionDistribution = distribution;
+      result.option_distribution = distribution;
+    }
+  } catch {
+    // Distribution is best-effort telemetry; never block the submission.
+  }
 }
 
 export async function submitPracticeQuestion(
@@ -3952,6 +4424,26 @@ export async function submitPracticeQuestion(
   const solvedBefore = store.practiceAttempts.some(
     (attempt) => attempt.userId === user.id && attempt.questionId === question.id && attempt.isCorrect,
   );
+
+  // OGCode Scoring V2 (V1/OGCODE_SCORING_ALGORITHM.md, Phase 3). Catalog
+  // questions only — the in-memory "store" source is dev/test fixtures and
+  // keeps legacy behavior. Flag off ⇒ the legacy path below runs unchanged.
+  if (isFeatureEnabled("ogcodeScoringV2") && resolved.source === "catalog") {
+    const result = await submitPracticeQuestionScoringV2(store, user, question, answer, {
+      isCorrect,
+      info,
+      attemptedBefore,
+      solvedBefore,
+    });
+    await attachOgcodeOptionDistribution(
+      result as unknown as Record<string, unknown>,
+      question,
+      answer,
+      prepared.displayOrder,
+    );
+    return result;
+  }
+
   const practiceScore = calculateTimedPracticeScore(question.difficulty, answer.timeSpent, {
     isCorrect,
     alreadySolved: solvedBefore,
@@ -3979,7 +4471,12 @@ export async function submitPracticeQuestion(
     question.acceptanceRate = question.frequency > 0 ? (question.totalCorrect / question.frequency) * 100 : 0;
   } else {
     try {
-      await incrementOgcodeCatalogQuestionStats(question.id, isCorrect);
+      // §9 warm-up: record time-to-correct + histogram in the legacy path too,
+      // so the distribution has data before the flag flips. First-attempt
+      // counters are V2-only (they need the progress row), so omitted here.
+      await incrementOgcodeCatalogQuestionStats(question.id, isCorrect, {
+        timeSpentSeconds: answer.timeSpent,
+      });
     } catch {
       // Keep the attempt flow working even when the catalog DB is temporarily unavailable.
     }
@@ -4007,7 +4504,7 @@ export async function submitPracticeQuestion(
     subjectRank.updatedAt = new Date().toISOString();
   }
 
-  return {
+  const legacyResult = {
     isCorrect,
     is_correct: isCorrect,
     already_solved: solvedBefore,
@@ -4029,6 +4526,19 @@ export async function submitPracticeQuestion(
     speed_band: practiceScore.speedBand,
     ...info,
   };
+
+  // Prod ships with the flag OFF, so catalog questions reach this legacy path —
+  // record + attach the option distribution here too so it works either way.
+  if (resolved.source === "catalog") {
+    await attachOgcodeOptionDistribution(
+      legacyResult as unknown as Record<string, unknown>,
+      question,
+      answer,
+      prepared.displayOrder,
+    );
+  }
+
+  return legacyResult;
 }
 
 export async function getOgcodeUserStats(store: AppStore, user: StoredUser) {

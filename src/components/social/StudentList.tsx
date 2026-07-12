@@ -39,6 +39,12 @@ export default function StudentList({ users, emptyLabel }: StudentListProps) {
             <div className="min-w-0">
               <p className="font-black text-sm truncate group-hover:text-primary transition-colors">{u.name}</p>
               <p className="text-[11px] text-muted-foreground truncate">@{u.username}</p>
+              {/* §13: mutual-follow badge — these students are challengeable */}
+              {!u.isMe && u.isFollowedByMe && u.followsMe && (
+                <span className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-primary">
+                  Mutual
+                </span>
+              )}
             </div>
           </Link>
           {!u.isMe && (

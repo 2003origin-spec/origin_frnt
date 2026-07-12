@@ -583,6 +583,57 @@ export async function getPopularStudents(
 }
 
 /** Student search by @username or display name, annotated with follow state. */
+/**
+ * §13 Friend Challenge: are `viewerId` and `otherId` MUTUAL followers (both
+ * directions exist in social.follows)? Used to gate who can be challenged.
+ */
+export async function areMutualFollowers(viewerId: string, otherId: string): Promise<boolean> {
+  if (viewerId === otherId) return false;
+  const p = pool();
+  if (!p) return false;
+  await ensureSocialSchema();
+  const result = await p.query(
+    `SELECT
+       EXISTS(SELECT 1 FROM social.follows WHERE follower_id = $1 AND following_id = $2) AS a_follows_b,
+       EXISTS(SELECT 1 FROM social.follows WHERE follower_id = $2 AND following_id = $1) AS b_follows_a`,
+    [viewerId, otherId],
+  );
+  const row = result.rows[0];
+  return Boolean(row?.a_follows_b) && Boolean(row?.b_follows_a);
+}
+
+/**
+ * §13 Friend Challenge share-sheet: this user's mutual followers, optionally
+ * name/username-filtered. Only students where BOTH follow directions exist.
+ */
+export async function listMutualFollowers(
+  viewerId: string,
+  query = "",
+  limit = 20,
+): Promise<SocialUserCard[]> {
+  await ensureSocialSchema();
+  const p = pool();
+  if (!p) return [];
+  const capped = Math.min(Math.max(1, limit), SEARCH_LIMIT_MAX);
+  const q = query.trim().toLowerCase();
+  const like = q ? `%${q}%` : null;
+  const result = await p.query(
+    `SELECT u.id, u.username, u.name, u.avatar,
+       TRUE AS is_followed_by_me, TRUE AS follows_me
+     FROM social.follows mine
+     JOIN social.follows theirs
+       ON theirs.follower_id = mine.following_id AND theirs.following_id = $1
+     JOIN origin_users u ON u.id = mine.following_id
+     WHERE mine.follower_id = $1
+       AND u.role = 'student' AND u.username IS NOT NULL
+       AND ($2::text IS NULL OR LOWER(u.username) LIKE $2 OR LOWER(u.name) LIKE $2)
+     ORDER BY u.name ASC
+     LIMIT $3`,
+    [viewerId, like, capped],
+  );
+  return result.rows.map((row) => mapCardRow(row, viewerId));
+}
+
 export async function searchStudents(
   viewerId: string,
   query: string,

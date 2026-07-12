@@ -4,19 +4,14 @@ import bcrypt from "bcryptjs";
 import { Mutex } from "async-mutex";
 
 import {
-  dppQuestions,
   mockBooks,
   mockBookmarks,
   mockDoubtSessions,
   mockLeaderboard,
   mockLibraryUserSet,
   mockNotes,
-  mockQuestions,
-  mockTestResult,
-  mockTests,
 } from "@/data/mockData";
 import { ncertBooksData } from "@/data/ncertBooks";
-import type { Question } from "@/types";
 import {
   hydrateStoreFromPostgres,
   persistStoreToPostgres,
@@ -264,6 +259,13 @@ export interface StoredPracticeAttempt {
   matrixPairs: number[][] | null;
   answerSubmitted: string | null;
   createdAt: string;
+  // OGCode Scoring V2 audit fields (V1/OGCODE_SCORING_ALGORITHM.md, Phase 1e).
+  // The backing app.practice_attempts table is a generic JSONB-payload store,
+  // so these persist without a migration. Rows are only written on terminal
+  // outcomes; attemptNumber records how many tries the session took.
+  attemptNumber?: number;
+  hintUsed?: boolean;
+  answerRevealed?: boolean;
 }
 
 export interface StoredDpp {
@@ -504,15 +506,6 @@ type SeedUserConfig = {
   location?: string | null;
 };
 
-type SeedQuestion = Question & {
-  correctOptions?: number[];
-  tolerance?: number;
-  acceptance_rate?: number;
-  acceptanceRate?: number;
-  totalCorrect?: number;
-  frequency?: number;
-};
-
 function jsonClone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
@@ -550,63 +543,6 @@ export function withStoredUserDefaults(user: StoredUserWithOptionalDefaults): St
     ogcodeCorrectSound: user.ogcodeCorrectSound ?? null,
     ogcodeWrongSound: user.ogcodeWrongSound ?? null,
   };
-}
-
-function toStoredQuestion(question: SeedQuestion): StoredQuestion {
-  return {
-    id: String(question.id),
-    text: question.text,
-    options: question.options ?? null,
-    correctOption: question.correctOption ?? null,
-    correctOptions: question.correctOptions ?? null,
-    answerText: question.answerText ?? null,
-    tolerance: typeof question.tolerance === "number" ? question.tolerance : null,
-    matrixData: question.matrixData ?? null,
-    explanation: question.explanation ?? "Explanation unavailable.",
-    hint: question.hint ?? null,
-    subject: normalizeSubject(question.subject),
-    chapter: question.chapter,
-    concept: question.concept,
-    difficulty: normalizeDifficulty(question.difficulty),
-    image: question.image ?? null,
-    tags: question.tags ?? null,
-    questionType: normalizeQuestionType(question.questionType),
-    acceptanceRate: Number(question.acceptance_rate ?? question.acceptanceRate ?? 0),
-    totalCorrect: Number(question.totalCorrect ?? 0),
-    frequency: Number(question.frequency ?? 0),
-    isChallengeOfTheDay: false,
-  };
-}
-
-function normalizeDifficulty(value: string | undefined): DifficultyLevel {
-  if (value === "easy" || value === "medium" || value === "hard" || value === "insane") {
-    return value;
-  }
-  return "medium";
-}
-
-function normalizeQuestionType(value: string | undefined): QuestionType {
-  if (
-    value === "mcq" ||
-    value === "msq" ||
-    value === "numerical" ||
-    value === "matrix_match" ||
-    value === "subjective"
-  ) {
-    return value;
-  }
-  return "mcq";
-}
-
-function normalizeSubject(subject: string | undefined): string {
-  if (!subject) {
-    return "physics";
-  }
-  const lower = subject.toLowerCase();
-  if (lower === "maths") {
-    return "mathematics";
-  }
-  return lower;
 }
 
 function createSeedUser(config: SeedUserConfig): StoredUser {
@@ -821,83 +757,16 @@ function buildSeedStore(): AppStore {
     },
   ];
 
-  const questionsMap = new Map<string, StoredQuestion>();
-  [...mockQuestions, ...dppQuestions].forEach((question) => {
-    questionsMap.set(String(question.id), toStoredQuestion(question));
-  });
-
-  const challengeQuestion = questionsMap.get("10");
-  if (challengeQuestion) {
-    challengeQuestion.isChallengeOfTheDay = true;
-  }
-
-  const tests: StoredTest[] = mockTests.map((test) => ({
-    id: String(test.id),
-    title: test.title,
-    description: test.description,
-    subject: normalizeSubject(test.subject),
-    chapter: test.chapter ?? null,
-    difficulty: normalizeDifficulty(test.difficulty),
-    duration: test.duration,
-    totalQuestions: test.totalQuestions,
-    isPremium: Boolean(test.isPremium),
-    questionIds: test.questions.map((question) => String(question.id)),
-    createdBy: null,
-  }));
-
-  const testResults: StoredTestResult[] = [
-    {
-      id: "result_seed_1",
-      userId,
-      testId: String(mockTestResult.testId),
-      score: mockTestResult.score,
-      percentage: mockTestResult.percentage ?? 75,
-      correctAnswers: mockTestResult.correctAnswers,
-      wrongAnswers: mockTestResult.wrongAnswers,
-      unattempted: mockTestResult.unattempted,
-      timeTaken: mockTestResult.timeTaken,
-      weakAreas: jsonClone(mockTestResult.weakAreas),
-      strongAreas: jsonClone(mockTestResult.strongAreas),
-      aiAnalysis: jsonClone(mockTestResult.aiAnalysis),
-      subjectStats: jsonClone(mockTestResult.subjectStats ?? {}),
-      isMalpractice: Boolean(mockTestResult.isMalpractice),
-      createdAt: nowIso(),
-      answers: mockTestResult.answers.map((answer) => ({
-        questionId: String(answer.questionId),
-        selectedOption: answer.selectedOption ?? null,
-        selectedOptions: answer.selectedOptions ?? null,
-        matrixPairs: answer.matrixPairs ?? null,
-        answerText: answer.answerText ?? null,
-        timeSpent: answer.timeSpent,
-        isMarkedForReview: answer.isMarkedForReview,
-      })),
-    },
-  ];
-
-  const practiceAttempts: StoredPracticeAttempt[] = [
-    {
-      id: "practice_seed_1",
-      userId,
-      questionId: "1",
-      isCorrect: true,
-      timeSpent: 90,
-      selectedOptions: null,
-      matrixPairs: null,
-      answerSubmitted: "0",
-      createdAt: nowIso(),
-    },
-    {
-      id: "practice_seed_2",
-      userId,
-      questionId: "3",
-      isCorrect: true,
-      timeSpent: 70,
-      selectedOptions: null,
-      matrixPairs: null,
-      answerSubmitted: "1",
-      createdAt: nowIso(),
-    },
-  ];
+  // OGCode is backed entirely by the Postgres catalog. Hardcoded mock questions
+  // (formerly mockQuestions + dppQuestions) used to seed store.questions and,
+  // because store.questions is never DB-hydrated, they leaked into the OGCode
+  // list past every filter. Removed — along with the seed tests / test result /
+  // practice attempts / DPP that only existed to demo them. Real tests come from
+  // persisted custom tests + teacher-assigned tests; DPPs are generated.
+  const questions: StoredQuestion[] = [];
+  const tests: StoredTest[] = [];
+  const testResults: StoredTestResult[] = [];
+  const practiceAttempts: StoredPracticeAttempt[] = [];
 
   const booksMap = new Map<string, StoredBook>();
   mockBooks.forEach((book) => {
@@ -1075,18 +944,7 @@ function buildSeedStore(): AppStore {
     },
   ];
 
-  const dpps: StoredDpp[] = [
-    {
-      id: "dpp_seed_1",
-      userId,
-      title: "Redox Recovery Set",
-      subject: "chemistry",
-      questionIds: dppQuestions.map((question) => String(question.id)),
-      generatedFrom: ["Redox Reactions", "Equilibrium"],
-      completed: false,
-      createdAt: nowIso(),
-    },
-  ];
+  const dpps: StoredDpp[] = [];
 
   const leaderboardSeed = mockLeaderboard.map((entry) => ({
     rank: entry.rank,
@@ -1107,7 +965,7 @@ function buildSeedStore(): AppStore {
     pomodoroSessions,
     userScores,
     pointLogs,
-    questions: [...questionsMap.values()],
+    questions,
     tests,
     testResults,
     practiceAttempts,

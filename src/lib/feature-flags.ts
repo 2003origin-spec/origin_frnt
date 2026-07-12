@@ -44,7 +44,8 @@ type FlagKey =
   | "adminSubAdmins"
   | "adminPremiumAccess"
   | "odgTeacherRanking"
-  | "aiAccessControls";
+  | "aiAccessControls"
+  | "ogcodeScoringV2";
 
 type FlagSpec = {
   envSuffix: string;
@@ -155,6 +156,13 @@ const FLAG_SPECS: Record<FlagKey, FlagSpec> = {
   // /api/admin/ai-access. Compiled defaults ON → zero new env vars. The
   // student-only role rule (D4) is deliberately NOT behind this flag.
   aiAccessControls: { envSuffix: "AI_ACCESS_CONTROLS", defaultDev: true, defaultProd: true },
+  // OGCode Scoring V2 — CS_core scoring engine (V1/OGCODE_SCORING_ALGORITHM.md):
+  // per-difficulty base score/time with time decay, per-(student, question)
+  // attempt caps (MCQ 3, Numerical/Range 4) with in-place retries, JEE Advanced
+  // marking for MSQ/Matrix Match, and hint/answer reveal decay (bs/2 / 0).
+  // Ships DARK: when off, submission grading + points behave exactly as before.
+  // Requires migration 20260712_ogcode_scoring_v2.sql on the OGCODE database.
+  ogcodeScoringV2: { envSuffix: "OGCODE_SCORING_V2", defaultDev: false, defaultProd: false },
 };
 
 /** Every feature-flag key, in declaration order (admin System Config view). */

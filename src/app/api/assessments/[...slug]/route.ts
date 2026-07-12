@@ -158,6 +158,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
       const subjects = url.searchParams.getAll("subjects").filter(Boolean);
       const concepts = url.searchParams.getAll("concepts").filter(Boolean);
       const pyqOnly = url.searchParams.get("pyq_only") === "true";
+      const likedOnly = url.searchParams.get("liked_only") === "true";
+      const contributedOnly = url.searchParams.get("contributed_only") === "true";
 
       if (limit) {
         return ok(
@@ -175,6 +177,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
             subjects: subjects.length ? subjects : null,
             concepts: concepts.length ? concepts : null,
             pyqOnly,
+            likedOnly,
+            contributedOnly,
           }),
         );
       }
