@@ -19,11 +19,15 @@ type CatalogFilters = {
   occurrences?: string[] | null;
   concepts?: string[] | null;
   pyqOnly?: boolean;
+  /** Institute-hallmark filter — only questions contributed by a coaching centre. */
+  contributedOnly?: boolean;
 };
 
 type CatalogPageFilters = CatalogFilters & {
   includeIds?: string[] | null;
   excludeIds?: string[] | null;
+  /** §10 "Liked" filter axis — restrict to questions this user has liked. */
+  likedByUserId?: string | null;
   limit: number;
   offset: number;
 };
@@ -106,6 +110,23 @@ const CREATE_TABLE_SQL = `
   ALTER TABLE ogcode_questions ADD COLUMN IF NOT EXISTS occurrence TEXT;
   ALTER TABLE ogcode_questions ADD COLUMN IF NOT EXISTS class INTEGER;
   ALTER TABLE ogcode_questions ADD COLUMN IF NOT EXISTS previous_year_question TEXT;
+
+  -- Engagement §9 (V1/OGCODE_SCORING_ALGORITHM.md, Part 2): avg time-to-correct
+  -- + first-attempt counters, feeding the "faster than X%" / first-try messages.
+  ALTER TABLE ogcode_questions ADD COLUMN IF NOT EXISTS correct_time_sum    DOUBLE PRECISION NOT NULL DEFAULT 0;
+  ALTER TABLE ogcode_questions ADD COLUMN IF NOT EXISTS correct_time_count  INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE ogcode_questions ADD COLUMN IF NOT EXISTS first_attempt_total INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE ogcode_questions ADD COLUMN IF NOT EXISTS first_attempt_correct INTEGER NOT NULL DEFAULT 0;
+
+  -- §9 completion-time histogram — narrow table so each increment is an atomic
+  -- upsert (no JSONB read-modify-write lost-update race). bucket = floor(tt/5),
+  -- capped at 120 (600s+ overflow).
+  CREATE TABLE IF NOT EXISTS ogcode_question_time_buckets (
+    question_id  TEXT NOT NULL,
+    bucket_index SMALLINT NOT NULL,
+    count        INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (question_id, bucket_index)
+  );
 
   -- Daily Mission (Phase 1): one persisted challenge question per calendar day.
   -- Recording the per-day pick makes the challenge stable for the whole day
@@ -191,15 +212,19 @@ function normalizeDifficulty(value: string): DifficultyLevel {
 }
 
 function normalizeQuestionType(value: string): QuestionType {
+  // Case-insensitive: live rows exist with e.g. "MSQ" (manual/imported inserts),
+  // which previously fell through to the "subjective" fallback and rendered as
+  // a text box instead of a multi-select. Mirrored by LOWER() in buildFilterClause.
+  const normalized = String(value ?? "").trim().toLowerCase();
   if (
-    value === "mcq" ||
-    value === "msq" ||
-    value === "numerical" ||
-    value === "matrix_match" ||
-    value === "subjective" ||
-    value === "range"
+    normalized === "mcq" ||
+    normalized === "msq" ||
+    normalized === "numerical" ||
+    normalized === "matrix_match" ||
+    normalized === "subjective" ||
+    normalized === "range"
   ) {
-    return value;
+    return normalized;
   }
   return "subjective";
 }
@@ -403,7 +428,7 @@ function buildFilterClause(filters: CatalogFilters) {
 
   if (filters.subject) {
     values.push(normalizeSubject(filters.subject));
-    clauses.push(`subject = $${values.length}`);
+    clauses.push(`LOWER(subject) = $${values.length}`);
   }
 
   const subjects = (filters.subjects ?? [])
@@ -411,12 +436,12 @@ function buildFilterClause(filters: CatalogFilters) {
     .filter(Boolean);
   if (subjects.length) {
     values.push(subjects);
-    clauses.push(`subject = ANY($${values.length}::text[])`);
+    clauses.push(`LOWER(subject) = ANY($${values.length}::text[])`);
   }
 
   if (filters.difficulty) {
     values.push(String(filters.difficulty).trim().toLowerCase());
-    clauses.push(`difficulty = $${values.length}`);
+    clauses.push(`LOWER(difficulty) = $${values.length}`);
   }
 
   if (filters.type) {
@@ -428,14 +453,14 @@ function buildFilterClause(filters: CatalogFilters) {
     const optionless = `(options IS NULL OR jsonb_typeof(options) <> 'array' OR jsonb_array_length(options) = 0)`;
     const hasStoredAnswer = `(NULLIF(TRIM(answer_text), '') IS NOT NULL OR (correct_options IS NOT NULL AND jsonb_typeof(correct_options) = 'array' AND jsonb_array_length(correct_options) > 0))`;
     if (type === "mcq") {
-      clauses.push(`(question_type = 'mcq' AND NOT ${optionless})`);
+      clauses.push(`(LOWER(question_type) = 'mcq' AND NOT ${optionless})`);
     } else if (type === "numerical") {
-      clauses.push(`(question_type = 'numerical' OR (question_type = 'mcq' AND ${optionless} AND ${hasStoredAnswer}))`);
+      clauses.push(`(LOWER(question_type) = 'numerical' OR (LOWER(question_type) = 'mcq' AND ${optionless} AND ${hasStoredAnswer}))`);
     } else if (type === "subjective") {
-      clauses.push(`(question_type = 'subjective' OR (question_type = 'mcq' AND ${optionless} AND NOT ${hasStoredAnswer}))`);
+      clauses.push(`(LOWER(question_type) = 'subjective' OR (LOWER(question_type) = 'mcq' AND ${optionless} AND NOT ${hasStoredAnswer}))`);
     } else {
       values.push(type);
-      clauses.push(`question_type = $${values.length}`);
+      clauses.push(`LOWER(question_type) = $${values.length}`);
     }
   }
 
@@ -474,6 +499,10 @@ function buildFilterClause(filters: CatalogFilters) {
 
   if (filters.pyqOnly) {
     clauses.push(`previous_year_question = 'YES'`);
+  }
+
+  if (filters.contributedOnly) {
+    clauses.push(`is_contributed = TRUE`);
   }
 
   const search = String(filters.search ?? "").trim();
@@ -600,6 +629,15 @@ export async function listOgcodeCatalogQuestionPage(filters: CatalogPageFilters)
   if (excludeIds.length) {
     values.push(excludeIds);
     clauses.push(`NOT (id = ANY($${values.length}::text[]))`);
+  }
+
+  // §10 Liked filter: EXISTS against the co-located likes table (indexed on
+  // question_id, PK on user_id+question_id) — no need to materialize the set.
+  if (filters.likedByUserId) {
+    values.push(filters.likedByUserId);
+    clauses.push(
+      `EXISTS (SELECT 1 FROM ogcode_question_likes l WHERE l.question_id = ogcode_questions.id AND l.user_id = $${values.length})`,
+    );
   }
 
   const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
@@ -966,13 +1004,42 @@ export async function getOgcodeChallengeQuestion(dateKey?: string): Promise<Stor
   return fetchCatalogQuestionById(pool, finalId);
 }
 
-export async function incrementOgcodeCatalogQuestionStats(questionId: string, isCorrect: boolean): Promise<void> {
+/** §9 time-bucket width (seconds) and the overflow-bucket index cap. */
+const OGCODE_TIME_BUCKET_SECONDS = 5;
+const OGCODE_TIME_BUCKET_MAX = 120; // 120 × 5s = 600s+ overflow bucket
+
+export function ogcodeTimeBucketIndex(timeSpentSeconds: number): number {
+  const t = Number.isFinite(timeSpentSeconds) ? Math.max(0, timeSpentSeconds) : 0;
+  return Math.min(OGCODE_TIME_BUCKET_MAX, Math.floor(t / OGCODE_TIME_BUCKET_SECONDS));
+}
+
+/** Optional §9 engagement inputs recorded alongside the base frequency stats. */
+export type OgcodeStatsExtras = {
+  /** Cumulative session time; recorded into the histogram + avg only when correct. */
+  timeSpentSeconds?: number;
+  /** True on this student's first-ever terminal outcome for the question (V2 only). */
+  firstAttempt?: boolean;
+  /** True when that first terminal outcome was a correct first try (total_attempts === 1). */
+  firstAttemptCorrect?: boolean;
+};
+
+export async function incrementOgcodeCatalogQuestionStats(
+  questionId: string,
+  isCorrect: boolean,
+  extras: OgcodeStatsExtras = {},
+): Promise<void> {
   const pool = getOgcodePostgresPool();
   if (!pool) {
     return;
   }
 
   await ensureCatalogSchema();
+
+  const recordTime = isCorrect && Number.isFinite(extras.timeSpentSeconds ?? NaN);
+  const timeValue = recordTime ? Math.max(0, extras.timeSpentSeconds as number) : 0;
+
+  // Base frequency/acceptance + §9 avg-time (correct only) + first-attempt
+  // counters (V2-supplied) in one statement so they can't drift apart.
   await pool.query(
     `
       UPDATE ogcode_questions
@@ -983,11 +1050,101 @@ export async function incrementOgcodeCatalogQuestionStats(questionId: string, is
           WHEN frequency + 1 > 0 THEN
             ((total_correct + CASE WHEN $2 THEN 1 ELSE 0 END)::double precision / (frequency + 1)::double precision) * 100
           ELSE 0
-        END
+        END,
+        correct_time_sum = correct_time_sum + CASE WHEN $3 THEN $4::double precision ELSE 0 END,
+        correct_time_count = correct_time_count + CASE WHEN $3 THEN 1 ELSE 0 END,
+        first_attempt_total = first_attempt_total + CASE WHEN $5 THEN 1 ELSE 0 END,
+        first_attempt_correct = first_attempt_correct + CASE WHEN $6 THEN 1 ELSE 0 END
       WHERE id = $1
     `,
-    [questionId, isCorrect],
+    [questionId, isCorrect, recordTime, timeValue, Boolean(extras.firstAttempt), Boolean(extras.firstAttemptCorrect)],
   );
+
+  if (recordTime) {
+    await pool.query(
+      `
+        INSERT INTO ogcode_question_time_buckets (question_id, bucket_index, count)
+        VALUES ($1, $2, 1)
+        ON CONFLICT (question_id, bucket_index)
+        DO UPDATE SET count = ogcode_question_time_buckets.count + 1
+      `,
+      [questionId, ogcodeTimeBucketIndex(timeValue)],
+    );
+  }
+}
+
+export type OgcodeQuestionStatsMessage = {
+  /** Global correct rate, 0-100 (from acceptance_rate). */
+  acceptanceRate: number;
+  /** How many distinct students have completed this question (first_attempt_total). */
+  completedByCount: number;
+  /** % of completers who did NOT solve on their first try. Null if too little data. */
+  neededRetryPercent: number | null;
+  /** % of solvers this student was faster than. Null unless a correct tt is given + data exists. */
+  fasterThanPercent: number | null;
+  /** True when this is the very first completion anywhere (cold-start copy). */
+  isFirstEver: boolean;
+};
+
+/**
+ * §9 messaging payload for the result view. Reads the histogram + counters and,
+ * when the caller's own correct `timeSpentSeconds` is supplied, computes the
+ * speed percentile (fraction of recorded solvers strictly slower).
+ */
+export async function getOgcodeQuestionStatsMessage(
+  questionId: string,
+  opts: { timeSpentSeconds?: number; isCorrect?: boolean } = {},
+): Promise<OgcodeQuestionStatsMessage | null> {
+  const pool = getOgcodePostgresPool();
+  if (!pool) {
+    return null;
+  }
+
+  await ensureCatalogSchema();
+  const statsResult = await pool.query<{
+    acceptance_rate: number | string | null;
+    correct_time_count: number | string | null;
+    first_attempt_total: number | string | null;
+    first_attempt_correct: number | string | null;
+  }>(
+    `SELECT acceptance_rate, correct_time_count, first_attempt_total, first_attempt_correct
+       FROM ogcode_questions WHERE id = $1`,
+    [questionId],
+  );
+  const row = statsResult.rows[0];
+  if (!row) {
+    return null;
+  }
+
+  const completedByCount = Number(row.first_attempt_total ?? 0);
+  const firstAttemptCorrect = Number(row.first_attempt_correct ?? 0);
+  const correctTimeCount = Number(row.correct_time_count ?? 0);
+
+  const neededRetryPercent =
+    completedByCount >= 5
+      ? Math.round(((completedByCount - firstAttemptCorrect) / completedByCount) * 100)
+      : null;
+
+  let fasterThanPercent: number | null = null;
+  if (opts.isCorrect && Number.isFinite(opts.timeSpentSeconds ?? NaN) && correctTimeCount >= 5) {
+    const myBucket = ogcodeTimeBucketIndex(opts.timeSpentSeconds as number);
+    const slowerResult = await pool.query<{ slower: number | string }>(
+      `SELECT COALESCE(SUM(count), 0) AS slower
+         FROM ogcode_question_time_buckets
+        WHERE question_id = $1 AND bucket_index > $2`,
+      [questionId, myBucket],
+    );
+    const slower = Number(slowerResult.rows[0]?.slower ?? 0);
+    fasterThanPercent = Math.round((slower / correctTimeCount) * 100);
+  }
+
+  return {
+    acceptanceRate: Math.round(Number(row.acceptance_rate ?? 0)),
+    completedByCount,
+    neededRetryPercent,
+    fasterThanPercent,
+    isFirstEver: completedByCount <= 1,
+  };
 }
 
 export type ContributedCatalogInput = {

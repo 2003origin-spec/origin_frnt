@@ -6,7 +6,7 @@ import {
     ArrowLeft, Play, Clock, Loader2, CheckCircle2,
     XCircle, RotateCcw, Trophy, X, HelpCircle, ChevronLeft, ChevronRight, Building2,
     ZoomIn, ZoomOut, ImageOff, Hash, Layers, AlignLeft, GitMerge, BookOpen, Flag,
-    Volume2, VolumeX,
+    Volume2, VolumeX, Heart, Swords, Search,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { apiCall } from '@/lib/api';
@@ -18,7 +18,7 @@ import {
 } from '@/lib/math-text';
 import { FormattedMessage } from '@/components/origin-ai/FormattedMessage';
 import type { PracticeQuestion, User } from '@/types';
-import { submitOgcodeAnswerAction } from '@/server/actions/ogcode-actions';
+import { submitOgcodeAnswerAction, revealOgcodeQuestionAction, toggleOgcodeQuestionLikeAction, reportOgcodeQuestionAction, ogcodePresenceHeartbeatAction, listOgcodeChallengeMutualsAction, sendOgcodeChallengeAction } from '@/server/actions/ogcode-actions';
 import { toast } from 'sonner';
 
 const SUBJECT_META: Record<string, { label: string; emoji: string; param: string }> = {
@@ -70,6 +70,24 @@ interface SubmitResult {
     targetTimeSeconds?: number;
     speedMultiplier?: number;
     speedBand?: 'blazing' | 'fast' | 'steady' | 'deliberate' | 'slow';
+    // OGCode Scoring V2: terminal=false means a mid-loop wrong answer with
+    // retries left — the server deliberately withholds answer/explanation.
+    terminal?: boolean;
+    attemptsUsed?: number;
+    attemptsRemaining?: number;
+    scoreReasons?: string[];
+    // §9 global-stats comparison messaging (V2 terminal outcomes).
+    statsMessage?: {
+        acceptanceRate: number;
+        completedByCount: number;
+        neededRetryPercent: number | null;
+        fasterThanPercent: number | null;
+        isFirstEver: boolean;
+    } | null;
+    // §9 add-on: public per-option response distribution in DISPLAYED order —
+    // "N% of people chose this option". Present on terminal MCQ/MSQ outcomes.
+    optionDistribution?: { percent: number; count: number; total: number }[];
+    option_distribution?: { percent: number; count: number; total: number }[];
 }
 
 type SubmitPayload = {
@@ -92,6 +110,14 @@ type PracticeQuestionApi = PracticeQuestion & {
     occurrence?: string | null;
     classLevel?: number | null;
     previousYearQuestion?: string | null;
+    // OGCode Scoring V2 progress (server-authoritative; survives refresh).
+    scoringV2?: boolean;
+    attemptsUsed?: number;
+    attemptsRemaining?: number;
+    attemptCap?: number;
+    hintRevealed?: boolean;
+    answerRevealed?: boolean;
+    terminalReached?: boolean;
 };
 
 type SubmitResultApi = SubmitResult & {
@@ -119,6 +145,7 @@ const QTYPE_META: Record<string, { label: string; hint: string; Icon: React.Comp
     numerical:    { label: 'Integer / Decimal', hint: 'Enter the exact numeric value.',           Icon: Hash },
     matrix_match: { label: 'Match the Column', hint: 'Match each item in List I to List II.',    Icon: GitMerge },
     subjective:   { label: 'Descriptive',      hint: 'Write your answer in the box.',            Icon: AlignLeft },
+    range:        { label: 'Range',            hint: 'Enter a from and to value — any correct answer inside the range counts.', Icon: Hash },
 };
 
 const LATEX_COMMAND_MAP: Record<string, string> = {
@@ -190,6 +217,25 @@ const SUBSCRIPT_DIGITS: Record<string, string> = {
 
 function mapDecoratedText(value: string, alphabet: Record<string, string>): string {
     return Array.from(value).map((char) => alphabet[char] ?? char).join('');
+}
+
+/**
+ * "N% of submissions chose this" pill, straddling an option's top-right border.
+ * Shown only after the answer is revealed. `highlight` tints it emerald for
+ * the correct option; otherwise neutral so it doesn't fight the red/green states.
+ */
+function OptionChoiceBadge({ percent, count, highlight }: { percent: number; count: number; highlight: boolean }) {
+    return (
+        <span
+            title={`${count} ${count === 1 ? 'submission' : 'submissions'} chose this`}
+            className={`absolute -top-2.5 right-3 z-10 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold tabular-nums shadow-sm ring-1
+                ${highlight
+                    ? 'bg-emerald-500 text-white ring-emerald-600/40'
+                    : 'bg-slate-800 text-white ring-black/10 dark:bg-slate-100 dark:text-slate-900 dark:ring-white/20'}`}
+        >
+            {percent}%
+        </span>
+    );
 }
 
 function extractBalancedSegment(value: string, startIndex: number, openChar: string, closeChar: string) {
@@ -348,7 +394,7 @@ function renderQuestionText(content: string | null | undefined, keyPrefix: strin
 }
 
 export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, setTimeMode, user, initialQuestion }: OGCodeWorkspaceProps) {
-    const [question, setQuestion] = useState<PracticeQuestion | null>(initialQuestion ?? null);
+    const [question, setQuestion] = useState<PracticeQuestionApi | null>(initialQuestion ?? null);
     const [isLoading, setIsLoading] = useState(!initialQuestion);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [result, setResult] = useState<SubmitResult | null>(null);
@@ -360,12 +406,179 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
     const [showHint, setShowHint] = useState(false);
     const [showSolution, setShowSolution] = useState(false);
     const [answerInput, setAnswerInput] = useState('');
+    const [rangeFrom, setRangeFrom] = useState('');
+    const [rangeTo, setRangeTo] = useState('');
     const [imgZoomed, setImgZoomed] = useState(false);
     const [imgError, setImgError] = useState(false);
 
     const [elapsed, setElapsed] = useState(0);
     const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const hasFetched = useRef(Boolean(initialQuestion));
+
+    // ── OGCode Scoring V2 client state ─────────────────────────────────────────
+    // All attempt counts are SERVER-authoritative (from the question detail on
+    // load, then from each submit response) — a refresh restores burned attempts
+    // instead of resetting a local counter.
+    const [v2AttemptsUsed, setV2AttemptsUsed] = useState(0);
+    const [v2AttemptsRemaining, setV2AttemptsRemaining] = useState<number | null>(null);
+    const [v2HintTaken, setV2HintTaken] = useState(false);
+    const [v2AnswerTaken, setV2AnswerTaken] = useState<{ correctAnswerText: string | null; explanation: string | null } | null>(null);
+    const [v2ArmedReveal, setV2ArmedReveal] = useState<'hint' | 'answer' | null>(null);
+    const [v2Revealing, setV2Revealing] = useState(false);
+    const [v2WrongFlash, setV2WrongFlash] = useState(false);
+    const isV2 = Boolean(question?.scoringV2);
+
+    // §10 Liked Questions — public count + this viewer's flag, optimistic toggle.
+    const [likeCount, setLikeCount] = useState(0);
+    const [likedByMe, setLikedByMe] = useState(false);
+    const [likePending, setLikePending] = useState(false);
+
+    useEffect(() => {
+        if (!question?.scoringV2) {
+            setV2AttemptsUsed(0);
+            setV2AttemptsRemaining(null);
+        } else {
+            setV2AttemptsUsed(question.attemptsUsed ?? 0);
+            setV2AttemptsRemaining(question.terminalReached ? null : question.attemptsRemaining ?? null);
+        }
+        setV2HintTaken(Boolean(question?.hintRevealed));
+        setV2AnswerTaken(null);
+        setV2ArmedReveal(null);
+        setV2WrongFlash(false);
+        setLikeCount(question?.likeCount ?? 0);
+        setLikedByMe(Boolean(question?.likedByMe));
+    }, [question]);
+
+    // §12 Live Practicing — heartbeat while the question is open; show the count.
+    const [liveCount, setLiveCount] = useState(0);
+    useEffect(() => {
+        if (!question?.id) return;
+        let active = true;
+        const beat = async () => {
+            try {
+                const res = await ogcodePresenceHeartbeatAction(String(question.id));
+                if (active) setLiveCount(res.count);
+            } catch {
+                // Presence is ambient; ignore failures.
+            }
+        };
+        void beat();
+        const interval = setInterval(beat, 15_000);
+        return () => { active = false; clearInterval(interval); };
+    }, [question?.id]);
+
+    // §13 Friend Challenge — mutual-follow share-sheet.
+    const [challengeOpen, setChallengeOpen] = useState(false);
+    const [challengeQuery, setChallengeQuery] = useState('');
+    const [challengeMutuals, setChallengeMutuals] = useState<{ id: string; username: string; name: string; avatar: string | null }[]>([]);
+    const [challengeLoading, setChallengeLoading] = useState(false);
+    const [challengeSentTo, setChallengeSentTo] = useState<Set<string>>(new Set());
+
+    useEffect(() => {
+        if (!challengeOpen) return;
+        let active = true;
+        setChallengeLoading(true);
+        const t = setTimeout(async () => {
+            try {
+                const list = await listOgcodeChallengeMutualsAction(challengeQuery.trim());
+                if (active) setChallengeMutuals(list);
+            } catch {
+                if (active) setChallengeMutuals([]);
+            } finally {
+                if (active) setChallengeLoading(false);
+            }
+        }, challengeQuery.trim() ? 250 : 0);
+        return () => { active = false; clearTimeout(t); };
+    }, [challengeOpen, challengeQuery]);
+
+    const doSendChallenge = useCallback(async (toUserId: string, toName: string) => {
+        if (!question) return;
+        try {
+            const res = await sendOgcodeChallengeAction(question.id, toUserId);
+            if (res.ok) {
+                setChallengeSentTo((prev) => new Set(prev).add(toUserId));
+                toast.success(`Challenge sent to ${toName}`);
+            } else if (res.error === 'already_pending') {
+                setChallengeSentTo((prev) => new Set(prev).add(toUserId));
+                toast.info(`${toName} already has a pending challenge for this question`);
+            } else {
+                toast.error('Could not send the challenge.');
+            }
+        } catch {
+            toast.error('Could not send the challenge.');
+        }
+    }, [question]);
+
+    // §11 Report Question — store-only modal.
+    const [reportOpen, setReportOpen] = useState(false);
+    const [reportReason, setReportReason] = useState('incorrect_answer');
+    const [reportDesc, setReportDesc] = useState('');
+    const [reportSubmitting, setReportSubmitting] = useState(false);
+
+    const doSubmitReport = useCallback(async () => {
+        if (!question || reportSubmitting) return;
+        setReportSubmitting(true);
+        try {
+            const res = await reportOgcodeQuestionAction(question.id, reportReason, reportDesc.trim() || null);
+            if (res.ok) {
+                toast.success('Thanks — your report was recorded.');
+                setReportOpen(false);
+                setReportDesc('');
+            } else {
+                toast.error('Could not submit the report.');
+            }
+        } catch {
+            toast.error('Could not submit the report.');
+        } finally {
+            setReportSubmitting(false);
+        }
+    }, [question, reportReason, reportDesc, reportSubmitting]);
+
+    const doToggleLike = useCallback(async () => {
+        if (!question || likePending) return;
+        // Optimistic flip; reconcile with the server's authoritative count.
+        const nextLiked = !likedByMe;
+        setLikedByMe(nextLiked);
+        setLikeCount((c) => c + (nextLiked ? 1 : -1));
+        setLikePending(true);
+        try {
+            const res = await toggleOgcodeQuestionLikeAction(question.id);
+            setLikedByMe(res.likedByMe);
+            setLikeCount(res.count);
+        } catch {
+            // Revert on failure.
+            setLikedByMe(!nextLiked);
+            setLikeCount((c) => c + (nextLiked ? -1 : 1));
+            toast.error('Could not update like.');
+        } finally {
+            setLikePending(false);
+        }
+    }, [question, likedByMe, likePending]);
+
+    // The single reveal implementation lives server-side; this is the manual
+    // trigger. Idempotent — re-calling for an already-revealed question fetches
+    // the content again without re-applying any decay.
+    const doReveal = useCallback(async (kind: 'hint' | 'answer') => {
+        if (!question || v2Revealing) return;
+        setV2Revealing(true);
+        try {
+            const res = await revealOgcodeQuestionAction(question.id, kind);
+            if (!res.enabled) return;
+            if (kind === 'hint') {
+                setV2HintTaken(true);
+            } else {
+                setV2AnswerTaken({
+                    correctAnswerText: res.correctAnswerText ?? null,
+                    explanation: res.explanation ?? null,
+                });
+            }
+        } catch {
+            toast.error('Could not reveal. Try again.');
+        } finally {
+            setV2Revealing(false);
+            setV2ArmedReveal(null);
+        }
+    }, [question, v2Revealing]);
 
     // Points animation — Ori flies from the result card to the PTS counter in the header
     const [oriAnim, setOriAnim] = useState<{
@@ -627,6 +840,8 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
         setShowHint(false);
         setShowSolution(false);
         setAnswerInput('');
+        setRangeFrom('');
+        setRangeTo('');
         setImgZoomed(false);
         setImgError(false);
         setElapsed(0);
@@ -664,6 +879,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
         if (qType === 'mcq') payload.selectedOption = selectedOption;
         else if (qType === 'msq') payload.selectedOptions = selectedOptions;
         else if (qType === 'matrix_match') payload.matrixPairs = matrixPairs;
+        else if (qType === 'range') payload.answerText = `${rangeFrom}|${rangeTo}`;
         else payload.answerText = answerInput;
 
         // Submit is a user gesture — unlock audio now so post-await playback is
@@ -674,16 +890,12 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
         try {
             setShowHint(false);
             setShowSolution(false);
-            const res = await submitOgcodeAnswerAction(question.id, payload);
-            if (timerRef.current) clearInterval(timerRef.current);
-            setResult(res); // This triggers the result UI
-            toast.success(res.isCorrect ? "Brilliant! Correct Answer" : "Not quite right. Try again?");
+            const res: SubmitResult = await submitOgcodeAnswerAction(question.id, payload);
 
-            // Play the student's chosen answer sound (on by default; refs avoid stale
-            // closure; the element was unlocked in this gesture so it works on mobile).
-            const soundFile = res.isCorrect ? correctSoundRef.current : wrongSoundRef.current;
-            if (!mutedRef.current && soundFile) {
-                const dir = res.isCorrect ? 'correct' : 'wrong';
+            const playAnswerSound = (correct: boolean) => {
+                const soundFile = correct ? correctSoundRef.current : wrongSoundRef.current;
+                if (mutedRef.current || !soundFile) return;
+                const dir = correct ? 'correct' : 'wrong';
                 const el = audioRef.current ?? new Audio();
                 audioRef.current = el;
                 el.pause();
@@ -692,7 +904,26 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                 el.muted = false;
                 el.volume = 0.7;
                 el.play().catch(() => {});
+            };
+
+            // Scoring V2 mid-loop wrong answer: retries remain, so stay in the
+            // question (no result view, timer keeps running — tt is cumulative)
+            // and render off the server's authoritative attempt counts.
+            if (res.terminal === false) {
+                setV2AttemptsUsed(res.attemptsUsed ?? v2AttemptsUsed + 1);
+                setV2AttemptsRemaining(res.attemptsRemaining ?? null);
+                setV2WrongFlash(true);
+                const remaining = res.attemptsRemaining ?? 0;
+                toast.error(`Not quite — ${remaining} ${remaining === 1 ? 'attempt' : 'attempts'} left`);
+                playAnswerSound(false);
+                return;
             }
+
+            if (timerRef.current) clearInterval(timerRef.current);
+            setV2WrongFlash(false);
+            setResult(res); // This triggers the result UI
+            toast.success(res.isCorrect ? "Brilliant! Correct Answer" : "Not quite right. Try again?");
+            playAnswerSound(res.isCorrect);
 
             // Refresh user data if solved
             if (res.isCorrect && !res.already_solved) {
@@ -703,7 +934,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
         } finally {
             setIsSubmitting(false);
         }
-    }, [question, result, isSubmitting, elapsed, selectedOption, selectedOptions, matrixPairs, answerInput, unlockAudio]);
+    }, [question, result, isSubmitting, elapsed, selectedOption, selectedOptions, matrixPairs, answerInput, rangeFrom, rangeTo, unlockAudio, v2AttemptsUsed]);
 
     const handleTryAgain = () => {
         setResult(null);
@@ -778,10 +1009,33 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
     const diffKey = (question.difficulty || 'medium').toLowerCase();
     const diff = DIFFICULTY_CONFIG[diffKey as keyof typeof DIFFICULTY_CONFIG] || DIFFICULTY_CONFIG.medium;
 
+    // Correct-answer text shown in the result view: the ACTUAL option(s) for
+    // choice questions (e.g. "(B) v²/r"), not the raw stored value — falling back
+    // to the stored answer for numerical / range / subjective. correctOption(s)
+    // are already mapped to the displayed (shuffled) order server-side.
+    const correctAnswerDisplay = (() => {
+        if (!result) return null;
+        const opts = question.options ?? [];
+        if (qType === 'mcq' && typeof result.correctOption === 'number' && opts[result.correctOption] != null) {
+            return `(${String.fromCharCode(65 + result.correctOption)}) ${opts[result.correctOption]}`;
+        }
+        if (qType === 'msq' && result.correctOptions?.length && opts.length) {
+            return result.correctOptions
+                .filter((i) => opts[i] != null)
+                .map((i) => `(${String.fromCharCode(65 + i)}) ${opts[i]}`)
+                .join('   ·   ');
+        }
+        return result.correctAnswerText ?? null;
+    })();
+
+    // §9 add-on: public "N% of people chose this" per option, in displayed order.
+    // Only present on terminal MCQ/MSQ outcomes.
+    const optionDistribution = result?.optionDistribution ?? result?.option_distribution ?? null;
+
     return (
-        <div className="min-h-screen bg-background text-foreground flex flex-col font-sans transition-colors duration-300">
+        <div className="min-h-screen neu-surface text-foreground flex flex-col font-sans transition-colors duration-300">
             {/* Header */}
-            <div className="relative h-14 sm:h-12 border-b border-border flex items-center px-3 sm:px-4 bg-background sticky top-0 z-50">
+            <div className="relative h-14 sm:h-12 border-b border-border/40 flex items-center px-3 sm:px-4 bg-[hsl(var(--neu-bg)/0.85)] backdrop-blur-xl sticky top-0 z-50">
                 <button onClick={onBack} className="p-2 neu-raised rounded-lg transition-all hover:-translate-y-0.5" aria-label="Back to questions">
                     <ArrowLeft className="w-4 h-4 text-muted-foreground" />
                 </button>
@@ -801,9 +1055,19 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                         <Trophy className="w-3.5 h-3.5" />
                         {localPoints !== null ? localPoints : (user?.points || 0)} <span className="hidden sm:inline">PTS</span>
                     </motion.div>
-                    <div className="flex items-center gap-2 text-xs sm:text-sm text-slate-400 font-mono bg-white/5 px-2 py-1 rounded-md border border-white/5">
+                    <div className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground font-mono neu-inset px-2.5 py-1 rounded-md tabular-nums">
                         <Clock className="w-3.5 h-3.5" /> {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')}
                     </div>
+                    {/* §12 Live Practicing — green dot + live count on this question */}
+                    {liveCount > 0 && (
+                        <div className="flex items-center gap-1.5 text-[10px] sm:text-xs font-bold text-emerald-500 bg-emerald-500/10 px-2 py-1 rounded-md border border-emerald-500/20" title={`${liveCount} practicing now`}>
+                            <span className="relative flex h-2 w-2">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+                            </span>
+                            {liveCount} <span className="hidden sm:inline">Live</span>
+                        </div>
+                    )}
                 </div>
 
                 {/* Right-side controls */}
@@ -820,22 +1084,28 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                         </button>
                     )}
 
-                    {/* Report button */}
+                    {/* §13 Challenge a friend */}
                     <button
-                        onClick={() => window.open(
-                            `https://github.com/diprajorigin/ORIGIN-V1.0/issues/new?title=${encodeURIComponent(`[OGCode] Question report: ${questionId}`)}`,
-                            '_blank',
-                        )}
+                        onClick={() => setChallengeOpen(true)}
+                        className="p-2 neu-raised rounded-lg transition-all hover:-translate-y-0.5 group"
+                        aria-label="Challenge a friend"
+                        title="Challenge a friend to this question"
+                    >
+                        <Swords className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
+                    </button>
+                    {/* Report button — opens the in-app report form (§11) */}
+                    <button
+                        onClick={() => setReportOpen(true)}
                         className="p-2 neu-raised rounded-lg transition-all hover:-translate-y-0.5 group"
                         aria-label="Report this question"
-                        title="Report / Raise PR"
+                        title="Report a problem with this question"
                     >
                         <Flag className="w-4 h-4 text-muted-foreground group-hover:text-rose-500 transition-colors" />
                     </button>
                 </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto bg-background">
+            <div className="flex-1 overflow-y-auto neu-surface">
                 <div className="max-w-3xl mx-auto px-4 sm:px-8 py-4 sm:py-5 space-y-5">
                     {/* Question navigation — top of content, always visible */}
                     <div className="flex items-center justify-between">
@@ -957,6 +1227,18 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                     }
                                     return null;
                                 })()}
+                                {/* §10 Liked Questions — public count + toggle */}
+                                <button
+                                    type="button"
+                                    onClick={doToggleLike}
+                                    disabled={likePending}
+                                    aria-pressed={likedByMe}
+                                    title={likedByMe ? 'Unlike' : 'Like this question'}
+                                    className={`flex items-center gap-1 text-[10px] font-bold px-2 py-1 border rounded uppercase tracking-wider transition-colors ${likedByMe ? 'text-rose-600 dark:text-rose-400 bg-rose-500/10 border-rose-500/25' : 'text-slate-500 dark:text-slate-400 bg-white/[0.03] border-white/10 hover:border-rose-500/30'}`}
+                                >
+                                    <Heart className={`w-3 h-3 flex-shrink-0 ${likedByMe ? 'fill-current' : ''}`} />
+                                    {likeCount}
+                                </button>
                             </div>
                             {/* Subject Ori avatar */}
                             {question.subject && SUBJECT_ORI_MAP[question.subject] && (
@@ -979,7 +1261,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                         {/* Question image — shown when available */}
                         {question.image && !imgError && (
                             <div className="relative">
-                                <div className="relative rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/[0.02] overflow-hidden">
+                                <div className="relative neu-inset rounded-xl overflow-hidden">
                                     {/* eslint-disable-next-line @next/next/no-img-element */}
                                     <img
                                         src={question.image}
@@ -1031,6 +1313,125 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                         </div>
                     )}
 
+                    {/* §13 Friend Challenge share-sheet (mutual followers only) */}
+                    {challengeOpen && (
+                        <div
+                            className="fixed inset-0 z-[200] bg-black/70 flex items-center justify-center p-4"
+                            onClick={() => setChallengeOpen(false)}
+                        >
+                            <div
+                                className="w-full max-w-md rounded-2xl neu-raised p-5 space-y-4"
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-sm font-black uppercase tracking-widest text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                                        <Swords className="w-4 h-4 text-primary" /> Challenge a friend
+                                    </h3>
+                                    <button onClick={() => setChallengeOpen(false)} aria-label="Close" className="p-1 text-slate-400 hover:text-slate-200">
+                                        <X className="w-4 h-4" />
+                                    </button>
+                                </div>
+                                <p className="text-[11px] text-muted-foreground">Only mutual followers (you follow each other) can be challenged.</p>
+                                <div className="relative">
+                                    <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                    <input
+                                        value={challengeQuery}
+                                        onChange={(e) => setChallengeQuery(e.target.value)}
+                                        placeholder="Search your mutual followers…"
+                                        className="w-full neu-field pl-9 pr-3 py-2.5 text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-primary/40"
+                                    />
+                                </div>
+                                <div className="max-h-64 overflow-y-auto space-y-1">
+                                    {challengeLoading ? (
+                                        <div className="py-6 text-center"><Loader2 className="w-5 h-5 animate-spin mx-auto text-primary" /></div>
+                                    ) : challengeMutuals.length === 0 ? (
+                                        <p className="py-6 text-center text-xs text-muted-foreground">
+                                            {challengeQuery.trim() ? 'No mutual followers match.' : 'No mutual followers yet — follow classmates who follow you back to challenge them.'}
+                                        </p>
+                                    ) : (
+                                        challengeMutuals.map((m) => {
+                                            const sent = challengeSentTo.has(m.id);
+                                            return (
+                                                <div key={m.id} className="flex items-center gap-3 p-2 rounded-xl hover:bg-white/[0.04]">
+                                                    {m.avatar
+                                                        ? <Image src={m.avatar} alt="" width={28} height={28} className="rounded-full object-cover" unoptimized />
+                                                        : <div className="w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center text-[10px] font-black text-primary">{m.name.charAt(0).toUpperCase()}</div>}
+                                                    <div className="min-w-0 flex-1">
+                                                        <p className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{m.name}</p>
+                                                        <p className="text-[10px] text-muted-foreground truncate">@{m.username}</p>
+                                                    </div>
+                                                    <button
+                                                        onClick={() => doSendChallenge(m.id, m.name)}
+                                                        disabled={sent}
+                                                        className={`text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg transition-colors ${sent ? 'bg-emerald-500/15 text-emerald-500' : 'bg-primary/15 text-primary hover:bg-primary/25'}`}
+                                                    >
+                                                        {sent ? 'Sent' : 'Challenge'}
+                                                    </button>
+                                                </div>
+                                            );
+                                        })
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* §11 Report Question modal */}
+                    {reportOpen && (
+                        <div
+                            className="fixed inset-0 z-[200] bg-black/70 flex items-center justify-center p-4"
+                            onClick={() => !reportSubmitting && setReportOpen(false)}
+                        >
+                            <div
+                                className="w-full max-w-md rounded-2xl neu-raised p-5 space-y-4"
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-sm font-black uppercase tracking-widest text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                                        <Flag className="w-4 h-4 text-rose-500" /> Report a problem
+                                    </h3>
+                                    <button onClick={() => setReportOpen(false)} disabled={reportSubmitting} aria-label="Close" className="p-1 text-slate-400 hover:text-slate-200">
+                                        <X className="w-4 h-4" />
+                                    </button>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">What&apos;s wrong?</label>
+                                    <select
+                                        value={reportReason}
+                                        onChange={(e) => setReportReason(e.target.value)}
+                                        className="w-full neu-field p-2.5 text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-primary/40"
+                                    >
+                                        <option value="incorrect_answer">Incorrect answer</option>
+                                        <option value="unclear_question">Unclear / ambiguous question</option>
+                                        <option value="typo_or_formatting">Typo or formatting issue</option>
+                                        <option value="wrong_options">Wrong / missing options</option>
+                                        <option value="image_missing">Image missing or broken</option>
+                                        <option value="other">Other</option>
+                                    </select>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-500">Details (optional)</label>
+                                    <textarea
+                                        value={reportDesc}
+                                        onChange={(e) => setReportDesc(e.target.value)}
+                                        rows={3}
+                                        maxLength={2000}
+                                        placeholder="Add anything that helps us fix it…"
+                                        className="w-full neu-field p-2.5 text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-primary/40 resize-none"
+                                    />
+                                </div>
+                                <button
+                                    onClick={doSubmitReport}
+                                    disabled={reportSubmitting}
+                                    className="w-full py-3 bg-rose-500 hover:bg-rose-600 disabled:opacity-50 rounded-xl font-bold text-white flex items-center justify-center gap-2 transition-colors"
+                                >
+                                    {reportSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Flag className="w-4 h-4" />}
+                                    Submit Report
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Subtle Divider */}
                     <div className="h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
 
@@ -1055,12 +1456,21 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                     key={idx}
                                     disabled={!!result || isSubmitting}
                                     onClick={() => setSelectedOption(idx)}
-                                    className={`w-full text-left p-4 rounded-xl border-2 transition-all font-sans backdrop-blur-md
-                                        ${selectedOption === idx ? 'border-primary bg-primary/10' : 'border-slate-200 dark:border-white/10 bg-white/40 dark:bg-white/[0.02]'}
-                                        ${result?.isCorrect && result?.correctOption === idx ? 'border-emerald-500 bg-emerald-500/5 text-emerald-600 dark:text-emerald-400' : ''}
+                                    className={`relative w-full text-left p-4 rounded-xl border-2 transition-all font-sans bg-[hsl(var(--neu-bg))]
+                                        ${selectedOption === idx
+                                            ? 'border-primary bg-primary/10 shadow-[inset_3px_3px_7px_hsl(var(--neu-shadow)),inset_-3px_-3px_7px_hsl(var(--neu-light))]'
+                                            : 'border-transparent shadow-[3px_3px_8px_hsl(var(--neu-shadow)),-3px_-3px_8px_hsl(var(--neu-light))] hover:-translate-y-0.5'}
+                                        ${result && result.correctOption === idx ? 'border-emerald-500 bg-emerald-500/5 text-emerald-600 dark:text-emerald-400' : ''}
                                         ${result && !result.isCorrect && selectedOption === idx ? 'border-rose-500 bg-rose-500/5 text-rose-600 dark:text-rose-400' : ''}
                                     `}
                                 >
+                                    {result && optionDistribution?.[idx] && (
+                                        <OptionChoiceBadge
+                                            percent={optionDistribution[idx].percent}
+                                            count={optionDistribution[idx].count}
+                                            highlight={result.correctOption === idx}
+                                        />
+                                    )}
                                     <span className="font-mono text-xs mr-3 opacity-50">({String.fromCharCode(65 + idx)})</span>
                                     <span className="select-text">{renderInlineSegments(String(opt), `mcq-option-${idx}`)}</span>
                                 </button>
@@ -1075,12 +1485,21 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                             prev.includes(idx) ? prev.filter(i => i !== idx) : [...prev, idx]
                                         );
                                     }}
-                                    className={`w-full text-left p-4 rounded-xl border-2 transition-all font-sans backdrop-blur-md
-                                        ${selectedOptions.includes(idx) ? 'border-primary bg-primary/10' : 'border-slate-200 dark:border-white/10 bg-white/40 dark:bg-white/[0.02]'}
-                                        ${result?.isCorrect && result?.correctOptions?.includes(idx) ? 'border-emerald-500 bg-emerald-500/5 text-emerald-600 dark:text-emerald-400' : ''}
+                                    className={`relative w-full text-left p-4 rounded-xl border-2 transition-all font-sans bg-[hsl(var(--neu-bg))]
+                                        ${selectedOptions.includes(idx)
+                                            ? 'border-primary bg-primary/10 shadow-[inset_3px_3px_7px_hsl(var(--neu-shadow)),inset_-3px_-3px_7px_hsl(var(--neu-light))]'
+                                            : 'border-transparent shadow-[3px_3px_8px_hsl(var(--neu-shadow)),-3px_-3px_8px_hsl(var(--neu-light))] hover:-translate-y-0.5'}
+                                        ${result && result.correctOptions?.includes(idx) ? 'border-emerald-500 bg-emerald-500/5 text-emerald-600 dark:text-emerald-400' : ''}
                                         ${result && !result.isCorrect && selectedOptions.includes(idx) ? 'border-rose-500 bg-rose-500/5 text-rose-600 dark:text-rose-400' : ''}
                                     `}
                                 >
+                                    {result && optionDistribution?.[idx] && (
+                                        <OptionChoiceBadge
+                                            percent={optionDistribution[idx].percent}
+                                            count={optionDistribution[idx].count}
+                                            highlight={Boolean(result.correctOptions?.includes(idx))}
+                                        />
+                                    )}
                                     <div className="flex items-center gap-3">
                                         <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${selectedOptions.includes(idx) ? 'bg-primary border-primary' : 'border-white/20'}`}>
                                             {selectedOptions.includes(idx) && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
@@ -1183,7 +1602,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                                         const allowed = /[0-9.\-]|Backspace|Delete|Arrow|Tab|Enter/;
                                                         if (!allowed.test(e.key)) e.preventDefault();
                                                     }}
-                                                    className="w-full bg-slate-50 dark:bg-white/5 border-2 border-slate-200 dark:border-white/10 p-4 sm:p-6 rounded-2xl text-2xl sm:text-3xl text-center font-mono focus:border-primary dark:focus:border-primary outline-none transition-all"
+                                                    className="w-full bg-[hsl(var(--neu-bg))] shadow-[inset_3px_3px_7px_hsl(var(--neu-shadow)),inset_-3px_-3px_7px_hsl(var(--neu-light))] p-4 sm:p-6 rounded-2xl text-2xl sm:text-3xl text-center font-mono focus:ring-2 focus:ring-primary/40 outline-none transition-all"
                                                     placeholder="0"
                                                     autoComplete="off"
                                                     spellCheck={false}
@@ -1203,7 +1622,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                             value={answerInput}
                                             onChange={(e) => setAnswerInput(e.target.value)}
                                             rows={3}
-                                            className="w-full bg-slate-50 dark:bg-white/5 border-2 border-slate-200 dark:border-white/10 p-4 rounded-2xl text-base font-sans focus:border-primary dark:focus:border-primary outline-none transition-all resize-none"
+                                            className="w-full bg-[hsl(var(--neu-bg))] shadow-[inset_3px_3px_7px_hsl(var(--neu-shadow)),inset_-3px_-3px_7px_hsl(var(--neu-light))] p-4 rounded-2xl text-base font-sans focus:ring-2 focus:ring-primary/40 outline-none transition-all resize-none"
                                             placeholder="Type your answer here..."
                                         />
                                     )}
@@ -1215,7 +1634,136 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                     )}
                                 </div>
                             )}
+
+                            {qType === 'range' && (
+                                <div className="space-y-3">
+                                    <div className="flex items-center gap-3">
+                                        <input
+                                            type="text"
+                                            inputMode="decimal"
+                                            disabled={!!result || isSubmitting}
+                                            value={rangeFrom}
+                                            onChange={(e) => setRangeFrom(e.target.value)}
+                                            onKeyDown={(e) => {
+                                                const allowed = /[0-9.\-]|Backspace|Delete|Arrow|Tab|Enter/;
+                                                if (!allowed.test(e.key)) e.preventDefault();
+                                            }}
+                                            className="w-full bg-[hsl(var(--neu-bg))] shadow-[inset_3px_3px_7px_hsl(var(--neu-shadow)),inset_-3px_-3px_7px_hsl(var(--neu-light))] p-4 sm:p-6 rounded-2xl text-xl sm:text-2xl text-center font-mono focus:ring-2 focus:ring-primary/40 outline-none transition-all"
+                                            placeholder="From"
+                                            autoComplete="off"
+                                            spellCheck={false}
+                                        />
+                                        <span className="text-sm font-black text-muted-foreground uppercase tracking-widest shrink-0">to</span>
+                                        <input
+                                            type="text"
+                                            inputMode="decimal"
+                                            disabled={!!result || isSubmitting}
+                                            value={rangeTo}
+                                            onChange={(e) => setRangeTo(e.target.value)}
+                                            onKeyDown={(e) => {
+                                                const allowed = /[0-9.\-]|Backspace|Delete|Arrow|Tab|Enter/;
+                                                if (!allowed.test(e.key)) e.preventDefault();
+                                            }}
+                                            className="w-full bg-[hsl(var(--neu-bg))] shadow-[inset_3px_3px_7px_hsl(var(--neu-shadow)),inset_-3px_-3px_7px_hsl(var(--neu-light))] p-4 sm:p-6 rounded-2xl text-xl sm:text-2xl text-center font-mono focus:ring-2 focus:ring-primary/40 outline-none transition-all"
+                                            placeholder="To"
+                                            autoComplete="off"
+                                            spellCheck={false}
+                                        />
+                                    </div>
+                                    <p className="text-[11px] text-muted-foreground text-center">
+                                        Enter a from/to range (integer or decimal). Correct if the actual answer falls inside it.
+                                    </p>
+                                    {result && !result.isCorrect && result.correctAnswerText && (
+                                        <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20">
+                                            <p className="text-xs font-bold text-rose-400 uppercase tracking-widest mb-1">Correct Answer</p>
+                                            <p className="text-sm font-mono font-bold text-slate-900 dark:text-slate-100">{result.correctAnswerText}</p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
+
+                        {/* OGCode Scoring V2: attempts left + wrong-retry banner + pre-submission reveals */}
+                        {isV2 && !result && (
+                            <div className="space-y-3">
+                                {v2WrongFlash && (v2AttemptsRemaining ?? 0) > 0 && (
+                                    <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center gap-2 animate-in fade-in slide-in-from-top-2 duration-300">
+                                        <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                                        <p className="text-sm font-bold text-rose-400">
+                                            Wrong — try again. {v2AttemptsRemaining} {v2AttemptsRemaining === 1 ? 'attempt' : 'attempts'} left.
+                                        </p>
+                                    </div>
+                                )}
+                                <div className="flex flex-wrap items-center gap-2">
+                                    {v2AttemptsRemaining !== null && (
+                                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 mr-auto">
+                                            Attempt {Math.min(v2AttemptsUsed + 1, (question.attemptCap ?? 1))} of {question.attemptCap ?? 1}
+                                        </span>
+                                    )}
+                                    {question.hint && !v2HintTaken && (
+                                        v2ArmedReveal === 'hint' ? (
+                                            <button
+                                                onClick={() => doReveal('hint')}
+                                                disabled={v2Revealing}
+                                                className="py-2 px-3 bg-amber-500/20 border border-amber-500/40 rounded-xl text-amber-500 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all"
+                                            >
+                                                {v2Revealing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <HelpCircle className="w-3.5 h-3.5" />}
+                                                Halves this question&apos;s score — confirm?
+                                            </button>
+                                        ) : (
+                                            <button
+                                                onClick={() => setV2ArmedReveal('hint')}
+                                                className="py-2 px-3 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 rounded-xl text-amber-500 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all"
+                                            >
+                                                <HelpCircle className="w-3.5 h-3.5" /> Hint
+                                            </button>
+                                        )
+                                    )}
+                                    {!v2AnswerTaken && (
+                                        v2ArmedReveal === 'answer' ? (
+                                            <button
+                                                onClick={() => doReveal('answer')}
+                                                disabled={v2Revealing}
+                                                className="py-2 px-3 bg-rose-500/20 border border-rose-500/40 rounded-xl text-rose-400 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all"
+                                            >
+                                                {v2Revealing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trophy className="w-3.5 h-3.5" />}
+                                                {question.answerRevealed ? 'Show answer again' : 'Sets this question’s score to 0 — confirm?'}
+                                            </button>
+                                        ) : (
+                                            <button
+                                                onClick={() => setV2ArmedReveal('answer')}
+                                                className="py-2 px-3 bg-white/[0.03] hover:bg-white/[0.08] border border-white/10 rounded-xl text-slate-400 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all"
+                                            >
+                                                <Trophy className="w-3.5 h-3.5" /> {question.answerRevealed ? 'Answer (revealed)' : 'Show Answer'}
+                                            </button>
+                                        )
+                                    )}
+                                </div>
+                                {v2HintTaken && question.hint && (
+                                    <div className="p-4 rounded-xl bg-amber-500/5 border border-amber-500/20 animate-in fade-in zoom-in-95 duration-300">
+                                        <p className="text-xs font-bold text-amber-500 uppercase tracking-widest mb-2 flex items-center gap-2">
+                                            <HelpCircle className="w-3.5 h-3.5" /> Hint <span className="normal-case font-semibold text-amber-500/70">(score halved)</span>
+                                        </p>
+                                        <div className="text-sm text-slate-300 leading-relaxed whitespace-pre-line font-sans italic">
+                                            {renderQuestionText(question.hint, 'v2-hint-text')}
+                                        </div>
+                                    </div>
+                                )}
+                                {v2AnswerTaken && (
+                                    <div className="p-4 rounded-xl bg-primary/5 border border-primary/20 animate-in fade-in zoom-in-95 duration-300 space-y-3">
+                                        <p className="text-xs font-bold text-primary uppercase tracking-widest flex items-center gap-2">
+                                            <Trophy className="w-3.5 h-3.5" /> Answer <span className="normal-case font-semibold text-primary/70">(score set to 0)</span>
+                                        </p>
+                                        {v2AnswerTaken.correctAnswerText && (
+                                            <div className="text-sm font-mono font-bold text-slate-900 dark:text-slate-100">
+                                                <FormattedMessage content={v2AnswerTaken.correctAnswerText} />
+                                            </div>
+                                        )}
+                                        {v2AnswerTaken.explanation && renderFormattedExplanation(v2AnswerTaken.explanation)}
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
                         {/* 2. SUBMIT BUTTON (Hidden after result) */}
                         {!result && (
@@ -1226,9 +1774,10 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                     qType === 'mcq' ? selectedOption === null :
                                         qType === 'msq' ? selectedOptions.length === 0 :
                                             qType === 'matrix_match' ? matrixPairs.length === 0 :
-                                                !answerInput
+                                                qType === 'range' ? (!rangeFrom || !rangeTo) :
+                                                    !answerInput
                                 )}
-                                className="w-full py-4 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded-xl font-bold text-white flex items-center justify-center gap-2 shadow-lg shadow-primary/20 transition-all active:scale-[0.98] backdrop-blur-md"
+                                className="w-full py-4 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:hover:translate-y-0 rounded-xl font-bold text-white flex items-center justify-center gap-2 shadow-lg shadow-primary/25 transition-all hover:-translate-y-0.5 active:scale-[0.98]"
                             >
                                 {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Play className="w-5 h-5" />}
                                 Submit Answer
@@ -1237,8 +1786,8 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
 
                         {/* 3. RESULT SECTION (Appears immediately below after submit) */}
                         {result && (
-                            <div className={`p-5 rounded-2xl border-2 animate-in fade-in slide-in-from-top-4 duration-300
-                                ${result.isCorrect ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-rose-500/5 border-rose-500/20'}
+                            <div className={`neu-raised p-5 rounded-2xl border-2 animate-in fade-in slide-in-from-top-4 duration-300
+                                ${result.isCorrect ? 'border-emerald-500/30' : 'border-rose-500/30'}
                             `}>
                                 <div className="flex items-center gap-3 mb-4">
                                     <div className={`p-2 rounded-full ${result.isCorrect ? 'bg-emerald-500/20' : 'bg-rose-500/20'}`}>
@@ -1253,20 +1802,20 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                 </div>
 
                                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3 mb-4">
-                                    <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 min-h-[3.5rem]">
+                                    <div className="neu-inset rounded-xl px-3 py-2 min-h-[3.5rem]">
                                         <p className="text-[9px] sm:text-[10px] uppercase tracking-widest text-slate-500">Result Score</p>
                                         <p className="text-base sm:text-lg font-black text-slate-900 dark:text-slate-100">
                                             {result.resultScore ?? 0}
                                             <span className="ml-1 text-[10px] sm:text-xs font-medium text-slate-500 dark:text-slate-500">/ {result.maxPoints ?? result.basePoints ?? 0}</span>
                                         </p>
                                     </div>
-                                    <div ref={pointsEarnedRef} className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 min-h-[3.5rem]">
+                                    <div ref={pointsEarnedRef} className="neu-inset rounded-xl px-3 py-2 min-h-[3.5rem]">
                                         <p className="text-[9px] sm:text-[10px] uppercase tracking-widest text-slate-500">Points Earned</p>
-                                        <p className={`text-base sm:text-lg font-black ${result.pointsAwarded ? 'text-amber-400' : 'text-slate-400'}`}>
-                                            +{result.pointsAwarded ?? 0}
+                                        <p className={`text-base sm:text-lg font-black ${(result.pointsAwarded ?? 0) < 0 ? 'text-rose-400' : result.pointsAwarded ? 'text-amber-400' : 'text-slate-400'}`}>
+                                            {(result.pointsAwarded ?? 0) >= 0 ? '+' : ''}{result.pointsAwarded ?? 0}
                                         </p>
                                     </div>
-                                    <div className="col-span-2 sm:col-span-1 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 min-h-[3.5rem]">
+                                    <div className="col-span-2 sm:col-span-1 neu-inset rounded-xl px-3 py-2 min-h-[3.5rem]">
                                         <p className="text-[9px] sm:text-[10px] uppercase tracking-widest text-slate-500">Speed Rating</p>
                                         <p className="text-base sm:text-lg font-black text-slate-900 dark:text-slate-100 uppercase tracking-tighter">
                                             {result.speedBand ? SPEED_BAND_LABELS[result.speedBand] : 'Recorded'}
@@ -1279,9 +1828,53 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                     </div>
                                 </div>
 
+                                {/* Scoring V2 breakdown — the engine's own reasons, human-readable */}
+                                {result.scoreReasons && result.scoreReasons.length > 0 && (
+                                    <div className="mb-4 flex flex-wrap items-center gap-x-1.5 gap-y-1 neu-inset rounded-xl px-3 py-2 text-[11px] sm:text-xs font-bold">
+                                        <span className="mr-1 text-[9px] sm:text-[10px] uppercase tracking-widest text-slate-500">How</span>
+                                        {result.scoreReasons.map((reason) => (
+                                            <span key={reason} className="rounded-md bg-white/[0.05] px-1.5 py-0.5 font-mono text-slate-600 dark:text-slate-300">
+                                                {reason.replace(/_/g, ' ')}
+                                            </span>
+                                        ))}
+                                        <span className="text-slate-400">=</span>
+                                        <span className={(result.resultScore ?? 0) < 0 ? 'text-rose-400' : 'text-emerald-500'}>{result.resultScore ?? 0} pts</span>
+                                {typeof result.attemptsUsed === 'number' && result.attemptsUsed > 1 && (
+                                            <span className="ml-auto font-semibold normal-case text-slate-500">{result.attemptsUsed} attempts</span>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* §9 global-stats comparison messages */}
+                                {result.statsMessage && (() => {
+                                    const s = result.statsMessage;
+                                    const lines: { key: string; icon: string; text: string }[] = [];
+                                    if (s.isFirstEver) {
+                                        lines.push({ key: 'first', icon: '🌱', text: "You're the first to attempt this!" });
+                                    } else {
+                                        if (result.isCorrect && typeof s.fasterThanPercent === 'number') {
+                                            lines.push({ key: 'speed', icon: '⚡', text: `You solved this faster than ${s.fasterThanPercent}% of everyone` });
+                                        }
+                                        if (result.isCorrect && (result.attemptsUsed ?? 1) === 1 && typeof s.neededRetryPercent === 'number' && s.neededRetryPercent > 0) {
+                                            lines.push({ key: 'firsttry', icon: '🎯', text: `Correct on your first attempt — ${s.neededRetryPercent}% of students needed a retry` });
+                                        }
+                                        lines.push({ key: 'accept', icon: '📊', text: `Global acceptance rate: ${s.acceptanceRate}%` });
+                                    }
+                                    return (
+                                        <div className="mb-4 space-y-1.5">
+                                            {lines.map((l) => (
+                                                <div key={l.key} className="flex items-center gap-2 neu-inset rounded-xl px-3 py-2 text-[11px] sm:text-xs font-bold text-slate-700 dark:text-slate-200">
+                                                    <span className="shrink-0">{l.icon}</span>
+                                                    <span>{l.text}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    );
+                                })()}
+
                                 {/* Scoring breakdown — mirrors the "Base × Speed + 5" modal */}
                                 {result.isCorrect && typeof result.basePoints === 'number' && typeof result.speedMultiplier === 'number' && (
-                                    <div className="mb-4 flex flex-wrap items-center gap-x-1.5 gap-y-1 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px] sm:text-xs font-bold">
+                                    <div className="mb-4 flex flex-wrap items-center gap-x-1.5 gap-y-1 neu-inset rounded-xl px-3 py-2 text-[11px] sm:text-xs font-bold">
                                         <span className="mr-1 text-[9px] sm:text-[10px] uppercase tracking-widest text-slate-500">How</span>
                                         <span className="text-slate-900 dark:text-slate-100">{result.basePoints}</span>
                                         <span className="font-medium text-slate-400">base</span>
@@ -1345,16 +1938,16 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                                 <p className="text-xs font-bold text-primary uppercase tracking-widest mb-2 flex items-center gap-2">
                                                     <Trophy className="w-3.5 h-3.5" /> Full Solution
                                                 </p>
-                                                {result.correctAnswerText && (
-                                                    <div className="rounded-xl border border-primary/15 bg-primary/5 px-4 py-3 backdrop-blur-sm">
-                                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Stored Answer</p>
-                                                        <div className="text-sm leading-relaxed">
-                                                            <FormattedMessage content={result.correctAnswerText} />
+                                                {correctAnswerDisplay && (
+                                                    <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3 backdrop-blur-sm">
+                                                        <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400 mb-1">Correct Answer</p>
+                                                        <div className="text-sm leading-relaxed font-semibold text-slate-900 dark:text-slate-100">
+                                                            <FormattedMessage content={correctAnswerDisplay} />
                                                         </div>
                                                     </div>
                                                 )}
                                                 {result.explanation && (
-                                                    <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
+                                                    <div className="neu-inset rounded-xl px-4 py-3">
                                                         <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Reference Explanation</p>
                                                         {renderFormattedExplanation(result.explanation)}
                                                     </div>

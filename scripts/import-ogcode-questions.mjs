@@ -603,12 +603,19 @@ function buildSeedRowsForNewFormat(rawQuestions, subject, subjectCode) {
       .map((l) => LETTER_IDX[String(l).trim().toUpperCase()])
       .filter((i) => i !== undefined);
 
+    // For options-less rows, correct_options holds the raw answer value(s)
+    // (e.g. ["2500"]), not option letters. Preserve the value into answer_text
+    // or the row lands as an ungradeable "numerical" with no answer.
+    const rawAnswerValues = correctLetters.map((v) => String(v).trim()).filter(Boolean);
+
     let questionType;
     if (options?.length) {
       questionType = correctIndices.length > 1 ? "msq" : "mcq";
     } else {
-      questionType = "numerical";
+      questionType = rawAnswerValues.length ? "numerical" : "subjective";
     }
+    const numericalAnswerText =
+      questionType === "numerical" ? normalizeMathForStorage(rawAnswerValues[0]) || null : null;
 
     const correctOption =
       questionType === "mcq" && correctIndices.length === 1 ? correctIndices[0] : null;
@@ -642,7 +649,7 @@ function buildSeedRowsForNewFormat(rawQuestions, subject, subjectCode) {
       options,
       correct_option: correctOption,
       correct_options: correctOptionsArr,
-      answer_text: null,
+      answer_text: numericalAnswerText,
       answer_spec: null,
       tolerance: null,
       matrix_data: null,

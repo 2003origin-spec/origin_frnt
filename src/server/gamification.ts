@@ -273,6 +273,49 @@ export function awardPoints(
   return log;
 }
 
+/**
+ * OGCode Scoring V2 point application — unlike awardPoints, deltas can be
+ * NEGATIVE (JEE Advanced wrong-pick penalty on MSQ/Matrix Match). The running
+ * total floors at 0 so a new student never shows a negative lifetime score;
+ * the point log records the requested delta (capped to what was actually
+ * deducted) for auditability.
+ */
+export function applyOgcodeScoreDelta(
+  store: AppStore,
+  userId: string,
+  points: number,
+  description: string,
+  referenceId: string | null = null,
+): StoredPointLog | null {
+  if (points > 0) {
+    return awardPoints(store, userId, points, "practice", description, referenceId);
+  }
+  if (points === 0) {
+    return null;
+  }
+
+  const score = getOrCreateUserScore(store, userId);
+  const applied = Math.max(points, -score.totalPoints);
+  if (applied === 0) {
+    return null;
+  }
+  score.totalPoints += applied;
+  score.currentTier = getTierForPoints(score.totalPoints);
+  score.lastUpdated = new Date().toISOString();
+
+  const log: StoredPointLog = {
+    id: createId("point_log"),
+    userId,
+    points: applied,
+    activityType: "practice",
+    description,
+    timestamp: new Date().toISOString(),
+    referenceId,
+  };
+  store.pointLogs.unshift(log);
+  return log;
+}
+
 export function recordTime(
   store: AppStore,
   userId: string,

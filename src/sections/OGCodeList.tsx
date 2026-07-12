@@ -9,9 +9,10 @@ import {
     CheckCircle2, Search,
     Trophy, Zap, Flame, Brain, Circle,
     TrendingUp, Atom, Beaker, Calculator, Leaf,
-    ChevronRight, Target, Shuffle, ArrowRight, X, Info, Building2, Check, ChevronDown
+    ChevronRight, Target, Shuffle, ArrowRight, X, Info, Building2, Check, ChevronDown, Heart, Swords
 } from 'lucide-react';
 import { apiCall } from '@/lib/api';
+import { ogcodePresenceCountsAction, listOgcodeChallengeInboxAction, toggleOgcodeQuestionLikeAction, type HydratedChallenge } from '@/server/actions/ogcode-actions';
 import type { PracticeQuestion, PracticeQuestionPage, SubjectRank, User } from '@/types';
 import { usePublishOriginAiPageContext } from '@/features/origin-ai/page-context-store';
 import { saveOgcodeNavQueue } from '@/features/ogcode/nav-queue';
@@ -37,6 +38,8 @@ interface OGCodeListProps {
     initialSubjectRanks: SubjectRank[] | null;
     initialUserStats: UserStats | null;
     initialChapters: string[] | null;
+    /** OGCode Scoring V2 flag — drives the score-info modal's content. */
+    scoringV2Enabled?: boolean;
 }
 
 const SUBJECTS = [
@@ -220,6 +223,7 @@ function buildOgcodeUrl(filters: {
     concepts: string[];
     type: string;
     pyqOnly: boolean;
+    likedOnly: boolean;
 }) {
     const params = new URLSearchParams();
 
@@ -246,6 +250,7 @@ function buildOgcodeUrl(filters: {
     for (const concept of filters.concepts) params.append('concepts', concept);
     if (filters.type !== 'All') params.set('type', filters.type);
     if (filters.pyqOnly) params.set('pyq_only', 'true');
+    if (filters.likedOnly) params.set('liked_only', 'true');
 
     const query = params.toString();
     return query ? `/ogcode?${query}` : '/ogcode';
@@ -258,6 +263,7 @@ export default function OGCodeList({
     initialSubjectRanks,
     initialUserStats,
     initialChapters,
+    scoringV2Enabled = false,
 }: OGCodeListProps) {
     const searchParams = useSearchParams();
 
@@ -275,6 +281,7 @@ export default function OGCodeList({
     const urlConcepts = searchParams.getAll('concepts').filter(Boolean);
     const urlType = searchParams.get('type') || 'All';
     const urlPyqOnly = searchParams.get('pyq_only') === 'true';
+    const urlLikedOnly = searchParams.get('liked_only') === 'true';
 
     // The server prefetch (app/ogcode/page.tsx) only honors subject/difficulty/
     // status/chapters/search. If the URL carries any filter beyond that set
@@ -290,7 +297,8 @@ export default function OGCodeList({
         urlHierChapters.length === 0 &&
         urlConcepts.length === 0 &&
         urlType === 'All' &&
-        !urlPyqOnly;
+        !urlPyqOnly &&
+        !urlLikedOnly;
     const prefetchedQuestionPage = initialQuestionPage && prefetchHonorsUrlFilters
         ? normalizeQuestionPage(initialQuestionPage)
         : null;
@@ -347,6 +355,18 @@ export default function OGCodeList({
     // Question type filter
     const [activeQuestionType, setActiveQuestionType] = useState(urlType);
     const [pyqOnly, setPyqOnly] = useState(urlPyqOnly);
+    const [likedOnly, setLikedOnly] = useState(urlLikedOnly);
+
+    // Cascade model (per product feedback): no forced order — every filter is
+    // usable independently — but child OPTIONS strictly narrow to the parent
+    // selections. Select Biology + Physics and the Chapter dropdown lists ONLY
+    // Biology + Physics chapters (not a merged/union view). Options come straight
+    // from the narrowed facet result; the cascade effects below prune any child
+    // SELECTION that falls outside the narrowed set so an orphaned pick can't
+    // silently AND the result set to zero.
+    const subjectOptions = facetSubjects;
+    const chapterOptions = useMemo(() => [...facetChapters].sort(), [facetChapters]);
+    const conceptOptions = useMemo(() => [...facetConcepts].sort(), [facetConcepts]);
 
     const handleQuestionClick = useCallback((questionId: string) => {
         if (typeof window !== 'undefined') {
@@ -392,6 +412,7 @@ export default function OGCodeList({
             concepts: string[];
             type: string;
             pyqOnly: boolean;
+            likedOnly: boolean;
         }>,
         mode: 'push' | 'replace' = 'push',
     ) => {
@@ -412,6 +433,7 @@ export default function OGCodeList({
             concepts: updates.concepts !== undefined ? updates.concepts : hierConcepts,
             type: updates.type !== undefined ? updates.type : activeQuestionType,
             pyqOnly: updates.pyqOnly !== undefined ? updates.pyqOnly : pyqOnly,
+            likedOnly: updates.likedOnly !== undefined ? updates.likedOnly : likedOnly,
         });
         
         if (updates.search !== undefined) {
@@ -426,7 +448,7 @@ export default function OGCodeList({
         window.history[mode === 'replace' ? 'replaceState' : 'pushState'](null, '', url);
     }, [
         activeDifficulty, activeStatus, activeSubject, searchQuery, selectedChapters,
-        hierClasses, hierOccurrences, hierSubjects, hierChapters, hierConcepts, activeQuestionType, pyqOnly
+        hierClasses, hierOccurrences, hierSubjects, hierChapters, hierConcepts, activeQuestionType, pyqOnly, likedOnly
     ]);
 
     useEffect(() => {
@@ -492,13 +514,11 @@ export default function OGCodeList({
         urlType,
     ]);
 
-    // Handle filter changes
-    const handleSubjectChange = (subject: string) => {
-        setActiveSubject(subject);
-        setSelectedChapters([]);
-        setAvailableChapters([]);
-        syncUrlParams({ subject, chapters: [] }, 'push');
-    };
+    // Handle filter changes.
+    // NOTE: the singular `subject` filter (activeSubject) has no live UI control
+    // anymore — the Subject filter is the multi-select cascade (hierSubjects).
+    // activeSubject only survives for backward-compatible ?subject= deep links;
+    // buildQuestionQueryString below lets the cascade win when both are present.
 
     const handleDifficultyChange = (difficulty: string) => {
         setActiveDifficulty(difficulty);
@@ -532,8 +552,9 @@ export default function OGCodeList({
             concepts: hierConcepts,
             type: activeQuestionType,
             pyqOnly,
+            likedOnly,
         }, 'replace');
-    }, [hierClasses, hierOccurrences, hierSubjects, hierChapters, hierConcepts, activeQuestionType, pyqOnly, syncUrlParams]);
+    }, [hierClasses, hierOccurrences, hierSubjects, hierChapters, hierConcepts, activeQuestionType, pyqOnly, likedOnly, syncUrlParams]);
 
     const handleHierarchySubmit = () => {
         syncUrlParams({
@@ -544,6 +565,7 @@ export default function OGCodeList({
             concepts: hierConcepts,
             type: activeQuestionType,
             pyqOnly,
+            likedOnly,
         }, 'push');
         void fetchQuestionPage({ offset: 0, append: false });
     };
@@ -576,43 +598,51 @@ export default function OGCodeList({
         void fetchFacets('occurrence', {}).then(setFacetOccurrences);
     }, [fetchFacets]);
 
-    const subjectsLoaded = useRef(false);
-    const chaptersLoaded = useRef(false);
-    const conceptsLoaded = useRef(false);
+    // Cascade effects: each fetches the narrowed OPTION list for its level and
+    // prunes its own SELECTION to that list (dropping orphans so a stale pick
+    // can't AND the results to zero). A per-level request-sequence guard makes
+    // only the latest fetch apply — this is what stops the old race where a
+    // slow, stale fetch resolved late and wiped a valid, freshly-made selection.
+    const subjectReq = useRef(0);
+    const chapterReq = useRef(0);
+    const conceptReq = useRef(0);
 
-    // Subjects — always available (narrowed by class/exam when selected, else all).
+    // Subjects — options narrowed by class/exam when selected, else all.
     useEffect(() => {
+        const req = ++subjectReq.current;
         void fetchFacets('subject', { classes: hierClasses, occurrences: hierOccurrences }).then(vals => {
+            if (req !== subjectReq.current) return;
             setFacetSubjects(vals);
-            if (subjectsLoaded.current) {
-                setHierSubjects(prev => prev.filter(s => vals.includes(s)));
-            } else {
-                subjectsLoaded.current = true;
-            }
+            setHierSubjects(prev => {
+                const next = prev.filter(s => vals.includes(s));
+                return next.length === prev.length ? prev : next;
+            });
         });
     }, [hierClasses, hierOccurrences, fetchFacets]);
 
-    // Chapters — always available (narrowed by class/exam/subject when selected, else all).
+    // Chapters — options narrowed by class/exam/subject when selected, else all.
     useEffect(() => {
+        const req = ++chapterReq.current;
         void fetchFacets('chapter', { classes: hierClasses, occurrences: hierOccurrences, subjects: hierSubjects }).then(vals => {
+            if (req !== chapterReq.current) return;
             setFacetChapters(vals);
-            if (chaptersLoaded.current) {
-                setHierChapters(prev => prev.filter(c => vals.includes(c)));
-            } else {
-                chaptersLoaded.current = true;
-            }
+            setHierChapters(prev => {
+                const next = prev.filter(c => vals.includes(c));
+                return next.length === prev.length ? prev : next;
+            });
         });
     }, [hierSubjects, hierClasses, hierOccurrences, fetchFacets]);
 
-    // Concepts — always available (narrowed by any selected level above, else all).
+    // Concepts — options narrowed by any selected level above, else all.
     useEffect(() => {
+        const req = ++conceptReq.current;
         void fetchFacets('concept', { classes: hierClasses, occurrences: hierOccurrences, subjects: hierSubjects, chapters: hierChapters }).then(vals => {
+            if (req !== conceptReq.current) return;
             setFacetConcepts(vals);
-            if (conceptsLoaded.current) {
-                setHierConcepts(prev => prev.filter(c => vals.includes(c)));
-            } else {
-                conceptsLoaded.current = true;
-            }
+            setHierConcepts(prev => {
+                const next = prev.filter(c => vals.includes(c));
+                return next.length === prev.length ? prev : next;
+            });
         });
     }, [hierChapters, hierSubjects, hierClasses, hierOccurrences, fetchFacets]);
 
@@ -644,7 +674,11 @@ export default function OGCodeList({
         params.set('limit', String(QUESTION_PAGE_SIZE));
         params.set('offset', String(offset));
 
-        if (activeSubject !== 'Subject') params.set('subject', activeSubject);
+        // The cascade Subject multi-select (hierSubjects, sent as `subjects`) is
+        // the real control. Only fall back to the legacy singular `subject` when
+        // no cascade subject is chosen — otherwise the two AND together and can
+        // collapse the result set to zero (Bug 2).
+        if (activeSubject !== 'Subject' && hierSubjects.length === 0) params.set('subject', activeSubject);
         if (activeDifficulty !== 'All') params.set('difficulty', activeDifficulty.toLowerCase());
         if (activeStatus !== 'All') {
             const mappedStatus = mapStatusFilter(activeStatus);
@@ -668,12 +702,14 @@ export default function OGCodeList({
         if (mappedType) params.set('type', mappedType);
 
         if (pyqOnly) params.set('pyq_only', 'true');
+        if (likedOnly) params.set('liked_only', 'true');
+        if (showContributedOnly) params.set('contributed_only', 'true');
 
         const normalizedSearch = searchQuery.trim();
         if (normalizedSearch) params.set('search', normalizedSearch);
 
         return params.toString();
-    }, [activeDifficulty, activeStatus, activeSubject, searchQuery, selectedChapters, hierClasses, hierOccurrences, hierSubjects, hierChapters, hierConcepts, activeQuestionType, pyqOnly]);
+    }, [activeDifficulty, activeStatus, activeSubject, searchQuery, selectedChapters, hierClasses, hierOccurrences, hierSubjects, hierChapters, hierConcepts, activeQuestionType, pyqOnly, likedOnly, showContributedOnly]);
 
     const fetchQuestionPage = useCallback(async ({ offset = 0, append = false }: { offset?: number; append?: boolean } = {}) => {
         setQuestionsLoading(true);
@@ -694,6 +730,10 @@ export default function OGCodeList({
     }, [buildQuestionQueryString]);
 
     useEffect(() => {
+        // Filters auto-apply. A short debounce batches rapid changes (e.g.
+        // ticking several chapters) into one fetch, but stays snappy — the old
+        // 700ms made a filter change feel like nothing happened for ~1s. Search
+        // gets a hair more so it doesn't fire on every keystroke.
         const timeout = window.setTimeout(() => {
             if (skipInitialQuestionFetch.current) {
                 skipInitialQuestionFetch.current = false;
@@ -704,7 +744,7 @@ export default function OGCodeList({
                 setQuestions([]);
             }
             void fetchQuestionPage();
-        }, searchQuery.trim() ? 300 : 700);
+        }, searchQuery.trim() ? 300 : 250);
 
         return () => window.clearTimeout(timeout);
     }, [fetchQuestionPage, searchQuery]);
@@ -774,41 +814,86 @@ export default function OGCodeList({
         void fetchQuestionPage({ offset: nextOffset, append: true });
     };
 
-    // Memoised so the filtered array keeps a stable identity between unrelated
-    // re-renders — otherwise the page-context memo + nav-queue effect below would
-    // re-run on every render (each keystroke), reflowing the whole card grid.
-    const filteredQuestions = useMemo(() => questions.filter(q => {
-        const query = searchQuery.toLowerCase().trim();
-        const matchesSearch = !query ||
-            (q.text || '').toLowerCase().includes(query) ||
-            (q.title || '').toLowerCase().includes(query) ||
-            (q.chapter || '').toLowerCase().includes(query) ||
-            (q.concept || '').toLowerCase().includes(query) ||
-            (q.subject || '').toLowerCase().includes(query) ||
-            normalizeTags(q.tags).some(t => t.toLowerCase().includes(query));
+    // The server is the single source of truth for filtering — every filter
+    // (subject, class, exam, chapter, concept, type, difficulty, status, pyq,
+    // liked, contributed, search) is sent in buildQuestionQueryString and the
+    // returned page + total + Load More all reflect it. We deliberately do NOT
+    // re-filter client-side: doing so silently dropped rows the server had
+    // already counted, desyncing the "N questions" total, the card grid, and
+    // Load More (a client-only filter would even make Load More appear to load
+    // nothing). Kept as a passthrough memo so the downstream page-context memo +
+    // nav-queue effect keep a stable array identity between unrelated re-renders.
+    const filteredQuestions = useMemo(() => questions, [questions]);
 
-        const matchesSubject =
-            activeSubject === 'Subject' ||
-            normalizeSubject(q.subject) === normalizeSubject(activeSubject);
+    // §13 OG Friend Challenge Box — challenges sent to me.
+    const [challengeInbox, setChallengeInbox] = useState<HydratedChallenge[]>([]);
+    const [challengePending, setChallengePending] = useState(0);
+    const [challengeBoxOpen, setChallengeBoxOpen] = useState(false);
+    useEffect(() => {
+        let active = true;
+        (async () => {
+            try {
+                const res = await listOgcodeChallengeInboxAction();
+                if (active) { setChallengeInbox(res.challenges); setChallengePending(res.pending); }
+            } catch {
+                // Best-effort; the box just stays empty.
+            }
+        })();
+        return () => { active = false; };
+    }, []);
 
-        const matchesChapter =
-            selectedChapters.length === 0 ||
-            selectedChapters.includes(q.chapter || 'Foundations');
+    // §12 Live Practicing — batch-poll presence counts for the visible cards
+    // (~12s). Degrades silently to no badges when Redis/Upstash is absent.
+    const [liveCounts, setLiveCounts] = useState<Record<string, number>>({});
+    const visibleIdsKey = filteredQuestions.map((q) => q.id).join(',');
+    useEffect(() => {
+        const ids = visibleIdsKey ? visibleIdsKey.split(',') : [];
+        if (!ids.length) {
+            setLiveCounts({});
+            return;
+        }
+        let active = true;
+        const poll = async () => {
+            try {
+                const counts = await ogcodePresenceCountsAction(ids.slice(0, 100));
+                if (active) setLiveCounts(counts);
+            } catch {
+                // Ambient; ignore.
+            }
+        };
+        void poll();
+        const interval = setInterval(poll, 12_000);
+        return () => { active = false; clearInterval(interval); };
+    }, [visibleIdsKey]);
 
-        const qDifficulty = q.difficulty?.toLowerCase();
-        const matchesDifficulty = activeDifficulty === 'All' || qDifficulty === activeDifficulty.toLowerCase();
+    // §10 Like/unlike from a card — optimistic live count update on the card,
+    // reconciled with the server's authoritative count, reverted on failure.
+    const [likePendingIds, setLikePendingIds] = useState<Set<string>>(new Set());
+    const toggleCardLike = useCallback(async (questionId: string) => {
+        if (likePendingIds.has(questionId)) return;
+        setLikePendingIds(prev => new Set(prev).add(questionId));
 
-        const isSolved = q.status === 'solved' || q.isSolved;
-        const matchesStatus = activeStatus === 'All' || (activeStatus === 'Solved' ? isSolved : !isSolved);
+        let nextLiked = false;
+        setQuestions(prev => prev.map(q => {
+            if (q.id !== questionId) return q;
+            nextLiked = !q.likedByMe;
+            return { ...q, likedByMe: nextLiked, likeCount: Math.max(0, (q.likeCount ?? 0) + (nextLiked ? 1 : -1)) };
+        }));
 
-        const matchesContributed = !showContributedOnly || Boolean(q.isContributed);
-
-        const typeFilterMap: Record<string, string> = { 'MCQ': 'mcq', 'MSQ': 'msq', 'Integer': 'numerical', 'Range': 'range', 'Matrix Match': 'matrix_match' };
-        const mappedActiveType = typeFilterMap[activeQuestionType];
-        const matchesType = !mappedActiveType || ((q as { questionType?: string; type?: string }).questionType ?? (q as { questionType?: string; type?: string }).type ?? '').toLowerCase() === mappedActiveType;
-
-        return matchesSearch && matchesSubject && matchesChapter && matchesDifficulty && matchesStatus && matchesContributed && matchesType;
-    }), [questions, searchQuery, activeSubject, selectedChapters, activeDifficulty, activeStatus, showContributedOnly, activeQuestionType]);
+        try {
+            const res = await toggleOgcodeQuestionLikeAction(questionId);
+            setQuestions(prev => prev.map(q => q.id === questionId ? { ...q, likedByMe: res.likedByMe, likeCount: res.count } : q));
+        } catch {
+            // Revert the optimistic flip.
+            setQuestions(prev => prev.map(q => {
+                if (q.id !== questionId) return q;
+                return { ...q, likedByMe: !nextLiked, likeCount: Math.max(0, (q.likeCount ?? 0) + (nextLiked ? -1 : 1)) };
+            }));
+            toast.error('Could not update like.');
+        } finally {
+            setLikePendingIds(prev => { const n = new Set(prev); n.delete(questionId); return n; });
+        }
+    }, [likePendingIds]);
 
     const originAiPageContext = useMemo(() => ({
         pathname: '/ogcode',
@@ -1268,7 +1353,7 @@ export default function OGCodeList({
                                         data-filter-dropdown
                                     onClick={e => e.stopPropagation()}
                                     >
-                                        {facetSubjects.length === 0 ? (
+                                        {subjectOptions.length === 0 ? (
                                             <div className="text-[10px] text-muted-foreground italic p-2 text-center">
                                                 No subjects found
                                             </div>
@@ -1277,17 +1362,17 @@ export default function OGCodeList({
                                                 <button
                                                     type="button"
                                                     onClick={() => {
-                                                        const allSelected = hierSubjects.length === facetSubjects.length;
-                                                        setHierSubjects(allSelected ? [] : [...facetSubjects]);
+                                                        const allSelected = hierSubjects.length === subjectOptions.length;
+                                                        setHierSubjects(allSelected ? [] : [...subjectOptions]);
                                                     }}
                                                     className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[12px] font-black text-primary hover:bg-primary/5 transition-colors text-left border-b border-border/20 mb-1"
                                                 >
-                                                    <div className={cn('w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-all', hierSubjects.length === facetSubjects.length ? 'bg-primary border-primary' : 'border-muted-foreground/30')}>
-                                                        {hierSubjects.length === facetSubjects.length && <Check className="w-3 h-3 text-white" />}
+                                                    <div className={cn('w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-all', hierSubjects.length === subjectOptions.length ? 'bg-primary border-primary' : 'border-muted-foreground/30')}>
+                                                        {hierSubjects.length === subjectOptions.length && <Check className="w-3 h-3 text-white" />}
                                                     </div>
                                                     Select All
                                                 </button>
-                                                {facetSubjects.map(sub => {
+                                                {subjectOptions.map(sub => {
                                                     const capName = sub.charAt(0).toUpperCase() + sub.slice(1);
                                                     const icon = SUBJECT_ICONS[capName] ?? null;
                                                     const active = hierSubjects.includes(sub);
@@ -1355,7 +1440,7 @@ export default function OGCodeList({
                                         </div>
                                         <div className="overflow-y-auto p-2 flex-1 space-y-1 max-h-[380px]">
                                             {(() => {
-                                                const filtered = facetChapters.filter(ch => ch.toLowerCase().includes(chapterSearchQuery.toLowerCase()));
+                                                const filtered = chapterOptions.filter(ch => ch.toLowerCase().includes(chapterSearchQuery.toLowerCase()));
                                                 if (filtered.length === 0) {
                                                     return <div className="text-[10px] text-muted-foreground italic p-2 text-center">No chapters found</div>;
                                                 }
@@ -1451,7 +1536,7 @@ export default function OGCodeList({
                                         </div>
                                         <div className="overflow-y-auto p-2 flex-1 space-y-1 max-h-[380px]">
                                             {(() => {
-                                                const filtered = facetConcepts.filter(concept => concept.toLowerCase().includes(conceptSearchQuery.toLowerCase()));
+                                                const filtered = conceptOptions.filter(concept => concept.toLowerCase().includes(conceptSearchQuery.toLowerCase()));
                                                 if (filtered.length === 0) {
                                                     return <div className="text-[10px] text-muted-foreground italic p-2 text-center">No concepts found</div>;
                                                 }
@@ -1508,8 +1593,9 @@ export default function OGCodeList({
                             </div>
                         </div>
 
-                        {/* PYQs Only toggle + Apply Filters */}
+                        {/* PYQs Only + Liked toggles + Apply Filters */}
                         <div className="flex items-center justify-between pt-2 border-t border-border/20">
+                            <div className="flex items-center gap-4">
                             <label className="flex items-center gap-2 cursor-pointer select-none group">
                                 <button
                                     type="button"
@@ -1532,6 +1618,30 @@ export default function OGCodeList({
                                     PYQs Only
                                 </span>
                             </label>
+                            {/* §10 Liked filter axis */}
+                            <label className="flex items-center gap-2 cursor-pointer select-none group">
+                                <button
+                                    type="button"
+                                    role="checkbox"
+                                    aria-checked={likedOnly}
+                                    onClick={() => setLikedOnly(v => !v)}
+                                    className={cn(
+                                        'w-4 h-4 rounded border-2 flex items-center justify-center transition-colors shrink-0',
+                                        likedOnly
+                                            ? 'bg-rose-500 border-rose-500'
+                                            : 'border-muted-foreground/40 bg-transparent hover:border-rose-400'
+                                    )}
+                                >
+                                    {likedOnly && <Check className="w-2.5 h-2.5 text-white" />}
+                                </button>
+                                <span className={cn(
+                                    'text-[11px] font-black uppercase tracking-widest transition-colors',
+                                    likedOnly ? 'text-rose-500' : 'text-muted-foreground group-hover:text-primary'
+                                )}>
+                                    Liked
+                                </span>
+                            </label>
+                            </div>
                             {(hierClasses.length > 0 || hierSubjects.length > 0 || hierChapters.length > 0 || hierConcepts.length > 0) && (
                                 <motion.div initial={{ opacity: 0, x: 4 }} animate={{ opacity: 1, x: 0 }}>
                                     <button
@@ -1673,6 +1783,46 @@ export default function OGCodeList({
                     </div>
                 </div>
 
+                {/* ── §13 OG Friend Challenge Box ── */}
+                {challengeInbox.length > 0 && (
+                    <div className="mb-4 neu-raised rounded-2xl p-4">
+                        <button
+                            onClick={() => setChallengeBoxOpen(v => !v)}
+                            className="w-full flex items-center justify-between gap-2"
+                        >
+                            <span className="flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-foreground">
+                                <Swords className="w-4 h-4 text-primary" /> OG Friend Challenges
+                                {challengePending > 0 && (
+                                    <span className="px-1.5 py-0.5 rounded-full bg-primary text-white text-[9px]">{challengePending} new</span>
+                                )}
+                            </span>
+                            <ChevronDown className={cn('w-4 h-4 text-muted-foreground transition-transform', challengeBoxOpen && 'rotate-180')} />
+                        </button>
+                        {challengeBoxOpen && (
+                            <div className="mt-3 space-y-2">
+                                {challengeInbox.map((c) => (
+                                    <div
+                                        key={c.id}
+                                        onClick={() => handleQuestionClick(c.questionId)}
+                                        className="flex items-center gap-3 p-2.5 rounded-xl bg-white/[0.03] hover:bg-white/[0.06] cursor-pointer"
+                                    >
+                                        <div className={cn('w-2 h-2 rounded-full shrink-0', c.status === 'pending' ? 'bg-primary' : 'bg-emerald-500')} />
+                                        <div className="min-w-0 flex-1">
+                                            <p className="text-[12px] font-bold text-foreground truncate">
+                                                <span className="text-primary">{c.fromName}</span> challenged you
+                                            </p>
+                                            <p className="text-[10px] text-muted-foreground truncate">{c.questionText}</p>
+                                        </div>
+                                        <span className="text-[9px] font-black uppercase tracking-wider shrink-0 text-muted-foreground">
+                                            {c.status === 'pending' ? 'Attempt' : `Scored ${c.resultScore ?? 0}`}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
+
                 {/* ── Question Tile Grid ── */}
                 <div className="pb-4">
                     {showQuestionsSpinner ? (
@@ -1726,13 +1876,37 @@ export default function OGCodeList({
                                                         </span>
                                                     );
                                                 })()}
+                                                {/* §10 Like/unlike — interactive, right beside the difficulty/exam badges */}
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => { e.stopPropagation(); void toggleCardLike(q.id); }}
+                                                    disabled={likePendingIds.has(q.id)}
+                                                    aria-pressed={Boolean(q.likedByMe)}
+                                                    title={q.likedByMe ? 'Unlike' : 'Like this question'}
+                                                    className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black border transition-colors flex-shrink-0', q.likedByMe ? 'text-rose-600 dark:text-rose-400 bg-rose-500/10 border-rose-500/25' : 'text-muted-foreground bg-white/[0.03] border-white/10 hover:border-rose-500/30')}
+                                                >
+                                                    <Heart className={cn('w-3 h-3', q.likedByMe ? 'fill-current' : '')} />
+                                                    {q.likeCount ?? 0}
+                                                </button>
                                             </div>
-                                            {solved && (
-                                                <div className="flex items-center gap-1 flex-shrink-0">
-                                                    <Image src="/ori2d/ori-thubmsup.png" alt="Ori" width={24} height={24} className="object-contain drop-shadow" />
-                                                    <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                                                </div>
-                                            )}
+                                            <div className="flex items-center gap-2 flex-shrink-0">
+                                                {/* §12 Live Practicing count */}
+                                                {(liveCounts[q.id] ?? 0) > 0 && (
+                                                    <span className="inline-flex items-center gap-1 text-[9px] font-black text-emerald-600 dark:text-emerald-400" title={`${liveCounts[q.id]} practicing now`}>
+                                                        <span className="relative flex h-1.5 w-1.5">
+                                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                                                            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
+                                                        </span>
+                                                        {liveCounts[q.id]} Live
+                                                    </span>
+                                                )}
+                                                {solved && (
+                                                    <div className="flex items-center gap-1">
+                                                        <Image src="/ori2d/ori-thubmsup.png" alt="Ori" width={24} height={24} className="object-contain drop-shadow" />
+                                                        <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
 
                                         <div className="flex-1 text-[13px] font-bold text-foreground leading-snug line-clamp-3 group-hover:text-primary transition-colors duration-150">
@@ -1793,7 +1967,10 @@ export default function OGCodeList({
                             animate={{ opacity: 1, scale: 1, y: 0 }}
                             exit={{ opacity: 0, scale: 0.94, y: 18 }}
                             transition={{ type: 'spring', stiffness: 260, damping: 26 }}
-                            className="relative z-10 w-full max-w-md max-h-[85vh] overflow-y-auto custom-scrollbar neu-surface rounded-2xl border border-border/40 p-6"
+                            className={cn(
+                                'relative z-10 w-full max-h-[88vh] overflow-y-auto custom-scrollbar neu-surface rounded-2xl border border-border/40 p-6',
+                                scoringV2Enabled ? 'max-w-3xl' : 'max-w-md',
+                            )}
                         >
                             {/* Header */}
                             <div className="flex items-start justify-between gap-4 mb-5">
@@ -1802,8 +1979,12 @@ export default function OGCodeList({
                                         <Image src="/ori2d/ori-curious.png" alt="" width={40} height={40} draggable={false} className="object-contain select-none" />
                                     </div>
                                     <div>
-                                        <h2 className="text-lg font-black tracking-tight text-foreground leading-tight">How points are scored</h2>
-                                        <p className="text-xs text-muted-foreground">Two things decide your score: how hard, and how fast.</p>
+                                        <h2 className="text-lg font-black tracking-tight text-foreground leading-tight">How the OG Score works</h2>
+                                        <p className="text-xs text-muted-foreground">
+                                            {scoringV2Enabled
+                                                ? 'Base score per difficulty, scaled by speed and attempts — by question type.'
+                                                : 'Two things decide your score: how hard, and how fast.'}
+                                        </p>
                                     </div>
                                 </div>
                                 <button
@@ -1816,6 +1997,124 @@ export default function OGCodeList({
                                 </button>
                             </div>
 
+                            {/* ── OGCode Scoring V2 explainer (flag on) ── */}
+                            {scoringV2Enabled && (
+                                <div className="space-y-6">
+                                    {/* Score flow diagram — mirrors OGCODE_SCORING_ALGORITHM.md §6 */}
+                                    <div className="neu-inset rounded-xl p-4">
+                                        <p className="mb-3 text-[11px] font-black uppercase tracking-widest text-muted-foreground">Score flow</p>
+
+                                        {/* Start → Attempted? */}
+                                        <div className="flex flex-col items-center gap-1.5">
+                                            <div className="w-full rounded-lg neu-surface border border-border/40 px-3 py-2 text-[11px] font-bold text-foreground text-center">
+                                                Start · attempted before?
+                                            </div>
+                                            <div className="flex items-stretch gap-2 w-full">
+                                                <div className="flex-1 rounded-lg border border-rose-500/25 bg-rose-500/5 px-2 py-1.5 text-[10px] font-bold text-rose-500 text-center">
+                                                    Yes → score 0 (review only)
+                                                </div>
+                                                <div className="flex-1 rounded-lg border border-emerald-500/25 bg-emerald-500/5 px-2 py-1.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 text-center">
+                                                    No → start timer (tt) ↓
+                                                </div>
+                                            </div>
+                                            <ChevronDown className="w-4 h-4 text-primary" />
+                                            <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Branch by question type</p>
+                                        </div>
+
+                                        {/* Per-type branches */}
+                                        <div className="mt-2 grid grid-cols-2 lg:grid-cols-4 gap-2">
+                                            {[
+                                                { t: 'MCQ', sub: '3 tries', body: 'Correct → CS_core ÷ tries. 3 misses → answer shown, 0.', cls: 'border-blue-500/25 bg-blue-500/5' },
+                                                { t: 'Numerical / Range', sub: '4 tries', body: 'Correct → CS_core ÷ tries. Cap reached → 0.', cls: 'border-blue-500/25 bg-blue-500/5' },
+                                                { t: 'MSQ / Matrix', sub: '1 submit', body: 'JEE marking: full / partial / 0 / negative for a wrong pick.', cls: 'border-amber-500/25 bg-amber-500/5' },
+                                                { t: 'Subjective', sub: '1 submit', body: 'Correct → bs. Wrong → 0. No time term.', cls: 'border-purple-500/25 bg-purple-500/5' },
+                                            ].map((b) => (
+                                                <div key={b.t} className={cn('rounded-lg border px-2 py-2', b.cls)}>
+                                                    <div className="text-[10px] font-black text-foreground leading-tight">{b.t}</div>
+                                                    <div className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground mb-1">{b.sub}</div>
+                                                    <div className="text-[9px] text-muted-foreground leading-snug">{b.body}</div>
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        {/* Reveal decay → formula */}
+                                        <div className="mt-2 flex flex-col items-center gap-1.5">
+                                            <ChevronDown className="w-4 h-4 text-primary" />
+                                            <div className="w-full rounded-lg border border-border/40 bg-white/[0.03] px-2 py-1.5 text-[10px] font-bold text-foreground text-center">
+                                                Reveal (first time only): Hint → bs ÷ 2 · Answer → 0
+                                            </div>
+                                            <ChevronDown className="w-4 h-4 text-primary" />
+                                            <div className="w-full rounded-lg neu-surface border border-primary/30 bg-primary/5 px-2 py-2 text-center">
+                                                <span className="text-[11px] sm:text-[13px] font-black text-primary tabular-nums">CS_core = min(1, bt ÷ tt) × bs ÷ attempts</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Base score + base time per difficulty */}
+                                    <div>
+                                        <p className="mb-2.5 flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-muted-foreground">
+                                            <Target className="h-3.5 w-3.5 text-amber-500" /> Base score (bs) &amp; base time (bt) by difficulty
+                                        </p>
+                                        <div className="grid grid-cols-4 gap-2">
+                                            {[
+                                                { label: 'Easy', bs: 5, bt: '30s', cls: 'text-emerald-500' },
+                                                { label: 'Medium', bs: 15, bt: '60s', cls: 'text-amber-500' },
+                                                { label: 'Hard', bs: 30, bt: '100s', cls: 'text-rose-500' },
+                                                { label: 'Insane', bs: 50, bt: '120s', cls: 'text-indigo-500' },
+                                            ].map((d) => (
+                                                <div key={d.label} className="neu-inset rounded-xl px-2 py-2.5 text-center">
+                                                    <div className={cn('text-lg font-black leading-none tabular-nums', d.cls)}>{d.bs}</div>
+                                                    <div className="mt-1 text-[9px] font-bold uppercase tracking-wider text-muted-foreground">{d.label}</div>
+                                                    <div className="text-[9px] text-muted-foreground/80">{d.bt}</div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <p className="mt-2 text-[10px] text-muted-foreground/80 text-center">
+                                            Faster than the base time earns up to full <span className="font-bold">bs</span> (capped at 1×); slower shrinks it.
+                                        </p>
+                                    </div>
+
+                                    {/* Per-type rules */}
+                                    <div>
+                                        <p className="mb-2.5 flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-muted-foreground">
+                                            <Zap className="h-3.5 w-3.5 text-emerald-500" /> How each question type scores
+                                        </p>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                            {[
+                                                { t: 'MCQ', d: 'Up to 3 in-place tries; score = time-scaled bs ÷ attempts. 3 misses → answer shown, 0 marks.' },
+                                                { t: 'Numerical / Range', d: 'Up to 4 tries; same time-scaled bs ÷ attempts. Cap reached → 0.' },
+                                                { t: 'MSQ', d: 'Single submit, JEE Advanced marking: full / partial / 0, and negative for any wrong pick.' },
+                                                { t: 'Matrix Match', d: 'Single submit; per-row credit against bs, negative for a wrong row.' },
+                                                { t: 'Subjective', d: 'Single submit; full bs if correct, else 0 — no time term.' },
+                                                { t: 'Hint / Answer', d: 'Revealing a hint halves bs; revealing the answer sets it to 0 — once, on first reveal.' },
+                                            ].map((r) => (
+                                                <div key={r.t} className="neu-inset rounded-xl px-3 py-2.5">
+                                                    <div className="text-[11px] font-black text-foreground">{r.t}</div>
+                                                    <div className="mt-0.5 text-[10px] text-muted-foreground leading-snug">{r.d}</div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-2 rounded-xl neu-inset px-4 py-3">
+                                        {[
+                                            { good: true, text: 'A question is scored only the first time you finish it — re-attempts don’t re-score.' },
+                                            { good: true, text: 'Answer faster to keep more of the base score; extra attempts divide it down.' },
+                                            { good: false, text: 'MSQ / Matrix Match can go negative for wrong picks (your lifetime total never drops below 0).' },
+                                        ].map((r, i) => (
+                                            <div key={i} className="flex items-start gap-2.5 text-xs text-foreground/90">
+                                                {r.good
+                                                    ? <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-emerald-500" />
+                                                    : <X className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-rose-500" />}
+                                                <span>{r.text}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* ── Legacy scoring explainer (flag off / current prod) ── */}
+                            {!scoringV2Enabled && (<>
                             {/* The exact formula, up front */}
                             <div className="neu-inset rounded-xl px-4 py-3.5 text-center mb-6">
                                 <p className="text-[15px] font-black text-foreground tabular-nums leading-tight flex items-center justify-center gap-1.5 flex-wrap">
@@ -1906,6 +2205,7 @@ export default function OGCodeList({
                                     </div>
                                 ))}
                             </div>
+                            </>)}
                         </motion.div>
                     </motion.div>
                 )}

@@ -10,6 +10,7 @@ interface OGCodeClientProps {
   initialSubjectRanks: SubjectRank[] | null;
   initialUserStats: UserStats | null;
   initialChapters: string[] | null;
+  scoringV2Enabled: boolean;
 }
 
 export default function OGCodeClient({
@@ -17,6 +18,7 @@ export default function OGCodeClient({
   initialSubjectRanks,
   initialUserStats,
   initialChapters,
+  scoringV2Enabled,
 }: OGCodeClientProps) {
   const { user } = useAuth();
   const router = useRouter();
@@ -29,6 +31,7 @@ export default function OGCodeClient({
       initialSubjectRanks={initialSubjectRanks}
       initialUserStats={initialUserStats}
       initialChapters={initialChapters}
+      scoringV2Enabled={scoringV2Enabled}
       onSelectQuestion={(id) => {
         if (id === 'leaderboard') {
           router.push('/leaderboard');

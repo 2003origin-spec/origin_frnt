@@ -1,6 +1,7 @@
 import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
 import { getServerFrontendUser } from '@/lib/auth-server';
+import { isFeatureEnabled } from '@/lib/feature-flags';
 import {
   getOgcodeIndexDataForRender,
 } from '@/server/render-loaders';
@@ -76,6 +77,7 @@ async function OGCodeContent({ searchParams }: PageProps) {
       initialUserStats={initialData?.userStats ?? null}
       initialSubjectRanks={initialData?.subjectRanks ?? null}
       initialChapters={initialData?.chapters ?? null}
+      scoringV2Enabled={isFeatureEnabled('ogcodeScoringV2')}
     />
   );
 }
