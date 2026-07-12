@@ -375,6 +375,28 @@ async function ensureCatalogSchema(): Promise<void> {
   await globalThis.__originOgcodeCatalogSchemaReady;
 }
 
+/** Escape LIKE/ILIKE wildcards in user-supplied filter values. */
+function escapeLikePattern(value: string): string {
+  return value.replace(/([\\%_])/g, "\\$1");
+}
+
+/**
+ * Collapse a raw occurrence value ("JEE (2020)", "JEE Main (NA)",
+ * "NEET (2019)", "JEE / NEET") into its exam family for the filter chips.
+ * Combined values belong to every family they mention. Unrecognized values
+ * pass through with any trailing "(...)" annotation stripped.
+ */
+export function canonicalOccurrenceFamilies(value: string): string[] {
+  const upper = value.toUpperCase();
+  const families: string[] = [];
+  if (upper.includes("JEE")) families.push("JEE");
+  if (upper.includes("NEET")) families.push("NEET");
+  if (upper.includes("AIPMT")) families.push("AIPMT");
+  if (families.length) return families;
+  const cleaned = value.replace(/\s*\([^)]*\)\s*$/, "").trim();
+  return cleaned && cleaned.toUpperCase() !== "NA" ? [cleaned] : [];
+}
+
 function buildFilterClause(filters: CatalogFilters) {
   const clauses: string[] = [];
   const values: unknown[] = [];
@@ -433,8 +455,15 @@ function buildFilterClause(filters: CatalogFilters) {
 
   const occurrences = (filters.occurrences ?? []).map(o => String(o).trim()).filter(Boolean);
   if (occurrences.length) {
-    values.push(occurrences);
-    clauses.push(`occurrence = ANY($${values.length}::text[])`);
+    // Containment, not equality: the bank stores year/variant-suffixed values
+    // ("JEE (2020)", "JEE Main", "JEE Advanced (2022)", "NEET (2019)"), so an
+    // exam-family selection like "JEE" must match all of them. Combined values
+    // ("JEE / NEET") match either family for free.
+    const likeClauses = occurrences.map((occ) => {
+      values.push(`%${escapeLikePattern(occ)}%`);
+      return `occurrence ILIKE $${values.length}`;
+    });
+    clauses.push(`(${likeClauses.join(" OR ")})`);
   }
 
   const concepts = (filters.concepts ?? []).map(c => String(c).trim()).filter(Boolean);
@@ -668,8 +697,13 @@ export async function listOgcodeCatalogFacets(params: {
   }
   const parsedOccurrences = (params.occurrences ?? []).map(s => String(s).trim()).filter(Boolean);
   if (parsedOccurrences.length) {
-    vals.push(parsedOccurrences);
-    conds.push(`occurrence = ANY($${vals.length}::text[])`);
+    // Same containment semantics as buildFilterClause — exam-family values
+    // ("JEE") must match year/variant-suffixed rows ("JEE (2020)", "JEE Main").
+    const likeConds = parsedOccurrences.map((occ) => {
+      vals.push(`%${escapeLikePattern(occ)}%`);
+      return `occurrence ILIKE $${vals.length}`;
+    });
+    conds.push(`(${likeConds.join(" OR ")})`);
   }
   const parsedSubjects = (params.subjects ?? []).map(s => normalizeSubject(String(s))).filter(Boolean);
   if (parsedSubjects.length) {
@@ -694,7 +728,23 @@ export async function listOgcodeCatalogFacets(params: {
     `SELECT DISTINCT ${col} AS val FROM ogcode_questions ${where} ORDER BY val ASC`,
     vals,
   );
-  return result.rows.map(r => String(r.val)).filter(Boolean);
+  const raw = result.rows.map(r => String(r.val)).filter(Boolean);
+
+  // Occurrence chips collapse into exam families — the raw column now holds
+  // 15+ year/variant-suffixed values ("JEE (2020)", "JEE Main (NA)", ...)
+  // which would each render as their own chip. Selection round-trips fine:
+  // the family value matches via the containment clauses above.
+  if (params.level === "occurrence") {
+    const families = new Set<string>();
+    for (const value of raw) {
+      for (const family of canonicalOccurrenceFamilies(value)) {
+        families.add(family);
+      }
+    }
+    return [...families].sort();
+  }
+
+  return raw;
 }
 
 export async function getOgcodeCatalogQuestionById(questionId: string): Promise<StoredQuestion | null> {
