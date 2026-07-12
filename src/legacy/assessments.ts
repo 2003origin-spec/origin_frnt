@@ -1660,6 +1660,9 @@ function serializeOgcodeQuestionPreview(
     tags: question.tags ?? undefined,
     frequency: question.frequency,
     acceptance_rate: Number(question.acceptanceRate.toFixed(1)),
+    // Exam provenance for the card badge ("JEE (2020)" / "NEET (2019)").
+    occurrence: question.occurrence ?? undefined,
+    previousYearQuestion: question.previousYearQuestion ?? undefined,
   };
 }
 

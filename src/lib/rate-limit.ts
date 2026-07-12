@@ -83,7 +83,17 @@ export const voiceLimiter = createLimiter(5, "rl:voice");
 
 export const submitLimiter = createLimiter(20, "rl:submit");
 
-export const generalLimiter = createLimiter(60, "rl:general");
+/** Shared per-user budget for read-only GET endpoints (assessments, study,
+ * notifications, ...). One OGCode list mount fires ~9 GETs (5 facet levels +
+ * questions + stats + chapters) and a practice loop (list → question → back)
+ * burns ~15, so the old 60/min cap 429'd active students mid-practice.
+ * Tunable via ORIGIN_GENERAL_RATE_LIMIT (default 240/min). */
+const generalCap = (() => {
+  const raw = process.env.ORIGIN_GENERAL_RATE_LIMIT?.trim();
+  const parsed = raw ? Number.parseInt(raw, 10) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 240;
+})();
+export const generalLimiter = createLimiter(generalCap, "rl:general");
 
 /** Catch-all limiter for teacher/admin/enrollment mutation endpoints
  * applied in middleware. Per-route limiters (auth, ai, voice, submit,

@@ -73,11 +73,10 @@ const SUBJECT_ORI: Record<string, string> = {
     bio: '/ori2d/ori-biology.png',
 };
 
-const EXAM_MAPPING: Record<string, string[]> = {
-    'JEE': ['JEE', 'JEE / NEET', 'NEET / JEE'],
-    'NEET': ['NEET', 'JEE / NEET', 'NEET / JEE'],
-    'AIPMT': ['AIPMT'],
-};
+// Exam chips are canonical families ("JEE", "NEET", "AIPMT") from the facets
+// endpoint; the server matches occurrence by containment (ILIKE %value%), so a
+// family value alone catches every stored variant — "JEE (2020)", "JEE Main",
+// "JEE / NEET", ... No client-side expansion needed.
 
 const SUBJECT_COLORS: Record<string, string> = {
     Physics: 'text-primary',
@@ -556,13 +555,7 @@ export default function OGCodeList({
         const qs = new URLSearchParams();
         qs.set('level', level);
         for (const c of (params.classes ?? [])) qs.append('classes', c);
-        
-        const dbOccs = new Set<string>();
-        for (const o of (params.occurrences ?? [])) {
-            const mapped = EXAM_MAPPING[o] ?? [o];
-            for (const m of mapped) dbOccs.add(m);
-        }
-        for (const o of dbOccs) qs.append('occurrences', o);
+        for (const o of (params.occurrences ?? [])) qs.append('occurrences', o);
 
         for (const s of (params.subjects ?? [])) qs.append('subjects', s);
         for (const ch of (params.chapters ?? [])) qs.append('chapters', ch);
@@ -663,13 +656,7 @@ export default function OGCodeList({
 
         // Hierarchy filters
         for (const c of hierClasses) params.append('classes', c);
-        
-        const dbOccs = new Set<string>();
-        for (const o of hierOccurrences) {
-            const mapped = EXAM_MAPPING[o] ?? [o];
-            for (const m of mapped) dbOccs.add(m);
-        }
-        for (const o of dbOccs) params.append('occurrences', o);
+        for (const o of hierOccurrences) params.append('occurrences', o);
 
         for (const s of hierSubjects) params.append('subjects', s);
         for (const ch of hierChapters) params.append('chapters', ch);
@@ -1720,6 +1707,25 @@ export default function OGCodeList({
                                                         <span className="truncate">{q.attributionName}</span>
                                                     </span>
                                                 )}
+                                                {/* Exam provenance badge — full raw value ("JEE (2020)"), coloured by family */}
+                                                {q.occurrence && q.occurrence !== 'NA' && (() => {
+                                                    const up = q.occurrence.toUpperCase();
+                                                    const style = up.includes('NEET')
+                                                        ? 'bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/25'
+                                                        : up.includes('AIPMT')
+                                                            ? 'bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-400 border-fuchsia-500/25'
+                                                            : up.includes('JEE')
+                                                                ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/25'
+                                                                : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/25';
+                                                    return (
+                                                        <span
+                                                            className={cn('inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black border uppercase tracking-wider min-w-0 max-w-[130px]', style)}
+                                                            title={q.occurrence}
+                                                        >
+                                                            <span className="truncate">{q.occurrence}</span>
+                                                        </span>
+                                                    );
+                                                })()}
                                             </div>
                                             {solved && (
                                                 <div className="flex items-center gap-1 flex-shrink-0">
