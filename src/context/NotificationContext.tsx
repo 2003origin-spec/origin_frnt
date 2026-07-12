@@ -1,6 +1,7 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import { toast } from 'sonner';
 import type { Notification } from '@/types';
 import { apiCall } from '@/lib/api';
 
@@ -57,6 +58,9 @@ import { getUserTitle } from '@/lib/achievements';
 export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const { user } = useAuth() || { user: null };
+  // Server notification ids already seen, so polling only toasts genuinely new ones.
+  const seenServerIdsRef = useRef<Set<string>>(new Set());
+  const seededServerIdsRef = useRef(false);
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -80,6 +84,9 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   useEffect(() => {
     if (!user?.id) return;
     let cancelled = false;
+    // Re-seed per user so a login never toasts the account's existing rows.
+    seenServerIdsRef.current = new Set();
+    seededServerIdsRef.current = false;
     const sync = async () => {
       try {
         const data = await apiCall('/users/notifications/', { silentAuth: true });
@@ -87,6 +94,18 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
           ? (data.notifications as ServerNotificationRecord[]).map(mapServerRecord)
           : [];
         if (!cancelled && items.length > 0) {
+          // Pop a toast for genuinely NEW unread server notifications that arrive
+          // after the first hydrate (so a fresh OG challenge alerts you live).
+          // The first sync just seeds the seen-set — it never toasts old rows.
+          if (seededServerIdsRef.current) {
+            for (const n of items) {
+              if (!seenServerIdsRef.current.has(n.id) && !n.read) {
+                toast(n.title, { description: n.message || undefined });
+              }
+            }
+          }
+          for (const n of items) seenServerIdsRef.current.add(n.id);
+          seededServerIdsRef.current = true;
           setNotifications((prev) => mergeNotifications(prev, items));
         }
       } catch {

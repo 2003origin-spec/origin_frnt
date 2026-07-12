@@ -213,7 +213,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                     <TabsTrigger
                       key={tab}
                       value={tab}
-                      className="px-3 sm:px-6 py-2 sm:py-2.5 rounded-lg sm:rounded-xl text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-primary/20 text-muted-foreground hover:text-foreground"
+                      className="h-auto flex-none px-3 sm:px-6 py-2 sm:py-2.5 rounded-lg sm:rounded-xl text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-primary/20 text-muted-foreground hover:text-foreground"
                     >
                       {tab === 'all' ? 'Institute' : 
                        tab === 'recommended' ? 'Daily' : 

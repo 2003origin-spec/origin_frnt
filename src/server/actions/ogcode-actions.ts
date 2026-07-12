@@ -29,6 +29,7 @@ import {
   type OgcodeChallenge,
 } from '@/server/ogcode-challenges';
 import { areMutualFollowers, listMutualFollowers, type SocialUserCard } from '@/server/social/social-service';
+import { createNotification } from '@/server/notifications';
 
 async function requireUser() {
   const user = await getServerUser();
@@ -117,6 +118,22 @@ export async function sendOgcodeChallengeAction(
     return { ok: false, error: 'not_mutual' };
   }
   const { created } = await createOgcodeChallenge(user.id, toUserId, questionId);
+
+  // Notify the recipient so the challenge surfaces in their notification box
+  // (with an "Attempt now" link) even if they're not on the OGCode page.
+  // Best-effort — a notification failure must never fail the challenge.
+  if (created) {
+    try {
+      await createNotification(toUserId, {
+        type: 'info',
+        title: `OG Challenge from ${user.name}`,
+        href: `/ogcode/${questionId}`,
+      });
+    } catch {
+      // ignore — challenge already created
+    }
+  }
+
   return { ok: created, error: created ? undefined : 'already_pending' };
 }
 

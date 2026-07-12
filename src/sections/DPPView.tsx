@@ -827,12 +827,13 @@ function DppSelectionGrid({
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-2 min-w-0">
                     {weakTopics.slice(0, 3).map((topic) => (
                       <Badge
                         key={topic}
                         variant="secondary"
-                        className="bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300"
+                        title={topic}
+                        className="max-w-full truncate bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300"
                       >
                         {topic}
                       </Badge>

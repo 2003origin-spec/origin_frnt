@@ -9,7 +9,7 @@ import {
     CheckCircle2, Search,
     Trophy, Zap, Flame, Brain, Circle,
     TrendingUp, Atom, Beaker, Calculator, Leaf,
-    ChevronRight, Target, Shuffle, ArrowRight, X, Info, Building2, Check, ChevronDown, Heart, Swords
+    ChevronRight, Target, Shuffle, ArrowRight, X, Info, Building2, Check, ChevronDown, Heart, Swords, Layers
 } from 'lucide-react';
 import { apiCall } from '@/lib/api';
 import { ogcodePresenceCountsAction, listOgcodeChallengeInboxAction, toggleOgcodeQuestionLikeAction, type HydratedChallenge } from '@/server/actions/ogcode-actions';
@@ -2094,6 +2094,31 @@ export default function OGCodeList({
                                                 </div>
                                             ))}
                                         </div>
+                                    </div>
+
+                                    {/* MSQ — full JEE Advanced marking table */}
+                                    <div>
+                                        <p className="mb-2.5 flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-muted-foreground">
+                                            <Layers className="h-3.5 w-3.5 text-amber-500" /> MSQ — JEE Advanced marking
+                                        </p>
+                                        <div className="neu-inset rounded-xl px-4 py-3 space-y-1.5">
+                                            {[
+                                                { m: '+4', d: 'All correct options chosen (and no wrong option)', cls: 'text-emerald-500' },
+                                                { m: '+3', d: 'All four options are correct, but only three chosen', cls: 'text-emerald-500' },
+                                                { m: '+2', d: 'Three or more correct, but only two correct chosen', cls: 'text-emerald-500' },
+                                                { m: '+1', d: 'Two or more correct, but only one correct chosen', cls: 'text-emerald-500' },
+                                                { m: '0', d: 'No option chosen (unattempted)', cls: 'text-muted-foreground' },
+                                                { m: '−2', d: 'Any wrong option selected (with or without correct ones)', cls: 'text-rose-500' },
+                                            ].map((row) => (
+                                                <div key={row.m} className="flex items-center gap-3 text-[11px]">
+                                                    <span className={cn('w-7 shrink-0 text-right font-black tabular-nums', row.cls)}>{row.m}</span>
+                                                    <span className="text-muted-foreground leading-snug">{row.d}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <p className="mt-2 text-[10px] text-muted-foreground/80">
+                                            OGCode scales these JEE marks by each question’s base score (bs), so the +4 / +3 / +2 / +1 / 0 / −2 structure is identical, just weighted by difficulty. Matrix Match uses the same full / partial / negative approach per row.
+                                        </p>
                                     </div>
 
                                     <div className="space-y-2 rounded-xl neu-inset px-4 py-3">
