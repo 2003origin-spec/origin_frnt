@@ -20,6 +20,8 @@
  *  • LatexRenderer.renderKatex — repairs each segment before katex.renderToString.
  */
 
+import katex from 'katex';
+
 // ── Decode literal escape sequences ("\n", "\t", "\r") ────────────────────────
 // OG-code / AI content frequently arrives with *literal* two-character escape
 // sequences (a backslash followed by `n`/`t`/`r`) instead of real whitespace —
@@ -272,12 +274,38 @@ export function repairMathTex(tex: string): string {
 }
 
 /**
+ * Validation-only render: does KaTeX accept `tex` (render output discarded)?
+ * `strict: 'ignore'` matches the lenient pass rehype-katex/LatexRenderer fall
+ * back to on a first strict failure, so "renderable" here means "the real
+ * renderer will produce clean output, not its own red .katex-error fallback" —
+ * not just "doesn't throw in strict mode".
+ */
+function isRenderable(tex: string, displayMode: boolean): boolean {
+  if (!tex.trim()) return true;
+  try {
+    katex.renderToString(tex, { displayMode, throwOnError: true, strict: 'ignore', trust: false });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Walk a Markdown/plain string and repair the interior of every math span
  * (`$$…$$` first, then `$…$`), leaving all surrounding prose — including
  * currency like "$5" and literal "100%" outside math — untouched.
  *
  * Mirrors the delimiter scan remark-math performs, so what we repair is exactly
  * what KaTeX will later receive.
+ *
+ * A span that is *still* unrenderable after repair — some malformation outside
+ * repairMathTex's fixed rule set — is emitted as plain text with the `$`/`$$`
+ * delimiters stripped, instead of being handed to rehype-katex. Without this,
+ * such a span falls through to rehype-katex's own built-in fallback, which
+ * renders the raw/partial source in red (`.katex-error`, `#cc0000`) — exposing
+ * broken LaTeX to students. Plain text is never pretty, but it is always
+ * legible, and this bounds the failure mode for *any* malformation, not just
+ * the specific patterns repairMathTex already knows how to fix.
  */
 export function repairMathSpans(input: string): string {
   if (!input || input.indexOf('$') === -1) return input;
@@ -291,7 +319,8 @@ export function repairMathSpans(input: string): string {
     if (input[i] === '$' && input[i + 1] === '$') {
       const end = input.indexOf('$$', i + 2);
       if (end !== -1) {
-        out += '$$' + repairMathTex(input.slice(i + 2, end)) + '$$';
+        const repaired = repairMathTex(input.slice(i + 2, end));
+        out += isRenderable(repaired, true) ? `$$${repaired}$$` : repaired;
         i = end + 2;
         continue;
       }
@@ -304,7 +333,8 @@ export function repairMathSpans(input: string): string {
       const rel = rest.slice(0, searchEnd).indexOf('$');
       if (rel !== -1) {
         const body = rest.slice(0, rel);
-        out += '$' + repairMathTex(body) + '$';
+        const repaired = repairMathTex(body);
+        out += isRenderable(repaired, false) ? `$${repaired}$` : repaired;
         i = i + 1 + rel + 1;
         continue;
       }
