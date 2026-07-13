@@ -1,7 +1,6 @@
 import {
   getOriginAiVoiceBootstrap,
-  sendOriginAiMessage,
-  synthesizeOriginAiVoiceText,
+  sendOriginAiMessageStreaming,
   type OriginAiClientPageContext,
 } from '@/features/origin-ai/client';
 import type { OriginAiReply, OriginAiVoiceStatus } from '@/types';
@@ -33,8 +32,7 @@ interface AudioPlayer {
 
 const DEFAULT_OUTPUT_SAMPLE_RATE = 24000;
 const ASSISTANT_PLAYBACK_GAP_GRACE_MS = 900;
-const VOICE_RESPOND_TIMEOUT_MS = 25000;
-const VOICE_SPEAK_TIMEOUT_MS = 80000;
+const VOICE_RESPOND_TIMEOUT_MS = 180000;
 
 function emitStatus(callbacks: OriginAiVoiceCallbacks, status: OriginAiVoiceStatus): void {
   callbacks.onStatusChange?.(status);
@@ -227,7 +225,7 @@ async function speakWithBrowserFallback(text: string): Promise<void> {
     return;
   }
 
-  const cleanText = text.replace(/[*_#`~>]/g, '').trim();
+  const cleanText = cleanSpeechText(text);
   if (!cleanText) return;
 
   const utterance = new SpeechSynthesisUtterance(cleanText);
@@ -255,44 +253,13 @@ async function speakWithBrowserFallback(text: string): Promise<void> {
 }
 
 /**
- * Split AI response text into TTS-friendly sentence chunks.
- * - Strips markdown formatting
- * - Merges very short fragments
- * - Caps each chunk at 250 chars
- * - Returns all chunks so spoken replies do not stop before the main explanation.
+ * Strip markdown so browser speech fallback sounds natural.
  */
-function splitIntoTtsChunks(text: string): string[] {
-  // Strip markdown and normalise whitespace
-  const cleaned = text
+function cleanSpeechText(text: string): string {
+  return text
     .replace(/[*_#`~>]/g, '')
     .replace(/\n{2,}/g, '\n')
     .trim();
-  if (!cleaned) return [];
-
-  // Split on sentence-ending punctuation followed by whitespace or newline
-  const raw = cleaned
-    .replace(/([.!?])\s+/g, '$1\n')
-    .split('\n')
-    .map((s) => s.trim())
-    // Skip pure bullet-list lines like "1. " or "- " starters — they sound bad spoken
-    .filter((s) => s.length > 3 && !/^[\-\d]+[\.\)]\s/.test(s));
-
-  // Merge very short fragments into their neighbour, cap each chunk at 250 chars
-  const merged: string[] = [];
-  let buffer = '';
-  for (const sentence of raw) {
-    if (!buffer) {
-      buffer = sentence.slice(0, 250);
-    } else if (buffer.length < 25) {
-      buffer = (buffer + ' ' + sentence).slice(0, 250);
-    } else {
-      merged.push(buffer);
-      buffer = sentence.slice(0, 250);
-    }
-  }
-  if (buffer) merged.push(buffer);
-
-  return merged;
 }
 
 
@@ -414,7 +381,7 @@ export async function startOriginAiVoiceMode(
   }
 
   emitStatus(callbacks, 'bootstrapping');
-  const bootstrap = await getOriginAiVoiceBootstrap(pageContext);
+  await getOriginAiVoiceBootstrap(pageContext);
 
   let isActive = true;
   let isAwaitingResponse = false;
@@ -464,8 +431,24 @@ export async function startOriginAiVoiceMode(
       void (async () => {
         try {
           const highlightedText = getHighlightedText();
+          let streamedText = '';
+          let anyAudioPlayed = false;
+          assistantPlaybackHoldUntil = Date.now() + ASSISTANT_PLAYBACK_GAP_GRACE_MS;
+
           const reply = await withTimeout(
-            sendOriginAiMessage(finalText, pageContext, highlightedText),
+            sendOriginAiMessageStreaming(finalText, pageContext, highlightedText, null, {
+              onTextDelta: (delta) => {
+                streamedText += delta;
+                callbacks.onAssistantTranscript?.(streamedText);
+              },
+              onAudio: async (audio) => {
+                if (!isActive || !audio.data) return;
+                emitStatus(callbacks, 'speaking');
+                await audioPlayer.enqueue(audio.data, audio.mimeType);
+                anyAudioPlayed = true;
+                assistantPlaybackHoldUntil = Date.now() + ASSISTANT_PLAYBACK_GAP_GRACE_MS;
+              },
+            }),
             VOICE_RESPOND_TIMEOUT_MS,
             'Ori took too long to prepare the voice reply.',
           );
@@ -478,76 +461,20 @@ export async function startOriginAiVoiceMode(
           callbacks.onAssistantTranscript?.(reply.aiMessage.content);
           callbacks.onReplyCommitted?.(reply);
 
-          // Emit 'speaking' so the UI reflects that TTS is in progress
-          emitStatus(callbacks, 'speaking');
-
           if (!isActive) {
             return;
           }
 
-
-          // ---------------------------------------------------------------
-          // Pipelined TTS: split response into sentence chunks, fire all
-          // synthesis requests simultaneously, then play each in order as
-          // it arrives. The first sentence starts playing ~2-3s after the
-          // text is ready instead of waiting for the entire reply to be
-          // synthesized (~10-15s).
-          // ---------------------------------------------------------------
-          const sentences = splitIntoTtsChunks(reply.aiMessage.content);
-          const fallbackText = reply.aiMessage.content;
-
-          if (sentences.length === 0) {
-            // Nothing to speak
-          } else {
-            // Fire all TTS requests in parallel
-            const ttsPromises = sentences.map((sentence) =>
-              synthesizeOriginAiVoiceText(sentence, bootstrap.voice.voiceName).catch((err) => {
-                console.warn('[OriginAI Voice] TTS chunk failed:', sentence.slice(0, 40), err);
-                return null;
-              }),
-            );
-
-            let anyAudioPlayed = false;
-            assistantPlaybackHoldUntil = Date.now() + ASSISTANT_PLAYBACK_GAP_GRACE_MS;
-
-            // Await and enqueue each chunk IN ORDER (not as each resolves)
-            // This ensures gapless sequential playback even if a later chunk
-            // arrives before an earlier one.
-            for (const promise of ttsPromises) {
-              if (!isActive) break;
-              const speakResponse = await promise;
-              if (!speakResponse) continue;
-
-              const segments =
-                speakResponse.voiceAudioSegments && speakResponse.voiceAudioSegments.length > 0
-                  ? speakResponse.voiceAudioSegments
-                  : speakResponse.voiceAudio
-                    ? [speakResponse.voiceAudio]
-                    : [];
-
-              for (const segment of segments) {
-                if (segment?.data) {
-                  await audioPlayer.enqueue(segment.data, segment.mimeType);
-                  anyAudioPlayed = true;
-                }
-              }
-            }
-
-            if (!isActive) {
-              return;
-            }
-
-            // If no audio was produced at all, fall back to browser TTS
-            if (!anyAudioPlayed && fallbackText.trim()) {
-              isBrowserFallbackSpeaking = true;
-              emitStatus(callbacks, 'speaking');
-              try {
-                await speakWithBrowserFallback(fallbackText);
-              } catch {
-                // Ignore fallback speech errors; the text reply is already visible.
-              } finally {
-                isBrowserFallbackSpeaking = false;
-              }
+          // If the backend couldn't produce audio segments, fall back to browser TTS.
+          if (!anyAudioPlayed && reply.aiMessage.content.trim()) {
+            isBrowserFallbackSpeaking = true;
+            emitStatus(callbacks, 'speaking');
+            try {
+              await speakWithBrowserFallback(reply.aiMessage.content);
+            } catch {
+              // Ignore fallback speech errors; the text reply is already visible.
+            } finally {
+              isBrowserFallbackSpeaking = false;
             }
           }
         } catch (error) {

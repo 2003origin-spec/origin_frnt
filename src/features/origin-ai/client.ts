@@ -2,6 +2,11 @@ import { apiCall } from '@/lib/api';
 import { notifyAiDisabled } from '@/features/origin-ai/ai-access-client';
 import { getOriginAiBrowserSessionId } from '@/features/origin-ai/session';
 import { firstImageAttachmentUrl, normalizeAttachments } from '@/features/origin-ai/attachments';
+import {
+  streamOriginAiMessage,
+  type OriginAiStreamHandlers,
+  type OriginAiStreamPageContext,
+} from '@/features/origin-ai/stream-client';
 import type {
   ChatAttachment,
   ChatMessage,
@@ -596,6 +601,36 @@ export async function sendOriginAiMessage(
   }
 
   return normalizeReply(data as RawReply);
+}
+
+/**
+ * Stream text/audio deltas from Ori, then return the same OriginAiReply shape
+ * as sendOriginAiMessage once the final SSE event lands.
+ */
+export async function sendOriginAiMessageStreaming(
+  message: string,
+  pageContext?: OriginAiClientPageContext | Record<string, unknown>,
+  highlightedText?: string | null,
+  threadId?: string | null,
+  handlers: OriginAiStreamHandlers = {},
+): Promise<OriginAiReply> {
+  const finalEvent = await streamOriginAiMessage(
+    message,
+    pageContext as OriginAiStreamPageContext | undefined,
+    highlightedText,
+    threadId,
+    handlers,
+  );
+
+  const snapshot = threadId
+    ? await fetchThreadSnapshot(threadId, {
+        subject:
+          (typeof pageContext?.activeSubject === 'string' ? pageContext.activeSubject : null) ??
+          null,
+      })
+    : await fetchSessionSnapshot(pageContext as OriginAiClientPageContext | undefined);
+
+  return toReplyFromSnapshot(snapshot, finalEvent.user_message_id, finalEvent.ai_message_id);
 }
 
 // ---------- Thread CRUD (full-window Doubt Solver) ----------

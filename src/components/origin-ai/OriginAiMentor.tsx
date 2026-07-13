@@ -7,7 +7,7 @@ import { Loader2, Mic, Send, Square, TriangleAlert, X, PanelLeft, PanelRight, Sp
 
 import {
   getOriginAiSession,
-  sendOriginAiMessage,
+  sendOriginAiMessageStreaming,
 } from '@/features/origin-ai/client';
 import { useOriginAiPageContext } from '@/features/origin-ai/page-context-store';
 import { clearHighlightedText, getHighlightedText, getPendingHighlightedText, useHighlightedText } from '@/features/origin-ai/highlight-capture';
@@ -450,15 +450,74 @@ export default function OriginAiMentor({
     const sendSelectionPrompt = async () => {
       setMessage('');
       setIsSending(true);
+      const tempUserId = `pending-user-${Date.now()}`;
+      const tempAiId = `pending-ai-${Date.now()}`;
+
+      setSnapshot(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          session: {
+            ...prev.session,
+            messages: [
+              ...prev.session.messages,
+              {
+                id: tempUserId,
+                role: 'user' as const,
+                content: 'Explain the selected text in the current screen context.',
+                timestamp: new Date(),
+              },
+              {
+                id: tempAiId,
+                role: 'assistant' as const,
+                content: '',
+                timestamp: new Date(),
+                metadata: { streaming: true },
+              },
+            ],
+          },
+        };
+      });
 
       try {
-        const reply = await sendOriginAiMessage(
+        const reply = await sendOriginAiMessageStreaming(
           'Explain the selected text in the current screen context.',
           pageContext,
           selectedText,
+          null,
+          {
+            onTextDelta: (delta) => {
+              setSnapshot(prev => {
+                if (!prev) return prev;
+                return {
+                  ...prev,
+                  session: {
+                    ...prev.session,
+                    messages: prev.session.messages.map((message) =>
+                      message.id === tempAiId
+                        ? { ...message, content: `${message.content}${delta}` }
+                        : message,
+                    ),
+                  },
+                };
+              });
+            },
+          },
         );
         setSnapshot(reply);
       } catch (error) {
+        setSnapshot(prev => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            session: {
+              ...prev.session,
+              messages: prev.session.messages.filter(
+                (message) => message.id !== tempUserId && message.id !== tempAiId,
+              ),
+            },
+          };
+        });
         console.error('Failed to send highlighted Ori prompt', error);
         toast.error(error instanceof Error ? error.message : 'Ori could not explain the selected text');
       } finally {
@@ -485,8 +544,9 @@ export default function OriginAiMentor({
     setMessage('');
     setIsSending(true);
 
-    // Optimistic user message — show it immediately so turns stay interleaved.
+    // Optimistic user + empty assistant bubble so text can stream immediately.
     const tempId = `pending-${Date.now()}`;
+    const tempAiId = `pending-ai-${Date.now()}`;
     setSnapshot(prev => {
       if (!prev) return prev;
       const tempMsg = {
@@ -495,25 +555,58 @@ export default function OriginAiMentor({
         content: outboundMessage,
         timestamp: new Date(),
       };
+      const tempAiMsg = {
+        id: tempAiId,
+        role: 'assistant' as const,
+        content: '',
+        timestamp: new Date(),
+        metadata: { streaming: true },
+      };
       return {
         ...prev,
-        session: { ...prev.session, messages: [...prev.session.messages, tempMsg] },
+        session: { ...prev.session, messages: [...prev.session.messages, tempMsg, tempAiMsg] },
       };
     });
 
     try {
-      const reply = await sendOriginAiMessage(outboundMessage, pageContext, snappedHighlight);
+      const reply = await sendOriginAiMessageStreaming(
+        outboundMessage,
+        pageContext,
+        snappedHighlight,
+        null,
+        {
+          onTextDelta: (delta) => {
+            setSnapshot(prev => {
+              if (!prev) return prev;
+              return {
+                ...prev,
+                session: {
+                  ...prev.session,
+                  messages: prev.session.messages.map((message) =>
+                    message.id === tempAiId
+                      ? { ...message, content: `${message.content}${delta}` }
+                      : message,
+                  ),
+                },
+              };
+            });
+          },
+        },
+      );
       setSnapshot(reply);
       // Track usage
       const tokens = (reply.aiMessage.metadata?.tokensUsed as number) || 0;
       addTextUsage(tokens);
     } catch (error) {
-      // Roll back the optimistic message on failure.
+      // Roll back the optimistic messages on failure.
       setSnapshot(prev => {
         if (!prev) return prev;
         return {
           ...prev,
-          session: { ...prev.session, messages: prev.session.messages.filter(m => m.id !== tempId) },
+          session: {
+            ...prev.session,
+            messages: prev.session.messages.filter((m) => m.id !== tempId && m.id !== tempAiId),
+          },
         };
       });
       console.error('Failed to send Ori message', error);
