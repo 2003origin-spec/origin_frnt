@@ -17,14 +17,19 @@ import {
   revokeAdminCompForUsers,
   revokeAllAdminComp,
   expireLapsedSubjectGrants,
+  grantAdminCompSubjectsToUser,
+  revokeAdminCompSubjectsForUser,
 } from "@/server/connect/subject-grants-store";
 import { recomputePremiumFlagsForUsers } from "@/server/entitlements";
 import { recordAuditEvent } from "@/server/workspaces/audit";
 import {
   getPremiumPlanCounts,
+  getStudentSubjectAccess as getStudentSubjectAccessStore,
   type PremiumPlanCounts,
+  type SubjectAccessRow,
 } from "@/server/premium-access-admin-store";
 import { getEventMode, setEventMode, type EventMode } from "@/server/premium-access-schema";
+import { ALL_SUBJECTS, type Subject } from "@/lib/entitlements";
 
 export type PremiumAccessOverview = {
   counts: PremiumPlanCounts;
@@ -114,6 +119,72 @@ export async function revokePremiumComp(input: {
   });
 
   return { usersAffected: result.userIds.length };
+}
+
+/** Per-subject ownership breakdown for one student — powers "Manage subjects". */
+export async function getStudentSubjectAccess(userId: string): Promise<SubjectAccessRow[]> {
+  return getStudentSubjectAccessStore(userId);
+}
+
+/**
+ * Sets a student's admin_comp subjects to exactly `subjects` (the desired end
+ * state) — grants whichever of those they don't already comp-own, revokes
+ * whichever comp subjects they own that aren't in the list, and no-ops on the
+ * rest. Subjects owned via `paid` or `teacher_code` are untouched either way —
+ * the store functions only ever write/revoke `source='admin_comp'` rows, so a
+ * subject list that includes an already-teacher-owned subject simply adds a
+ * redundant (harmless) comp row rather than duplicating access, and one that
+ * omits it does NOT revoke the teacher grant. One recompute + one audit event
+ * covers both directions, same contract as grantPremiumComp/revokePremiumComp.
+ */
+export async function updateStudentSubjectComp(input: {
+  actorUserId: string;
+  userId: string;
+  subjects: Subject[];
+  expiresAt?: string | null;
+  requestId?: string | null;
+}): Promise<{ granted: Subject[]; revoked: Subject[] }> {
+  const current = await getStudentSubjectAccessStore(input.userId);
+  const currentlyComped = new Set(current.filter((row) => row.comp).map((row) => row.subject));
+  const desired = new Set(input.subjects);
+
+  const toGrant = ALL_SUBJECTS.filter((s) => desired.has(s) && !currentlyComped.has(s));
+  const toRevoke = ALL_SUBJECTS.filter((s) => !desired.has(s) && currentlyComped.has(s));
+
+  if (toGrant.length === 0 && toRevoke.length === 0) {
+    return { granted: [], revoked: [] };
+  }
+
+  if (toGrant.length > 0) {
+    await grantAdminCompSubjectsToUser({
+      userId: input.userId,
+      subjects: toGrant,
+      grantedBy: input.actorUserId,
+      expiresAt: input.expiresAt ?? null,
+    });
+  }
+  if (toRevoke.length > 0) {
+    await revokeAdminCompSubjectsForUser({ userId: input.userId, subjects: toRevoke });
+  }
+
+  await recomputePremiumFlagsForUsers([input.userId]);
+
+  await recordAuditEvent({
+    actorUserId: input.actorUserId,
+    workspaceId: null,
+    entityType: "premium_comp",
+    entityId: input.userId,
+    action: "premium.subject_comp_updated",
+    after: {
+      userId: input.userId,
+      granted: toGrant,
+      revoked: toRevoke,
+      expiresAt: input.expiresAt ?? null,
+    },
+    requestId: input.requestId ?? null,
+  });
+
+  return { granted: toGrant, revoked: toRevoke };
 }
 
 export async function setPremiumEventMode(input: {

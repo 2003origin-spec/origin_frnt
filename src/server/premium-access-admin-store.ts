@@ -19,6 +19,7 @@ import type { Pool } from "pg";
 import { getUserPostgresPool } from "@/server/user-postgres";
 import { ensureSubjectGrantsSchema } from "@/server/connect/subject-grants-schema";
 import { ensureSubscriptionsSchema } from "@/server/subscriptions/subscriptions-schema";
+import { ALL_SUBJECTS, type Subject } from "@/lib/entitlements";
 
 export type PlanKey = "paid" | "comp" | "teacher" | "free";
 export type PlanFilter = PlanKey | "premium" | "all";
@@ -157,6 +158,86 @@ export async function getPremiumPlanCounts(): Promise<PremiumPlanCounts> {
     teacher: Number(r.teacher ?? 0),
     free: Number(r.free ?? 0),
   };
+}
+
+export type SubjectAccessRow = {
+  subject: Subject;
+  /** Owned via a real Razorpay subscription — protected, never toggleable here. */
+  paid: boolean;
+  /** Owned via an active teacher_code grant, and which workspace granted it (protected, informational). */
+  teacherWorkspaceId: string | null;
+  /** Owned via an active admin_comp grant — the only dimension "Manage subjects" can toggle. */
+  comp: boolean;
+  compExpiresAt: string | null;
+};
+
+/**
+ * Per-subject ownership breakdown for ONE student, across all three entitlement
+ * sources — powers the admin "Manage subjects" control (grant/revoke individual
+ * subjects, not just the full 4-subject bundle). A subject already owned via
+ * `paid` or `teacher_code` is surfaced as protected/informational so the admin
+ * can see the full picture without being able to accidentally revoke a real
+ * subscription or a teacher's free-subject grant from here.
+ */
+// Same predicate as PAID_ENTITLED above, qualified with the "sub" alias — this
+// query's outer FROM is the subject VALUES list, not user_subscriptions, so the
+// bare-column version isn't reusable here.
+const PAID_ENTITLED_SUB = `(
+  (sub.status = 'active' AND (sub.current_period_end IS NULL OR sub.current_period_end > NOW()))
+  OR (sub.status IN ('pending', 'halted', 'cancelled')
+      AND sub.current_period_end IS NOT NULL AND sub.current_period_end > NOW())
+)`;
+
+export async function getStudentSubjectAccess(userId: string): Promise<SubjectAccessRow[]> {
+  await ensureSchemas();
+  const res = await pool().query(
+    `SELECT
+       s.subject,
+       EXISTS(
+         SELECT 1 FROM subscriptions.user_subscriptions sub
+          WHERE sub.user_id = $1 AND sub.subject = s.subject AND ${PAID_ENTITLED_SUB}
+       ) AS paid,
+       (
+         SELECT g.workspace_id FROM entitlements.subject_grants g
+          WHERE g.user_id = $1 AND g.subject = s.subject AND g.source = 'teacher_code' AND g.status = 'active'
+            AND (g.expires_at IS NULL OR g.expires_at > NOW())
+          LIMIT 1
+       ) AS teacher_workspace_id,
+       EXISTS(
+         SELECT 1 FROM entitlements.subject_grants g
+          WHERE g.user_id = $1 AND g.subject = s.subject AND g.source = 'admin_comp' AND g.status = 'active'
+            AND (g.expires_at IS NULL OR g.expires_at > NOW())
+       ) AS comp,
+       (
+         SELECT g.expires_at FROM entitlements.subject_grants g
+          WHERE g.user_id = $1 AND g.subject = s.subject AND g.source = 'admin_comp' AND g.status = 'active'
+          LIMIT 1
+       ) AS comp_expires_at
+     FROM (VALUES ('physics'), ('chemistry'), ('mathematics'), ('biology')) AS s(subject)`,
+    [userId],
+  );
+  const bySubject = new Map(
+    res.rows.map((row) => [
+      row.subject as string,
+      {
+        subject: row.subject as Subject,
+        paid: Boolean(row.paid),
+        teacherWorkspaceId: (row.teacher_workspace_id as string | null) ?? null,
+        comp: Boolean(row.comp),
+        compExpiresAt: row.comp_expires_at ? new Date(row.comp_expires_at as string).toISOString() : null,
+      },
+    ]),
+  );
+  return ALL_SUBJECTS.map(
+    (subject) =>
+      bySubject.get(subject) ?? {
+        subject,
+        paid: false,
+        teacherWorkspaceId: null,
+        comp: false,
+        compExpiresAt: null,
+      },
+  );
 }
 
 /** A page of the student roster filtered by plan (+ optional name/email search). */

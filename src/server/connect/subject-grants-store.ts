@@ -413,3 +413,65 @@ export async function listPremiumUserIds(): Promise<string[]> {
   );
   return res.rows.map((r) => r.id);
 }
+
+// ─── Per-subject admin comp — single student, explicit subject list ──────────
+//
+// Sibling of the all-four-subjects grantAdminCompToUsers/revokeAdminCompForUsers
+// above, for the "Manage subjects" per-student control: an admin picks exactly
+// which subjects to comp for ONE student (e.g. they already own physics via a
+// teacher_code grant and only need chemistry/biology added), rather than the
+// full Premium Pro bundle. Same idempotency guard, same source='admin_comp'
+// only — a student's teacher_code/paid rows are never touched here.
+
+/**
+ * Grants admin_comp for exactly the given subjects to one student. Idempotent
+ * per subject via the same NOT EXISTS guard as grantAdminCompToUsers — a
+ * subject the student already actively comps is skipped, not duplicated.
+ */
+export async function grantAdminCompSubjectsToUser(input: {
+  userId: string;
+  subjects: Subject[];
+  grantedBy: string | null;
+  expiresAt?: string | null;
+}): Promise<{ rowsInserted: number }> {
+  await ensureSubjectGrantsSchema();
+  if (input.subjects.length === 0) return { rowsInserted: 0 };
+  const res = await pool().query(
+    `INSERT INTO entitlements.subject_grants
+       (id, user_id, subject, source, status, expires_at, granted_by, created_at)
+     SELECT 'grant_' || replace(gen_random_uuid()::text, '-', ''),
+            u.id, s.subject, 'admin_comp', 'active', $3, $4, NOW()
+     FROM origin_users u
+     CROSS JOIN unnest($2::text[]) AS s(subject)
+     WHERE u.role = 'student'
+       AND u.id = $1
+       AND NOT EXISTS (
+         SELECT 1 FROM entitlements.subject_grants g
+         WHERE g.user_id = u.id AND g.subject = s.subject
+           AND g.source = 'admin_comp' AND g.status = 'active'
+       )
+     RETURNING subject`,
+    [input.userId, input.subjects, input.expiresAt ?? null, input.grantedBy ?? null],
+  );
+  return { rowsInserted: res.rowCount ?? 0 };
+}
+
+/** Revokes admin_comp for exactly the given subjects for one student. */
+export async function revokeAdminCompSubjectsForUser(input: {
+  userId: string;
+  subjects: Subject[];
+}): Promise<{ rowsRevoked: number }> {
+  await ensureSubjectGrantsSchema();
+  if (input.subjects.length === 0) return { rowsRevoked: 0 };
+  const res = await pool().query(
+    `UPDATE entitlements.subject_grants
+        SET status = 'revoked', updated_at = NOW()
+      WHERE user_id = $1
+        AND subject = ANY($2::text[])
+        AND source = 'admin_comp'
+        AND status = 'active'
+      RETURNING subject`,
+    [input.userId, input.subjects],
+  );
+  return { rowsRevoked: res.rowCount ?? 0 };
+}
