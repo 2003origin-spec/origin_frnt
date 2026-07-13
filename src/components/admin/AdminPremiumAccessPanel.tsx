@@ -10,11 +10,12 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Crown, Search, Loader2, Lock, ShieldCheck, Sparkles, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Crown, Search, Loader2, Lock, ShieldCheck, Sparkles, ChevronLeft, ChevronRight, SlidersHorizontal } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { apiJson } from '@/lib/teacher-client';
+import { AdminSubjectAccessModal } from './AdminSubjectAccessModal';
 
 type PlanKey = 'paid' | 'comp' | 'teacher' | 'free';
 type PlanFilter = PlanKey | 'all';
@@ -80,6 +81,7 @@ export default function AdminPremiumAccessPanel({ initialOverview }: { initialOv
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [autoRevertAt, setAutoRevertAt] = useState('');
   const [busy, setBusy] = useState(false);
+  const [subjectModalFor, setSubjectModalFor] = useState<RosterRow | null>(null);
 
   const debouncedQuery = useDebouncedValue(query.trim(), 300);
   const abortRef = useRef<AbortController | null>(null);
@@ -384,15 +386,26 @@ export default function AdminPremiumAccessPanel({ initialOverview }: { initialOv
                     </td>
                     <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{u.plan === 'comp' ? fmtDate(u.compExpiresAt) : '—'}</td>
                     <td className="px-4 py-3 text-right">
-                      {u.plan === 'free' ? (
-                        <button onClick={() => grantUsers([u.id])} disabled={busy} className="px-3 py-1.5 rounded-lg bg-emerald-500 text-white text-xs font-bold hover:bg-emerald-600 disabled:opacity-50">Grant Pro</button>
-                      ) : u.plan === 'comp' ? (
-                        <button onClick={() => revokeUsers([u.id])} disabled={busy} className="px-3 py-1.5 rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400 text-xs font-bold hover:bg-rose-500/20 disabled:opacity-50">Revoke</button>
-                      ) : u.plan === 'paid' ? (
-                        <span className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400 font-bold"><Lock className="w-3.5 h-3.5" /> Paid — protected</span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 font-bold"><ShieldCheck className="w-3.5 h-3.5" /> Teacher grant</span>
-                      )}
+                      <div className="flex items-center justify-end gap-2">
+                        {u.plan === 'free' ? (
+                          <button onClick={() => grantUsers([u.id])} disabled={busy} className="px-3 py-1.5 rounded-lg bg-emerald-500 text-white text-xs font-bold hover:bg-emerald-600 disabled:opacity-50">Grant Pro</button>
+                        ) : u.plan === 'comp' ? (
+                          <button onClick={() => revokeUsers([u.id])} disabled={busy} className="px-3 py-1.5 rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400 text-xs font-bold hover:bg-rose-500/20 disabled:opacity-50">Revoke</button>
+                        ) : u.plan === 'paid' ? (
+                          <span className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400 font-bold"><Lock className="w-3.5 h-3.5" /> Paid — protected</span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 font-bold"><ShieldCheck className="w-3.5 h-3.5" /> Teacher grant</span>
+                        )}
+                        {u.plan !== 'paid' && (
+                          <button
+                            onClick={() => setSubjectModalFor(u)}
+                            title="Manage individual subjects"
+                            className="p-1.5 rounded-lg border border-border text-muted-foreground hover:bg-accent hover:text-foreground"
+                          >
+                            <SlidersHorizontal className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -415,6 +428,18 @@ export default function AdminPremiumAccessPanel({ initialOverview }: { initialOv
           </button>
         </div>
       </div>
+
+      {subjectModalFor && (
+        <AdminSubjectAccessModal
+          userId={subjectModalFor.id}
+          studentLabel={subjectModalFor.name || subjectModalFor.email}
+          onClose={() => setSubjectModalFor(null)}
+          onChanged={() => {
+            void refetchOverview();
+            fetchRoster();
+          }}
+        />
+      )}
     </div>
   );
 }
