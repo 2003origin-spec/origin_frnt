@@ -1,7 +1,25 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { unified } from "unified";
+import remarkParse from "remark-parse";
+import remarkMath from "remark-math";
+import remarkRehype from "remark-rehype";
+import rehypeKatex from "rehype-katex";
+import rehypeStringify from "rehype-stringify";
 
 import { normalizeDelimiters } from "../../src/components/origin-ai/FormattedMessage";
+
+/** Renders through the exact same plugin chain FormattedMessage uses. */
+async function renderHtml(content: string): Promise<string> {
+  const file = await unified()
+    .use(remarkParse)
+    .use(remarkMath)
+    .use(remarkRehype)
+    .use(rehypeKatex)
+    .use(rehypeStringify)
+    .process(normalizeDelimiters(content));
+  return String(file);
+}
 
 test("does not wrap trig-function substrings inside subject definitions", () => {
   const normalized = normalizeDelimiters(
@@ -245,4 +263,57 @@ test("preserves multiple well-formed equations interleaved with prose and a numb
   const normalized = normalizeDelimiters(input);
 
   assert.equal(normalized, input);
+});
+
+// Regression: production incident (confirmed against the real stored AI
+// explanation, pulled from analytics.test_results.ai_analysis, after both
+// PRs from the first LaTeX-audit round were live and still broken). AI
+// explanations author numbered steps as a markdown ordered list with each
+// display equation on an indented continuation line ("   $$eq$$" — 3 spaces,
+// CommonMark's minimum indent to stay attached to "1. "). Step 1b promoted
+// the equation body and closing "$$" to column 0, ending the list item early
+// and corrupting every step after the first — some equations fell through to
+// KaTeX's own red .katex-error fallback, and separately (once the fallback
+// safety net closed that hole) a run of prose got swallowed into a bare-math
+// wrap because the corrupted structure left it looking like an unclosed span.
+// Assert both the string shape (indentation preserved on all three lines)
+// AND the actual rendered HTML (via the real remark/rehype pipeline) has no
+// error markers and the correct list structure — the failure was specifically
+// about downstream markdown parsing, which a string-shape check alone can't
+// catch (see the plain repairMathSpans tests above for that class of bug).
+test("keeps an indented $$ list-item continuation attached to its list item (string shape)", () => {
+  const input =
+    "1. The weight at the North Pole is $W = mg = 196\\ \\mathrm{N}$. Given " +
+    "$g = 10\\ \\mathrm{ms^{-2}}$, the mass of the box is:\n" +
+    "   $$m = \\frac{196}{10} = 19.6\\ \\mathrm{kg}$$\n" +
+    "2. At the equator, the effective acceleration is reduced:\n" +
+    "   $$g' = g - R\\omega^2$$";
+  const normalized = normalizeDelimiters(input);
+
+  assert.match(normalized, /^1\. .+:\n   \$\$\n   m = \\frac\{196\}\{10\} = 19\.6\\ \\mathrm\{kg\}\n   \$\$\n2\. /m);
+  assert.match(normalized, /\n   \$\$\n   g' = g - R\\omega\^2\n   \$\$$/);
+});
+
+test("renders a numbered AI explanation with indented $$ continuations cleanly (real pipeline, no KaTeX errors)", async () => {
+  const input =
+    "**The key idea is that the Earth's rotation reduces the effective gravity at the equator.**\n\n" +
+    "1. The weight at the North Pole is $W = mg = 196\\ \\mathrm{N}$. Given $g = 10\\ \\mathrm{ms^{-2}}$, the mass of the box is:\n" +
+    "   $$m = \\frac{196}{10} = 19.6\\ \\mathrm{kg}$$\n" +
+    "2. At the equator, the effective acceleration due to gravity is reduced by the centripetal acceleration of the Earth's rotation:\n" +
+    "   $$g' = g - R\\omega^2$$\n" +
+    "3. The angular velocity of the Earth is $\\omega = \\frac{2\\pi}{T}$, where the time period of rotation is $T = 24\\ \\mathrm{hours} = 86400\\ \\mathrm{s}$.\n" +
+    "4. Let's calculate the centripetal acceleration term $R\\omega^2$ (Using $\\pi^2 \\approx 10$):\n" +
+    "   $$R = 6400\\ \\mathrm{km} = 6.4 \\times 10^6\\ \\mathrm{m}$$\n" +
+    "   $$\\omega^2 = \\left(\\frac{2\\pi}{86400}\\right)^2 \\approx \\frac{40}{(86400)^2} \\approx 5.36 \\times 10^{-9}\\ \\mathrm{rad^2/s^2}$$\n" +
+    "5. The new weight at the equator will be:\n" +
+    "   $$W' = mg' = m(g - R\\omega^2)$$\n" +
+    "6. The closest option to this result is $195.32\\ \\mathrm{N}$.";
+
+  const html = await renderHtml(input);
+
+  assert.ok(!html.includes("katex-error"), "must not contain a KaTeX error span");
+  assert.ok(!html.includes("#cc0000") && !html.includes("cc0000"), "must not contain KaTeX's red error color");
+  assert.equal((html.match(/<ol/g) ?? []).length, 1, "all 6 steps must stay in one ordered list");
+  assert.equal((html.match(/<li/g) ?? []).length, 6, "all 6 numbered steps must survive as list items");
+  assert.equal((html.match(/katex-display/g) ?? []).length, 5, "all 5 display equations must render");
 });

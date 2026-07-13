@@ -45,9 +45,19 @@ export function normalizeDelimiters(content: string): string {
   // left inline it gets the cramped inline KaTeX box with no overflow
   // handling. A "$$...$$" embedded mid-sentence is left untouched (it's
   // genuinely inline, e.g. "(...$$\text{NaOH}$$...)").
+  //
+  // The promoted body and closing "$$" MUST carry the same leading indent as
+  // the opening "$$" — a "   $$eq$$" line is a numbered-list continuation
+  // (CommonMark requires >=3-space indent to stay attached to "1. "), and
+  // dropping the continuation lines to column 0 ends the list item early,
+  // corrupting every list item after it (this was a real production
+  // incident: AI explanations author their numbered steps exactly this way,
+  // and every "$$...$$" step after the first one broke — some falling
+  // through to KaTeX's own red error text, some getting silently absorbed
+  // into a later bare-LaTeX wrap that swallowed a whole sentence of prose).
   result = result.replace(
     /^([ \t]*)\$\$([^$\n]+?)\$\$([ \t]*)$/gm,
-    (_m, indent: string, body: string) => `${indent}$$\n${body}\n$$`,
+    (_m, indent: string, body: string) => `${indent}$$\n${indent}${body}\n${indent}$$`,
   );
 
   // Step 2: Wrap bare LaTeX expressions with $ delimiters
