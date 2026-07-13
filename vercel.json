@@ -1,5 +1,15 @@
 {
   "framework": "nextjs",
   "installCommand": "npm ci",
-  "buildCommand": "npm run build"
+  "buildCommand": "npm run build",
+  "crons": [
+    {
+      "path": "/api/internal/cron/prerequisites-refresh",
+      "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/internal/cron/crystallize",
+      "schedule": "*/15 * * * *"
+    }
+  ]
 }
