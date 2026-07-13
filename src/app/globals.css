@@ -487,6 +487,9 @@
   .math-highlight, .prose .katex {
     position: relative;
     display: inline-block;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
     padding: 0.1rem 0.3rem;
     margin: 0 0.1rem;
     border-radius: 6px;
@@ -511,7 +514,14 @@
   .prose .katex-display {
     position: relative;
     display: flex;
+    max-width: 100%;
     justify-content: center;
+    /* "safe center" keeps the equation centered but falls back to start-aligned
+       instead of clipping the left edge unreachably when it's wider than the
+       container and the user can't scroll to see where it begins. Declared
+       after the plain "center" so browsers without Box Alignment L3 support
+       (justify-content: safe center) keep the line above instead. */
+    justify-content: safe center;
     overflow-x: auto;
     overflow-y: hidden;
     padding: 1.5rem;

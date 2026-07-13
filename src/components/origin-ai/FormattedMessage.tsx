@@ -30,11 +30,25 @@ export function normalizeDelimiters(content: string): string {
   const cleaned = collapseDollarRuns(decodeEscapedWhitespace(content));
 
   // Step 1: Convert \[ ... \] to $$ ... $$ and \( ... \) to $ ... $
+  // (function replacements, not string ones — a string replacement containing
+  // "$$" is a special back-reference escape in String.replace and collapses to
+  // a single literal "$", silently turning display math into inline math)
   let result = cleaned
-    .replace(/\\\[([\s\S]*?)\\\]/g, '\n$$\n$1\n$$\n')
-    .replace(/\\\(([\s\S]*?)\\\)/g, '$$$1$$')
+    .replace(/\\\[([\s\S]*?)\\\]/g, (_m, body: string) => `\n$$\n${body}\n$$\n`)
+    .replace(/\\\(([\s\S]*?)\\\)/g, (_m, body: string) => `$${body}$`)
     .replace(/√\(([\s\S]*?)\)/g, '\\sqrt{$1}') // Handle √(x+y) -> \sqrt{x+y}
     .replace(/√/g, '\\sqrt '); // Fallback for bare symbol
+
+  // Step 1b: Promote a same-line "$$eq$$" (the shape every OG-code display
+  // equation is authored in) onto its own fenced lines. remark-math only
+  // classifies $$...$$ as DISPLAY math when the fences sit on their own line;
+  // left inline it gets the cramped inline KaTeX box with no overflow
+  // handling. A "$$...$$" embedded mid-sentence is left untouched (it's
+  // genuinely inline, e.g. "(...$$\text{NaOH}$$...)").
+  result = result.replace(
+    /^([ \t]*)\$\$([^$\n]+?)\$\$([ \t]*)$/gm,
+    (_m, indent: string, body: string) => `${indent}$$\n${body}\n$$`,
+  );
 
   // Step 2: Wrap bare LaTeX expressions with $ delimiters
   result = wrapBracketedMathExpressions(result);
@@ -45,7 +59,11 @@ export function normalizeDelimiters(content: string): string {
   // renders instead of throwing a red KaTeX error at the student.
   result = repairMathSpans(result);
 
-  return result;
+  // Step 4: wrapBareLaTeX can still, on adversarial/dirty input, manufacture
+  // a "$$$"-style run right where it stops short of an already-delimited
+  // span (see the abutment guard below) — restore the invariant one more
+  // time as a final safety net.
+  return collapseDollarRuns(result);
 }
 
 function wrapBracketedMathExpressions(text: string): string {
@@ -254,10 +272,24 @@ function wrapBareLaTeX(text: string): string {
     return null;
   };
 
+  // A digit at the very start of a line followed by ". "/") " is an ordinal
+  // list marker ("1. ", "2) "), never the start of math.
+  const isOrdinalListMarker = (pos: number): boolean => {
+    if (pos !== 0 && text[pos - 1] !== '\n') return false;
+    return /^[0-9]+[.)]\s/.test(text.slice(pos, pos + 8));
+  };
+
   const looksLikeNumericMathStart = (pos: number): boolean => {
     if (!/[0-9]/.test(text[pos])) return false;
+    if (isOrdinalListMarker(pos)) return false;
 
-    const candidate = text.slice(pos, Math.min(len, pos + 32));
+    // Only look at the run of characters up to the next "$", "*", or newline —
+    // a "$" means we'd be reading into an already-delimited span (e.g. the
+    // "\omega" in a later "$\omega$" made a bare "1" in "Step 1:" look like
+    // math), and a "*" means we'd be reading through a markdown bold marker.
+    const window = text.slice(pos, Math.min(len, pos + 32));
+    const boundary = window.search(/[$*\n]/);
+    const candidate = boundary === -1 ? window : window.slice(0, boundary);
     return /(?:\\[a-zA-Z]+|[=+*\/^_<>]|[±∞≈≠≤≥×÷√∝∠∫∬∭∮∇∂∆∑∏])/.test(candidate);
   };
 
@@ -274,7 +306,10 @@ function wrapBareLaTeX(text: string): string {
     if (next >= len) return false;
     // Don't treat fill-blank underscores (__ or more) as a math operator
     if (text[next] === '_' && next + 1 < len && text[next + 1] === '_') return false;
-    return '=+*/^_<>'.includes(text[next]);
+    // "*" is excluded: it's almost always a markdown bold/italic marker here,
+    // not multiplication, and treating it as one turns short words right
+    // before "**" (e.g. "is **bold**", "Law**") into false math starts.
+    return '=+/^_<>'.includes(text[next]);
   };
 
   // Peek ahead from position pos (skipping spaces) and check if what follows
@@ -287,7 +322,7 @@ function wrapBareLaTeX(text: string): string {
 
     return (
       c === '\\' ||
-      '=+*/<>'.includes(c) ||
+      '=+/<>'.includes(c) ||
       isGreek(c) ||
       isMathSymbol(c) ||
       '^_'.includes(c) ||
@@ -369,6 +404,12 @@ function wrapBareLaTeX(text: string): string {
           j++; continue;
         }
 
+        // A markdown bold/italic marker ("**"/"*") must never be consumed —
+        // stop the math span here rather than swallowing it (this is what
+        // turned "Law**" into "$Law**$" and ate the closing emphasis marker).
+        // A lone "*" mid-expression (e.g. "x * y") still falls through below.
+        if (c === '*' && text[j + 1] === '*') break;
+
         // Operators, digits, and grouping symbols
         if (/[0-9+\-*\/=<>!|&~%()[\]]/.test(c)) { j++; continue; }
 
@@ -406,7 +447,16 @@ function wrapBareLaTeX(text: string): string {
       while (mathEnd > mathStart && /[\s.,;:]/.test(text[mathEnd - 1])) mathEnd--;
 
       const mathContent = text.slice(mathStart, mathEnd);
-      if (mathContent.length > 0) {
+      // Never emit a wrap that lands right next to an existing "$" — that
+      // manufactures an unparseable "$$$" run instead of the intended
+      // "$$" (e.g. wrapping "of" right before "$$\alpha$$"). Push the
+      // content unwrapped instead; the surrounding real delimiters already
+      // do the job.
+      const abutsExistingDollar = text[mathStart - 1] === '$' || text[mathEnd] === '$';
+      if (mathContent.length > 0 && abutsExistingDollar) {
+        out.push(mathContent);
+        i = mathEnd;
+      } else if (mathContent.length > 0) {
         out.push('$' + mathContent + '$');
         i = mathEnd;
       } else {
