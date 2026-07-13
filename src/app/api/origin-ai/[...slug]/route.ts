@@ -51,6 +51,8 @@ const PROXY_TIMEOUT_MS = 30_000;
 const PROXY_TTS_TIMEOUT_MS = 75_000;
 // Image solve: vision extraction + embedding search + Gemini Pro generation
 const PROXY_IMAGE_TIMEOUT_MS = 180_000;
+// Streaming chat/voice can run longer than a single non-stream turn.
+const PROXY_STREAM_TIMEOUT_MS = 180_000;
 
 const ORIGIN_AI_SERVICE_URL = process.env.ORIGIN_AI_SERVICE_URL || "";
 
@@ -242,7 +244,14 @@ async function proxyToMicroservice(
   const isTts = path.includes('/voice/speak');
   const isImageSolve = path.includes('/image-solve');
   const isMessage = path.includes('/chat/message');
-  const timeoutMs = isTts ? PROXY_TTS_TIMEOUT_MS : (isImageSolve || isMessage) ? PROXY_IMAGE_TIMEOUT_MS : PROXY_TIMEOUT_MS;
+  const isStream = path.includes('/stream');
+  const timeoutMs = isStream
+    ? PROXY_STREAM_TIMEOUT_MS
+    : isTts
+      ? PROXY_TTS_TIMEOUT_MS
+      : (isImageSolve || isMessage)
+        ? PROXY_IMAGE_TIMEOUT_MS
+        : PROXY_TIMEOUT_MS;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -326,6 +335,154 @@ async function proxyToMicroservice(
     return null; // fallback to in-app implementation
   } finally {
     clearTimeout(timeoutId);
+  }
+}
+
+function extractSseFinalPayload(buffer: string): unknown | null {
+  const events = buffer.split("\n\n");
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index]?.trim();
+    if (!event) continue;
+    for (const line of event.split("\n")) {
+      if (!line.startsWith("data:")) continue;
+      const raw = line.slice(5).trim();
+      if (!raw) continue;
+      try {
+        const parsed = JSON.parse(raw) as { type?: string };
+        if (parsed?.type === "final") {
+          return parsed;
+        }
+      } catch {
+        // Ignore malformed intermediate frames; usage is best-effort.
+      }
+    }
+  }
+  return null;
+}
+
+async function proxyToMicroserviceStream(
+  method: string,
+  path: string,
+  body: unknown,
+  request: NextRequest,
+  user: StoredUser,
+  usageOptions: { voiceText?: string | null; voiceMinutes?: number | null } = {},
+): Promise<Response | null> {
+  if (!ORIGIN_AI_SERVICE_URL) {
+    return null;
+  }
+
+  const browserSessionId = request.headers.get("X-Origin-AI-Session-Id") ?? "";
+  const requestId = getRequestId(request.headers);
+  let serviceToken: string;
+  try {
+    serviceToken = readRequiredServiceToken("ORIGIN_AI_SERVICE_TOKEN");
+  } catch (error) {
+    const message =
+      error instanceof ServiceAuthConfigurationError
+        ? error.message
+        : "Ori service token is not configured.";
+    console.error("[origin-ai proxy] service token missing", { requestId, path });
+    return new Response(JSON.stringify({ detail: message, requestId }), {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), PROXY_STREAM_TIMEOUT_MS);
+
+  try {
+    const resp = await fetch(`${ORIGIN_AI_SERVICE_URL}${path}`, {
+      method,
+      cache: "no-store",
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+        Authorization: `Bearer ${serviceToken}`,
+        [REQUEST_ID_HEADER]: requestId,
+        "X-Origin-AI-Session-Id": browserSessionId,
+        "X-Origin-User-Id": user.id,
+        "X-Origin-User-Name": user.name,
+        "X-Origin-User-Email": user.email,
+        "X-Origin-User-Role": user.role,
+        "X-Origin-User-Streak": String(user.streak),
+        "X-Origin-User-Student-Class": user.studentClass ?? "",
+        "X-Origin-User-Selected-Course": user.selectedCourse ?? "",
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+
+    if (!resp.ok || !resp.body) {
+      clearTimeout(timeoutId);
+      const text = await resp.text().catch(() => "");
+      let data: unknown = null;
+      if (text) {
+        try {
+          data = JSON.parse(text);
+        } catch {
+          data = { error: text.trim() || `Ori service error (${resp.status})` };
+        }
+      }
+      return new Response(JSON.stringify(data ?? { error: `Ori service error (${resp.status})` }), {
+        status: resp.status,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const decoder = new TextDecoder();
+    let sseBuffer = "";
+    let recordedUsage = false;
+
+    const responseStream = resp.body.pipeThrough(
+      new TransformStream<Uint8Array, Uint8Array>({
+        transform(chunk, streamController) {
+          sseBuffer += decoder.decode(chunk, { stream: true });
+          streamController.enqueue(chunk);
+        },
+        async flush() {
+          clearTimeout(timeoutId);
+          sseBuffer += decoder.decode();
+          if (recordedUsage) return;
+          const finalPayload = extractSseFinalPayload(sseBuffer);
+          if (finalPayload) {
+            recordedUsage = true;
+            await recordOriginAiProxyUsage(user.id, finalPayload, {
+              voiceText: usageOptions.voiceText ?? extractVoiceText(finalPayload),
+              voiceMinutes: usageOptions.voiceMinutes,
+            });
+          }
+        },
+      }),
+    );
+
+    return new Response(responseStream, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
+        "X-Accel-Buffering": "no",
+        [REQUEST_ID_HEADER]: requestId,
+      },
+    });
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err instanceof Error && err.name === "AbortError") {
+      console.error("[origin-ai proxy] microservice stream timed out", {
+        requestId,
+        timeoutMs: PROXY_STREAM_TIMEOUT_MS,
+        path,
+      });
+    } else {
+      console.error("[origin-ai proxy] microservice stream failed:", {
+        requestId,
+        error: err instanceof Error ? err.message : String(err),
+        path,
+      });
+    }
+    return null;
   }
 }
 
@@ -723,6 +880,58 @@ export async function POST(request: NextRequest, context: RouteContext) {
   try {
     const body = await parseJsonBody(request);
 
+    if (slug.length === 2 && slug[0] === "session" && slug[1] === "stream") {
+      const parsedBody = messageBodySchema.safeParse(body);
+      if (!parsedBody.success) {
+        return badRequest("Message is required.");
+      }
+
+      if (!ORIGIN_AI_SERVICE_URL) {
+        return badRequest("Streaming requires the Ori microservice.");
+      }
+
+      const proxyUser = await resolveProxyUser(request);
+      if (!proxyUser) {
+        return unauthorized();
+      }
+      const quotaResponse = await checkOriginAiUsageLimit(proxyUser, {
+        pageKind: parsedBody.data.pageContext?.pageKind ?? null,
+      });
+      if (quotaResponse) {
+        return quotaResponse;
+      }
+
+      let threadSubject: string | null = null;
+      if (parsedBody.data.threadId) {
+        threadSubject = await withStoreAsync(async (store) => {
+          const thread = getThreadById(store, proxyUser.id, parsedBody.data.threadId!);
+          return thread?.subject ?? null;
+        });
+      }
+      const enrichedPayload = {
+        ...parsedBody.data,
+        subject: threadSubject ?? parsedBody.data.pageContext?.activeSubject ?? null,
+        pageContext: {
+          ...(parsedBody.data.pageContext ?? {}),
+          ...(threadSubject && !parsedBody.data.pageContext?.activeSubject
+            ? { activeSubject: threadSubject }
+            : {}),
+        },
+      };
+
+      const proxyResp = await proxyToMicroserviceStream(
+        "POST",
+        "/api/v1/chat/stream",
+        enrichedPayload,
+        request,
+        proxyUser,
+      );
+      if (proxyResp) {
+        return proxyResp;
+      }
+      return badRequest("Ori streaming is temporarily unavailable.");
+    }
+
     if (slug.length === 2 && slug[0] === "session" && slug[1] === "message") {
       const parsedBody = messageBodySchema.safeParse(body);
       if (!parsedBody.success) {
@@ -949,6 +1158,41 @@ export async function POST(request: NextRequest, context: RouteContext) {
       }
 
       return created(result.reply);
+    }
+
+    if (slug.length === 2 && slug[0] === "voice" && slug[1] === "stream") {
+      const parsedBody = voiceRespondBodySchema.safeParse(body);
+      if (!parsedBody.success) {
+        return badRequest("Voice audio payload is required.");
+      }
+
+      if (!ORIGIN_AI_SERVICE_URL) {
+        return badRequest("Streaming requires the Ori microservice.");
+      }
+
+      const proxyUser = await resolveProxyUser(request);
+      if (!proxyUser) {
+        return unauthorized();
+      }
+      const quotaResponse = await checkOriginAiUsageLimit(proxyUser, {
+        voice: true,
+        pageKind: parsedBody.data.pageContext?.pageKind ?? null,
+      });
+      if (quotaResponse) {
+        return quotaResponse;
+      }
+
+      const proxyResp = await proxyToMicroserviceStream(
+        "POST",
+        "/api/v1/voice/stream",
+        parsedBody.data,
+        request,
+        proxyUser,
+      );
+      if (proxyResp) {
+        return proxyResp;
+      }
+      return badRequest("Ori voice streaming is temporarily unavailable.");
     }
 
     if (slug.length === 2 && slug[0] === "voice" && slug[1] === "respond") {

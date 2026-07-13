@@ -25,7 +25,7 @@ import {
   listOriginAiChapters,
   listOriginAiThreads,
   renameOriginAiThread,
-  sendOriginAiMessage,
+  sendOriginAiMessageStreaming,
 
   solveOriginAiImage,
   type ChapterItem,
@@ -362,15 +362,23 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
     isBusyRef.current = true;
     setIsTyping(true);
 
-    // Optimistic user message — appears immediately so the conversation stays interleaved.
+    // Optimistic user + empty assistant bubble so text can stream immediately.
     const tempId = `pending-${Date.now()}`;
+    const tempAiId = `pending-ai-${Date.now()}`;
     const tempUserMsg: ChatMessageType = {
       id: tempId,
       role: 'user',
       content: outboundMessage,
       timestamp: new Date(),
     };
-    setActiveSession(prev => prev ? { ...prev, messages: [...prev.messages, tempUserMsg], updatedAt: new Date() } : prev);
+    const tempAiMsg: ChatMessageType = {
+      id: tempAiId,
+      role: 'assistant',
+      content: '',
+      timestamp: new Date(),
+      metadata: { streaming: true },
+    };
+    setActiveSession(prev => prev ? { ...prev, messages: [...prev.messages, tempUserMsg, tempAiMsg], updatedAt: new Date() } : prev);
 
     try {
       const chapterTitle = getChapterContextTitle(activeSession);
@@ -385,7 +393,28 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
         ctx.imageContext = lastImageContextRef.current;
         lastImageContextRef.current = null;
       }
-      const response = await sendOriginAiMessage(outboundMessage, ctx, snappedHighlight, activeSession.id);
+      const response = await sendOriginAiMessageStreaming(
+        outboundMessage,
+        ctx,
+        snappedHighlight,
+        activeSession.id,
+        {
+          onTextDelta: (delta) => {
+            setActiveSession(prev => {
+              if (!prev) return prev;
+              return {
+                ...prev,
+                messages: prev.messages.map((message) =>
+                  message.id === tempAiId
+                    ? { ...message, content: `${message.content}${delta}` }
+                    : message,
+                ),
+                updatedAt: new Date(),
+              };
+            });
+          },
+        },
+      );
 
       // Update tokens
       const userTokens = (response.userMessage.metadata?.tokensUsed as number) || 0;
@@ -404,8 +433,8 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
         return nextSessions;
       });
     } catch (error) {
-      // Roll back the optimistic message on failure.
-      setActiveSession(prev => prev ? { ...prev, messages: prev.messages.filter(m => m.id !== tempId) } : prev);
+      // Roll back the optimistic messages on failure.
+      setActiveSession(prev => prev ? { ...prev, messages: prev.messages.filter(m => m.id !== tempId && m.id !== tempAiId) } : prev);
       console.error("Failed to send message", error);
       if (error instanceof Error && error.message.includes('daily AI usage limit')) {
         void refreshUser();
@@ -670,7 +699,49 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
           questionChapter: chapter.name,
         };
         const autoMessage = `Explain all the concepts of the chapter "${chapter.name}" in ${subjectName} step by step. Start from the basics and cover every important concept, formula, and example.`;
-        const response = await sendOriginAiMessage(autoMessage, ctx, null, session.id);
+        const tempAiId = `pending-ai-${Date.now()}`;
+        setActiveSession(prev => prev ? {
+          ...prev,
+          messages: [
+            ...prev.messages,
+            {
+              id: `pending-user-${Date.now()}`,
+              role: 'user',
+              content: autoMessage,
+              timestamp: new Date(),
+            },
+            {
+              id: tempAiId,
+              role: 'assistant',
+              content: '',
+              timestamp: new Date(),
+              metadata: { streaming: true },
+            },
+          ],
+          updatedAt: new Date(),
+        } : prev);
+        const response = await sendOriginAiMessageStreaming(
+          autoMessage,
+          ctx,
+          null,
+          session.id,
+          {
+            onTextDelta: (delta) => {
+              setActiveSession(prev => {
+                if (!prev) return prev;
+                return {
+                  ...prev,
+                  messages: prev.messages.map((message) =>
+                    message.id === tempAiId
+                      ? { ...message, content: `${message.content}${delta}` }
+                      : message,
+                  ),
+                  updatedAt: new Date(),
+                };
+              });
+            },
+          },
+        );
         const mergedSession = mergeReplyIntoSession(session, replyToDoubtReply(response));
         setActiveSession(mergedSession);
         setSessions(prev => {
