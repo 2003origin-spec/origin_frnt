@@ -175,7 +175,13 @@ export type CustomTestPayload = {
   subject?: string;
   difficulty?: string;
   chapter?: string;
+  /** 11 or 12. */
+  class_level?: number;
+  /** Exam family: "JEE" | "NEET" | "AIPMT". */
+  exam?: string;
   question_count?: number;
+  /** Optional override; omit to auto-compute. */
+  duration_minutes?: number;
 };
 
 export type DppQuestionCheckPayload = PracticeSubmissionPayload & {
@@ -304,9 +310,9 @@ function analyticsFallbackReason(err: SerializedError): string {
 }
 
 function recordAnalyticsFallback(input: {
-  scope: "submitTest" | "createCustomTest" | "submitDpp";
+  scope: "submitTest" | "createCustomTest" | "submitDpp" | "generateOgcodeSelection";
   userId: string;
-  assessmentId: string;
+  assessmentId: string | null;
   err: unknown;
 }) {
   const requestId = createId("req");
@@ -2232,37 +2238,78 @@ function getTestDetailFallback(store: AppStore, user: StoredUser, testId: string
   return serializeTest(store, user.id, testById(store, testId));
 }
 
+/**
+ * In-process (no analytics-service) question selection: class/exam are hard
+ * constraints, chapter is dropped and topped up from the rest of the subject
+ * when short. Pure — no persistence — shared by createCustomTestFallback
+ * (the student-test degraded path) and the room auto-select flow, which needs
+ * the same selection without ever creating a legacy StoredTest.
+ */
+function selectCustomTestQuestions(store: AppStore, payload: CustomTestPayload) {
+  const subject = (payload.subject ?? "mixed").toLowerCase();
+  const difficultyValue = (payload.difficulty ?? "medium").toLowerCase();
+  const difficulty = difficultyValue === "all" ? null : normalizeDifficulty(difficultyValue);
+  const chapter = (payload.chapter ?? "").trim().toLowerCase();
+  const classLevel = payload.class_level != null ? Math.trunc(Number(payload.class_level)) : null;
+  const exam = (payload.exam ?? "").trim().toUpperCase();
+  const questionCount = Math.max(1, Math.min(50, Number(payload.question_count ?? 10)));
+  const durationOverride = payload.duration_minutes != null ? Math.trunc(Number(payload.duration_minutes)) : null;
+
+  // class/exam are hard constraints (never relaxed below), same as the
+  // analytics-service's primary path — only chapter is ever dropped to top up.
+  const matchesBase = (question: StoredQuestion) => {
+    const matchesSubject = subject === "all" || subject === "mixed" || question.subject === normalizeSubject(subject);
+    const matchesDifficulty = !difficulty || question.difficulty === difficulty;
+    const matchesClass = !classLevel || question.classLevel === classLevel;
+    const matchesExam = !exam || (question.occurrence ?? "").toUpperCase().includes(exam);
+    return matchesSubject && matchesDifficulty && matchesClass && matchesExam;
+  };
+
+  const chapterMatches = store.questions.filter(
+    (question) => matchesBase(question) && (!chapter || question.chapter.toLowerCase().includes(chapter)),
+  );
+
+  // Top up from other chapters in the same subject when the chosen chapter
+  // is short — the same "drop chapter, keep everything else" broaden step
+  // generate_custom_test's primary (analytics-service) path already does.
+  const selected = chapterMatches.slice(0, questionCount);
+  if (selected.length < questionCount) {
+    const seenIds = new Set(selected.map((question) => question.id));
+    const broadened = store.questions.filter((question) => matchesBase(question) && !seenIds.has(question.id));
+    for (const question of broadened) {
+      if (selected.length >= questionCount) break;
+      selected.push(question);
+    }
+  }
+
+  return {
+    selected,
+    subject: subject === "all" || subject === "mixed" ? "mixed" : normalizeSubject(subject),
+    chapter: chapter || null,
+    difficulty: difficulty ?? "medium",
+    durationMinutes: durationOverride && durationOverride > 0 ? durationOverride : Math.max(10, selected.length * 3),
+  };
+}
+
 function createCustomTestFallback(
   store: AppStore,
   user: StoredUser,
   payload: CustomTestPayload,
 ) {
-  const subject = (payload.subject ?? "mixed").toLowerCase();
-  const difficultyValue = (payload.difficulty ?? "medium").toLowerCase();
-  const difficulty = difficultyValue === "all" ? null : normalizeDifficulty(difficultyValue);
-  const chapter = (payload.chapter ?? "").trim().toLowerCase();
-  const questionCount = Math.max(1, Number(payload.question_count ?? 10));
+  const { selected, subject, chapter, difficulty, durationMinutes } = selectCustomTestQuestions(store, payload);
 
-  const candidates = store.questions.filter((question) => {
-    const matchesSubject = subject === "all" || subject === "mixed" || question.subject === normalizeSubject(subject);
-    const matchesDifficulty = !difficulty || question.difficulty === difficulty;
-    const matchesChapter = !chapter || question.chapter.toLowerCase().includes(chapter);
-    return matchesSubject && matchesDifficulty && matchesChapter;
-  });
-
-  if (!candidates.length) {
+  if (!selected.length) {
     throw new Error("No questions matched that custom test configuration.");
   }
 
-  const selected = candidates.slice(0, Math.min(questionCount, candidates.length));
   const newTest: StoredTest = {
     id: createId("test"),
-    title: `${subject === "all" || subject === "mixed" ? "Mixed" : subject[0].toUpperCase() + subject.slice(1)} Custom Test`,
+    title: `${subject === "mixed" ? "Mixed" : subject[0].toUpperCase() + subject.slice(1)} Custom Test`,
     description: chapter ? `Custom practice set focused on ${chapter}.` : "Custom practice set generated from the question bank.",
-    subject: subject === "all" || subject === "mixed" ? "mixed" : normalizeSubject(subject),
-    chapter: chapter || null,
-    difficulty: difficulty ?? "medium",
-    duration: Math.max(10, selected.length * 3),
+    subject,
+    chapter,
+    difficulty,
+    duration: durationMinutes,
     totalQuestions: selected.length,
     isPremium: false,
     questionIds: selected.map((question) => question.id),
@@ -3129,12 +3176,17 @@ export async function createCustomTest(
       getRecentWeakTopicsForUser(user.id),
       getAttemptedQuestionIdsForUser(user.id),
     ]);
+    const classLevel = payload.class_level != null ? Math.trunc(Number(payload.class_level)) : null;
+    const durationOverride = payload.duration_minutes != null ? Math.trunc(Number(payload.duration_minutes)) : null;
     const serviceResponse = await generateCustomTestWithService({
       user_id: user.id,
       subject: subject === "all" ? "mixed" : subject,
       difficulty,
       chapter: payload.chapter?.trim() || null,
-      question_count: Math.max(1, Number(payload.question_count ?? 10)),
+      class_level: classLevel && classLevel > 0 ? classLevel : null,
+      exam: payload.exam?.trim() || null,
+      question_count: Math.max(1, Math.min(50, Number(payload.question_count ?? 10))),
+      duration_minutes: durationOverride && durationOverride > 0 ? durationOverride : null,
       recent_weak_topics: recentWeakTopics,
       attempted_question_ids: attemptedQuestionIds,
     });
@@ -3178,6 +3230,80 @@ export async function createCustomTest(
     });
     return createCustomTestFallback(store, user, payload);
   }
+}
+
+export type OgcodeAutoSelection = {
+  questionIds: string[];
+  subject: string;
+  chapter: string | null;
+  difficulty: string;
+  durationMinutes: number;
+};
+
+/**
+ * Selects OG-code questions matching the given filters — same primary
+ * (analytics-service) + fallback (in-process) path as createCustomTest, minus
+ * persisting a legacy StoredTest. Used by the room "auto-build" flow, which
+ * creates its own assessment.tests row from the returned question ids instead.
+ * No weak-topic personalisation: this builds a test for a whole room, not one
+ * student's practice history, so recent_weak_topics/attempted_question_ids are
+ * intentionally empty. Caller supplies `store` via withStoreAsyncScoped, same
+ * as every other store-reading function in this module.
+ */
+export async function generateOgcodeSelectionForWorkspace(
+  store: AppStore,
+  actorUserId: string,
+  payload: CustomTestPayload,
+): Promise<OgcodeAutoSelection> {
+  const subject = (payload.subject ?? "mixed").toLowerCase();
+  const difficultyValue = (payload.difficulty ?? "medium").toLowerCase();
+  const difficulty = difficultyValue === "all" ? null : normalizeDifficulty(difficultyValue);
+  const classLevel = payload.class_level != null ? Math.trunc(Number(payload.class_level)) : null;
+  const durationOverride = payload.duration_minutes != null ? Math.trunc(Number(payload.duration_minutes)) : null;
+
+  try {
+    const serviceResponse = await generateCustomTestWithService({
+      user_id: actorUserId,
+      subject: subject === "all" ? "mixed" : subject,
+      difficulty,
+      chapter: payload.chapter?.trim() || null,
+      class_level: classLevel && classLevel > 0 ? classLevel : null,
+      exam: payload.exam?.trim() || null,
+      question_count: Math.max(1, Math.min(50, Number(payload.question_count ?? 10))),
+      duration_minutes: durationOverride && durationOverride > 0 ? durationOverride : null,
+      recent_weak_topics: [],
+      attempted_question_ids: [],
+    });
+    if (serviceResponse) {
+      return {
+        questionIds: serviceResponse.question_ids,
+        subject: serviceResponse.subject,
+        chapter: serviceResponse.chapter ?? null,
+        difficulty: serviceResponse.difficulty,
+        durationMinutes: serviceResponse.duration_minutes,
+      };
+    }
+  } catch (err) {
+    recordAnalyticsFallback({
+      scope: "generateOgcodeSelection",
+      userId: actorUserId,
+      assessmentId: null,
+      err,
+    });
+  }
+
+  const { selected, subject: fallbackSubject, chapter, difficulty: fallbackDifficulty, durationMinutes } =
+    selectCustomTestQuestions(store, payload);
+  if (!selected.length) {
+    throw new Error("No questions matched that configuration.");
+  }
+  return {
+    questionIds: selected.map((question) => question.id),
+    subject: fallbackSubject,
+    chapter,
+    difficulty: fallbackDifficulty,
+    durationMinutes,
+  };
 }
 
 export async function submitTest(

@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -7,7 +7,6 @@ import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { Slider } from '@/components/ui/slider';
 import {
   Search,
   Clock,
@@ -30,6 +29,10 @@ import {
 import type { Test, TestPreview, User } from '@/types';
 import { apiCall } from '@/lib/api';
 import { createCustomTestAction } from '@/server/actions/test-actions';
+
+const CLASS_OPTIONS = [11, 12] as const;
+const EXAM_OPTIONS = ['JEE', 'NEET', 'AIPMT'] as const;
+const QUESTION_COUNT_OPTIONS = [10, 20, 30, 40, 50] as const;
 
 interface TestListProps {
   onStartTest: (test: TestPreview) => void;
@@ -67,19 +70,67 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
   const [loading, setLoading] = useState(!initialTests);
 
   const [customTestConfig, setCustomTestConfig] = useState({
+    classLevel: '' as '' | (typeof CLASS_OPTIONS)[number],
+    exam: '' as '' | (typeof EXAM_OPTIONS)[number],
     subject: 'mixed',
-    difficulty: 'medium',
     chapter: '',
-    question_count: 10
+    question_count: 10 as (typeof QUESTION_COUNT_OPTIONS)[number],
+    duration_minutes: '' as '' | number,
   });
   const [creatingTest, setCreatingTest] = useState(false);
   const [customTestError, setCustomTestError] = useState('');
+
+  // Chapters are the only dynamically-faceted filter here (class/exam are a
+  // small fixed set; subject is the existing fixed 4+mixed enum) — narrowed by
+  // whatever class/exam/subject is currently picked, same /assessments/ogcode/facets
+  // endpoint and cascade pattern OGCodeList.tsx already uses. A request-sequence
+  // guard drops a stale response if the filters change again before it resolves.
+  const [facetChapters, setFacetChapters] = useState<string[]>([]);
+  const [facetChaptersLoading, setFacetChaptersLoading] = useState(false);
+  const chapterFacetReq = useRef(0);
+
+  useEffect(() => {
+    const req = ++chapterFacetReq.current;
+    setFacetChaptersLoading(true);
+    const qs = new URLSearchParams();
+    qs.set('level', 'chapter');
+    if (customTestConfig.classLevel) qs.append('classes', String(customTestConfig.classLevel));
+    if (customTestConfig.exam) qs.append('occurrences', customTestConfig.exam);
+    if (customTestConfig.subject !== 'mixed') qs.append('subjects', customTestConfig.subject);
+
+    apiCall(`/assessments/ogcode/facets?${qs.toString()}`)
+      .then((data) => {
+        if (req !== chapterFacetReq.current) return;
+        const values = Array.isArray(data) ? (data as string[]) : [];
+        setFacetChapters(values);
+        setCustomTestConfig((prev) =>
+          prev.chapter && !values.includes(prev.chapter) ? { ...prev, chapter: '' } : prev
+        );
+      })
+      .catch(() => {
+        if (req === chapterFacetReq.current) setFacetChapters([]);
+      })
+      .finally(() => {
+        if (req === chapterFacetReq.current) setFacetChaptersLoading(false);
+      });
+  }, [customTestConfig.classLevel, customTestConfig.exam, customTestConfig.subject]);
 
   const handleCreateCustomTest = async () => {
     setCreatingTest(true);
     setCustomTestError('');
     try {
-      const response = (await createCustomTestAction(customTestConfig)) as Test;
+      const response = (await createCustomTestAction({
+        subject: customTestConfig.subject,
+        // No user-facing difficulty filter anymore — "all" maps to no
+        // difficulty constraint server-side (the request default would
+        // otherwise silently narrow to "medium" if this were omitted).
+        difficulty: 'all',
+        chapter: customTestConfig.chapter || undefined,
+        class_level: customTestConfig.classLevel || undefined,
+        exam: customTestConfig.exam || undefined,
+        question_count: customTestConfig.question_count,
+        duration_minutes: customTestConfig.duration_minutes || undefined,
+      })) as Test;
       // Add the new test to the top of the list and mark as custom
       const newTest: TestPreview = { ...toTestPreview(response), isCustom: true, origin: 'custom', isPyq: false, examType: null };
       setTests((prev) => [newTest, ...prev]);
@@ -420,10 +471,36 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                         <div className="p-6 sm:p-10 space-y-6 sm:space-y-10">
                             <div className="grid sm:grid-cols-2 gap-10">
                                 <div className="space-y-4">
+                                    <Label className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">Class</Label>
+                                    <select
+                                        value={customTestConfig.classLevel}
+                                        onChange={(e) => setCustomTestConfig({ ...customTestConfig, classLevel: e.target.value ? (Number(e.target.value) as (typeof CLASS_OPTIONS)[number]) : '' })}
+                                        className="w-full h-14 px-5 rounded-2xl bg-background border border-border/40 text-foreground font-black text-sm outline-none focus:border-rose-500 transition-all"
+                                    >
+                                        <option value="">Any Class</option>
+                                        {CLASS_OPTIONS.map((c) => (
+                                            <option key={c} value={c}>Class {c}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="space-y-4">
+                                    <Label className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">Exam</Label>
+                                    <select
+                                        value={customTestConfig.exam}
+                                        onChange={(e) => setCustomTestConfig({ ...customTestConfig, exam: e.target.value as '' | (typeof EXAM_OPTIONS)[number] })}
+                                        className="w-full h-14 px-5 rounded-2xl bg-background border border-border/40 text-foreground font-black text-sm outline-none focus:border-rose-500 transition-all"
+                                    >
+                                        <option value="">Any Exam</option>
+                                        {EXAM_OPTIONS.map((exam) => (
+                                            <option key={exam} value={exam}>{exam}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="space-y-4">
                                     <Label className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">Domain Calibration</Label>
                                     <select
                                         value={customTestConfig.subject}
-                                        onChange={(e) => setCustomTestConfig({ ...customTestConfig, subject: e.target.value })}
+                                        onChange={(e) => setCustomTestConfig({ ...customTestConfig, subject: e.target.value, chapter: '' })}
                                         className="w-full h-14 px-5 rounded-2xl bg-background border border-border/40 text-foreground font-black text-sm outline-none focus:border-rose-500 transition-all"
                                     >
                                         <option value="mixed">All Subjects (Mixed)</option>
@@ -434,43 +511,68 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                                     </select>
                                 </div>
                                 <div className="space-y-4">
-                                    <Label className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">Intensity Level</Label>
+                                    <Label className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">Chapter (Optional)</Label>
                                     <select
-                                        value={customTestConfig.difficulty}
-                                        onChange={(e) => setCustomTestConfig({ ...customTestConfig, difficulty: e.target.value })}
-                                        className="w-full h-14 px-5 rounded-2xl bg-background border border-border/40 text-foreground font-black text-sm outline-none focus:border-rose-500 transition-all"
+                                        value={customTestConfig.chapter}
+                                        onChange={(e) => setCustomTestConfig({ ...customTestConfig, chapter: e.target.value })}
+                                        disabled={customTestConfig.subject === 'mixed' || facetChaptersLoading}
+                                        className="w-full h-14 px-5 rounded-2xl bg-background border border-border/40 text-foreground font-black text-sm outline-none focus:border-rose-500 transition-all disabled:opacity-50"
                                     >
-                                        <option value="all">Dynamic Difficulty</option>
-                                        <option value="easy">Introductory (Easy)</option>
-                                        <option value="medium">Standard (Medium)</option>
-                                        <option value="hard">Advanced (Hard)</option>
+                                        <option value="">
+                                            {customTestConfig.subject === 'mixed'
+                                                ? 'Pick a subject first'
+                                                : facetChaptersLoading
+                                                ? 'Loading chapters…'
+                                                : 'Any Chapter'}
+                                        </option>
+                                        {facetChapters.map((chapter) => (
+                                            <option key={chapter} value={chapter}>{chapter}</option>
+                                        ))}
                                     </select>
+                                    {customTestConfig.chapter && (
+                                        <p className="text-[10px] font-bold text-muted-foreground normal-case">
+                                            Short on questions in this chapter? We&apos;ll fill the rest from other {customTestConfig.subject} chapters automatically.
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="space-y-6">
+                                <Label className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">Question Load</Label>
+                                <div className="grid grid-cols-5 gap-2 sm:gap-3">
+                                    {QUESTION_COUNT_OPTIONS.map((count) => (
+                                        <button
+                                            key={count}
+                                            type="button"
+                                            onClick={() => setCustomTestConfig({ ...customTestConfig, question_count: count })}
+                                            className={`h-14 rounded-2xl font-black text-sm transition-all border ${
+                                                customTestConfig.question_count === count
+                                                    ? 'bg-primary text-white border-primary shadow-lg shadow-primary/20'
+                                                    : 'bg-background border-border/40 text-foreground hover:border-primary/40'
+                                            }`}
+                                        >
+                                            {count}
+                                        </button>
+                                    ))}
                                 </div>
                             </div>
 
                             <div className="space-y-4">
-                                <Label className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">Chapter Specificity (Optional)</Label>
-                                <Input
-                                    placeholder="e.g. Kinematics, Thermodynamics..."
-                                    value={customTestConfig.chapter}
-                                    onChange={(e) => setCustomTestConfig({ ...customTestConfig, chapter: e.target.value })}
-                                    className="h-14 rounded-2xl bg-white dark:bg-white/5 border border-border/40 px-5 text-sm font-bold"
-                                />
-                            </div>
-
-                            <div className="space-y-6">
                                 <div className="flex justify-between items-center">
-                                    <Label className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">Question Load</Label>
-                                    <span className="text-sm font-black text-rose-600 dark:text-rose-400">{customTestConfig.question_count} UNITS</span>
+                                    <Label className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">Duration (Optional)</Label>
+                                    <span className="text-[10px] font-bold text-muted-foreground normal-case">Leave blank to auto-calculate</span>
                                 </div>
-                                <Slider
-                                    value={[customTestConfig.question_count]}
-                                    onValueChange={(val) => setCustomTestConfig({ ...customTestConfig, question_count: val[0] })}
-                                    max={30}
-                                    min={5}
-                                    step={5}
-                                    className="py-2"
-                                />
+                                <div className="relative">
+                                    <Input
+                                        type="number"
+                                        min={1}
+                                        placeholder="Auto"
+                                        value={customTestConfig.duration_minutes}
+                                        onChange={(e) => setCustomTestConfig({ ...customTestConfig, duration_minutes: e.target.value ? Math.max(1, Number(e.target.value)) : '' })}
+                                        className="h-14 rounded-2xl bg-white dark:bg-white/5 border border-border/40 px-5 text-sm font-bold"
+                                    />
+                                    <span className="absolute right-5 top-1/2 -translate-y-1/2 text-xs font-black text-muted-foreground uppercase tracking-widest">min</span>
+                                </div>
                             </div>
 
                             {customTestError && (

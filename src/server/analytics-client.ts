@@ -57,7 +57,13 @@ export interface AnalyticsCustomTestRequest {
   subject: string;
   difficulty?: AnalyticsDifficulty | null;
   chapter?: string | null;
+  /** 11 or 12 — applied as a hard constraint, never relaxed by fallback. */
+  class_level?: number | null;
+  /** Exam family ("JEE"/"NEET"/"AIPMT") — same values as the OG-code list's exam filter. */
+  exam?: string | null;
   question_count: number;
+  /** Optional override; omit to auto-compute from the selected questions' difficulty mix. */
+  duration_minutes?: number | null;
   recent_weak_topics: string[];
   attempted_question_ids: string[];
 }
