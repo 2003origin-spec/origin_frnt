@@ -2239,64 +2239,81 @@ function getTestDetailFallback(store: AppStore, user: StoredUser, testId: string
 }
 
 /**
- * In-process (no analytics-service) question selection: class/exam are hard
- * constraints, chapter is dropped and topped up from the rest of the subject
- * when short. Pure — no persistence — shared by createCustomTestFallback
- * (the student-test degraded path) and the room auto-select flow, which needs
- * the same selection without ever creating a legacy StoredTest.
+ * Degraded-path (no analytics-service) question selection, queried directly
+ * against the OGCode Postgres catalog: class/exam are hard constraints,
+ * chapter is dropped and topped up from the rest of the subject when short.
+ * No persistence — shared by createCustomTestFallback (the student-test
+ * degraded path) and the room auto-select flow, which needs the same
+ * selection without ever creating a legacy StoredTest.
+ *
+ * Deliberately does NOT read AppStore.questions — that collection is always
+ * empty (OGCode moved entirely to Postgres; see the seed-time comment in
+ * legacy/store.ts), so a filter over it can never return a match. An earlier
+ * version of this function did exactly that and threw "No questions matched"
+ * unconditionally whenever the primary analytics-service path failed.
  */
-function selectCustomTestQuestions(store: AppStore, payload: CustomTestPayload) {
+async function selectCustomTestQuestions(payload: CustomTestPayload) {
   const subject = (payload.subject ?? "mixed").toLowerCase();
+  const isMixedSubject = subject === "all" || subject === "mixed";
   const difficultyValue = (payload.difficulty ?? "medium").toLowerCase();
   const difficulty = difficultyValue === "all" ? null : normalizeDifficulty(difficultyValue);
-  const chapter = (payload.chapter ?? "").trim().toLowerCase();
+  const chapter = (payload.chapter ?? "").trim();
   const classLevel = payload.class_level != null ? Math.trunc(Number(payload.class_level)) : null;
-  const exam = (payload.exam ?? "").trim().toUpperCase();
+  const exam = (payload.exam ?? "").trim();
   const questionCount = Math.max(1, Math.min(50, Number(payload.question_count ?? 10)));
   const durationOverride = payload.duration_minutes != null ? Math.trunc(Number(payload.duration_minutes)) : null;
 
   // class/exam are hard constraints (never relaxed below), same as the
   // analytics-service's primary path — only chapter is ever dropped to top up.
-  const matchesBase = (question: StoredQuestion) => {
-    const matchesSubject = subject === "all" || subject === "mixed" || question.subject === normalizeSubject(subject);
-    const matchesDifficulty = !difficulty || question.difficulty === difficulty;
-    const matchesClass = !classLevel || question.classLevel === classLevel;
-    const matchesExam = !exam || (question.occurrence ?? "").toUpperCase().includes(exam);
-    return matchesSubject && matchesDifficulty && matchesClass && matchesExam;
+  const baseFilters = {
+    subject: isMixedSubject ? null : normalizeSubject(subject),
+    difficulty,
+    classes: classLevel && classLevel > 0 ? [classLevel] : undefined,
+    occurrences: exam ? [exam] : undefined,
   };
 
-  const chapterMatches = store.questions.filter(
-    (question) => matchesBase(question) && (!chapter || question.chapter.toLowerCase().includes(chapter)),
-  );
+  const chapterPage = await listOgcodeCatalogQuestionPage({
+    ...baseFilters,
+    chapters: chapter ? [chapter] : undefined,
+    limit: questionCount,
+    offset: 0,
+  });
+  const selected = [...chapterPage.items];
+  const seenIds = new Set(selected.map((question) => question.id));
 
   // Top up from other chapters in the same subject when the chosen chapter
   // is short — the same "drop chapter, keep everything else" broaden step
   // generate_custom_test's primary (analytics-service) path already does.
-  const selected = chapterMatches.slice(0, questionCount);
   if (selected.length < questionCount) {
-    const seenIds = new Set(selected.map((question) => question.id));
-    const broadened = store.questions.filter((question) => matchesBase(question) && !seenIds.has(question.id));
-    for (const question of broadened) {
+    const topUp = await listOgcodeCatalogQuestionPage({
+      ...baseFilters,
+      excludeIds: [...seenIds],
+      limit: questionCount - selected.length,
+      offset: 0,
+    });
+    for (const question of topUp.items) {
       if (selected.length >= questionCount) break;
+      if (seenIds.has(question.id)) continue;
       selected.push(question);
+      seenIds.add(question.id);
     }
   }
 
   return {
     selected,
-    subject: subject === "all" || subject === "mixed" ? "mixed" : normalizeSubject(subject),
+    subject: isMixedSubject ? "mixed" : normalizeSubject(subject),
     chapter: chapter || null,
     difficulty: difficulty ?? "medium",
     durationMinutes: durationOverride && durationOverride > 0 ? durationOverride : Math.max(10, selected.length * 3),
   };
 }
 
-function createCustomTestFallback(
+async function createCustomTestFallback(
   store: AppStore,
   user: StoredUser,
   payload: CustomTestPayload,
 ) {
-  const { selected, subject, chapter, difficulty, durationMinutes } = selectCustomTestQuestions(store, payload);
+  const { selected, subject, chapter, difficulty, durationMinutes } = await selectCustomTestQuestions(payload);
 
   if (!selected.length) {
     throw new Error("No questions matched that custom test configuration.");
@@ -3293,7 +3310,7 @@ export async function generateOgcodeSelectionForWorkspace(
   }
 
   const { selected, subject: fallbackSubject, chapter, difficulty: fallbackDifficulty, durationMinutes } =
-    selectCustomTestQuestions(store, payload);
+    await selectCustomTestQuestions(payload);
   if (!selected.length) {
     throw new Error("No questions matched that configuration.");
   }
