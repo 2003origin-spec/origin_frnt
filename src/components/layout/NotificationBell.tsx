@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Bell, Check, Trash2, X, Info, CheckCircle, AlertTriangle } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Bell, Check, Trash2, X, Info, CheckCircle, AlertTriangle, ArrowRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNotifications } from '@/context/NotificationContext';
 import { cn } from '@/lib/utils';
@@ -11,8 +12,15 @@ export const NotificationBell: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [dropdownPos, setDropdownPos] = useState<'right' | 'below'>('below');
   const { notifications, unreadCount, markAsRead, markAllAsRead, removeNotification, clearAll } = useNotifications();
+  const router = useRouter();
   const dropdownRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
+
+  const openNotification = (id: string, href: string) => {
+    markAsRead(id);
+    setIsOpen(false);
+    router.push(href);
+  };
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -128,6 +136,18 @@ export const NotificationBell: React.FC = () => {
                           <span className="text-[10px] text-slate-400 dark:text-zinc-600 font-medium">
                             {formatDistanceToNow(new Date(notification.createdAt), { addSuffix: true })}
                           </span>
+                          {notification.href && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openNotification(notification.id, notification.href!);
+                              }}
+                              className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-[11px] font-bold text-white transition-colors hover:bg-primary/90"
+                            >
+                              {notification.href.startsWith('/ogcode/') ? 'Attempt now' : 'Open'}
+                              <ArrowRight className="h-3 w-3" />
+                            </button>
+                          )}
                         </div>
                         <button 
                           onClick={(e) => {

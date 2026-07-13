@@ -1035,13 +1035,13 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
     return (
         <div className="min-h-screen neu-surface text-foreground flex flex-col font-sans transition-colors duration-300">
             {/* Header */}
-            <div className="relative h-14 sm:h-12 border-b border-border/40 flex items-center px-3 sm:px-4 bg-[hsl(var(--neu-bg)/0.85)] backdrop-blur-xl sticky top-0 z-50">
-                <button onClick={onBack} className="p-2 neu-raised rounded-lg transition-all hover:-translate-y-0.5" aria-label="Back to questions">
+            <div className="relative h-14 sm:h-12 border-b border-border/40 flex items-center gap-2 px-3 sm:px-4 bg-[hsl(var(--neu-bg)/0.85)] backdrop-blur-xl sticky top-0 z-50">
+                <button onClick={onBack} className="shrink-0 p-2 neu-raised rounded-lg transition-all hover:-translate-y-0.5" aria-label="Back to questions">
                     <ArrowLeft className="w-4 h-4 text-muted-foreground" />
                 </button>
 
-                {/* Stats — pinned to the centre of the header */}
-                <div id="tutorial-ogcode-stats" className="absolute left-1/2 -translate-x-1/2 flex items-center gap-2 max-w-[calc(100%-6rem)] overflow-hidden">
+                {/* Stats — centred, allowed to shrink/scroll so nothing is clipped behind the controls */}
+                <div id="tutorial-ogcode-stats" className="flex-1 min-w-0 flex items-center justify-center gap-2 overflow-x-auto">
                     <motion.div
                         ref={ptsCounterRef}
                         className="flex items-center gap-1.5 text-[10px] sm:text-xs font-bold text-amber-500 font-mono bg-amber-500/5 px-2 py-1 rounded-md border border-amber-500/10"
@@ -1071,7 +1071,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                 </div>
 
                 {/* Right-side controls */}
-                <div className="ml-auto flex items-center gap-2">
+                <div className="shrink-0 flex items-center gap-2">
                     {/* Answer-sound mute toggle — only when the student has picked sounds */}
                     {hasSoundPref && (
                         <button
