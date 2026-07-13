@@ -17,6 +17,8 @@ import type { StoredQuestion } from "@/legacy/store";
 import { getQuestionWithVersion } from "./questions";
 import type { QuestionWithVersion } from "./types";
 
+const VALID_DIFFICULTIES = new Set(["easy", "medium", "hard", "insane"]);
+
 /** Map a Question-Bag question (current version) into the legacy StoredQuestion shape. */
 export function mapContentQuestionToStored(qwv: QuestionWithVersion): StoredQuestion | null {
   const v = qwv.currentVersion;
@@ -35,10 +37,16 @@ export function mapContentQuestionToStored(qwv: QuestionWithVersion): StoredQues
     explanation: v.explanation ?? "",
     hint: v.hint,
     answerSpec,
-    subject: v.subject,
-    chapter: v.chapter,
-    concept: v.concept,
-    difficulty: v.difficulty as StoredQuestion["difficulty"],
+    // Question-Bag authoring doesn't enforce these as non-empty (the DB column
+    // types are "string" at the TS layer via an `as string` cast, not a runtime
+    // guarantee), and analytics-service's GradedAttempt requires all four as
+    // non-nullable strings — a blank one would either fail Pydantic validation
+    // outright for the WHOLE test's analysis, or feed an empty-string "topic"
+    // into weak-topic detection. Default rather than let either happen.
+    subject: (v.subject?.trim() || "general"),
+    chapter: (v.chapter?.trim() || "Uncategorized"),
+    concept: (v.concept?.trim() || v.chapter?.trim() || "General"),
+    difficulty: VALID_DIFFICULTIES.has(String(v.difficulty)) ? (v.difficulty as StoredQuestion["difficulty"]) : "medium",
     image: null,
     tags: v.tags ?? null,
     questionType: v.questionType as StoredQuestion["questionType"],
