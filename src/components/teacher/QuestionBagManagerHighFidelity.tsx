@@ -690,14 +690,14 @@ export function QuestionBagManagerHighFidelity({ workspaceId, initialQuestions, 
                 {activeQuestion.currentVersion?.hint && (
                   <div className="space-y-1">
                     <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Hint</p>
-                    <p className="text-sm italic text-muted-foreground">{activeQuestion.currentVersion.hint}</p>
+                    <FormattedMessage content={activeQuestion.currentVersion.hint} className="text-sm italic text-muted-foreground" />
                   </div>
                 )}
 
                 {activeQuestion.currentVersion?.explanation && (
                   <div className="space-y-1 pt-2 border-t">
                     <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Brief Explanation</p>
-                    <p className="text-sm select-text text-muted-foreground">{activeQuestion.currentVersion.explanation}</p>
+                    <FormattedMessage content={activeQuestion.currentVersion.explanation} className="text-sm select-text text-muted-foreground" />
                   </div>
                 )}
 
