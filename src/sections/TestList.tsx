@@ -35,7 +35,54 @@ import { createCustomTestAction } from '@/server/actions/test-actions';
 
 const CLASS_OPTIONS = [11, 12] as const;
 const EXAM_OPTIONS = ['JEE', 'NEET', 'AIPMT'] as const;
+const SUBJECT_OPTIONS = [
+  { value: 'physics', label: 'Physics' },
+  { value: 'chemistry', label: 'Chemistry' },
+  { value: 'mathematics', label: 'Mathematics' },
+  { value: 'biology', label: 'Biology' },
+] as const;
 const QUESTION_COUNT_OPTIONS = [10, 20, 30, 40, 50] as const;
+
+/**
+ * Multi-select toggle chips for the small fixed sets (class / exam / subject).
+ * An empty selection means "any / all" — the emptyLabel hints that.
+ */
+function ChipMultiSelect<T extends string | number>({
+  options,
+  selected,
+  onToggle,
+  emptyLabel,
+}: {
+  options: readonly { value: T; label: string }[];
+  selected: T[];
+  onToggle: (value: T) => void;
+  emptyLabel: string;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {options.map((opt) => {
+        const active = selected.includes(opt.value);
+        return (
+          <button
+            key={String(opt.value)}
+            type="button"
+            onClick={() => onToggle(opt.value)}
+            className={`h-11 px-4 rounded-xl font-black text-xs uppercase tracking-widest transition-all border ${
+              active
+                ? 'bg-primary text-white border-primary shadow-lg shadow-primary/20'
+                : 'bg-background border-border/40 text-foreground hover:border-primary/40'
+            }`}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+      {selected.length === 0 && (
+        <span className="self-center text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{emptyLabel}</span>
+      )}
+    </div>
+  );
+}
 
 interface TestListProps {
   onStartTest: (test: TestPreview) => void;
@@ -73,9 +120,10 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
   const [loading, setLoading] = useState(!initialTests);
 
   const [customTestConfig, setCustomTestConfig] = useState({
-    classLevel: '' as '' | (typeof CLASS_OPTIONS)[number],
-    exam: '' as '' | (typeof EXAM_OPTIONS)[number],
-    subject: 'mixed',
+    // Multi-select: empty array = "any" (class/exam) or "all/mixed" (subjects).
+    classLevels: [] as number[],
+    exams: [] as string[],
+    subjects: [] as string[],
     chapters: [] as string[],
     question_count: 10 as (typeof QUESTION_COUNT_OPTIONS)[number],
     duration_minutes: '' as '' | number,
@@ -100,9 +148,9 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
     setFacetChaptersLoading(true);
     const qs = new URLSearchParams();
     qs.set('level', 'chapter');
-    if (customTestConfig.classLevel) qs.append('classes', String(customTestConfig.classLevel));
-    if (customTestConfig.exam) qs.append('occurrences', customTestConfig.exam);
-    if (customTestConfig.subject !== 'mixed') qs.append('subjects', customTestConfig.subject);
+    customTestConfig.classLevels.forEach((c) => qs.append('classes', String(c)));
+    customTestConfig.exams.forEach((e) => qs.append('occurrences', e));
+    customTestConfig.subjects.forEach((s) => qs.append('subjects', s));
 
     apiCall(`/assessments/ogcode/facets?${qs.toString()}`)
       .then((data) => {
@@ -120,21 +168,26 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
       .finally(() => {
         if (req === chapterFacetReq.current) setFacetChaptersLoading(false);
       });
-  }, [customTestConfig.classLevel, customTestConfig.exam, customTestConfig.subject]);
+  }, [
+    customTestConfig.classLevels.join(','),
+    customTestConfig.exams.join(','),
+    customTestConfig.subjects.join(','),
+  ]);
 
   const handleCreateCustomTest = async () => {
     setCreatingTest(true);
     setCustomTestError('');
     try {
       const response = (await createCustomTestAction({
-        subject: customTestConfig.subject,
+        // Empty subjects = all/mixed.
+        subjects: customTestConfig.subjects.length ? customTestConfig.subjects : undefined,
         // No user-facing difficulty filter anymore — "all" maps to no
         // difficulty constraint server-side (the request default would
         // otherwise silently narrow to "medium" if this were omitted).
         difficulty: 'all',
         chapters: customTestConfig.chapters.length ? customTestConfig.chapters : undefined,
-        class_level: customTestConfig.classLevel || undefined,
-        exam: customTestConfig.exam || undefined,
+        class_levels: customTestConfig.classLevels.length ? customTestConfig.classLevels : undefined,
+        exams: customTestConfig.exams.length ? customTestConfig.exams : undefined,
         question_count: customTestConfig.question_count,
         duration_minutes: customTestConfig.duration_minutes || undefined,
       })) as Test;
@@ -481,54 +534,52 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                             <div className="grid sm:grid-cols-2 gap-10">
                                 <div className="space-y-4">
                                     <Label className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">Class</Label>
-                                    <select
-                                        value={customTestConfig.classLevel}
-                                        onChange={(e) => setCustomTestConfig({ ...customTestConfig, classLevel: e.target.value ? (Number(e.target.value) as (typeof CLASS_OPTIONS)[number]) : '' })}
-                                        className="w-full h-14 px-5 rounded-2xl bg-background border border-border/40 text-foreground font-black text-sm outline-none focus:border-rose-500 transition-all"
-                                    >
-                                        <option value="">Any Class</option>
-                                        {CLASS_OPTIONS.map((c) => (
-                                            <option key={c} value={c}>Class {c}</option>
-                                        ))}
-                                    </select>
+                                    <ChipMultiSelect
+                                        options={CLASS_OPTIONS.map((c) => ({ value: c, label: `Class ${c}` }))}
+                                        selected={customTestConfig.classLevels}
+                                        emptyLabel="All classes (mixed)"
+                                        onToggle={(c) => setCustomTestConfig((prev) => ({
+                                            ...prev,
+                                            classLevels: prev.classLevels.includes(c) ? prev.classLevels.filter((x) => x !== c) : [...prev.classLevels, c],
+                                        }))}
+                                    />
                                 </div>
                                 <div className="space-y-4">
                                     <Label className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">Exam</Label>
-                                    <select
-                                        value={customTestConfig.exam}
-                                        onChange={(e) => setCustomTestConfig({ ...customTestConfig, exam: e.target.value as '' | (typeof EXAM_OPTIONS)[number] })}
-                                        className="w-full h-14 px-5 rounded-2xl bg-background border border-border/40 text-foreground font-black text-sm outline-none focus:border-rose-500 transition-all"
-                                    >
-                                        <option value="">Any Exam</option>
-                                        {EXAM_OPTIONS.map((exam) => (
-                                            <option key={exam} value={exam}>{exam}</option>
-                                        ))}
-                                    </select>
+                                    <ChipMultiSelect
+                                        options={EXAM_OPTIONS.map((e) => ({ value: e as string, label: e }))}
+                                        selected={customTestConfig.exams}
+                                        emptyLabel="All exams (mixed)"
+                                        onToggle={(e) => setCustomTestConfig((prev) => ({
+                                            ...prev,
+                                            exams: prev.exams.includes(e) ? prev.exams.filter((x) => x !== e) : [...prev.exams, e],
+                                        }))}
+                                    />
                                 </div>
                                 <div className="space-y-4">
                                     <Label className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">Domain Calibration</Label>
-                                    <select
-                                        value={customTestConfig.subject}
-                                        onChange={(e) => setCustomTestConfig({ ...customTestConfig, subject: e.target.value, chapters: [] })}
-                                        className="w-full h-14 px-5 rounded-2xl bg-background border border-border/40 text-foreground font-black text-sm outline-none focus:border-rose-500 transition-all"
-                                    >
-                                        <option value="mixed">All Subjects (Mixed)</option>
-                                        <option value="physics">Physics</option>
-                                        <option value="chemistry">Chemistry</option>
-                                        <option value="mathematics">Mathematics</option>
-                                        <option value="biology">Biology</option>
-                                    </select>
+                                    <ChipMultiSelect
+                                        options={SUBJECT_OPTIONS.map((s) => ({ value: s.value as string, label: s.label }))}
+                                        selected={customTestConfig.subjects}
+                                        emptyLabel="All subjects (mixed)"
+                                        onToggle={(s) => setCustomTestConfig((prev) => ({
+                                            ...prev,
+                                            subjects: prev.subjects.includes(s) ? prev.subjects.filter((x) => x !== s) : [...prev.subjects, s],
+                                            // Changing subjects invalidates the chapter selection.
+                                            chapters: [],
+                                        }))}
+                                    />
                                 </div>
                                 <div className="space-y-4 relative">
                                     <Label className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">Chapter (Optional)</Label>
                                     <button
                                         type="button"
-                                        disabled={customTestConfig.subject === 'mixed' || facetChaptersLoading}
+                                        disabled={customTestConfig.subjects.length === 0 || facetChaptersLoading}
                                         onClick={() => { setChapterDropdownOpen((o) => !o); setChapterSearch(''); }}
                                         className="w-full h-14 px-5 flex items-center justify-between gap-2 rounded-2xl bg-background border border-border/40 text-foreground font-black text-sm outline-none focus:border-rose-500 transition-all disabled:opacity-50 text-left"
                                     >
                                         <span className="truncate">
-                                            {customTestConfig.subject === 'mixed'
+                                            {customTestConfig.subjects.length === 0
                                                 ? 'Pick a subject first'
                                                 : facetChaptersLoading
                                                 ? 'Loading chapters…'
@@ -538,7 +589,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                                         </span>
                                         <ChevronDown className={cn('w-4 h-4 shrink-0 transition-transform', chapterDropdownOpen && 'rotate-180')} />
                                     </button>
-                                    {chapterDropdownOpen && customTestConfig.subject !== 'mixed' && (
+                                    {chapterDropdownOpen && customTestConfig.subjects.length > 0 && (
                                       <>
                                         {/* click-away backdrop */}
                                         <div className="fixed inset-0 z-40" onClick={() => setChapterDropdownOpen(false)} />
@@ -604,7 +655,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                                     )}
                                     {customTestConfig.chapters.length > 0 && (
                                         <p className="text-[10px] font-bold text-muted-foreground normal-case">
-                                            Short on questions in {customTestConfig.chapters.length === 1 ? 'this chapter' : 'these chapters'}? We&apos;ll fill the rest from other {customTestConfig.subject} chapters automatically.
+                                            Short on questions in {customTestConfig.chapters.length === 1 ? 'this chapter' : 'these chapters'}? We&apos;ll fill the rest from other chapters in the selected subject(s) automatically.
                                         </p>
                                     )}
                                 </div>
