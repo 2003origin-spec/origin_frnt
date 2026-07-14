@@ -35,6 +35,8 @@ export type CbtRoomContextValue = {
   slug: string;
   roomId: string;
   roomName: string;
+  instituteName: string | null;
+  instituteLogo: string | null;
   markJoined: (studentCode: string) => void;
   markSubmitted: () => void;
   refresh: () => Promise<void>;
@@ -52,11 +54,15 @@ export function CbtRoomProvider({
   slug,
   roomId,
   roomName,
+  instituteName = null,
+  instituteLogo = null,
   children,
 }: {
   slug: string;
   roomId: string;
   roomName: string;
+  instituteName?: string | null;
+  instituteLogo?: string | null;
   children: React.ReactNode;
 }) {
   const [phase, setPhase] = useState<CbtStudentPhase>("checking");
@@ -184,6 +190,8 @@ export function CbtRoomProvider({
     slug,
     roomId,
     roomName,
+    instituteName,
+    instituteLogo,
     markJoined,
     markSubmitted,
     refresh,

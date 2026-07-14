@@ -14,6 +14,7 @@ const NAV_ITEMS = [
   { label: "Tests", href: "/cbt/tests" },
   { label: "Questions", href: "/cbt/questions" },
   { label: "Import", href: "/cbt/import" },
+  { label: "Settings", href: "/cbt/settings" },
 ];
 
 /**

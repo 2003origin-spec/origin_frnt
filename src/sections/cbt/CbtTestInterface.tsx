@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, CheckCircle2, Play } from "lucide-react";
+import { AlertTriangle, Camera, CheckCircle2, Play, ShieldCheck } from "lucide-react";
 
 import { LatexRenderer } from "@/components/ui/LatexRenderer";
 import { useCbtRoom } from "@/context/CbtRoomContext";
@@ -59,6 +59,10 @@ export function CbtTestInterface() {
   const [index, setIndex] = useState(0);
   const [showWarning, setShowWarning] = useState(false);
   const [showSubmitModal, setShowSubmitModal] = useState(false);
+  // Instructions gate + optional camera proctoring (auto-disabled when no camera).
+  const [acceptedRules, setAcceptedRules] = useState(false);
+  const [cameraEnabled, setCameraEnabled] = useState(false);
+  const [hasCamera, setHasCamera] = useState<boolean | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const stateRef = useRef({ answers, palette });
@@ -117,6 +121,34 @@ export function CbtTestInterface() {
       cancelled = true;
     };
   }, []);
+
+  // ── Camera presence detection (for the optional proctoring checkbox) ────────
+  // enumerateDevices lists a videoinput device whenever a camera exists; labels
+  // stay blank until permission is granted, but the device entry is enough to
+  // know one is present. No camera ⇒ the checkbox is disabled.
+  useEffect(() => {
+    let cancelled = false;
+    const md = typeof navigator !== "undefined" ? navigator.mediaDevices : undefined;
+    if (!md?.enumerateDevices) {
+      setHasCamera(false);
+      return;
+    }
+    md.enumerateDevices()
+      .then((devices) => {
+        if (!cancelled) setHasCamera(devices.some((d) => d.kind === "videoinput"));
+      })
+      .catch(() => {
+        if (!cancelled) setHasCamera(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // A camera that disappears (or was never there) must never leave the box ticked.
+  useEffect(() => {
+    if (hasCamera === false && cameraEnabled) setCameraEnabled(false);
+  }, [hasCamera, cameraEnabled]);
 
   // ── Autosave: debounce 2s + 15s interval + sendBeacon on pagehide ──────────
   const flushSave = useCallback(async () => {
@@ -299,35 +331,137 @@ export function CbtTestInterface() {
     );
   }
   if (phase === "ready" && payload) {
+    const durationMin = Math.round(payload.durationSeconds / 60);
     return (
-      <CenteredMessage wide>
-        <OriBrandMark />
-        <h1 className="mt-4 text-2xl font-black tracking-tight text-foreground">{payload.title}</h1>
-        <div className="mt-4 grid grid-cols-2 gap-3">
-          <div className="neu-inset rounded-2xl p-4">
-            <p className="text-2xl font-black text-foreground">{payload.totalQuestions}</p>
-            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Questions</p>
-          </div>
-          <div className="neu-inset rounded-2xl p-4">
-            <p className="text-2xl font-black text-foreground">{Math.round(payload.durationSeconds / 60)}<span className="text-sm"> min</span></p>
-            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Duration</p>
+      <main className="flex min-h-screen flex-col items-center justify-start overflow-y-auto neu-surface p-4 text-foreground sm:p-6">
+        <div className="my-auto w-full max-w-3xl">
+          <div className="neu-raised overflow-hidden rounded-3xl">
+            {/* Header */}
+            <div className="flex items-center justify-between gap-3 bg-rose-900 px-5 py-4 sm:px-6">
+              <div className="flex items-center gap-3">
+                <OriBrandMark compact />
+                <h2 className="text-base font-black uppercase tracking-tight text-white sm:text-lg">General Instructions</h2>
+              </div>
+              <div className="shrink-0 rounded-full bg-white/10 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-white/80 sm:text-xs">
+                Time: {durationMin} Minutes
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="space-y-6 p-5 text-left sm:p-8">
+              <h1 className="text-xl font-black tracking-tight text-foreground sm:text-2xl">{payload.title}</h1>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="neu-inset rounded-2xl p-4 text-center">
+                  <p className="text-2xl font-black text-foreground">{payload.totalQuestions}</p>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Questions</p>
+                </div>
+                <div className="neu-inset rounded-2xl p-4 text-center">
+                  <p className="text-2xl font-black text-foreground">{durationMin}<span className="text-sm"> min</span></p>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Duration</p>
+                </div>
+              </div>
+
+              {/* Standard exam rules */}
+              <section>
+                <h3 className="mb-3 flex items-center gap-2 border-b border-border/60 pb-2 text-base font-bold text-rose-700 dark:text-rose-400">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-rose-500/15 text-xs text-rose-700 dark:text-rose-400">1</span>
+                  Standard Exam Rules
+                </h3>
+                <ul className="list-disc space-y-2 pl-5 text-sm font-medium text-muted-foreground">
+                  <li>The total duration of the examination is <span className="font-bold text-foreground">{durationMin} minutes</span>.</li>
+                  <li>The clock is set on the server. The countdown timer at the top shows the time remaining to complete the examination.</li>
+                  <li>The Question Palette on the right shows the status of each question (not visited, not answered, answered, marked for review, answered &amp; marked).</li>
+                  <li>Your answers autosave. The test auto-submits when the timer reaches zero.</li>
+                </ul>
+              </section>
+
+              {/* Marking scheme */}
+              <section>
+                <h3 className="mb-3 flex items-center gap-2 border-b border-border/60 pb-2 text-base font-bold text-rose-700 dark:text-rose-400">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-rose-500/15 text-xs text-rose-700 dark:text-rose-400">2</span>
+                  Marking Scheme
+                </h3>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 text-center">
+                    <p className="mb-1 text-[10px] font-black uppercase text-emerald-600 dark:text-emerald-400">Correct</p>
+                    <p className="text-xl font-black text-emerald-600 dark:text-emerald-400">+ Marks</p>
+                  </div>
+                  <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-4 text-center">
+                    <p className="mb-1 text-[10px] font-black uppercase text-red-600 dark:text-red-400">Incorrect</p>
+                    <p className="text-xl font-black text-red-600 dark:text-red-400">− Marks</p>
+                  </div>
+                  <div className="neu-inset rounded-xl p-4 text-center">
+                    <p className="mb-1 text-[10px] font-black uppercase text-muted-foreground">Unattempted</p>
+                    <p className="text-xl font-black text-foreground">0</p>
+                  </div>
+                </div>
+                <p className="mt-3 text-[10px] italic text-muted-foreground">* Marks per question are shown on each question; some questions may not carry negative marking.</p>
+              </section>
+
+              {/* Integrity */}
+              <section className="rounded-2xl border border-rose-500/15 bg-rose-500/5 p-5">
+                <h3 className="mb-2 flex items-center gap-2 text-sm font-bold text-rose-700 dark:text-rose-400">
+                  <ShieldCheck className="h-5 w-5" /> Exam Integrity
+                </h3>
+                <ul className="space-y-1.5 text-xs font-medium text-muted-foreground">
+                  <li>• The exam opens in <span className="font-bold text-foreground">full-screen</span>. Leaving full-screen shows a warning — your timer keeps running.</li>
+                  <li>• Switching tabs or minimizing the browser is recorded.</li>
+                  <li>• Camera proctoring is <span className="font-bold text-foreground">optional</span> — enable it below for face monitoring.</li>
+                </ul>
+              </section>
+
+              {/* Camera checkbox — disabled when no camera is detected */}
+              <label
+                className={`flex items-start gap-3 rounded-2xl border p-3 transition-all ${
+                  hasCamera === false
+                    ? "cursor-not-allowed border-border/40 opacity-60"
+                    : "cursor-pointer border-border/60 hover:border-primary/40 hover:bg-primary/5"
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={cameraEnabled}
+                  disabled={hasCamera !== true}
+                  onChange={(e) => setCameraEnabled(e.target.checked)}
+                  className="mt-0.5 h-5 w-5 shrink-0 cursor-pointer rounded accent-primary disabled:cursor-not-allowed"
+                />
+                <div>
+                  <span className="flex items-center gap-2 text-xs font-bold text-foreground sm:text-sm">
+                    <Camera className="h-4 w-4 text-primary" />
+                    Enable Camera Proctoring <span className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">(Optional)</span>
+                  </span>
+                  <p className="mt-0.5 text-[10px] font-medium text-muted-foreground">
+                    {hasCamera === null
+                      ? "Checking for a camera…"
+                      : hasCamera
+                        ? "Enables face-monitoring during the exam. Your face must be clearly visible if enabled."
+                        : "No camera detected on this device — proctoring is unavailable."}
+                  </p>
+                </div>
+              </label>
+
+              {/* Accept rules */}
+              <label className="flex cursor-pointer items-center gap-3">
+                <input
+                  type="checkbox"
+                  checked={acceptedRules}
+                  onChange={(e) => setAcceptedRules(e.target.checked)}
+                  className="h-5 w-5 shrink-0 cursor-pointer rounded accent-primary"
+                />
+                <span className="text-xs font-bold text-foreground sm:text-sm">I have read and understood the instructions.</span>
+              </label>
+
+              <button
+                onClick={() => { enterFullscreen(); setPhase("running"); }}
+                disabled={!acceptedRules}
+                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-primary py-4 text-lg font-black uppercase tracking-tight text-primary-foreground shadow-lg shadow-primary/25 transition-all hover:bg-primary/90 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Play className="h-5 w-5 fill-current" /> Enter Full-screen &amp; Begin
+              </button>
+            </div>
           </div>
         </div>
-        <div className="neu-inset mt-4 rounded-2xl p-4 text-left">
-          <p className="mb-2 text-[10px] font-black uppercase tracking-widest text-primary">Instructions</p>
-          <ul className="space-y-1.5 text-xs font-medium text-muted-foreground">
-            <li>• The exam opens in <span className="font-bold text-foreground">full-screen</span>. Your answers autosave.</li>
-            <li>• Leaving full-screen keeps your timer running — return to continue.</li>
-            <li>• The test auto-submits when the timer reaches zero.</li>
-          </ul>
-        </div>
-        <button
-          onClick={() => { enterFullscreen(); setPhase("running"); }}
-          className="mt-5 flex w-full items-center justify-center gap-2 rounded-2xl bg-primary py-4 text-lg font-black uppercase tracking-tight text-primary-foreground shadow-lg shadow-primary/25 transition-all hover:bg-primary/90 active:scale-[0.98]"
-        >
-          <Play className="h-5 w-5 fill-current" /> Enter Full-screen & Begin
-        </button>
-      </CenteredMessage>
+      </main>
     );
   }
 
@@ -336,7 +470,7 @@ export function CbtTestInterface() {
   const activeSubject = current.subject || "General";
 
   return (
-    <div ref={containerRef} className="flex min-h-screen flex-col neu-surface text-foreground">
+    <div ref={containerRef} className="flex h-screen flex-col overflow-y-auto neu-surface text-foreground">
       {/* 1. Branded header */}
       <header className="flex flex-col items-center justify-between gap-3 border-b border-border/60 px-3 py-2 sm:flex-row sm:gap-0 sm:px-6">
         <div className="flex w-full items-center justify-between gap-3 sm:w-auto">
@@ -510,8 +644,8 @@ function LegendRow({ className, label }: { className: string; label: string }) {
 
 function CenteredMessage({ children, wide = false }: { children: React.ReactNode; wide?: boolean }) {
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center neu-surface p-6 text-center text-foreground">
-      <div className={`neu-raised w-full rounded-3xl p-6 sm:p-8 ${wide ? "max-w-md" : "max-w-sm"}`}>{children}</div>
+    <main className="flex min-h-screen flex-col items-center justify-start overflow-y-auto neu-surface p-6 text-center text-foreground sm:justify-center">
+      <div className={`neu-raised my-auto w-full rounded-3xl p-6 sm:p-8 ${wide ? "max-w-md" : "max-w-sm"}`}>{children}</div>
     </main>
   );
 }

@@ -1,7 +1,12 @@
 import { createHash, createHmac, randomUUID } from "node:crypto";
 import path from "node:path";
 
-export type UserImagePurpose = "profile_avatar" | "memory_booth_source" | "memory_booth_card";
+export type UserImagePurpose =
+  | "profile_avatar"
+  | "memory_booth_source"
+  | "memory_booth_card"
+  | "cbt_institute_logo"
+  | "cbt_question_image";
 
 export type R2UploadInput = {
   userId: string;

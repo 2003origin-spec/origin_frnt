@@ -36,5 +36,13 @@ export default async function CbtStudentRoomPage({
     );
   }
 
-  return <CbtStudentExperience slug={slug} roomId={room.id} roomName={room.name} />;
+  return (
+    <CbtStudentExperience
+      slug={slug}
+      roomId={room.id}
+      roomName={room.name}
+      instituteName={room.instituteName}
+      instituteLogo={room.instituteLogo}
+    />
+  );
 }

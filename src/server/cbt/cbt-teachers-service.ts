@@ -20,6 +20,7 @@ export type CbtTeacher = {
   userId: string | null;
   email: string;
   displayName: string | null;
+  logo: string | null;
   status: CbtTeacherStatus;
   importWorkspaceId: string | null;
   createdAt: string;
@@ -35,7 +36,7 @@ export type CbtUsageStats = {
   totalParticipants: number;
 };
 
-const TEACHER_COLUMNS = `id, user_id, email, display_name, status, import_workspace_id, created_at, updated_at`;
+const TEACHER_COLUMNS = `id, user_id, email, display_name, logo, status, import_workspace_id, created_at, updated_at`;
 
 function pool() {
   const p = getUserPostgresPool();
@@ -49,6 +50,7 @@ function mapTeacher(row: Record<string, unknown>): CbtTeacher {
     userId: row.user_id ? String(row.user_id) : null,
     email: String(row.email),
     displayName: row.display_name ? String(row.display_name) : null,
+    logo: row.logo ? String(row.logo) : null,
     status: row.status === "disabled" ? "disabled" : "active",
     importWorkspaceId: row.import_workspace_id ? String(row.import_workspace_id) : null,
     createdAt: new Date(row.created_at as string).toISOString(),
@@ -93,6 +95,16 @@ export async function findActiveCbtTeacherByUserId(userId: string): Promise<CbtT
   const res = await pool().query(
     `SELECT ${TEACHER_COLUMNS} FROM cbt.teachers WHERE user_id = $1 AND status = 'active'`,
     [userId],
+  );
+  return res.rows[0] ? mapTeacher(res.rows[0]) : null;
+}
+
+/** Set (or clear) the institute logo shown on the student thank-you screen. */
+export async function updateCbtTeacherLogo(teacherId: string, logoUrl: string | null): Promise<CbtTeacher | null> {
+  await ensureCbtSchema();
+  const res = await pool().query(
+    `UPDATE cbt.teachers SET logo = $2, updated_at = NOW() WHERE id = $1 RETURNING ${TEACHER_COLUMNS}`,
+    [teacherId, logoUrl],
   );
   return res.rows[0] ? mapTeacher(res.rows[0]) : null;
 }

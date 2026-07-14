@@ -128,12 +128,30 @@ export async function listRooms(teacherId: string): Promise<(CbtRoom & { partici
 /** Minimal, unauthenticated room lookup by public slug (student landing page). */
 export async function getPublicRoomBySlug(
   slug: string,
-): Promise<{ id: string; name: string; status: CbtRoomStatus } | null> {
+): Promise<{
+  id: string;
+  name: string;
+  status: CbtRoomStatus;
+  instituteName: string | null;
+  instituteLogo: string | null;
+} | null> {
   await ensureCbtSchema();
-  const res = await pool().query(`SELECT id, name, status FROM cbt.rooms WHERE public_slug = $1`, [slug]);
+  const res = await pool().query(
+    `SELECT r.id, r.name, r.status, t.display_name AS institute_name, t.logo AS institute_logo
+       FROM cbt.rooms r
+       JOIN cbt.teachers t ON t.id = r.teacher_id
+      WHERE r.public_slug = $1`,
+    [slug],
+  );
   const row = res.rows[0];
   if (!row) return null;
-  return { id: String(row.id), name: String(row.name ?? ""), status: (row.status as CbtRoomStatus) ?? "lobby" };
+  return {
+    id: String(row.id),
+    name: String(row.name ?? ""),
+    status: (row.status as CbtRoomStatus) ?? "lobby",
+    instituteName: row.institute_name ? String(row.institute_name) : null,
+    instituteLogo: row.institute_logo ? String(row.institute_logo) : null,
+  };
 }
 
 export async function getRoomForTeacher(teacherId: string, roomId: string): Promise<CbtRoom | null> {

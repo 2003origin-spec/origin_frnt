@@ -63,6 +63,7 @@ export async function ensureCbtSchema(): Promise<void> {
             user_id             TEXT UNIQUE,
             email               TEXT UNIQUE NOT NULL,
             display_name        TEXT,
+            logo                TEXT,
             status              TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'disabled')),
             import_workspace_id TEXT,
             added_by_admin_id   TEXT,
@@ -100,8 +101,9 @@ export async function ensureCbtSchema(): Promise<void> {
             updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
           );
 
-          -- Additive column for environments that already have cbt.questions.
+          -- Additive columns for environments that already have these tables.
           ALTER TABLE cbt.questions ADD COLUMN IF NOT EXISTS image TEXT;
+          ALTER TABLE cbt.teachers ADD COLUMN IF NOT EXISTS logo TEXT;
 
           CREATE TABLE IF NOT EXISTS cbt.tests (
             id               TEXT PRIMARY KEY,
