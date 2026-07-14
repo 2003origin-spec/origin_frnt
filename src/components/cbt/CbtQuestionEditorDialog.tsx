@@ -122,7 +122,7 @@ export function CbtQuestionEditorDialog({
     try {
       const fd = new FormData();
       fd.append("file", file);
-      const res = await fetch("/api/cbt/uploads/image", { method: "POST", body: fd, credentials: "include" });
+      const res = await mutateJson("/api/cbt/uploads/image", { method: "POST", body: fd });
       const data = (await res.json().catch(() => ({}))) as { url?: string; detail?: string };
       if (!res.ok || !data.url) throw new Error(data.detail ?? "Upload failed.");
       setImage(data.url);
