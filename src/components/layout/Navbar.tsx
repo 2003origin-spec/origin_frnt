@@ -18,6 +18,7 @@ import {
     Timer,
     UserPlus,
     Code,
+    Home,
     LayoutGrid,
     ListTodo,
     BookOpen,
@@ -96,6 +97,7 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
     const isTeacher = user.role?.toLowerCase() === 'teacher';
 
     const navItems = isTeacher ? [] : [
+        { label: 'Home', icon: Home, view: 'dashboard' as ViewState },
         { label: 'OGCode', icon: Code, view: 'ogcode' as ViewState },
         ...(aiExplainer ? [{ label: 'AI Explainer', icon: () => <Image src="/iconsax/Ai-Icon.png" alt="AI Explainer" width={20} height={20} className="object-contain" />, view: 'doubt-solver' as ViewState }] : []),
         { label: 'Tests', icon: FileText, view: 'test-list' as ViewState },
