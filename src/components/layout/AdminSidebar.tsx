@@ -22,6 +22,8 @@ import {
     Ticket,
     ClipboardCheck,
     Crown,
+    Flag,
+    Activity,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { usePathname, useRouter } from 'next/navigation';
@@ -44,6 +46,8 @@ const navItems = [
     { id: 'collaborations', label: 'Institute Approvals', icon: Building2, path: '/admin/collaborations' },
     { id: 'workspaces', label: 'Institutes', icon: Store, path: '/admin/workspaces' },
     { id: 'ogcode-moderation', label: 'OG-Code Review', icon: BadgeCheck, path: '/admin/ogcode/moderation' },
+    { id: 'ogcode-issues', label: 'OG-Code Issues', icon: Flag, path: '/admin/ogcode/issues' },
+    { id: 'ogcode-analytics', label: 'OG-Code Analytics', icon: Activity, path: '/admin/ogcode/analytics' },
     { id: 'moderation', label: 'Moderation', icon: ShieldCheck, path: '/admin/moderation' },
     { id: 'content', label: 'Content & LMS', icon: BookOpen, path: '/admin/content' },
     { id: 'import-jobs', label: 'Imports', icon: FileUp, path: '/admin/import-jobs' },

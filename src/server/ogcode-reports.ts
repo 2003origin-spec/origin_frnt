@@ -45,6 +45,28 @@ export function isOgcodeReportReason(value: string): value is OgcodeReportReason
   return (OGCODE_REPORT_REASONS as readonly string[]).includes(value);
 }
 
+/** Admin triage states for a reported question. */
+export const OGCODE_REPORT_STATUSES = ["open", "reviewing", "resolved", "dismissed"] as const;
+export type OgcodeReportStatus = (typeof OGCODE_REPORT_STATUSES)[number];
+
+export function isOgcodeReportStatus(value: string): value is OgcodeReportStatus {
+  return (OGCODE_REPORT_STATUSES as readonly string[]).includes(value);
+}
+
+export type OgcodeAdminReport = {
+  id: string;
+  questionId: string;
+  userId: string;
+  reason: OgcodeReportReason;
+  description: string | null;
+  status: OgcodeReportStatus;
+  createdAt: string;
+  updatedAt: string;
+  questionStem: string | null;
+  questionSubject: string | null;
+  questionDifficulty: string | null;
+};
+
 async function ensureReportsSchema(): Promise<void> {
   const pool = getOgcodePostgresPool();
   if (!pool) return;
@@ -91,4 +113,72 @@ export async function submitOgcodeQuestionReport(
     [`ogr_${crypto.randomUUID()}`, questionId, userId, reason, trimmed],
   );
   return { ok: true };
+}
+
+/** Admin: list reported questions (newest first), joined with the question text. */
+export async function listOgcodeQuestionReports(
+  options: { status?: OgcodeReportStatus; limit?: number } = {},
+): Promise<OgcodeAdminReport[]> {
+  const pool = getOgcodePostgresPool();
+  if (!pool) return [];
+  await ensureReportsSchema();
+  const limit = Math.min(Math.max(1, options.limit ?? 200), 500);
+  const params: unknown[] = [];
+  let where = "";
+  if (options.status) {
+    params.push(options.status);
+    where = `WHERE r.status = $${params.length}`;
+  }
+  params.push(limit);
+  const res = await pool.query(
+    `SELECT r.id, r.question_id, r.user_id, r.reason, r.description, r.status,
+            r.created_at, r.updated_at,
+            q.text AS question_stem, q.subject AS question_subject, q.difficulty AS question_difficulty
+       FROM ogcode_question_reports r
+       LEFT JOIN ogcode_questions q ON q.id = r.question_id
+       ${where}
+      ORDER BY (r.status = 'open') DESC, r.updated_at DESC
+      LIMIT $${params.length}`,
+    params,
+  );
+  return res.rows.map((row) => ({
+    id: String(row.id),
+    questionId: String(row.question_id),
+    userId: String(row.user_id),
+    reason: row.reason as OgcodeReportReason,
+    description: row.description ? String(row.description) : null,
+    status: (row.status as OgcodeReportStatus) ?? "open",
+    createdAt: new Date(row.created_at as string).toISOString(),
+    updatedAt: new Date(row.updated_at as string).toISOString(),
+    questionStem: row.question_stem ? String(row.question_stem) : null,
+    questionSubject: row.question_subject ? String(row.question_subject) : null,
+    questionDifficulty: row.question_difficulty ? String(row.question_difficulty) : null,
+  }));
+}
+
+/** Admin: counts by status for the header badges. */
+export async function getOgcodeReportStatusCounts(): Promise<Record<OgcodeReportStatus, number>> {
+  const base: Record<OgcodeReportStatus, number> = { open: 0, reviewing: 0, resolved: 0, dismissed: 0 };
+  const pool = getOgcodePostgresPool();
+  if (!pool) return base;
+  await ensureReportsSchema();
+  const res = await pool.query<{ status: string; count: number | string }>(
+    `SELECT status, COUNT(*) AS count FROM ogcode_question_reports GROUP BY status`,
+  );
+  for (const row of res.rows) {
+    if (isOgcodeReportStatus(row.status)) base[row.status] = Number(row.count ?? 0);
+  }
+  return base;
+}
+
+/** Admin: move a report through triage. */
+export async function updateOgcodeReportStatus(id: string, status: OgcodeReportStatus): Promise<{ ok: boolean }> {
+  const pool = getOgcodePostgresPool();
+  if (!pool) return { ok: false };
+  await ensureReportsSchema();
+  const res = await pool.query(
+    `UPDATE ogcode_question_reports SET status = $2, updated_at = NOW() WHERE id = $1`,
+    [id, status],
+  );
+  return { ok: (res.rowCount ?? 0) > 0 };
 }

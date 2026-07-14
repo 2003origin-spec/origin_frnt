@@ -12,7 +12,7 @@ import {
     ChevronRight, Target, Shuffle, ArrowRight, X, Info, Building2, Check, ChevronDown, Heart, Swords, Layers
 } from 'lucide-react';
 import { apiCall } from '@/lib/api';
-import { ogcodePresenceCountsAction, listOgcodeChallengeInboxAction, toggleOgcodeQuestionLikeAction, type HydratedChallenge } from '@/server/actions/ogcode-actions';
+import { ogcodePresenceCountsAction, ogcodeScreenHeartbeatAction, listOgcodeChallengeInboxAction, toggleOgcodeQuestionLikeAction, type HydratedChallenge } from '@/server/actions/ogcode-actions';
 import type { PracticeQuestion, PracticeQuestionPage, SubjectRank, User } from '@/types';
 import { usePublishOriginAiPageContext } from '@/features/origin-ai/page-context-store';
 import { saveOgcodeNavQueue } from '@/features/ogcode/nav-queue';
@@ -866,6 +866,25 @@ export default function OGCodeList({
         return () => { active = false; clearInterval(interval); };
     }, [visibleIdsKey]);
 
+    // §12 Presence heartbeat for the OGCode main page: marks this viewer present
+    // (even when just browsing, not solving) and reads the total live candidates
+    // across all OGCode screens.
+    const [liveTotal, setLiveTotal] = useState(0);
+    useEffect(() => {
+        let active = true;
+        const beat = async () => {
+            try {
+                const { liveTotal: total } = await ogcodeScreenHeartbeatAction();
+                if (active) setLiveTotal(total);
+            } catch {
+                // Ambient; ignore.
+            }
+        };
+        void beat();
+        const interval = setInterval(beat, 20_000);
+        return () => { active = false; clearInterval(interval); };
+    }, []);
+
     // §10 Like/unlike from a card — optimistic live count update on the card,
     // reconciled with the server's authoritative count, reverted on failure.
     const [likePendingIds, setLikePendingIds] = useState<Set<string>>(new Set());
@@ -1023,6 +1042,15 @@ export default function OGCodeList({
                         <p className="text-sm text-muted-foreground max-w-xl">
                             Master complex concepts through structured practice, build your streak, and climb the national leaderboard.
                         </p>
+                        {liveTotal > 0 && (
+                            <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 text-xs font-bold text-emerald-600 dark:text-emerald-400" title={`${liveTotal} candidate${liveTotal === 1 ? '' : 's'} on OGCode right now`}>
+                                <span className="relative flex h-2 w-2">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+                                </span>
+                                {liveTotal.toLocaleString()} live now
+                            </div>
+                        )}
                     </motion.div>
 
                     {/* Right side: OG Points + AIR stats */}

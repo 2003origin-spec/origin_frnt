@@ -54,17 +54,8 @@ export default function LiveCounter() {
 
   useEffect(() => {
     fetchStats();
-    intervalRef.current = setInterval(() => {
-      // activeNow breathes ±3, doubtsToday only increments (0–2/tick), streaksActive rarely ticks up
-      setStats((prev) => {
-        if (!prev) return prev;
-        return {
-          activeNow: Math.max(0, prev.activeNow + Math.floor((Math.random() - 0.5) * 6)),
-          doubtsToday: prev.doubtsToday + Math.floor(Math.random() * 3),
-          streaksActive: prev.streaksActive + (Math.random() < 0.3 ? 1 : 0),
-        };
-      });
-    }, 5000);
+    // Re-pull the real numbers periodically (no client-side fabrication).
+    intervalRef.current = setInterval(fetchStats, 15000);
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };

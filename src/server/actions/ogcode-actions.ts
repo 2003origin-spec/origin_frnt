@@ -19,8 +19,10 @@ import {
 } from '@/server/ogcode-reports';
 import {
   recordOgcodePresence,
+  recordOgcodeScreenPresence,
   getOgcodePresenceCount,
   getOgcodePresenceCounts,
+  getOgcodeTotalLivePresence,
 } from '@/server/ogcode-presence';
 import {
   createOgcodeChallenge,
@@ -29,6 +31,7 @@ import {
   type OgcodeChallenge,
 } from '@/server/ogcode-challenges';
 import { areMutualFollowers, listMutualFollowers, type SocialUserCard } from '@/server/social/social-service';
+import { recordOgcodeLivePeak } from '@/server/ogcode-presence-peak';
 import { createNotification } from '@/server/notifications';
 
 async function requireUser() {
@@ -76,6 +79,13 @@ export async function ogcodePresenceHeartbeatAction(questionId: string): Promise
   const user = await requireUser();
   await recordOgcodePresence(user.id, questionId);
   const count = await getOgcodePresenceCount(questionId);
+  // Sample the global live total into the daily-peak table (throttled, best-effort).
+  try {
+    const total = await getOgcodeTotalLivePresence();
+    await recordOgcodeLivePeak(total);
+  } catch {
+    // never block the heartbeat
+  }
   return { count };
 }
 
@@ -83,6 +93,23 @@ export async function ogcodePresenceHeartbeatAction(questionId: string): Promise
 export async function ogcodePresenceCountAction(questionId: string): Promise<{ count: number }> {
   await requireUser();
   return { count: await getOgcodePresenceCount(questionId) };
+}
+
+/**
+ * §12 OGCode main/list-page heartbeat: marks the viewer present on OGCode
+ * (present but not necessarily solving) and returns the total live candidates
+ * across all OGCode screens. Also samples the daily live peak.
+ */
+export async function ogcodeScreenHeartbeatAction(): Promise<{ liveTotal: number }> {
+  const user = await requireUser();
+  await recordOgcodeScreenPresence(user.id);
+  const liveTotal = await getOgcodeTotalLivePresence();
+  try {
+    await recordOgcodeLivePeak(liveTotal);
+  } catch {
+    // best-effort
+  }
+  return { liveTotal };
 }
 
 /** §12 Batch live counts for the visible list cards. */
