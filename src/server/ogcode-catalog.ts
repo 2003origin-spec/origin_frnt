@@ -1255,3 +1255,116 @@ export async function upsertContributedCatalogQuestion(input: ContributedCatalog
     console.warn("[upsertContributedCatalogQuestion] revalidateTag skipped:", error instanceof Error ? error.message : error);
   }
 }
+
+// ── Admin edit (issue triage) ────────────────────────────────────────────────
+
+/** Editable content fields of a catalog question (admin issue-fix). */
+export type OgcodeQuestionEditFields = {
+  text: string;
+  options: string[] | null;
+  correctOption: number | null;
+  correctOptions: number[] | null;
+  answerText: string | null;
+  explanation: string;
+  hint: string | null;
+  subject: string;
+  chapter: string;
+  difficulty: string;
+};
+
+/**
+ * Admin: overwrite the editable content of a catalog question (used to fix a
+ * reported issue). Only content fields — never touches stats/attribution.
+ * Busts the catalog cache so students see the fix promptly.
+ */
+export async function updateOgcodeCatalogQuestion(id: string, fields: OgcodeQuestionEditFields): Promise<{ ok: boolean }> {
+  const pool = getOgcodePostgresPool();
+  if (!pool) return { ok: false };
+  await ensureCatalogSchema();
+  const res = await pool.query(
+    `UPDATE ogcode_questions SET
+        text = $2,
+        options = $3::jsonb,
+        correct_option = $4,
+        correct_options = $5::jsonb,
+        answer_text = $6,
+        explanation = $7,
+        hint = $8,
+        subject = $9,
+        chapter = $10,
+        difficulty = $11,
+        updated_at = NOW()
+      WHERE id = $1`,
+    [
+      id,
+      fields.text,
+      fields.options ? JSON.stringify(fields.options) : null,
+      fields.correctOption,
+      fields.correctOptions ? JSON.stringify(fields.correctOptions) : null,
+      fields.answerText,
+      fields.explanation,
+      fields.hint,
+      normalizeSubject(fields.subject),
+      fields.chapter,
+      String(fields.difficulty || "medium").toLowerCase(),
+    ],
+  );
+  try {
+    revalidateTag("ogcode-catalog", "max");
+  } catch {
+    // outside request context — row already committed
+  }
+  return { ok: (res.rowCount ?? 0) > 0 };
+}
+
+// ── Admin analytics ──────────────────────────────────────────────────────────
+
+/**
+ * Attempt totals for the admin dashboard, from ogcode_question_progress:
+ * distinctQuestionsAttempted = rows where `attempted`; totalAttemptEvents = Σ total_attempts.
+ */
+export async function getOgcodeAttemptTotals(): Promise<{ distinctQuestionsAttempted: number; totalAttemptEvents: number }> {
+  const pool = getOgcodePostgresPool();
+  if (!pool) return { distinctQuestionsAttempted: 0, totalAttemptEvents: 0 };
+  await ensureCatalogSchema();
+  try {
+    const res = await pool.query<{ distinct_attempted: string; total_events: string }>(
+      `SELECT
+         COUNT(*) FILTER (WHERE attempted) AS distinct_attempted,
+         COALESCE(SUM(total_attempts), 0) AS total_events
+       FROM ogcode_question_progress`,
+    );
+    const row = res.rows[0];
+    return {
+      distinctQuestionsAttempted: Number(row?.distinct_attempted ?? 0),
+      totalAttemptEvents: Number(row?.total_events ?? 0),
+    };
+  } catch {
+    return { distinctQuestionsAttempted: 0, totalAttemptEvents: 0 };
+  }
+}
+
+/** Weekly first-terminal completions for the last `weeks` weeks (oldest→newest). */
+export async function getOgcodeWeeklyTerminals(weeks = 8): Promise<{ weekStart: string; count: number }[]> {
+  const pool = getOgcodePostgresPool();
+  if (!pool) return [];
+  await ensureCatalogSchema();
+  const n = Math.min(Math.max(1, weeks), 52);
+  try {
+    const res = await pool.query<{ week_start: string; count: number | string }>(
+      `SELECT date_trunc('week', first_terminal_at) AS week_start, COUNT(*) AS count
+         FROM ogcode_question_progress
+        WHERE first_terminal_at IS NOT NULL
+          AND first_terminal_at >= date_trunc('week', NOW()) - ($1::int - 1) * INTERVAL '1 week'
+        GROUP BY 1
+        ORDER BY 1 ASC`,
+      [n],
+    );
+    return res.rows.map((row) => ({
+      weekStart: new Date(row.week_start as string).toISOString(),
+      count: Number(row.count ?? 0),
+    }));
+  } catch {
+    return [];
+  }
+}

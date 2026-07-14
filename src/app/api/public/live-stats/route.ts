@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { Redis } from '@upstash/redis';
 
+import { getUserPostgresPool, isUserPostgresConfigured } from '@/server/user-postgres';
+
 const redis = process.env.UPSTASH_REDIS_REST_URL
   ? new Redis({
       url: process.env.UPSTASH_REDIS_REST_URL,
@@ -8,41 +10,57 @@ const redis = process.env.UPSTASH_REDIS_REST_URL
     })
   : null;
 
-// Fallback when Redis isn't available (dev without .env)
-const FALLBACK = { activeNow: 1240, doubtsToday: 8430, streaksActive: 3210 };
+/** presence:active heartbeats count as "active" for 5 minutes. */
+const ACTIVE_WINDOW_MS = 5 * 60 * 1000;
 
-const JITTER = 3;
-function jitter(base: number) {
-  return base + Math.floor((Math.random() - 0.5) * 2 * JITTER);
+/** Real active-now from the shared presence set (fed by OGCode heartbeats). */
+async function activeNow(): Promise<number> {
+  if (!redis) return 0;
+  try {
+    return await redis.zcount('presence:active', Date.now() - ACTIVE_WINDOW_MS, '+inf');
+  } catch {
+    return 0;
+  }
+}
+
+/** Real "doubts solved today" — doubt sessions with activity since UTC midnight. */
+async function doubtsToday(): Promise<number> {
+  if (!isUserPostgresConfigured()) return 0;
+  const pool = getUserPostgresPool();
+  if (!pool) return 0;
+  try {
+    const res = await pool.query<{ count: number | string }>(
+      `SELECT COUNT(*) AS count FROM app.doubt_sessions
+        WHERE updated_at >= date_trunc('day', NOW())`,
+    );
+    return Number(res.rows[0]?.count ?? 0);
+  } catch {
+    return 0;
+  }
+}
+
+/** Real active-streak count — users whose streak is alive (studied today/yesterday). */
+async function streaksActive(): Promise<number> {
+  if (!isUserPostgresConfigured()) return 0;
+  const pool = getUserPostgresPool();
+  if (!pool) return 0;
+  try {
+    const res = await pool.query<{ count: number | string }>(
+      `SELECT COUNT(*) AS count FROM app.streaks
+        WHERE COALESCE((data->>'currentStreak')::int, 0) >= 1
+          AND (data->>'lastStudyDate') IS NOT NULL
+          AND (data->>'lastStudyDate')::date >= (CURRENT_DATE - INTERVAL '1 day')`,
+    );
+    return Number(res.rows[0]?.count ?? 0);
+  } catch {
+    return 0;
+  }
 }
 
 export async function GET() {
-  try {
-    if (!redis) {
-      return NextResponse.json(
-        { activeNow: jitter(FALLBACK.activeNow), doubtsToday: FALLBACK.doubtsToday, streaksActive: FALLBACK.streaksActive },
-        { headers: { 'Cache-Control': 'no-store' } }
-      );
-    }
-
-    // presence:active is a sorted set of user IDs with timestamp scores
-    // doubts:today:count is a simple counter incremented by origin-ai
-    // streaks:active:count is updated by the streak job
-    const [presenceCount, doubtsRaw, streaksRaw] = await Promise.all([
-      redis.zcount('presence:active', Date.now() - 5 * 60 * 1000, '+inf').catch(() => null),
-      redis.get<number>('doubts:today:count').catch(() => null),
-      redis.get<number>('streaks:active:count').catch(() => null),
-    ]);
-
-    const activeNow = presenceCount != null ? Math.round((presenceCount as number) / 10) * 10 : FALLBACK.activeNow;
-    const doubtsToday = doubtsRaw != null ? (doubtsRaw as number) : FALLBACK.doubtsToday;
-    const streaksActive = streaksRaw != null ? (streaksRaw as number) : FALLBACK.streaksActive;
-
-    return NextResponse.json(
-      { activeNow: jitter(activeNow), doubtsToday, streaksActive },
-      { headers: { 'Cache-Control': 'no-store' } }
-    );
-  } catch {
-    return NextResponse.json(FALLBACK, { headers: { 'Cache-Control': 'no-store' } });
-  }
+  const [active, doubts, streaks] = await Promise.all([activeNow(), doubtsToday(), streaksActive()]);
+  return NextResponse.json(
+    { activeNow: active, doubtsToday: doubts, streaksActive: streaks },
+    { headers: { 'Cache-Control': 'no-store' } },
+  );
 }

@@ -34,6 +34,37 @@ function presenceKey(questionId: string): string {
   return `ogcode:presence:${questionId}`;
 }
 
+/** Global set of everyone on any OGCode screen right now (for totals/peak). */
+const GLOBAL_PRESENCE_KEY = "ogcode:presence:global";
+/** Platform-wide "active now" set read by the landing live-counter. */
+const APP_ACTIVE_KEY = "presence:active";
+/** The landing counter treats a heartbeat as active for 5 minutes. */
+const APP_ACTIVE_WINDOW_MS = 5 * 60 * 1000;
+
+/** Add a user to the global OGCode set + the platform active set (shared helper). */
+async function touchGlobalPresence(userId: string, now: number): Promise<void> {
+  if (!redis) return;
+  await redis.zadd(GLOBAL_PRESENCE_KEY, { score: now, member: userId });
+  await redis.zremrangebyscore(GLOBAL_PRESENCE_KEY, 0, now - PRESENCE_WINDOW_MS);
+  await redis.expire(GLOBAL_PRESENCE_KEY, PRESENCE_KEY_TTL_SECONDS);
+  await redis.zadd(APP_ACTIVE_KEY, { score: now, member: userId });
+  await redis.zremrangebyscore(APP_ACTIVE_KEY, 0, now - APP_ACTIVE_WINDOW_MS);
+}
+
+/**
+ * Record that a user is on an OGCode screen (the list/main page) without being
+ * on a specific question. Feeds the global OGCode count + platform active set,
+ * so "present but not solving" still counts. No-op without Redis.
+ */
+export async function recordOgcodeScreenPresence(userId: string): Promise<void> {
+  if (!redis) return;
+  try {
+    await touchGlobalPresence(userId, Date.now());
+  } catch {
+    // best-effort
+  }
+}
+
 /**
  * Record that `userId` is actively on `questionId` right now. Also prunes
  * entries older than the window so the set stays small, and refreshes the
@@ -47,8 +78,21 @@ export async function recordOgcodePresence(userId: string, questionId: string): 
     await redis.zadd(key, { score: now, member: userId });
     await redis.zremrangebyscore(key, 0, now - PRESENCE_WINDOW_MS);
     await redis.expire(key, PRESENCE_KEY_TTL_SECONDS);
+    // Mirror into the global OGCode set (totals/peak) + platform active set.
+    await touchGlobalPresence(userId, now);
   } catch {
     // Presence is best-effort; a Redis hiccup must never break the question view.
+  }
+}
+
+/** Total distinct students practicing any OGCode question right now. 0 without Redis. */
+export async function getOgcodeTotalLivePresence(): Promise<number> {
+  if (!redis) return 0;
+  const now = Date.now();
+  try {
+    return await redis.zcount(GLOBAL_PRESENCE_KEY, now - PRESENCE_WINDOW_MS, "+inf");
+  } catch {
+    return 0;
   }
 }
 
