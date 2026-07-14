@@ -1,11 +1,13 @@
 export type {
   CustomTestPayload,
+  OgcodeAutoSelection,
   QuestionAnswerPayload,
   TestSubmissionPayload,
 } from "@/legacy/assessments";
 
 export {
   createCustomTest,
+  generateOgcodeSelectionForWorkspace,
   getChallengeOfTheDay,
   getFocusAreas,
   getRoomTestDetail,

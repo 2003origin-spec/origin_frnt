@@ -1,7 +1,25 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { unified } from "unified";
+import remarkParse from "remark-parse";
+import remarkMath from "remark-math";
+import remarkRehype from "remark-rehype";
+import rehypeKatex from "rehype-katex";
+import rehypeStringify from "rehype-stringify";
 
 import { normalizeDelimiters } from "../../src/components/origin-ai/FormattedMessage";
+
+/** Renders through the exact same plugin chain FormattedMessage uses. */
+async function renderHtml(content: string): Promise<string> {
+  const file = await unified()
+    .use(remarkParse)
+    .use(remarkMath)
+    .use(remarkRehype)
+    .use(rehypeKatex)
+    .use(rehypeStringify)
+    .process(normalizeDelimiters(content));
+  return String(file);
+}
 
 test("does not wrap trig-function substrings inside subject definitions", () => {
   const normalized = normalizeDelimiters(
@@ -177,4 +195,125 @@ test("converts \\[...\\] to real display math, not single-dollar inline", () => 
 
   assert.match(normalized, /\$\$\nE=mc\^2\n\$\$/);
   assert.doesNotMatch(normalized, /^\$E=mc\^2\$$/m);
+});
+
+// Regression: a decimal point used to stop the bare-math consume loop dead
+// (it wasn't in the digit/operator character set), splitting "19.6" into two
+// separate wraps around a literal ".", e.g. "$m = ... = 19$.$6$" — visibly
+// broken in the rendered output (a bare "." floating between two equations).
+test("keeps a decimal number in a bare-math span as one unbroken wrap", () => {
+  const normalized = normalizeDelimiters(String.raw`m = \frac{196}{10} = 19.6\ \mathrm{kg}`);
+
+  assert.match(normalized, /^\$m = \\frac\{196\}\{10\} = 19\.6\\ \\mathrm\{kg\}\$$/);
+});
+
+// Regression: "\ " (LaTeX's explicit-space command, ubiquitous before units)
+// wasn't recognised by the command-word matcher (it only matched "\" + a
+// letter), so it stopped the span and left a stray bare "\" in the markdown
+// source, splitting e.g. "6.4 \times 10^6\ \mathrm{m}" into two wraps.
+test("keeps an explicit LaTeX space command (\\ ) inside its math span", () => {
+  const normalized = normalizeDelimiters(String.raw`R = 6400\ \mathrm{km} = 6.4 \times 10^6\ \mathrm{m}`);
+
+  assert.match(normalized, /^\$R = 6400\\ \\mathrm\{km\} = 6\.4 \\times 10\^6\\ \\mathrm\{m\}\$$/);
+});
+
+// Regression: a short-word-plus-operator entry trigger could, via the
+// "allow a single word after a space when it looks math-adjacent" rule,
+// chain across an entire sentence of ordinary prose — KaTeX still "renders"
+// a long run of bare letters (as implicitly-multiplied italic variables),
+// silently swallowing every space, e.g. "2.At the equator, the effective
+// acceleration..." → "2.Attheequator,theeffectiveacceleration...".
+test("does not wrap a long run of ordinary prose even if it starts near an operator", () => {
+  const normalized = normalizeDelimiters(
+    "2. At the equator, the effective acceleration due to gravity is reduced by the centripetal term:",
+  );
+
+  assert.equal(
+    normalized,
+    "2. At the equator, the effective acceleration due to gravity is reduced by the centripetal term:",
+  );
+});
+
+// The KaTeX-validation safety net (repairMathSpans, in latex-sanitize.ts):
+// a span that is still invalid LaTeX even after repairMathTex's fixed rule
+// set — some malformation outside what those rules cover — used to fall
+// through to rehype-katex's own red `.katex-error` fallback. It must instead
+// degrade to plain, delimiter-free text so students never see a raw parse
+// error, regardless of what specifically broke.
+test("degrades an unrepairable math span to plain text instead of leaving it for KaTeX's red error fallback", () => {
+  const normalized = normalizeDelimiters("The result is $\\frobnicate{x} + 1$ which is undefined.");
+
+  assert.equal(normalized, "The result is \\frobnicate{x} + 1 which is undefined.");
+});
+
+test("still wraps and preserves genuinely valid LaTeX after the validation safety net", () => {
+  const normalized = normalizeDelimiters("Valid math stays untouched: $E = mc^2$.");
+
+  assert.equal(normalized, "Valid math stays untouched: $E = mc^2$.");
+});
+
+// The exact multi-equation sentence from the reported bug (item 3/4 of a
+// "Diagnostic Insight" panel): four well-formed $...$ pairs interleaved with
+// prose and a "4." that could be mistaken for part of the previous equation.
+// All four must render, none should be rejected by the validation net.
+test("preserves multiple well-formed equations interleaved with prose and a numbered continuation", () => {
+  const input =
+    "3. The angular velocity is $\\omega = \\frac{2\\pi}{T}$, where the period is " +
+    "$T = 24\\ \\mathrm{hours}$. 4. Next term $R\\omega^2$ (using $\\pi^2 \\approx 10$):";
+  const normalized = normalizeDelimiters(input);
+
+  assert.equal(normalized, input);
+});
+
+// Regression: production incident (confirmed against the real stored AI
+// explanation, pulled from analytics.test_results.ai_analysis, after both
+// PRs from the first LaTeX-audit round were live and still broken). AI
+// explanations author numbered steps as a markdown ordered list with each
+// display equation on an indented continuation line ("   $$eq$$" — 3 spaces,
+// CommonMark's minimum indent to stay attached to "1. "). Step 1b promoted
+// the equation body and closing "$$" to column 0, ending the list item early
+// and corrupting every step after the first — some equations fell through to
+// KaTeX's own red .katex-error fallback, and separately (once the fallback
+// safety net closed that hole) a run of prose got swallowed into a bare-math
+// wrap because the corrupted structure left it looking like an unclosed span.
+// Assert both the string shape (indentation preserved on all three lines)
+// AND the actual rendered HTML (via the real remark/rehype pipeline) has no
+// error markers and the correct list structure — the failure was specifically
+// about downstream markdown parsing, which a string-shape check alone can't
+// catch (see the plain repairMathSpans tests above for that class of bug).
+test("keeps an indented $$ list-item continuation attached to its list item (string shape)", () => {
+  const input =
+    "1. The weight at the North Pole is $W = mg = 196\\ \\mathrm{N}$. Given " +
+    "$g = 10\\ \\mathrm{ms^{-2}}$, the mass of the box is:\n" +
+    "   $$m = \\frac{196}{10} = 19.6\\ \\mathrm{kg}$$\n" +
+    "2. At the equator, the effective acceleration is reduced:\n" +
+    "   $$g' = g - R\\omega^2$$";
+  const normalized = normalizeDelimiters(input);
+
+  assert.match(normalized, /^1\. .+:\n   \$\$\n   m = \\frac\{196\}\{10\} = 19\.6\\ \\mathrm\{kg\}\n   \$\$\n2\. /m);
+  assert.match(normalized, /\n   \$\$\n   g' = g - R\\omega\^2\n   \$\$$/);
+});
+
+test("renders a numbered AI explanation with indented $$ continuations cleanly (real pipeline, no KaTeX errors)", async () => {
+  const input =
+    "**The key idea is that the Earth's rotation reduces the effective gravity at the equator.**\n\n" +
+    "1. The weight at the North Pole is $W = mg = 196\\ \\mathrm{N}$. Given $g = 10\\ \\mathrm{ms^{-2}}$, the mass of the box is:\n" +
+    "   $$m = \\frac{196}{10} = 19.6\\ \\mathrm{kg}$$\n" +
+    "2. At the equator, the effective acceleration due to gravity is reduced by the centripetal acceleration of the Earth's rotation:\n" +
+    "   $$g' = g - R\\omega^2$$\n" +
+    "3. The angular velocity of the Earth is $\\omega = \\frac{2\\pi}{T}$, where the time period of rotation is $T = 24\\ \\mathrm{hours} = 86400\\ \\mathrm{s}$.\n" +
+    "4. Let's calculate the centripetal acceleration term $R\\omega^2$ (Using $\\pi^2 \\approx 10$):\n" +
+    "   $$R = 6400\\ \\mathrm{km} = 6.4 \\times 10^6\\ \\mathrm{m}$$\n" +
+    "   $$\\omega^2 = \\left(\\frac{2\\pi}{86400}\\right)^2 \\approx \\frac{40}{(86400)^2} \\approx 5.36 \\times 10^{-9}\\ \\mathrm{rad^2/s^2}$$\n" +
+    "5. The new weight at the equator will be:\n" +
+    "   $$W' = mg' = m(g - R\\omega^2)$$\n" +
+    "6. The closest option to this result is $195.32\\ \\mathrm{N}$.";
+
+  const html = await renderHtml(input);
+
+  assert.ok(!html.includes("katex-error"), "must not contain a KaTeX error span");
+  assert.ok(!html.includes("#cc0000") && !html.includes("cc0000"), "must not contain KaTeX's red error color");
+  assert.equal((html.match(/<ol/g) ?? []).length, 1, "all 6 steps must stay in one ordered list");
+  assert.equal((html.match(/<li/g) ?? []).length, 6, "all 6 numbered steps must survive as list items");
+  assert.equal((html.match(/katex-display/g) ?? []).length, 5, "all 5 display equations must render");
 });

@@ -45,9 +45,19 @@ export function normalizeDelimiters(content: string): string {
   // left inline it gets the cramped inline KaTeX box with no overflow
   // handling. A "$$...$$" embedded mid-sentence is left untouched (it's
   // genuinely inline, e.g. "(...$$\text{NaOH}$$...)").
+  //
+  // The promoted body and closing "$$" MUST carry the same leading indent as
+  // the opening "$$" — a "   $$eq$$" line is a numbered-list continuation
+  // (CommonMark requires >=3-space indent to stay attached to "1. "), and
+  // dropping the continuation lines to column 0 ends the list item early,
+  // corrupting every list item after it (this was a real production
+  // incident: AI explanations author their numbered steps exactly this way,
+  // and every "$$...$$" step after the first one broke — some falling
+  // through to KaTeX's own red error text, some getting silently absorbed
+  // into a later bare-LaTeX wrap that swallowed a whole sentence of prose).
   result = result.replace(
     /^([ \t]*)\$\$([^$\n]+?)\$\$([ \t]*)$/gm,
-    (_m, indent: string, body: string) => `${indent}$$\n${body}\n$$`,
+    (_m, indent: string, body: string) => `${indent}$$\n${indent}${body}\n${indent}$$`,
   );
 
   // Step 2: Wrap bare LaTeX expressions with $ delimiters
@@ -231,6 +241,14 @@ function wrapBareLaTeX(text: string): string {
   const isMathSymbol = (c: string): boolean =>
     '±∞≈≠≤≥×÷√∝∠∫∬∭∮∇∂∆∑∏'.includes(c);
 
+  // LaTeX punctuation/space escapes ("\ ", "\,", "\;", "\!", "\%", "\&", "\_",
+  // "\$", "\#", "\{", "\}") are valid single commands in their own right, most
+  // commonly the explicit space before a unit ("19.6\ \mathrm{kg}"). The
+  // command-word matcher below only recognises "\" + letters, so a bare "\ "
+  // used to stop a math span dead and leave a stray backslash in the output.
+  const isPunctuationEscape = (c: string | undefined): boolean =>
+    !!c && ' ,;!%&_$#{}'.includes(c);
+
   const isAsciiWordChar = (c: string | undefined): boolean =>
     !!c && /[a-zA-Z0-9_]/.test(c);
 
@@ -354,7 +372,8 @@ function wrapBareLaTeX(text: string): string {
     }
 
     // ── Case 3: Bare LaTeX starting point ─────────────────────────────────
-    const isLatexCmd = text[i] === '\\' && i + 1 < len && /[a-zA-Z]/.test(text[i + 1]);
+    const isLatexCmd = text[i] === '\\' && i + 1 < len &&
+      (/[a-zA-Z]/.test(text[i + 1]) || isPunctuationEscape(text[i + 1]));
     const isSpecial = isGreek(text[i]) || isMathSymbol(text[i]);
     const isNumericMath = looksLikeNumericMathStart(i);
     const isVariableMath = looksLikeVariableMathStart(i);
@@ -398,6 +417,13 @@ function wrapBareLaTeX(text: string): string {
           continue;
         }
 
+        // Punctuation/space escape ("\ ", "\,", "\%", …) — a valid single
+        // command, not a stopping point (see isPunctuationEscape above).
+        if (c === '\\' && isPunctuationEscape(text[j + 1])) {
+          j += 2;
+          continue;
+        }
+
         // Superscript / subscript — stop on consecutive underscores (fill-blank: __, ___, etc.)
         if ('^_'.includes(c)) {
           if (c === '_' && j + 1 < len && text[j + 1] === '_') break;
@@ -409,6 +435,14 @@ function wrapBareLaTeX(text: string): string {
         // turned "Law**" into "$Law**$" and ate the closing emphasis marker).
         // A lone "*" mid-expression (e.g. "x * y") still falls through below.
         if (c === '*' && text[j + 1] === '*') break;
+
+        // A "." between two digits is a decimal point, part of the number —
+        // not sentence-ending punctuation (a trailing "." with no following
+        // digit still correctly stops the span via the trailing-punctuation
+        // trim below). Without this, "19.6" split into "$19$.$6$".
+        if (c === '.' && /[0-9]/.test(text[j - 1] ?? '') && /[0-9]/.test(text[j + 1] ?? '')) {
+          j++; continue;
+        }
 
         // Operators, digits, and grouping symbols
         if (/[0-9+\-*\/=<>!|&~%()[\]]/.test(c)) { j++; continue; }
@@ -447,13 +481,32 @@ function wrapBareLaTeX(text: string): string {
       while (mathEnd > mathStart && /[\s.,;:]/.test(text[mathEnd - 1])) mathEnd--;
 
       const mathContent = text.slice(mathStart, mathEnd);
+
+      // Defense-in-depth: genuine bare LaTeX always contains real math syntax
+      // somewhere — a digit, a command, an operator, a Greek letter. A long
+      // capture with none of that almost certainly means the entry trigger
+      // fired correctly but the consume loop's "allow a short word after a
+      // space" continuation rule then chained through a run of ordinary
+      // prose. KaTeX would still "render" that (every letter becomes an
+      // italic single-letter variable, silently swallowing every space) —
+      // so reject the wrap here rather than let a whole sentence squish
+      // together. Short spans skip this check: the entry heuristics already
+      // require an operator/command nearby to fire at all for those.
+      const hasMathSignal =
+        /[0-9=^_+<>]|\\[a-zA-Z]|[±∞≈≠≤≥×÷√∝∠∫∬∭∮∇∂∆∑∏]/.test(mathContent) ||
+        Array.from(mathContent).some(isGreek);
+      const looksLikeProseCapture = mathContent.length > 15 && !hasMathSignal;
+
       // Never emit a wrap that lands right next to an existing "$" — that
       // manufactures an unparseable "$$$" run instead of the intended
       // "$$" (e.g. wrapping "of" right before "$$\alpha$$"). Push the
       // content unwrapped instead; the surrounding real delimiters already
       // do the job.
       const abutsExistingDollar = text[mathStart - 1] === '$' || text[mathEnd] === '$';
-      if (mathContent.length > 0 && abutsExistingDollar) {
+      if (looksLikeProseCapture) {
+        out.push(text[i]);
+        i++;
+      } else if (mathContent.length > 0 && abutsExistingDollar) {
         out.push(mathContent);
         i = mathEnd;
       } else if (mathContent.length > 0) {
