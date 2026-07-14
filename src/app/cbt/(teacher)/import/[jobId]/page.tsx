@@ -33,6 +33,7 @@ export default async function CbtImportJobPage({ params }: { params: Promise<{ j
       // strict CbtQuestion the editor dialog expects.
       questionType: input.questionType as CbtQuestion["questionType"],
       stem: input.stem,
+      image: input.image ?? null,
       options: (input.options ?? []) as CbtQuestion["options"],
       answer: (input.answer ?? {}) as CbtQuestion["answer"],
       explanation: input.explanation ?? null,

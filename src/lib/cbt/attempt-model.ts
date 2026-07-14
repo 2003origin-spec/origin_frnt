@@ -28,6 +28,8 @@ export type CbtSanitizedQuestion = {
   questionId: string;
   questionType: CbtQuestionType;
   stem: string;
+  /** Public diagram URL when the question has an attached image. */
+  image: string | null;
   options: string[];
   marks: number;
   negativeMarks: number;

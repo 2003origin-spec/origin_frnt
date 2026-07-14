@@ -109,6 +109,8 @@ export function CbtQuestionEditorDialog({
   const [chapter, setChapter] = useState(initialQuestion?.chapter ?? "");
   const [concept, setConcept] = useState(initialQuestion?.concept ?? "");
   const [difficulty, setDifficulty] = useState(initialQuestion?.difficulty ?? "medium");
+  // Preserve import/manual diagram URL across edits (not editable in the form yet).
+  const [image] = useState<string | null>(initialQuestion?.image ?? null);
 
   const usesOptions = questionType === "mcq" || questionType === "msq";
   const stemPreview = useMemo(() => stem, [stem]);
@@ -160,6 +162,7 @@ export function CbtQuestionEditorDialog({
       chapter: chapter || null,
       concept: concept || null,
       difficulty: difficulty || null,
+      image,
     } as CbtQuestionInput;
     startTransition(async () => {
       if (onCustomSubmit) {
@@ -238,6 +241,10 @@ export function CbtQuestionEditorDialog({
               <div className="neu-inset rounded-xl p-3 text-sm">
                 <LatexRenderer content={stemPreview} />
               </div>
+            ) : null}
+            {image ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={image} alt="Question diagram" className="mt-2 max-h-56 w-auto max-w-full rounded-lg border border-border object-contain" />
             ) : null}
           </div>
 

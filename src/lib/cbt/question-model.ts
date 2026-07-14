@@ -35,6 +35,8 @@ export type CbtQuestion = {
   teacherId: string;
   questionType: CbtQuestionType;
   stem: string;
+  /** Public R2 URL for an extracted/uploaded diagram, if any. */
+  image: string | null;
   options: CbtQuestionOption[];
   answer: CbtQuestionAnswer;
   explanation: string | null;
@@ -58,4 +60,6 @@ export type CbtQuestionInput = {
   chapter?: string | null;
   concept?: string | null;
   difficulty?: string | null;
+  /** Public R2 URL for a question diagram (from import or manual set). */
+  image?: string | null;
 };

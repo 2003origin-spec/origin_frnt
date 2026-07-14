@@ -31,7 +31,13 @@ export {
   type CbtQuestionType,
 };
 
-const COLUMNS = `id, teacher_id, question_type, stem, options, answer, explanation, subject, chapter, concept, difficulty, source, import_job_id, created_at, updated_at`;
+const COLUMNS = `id, teacher_id, question_type, stem, image, options, answer, explanation, subject, chapter, concept, difficulty, source, import_job_id, created_at, updated_at`;
+
+function normalizeImageUrl(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
 
 function pool() {
   const p = getUserPostgresPool();
@@ -51,6 +57,7 @@ function mapQuestion(row: Record<string, unknown>): CbtQuestion {
     teacherId: String(row.teacher_id),
     questionType: row.question_type as CbtQuestionType,
     stem: String(row.stem ?? ""),
+    image: normalizeImageUrl(row.image),
     options: Array.isArray(row.options) ? (row.options as CbtQuestionOption[]) : [],
     answer: (row.answer as CbtQuestionAnswer) ?? {},
     explanation: row.explanation ? String(row.explanation) : null,
@@ -200,14 +207,15 @@ export async function createCbtQuestion(
   const source: CbtQuestionSource = opts?.source === "imported" ? "imported" : "manual";
   const res = await pool().query(
     `INSERT INTO cbt.questions
-       (id, teacher_id, question_type, stem, options, answer, explanation, subject, chapter, concept, difficulty, source, import_job_id)
-     VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9, $10, $11, $12, $13)
+       (id, teacher_id, question_type, stem, image, options, answer, explanation, subject, chapter, concept, difficulty, source, import_job_id)
+     VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8, $9, $10, $11, $12, $13, $14)
      RETURNING ${COLUMNS}`,
     [
       cbtId("cbtq"),
       teacherId,
       questionType,
       input.stem.trim(),
+      normalizeImageUrl(input.image),
       JSON.stringify(options),
       JSON.stringify(answer),
       input.explanation?.trim() || null,
@@ -231,8 +239,8 @@ export async function updateCbtQuestion(
   const { questionType, options, answer } = validateQuestion(input);
   const res = await pool().query(
     `UPDATE cbt.questions SET
-       question_type = $3, stem = $4, options = $5::jsonb, answer = $6::jsonb,
-       explanation = $7, subject = $8, chapter = $9, concept = $10, difficulty = $11,
+       question_type = $3, stem = $4, image = $5, options = $6::jsonb, answer = $7::jsonb,
+       explanation = $8, subject = $9, chapter = $10, concept = $11, difficulty = $12,
        updated_at = NOW()
      WHERE teacher_id = $1 AND id = $2
      RETURNING ${COLUMNS}`,
@@ -241,6 +249,7 @@ export async function updateCbtQuestion(
       questionId,
       questionType,
       input.stem.trim(),
+      normalizeImageUrl(input.image),
       JSON.stringify(options),
       JSON.stringify(answer),
       input.explanation?.trim() || null,

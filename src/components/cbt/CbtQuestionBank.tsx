@@ -255,6 +255,10 @@ export function CbtQuestionBank({
                   <div className="line-clamp-2 text-sm text-foreground">
                     <LatexRenderer content={q.stem} />
                   </div>
+                  {q.image ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={q.image} alt="" className="mt-2 max-h-28 w-auto max-w-full rounded-md object-contain" />
+                  ) : null}
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-2">

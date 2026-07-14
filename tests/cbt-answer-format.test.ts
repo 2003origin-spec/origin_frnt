@@ -48,3 +48,17 @@ test("import demotes a non-numeric numerical answer to an exact-match expression
   assert.equal(input.questionType, "symbolic_expression");
   assert.equal((input.answer as { answerText?: string }).answerText, "2n+1");
 });
+
+test("import maps worker metadata.imageUrl onto CBT image", () => {
+  const input = importQuestionToCbtInput(
+    importQuestion({
+      metadata: { imageUrl: "https://pub.example.r2.dev/imports/job/diagrams/q_0.png" },
+    }),
+  );
+  assert.equal(input.image, "https://pub.example.r2.dev/imports/job/diagrams/q_0.png");
+});
+
+test("import leaves image null when metadata has no imageUrl", () => {
+  const input = importQuestionToCbtInput(importQuestion({ metadata: {} }));
+  assert.equal(input.image, null);
+});

@@ -383,6 +383,14 @@ export function CbtTestInterface() {
 
           <div className="neu-raised rounded-2xl p-4 sm:p-5 text-base leading-relaxed">
             <LatexRenderer content={current.q.stem} />
+            {current.q.image ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={current.q.image}
+                alt="Question diagram"
+                className="mt-4 max-h-80 w-auto max-w-full rounded-xl object-contain"
+              />
+            ) : null}
           </div>
 
           <QuestionInput question={current.q} answer={answers[current.q.position]} onChange={(a) => setAnswer(current.q.position, a)} />
