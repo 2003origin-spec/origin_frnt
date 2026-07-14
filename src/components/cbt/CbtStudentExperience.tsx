@@ -85,14 +85,11 @@ function PhaseCard() {
   );
 }
 
-/** O3 Origin brand mark — the green-ring + orange-wedge logo. */
+/** Origin brand mark — the official Origin logo. */
 function OriBrandMark({ className = "h-14 w-14" }: { className?: string }) {
   return (
-    <div className={`${className} flex items-center justify-center rounded-full bg-green-600`}>
-      <div className="flex h-2/3 w-2/3 items-center justify-center rounded-full bg-white">
-        <div className="h-1/2 w-1/2 rounded-tr-xl rounded-bl-xl bg-orange-500" style={{ clipPath: "polygon(0% 100%, 100% 100%, 100% 0%)" }} />
-      </div>
-    </div>
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src="/Origin-New-Logo.jpeg" alt="Origin" className={`${className} rounded-xl object-contain`} />
   );
 }
 

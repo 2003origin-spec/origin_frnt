@@ -619,17 +619,12 @@ export function CbtTestInterface() {
   );
 }
 
-/** O3 Origin brand mark — the green-ring + orange-wedge logo used on the exam header. */
+/** Origin brand mark — the official Origin logo used on the exam screens. */
 function OriBrandMark({ compact = false }: { compact?: boolean }) {
   const size = compact ? "h-12 w-12" : "mx-auto h-16 w-16";
-  const inner = compact ? "h-8 w-8" : "h-10 w-10";
-  const wedge = compact ? "h-6 w-6" : "h-7 w-7";
   return (
-    <div className={`${size} flex items-center justify-center rounded-full bg-green-600`}>
-      <div className={`${inner} flex items-center justify-center rounded-full bg-white`}>
-        <div className={`${wedge} rounded-tr-xl rounded-bl-xl bg-orange-500`} style={{ clipPath: "polygon(0% 100%, 100% 100%, 100% 0%)" }} />
-      </div>
-    </div>
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src="/Origin-New-Logo.jpeg" alt="Origin" className={`${size} rounded-xl object-contain`} />
   );
 }
 

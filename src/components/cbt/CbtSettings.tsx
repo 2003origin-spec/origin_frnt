@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 
+import { mutateJson } from "@/lib/csrf";
+
 /**
  * CBT teacher settings — the institute logo shown to students on the
  * post-submission thank-you screen (Origin × Institute logo). Uploads to R2 via
@@ -21,7 +23,7 @@ export function CbtSettings({ initialLogo, instituteName }: { initialLogo: strin
     try {
       const fd = new FormData();
       fd.append("file", file);
-      const res = await fetch("/api/cbt/teacher/logo", { method: "POST", body: fd, credentials: "include" });
+      const res = await mutateJson("/api/cbt/teacher/logo", { method: "POST", body: fd });
       const data = (await res.json().catch(() => ({}))) as { url?: string; detail?: string };
       if (!res.ok || !data.url) throw new Error(data.detail ?? "Upload failed.");
       setLogo(data.url);
@@ -36,7 +38,7 @@ export function CbtSettings({ initialLogo, instituteName }: { initialLogo: strin
     setError(null);
     setBusy(true);
     try {
-      const res = await fetch("/api/cbt/teacher/logo", { method: "DELETE", credentials: "include" });
+      const res = await mutateJson("/api/cbt/teacher/logo", { method: "DELETE" });
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { detail?: string };
         throw new Error(data.detail ?? "Failed to remove logo.");
