@@ -24,9 +24,12 @@ import {
   Plus,
   Loader2,
   Sparkles,
-  ArrowRight
+  ArrowRight,
+  ChevronDown,
+  Check
 } from 'lucide-react';
 import type { Test, TestPreview, User } from '@/types';
+import { cn } from '@/lib/utils';
 import { apiCall } from '@/lib/api';
 import { createCustomTestAction } from '@/server/actions/test-actions';
 
@@ -73,10 +76,13 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
     classLevel: '' as '' | (typeof CLASS_OPTIONS)[number],
     exam: '' as '' | (typeof EXAM_OPTIONS)[number],
     subject: 'mixed',
-    chapter: '',
+    chapters: [] as string[],
     question_count: 10 as (typeof QUESTION_COUNT_OPTIONS)[number],
     duration_minutes: '' as '' | number,
   });
+  // OGCode-style multi-select chapter picker.
+  const [chapterDropdownOpen, setChapterDropdownOpen] = useState(false);
+  const [chapterSearch, setChapterSearch] = useState('');
   const [creatingTest, setCreatingTest] = useState(false);
   const [customTestError, setCustomTestError] = useState('');
 
@@ -103,9 +109,10 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
         if (req !== chapterFacetReq.current) return;
         const values = Array.isArray(data) ? (data as string[]) : [];
         setFacetChapters(values);
-        setCustomTestConfig((prev) =>
-          prev.chapter && !values.includes(prev.chapter) ? { ...prev, chapter: '' } : prev
-        );
+        setCustomTestConfig((prev) => {
+          const pruned = prev.chapters.filter((c) => values.includes(c));
+          return pruned.length === prev.chapters.length ? prev : { ...prev, chapters: pruned };
+        });
       })
       .catch(() => {
         if (req === chapterFacetReq.current) setFacetChapters([]);
@@ -125,7 +132,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
         // difficulty constraint server-side (the request default would
         // otherwise silently narrow to "medium" if this were omitted).
         difficulty: 'all',
-        chapter: customTestConfig.chapter || undefined,
+        chapters: customTestConfig.chapters.length ? customTestConfig.chapters : undefined,
         class_level: customTestConfig.classLevel || undefined,
         exam: customTestConfig.exam || undefined,
         question_count: customTestConfig.question_count,
@@ -502,7 +509,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                                     <Label className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">Domain Calibration</Label>
                                     <select
                                         value={customTestConfig.subject}
-                                        onChange={(e) => setCustomTestConfig({ ...customTestConfig, subject: e.target.value, chapter: '' })}
+                                        onChange={(e) => setCustomTestConfig({ ...customTestConfig, subject: e.target.value, chapters: [] })}
                                         className="w-full h-14 px-5 rounded-2xl bg-background border border-border/40 text-foreground font-black text-sm outline-none focus:border-rose-500 transition-all"
                                     >
                                         <option value="mixed">All Subjects (Mixed)</option>
@@ -512,28 +519,92 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                                         <option value="biology">Biology</option>
                                     </select>
                                 </div>
-                                <div className="space-y-4">
+                                <div className="space-y-4 relative">
                                     <Label className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">Chapter (Optional)</Label>
-                                    <select
-                                        value={customTestConfig.chapter}
-                                        onChange={(e) => setCustomTestConfig({ ...customTestConfig, chapter: e.target.value })}
+                                    <button
+                                        type="button"
                                         disabled={customTestConfig.subject === 'mixed' || facetChaptersLoading}
-                                        className="w-full h-14 px-5 rounded-2xl bg-background border border-border/40 text-foreground font-black text-sm outline-none focus:border-rose-500 transition-all disabled:opacity-50"
+                                        onClick={() => { setChapterDropdownOpen((o) => !o); setChapterSearch(''); }}
+                                        className="w-full h-14 px-5 flex items-center justify-between gap-2 rounded-2xl bg-background border border-border/40 text-foreground font-black text-sm outline-none focus:border-rose-500 transition-all disabled:opacity-50 text-left"
                                     >
-                                        <option value="">
+                                        <span className="truncate">
                                             {customTestConfig.subject === 'mixed'
                                                 ? 'Pick a subject first'
                                                 : facetChaptersLoading
                                                 ? 'Loading chapters…'
-                                                : 'Any Chapter'}
-                                        </option>
-                                        {facetChapters.map((chapter) => (
-                                            <option key={chapter} value={chapter}>{chapter}</option>
-                                        ))}
-                                    </select>
-                                    {customTestConfig.chapter && (
+                                                : customTestConfig.chapters.length === 0
+                                                ? 'Any Chapter'
+                                                : `${customTestConfig.chapters.length} chapter${customTestConfig.chapters.length === 1 ? '' : 's'} selected`}
+                                        </span>
+                                        <ChevronDown className={cn('w-4 h-4 shrink-0 transition-transform', chapterDropdownOpen && 'rotate-180')} />
+                                    </button>
+                                    {chapterDropdownOpen && customTestConfig.subject !== 'mixed' && (
+                                      <>
+                                        {/* click-away backdrop */}
+                                        <div className="fixed inset-0 z-40" onClick={() => setChapterDropdownOpen(false)} />
+                                        <div className="absolute left-0 right-0 z-50 mt-2 max-h-[420px] flex flex-col rounded-2xl border border-border/40 bg-background shadow-xl overflow-hidden">
+                                            <div className="p-2 border-b border-border/40 shrink-0">
+                                                <input
+                                                    type="text"
+                                                    placeholder="Search chapters…"
+                                                    value={chapterSearch}
+                                                    onChange={(e) => setChapterSearch(e.target.value)}
+                                                    className="w-full bg-muted/40 border border-border/40 rounded-lg px-3 py-2 text-xs outline-none focus:border-primary/50"
+                                                />
+                                            </div>
+                                            <div className="overflow-y-auto p-2 flex-1 space-y-1">
+                                                {(() => {
+                                                    const filtered = facetChapters.filter((ch) => ch.toLowerCase().includes(chapterSearch.toLowerCase()));
+                                                    if (filtered.length === 0) {
+                                                        return <div className="p-3 text-center text-[11px] italic text-muted-foreground">No chapters found</div>;
+                                                    }
+                                                    const allSelected = filtered.every((ch) => customTestConfig.chapters.includes(ch));
+                                                    return (
+                                                        <>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setCustomTestConfig((prev) => ({
+                                                                    ...prev,
+                                                                    chapters: allSelected
+                                                                        ? prev.chapters.filter((c) => !filtered.includes(c))
+                                                                        : [...new Set([...prev.chapters, ...filtered])],
+                                                                }))}
+                                                                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[11px] font-black text-primary hover:bg-primary/5 border-b border-border/20 mb-1 text-left"
+                                                            >
+                                                                <span className={cn('w-4 h-4 rounded border flex items-center justify-center shrink-0', allSelected ? 'bg-primary border-primary' : 'border-muted-foreground/30')}>
+                                                                    {allSelected && <Check className="w-3 h-3 text-white" />}
+                                                                </span>
+                                                                Select All
+                                                            </button>
+                                                            {filtered.map((ch) => {
+                                                                const active = customTestConfig.chapters.includes(ch);
+                                                                return (
+                                                                    <button
+                                                                        key={ch}
+                                                                        type="button"
+                                                                        onClick={() => setCustomTestConfig((prev) => ({
+                                                                            ...prev,
+                                                                            chapters: active ? prev.chapters.filter((c) => c !== ch) : [...prev.chapters, ch],
+                                                                        }))}
+                                                                        className={cn('w-full flex items-center gap-2 px-3 py-2 rounded-lg text-[11px] font-semibold text-left hover:bg-primary/5', active ? 'text-primary bg-primary/5' : 'text-foreground/80')}
+                                                                    >
+                                                                        <span className={cn('w-4 h-4 rounded border flex items-center justify-center shrink-0', active ? 'bg-primary border-primary' : 'border-muted-foreground/30')}>
+                                                                            {active && <Check className="w-3 h-3 text-white" />}
+                                                                        </span>
+                                                                        <span className="line-clamp-2 leading-tight">{ch}</span>
+                                                                    </button>
+                                                                );
+                                                            })}
+                                                        </>
+                                                    );
+                                                })()}
+                                            </div>
+                                        </div>
+                                      </>
+                                    )}
+                                    {customTestConfig.chapters.length > 0 && (
                                         <p className="text-[10px] font-bold text-muted-foreground normal-case">
-                                            Short on questions in this chapter? We&apos;ll fill the rest from other {customTestConfig.subject} chapters automatically.
+                                            Short on questions in {customTestConfig.chapters.length === 1 ? 'this chapter' : 'these chapters'}? We&apos;ll fill the rest from other {customTestConfig.subject} chapters automatically.
                                         </p>
                                     )}
                                 </div>

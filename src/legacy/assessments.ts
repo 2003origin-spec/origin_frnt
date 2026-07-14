@@ -174,7 +174,10 @@ export type PracticeSubmissionPayload = {
 export type CustomTestPayload = {
   subject?: string;
   difficulty?: string;
+  /** Single chapter (legacy). Prefer `chapters` for multi-select. */
   chapter?: string;
+  /** Multiple chapters (OGCode-style multi-select). Union-matched in the query. */
+  chapters?: string[];
   /** 11 or 12. */
   class_level?: number;
   /** Exam family: "JEE" | "NEET" | "AIPMT". */
@@ -2257,14 +2260,19 @@ async function selectCustomTestQuestions(payload: CustomTestPayload) {
   const isMixedSubject = subject === "all" || subject === "mixed";
   const difficultyValue = (payload.difficulty ?? "medium").toLowerCase();
   const difficulty = difficultyValue === "all" ? null : normalizeDifficulty(difficultyValue);
-  const chapter = (payload.chapter ?? "").trim();
+  // Accept multi-select `chapters`, falling back to the legacy single `chapter`.
+  const chapters = (payload.chapters?.length ? payload.chapters : (payload.chapter ? [payload.chapter] : []))
+    .map((c) => String(c ?? "").trim())
+    .filter(Boolean);
+  // Representative label for the test title (single chapter → its name; else null).
+  const chapter = chapters.length === 1 ? chapters[0] : "";
   const classLevel = payload.class_level != null ? Math.trunc(Number(payload.class_level)) : null;
   const exam = (payload.exam ?? "").trim();
   const questionCount = Math.max(1, Math.min(50, Number(payload.question_count ?? 10)));
   const durationOverride = payload.duration_minutes != null ? Math.trunc(Number(payload.duration_minutes)) : null;
 
   // class/exam are hard constraints (never relaxed below), same as the
-  // analytics-service's primary path — only chapter is ever dropped to top up.
+  // analytics-service's primary path — only chapter(s) are dropped to top up.
   const baseFilters = {
     subject: isMixedSubject ? null : normalizeSubject(subject),
     difficulty,
@@ -2274,7 +2282,7 @@ async function selectCustomTestQuestions(payload: CustomTestPayload) {
 
   const chapterPage = await listOgcodeCatalogQuestionPage({
     ...baseFilters,
-    chapters: chapter ? [chapter] : undefined,
+    chapters: chapters.length ? chapters : undefined,
     limit: questionCount,
     offset: 0,
   });
@@ -3195,11 +3203,23 @@ export async function createCustomTest(
     ]);
     const classLevel = payload.class_level != null ? Math.trunc(Number(payload.class_level)) : null;
     const durationOverride = payload.duration_minutes != null ? Math.trunc(Number(payload.duration_minutes)) : null;
+
+    // Normalize chapters (multi-select `chapters` or legacy single `chapter`).
+    const chapters = (payload.chapters?.length ? payload.chapters : (payload.chapter ? [payload.chapter] : []))
+      .map((c) => String(c ?? "").trim())
+      .filter(Boolean);
+    // The analytics service takes a single chapter; when several are picked,
+    // use the local bank path (createCustomTestFallback), which union-matches
+    // all selected chapters (chapter = ANY(...)).
+    if (chapters.length > 1) {
+      return createCustomTestFallback(store, user, payload);
+    }
+
     const serviceResponse = await generateCustomTestWithService({
       user_id: user.id,
       subject: subject === "all" ? "mixed" : subject,
       difficulty,
-      chapter: payload.chapter?.trim() || null,
+      chapter: chapters[0] ?? null,
       class_level: classLevel && classLevel > 0 ? classLevel : null,
       exam: payload.exam?.trim() || null,
       question_count: Math.max(1, Math.min(50, Number(payload.question_count ?? 10))),
