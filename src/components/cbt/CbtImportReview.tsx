@@ -178,6 +178,14 @@ export function CbtImportReview({
             <div className="text-sm text-foreground">
               <LatexRenderer content={q.questionText ?? ""} />
             </div>
+            {typeof q.metadata?.imageUrl === "string" && q.metadata.imageUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={q.metadata.imageUrl}
+                alt="Extracted diagram"
+                className="mt-3 max-h-56 w-auto max-w-full rounded-lg object-contain"
+              />
+            ) : null}
             {optionTexts(q.options).length > 0 ? (
               <ol className="mt-2 list-decimal space-y-0.5 pl-5 text-sm text-muted-foreground">
                 {optionTexts(q.options).map((opt, i) => (

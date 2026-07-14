@@ -133,6 +133,14 @@ function toIndexArray(value: Record<string, unknown> | null): number[] {
   return arr.map((v) => Number(v)).filter((n) => Number.isInteger(n));
 }
 
+/** R2 diagram URL stashed by the worker under import question metadata.imageUrl. */
+function importImageUrl(iq: ImportJobQuestion): string | null {
+  const url = iq.metadata?.imageUrl;
+  if (typeof url !== "string") return null;
+  const trimmed = url.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
 /** Best-effort map from a worker-extracted question to a CBT question type. */
 function mapImportType(iq: ImportJobQuestion): CbtQuestionType {
   const t = (iq.questionType ?? "").toLowerCase().replace(/[\s-]+/g, "_");
@@ -201,6 +209,7 @@ export function importQuestionToCbtInput(iq: ImportJobQuestion): CbtQuestionInpu
     chapter: iq.chapter,
     concept: iq.concept,
     difficulty: null,
+    image: importImageUrl(iq),
   };
 }
 

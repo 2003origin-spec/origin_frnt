@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS cbt.questions (
                   'mcq', 'msq', 'numerical', 'numerical_with_units',
                   'symbolic_expression', 'equation', 'matrix_match', 'subjective')),
   stem          TEXT NOT NULL DEFAULT '',
+  image         TEXT,
   options       JSONB NOT NULL DEFAULT '[]'::jsonb,
   answer        JSONB NOT NULL DEFAULT '{}'::jsonb,
   explanation   TEXT,

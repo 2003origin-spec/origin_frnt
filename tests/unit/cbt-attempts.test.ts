@@ -43,6 +43,7 @@ function makeQuestion(over: Partial<TestQuestionRow>): TestQuestionRow {
     questionId: "cbtq_1",
     questionType: "mcq",
     stem: "What is 2 + 2?",
+    image: null,
     options: [{ text: "3" }, { text: "4" }, { text: "5" }],
     answer: { correctOption: 1, explanation: "obvious" } as CbtQuestionAnswer,
     explanation: "because arithmetic",

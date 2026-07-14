@@ -86,6 +86,7 @@ export async function ensureCbtSchema(): Promise<void> {
                             'mcq', 'msq', 'numerical', 'numerical_with_units',
                             'symbolic_expression', 'equation', 'matrix_match', 'subjective')),
             stem          TEXT NOT NULL DEFAULT '',
+            image         TEXT,
             options       JSONB NOT NULL DEFAULT '[]'::jsonb,
             answer        JSONB NOT NULL DEFAULT '{}'::jsonb,
             explanation   TEXT,
@@ -98,6 +99,9 @@ export async function ensureCbtSchema(): Promise<void> {
             created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
           );
+
+          -- Additive column for environments that already have cbt.questions.
+          ALTER TABLE cbt.questions ADD COLUMN IF NOT EXISTS image TEXT;
 
           CREATE TABLE IF NOT EXISTS cbt.tests (
             id               TEXT PRIMARY KEY,
@@ -205,6 +209,10 @@ export async function ensureCbtSchema(): Promise<void> {
         await client.query(
           "INSERT INTO app.migrations (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING",
           ["20260707_cbt_clusters", "cbt question clusters"],
+        );
+        await client.query(
+          "INSERT INTO app.migrations (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING",
+          ["20260714_cbt_questions_image", "cbt questions image column"],
         );
         await client.query("COMMIT");
         globalThis.__originCbtSchemaEnsured = true;

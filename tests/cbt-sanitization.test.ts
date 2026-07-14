@@ -62,6 +62,7 @@ function makeQuestion(type: CbtQuestionType): TestQuestionRow {
     questionId: `cbtq_${type}`,
     questionType: type,
     stem: "stem",
+    image: null,
     options: [{ text: "a" }, { text: "b" }, { text: "c" }],
     answer: ANSWERS[type],
     explanation: "the secret explanation",

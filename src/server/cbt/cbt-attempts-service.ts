@@ -36,6 +36,7 @@ export type TestQuestionRow = {
   questionId: string;
   questionType: CbtQuestionType;
   stem: string;
+  image: string | null;
   options: { text: string }[];
   answer: CbtQuestionAnswer;
   explanation: string | null;
@@ -48,7 +49,7 @@ export type TestQuestionRow = {
 async function loadTestQuestions(testId: string): Promise<TestQuestionRow[]> {
   const res = await pool().query(
     `SELECT tq.position, tq.marks, tq.negative_marks,
-            q.id AS question_id, q.question_type, q.stem, q.options, q.answer,
+            q.id AS question_id, q.question_type, q.stem, q.image, q.options, q.answer,
             q.explanation, q.subject, q.chapter
        FROM cbt.test_questions tq
        JOIN cbt.questions q ON q.id = tq.question_id
@@ -61,6 +62,7 @@ async function loadTestQuestions(testId: string): Promise<TestQuestionRow[]> {
     questionId: String(row.question_id),
     questionType: row.question_type as CbtQuestionType,
     stem: String(row.stem ?? ""),
+    image: typeof row.image === "string" && row.image.trim() ? String(row.image).trim() : null,
     options: Array.isArray(row.options) ? (row.options as { text: string }[]) : [],
     answer: (row.answer ?? {}) as CbtQuestionAnswer,
     explanation: row.explanation ?? null,
@@ -91,6 +93,7 @@ export function sanitizeQuestionForStudent(q: TestQuestionRow): CbtSanitizedQues
     questionId: q.questionId,
     questionType: q.questionType,
     stem: q.stem,
+    image: q.image,
     options: q.options.map((o) => String(o?.text ?? "")),
     marks: q.marks,
     negativeMarks: q.negativeMarks,
@@ -448,6 +451,7 @@ export async function submitAttempt(
           questionId: q.questionId,
           questionType: q.questionType,
           stem: q.stem,
+          image: q.image,
           options: q.options,
           answer: q.answer,
           marks: q.marks,
