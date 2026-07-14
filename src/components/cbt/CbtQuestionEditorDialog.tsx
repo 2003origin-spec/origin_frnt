@@ -109,8 +109,29 @@ export function CbtQuestionEditorDialog({
   const [chapter, setChapter] = useState(initialQuestion?.chapter ?? "");
   const [concept, setConcept] = useState(initialQuestion?.concept ?? "");
   const [difficulty, setDifficulty] = useState(initialQuestion?.difficulty ?? "medium");
-  // Preserve import/manual diagram URL across edits (not editable in the form yet).
-  const [image] = useState<string | null>(initialQuestion?.image ?? null);
+  // Question diagram image (import-populated or manually uploaded to R2).
+  const [image, setImage] = useState<string | null>(initialQuestion?.image ?? null);
+  const [imageUploading, setImageUploading] = useState(false);
+
+  async function onPickImage(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-selecting the same file
+    if (!file) return;
+    setError(null);
+    setImageUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/cbt/uploads/image", { method: "POST", body: fd, credentials: "include" });
+      const data = (await res.json().catch(() => ({}))) as { url?: string; detail?: string };
+      if (!res.ok || !data.url) throw new Error(data.detail ?? "Upload failed.");
+      setImage(data.url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Image upload failed.");
+    } finally {
+      setImageUploading(false);
+    }
+  }
 
   const usesOptions = questionType === "mcq" || questionType === "msq";
   const stemPreview = useMemo(() => stem, [stem]);
@@ -242,10 +263,26 @@ export function CbtQuestionEditorDialog({
                 <LatexRenderer content={stemPreview} />
               </div>
             ) : null}
-            {image ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={image} alt="Question diagram" className="mt-2 max-h-56 w-auto max-w-full rounded-lg border border-border object-contain" />
-            ) : null}
+            {/* Diagram image — upload (or replace / remove) */}
+            <div className="mt-2 space-y-2">
+              {image ? (
+                <div className="relative inline-block">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={image} alt="Question diagram" className="max-h-56 w-auto max-w-full rounded-lg border border-border object-contain" />
+                  <button
+                    type="button"
+                    onClick={() => setImage(null)}
+                    className="absolute right-2 top-2 rounded-md bg-black/60 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white hover:bg-black/80"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ) : null}
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-xs font-bold text-muted-foreground transition-colors hover:text-foreground">
+                <input type="file" accept="image/*" className="hidden" onChange={onPickImage} disabled={imageUploading} />
+                {imageUploading ? "Uploading…" : image ? "Replace diagram image" : "Add diagram image"}
+              </label>
+            </div>
           </div>
 
           {usesOptions ? (

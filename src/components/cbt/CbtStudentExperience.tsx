@@ -1,9 +1,16 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import Image from "next/image";
+
 import { CbtRoomProvider, useCbtRoom } from "@/context/CbtRoomContext";
 import { CbtTestInterface } from "@/sections/cbt/CbtTestInterface";
 
 import { CbtJoinCard } from "./CbtJoinCard";
+
+/** Origin landing page — where the thank-you screen redirects after the test. */
+const ORIGIN_LANDING_URL = "/";
+const REDIRECT_SECONDS = 10;
 
 function StudentIdBadge({ studentCode }: { studentCode: string }) {
   return (
@@ -58,12 +65,7 @@ function PhaseCard() {
   }
 
   if (phase === "submitted") {
-    return (
-      <Centered>
-        <h1 className="text-xl font-semibold">Test submitted</h1>
-        <p className="text-sm text-muted-foreground">Thanks! You can close this tab.</p>
-      </Centered>
-    );
+    return <ThankYouScreen />;
   }
 
   if (phase === "closed") {
@@ -83,17 +85,111 @@ function PhaseCard() {
   );
 }
 
+/** O3 Origin brand mark — the green-ring + orange-wedge logo. */
+function OriBrandMark({ className = "h-14 w-14" }: { className?: string }) {
+  return (
+    <div className={`${className} flex items-center justify-center rounded-full bg-green-600`}>
+      <div className="flex h-2/3 w-2/3 items-center justify-center rounded-full bg-white">
+        <div className="h-1/2 w-1/2 rounded-tr-xl rounded-bl-xl bg-orange-500" style={{ clipPath: "polygon(0% 100%, 100% 100%, 100% 0%)" }} />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Post-submission thank-you screen: Origin brand mark × the institute logo (when
+ * the institute has set one), a thank-you line, a "click here to continue" link,
+ * and a 10-second countdown that redirects to the Origin landing page.
+ */
+function ThankYouScreen() {
+  const { instituteName, instituteLogo } = useCbtRoom();
+  const [secondsLeft, setSecondsLeft] = useState(REDIRECT_SECONDS);
+
+  useEffect(() => {
+    const goHome = () => {
+      window.location.href = ORIGIN_LANDING_URL;
+    };
+    const interval = window.setInterval(() => {
+      setSecondsLeft((s) => {
+        if (s <= 1) {
+          window.clearInterval(interval);
+          goHome();
+          return 0;
+        }
+        return s - 1;
+      });
+    }, 1000);
+    return () => window.clearInterval(interval);
+  }, []);
+
+  return (
+    <main className="flex min-h-screen flex-col items-center justify-center overflow-y-auto neu-surface p-6 text-center">
+      <div className="neu-raised w-full max-w-md space-y-6 rounded-3xl p-8">
+        {/* Origin × Institute logo lockup */}
+        <div className="flex items-center justify-center gap-4">
+          <OriBrandMark />
+          {instituteLogo ? (
+            <>
+              <span className="text-2xl font-black text-muted-foreground">×</span>
+              <Image
+                src={instituteLogo}
+                alt={instituteName ?? "Institute"}
+                width={56}
+                height={56}
+                unoptimized
+                className="h-14 w-14 rounded-xl object-contain"
+              />
+            </>
+          ) : instituteName ? (
+            <>
+              <span className="text-2xl font-black text-muted-foreground">×</span>
+              <span className="max-w-[10rem] truncate text-lg font-black text-foreground">{instituteName}</span>
+            </>
+          ) : null}
+        </div>
+
+        <div className="space-y-2">
+          <h1 className="text-2xl font-black tracking-tight text-foreground">Thanks for using Origin</h1>
+          <p className="text-sm text-muted-foreground">Your test has been submitted successfully.</p>
+        </div>
+
+        <a
+          href={ORIGIN_LANDING_URL}
+          className="inline-flex w-full items-center justify-center rounded-2xl bg-primary py-3.5 text-sm font-black uppercase tracking-widest text-primary-foreground shadow-lg shadow-primary/25 transition-all hover:bg-primary/90 active:scale-[0.98]"
+        >
+          Click here to continue
+        </a>
+
+        <p className="text-xs text-muted-foreground">
+          Redirecting to Origin in <span className="font-bold text-foreground tabular-nums">{secondsLeft}</span>{" "}
+          second{secondsLeft === 1 ? "" : "s"}…
+        </p>
+      </div>
+    </main>
+  );
+}
+
 export function CbtStudentExperience({
   slug,
   roomId,
   roomName,
+  instituteName = null,
+  instituteLogo = null,
 }: {
   slug: string;
   roomId: string;
   roomName: string;
+  instituteName?: string | null;
+  instituteLogo?: string | null;
 }) {
   return (
-    <CbtRoomProvider slug={slug} roomId={roomId} roomName={roomName}>
+    <CbtRoomProvider
+      slug={slug}
+      roomId={roomId}
+      roomName={roomName}
+      instituteName={instituteName}
+      instituteLogo={instituteLogo}
+    >
       <Inner />
     </CbtRoomProvider>
   );
