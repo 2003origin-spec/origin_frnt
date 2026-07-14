@@ -300,9 +300,11 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                   ))}
                   {standardTests.length === 0 && (
                     <div className="col-span-full py-20 text-center">
-                      <img src="/ori2d/ori-curious.png" alt="Ori" className="w-28 h-28 object-contain mx-auto mb-3 drop-shadow-md" />
-                      <Loader2 className="w-10 h-10 text-primary animate-spin mx-auto mb-4" />
-                      <p className="text-sm font-bold text-muted-foreground uppercase tracking-widest">Calibrating Mocks...</p>
+                      <img src="/ori2d/ori-confused.png" alt="Ori" className="w-28 h-28 object-contain mx-auto mb-4 drop-shadow-md" />
+                      <p className="text-base font-black text-foreground">No institute tests yet</p>
+                      <p className="mx-auto mt-2 max-w-sm text-sm font-medium text-muted-foreground">
+                        Ask your institute to add you, or enter the join code they shared to see their tests here.
+                      </p>
                     </div>
                   )}
                 </div>
