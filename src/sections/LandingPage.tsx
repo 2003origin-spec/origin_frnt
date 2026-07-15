@@ -964,9 +964,9 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
                   transition={{ duration: 0.5, delay: 0.1 * index, ease: [0.22, 1, 0.36, 1] }}
                   viewport={{ once: true }}
                   className={`shine-card relative flex flex-col rounded-3xl transition-all duration-500 hover:scale-[1.015] neu-raised
-                    ${['md:translate-y-0', 'md:-translate-y-6', 'md:-translate-y-12'][index] ?? ''}
+                    ${['md:min-h-[520px]', 'md:min-h-[600px]', 'md:min-h-[680px]'][index] ?? ''}
                     ${plan.popular
-                      ? 'p-7 sm:p-10 ring-2 ring-primary/40 md:scale-[1.05] z-10 shadow-2xl shadow-primary/10'
+                      ? 'p-7 sm:p-10 ring-2 ring-primary/40 md:scale-[1.05] md:origin-bottom z-10 shadow-2xl shadow-primary/10'
                       : 'p-6 sm:p-8 opacity-90 hover:opacity-100'
                     }`}
                 >
