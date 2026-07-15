@@ -16,7 +16,7 @@ import {
   recordTime,
   updateUserStreak,
 } from "@/server/gamification";
-import { badRequest, created, noContent, notFound, ok, serviceUnavailable, unauthorized } from "@/server/http";
+import { badRequest, created, forbidden, noContent, notFound, ok, serviceUnavailable, unauthorized } from "@/server/http";
 import { searchAll, type SearchScope } from "@/server/search/search-service";
 import { listNotifications, markNotificationsRead } from "@/server/notifications";
 import { withEntitledSubjects } from "@/server/entitlements";
@@ -610,7 +610,11 @@ export async function handleRegister(payload: UserPayload) {
   });
 }
 
-export async function handleGoogleLogin(payload: UserPayload) {
+export async function handleGoogleLogin(
+  payload: UserPayload,
+  options?: { allowNewUsers?: boolean },
+) {
+  const allowNewUsers = options?.allowNewUsers ?? true;
   const credential = asString(payload.credential);
   if (!credential) return badRequest("Missing Google credential token.");
 
@@ -699,6 +703,12 @@ export async function handleGoogleLogin(payload: UserPayload) {
             }
           }
 
+          // Admin launch gate: signups disabled → no new Google accounts, but
+          // existing users (dbUser found above) still log in.
+          if (!allowNewUsers) {
+            return forbidden("New sign-ups are currently disabled. Please check back soon.");
+          }
+
           // Enforce registration limit for new users (role-aware: teachers capped separately)
           const status = await getRegistrationStatus(role);
           if (status.seatsLeft <= 0) {
@@ -741,6 +751,10 @@ export async function handleGoogleLogin(payload: UserPayload) {
     return withStoreAsync(async (store) => {
       let user = store.users.find((entry) => entry.email.toLowerCase() === email!.toLowerCase() && entry.role === role);
       if (!user) {
+        // Admin launch gate: signups disabled → no new Google accounts.
+        if (!allowNewUsers) {
+          return forbidden("New sign-ups are currently disabled. Please check back soon.");
+        }
         // Enforce registration limit for new users (role-aware: teachers capped separately)
         const status = await getRegistrationStatus(role);
         if (status.seatsLeft <= 0) {
