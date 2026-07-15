@@ -10,7 +10,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Eye, EyeOff, ArrowLeft, Loader2, Mail, Lock, RefreshCw, User } from 'lucide-react';
+import { Eye, EyeOff, ArrowLeft, Loader2, Mail, Lock, RefreshCw, User, Phone } from 'lucide-react';
 import { useGoogleLogin } from '@react-oauth/google';
 import {
   InputOTP,
@@ -29,7 +29,7 @@ interface AuthPageProps {
   userRole: 'student' | 'teacher' | 'admin' | null;
   onLogin: (email: string, password: string, role?: 'student' | 'teacher' | 'admin' | null) => void;
   onLoginWithOtp?: (email: string, role?: 'student' | 'teacher' | 'admin' | null) => void;
-  onRegister: (name: string, email: string, password: string, role?: 'student' | 'teacher' | 'admin' | null) => void;
+  onRegister: (name: string, email: string, password: string, mobile: string, role?: 'student' | 'teacher' | 'admin' | null) => void;
   onGoogleLogin?: (credential: string, role?: 'student' | 'teacher' | 'admin' | null) => void;
   sendOtp?: (email: string, role?: 'student' | 'teacher' | 'admin' | null) => Promise<{ ok: boolean; message: string }>;
   verifyOtp?: (email: string, otp: string) => Promise<{ ok: boolean; message: string }>;
@@ -122,6 +122,7 @@ export default function AuthPage({
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [mobile, setMobile] = useState('');
   const [step, setStep] = useState<'form' | 'otp'>('form');
   const [otp, setOtp] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
@@ -151,6 +152,11 @@ export default function AuthPage({
 
   const handleSendOtp = async () => {
     if (!email || !sendOtp) return;
+    // Signups collect a mobile number up front; validate before spending an OTP.
+    if (!isLogin && userRole !== 'admin' && !/^[6-9]\d{9}$/.test(mobile)) {
+      toast.error('Enter a valid 10-digit mobile number.');
+      return;
+    }
     const res = await sendOtp(email, userRole);
     if (res.ok) { setStep('otp'); setResendCooldown(60); }
   };
@@ -162,7 +168,7 @@ export default function AuthPage({
       const res = await verifyOtp(email, otp);
       if (res.ok) {
         if (userRole === 'admin' && onLoginWithOtp) onLoginWithOtp(email, userRole);
-        else onRegister(name, email, password, userRole);
+        else onRegister(name, email, password, mobile, userRole);
       }
     }
     setIsVerifying(false);
@@ -306,31 +312,27 @@ export default function AuthPage({
               </div>
             )}
 
-            {/* Seats banner */}
-            {regStatus && (!isLogin || regStatus.seatsLeft <= 0) && (
+            {/* Registration-closed banner (no seats-left count shown) */}
+            {regStatus && regStatus.seatsLeft <= 0 && (
               <div
                 className="mb-4 p-3 rounded-2xl text-center text-xs font-bold"
                 style={{
-                  background: regStatus.seatsLeft > 0 ? '#0f1a1f' : '#1a1500',
-                  color: regStatus.seatsLeft > 0 ? 'hsl(var(--primary))' : '#f59e0b',
-                  border: `1px solid ${regStatus.seatsLeft > 0 ? 'hsl(var(--primary)/0.3)' : '#78350f'}`,
+                  background: '#1a1500',
+                  color: '#f59e0b',
+                  border: '1px solid #78350f',
                 }}
               >
-                {regStatus.seatsLeft > 0
-                  ? `🔥 Hurry! Only ${regStatus.seatsLeft} seats left`
-                  : (
-                    <div className="space-y-1">
-                      <div>Beta registrations closed. Stay tuned for the next batch!</div>
-                      <a
-                        href="https://docs.google.com/forms/d/e/1FAIpQLScnovE3Jd-qiqr6BmeNdrfDG6JDZVEHhVf93xeSyW8H80SNsA/viewform"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="underline text-amber-400 hover:text-amber-300 transition-colors block mt-1"
-                      >
-                        Join Waitlist →
-                      </a>
-                    </div>
-                  )}
+                <div className="space-y-1">
+                  <div>Beta registrations closed. Stay tuned for the next batch!</div>
+                  <a
+                    href="https://docs.google.com/forms/d/e/1FAIpQLScnovE3Jd-qiqr6BmeNdrfDG6JDZVEHhVf93xeSyW8H80SNsA/viewform"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline text-amber-400 hover:text-amber-300 transition-colors block mt-1"
+                  >
+                    Join Waitlist →
+                  </a>
+                </div>
               </div>
             )}
 
@@ -405,6 +407,24 @@ export default function AuthPage({
                         placeholder="Full name"
                         value={name}
                         onChange={e => setName(e.target.value)}
+                        className={fieldInputCls}
+                        required
+                      />
+                    </FieldRow>
+                  )}
+
+                  {/* Mobile number (sign-up only, non-admin) — 10 digits, +91 shown */}
+                  {!isLogin && userRole !== 'admin' && (
+                    <FieldRow icon={<Phone className="w-4 h-4" />}>
+                      <span className="shrink-0 text-sm font-bold select-none" style={{ color: '#888' }}>+91</span>
+                      <input
+                        type="tel"
+                        inputMode="numeric"
+                        autoComplete="tel-national"
+                        placeholder="10-digit mobile number"
+                        maxLength={10}
+                        value={mobile}
+                        onChange={e => setMobile(e.target.value.replace(/\D/g, '').slice(0, 10))}
                         className={fieldInputCls}
                         required
                       />

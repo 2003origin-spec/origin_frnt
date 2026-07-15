@@ -4,7 +4,7 @@ import { requireUserFromRequest, resolveTokenToUser, refreshAccessToken, createA
 import { isAuthServiceUnavailableError } from "@/server/auth-errors";
 import { extractAccessFingerprint } from "@/server/auth-jwt";
 import { isUserPostgresConfigured } from "@/server/user-postgres";
-import { dbLoginUser, dbRegisterUser, dbGetTasks, dbCreateTask, dbUpdateTask, dbDeleteTask, dbFindUserByEmail, dbCreateUser, dbUpdateUser, dbCreateAuthSession, dbGetUserCount, dbGetUserCountByRole } from "@/server/db-users";
+import { dbLoginUser, dbRegisterUser, dbGetTasks, dbCreateTask, dbUpdateTask, dbDeleteTask, dbFindUserByEmail, dbCreateUser, dbUpdateUser, dbCreateAuthSession, dbGetUserCount, dbGetUserCountByRole, dbMobileInUse } from "@/server/db-users";
 import { OAuth2Client } from "google-auth-library";
 import {
   awardPoints,
@@ -21,6 +21,8 @@ import { searchAll, type SearchScope } from "@/server/search/search-service";
 import { listNotifications, markNotificationsRead } from "@/server/notifications";
 import { withEntitledSubjects } from "@/server/entitlements";
 import { maybeGrantEventModePremiumOnSignup } from "@/server/premium-access-admin-service";
+import { countTestResultsForUser } from "@/server/analytics-store";
+import { normalizeSoundPreferences } from "@/lib/sound-preferences";
 import type { AppStore, StoredTask, StoredUser } from "@/server/store";
 import { createId, readStoreAsync, withStoreAsync, withStoreAsyncScoped, withStoredUserDefaults } from "@/server/store";
 import { persistUserCollections } from "@/server/store-postgres";
@@ -84,6 +86,9 @@ export function serializeUser(store: AppStore, userId: string) {
     referralSource: user.referralSource,
     referral_source: user.referralSource,
     avatar: user.avatar,
+    mobile: user.mobile,
+    passwordSet: user.passwordSet,
+    password_set: user.passwordSet,
     username: user.username,
     profilePrivate: user.profilePrivate,
     profile_private: user.profilePrivate,
@@ -127,6 +132,7 @@ export function serializeUser(store: AppStore, userId: string) {
     usage_reset_at: user.usageResetAt,
     ogcodeCorrectSound: user.ogcodeCorrectSound ?? null,
     ogcodeWrongSound: user.ogcodeWrongSound ?? null,
+    soundPreferences: normalizeSoundPreferences(user.soundPreferences),
   };
 
   return payload;
@@ -231,8 +237,18 @@ function getGlobalSolvedRanking(store: AppStore): GlobalRankCache {
   return result;
 }
 
-export function buildUserStatsSnapshot(store: AppStore, user: StoredUser): UserStatsSnapshot {
-  const testsTaken = store.testResults.filter((result) => result.userId === user.id).length;
+export async function buildUserStatsSnapshot(store: AppStore, user: StoredUser): Promise<UserStatsSnapshot> {
+  // The primary test-submit path persists to analytics.test_results (a targeted
+  // writer), NOT the KV store collection, so count tests from the real source
+  // when Postgres is configured. Falls back to the store count otherwise.
+  let testsTaken = store.testResults.filter((result) => result.userId === user.id).length;
+  if (isUserPostgresConfigured()) {
+    try {
+      testsTaken = await countTestResultsForUser(user.id);
+    } catch (err) {
+      console.error("[users] countTestResultsForUser failed; using store count", err instanceof Error ? err.message : err);
+    }
+  }
   const studyHours = Math.round(user.totalStudyTime / 60);
   const streak = getOrCreateStreak(store, user.id);
 
@@ -532,6 +548,13 @@ export async function getRegistrationStatus(role?: string | null) {
   });
 }
 
+/** Normalize to a 10-digit Indian mobile (strips a leading +91/91); null if invalid. */
+function normalizeMobile(raw: string): string | null {
+  const digits = String(raw ?? "").replace(/\D/g, "");
+  const local = digits.length === 12 && digits.startsWith("91") ? digits.slice(2) : digits;
+  return /^[6-9]\d{9}$/.test(local) ? local : null;
+}
+
 export async function handleRegister(payload: UserPayload) {
   const email = asString(payload.email)?.trim().toLowerCase();
   const password = asString(payload.password);
@@ -549,6 +572,17 @@ export async function handleRegister(payload: UserPayload) {
     return badRequest('Must include "email" and "password".');
   }
 
+  // Mobile: required for students (collected on the signup form); optional for
+  // teachers, but validated when provided. Stored as 10 digits (no +91).
+  const mobileRaw = asString(payload.mobile);
+  let mobile: string | null = null;
+  if (role === "student" || (mobileRaw && mobileRaw.trim())) {
+    mobile = normalizeMobile(mobileRaw ?? "");
+    if (!mobile) {
+      return badRequest("Enter a valid 10-digit mobile number.");
+    }
+  }
+
   // Enforce registration limit (role-aware: teachers capped separately)
   const status = await getRegistrationStatus(role);
   if (status.seatsLeft <= 0) {
@@ -559,7 +593,10 @@ export async function handleRegister(payload: UserPayload) {
   // DB-backed registration when Postgres is configured
   if (isUserPostgresConfigured()) {
     try {
-      const { user: dbUser, session } = await dbRegisterUser({ name, email, password, role });
+      if (mobile && (await dbMobileInUse(mobile))) {
+        return badRequest("This mobile number is already registered.");
+      }
+      const { user: dbUser, session } = await dbRegisterUser({ name, email, password, role, mobile });
       // Event Mode: auto-grant Premium Pro to students who sign up during a launch
       // event. Best-effort; never blocks/aborts registration.
       await maybeGrantEventModePremiumOnSignup(dbUser.id, dbUser.role);
@@ -584,6 +621,9 @@ export async function handleRegister(payload: UserPayload) {
     if (store.users.some((entry) => entry.email.toLowerCase() === email)) {
       return badRequest("A user with this email already exists.");
     }
+    if (mobile && store.users.some((entry) => entry.mobile === mobile)) {
+      return badRequest("This mobile number is already registered.");
+    }
 
     const userId = createId("user");
     store.users.push(withStoredUserDefaults({
@@ -592,6 +632,7 @@ export async function handleRegister(payload: UserPayload) {
       email,
       password: bcrypt.hashSync(password, 10),
       role,
+      mobile,
       studentClass: null,
       fieldOfInterest: null,
       referralSource: null,
@@ -733,6 +774,10 @@ export async function handleGoogleLogin(
           const hashed = bcrypt.hashSync(createId("rand"), 10);
           dbUser = await dbCreateUser({
             name, email, password: hashed, role,
+            // Google signups haven't chosen a password yet — they set one (and
+            // their mobile) during first-time onboarding. OTP is skipped since
+            // Google has already verified the email.
+            passwordSet: false, mobile: null,
             studentClass: null, fieldOfInterest: null, referralSource: null,
             avatar, streak: 0, totalStudyTime: 0, joinedAt: new Date().toISOString(),
             isPremium: false, premiumExpiry: null, isOnboarded: false,
@@ -924,7 +969,7 @@ async function handleStatsGet(request: Request) {
       return unauthorized();
     }
 
-    return ok(buildUserStatsSnapshot(store, user));
+    return ok(await buildUserStatsSnapshot(store, user));
   });
 }
 

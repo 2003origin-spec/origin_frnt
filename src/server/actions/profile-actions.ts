@@ -6,9 +6,19 @@ import { getServerUser } from '@/lib/auth-server';
 import { withStoreAsyncScoped, type StoredUser } from '@/server/store';
 import { serializeUser } from '@/server/users';
 import { isUserPostgresConfigured } from '@/server/user-postgres';
-import { dbCreateMediaAsset, dbUpdateUser } from '@/server/db-users';
+import bcrypt from 'bcryptjs';
+import { dbCreateMediaAsset, dbUpdateUser, dbMobileInUse } from '@/server/db-users';
 import { uploadImageToR2, type UserImagePurpose } from '@/server/media-storage';
 import type { User } from '@/types';
+import { normalizeSoundPreferences, type SoundPreferences } from '@/lib/sound-preferences';
+
+/** Normalize a mobile number to digits and validate it's a 10-digit Indian number. */
+function normalizeMobile(raw: string): string | null {
+  const digits = String(raw ?? '').replace(/\D/g, '');
+  // Accept a leading country code (91) and strip it; require exactly 10 digits.
+  const local = digits.length === 12 && digits.startsWith('91') ? digits.slice(2) : digits;
+  return /^[6-9]\d{9}$/.test(local) ? local : null;
+}
 
 type UpdateProfileInput = Partial<{
   name: string;
@@ -27,6 +37,7 @@ type UpdateProfileInput = Partial<{
   location: string;
   ogcodeCorrectSound: string | null;
   ogcodeWrongSound: string | null;
+  soundPreferences: SoundPreferences | null;
 }>;
 
 export type UserImageUploadResult = {
@@ -82,6 +93,9 @@ async function applyProfileUpdates(userId: string, input: UpdateProfileInput): P
       if (Array.isArray(input.subjects)) user.subjects = input.subjects;
       if ('ogcodeCorrectSound' in input) user.ogcodeCorrectSound = input.ogcodeCorrectSound ?? null;
       if ('ogcodeWrongSound' in input) user.ogcodeWrongSound = input.ogcodeWrongSound ?? null;
+      if ('soundPreferences' in input) {
+        user.soundPreferences = input.soundPreferences ? normalizeSoundPreferences(input.soundPreferences) : null;
+      }
 
       const serialized = serializeUser(store, userId);
       return (serialized as unknown as User) ?? null;
@@ -117,6 +131,9 @@ export async function updateProfileAction(input: UpdateProfileInput): Promise<Us
       
       if ('ogcodeCorrectSound' in input) patch.ogcodeCorrectSound = input.ogcodeCorrectSound ?? null;
       if ('ogcodeWrongSound' in input) patch.ogcodeWrongSound = input.ogcodeWrongSound ?? null;
+      if ('soundPreferences' in input) {
+        patch.soundPreferences = input.soundPreferences ? normalizeSoundPreferences(input.soundPreferences) : null;
+      }
 
       await dbUpdateUser(current.id, patch);
     } catch (err) {
@@ -255,4 +272,54 @@ export async function completeOnboardingAction(input: UpdateProfileInput = {}): 
   revalidatePath('/onboarding');
   revalidatePath('/', 'layout');
   return updated;
+}
+
+/**
+ * First-time account setup collected during onboarding:
+ *  - a unique student mobile number (all students),
+ *  - a password for users who signed up via Google (passwordSet === false); OTP
+ *    is skipped because Google already verified the email.
+ * Returns a validation error instead of throwing so the form can surface it.
+ */
+export async function completeAccountSetupAction(input: {
+  mobile: string;
+  password?: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  const current = await requireUser();
+
+  const mobile = normalizeMobile(input.mobile);
+  if (!mobile) {
+    return { ok: false, error: 'Enter a valid 10-digit mobile number.' };
+  }
+
+  // A password is required only when the user hasn't set one yet (Google signups).
+  const needsPassword = current.passwordSet === false;
+  const password = input.password ?? '';
+  if (needsPassword && password.length < 8) {
+    return { ok: false, error: 'Password must be at least 8 characters.' };
+  }
+
+  if (!isUserPostgresConfigured()) {
+    return { ok: false, error: 'Account storage is not configured.' };
+  }
+
+  try {
+    if (await dbMobileInUse(mobile, current.id)) {
+      return { ok: false, error: 'This mobile number is already registered.' };
+    }
+    const patch: Record<string, unknown> = { mobile };
+    if (needsPassword) {
+      patch.password = bcrypt.hashSync(password, 10);
+      patch.passwordSet = true;
+    }
+    await dbUpdateUser(current.id, patch);
+  } catch (error) {
+    console.error('[completeAccountSetupAction]', error);
+    return { ok: false, error: 'Could not save your details. Please try again.' };
+  }
+
+  revalidateTag('auth-user', 'max');
+  revalidateTag(`user:${current.id}`, 'max');
+  revalidatePath('/', 'layout');
+  return { ok: true };
 }

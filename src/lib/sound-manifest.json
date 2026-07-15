@@ -1,0 +1,292 @@
+{
+  "After 3 Correct": [
+    {
+      "file": "3 correct 4.mp3",
+      "label": "Variant 4"
+    },
+    {
+      "file": "3 correct 8.mp3",
+      "label": "Variant 8"
+    },
+    {
+      "file": "Video Project  1.m4a",
+      "label": "Variant 1"
+    },
+    {
+      "file": "Video Project 2.m4a",
+      "label": "Variant 2"
+    },
+    {
+      "file": "Video Project 3.m4a",
+      "label": "Variant 3"
+    },
+    {
+      "file": "Video Project 4.m4a",
+      "label": "Variant 4"
+    }
+  ],
+  "After 3 Wrong": [
+    {
+      "file": "3 wrong 1.mp3",
+      "label": "Variant 1"
+    },
+    {
+      "file": "3 wrong 2.mp3",
+      "label": "Variant 2"
+    },
+    {
+      "file": "3 wrong 3.mp3",
+      "label": "Variant 3"
+    },
+    {
+      "file": "3 wrong 4.m4a",
+      "label": "Variant 4"
+    },
+    {
+      "file": "3 wrong 5.mp3",
+      "label": "Variant 5"
+    },
+    {
+      "file": "3 wrong 6.m4a",
+      "label": "Variant 6"
+    },
+    {
+      "file": "3 wrong 7.mp3",
+      "label": "Variant 7"
+    }
+  ],
+  "Bad Score in test": [
+    {
+      "file": "bad score 1.mp3",
+      "label": "Variant 1"
+    },
+    {
+      "file": "bad score 2.m4a",
+      "label": "Variant 2"
+    },
+    {
+      "file": "bad score 3.mp3",
+      "label": "Variant 3"
+    },
+    {
+      "file": "bad score 4.mp3",
+      "label": "Variant 4"
+    },
+    {
+      "file": "bad score 5.mp3",
+      "label": "Variant 5"
+    },
+    {
+      "file": "bad score 6.mp3",
+      "label": "Variant 6"
+    },
+    {
+      "file": "bad score 7.mp3",
+      "label": "Variant 7"
+    }
+  ],
+  "Correct": [
+    {
+      "file": "full score in test 1.m4a",
+      "label": "Variant 1"
+    },
+    {
+      "file": "success-bell.mp3",
+      "label": "Bell"
+    },
+    {
+      "file": "success-chime.mp3",
+      "label": "Chime"
+    },
+    {
+      "file": "success-synth.mp3",
+      "label": "Synth"
+    },
+    {
+      "file": "success-vocal-fun.mp3",
+      "label": "Fun"
+    },
+    {
+      "file": "success-vocal-wah.m4a",
+      "label": "Wah"
+    },
+    {
+      "file": "success-vocal-wahoo.mp3",
+      "label": "Wahoo"
+    },
+    {
+      "file": "success-vocal-wow.mp3",
+      "label": "Wow"
+    }
+  ],
+  "Full score in test": [
+    {
+      "file": "full score in test 1.m4a",
+      "label": "Variant 1"
+    },
+    {
+      "file": "full score in test 2.m4a",
+      "label": "Variant 2"
+    },
+    {
+      "file": "full score in test 3.m4a",
+      "label": "Variant 3"
+    },
+    {
+      "file": "full score in test 4.m4a",
+      "label": "Variant 4"
+    },
+    {
+      "file": "full score in test 5.m4a",
+      "label": "Variant 5"
+    },
+    {
+      "file": "full score in test 6.m4a",
+      "label": "Variant 6"
+    },
+    {
+      "file": "full score in test 7.m4a",
+      "label": "Variant 7"
+    },
+    {
+      "file": "full score in test 8.mp3",
+      "label": "Variant 8"
+    }
+  ],
+  "Notification inside app": [
+    {
+      "file": "notification 1.mp3",
+      "label": "Variant 1"
+    },
+    {
+      "file": "notification 2.mp3",
+      "label": "Variant 2"
+    },
+    {
+      "file": "notification 3.mp3",
+      "label": "Variant 3"
+    },
+    {
+      "file": "notification 4.mp3",
+      "label": "Variant 4"
+    },
+    {
+      "file": "notification 5.mp3",
+      "label": "Variant 5"
+    },
+    {
+      "file": "notification 6.mp3",
+      "label": "Variant 6"
+    }
+  ],
+  "Sign In": [
+    {
+      "file": "sign in 1.mp3",
+      "label": "Variant 1"
+    },
+    {
+      "file": "sign in 2.m4a",
+      "label": "Variant 2"
+    }
+  ],
+  "Warning": [
+    {
+      "file": "Warning 1.mp3",
+      "label": "Variant 1"
+    },
+    {
+      "file": "Warning 2.mp3",
+      "label": "Variant 2"
+    },
+    {
+      "file": "Warning 3.mp3",
+      "label": "Variant 3"
+    },
+    {
+      "file": "warning 4.m4a",
+      "label": "Variant 4"
+    },
+    {
+      "file": "Warning 5.mp3",
+      "label": "Variant 5"
+    },
+    {
+      "file": "Warning 6.mp3",
+      "label": "Variant 6"
+    },
+    {
+      "file": "Warning 7.mp3",
+      "label": "Variant 7"
+    },
+    {
+      "file": "warning 8.m4a",
+      "label": "Variant 8"
+    },
+    {
+      "file": "Warning 9.mp3",
+      "label": "Variant 9"
+    },
+    {
+      "file": "Warning 10.mp3",
+      "label": "Variant 10"
+    }
+  ],
+  "Wrong": [
+    {
+      "file": "fail-alert.mp3",
+      "label": "Alert"
+    },
+    {
+      "file": "fail-bruh.mp3",
+      "label": "Bruh"
+    },
+    {
+      "file": "fail-buzzer.mp3",
+      "label": "Buzzer"
+    },
+    {
+      "file": "fail-chime.mp3",
+      "label": "Chime"
+    },
+    {
+      "file": "fail-clang.mp3",
+      "label": "Clang"
+    },
+    {
+      "file": "fail-drop.mp3",
+      "label": "Drop"
+    },
+    {
+      "file": "fail-no-meme.mp3",
+      "label": "No Meme"
+    },
+    {
+      "file": "fail-sad-bgm.mp3",
+      "label": "Sad Bgm"
+    },
+    {
+      "file": "fail-synth.mp3",
+      "label": "Synth"
+    },
+    {
+      "file": "fail-vocal-aayein.mp3",
+      "label": "Aayein"
+    },
+    {
+      "file": "fail-vocal-complaint.mp3",
+      "label": "Complaint"
+    },
+    {
+      "file": "fail-vocal-groan.mp3",
+      "label": "Groan"
+    },
+    {
+      "file": "fail-vocal-mock.m4a",
+      "label": "Mock"
+    },
+    {
+      "file": "fail-what.mp3",
+      "label": "What"
+    }
+  ]
+}

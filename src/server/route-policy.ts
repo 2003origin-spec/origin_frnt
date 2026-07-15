@@ -77,6 +77,7 @@ export const PUBLIC_APP_PATHS = [
   "/privacy-policy",
   "/childrens-policy",
   "/faq",
+  "/founders",
   // CBT teacher OTP login page — public so allowlisted teachers can reach it.
   "/cbt/login",
 ] as const;

@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { apiCall } from '@/lib/api';
+import { playAnswerSound, resetAnswerStreak } from '@/lib/sound-manager';
 import { FormattedMessage } from '@/components/origin-ai/FormattedMessage';
 import { DegradedBanner } from '@/components/DegradedBanner';
 import type { User } from '@/types';
@@ -151,6 +152,9 @@ export default function DPPView({ onBack, initialDpps }: DPPViewProps) {
   const progress = currentQuestions.length > 0 ? ((currentQuestionIndex + 1) / currentQuestions.length) * 100 : 0;
   const isCompleted = Boolean(submissionResult);
   const submissionAnalysisStatus = submissionResult?.analysisStatus ?? submissionResult?.analysis_status ?? 'complete';
+
+  // Fresh consecutive-answer streak per DPP session.
+  useEffect(() => { resetAnswerStreak(); }, []);
 
   useEffect(() => {
     if (initialDpps !== null) {
@@ -305,6 +309,7 @@ export default function DPPView({ onBack, initialDpps }: DPPViewProps) {
         }),
       });
       setShowSolution(true);
+      playAnswerSound(Boolean(response?.isCorrect ?? response?.is_correct));
       setAnswers((previous) => {
         const next = [...previous];
         next[currentQuestionIndex] = selectedOption;

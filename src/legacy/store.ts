@@ -3,6 +3,8 @@ import { randomUUID } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { Mutex } from "async-mutex";
 
+import type { SoundPreferences } from "@/lib/sound-preferences";
+
 import {
   mockBooks,
   mockBookmarks,
@@ -28,6 +30,10 @@ export interface StoredUser {
   name: string;
   email: string;
   password: string;
+  /** Whether the user has set their own password (Google signups start false). */
+  passwordSet: boolean;
+  /** Unique student mobile number (collected at first-time onboarding). */
+  mobile: string | null;
   role: UserRole;
   studentClass: string | null;
   fieldOfInterest: string | null;
@@ -56,6 +62,8 @@ export interface StoredUser {
   /** OGCode answer sound preferences — filename under /sounds/correct/ and /sounds/wrong/ */
   ogcodeCorrectSound: string | null;
   ogcodeWrongSound: string | null;
+  /** App-wide sound-effect preferences (see src/lib/sound-preferences.ts). */
+  soundPreferences: SoundPreferences | null;
 }
 
 export interface StoredStreakData {
@@ -215,7 +223,7 @@ export interface StoredTestResult {
     reviewEntries?: Array<{
       questionId: string;
       concept: string;
-      status: "correct" | "incorrect";
+      status: "correct" | "incorrect" | "unattempted";
       error: string;
       explanation: string;
       howToApproach: string;
@@ -525,6 +533,9 @@ type StoredUserDefaultFields = Pick<
   | "profilePrivate"
   | "ogcodeCorrectSound"
   | "ogcodeWrongSound"
+  | "passwordSet"
+  | "mobile"
+  | "soundPreferences"
 >;
 
 export type StoredUserWithOptionalDefaults = Omit<StoredUser, keyof StoredUserDefaultFields> &
@@ -542,6 +553,9 @@ export function withStoredUserDefaults(user: StoredUserWithOptionalDefaults): St
     profilePrivate: user.profilePrivate ?? false,
     ogcodeCorrectSound: user.ogcodeCorrectSound ?? null,
     ogcodeWrongSound: user.ogcodeWrongSound ?? null,
+    passwordSet: user.passwordSet ?? true,
+    mobile: user.mobile ?? null,
+    soundPreferences: user.soundPreferences ?? null,
   };
 }
 

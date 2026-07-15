@@ -80,6 +80,7 @@ export default async function RootLayout({
         <ThemeProvider
           attribute="class"
           defaultTheme="light"
+          enableSystem={false}
           disableTransitionOnChange
         >
           <Suspense fallback={<div className="min-h-screen bg-background" />}>

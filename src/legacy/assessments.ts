@@ -265,11 +265,28 @@ type SubjectiveMatch = {
 type ReviewEntry = {
   questionId: string;
   concept: string;
-  status: "correct" | "incorrect";
+  status: "correct" | "incorrect" | "unattempted";
   error: string;
   explanation: string;
   howToApproach: string;
 };
+
+/** Review entry for a question the student left unattempted (the Skip Log). */
+function unattemptedReviewEntry(question: {
+  id: string;
+  concept: string;
+  explanation: string;
+  difficulty: string;
+}): ReviewEntry {
+  return {
+    questionId: question.id,
+    concept: question.concept,
+    status: "unattempted",
+    error: "Skipped / Not attempted",
+    explanation: question.explanation,
+    howToApproach: `You skipped this ${question.difficulty} ${question.concept} question — attempt it now and review the solution so it doesn't cost you next time.`,
+  };
+}
 
 type QuestionPresentationContext = {
   scope: OptionPresentationScope;
@@ -2498,7 +2515,7 @@ function submitTestFallback(store: AppStore, user: StoredUser, testId: string, p
     const question = questionById(store, answer.questionId);
     const grade = gradeAnswer(question, answer);
     if (!hasResponse(answer)) {
-      return [];
+      return [unattemptedReviewEntry(question)];
     }
     return [
       {
@@ -2801,7 +2818,7 @@ function buildReviewEntriesFromAnswers(
     }
     const grade = gradeByQuestionId?.get(answer.questionId) ?? gradeAnswer(question, answer);
     if (!hasResponse(answer)) {
-      return [];
+      return [unattemptedReviewEntry(question)];
     }
     return [
       {

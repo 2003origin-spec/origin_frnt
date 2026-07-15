@@ -338,6 +338,30 @@
     scrollbar-width: none;
   }
 
+  /* Respect the iOS/Android home-indicator safe area at the bottom. Used by the
+     fixed mobile bottom bar and any element that must clear it. */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  /* Bottom clearance for scrollable page content sitting above the fixed mobile
+     tab bar: bar height (3.5rem) + safe-area inset + breathing room. md+ has no
+     bottom bar, so it collapses to 0. */
+  .pb-mobile-nav {
+    padding-bottom: calc(3.5rem + env(safe-area-inset-bottom) + 2rem);
+  }
+  /* Tight variant for full-viewport apps (chat/test): clear the bar + safe area
+     only, so bottom controls sit just above it with no extra gap. */
+  .pb-nav-tight {
+    padding-bottom: calc(3.5rem + env(safe-area-inset-bottom));
+  }
+  @media (min-width: 768px) {
+    .pb-mobile-nav,
+    .pb-nav-tight {
+      padding-bottom: 0;
+    }
+  }
+
   .no-scrollbar::-webkit-scrollbar {
     display: none;
   }

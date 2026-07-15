@@ -18,7 +18,6 @@ const TryOriginAI = dynamic(() => import('@/components/landing/TryOriginAI'), { 
 const RankPredictor = dynamic(() => import('@/components/landing/RankPredictor'), { ssr: false });
 const NumbersWall = dynamic(() => import('@/components/landing/NumbersWall'), { ssr: false });
 const StreakPreview = dynamic(() => import('@/components/landing/StreakPreview'), { ssr: false });
-const TopperWall = dynamic(() => import('@/components/landing/TopperWall'), { ssr: false });
 const TeacherFlipCard = dynamic(() => import('@/components/landing/TeacherFlipCard'), { ssr: false });
 const ManifestoReveal = dynamic(() => import('@/components/landing/ManifestoReveal'), { ssr: false });
 const CustomCursor = dynamic(() => import('@/components/landing/CustomCursor'), { ssr: false });
@@ -26,6 +25,7 @@ const SplitText = dynamic(() => import('@/components/ui/SplitText'), { ssr: fals
 import { useTheme } from 'next-themes';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import {
   Menu,
   X,
@@ -345,8 +345,9 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
     { name: 'Knowledge Base', sectionId: 'knowledge-base' },
     { name: 'AI Demo', sectionId: 'demo' },
     { name: 'Features', sectionId: 'features' },
+    { name: 'Founders', href: '/founders' },
     { name: 'Pricing', sectionId: 'pricing' },
-  ];
+  ] as { name: string; sectionId?: string; href?: string }[];
 
   const ncertBooks = [
     { image: '/images/ncert/Physics-class-11-part-1.png', text: 'Physics Class 11 & HCV' },
@@ -517,11 +518,6 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
     },
   ];
 
-  const stats = [
-    { value: 'No Guesswork', label: 'Data-Driven Learning' },
-    { value: 'Only Precision', label: 'Targeted Practice' },
-    { value: 'Built for Results', label: 'Proven Framework' },
-  ];
 
   return (
     <SmoothScroll>
@@ -619,17 +615,27 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
               </span>
             </div>
 
-            {/* Desktop Links (hidden on mobile, md:flex) — scroll to page sections */}
+            {/* Desktop Links (hidden on mobile, md:flex) — scroll to page sections or route */}
             <div className="hidden md:flex items-center gap-8">
               {navLinks.map((link) => (
-                <a
-                  key={link.name}
-                  href={`#${link.sectionId}`}
-                  onClick={(e) => handleNavLinkClick(e, link.sectionId)}
-                  className="text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground"
-                >
-                  {link.name}
-                </a>
+                link.href ? (
+                  <Link
+                    key={link.name}
+                    href={link.href}
+                    className="text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    {link.name}
+                  </Link>
+                ) : (
+                  <a
+                    key={link.name}
+                    href={`#${link.sectionId}`}
+                    onClick={(e) => handleNavLinkClick(e, link.sectionId!)}
+                    className="text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    {link.name}
+                  </a>
+                )
               ))}
             </div>
 
@@ -687,14 +693,24 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
 
                 <div className="flex flex-col gap-1 mb-6">
                   {navLinks.map((link) => (
-                    <a
-                      key={link.name}
-                      href={`#${link.sectionId}`}
-                      onClick={(e) => handleNavLinkClick(e, link.sectionId)}
-                      className="flex items-center gap-2 px-4 py-3.5 rounded-2xl text-base font-heading font-black uppercase tracking-[0.12em] transition-all active:scale-95 text-muted-foreground hover:text-foreground hover:neu-raised"
-                    >
-                      {link.name}
-                    </a>
+                    link.href ? (
+                      <Link
+                        key={link.name}
+                        href={link.href}
+                        className="flex items-center gap-2 px-4 py-3.5 rounded-2xl text-base font-heading font-black uppercase tracking-[0.12em] transition-all active:scale-95 text-muted-foreground hover:text-foreground hover:neu-raised"
+                      >
+                        {link.name}
+                      </Link>
+                    ) : (
+                      <a
+                        key={link.name}
+                        href={`#${link.sectionId}`}
+                        onClick={(e) => handleNavLinkClick(e, link.sectionId!)}
+                        className="flex items-center gap-2 px-4 py-3.5 rounded-2xl text-base font-heading font-black uppercase tracking-[0.12em] transition-all active:scale-95 text-muted-foreground hover:text-foreground hover:neu-raised"
+                      >
+                        {link.name}
+                      </a>
+                    )
                   ))}
                 </div>
 
@@ -750,11 +766,31 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
               <LiveCounter />
             </div>
 
+            {/* Powered by Sarvam AI — sits above the CTA */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.6 }}
+              className="mt-6 sm:mt-10 flex items-center justify-center"
+            >
+              <div className="inline-flex items-center gap-3 sm:gap-4 neu-raised rounded-full pl-5 pr-4 py-2.5">
+                <span className="text-xs sm:text-sm font-heading font-bold uppercase tracking-[0.22em] text-muted-foreground">
+                  Powered by
+                </span>
+                {/* Dark chip so the white Sarvam logo stays visible in light mode */}
+                <span className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 shadow-inner">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src="/Sarvam-AI.png" alt="Sarvam AI" className="h-9 sm:h-12 w-auto object-contain" />
+                  <span className="text-sm sm:text-base font-heading font-black text-white">Sarvam AI</span>
+                </span>
+              </div>
+            </motion.div>
+
             {/* CTA Button — wave letters + spinning outline + takeoff on click */}
             <LandingCTABtn
               label="ORIGINATE"
               onClick={handleBeginJourney}
-              className="mt-6 sm:mt-12"
+              className="mt-5 sm:mt-8"
               initial={{ opacity: 0, y: 24 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.7, duration: 0.6, ease: 'easeOut' }}
@@ -762,32 +798,8 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
 
           </section>
 
-          {/* Stats row with neumorphic raised cards */}
+          {/* Live activity ticker + footer */}
           <div className="relative z-10 w-full pb-4 sm:pb-8 md:pb-16">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.6 }}
-              className="flex flex-row items-center justify-center gap-2 sm:gap-6 md:gap-8 max-w-5xl mx-auto px-2 xs:px-4"
-            >
-              {stats.map((stat, i) => (
-                <motion.div
-                  key={i}
-                  initial={{ opacity: 0, y: 16 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.7 + 0.1 * i, duration: 0.5 }}
-                  className="flex-1 min-w-0 neu-raised px-3 py-4 sm:px-8 sm:py-6 rounded-2xl text-center transition-all duration-300 hover:scale-[1.03] cursor-default"
-                >
-                  <div className="text-xs sm:text-xl md:text-2xl font-heading font-black text-foreground mb-1 sm:mb-1.5 tracking-tight leading-tight">
-                    {stat.value}
-                  </div>
-                  <div className="text-[9px] sm:text-[11px] font-heading font-bold text-muted-foreground uppercase tracking-[0.1em] sm:tracking-[0.2em] leading-tight">
-                    {stat.label}
-                  </div>
-                </motion.div>
-              ))}
-            </motion.div>
-
             {/* Live activity ticker — Act 2: FOMO + social proof */}
             <motion.div
               initial={{ opacity: 0 }}
@@ -852,11 +864,6 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
           <StreakPreview />
         </div>
 
-        {/* Act 7 — Topper Wall */}
-        <div className="relative z-10" data-mascot-state="success" data-mascot-side="right">
-          <TopperWall />
-        </div>
-
         {/* Act 6.5 — Teacher Flip Card */}
         <div className="relative z-10" data-mascot-state="curious" data-mascot-side="left">
           <TeacherFlipCard />
@@ -884,6 +891,52 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
         </section>
 
         {/* Pricing – refined cards */}
+        {/* Act 9 — Meet the Founders (teaser → dedicated /founders page) */}
+        <section data-mascot-state="curious" data-mascot-side="right" className="py-10 sm:py-16 lg:py-20 relative z-10">
+          <div className="max-w-3xl mx-auto px-5 sm:px-6 text-center">
+            <div className="inline-flex items-center gap-2 neu-inset px-4 py-2 rounded-full mb-5 sm:mb-8">
+              <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+              <h2 className="text-[10px] font-heading font-black text-primary tracking-[0.4em] uppercase">The Team</h2>
+            </div>
+            <h2 className="text-3xl xs:text-4xl sm:text-5xl lg:text-6xl font-heading font-black mb-4 sm:mb-6 tracking-tighter leading-[0.95]">
+              <span className="text-outline">The Minds Behind</span>{' '}
+              <span className="bg-gradient-to-r from-primary via-primary/90 to-primary bg-clip-text text-transparent">O3Origin.</span>
+            </h2>
+            <p className="text-base sm:text-lg text-muted-foreground leading-relaxed mb-8">
+              Four builders from IIT Madras, NIT Agartala &amp; IIIT Manipur, on a mission to make elite,
+              personalized prep something every student can access.
+            </p>
+
+            {/* Built from the minds of — institution logos (IIT · NIT · IIIT) */}
+            <p className="text-[10px] sm:text-xs font-heading font-black uppercase tracking-[0.3em] text-muted-foreground mb-5">
+              Built from the minds of
+            </p>
+            <div className="flex items-center justify-center gap-4 sm:gap-6 flex-wrap mb-8">
+              {[
+                { src: '/IIT-NIT-IIIT/IIT-Madras.png', alt: 'IIT Madras' },
+                { src: '/IIT-NIT-IIIT/NIT-Agartala.png', alt: 'NIT Agartala' },
+                { src: '/IIT-NIT-IIIT/IIIT-Manipur.png', alt: 'IIIT Manipur' },
+              ].map((inst) => (
+                <div key={inst.alt} className="rounded-2xl bg-white p-3 sm:p-4 shadow-sm ring-1 ring-black/5">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={inst.src} alt={inst.alt} className="h-16 sm:h-24 w-auto object-contain" />
+                </div>
+              ))}
+            </div>
+
+            <div className="flex justify-center">
+              <LandingCTABtn
+                label="Meet the founders"
+                href="/founders"
+                initial={{ opacity: 0, scale: 0.95 }}
+                whileInView={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.5 }}
+                viewport={{ once: true }}
+              />
+            </div>
+          </div>
+        </section>
+
         <section id="pricing" data-mascot-state="thinking" data-mascot-side="left" className="py-10 sm:py-16 lg:py-20 relative z-10">
           <div className="max-w-7xl mx-auto px-5 sm:px-6">
             <motion.div initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }} viewport={{ once: true }} className="text-center mb-8 sm:mb-12">
@@ -911,8 +964,9 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
                   transition={{ duration: 0.5, delay: 0.1 * index, ease: [0.22, 1, 0.36, 1] }}
                   viewport={{ once: true }}
                   className={`shine-card relative flex flex-col rounded-3xl transition-all duration-500 hover:scale-[1.015] neu-raised
+                    ${['md:translate-y-0', 'md:-translate-y-6', 'md:-translate-y-12'][index] ?? ''}
                     ${plan.popular
-                      ? 'p-7 sm:p-10 ring-2 ring-primary/40 md:scale-[1.05] md:-translate-y-4 z-10 shadow-2xl shadow-primary/10'
+                      ? 'p-7 sm:p-10 ring-2 ring-primary/40 md:scale-[1.05] z-10 shadow-2xl shadow-primary/10'
                       : 'p-6 sm:p-8 opacity-90 hover:opacity-100'
                     }`}
                 >
