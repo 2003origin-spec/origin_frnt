@@ -410,6 +410,21 @@ export async function handleLogin(payload: UserPayload) {
   });
 }
 
+const DEFAULT_MAIN_ADMIN_EMAILS = [
+  "adminoffice@o3origin.com",
+  "2003origin@gmail.com",
+] as const;
+
+function configuredMainAdminEmails(): ReadonlySet<string> {
+  const configured =
+    process.env.PLATFORM_MAIN_ADMIN_EMAIL || process.env.MAIN_ADMIN_EMAIL || "";
+  const emails = configured
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean);
+  return new Set(emails.length > 0 ? emails : DEFAULT_MAIN_ADMIN_EMAILS);
+}
+
 export async function handleLoginWithOtp(payload: UserPayload) {
   const email = asString(payload.email)?.trim().toLowerCase();
   const role = asString(payload.role)?.trim().toLowerCase();
@@ -434,12 +449,11 @@ export async function handleLoginWithOtp(payload: UserPayload) {
 
     let user = store.users.find((entry) => entry.email.toLowerCase() === email && (role ? entry.role === role : true));
     if (!user) {
-      // Auto-provision the platform main admin on first OTP login. Only the
-      // env-designated email can self-provision as admin, and only after the OTP
-      // is verified (proving control of the inbox) — so this is no weaker than
-      // any OTP login. Admin login is OTP-based, so the password is inert.
-      const mainAdminEmail = (process.env.PLATFORM_MAIN_ADMIN_EMAIL || "tohin1400@gmail.com").trim().toLowerCase();
-      if (role === "admin" && email === mainAdminEmail) {
+      // Auto-provision a platform main admin on first OTP login. Only an email
+      // in the configured allowlist can self-provision as admin, and only after
+      // the OTP is verified (proving control of the inbox). Admin login is
+      // OTP-based, so the generated password is inert.
+      if (role === "admin" && configuredMainAdminEmails().has(email)) {
         user = withStoredUserDefaults({
           id: createId("user"),
           name: "Origin Admin",

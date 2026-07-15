@@ -1,10 +1,11 @@
 /**
  * Admin Control Plane — admin (RBAC) management.
  *
- * Two tiers on the flat `role='admin'`: the single MAIN admin (env
- * PLATFORM_MAIN_ADMIN_EMAIL / `is_main_admin = true`) and SUB-admins. Sub-admins
- * have every admin capability EXCEPT managing admins; only the main admin can
- * create / unassign / delete sub-admins (enforced by requireMainAdmin).
+ * Two tiers on the flat `role='admin'`: MAIN admins (configured by the
+ * PLATFORM_MAIN_ADMIN_EMAIL comma-separated allowlist or `is_main_admin = true`)
+ * and SUB-admins. Sub-admins have every admin capability EXCEPT managing admins;
+ * only main admins can create / unassign / delete sub-admins (enforced by
+ * requireMainAdmin).
  */
 
 import "server-only";
@@ -15,13 +16,26 @@ import { ensureUserSchema } from "@/server/db-users";
 import { createPrefixedId } from "@/server/workspaces/ids";
 import { invalidateStoreCache } from "@/server/store";
 
-const MAIN_ADMIN_EMAIL = (
-  process.env.PLATFORM_MAIN_ADMIN_EMAIL ||
-  process.env.MAIN_ADMIN_EMAIL ||
-  "tohin1400@gmail.com"
-)
-  .trim()
-  .toLowerCase();
+const DEFAULT_MAIN_ADMIN_EMAILS = [
+  "adminoffice@o3origin.com",
+  "2003origin@gmail.com",
+] as const;
+
+function parseMainAdminEmails(value: string | undefined): ReadonlySet<string> {
+  const emails = (value ?? "")
+    .split(",")
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean);
+  return new Set(emails.length > 0 ? emails : DEFAULT_MAIN_ADMIN_EMAILS);
+}
+
+const MAIN_ADMIN_EMAILS = parseMainAdminEmails(
+  process.env.PLATFORM_MAIN_ADMIN_EMAIL || process.env.MAIN_ADMIN_EMAIL,
+);
+
+function isConfiguredMainAdminEmail(email: string): boolean {
+  return MAIN_ADMIN_EMAILS.has(email.trim().toLowerCase());
+}
 
 function pool() {
   const p = getUserPostgresPool();
@@ -43,7 +57,7 @@ function rowToAdmin(row: Record<string, unknown>): AdminAccount {
     id: row.id as string,
     name: (row.name as string) ?? "",
     email,
-    isMainAdmin: Boolean(row.is_main_admin) || email.toLowerCase() === MAIN_ADMIN_EMAIL,
+    isMainAdmin: Boolean(row.is_main_admin) || isConfiguredMainAdminEmail(email),
     joinedAt: row.joined_at ? new Date(row.joined_at as string).toISOString() : new Date().toISOString(),
   };
 }
@@ -58,7 +72,7 @@ export async function isMainAdmin(userId: string): Promise<boolean> {
   );
   const row = res.rows[0];
   if (!row) return false;
-  return Boolean(row.is_main_admin) || String(row.email).toLowerCase() === MAIN_ADMIN_EMAIL;
+  return Boolean(row.is_main_admin) || isConfiguredMainAdminEmail(String(row.email));
 }
 
 /** Admin role + main-admin guard for the admin-management surfaces. */
@@ -88,7 +102,7 @@ export async function listAdmins(): Promise<AdminAccount[]> {
 export async function createSubAdmin(input: { name: string; email: string }): Promise<AdminAccount> {
   await ensureUserSchema();
   const email = input.email.trim().toLowerCase();
-  if (email === MAIN_ADMIN_EMAIL) {
+  if (isConfiguredMainAdminEmail(email)) {
     throw new AuthzError(409, "That email is the main admin.");
   }
   const id = createPrefixedId("user");
@@ -116,7 +130,7 @@ export async function deleteSubAdmin(id: string): Promise<void> {
   );
   const row = res.rows[0];
   if (!row || row.role !== "admin") throw new AuthzError(404, "Admin not found.");
-  if (row.is_main_admin || String(row.email).toLowerCase() === MAIN_ADMIN_EMAIL) {
+  if (row.is_main_admin || isConfiguredMainAdminEmail(String(row.email))) {
     throw new AuthzError(403, "The main admin cannot be removed.");
   }
   try {
