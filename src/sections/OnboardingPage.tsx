@@ -21,6 +21,7 @@ import {
   Lock,
 } from 'lucide-react';
 import type { User } from '@/types';
+import { cn } from '@/lib/utils';
 import { completeOnboardingAction, completeAccountSetupAction } from '@/server/actions/profile-actions';
 
 interface OnboardingPageProps {
@@ -145,18 +146,25 @@ export default function OnboardingPage({ user, onComplete }: OnboardingPageProps
                 { value: '11', label: 'Class 11', desc: 'JEE/NEET Prep' },
                 { value: '12', label: 'Class 12', desc: 'Final Stretch' },
                 { value: 'dropper', label: 'Dropper', desc: 'One More Try' },
-              ].map((option) => (
-                <div key={option.value}>
-                  <RadioGroupItem value={option.value} id={`cls-${option.value}`} className="peer sr-only" />
-                  <Label
-                    htmlFor={`cls-${option.value}`}
-                    className="flex flex-col items-center p-4 neu-raised rounded-xl cursor-pointer transition-all hover:-translate-y-0.5 peer-data-[state=checked]:ring-2 peer-data-[state=checked]:ring-primary peer-data-[state=checked]:bg-primary/15 peer-data-[state=checked]:shadow-md peer-data-[state=checked]:shadow-primary/25 peer-data-[state=checked]:-translate-y-0.5"
-                  >
-                    <span className="font-black text-foreground">{option.label}</span>
-                    <span className="text-xs text-muted-foreground mt-1 text-center">{option.desc}</span>
-                  </Label>
-                </div>
-              ))}
+              ].map((option) => {
+                const selected = formData.class === option.value;
+                return (
+                  <div key={option.value}>
+                    <RadioGroupItem value={option.value} id={`cls-${option.value}`} className="peer sr-only" />
+                    <Label
+                      htmlFor={`cls-${option.value}`}
+                      className={cn(
+                        'relative flex flex-col items-center p-4 neu-raised rounded-xl cursor-pointer transition-all hover:-translate-y-0.5',
+                        selected && 'ring-2 ring-primary bg-primary/15 shadow-md shadow-primary/25 -translate-y-0.5',
+                      )}
+                    >
+                      {selected && <CheckCircle2 className="absolute top-2 right-2 w-4 h-4 text-primary" />}
+                      <span className={cn('font-black', selected ? 'text-primary' : 'text-foreground')}>{option.label}</span>
+                      <span className="text-xs text-muted-foreground mt-1 text-center">{option.desc}</span>
+                    </Label>
+                  </div>
+                );
+              })}
             </RadioGroup>
           </div>
         );
@@ -181,21 +189,27 @@ export default function OnboardingPage({ user, onComplete }: OnboardingPageProps
                 { value: 'JEE', label: 'JEE (Main + Advanced)', desc: 'Engineering Entrance Exam' },
                 { value: 'NEET', label: 'NEET (UG)', desc: 'Medical Entrance Exam' },
                 ...(['9', '10'].includes(formData.class) ? [{ value: 'Foundation', label: 'Foundation (9th/10th)', desc: 'Early Prep for JEE/NEET' }] : []),
-              ].map((option) => (
-                <div key={option.value}>
-                  <RadioGroupItem value={option.value} id={`course-${option.value}`} className="peer sr-only" />
-                  <Label
-                    htmlFor={`course-${option.value}`}
-                    className="flex items-center p-4 neu-raised rounded-xl cursor-pointer transition-all hover:-translate-y-0.5 peer-data-[state=checked]:ring-2 peer-data-[state=checked]:ring-primary peer-data-[state=checked]:bg-primary/15 peer-data-[state=checked]:shadow-md peer-data-[state=checked]:shadow-primary/25 peer-data-[state=checked]:-translate-y-0.5"
-                  >
-                    <div className="flex-1">
-                      <span className="font-black text-foreground block">{option.label}</span>
-                      <span className="text-sm text-muted-foreground">{option.desc}</span>
-                    </div>
-                    <CheckCircle2 className="w-5 h-5 text-primary opacity-0 peer-data-[state=checked]:opacity-100 transition-opacity" />
-                  </Label>
-                </div>
-              ))}
+              ].map((option) => {
+                const selected = formData.selectedCourse === option.value;
+                return (
+                  <div key={option.value}>
+                    <RadioGroupItem value={option.value} id={`course-${option.value}`} className="peer sr-only" />
+                    <Label
+                      htmlFor={`course-${option.value}`}
+                      className={cn(
+                        'flex items-center p-4 neu-raised rounded-xl cursor-pointer transition-all hover:-translate-y-0.5',
+                        selected && 'ring-2 ring-primary bg-primary/15 shadow-md shadow-primary/25 -translate-y-0.5',
+                      )}
+                    >
+                      <div className="flex-1">
+                        <span className={cn('font-black block', selected ? 'text-primary' : 'text-foreground')}>{option.label}</span>
+                        <span className="text-sm text-muted-foreground">{option.desc}</span>
+                      </div>
+                      <CheckCircle2 className={cn('w-5 h-5 text-primary transition-opacity', selected ? 'opacity-100' : 'opacity-0')} />
+                    </Label>
+                  </div>
+                );
+              })}
             </RadioGroup>
           </div>
         );
@@ -231,32 +245,38 @@ export default function OnboardingPage({ user, onComplete }: OnboardingPageProps
                     { value: 'Mathematics', label: 'Mathematics', desc: 'Foundation Concepts' },
                     { value: 'Biology', label: 'Biology', desc: 'Foundation Concepts' },
                   ]
-              ).map((subject) => (
-                <div key={subject.value}>
-                  <Checkbox
-                    id={`subj-${subject.value}`}
-                    checked={formData.subjects.includes(subject.value)}
-                    onCheckedChange={(checked) => {
-                      if (checked) {
-                        setFormData({ ...formData, subjects: [...formData.subjects, subject.value] });
-                      } else {
-                        setFormData({ ...formData, subjects: formData.subjects.filter((s) => s !== subject.value) });
-                      }
-                    }}
-                    className="sr-only peer"
-                  />
-                  <Label
-                    htmlFor={`subj-${subject.value}`}
-                    className="flex items-center p-4 neu-raised rounded-xl cursor-pointer transition-all hover:-translate-y-0.5 peer-data-[state=checked]:ring-2 peer-data-[state=checked]:ring-primary peer-data-[state=checked]:bg-primary/15 peer-data-[state=checked]:shadow-md peer-data-[state=checked]:shadow-primary/25 peer-data-[state=checked]:-translate-y-0.5"
-                  >
-                    <div className="flex-1">
-                      <span className="font-black text-foreground block">{subject.label}</span>
-                      <span className="text-sm text-muted-foreground">{subject.desc}</span>
-                    </div>
-                    <CheckCircle2 className="w-5 h-5 text-primary opacity-0 peer-data-[state=checked]:opacity-100 transition-opacity" />
-                  </Label>
-                </div>
-              ))}
+              ).map((subject) => {
+                const selected = formData.subjects.includes(subject.value);
+                return (
+                  <div key={subject.value}>
+                    <Checkbox
+                      id={`subj-${subject.value}`}
+                      checked={selected}
+                      onCheckedChange={(checked) => {
+                        if (checked) {
+                          setFormData({ ...formData, subjects: [...formData.subjects, subject.value] });
+                        } else {
+                          setFormData({ ...formData, subjects: formData.subjects.filter((s) => s !== subject.value) });
+                        }
+                      }}
+                      className="sr-only peer"
+                    />
+                    <Label
+                      htmlFor={`subj-${subject.value}`}
+                      className={cn(
+                        'flex items-center p-4 neu-raised rounded-xl cursor-pointer transition-all hover:-translate-y-0.5',
+                        selected && 'ring-2 ring-primary bg-primary/15 shadow-md shadow-primary/25 -translate-y-0.5',
+                      )}
+                    >
+                      <div className="flex-1">
+                        <span className={cn('font-black block', selected ? 'text-primary' : 'text-foreground')}>{subject.label}</span>
+                        <span className="text-sm text-muted-foreground">{subject.desc}</span>
+                      </div>
+                      <CheckCircle2 className={cn('w-5 h-5 text-primary transition-opacity', selected ? 'opacity-100' : 'opacity-0')} />
+                    </Label>
+                  </div>
+                );
+              })}
             </div>
           </div>
         );
@@ -283,18 +303,25 @@ export default function OnboardingPage({ user, onComplete }: OnboardingPageProps
                 { value: 'coaching', label: 'Coaching', icon: Building2 },
                 { value: 'social', label: 'Social Media', icon: Share2 },
                 { value: 'other', label: 'Other', icon: BookOpen },
-              ].map((option) => (
+              ].map((option) => {
+                const selected = formData.referralSource === option.value;
+                return (
                 <div key={option.value}>
                   <RadioGroupItem value={option.value} id={`ref-${option.value}`} className="peer sr-only" />
                   <Label
                     htmlFor={`ref-${option.value}`}
-                    className="flex flex-col items-center p-4 neu-raised rounded-xl cursor-pointer transition-all hover:-translate-y-0.5 peer-data-[state=checked]:ring-2 peer-data-[state=checked]:ring-primary peer-data-[state=checked]:bg-primary/15 peer-data-[state=checked]:shadow-md peer-data-[state=checked]:shadow-primary/25 peer-data-[state=checked]:-translate-y-0.5"
+                    className={cn(
+                      'relative flex flex-col items-center p-4 neu-raised rounded-xl cursor-pointer transition-all hover:-translate-y-0.5',
+                      selected && 'ring-2 ring-primary bg-primary/15 shadow-md shadow-primary/25 -translate-y-0.5',
+                    )}
                   >
+                    {selected && <CheckCircle2 className="absolute top-2 right-2 w-4 h-4 text-primary" />}
                     <option.icon className="w-6 h-6 text-primary mb-2" />
-                    <span className="font-bold text-foreground">{option.label}</span>
+                    <span className={cn('font-bold', selected ? 'text-primary' : 'text-foreground')}>{option.label}</span>
                   </Label>
                 </div>
-              ))}
+                );
+              })}
             </RadioGroup>
           </div>
         );
