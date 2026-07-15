@@ -150,7 +150,7 @@ export default function OnboardingPage({ user, onComplete }: OnboardingPageProps
                   <RadioGroupItem value={option.value} id={`cls-${option.value}`} className="peer sr-only" />
                   <Label
                     htmlFor={`cls-${option.value}`}
-                    className="flex flex-col items-center p-4 neu-raised rounded-xl cursor-pointer transition-all hover:-translate-y-0.5 peer-data-[state=checked]:ring-2 peer-data-[state=checked]:ring-primary peer-data-[state=checked]:bg-primary/5"
+                    className="flex flex-col items-center p-4 neu-raised rounded-xl cursor-pointer transition-all hover:-translate-y-0.5 peer-data-[state=checked]:ring-2 peer-data-[state=checked]:ring-primary peer-data-[state=checked]:bg-primary/15 peer-data-[state=checked]:shadow-md peer-data-[state=checked]:shadow-primary/25 peer-data-[state=checked]:-translate-y-0.5"
                   >
                     <span className="font-black text-foreground">{option.label}</span>
                     <span className="text-xs text-muted-foreground mt-1 text-center">{option.desc}</span>
@@ -186,7 +186,7 @@ export default function OnboardingPage({ user, onComplete }: OnboardingPageProps
                   <RadioGroupItem value={option.value} id={`course-${option.value}`} className="peer sr-only" />
                   <Label
                     htmlFor={`course-${option.value}`}
-                    className="flex items-center p-4 neu-raised rounded-xl cursor-pointer transition-all hover:-translate-y-0.5 peer-data-[state=checked]:ring-2 peer-data-[state=checked]:ring-primary peer-data-[state=checked]:bg-primary/5"
+                    className="flex items-center p-4 neu-raised rounded-xl cursor-pointer transition-all hover:-translate-y-0.5 peer-data-[state=checked]:ring-2 peer-data-[state=checked]:ring-primary peer-data-[state=checked]:bg-primary/15 peer-data-[state=checked]:shadow-md peer-data-[state=checked]:shadow-primary/25 peer-data-[state=checked]:-translate-y-0.5"
                   >
                     <div className="flex-1">
                       <span className="font-black text-foreground block">{option.label}</span>
@@ -247,7 +247,7 @@ export default function OnboardingPage({ user, onComplete }: OnboardingPageProps
                   />
                   <Label
                     htmlFor={`subj-${subject.value}`}
-                    className="flex items-center p-4 neu-raised rounded-xl cursor-pointer transition-all hover:-translate-y-0.5 peer-data-[state=checked]:ring-2 peer-data-[state=checked]:ring-primary peer-data-[state=checked]:bg-primary/5"
+                    className="flex items-center p-4 neu-raised rounded-xl cursor-pointer transition-all hover:-translate-y-0.5 peer-data-[state=checked]:ring-2 peer-data-[state=checked]:ring-primary peer-data-[state=checked]:bg-primary/15 peer-data-[state=checked]:shadow-md peer-data-[state=checked]:shadow-primary/25 peer-data-[state=checked]:-translate-y-0.5"
                   >
                     <div className="flex-1">
                       <span className="font-black text-foreground block">{subject.label}</span>
@@ -288,7 +288,7 @@ export default function OnboardingPage({ user, onComplete }: OnboardingPageProps
                   <RadioGroupItem value={option.value} id={`ref-${option.value}`} className="peer sr-only" />
                   <Label
                     htmlFor={`ref-${option.value}`}
-                    className="flex flex-col items-center p-4 neu-raised rounded-xl cursor-pointer transition-all hover:-translate-y-0.5 peer-data-[state=checked]:ring-2 peer-data-[state=checked]:ring-primary peer-data-[state=checked]:bg-primary/5"
+                    className="flex flex-col items-center p-4 neu-raised rounded-xl cursor-pointer transition-all hover:-translate-y-0.5 peer-data-[state=checked]:ring-2 peer-data-[state=checked]:ring-primary peer-data-[state=checked]:bg-primary/15 peer-data-[state=checked]:shadow-md peer-data-[state=checked]:shadow-primary/25 peer-data-[state=checked]:-translate-y-0.5"
                   >
                     <option.icon className="w-6 h-6 text-primary mb-2" />
                     <span className="font-bold text-foreground">{option.label}</span>

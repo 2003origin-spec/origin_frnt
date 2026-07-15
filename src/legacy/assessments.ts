@@ -2363,9 +2363,47 @@ async function createCustomTestFallback(
     throw new Error("No questions matched that custom test configuration.");
   }
 
+  // The selected questions are OG-Code CATALOG rows, whose ids live in the
+  // catalog table, not store.questions. Persist through the same path as the
+  // analytics-service branch (analytics.custom_tests) so the attempt/detail
+  // resolvers pull them from the catalog. Pushing a legacy StoredTest here
+  // would store catalog ids that resolveStoredAssessmentQuestions (store-only)
+  // can't find — the multi-chapter "0 questions loaded" bug.
+  const generatedId = createId("test");
+  const title = `${subject === "mixed" ? "Mixed" : subject[0].toUpperCase() + subject.slice(1)} Custom Test`;
+
+  if (isOgcodePostgresConfigured()) {
+    try {
+      await persistGeneratedCustomTest({
+        id: generatedId,
+        userId: user.id,
+        subject,
+        chapter: chapter || null,
+        difficulty,
+        title,
+        description: chapter
+          ? `Custom practice set focused on ${chapter}.`
+          : "Custom practice set generated from the question bank.",
+        questionIds: selected.map((question) => question.id),
+        durationMinutes,
+        focusTopics: [],
+        generationSummary: "Built from your selected filters across the question bank.",
+        recommendedTimePerQuestionSeconds: 120,
+      });
+      const latest = await getPersistedCustomTest(generatedId, user.id);
+      if (latest) {
+        return serializePersistedCustomTest(store, user.id, latest);
+      }
+    } catch (err) {
+      console.error("[assessments] custom-test catalog persist failed; using in-store fallback", err instanceof Error ? err.message : err);
+    }
+  }
+
+  // Last-resort in-memory path (no catalog DB): only usable when the selected
+  // questions actually live in store.questions.
   const newTest: StoredTest = {
-    id: createId("test"),
-    title: `${subject === "mixed" ? "Mixed" : subject[0].toUpperCase() + subject.slice(1)} Custom Test`,
+    id: generatedId,
+    title,
     description: chapter ? `Custom practice set focused on ${chapter}.` : "Custom practice set generated from the question bank.",
     subject,
     chapter,

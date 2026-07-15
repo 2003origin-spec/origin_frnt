@@ -69,7 +69,16 @@ type StudyRoomContextValue = State & {
   sendChat: (content: string) => Promise<void>;
   sendTyping: (isTyping: boolean) => void;
   regenerateCode: () => Promise<void>;
-  configureTest: (payload: { subject?: string; difficulty?: string; chapter?: string; question_count?: number }) => Promise<void>;
+  configureTest: (payload: {
+    subject?: string;
+    subjects?: string[];
+    difficulty?: string;
+    chapter?: string;
+    chapters?: string[];
+    class_levels?: number[];
+    exams?: string[];
+    question_count?: number;
+  }) => Promise<void>;
   startTest: () => Promise<void>;
   leaveRoom: () => Promise<void>;
   deleteRoom: () => Promise<void>;

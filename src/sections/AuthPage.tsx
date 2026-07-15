@@ -66,6 +66,10 @@ function FieldRow({ icon, children }: { icon: React.ReactNode; children: React.R
 
 const fieldInputCls = 'flex-1 bg-transparent border-none outline-none text-[#d3d3d3] text-sm font-medium placeholder:text-[#555] w-full';
 
+// OTP digit cells sit on the dark auth card — force light digits + dark chrome
+// so the entered code stays visible (default foreground reads black = invisible).
+const otpSlotCls = 'h-11 w-11 sm:h-12 sm:w-12 text-lg font-black text-white border-[#2e2e2e] bg-[#171717] data-[active=true]:border-primary';
+
 function DarkBtn({
   type = 'button',
   onClick,
@@ -362,15 +366,15 @@ export default function AuthPage({
                   <div className="flex justify-center">
                     <InputOTP maxLength={6} value={otp} onChange={setOtp} containerClassName="group">
                       <InputOTPGroup>
-                        <InputOTPSlot index={0} />
-                        <InputOTPSlot index={1} />
-                        <InputOTPSlot index={2} />
+                        <InputOTPSlot index={0} className={otpSlotCls} />
+                        <InputOTPSlot index={1} className={otpSlotCls} />
+                        <InputOTPSlot index={2} className={otpSlotCls} />
                       </InputOTPGroup>
-                      <InputOTPSeparator />
+                      <InputOTPSeparator className="text-[#666]" />
                       <InputOTPGroup>
-                        <InputOTPSlot index={3} />
-                        <InputOTPSlot index={4} />
-                        <InputOTPSlot index={5} />
+                        <InputOTPSlot index={3} className={otpSlotCls} />
+                        <InputOTPSlot index={4} className={otpSlotCls} />
+                        <InputOTPSlot index={5} className={otpSlotCls} />
                       </InputOTPGroup>
                     </InputOTP>
                   </div>
