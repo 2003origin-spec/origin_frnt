@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Check, ChevronDown } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
@@ -87,6 +87,15 @@ export default function TestConfigFields({
   const [chapterDropdownOpen, setChapterDropdownOpen] = useState(false);
   const [chapterSearch, setChapterSearch] = useState('');
   const chapterFacetReq = useRef(0);
+  // Always read the LATEST value/onChange inside the async facet callback — the
+  // closure captured at effect time is stale, and using it there would clobber
+  // later selections (e.g. reset multi-subject back to a one-subject snapshot).
+  const valueRef = useRef(value);
+  const onChangeRef = useRef(onChange);
+  useLayoutEffect(() => {
+    valueRef.current = value;
+    onChangeRef.current = onChange;
+  });
 
   const labelCls = 'text-[10px] uppercase font-black tracking-widest text-muted-foreground';
 
@@ -106,8 +115,10 @@ export default function TestConfigFields({
         if (req !== chapterFacetReq.current) return;
         const values = Array.isArray(data) ? (data as string[]) : [];
         setFacetChapters(values);
-        const pruned = value.chapters.filter((c) => values.includes(c));
-        if (pruned.length !== value.chapters.length) onChange({ ...value, chapters: pruned });
+        // Prune against the LATEST value so we never revert other selections.
+        const latest = valueRef.current;
+        const pruned = latest.chapters.filter((c) => values.includes(c));
+        if (pruned.length !== latest.chapters.length) onChangeRef.current({ ...latest, chapters: pruned });
       })
       .catch(() => {
         if (req === chapterFacetReq.current) setFacetChapters([]);
