@@ -317,7 +317,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
 
 
             {/* Tabs */}
-            <Tabs defaultValue="all" className="mb-12">
+            <Tabs defaultValue="build" className="mb-12">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 mb-8 border-b border-border/40 pb-6">
                 <TabsList className="bg-transparent p-0 flex flex-wrap gap-1 sm:gap-2 h-auto justify-start">
                   {(['all', 'recommended', 'attempted', 'gallery', 'build', 'pyq', 'search'] as const).map((tab) => (

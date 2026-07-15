@@ -16,16 +16,23 @@ import {
   DrawerTitle,
   DrawerTrigger,
 } from '@/components/ui/drawer';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import TestConfigFields, { EMPTY_TEST_CONFIG, type TestConfigValue } from '@/components/test/TestConfigFields';
+
+export type RoomTestConfigPayload = {
+  subjects?: string[];
+  chapters?: string[];
+  class_levels?: number[];
+  exams?: string[];
+  difficulty: string;
+  question_count: number;
+};
 
 export function TestConfigDrawer({
   disabled,
   onConfigure,
 }: {
   disabled?: boolean;
-  onConfigure: (payload: { subject: string; difficulty: string; chapter?: string; question_count: number }) => Promise<void>;
+  onConfigure: (payload: RoomTestConfigPayload) => Promise<void>;
 }) {
   const { resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
@@ -33,20 +40,21 @@ export function TestConfigDrawer({
   const isDark = mounted && resolvedTheme === 'dark';
 
   const [open, setOpen] = useState(false);
-  const [subject, setSubject] = useState('mixed');
-  const [difficulty, setDifficulty] = useState('medium');
-  const [chapter, setChapter] = useState('');
-  const [questionCount, setQuestionCount] = useState(10);
+  const [config, setConfig] = useState<TestConfigValue>(EMPTY_TEST_CONFIG);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const submit = async (): Promise<void> => {
     setIsSubmitting(true);
     try {
       await onConfigure({
-        subject,
-        difficulty,
-        chapter: chapter.trim() || undefined,
-        question_count: questionCount,
+        // Empty arrays = "any / all / mixed" — mirror the Test Builder.
+        subjects: config.subjects.length ? config.subjects : undefined,
+        chapters: config.chapters.length ? config.chapters : undefined,
+        class_levels: config.classLevels.length ? config.classLevels : undefined,
+        exams: config.exams.length ? config.exams : undefined,
+        // No user-facing difficulty filter (same as the builder) — "all".
+        difficulty: 'all',
+        question_count: config.question_count,
       });
       toast.success('Room test configured.');
       setOpen(false);
@@ -56,14 +64,6 @@ export function TestConfigDrawer({
       setIsSubmitting(false);
     }
   };
-
-  const labelClass = cn(
-    'text-[10px] font-black uppercase tracking-[0.18em]',
-    isDark ? 'text-slate-500' : 'text-muted-foreground',
-  );
-  const fieldClass = isDark
-    ? 'bg-[#111520] border-[#1a2333] text-white focus-visible:border-[#2bb1ff]/60 focus-visible:ring-[#2bb1ff]/20'
-    : undefined;
 
   return (
     <Drawer open={open} onOpenChange={setOpen}>
@@ -110,48 +110,8 @@ export function TestConfigDrawer({
               </div>
             </div>
           </DrawerHeader>
-          <div className="space-y-4 px-4 pb-4">
-            <div className="grid gap-2">
-              <Label className={labelClass}>Subject</Label>
-              <Select value={subject} onValueChange={setSubject}>
-                <SelectTrigger className={fieldClass}><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="mixed">Mixed</SelectItem>
-                  <SelectItem value="physics">Physics</SelectItem>
-                  <SelectItem value="chemistry">Chemistry</SelectItem>
-                  <SelectItem value="mathematics">Mathematics</SelectItem>
-                  <SelectItem value="biology">Biology</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-2">
-              <Label className={labelClass}>Difficulty</Label>
-              <Select value={difficulty} onValueChange={setDifficulty}>
-                <SelectTrigger className={fieldClass}><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="easy">Easy</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="hard">Hard</SelectItem>
-                  <SelectItem value="all">All</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="room-test-chapter" className={labelClass}>Chapter</Label>
-              <Input id="room-test-chapter" className={fieldClass} value={chapter} onChange={(event) => setChapter(event.target.value)} placeholder="Optional chapter focus" />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="room-test-count" className={labelClass}>Question Count</Label>
-              <Input
-                id="room-test-count"
-                type="number"
-                min={1}
-                max={60}
-                className={fieldClass}
-                value={questionCount}
-                onChange={(event) => setQuestionCount(Math.min(60, Math.max(1, Number(event.target.value))))}
-              />
-            </div>
+          <div className="px-4 pb-4">
+            <TestConfigFields value={config} onChange={setConfig} />
           </div>
           <DrawerFooter>
             <Button

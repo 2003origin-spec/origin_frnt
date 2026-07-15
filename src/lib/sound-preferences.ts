@@ -36,17 +36,17 @@ export const SOUND_FOLDERS: Record<SoundCategoryKey, string> = {
   warning: 'Warning',
 };
 
-// Tasteful defaults so the app feels alive out of the box (defaults ON).
+// Every category defaults to None (off) — users opt in per event from Settings.
 export const DEFAULT_SOUND_PREFERENCES: SoundPreferences = {
-  correct: 'success-chime.mp3',
-  wrong: 'fail-buzzer.mp3',
-  streak3Correct: '3 correct 4.mp3',
-  streak3Wrong: '3 wrong 1.mp3',
-  fullScore: 'full score in test 8.mp3',
-  badScore: 'bad score 1.mp3',
-  notification: 'notification 1.mp3',
-  signIn: 'sign in 1.mp3',
-  warning: 'Warning 1.mp3',
+  correct: null,
+  wrong: null,
+  streak3Correct: null,
+  streak3Wrong: null,
+  fullScore: null,
+  badScore: null,
+  notification: null,
+  signIn: null,
+  warning: null,
   muted: false,
   volume: 0.7,
 };

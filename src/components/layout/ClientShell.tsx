@@ -6,6 +6,7 @@ import dynamic from 'next/dynamic';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useGlobalPresence } from '@/features/presence/useGlobalPresence';
+import { armSoundUnlock } from '@/lib/sound-manager';
 import type { ViewState } from '@/types';
 import Navbar from './Navbar';
 import { useTheme } from 'next-themes';
@@ -60,6 +61,9 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnab
   // Register this screen in the global "active screens" presence set while
   // signed in — feeds the landing "solving right now" counter.
   useGlobalPresence(!!user);
+  // Prime the sound engine on the first user gesture so answer/notification
+  // sounds (which fire after awaited server calls) are allowed to play.
+  React.useEffect(() => { armSoundUnlock(); }, []);
   const aiAccess = useAiAccess();
   const pathname = usePathname();
   const router = useRouter();

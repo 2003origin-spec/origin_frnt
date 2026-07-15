@@ -13,6 +13,15 @@ let prefs: SoundPreferences = { ...DEFAULT_SOUND_PREFERENCES };
 let sharedAudio: HTMLAudioElement | null = null;
 let correctStreak = 0;
 let wrongStreak = 0;
+let unlockArmed = false;
+
+// A tiny valid silent WAV — played (muted) inside the first user gesture to
+// "unlock" the shared <audio> element. Browsers (esp. iOS Safari) block audio
+// that isn't started from a gesture; our answer/notification sounds fire AFTER
+// an awaited server call, so the gesture context is gone by then. Priming the
+// element once keeps every later play() allowed.
+const SILENT_WAV =
+  'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
 
 /** Sync the active user's stored preferences (called from AuthContext). */
 export function setSoundPreferences(raw: unknown): void {
@@ -29,12 +38,50 @@ function ensureAudio(): HTMLAudioElement | null {
   return sharedAudio;
 }
 
+/**
+ * Arm a one-time unlock on the first user gesture so the shared audio element
+ * is primed and later programmatic plays (fired after awaits) are permitted.
+ * Call once from the app shell.
+ */
+export function armSoundUnlock(): void {
+  if (typeof window === 'undefined' || unlockArmed) return;
+  unlockArmed = true;
+  const unlock = () => {
+    const el = ensureAudio();
+    if (el) {
+      try {
+        el.muted = true;
+        el.src = SILENT_WAV;
+        void el
+          .play()
+          .then(() => {
+            el.pause();
+            el.currentTime = 0;
+            el.muted = false;
+          })
+          .catch(() => {
+            el.muted = false;
+          });
+      } catch {
+        el.muted = false;
+      }
+    }
+    window.removeEventListener('pointerdown', unlock);
+    window.removeEventListener('keydown', unlock);
+    window.removeEventListener('touchstart', unlock);
+  };
+  window.addEventListener('pointerdown', unlock, { once: true });
+  window.addEventListener('keydown', unlock, { once: true });
+  window.addEventListener('touchstart', unlock, { once: true });
+}
+
 function play(src: string | null): void {
   if (!src || prefs.muted || typeof window === 'undefined') return;
   const el = ensureAudio();
   if (!el) return;
   try {
     el.pause();
+    el.muted = false;
     el.src = src;
     el.currentTime = 0;
     el.volume = Math.min(1, Math.max(0, prefs.volume));
