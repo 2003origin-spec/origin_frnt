@@ -19,6 +19,11 @@ import {
   REFRESH_COOKIE_NAME,
 } from '@/server/auth-jwt';
 import { revokeRefreshSession } from '@/server/auth';
+import {
+  requestPasswordReset,
+  verifyAndResetPassword,
+  type PasswordResetRole,
+} from '@/server/password-reset';
 import type { User } from '@/types';
 
 /**
@@ -249,4 +254,62 @@ export async function logoutAction(): Promise<void> {
   cookieStore.set(REFRESH_COOKIE_NAME, '', { ...COOKIE_OPTS_REFRESH, maxAge: 0 });
   cookieStore.set(CSRF_COOKIE_NAME, '', { ...COOKIE_OPTS_CSRF, maxAge: 0 });
   revalidatePath('/', 'layout');
+}
+
+// ── Forgot password (email OTP → set new password) ──────────────────────────
+
+function normalizeResetRole(role: unknown): PasswordResetRole {
+  return role === 'teacher' ? 'teacher' : 'student';
+}
+
+/**
+ * Request a password-reset code. Always returns { ok: true } regardless of
+ * whether the account exists — never reveals account existence (enumeration
+ * safe). `devCode` is only populated in dev when no mail channel is configured.
+ */
+export async function requestPasswordResetAction(input: {
+  email: string;
+  role?: 'student' | 'teacher' | 'admin' | null;
+}): Promise<{ ok: true; devCode?: string }> {
+  const email = String(input.email ?? '').trim();
+  if (!email || !email.includes('@')) return { ok: true };
+  try {
+    const { devCode } = await requestPasswordReset(email, normalizeResetRole(input.role));
+    return { ok: true, devCode };
+  } catch (error) {
+    console.error('[requestPasswordResetAction]', error);
+    return { ok: true };
+  }
+}
+
+/** Verify the reset code and set a new password. */
+export async function resetPasswordAction(input: {
+  email: string;
+  role?: 'student' | 'teacher' | 'admin' | null;
+  code: string;
+  newPassword: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  const email = String(input.email ?? '').trim();
+  const code = String(input.code ?? '').trim();
+  const newPassword = String(input.newPassword ?? '');
+  if (!email || !/^\d{6}$/.test(code)) return { ok: false, error: 'Enter the 6-digit code sent to your email.' };
+  if (newPassword.length < 8) return { ok: false, error: 'Password must be at least 8 characters.' };
+  try {
+    const result = await verifyAndResetPassword(email, normalizeResetRole(input.role), code, newPassword);
+    switch (result) {
+      case 'ok':
+        return { ok: true };
+      case 'invalid':
+        return { ok: false, error: 'Incorrect code. Please try again.' };
+      case 'expired':
+        return { ok: false, error: 'This code has expired. Request a new one.' };
+      case 'locked':
+        return { ok: false, error: 'Too many attempts. Request a new code.' };
+      case 'not_found':
+        return { ok: false, error: 'No reset in progress. Request a new code.' };
+    }
+  } catch (error) {
+    console.error('[resetPasswordAction]', error);
+    return { ok: false, error: 'Something went wrong. Please try again.' };
+  }
 }

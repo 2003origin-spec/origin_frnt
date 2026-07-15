@@ -8,14 +8,45 @@ import {
     User,
     Settings,
     ArrowRight,
+    Code,
+    Crown,
+    ListTodo,
+    Sparkles,
+    UserPlus,
+    Building2,
 } from 'lucide-react';
+import type { ComponentType } from 'react';
 import type { ViewState } from '@/types';
 
 interface ExploreProps {
     onNavigate: (view: ViewState) => void;
+    /** Feature gates — mirror the nav bar so Explore lists the same tabs. */
+    aiExplainer?: boolean;
+    socialEnabled?: boolean;
+    connectEnabled?: boolean;
 }
 
-const CARDS = [
+type ExploreCard = {
+    title: string;
+    description: string;
+    icon: ComponentType<{ className?: string }>;
+    view: ViewState;
+    accent: string;
+    accentBg: string;
+    stat: string;
+};
+
+// Always-available destinations (also present in the nav bar).
+const CARDS: ExploreCard[] = [
+    {
+        title: 'OGCode',
+        description: 'Practice the OGCode question bank, build streaks, and climb the national leaderboard.',
+        icon: Code,
+        view: 'ogcode' as ViewState,
+        accent: 'text-primary',
+        accentBg: 'bg-primary/10 dark:bg-primary/15',
+        stat: 'Practice Arena',
+    },
     {
         title: 'Study Corner',
         description: 'NCERT books, curated notes, and interactive study material in one place.',
@@ -35,13 +66,13 @@ const CARDS = [
         stat: '500+ Questions',
     },
     {
-        title: 'Arena Leaderboard',
-        description: 'See where you stand globally and track your progress against the best.',
-        icon: Trophy,
-        view: 'leaderboard' as ViewState,
-        accent: 'text-amber-500',
-        accentBg: 'bg-amber-500/10 dark:bg-amber-500/15',
-        stat: 'Top 1%',
+        title: 'Rooms',
+        description: 'Join live study rooms and compete with peers in real-time test battles.',
+        icon: Crown,
+        view: 'study-rooms' as ViewState,
+        accent: 'text-violet-500',
+        accentBg: 'bg-violet-500/10 dark:bg-violet-500/15',
+        stat: 'Live',
     },
     {
         title: 'Daily Practice (DPP)',
@@ -53,13 +84,22 @@ const CARDS = [
         stat: 'Updated Daily',
     },
     {
-        title: 'My Profile',
-        description: 'Manage your personal details, plan, and academic preferences.',
-        icon: User,
-        view: 'profile' as ViewState,
-        accent: 'text-sky-500',
-        accentBg: 'bg-sky-500/10 dark:bg-sky-500/15',
-        stat: 'Active',
+        title: 'Goals',
+        description: 'Set study goals, manage your tasks, and track your progress day by day.',
+        icon: ListTodo,
+        view: 'tasks-goals' as ViewState,
+        accent: 'text-teal-500',
+        accentBg: 'bg-teal-500/10 dark:bg-teal-500/15',
+        stat: 'Stay on track',
+    },
+    {
+        title: 'Arena Leaderboard',
+        description: 'See where you stand globally and track your progress against the best.',
+        icon: Trophy,
+        view: 'leaderboard' as ViewState,
+        accent: 'text-amber-500',
+        accentBg: 'bg-amber-500/10 dark:bg-amber-500/15',
+        stat: 'Top 1%',
     },
     {
         title: 'Focus Timer',
@@ -71,6 +111,15 @@ const CARDS = [
         stat: 'Productivity',
     },
     {
+        title: 'My Profile',
+        description: 'Manage your personal details, plan, and academic preferences.',
+        icon: User,
+        view: 'profile' as ViewState,
+        accent: 'text-sky-500',
+        accentBg: 'bg-sky-500/10 dark:bg-sky-500/15',
+        stat: 'Active',
+    },
+    {
         title: 'Settings',
         description: 'Configure your experience, theme, and notification preferences.',
         icon: Settings,
@@ -79,9 +128,44 @@ const CARDS = [
         accentBg: 'bg-slate-500/10 dark:bg-slate-500/15',
         stat: 'Configured',
     },
-] as const;
+];
 
-export default function Explore({ onNavigate }: ExploreProps) {
+// Feature-gated destinations — shown only when their flag is on, matching the nav bar.
+const AI_EXPLAINER_CARD: ExploreCard = {
+    title: 'AI Explainer',
+    description: 'Snap a doubt and get step-by-step AI explanations from the Origin mentor.',
+    icon: Sparkles,
+    view: 'doubt-solver' as ViewState,
+    accent: 'text-fuchsia-500',
+    accentBg: 'bg-fuchsia-500/10 dark:bg-fuchsia-500/15',
+    stat: 'AI Powered',
+};
+const SOCIAL_CARD: ExploreCard = {
+    title: 'Social',
+    description: 'Follow classmates, compare progress, and challenge friends.',
+    icon: UserPlus,
+    view: 'social' as ViewState,
+    accent: 'text-pink-500',
+    accentBg: 'bg-pink-500/10 dark:bg-pink-500/15',
+    stat: 'Connect',
+};
+const CONNECT_CARD: ExploreCard = {
+    title: 'Connect',
+    description: 'Join your institute, enroll in batches, and access teacher tests.',
+    icon: Building2,
+    view: 'connect' as ViewState,
+    accent: 'text-cyan-500',
+    accentBg: 'bg-cyan-500/10 dark:bg-cyan-500/15',
+    stat: 'Institute',
+};
+
+export default function Explore({ onNavigate, aiExplainer = false, socialEnabled = false, connectEnabled = false }: ExploreProps) {
+    const cards: ExploreCard[] = [
+        ...CARDS,
+        ...(aiExplainer ? [AI_EXPLAINER_CARD] : []),
+        ...(socialEnabled ? [SOCIAL_CARD] : []),
+        ...(connectEnabled ? [CONNECT_CARD] : []),
+    ];
     return (
         <div className="min-h-screen neu-surface font-sans">
             <main className="max-w-[1400px] mx-auto px-3 sm:px-6 lg:px-8 py-6 space-y-6">
@@ -103,7 +187,7 @@ export default function Explore({ onNavigate }: ExploreProps) {
 
                 {/* Cards grid */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                    {CARDS.map((card, i) => (
+                    {cards.map((card, i) => (
                         <motion.div
                             key={card.title}
                             initial={{ opacity: 0, y: 16 }}

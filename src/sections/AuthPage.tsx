@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/input-otp';
 import { toast } from 'sonner';
 import { getRegistrationStatusAction } from '@/server/actions/system-actions';
+import { ForgotPasswordModal } from '@/components/auth/ForgotPasswordModal';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -126,6 +127,7 @@ export default function AuthPage({
   const [isVerifying, setIsVerifying] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
   const [regStatus, setRegStatus] = useState<{ count: number; limit: number; seatsLeft: number } | null>(null);
+  const [forgotOpen, setForgotOpen] = useState(false);
 
   useEffect(() => {
     if (userRole === 'admin') setIsLogin(true);
@@ -448,7 +450,7 @@ export default function AuthPage({
                   {/* Forgot password */}
                   {isLogin && userRole !== 'admin' && (
                     <div className="flex justify-end">
-                      <button type="button" className="text-xs font-bold" style={{ color: 'hsl(var(--primary))' }}>
+                      <button type="button" onClick={() => setForgotOpen(true)} className="text-xs font-bold" style={{ color: 'hsl(var(--primary))' }}>
                         Forgot password?
                       </button>
                     </div>
@@ -537,6 +539,18 @@ export default function AuthPage({
           </div>
         </motion.div>
       </AnimatePresence>
+
+      <ForgotPasswordModal
+        open={forgotOpen}
+        onClose={() => setForgotOpen(false)}
+        initialEmail={email}
+        role={userRole}
+        onResetComplete={(resetEmail) => {
+          setIsLogin(true);
+          setEmail(resetEmail);
+          setPassword('');
+        }}
+      />
     </div>
   );
 }

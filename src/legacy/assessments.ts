@@ -172,16 +172,23 @@ export type PracticeSubmissionPayload = {
 };
 
 export type CustomTestPayload = {
+  /** Single subject (legacy). Prefer `subjects` for multi-select. */
   subject?: string;
+  /** Multiple subjects (multi-select). Empty/omitted = all subjects (mixed). */
+  subjects?: string[];
   difficulty?: string;
   /** Single chapter (legacy). Prefer `chapters` for multi-select. */
   chapter?: string;
   /** Multiple chapters (OGCode-style multi-select). Union-matched in the query. */
   chapters?: string[];
-  /** 11 or 12. */
+  /** 11 or 12 (legacy single). Prefer `class_levels`. */
   class_level?: number;
-  /** Exam family: "JEE" | "NEET" | "AIPMT". */
+  /** Multiple classes (multi-select). Union-matched. */
+  class_levels?: number[];
+  /** Exam family: "JEE" | "NEET" | "AIPMT" (legacy single). Prefer `exams`. */
   exam?: string;
+  /** Multiple exams (multi-select). Union-matched. */
+  exams?: string[];
   question_count?: number;
   /** Optional override; omit to auto-compute. */
   duration_minutes?: number;
@@ -2256,8 +2263,15 @@ function getTestDetailFallback(store: AppStore, user: StoredUser, testId: string
  * unconditionally whenever the primary analytics-service path failed.
  */
 async function selectCustomTestQuestions(payload: CustomTestPayload) {
-  const subject = (payload.subject ?? "mixed").toLowerCase();
-  const isMixedSubject = subject === "all" || subject === "mixed";
+  // Accept multi-select `subjects`, falling back to the legacy single `subject`.
+  const rawSubjects = payload.subjects?.length
+    ? payload.subjects
+    : (payload.subject && payload.subject !== "mixed" && payload.subject !== "all" ? [payload.subject] : []);
+  const subjects = rawSubjects.map((s) => normalizeSubject(String(s ?? "").toLowerCase())).filter(Boolean);
+  const isMixedSubject = subjects.length === 0;
+  // Representative subject label for the test title (single subject → its name).
+  const subject = subjects.length === 1 ? subjects[0] : "mixed";
+
   const difficultyValue = (payload.difficulty ?? "medium").toLowerCase();
   const difficulty = difficultyValue === "all" ? null : normalizeDifficulty(difficultyValue);
   // Accept multi-select `chapters`, falling back to the legacy single `chapter`.
@@ -2266,18 +2280,23 @@ async function selectCustomTestQuestions(payload: CustomTestPayload) {
     .filter(Boolean);
   // Representative label for the test title (single chapter → its name; else null).
   const chapter = chapters.length === 1 ? chapters[0] : "";
-  const classLevel = payload.class_level != null ? Math.trunc(Number(payload.class_level)) : null;
-  const exam = (payload.exam ?? "").trim();
+  // Multi-select classes/exams, falling back to the legacy singles.
+  const classes = (payload.class_levels?.length ? payload.class_levels : (payload.class_level != null ? [payload.class_level] : []))
+    .map((c) => Math.trunc(Number(c)))
+    .filter((c) => Number.isFinite(c) && c > 0);
+  const exams = (payload.exams?.length ? payload.exams : (payload.exam ? [payload.exam] : []))
+    .map((e) => String(e ?? "").trim())
+    .filter(Boolean);
   const questionCount = Math.max(1, Math.min(50, Number(payload.question_count ?? 10)));
   const durationOverride = payload.duration_minutes != null ? Math.trunc(Number(payload.duration_minutes)) : null;
 
-  // class/exam are hard constraints (never relaxed below), same as the
+  // subject/class/exam are hard constraints (never relaxed below), same as the
   // analytics-service's primary path — only chapter(s) are dropped to top up.
   const baseFilters = {
-    subject: isMixedSubject ? null : normalizeSubject(subject),
+    subjects: subjects.length ? subjects : null,
     difficulty,
-    classes: classLevel && classLevel > 0 ? [classLevel] : undefined,
-    occurrences: exam ? [exam] : undefined,
+    classes: classes.length ? classes : undefined,
+    occurrences: exams.length ? exams : undefined,
   };
 
   const chapterPage = await listOgcodeCatalogQuestionPage({
@@ -3193,7 +3212,6 @@ export async function createCustomTest(
 ) {
   const generatedId = createId("test");
   try {
-    const subject = (payload.subject ?? "mixed").toLowerCase();
     const difficultyValue = (payload.difficulty ?? "medium").toLowerCase();
     const difficulty = difficultyValue === "all" ? null : normalizeDifficulty(difficultyValue);
     // These two reads are independent — run them concurrently instead of serially.
@@ -3201,27 +3219,38 @@ export async function createCustomTest(
       getRecentWeakTopicsForUser(user.id),
       getAttemptedQuestionIdsForUser(user.id),
     ]);
-    const classLevel = payload.class_level != null ? Math.trunc(Number(payload.class_level)) : null;
     const durationOverride = payload.duration_minutes != null ? Math.trunc(Number(payload.duration_minutes)) : null;
 
-    // Normalize chapters (multi-select `chapters` or legacy single `chapter`).
+    // Normalize every multi-select dimension (plural arrays, legacy singles).
+    const subjects = (payload.subjects?.length
+      ? payload.subjects
+      : (payload.subject && payload.subject !== "mixed" && payload.subject !== "all" ? [payload.subject] : []))
+      .map((s) => String(s ?? "").trim().toLowerCase())
+      .filter(Boolean);
     const chapters = (payload.chapters?.length ? payload.chapters : (payload.chapter ? [payload.chapter] : []))
       .map((c) => String(c ?? "").trim())
       .filter(Boolean);
-    // The analytics service takes a single chapter; when several are picked,
-    // use the local bank path (createCustomTestFallback), which union-matches
-    // all selected chapters (chapter = ANY(...)).
-    if (chapters.length > 1) {
+    const classes = (payload.class_levels?.length ? payload.class_levels : (payload.class_level != null ? [payload.class_level] : []))
+      .map((c) => Math.trunc(Number(c)))
+      .filter((c) => Number.isFinite(c) && c > 0);
+    const exams = (payload.exams?.length ? payload.exams : (payload.exam ? [payload.exam] : []))
+      .map((e) => String(e ?? "").trim())
+      .filter(Boolean);
+
+    // The analytics service takes a single value per dimension. When any
+    // dimension has more than one selection, use the local bank path
+    // (createCustomTestFallback), which union-matches all of them (= ANY(...)).
+    if (subjects.length > 1 || chapters.length > 1 || classes.length > 1 || exams.length > 1) {
       return createCustomTestFallback(store, user, payload);
     }
 
     const serviceResponse = await generateCustomTestWithService({
       user_id: user.id,
-      subject: subject === "all" ? "mixed" : subject,
+      subject: subjects[0] ?? "mixed",
       difficulty,
       chapter: chapters[0] ?? null,
-      class_level: classLevel && classLevel > 0 ? classLevel : null,
-      exam: payload.exam?.trim() || null,
+      class_level: classes[0] ?? null,
+      exam: exams[0] ?? null,
       question_count: Math.max(1, Math.min(50, Number(payload.question_count ?? 10))),
       duration_minutes: durationOverride && durationOverride > 0 ? durationOverride : null,
       recent_weak_topics: recentWeakTopics,

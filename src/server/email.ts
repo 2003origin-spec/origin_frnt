@@ -30,6 +30,14 @@ type SmtpEnv = {
   from: string;
 };
 
+/**
+ * Ordered delivery channels. `ses` is tried first; if it fails (or isn't
+ * configured), we fall back to `smtp` (the legacy adminoffice provider). This
+ * gives resilience: a SES outage or throttle transparently rolls over to the
+ * existing SMTP host without losing the email.
+ */
+type ChannelName = 'ses' | 'smtp';
+
 type SendResult = { success: true; messageId: string } | { success: false; error: unknown };
 
 const TRANSIENT_ERROR_CODES = new Set(['ETIMEDOUT', 'ECONNRESET', 'EAI_AGAIN', 'ESOCKET']);
@@ -40,35 +48,50 @@ const TIMEOUT_MS = 10_000;
 const RETRY_BACKOFF_MIN_MS = 250;
 const RETRY_BACKOFF_JITTER_MS = 250;
 
-let cachedTransporter: Transporter | null = null;
-let cachedVerify: Promise<void> | null = null;
+const DEFAULT_FROM = '"ORIGIN AI" <adminoffice@o3origin.com>';
 
-function redactEmail(value: unknown): string {
-  const email = typeof value === 'string' ? value : '';
-  const [name, domain] = email.split('@');
-  if (!name || !domain) return '[redacted]';
-  return `${name.slice(0, 2)}***@${domain}`;
+// Per-channel transporter + verify caches (lazy, reset by __resetEmailForTests).
+const transporters = new Map<ChannelName, Transporter>();
+const verifies = new Map<ChannelName, Promise<void> | null>();
+
+function toPort(value: string | undefined, fallback = 465): { port: number; secure: boolean } {
+  let port = value ? Number.parseInt(value, 10) : fallback;
+  if (!Number.isFinite(port) || port <= 0) port = fallback;
+  // Default to TLS-on; only treat 587 / 25 as STARTTLS upgrade ports.
+  return { port, secure: port === 465 };
 }
 
+/** Amazon SES SMTP channel (primary). Configured via SES_SMTP_* env vars. */
+function readSesEnv(): SmtpEnv | null {
+  const host = process.env.SES_SMTP_HOST;
+  const user = process.env.SES_SMTP_USER;
+  const pass = process.env.SES_SMTP_PASS;
+  if (!host || !user || !pass) return null;
+  const { port, secure } = toPort(process.env.SES_SMTP_PORT);
+  // Prefer a SES-specific from, else the shared EMAIL_FROM, else the default.
+  const from = process.env.SES_EMAIL_FROM ?? process.env.EMAIL_FROM ?? DEFAULT_FROM;
+  return { host, port, secure, user, pass, from };
+}
+
+/** Legacy adminoffice SMTP channel (fallback). Configured via SMTP_* env vars. */
 function readSmtpEnv(): SmtpEnv | null {
   const host = process.env.SMTP_HOST;
   const user = process.env.SMTP_USER;
   const pass = process.env.SMTP_PASS;
-  const from = process.env.EMAIL_FROM ?? '"ORIGIN AI" <adminoffice@o3origin.com>';
-
-  if (!host || !user || !pass) {
-    return null;
-  }
-
-  const portStr = process.env.SMTP_PORT;
-  let port = portStr ? Number.parseInt(portStr, 10) : 465;
-  if (!Number.isFinite(port) || port <= 0) {
-    port = 465;
-  }
-  // Default to TLS-on; only treat 587 / 25 as STARTTLS upgrade ports.
-  const secure = port === 465;
-
+  if (!host || !user || !pass) return null;
+  const { port, secure } = toPort(process.env.SMTP_PORT);
+  const from = process.env.EMAIL_FROM ?? DEFAULT_FROM;
   return { host, port, secure, user, pass, from };
+}
+
+/** The configured channels, in delivery-priority order (SES first). */
+function configuredChannels(): { name: ChannelName; env: SmtpEnv }[] {
+  const out: { name: ChannelName; env: SmtpEnv }[] = [];
+  const ses = readSesEnv();
+  if (ses) out.push({ name: 'ses', env: ses });
+  const smtp = readSmtpEnv();
+  if (smtp) out.push({ name: 'smtp', env: smtp });
+  return out;
 }
 
 function isTransientTransportError(err: unknown): boolean {
@@ -91,57 +114,30 @@ function buildTransporter(env: SmtpEnv): Transporter {
   });
 }
 
-function getTransporter(): Transporter {
-  if (cachedTransporter) return cachedTransporter;
-
-  const env = readSmtpEnv();
-
-  if (!env) {
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error(
-        '[email] SMTP_HOST / SMTP_USER / SMTP_PASS are required in production. Refusing to silently mock email delivery.',
-      );
-    }
-    // Dev fallback: an opt-in mock that makes the absence of SMTP obvious in logs.
-    const mock: Pick<Transporter, 'sendMail' | 'verify'> = {
-      sendMail: async (options: SendMailOptions) => {
-        console.warn('[email] dev mock — no SMTP configured; logging email content:', {
-          to: options.to,
-          subject: options.subject,
-          text: options.text,
-        });
-        return { messageId: 'dev-mock-' + Date.now() } as Awaited<ReturnType<Transporter['sendMail']>>;
-      },
-      verify: (async () => true as const) as Transporter['verify'],
-    };
-    cachedTransporter = mock as Transporter;
-    cachedVerify = Promise.resolve();
-    return cachedTransporter;
-  }
-
-  cachedTransporter = buildTransporter(env);
-  return cachedTransporter;
+function getTransporter(name: ChannelName, env: SmtpEnv): Transporter {
+  const existing = transporters.get(name);
+  if (existing) return existing;
+  const t = buildTransporter(env);
+  transporters.set(name, t);
+  return t;
 }
 
-async function ensureVerified(transporter: Transporter): Promise<void> {
-  if (cachedVerify) return cachedVerify;
-  cachedVerify = transporter
+async function ensureVerified(name: ChannelName, transporter: Transporter): Promise<void> {
+  const cached = verifies.get(name);
+  if (cached) return cached;
+  const p = transporter
     .verify()
     .then(() => undefined)
     .catch((err) => {
-      // Audit fix R-7 (A-23): surface verify failures loudly. The
-      // [email][ALERT] prefix is grep-friendly for log-based alerts so
-      // the on-call rotation can wire a Sentry/Datadog rule against it.
-      // Reset the verify promise so a future send can retry; throw now
-      // so the caller surfaces the failure to the user instead of
-      // silently queueing onto a broken transport — and the dev mock
-      // is never reached in production because getTransporter() throws
-      // before this code runs when SMTP env is missing.
-      cachedVerify = null;
-      console.error('[email][ALERT] SMTP verify() failed:', err);
+      // Surface verify failures loudly ([email][ALERT] is grep-friendly for
+      // log alerts). Reset so a later send can retry, and throw so the caller
+      // rolls over to the next channel instead of queueing onto a dead one.
+      verifies.set(name, null);
+      console.error(`[email][ALERT] SMTP verify() failed on channel "${name}":`, err);
       throw err instanceof Error ? err : new Error(String(err));
     });
-  return cachedVerify;
+  verifies.set(name, p);
+  return p;
 }
 
 async function sleepWithJitter(): Promise<void> {
@@ -149,8 +145,38 @@ async function sleepWithJitter(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, delay));
 }
 
-async function sendOnce(transporter: Transporter, options: SendMailOptions) {
-  return transporter.sendMail(options);
+/** Attempt delivery on one channel (verify + send + one transient retry). */
+async function sendViaChannel(
+  name: ChannelName,
+  env: SmtpEnv,
+  msg: { to: string; subject: string; text: string; html?: string },
+): Promise<SendResult> {
+  const transporter = getTransporter(name, env);
+  const options: SendMailOptions = {
+    from: env.from,
+    to: msg.to,
+    subject: msg.subject,
+    text: msg.text,
+    html: msg.html || msg.text,
+  };
+  try {
+    await ensureVerified(name, transporter);
+    const info = await transporter.sendMail(options);
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    if (isTransientTransportError(error)) {
+      await sleepWithJitter();
+      try {
+        const info = await transporter.sendMail(options);
+        return { success: true, messageId: info.messageId };
+      } catch (retryError) {
+        console.error(`[email][ALERT] channel "${name}" failed after retry:`, retryError);
+        return { success: false, error: retryError };
+      }
+    }
+    console.error(`[email] channel "${name}" send failed:`, error);
+    return { success: false, error };
+  }
 }
 
 export const sendEmail = async ({
@@ -164,42 +190,37 @@ export const sendEmail = async ({
   text: string;
   html?: string;
 }): Promise<SendResult> => {
-  let transporter: Transporter;
-  try {
-    transporter = getTransporter();
-  } catch (error) {
-    console.error('[email] transporter unavailable:', error);
-    return { success: false, error };
-  }
+  const channels = configuredChannels();
 
-  const from = process.env.EMAIL_FROM || '"ORIGIN AI" <adminoffice@o3origin.com>';
-  const options: SendMailOptions = { from, to, subject, text, html: html || text };
-
-  try {
-    await ensureVerified(transporter);
-    const info = await sendOnce(transporter, options);
-    return { success: true, messageId: info.messageId };
-  } catch (error) {
-    if (isTransientTransportError(error)) {
-      await sleepWithJitter();
-      try {
-        const info = await sendOnce(transporter, options);
-        return { success: true, messageId: info.messageId };
-      } catch (retryError) {
-        console.error('[email][ALERT] send failed after retry:', retryError);
-        return { success: false, error: retryError };
-      }
+  if (channels.length === 0) {
+    if (process.env.NODE_ENV === 'production') {
+      const error = new Error(
+        '[email] No mail channel configured. Set SES_SMTP_* (primary) and/or SMTP_* (fallback). Refusing to silently mock in production.',
+      );
+      console.error('[email] transporter unavailable:', error);
+      return { success: false, error };
     }
-    console.error('[email] send failed:', error);
-    return { success: false, error };
+    // Dev fallback: opt-in mock that makes the absence of SMTP obvious in logs.
+    console.warn('[email] dev mock — no mail channel configured; logging email content:', { to, subject, text });
+    return { success: true, messageId: 'dev-mock-' + Date.now() };
   }
+
+  // Try each channel in priority order (SES → adminoffice); first success wins.
+  let lastError: unknown = new Error('email delivery failed');
+  for (const { name, env } of channels) {
+    const result = await sendViaChannel(name, env, { to, subject, text, html });
+    if (result.success) return result;
+    lastError = result.error;
+    console.warn(`[email] channel "${name}" failed; falling back to the next channel if any.`);
+  }
+  return { success: false, error: lastError };
 };
 
 /**
- * Reset the cached transporter — exposed for tests so they can swap
+ * Reset the cached transporters — exposed for tests so they can swap
  * environment between cases. Not part of the public runtime API.
  */
 export const __resetEmailForTests = (): void => {
-  cachedTransporter = null;
-  cachedVerify = null;
+  transporters.clear();
+  verifies.clear();
 };
