@@ -12,6 +12,7 @@ import { TutorialProvider } from '@/features/tutorial/TutorialProvider';
 import { cn } from '@/lib/utils';
 import { useResizable } from '@/hooks/use-resizable';
 import AiSidebar from './AiSidebar';
+import LaunchCover from '@/components/launch/LaunchCover';
 import { LayoutProvider, useLayout } from '@/context/LayoutContext';
 import { TimeTrackerProvider } from '@/context/TimeTrackerContext';
 import { startHighlightCapture, stopHighlightCapture } from '@/features/origin-ai/highlight-capture';
@@ -53,7 +54,7 @@ function resolveRoute(view: string) {
   return ROUTES[view] || `/${view}`;
 }
 
-function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnabled }: { children: React.ReactNode; connectEnabled?: boolean; premiumEnabled?: boolean; socialEnabled?: boolean }) {
+function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnabled, coverActive, launchAt }: { children: React.ReactNode; connectEnabled?: boolean; premiumEnabled?: boolean; socialEnabled?: boolean; coverActive?: boolean; launchAt?: string | null }) {
   const { user, logout, isNavigationLocked, refreshUser } = useAuth();
   const aiAccess = useAiAccess();
   const pathname = usePathname();
@@ -229,6 +230,14 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnab
   const currentTheme = (mounted ? resolvedTheme : 'light') || 'light';
   const showNavbar = mounted && !!user && user.role === 'student' && !isNavigationLocked && !noNavbarPaths.includes(pathname) && !isSpecialPath;
 
+  // Pre-launch cover: when active it hides the whole site on every URL. Admin
+  // (/admin), auth (/auth — so the admin can sign in), and the separate CBT app
+  // (/cbt) are always exempt so the launch can be controlled and reversed.
+  const coverExempt = pathname.startsWith('/admin') || pathname.startsWith('/auth') || pathname.startsWith('/cbt');
+  if (coverActive && !coverExempt) {
+    return <LaunchCover launchAt={launchAt ?? null} />;
+  }
+
   return (
     <TutorialProvider>
       {/* CSS Highlight API — PostCSS rejects ::highlight() so we inject it at runtime.
@@ -323,11 +332,11 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnab
   );
 }
 
-export default function ClientShell({ children, connectEnabled, premiumEnabled, socialEnabled }: { children: React.ReactNode; connectEnabled?: boolean; premiumEnabled?: boolean; socialEnabled?: boolean }) {
+export default function ClientShell({ children, connectEnabled, premiumEnabled, socialEnabled, coverActive, launchAt }: { children: React.ReactNode; connectEnabled?: boolean; premiumEnabled?: boolean; socialEnabled?: boolean; coverActive?: boolean; launchAt?: string | null }) {
   return (
     <LayoutProvider>
       <TimeTrackerProvider>
-        <ClientShellInner connectEnabled={connectEnabled} premiumEnabled={premiumEnabled} socialEnabled={socialEnabled}>{children}</ClientShellInner>
+        <ClientShellInner connectEnabled={connectEnabled} premiumEnabled={premiumEnabled} socialEnabled={socialEnabled} coverActive={coverActive} launchAt={launchAt}>{children}</ClientShellInner>
       </TimeTrackerProvider>
     </LayoutProvider>
   );

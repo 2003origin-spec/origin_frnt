@@ -26,6 +26,7 @@ import {
   verifyAndResetPassword,
   type PasswordResetRole,
 } from '@/server/password-reset';
+import { getLaunchSettings } from '@/server/launch-settings';
 import type { User } from '@/types';
 
 /**
@@ -56,6 +57,37 @@ function toPublicAuthResult(result: InternalAuthResult): AuthResult {
   if (!result.ok) return result;
   return { ok: true, user: result.user };
 }
+
+/**
+ * Admin-controlled login/signup gates. These apply to student accounts only —
+ * admins and teachers must always be able to log in (the admin who flips the
+ * "Allow Login" toggle off would otherwise lock themselves out and lose the
+ * ability to turn it back on). Server Actions bypass middleware, so the gate is
+ * enforced here at the action boundary.
+ */
+async function loginBlockedForRole(role: 'student' | 'teacher' | 'admin' | null | undefined): Promise<boolean> {
+  if (role === 'admin' || role === 'teacher') return false;
+  try {
+    const settings = await getLaunchSettings();
+    return !settings.allowLogin;
+  } catch {
+    // Fail open — never lock everyone out on a settings-store hiccup.
+    return false;
+  }
+}
+
+async function signupBlockedForRole(role: 'student' | 'teacher' | 'admin' | null | undefined): Promise<boolean> {
+  if (role === 'admin' || role === 'teacher') return false;
+  try {
+    const settings = await getLaunchSettings();
+    return !settings.allowSignup;
+  } catch {
+    return false;
+  }
+}
+
+const LOGIN_DISABLED_MESSAGE = 'Login is currently disabled. Please check back soon.';
+const SIGNUP_DISABLED_MESSAGE = 'New sign-ups are currently disabled. Please check back soon.';
 
 async function parseAuthResponse(response: Response): Promise<InternalAuthResult> {
   let body: Record<string, unknown> = {};
@@ -109,6 +141,9 @@ export async function loginAction(input: {
   role?: 'student' | 'teacher' | 'admin' | null;
 }): Promise<AuthResult> {
   try {
+    if (await loginBlockedForRole(input.role)) {
+      return { ok: false, status: 403, message: LOGIN_DISABLED_MESSAGE };
+    }
     const response = await handleLogin({
       email: input.email,
       password: input.password,
@@ -137,6 +172,9 @@ export async function loginWithOtpAction(input: {
     if ((input.role as string | null | undefined) === 'cbt_teacher') {
       return { ok: false, status: 400, message: 'Unsupported account type for this login.' };
     }
+    if (await loginBlockedForRole(input.role)) {
+      return { ok: false, status: 403, message: LOGIN_DISABLED_MESSAGE };
+    }
     const response = await handleLoginWithOtp({
       email: input.email,
       role: input.role ?? undefined,
@@ -159,6 +197,9 @@ export async function registerAction(input: {
   role?: 'student' | 'teacher' | 'admin' | null;
 }): Promise<AuthResult> {
   try {
+    if (await signupBlockedForRole(input.role)) {
+      return { ok: false, status: 403, message: SIGNUP_DISABLED_MESSAGE };
+    }
     // Check if email was verified via OTP
     const store = await readStoreAsync();
     const isVerified = store.otps.some(o => o.email.toLowerCase() === input.email.toLowerCase() && o.verified === true);
@@ -197,7 +238,13 @@ export async function registerAction(input: {
 
 export async function googleLoginAction(input: { credential: string; role?: 'student' | 'teacher' | 'admin' | null }): Promise<AuthResult> {
   try {
-    const response = await handleGoogleLogin({ credential: input.credential, role: input.role ?? null });
+    // Login gate blocks existing students; signup gate blocks brand-new Google
+    // accounts (enforced inside handleGoogleLogin via allowNewUsers).
+    if (await loginBlockedForRole(input.role)) {
+      return { ok: false, status: 403, message: LOGIN_DISABLED_MESSAGE };
+    }
+    const allowNewUsers = !(await signupBlockedForRole(input.role));
+    const response = await handleGoogleLogin({ credential: input.credential, role: input.role ?? null }, { allowNewUsers });
     const parsed = await parseAuthResponse(response);
     if (parsed.ok) {
       await setSessionCookies(parsed.access, parsed.refresh, parsed.accessFingerprint);

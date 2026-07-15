@@ -13,6 +13,7 @@ import { NotificationProvider } from "@/context/NotificationContext";
 import { getCanonicalSiteUrl } from "@/lib/site-url";
 import { isFeatureEnabled } from "@/lib/feature-flags";
 import { getServerFrontendUser } from "@/lib/auth-server";
+import { getLaunchSettings, isCoverActive } from "@/server/launch-settings";
 import { resolveAiAccessForUser } from "@/server/ai-access";
 import { AiAccessProvider } from "@/context/AiAccessContext";
 
@@ -61,6 +62,10 @@ export default async function RootLayout({
   const connectEnabled = isFeatureEnabled("teacherConnect");
   const premiumEnabled = isFeatureEnabled("premiumSubscriptions");
   const socialEnabled = isFeatureEnabled("studentSocial");
+  // Pre-launch cover: server-computed so there is no flash of the real site.
+  const launch = await getLaunchSettings().catch(() => null);
+  const coverActive = launch ? isCoverActive(launch) : false;
+  const launchAt = launch?.launchAt ?? null;
   // Seed the client AuthProvider with the server-resolved user so the client
   // skips the /api/users/me waterfall on every page load.
   const initialUser = await getServerFrontendUser().catch(() => null);
@@ -82,7 +87,7 @@ export default async function RootLayout({
               <NotificationProvider>
                 <QuotaProvider>
                   <AiAccessProvider initial={{ originAi: initialAiAccess.originAi, aiExplainer: initialAiAccess.aiExplainer }}>
-                    <ClientShell connectEnabled={connectEnabled} premiumEnabled={premiumEnabled} socialEnabled={socialEnabled}>{children}</ClientShell>
+                    <ClientShell connectEnabled={connectEnabled} premiumEnabled={premiumEnabled} socialEnabled={socialEnabled} coverActive={coverActive} launchAt={launchAt}>{children}</ClientShell>
                   </AiAccessProvider>
                 </QuotaProvider>
               </NotificationProvider>

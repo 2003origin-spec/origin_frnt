@@ -24,6 +24,7 @@ import {
     Crown,
     Flag,
     Activity,
+    Rocket,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { usePathname, useRouter } from 'next/navigation';
@@ -57,6 +58,7 @@ const navItems = [
     // CBT teacher allowlist (404s when cbtModule is off).
     { id: 'cbt', label: 'CBT', icon: ClipboardCheck, path: '/admin/cbt' },
     { id: 'analytics', label: 'Global Analytics', icon: BarChart3, path: '/admin/analytics' },
+    { id: 'launch', label: 'Launch Controls', icon: Rocket, path: '/admin/launch' },
     // Audit fix R-5 (A-15): incidents + audit log had no sidebar entry.
     { id: 'incidents', label: 'Incidents', icon: Siren, path: '/admin/incidents' },
     { id: 'audit-events', label: 'Audit Log', icon: FileText, path: '/admin/audit-events' },
