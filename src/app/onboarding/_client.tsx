@@ -12,7 +12,11 @@ export default function OnboardingClient() {
   if (!user) return null;
 
   const handleComplete = async () => {
-    void refreshUser();
+    // Await the refresh so the client user state is guaranteed onboarded
+    // (isOnboarded=true) BEFORE we navigate. Navigating first left a window
+    // where the stale user (isOnboarded=false) could trip the guest-path guard
+    // and bounce the user back to onboarding / the landing page (the old loop).
+    await refreshUser();
     router.replace('/dashboard');
   };
 

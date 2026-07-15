@@ -234,7 +234,7 @@ export interface PersistedTestResultRecord {
     reviewEntries?: Array<{
       questionId: string;
       concept: string;
-      status: "correct" | "incorrect";
+      status: "correct" | "incorrect" | "unattempted";
       error: string;
       explanation: string;
       howToApproach: string;
@@ -499,6 +499,21 @@ export async function getRecentWeakTopicsForUser(userId: string): Promise<string
   return fromJsonArray<string>(result.rows[0]?.weak_topics);
 }
 
+/**
+ * Total number of tests a user has submitted. The primary submit path persists
+ * to analytics.test_results (not the KV store collection), so this is the source
+ * of truth for the "Tests Taken" profile stat.
+ */
+export async function countTestResultsForUser(userId: string): Promise<number> {
+  await ensureSchema();
+  const pool = getPoolOrThrow();
+  const result = await pool.query(
+    `SELECT COUNT(*)::int AS n FROM analytics.test_results WHERE user_id = $1`,
+    [userId],
+  );
+  return result.rows[0]?.n ?? 0;
+}
+
 export async function getAttemptedQuestionIdsForUser(userId: string): Promise<string[]> {
   const { attemptedIds } = await getOgcodeProgressForUser(userId);
   return [...attemptedIds];
@@ -524,7 +539,9 @@ export async function getOgcodeProgressForUser(userId: string): Promise<{ attemp
   for (const row of result.rows) {
     const reviewEntries = fromJsonArray<{ questionId: string; status: string }>(row.review_entries);
     for (const entry of reviewEntries) {
-      if (entry.questionId) {
+      // Skipped questions are now recorded as review entries too — they must NOT
+      // count as attempted/solved for OGCode progress.
+      if (entry.questionId && entry.status !== "unattempted") {
         attemptedIds.add(entry.questionId);
         if (entry.status === "correct") {
           solvedIds.add(entry.questionId);

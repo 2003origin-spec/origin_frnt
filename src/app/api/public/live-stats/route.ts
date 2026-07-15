@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
-import { Redis } from '@upstash/redis';
 
 import { getUserPostgresPool, isUserPostgresConfigured } from '@/server/user-postgres';
 import { generalLimiter, checkRateLimit } from '@/lib/rate-limit';
+import { getActiveScreens } from '@/server/presence';
 
 /** Vercel-resolved client IP (it overwrites x-forwarded-for; not spoofable). */
 function clientIp(request: Request): string {
@@ -10,24 +10,13 @@ function clientIp(request: Request): string {
   return xff?.split(',')[0]?.trim() || request.headers.get('x-real-ip')?.trim() || 'anonymous';
 }
 
-const redis = process.env.UPSTASH_REDIS_REST_URL
-  ? new Redis({
-      url: process.env.UPSTASH_REDIS_REST_URL,
-      token: process.env.UPSTASH_REDIS_REST_TOKEN ?? '',
-    })
-  : null;
-
-/** presence:active heartbeats count as "active" for 5 minutes. */
-const ACTIVE_WINDOW_MS = 5 * 60 * 1000;
-
-/** Real active-now from the shared presence set (fed by OGCode heartbeats). */
+/**
+ * "solving right now" = number of active app screens worldwide. Every signed-in
+ * app screen heartbeats into the global presence set (see src/server/presence.ts),
+ * so this counts open screens (tabs/devices), not just OGCode.
+ */
 async function activeNow(): Promise<number> {
-  if (!redis) return 0;
-  try {
-    return await redis.zcount('presence:active', Date.now() - ACTIVE_WINDOW_MS, '+inf');
-  } catch {
-    return 0;
-  }
+  return getActiveScreens();
 }
 
 /** Real "doubts solved today" — doubt sessions with activity since UTC midnight. */

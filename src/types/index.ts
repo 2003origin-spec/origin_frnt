@@ -1,9 +1,14 @@
 import type { Subject } from '@/lib/entitlements';
+import type { SoundPreferences } from '@/lib/sound-preferences';
 
 export interface User {
   id: string;
   name: string;
   email: string;
+  /** Unique student mobile number (collected at first-time onboarding). */
+  mobile?: string | null;
+  /** Whether the user has set their own password (Google signups start false). */
+  passwordSet?: boolean;
   role: 'student' | 'teacher' | 'admin' | 'cbt_teacher';
   class?: '9' | '10' | '11' | '12' | 'dropper';
   fieldOfInterest?: string;
@@ -51,6 +56,8 @@ export interface User {
   /** OGCode answer sound preferences */
   ogcodeCorrectSound?: string | null;
   ogcodeWrongSound?: string | null;
+  /** App-wide sound-effect preferences (see src/lib/sound-preferences.ts). */
+  soundPreferences?: SoundPreferences | null;
 }
 
 export interface Classroom {
@@ -263,7 +270,7 @@ export interface MistakeAnalysis {
 export interface ReviewEntry {
   questionId: string;
   concept: string;
-  status: 'correct' | 'incorrect';
+  status: 'correct' | 'incorrect' | 'unattempted';
   error: string;
   explanation: string;
   howToApproach: string;

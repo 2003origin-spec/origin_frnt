@@ -19,6 +19,7 @@ import {
 import { FormattedMessage } from '@/components/origin-ai/FormattedMessage';
 import type { PracticeQuestion, User } from '@/types';
 import { submitOgcodeAnswerAction, revealOgcodeQuestionAction, toggleOgcodeQuestionLikeAction, reportOgcodeQuestionAction, ogcodePresenceHeartbeatAction, listOgcodeChallengeMutualsAction, sendOgcodeChallengeAction } from '@/server/actions/ogcode-actions';
+import { playAnswerSound as playAnswerSoundManager, resetAnswerStreak } from '@/lib/sound-manager';
 import { toast } from 'sonner';
 
 const SUBJECT_META: Record<string, { label: string; emoji: string; param: string }> = {
@@ -605,12 +606,16 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
     }, [user?.ogcodeCorrectSound, user?.ogcodeWrongSound]);
     // Stop any playing answer sound when leaving the question / unmounting.
     useEffect(() => () => { audioRef.current?.pause(); }, []);
+    // Fresh consecutive-answer streak each time the workspace mounts.
+    useEffect(() => { resetAnswerStreak(); }, []);
 
     // ── Answer sounds ──────────────────────────────────────────────────────────
     // The student's chosen sound (set in Profile) plays on submit — on by default.
     // Mobile browsers block audio not started in a user gesture, so we unlock a
     // reusable <audio> element on the first tap. A persisted mute toggle silences it.
-    const hasSoundPref = Boolean(user?.ogcodeCorrectSound || user?.ogcodeWrongSound);
+    // Sounds are a global feature now (configured in Profile → Sound Effects),
+    // so the workspace mute control is always available.
+    const hasSoundPref = true;
     const [muted, setMuted] = useState(false);
     const mutedRef = useRef(false);
     const audioUnlockedRef = useRef(false);
@@ -892,18 +897,13 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
             setShowSolution(false);
             const res: SubmitResult = await submitOgcodeAnswerAction(question.id, payload);
 
+            // Route through the shared sound manager (respects the user's
+            // per-category choices + master volume, and upgrades to the streak
+            // sound on every 3rd consecutive correct/wrong). The workspace's own
+            // mute button is an additional local override.
             const playAnswerSound = (correct: boolean) => {
-                const soundFile = correct ? correctSoundRef.current : wrongSoundRef.current;
-                if (mutedRef.current || !soundFile) return;
-                const dir = correct ? 'correct' : 'wrong';
-                const el = audioRef.current ?? new Audio();
-                audioRef.current = el;
-                el.pause();
-                el.src = `/sounds/${dir}/${soundFile}`;
-                el.currentTime = 0;
-                el.muted = false;
-                el.volume = 0.7;
-                el.play().catch(() => {});
+                if (mutedRef.current) return;
+                playAnswerSoundManager(correct);
             };
 
             // Scoring V2 mid-loop wrong answer: retries remain, so stay in the

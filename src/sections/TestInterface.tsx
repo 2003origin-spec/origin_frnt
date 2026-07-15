@@ -4,6 +4,7 @@ import { Camera, AlertTriangle, ShieldCheck, CheckCircle2, Loader2, Play, Info, 
 import type { Test, TestResult, UserAnswer } from '@/types';
 import { FormattedMessage } from '@/components/origin-ai/FormattedMessage';
 import { submitTestAction } from '@/server/actions/test-actions';
+import { playCategory } from '@/lib/sound-manager';
 import type { TestSubmissionPayload } from '@/server/assessments';
 import { useServerAnchoredTimer, type ServerAnchoredTimerSource } from '@/hooks/useServerAnchoredTimer';
 import { useAuth } from '@/context/AuthContext';
@@ -189,6 +190,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
           }, 0);
         } else {
           setTimeout(() => setShowMalpracticeWarning(true), 0);
+          playCategory('warning');
         }
         return next;
       });

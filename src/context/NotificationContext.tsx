@@ -4,6 +4,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { toast } from 'sonner';
 import type { Notification } from '@/types';
 import { apiCall } from '@/lib/api';
+import { playCategory } from '@/lib/sound-manager';
 
 type ServerNotificationRecord = {
   id: string;
@@ -98,11 +99,15 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
           // after the first hydrate (so a fresh OG challenge alerts you live).
           // The first sync just seeds the seen-set — it never toasts old rows.
           if (seededServerIdsRef.current) {
+            let sawNew = false;
             for (const n of items) {
               if (!seenServerIdsRef.current.has(n.id) && !n.read) {
                 toast(n.title, { description: n.message || undefined });
+                sawNew = true;
               }
             }
+            // One notification cue per poll batch (avoid overlapping sounds).
+            if (sawNew) playCategory('notification');
           }
           for (const n of items) seenServerIdsRef.current.add(n.id);
           seededServerIdsRef.current = true;

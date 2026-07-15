@@ -17,16 +17,26 @@ import {
   CheckCircle2,
   Sparkles,
   Target,
+  Phone,
+  Lock,
 } from 'lucide-react';
 import type { User } from '@/types';
-import { completeOnboardingAction } from '@/server/actions/profile-actions';
+import { completeOnboardingAction, completeAccountSetupAction } from '@/server/actions/profile-actions';
 
 interface OnboardingPageProps {
   user: User;
   onComplete: (data: Partial<User>) => void | Promise<void>;
 }
 
-export default function OnboardingPage({ onComplete }: OnboardingPageProps) {
+export default function OnboardingPage({ user, onComplete }: OnboardingPageProps) {
+  // Google signups (passwordSet === false) must also set a password here; OTP is
+  // skipped because Google already verified their email.
+  const needsPassword = user.passwordSet === false;
+  // Email signups now capture the mobile number on the signup form, so the
+  // account-setup step is only needed for users still missing a mobile (Google
+  // signups, legacy accounts) or who must set a password (Google signups).
+  const needsAccountSetup = needsPassword || !user.mobile;
+
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState({
     class: '',
@@ -34,27 +44,55 @@ export default function OnboardingPage({ onComplete }: OnboardingPageProps) {
     selectedCourse: '',
     subjects: [] as string[],
     referralSource: '',
+    mobile: '',
+    password: '',
+    confirmPassword: '',
   });
+  const [setupError, setSetupError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
-  const totalSteps = 4;
+  const totalSteps = needsAccountSetup ? 5 : 4;
   const progress = (step / totalSteps) * 100;
 
   const handleNext = async () => {
     if (step < totalSteps) {
       setStep(step + 1);
-    } else {
-      try {
-        const response = await completeOnboardingAction({
-          class: formData.class,
-          isDropper: formData.isDropper,
-          selectedCourse: formData.selectedCourse,
-          subjects: formData.subjects,
-          referralSource: formData.referralSource,
+      return;
+    }
+    // Final step (account setup): validate + persist mobile (+ password) first,
+    // then finalize the rest of onboarding.
+    setSetupError(null);
+    if (needsPassword && formData.password !== formData.confirmPassword) {
+      setSetupError('Passwords do not match.');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      // Only the account-setup step (mobile / password) needs this call; email
+      // signups already captured their mobile at registration.
+      if (needsAccountSetup) {
+        const setup = await completeAccountSetupAction({
+          mobile: formData.mobile,
+          password: needsPassword ? formData.password : undefined,
         });
-        await onComplete(response);
-      } catch (error) {
-        console.error('Failed to complete onboarding:', error);
+        if (!setup.ok) {
+          setSetupError(setup.error ?? 'Could not save your details.');
+          return;
+        }
       }
+      const response = await completeOnboardingAction({
+        class: formData.class,
+        isDropper: formData.isDropper,
+        selectedCourse: formData.selectedCourse,
+        subjects: formData.subjects,
+        referralSource: formData.referralSource,
+      });
+      await onComplete(response);
+    } catch (error) {
+      console.error('Failed to complete onboarding:', error);
+      setSetupError('Something went wrong. Please try again.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -70,6 +108,11 @@ export default function OnboardingPage({ onComplete }: OnboardingPageProps) {
       case 2: return formData.selectedCourse !== '';
       case 3: return formData.subjects.length > 0;
       case 4: return formData.referralSource !== '';
+      case 5: {
+        const mobileOk = /^[6-9]\d{9}$/.test(formData.mobile.replace(/\D/g, '').slice(-10));
+        const pwOk = !needsPassword || (formData.password.length >= 8 && formData.confirmPassword.length >= 8);
+        return mobileOk && pwOk;
+      }
       default: return false;
     }
   };
@@ -256,6 +299,72 @@ export default function OnboardingPage({ onComplete }: OnboardingPageProps) {
           </div>
         );
 
+      case 5:
+        return (
+          <div className="space-y-6 animate-fade-in">
+            <div className="text-center">
+              <div className="w-16 h-16 mx-auto rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
+                <Phone className="w-8 h-8 text-primary" />
+              </div>
+              <h2 className="text-2xl font-black text-foreground mb-2">Almost there!</h2>
+              <p className="text-sm text-muted-foreground">
+                {needsPassword ? 'Add your mobile number and set a password to secure your account.' : 'Add your mobile number to finish setting up your account.'}
+              </p>
+            </div>
+
+            <div className="space-y-4 max-w-sm mx-auto">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Mobile Number</Label>
+                <div className="relative">
+                  <Phone className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    type="tel"
+                    inputMode="numeric"
+                    maxLength={10}
+                    value={formData.mobile}
+                    onChange={(e) => { setFormData({ ...formData, mobile: e.target.value.replace(/\D/g, '').slice(0, 10) }); setSetupError(null); }}
+                    placeholder="10-digit mobile number"
+                    className="w-full neu-inset rounded-xl bg-transparent py-3 pl-10 pr-3 text-sm outline-none focus:ring-2 focus:ring-primary/40"
+                  />
+                </div>
+              </div>
+
+              {needsPassword && (
+                <>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Set Password</Label>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <input
+                        type="password"
+                        value={formData.password}
+                        onChange={(e) => { setFormData({ ...formData, password: e.target.value }); setSetupError(null); }}
+                        placeholder="Min 8 characters"
+                        className="w-full neu-inset rounded-xl bg-transparent py-3 pl-10 pr-3 text-sm outline-none focus:ring-2 focus:ring-primary/40"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-black uppercase tracking-widest text-muted-foreground">Confirm Password</Label>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <input
+                        type="password"
+                        value={formData.confirmPassword}
+                        onChange={(e) => { setFormData({ ...formData, confirmPassword: e.target.value }); setSetupError(null); }}
+                        placeholder="Re-enter password"
+                        className="w-full neu-inset rounded-xl bg-transparent py-3 pl-10 pr-3 text-sm outline-none focus:ring-2 focus:ring-primary/40"
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {setupError && <p className="text-xs font-bold text-rose-500 text-center">{setupError}</p>}
+            </div>
+          </div>
+        );
+
       default:
         return null;
     }
@@ -308,11 +417,11 @@ export default function OnboardingPage({ onComplete }: OnboardingPageProps) {
           <button
             type="button"
             onClick={handleNext}
-            disabled={!isStepValid()}
+            disabled={!isStepValid() || submitting}
             className="flex-1 h-12 flex items-center justify-center gap-2 bg-primary text-primary-foreground rounded-xl font-black text-sm shadow-[3px_3px_8px_hsl(var(--neu-shadow))] hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
           >
             {step === totalSteps ? (
-              <>Complete Setup<Sparkles className="w-4 h-4" /></>
+              <>{submitting ? 'Saving…' : 'Complete Setup'}<Sparkles className="w-4 h-4" /></>
             ) : (
               <>Continue<ArrowRight className="w-4 h-4" /></>
             )}

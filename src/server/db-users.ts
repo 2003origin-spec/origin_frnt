@@ -102,8 +102,16 @@ export async function ensureUserSchema(): Promise<void> {
           -- OGCode answer sound preferences (filename under /sounds/correct|wrong/).
           ALTER TABLE origin_users ADD COLUMN IF NOT EXISTS ogcode_correct_sound TEXT;
           ALTER TABLE origin_users ADD COLUMN IF NOT EXISTS ogcode_wrong_sound TEXT;
+          -- App-wide sound-effect preferences (see src/lib/sound-preferences.ts).
+          ALTER TABLE origin_users ADD COLUMN IF NOT EXISTS sound_preferences JSONB;
           -- Admin Control Plane: distinguishes the single main admin from sub-admins.
           ALTER TABLE origin_users ADD COLUMN IF NOT EXISTS is_main_admin BOOLEAN NOT NULL DEFAULT FALSE;
+          -- First-time onboarding: unique student mobile + whether a password was set
+          -- (Google signups start false and set it during onboarding).
+          ALTER TABLE origin_users ADD COLUMN IF NOT EXISTS mobile TEXT;
+          ALTER TABLE origin_users ADD COLUMN IF NOT EXISTS password_set BOOLEAN NOT NULL DEFAULT TRUE;
+          -- Unique only among rows that have a mobile (existing null rows don't collide).
+          CREATE UNIQUE INDEX IF NOT EXISTS idx_origin_users_mobile ON origin_users (mobile) WHERE mobile IS NOT NULL;
 
           CREATE TABLE IF NOT EXISTS origin_auth_sessions (
             id                        TEXT PRIMARY KEY,
@@ -249,6 +257,8 @@ function rowToUser(row: any): StoredUser {
     name: row.name,
     email: row.email,
     password: row.password_hash,
+    passwordSet: row.password_set === undefined || row.password_set === null ? true : Boolean(row.password_set),
+    mobile: row.mobile ?? null,
     role: row.role,
     studentClass: row.student_class ?? null,
     fieldOfInterest: row.field_of_interest ?? null,
@@ -274,6 +284,7 @@ function rowToUser(row: any): StoredUser {
     profilePrivate: Boolean(row.profile_private),
     ogcodeCorrectSound: row.ogcode_correct_sound ?? null,
     ogcodeWrongSound: row.ogcode_wrong_sound ?? null,
+    soundPreferences: row.sound_preferences ?? null,
   };
 }
 
@@ -327,6 +338,16 @@ export async function dbFindUserById(id: string): Promise<StoredUser | null> {
   return result.rows[0] ? rowToUser(result.rows[0]) : null;
 }
 
+/** True if any OTHER user already owns this mobile number (uniqueness check). */
+export async function dbMobileInUse(mobile: string, excludeUserId?: string): Promise<boolean> {
+  await ensureUserSchema();
+  const result = await pool().query(
+    "SELECT id FROM origin_users WHERE mobile = $1 AND id <> COALESCE($2, '') LIMIT 1",
+    [mobile, excludeUserId ?? null],
+  );
+  return result.rows.length > 0;
+}
+
 export async function dbListUsers(): Promise<StoredUser[]> {
   await ensureUserSchema();
   const result = await pool().query("SELECT * FROM origin_users ORDER BY joined_at ASC");
@@ -349,8 +370,8 @@ export async function dbCreateUser(data: DbCreateUserInput): Promise<StoredUser>
         premium_expiry, is_onboarded, selected_course, is_dropper,
         years_of_experience, subjects, student_capacity, location,
         voice_minutes_used_today, tokens_used_today, usage_reset_at,
-        username, profile_private)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)`,
+        username, profile_private, password_set, mobile)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28)`,
     [
       user.id, user.name, user.email, user.password, user.role,
       user.studentClass, user.fieldOfInterest, user.referralSource, user.avatar,
@@ -358,7 +379,7 @@ export async function dbCreateUser(data: DbCreateUserInput): Promise<StoredUser>
       user.premiumExpiry, user.isOnboarded, user.selectedCourse, user.isDropper,
       user.yearsOfExperience, user.subjects, user.studentCapacity, user.location,
       user.voiceMinutesUsedToday, user.tokensUsedToday, user.usageResetAt,
-      user.username, user.profilePrivate,
+      user.username, user.profilePrivate, user.passwordSet, user.mobile,
     ],
   );
   return user;
@@ -383,12 +404,16 @@ export async function dbUpdateUser(id: string, patch: Partial<StoredUser>): Prom
     usageResetAt: "usage_reset_at", authTokenVersion: "auth_token_version",
     username: "username", profilePrivate: "profile_private",
     ogcodeCorrectSound: "ogcode_correct_sound", ogcodeWrongSound: "ogcode_wrong_sound",
+    passwordSet: "password_set", mobile: "mobile",
+    soundPreferences: "sound_preferences",
   };
 
   for (const [key, col] of Object.entries(mapping)) {
     if (key in patch) {
       fields.push(`${col} = $${i++}`);
-      values.push((patch as Record<string, unknown>)[key]);
+      const val = (patch as Record<string, unknown>)[key];
+      // sound_preferences is JSONB — serialize the object explicitly.
+      values.push(key === "soundPreferences" && val != null ? JSON.stringify(val) : val);
     }
   }
 
@@ -725,6 +750,7 @@ export async function dbLoginUser(email: string, password: string, role: string)
 export async function dbRegisterUser(data: {
   name: string; email: string; password: string; role: string;
   studentClass?: string; fieldOfInterest?: string; referralSource?: string;
+  mobile?: string | null;
 }): Promise<{ user: StoredUser; session: StoredAuthSession }> {
   const existing = await dbFindUserByEmail(data.email, data.role);
   if (existing) throw new Error("An account with this email already exists for this role.");
@@ -734,6 +760,7 @@ export async function dbRegisterUser(data: {
   const user = await dbCreateUser({
     id, name: data.name, email: data.email, password: hashed,
     role: data.role as StoredUser["role"],
+    mobile: data.mobile ?? null,
     studentClass: data.studentClass ?? null, fieldOfInterest: data.fieldOfInterest ?? null,
     referralSource: data.referralSource ?? null, avatar: null, streak: 0, totalStudyTime: 0,
     joinedAt: new Date().toISOString(), isPremium: false, premiumExpiry: null,

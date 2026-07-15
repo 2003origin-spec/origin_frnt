@@ -114,7 +114,7 @@ export const getPointsSummaryForRender = unstable_cache(
 export const getProfileStatsForRender = unstable_cache(
   async (userId: string) => {
     const { store, user } = await requireStoredUser(userId);
-    return buildUserStatsSnapshot(store, user);
+    return await buildUserStatsSnapshot(store, user);
   },
   ["rl:profile-stats"],
   { revalidate: 30, tags: ["profile"] },

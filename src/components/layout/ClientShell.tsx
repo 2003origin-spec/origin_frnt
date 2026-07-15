@@ -5,6 +5,7 @@ import { AnimatePresence } from 'framer-motion';
 import dynamic from 'next/dynamic';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
+import { useGlobalPresence } from '@/features/presence/useGlobalPresence';
 import type { ViewState } from '@/types';
 import Navbar from './Navbar';
 import { useTheme } from 'next-themes';
@@ -56,6 +57,9 @@ function resolveRoute(view: string) {
 
 function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnabled, coverActive, launchAt }: { children: React.ReactNode; connectEnabled?: boolean; premiumEnabled?: boolean; socialEnabled?: boolean; coverActive?: boolean; launchAt?: string | null }) {
   const { user, logout, isNavigationLocked, refreshUser } = useAuth();
+  // Register this screen in the global "active screens" presence set while
+  // signed in — feeds the landing "solving right now" counter.
+  useGlobalPresence(!!user);
   const aiAccess = useAiAccess();
   const pathname = usePathname();
   const router = useRouter();
@@ -279,7 +283,14 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnab
               "flex-1 flex flex-col relative z-10 overflow-x-hidden custom-scrollbar",
               isFullViewportApp ? "overflow-hidden" : "overflow-y-auto",
               "transition-all duration-300 min-w-[320px]",
-              mounted && showNavbar ? (navExpanded ? 'md:pl-[150px]' : 'md:pl-[72px]') + ' pt-14 md:pt-0 pb-14 md:pb-0' : ''
+              mounted && showNavbar
+                ? (navExpanded ? 'md:pl-[150px]' : 'md:pl-[72px]') + ' pt-14 md:pt-0 ' +
+                  // Scrollable pages get generous bottom clearance so the last
+                  // element scrolls clear of the fixed mobile tab bar. Full-viewport
+                  // apps (chat/test) keep a tight clearance so their bottom controls
+                  // sit just above the bar without an awkward gap.
+                  (isFullViewportApp ? 'pb-nav-tight' : 'pb-mobile-nav')
+                : ''
             )}
           >
             <div className={cn(

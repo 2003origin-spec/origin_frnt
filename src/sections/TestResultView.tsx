@@ -19,7 +19,8 @@ import {
   ArrowRight,
   XCircle,
   FileText,
-  BookOpen
+  BookOpen,
+  MinusCircle
 } from 'lucide-react';
 import {
   PieChart,
@@ -36,6 +37,7 @@ import {
 import { FormattedMessage } from '@/components/origin-ai/FormattedMessage';
 import { DegradedBanner } from '@/components/DegradedBanner';
 import { apiCall } from '@/lib/api';
+import { playCategory } from '@/lib/sound-manager';
 import { buildSubjectTimeBreakdown } from '@/lib/tests/time-stats';
 import type { ReviewEntry, TestResult } from '@/types';
 
@@ -58,7 +60,7 @@ export default function TestResultView({
 }: TestResultViewProps) {
   const [result, setResult] = useState<TestResult>(initialResult);
   const [selectedSubject, setSelectedSubject] = useState<'overall' | string>('overall');
-  const [selectedReviewTab, setSelectedReviewTab] = useState<'analysis' | 'mistakes' | 'correct' | 'recommendations'>('analysis');
+  const [selectedReviewTab, setSelectedReviewTab] = useState<'analysis' | 'mistakes' | 'correct' | 'skipped' | 'recommendations'>('analysis');
   const [selectedReviewEntry, setSelectedReviewEntry] = useState(0);
   // AI Feature Toggle epic — the "Explain with Ori" action needs the Explainer.
   const { aiExplainer } = useAiAccess();
@@ -68,6 +70,17 @@ export default function TestResultView({
   useEffect(() => {
     setResult(initialResult);
   }, [initialResult]);
+
+  // Celebrate a full score / commiserate a low score — once per result.
+  const scoredSoundForRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!result.id || scoredSoundForRef.current === result.id) return;
+    scoredSoundForRef.current = result.id;
+    const pct = typeof result.percentage === 'number' ? result.percentage : null;
+    if (pct === null) return;
+    if (pct >= 100) playCategory('fullScore');
+    else if (pct < 40) playCategory('badScore');
+  }, [result.id, result.percentage]);
 
   useEffect(() => {
     if (analysisStatus !== 'pending' || !result.id) {
@@ -120,7 +133,17 @@ export default function TestResultView({
     [reviewEntries],
   );
 
-  const activeReviewEntries = selectedReviewTab === 'correct' ? correctEntries : mistakeEntries;
+  const skippedEntries = useMemo(
+    () => reviewEntries.filter((entry) => entry.status === 'unattempted'),
+    [reviewEntries],
+  );
+
+  const activeReviewEntries =
+    selectedReviewTab === 'correct'
+      ? correctEntries
+      : selectedReviewTab === 'skipped'
+        ? skippedEntries
+        : mistakeEntries;
   const selectedReviewItem = activeReviewEntries[selectedReviewEntry] ?? null;
 
   const handleViewSolution = () => {
@@ -628,7 +651,7 @@ export default function TestResultView({
           ref={reviewSectionRef}
           value={selectedReviewTab}
           onValueChange={(value) => {
-            setSelectedReviewTab(value as 'analysis' | 'mistakes' | 'correct' | 'recommendations');
+            setSelectedReviewTab(value as 'analysis' | 'mistakes' | 'correct' | 'skipped' | 'recommendations');
             setSelectedReviewEntry(0);
           }}
           className="relative"
@@ -645,6 +668,10 @@ export default function TestResultView({
             <TabsTrigger value="correct" className="flex-1 shrink-0 whitespace-nowrap data-[state=active]:bg-primary data-[state=active]:text-white rounded-xl transition-all font-bold py-3">
               <CheckCircle2 className="w-4 h-4 mr-2" />
               Correct Log
+            </TabsTrigger>
+            <TabsTrigger value="skipped" className="flex-1 shrink-0 whitespace-nowrap data-[state=active]:bg-primary data-[state=active]:text-white rounded-xl transition-all font-bold py-3">
+              <MinusCircle className="w-4 h-4 mr-2" />
+              Skip Log
             </TabsTrigger>
             <TabsTrigger value="recommendations" className="flex-1 shrink-0 whitespace-nowrap data-[state=active]:bg-primary data-[state=active]:text-white rounded-xl transition-all font-bold py-3">
               <Target className="w-4 h-4 mr-2" />
@@ -876,6 +903,88 @@ export default function TestResultView({
                     <div className="h-full flex flex-col items-center justify-center text-center space-y-4 opacity-50">
                       <CheckCircle2 className="w-16 h-16 text-emerald-400" />
                       <p className="text-lg font-bold text-foreground">Select a correct answer to review how it was solved</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="skipped">
+            <div className="grid md:grid-cols-3 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-1 space-y-3">
+                {skippedEntries.length > 0 ? (
+                  skippedEntries.map((skipped, index) => (
+                    <button
+                      key={index}
+                      onClick={() => setSelectedReviewEntry(index)}
+                      className={`w-full p-5 rounded-2xl text-left transition-all border group relative overflow-hidden ${selectedReviewEntry === index
+                        ? 'bg-amber-500/10 border-amber-500/50 shadow-lg shadow-amber-500/10'
+                        : 'bg-card/40 backdrop-blur-md border-border/5 hover:bg-amber-500/5'
+                        }`}
+                    >
+                      <div className="flex items-center gap-4 relative z-10">
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${selectedReviewEntry === index ? 'bg-amber-500 text-white' : 'bg-amber-500/10 text-amber-500'}`}>
+                          <MinusCircle className="w-5 h-5" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className={`font-black uppercase tracking-tighter text-sm ${selectedReviewEntry === index ? 'text-amber-500' : 'text-foreground'}`}>
+                            Question {index + 1}
+                          </p>
+                          <p className="text-xs text-muted-foreground font-bold truncate">{skipped.concept}</p>
+                        </div>
+                      </div>
+                      {selectedReviewEntry === index && <div className="absolute right-0 top-0 bottom-0 w-1 bg-amber-500" />}
+                    </button>
+                  ))
+                ) : (
+                  <div className="p-8 text-center bg-card/40 border border-border/5 rounded-2xl">
+                    <CheckCircle2 className="w-12 h-12 text-primary mx-auto mb-4 opacity-20" />
+                    <p className="text-sm text-muted-foreground font-bold uppercase tracking-widest">You attempted every question — nothing skipped!</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Skipped Detail */}
+              <Card className="lg:col-span-2 neu-raised border-0 rounded-2xl overflow-hidden group">
+                <CardContent className="p-6 sm:p-8">
+                  {selectedReviewItem ? (
+                    <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
+                      <div>
+                        <Badge className="bg-amber-500/10 text-amber-500 border-amber-500/20 px-4 py-1.5 rounded-full font-black uppercase tracking-widest text-[10px] mb-4">
+                          <MinusCircle className="w-3 h-3 mr-2" />
+                          Skipped — Not attempted
+                        </Badge>
+                        <h3 className="text-3xl font-black text-foreground tracking-tight leading-tight">
+                          {selectedReviewItem.concept}
+                        </h3>
+                      </div>
+
+                      <div className="bg-foreground/5 rounded-3xl p-8 border border-border/40 relative">
+                        <div className="absolute -left-1 top-8 bottom-8 w-1 bg-amber-500 rounded-full opacity-50" />
+                        <h4 className="font-black text-foreground text-xs uppercase tracking-[0.2em] mb-4 flex items-center gap-3">
+                          <BookOpen className="w-4 h-4 text-amber-500" />
+                          Solution
+                        </h4>
+                        <div className="text-foreground/80 leading-relaxed font-medium">
+                          <FormattedMessage content={selectedReviewItem.explanation} />
+                        </div>
+                      </div>
+
+                      <div className="bg-amber-500/5 rounded-3xl p-8 border border-amber-500/10 relative">
+                        <h4 className="font-black text-foreground text-xs uppercase tracking-[0.2em] mb-4 flex items-center gap-3">
+                          <Target className="w-4 h-4 text-amber-500" />
+                          Next time
+                        </h4>
+                        <div className="text-foreground/80 leading-relaxed font-medium">
+                          <FormattedMessage content={selectedReviewItem.howToApproach} />
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="h-full flex flex-col items-center justify-center text-center space-y-4 opacity-50">
+                      <Image src="/ori2d/ori-thinking.png" alt="" width={80} height={80} draggable={false} className="object-contain" />
+                      <p className="text-lg font-bold text-foreground">Select a skipped question to review its solution</p>
                     </div>
                   )}
                 </CardContent>

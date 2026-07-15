@@ -5,6 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { toast } from 'sonner';
 import type { User, StreakData, Task } from '@/types';
 import { clearOriginAiBrowserSession } from '@/features/origin-ai/session';
+import { setSoundPreferences, playCategory } from '@/lib/sound-manager';
 import { AUTH_EXPIRED_EVENT, attemptTokenRefresh } from '@/lib/api';
 import {
   addTaskAction,
@@ -34,7 +35,7 @@ interface AuthContextType {
   tasksLoading: boolean;
   login: (email: string, password: string, role?: 'student' | 'teacher' | 'admin' | null) => Promise<void>;
   loginWithOtp: (email: string, role?: 'student' | 'teacher' | 'admin' | null) => Promise<void>;
-  register: (name: string, email: string, password: string, role?: 'student' | 'teacher' | 'admin' | null) => Promise<void>;
+  register: (name: string, email: string, password: string, mobile: string, role?: 'student' | 'teacher' | 'admin' | null) => Promise<void>;
   googleLogin: (credential: string, role?: 'student' | 'teacher' | 'admin' | null) => Promise<void>;
   logout: () => void;
   refreshUser: () => Promise<void>;
@@ -59,7 +60,7 @@ const EMPTY_STREAK: StreakData = {
 };
 
 const GUEST_ONLY_PATHS = ['/', '/auth', '/role-selection'];
-const SHARED_PUBLIC_PATHS = ['/terms-and-conditions', '/privacy-policy', '/childrens-policy', '/faq'];
+const SHARED_PUBLIC_PATHS = ['/terms-and-conditions', '/privacy-policy', '/childrens-policy', '/faq', '/founders'];
 
 function normalizeRole(role: User['role'] | undefined): 'student' | 'teacher' | 'admin' | null {
   return role === 'student' || role === 'teacher' || role === 'admin' ? role : null;
@@ -96,6 +97,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
   const authExpiredRecovery = useRef<Promise<void> | null>(null);
   const router = useRouter();
   const pathname = usePathname();
+
+  // Keep the sound-effects manager in sync with the active user's preferences.
+  useEffect(() => {
+    setSoundPreferences(user?.soundPreferences ?? null);
+  }, [user?.soundPreferences]);
 
   const applyUserData = useCallback((userData: User) => {
     lastSessionRefreshAt.current = Date.now();
@@ -355,6 +361,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
 
       setAuthRecoveryBlocked(false);
       setUser(result.user);
+      // Load this user's sound prefs and play the sign-in cue.
+      setSoundPreferences(result.user.soundPreferences ?? null);
+      playCategory('signIn');
       if (result.user.streakData) setStreakData(result.user.streakData);
       setUserRole(normalizeRole(result.user.role));
 
@@ -395,6 +404,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
 
       setAuthRecoveryBlocked(false);
       setUser(result.user);
+      // Load this user's sound prefs and play the sign-in cue.
+      setSoundPreferences(result.user.soundPreferences ?? null);
+      playCategory('signIn');
       if (result.user.streakData) setStreakData(result.user.streakData);
       setUserRole(normalizeRole(result.user.role));
 
@@ -416,11 +428,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
     }
   };
 
-  const register = async (name: string, email: string, password: string, role?: 'student' | 'teacher' | 'admin' | null) => {
+  const register = async (name: string, email: string, password: string, mobile: string, role?: 'student' | 'teacher' | 'admin' | null) => {
     setIsLoading(true);
     setAuthError(null);
     try {
-      const result = await registerAction({ name, email, password, role: role ?? null });
+      const result = await registerAction({ name, email, password, mobile, role: role ?? null });
       if (!result.ok) {
         setAuthError(result.message);
         toast.error(result.message);
@@ -431,6 +443,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
 
       setAuthRecoveryBlocked(false);
       setUser(result.user);
+      // Load this user's sound prefs and play the sign-in cue.
+      setSoundPreferences(result.user.soundPreferences ?? null);
+      playCategory('signIn');
       if (result.user.streakData) setStreakData(result.user.streakData);
       setUserRole(normalizeRole(result.user.role));
 
@@ -509,6 +524,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
 
       setAuthRecoveryBlocked(false);
       setUser(result.user);
+      // Load this user's sound prefs and play the sign-in cue.
+      setSoundPreferences(result.user.soundPreferences ?? null);
+      playCategory('signIn');
       if (result.user.streakData) setStreakData(result.user.streakData);
       setUserRole(normalizeRole(result.user.role));
 

@@ -186,8 +186,8 @@ function getRecentActivity(store: AppStore, userId: string, limit = 8): RecentAc
     .slice(0, limit);
 }
 
-function buildStats(store: AppStore, user: StoredUser): PublicProfileStats {
-  const snapshot = buildUserStatsSnapshot(store, user);
+async function buildStats(store: AppStore, user: StoredUser): Promise<PublicProfileStats> {
+  const snapshot = await buildUserStatsSnapshot(store, user);
   const streak = getOrCreateStreak(store, user.id);
   const contributionData = buildContributionData(store, user.id);
   const totalSolved = contributionData.reduce((sum, entry) => sum + entry.count, 0);
@@ -242,7 +242,7 @@ export async function getPublicProfile(
     followerCount: counts.followerCount,
     followingCount: counts.followingCount,
     visible,
-    stats: visible ? buildStats(store, target) : null,
+    stats: visible ? await buildStats(store, target) : null,
   };
 }
 
