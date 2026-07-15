@@ -14,7 +14,7 @@ import {
   createCsrfToken,
   REFRESH_COOKIE_NAME,
 } from "@/server/auth-cookies";
-import { authLimiter, generalLimiter, checkRateLimit } from "@/lib/rate-limit";
+import { authLimiter, generalLimiter, refreshLimiter, checkRateLimit } from "@/lib/rate-limit";
 
 type RouteContext = {
   params: Promise<{ slug?: string[] }>;
@@ -73,11 +73,17 @@ async function dispatch(method: string, request: NextRequest, context: RouteCont
 
   // Refresh tokens are high-entropy HttpOnly cookies. Do not put routine
   // access-token renewal behind the tight login/register limiter; otherwise
-  // bursts across tabs can look like expired sessions on the client.
-  if (!isRefreshEndpoint && isAuthEndpoint) {
+  // bursts across tabs can look like expired sessions on the client. It still
+  // gets a generous per-IP flood cap (refresh does a session DB lookup and is
+  // public + CSRF-exempt). Incident mode is not honored here — a lockdown must
+  // not lock users out of session renewal.
+  if (isRefreshEndpoint) {
+    const limited = await checkRateLimit(refreshLimiter, `ip:${ip}`, { honorIncidentMode: false });
+    if (limited) return limited;
+  } else if (isAuthEndpoint) {
     const limited = await checkRateLimit(authLimiter, ip);
     if (limited) return limited;
-  } else if (!isRefreshEndpoint) {
+  } else {
     const userId = request.headers.get("x-origin-user-id") ?? ip;
     const limited = await checkRateLimit(generalLimiter, userId);
     if (limited) return limited;

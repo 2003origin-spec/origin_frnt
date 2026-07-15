@@ -25,6 +25,21 @@ export function readRequiredServiceToken(tokenName: ServiceTokenName): string {
   return token;
 }
 
+/**
+ * Constant-time string comparison. Folds the length difference in and always
+ * scans the full span so an early byte mismatch can't shorten the loop. Written
+ * without `node:crypto` so it is safe in the Edge middleware bundle (which
+ * imports this module) as well as Node route handlers.
+ */
+function timingSafeStringEqual(a: string, b: string): boolean {
+  const len = Math.max(a.length, b.length);
+  let diff = a.length ^ b.length;
+  for (let i = 0; i < len; i += 1) {
+    diff |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
+  }
+  return diff === 0;
+}
+
 export function isBearerTokenAuthorized(request: Request, tokenName: ServiceTokenName): boolean {
   let expected: string;
   try {
@@ -32,5 +47,9 @@ export function isBearerTokenAuthorized(request: Request, tokenName: ServiceToke
   } catch {
     return false;
   }
-  return request.headers.get("authorization") === `Bearer ${expected}`;
+  const provided = request.headers.get("authorization");
+  if (!provided) return false;
+  // Constant-time so a network timing side-channel can't recover the cron /
+  // service / payment-webhook bearer token byte-by-byte.
+  return timingSafeStringEqual(provided, `Bearer ${expected}`);
 }
