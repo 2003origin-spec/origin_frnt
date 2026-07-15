@@ -270,7 +270,14 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnab
               "flex-1 flex flex-col relative z-10 overflow-x-hidden custom-scrollbar",
               isFullViewportApp ? "overflow-hidden" : "overflow-y-auto",
               "transition-all duration-300 min-w-[320px]",
-              mounted && showNavbar ? (navExpanded ? 'md:pl-[150px]' : 'md:pl-[72px]') + ' pt-14 md:pt-0 pb-14 md:pb-0' : ''
+              mounted && showNavbar
+                ? (navExpanded ? 'md:pl-[150px]' : 'md:pl-[72px]') + ' pt-14 md:pt-0 ' +
+                  // Scrollable pages get generous bottom clearance so the last
+                  // element scrolls clear of the fixed mobile tab bar. Full-viewport
+                  // apps (chat/test) keep a tight clearance so their bottom controls
+                  // sit just above the bar without an awkward gap.
+                  (isFullViewportApp ? 'pb-nav-tight' : 'pb-mobile-nav')
+                : ''
             )}
           >
             <div className={cn(
