@@ -126,15 +126,22 @@ export function resetAnswerStreak(): void {
   wrongStreak = 0;
 }
 
-// Independent element so a settings preview never interrupts gameplay audio.
+// One reused element for settings previews. Reusing a single element (rather
+// than a fresh `new Audio()` per call) is far more reliable — iOS Safari
+// unlocks audio per-element on first gesture, so a brand-new element created on
+// a later click can silently fail. A separate element from the gameplay one so
+// a preview never interrupts an in-progress answer sound.
 let previewEl: HTMLAudioElement | null = null;
 
-/** Play an explicit source for the settings preview button. */
+/** Play an explicit source for the settings preview button (user-gesture). */
 export function previewSound(src: string, volume = 0.7): void {
   if (typeof window === 'undefined') return;
   try {
-    previewEl?.pause();
-    previewEl = new Audio(src);
+    if (!previewEl) previewEl = new Audio();
+    previewEl.pause();
+    previewEl.muted = false;
+    previewEl.src = src;
+    previewEl.currentTime = 0;
     previewEl.volume = Math.min(1, Math.max(0, volume));
     void previewEl.play().catch(() => {});
   } catch {

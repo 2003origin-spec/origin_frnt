@@ -16,6 +16,10 @@
 
 import React, { useMemo } from 'react';
 import katex from 'katex';
+// mhchem — registers \ce{…} (chemical equations) and \pu{…} (physical units) on
+// the shared KaTeX singleton. ~95% of chemistry questions use \ce, which cannot
+// render without this side-effect import. Loads once for the whole app.
+import 'katex/contrib/mhchem';
 import { cn } from '@/lib/utils';
 import { repairMathTex, decodeEscapedWhitespace, collapseDollarRuns } from '@/lib/latex-sanitize';
 

@@ -25,7 +25,6 @@ import {
     Building2,
     FileText,
     Target,
-    Sparkles,
     UsersRound,
     ChevronRight,
     ChevronLeft,
@@ -696,10 +695,10 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                             { label: 'Home', icon: LayoutGrid, view: 'dashboard' as ViewState },
                             { label: 'Rooms', icon: UsersRound, view: 'study-rooms' as ViewState },
                             { label: 'OGCode', icon: Code, view: 'ogcode' as ViewState },
-                            { label: 'AI', icon: Sparkles, view: 'doubt-solver' as ViewState, iconSrc: '/iconsax/Ai-Icon.png' },
+                            { label: 'Social', icon: UserPlus, view: 'social' as ViewState },
                             { label: 'More', icon: Menu, view: null },
                         ] as { label: string; icon: typeof LayoutGrid; view: ViewState | null; iconSrc?: string }[])
-                          .filter((item) => aiExplainer || item.view !== 'doubt-solver')
+                          .filter((item) => socialEnabled || item.view !== 'social')
                           .map((item) => {
                             const active = item.view ? isActive({ label: item.label, view: item.view }) : false;
                             const Icon = item.icon;

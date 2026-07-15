@@ -917,7 +917,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
       )}
 
       {/* 1. Top Header */}
-      <header className="flex flex-col sm:flex-row items-center justify-between px-3 sm:px-6 py-2 border-b border-gray-300 gap-3 sm:gap-0">
+      <header className="shrink-0 flex flex-col sm:flex-row items-center justify-between px-3 sm:px-6 py-2 border-b border-gray-300 gap-3 sm:gap-0">
         <div className="flex items-center justify-between w-full sm:w-auto gap-3">
           <div className="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center cursor-pointer" onClick={() => { stopCamera(); onExit(); }}>
             <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center">
@@ -972,7 +972,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
       </header>
 
       {/* 2. Section/Subject Header */}
-      <div className="bg-[#f08c32] px-3 sm:px-6 py-0 flex justify-between items-center text-[10px] sm:text-xs overflow-visible">
+      <div className="shrink-0 bg-[#f08c32] px-3 sm:px-6 py-0 flex justify-between items-center text-[10px] sm:text-xs overflow-visible">
         <div className="flex gap-0 items-center h-[40px]">
           <div className="flex bg-primary text-white px-4 h-full items-center font-bold text-xs border-r border-white/20 whitespace-nowrap">
             SECTION
@@ -1044,10 +1044,16 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
       </div>
 
       {/* Main Layout */}
-      <div className="flex flex-col lg:flex-row flex-1 overflow-hidden" style={{ height: 'calc(100vh - 120px)' }}>
+      {/* Fill the remaining space under the header within the h-dvh shell.
+          A fixed `height: calc(100vh - 120px)` broke mobile: 100vh is the large
+          viewport (behind the address bar), so the box overflowed the visible
+          screen and — being overflow-hidden — cut off the palette + Save & Next
+          with nothing scrollable. flex-1 + min-h-0 respects the real (dynamic)
+          viewport on every device and lets the inner panels scroll. */}
+      <div className="flex flex-col lg:flex-row flex-1 min-h-0 overflow-hidden">
 
         {/* Left Area - Question Content */}
-        <div className="flex-1 flex flex-col border-r border-gray-300 relative">
+        <div className="flex-1 min-h-0 min-w-0 flex flex-col border-r border-gray-300 relative">
 
           {/* Question Header */}
           <div className="flex justify-between items-center px-4 py-2 border-b border-gray-300 font-bold text-base sm:text-lg border-t-4 border-t-white bg-slate-50 text-gray-900 sticky top-0 z-20">
@@ -1240,7 +1246,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
           </div>
 
           {/* Action Buttons */}
-          <div className="border-t border-gray-300 px-3 sm:px-4 py-2 sm:py-3 flex justify-between items-center bg-slate-50 shadow-sm">
+          <div className="shrink-0 border-t border-gray-300 px-3 sm:px-4 py-2 sm:py-3 flex flex-wrap gap-2 justify-between items-center bg-slate-50 shadow-sm">
             <div className="flex gap-2">
               <button onClick={markForReviewAndNext} className="bg-primary text-white px-2 sm:px-4 py-2 sm:py-2.5 font-bold text-[10px] sm:text-xs rounded-sm hover:opacity-90 uppercase flex flex-col items-center leading-tight">
                 MARK FOR REVIEW & NEXT
@@ -1257,8 +1263,9 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
           </div>
         </div>
 
-        {/* Right Area - Palette */}
-        <div className="w-full lg:w-[350px] bg-slate-50 flex flex-col pt-4 border-t lg:border-t-0 lg:border-l border-gray-300 max-h-[300px] lg:max-h-none">
+        {/* Right Area - Palette (bounded + internally scrollable on mobile so it
+            never steals the question's room; full-height sidebar on desktop). */}
+        <div className="w-full lg:w-[350px] shrink-0 bg-slate-50 flex flex-col pt-4 border-t lg:border-t-0 lg:border-l border-gray-300 max-h-[38vh] lg:max-h-none">
 
           {/* Legend */}
           <div className="px-4 pb-4 border-b border-gray-200">

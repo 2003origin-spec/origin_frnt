@@ -750,7 +750,7 @@ export async function dbLoginUser(email: string, password: string, role: string)
 export async function dbRegisterUser(data: {
   name: string; email: string; password: string; role: string;
   studentClass?: string; fieldOfInterest?: string; referralSource?: string;
-  mobile?: string | null;
+  mobile?: string | null; location?: string | null;
 }): Promise<{ user: StoredUser; session: StoredAuthSession }> {
   const existing = await dbFindUserByEmail(data.email, data.role);
   if (existing) throw new Error("An account with this email already exists for this role.");
@@ -761,6 +761,7 @@ export async function dbRegisterUser(data: {
     id, name: data.name, email: data.email, password: hashed,
     role: data.role as StoredUser["role"],
     mobile: data.mobile ?? null,
+    location: data.location ?? null,
     studentClass: data.studentClass ?? null, fieldOfInterest: data.fieldOfInterest ?? null,
     referralSource: data.referralSource ?? null, avatar: null, streak: 0, totalStudyTime: 0,
     joinedAt: new Date().toISOString(), isPremium: false, premiumExpiry: null,

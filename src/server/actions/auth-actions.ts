@@ -195,6 +195,7 @@ export async function registerAction(input: {
   email: string;
   password: string;
   mobile?: string;
+  state?: string;
   role?: 'student' | 'teacher' | 'admin' | null;
 }): Promise<AuthResult> {
   try {
@@ -214,6 +215,7 @@ export async function registerAction(input: {
       email: input.email,
       password: input.password,
       mobile: input.mobile,
+      location: input.state,
       role: input.role ?? undefined,
     });
     const parsed = await parseAuthResponse(response);

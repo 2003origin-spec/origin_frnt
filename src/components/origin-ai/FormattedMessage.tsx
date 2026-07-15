@@ -4,6 +4,9 @@ import { memo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
+// mhchem — enables \ce{…} chemical equations + \pu{…} units in rehype-katex too
+// (extends the shared KaTeX singleton). Required for ~1.6k chemistry questions.
+import 'katex/contrib/mhchem';
 import { cn } from '@/lib/utils';
 import { repairMathSpans, decodeEscapedWhitespace, collapseDollarRuns } from '@/lib/latex-sanitize';
 import type { ExtraProps } from 'react-markdown';

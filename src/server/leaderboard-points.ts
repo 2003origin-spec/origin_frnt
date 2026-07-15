@@ -133,7 +133,7 @@ function toRankedRow(row: RawRankRow): RankedPointsRow {
 export async function getGlobalPointsLeaderboard(
   userId: string,
   location?: string | null,
-  topN = 20,
+  topN = 100,
 ): Promise<PointsLeaderboardResult> {
   const pool = getUserPostgresPool();
   if (!pool) return { ...EMPTY_RESULT };

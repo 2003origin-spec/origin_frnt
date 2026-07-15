@@ -416,7 +416,7 @@ export default function DPPView({ onBack, initialDpps }: DPPViewProps) {
                 <img
                   src={DPP_SUBJECT_ORI[currentDpp.subject]}
                   alt="Ori"
-                  className="w-16 h-16 sm:w-20 sm:h-20 object-contain drop-shadow-md flex-shrink-0"
+                  className="w-10 h-10 sm:w-20 sm:h-20 object-contain drop-shadow-md flex-shrink-0"
                 />
               ) : null}
               <div className="truncate">
@@ -542,10 +542,10 @@ export default function DPPView({ onBack, initialDpps }: DPPViewProps) {
           </Card>
         ) : (
           <div className="grid lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2">
+            <div className="lg:col-span-2 min-w-0">
               <Card className="neu-raised border-0 shadow-none">
-                <CardContent className="p-6 sm:p-8">
-                  <div className="flex items-center gap-3 mb-6">
+                <CardContent className="p-4 sm:p-8">
+                  <div className="flex items-center flex-wrap gap-2 sm:gap-3 mb-6">
                     <Badge className="bg-primary/10 text-primary">
                       Q{currentQuestionIndex + 1} of {currentQuestions.length}
                     </Badge>
@@ -559,7 +559,7 @@ export default function DPPView({ onBack, initialDpps }: DPPViewProps) {
 
                   {currentQuestion ? (
                     <>
-                      <div className="text-lg sm:text-xl font-medium text-slate-900 dark:text-white mb-6 leading-relaxed">
+                      <div className="text-lg sm:text-xl font-medium text-slate-900 dark:text-white mb-6 leading-relaxed overflow-x-auto">
                         <FormattedMessage content={currentQuestion.text} />
                       </div>
 
@@ -583,7 +583,7 @@ export default function DPPView({ onBack, initialDpps }: DPPViewProps) {
                           >
                             <div className="flex items-center gap-4 min-w-0">
                               <div
-                                className={`w-8 h-8 rounded-full flex items-center justify-center font-medium ${
+                                className={`w-8 h-8 shrink-0 rounded-full flex items-center justify-center font-medium ${
                                   showSolution
                                     ? index === getCorrectOption(currentQuestionIndex)
                                       ? 'bg-primary text-white'

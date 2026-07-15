@@ -470,9 +470,9 @@ export function CbtTestInterface() {
   const activeSubject = current.subject || "General";
 
   return (
-    <div ref={containerRef} className="flex h-screen flex-col overflow-y-auto neu-surface text-foreground">
+    <div ref={containerRef} className="flex h-dvh flex-col overflow-y-auto neu-surface text-foreground">
       {/* 1. Branded header */}
-      <header className="flex flex-col items-center justify-between gap-3 border-b border-border/60 px-3 py-2 sm:flex-row sm:gap-0 sm:px-6">
+      <header className="shrink-0 flex flex-col items-center justify-between gap-3 border-b border-border/60 px-3 py-2 sm:flex-row sm:gap-0 sm:px-6">
         <div className="flex w-full items-center justify-between gap-3 sm:w-auto">
           <OriBrandMark compact />
           <div>

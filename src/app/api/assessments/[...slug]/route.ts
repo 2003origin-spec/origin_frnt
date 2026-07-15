@@ -369,13 +369,16 @@ export async function GET(request: NextRequest, context: RouteContext) {
       const url = new URL(request.url);
       const subject = url.searchParams.get("subject");
       const location = url.searchParams.get("location");
+      // Top-N: 20/50/100/1000 or "all". "all" maps to a large cap.
+      const limitRaw = url.searchParams.get("limit");
+      const limit = limitRaw === "all" ? 100_000 : Math.max(1, Math.min(100_000, Number(limitRaw) || 100));
       // The common (no-location) view goes through the cached loader
       // (60s revalidate, tag:"leaderboard") so it isn't recomputed on every
       // client mount. The regional view stays live — it's not part of the cache.
       if (!location) {
-        return ok(await getOgcodeLeaderboardForRender(user.id, subject));
+        return ok(await getOgcodeLeaderboardForRender(user.id, subject, limit));
       }
-      return ok(await getOgcodeLeaderboard(store, user, subject, location));
+      return ok(await getOgcodeLeaderboard(store, user, subject, location, limit));
     }
 
     if (root === "focus-areas") {

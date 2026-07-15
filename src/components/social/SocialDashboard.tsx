@@ -308,6 +308,14 @@ export default function SocialDashboard({
                     <div className="min-w-0">
                       <p className="truncate text-sm font-black group-hover:text-primary transition-colors">{c.name}</p>
                       <p className="truncate text-[11px] text-muted-foreground">@{c.username}</p>
+                      {/* Follower count — real for the popular tabs (search results
+                          don't carry a count, so only show it outside search). */}
+                      {!isSearchMode && (
+                        <p className="mt-0.5 flex items-center gap-1 text-[11px] font-bold text-muted-foreground">
+                          <Users className="h-3 w-3 text-primary" />
+                          {c.followerCount.toLocaleString()} {c.followerCount === 1 ? 'follower' : 'followers'}
+                        </p>
+                      )}
                       {c.badge && (
                         <span className={cn('mt-1 inline-block truncate max-w-[120px] sm:max-w-none rounded border px-2 py-0.5 text-[10px] font-bold', badgeClasses(c.badge))}>
                           {c.badge}

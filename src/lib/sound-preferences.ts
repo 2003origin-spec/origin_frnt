@@ -36,17 +36,18 @@ export const SOUND_FOLDERS: Record<SoundCategoryKey, string> = {
   warning: 'Warning',
 };
 
-// Every category defaults to None (off) — users opt in per event from Settings.
+// Tasteful defaults so answer/notification sounds play out of the box. Users
+// can switch any category to "None" from Settings (the option is always there).
 export const DEFAULT_SOUND_PREFERENCES: SoundPreferences = {
-  correct: null,
-  wrong: null,
-  streak3Correct: null,
-  streak3Wrong: null,
-  fullScore: null,
-  badScore: null,
-  notification: null,
-  signIn: null,
-  warning: null,
+  correct: 'success-chime.mp3',
+  wrong: 'fail-buzzer.mp3',
+  streak3Correct: '3 correct 4.mp3',
+  streak3Wrong: '3 wrong 1.mp3',
+  fullScore: 'full score in test 8.mp3',
+  badScore: 'bad score 1.mp3',
+  notification: 'notification 1.mp3',
+  signIn: 'sign in 1.mp3',
+  warning: 'Warning 1.mp3',
   muted: false,
   volume: 0.7,
 };

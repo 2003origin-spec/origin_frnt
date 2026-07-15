@@ -25,9 +25,10 @@ import { BADGE_TIERS } from '@/lib/badges';
 
 const SLIDES = [
   { id: 1, title: 'Welcome',             image: '/carousel/Welcome.png'             },
-  { id: 2, title: 'Announcement',        image: '/carousel/Announcement-date.png'   },
-  { id: 3, title: 'Announcement',        image: '/carousel/Announcement-date-2.png' },
-  { id: 4, title: 'Legendary',           image: '/carousel/Legendary.png'           },
+  { id: 2, title: 'Origin X Sarvam',     image: '/carousel/OriginXSarvam.png'       },
+  { id: 3, title: 'Announcement',        image: '/carousel/Announcement-date.png'   },
+  { id: 4, title: 'Announcement',        image: '/carousel/Announcement-date-2.png' },
+  { id: 5, title: 'Legendary',           image: '/carousel/Legendary.png'           },
 ];
 
 function EventsCarousel() {

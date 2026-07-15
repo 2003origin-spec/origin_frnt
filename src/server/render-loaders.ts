@@ -181,9 +181,9 @@ export const getPracticeQuestionDetailForRender = unstable_cache(
 );
 
 export const getOgcodeLeaderboardForRender = unstable_cache(
-  async (userId: string, subject: string | null) => {
+  async (userId: string, subject: string | null, limit?: number | null) => {
     const { store, user } = await requireStoredUser(userId);
-    return getOgcodeLeaderboard(store, user, subject);
+    return getOgcodeLeaderboard(store, user, subject, null, limit);
   },
   ["rl:ogcode-leaderboard"],
   { revalidate: 60, tags: ["leaderboard"] },

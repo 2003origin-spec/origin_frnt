@@ -12,12 +12,12 @@ export default function OnboardingClient() {
   if (!user) return null;
 
   const handleComplete = async () => {
-    // Await the refresh so the client user state is guaranteed onboarded
-    // (isOnboarded=true) BEFORE we navigate. Navigating first left a window
-    // where the stale user (isOnboarded=false) could trip the guest-path guard
-    // and bounce the user back to onboarding / the landing page (the old loop).
-    await refreshUser();
+    // Navigate immediately for a snappy finish. completeOnboardingAction has
+    // already persisted isOnboarded=true server-side, and /dashboard does not
+    // gate on onboarding, so we don't need to wait on the network. Sync the
+    // client user in the background (no await = no perceptible delay).
     router.replace('/dashboard');
+    void refreshUser();
   };
 
   return user.role === 'teacher' ? (

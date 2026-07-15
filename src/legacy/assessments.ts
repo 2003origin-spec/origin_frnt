@@ -2316,26 +2316,60 @@ async function selectCustomTestQuestions(payload: CustomTestPayload) {
     occurrences: exams.length ? exams : undefined,
   };
 
-  const chapterPage = await listOgcodeCatalogQuestionPage({
-    ...baseFilters,
-    chapters: chapters.length ? chapters : undefined,
-    limit: questionCount,
-    offset: 0,
-  });
-  const selected = [...chapterPage.items];
-  const seenIds = new Set(selected.map((question) => question.id));
-
-  // Top up from other chapters in the same subject when the chosen chapter
-  // is short — the same "drop chapter, keep everything else" broaden step
-  // generate_custom_test's primary (analytics-service) path already does.
-  if (selected.length < questionCount) {
-    const topUp = await listOgcodeCatalogQuestionPage({
+  const seenIds = new Set<string>();
+  const collect = async (extra: Record<string, unknown>, limit: number) => {
+    if (limit <= 0) return [] as Awaited<ReturnType<typeof listOgcodeCatalogQuestionPage>>["items"];
+    const page = await listOgcodeCatalogQuestionPage({
       ...baseFilters,
+      ...extra,
       excludeIds: [...seenIds],
-      limit: questionCount - selected.length,
+      limit,
       offset: 0,
     });
-    for (const question of topUp.items) {
+    return page.items;
+  };
+
+  const selected: Awaited<ReturnType<typeof collect>> = [];
+  const chapterExtra = { chapters: chapters.length ? chapters : undefined };
+
+  if (subjects.length > 1) {
+    // A single LIMIT query over the union orders by source_index and clusters
+    // into whichever subject sorts first — so it returns only one subject's
+    // questions. Fetch each subject's share separately so every chosen subject
+    // is represented with a fair count (grouped-by-subject ordering applied
+    // below, so the CBT view keeps all of one subject together).
+    const perSubject = Math.ceil(questionCount / subjects.length);
+    const buckets: Awaited<ReturnType<typeof collect>>[] = [];
+    for (const subj of subjects) {
+      const items = await collect({ ...chapterExtra, subjects: [subj] }, perSubject);
+      const fresh = items.filter((q) => !seenIds.has(q.id));
+      fresh.forEach((q) => seenIds.add(q.id));
+      buckets.push(fresh);
+    }
+    // Round-robin to pick a BALANCED set (fair counts when buckets are uneven),
+    // then group below so the stored order is subject-by-subject.
+    let i = 0;
+    while (selected.length < questionCount && buckets.some((b) => b.length)) {
+      const bucket = buckets[i % buckets.length];
+      const q = bucket.shift();
+      if (q) selected.push(q);
+      i++;
+    }
+  } else {
+    const items = await collect(chapterExtra, questionCount);
+    for (const q of items) {
+      if (seenIds.has(q.id)) continue;
+      selected.push(q);
+      seenIds.add(q.id);
+    }
+  }
+
+  // Top up (drop chapters, keep subject/class/exam) to reach the target count —
+  // the same "drop chapter, keep everything else" broaden step the primary
+  // analytics-service path already does.
+  if (selected.length < questionCount) {
+    const topUp = await collect({}, questionCount - selected.length);
+    for (const question of topUp) {
       if (selected.length >= questionCount) break;
       if (seenIds.has(question.id)) continue;
       selected.push(question);
@@ -2343,8 +2377,29 @@ async function selectCustomTestQuestions(payload: CustomTestPayload) {
     }
   }
 
+  // Group the final questions by subject so the test presents all of one
+  // subject together (a CBT section) instead of toggling subject every question
+  // as you press Next. Preserve the requested subject order; any extra subjects
+  // pulled in by the top-up broaden step are grouped after, in first-seen order.
+  const grouped = (() => {
+    if (selected.length <= 1) return selected;
+    const order = new Map<string, number>();
+    subjects.forEach((s, idx) => order.set(normalizeSubject(s), idx));
+    let nextRank = subjects.length;
+    const rankOf = (q: (typeof selected)[number]) => {
+      const key = normalizeSubject(String(q.subject ?? ""));
+      if (!order.has(key)) order.set(key, nextRank++);
+      return order.get(key)!;
+    };
+    // Stable sort by subject rank (keeps within-subject order intact).
+    return selected
+      .map((q, idx) => ({ q, idx, rank: rankOf(q) }))
+      .sort((a, b) => a.rank - b.rank || a.idx - b.idx)
+      .map((x) => x.q);
+  })();
+
   return {
-    selected,
+    selected: grouped,
     subject: isMixedSubject ? "mixed" : normalizeSubject(subject),
     chapter: chapter || null,
     difficulty: difficulty ?? "medium",
@@ -4997,12 +5052,15 @@ async function buildLeaderboardEntriesFromDb(user: StoredUser, subject: string |
     }));
 }
 
-export async function getOgcodeLeaderboard(store: AppStore, user: StoredUser, subject: string | null, location?: string | null) {
+export async function getOgcodeLeaderboard(store: AppStore, user: StoredUser, subject: string | null, location?: string | null, limit?: number | null) {
+  // Top-N cap chosen by the user (20/50/100/1000/all). Clamp to a sane range;
+  // "all" arrives as a large number from the caller.
+  const topN = Math.max(1, Math.min(100_000, Math.trunc(Number(limit ?? 100)) || 100));
   // Overall / regional Hall-of-Fame + the "national AIR" now rank by prestige
   // points (Phase 2) so OG-Code solves actually count toward rank, matching the
   // scoring modal. Subject "arena" boards keep their efficiency ranking below.
   if (!subject && isUserPostgresConfigured()) {
-    return getGlobalPointsLeaderboard(user.id, location);
+    return getGlobalPointsLeaderboard(user.id, location, topN);
   }
 
   let entries;
@@ -5050,10 +5108,19 @@ export async function getOgcodeLeaderboard(store: AppStore, user: StoredUser, su
     entries = rankedUsers;
   }
 
+  const meEntry = entries.find((entry) => entry.isMe);
+  const sliced = entries.slice(0, topN);
+  // Always include the viewer's own entry so the client can pin their card,
+  // even when they rank outside the top slice.
+  const top =
+    meEntry && !sliced.some((entry) => entry.userId === meEntry.userId)
+      ? [...sliced, meEntry]
+      : sliced;
+
   return {
-    leaderboard: entries.slice(0, 20),
-    myRank: entries.find((entry) => entry.isMe)?.rank ?? null,
-    my_rank: entries.find((entry) => entry.isMe)?.rank ?? null,
+    leaderboard: top,
+    myRank: meEntry?.rank ?? null,
+    my_rank: meEntry?.rank ?? null,
   };
 }
 
