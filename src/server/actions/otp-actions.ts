@@ -1,17 +1,30 @@
 'use server';
 
+import { randomInt } from 'node:crypto';
+
+import { headers } from 'next/headers';
+
 import { withStoreAsync } from '@/server/store';
 import { sendEmail } from '@/server/email';
+import { emailSendLimiter, otpVerifyLimiter, isWithinLimit } from '@/lib/rate-limit';
 
 /**
- * Generates a 6-digit random OTP.
+ * Generates a 6-digit random OTP using a CSPRNG (never Math.random — the code
+ * gates account creation for the target email).
  */
 function generateOTP(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return String(randomInt(0, 1_000_000)).padStart(6, '0');
 }
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
+}
+
+/** Vercel-resolved client IP (it overwrites x-forwarded-for; not spoofable). */
+async function clientIp(): Promise<string> {
+  const h = await headers();
+  const xff = h.get('x-forwarded-for');
+  return xff?.split(',')[0]?.trim() || h.get('x-real-ip')?.trim() || 'anonymous';
 }
 
 /**
@@ -33,6 +46,20 @@ export async function sendOtpAction(
   }
 
   const normalizedEmail = normalizeEmail(email);
+
+  // Server Actions bypass the middleware rate limiter, so guard outbound-mail
+  // abuse here: cap sends per IP AND per email BEFORE any DB/store work or the
+  // exists-check, so the response is identical for real and unknown emails
+  // (no enumeration oracle) and one IP can't blast codes at many addresses.
+  const ip = await clientIp();
+  const [ipOk, emailOk] = await Promise.all([
+    isWithinLimit(emailSendLimiter, `ip:${ip}`),
+    isWithinLimit(emailSendLimiter, `email:${normalizedEmail}`),
+  ]);
+  if (!ipOk || !emailOk) {
+    return { ok: false, message: 'Too many requests. Please try again in a few minutes.' };
+  }
+
   let otp = generateOTP();
   let expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString(); // 5 minutes from now
 
@@ -116,6 +143,14 @@ export async function verifyOtpAction(email: string, otp: string) {
   }
 
   const normalizedEmail = normalizeEmail(email);
+
+  // Cap verify attempts per IP so the 6-digit code can't be brute-forced (the
+  // store has no per-email attempt counter). Keyed by IP since a hostile client
+  // would iterate codes for a single target email.
+  const ip = await clientIp();
+  if (!(await isWithinLimit(otpVerifyLimiter, `ip:${ip}`))) {
+    return { ok: false, message: 'Too many attempts. Please try again in a few minutes.' };
+  }
 
   try {
     return await withStoreAsync(async (store) => {

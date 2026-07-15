@@ -1,6 +1,14 @@
 import { NextResponse } from 'next/server';
 import { Redis } from '@upstash/redis';
 
+import { generalLimiter, checkRateLimit } from '@/lib/rate-limit';
+
+/** Vercel-resolved client IP (it overwrites x-forwarded-for; not spoofable). */
+function clientIp(request: Request): string {
+  const xff = request.headers.get('x-forwarded-for');
+  return xff?.split(',')[0]?.trim() || request.headers.get('x-real-ip')?.trim() || 'anonymous';
+}
+
 const redis = process.env.UPSTASH_REDIS_REST_URL
   ? new Redis({
       url: process.env.UPSTASH_REDIS_REST_URL,
@@ -36,7 +44,14 @@ function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  // Edge-cached (s-maxage=30) but a random query string bypasses that cache and
+  // hits the origin + Redis, so cap per-IP floods here too. Generous budget.
+  const limited = await checkRateLimit(generalLimiter, `pub-activity:${clientIp(request)}`, {
+    honorIncidentMode: false,
+  });
+  if (limited) return limited;
+
   try {
     // Try to pull recent real events from Redis (optional stream/list)
     let events: { emoji: string; text: string }[] = [];

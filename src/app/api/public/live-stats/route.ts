@@ -2,6 +2,13 @@ import { NextResponse } from 'next/server';
 import { Redis } from '@upstash/redis';
 
 import { getUserPostgresPool, isUserPostgresConfigured } from '@/server/user-postgres';
+import { generalLimiter, checkRateLimit } from '@/lib/rate-limit';
+
+/** Vercel-resolved client IP (it overwrites x-forwarded-for; not spoofable). */
+function clientIp(request: Request): string {
+  const xff = request.headers.get('x-forwarded-for');
+  return xff?.split(',')[0]?.trim() || request.headers.get('x-real-ip')?.trim() || 'anonymous';
+}
 
 const redis = process.env.UPSTASH_REDIS_REST_URL
   ? new Redis({
@@ -57,7 +64,14 @@ async function streaksActive(): Promise<number> {
   }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  // Unauthenticated + hits Redis and two Postgres COUNTs — cap per-IP floods
+  // (each IP still gets a generous budget so the landing page can poll freely).
+  const limited = await checkRateLimit(generalLimiter, `pub-livestats:${clientIp(request)}`, {
+    honorIncidentMode: false,
+  });
+  if (limited) return limited;
+
   const [active, doubts, streaks] = await Promise.all([activeNow(), doubtsToday(), streaksActive()]);
   return NextResponse.json(
     { activeNow: active, doubtsToday: doubts, streaksActive: streaks },

@@ -77,6 +77,19 @@ function createLimiter(
 
 export const authLimiter = createLimiter(5, "rl:auth");
 
+// Outbound-email + OTP abuse guards. Server Actions bypass middleware, so the
+// email-send / OTP-verify actions self-limit per IP (and per email at the call
+// site) using these. `emailSendLimiter` is deliberately over a long window —
+// the threat is outbound-mail volume (SES/SMTP domain-reputation), not latency.
+export const emailSendLimiter = createLimiter(5, "rl:email-send", "10 m");
+export const otpVerifyLimiter = createLimiter(12, "rl:otp-verify", "10 m");
+
+// Token-refresh flood guard. Generous on purpose: a single client can burst
+// refreshes across tabs, and CGNAT pools share one Vercel-resolved IP, so this
+// only trips single-IP floods — it must never look like an expired session to a
+// real user. Keyed by IP.
+export const refreshLimiter = createLimiter(120, "rl:refresh", "60 s");
+
 export const aiLimiter = createLimiter(10, "rl:ai");
 
 export const voiceLimiter = createLimiter(5, "rl:voice");
@@ -124,6 +137,24 @@ export const cbtJoinLimiter = createLimiter(10, "rl:cbt-join", "1 h");
 export const cbtResumeLimiter = createLimiter(5, "rl:cbt-resume", "15 m");
 export const cbtAutosaveLimiter = createLimiter(60, "rl:cbt-autosave", "60 s");
 export const cbtExportLimiter = createLimiter(6, "rl:cbt-export", "1 h");
+
+/**
+ * Fail-open per-key check for Server Actions, which need a boolean rather than
+ * the Response that `checkRateLimit` returns. Never throws: a limiter backend
+ * error allows the request, matching `checkRateLimit`'s degraded mode — a brief
+ * Upstash blip must not (e.g.) block token refresh and log users out. Returns
+ * true when the request may proceed. Does not consult incident mode.
+ */
+export async function isWithinLimit(limiter: AppRateLimiter, identifier: string): Promise<boolean> {
+  try {
+    const { success } = await limiter.limit(identifier);
+    return success;
+  } catch (error) {
+    console.error("[rate-limit] limiter backend failed; allowing request in degraded mode", error);
+    metric("origin.rate_limit.degraded", { reason: "backend_error" });
+    return true;
+  }
+}
 
 export async function checkRateLimit(
   limiter: AppRateLimiter,

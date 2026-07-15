@@ -1,7 +1,9 @@
 'use server';
 
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { revalidatePath } from 'next/cache';
+
+import { emailSendLimiter, otpVerifyLimiter, refreshLimiter, isWithinLimit } from '@/lib/rate-limit';
 
 import { handleGoogleLogin, handleLogin, handleRegister, handleRefresh, serializeUser, handleLoginWithOtp } from '@/server/users';
 import { readStoreAsync, withStoreAsync } from '@/server/store';
@@ -82,6 +84,13 @@ async function parseAuthResponse(response: Response): Promise<InternalAuthResult
   }
 
   return { ok: true, user, access, refresh, accessFingerprint };
+}
+
+/** Vercel-resolved client IP (it overwrites x-forwarded-for; not spoofable). */
+async function clientIp(): Promise<string> {
+  const h = await headers();
+  const xff = h.get('x-forwarded-for');
+  return xff?.split(',')[0]?.trim() || h.get('x-real-ip')?.trim() || 'anonymous';
 }
 
 async function setSessionCookies(access: string, refresh: string, accessFingerprint: string): Promise<void> {
@@ -211,6 +220,13 @@ export async function refreshTokenAction(): Promise<{ ok: boolean; status: numbe
   const refresh = cookieStore.get(REFRESH_COOKIE_NAME)?.value;
   if (!refresh) return { ok: false, status: 400 };
 
+  // Generous per-IP flood cap (120/min) — refresh does a session DB lookup and
+  // is public + CSRF-exempt. High enough that multi-tab / CGNAT users never
+  // trip it; low enough to blunt a single-IP flood. Fail-open on limiter error.
+  if (!(await isWithinLimit(refreshLimiter, `ip:${await clientIp()}`))) {
+    return { ok: false, status: 429 };
+  }
+
   const response = await handleRefresh(null, { refresh });
   if (!response.ok) {
     return { ok: false, status: response.status };
@@ -273,6 +289,15 @@ export async function requestPasswordResetAction(input: {
 }): Promise<{ ok: true; devCode?: string }> {
   const email = String(input.email ?? '').trim();
   if (!email || !email.includes('@')) return { ok: true };
+  // Server Actions bypass middleware — cap reset-mail volume per IP AND per
+  // email so this can't be turned into an outbound-email bomb (domain
+  // reputation). Stay enumeration-safe: always return { ok: true }.
+  const ip = await clientIp();
+  const [ipOk, emailOk] = await Promise.all([
+    isWithinLimit(emailSendLimiter, `reset-ip:${ip}`),
+    isWithinLimit(emailSendLimiter, `reset-email:${email.toLowerCase()}`),
+  ]);
+  if (!ipOk || !emailOk) return { ok: true };
   try {
     const { devCode } = await requestPasswordReset(email, normalizeResetRole(input.role));
     return { ok: true, devCode };
@@ -294,6 +319,13 @@ export async function resetPasswordAction(input: {
   const newPassword = String(input.newPassword ?? '');
   if (!email || !/^\d{6}$/.test(code)) return { ok: false, error: 'Enter the 6-digit code sent to your email.' };
   if (newPassword.length < 8) return { ok: false, error: 'Password must be at least 8 characters.' };
+  // Defence-in-depth over the per-(email,role) 5-attempt DB lock: cap verify
+  // volume per IP so the endpoint can't be flooded (each attempt takes a row
+  // lock in the USER pool).
+  const ip = await clientIp();
+  if (!(await isWithinLimit(otpVerifyLimiter, `reset-verify-ip:${ip}`))) {
+    return { ok: false, error: 'Too many attempts. Please try again in a few minutes.' };
+  }
   try {
     const result = await verifyAndResetPassword(email, normalizeResetRole(input.role), code, newPassword);
     switch (result) {
