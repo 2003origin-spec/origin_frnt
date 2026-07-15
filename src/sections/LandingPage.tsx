@@ -752,7 +752,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
             {/* Logo image + tagline block */}
             <div className="w-full max-w-[1076px] flex flex-col">
               <motion.img
-                src="/Origin-Name.png"
+                src="/Origin-Name-2.png"
                 alt="Origin"
                 initial={{ opacity: 0, y: 40, scale: 0.97 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -916,6 +916,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
                 { src: '/IIT-NIT-IIIT/IIT-Madras.png', alt: 'IIT Madras' },
                 { src: '/IIT-NIT-IIIT/NIT-Agartala.png', alt: 'NIT Agartala' },
                 { src: '/IIT-NIT-IIIT/IIIT-Manipur.png', alt: 'IIIT Manipur' },
+                { src: '/IIT-NIT-IIIT/sharada-university.png', alt: 'Sharda University' },
               ].map((inst) => (
                 <div key={inst.alt} className="rounded-2xl bg-white p-3 sm:p-4 shadow-sm ring-1 ring-black/5">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -964,9 +965,9 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
                   transition={{ duration: 0.5, delay: 0.1 * index, ease: [0.22, 1, 0.36, 1] }}
                   viewport={{ once: true }}
                   className={`shine-card relative flex flex-col rounded-3xl transition-all duration-500 hover:scale-[1.015] neu-raised
-                    ${['md:translate-y-0', 'md:-translate-y-6', 'md:-translate-y-12'][index] ?? ''}
+                    ${['md:min-h-[520px]', 'md:min-h-[600px]', 'md:min-h-[680px]'][index] ?? ''}
                     ${plan.popular
-                      ? 'p-7 sm:p-10 ring-2 ring-primary/40 md:scale-[1.05] z-10 shadow-2xl shadow-primary/10'
+                      ? 'p-7 sm:p-10 ring-2 ring-primary/40 md:scale-[1.05] md:origin-bottom z-10 shadow-2xl shadow-primary/10'
                       : 'p-6 sm:p-8 opacity-90 hover:opacity-100'
                     }`}
                 >
