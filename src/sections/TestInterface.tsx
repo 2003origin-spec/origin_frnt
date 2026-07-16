@@ -617,7 +617,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
   });
 
   return (
-    <div className="h-dvh overflow-hidden bg-white text-gray-900 font-sans text-sm selection:bg-blue-200/30 flex flex-col relative" style={{ colorScheme: 'light' }}>
+    <div className="min-h-dvh overflow-x-hidden lg:h-dvh lg:overflow-hidden bg-white text-gray-900 font-sans text-sm selection:bg-blue-200/30 flex flex-col relative" style={{ colorScheme: 'light' }}>
 
       {/* Portrait orientation guard — mobile must be landscape */}
       {isPortrait && (
@@ -636,7 +636,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
 
       {/* 0. Verification Overlay */}
       {!isExamStarted && (
-        <div className="fixed inset-0 z-[200] bg-slate-900 flex items-center justify-center p-4 sm:p-8 overflow-y-auto">
+        <div className="fixed inset-0 z-[200] bg-slate-900 flex items-start sm:items-center justify-center p-4 sm:p-8 overflow-y-auto">
           {verificationStep === 'instructions' ? (
             /* Phase 1: Instructions */
             <div className="max-w-5xl w-full bg-card rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
@@ -919,9 +919,9 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
       {/* 1. Top Header */}
       <header className="shrink-0 flex flex-col sm:flex-row items-center justify-between px-3 sm:px-6 py-2 border-b border-gray-300 gap-3 sm:gap-0">
         <div className="flex items-center justify-between w-full sm:w-auto gap-3">
-          <div className="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center cursor-pointer" onClick={() => { stopCamera(); onExit(); }}>
-            <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center">
-              <div className="w-6 h-6 bg-orange-500 rounded-tr-xl rounded-bl-xl" style={{ clipPath: 'polygon(0% 100%, 100% 100%, 100% 0%)' }}></div>
+          <div className="w-9 h-9 sm:w-12 sm:h-12 shrink-0 bg-green-600 rounded-full flex items-center justify-center cursor-pointer" onClick={() => { stopCamera(); onExit(); }}>
+            <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-white flex items-center justify-center">
+              <div className="w-4 h-4 sm:w-6 sm:h-6 bg-orange-500 rounded-tr-xl rounded-bl-xl" style={{ clipPath: 'polygon(0% 100%, 100% 100%, 100% 0%)' }}></div>
             </div>
           </div>
           <div>
@@ -1050,20 +1050,19 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
           screen and — being overflow-hidden — cut off the palette + Save & Next
           with nothing scrollable. flex-1 + min-h-0 respects the real (dynamic)
           viewport on every device and lets the inner panels scroll. */}
-      <div className="flex flex-col lg:flex-row flex-1 min-h-0 overflow-hidden">
+      <div className="flex flex-col lg:flex-row flex-1 lg:min-h-0 overflow-visible lg:overflow-hidden">
 
         {/* Left Area - Question Content */}
-        <div className="flex-1 min-h-0 min-w-0 flex flex-col border-r border-gray-300 relative">
+        <div className="flex-1 lg:min-h-0 min-w-0 flex flex-col border-r border-gray-300 relative">
 
           {/* Question Header */}
-          <div className="flex justify-between items-center px-4 py-2 border-b border-gray-300 font-bold text-base sm:text-lg border-t-4 border-t-white bg-slate-50 text-gray-900 sticky top-0 z-20">
+          <div className="flex justify-between items-center px-3 sm:px-4 py-2 border-b border-gray-300 font-bold text-sm sm:text-lg border-t-4 border-t-white bg-slate-50 text-gray-900 lg:sticky lg:top-0 z-20">
             <span>Question {currentQuestionIndex + 1}:</span>
-            <div className="w-6 h-6 bg-primary rounded-full text-white flex items-center justify-center font-bold text-sm shadow-sm">&darr;</div>
+            <div className="w-5 h-5 sm:w-6 sm:h-6 bg-primary rounded-full text-white flex items-center justify-center font-bold text-xs sm:text-sm shadow-sm">&darr;</div>
           </div>
 
           {/* Question Text & Options */}
-          <div className="flex-1 overflow-y-auto p-4 sm:p-8 relative">
-            <div className="absolute right-0 top-[50%] bg-black text-white px-1 py-4 cursor-pointer text-xs"><b>&gt;</b></div>
+          <div className="flex-1 overflow-y-visible lg:overflow-y-auto p-3 sm:p-8 relative">
             <div className="max-w-3xl">
 
               {/* Added Tags rendering for Phase 7 */}
@@ -1077,7 +1076,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
                 </div>
               )}
 
-              <div className="text-base text-gray-800 leading-relaxed font-sans mb-4 select-text cursor-text">
+              <div className="text-sm sm:text-base text-gray-800 leading-relaxed font-sans mb-4 select-text cursor-text overflow-x-auto">
                 {renderQuestionText(currentQuestion?.text || '', 'test-question')}
               </div>
 
@@ -1104,27 +1103,27 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
               )}
 
               {effectiveType === 'mcq' && (
-                <div className="space-y-4 font-sans text-base">
+                <div className="space-y-2.5 sm:space-y-4 font-sans text-sm sm:text-base">
                   {currentOptions.map((option, idx) => (
                     <button
                       key={idx}
                       onClick={() => handleOptionSelect(idx)}
                       className={cn(
-                        "w-full p-4 rounded-xl border-2 transition-all duration-200 flex items-start gap-4 text-left group",
+                        "w-full p-3 sm:p-4 rounded-xl border-2 transition-all duration-200 flex items-start gap-3 sm:gap-4 text-left group",
                         tempSelection === idx
                           ? "border-primary bg-rose-50 shadow-md shadow-rose-100"
                           : "border-slate-100 hover:border-rose-200 hover:bg-slate-50"
                       )}
                     >
                       <div className={cn(
-                        "w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 font-bold border-2 transition-colors",
+                        "w-6 h-6 sm:w-8 sm:h-8 text-xs sm:text-base rounded-full flex items-center justify-center flex-shrink-0 font-bold border-2 transition-colors",
                         tempSelection === idx
                           ? "bg-primary border-primary text-white"
                           : "bg-white border-slate-200 text-slate-500 group-hover:border-rose-300 group-hover:text-primary"
                       )}>
                         {String.fromCharCode(65 + idx)}
                       </div>
-                      <div className="flex-1 pt-1">
+                      <div className="flex-1 pt-0.5 sm:pt-1 min-w-0 break-words">
                         <span className="text-slate-900 font-medium select-text">{renderInlineSegments(String(option), `test-mcq-option-${idx}`, 'plain')}</span>
                       </div>
                     </button>
@@ -1245,27 +1244,29 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
             </div>
           </div>
 
-          {/* Action Buttons */}
-          <div className="shrink-0 border-t border-gray-300 px-3 sm:px-4 py-2 sm:py-3 flex flex-wrap gap-2 justify-between items-center bg-slate-50 shadow-sm">
+          {/* Action Buttons — sticky at the viewport bottom on mobile so Save &
+              Next is always reachable while the question scrolls; static footer
+              on desktop. */}
+          <div className="shrink-0 sticky bottom-0 lg:static z-20 border-t border-gray-300 px-2 sm:px-4 py-2 sm:py-3 flex flex-wrap gap-2 justify-between items-center bg-slate-50 shadow-[0_-2px_8px_rgba(0,0,0,0.06)] lg:shadow-sm">
             <div className="flex gap-2">
-              <button onClick={markForReviewAndNext} className="bg-primary text-white px-2 sm:px-4 py-2 sm:py-2.5 font-bold text-[10px] sm:text-xs rounded-sm hover:opacity-90 uppercase flex flex-col items-center leading-tight">
-                MARK FOR REVIEW & NEXT
-                <span className="text-[7px] lowercase font-medium opacity-80">(will be counted for evaluation)</span>
+              <button onClick={markForReviewAndNext} className="bg-primary text-white px-2 sm:px-4 py-1.5 sm:py-2.5 font-bold text-[9px] sm:text-xs rounded-sm hover:opacity-90 uppercase flex flex-col items-center leading-tight">
+                MARK &amp; NEXT
+                <span className="hidden sm:block text-[7px] lowercase font-medium opacity-80">(will be counted for evaluation)</span>
               </button>
-              <button onClick={handleClearResponse} className="bg-white text-gray-800 border border-gray-300 px-2 sm:px-4 py-2 sm:py-2.5 font-bold text-[10px] sm:text-xs rounded-sm hover:bg-gray-50 uppercase shadow-sm">
-                CLEAR RESPONSE
+              <button onClick={handleClearResponse} className="bg-white text-gray-800 border border-gray-300 px-2 sm:px-4 py-1.5 sm:py-2.5 font-bold text-[9px] sm:text-xs rounded-sm hover:bg-gray-50 uppercase shadow-sm">
+                CLEAR
               </button>
             </div>
-            <button onClick={saveAndNext} className="bg-[#5CB85C] text-white px-4 sm:px-8 py-2 sm:py-2.5 font-bold text-[10px] sm:text-xs rounded-sm hover:opacity-90 uppercase flex flex-col items-center leading-tight">
-              SAVE & NEXT
-              <span className="text-[7px] lowercase font-medium opacity-80">(save the question)</span>
+            <button onClick={saveAndNext} className="bg-[#5CB85C] text-white px-3 sm:px-8 py-1.5 sm:py-2.5 font-bold text-[9px] sm:text-xs rounded-sm hover:opacity-90 uppercase flex flex-col items-center leading-tight">
+              SAVE &amp; NEXT
+              <span className="hidden sm:block text-[7px] lowercase font-medium opacity-80">(save the question)</span>
             </button>
           </div>
         </div>
 
-        {/* Right Area - Palette (bounded + internally scrollable on mobile so it
-            never steals the question's room; full-height sidebar on desktop). */}
-        <div className="w-full lg:w-[350px] shrink-0 bg-slate-50 flex flex-col pt-4 border-t lg:border-t-0 lg:border-l border-gray-300 max-h-[38vh] lg:max-h-none">
+        {/* Right Area - Palette. On mobile the page scrolls, so let it flow
+            below the question at natural height; fixed sidebar on desktop. */}
+        <div className="w-full lg:w-[350px] shrink-0 bg-slate-50 flex flex-col pt-4 border-t lg:border-t-0 lg:border-l border-gray-300">
 
           {/* Legend */}
           <div className="px-4 pb-4 border-b border-gray-200">
@@ -1311,7 +1312,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
           </div>
 
           {/* Palette Grid */}
-          <div className="flex-1 p-4 bg-rose-50/30 overflow-y-auto">
+          <div className="flex-1 p-4 bg-rose-50/30 overflow-y-visible lg:overflow-y-auto">
             <div className="bg-muted text-primary font-bold py-1 px-2 border-b border-primary text-xs uppercase mb-2 inline-block">
               {test.title}
             </div>
