@@ -39,7 +39,7 @@ export type PointsLeaderboardResult = {
   myPoints: number;
 };
 
-/** A row already ranked by SQL `RANK() OVER (ORDER BY points DESC)`. */
+/** A row already ranked by SQL `DENSE_RANK() OVER (ORDER BY points DESC)`. */
 export type RankedPointsRow = {
   userId: string;
   name: string;
@@ -149,7 +149,7 @@ export async function getGlobalPointsLeaderboard(
       ${points} AS points,
       u.total_study_time,
       u.streak,
-      RANK() OVER (ORDER BY ${points} DESC) AS rank
+      DENSE_RANK() OVER (ORDER BY ${points} DESC) AS rank
     FROM app.user_scores s
     JOIN origin_users u ON u.id = s.user_id
     WHERE u.role = 'student'
