@@ -65,7 +65,7 @@ export function RoomDppPanel({ dpps }: { dpps: RoomDppSummary[] }) {
               <div className="mt-auto pt-2 flex items-center justify-between">
                 <span className="text-xs text-muted-foreground">{dpp.target_question_count} questions</span>
                 <Link
-                  href={`/dpp/${dpp.id}`}
+                  href={`/dpp?dpp=${dpp.id}`}
                   className="inline-flex items-center gap-1 text-xs font-bold text-primary hover:underline"
                 >
                   Start <ArrowRight className="h-3 w-3" />

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -127,9 +128,12 @@ type DppCheckResult = {
 };
 
 export default function DPPView({ onBack, initialDpps }: DPPViewProps) {
+  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(initialDpps === null);
   const [dpps, setDpps] = useState<GeneratedDpp[]>(initialDpps ?? []);
-  const [selectedDppId, setSelectedDppId] = useState<string | null>(null);
+  // Deep-link support: /dpp?dpp=<id> opens that DPP directly (e.g. the "Start"
+  // link on a room-generated DPP). Falls back to the list when absent.
+  const [selectedDppId, setSelectedDppId] = useState<string | null>(() => searchParams.get('dpp'));
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [showSolution, setShowSolution] = useState(false);
@@ -190,7 +194,11 @@ export default function DPPView({ onBack, initialDpps }: DPPViewProps) {
       try {
         setLoading(true);
         const detail = await apiCall(`/assessments/dpps/${selectedDppId}/`);
-        setDpps((previous) => previous.map((entry) => (entry.id === selectedDppId ? detail : entry)));
+        setDpps((previous) =>
+          previous.some((entry) => entry.id === selectedDppId)
+            ? previous.map((entry) => (entry.id === selectedDppId ? detail : entry))
+            : [detail, ...previous],
+        );
       } catch (loadError) {
         setError(getErrorMessage(loadError, 'Failed to load DPP details.'));
       } finally {
