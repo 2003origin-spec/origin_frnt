@@ -400,7 +400,7 @@ export default function DPPView({ onBack, initialDpps }: DPPViewProps) {
   const correctCount = checkResults.filter((result) => Boolean(result?.isCorrect ?? result?.is_correct)).length;
 
   return (
-    <div id="tutorial-dpp-hub" className="min-h-screen neu-surface text-foreground transition-colors duration-300">
+    <div id="tutorial-dpp-hub" className="min-h-screen overflow-x-hidden neu-surface text-foreground transition-colors duration-300">
       <header className="z-40 bg-[hsl(var(--neu-bg)/0.9)] border-b border-border/40 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-14 sm:h-16">
@@ -792,11 +792,11 @@ function DppSelectionGrid({
                   onSelect(dpp.id);
                 }
               }}
-              className="h-full cursor-pointer neu-raised neu-pressable border-0 shadow-none"
+              className="h-full min-w-0 max-w-full overflow-hidden cursor-pointer neu-raised neu-pressable border-0 shadow-none"
             >
-              <CardContent className="p-6 space-y-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1">
+              <CardContent className="p-4 sm:p-6 space-y-4">
+                  <div className="flex items-start justify-between gap-3 min-w-0">
+                    <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-2">
                         {DPP_SUBJECT_ORI[dpp.subject] && (
                           <img
@@ -832,13 +832,13 @@ function DppSelectionGrid({
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap gap-2 min-w-0">
+                  <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 w-full min-w-0">
                     {weakTopics.slice(0, 3).map((topic) => (
                       <Badge
                         key={topic}
                         variant="secondary"
                         title={topic}
-                        className="max-w-full truncate bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300"
+                        className="block sm:inline-block max-w-full min-w-0 truncate bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300"
                       >
                         {topic}
                       </Badge>
