@@ -59,6 +59,22 @@ export function createPostgresPoolConfig(connectionString: string, max: number):
   const config: OriginPostgresPoolConfig = {
     connectionString: normalizedConnectionString,
     max,
+    // Serverless + Neon connection pooler (PgBouncer, transaction mode) hardening.
+    // These make the switch to the -pooler endpoint seamless and prevent the two
+    // classic failure modes under load:
+    //   • idleTimeoutMillis  — release idle client connections quickly so they
+    //     don't hold PgBouncer slots that other Vercel instances need.
+    //   • connectionTimeoutMillis — fail fast instead of hanging when the pool
+    //     or the pooler is momentarily saturated.
+    //   • keepAlive — reduce reconnect churn on long-lived instances.
+    //   • allowExitOnIdle — don't keep a frozen serverless instance's event loop
+    //     alive on idle connections.
+    // The app is transaction-mode safe (no LISTEN/NOTIFY, advisory locks, named
+    // prepared statements or session-scoped SET), so no query changes are needed.
+    idleTimeoutMillis: 10_000,
+    connectionTimeoutMillis: 10_000,
+    keepAlive: true,
+    allowExitOnIdle: true,
   };
 
   if (shouldDisableSsl(normalizedConnectionString)) {
