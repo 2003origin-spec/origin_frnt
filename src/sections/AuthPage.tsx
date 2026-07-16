@@ -10,7 +10,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Eye, EyeOff, ArrowLeft, Loader2, Mail, Lock, RefreshCw, User, Phone } from 'lucide-react';
+import { Eye, EyeOff, ArrowLeft, Loader2, Mail, Lock, RefreshCw, User, Phone, MapPin } from 'lucide-react';
 import { useGoogleLogin } from '@react-oauth/google';
 import {
   InputOTP,
@@ -29,7 +29,7 @@ interface AuthPageProps {
   userRole: 'student' | 'teacher' | 'admin' | null;
   onLogin: (email: string, password: string, role?: 'student' | 'teacher' | 'admin' | null) => void;
   onLoginWithOtp?: (email: string, role?: 'student' | 'teacher' | 'admin' | null) => void;
-  onRegister: (name: string, email: string, password: string, mobile: string, role?: 'student' | 'teacher' | 'admin' | null) => void;
+  onRegister: (name: string, email: string, password: string, mobile: string, state: string, role?: 'student' | 'teacher' | 'admin' | null) => void;
   onGoogleLogin?: (credential: string, role?: 'student' | 'teacher' | 'admin' | null) => void;
   sendOtp?: (email: string, role?: 'student' | 'teacher' | 'admin' | null) => Promise<{ ok: boolean; message: string }>;
   verifyOtp?: (email: string, otp: string) => Promise<{ ok: boolean; message: string }>;
@@ -65,6 +65,18 @@ function FieldRow({ icon, children }: { icon: React.ReactNode; children: React.R
 }
 
 const fieldInputCls = 'flex-1 bg-transparent border-none outline-none text-[#d3d3d3] text-sm font-medium placeholder:text-[#555] w-full';
+
+// Indian states + UTs — collected at signup and used for the regional
+// leaderboard (stored as the user's `location`). A fixed list keeps the values
+// consistent so regional grouping doesn't fragment on free-text spelling.
+const INDIAN_STATES = [
+  'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa', 'Gujarat',
+  'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Karnataka', 'Kerala', 'Madhya Pradesh',
+  'Maharashtra', 'Manipur', 'Meghalaya', 'Mizoram', 'Nagaland', 'Odisha', 'Punjab', 'Rajasthan',
+  'Sikkim', 'Tamil Nadu', 'Telangana', 'Tripura', 'Uttar Pradesh', 'Uttarakhand', 'West Bengal',
+  'Andaman and Nicobar Islands', 'Chandigarh', 'Dadra and Nagar Haveli and Daman and Diu', 'Delhi',
+  'Jammu and Kashmir', 'Ladakh', 'Lakshadweep', 'Puducherry',
+];
 
 // OTP digit cells sit on the dark auth card — force light digits + dark chrome
 // so the entered code stays visible (default foreground reads black = invisible).
@@ -127,6 +139,7 @@ export default function AuthPage({
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [mobile, setMobile] = useState('');
+  const [state, setState] = useState('');
   const [step, setStep] = useState<'form' | 'otp'>('form');
   const [otp, setOtp] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
@@ -161,6 +174,11 @@ export default function AuthPage({
       toast.error('Enter a valid 10-digit mobile number.');
       return;
     }
+    // State is used for the regional leaderboard.
+    if (!isLogin && userRole !== 'admin' && !state) {
+      toast.error('Please select your state.');
+      return;
+    }
     const res = await sendOtp(email, userRole);
     if (res.ok) { setStep('otp'); setResendCooldown(60); }
   };
@@ -172,7 +190,7 @@ export default function AuthPage({
       const res = await verifyOtp(email, otp);
       if (res.ok) {
         if (userRole === 'admin' && onLoginWithOtp) onLoginWithOtp(email, userRole);
-        else onRegister(name, email, password, mobile, userRole);
+        else onRegister(name, email, password, mobile, state, userRole);
       }
     }
     setIsVerifying(false);
@@ -432,6 +450,24 @@ export default function AuthPage({
                         className={fieldInputCls}
                         required
                       />
+                    </FieldRow>
+                  )}
+
+                  {/* State (sign-up only, non-admin) — used for the regional leaderboard */}
+                  {!isLogin && userRole !== 'admin' && (
+                    <FieldRow icon={<MapPin className="w-4 h-4" />}>
+                      <select
+                        value={state}
+                        onChange={e => setState(e.target.value)}
+                        className={`${fieldInputCls} cursor-pointer`}
+                        style={{ colorScheme: 'dark' }}
+                        required
+                      >
+                        <option value="" disabled>Select your state</option>
+                        {INDIAN_STATES.map(s => (
+                          <option key={s} value={s}>{s}</option>
+                        ))}
+                      </select>
                     </FieldRow>
                   )}
 

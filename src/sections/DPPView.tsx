@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -127,9 +128,12 @@ type DppCheckResult = {
 };
 
 export default function DPPView({ onBack, initialDpps }: DPPViewProps) {
+  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(initialDpps === null);
   const [dpps, setDpps] = useState<GeneratedDpp[]>(initialDpps ?? []);
-  const [selectedDppId, setSelectedDppId] = useState<string | null>(null);
+  // Deep-link support: /dpp?dpp=<id> opens that DPP directly (e.g. the "Start"
+  // link on a room-generated DPP). Falls back to the list when absent.
+  const [selectedDppId, setSelectedDppId] = useState<string | null>(() => searchParams.get('dpp'));
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [showSolution, setShowSolution] = useState(false);
@@ -190,7 +194,11 @@ export default function DPPView({ onBack, initialDpps }: DPPViewProps) {
       try {
         setLoading(true);
         const detail = await apiCall(`/assessments/dpps/${selectedDppId}/`);
-        setDpps((previous) => previous.map((entry) => (entry.id === selectedDppId ? detail : entry)));
+        setDpps((previous) =>
+          previous.some((entry) => entry.id === selectedDppId)
+            ? previous.map((entry) => (entry.id === selectedDppId ? detail : entry))
+            : [detail, ...previous],
+        );
       } catch (loadError) {
         setError(getErrorMessage(loadError, 'Failed to load DPP details.'));
       } finally {
@@ -400,7 +408,7 @@ export default function DPPView({ onBack, initialDpps }: DPPViewProps) {
   const correctCount = checkResults.filter((result) => Boolean(result?.isCorrect ?? result?.is_correct)).length;
 
   return (
-    <div id="tutorial-dpp-hub" className="min-h-screen neu-surface text-foreground transition-colors duration-300">
+    <div id="tutorial-dpp-hub" className="min-h-screen overflow-x-hidden neu-surface text-foreground transition-colors duration-300">
       <header className="z-40 bg-[hsl(var(--neu-bg)/0.9)] border-b border-border/40 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-14 sm:h-16">
@@ -416,7 +424,7 @@ export default function DPPView({ onBack, initialDpps }: DPPViewProps) {
                 <img
                   src={DPP_SUBJECT_ORI[currentDpp.subject]}
                   alt="Ori"
-                  className="w-16 h-16 sm:w-20 sm:h-20 object-contain drop-shadow-md flex-shrink-0"
+                  className="w-10 h-10 sm:w-20 sm:h-20 object-contain drop-shadow-md flex-shrink-0"
                 />
               ) : null}
               <div className="truncate">
@@ -542,10 +550,10 @@ export default function DPPView({ onBack, initialDpps }: DPPViewProps) {
           </Card>
         ) : (
           <div className="grid lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2">
+            <div className="lg:col-span-2 min-w-0">
               <Card className="neu-raised border-0 shadow-none">
-                <CardContent className="p-6 sm:p-8">
-                  <div className="flex items-center gap-3 mb-6">
+                <CardContent className="p-4 sm:p-8">
+                  <div className="flex items-center flex-wrap gap-2 sm:gap-3 mb-6">
                     <Badge className="bg-primary/10 text-primary">
                       Q{currentQuestionIndex + 1} of {currentQuestions.length}
                     </Badge>
@@ -559,7 +567,7 @@ export default function DPPView({ onBack, initialDpps }: DPPViewProps) {
 
                   {currentQuestion ? (
                     <>
-                      <div className="text-lg sm:text-xl font-medium text-slate-900 dark:text-white mb-6 leading-relaxed">
+                      <div className="text-lg sm:text-xl font-medium text-slate-900 dark:text-white mb-6 leading-relaxed overflow-x-auto">
                         <FormattedMessage content={currentQuestion.text} />
                       </div>
 
@@ -583,7 +591,7 @@ export default function DPPView({ onBack, initialDpps }: DPPViewProps) {
                           >
                             <div className="flex items-center gap-4 min-w-0">
                               <div
-                                className={`w-8 h-8 rounded-full flex items-center justify-center font-medium ${
+                                className={`w-8 h-8 shrink-0 rounded-full flex items-center justify-center font-medium ${
                                   showSolution
                                     ? index === getCorrectOption(currentQuestionIndex)
                                       ? 'bg-primary text-white'
@@ -792,11 +800,11 @@ function DppSelectionGrid({
                   onSelect(dpp.id);
                 }
               }}
-              className="h-full cursor-pointer neu-raised neu-pressable border-0 shadow-none"
+              className="h-full min-w-0 max-w-full overflow-hidden cursor-pointer neu-raised neu-pressable border-0 shadow-none"
             >
-              <CardContent className="p-6 space-y-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1">
+              <CardContent className="p-4 sm:p-6 space-y-4">
+                  <div className="flex items-start justify-between gap-3 min-w-0">
+                    <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-2">
                         {DPP_SUBJECT_ORI[dpp.subject] && (
                           <img
@@ -832,13 +840,13 @@ function DppSelectionGrid({
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap gap-2 min-w-0">
+                  <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 w-full min-w-0">
                     {weakTopics.slice(0, 3).map((topic) => (
                       <Badge
                         key={topic}
                         variant="secondary"
                         title={topic}
-                        className="max-w-full truncate bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300"
+                        className="block sm:inline-block max-w-full min-w-0 truncate bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300"
                       >
                         {topic}
                       </Badge>

@@ -80,6 +80,8 @@ export default function Leaderboard({ currentUser, initialLeaderboard, initialMy
     );
 
   const [selectedSubject, setSelectedSubject] = useState<string>('overall');
+  // How many ranks to show: '20' | '50' | '100' | '1000' | 'all'.
+  const [topN, setTopN] = useState<string>('100');
   const [leaderboard, setLeaderboard] = useState<any[]>((initialLeaderboard as any[]) ?? []);
   const [myRank, setMyRank] = useState<number | null>(initialMyRank ?? null);
   const [isLoading, setIsLoading] = useState(!initialLeaderboard);
@@ -93,6 +95,7 @@ export default function Leaderboard({ currentUser, initialLeaderboard, initialMy
       if (activeTab === 'local' && currentUser?.location) {
         params.append('location', currentUser.location);
       }
+      params.append('limit', topN);
       const url = `/assessments/ogcode/leaderboard/?${params.toString()}`;
       const data = await apiCall(url);
       setLeaderboard(data.leaderboard || []);
@@ -102,10 +105,12 @@ export default function Leaderboard({ currentUser, initialLeaderboard, initialMy
     } finally {
       setIsLoading(false);
     }
-  }, [selectedSubject, activeTab, currentUser?.location]);
+  }, [selectedSubject, activeTab, currentUser?.location, topN]);
 
   useEffect(() => {
-    if (skipInitialFetch.current && selectedSubject === 'overall') {
+    // The server-seeded initial list is the default top 100 overall board; skip
+    // the redundant first fetch only in that exact state.
+    if (skipInitialFetch.current && selectedSubject === 'overall' && topN === '100') {
       skipInitialFetch.current = false;
       if (activeTab === 'global') return;
     }
@@ -115,7 +120,7 @@ export default function Leaderboard({ currentUser, initialLeaderboard, initialMy
       return;
     }
     fetchLeaderboard();
-  }, [fetchLeaderboard, selectedSubject, activeTab, currentUser?.location]);
+  }, [fetchLeaderboard, selectedSubject, activeTab, currentUser?.location, topN]);
 
   const getRankIcon = (rank: number) => {
     if (rank === 1) return <Crown className={cn(isMobile ? "w-4 h-4" : "w-5 h-5", "text-amber-500")} />;
@@ -196,6 +201,26 @@ export default function Leaderboard({ currentUser, initialLeaderboard, initialMy
     </div>
   );
 
+  // Other members scroll in a bounded list; the current user's own card stays
+  // pinned below so it's always visible even when they rank far down.
+  const renderRankedList = () => (
+    <>
+      <div className="space-y-3 max-h-[56vh] overflow-y-auto pr-1 -mr-1">
+        {leaderboard.filter((e) => !e.isMe).map((entry) => (
+          <LeaderboardRow key={entry.userId} entry={entry} />
+        ))}
+      </div>
+      {myEntry && (
+        <div className="pt-3 mt-1 border-t border-border/40">
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground/70 mb-2 px-1">
+            Your Position{myRank ? ` · Rank #${myRank}` : ''}
+          </p>
+          <LeaderboardRow entry={myEntry} />
+        </div>
+      )}
+    </>
+  );
+
   return (
     <div className="relative min-h-screen neu-surface text-foreground transition-colors duration-500 overflow-x-hidden">
       <main className="max-w-4xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8 pb-24 md:pb-10 relative z-10">
@@ -241,20 +266,37 @@ export default function Leaderboard({ currentUser, initialLeaderboard, initialMy
             <div className="w-2 h-8 bg-primary rounded-full" />
             Hall of Fame
           </h2>
-          <Select value={selectedSubject} onValueChange={setSelectedSubject}>
-            <SelectTrigger className="w-full sm:w-[200px] neu-raised border-0 rounded-2xl font-bold h-12">
-              <div className="flex items-center gap-2">
-                <Filter className="w-4 h-4 text-primary" />
-                <SelectValue placeholder="All Subjects" />
-              </div>
-            </SelectTrigger>
-            <SelectContent className="neu-raised border-0 rounded-2xl p-1">
-              <SelectItem value="overall" className="rounded-xl font-medium focus:bg-primary/10">Global Combined</SelectItem>
-              <SelectItem value="physics" className="rounded-xl font-medium focus:bg-primary/10">Physics Arena</SelectItem>
-              <SelectItem value="chemistry" className="rounded-xl font-medium focus:bg-primary/10">Chemistry Arena</SelectItem>
-              <SelectItem value="mathematics" className="rounded-xl font-medium focus:bg-primary/10">Mathematics Arena</SelectItem>
-            </SelectContent>
-          </Select>
+          <div className="flex flex-col xs:flex-row items-stretch gap-3 w-full sm:w-auto">
+            <Select value={selectedSubject} onValueChange={setSelectedSubject}>
+              <SelectTrigger className="w-full sm:w-[190px] neu-raised border-0 rounded-2xl font-bold h-12">
+                <div className="flex items-center gap-2">
+                  <Filter className="w-4 h-4 text-primary" />
+                  <SelectValue placeholder="All Subjects" />
+                </div>
+              </SelectTrigger>
+              <SelectContent className="neu-raised border-0 rounded-2xl p-1">
+                <SelectItem value="overall" className="rounded-xl font-medium focus:bg-primary/10">Global Combined</SelectItem>
+                <SelectItem value="physics" className="rounded-xl font-medium focus:bg-primary/10">Physics Arena</SelectItem>
+                <SelectItem value="chemistry" className="rounded-xl font-medium focus:bg-primary/10">Chemistry Arena</SelectItem>
+                <SelectItem value="mathematics" className="rounded-xl font-medium focus:bg-primary/10">Mathematics Arena</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={topN} onValueChange={setTopN}>
+              <SelectTrigger className="w-full sm:w-[150px] neu-raised border-0 rounded-2xl font-bold h-12">
+                <div className="flex items-center gap-2">
+                  <Trophy className="w-4 h-4 text-primary" />
+                  <SelectValue />
+                </div>
+              </SelectTrigger>
+              <SelectContent className="neu-raised border-0 rounded-2xl p-1">
+                <SelectItem value="20" className="rounded-xl font-medium focus:bg-primary/10">Top 20</SelectItem>
+                <SelectItem value="50" className="rounded-xl font-medium focus:bg-primary/10">Top 50</SelectItem>
+                <SelectItem value="100" className="rounded-xl font-medium focus:bg-primary/10">Top 100</SelectItem>
+                <SelectItem value="1000" className="rounded-xl font-medium focus:bg-primary/10">Top 1000</SelectItem>
+                <SelectItem value="all" className="rounded-xl font-medium focus:bg-primary/10">All</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         {/* Tabs */}
@@ -366,9 +408,9 @@ export default function Leaderboard({ currentUser, initialLeaderboard, initialMy
                   <Trophy className="w-16 h-16 text-muted-foreground/20 mx-auto mb-6" />
                   <p className="text-muted-foreground font-black uppercase text-xs tracking-widest">No rankings detected</p>
                 </div>
-              ) : leaderboard.map((entry) => (
-                <LeaderboardRow key={entry.userId} entry={entry} />
-              ))}
+              ) : (
+                renderRankedList()
+              )}
             </div>
           </TabsContent>
 
@@ -416,9 +458,9 @@ export default function Leaderboard({ currentUser, initialLeaderboard, initialMy
                     <Trophy className="w-16 h-16 text-muted-foreground/20 mx-auto mb-6" />
                     <p className="text-muted-foreground font-black uppercase text-xs tracking-widest">No rankings detected in this region</p>
                   </div>
-                ) : leaderboard.map((entry) => (
-                  <LeaderboardRow key={entry.userId} entry={entry} />
-                ))}
+                ) : (
+                  renderRankedList()
+                )}
               </div>
             )}
           </TabsContent>

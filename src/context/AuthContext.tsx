@@ -35,7 +35,7 @@ interface AuthContextType {
   tasksLoading: boolean;
   login: (email: string, password: string, role?: 'student' | 'teacher' | 'admin' | null) => Promise<void>;
   loginWithOtp: (email: string, role?: 'student' | 'teacher' | 'admin' | null) => Promise<void>;
-  register: (name: string, email: string, password: string, mobile: string, role?: 'student' | 'teacher' | 'admin' | null) => Promise<void>;
+  register: (name: string, email: string, password: string, mobile: string, state: string, role?: 'student' | 'teacher' | 'admin' | null) => Promise<void>;
   googleLogin: (credential: string, role?: 'student' | 'teacher' | 'admin' | null) => Promise<void>;
   logout: () => void;
   refreshUser: () => Promise<void>;
@@ -428,11 +428,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
     }
   };
 
-  const register = async (name: string, email: string, password: string, mobile: string, role?: 'student' | 'teacher' | 'admin' | null) => {
+  const register = async (name: string, email: string, password: string, mobile: string, state: string, role?: 'student' | 'teacher' | 'admin' | null) => {
     setIsLoading(true);
     setAuthError(null);
     try {
-      const result = await registerAction({ name, email, password, mobile, role: role ?? null });
+      const result = await registerAction({ name, email, password, mobile, state, role: role ?? null });
       if (!result.ok) {
         setAuthError(result.message);
         toast.error(result.message);

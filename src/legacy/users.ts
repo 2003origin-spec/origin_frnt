@@ -583,6 +583,13 @@ export async function handleRegister(payload: UserPayload) {
     }
   }
 
+  // State/region — collected at signup and stored as `location`, powering the
+  // regional leaderboard. Required for students.
+  const location = asString(payload.location)?.trim() || null;
+  if (role === "student" && !location) {
+    return badRequest("Please select your state.");
+  }
+
   // Enforce registration limit (role-aware: teachers capped separately)
   const status = await getRegistrationStatus(role);
   if (status.seatsLeft <= 0) {
@@ -596,7 +603,7 @@ export async function handleRegister(payload: UserPayload) {
       if (mobile && (await dbMobileInUse(mobile))) {
         return badRequest("This mobile number is already registered.");
       }
-      const { user: dbUser, session } = await dbRegisterUser({ name, email, password, role, mobile });
+      const { user: dbUser, session } = await dbRegisterUser({ name, email, password, role, mobile, location });
       // Event Mode: auto-grant Premium Pro to students who sign up during a launch
       // event. Best-effort; never blocks/aborts registration.
       await maybeGrantEventModePremiumOnSignup(dbUser.id, dbUser.role);
@@ -633,6 +640,7 @@ export async function handleRegister(payload: UserPayload) {
       password: bcrypt.hashSync(password, 10),
       role,
       mobile,
+      location,
       studentClass: null,
       fieldOfInterest: null,
       referralSource: null,
