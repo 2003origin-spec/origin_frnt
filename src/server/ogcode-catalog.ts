@@ -961,11 +961,16 @@ export async function getOgcodeChallengeQuestion(dateKey?: string): Promise<Stor
   }
 
   // 2. Build the eligible pool (curated OR answerable MCQ) + the no-repeat window.
+  // Product constraint (until changed): the Ori Quest / daily challenge draws
+  // ONLY from Physics NEET questions. Applied as a hard filter over the whole
+  // eligible pool (even curated is_challenge_of_day rows must be Physics+NEET).
   const eligibleResult = await pool.query<{ id: string; source_index: number | string; is_challenge_of_day: boolean }>(
     `SELECT id, source_index, is_challenge_of_day
        FROM ogcode_questions
-      WHERE is_challenge_of_day = true
-         OR (question_type = 'mcq' AND correct_option IS NOT NULL)`,
+      WHERE LOWER(subject) = 'physics'
+        AND occurrence ILIKE '%neet%'
+        AND (is_challenge_of_day = true
+             OR (question_type = 'mcq' AND correct_option IS NOT NULL))`,
   );
   const eligible: DailyChallengeCandidate[] = eligibleResult.rows.map((row) => ({
     id: row.id,

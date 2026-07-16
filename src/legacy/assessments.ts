@@ -5232,10 +5232,15 @@ export async function getChallengeOfTheDay(store: AppStore, user: StoredUser) {
   }
   if (!challenge) {
     const epochDay = Math.floor(Date.now() / 86_400_000);
-    const curated = store.questions.filter((question) => question.isChallengeOfTheDay);
+    // Match the primary path: Ori Quest is Physics + NEET only (until changed).
+    const isPhysicsNeet = (q: StoredQuestion) =>
+      String(q.subject ?? "").toLowerCase() === "physics" &&
+      /neet/i.test(String(q.occurrence ?? ""));
+    const physicsNeet = store.questions.filter(isPhysicsNeet);
+    const curated = physicsNeet.filter((question) => question.isChallengeOfTheDay);
     const pool = curated.length > 0
       ? curated
-      : store.questions.filter((question) => question.questionType === "mcq" && question.correctOption !== null);
+      : physicsNeet.filter((question) => question.questionType === "mcq" && question.correctOption !== null);
     if (pool.length > 0) {
       challenge = pool[((epochDay % pool.length) + pool.length) % pool.length];
     } else {
