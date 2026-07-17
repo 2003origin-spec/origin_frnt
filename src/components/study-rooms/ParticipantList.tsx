@@ -1,6 +1,7 @@
 'use client';
 
-import { Crown, Shield, UserMinus, Users } from 'lucide-react';
+import { useState } from 'react';
+import { ChevronDown, ChevronUp, Crown, Shield, UserMinus, Users } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { cn } from '@/lib/utils';
@@ -21,6 +22,7 @@ export function ParticipantList({
   onTransferAdmin: (userId: string) => Promise<void>;
 }) {
   const activeParticipants = participants.filter((participant) => !participant.left_at && !participant.kicked);
+  const [collapsed, setCollapsed] = useState(false);
 
   const run = async (operation: () => Promise<void>, success: string): Promise<void> => {
     try {
@@ -33,21 +35,31 @@ export function ParticipantList({
 
   return (
     <section className="neu-raised rounded-2xl p-5">
-      {/* Header */}
-      <div className="mb-4 flex items-center justify-between">
+      {/* Header — tap to minimise so the chat keeps its space on mobile */}
+      <button
+        type="button"
+        onClick={() => setCollapsed((value) => !value)}
+        className="mb-4 flex w-full items-center justify-between"
+        aria-expanded={!collapsed}
+      >
         <div className="flex items-center gap-3">
           <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10">
             <Users className="h-4 w-4 text-primary" />
           </div>
           <h2 className="text-[10px] font-black uppercase tracking-[0.22em] text-muted-foreground">Participants</h2>
         </div>
-        <span className="rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider bg-primary/10 text-primary">
-          {activeParticipants.length}/100
-        </span>
-      </div>
+        <div className="flex items-center gap-2">
+          <span className="rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider bg-primary/10 text-primary">
+            {activeParticipants.length}/100
+          </span>
+          {collapsed
+            ? <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            : <ChevronUp className="h-4 w-4 text-muted-foreground" />}
+        </div>
+      </button>
 
-      {/* List */}
-      <div className="space-y-2.5">
+      {/* List — capped height with its own scroll so joins never grow the page */}
+      <div className={cn('space-y-2.5 overflow-y-auto pr-1 max-h-[38vh] lg:max-h-[320px]', collapsed && 'hidden')}>
         {activeParticipants.map((participant) => {
           const isSelf = participant.user_id === currentUserId;
           const participantIsAdmin = participant.role === 'admin';

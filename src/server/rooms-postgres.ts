@@ -48,6 +48,8 @@ CREATE INDEX IF NOT EXISTS idx_rooms_status ON rooms.rooms(status);
 -- cutover); permanent = one non-expiring code. Default rotating; student rooms
 -- ignore this and keep their own 180s flow. Idempotent + additive.
 ALTER TABLE rooms.rooms ADD COLUMN IF NOT EXISTS code_mode TEXT NOT NULL DEFAULT 'rotating';
+-- Host-scheduled auto-start: when set and reached, the room flips to in_test.
+ALTER TABLE rooms.rooms ADD COLUMN IF NOT EXISTS scheduled_start_at TIMESTAMPTZ;
 
 CREATE TABLE IF NOT EXISTS rooms.room_participants (
   room_id            TEXT NOT NULL REFERENCES rooms.rooms(id) ON DELETE CASCADE,

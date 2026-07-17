@@ -18,6 +18,7 @@ export type StudyRoomSummary = {
   duration_seconds: number | null;
   started_at: string | null;
   ended_at: string | null;
+  scheduled_start_at: string | null;
   max_participants: number;
   created_at: string;
   updated_at: string;
@@ -80,6 +81,8 @@ type StudyRoomContextValue = State & {
     question_count?: number;
   }) => Promise<void>;
   startTest: () => Promise<void>;
+  /** Set (ISO string) / edit / clear (null) the scheduled auto-start time. */
+  scheduleTest: (scheduledStartAt: string | null) => Promise<void>;
   leaveRoom: () => Promise<void>;
   deleteRoom: () => Promise<void>;
   kickParticipant: (userId: string) => Promise<void>;
@@ -391,6 +394,13 @@ export function StudyRoomProvider({
       await runRoomRequest(() => apiCall(`/study-rooms/${roomId}/configure-test`, {
         method: 'POST',
         body: JSON.stringify(payload),
+      }));
+      await refresh();
+    },
+    scheduleTest: async (scheduledStartAt): Promise<void> => {
+      await runRoomRequest(() => apiCall(`/study-rooms/${roomId}/schedule`, {
+        method: 'POST',
+        body: JSON.stringify({ scheduled_start_at: scheduledStartAt }),
       }));
       await refresh();
     },

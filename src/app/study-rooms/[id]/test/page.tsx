@@ -25,6 +25,12 @@ export default async function StudyRoomTestPage({ params }: { params: Promise<{ 
   if (state.room.status === 'finished') redirect(`/study-rooms/${id}/leaderboard`);
   if (state.room.status === 'closed') redirect('/study-rooms');
 
+  // One-time attempt: a participant who already submitted must not be able to
+  // re-enter the test (e.g. after leaving while others are still attempting).
+  // Send them to their result on the leaderboard instead.
+  const me = state.participants.find((participant) => participant.user_id === user.id);
+  if (me?.finished_at) redirect(`/study-rooms/${id}/leaderboard`);
+
   const { test } = await withStoreAsync((store) => getRoomTestForUser(store, user, id));
   return <RoomTestClient room={state.room} roomId={id} initialTest={test as unknown as Test} />;
 }

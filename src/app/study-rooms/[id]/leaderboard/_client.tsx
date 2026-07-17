@@ -20,6 +20,16 @@ function RankIcon({ rank }: { rank: number }) {
   return <span className="flex h-5 w-5 items-center justify-center text-sm font-black text-muted-foreground">{rank}</span>;
 }
 
+/** Seconds → "M:SS" (or "H:MM:SS" past an hour). */
+function formatDuration(totalSeconds: number): string {
+  const s = Math.max(0, Math.floor(totalSeconds));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return h > 0 ? `${h}:${pad(m)}:${pad(sec)}` : `${m}:${pad(sec)}`;
+}
+
 export default function RoomLeaderboardClient({
   room,
   currentUserId,
@@ -35,6 +45,27 @@ export default function RoomLeaderboardClient({
   const [leaderboard, setLeaderboard] = useState(initialLeaderboard);
   const [dpps, setDpps] = useState(initialDpps);
   const isAdmin = room.admin_user_id === currentUserId;
+
+  // Live clock for the "Attempting…" elapsed timers. Starts at 0 and is set
+  // after mount so SSR and the first client render match (no hydration flash).
+  // Only ticks while at least one participant is still attempting, so a
+  // finished board left open (e.g. a teacher's tab) doesn't re-render forever.
+  const anyInProgress = leaderboard.some((row) => !row.finished_at);
+  const [now, setNow] = useState(0);
+  useEffect(() => {
+    setNow(Date.now());
+    if (!anyInProgress) return;
+    const tick = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(tick);
+  }, [anyInProgress]);
+
+  const startedMs = room.started_at ? new Date(room.started_at).getTime() : null;
+  const liveElapsedSeconds = (): number | null => {
+    if (now === 0 || startedMs === null) return null;
+    const raw = Math.floor((now - startedMs) / 1000);
+    const capped = room.duration_seconds ? Math.min(raw, room.duration_seconds) : raw;
+    return Math.max(0, capped);
+  };
 
   useEffect(() => {
     let isDisposed = false;
@@ -105,18 +136,18 @@ export default function RoomLeaderboardClient({
               <div
                 key={entry.user_id}
                 className={cn(
-                  'flex items-center gap-4 rounded-xl p-4',
+                  'flex flex-wrap items-center gap-3 sm:gap-4 rounded-xl p-3 sm:p-4',
                   entry.rank <= 3 ? 'neu-raised' : 'neu-inset',
                   entry.is_me && 'ring-2 ring-primary/30',
                 )}
               >
-                <div className="w-8 flex items-center justify-center">
+                <div className="w-6 sm:w-8 flex items-center justify-center shrink-0">
                   <RankIcon rank={entry.rank} />
                 </div>
 
                 {/* Avatar */}
                 <div className={cn(
-                  'h-11 w-11 rounded-xl flex items-center justify-center text-sm font-black flex-shrink-0',
+                  'h-10 w-10 sm:h-11 sm:w-11 rounded-xl flex items-center justify-center text-sm font-black flex-shrink-0',
                   entry.rank === 1 ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400' :
                   entry.rank === 2 ? 'bg-slate-400/20 text-slate-500' :
                   entry.rank === 3 ? 'bg-orange-500/20 text-orange-600 dark:text-orange-400' :
@@ -139,20 +170,36 @@ export default function RoomLeaderboardClient({
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    {entry.finished_at ? `Finished in ${entry.time_taken_seconds ?? 0}s` : 'Still in progress'}
-                  </p>
+                  {entry.finished_at ? (
+                    <p className="text-xs text-muted-foreground">
+                      Finished in {formatDuration(entry.time_taken_seconds ?? 0)}
+                    </p>
+                  ) : (
+                    <p className="flex items-center gap-1.5 text-xs font-bold text-amber-600 dark:text-amber-400">
+                      <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+                      {liveElapsedSeconds() !== null ? `${formatDuration(liveElapsedSeconds()!)} elapsed` : 'In progress'}
+                    </p>
+                  )}
                 </div>
 
-                <div className="text-right">
-                  <p className="text-2xl font-black text-primary">{entry.score ?? 0}</p>
-                  <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Score</p>
+                <div className="text-right shrink-0 ml-auto">
+                  {entry.finished_at ? (
+                    <>
+                      <p className="text-xl sm:text-2xl font-black text-primary tabular-nums">{entry.score ?? 0}</p>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Score</p>
+                    </>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                      <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+                      Attempting
+                    </span>
+                  )}
                 </div>
 
                 {entry.is_me && room.custom_test_id && entry.test_result_id && (
                   <Link
                     href={`/tests/${room.custom_test_id}/result?result=${encodeURIComponent(entry.test_result_id)}`}
-                    className="flex items-center gap-1.5 neu-raised rounded-xl px-3 py-2 text-xs font-bold text-foreground hover:-translate-y-0.5 transition-all"
+                    className="flex w-full sm:w-auto items-center justify-center gap-1.5 neu-raised rounded-xl px-3 py-2 text-xs font-bold text-foreground hover:-translate-y-0.5 transition-all"
                   >
                     <BarChart3 className="h-3.5 w-3.5" />
                     Analysis

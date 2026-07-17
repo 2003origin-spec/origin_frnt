@@ -1,18 +1,18 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
 import MilestonesPage from '@/sections/MilestonesPage';
+import { useAppBack } from '@/hooks/useAppBack';
 
 interface MilestonesClientProps {
   initialPoints: number;
 }
 
 export default function MilestonesClient({ initialPoints }: MilestonesClientProps) {
-  const router = useRouter();
+  const goBack = useAppBack();
   return (
     <MilestonesPage
       userPoints={initialPoints}
-      onBack={() => router.push('/dashboard')}
+      onBack={goBack}
     />
   );
 }

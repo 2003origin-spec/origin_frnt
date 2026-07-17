@@ -4,10 +4,12 @@ import Pomodoro from '@/sections/Pomodoro';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useTimeTracker } from '@/hooks/useTimeTracker';
+import { useAppBack } from '@/hooks/useAppBack';
 
 export default function PomodoroClient() {
   const { user, setIsNavigationLocked, tasks } = useAuth();
   const router = useRouter();
+  const goBack = useAppBack();
   const { setTimeMode } = useTimeTracker(!!user);
 
   if (!user) return null;
@@ -25,7 +27,7 @@ export default function PomodoroClient() {
 
   return (
     <Pomodoro
-      onBack={() => router.push('/dashboard')}
+      onBack={goBack}
       user={user}
       setTimeMode={setTimeMode}
       onNavigate={handleNavigate}

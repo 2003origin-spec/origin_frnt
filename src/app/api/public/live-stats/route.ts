@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 
 import { getUserPostgresPool, isUserPostgresConfigured } from '@/server/user-postgres';
+import { getOgcodePostgresPool, isOgcodePostgresConfigured } from '@/server/postgres';
 import { generalLimiter, checkRateLimit } from '@/lib/rate-limit';
-import { getActiveScreens } from '@/server/presence';
+import { getSiteVisits, recordSiteVisit } from '@/server/site-stats';
 
 /** Vercel-resolved client IP (it overwrites x-forwarded-for; not spoofable). */
 function clientIp(request: Request): string {
@@ -10,26 +11,25 @@ function clientIp(request: Request): string {
   return xff?.split(',')[0]?.trim() || request.headers.get('x-real-ip')?.trim() || 'anonymous';
 }
 
-/**
- * "solving right now" = number of active app screens worldwide. Every signed-in
- * app screen heartbeats into the global presence set (see src/server/presence.ts),
- * so this counts open screens (tabs/devices), not just OGCode.
- */
-async function activeNow(): Promise<number> {
-  return getActiveScreens();
+/** All-time "aspirants & counting" — cumulative landing-page visits. */
+async function visits(): Promise<number> {
+  return getSiteVisits();
 }
 
-/** Real "doubts solved today" — doubt sessions with activity since UTC midnight. */
-async function doubtsToday(): Promise<number> {
-  if (!isUserPostgresConfigured()) return 0;
-  const pool = getUserPostgresPool();
+/**
+ * All-time "questions conquered" — total correct first-attempts across the whole
+ * OGCode question bank. `first_attempt_correct` is a per-question aggregate
+ * maintained by the engagement tracker, so SUM() is the real platform-wide total.
+ */
+async function questionsConquered(): Promise<number> {
+  if (!isOgcodePostgresConfigured()) return 0;
+  const pool = getOgcodePostgresPool();
   if (!pool) return 0;
   try {
-    const res = await pool.query<{ count: number | string }>(
-      `SELECT COUNT(*) AS count FROM app.doubt_sessions
-        WHERE updated_at >= date_trunc('day', NOW())`,
+    const res = await pool.query<{ total: number | string }>(
+      `SELECT COALESCE(SUM(first_attempt_correct), 0) AS total FROM ogcode_questions`,
     );
-    return Number(res.rows[0]?.count ?? 0);
+    return Number(res.rows[0]?.total ?? 0);
   } catch {
     return 0;
   }
@@ -61,9 +61,19 @@ export async function GET(request: Request) {
   });
   if (limited) return limited;
 
-  const [active, doubts, streaks] = await Promise.all([activeNow(), doubtsToday(), streaksActive()]);
+  // The landing page tags only its very first poll with ?first=1, so we count
+  // one visit per page load — not once per 15s poll.
+  if (new URL(request.url).searchParams.get('first') === '1') {
+    await recordSiteVisit();
+  }
+
+  const [siteVisits, questionsSolved, streaks] = await Promise.all([
+    visits(),
+    questionsConquered(),
+    streaksActive(),
+  ]);
   return NextResponse.json(
-    { activeNow: active, doubtsToday: doubts, streaksActive: streaks },
+    { visits: siteVisits, questionsSolved, streaksActive: streaks },
     { headers: { 'Cache-Control': 'no-store' } },
   );
 }
