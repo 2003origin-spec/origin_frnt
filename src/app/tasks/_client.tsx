@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import TasksGoals from '@/sections/TasksGoals';
 import { useAuth } from '@/context/AuthContext';
-import { useRouter } from 'next/navigation';
+import { useAppBack } from '@/hooks/useAppBack';
 import type { Task } from '@/types';
 
 interface TasksClientProps {
@@ -12,7 +12,7 @@ interface TasksClientProps {
 
 export default function TasksClient({ initialTasks }: TasksClientProps) {
   const { user, tasks, addTask, editTask, toggleTask, removeTask, primeTasks } = useAuth();
-  const router = useRouter();
+  const goBack = useAppBack();
 
   useEffect(() => {
     primeTasks(initialTasks);
@@ -28,7 +28,7 @@ export default function TasksClient({ initialTasks }: TasksClientProps) {
       onEditTask={editTask}
       onToggleTask={toggleTask}
       onRemoveTask={removeTask}
-      onBack={() => router.push('/dashboard')}
+      onBack={goBack}
     />
   );
 }

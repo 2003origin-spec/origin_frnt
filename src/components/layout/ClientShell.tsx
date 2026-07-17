@@ -13,6 +13,7 @@ import { useTheme } from 'next-themes';
 import { TutorialProvider } from '@/features/tutorial/TutorialProvider';
 import { cn } from '@/lib/utils';
 import { useResizable } from '@/hooks/use-resizable';
+import { markAppNavigation } from '@/hooks/useAppBack';
 import AiSidebar from './AiSidebar';
 import LaunchCover from '@/components/launch/LaunchCover';
 import { LayoutProvider, useLayout } from '@/context/LayoutContext';
@@ -67,6 +68,13 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnab
   const aiAccess = useAiAccess();
   const pathname = usePathname();
   const router = useRouter();
+
+  // In-app navigation depth for useAppBack: counts route changes this JS
+  // session so the shared Back button only calls history.back() when the
+  // previous entry is guaranteed to be an in-app page (never exits the site).
+  React.useEffect(() => {
+    markAppNavigation(pathname);
+  }, [pathname]);
   // AI Feature Toggle epic — AI UI is students-only and only when Ori is enabled
   // for them. This single flag gates the sidebar, mascot, Ask-Ori pill, and the
   // selection-capture engine app-wide (doc 06 §2).
@@ -74,11 +82,14 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnab
 
   const isTestsPath = pathname === '/tests' || pathname.startsWith('/tests/');
   const isStudyRoomTestPath = /^\/study-rooms\/[^/]+\/test/.test(pathname);
+  // The join screen is a single-action code entry; on mobile the floating Origin
+  // AI launcher overlaps the Join button, so hide it there.
+  const isStudyRoomJoinPath = pathname === '/study-rooms/join';
   const isResultPath = pathname.endsWith('/result');
   // Result pages are post-test summaries — keep the nav so students can leave.
   const isSpecialPath = (pathname.startsWith('/tests/') && !isResultPath) || pathname.startsWith('/ogcode/') || isStudyRoomTestPath;
   const isFullViewportApp = pathname === '/doubt-solver' || (pathname.startsWith('/tests/') && !isResultPath) || pathname.startsWith('/ogcode/') || isStudyRoomTestPath;
-  const shouldHideOriginAi = isTestsPath || isStudyRoomTestPath;
+  const shouldHideOriginAi = isTestsPath || isStudyRoomTestPath || isStudyRoomJoinPath;
 
   const { resolvedTheme, setTheme } = useTheme();
   const { 

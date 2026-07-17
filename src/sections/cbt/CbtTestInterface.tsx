@@ -57,8 +57,12 @@ export function CbtTestInterface() {
   const [answers, setAnswers] = useState<Record<number, CbtStudentAnswer>>({});
   const [palette, setPalette] = useState<Record<number, CbtPaletteStatus>>({});
   const [index, setIndex] = useState(0);
-  const [showWarning, setShowWarning] = useState(false);
   const [showSubmitModal, setShowSubmitModal] = useState(false);
+  // Malpractice / fraud detection (ported from TestInterface): 3-strike
+  // tab-switch / full-screen-exit detection that auto-submits on the 3rd strike.
+  const [violations, setViolations] = useState(0);
+  const [showMalpracticeWarning, setShowMalpracticeWarning] = useState(false);
+  const [malpracticeTerminated, setMalpracticeTerminated] = useState(false);
   // Instructions gate + optional camera proctoring (auto-disabled when no camera).
   const [acceptedRules, setAcceptedRules] = useState(false);
   const [cameraEnabled, setCameraEnabled] = useState(false);
@@ -69,6 +73,7 @@ export function CbtTestInterface() {
   const dirtyRef = useRef(false);
   const submittedRef = useRef(false);
   const debounceRef = useRef<number | undefined>(undefined);
+  const malpracticeTimerRef = useRef<number | undefined>(undefined);
 
   stateRef.current = { answers, palette };
 
@@ -190,29 +195,14 @@ export function CbtTestInterface() {
     debounceRef.current = window.setTimeout(() => void flushSave(), 2000);
   }, [flushSave]);
 
-  // ── Fullscreen request + re-enter warning (never auto-submit) ──────────────
+  // ── Full-screen request ────────────────────────────────────────────────────
   const enterFullscreen = useCallback(() => {
     containerRef.current?.requestFullscreen?.().catch(() => undefined);
   }, []);
 
-  useEffect(() => {
-    if (phase !== "running") return;
-    const check = () => {
-      const left = !document.fullscreenElement || document.hidden;
-      setShowWarning(left);
-    };
-    document.addEventListener("fullscreenchange", check);
-    document.addEventListener("visibilitychange", check);
-    window.addEventListener("blur", () => setShowWarning(true));
-    return () => {
-      document.removeEventListener("fullscreenchange", check);
-      document.removeEventListener("visibilitychange", check);
-    };
-  }, [phase]);
-
   // ── Submit (manual, auto-at-zero, and drain-safe idempotent) ───────────────
   const submit = useCallback(
-    async (auto: boolean) => {
+    async (auto: boolean, malpractice = false) => {
       if (submittedRef.current) return;
       submittedRef.current = true;
       setPhase("submitting");
@@ -222,7 +212,7 @@ export function CbtTestInterface() {
           method: "POST",
           headers: { "content-type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({ auto }),
+          body: JSON.stringify({ auto, malpractice }),
         });
       } catch {
         // Server sweep is the backstop; still show the end screen.
@@ -241,6 +231,64 @@ export function CbtTestInterface() {
   useEffect(() => {
     if (phase === "running" && remaining <= 0 && payload) void submit(true);
   }, [phase, remaining, payload, submit]);
+
+  // ── Malpractice / fraud detection (3-strike, ported from TestInterface) ─────
+  // Leaving full-screen counts immediately; tab-hide / window-blur get a 1s
+  // grace window (cleared if the student returns in time). 3rd strike →
+  // terminate + auto-submit flagged as malpractice.
+  useEffect(() => {
+    if (phase !== "running") return;
+
+    const handleViolation = () => {
+      if (malpracticeTerminated) return;
+      setViolations((prev) => {
+        const next = prev + 1;
+        if (next >= 3) {
+          setTimeout(() => {
+            setMalpracticeTerminated(true);
+            void submit(true, true);
+          }, 0);
+        } else {
+          setTimeout(() => setShowMalpracticeWarning(true), 0);
+        }
+        return next;
+      });
+    };
+
+    const startTimer = () => {
+      if (!malpracticeTimerRef.current && !malpracticeTerminated) {
+        malpracticeTimerRef.current = window.setTimeout(() => {
+          handleViolation();
+          malpracticeTimerRef.current = undefined;
+        }, 1000);
+      }
+    };
+    const stopTimer = () => {
+      if (malpracticeTimerRef.current) {
+        window.clearTimeout(malpracticeTimerRef.current);
+        malpracticeTimerRef.current = undefined;
+      }
+    };
+
+    const onVisibility = () => { if (document.hidden) startTimer(); else stopTimer(); };
+    const onBlur = () => startTimer();
+    const onFocus = () => stopTimer();
+    const onFullscreenChange = () => {
+      if (!document.fullscreenElement) handleViolation();
+    };
+
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("blur", onBlur);
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () => {
+      stopTimer();
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("blur", onBlur);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("fullscreenchange", onFullscreenChange);
+    };
+  }, [phase, submit, malpracticeTerminated]);
 
   // ── Answer mutation ────────────────────────────────────────────────────────
   const setAnswer = useCallback((position: number, next: CbtStudentAnswer) => {
@@ -404,8 +452,9 @@ export function CbtTestInterface() {
                   <ShieldCheck className="h-5 w-5" /> Exam Integrity
                 </h3>
                 <ul className="space-y-1.5 text-xs font-medium text-muted-foreground">
-                  <li>• The exam opens in <span className="font-bold text-foreground">full-screen</span>. Leaving full-screen shows a warning — your timer keeps running.</li>
-                  <li>• Switching tabs or minimizing the browser is recorded.</li>
+                  <li>• The exam opens in <span className="font-bold text-red-600 dark:text-red-400">full-screen</span>. Exiting full-screen counts as a violation.</li>
+                  <li>• Switching tabs or minimizing the browser triggers a malpractice warning.</li>
+                  <li>• After <span className="font-bold text-red-600 dark:text-red-400">3 violations</span>, the test is automatically submitted and reported.</li>
                   <li>• Camera proctoring is <span className="font-bold text-foreground">optional</span> — enable it below for face monitoring.</li>
                 </ul>
               </section>
@@ -597,22 +646,62 @@ export function CbtTestInterface() {
         </div>
       ) : null}
 
-      {/* Fullscreen re-enter warning */}
-      {showWarning ? (
-        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-background/95 p-6 text-center backdrop-blur-sm">
-          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-500/15 text-amber-500">
-            <AlertTriangle className="h-7 w-7" />
+      {/* Malpractice warning (violation < 3) — scroll-safe + mobile-sized */}
+      {showMalpracticeWarning ? (
+        <div className="fixed inset-0 z-[210] flex items-start sm:items-center justify-center bg-black/80 backdrop-blur-md p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl shadow-[0_0_50px_rgba(234,179,8,0.2)] max-w-md w-full my-auto overflow-hidden border-t-8 border-yellow-500">
+            <div className="bg-yellow-500/10 p-6 sm:p-8 text-center border-b border-yellow-100">
+              <div className="w-16 h-16 sm:w-20 sm:h-20 bg-yellow-500 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6 shadow-lg shadow-yellow-500/40">
+                <AlertTriangle className="w-8 h-8 sm:w-10 sm:h-10 text-white animate-pulse" />
+              </div>
+              <h2 className="text-2xl sm:text-3xl font-black text-gray-900 mb-2 uppercase tracking-tighter">Warning: Security Alert</h2>
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-red-600 text-white text-xs font-black rounded-full uppercase tracking-widest mb-4">
+                Violation {violations} of 3
+              </div>
+            </div>
+            <div className="p-6 sm:p-8 space-y-5 sm:space-y-6">
+              <div className="space-y-3">
+                <p className="text-gray-900 font-bold text-center text-lg italic">&quot;Security violation detected&quot;</p>
+                <p className="text-gray-500 text-sm text-center leading-relaxed">
+                  The system detected that you left full-screen or switched tabs.
+                  This is a direct violation of the <span className="font-bold text-primary">O3 Testing Agency</span> exam rules.
+                </p>
+              </div>
+              <div className="bg-red-50 p-4 rounded-2xl border border-red-100">
+                <p className="text-red-700 text-[10px] font-black uppercase tracking-widest text-center">Final Warning Consequences</p>
+                <p className="text-red-600 text-[11px] font-bold text-center mt-1">
+                  Exceeding 3 violations will result in automatic test termination and disqualification.
+                </p>
+              </div>
+              <button
+                onClick={() => { enterFullscreen(); setShowMalpracticeWarning(false); }}
+                className="w-full bg-slate-900 hover:bg-black text-white font-black py-4 rounded-2xl transition-all shadow-xl active:scale-95 text-lg uppercase tracking-tight"
+              >
+                Return to Examination
+              </button>
+            </div>
           </div>
-          <p className="text-lg font-black text-foreground">Please return to the test</p>
-          <p className="max-w-sm text-sm text-muted-foreground">
-            You left the test window. Your answers are saved — return to full-screen to continue. Your timer keeps running.
-          </p>
-          <button
-            onClick={() => { enterFullscreen(); setShowWarning(false); }}
-            className="rounded-xl bg-primary px-6 py-3 text-sm font-black uppercase tracking-widest text-primary-foreground hover:bg-primary/90"
-          >
-            Return to Full-screen
-          </button>
+        </div>
+      ) : null}
+
+      {/* Malpractice termination (3rd violation → auto-submit) — scroll-safe + mobile-sized */}
+      {malpracticeTerminated ? (
+        <div className="fixed inset-0 z-[220] flex items-start sm:items-center justify-center bg-red-950/90 backdrop-blur-md p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl shadow-[0_0_50px_rgba(239,68,68,0.3)] max-w-md w-full my-auto p-6 sm:p-10 text-center border-t-8 border-red-600">
+            <div className="w-20 h-20 sm:w-24 sm:h-24 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6 sm:mb-8 animate-pulse">
+              <ShieldCheck className="w-10 h-10 sm:w-12 sm:h-12 text-red-600" />
+            </div>
+            <h2 className="text-2xl sm:text-3xl font-black text-red-600 mb-4 uppercase tracking-tighter">Test Terminated</h2>
+            <p className="text-xl font-bold text-gray-900 mb-2">MALPRACTICE DETECTED</p>
+            <p className="text-gray-600 mb-6 sm:mb-10 leading-relaxed font-semibold">
+              You have exceeded the maximum number of warnings for leaving the test screen.
+              The test has been suspended and reported.
+            </p>
+            <div className="flex items-center justify-center gap-3 text-red-600 font-bold animate-bounce text-lg">
+              <span className="w-2 h-2 bg-red-600 rounded-full"></span>
+              SUBMITTING RESULTS...
+            </div>
+          </div>
         </div>
       ) : null}
     </div>

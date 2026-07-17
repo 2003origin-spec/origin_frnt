@@ -4,7 +4,7 @@ import { requireUserFromRequest, resolveTokenToUser, refreshAccessToken, createA
 import { isAuthServiceUnavailableError } from "@/server/auth-errors";
 import { extractAccessFingerprint } from "@/server/auth-jwt";
 import { isUserPostgresConfigured } from "@/server/user-postgres";
-import { dbLoginUser, dbRegisterUser, dbGetTasks, dbCreateTask, dbUpdateTask, dbDeleteTask, dbFindUserByEmail, dbCreateUser, dbUpdateUser, dbCreateAuthSession, dbGetUserCount, dbGetUserCountByRole, dbMobileInUse } from "@/server/db-users";
+import { dbLoginUser, dbRegisterUser, dbGetTasks, dbCreateTask, dbUpdateTask, dbDeleteTask, dbFindUserByEmail, dbUpdateUser, dbCreateAuthSession, dbGetUserCount, dbGetUserCountByRole, dbMobileInUse } from "@/server/db-users";
 import { OAuth2Client } from "google-auth-library";
 import {
   awardPoints,
@@ -16,7 +16,7 @@ import {
   recordTime,
   updateUserStreak,
 } from "@/server/gamification";
-import { badRequest, created, forbidden, noContent, notFound, ok, serviceUnavailable, unauthorized } from "@/server/http";
+import { badRequest, created, noContent, notFound, ok, serviceUnavailable, unauthorized } from "@/server/http";
 import { searchAll, type SearchScope } from "@/server/search/search-service";
 import { listNotifications, markNotificationsRead } from "@/server/notifications";
 import { withEntitledSubjects } from "@/server/entitlements";
@@ -572,21 +572,19 @@ export async function handleRegister(payload: UserPayload) {
     return badRequest('Must include "email" and "password".');
   }
 
-  // Mobile: required for students (collected on the signup form); optional for
-  // teachers, but validated when provided. Stored as 10 digits (no +91).
+  // Mobile: required for BOTH students and teachers (collected on the signup
+  // form). Stored as 10 digits (no +91). The server is the source of truth —
+  // the form already enforces this, but any direct/API path must not bypass it.
   const mobileRaw = asString(payload.mobile);
-  let mobile: string | null = null;
-  if (role === "student" || (mobileRaw && mobileRaw.trim())) {
-    mobile = normalizeMobile(mobileRaw ?? "");
-    if (!mobile) {
-      return badRequest("Enter a valid 10-digit mobile number.");
-    }
+  const mobile: string | null = normalizeMobile(mobileRaw ?? "");
+  if (!mobile) {
+    return badRequest("Enter a valid 10-digit mobile number.");
   }
 
   // State/region — collected at signup and stored as `location`, powering the
-  // regional leaderboard. Required for students.
+  // regional leaderboard. Required for BOTH students and teachers.
   const location = asString(payload.location)?.trim() || null;
-  if (role === "student" && !location) {
+  if (!location) {
     return badRequest("Please select your state.");
   }
 
@@ -673,11 +671,12 @@ export async function handleRegister(payload: UserPayload) {
   });
 }
 
-export async function handleGoogleLogin(
-  payload: UserPayload,
-  options?: { allowNewUsers?: boolean },
-) {
-  const allowNewUsers = options?.allowNewUsers ?? true;
+export async function handleGoogleLogin(payload: UserPayload) {
+  // Google auth is LOGIN-ONLY: it authenticates existing accounts and never
+  // creates new ones. Brand-new users must go through the email/password signup
+  // form, which compulsorily collects mobile + state. (The old `allowNewUsers`
+  // option — which only gated the admin signup switch — is gone; new Google
+  // emails are always refused with a "please sign up first" prompt below.)
   const credential = asString(payload.credential);
   if (!credential) return badRequest("Missing Google credential token.");
 
@@ -747,7 +746,7 @@ export async function handleGoogleLogin(
 
     if (isUserPostgresConfigured()) {
       try {
-        let dbUser = await dbFindUserByEmail(email, role);
+        const dbUser = await dbFindUserByEmail(email, role);
         if (!dbUser) {
           // Same email may already exist under a different role (e.g. user
           // signed up as a student earlier and is now trying to Google in
@@ -766,35 +765,12 @@ export async function handleGoogleLogin(
             }
           }
 
-          // Admin launch gate: signups disabled → no new Google accounts, but
-          // existing users (dbUser found above) still log in.
-          if (!allowNewUsers) {
-            return forbidden("New sign-ups are currently disabled. Please check back soon.");
-          }
-
-          // Enforce registration limit for new users (role-aware: teachers capped separately)
-          const status = await getRegistrationStatus(role);
-          if (status.seatsLeft <= 0) {
-            const scope = role === "teacher" ? "teacher" : "user";
-            return badRequest(`Registration is currently closed. We've reached our maximum ${scope} capacity for this phase.`);
-          }
-
-          const hashed = bcrypt.hashSync(createId("rand"), 10);
-          dbUser = await dbCreateUser({
-            name, email, password: hashed, role,
-            // Google signups haven't chosen a password yet — they set one (and
-            // their mobile) during first-time onboarding. OTP is skipped since
-            // Google has already verified the email.
-            passwordSet: false, mobile: null,
-            studentClass: null, fieldOfInterest: null, referralSource: null,
-            avatar, streak: 0, totalStudyTime: 0, joinedAt: new Date().toISOString(),
-            isPremium: false, premiumExpiry: null, isOnboarded: false,
-            selectedCourse: null, isDropper: false, yearsOfExperience: null,
-            subjects: [], studentCapacity: null,
-          });
-          // Event Mode: auto-grant Premium Pro to students signing up during a
-          // launch event. Best-effort; never blocks Google signup.
-          await maybeGrantEventModePremiumOnSignup(dbUser.id, dbUser.role);
+          // Login-only: no existing account for this Google email + role, so we
+          // refuse instead of silently creating one. New users must sign up via
+          // the form (which requires mobile + state).
+          return badRequest(
+            "No account found for this Google account. Please sign up with your details first.",
+          );
         } else if (!dbUser.avatar && avatar) {
           await dbUpdateUser(dbUser.id, { avatar });
           dbUser.avatar = avatar;
@@ -816,29 +792,13 @@ export async function handleGoogleLogin(
     }
 
     return withStoreAsync(async (store) => {
-      let user = store.users.find((entry) => entry.email.toLowerCase() === email!.toLowerCase() && entry.role === role);
+      const user = store.users.find((entry) => entry.email.toLowerCase() === email!.toLowerCase() && entry.role === role);
       if (!user) {
-        // Admin launch gate: signups disabled → no new Google accounts.
-        if (!allowNewUsers) {
-          return forbidden("New sign-ups are currently disabled. Please check back soon.");
-        }
-        // Enforce registration limit for new users (role-aware: teachers capped separately)
-        const status = await getRegistrationStatus(role);
-        if (status.seatsLeft <= 0) {
-          const scope = role === "teacher" ? "teacher" : "user";
-          return badRequest(`Registration is currently closed. We've reached our maximum ${scope} capacity for this phase.`);
-        }
-
-        const userId = createId("user");
-        user = withStoredUserDefaults({
-          id: userId, name, email: email!, password: bcrypt.hashSync(createId("rand"), 10),
-          role, studentClass: null, fieldOfInterest: null,
-          referralSource: null, avatar, streak: 0, totalStudyTime: 0,
-          joinedAt: new Date().toISOString(), isPremium: false, premiumExpiry: null,
-          isOnboarded: false, selectedCourse: null, isDropper: false,
-          yearsOfExperience: null, subjects: [], studentCapacity: null,
-        });
-        store.users.push(user);
+        // Login-only: no existing account → refuse. New users must sign up via
+        // the form (which requires mobile + state).
+        return badRequest(
+          "No account found for this Google account. Please sign up with your details first.",
+        );
       } else if (!user.avatar && avatar) {
         user.avatar = avatar;
       }

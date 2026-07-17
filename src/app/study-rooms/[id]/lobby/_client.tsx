@@ -12,6 +12,8 @@ import { LobbyChat } from '@/components/study-rooms/LobbyChat';
 import { ParticipantList } from '@/components/study-rooms/ParticipantList';
 import { TestConfigDrawer } from '@/components/study-rooms/TestConfigDrawer';
 import { DeleteRoomButton } from '@/components/study-rooms/DeleteRoomButton';
+import { ScheduleStartControl } from '@/components/study-rooms/ScheduleStartControl';
+import { RoomCountdownBanner } from '@/components/study-rooms/RoomCountdownBanner';
 import { StudyRoomProvider, useStudyRoom, type StudyRoomStatePayload } from '@/context/StudyRoomContext';
 
 function LobbyContent({ currentUserId }: { currentUserId: string }) {
@@ -243,6 +245,14 @@ function LobbyContent({ currentUserId }: { currentUserId: string }) {
                   );
                 })()}
 
+                {room.is_admin && (
+                  <ScheduleStartControl
+                    scheduledStartAt={room.room.scheduled_start_at}
+                    disabled={room.room.status !== 'lobby' || !room.room.custom_test_id}
+                    onSchedule={room.scheduleTest}
+                  />
+                )}
+
                 <ParticipantList
                   participants={room.participants}
                   currentUserId={currentUserId}
@@ -252,15 +262,18 @@ function LobbyContent({ currentUserId }: { currentUserId: string }) {
                 />
               </div>
 
-              <LobbyChat
-                messages={room.messages}
-                locked={room.room.status !== 'lobby'}
-                currentUserId={currentUserId}
-                onSend={room.sendChat}
-                pendingMessages={room.pending}
-                typingUsers={room.typingUsers}
-                onTyping={room.sendTyping}
-              />
+              <div className="flex min-w-0 flex-col gap-3">
+                <RoomCountdownBanner scheduledStartAt={room.room.scheduled_start_at} />
+                <LobbyChat
+                  messages={room.messages}
+                  locked={room.room.status !== 'lobby'}
+                  currentUserId={currentUserId}
+                  onSend={room.sendChat}
+                  pendingMessages={room.pending}
+                  typingUsers={room.typingUsers}
+                  onTyping={room.sendTyping}
+                />
+              </div>
             </div>
           </div>
         </div>

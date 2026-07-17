@@ -954,9 +954,9 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
 
             <div className="grid md:grid-cols-3 gap-4 sm:gap-6 md:gap-5 max-w-6xl mx-auto items-end">
               {[
-                { name: 'Starter', price: 'Free', desc: 'Atomic building blocks for serious aspirants.', features: ['5 AI Research Cycles / Day', 'Core Subject Benchmarks', 'Fundamental Gap Analysis', 'Curated Resource Hub', 'Community Access'], cta: 'Start Now', popular: false },
-                { name: 'Pro', price: 'Waitlist', desc: 'The complete performance architecture.', features: ['Unlimited AI Research', 'Cognitive Failure Analysis', 'Dynamic Personalized Paths', 'Adaptive Arena Access', 'Rank Improvement Metrics', 'Focus & Velocity Tracking', 'Elite Community Access', 'Priority Support'], cta: 'Join Waitlist', popular: true, comingSoon: true },
-                { name: 'Elite', price: 'Waitlist', desc: '1-on-1 performance engineering.', features: ['Everything in Pro', 'Personal AI Tutor Agent', 'Mastery-Based Explanations', 'End-to-End Milestone Maps', 'Rapid Revision Protocols', 'Mental Performance Gear', 'Advanced Predictive Ops'], cta: 'Join Waitlist', popular: false, comingSoon: true },
+                { name: 'Starter', price: '₹0', period: '/mo', desc: 'Atomic building blocks for serious aspirants.', features: ['5 AI Research Cycles / Day', 'Core Subject Benchmarks', 'Fundamental Gap Analysis', 'Curated Resource Hub', 'Community Access'], cta: 'Start Now', popular: false },
+                { name: 'Pro', price: '₹99', period: '/mo', desc: 'The complete performance architecture.', features: ['Unlimited AI Research', 'Cognitive Failure Analysis', 'Dynamic Personalized Paths', 'Adaptive Arena Access', 'Rank Improvement Metrics', 'Focus & Velocity Tracking', 'Elite Community Access', 'Priority Support'], cta: 'Go Pro', popular: true },
+                { name: 'Elite', price: 'Coming Soon', desc: '1-on-1 performance engineering.', features: ['Everything in Pro', 'Personal AI Tutor Agent', 'Mastery-Based Explanations', 'End-to-End Milestone Maps', 'Rapid Revision Protocols', 'Mental Performance Gear', 'Advanced Predictive Ops'], cta: 'Notify Me', popular: false, comingSoon: true },
               ].map((plan, index) => (
                 <motion.div
                   key={index}
@@ -982,7 +982,12 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
                   )}
                   <div className="mb-6 sm:mb-8">
                     <h3 className="text-2xl font-heading font-black mb-2 tracking-tight text-foreground">{plan.name}</h3>
-                    <div className={`text-4xl font-heading font-black mb-3 ${plan.popular ? 'text-primary' : 'text-foreground'}`}>{plan.price}</div>
+                    <div className={`text-4xl font-heading font-black mb-3 ${plan.popular ? 'text-primary' : 'text-foreground'}`}>
+                      {plan.price}
+                      {'period' in plan && plan.period ? (
+                        <span className="text-lg font-bold text-muted-foreground">{plan.period}</span>
+                      ) : null}
+                    </div>
                     <p className="text-sm text-muted-foreground leading-relaxed">{plan.desc}</p>
                   </div>
                   <div className="flex-grow space-y-3.5 mb-8">

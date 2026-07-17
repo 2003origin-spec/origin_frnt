@@ -781,7 +781,7 @@ function DppSelectionGrid({
         </div>
       </div>
 
-      <div className="grid md:grid-cols-2 gap-4">
+      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
         {dpps.map((dpp) => {
           const questionCount = dpp.questions?.length ?? dpp.targetQuestionCount ?? 0;
           const weakTopics = dpp.weakTopics ?? dpp.weak_topics ?? [];

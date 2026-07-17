@@ -639,30 +639,30 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
         <div className="fixed inset-0 z-[200] bg-slate-900 flex items-start sm:items-center justify-center p-4 sm:p-8 overflow-y-auto">
           {verificationStep === 'instructions' ? (
             /* Phase 1: Instructions */
-            <div className="max-w-5xl w-full bg-card rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+            <div className="max-w-5xl w-full bg-card rounded-3xl overflow-hidden shadow-2xl flex flex-col sm:max-h-[90vh]">
               {/* Header */}
-              <div className="bg-rose-900 px-6 py-4 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center p-1.5 shadow-md">
+              <div className="bg-rose-900 px-4 py-3 sm:px-6 sm:py-4 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                  <div className="w-9 h-9 sm:w-10 sm:h-10 shrink-0 bg-white rounded-lg flex items-center justify-center p-1.5 shadow-md">
                     <img src="/origin-logo.png" alt="O3" className="w-full h-full object-contain" onError={(e) => { e.currentTarget.src = 'https://api.dicebear.com/7.x/initials/svg?seed=O3'; }} />
                   </div>
-                  <h2 className="text-white font-black text-lg uppercase tracking-tight">General Instructions</h2>
+                  <h2 className="text-white font-black text-sm sm:text-lg uppercase tracking-tight truncate">General Instructions</h2>
                 </div>
-                <div className="flex items-center gap-4">
-                  <div className="text-white/70 text-xs font-bold uppercase tracking-widest bg-white/10 px-3 py-1 rounded-full">
-                    Time: {test.duration} Minutes
+                <div className="flex items-center gap-2 sm:gap-4 shrink-0">
+                  <div className="text-white/70 text-[10px] sm:text-xs font-bold uppercase tracking-widest bg-white/10 px-2.5 py-1 sm:px-3 rounded-full whitespace-nowrap">
+                    {test.duration} Min
                   </div>
-                  <button onClick={onExit} className="text-white/70 hover:text-white transition-colors p-1 hover:bg-white/10 rounded-lg">
-                    <X className="w-6 h-6" />
+                  <button onClick={onExit} className="text-white/70 hover:text-white transition-colors p-1 hover:bg-white/10 rounded-lg shrink-0">
+                    <X className="w-5 h-5 sm:w-6 sm:h-6" />
                   </button>
                 </div>
               </div>
 
               {/* Body */}
-              <div className="flex-1 overflow-y-auto p-6 sm:p-10 space-y-8 text-gray-700">
+              <div className="sm:flex-1 sm:overflow-y-auto p-4 sm:p-10 space-y-6 sm:space-y-8 text-gray-700">
                 
                 <section>
-                  <h3 className="text-rose-900 font-bold text-lg mb-4 border-b-2 border-rose-100 pb-2 flex items-center gap-2">
+                  <h3 className="text-rose-900 font-bold text-base sm:text-lg mb-3 sm:mb-4 border-b-2 border-rose-100 pb-2 flex items-center gap-2">
                     <span className="w-6 h-6 bg-rose-100 text-rose-900 rounded-full flex items-center justify-center text-xs">1</span>
                     Standard Exam Rules
                   </h3>
@@ -698,7 +698,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
                 </section>
 
                 <section>
-                  <h3 className="text-rose-900 font-bold text-lg mb-4 border-b-2 border-rose-100 pb-2 flex items-center gap-2">
+                  <h3 className="text-rose-900 font-bold text-base sm:text-lg mb-3 sm:mb-4 border-b-2 border-rose-100 pb-2 flex items-center gap-2">
                     <span className="w-6 h-6 bg-rose-100 text-rose-900 rounded-full flex items-center justify-center text-xs">2</span>
                     Marking Scheme (NTA Standard)
                   </h3>
@@ -719,7 +719,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
                   <p className="text-[10px] text-gray-500 mt-4 italic">* For Numerical Value questions, negative marking may not apply. Please refer to specific question instructions.</p>
                 </section>
 
-                <section className="bg-rose-50/50 p-6 rounded-2xl border border-rose-100">
+                <section className="bg-rose-50/50 p-4 sm:p-6 rounded-2xl border border-rose-100">
                   <h3 className="text-rose-900 font-bold text-base mb-3 flex items-center gap-2">
                     <ShieldCheck className="w-5 h-5" /> Exam Integrity Rules
                   </h3>
@@ -733,7 +733,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
               </div>
 
               {/* Footer */}
-              <div className="bg-slate-50 px-6 py-5 border-t border-slate-200 flex flex-col gap-4">
+              <div className="bg-slate-50 px-4 py-4 sm:px-6 sm:py-5 border-t border-slate-200 flex flex-col gap-3 sm:gap-4">
                 {/* Camera toggle */}
                 <label className="flex items-start gap-3 cursor-pointer group p-3 rounded-xl border border-slate-200 hover:border-rose-200 hover:bg-rose-50/40 transition-all">
                   <input
@@ -1374,19 +1374,19 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
       )}
 
       {showMalpracticeWarning && (
-        <div className="fixed inset-0 z-[210] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in zoom-in duration-300">
-          <div className="bg-white rounded-3xl shadow-[0_0_50px_rgba(234,179,8,0.2)] max-w-md w-full overflow-hidden border-t-8 border-yellow-500">
-            <div className="bg-yellow-500/10 p-8 text-center border-b border-yellow-100">
-              <div className="w-20 h-20 bg-yellow-500 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg shadow-yellow-500/40">
-                <AlertTriangle className="w-10 h-10 text-white animate-pulse" />
+        <div className="fixed inset-0 z-[210] flex items-start sm:items-center justify-center bg-black/80 backdrop-blur-md p-4 overflow-y-auto animate-in fade-in zoom-in duration-300">
+          <div className="bg-white rounded-3xl shadow-[0_0_50px_rgba(234,179,8,0.2)] max-w-md w-full my-auto overflow-hidden border-t-8 border-yellow-500">
+            <div className="bg-yellow-500/10 p-6 sm:p-8 text-center border-b border-yellow-100">
+              <div className="w-16 h-16 sm:w-20 sm:h-20 bg-yellow-500 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6 shadow-lg shadow-yellow-500/40">
+                <AlertTriangle className="w-8 h-8 sm:w-10 sm:h-10 text-white animate-pulse" />
               </div>
-              <h2 className="text-3xl font-black text-gray-900 mb-2 uppercase tracking-tighter">Warning: Security Alert</h2>
+              <h2 className="text-2xl sm:text-3xl font-black text-gray-900 mb-2 uppercase tracking-tighter">Warning: Security Alert</h2>
               <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-red-600 text-white text-xs font-black rounded-full uppercase tracking-widest mb-4">
                 Violation {violations} of 3
               </div>
             </div>
             
-            <div className="p-8 space-y-6">
+            <div className="p-6 sm:p-8 space-y-5 sm:space-y-6">
               <div className="space-y-3">
                 <p className="text-gray-900 font-bold text-center text-lg italic">"Security violation detected"</p>
                 <p className="text-gray-500 text-sm text-center leading-relaxed">
@@ -1414,14 +1414,14 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
       )}
 
       {isMalpracticeTerminated && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-red-950/90 backdrop-blur-md p-4 animate-in fade-in duration-500">
-          <div className="bg-white rounded-3xl shadow-[0_0_50px_rgba(239,68,68,0.3)] max-w-md w-full p-10 text-center border-t-8 border-red-600">
-            <div className="w-24 h-24 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-8 animate-pulse">
-              <ShieldCheck className="w-12 h-12 text-red-600" />
+        <div className="fixed inset-0 z-[120] flex items-start sm:items-center justify-center bg-red-950/90 backdrop-blur-md p-4 overflow-y-auto animate-in fade-in duration-500">
+          <div className="bg-white rounded-3xl shadow-[0_0_50px_rgba(239,68,68,0.3)] max-w-md w-full my-auto p-6 sm:p-10 text-center border-t-8 border-red-600">
+            <div className="w-20 h-20 sm:w-24 sm:h-24 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6 sm:mb-8 animate-pulse">
+              <ShieldCheck className="w-10 h-10 sm:w-12 sm:h-12 text-red-600" />
             </div>
-            <h2 className="text-3xl font-black text-red-600 mb-4 uppercase tracking-tighter">Test Terminated</h2>
+            <h2 className="text-2xl sm:text-3xl font-black text-red-600 mb-4 uppercase tracking-tighter">Test Terminated</h2>
             <p className="text-xl font-bold text-gray-900 mb-2">MALPRACTICE DETECTED</p>
-            <p className="text-gray-600 mb-10 leading-relaxed font-semibold">
+            <p className="text-gray-600 mb-6 sm:mb-10 leading-relaxed font-semibold">
               You have exceeded the maximum number of warnings for leaving the test screen.
               The test has been suspended and reported.
             </p>

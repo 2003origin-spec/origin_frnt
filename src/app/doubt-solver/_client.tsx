@@ -1,15 +1,14 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
-
 import DoubtSolver from '@/sections/DoubtSolver';
 import { useAuth } from '@/context/AuthContext';
+import { useAppBack } from '@/hooks/useAppBack';
 
 export default function DoubtSolverClient() {
-  const router = useRouter();
+  const goBack = useAppBack();
   const { user } = useAuth();
 
   if (!user) return null;
 
-  return <DoubtSolver user={user} onBack={() => router.push('/dashboard')} />;
+  return <DoubtSolver user={user} onBack={goBack} />;
 }

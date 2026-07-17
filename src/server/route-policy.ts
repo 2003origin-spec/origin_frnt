@@ -100,6 +100,7 @@ export const AUTHENTICATED_APP_PREFIXES = [
   "/pomodoro",
   "/dpp",
   "/doubt-solver",
+  "/graphs",
   "/onboarding",
   "/books",
   "/teacher",

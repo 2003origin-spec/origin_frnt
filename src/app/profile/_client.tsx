@@ -4,6 +4,7 @@ import Profile from '@/sections/Profile';
 import TeacherProfile from '@/sections/TeacherProfile';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
+import { useAppBack } from '@/hooks/useAppBack';
 
 interface ProfileStats {
   tests_taken: number;
@@ -25,11 +26,13 @@ interface ProfileClientProps {
   initialProfileStats: ProfileStats | null;
   premiumEnabled?: boolean;
   socialEnabled?: boolean;
+  followCounts?: { followerCount: number; followingCount: number } | null;
 }
 
-export default function ProfileClient({ initialProfileStats, premiumEnabled, socialEnabled }: ProfileClientProps) {
+export default function ProfileClient({ initialProfileStats, premiumEnabled, socialEnabled, followCounts }: ProfileClientProps) {
   const { user, streakData, logout } = useAuth();
   const router = useRouter();
+  const goBack = useAppBack();
 
   if (!user) return null;
 
@@ -50,7 +53,8 @@ export default function ProfileClient({ initialProfileStats, premiumEnabled, soc
       streakData={streakData}
       premiumEnabled={premiumEnabled}
       socialEnabled={socialEnabled}
-      onBack={() => router.push('/dashboard')}
+      followCounts={followCounts}
+      onBack={goBack}
       onUpgrade={() => router.push('/premium')}
     />
   );

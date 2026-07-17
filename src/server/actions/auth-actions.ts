@@ -242,13 +242,14 @@ export async function registerAction(input: {
 
 export async function googleLoginAction(input: { credential: string; role?: 'student' | 'teacher' | 'admin' | null }): Promise<AuthResult> {
   try {
-    // Login gate blocks existing students; signup gate blocks brand-new Google
-    // accounts (enforced inside handleGoogleLogin via allowNewUsers).
+    // Google auth is login-only for existing accounts. The login gate still
+    // applies; new-account creation is refused inside handleGoogleLogin (users
+    // must sign up via the form, which requires mobile + state), so the signup
+    // gate no longer needs to be threaded through here.
     if (await loginBlockedForRole(input.role)) {
       return { ok: false, status: 403, message: LOGIN_DISABLED_MESSAGE };
     }
-    const allowNewUsers = !(await signupBlockedForRole(input.role));
-    const response = await handleGoogleLogin({ credential: input.credential, role: input.role ?? null }, { allowNewUsers });
+    const response = await handleGoogleLogin({ credential: input.credential, role: input.role ?? null });
     const parsed = await parseAuthResponse(response);
     if (parsed.ok) {
       await setSessionCookies(parsed.access, parsed.refresh, parsed.accessFingerprint);

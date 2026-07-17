@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
+import Link from 'next/link';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { motion } from 'framer-motion';
 import {
@@ -54,6 +55,7 @@ interface ProfileProps {
   initialProfileStats?: ProfileStats | null;
   premiumEnabled?: boolean;
   socialEnabled?: boolean;
+  followCounts?: { followerCount: number; followingCount: number } | null;
 }
 
 interface ProfileStats {
@@ -93,6 +95,7 @@ export default function Profile({
   initialProfileStats = null,
   premiumEnabled = false,
   socialEnabled = false,
+  followCounts = null,
 }: ProfileProps) {
   const { refreshUser } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
@@ -282,6 +285,28 @@ export default function Profile({
                   </div>
                 )}
                 <p className="text-[11px] text-muted-foreground">{user.email}</p>
+
+                {/* Followers / Following — clickable, opens the respective list.
+                    Requires a public username (the /u/* routes are username-keyed). */}
+                {socialEnabled && user.username && followCounts && (
+                  <div className="flex items-center justify-center gap-4 mt-1">
+                    <Link
+                      href={`/u/${user.username}/followers`}
+                      className="group flex items-baseline gap-1"
+                    >
+                      <span className="font-black text-foreground tabular-nums">{followCounts.followerCount}</span>
+                      <span className="text-xs text-muted-foreground group-hover:text-foreground transition-colors">Followers</span>
+                    </Link>
+                    <span className="w-px h-3 self-center bg-border" />
+                    <Link
+                      href={`/u/${user.username}/following`}
+                      className="group flex items-baseline gap-1"
+                    >
+                      <span className="font-black text-foreground tabular-nums">{followCounts.followingCount}</span>
+                      <span className="text-xs text-muted-foreground group-hover:text-foreground transition-colors">Following</span>
+                    </Link>
+                  </div>
+                )}
               </div>
 
               {/* Info chips */}

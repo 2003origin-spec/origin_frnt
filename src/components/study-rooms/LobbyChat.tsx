@@ -96,7 +96,7 @@ export function LobbyChat({
   };
 
   return (
-    <section className="neu-raised rounded-2xl flex flex-col h-[520px] lg:h-[calc(100vh-13rem)] overflow-hidden">
+    <section className="neu-raised rounded-2xl flex flex-col h-[70vh] sm:h-[520px] lg:h-[calc(100vh-13rem)] overflow-hidden">
       {/* Header */}
       <div className="border-b border-border/40 px-5 py-4 flex items-center gap-3">
         <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10">
@@ -159,10 +159,10 @@ export function LobbyChat({
         </div>
       )}
 
-      {/* Input */}
+      {/* Input — friendly rounded field + a clear, larger send button */}
       {!locked && (
-        <div className="border-t border-border/40 p-4">
-          <div className="neu-inset rounded-xl flex gap-2 p-2">
+        <div className="border-t border-border/40 p-3">
+          <div className="flex items-end gap-2">
             <textarea
               value={content}
               onChange={(event) => {
@@ -176,18 +176,19 @@ export function LobbyChat({
                   void submit();
                 }
               }}
-              rows={2}
+              rows={1}
               maxLength={1000}
               placeholder="Message the room…"
-              className="flex-1 min-w-0 bg-transparent outline-none text-sm px-2 py-1 resize-none placeholder:text-muted-foreground/50"
+              className="flex-1 min-w-0 neu-inset rounded-2xl px-4 py-3 text-sm resize-none max-h-28 outline-none placeholder:text-muted-foreground/50"
             />
             <button
               type="button"
               onClick={submit}
+              aria-label="Send message"
               disabled={isSending || !content.trim()}
-              className="self-end h-9 w-9 flex-shrink-0 rounded-lg bg-primary text-primary-foreground flex items-center justify-center transition-transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="h-11 w-11 flex-shrink-0 rounded-2xl bg-primary text-primary-foreground flex items-center justify-center shadow-[2px_2px_6px_hsl(var(--neu-shadow))] transition-all hover:-translate-y-0.5 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <SendHorizonal className="h-4 w-4" />
+              <SendHorizonal className="h-5 w-5" />
             </button>
           </div>
         </div>

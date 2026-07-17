@@ -2,6 +2,7 @@ import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
 import { getServerUser } from '@/lib/auth-server';
 import { getProfileStatsForRender } from '@/server/render-loaders';
+import { getFollowCounts } from '@/server/social/social-service';
 import { isFeatureEnabled } from '@/lib/feature-flags';
 import OriLoadingScreen from '@/components/ui/OriLoadingScreen';
 import ProfileClient from './_client';
@@ -25,11 +26,18 @@ async function ProfileGate() {
     // Profile page can fall back to client fetch.
   }
 
+  const socialEnabled = isFeatureEnabled('studentSocial');
+  let followCounts: { followerCount: number; followingCount: number } | null = null;
+  if (socialEnabled) {
+    followCounts = await getFollowCounts(user.id).catch(() => null);
+  }
+
   return (
     <ProfileClient
       initialProfileStats={initialProfileStats}
       premiumEnabled={isFeatureEnabled('premiumSubscriptions')}
-      socialEnabled={isFeatureEnabled('studentSocial')}
+      socialEnabled={socialEnabled}
+      followCounts={followCounts}
     />
   );
 }

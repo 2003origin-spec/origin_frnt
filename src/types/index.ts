@@ -441,6 +441,7 @@ export type ViewState =
   | 'connect'
   | 'social'
   | 'tasks-goals'
+  | 'graphs'
   | 'prestige-milestones';
 
 export type OriginAiPageKind =

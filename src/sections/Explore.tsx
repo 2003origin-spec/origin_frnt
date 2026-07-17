@@ -14,6 +14,7 @@ import {
     Sparkles,
     UserPlus,
     Building2,
+    LineChart,
 } from 'lucide-react';
 import type { ComponentType } from 'react';
 import type { ViewState } from '@/types';
@@ -46,6 +47,15 @@ const CARDS: ExploreCard[] = [
         accent: 'text-primary',
         accentBg: 'bg-primary/10 dark:bg-primary/15',
         stat: 'Practice Arena',
+    },
+    {
+        title: 'Graphs',
+        description: 'Plot equations, tweak parameters with live sliders, and explore functions like a graphing calculator.',
+        icon: LineChart,
+        view: 'graphs' as ViewState,
+        accent: 'text-cyan-500',
+        accentBg: 'bg-cyan-500/10 dark:bg-cyan-500/15',
+        stat: 'Function Plotter',
     },
     {
         title: 'Study Corner',

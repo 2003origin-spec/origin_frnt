@@ -43,6 +43,8 @@ export type RoomSummary = {
   duration_seconds: number | null;
   started_at: string | null;
   ended_at: string | null;
+  /** Host-scheduled auto-start time (ISO); null when not scheduled. */
+  scheduled_start_at: string | null;
   max_participants: number;
   created_at: string;
   updated_at: string;
@@ -151,6 +153,7 @@ function mapRoom(row: any): RoomSummary {
     duration_seconds: row.duration_seconds ?? null,
     started_at: toIso(row.started_at),
     ended_at: toIso(row.ended_at),
+    scheduled_start_at: toIso(row.scheduled_start_at),
     max_participants: row.max_participants,
     created_at: toIso(row.created_at) ?? new Date().toISOString(),
     updated_at: toIso(row.updated_at) ?? new Date().toISOString(),
@@ -445,6 +448,7 @@ export async function getRoomState(roomId: string, userId: string): Promise<Room
     }
 
     let room = await getRoomOrThrow(client, roomId);
+    room = await autoStartScheduledRoom(client, room);
     room = await autoFinishExpiredRoom(client, room);
 
     const participantsResult = await client.query(
@@ -1038,6 +1042,91 @@ export async function createCustomTestForRoom(
   return test;
 }
 
+/** Host sets/edits/clears the scheduled auto-start time (lobby only, admin only). */
+export async function scheduleRoomTest(roomId: string, userId: string, scheduledStartAt: string | null) {
+  return transaction(async (client) => {
+    const room = await getRoomOrThrow(client, roomId, true);
+    const admin = await client.query(
+      `SELECT 1 FROM rooms.room_participants
+       WHERE room_id = $1 AND user_id = $2 AND role = 'admin' AND left_at IS NULL AND kicked = FALSE`,
+      [roomId, userId],
+    );
+    if (!admin.rows[0]) {
+      throw new StudyRoomError(403, "Only the room admin can schedule the test.");
+    }
+    if (room.status !== "lobby") {
+      throw new StudyRoomError(423, "The test can only be scheduled from the lobby.");
+    }
+
+    let iso: string | null = null;
+    if (scheduledStartAt) {
+      const ts = new Date(scheduledStartAt);
+      if (Number.isNaN(ts.getTime())) {
+        throw new StudyRoomError(400, "Invalid scheduled time.");
+      }
+      if (ts.getTime() < Date.now() - 60_000) {
+        throw new StudyRoomError(400, "Pick a start time in the future.");
+      }
+      iso = ts.toISOString();
+    }
+
+    const updated = await client.query(
+      `UPDATE rooms.rooms SET scheduled_start_at = $2, updated_at = NOW() WHERE id = $1 RETURNING *`,
+      [roomId, iso],
+    );
+    return mapRoom(updated.rows[0]);
+  });
+}
+
+/**
+ * Lazy scheduled auto-start. If the room is still in the lobby, has a configured
+ * test with ≥1 active participant, and its scheduled_start_at has passed, flip it
+ * to in_test and return the updated room. Idempotent (guarded `WHERE status =
+ * 'lobby'`). Runs inside the caller's transaction (mirrors autoFinishExpiredRoom),
+ * so the flip lands within one poll of the scheduled time without any cron.
+ */
+async function autoStartScheduledRoom(client: PoolClient, room: RoomSummary): Promise<RoomSummary> {
+  if (room.status !== "lobby" || !room.scheduled_start_at) return room;
+  if (new Date(room.scheduled_start_at).getTime() > Date.now()) return room;
+  const configuredTestId = effectiveRoomTestId(room);
+  if (!configuredTestId) return room;
+
+  const countResult = await client.query(
+    `SELECT COUNT(*)::int AS count FROM rooms.room_participants
+     WHERE room_id = $1 AND left_at IS NULL AND kicked = FALSE`,
+    [room.id],
+  );
+  if (Number(countResult.rows[0]?.count ?? 0) < 1) return room;
+
+  let durationMinutes: number | undefined;
+  if (room.custom_test_id) {
+    durationMinutes = (
+      await client.query(`SELECT duration_minutes FROM analytics.custom_tests WHERE id = $1`, [room.custom_test_id])
+    ).rows[0]?.duration_minutes;
+  } else {
+    const userPool = getUserPostgresPool();
+    if (!userPool) return room;
+    durationMinutes = (
+      await userPool.query(`SELECT duration_minutes FROM assessment.tests WHERE id = $1`, [room.teacher_test_id])
+    ).rows[0]?.duration_minutes;
+  }
+  if (durationMinutes === undefined) return room;
+  const durationSeconds = Math.max(60, Number(durationMinutes ?? 1) * 60);
+
+  const updated = await client.query(
+    `UPDATE rooms.rooms
+     SET status = 'in_test',
+         duration_seconds = $2,
+         started_at = NOW() + INTERVAL '3 seconds',
+         scheduled_start_at = NULL,
+         updated_at = NOW()
+     WHERE id = $1 AND status = 'lobby'
+     RETURNING *`,
+    [room.id, durationSeconds],
+  );
+  return updated.rows[0] ? mapRoom(updated.rows[0]) : room;
+}
+
 export async function startRoomTest(roomId: string, userId: string) {
   return transaction(async (client) => {
     const room = await getRoomOrThrow(client, roomId, true);
@@ -1217,6 +1306,14 @@ export async function submitRoomTest(
   const testId = effectiveRoomTestId(state.room);
   if (state.room.status !== "in_test" || !testId) {
     throw new StudyRoomError(423, "Room test is not active.");
+  }
+
+  // One-time attempt: if this participant already submitted, never let a second
+  // attempt through — it would otherwise overwrite their score/time via the
+  // COALESCE update in finishRoomParticipant.
+  const meParticipant = state.participants.find((participant) => participant.user_id === user.id);
+  if (meParticipant?.finished_at) {
+    throw new StudyRoomError(409, "You have already submitted this test.");
   }
 
   const result = await submitTest(store, user, testId, payload, {
