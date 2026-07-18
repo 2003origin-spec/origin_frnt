@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 
 import { type CbtStudentPhase, nextPhase, phaseFromState } from "@/lib/cbt/student-phase";
+import { subscribeAppResume } from "@/native/app-resume";
 
 export type { CbtStudentPhase };
 
@@ -139,6 +140,13 @@ export function CbtRoomProvider({
     };
   }, [refresh]);
 
+  // Android shell: Doze can kill the SSE connection past EventSource's own
+  // retry; bumping the epoch on app resume recreates it. The existing
+  // visibilitychange refresh above re-syncs state; this restores the live
+  // stream (plan ledger #39).
+  const [streamEpoch, setStreamEpoch] = useState(0);
+  useEffect(() => subscribeAppResume(() => setStreamEpoch((epoch) => epoch + 1)), []);
+
   // Realtime + heartbeat, active only once joined.
   useEffect(() => {
     if (!joinedRef.current) return;
@@ -180,7 +188,7 @@ export function CbtRoomProvider({
       clearInterval(heartbeat);
       es.close();
     };
-  }, [phase]);
+  }, [phase, streamEpoch]);
 
   const value: CbtRoomContextValue = {
     phase,

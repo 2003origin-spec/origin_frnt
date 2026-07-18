@@ -20,7 +20,10 @@ import {
   createCsrfToken,
   REFRESH_COOKIE_NAME,
 } from '@/server/auth-jwt';
-import { revokeRefreshSession } from '@/server/auth';
+import { isRefreshTokenValid, revokeRefreshSession } from '@/server/auth';
+import { dbGetSessionByRefreshToken } from '@/server/db-users';
+import { isUserPostgresConfigured } from '@/server/user-postgres';
+import { revokeDeviceTokensForUser } from '@/server/push/device-tokens';
 import {
   requestPasswordReset,
   verifyAndResetPassword,
@@ -316,7 +319,27 @@ export async function refreshUserAction(): Promise<User | null> {
 
 export async function logoutAction(): Promise<void> {
   const cookieStore = await cookies();
-  await revokeRefreshSession(cookieStore.get(REFRESH_COOKIE_NAME)?.value);
+  const refresh = cookieStore.get(REFRESH_COOKIE_NAME)?.value;
+  // Android app: unbind this user's FCM device tokens so a signed-out (or
+  // next-user, shared-device) phone never receives their notifications
+  // (ANDROID_HYBRID_APP_PLAN.md ledger #54). Resolve the user BEFORE the
+  // session is revoked; strictly best-effort — logout must never fail on it.
+  if (refresh) {
+    try {
+      const session = isUserPostgresConfigured()
+        ? await dbGetSessionByRefreshToken(refresh)
+        : await (async () => {
+            const store = await readStoreAsync();
+            return isRefreshTokenValid(store, refresh);
+          })();
+      if (session?.userId) {
+        await revokeDeviceTokensForUser(session.userId);
+      }
+    } catch (error) {
+      console.error('[auth-actions] push-token unbind on logout failed:', error instanceof Error ? error.message : error);
+    }
+  }
+  await revokeRefreshSession(refresh);
   cookieStore.set(ACCESS_COOKIE_NAME, '', { ...COOKIE_OPTS_ACCESS, maxAge: 0 });
   cookieStore.set(ACCESS_FINGERPRINT_COOKIE_NAME, '', { ...COOKIE_OPTS_ACCESS_FINGERPRINT, maxAge: 0 });
   cookieStore.set(REFRESH_COOKIE_NAME, '', { ...COOKIE_OPTS_REFRESH, maxAge: 0 });

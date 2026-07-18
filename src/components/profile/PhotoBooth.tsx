@@ -21,6 +21,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { toPng } from 'html-to-image';
 import download from 'downloadjs';
+import { saveFileNative } from '@/native/save-file';
 import { getCanonicalSiteUrl } from '@/lib/site-url';
 import { uploadUserImageAction, type UserImageUploadResult } from '@/server/actions/profile-actions';
 import { toast } from 'sonner';
@@ -311,11 +312,17 @@ export default function PhotoBooth() {
         }
     };
 
-    const handleDownload = () => {
-        if (framedImage) {
-            const safeNickname = cardNickname.replace(/[^\w-]+/g, '_');
-            download(framedImage, `Origin_Memory_${safeNickname}_${Date.now()}.png`);
+    const handleDownload = async () => {
+        if (!framedImage) return;
+        const safeNickname = cardNickname.replace(/[^\w-]+/g, '_');
+        const fileName = `Origin_Memory_${safeNickname}_${Date.now()}.png`;
+        // Android shell: blob/dataURL downloads silently no-op in a WebView —
+        // hand the file to the native bridge instead (plan ledger #26).
+        if (await saveFileNative(fileName, 'image/png', framedImage)) {
+            toast.success('Saved to your Downloads.');
+            return;
         }
+        download(framedImage, fileName);
     };
 
     const reset = () => {

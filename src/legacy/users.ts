@@ -708,9 +708,15 @@ export async function handleGoogleLogin(payload: UserPayload) {
     if (credential.includes('.')) {
       try {
         const client = new OAuth2Client(clientId);
+        // The Android shell's Credential Manager flow mints its ID token with
+        // serverClientId = the web client id, so `aud` normally equals
+        // `clientId` already; GOOGLE_ANDROID_CLIENT_ID is accepted as a
+        // belt-and-braces audience for tokens minted against the Android
+        // OAuth client directly (ANDROID_HYBRID_APP_PLAN.md §5.3).
+        const androidClientId = process.env.GOOGLE_ANDROID_CLIENT_ID?.trim();
         const ticket = await client.verifyIdToken({
           idToken: credential,
-          audience: clientId,
+          audience: androidClientId ? [clientId, androidClientId] : clientId,
         });
         const googlePayload = ticket.getPayload();
         if (googlePayload) {

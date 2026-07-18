@@ -7,6 +7,7 @@ import type { User, StreakData, Task } from '@/types';
 import { clearOriginAiBrowserSession } from '@/features/origin-ai/session';
 import { setSoundPreferences, playCategory } from '@/lib/sound-manager';
 import { AUTH_EXPIRED_EVENT, attemptTokenRefresh } from '@/lib/api';
+import { flushNativeCookies, notifyNativeLogout } from '@/native/bridge';
 import {
   addTaskAction,
   editTaskAction,
@@ -521,6 +522,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
       }
 
       clearOriginAiBrowserSession();
+      // Android shell: persist the fresh session cookies to disk immediately
+      // (plan ledger #14) — no-op in browsers.
+      void flushNativeCookies();
 
       setAuthRecoveryBlocked(false);
       setUser(result.user);
@@ -557,6 +561,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
     clearOriginAiBrowserSession();
     setTasks([]);
     tasksFetched.current = false;
+
+    // Android shell cleanup: invalidate this device's FCM token natively so
+    // the phone stops receiving this account's pushes (shared devices — plan
+    // ledger #18/#54). Best-effort and fast; no-op in browsers.
+    await notifyNativeLogout();
 
     try {
       // 2. Clear server-side cookies and revalidate

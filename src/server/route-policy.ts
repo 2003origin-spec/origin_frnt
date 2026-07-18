@@ -29,6 +29,13 @@ export const PUBLIC_API_PATHS = [
   "/api/public/live-stats",
   "/api/public/activity-feed",
   "/api/public/demo-solve",
+  // Android shell governance config — fetched pre-auth at app cold start
+  // (ANDROID_HYBRID_APP_PLAN.md §5.2); CDN-cached, no session data.
+  "/api/mobile/config",
+  // Browser link-out handoff consumption — the one-time token in the query IS
+  // the credential (verified + single-use in the handler); it necessarily runs
+  // in a browser with no session cookie yet (plan §5.4).
+  "/api/mobile/link-out/consume",
 ] as const;
 
 export const INTERNAL_API_PREFIXES = ["/api/internal"] as const;
@@ -51,6 +58,9 @@ export const AUTHENTICATED_API_PREFIXES = [
   // AI Feature Toggle epic — student poll endpoint /api/ai-access/me (JWT only,
   // no DB). /api/admin/ai-access/* is already covered by the "/api/admin" prefix.
   "/api/ai-access",
+  // Android app endpoints (link-out issue, push-token registry). The two
+  // public exceptions above are matched before this prefix.
+  "/api/mobile",
 ] as const;
 
 export const MEMBERSHIP_API_PREFIXES = ["/api/study-rooms/[id]"] as const;
@@ -78,6 +88,9 @@ export const PUBLIC_APP_PATHS = [
   "/childrens-policy",
   "/faq",
   "/founders",
+  // Play-required public account-deletion page (deletion API itself is
+  // authenticated; the page must be reachable logged-out — plan §5.6).
+  "/account/delete",
   // CBT teacher OTP login page — public so allowlisted teachers can reach it.
   "/cbt/login",
 ] as const;

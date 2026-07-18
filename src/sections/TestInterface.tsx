@@ -7,6 +7,7 @@ import { submitTestAction } from '@/server/actions/test-actions';
 import { playCategory } from '@/lib/sound-manager';
 import type { TestSubmissionPayload } from '@/server/assessments';
 import { useServerAnchoredTimer, type ServerAnchoredTimerSource } from '@/hooks/useServerAnchoredTimer';
+import { useSecureExamScreen } from '@/native/screen';
 import { useAuth } from '@/context/AuthContext';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -34,6 +35,9 @@ type QuestionStatus = 'not_visited' | 'not_answered' | 'answered' | 'marked_revi
 export default function TestInterface({ test, onComplete, onExit, timerSource, submitHandler }: TestInterfaceProps) {
   const { user } = useAuth();
   const candidateName = user?.name?.trim() || 'Candidate';
+  // Android shell: block screenshots/recording and keep the screen on for the
+  // duration of the attempt (plan ledger #41/#42). Browser no-op.
+  useSecureExamScreen();
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [imgZoomed, setImgZoomed] = useState(false);
   const [imgError, setImgError] = useState(false);
