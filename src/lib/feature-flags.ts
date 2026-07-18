@@ -42,8 +42,8 @@ type FlagKey =
   | "adminPricing"
   | "adminCoupons"
   | "adminSubAdmins"
-  | "adminPremiumAccess"
   | "odgTeacherRanking"
+  | "adminPremiumAccess"
   | "aiAccessControls"
   | "ogcodeScoringV2";
 
