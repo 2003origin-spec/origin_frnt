@@ -25,6 +25,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { useAuth } from '@/context/AuthContext';
+import { NativePurchaseNotice, useIsNativeApp } from '@/components/native/NativePurchaseNotice';
 import { ALL_SUBJECTS, getEntitledSubjects, type Subject } from '@/lib/entitlements';
 import { createConnectCheckout } from '@/features/connect/client';
 
@@ -104,6 +105,7 @@ export function ConnectCheckout({
   const [selected, setSelected] = useState<Set<Subject>>(new Set());
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
+  const native = useIsNativeApp();
 
   const toggle = useCallback((subject: Subject) => {
     setSelected((prev) => {
@@ -160,6 +162,12 @@ export function ConnectCheckout({
       setBusy(false);
     }
   }, [workspaceId, offeringId, offeringTitle, selected, refreshUser]);
+
+  // Android app: batch tuition + subject add-ons are Razorpay flows —
+  // consumption-only notice replaces the whole checkout (plan §5.4).
+  if (native) {
+    return <NativePurchaseNotice title={offeringTitle} />;
+  }
 
   if (done) {
     return (

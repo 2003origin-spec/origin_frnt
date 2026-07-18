@@ -28,6 +28,7 @@ import {
   Play,
   CheckCircle,
   XCircle,
+  Trash2,
 } from 'lucide-react';
 import { apiCall } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
@@ -651,6 +652,20 @@ export default function Profile({
                       <ChevronRight className="w-4 h-4 text-muted-foreground/40 group-hover:text-primary group-hover:translate-x-0.5 transition-all shrink-0" />
                     </button>
                   ))}
+
+                  {/* Danger zone — in-app account-deletion entry (Google Play
+                      requires a deletion path inside the app; the page itself
+                      is public at /account/delete). */}
+                  <a href="/account/delete" className="w-full neu-raised neu-pressable flex items-center gap-4 p-4 text-left group">
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-105 bg-red-500/10">
+                      <Trash2 className="w-5 h-5 text-red-500" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-sm text-red-500">Delete account</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Permanently remove your account and personal data</p>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-muted-foreground/40 group-hover:text-red-500 group-hover:translate-x-0.5 transition-all shrink-0" />
+                  </a>
 
                   {premiumEnabled && !user.isPremium && (
                     <div className="neu-raised p-6 bg-primary/5 border border-primary/15 space-y-4">

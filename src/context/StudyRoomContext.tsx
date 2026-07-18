@@ -1,6 +1,7 @@
 'use client';
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { subscribeAppResume } from '@/native/app-resume';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 
@@ -236,6 +237,14 @@ export function StudyRoomProvider({
     return payload;
   }, [roomId, runRoomRequest]);
 
+  // Android shell: backgrounding (Doze) can kill the SSE connection dead —
+  // past EventSource's own retry loop. Bumping the epoch on app resume
+  // recreates the stream; its onopen refresh() re-syncs any missed state
+  // (ANDROID_HYBRID_APP_PLAN.md ledger #39). No-op in browsers beyond the
+  // deduped visibilitychange signal.
+  const [streamEpoch, setStreamEpoch] = useState(0);
+  useEffect(() => subscribeAppResume(() => setStreamEpoch((epoch) => epoch + 1)), []);
+
   useEffect(() => {
     const source = new EventSource(`/api/study-rooms/${roomId}/stream`);
     source.onopen = () => {
@@ -283,7 +292,7 @@ export function StudyRoomProvider({
     }
 
     return () => source.close();
-  }, [currentUserId, listHref, redirectToRooms, refresh, roomId, router]);
+  }, [currentUserId, listHref, redirectToRooms, refresh, roomId, router, streamEpoch]);
 
   // ---- Presence heartbeat --------------------------------------------------
   // Keeps `last_seen_at` fresh (online/offline) and, on the test surface,

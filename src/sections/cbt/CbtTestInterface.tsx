@@ -6,6 +6,7 @@ import { AlertTriangle, Camera, CheckCircle2, Play, ShieldCheck } from "lucide-r
 import { LatexRenderer } from "@/components/ui/LatexRenderer";
 import { useCbtRoom } from "@/context/CbtRoomContext";
 import { useServerAnchoredTimer } from "@/hooks/useServerAnchoredTimer";
+import { useSecureExamScreen } from "@/native/screen";
 import {
   isAnswered,
   type CbtPaletteStatus,
@@ -50,6 +51,9 @@ function paletteFor(hasAnswer: boolean, marked: boolean): CbtPaletteStatus {
 
 export function CbtTestInterface() {
   const { markSubmitted } = useCbtRoom();
+  // Android shell: FLAG_SECURE (no screenshots/recording) + keep the display
+  // awake for the whole attempt surface (plan ledger #41/#42). Browser no-op.
+  useSecureExamScreen();
   const [phase, setPhase] = useState<Phase>("loading");
   const [error, setError] = useState<string | null>(null);
   const [payload, setPayload] = useState<CbtTestPayload | null>(null);

@@ -1,3 +1,5 @@
+import { flushNativeCookies } from '@/native/bridge';
+
 const APP_API_HOSTS = new Set(['o3origin.com', 'www.o3origin.com']);
 
 function isVercelHost(hostname: string): boolean {
@@ -83,6 +85,12 @@ async function performTokenRefresh(): Promise<TokenRefreshResult> {
         const classified = classifyTokenRefreshStatus(response.status);
         if (classified === 'expired' && await recoverSessionViaMe()) {
             return 'ok';
+        }
+        if (classified === 'ok') {
+            // Android shell: persist the rotated refresh cookie to disk NOW —
+            // a process kill before Android's lazy cookie flush would strand
+            // the user with a revoked refresh token (plan ledger #14).
+            void flushNativeCookies();
         }
         return classified;
     } catch {

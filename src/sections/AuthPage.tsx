@@ -20,6 +20,8 @@ import {
 } from '@/components/ui/input-otp';
 import { toast } from 'sonner';
 import { getRegistrationStatusAction } from '@/server/actions/system-actions';
+import { isNativeApp } from '@/native/is-native-app';
+import { nativeGoogleSignIn } from '@/native/google';
 import { ForgotPasswordModal } from '@/components/auth/ForgotPasswordModal';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -166,6 +168,25 @@ export default function AuthPage({
     onSuccess: (res) => { if (onGoogleLogin && res.access_token) onGoogleLogin(res.access_token, userRole); },
     onError: (e) => console.error('Google Login Failed:', e),
   });
+
+  // Inside the Android shell, Google blocks the browser OAuth popup
+  // (`disallowed_useragent`), so the shell runs Credential Manager natively
+  // and hands back an ID token — submitted through the same onGoogleLogin
+  // path (handleGoogleLogin verifies both shapes). See plan §7.4.
+  const handleGoogleClick = async () => {
+    if (!isNativeApp()) {
+      handleGoogleAuth();
+      return;
+    }
+    const idToken = await nativeGoogleSignIn();
+    if (idToken) {
+      onGoogleLogin?.(idToken, userRole);
+    } else {
+      // Null covers user-cancel too, but a toast beats a dead button when the
+      // real cause is an old shell or Play Services trouble.
+      toast.error('Google sign-in is unavailable right now — please use email login.');
+    }
+  };
 
   const handleSendOtp = async () => {
     if (!email || !sendOtp) return;
@@ -568,7 +589,7 @@ export default function AuthPage({
                   {/* Google */}
                   <button
                     type="button"
-                    onClick={() => handleGoogleAuth()}
+                    onClick={() => { void handleGoogleClick(); }}
                     disabled={isLoading}
                     className="flex items-center justify-center gap-3 w-full h-11 rounded-[10px] text-sm font-semibold transition-all duration-300 disabled:opacity-50"
                     style={{ background: D.btn, color: D.text, border: 'none', outline: 'none', boxShadow: D.raised }}

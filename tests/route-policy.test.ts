@@ -50,11 +50,13 @@ test("future API routes are denied by default", () => {
   assert.equal(getAppRoutePolicy("/new-feature").kind, "unconfigured");
 });
 
-test("public API allowlist is limited to health, auth entrypoints, the drain receiver, the payment webhooks, and landing-page public data", () => {
+test("public API allowlist is limited to health, auth entrypoints, the drain receiver, the payment webhooks, landing-page public data, and the mobile shell endpoints", () => {
   assert.deepEqual([...PUBLIC_API_PATHS].sort(), [
     "/api/connect/webhook",
     "/api/health",
     "/api/internal/observability/drain",
+    "/api/mobile/config",
+    "/api/mobile/link-out/consume",
     "/api/public/activity-feed",
     "/api/public/demo-solve",
     "/api/public/live-stats",
@@ -64,6 +66,17 @@ test("public API allowlist is limited to health, auth entrypoints, the drain rec
     "/api/users/register",
     "/api/users/token/refresh",
   ]);
+});
+
+test("mobile shell endpoints: config + handoff consumption are public, everything else authenticated", () => {
+  // Config is fetched pre-auth at app cold start; handoff consumption runs in
+  // an external browser with no session cookie (the one-time token is the
+  // credential, verified in-handler). See ANDROID_HYBRID_APP_PLAN.md §5.
+  assert.equal(getApiRoutePolicy("/api/mobile/config").kind, "public");
+  assert.equal(getApiRoutePolicy("/api/mobile/link-out/consume").kind, "public");
+  assert.equal(getApiRoutePolicy("/api/mobile/link-out").kind, "authenticated");
+  assert.equal(getApiRoutePolicy("/api/mobile/push-tokens").kind, "authenticated");
+  assert.equal(getApiRoutePolicy("/api/mobile").kind, "authenticated");
 });
 
 test("auth refresh page route is public for expired access-cookie recovery", () => {

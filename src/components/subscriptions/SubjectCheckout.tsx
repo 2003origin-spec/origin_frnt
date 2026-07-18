@@ -14,6 +14,7 @@ import { Check, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
+import { NativePurchaseNotice, useIsNativeApp } from '@/components/native/NativePurchaseNotice';
 import type { Subject } from '@/lib/entitlements';
 import { cancelSubscription, createSubscription, validateCouponForSubject } from '@/features/subscriptions/client';
 
@@ -62,6 +63,7 @@ export type SubjectCheckoutProps = {
 export function SubjectCheckout({ subject, label, owned, priceMinor = 49900, couponCode, onChanged }: SubjectCheckoutProps) {
   const [busy, setBusy] = useState(false);
   const [coupon, setCoupon] = useState<{ code: string; finalMinor: number } | null>(null);
+  const native = useIsNativeApp();
 
   useEffect(() => {
     let cancelled = false;
@@ -128,6 +130,14 @@ export function SubjectCheckout({ subject, label, owned, priceMinor = 49900, cou
         Manage / Cancel
       </Button>
     );
+  }
+
+  // Android app: Play policy forbids non-Play digital-goods checkout, so the
+  // Razorpay subscribe flow is replaced by the consumption-only notice
+  // (ANDROID_HYBRID_APP_PLAN.md §5.4). Cancelling above stays available —
+  // that's account management, not a purchase.
+  if (native) {
+    return <NativePurchaseNotice title={label} />;
   }
 
   return (

@@ -2,7 +2,8 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { badRequest, getSlugSegments, parseJsonBody } from "@/server/http";
 import { handleUsersRequest } from "@/server/users";
-import { revokeRefreshSession } from "@/server/auth";
+import { resolveTokenToUser, revokeRefreshSession } from "@/server/auth";
+import { deleteAccountForUser } from "@/server/account-deletion";
 import {
   ACCESS_COOKIE_NAME,
   ACCESS_FINGERPRINT_COOKIE_NAME,
@@ -93,6 +94,34 @@ async function dispatch(method: string, request: NextRequest, context: RouteCont
   if (method === "POST" && slug[0] === "logout") {
     await revokeRefreshSession(request.cookies.get(REFRESH_COOKIE_NAME)?.value);
     const res = NextResponse.json({ ok: true });
+    return withClearedAuthCookies(res);
+  }
+
+  // Account deletion (Play-required; ANDROID_HYBRID_APP_PLAN.md §5.6).
+  // Auth = the session itself; intent = the user re-typing their email.
+  // Anonymizes in place, revokes sessions + push tokens, then clears cookies.
+  if (method === "POST" && slug[0] === "account" && slug[1] === "delete") {
+    const limited = await checkRateLimit(authLimiter, `account-delete:${ip}`);
+    if (limited) return limited;
+
+    const user = await resolveTokenToUser(request);
+    if (!user) {
+      return NextResponse.json({ detail: "Authentication required." }, { status: 401 });
+    }
+
+    let body: Record<string, unknown> = {};
+    try {
+      body = await parseJsonBody<Record<string, unknown>>(request);
+    } catch {
+      return badRequest("Invalid JSON body.");
+    }
+    const confirmEmail = typeof body.confirmEmail === "string" ? body.confirmEmail.trim() : "";
+    if (confirmEmail.toLowerCase() !== user.email.toLowerCase()) {
+      return badRequest("Type your account email exactly to confirm deletion.");
+    }
+
+    const result = await deleteAccountForUser(user.id);
+    const res = NextResponse.json(result);
     return withClearedAuthCookies(res);
   }
 

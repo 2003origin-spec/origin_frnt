@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
+import { NativePurchaseNotice, useIsNativeApp } from "@/components/native/NativePurchaseNotice";
 
 type Props = {
   workspaceId: string;
@@ -15,6 +16,7 @@ export function CheckoutForm({ workspaceId, offeringId }: Props) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [orderId, setOrderId] = useState<string | null>(null);
+  const native = useIsNativeApp();
 
   async function submit() {
     setError(null);
@@ -37,6 +39,12 @@ export function CheckoutForm({ workspaceId, offeringId }: Props) {
     // initialise a JS SDK with a return URL. For now we land on the
     // orders list so the student can see the created order.
     router.push("/marketplace/orders");
+  }
+
+  // Android app: order creation is a paid-offering purchase intent —
+  // consumption-only notice instead (ANDROID_HYBRID_APP_PLAN.md §5.4).
+  if (native) {
+    return <NativePurchaseNotice />;
   }
 
   if (orderId) {
