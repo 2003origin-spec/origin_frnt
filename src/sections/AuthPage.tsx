@@ -201,7 +201,7 @@ export default function AuthPage({
       return;
     }
     const res = await sendOtp(email, userRole);
-    if (res.ok) { setStep('otp'); setResendCooldown(60); }
+    if (res.ok) { setStep('otp'); setResendCooldown(100); }
   };
 
   const handleVerifyAndRegister = async () => {

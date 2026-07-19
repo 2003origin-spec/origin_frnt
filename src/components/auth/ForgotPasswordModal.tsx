@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { X, Loader2, Mail, KeyRound, CheckCircle2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { X, Loader2, Mail, KeyRound, CheckCircle2, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { InputOTP, InputOTPGroup, InputOTPSeparator, InputOTPSlot } from '@/components/ui/input-otp';
@@ -24,6 +24,14 @@ export function ForgotPasswordModal({ open, onClose, initialEmail = '', role, on
   const [confirm, setConfirm] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [resendCooldown, setResendCooldown] = useState(0);
+
+  useEffect(() => {
+    if (resendCooldown > 0) {
+      const t = setTimeout(() => setResendCooldown((c) => c - 1), 1000);
+      return () => clearTimeout(t);
+    }
+  }, [resendCooldown]);
 
   if (!open) return null;
 
@@ -34,6 +42,7 @@ export function ForgotPasswordModal({ open, onClose, initialEmail = '', role, on
     setConfirm('');
     setError(null);
     setBusy(false);
+    setResendCooldown(0);
   }
 
   function close() {
@@ -43,6 +52,7 @@ export function ForgotPasswordModal({ open, onClose, initialEmail = '', role, on
 
   async function sendCode() {
     setError(null);
+    if (resendCooldown > 0) return; // guard: the server also silently no-ops resends within its window
     const trimmed = email.trim();
     if (!trimmed.includes('@')) {
       setError('Enter a valid email address.');
@@ -54,6 +64,7 @@ export function ForgotPasswordModal({ open, onClose, initialEmail = '', role, on
       // Enumeration-safe: we always advance, even if no account exists.
       toast.success('If an account exists, a reset code has been sent to your email.');
       if (res.devCode) toast.message(`Dev code: ${res.devCode}`); // dev-only when no mail configured
+      setResendCooldown(100);
       setStep('reset');
     } catch {
       setError('Could not send the code. Please try again.');
@@ -125,10 +136,10 @@ export function ForgotPasswordModal({ open, onClose, initialEmail = '', role, on
             {error && <p className="text-xs font-bold text-rose-500">{error}</p>}
             <button
               onClick={sendCode}
-              disabled={busy}
+              disabled={busy || resendCooldown > 0}
               className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-black uppercase tracking-widest text-primary-foreground transition-all hover:bg-primary/90 disabled:opacity-50"
             >
-              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Send reset code'}
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Send reset code'}
             </button>
           </div>
         )}
@@ -152,6 +163,17 @@ export function ForgotPasswordModal({ open, onClose, initialEmail = '', role, on
                   <InputOTPSlot index={5} />
                 </InputOTPGroup>
               </InputOTP>
+            </div>
+            <div className="flex justify-center items-center gap-2 text-xs text-muted-foreground">
+              <span>Didn&apos;t get the code?</span>
+              <button
+                type="button"
+                disabled={busy || resendCooldown > 0}
+                onClick={sendCode}
+                className="flex items-center gap-1 font-bold text-primary disabled:opacity-40"
+              >
+                {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : <><RefreshCw className="h-3 w-3" />Resend</>}
+              </button>
             </div>
             <div className="relative">
               <KeyRound className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
