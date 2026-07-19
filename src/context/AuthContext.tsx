@@ -8,6 +8,7 @@ import { clearOriginAiBrowserSession } from '@/features/origin-ai/session';
 import { setSoundPreferences, playCategory } from '@/lib/sound-manager';
 import { AUTH_EXPIRED_EVENT, attemptTokenRefresh } from '@/lib/api';
 import { flushNativeCookies, notifyNativeLogout } from '@/native/bridge';
+import { purgeUserCachesForLogout } from '@/sw/client';
 import {
   addTaskAction,
   editTaskAction,
@@ -566,6 +567,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
     // the phone stops receiving this account's pushes (shared devices — plan
     // ledger #18/#54). Best-effort and fast; no-op in browsers.
     await notifyNativeLogout();
+
+    // Offline-layer hygiene: cached pages/RSC payloads hold this user's data
+    // — wipe the runtime caches + IndexedDB before the next person on this
+    // device signs in (plan §6.5, ledger #18). Time-boxed inside.
+    await purgeUserCachesForLogout();
 
     try {
       // 2. Clear server-side cookies and revalidate

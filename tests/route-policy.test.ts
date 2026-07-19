@@ -84,6 +84,14 @@ test("auth refresh page route is public for expired access-cookie recovery", () 
   assert.ok((PUBLIC_APP_PATHS as readonly string[]).includes("/auth/refresh"));
 });
 
+test("service-worker script and offline fallback are public (offline layer, plan §6)", () => {
+  // The worker registers pre-auth for every visitor, and /offline.html is
+  // fetched at SW install with no session — an auth redirect would corrupt
+  // the precache with the login page.
+  assert.equal(getAppRoutePolicy("/sw.js").kind, "public");
+  assert.equal(getAppRoutePolicy("/offline.html").kind, "public");
+});
+
 test("route handlers do not import low-level JWT primitives directly", () => {
   const routes = walkFiles(join(root, "src/app/api"), (file) => file.endsWith("/route.ts"));
   const offenders = routes.filter((route) => readFileSync(route, "utf8").includes("@/server/auth-jwt"));

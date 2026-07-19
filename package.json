@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "node scripts/build-sw.mjs",
     "dev": "node scripts/dev-filter.js --turbopack",
+    "prebuild": "node scripts/build-sw.mjs",
     "build": "next build --turbopack",
     "start": "next start",
     "typecheck": "tsc --noEmit",
@@ -121,10 +123,12 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "agentation": "^3.0.2",
+    "esbuild": "^0.28.1",
     "eslint": "^9",
     "eslint-config-next": "16.2.1",
     "fast-check": "^4.8.0",
     "prettier-plugin-tailwindcss": "^0.8.0",
+    "serwist": "^9.5.11",
     "tailwindcss": "^4",
     "tsx": "^4.21.0",
     "typescript": "^5"

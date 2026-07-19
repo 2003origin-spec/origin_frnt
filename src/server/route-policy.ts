@@ -93,6 +93,12 @@ export const PUBLIC_APP_PATHS = [
   "/account/delete",
   // CBT teacher OTP login page — public so allowlisted teachers can reach it.
   "/cbt/login",
+  // Offline layer (plan §6): the middleware matcher doesn't exclude .js/.html
+  // public files, so the service-worker script and its precached fallback
+  // page must be explicitly public — the worker registers pre-auth, and the
+  // fallback is fetched at SW install time with no session attached.
+  "/sw.js",
+  "/offline.html",
 ] as const;
 
 // `/cbt/r` = student join/test pages, public at the edge (participant-token
