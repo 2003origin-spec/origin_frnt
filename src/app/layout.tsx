@@ -8,6 +8,7 @@ import { AuthProvider } from "@/context/AuthContext";
 import { ThemeProvider } from "next-themes";
 import { Toaster } from "@/components/ui/sonner";
 import ClientShell from "@/components/layout/ClientShell";
+import ServiceWorkerManager from "@/components/pwa/ServiceWorkerManager";
 import { QuotaProvider } from "@/context/QuotaContext";
 import { NotificationProvider } from "@/context/NotificationContext";
 import { getCanonicalSiteUrl } from "@/lib/site-url";
@@ -95,6 +96,9 @@ export default async function RootLayout({
             </AuthProvider>
           </Suspense>
           <Toaster position="top-right" richColors />
+          {/* Offline layer: SW registration + kill switch + deploy-skew
+              recovery for all users (ANDROID_HYBRID_APP_PLAN.md §6). */}
+          <ServiceWorkerManager />
           {process.env.NODE_ENV === "development" && <AgentationLoader />}
         </ThemeProvider>
       </body>

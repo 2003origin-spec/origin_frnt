@@ -54,6 +54,21 @@ export async function flushNativeCookies(): Promise<void> {
   }
 }
 
+/**
+ * Tell the shell whether the offline layer is primed (service worker active
+ * with the offline shell precached). The shell persists this and uses it at
+ * cold start to decide between loading the WebView offline (SW will render)
+ * and showing its native offline screen (plan §8.1, ledger #1/#2).
+ */
+export async function reportOfflineReady(ready: boolean): Promise<void> {
+  if (!(await hasNativeCapability("offlineReady"))) return;
+  try {
+    await getOriginNative()?.setOfflineReady({ ready });
+  } catch {
+    // Best-effort: the shell then falls back to its native offline screen.
+  }
+}
+
 /** Native-side logout cleanup (push token invalidation etc.). Best-effort. */
 export async function notifyNativeLogout(): Promise<void> {
   if (!isNativeApp()) return;

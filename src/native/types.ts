@@ -18,7 +18,8 @@ export type NativeCapability =
   | "googleSignIn"
   | "deviceClass"
   | "linkOut"
-  | "pushTokens";
+  | "pushTokens"
+  | "offlineReady";
 
 export type OriginNativeCapabilities = {
   /** Bridge contract major version. 1 = initial shell. */
@@ -44,6 +45,9 @@ export type OriginNativePlugin = {
   googleSignIn(): Promise<{ idToken: string | null }>;
   getPushToken(): Promise<{ token: string | null }>;
   onLogout(): Promise<void>;
+  /** Web → shell: whether the service worker is active with the offline
+   * shell precached; feeds the shell's cold-start offline gate (§8.1). */
+  setOfflineReady(options: { ready: boolean }): Promise<void>;
 };
 
 type PluginListenerHandle = { remove: () => Promise<void> };
