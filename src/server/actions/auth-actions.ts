@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache';
 
 import { emailSendLimiter, otpVerifyLimiter, refreshLimiter, isWithinLimit } from '@/lib/rate-limit';
 
-import { handleGoogleLogin, handleLogin, handleRegister, handleRefresh, serializeUser, handleLoginWithOtp } from '@/server/users';
+import { handleGoogleLogin, handleGoogleSignup, handleLogin, handleRegister, handleRefresh, serializeUser, handleLoginWithOtp } from '@/server/users';
 import { readStoreAsync, withStoreAsync } from '@/server/store';
 import { getServerUser } from '@/lib/auth-server';
 import { withEntitledSubjects } from '@/server/entitlements';
@@ -43,7 +43,16 @@ import type { User } from '@/types';
 
 type InternalAuthSuccess = { ok: true; user: User; access: string; refresh: string; accessFingerprint: string };
 type AuthSuccess = { ok: true; user: User };
-type AuthFailure = { ok: false; status: number; message: string };
+type AuthFailure = {
+  ok: false;
+  status: number;
+  message: string;
+  /** Google login found no account — client should run the details-signup step. */
+  needsGoogleSignup?: boolean;
+  /** Google-VERIFIED email/name accompanying needsGoogleSignup (display only). */
+  email?: string;
+  name?: string;
+};
 type AuthResult = AuthSuccess | AuthFailure;
 type InternalAuthResult = InternalAuthSuccess | AuthFailure;
 
@@ -107,6 +116,18 @@ async function parseAuthResponse(response: Response): Promise<InternalAuthResult
         : typeof body.message === 'string'
           ? body.message
           : 'Authentication failed.';
+    // Google login with no matching account → the handler attaches the
+    // verified identity so the client can run the details-signup step.
+    if (body.needs_signup === true && typeof body.email === 'string') {
+      return {
+        ok: false,
+        status: response.status,
+        message,
+        needsGoogleSignup: true,
+        email: body.email,
+        name: typeof body.name === 'string' ? body.name : undefined,
+      };
+    }
     return { ok: false, status: response.status, message };
   }
 
@@ -261,6 +282,41 @@ export async function googleLoginAction(input: { credential: string; role?: 'stu
     return toPublicAuthResult(parsed);
   } catch (error) {
     return authActionFailure('googleLoginAction', error);
+  }
+}
+
+/**
+ * Complete a Google-initiated signup: called from the "complete your profile"
+ * step with the SAME Google credential plus the mandatory details. The handler
+ * re-verifies the credential server-side (the email is never taken from the
+ * client), applies handleRegister's validation, creates the account, and logs
+ * the user in.
+ */
+export async function googleSignupAction(input: {
+  credential: string;
+  mobile: string;
+  state: string;
+  role?: 'student' | 'teacher' | 'admin' | null;
+}): Promise<AuthResult> {
+  try {
+    // Same admin gate as the form-based signup.
+    if (await signupBlockedForRole(input.role)) {
+      return { ok: false, status: 403, message: SIGNUP_DISABLED_MESSAGE };
+    }
+    const response = await handleGoogleSignup({
+      credential: input.credential,
+      role: input.role ?? null,
+      mobile: input.mobile,
+      location: input.state,
+    });
+    const parsed = await parseAuthResponse(response);
+    if (parsed.ok) {
+      await setSessionCookies(parsed.access, parsed.refresh, parsed.accessFingerprint);
+      revalidatePath('/', 'layout');
+    }
+    return toPublicAuthResult(parsed);
+  } catch (error) {
+    return authActionFailure('googleSignupAction', error);
   }
 }
 

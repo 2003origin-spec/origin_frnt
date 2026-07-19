@@ -4,7 +4,7 @@ import { requireUserFromRequest, resolveTokenToUser, refreshAccessToken, createA
 import { isAuthServiceUnavailableError } from "@/server/auth-errors";
 import { extractAccessFingerprint } from "@/server/auth-jwt";
 import { isUserPostgresConfigured } from "@/server/user-postgres";
-import { dbLoginUser, dbRegisterUser, dbGetTasks, dbCreateTask, dbUpdateTask, dbDeleteTask, dbFindUserByEmail, dbUpdateUser, dbCreateAuthSession, dbGetUserCount, dbGetUserCountByRole, dbMobileInUse } from "@/server/db-users";
+import { dbLoginUser, dbRegisterUser, dbGetTasks, dbCreateTask, dbUpdateTask, dbDeleteTask, dbFindUserByEmail, dbCreateUser, dbUpdateUser, dbCreateAuthSession, dbGetUserCount, dbGetUserCountByRole, dbMobileInUse } from "@/server/db-users";
 import { OAuth2Client } from "google-auth-library";
 import {
   awardPoints,
@@ -671,12 +671,86 @@ export async function handleRegister(payload: UserPayload) {
   });
 }
 
+/**
+ * Resolve a Google credential (a JWT ID token or an OAuth access token) to a
+ * verified identity, or null when the token is invalid.
+ *
+ * This is the ONLY trust anchor for the Google flows. handleGoogleSignup must
+ * always re-run this on its own credential rather than trusting a client-sent
+ * email — otherwise anyone could mint accounts for arbitrary addresses.
+ *
+ * Audit fix R-1.4 (A-07) — `useGoogleLogin` and `<GoogleLogin>` from
+ * @react-oauth/google return *different* shapes:
+ *   - `<GoogleLogin>` (id_token flow) → a JWT `header.payload.signature`,
+ *     verified against Google's keys.
+ *   - `useGoogleLogin({ flow: 'implicit' })` (default) → an OAuth access_token
+ *     (e.g. "ya29.a0Af...") that is NOT a JWT — exchanged at the userinfo
+ *     endpoint. Routing on segment count (a JWT has exactly 3) sends access
+ *     tokens straight there: one network round-trip.
+ */
+async function resolveGoogleCredential(
+  credential: string,
+): Promise<{ email: string; name: string; avatar: string | null } | null> {
+  const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "YOUR_GOOGLE_CLIENT_ID";
+  let email: string | undefined;
+  let name: string = "Google User";
+  let avatar: string | null = null;
+
+  if (credential.split('.').length === 3) {
+    try {
+      const client = new OAuth2Client(clientId);
+      // The Android shell's Credential Manager flow mints its ID token with
+      // serverClientId = the web client id, so `aud` normally equals
+      // `clientId` already; GOOGLE_ANDROID_CLIENT_ID is accepted as a
+      // belt-and-braces audience for tokens minted against the Android
+      // OAuth client directly (ANDROID_HYBRID_APP_PLAN.md §5.3).
+      const androidClientId = process.env.GOOGLE_ANDROID_CLIENT_ID?.trim();
+      const ticket = await client.verifyIdToken({
+        idToken: credential,
+        audience: androidClientId ? [clientId, androidClientId] : clientId,
+      });
+      const googlePayload = ticket.getPayload();
+      if (googlePayload) {
+        email = googlePayload.email;
+        name = googlePayload.name ?? "Google User";
+        avatar = googlePayload.picture ?? null;
+      }
+    } catch (e) {
+      console.warn("[GoogleAuth] ID Token verification failed, checking if it is an access token instead", e);
+    }
+  }
+
+  // If ID token verification didn't work (or skipped), fetch user info with it
+  // as an access token. Bounded by an 8s timeout so a slow/hung network fails
+  // fast instead of blocking the login.
+  if (!email) {
+    try {
+      const res = await fetch(`https://www.googleapis.com/oauth2/v3/userinfo?access_token=${credential}`, {
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!res.ok) {
+        throw new Error(`Google userinfo status: ${res.status}`);
+      }
+      const data = await res.json();
+      email = data.email;
+      name = data.name ?? "Google User";
+      avatar = data.picture ?? null;
+    } catch (e) {
+      console.error("[GoogleAuth] Access Token verification failed:", e);
+      return null;
+    }
+  }
+
+  if (!email) return null;
+  return { email, name, avatar };
+}
+
 export async function handleGoogleLogin(payload: UserPayload) {
-  // Google auth is LOGIN-ONLY: it authenticates existing accounts and never
-  // creates new ones. Brand-new users must go through the email/password signup
-  // form, which compulsorily collects mobile + state. (The old `allowNewUsers`
-  // option — which only gated the admin signup switch — is gone; new Google
-  // emails are always refused with a "please sign up first" prompt below.)
+  // Google auth authenticates existing accounts. A brand-new Google email is
+  // not silently auto-created (it would lack the compulsory mobile + state) —
+  // instead the response carries `needs_signup: true` plus the verified
+  // email/name so the client can run the "complete your profile" step and
+  // finish account creation via handleGoogleSignup.
   const credential = asString(payload.credential);
   if (!credential) return badRequest("Missing Google credential token.");
 
@@ -685,78 +759,11 @@ export async function handleGoogleLogin(payload: UserPayload) {
     rawRole === "teacher" || rawRole === "admin" ? rawRole : "student";
 
   try {
-    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "YOUR_GOOGLE_CLIENT_ID";
-    let email: string | undefined;
-    let name: string = "Google User";
-    let avatar: string | null = null;
-
-    // Audit fix R-1.4 (A-07) — `useGoogleLogin` and `<GoogleLogin>` from
-    // @react-oauth/google return *different* shapes:
-    //
-    //   - `<GoogleLogin>` (implicit "id_token" flow) → a JWT idToken
-    //     that is a dot-separated `header.payload.signature`. This
-    //     branch verifies its signature against Google's keys and
-    //     pulls `email`/`name`/`picture` from the verified claims.
-    //
-    //   - `useGoogleLogin({ flow: 'implicit' })` (default) → an OAuth
-    //     access_token that is *not* a JWT. We fall through to the
-    //     userinfo endpoint exchange below.
-    //
-    // Correct discriminator: an ID token is a JWT with EXACTLY three
-    // dot-separated segments (header.payload.signature). A Google OAuth
-    // access_token (e.g. "ya29.a0Af...") also contains a dot but is NOT a JWT,
-    // so the old `includes('.')` check sent every access-token login (the
-    // frontend's implicit flow always returns an access_token) through a wasted
-    // verifyIdToken() round-trip before falling back. Routing on segment count
-    // skips that and goes straight to userinfo — one network round-trip, faster.
-    if (credential.split('.').length === 3) {
-      try {
-        const client = new OAuth2Client(clientId);
-        // The Android shell's Credential Manager flow mints its ID token with
-        // serverClientId = the web client id, so `aud` normally equals
-        // `clientId` already; GOOGLE_ANDROID_CLIENT_ID is accepted as a
-        // belt-and-braces audience for tokens minted against the Android
-        // OAuth client directly (ANDROID_HYBRID_APP_PLAN.md §5.3).
-        const androidClientId = process.env.GOOGLE_ANDROID_CLIENT_ID?.trim();
-        const ticket = await client.verifyIdToken({
-          idToken: credential,
-          audience: androidClientId ? [clientId, androidClientId] : clientId,
-        });
-        const googlePayload = ticket.getPayload();
-        if (googlePayload) {
-          email = googlePayload.email;
-          name = googlePayload.name ?? "Google User";
-          avatar = googlePayload.picture ?? null;
-        }
-      } catch (e) {
-        console.warn("[GoogleAuth] ID Token verification failed, checking if it is an access token instead", e);
-      }
+    const resolved = await resolveGoogleCredential(credential);
+    if (!resolved) {
+      return unauthorized("Invalid Google Token (Not an ID Token nor a valid Access Token)");
     }
-
-    // If ID token verification didn't work (or skipped), fetch user info with it
-    // as an access token. Bounded by an 8s timeout so a slow/hung network fails
-    // fast instead of blocking the login.
-    if (!email) {
-      try {
-        const res = await fetch(`https://www.googleapis.com/oauth2/v3/userinfo?access_token=${credential}`, {
-          signal: AbortSignal.timeout(8000),
-        });
-        if (!res.ok) {
-          throw new Error(`Google userinfo status: ${res.status}`);
-        }
-        const data = await res.json();
-        email = data.email;
-        name = data.name ?? "Google User";
-        avatar = data.picture ?? null;
-      } catch (e) {
-        console.error("[GoogleAuth] Access Token verification failed:", e);
-        return unauthorized("Invalid Google Token (Not an ID Token nor a valid Access Token)");
-      }
-    }
-
-    if (!email) {
-      return unauthorized("Could not retrieve email from Google token.");
-    }
+    const { email, name, avatar } = resolved;
 
     if (isUserPostgresConfigured()) {
       try {
@@ -779,11 +786,12 @@ export async function handleGoogleLogin(payload: UserPayload) {
             }
           }
 
-          // Login-only: no existing account for this Google email + role, so we
-          // refuse instead of silently creating one. New users must sign up via
-          // the form (which requires mobile + state).
+          // No account yet: don't silently create one (it would lack the
+          // compulsory details). Signal the client to run the Google-signup
+          // details step; email/name are the Google-VERIFIED values.
           return badRequest(
-            "No account found for this Google account. Please sign up with your details first.",
+            "No account found for this Google account. Add your details to finish creating one.",
+            { needs_signup: true, email, name },
           );
         } else if (!dbUser.avatar && avatar) {
           await dbUpdateUser(dbUser.id, { avatar });
@@ -806,12 +814,12 @@ export async function handleGoogleLogin(payload: UserPayload) {
     }
 
     return withStoreAsync(async (store) => {
-      const user = store.users.find((entry) => entry.email.toLowerCase() === email!.toLowerCase() && entry.role === role);
+      const user = store.users.find((entry) => entry.email.toLowerCase() === email.toLowerCase() && entry.role === role);
       if (!user) {
-        // Login-only: no existing account → refuse. New users must sign up via
-        // the form (which requires mobile + state).
+        // No account yet → signal the Google-signup details step (see DB path).
         return badRequest(
-          "No account found for this Google account. Please sign up with your details first.",
+          "No account found for this Google account. Add your details to finish creating one.",
+          { needs_signup: true, email, name },
         );
       } else if (!user.avatar && avatar) {
         user.avatar = avatar;
@@ -824,6 +832,135 @@ export async function handleGoogleLogin(payload: UserPayload) {
   } catch (e: any) {
     console.error("Google Auth processing error:", e);
     return unauthorized("Failed to process Google login");
+  }
+}
+
+/**
+ * Complete a Google-initiated signup: the client re-sends the Google credential
+ * together with the mandatory details (mobile + state) collected on the
+ * "complete your profile" step, and the account is created.
+ *
+ * SECURITY: the email is ALWAYS taken from the re-verified Google credential,
+ * never from the client payload — otherwise anyone could create accounts for
+ * arbitrary addresses. Detail validation mirrors handleRegister exactly.
+ * Idempotent: if the account already exists (double-submit / retry), the user
+ * is simply logged in — Google has already proven ownership of the email.
+ */
+export async function handleGoogleSignup(payload: UserPayload) {
+  const credential = asString(payload.credential);
+  if (!credential) return badRequest("Missing Google credential token.");
+
+  // Public Google signup may only ever create a student or teacher account —
+  // same role collapse as handleRegister (never admin).
+  const requestedRole = asString(payload.role)?.toLowerCase();
+  const role: "student" | "teacher" = requestedRole === "teacher" ? "teacher" : "student";
+
+  // Mandatory details — same rules as handleRegister.
+  const mobile = normalizeMobile(asString(payload.mobile) ?? "");
+  if (!mobile) {
+    return badRequest("Enter a valid 10-digit mobile number.");
+  }
+  const location = asString(payload.location)?.trim() || null;
+  if (!location) {
+    return badRequest("Please select your state.");
+  }
+
+  try {
+    const resolved = await resolveGoogleCredential(credential);
+    if (!resolved) {
+      return unauthorized("Invalid Google Token (Not an ID Token nor a valid Access Token)");
+    }
+    const { email, name, avatar } = resolved;
+
+    // Enforce registration limit (role-aware: teachers capped separately).
+    const status = await getRegistrationStatus(role);
+    if (status.seatsLeft <= 0) {
+      const scope = role === "teacher" ? "teacher" : "user";
+      return badRequest(`Registration is currently closed. We've reached our maximum ${scope} capacity for this phase.`);
+    }
+
+    if (isUserPostgresConfigured()) {
+      try {
+        let dbUser = await dbFindUserByEmail(email, role);
+        if (!dbUser) {
+          const otherRoles: Array<"student" | "teacher" | "admin"> = role === "teacher"
+            ? ["student", "admin"]
+            : ["teacher", "admin"];
+          for (const otherRole of otherRoles) {
+            if (await dbFindUserByEmail(email, otherRole)) {
+              return badRequest(
+                `This Google account is already registered as a ${otherRole}. Please use the ${otherRole} login page instead.`,
+              );
+            }
+          }
+          if (await dbMobileInUse(mobile)) {
+            return badRequest("This mobile number is already registered.");
+          }
+
+          const hashed = bcrypt.hashSync(createId("rand"), 10);
+          dbUser = await dbCreateUser({
+            name, email, password: hashed, role,
+            // Google verified the email, so OTP is skipped; a password can be
+            // set later from the profile. Mandatory details are stored now.
+            passwordSet: false, mobile, location,
+            studentClass: null, fieldOfInterest: null, referralSource: null,
+            avatar, streak: 0, totalStudyTime: 0, joinedAt: new Date().toISOString(),
+            isPremium: false, premiumExpiry: null, isOnboarded: false,
+            selectedCourse: null, isDropper: false, yearsOfExperience: null,
+            subjects: [], studentCapacity: null,
+          });
+          // Event Mode: auto-grant Premium Pro to students signing up during a
+          // launch event. Best-effort; never blocks Google signup.
+          await maybeGrantEventModePremiumOnSignup(dbUser.id, dbUser.role);
+        }
+
+        const session = await dbCreateAuthSession(dbUser.id);
+        const userData = await serializeDbUser(dbUser);
+        if (!userData) return notFound("User not found.");
+        return created({
+          user: userData,
+          refresh: session.refreshToken,
+          access: session.accessToken,
+          accessFingerprint: session.accessFingerprint,
+        });
+      } catch (err) {
+        console.error('[users] DB google signup failed', err instanceof Error ? err.message : err);
+        return serviceUnavailable("Google sign-up is temporarily unavailable. Please retry in a moment.");
+      }
+    }
+
+    return withStoreAsync(async (store) => {
+      let user = store.users.find((entry) => entry.email.toLowerCase() === email.toLowerCase() && entry.role === role);
+      if (!user) {
+        if (store.users.some((entry) => entry.mobile === mobile)) {
+          return badRequest("This mobile number is already registered.");
+        }
+        const userId = createId("user");
+        user = withStoredUserDefaults({
+          id: userId, name, email, password: bcrypt.hashSync(createId("rand"), 10),
+          role, mobile, location,
+          studentClass: null, fieldOfInterest: null, referralSource: null,
+          avatar, streak: 0, totalStudyTime: 0, joinedAt: new Date().toISOString(),
+          isPremium: false, premiumExpiry: null, isOnboarded: false,
+          selectedCourse: null, isDropper: false, yearsOfExperience: null,
+          subjects: [], studentCapacity: null,
+        });
+        store.users.push(user);
+      }
+
+      const session = await createAuthSessionAsync(store, user.id);
+      const userData = serializeUser(store, user.id);
+      if (!userData) return notFound("User not found.");
+      return created({
+        user: userData,
+        refresh: session.refreshToken,
+        access: session.accessToken,
+        accessFingerprint: session.accessFingerprint,
+      });
+    });
+  } catch (e: any) {
+    console.error("Google signup processing error:", e);
+    return unauthorized("Failed to process Google sign-up");
   }
 }
 

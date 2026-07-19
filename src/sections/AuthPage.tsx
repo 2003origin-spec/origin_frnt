@@ -33,6 +33,10 @@ interface AuthPageProps {
   onLoginWithOtp?: (email: string, role?: 'student' | 'teacher' | 'admin' | null) => void;
   onRegister: (name: string, email: string, password: string, mobile: string, state: string, role?: 'student' | 'teacher' | 'admin' | null) => void;
   onGoogleLogin?: (credential: string, role?: 'student' | 'teacher' | 'admin' | null) => void;
+  /** Set when Google login found no account — shows the details-signup step. */
+  googlePendingSignup?: { email: string; name: string } | null;
+  onGoogleSignup?: (mobile: string, state: string) => void;
+  onGoogleSignupCancel?: () => void;
   sendOtp?: (email: string, role?: 'student' | 'teacher' | 'admin' | null) => Promise<{ ok: boolean; message: string }>;
   verifyOtp?: (email: string, otp: string) => Promise<{ ok: boolean; message: string }>;
   onBack: () => void;
@@ -129,6 +133,9 @@ export default function AuthPage({
   onLoginWithOtp,
   onRegister,
   onGoogleLogin,
+  googlePendingSignup,
+  onGoogleSignup,
+  onGoogleSignupCancel,
   onBack,
   isLoading,
   error,
@@ -142,6 +149,10 @@ export default function AuthPage({
   const [password, setPassword] = useState('');
   const [mobile, setMobile] = useState('');
   const [state, setState] = useState('');
+  // Google details-signup step: its own mobile/state so the main form's values
+  // never leak in, and vice versa.
+  const [gMobile, setGMobile] = useState('');
+  const [gState, setGState] = useState('');
   const [step, setStep] = useState<'form' | 'otp'>('form');
   const [otp, setOtp] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
@@ -322,7 +333,7 @@ export default function AuthPage({
             </p>
 
             {/* Login / Sign Up toggle */}
-            {userRole !== 'admin' && (
+            {!googlePendingSignup && userRole !== 'admin' && (
               <div
                 className="flex p-1 mb-5 rounded-[14px]"
                 style={{ background: '#111', boxShadow: D.inset }}
@@ -379,8 +390,79 @@ export default function AuthPage({
               </div>
             )}
 
+            {/* Google details-signup step — the account is created only after
+                the mandatory details are collected (email is Google-verified). */}
+            {googlePendingSignup && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="space-y-4 py-2"
+              >
+                <div className="text-center space-y-1.5">
+                  <p className="text-sm font-bold" style={{ color: D.text }}>
+                    Almost there{googlePendingSignup.name ? `, ${googlePendingSignup.name.split(' ')[0]}` : ''}!
+                  </p>
+                  <p className="text-xs" style={{ color: D.muted }}>
+                    <span style={{ color: D.text, fontWeight: 700 }}>{googlePendingSignup.email}</span> is verified.
+                    Add your details to finish creating your account.
+                  </p>
+                </div>
+
+                <FieldRow icon={<Phone className="w-4 h-4" />}>
+                  <span className="shrink-0 text-sm font-bold select-none" style={{ color: '#888' }}>+91</span>
+                  <input
+                    type="tel"
+                    inputMode="numeric"
+                    autoComplete="tel-national"
+                    placeholder="10-digit mobile number"
+                    maxLength={10}
+                    value={gMobile}
+                    onChange={e => setGMobile(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                    className={fieldInputCls}
+                  />
+                </FieldRow>
+
+                <FieldRow icon={<MapPin className="w-4 h-4" />}>
+                  <select
+                    value={gState}
+                    onChange={e => setGState(e.target.value)}
+                    className={`${fieldInputCls} cursor-pointer`}
+                    style={{ colorScheme: 'dark' }}
+                  >
+                    <option value="" disabled>Select your state</option>
+                    {INDIAN_STATES.map(s => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </FieldRow>
+
+                <button
+                  type="button"
+                  disabled={isLoading}
+                  onClick={() => {
+                    if (!/^[6-9]\d{9}$/.test(gMobile)) { toast.error('Enter a valid 10-digit mobile number.'); return; }
+                    if (!gState) { toast.error('Please select your state.'); return; }
+                    onGoogleSignup?.(gMobile, gState);
+                  }}
+                  className="w-full h-11 rounded-[5px] font-semibold text-sm transition-all duration-300 flex items-center justify-center gap-2 disabled:opacity-60"
+                  style={{ background: 'hsl(var(--primary))', color: '#fff' }}
+                >
+                  {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Create Account'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => { setGMobile(''); setGState(''); onGoogleSignupCancel?.(); }}
+                  className="w-full text-center text-xs flex items-center justify-center gap-1 transition-colors"
+                  style={{ color: D.muted }}
+                >
+                  <ArrowLeft className="w-3 h-3" />Use a different account
+                </button>
+              </motion.div>
+            )}
+
             {/* Form */}
-            <form onSubmit={handleSubmit} className="space-y-3">
+            <form onSubmit={handleSubmit} className={cn('space-y-3', googlePendingSignup && 'hidden')}>
 
               {/* OTP step */}
               {step === 'otp' ? (
@@ -577,7 +659,7 @@ export default function AuthPage({
             </form>
 
             {/* OAuth */}
-            {userRole !== 'admin' && (
+            {!googlePendingSignup && userRole !== 'admin' && (
               <div className="mt-5">
                 <div className="flex items-center gap-3 mb-4">
                   <div className="flex-1 h-px" style={{ background: D.border }} />
