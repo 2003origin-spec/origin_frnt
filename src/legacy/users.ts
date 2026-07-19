@@ -702,10 +702,14 @@ export async function handleGoogleLogin(payload: UserPayload) {
     //     access_token that is *not* a JWT. We fall through to the
     //     userinfo endpoint exchange below.
     //
-    // The presence of a "." is a cheap, conservative discriminator: a
-    // bearer access_token never contains a dot, an idToken always does.
-    // Try verifying as ID Token first (JWTs usually have 3 parts separated by dots)
-    if (credential.includes('.')) {
+    // Correct discriminator: an ID token is a JWT with EXACTLY three
+    // dot-separated segments (header.payload.signature). A Google OAuth
+    // access_token (e.g. "ya29.a0Af...") also contains a dot but is NOT a JWT,
+    // so the old `includes('.')` check sent every access-token login (the
+    // frontend's implicit flow always returns an access_token) through a wasted
+    // verifyIdToken() round-trip before falling back. Routing on segment count
+    // skips that and goes straight to userinfo — one network round-trip, faster.
+    if (credential.split('.').length === 3) {
       try {
         const client = new OAuth2Client(clientId);
         // The Android shell's Credential Manager flow mints its ID token with
@@ -729,10 +733,14 @@ export async function handleGoogleLogin(payload: UserPayload) {
       }
     }
 
-    // If ID token verification didn't work (or skipped), try fetching user info with it as an Access Token
+    // If ID token verification didn't work (or skipped), fetch user info with it
+    // as an access token. Bounded by an 8s timeout so a slow/hung network fails
+    // fast instead of blocking the login.
     if (!email) {
       try {
-        const res = await fetch(`https://www.googleapis.com/oauth2/v3/userinfo?access_token=${credential}`);
+        const res = await fetch(`https://www.googleapis.com/oauth2/v3/userinfo?access_token=${credential}`, {
+          signal: AbortSignal.timeout(8000),
+        });
         if (!res.ok) {
           throw new Error(`Google userinfo status: ${res.status}`);
         }
