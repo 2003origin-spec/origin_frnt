@@ -81,8 +81,15 @@ export const authLimiter = createLimiter(5, "rl:auth");
 // email-send / OTP-verify actions self-limit per IP (and per email at the call
 // site) using these. `emailSendLimiter` is deliberately over a long window —
 // the threat is outbound-mail volume (SES/SMTP domain-reputation), not latency.
-export const emailSendLimiter = createLimiter(5, "rl:email-send", "10 m");
-export const otpVerifyLimiter = createLimiter(12, "rl:otp-verify", "10 m");
+// OTP limits are split per-EMAIL vs per-IP. Many students share one public IP
+// (school / coaching-centre / hostel NAT + CGNAT), so a per-IP cap of a handful
+// blocks a whole class. The real abuse vector is spamming ONE address / brute-
+// forcing ONE code, which the per-email limits guard; the per-IP limiters are a
+// loose backstop against a single IP blasting thousands of different addresses.
+export const emailSendLimiter = createLimiter(6, "rl:email-send", "10 m"); // per email
+export const emailSendIpLimiter = createLimiter(60, "rl:email-send-ip", "10 m"); // per IP (classroom-friendly)
+export const otpVerifyEmailLimiter = createLimiter(10, "rl:otp-verify-email", "10 m"); // per email (brute-force guard)
+export const otpVerifyLimiter = createLimiter(100, "rl:otp-verify", "10 m"); // per IP (loose backstop)
 
 // Token-refresh flood guard. Generous on purpose: a single client can burst
 // refreshes across tabs, and CGNAT pools share one Vercel-resolved IP, so this
