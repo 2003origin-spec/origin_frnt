@@ -17,6 +17,7 @@ import {
 } from '@/server/actions/task-actions';
 import {
   googleLoginAction,
+  googleSignupAction,
   loginAction,
   loginWithOtpAction,
   logoutAction,
@@ -38,6 +39,11 @@ interface AuthContextType {
   loginWithOtp: (email: string, role?: 'student' | 'teacher' | 'admin' | null) => Promise<void>;
   register: (name: string, email: string, password: string, mobile: string, state: string, role?: 'student' | 'teacher' | 'admin' | null) => Promise<void>;
   googleLogin: (credential: string, role?: 'student' | 'teacher' | 'admin' | null) => Promise<void>;
+  /** Set when Google login found no account — AuthPage shows the details step. */
+  pendingGoogleSignup: { email: string; name: string } | null;
+  /** Complete the Google signup with the mandatory details. */
+  googleSignup: (mobile: string, state: string) => Promise<void>;
+  cancelGoogleSignup: () => void;
   logout: () => void;
   refreshUser: () => Promise<void>;
   addTask: (text: string, due: string) => Promise<void>;
@@ -510,43 +516,60 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
     }
   };
 
+  // Google login found no account → hold the verified identity + credential so
+  // AuthPage can collect the mandatory details and finish via googleSignup.
+  const [pendingGoogleSignup, setPendingGoogleSignup] = useState<{ email: string; name: string } | null>(null);
+  const pendingGoogleCredentialRef = useRef<{ credential: string; role: 'student' | 'teacher' | 'admin' | null } | null>(null);
+
+  /** Shared post-auth success path for Google login AND Google signup. */
+  const completeGoogleAuth = async (authedUser: User): Promise<void> => {
+    clearOriginAiBrowserSession();
+    // Android shell: persist the fresh session cookies to disk immediately
+    // (plan ledger #14) — no-op in browsers.
+    void flushNativeCookies();
+
+    setAuthRecoveryBlocked(false);
+    setUser(authedUser);
+    // Load this user's sound prefs and play the sign-in cue.
+    setSoundPreferences(authedUser.soundPreferences ?? null);
+    playCategory('signIn');
+    if (authedUser.streakData) setStreakData(authedUser.streakData);
+    setUserRole(normalizeRole(authedUser.role));
+
+    tasksFetched.current = false;
+    await fetchTasks();
+
+    if (authedUser.role === 'student' && !authedUser.isOnboarded) {
+      router.push('/onboarding');
+    } else if (authedUser.role === 'admin') {
+      router.push('/admin');
+    } else if (authedUser.role === 'teacher') {
+      router.push('/teacher');
+    } else {
+      router.push('/dashboard');
+    }
+    toast.success('Google login successful! Welcome to ORIGIN!');
+  };
+
   const googleLogin = async (credential: string, role?: 'student' | 'teacher' | 'admin' | null) => {
     setIsLoading(true);
     setAuthError(null);
     try {
       const result = await googleLoginAction({ credential, role: role ?? null });
       if (!result.ok) {
+        // New Google user: switch to the "complete your profile" step instead
+        // of a dead-end error. The credential is held for the signup call.
+        if (result.needsGoogleSignup && result.email) {
+          pendingGoogleCredentialRef.current = { credential, role: role ?? null };
+          setPendingGoogleSignup({ email: result.email, name: result.name ?? '' });
+          return;
+        }
         setAuthError(result.message);
         toast.error(result.message);
         return;
       }
 
-      clearOriginAiBrowserSession();
-      // Android shell: persist the fresh session cookies to disk immediately
-      // (plan ledger #14) — no-op in browsers.
-      void flushNativeCookies();
-
-      setAuthRecoveryBlocked(false);
-      setUser(result.user);
-      // Load this user's sound prefs and play the sign-in cue.
-      setSoundPreferences(result.user.soundPreferences ?? null);
-      playCategory('signIn');
-      if (result.user.streakData) setStreakData(result.user.streakData);
-      setUserRole(normalizeRole(result.user.role));
-
-      tasksFetched.current = false;
-      await fetchTasks();
-
-      if (result.user.role === 'student' && !result.user.isOnboarded) {
-        router.push('/onboarding');
-      } else if (result.user.role === 'admin') {
-        router.push('/admin');
-      } else if (result.user.role === 'teacher') {
-        router.push('/teacher');
-      } else {
-        router.push('/dashboard');
-      }
-      toast.success('Google login successful! Welcome to ORIGIN!');
+      await completeGoogleAuth(result.user);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Google Login failed';
       setAuthError(message);
@@ -554,6 +577,45 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const googleSignup = async (mobile: string, state: string) => {
+    const pending = pendingGoogleCredentialRef.current;
+    if (!pending) {
+      toast.error('Google session expired — please tap "Continue with Google" again.');
+      setPendingGoogleSignup(null);
+      return;
+    }
+    setIsLoading(true);
+    setAuthError(null);
+    try {
+      const result = await googleSignupAction({
+        credential: pending.credential,
+        role: pending.role,
+        mobile,
+        state,
+      });
+      if (!result.ok) {
+        setAuthError(result.message);
+        toast.error(result.message);
+        return;
+      }
+
+      pendingGoogleCredentialRef.current = null;
+      setPendingGoogleSignup(null);
+      await completeGoogleAuth(result.user);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Google sign-up failed';
+      setAuthError(message);
+      toast.error(message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const cancelGoogleSignup = () => {
+    pendingGoogleCredentialRef.current = null;
+    setPendingGoogleSignup(null);
   };
 
   const logout = async () => {
@@ -644,6 +706,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
       loginWithOtp,
       register,
       googleLogin,
+      pendingGoogleSignup,
+      googleSignup,
+      cancelGoogleSignup,
       logout,
       refreshUser,
       addTask,
