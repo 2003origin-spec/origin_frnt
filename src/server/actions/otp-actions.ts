@@ -6,7 +6,13 @@ import { headers } from 'next/headers';
 
 import { withStoreAsync } from '@/server/store';
 import { sendEmail } from '@/server/email';
-import { emailSendLimiter, otpVerifyLimiter, isWithinLimit } from '@/lib/rate-limit';
+import {
+  emailSendLimiter,
+  emailSendIpLimiter,
+  otpVerifyEmailLimiter,
+  otpVerifyLimiter,
+  isWithinLimit,
+} from '@/lib/rate-limit';
 
 /**
  * Generates a 6-digit random OTP using a CSPRNG (never Math.random — the code
@@ -53,7 +59,9 @@ export async function sendOtpAction(
   // (no enumeration oracle) and one IP can't blast codes at many addresses.
   const ip = await clientIp();
   const [ipOk, emailOk] = await Promise.all([
-    isWithinLimit(emailSendLimiter, `ip:${ip}`),
+    // Per-IP budget is generous so a shared school/coaching-centre network isn't
+    // blocked; the per-email budget is the real spam guard for one address.
+    isWithinLimit(emailSendIpLimiter, `ip:${ip}`),
     isWithinLimit(emailSendLimiter, `email:${normalizedEmail}`),
   ]);
   if (!ipOk || !emailOk) {
@@ -144,11 +152,16 @@ export async function verifyOtpAction(email: string, otp: string) {
 
   const normalizedEmail = normalizeEmail(email);
 
-  // Cap verify attempts per IP so the 6-digit code can't be brute-forced (the
-  // store has no per-email attempt counter). Keyed by IP since a hostile client
-  // would iterate codes for a single target email.
+  // Brute-force guard is per-EMAIL (10 tries / 10 min on the specific code, which
+  // also expires in 5 min) so many students on one shared IP don't collide. A
+  // loose per-IP cap remains as a backstop against a single IP iterating codes
+  // across many addresses.
   const ip = await clientIp();
-  if (!(await isWithinLimit(otpVerifyLimiter, `ip:${ip}`))) {
+  const [emailOk, ipOk] = await Promise.all([
+    isWithinLimit(otpVerifyEmailLimiter, `email:${normalizedEmail}`),
+    isWithinLimit(otpVerifyLimiter, `ip:${ip}`),
+  ]);
+  if (!emailOk || !ipOk) {
     return { ok: false, message: 'Too many attempts. Please try again in a few minutes.' };
   }
 
