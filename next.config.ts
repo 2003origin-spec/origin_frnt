@@ -40,10 +40,17 @@ const nextConfig: NextConfig = {
       { key: 'X-Content-Type-Options', value: 'nosniff' },
       { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
       { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
-      // Disable powerful features the app never uses. microphone (Ori voice)
-      // and payment (Razorpay) are intentionally left on their permissive
-      // defaults so those flows keep working.
-      { key: 'Permissions-Policy', value: 'camera=(), geolocation=(), browsing-topics=()' },
+      // Powerful features the app DOES use must be allowed for same-origin
+      // (`self`), or the browser blocks the Web API outright — before any
+      // native/OS permission prompt, in mobile web AND the Android WebView.
+      //   - camera  → CBT proctoring snapshots + profile PhotoBooth
+      //               (navigator.mediaDevices.getUserMedia). An empty
+      //               allowlist `camera=()` silently killed both everywhere;
+      //               `camera=(self)` re-enables them same-origin only.
+      //   - microphone → Ori AI voice (kept explicit for the same reason).
+      // payment (Razorpay) stays on its permissive default. geolocation and
+      // browsing-topics remain fully disabled — the app never uses them.
+      { key: 'Permissions-Policy', value: 'camera=(self), microphone=(self), geolocation=(), browsing-topics=()' },
       // Anti-clickjacking + anti-base-injection. No script/style/connect
       // directives, so it cannot break app functionality.
       { key: 'Content-Security-Policy', value: "frame-ancestors 'self'; base-uri 'self'; object-src 'none'" },
