@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Camera, CheckCircle2, Play, ShieldCheck } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Play, ShieldCheck } from "lucide-react";
 
 import { LatexRenderer } from "@/components/ui/LatexRenderer";
 import { useCbtRoom } from "@/context/CbtRoomContext";
@@ -67,10 +67,8 @@ export function CbtTestInterface() {
   const [violations, setViolations] = useState(0);
   const [showMalpracticeWarning, setShowMalpracticeWarning] = useState(false);
   const [malpracticeTerminated, setMalpracticeTerminated] = useState(false);
-  // Instructions gate + optional camera proctoring (auto-disabled when no camera).
+  // Instructions gate before the exam starts.
   const [acceptedRules, setAcceptedRules] = useState(false);
-  const [cameraEnabled, setCameraEnabled] = useState(false);
-  const [hasCamera, setHasCamera] = useState<boolean | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const stateRef = useRef({ answers, palette });
@@ -130,34 +128,6 @@ export function CbtTestInterface() {
       cancelled = true;
     };
   }, []);
-
-  // ── Camera presence detection (for the optional proctoring checkbox) ────────
-  // enumerateDevices lists a videoinput device whenever a camera exists; labels
-  // stay blank until permission is granted, but the device entry is enough to
-  // know one is present. No camera ⇒ the checkbox is disabled.
-  useEffect(() => {
-    let cancelled = false;
-    const md = typeof navigator !== "undefined" ? navigator.mediaDevices : undefined;
-    if (!md?.enumerateDevices) {
-      setHasCamera(false);
-      return;
-    }
-    md.enumerateDevices()
-      .then((devices) => {
-        if (!cancelled) setHasCamera(devices.some((d) => d.kind === "videoinput"));
-      })
-      .catch(() => {
-        if (!cancelled) setHasCamera(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // A camera that disappears (or was never there) must never leave the box ticked.
-  useEffect(() => {
-    if (hasCamera === false && cameraEnabled) setCameraEnabled(false);
-  }, [hasCamera, cameraEnabled]);
 
   // ── Autosave: debounce 2s + 15s interval + sendBeacon on pagehide ──────────
   const flushSave = useCallback(async () => {
@@ -459,39 +429,8 @@ export function CbtTestInterface() {
                   <li>• The exam opens in <span className="font-bold text-red-600 dark:text-red-400">full-screen</span>. Exiting full-screen counts as a violation.</li>
                   <li>• Switching tabs or minimizing the browser triggers a malpractice warning.</li>
                   <li>• After <span className="font-bold text-red-600 dark:text-red-400">3 violations</span>, the test is automatically submitted and reported.</li>
-                  <li>• Camera proctoring is <span className="font-bold text-foreground">optional</span> — enable it below for face monitoring.</li>
                 </ul>
               </section>
-
-              {/* Camera checkbox — disabled when no camera is detected */}
-              <label
-                className={`flex items-start gap-3 rounded-2xl border p-3 transition-all ${
-                  hasCamera === false
-                    ? "cursor-not-allowed border-border/40 opacity-60"
-                    : "cursor-pointer border-border/60 hover:border-primary/40 hover:bg-primary/5"
-                }`}
-              >
-                <input
-                  type="checkbox"
-                  checked={cameraEnabled}
-                  disabled={hasCamera !== true}
-                  onChange={(e) => setCameraEnabled(e.target.checked)}
-                  className="mt-0.5 h-5 w-5 shrink-0 cursor-pointer rounded accent-primary disabled:cursor-not-allowed"
-                />
-                <div>
-                  <span className="flex items-center gap-2 text-xs font-bold text-foreground sm:text-sm">
-                    <Camera className="h-4 w-4 text-primary" />
-                    Enable Camera Proctoring <span className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">(Optional)</span>
-                  </span>
-                  <p className="mt-0.5 text-[10px] font-medium text-muted-foreground">
-                    {hasCamera === null
-                      ? "Checking for a camera…"
-                      : hasCamera
-                        ? "Enables face-monitoring during the exam. Your face must be clearly visible if enabled."
-                        : "No camera detected on this device — proctoring is unavailable."}
-                  </p>
-                </div>
-              </label>
 
               {/* Accept rules */}
               <label className="flex cursor-pointer items-center gap-3">
