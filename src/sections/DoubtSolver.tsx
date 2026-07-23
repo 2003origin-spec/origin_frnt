@@ -1,4 +1,4 @@
-'use client';
+  'use client';
 import { Fragment, useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import Image from 'next/image';
 import {
@@ -152,6 +152,7 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
   const [selectedSubject, setSelectedSubject] = useState<SubjectKey | null>(null);
   const [chapters, setChapters] = useState<ChapterItem[]>([]);
   const [chaptersLoading, setChaptersLoading] = useState(false);
+  const [isCreatingSession, setIsCreatingSession] = useState(false);
 
   const [message, setMessage] = useState('');
   const highlightedText = useHighlightedText();
@@ -461,6 +462,7 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
   });
 
   const createNewSession = async (title: string, subject?: string | null) => {
+    setIsCreatingSession(true);
     try {
       const thread = await createOriginAiThread({ title, subject: subject ?? null });
       const newSession = threadToSession(thread);
@@ -482,6 +484,8 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
       console.error("Failed to create session", error);
       toast.error("Couldn't start a new chat — please try again.");
       return null;
+    } finally {
+      setIsCreatingSession(false);
     }
   };
 
@@ -870,6 +874,12 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
 
       {/* Main Container */}
       <main className="relative z-10 flex-1 flex overflow-hidden">
+        {isCreatingSession && (
+          <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-background/50 backdrop-blur-sm">
+            <Loader2 className="w-8 h-8 animate-spin text-primary mb-4" />
+            <p className="text-sm font-medium text-foreground">Setting up your session...</p>
+          </div>
+        )}
         {viewMode === 'selection' ? (
           <SelectionView
             onCreate={(title, sub) => handleSelectSubject(sub)}
