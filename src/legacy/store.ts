@@ -25,6 +25,10 @@ export type UserRole = "student" | "teacher" | "admin" | "cbt_teacher";
 export type QuestionType = "mcq" | "msq" | "numerical" | "matrix_match" | "subjective" | "range";
 export type DifficultyLevel = "easy" | "medium" | "hard" | "insane";
 
+/** Admin user-lifecycle state (Feature B). Enforcement (login gating + re-signup
+ * block) always respects this regardless of the adminUserLifecycle flag. */
+export type AccountStatus = "active" | "revoked" | "deleted";
+
 export interface StoredUser {
   id: string;
   name: string;
@@ -55,6 +59,8 @@ export interface StoredUser {
   tokensUsedToday: number;
   usageResetAt: string;
   authTokenVersion: number;
+  /** Admin lifecycle state — 'active' (default), 'revoked', or 'deleted' (Feature B). */
+  accountStatus: AccountStatus;
   /** Public @handle for the student-social surface. Unique (case-insensitive). */
   username: string | null;
   /** When true the public profile shows only the minimal card (Phase: student social). */
@@ -536,6 +542,7 @@ type StoredUserDefaultFields = Pick<
   | "passwordSet"
   | "mobile"
   | "soundPreferences"
+  | "accountStatus"
 >;
 
 export type StoredUserWithOptionalDefaults = Omit<StoredUser, keyof StoredUserDefaultFields> &
@@ -556,6 +563,7 @@ export function withStoredUserDefaults(user: StoredUserWithOptionalDefaults): St
     passwordSet: user.passwordSet ?? true,
     mobile: user.mobile ?? null,
     soundPreferences: user.soundPreferences ?? null,
+    accountStatus: user.accountStatus ?? "active",
   };
 }
 

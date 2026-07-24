@@ -253,6 +253,39 @@ export async function updateCodeRequestDecision(input: {
   return res.rows[0] ? rowToRequest(res.rows[0]) : null;
 }
 
+/**
+ * Safety-net query for the drain: workspaces whose active student_join code
+ * should already be disabled because the connected count has reached the quota.
+ * The inline redeem enforcement (join.ts) is the primary path; this catches the
+ * lazy cases (a connected student re-redeemed at exactly-full, or an admin
+ * lowered the quota below the current count).
+ */
+export async function listQuotaFilledActiveCodes(): Promise<
+  { workspaceId: string; codeId: string; quota: number; connected: number }[]
+> {
+  await ensureCodeAccessSchema();
+  const res = await pool().query(
+    `SELECT w.id AS workspace_id, c.id AS code_id, w.student_quota AS quota,
+            (SELECT COUNT(DISTINCT e.student_id)::int
+               FROM app.workspace_student_enrollments e
+              WHERE e.workspace_id = w.id AND e.status IN ('unassigned','active')) AS connected
+       FROM app.teacher_workspaces w
+       JOIN app.workspace_codes c
+         ON c.workspace_id = w.id AND c.status = 'active' AND c.code_type = 'student_join'
+      WHERE w.student_quota IS NOT NULL
+        AND (SELECT COUNT(DISTINCT e.student_id)
+               FROM app.workspace_student_enrollments e
+              WHERE e.workspace_id = w.id AND e.status IN ('unassigned','active')) >= w.student_quota`,
+  );
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return res.rows.map((row: any) => ({
+    workspaceId: row.workspace_id,
+    codeId: row.code_id,
+    quota: Number(row.quota),
+    connected: Number(row.connected),
+  }));
+}
+
 /** Teacher cancels their own pending request. Returns the cancelled row or null. */
 export async function cancelPendingRequest(
   workspaceId: string,

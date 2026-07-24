@@ -164,12 +164,16 @@ function RequestCard({ request: r, onDone }: { request: CodeRequest; onDone: () 
       return;
     }
     startBusy(async () => {
-      const res = await apiJson<{ displayCode: string }>(`/api/admin/teacher-code-requests/${r.id}`, {
-        method: "POST",
-        json: { action: "approve", grantedQuota: quotaNum, aiAccess, note: note.trim() || null },
-      });
+      const res = await apiJson<{ displayCode: string; warning: string | null }>(
+        `/api/admin/teacher-code-requests/${r.id}`,
+        {
+          method: "POST",
+          json: { action: "approve", grantedQuota: quotaNum, aiAccess, note: note.trim() || null },
+        },
+      );
       if (res.ok) {
-        toast.success(`Approved — code ${res.data.displayCode} is active.`);
+        if (res.data.warning) toast.warning(res.data.warning);
+        else toast.success(`Approved — code ${res.data.displayCode} is active.`);
         onDone();
       } else {
         toast.error(res.detail || "Approve failed.");
