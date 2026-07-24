@@ -9,6 +9,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { decideCodeIssuance } from "../../src/server/workspaces/code-access-admin-service";
+import { wouldConsumeSeat } from "../../src/server/workspaces/join";
 import {
   MAX_REQUEST_STUDENT_COUNT,
   normalizeRequestedStudentCount,
@@ -88,6 +89,19 @@ test("normalizeRequestedStudentCount: rejects zero / negative / NaN", () => {
 
 test("normalizeRequestedStudentCount: rejects above the sanity bound", () => {
   assert.throws(() => normalizeRequestedStudentCount(MAX_REQUEST_STUDENT_COUNT + 1), CodeAccessError);
+});
+
+// ─── wouldConsumeSeat (A4 quota enforcement) ────────────────────────────────
+
+test("wouldConsumeSeat: no enrollment or a 'left' one consumes a seat", () => {
+  assert.equal(wouldConsumeSeat(null), true);
+  assert.equal(wouldConsumeSeat("left"), true);
+});
+
+test("wouldConsumeSeat: already-connected / suspended does NOT consume a seat", () => {
+  assert.equal(wouldConsumeSeat("unassigned"), false);
+  assert.equal(wouldConsumeSeat("active"), false);
+  assert.equal(wouldConsumeSeat("suspended"), false);
 });
 
 // ─── feature flags ──────────────────────────────────────────────────────────

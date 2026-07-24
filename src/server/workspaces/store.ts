@@ -430,9 +430,11 @@ export async function createWorkspaceCode(input: {
 export async function revokeWorkspaceCode(
   codeId: string,
   workspaceId: string,
+  client?: PoolClient,
 ): Promise<WorkspaceCode | null> {
   await ensureWorkspaceSchema();
-  const result = await pool().query(
+  const runner = client ?? pool();
+  const result = await runner.query(
     `UPDATE app.workspace_codes
      SET status = 'revoked', revoked_at = NOW()
      WHERE id = $1 AND workspace_id = $2 AND status IN ('reserved', 'active')

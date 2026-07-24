@@ -10,15 +10,22 @@
 import { recordAuditEvent } from "./audit";
 import {
   CodeAccessError,
+  countConnectedStudents,
   getCodeRequestById,
   listCodeRequestsWithContext,
+  listQuotaFilledActiveCodes,
   setWorkspaceCodeAccess,
   updateCodeRequestDecision,
   type CodeRequestStatus,
   type CodeRequestWithContext,
 } from "./code-access-store";
 import { createCode, generateDefaultPersonalCode } from "./codes";
-import { activateWorkspaceCodeById, getWorkspaceById, listCodesForWorkspace } from "./store";
+import {
+  activateWorkspaceCodeById,
+  getWorkspaceById,
+  listCodesForWorkspace,
+  revokeWorkspaceCode,
+} from "./store";
 import { setAiAccessRule } from "@/server/ai-access-service";
 import { createNotification } from "@/server/notifications";
 import {
@@ -135,6 +142,16 @@ export async function approveCodeRequest(input: {
     console.error("[code-access] workspace AI rule set failed", error instanceof Error ? error.message : error);
   }
 
+  // A5: if the granted quota is at/below the already-connected count, the code is
+  // immediately full — disable it so no new students join (existing keep access).
+  let warning: string | null = null;
+  const connected = await countConnectedStudents(workspace.id);
+  if (connected >= quota) {
+    await revokeWorkspaceCode(code.id, workspace.id);
+    await setWorkspaceCodeAccess(workspace.id, { codeAccessStatus: "quota_filled" });
+    warning = `The quota (${quota}) is at or below the ${connected} students already connected — the code is disabled for new joins; existing students keep access.`;
+  }
+
   await updateCodeRequestDecision({
     id: request.id,
     status: "approved",
@@ -162,7 +179,7 @@ export async function approveCodeRequest(input: {
     href: `/teacher/workspaces/${workspace.id}`,
   });
 
-  return { quota, aiAccess, code, warning: null };
+  return { quota, aiAccess, code, warning };
 }
 
 /** Rejects a pending request. */
@@ -207,6 +224,42 @@ export async function rejectCodeRequest(input: {
       : "Your code-access request was not approved. Please contact the team.",
     href: `/teacher/workspaces/${request.workspaceId}`,
   });
+}
+
+/**
+ * Safety-net reconcile (wired into the connect-jobs drain): revokes any active
+ * student_join code whose workspace has reached its quota but wasn't caught by
+ * the inline redeem enforcement (a connected student re-redeeming at exactly
+ * full, or an admin lowering the quota below the current count). Best-effort per
+ * workspace; a single failure never aborts the sweep.
+ */
+export async function reconcileQuotaFilledCodes(): Promise<{ revoked: number }> {
+  const candidates = await listQuotaFilledActiveCodes();
+  let revoked = 0;
+  for (const c of candidates) {
+    try {
+      const code = await revokeWorkspaceCode(c.codeId, c.workspaceId);
+      if (!code) continue;
+      await setWorkspaceCodeAccess(c.workspaceId, { codeAccessStatus: "quota_filled" });
+      await recordAuditEvent({
+        actorUserId: null,
+        workspaceId: c.workspaceId,
+        entityType: "workspace_code",
+        entityId: c.codeId,
+        action: "code.revoked",
+        after: { reason: "quota_filled", quota: c.quota, connected: c.connected, source: "drain_reconcile" },
+        requestId: null,
+      });
+      revoked += 1;
+    } catch (error) {
+      console.error(
+        "[code-access] quota reconcile failed for workspace",
+        c.workspaceId,
+        error instanceof Error ? error.message : error,
+      );
+    }
+  }
+  return { revoked };
 }
 
 // ─── Support phone (D4) ────────────────────────────────────────────────────────

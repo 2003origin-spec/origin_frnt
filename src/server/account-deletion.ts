@@ -61,7 +61,7 @@ export function anonymizedPatch(userId: string): Partial<StoredUser> {
   };
 }
 
-async function cancelActiveSubscriptions(userId: string, warnings: string[]): Promise<void> {
+export async function cancelActiveSubscriptions(userId: string, warnings: string[]): Promise<void> {
   // Lazy import: the subscriptions surface is feature-flagged and touches the
   // Razorpay client; deletion must work even when that stack is dark.
   try {

@@ -112,6 +112,18 @@ export async function ensureUserSchema(): Promise<void> {
           ALTER TABLE origin_users ADD COLUMN IF NOT EXISTS password_set BOOLEAN NOT NULL DEFAULT TRUE;
           -- Unique only among rows that have a mobile (existing null rows don't collide).
           CREATE UNIQUE INDEX IF NOT EXISTS idx_origin_users_mobile ON origin_users (mobile) WHERE mobile IS NOT NULL;
+          -- Admin user lifecycle (Feature B): revoke / delete state. DEFAULT 'active'
+          -- backfills every existing row. Enforcement (login gating + re-signup block)
+          -- always respects this regardless of the adminUserLifecycle flag.
+          ALTER TABLE origin_users ADD COLUMN IF NOT EXISTS account_status TEXT NOT NULL DEFAULT 'active';
+          ALTER TABLE origin_users ADD COLUMN IF NOT EXISTS status_reason TEXT;
+          ALTER TABLE origin_users ADD COLUMN IF NOT EXISTS status_changed_at TIMESTAMPTZ;
+          ALTER TABLE origin_users ADD COLUMN IF NOT EXISTS status_changed_by TEXT;
+          CREATE INDEX IF NOT EXISTS idx_origin_users_account_status ON origin_users (account_status);
+          DO $$ BEGIN
+            ALTER TABLE origin_users ADD CONSTRAINT origin_users_account_status_check
+              CHECK (account_status IN ('active','revoked','deleted'));
+          EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
           CREATE TABLE IF NOT EXISTS origin_auth_sessions (
             id                        TEXT PRIMARY KEY,
@@ -280,6 +292,7 @@ function rowToUser(row: any): StoredUser {
     tokensUsedToday: Number(row.tokens_used_today ?? 0),
     usageResetAt: row.usage_reset_at instanceof Date ? row.usage_reset_at.toISOString() : String(row.usage_reset_at),
     authTokenVersion: Number(row.auth_token_version ?? 0),
+    accountStatus: (row.account_status as StoredUser["accountStatus"]) ?? "active",
     username: row.username ?? null,
     profilePrivate: Boolean(row.profile_private),
     ogcodeCorrectSound: row.ogcode_correct_sound ?? null,
@@ -420,6 +433,110 @@ export async function dbUpdateUser(id: string, patch: Partial<StoredUser>): Prom
   if (fields.length === 0) return;
   values.push(id);
   await pool().query(`UPDATE origin_users SET ${fields.join(", ")} WHERE id = $${i}`, values);
+}
+
+/** Sets a user's admin lifecycle status + audit fields (Feature B). */
+export async function dbSetAccountStatus(
+  userId: string,
+  status: StoredUser["accountStatus"],
+  reason: string | null,
+  changedBy: string | null,
+): Promise<void> {
+  await ensureUserSchema();
+  await pool().query(
+    `UPDATE origin_users
+        SET account_status = $2, status_reason = $3, status_changed_at = NOW(), status_changed_by = $4
+      WHERE id = $1`,
+    [userId, status, reason, changedBy],
+  );
+}
+
+/**
+ * Feature B admin delete: clears non-essential PII + the entitlement mirror and
+ * purges clearly-personal owned content (tasks, media). KEEPS name/email/mobile
+ * as the retained tombstone. Attempt/analytics rows stay linked to the retained
+ * id (referential integrity, same rationale as the anonymize path).
+ */
+export async function dbPurgeDeletedUserData(userId: string): Promise<void> {
+  await ensureUserSchema();
+  const client = await pool().connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(
+      "UPDATE origin_users SET avatar = NULL, username = NULL, is_premium = FALSE, premium_expiry = NULL WHERE id = $1",
+      [userId],
+    );
+    await client.query("DELETE FROM app.tasks WHERE user_id = $1", [userId]);
+    await client.query("DELETE FROM origin_tasks WHERE user_id = $1", [userId]);
+    await client.query("DELETE FROM origin_media_assets WHERE user_id = $1", [userId]);
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export type AdminUserRow = {
+  id: string;
+  name: string;
+  email: string;
+  mobile: string | null;
+  role: string;
+  accountStatus: StoredUser["accountStatus"];
+  statusReason: string | null;
+  statusChangedAt: string | null;
+  joinedAt: string;
+  isMainAdmin: boolean;
+};
+
+/** Admin user list with lifecycle status (Feature B admin console). */
+export async function dbListUsersForAdmin(input: {
+  query?: string;
+  status?: string;
+  limit?: number;
+}): Promise<AdminUserRow[]> {
+  await ensureUserSchema();
+  const params: unknown[] = [];
+  const where: string[] = [];
+  if (input.status && input.status !== "all") {
+    params.push(input.status);
+    where.push(`account_status = $${params.length}`);
+  }
+  if (input.query && input.query.trim()) {
+    params.push(`%${input.query.trim()}%`);
+    where.push(
+      `(LOWER(name) LIKE LOWER($${params.length}) OR LOWER(email) LIKE LOWER($${params.length}) OR mobile LIKE $${params.length})`,
+    );
+  }
+  params.push(Math.min(Math.max(input.limit ?? 50, 1), 200));
+  const res = await pool().query(
+    `SELECT id, name, email, mobile, role, account_status, status_reason, status_changed_at, joined_at,
+            COALESCE(is_main_admin, FALSE) AS is_main_admin
+       FROM origin_users
+      ${where.length ? "WHERE " + where.join(" AND ") : ""}
+      ORDER BY joined_at DESC
+      LIMIT $${params.length}`,
+    params,
+  );
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return res.rows.map((row: any) => ({
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    mobile: row.mobile ?? null,
+    role: row.role,
+    accountStatus: (row.account_status as StoredUser["accountStatus"]) ?? "active",
+    statusReason: row.status_reason ?? null,
+    statusChangedAt: row.status_changed_at
+      ? row.status_changed_at instanceof Date
+        ? row.status_changed_at.toISOString()
+        : String(row.status_changed_at)
+      : null,
+    joinedAt: row.joined_at instanceof Date ? row.joined_at.toISOString() : String(row.joined_at),
+    isMainAdmin: Boolean(row.is_main_admin),
+  }));
 }
 
 export type DbMediaAssetInput = {

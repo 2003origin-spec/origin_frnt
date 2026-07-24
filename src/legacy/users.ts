@@ -4,7 +4,9 @@ import { requireUserFromRequest, resolveTokenToUser, refreshAccessToken, createA
 import { isAuthServiceUnavailableError } from "@/server/auth-errors";
 import { extractAccessFingerprint } from "@/server/auth-jwt";
 import { isUserPostgresConfigured } from "@/server/user-postgres";
-import { dbLoginUser, dbRegisterUser, dbGetTasks, dbCreateTask, dbUpdateTask, dbDeleteTask, dbFindUserByEmail, dbCreateUser, dbUpdateUser, dbCreateAuthSession, dbGetUserCount, dbGetUserCountByRole, dbMobileInUse } from "@/server/db-users";
+import { dbLoginUser, dbRegisterUser, dbGetTasks, dbCreateTask, dbUpdateTask, dbDeleteTask, dbFindUserByEmail, dbCreateUser, dbUpdateUser, dbCreateAuthSession, dbGetUserCount, dbGetUserCountByRole, dbMobileInUse, dbClearUserSessions } from "@/server/db-users";
+import { isIdentityBlocked } from "@/server/user-lifecycle-store";
+import { getAllowDeletedIdentityResignup } from "@/server/platform-settings";
 import { OAuth2Client } from "google-auth-library";
 import {
   awardPoints,
@@ -16,14 +18,14 @@ import {
   recordTime,
   updateUserStreak,
 } from "@/server/gamification";
-import { badRequest, created, noContent, notFound, ok, serviceUnavailable, unauthorized } from "@/server/http";
+import { badRequest, created, json, noContent, notFound, ok, serviceUnavailable, unauthorized } from "@/server/http";
 import { searchAll, type SearchScope } from "@/server/search/search-service";
 import { listNotifications, markNotificationsRead } from "@/server/notifications";
 import { withEntitledSubjects } from "@/server/entitlements";
 import { maybeGrantEventModePremiumOnSignup } from "@/server/premium-access-admin-service";
 import { countTestResultsForUser } from "@/server/analytics-store";
 import { normalizeSoundPreferences } from "@/lib/sound-preferences";
-import type { AppStore, StoredTask, StoredUser } from "@/server/store";
+import type { AccountStatus, AppStore, StoredTask, StoredUser } from "@/server/store";
 import { createId, readStoreAsync, withStoreAsync, withStoreAsyncScoped, withStoredUserDefaults } from "@/server/store";
 import { persistUserCollections } from "@/server/store-postgres";
 
@@ -50,6 +52,53 @@ function asStringArray(value: unknown): string[] | null {
     return null;
   }
   return value.map((item) => String(item)).filter((item) => item.trim().length > 0);
+}
+
+/**
+ * Feature B enforcement (UNCONDITIONAL — never behind the adminUserLifecycle
+ * flag, so flipping the flag off can never un-block a bad actor): a revoked or
+ * deleted account cannot log in and gets a clear notice. Returns the blocking
+ * 403 response, or null when the account is active.
+ */
+function accountStatusBlock(user: { accountStatus?: AccountStatus }): ReturnType<typeof json> | null {
+  const status = user.accountStatus ?? "active";
+  if (status === "revoked") {
+    return json(
+      {
+        detail:
+          "Your account has been revoked by the Origin team as some activity on your account did not comply with our policies. Contact support if you believe this is a mistake.",
+        code: "account_revoked",
+      },
+      { status: 403 },
+    );
+  }
+  if (status === "deleted") {
+    return json(
+      { detail: "Your account has been deleted by the Origin team.", code: "account_deleted" },
+      { status: 403 },
+    );
+  }
+  return null;
+}
+
+/**
+ * Feature B re-signup block (UNCONDITIONAL): true when the email OR mobile
+ * belongs to an admin-deleted identity AND the admin has NOT enabled
+ * deleted-identity re-signup. No-op without Postgres (dev store).
+ */
+async function isDeletedIdentityBlocked(
+  email: string | null | undefined,
+  mobile: string | null | undefined,
+): Promise<boolean> {
+  if (!(await isIdentityBlocked(email, mobile))) return false;
+  return !(await getAllowDeletedIdentityResignup());
+}
+
+function deletedIdentityResponse() {
+  return badRequest(
+    "This account was deleted by the Origin team and cannot be recreated with the same email or phone number. Contact support if you believe this is a mistake.",
+    { code: "identity_blocked" },
+  );
 }
 
 export function serializeUser(store: AppStore, userId: string) {
@@ -386,6 +435,13 @@ export async function handleLogin(payload: UserPayload) {
         }
       }
       if (dbResult) {
+        const blocked = accountStatusBlock(dbResult.user);
+        if (blocked) {
+          // A session was just minted by dbLoginUser — revoke it (the client
+          // never receives the tokens, but keep no dangling sessions).
+          await dbClearUserSessions(dbResult.user.id).catch(() => undefined);
+          return blocked;
+        }
         const userData = await serializeDbUser(dbResult.user);
         if (!userData) return notFound("User not found.");
         return ok({
@@ -418,6 +474,8 @@ export async function handleLogin(payload: UserPayload) {
     }
 
     const user = eligibleUsers[0];
+    const blocked = accountStatusBlock(user);
+    if (blocked) return blocked;
     const session = await createAuthSessionAsync(store, user.id);
     const userData = serializeUser(store, user.id);
     if (!userData) return notFound("User not found.");
@@ -507,6 +565,8 @@ export async function handleLoginWithOtp(payload: UserPayload) {
       }
     }
 
+    const blocked = accountStatusBlock(user);
+    if (blocked) return blocked;
     const session = await createAuthSessionAsync(store, user.id);
     const userData = serializeUser(store, user.id);
     if (!userData) return notFound("User not found.");
@@ -593,6 +653,12 @@ export async function handleRegister(payload: UserPayload) {
   if (status.seatsLeft <= 0) {
     const scope = role === "teacher" ? "teacher" : "user";
     return badRequest(`Registration is currently closed. We've reached our maximum ${scope} capacity for this phase.`);
+  }
+
+  // Feature B: refuse re-signup with a deleted identity (email OR mobile) unless
+  // an admin has enabled it. Unconditional — not behind adminUserLifecycle.
+  if (await isDeletedIdentityBlocked(email, mobile)) {
+    return deletedIdentityResponse();
   }
 
   // DB-backed registration when Postgres is configured
@@ -798,6 +864,11 @@ export async function handleGoogleLogin(payload: UserPayload) {
           dbUser.avatar = avatar;
         }
 
+        const blocked = accountStatusBlock(dbUser);
+        if (blocked) {
+          await dbClearUserSessions(dbUser.id).catch(() => undefined);
+          return blocked;
+        }
         const session = await dbCreateAuthSession(dbUser.id);
         const userData = await serializeDbUser(dbUser);
         if (!userData) return notFound("User not found.");
@@ -825,6 +896,8 @@ export async function handleGoogleLogin(payload: UserPayload) {
         user.avatar = avatar;
       }
 
+      const blocked = accountStatusBlock(user);
+      if (blocked) return blocked;
       const session = await createAuthSessionAsync(store, user.id);
       const userData = serializeUser(store, user.id);
       return ok({ user: userData, refresh: session.refreshToken, access: session.accessToken, accessFingerprint: session.accessFingerprint });
@@ -883,6 +956,9 @@ export async function handleGoogleSignup(payload: UserPayload) {
       try {
         let dbUser = await dbFindUserByEmail(email, role);
         if (!dbUser) {
+          if (await isDeletedIdentityBlocked(email, mobile)) {
+            return deletedIdentityResponse();
+          }
           const otherRoles: Array<"student" | "teacher" | "admin"> = role === "teacher"
             ? ["student", "admin"]
             : ["teacher", "admin"];
@@ -914,6 +990,11 @@ export async function handleGoogleSignup(payload: UserPayload) {
           await maybeGrantEventModePremiumOnSignup(dbUser.id, dbUser.role);
         }
 
+        const blocked = accountStatusBlock(dbUser);
+        if (blocked) {
+          await dbClearUserSessions(dbUser.id).catch(() => undefined);
+          return blocked;
+        }
         const session = await dbCreateAuthSession(dbUser.id);
         const userData = await serializeDbUser(dbUser);
         if (!userData) return notFound("User not found.");
@@ -932,6 +1013,9 @@ export async function handleGoogleSignup(payload: UserPayload) {
     return withStoreAsync(async (store) => {
       let user = store.users.find((entry) => entry.email.toLowerCase() === email.toLowerCase() && entry.role === role);
       if (!user) {
+        if (await isDeletedIdentityBlocked(email, mobile)) {
+          return deletedIdentityResponse();
+        }
         if (store.users.some((entry) => entry.mobile === mobile)) {
           return badRequest("This mobile number is already registered.");
         }
@@ -948,6 +1032,8 @@ export async function handleGoogleSignup(payload: UserPayload) {
         store.users.push(user);
       }
 
+      const blocked = accountStatusBlock(user);
+      if (blocked) return blocked;
       const session = await createAuthSessionAsync(store, user.id);
       const userData = serializeUser(store, user.id);
       if (!userData) return notFound("User not found.");
