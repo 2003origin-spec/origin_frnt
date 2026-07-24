@@ -14,10 +14,12 @@ import {
   getCodeRequestById,
   listCodeRequestsWithContext,
   listQuotaFilledActiveCodes,
+  searchWorkspaceCodeAccess,
   setWorkspaceCodeAccess,
   updateCodeRequestDecision,
   type CodeRequestStatus,
   type CodeRequestWithContext,
+  type WorkspaceCodeAccessRow,
 } from "./code-access-store";
 import { createCode, generateDefaultPersonalCode } from "./codes";
 import {
@@ -260,6 +262,97 @@ export async function reconcileQuotaFilledCodes(): Promise<{ revoked: number }> 
     }
   }
   return { revoked };
+}
+
+// ─── Direct workspace management (grandfathered / legacy teachers) ──────────────
+// Lets an admin set a student quota on a teacher/institute that has no pending
+// request (e.g. a pre-feature teacher grandfathered to unlimited). AI access is
+// managed separately in /admin/ai-access, so it is intentionally NOT touched here.
+
+export async function listWorkspacesForCodeAccess(query?: string): Promise<WorkspaceCodeAccessRow[]> {
+  return searchWorkspaceCodeAccess({ query });
+}
+
+/** Sets/updates a workspace's student quota directly + ensures an active code. */
+export async function setWorkspaceQuotaDirect(input: {
+  actorId: string;
+  workspaceId: string;
+  quota: number;
+}): Promise<{ quota: number; displayCode: string; warning: string | null }> {
+  const quota = Math.floor(input.quota);
+  if (!Number.isFinite(quota) || quota <= 0) {
+    throw new CodeAccessError(400, "Enter a valid student quota (a positive whole number).");
+  }
+  const workspace = await getWorkspaceById(input.workspaceId);
+  if (!workspace) throw new CodeAccessError(404, "Workspace not found.");
+
+  const code = await issueOrReactivateStudentJoinCode(workspace, input.actorId, null);
+  await setWorkspaceCodeAccess(workspace.id, { codeAccessStatus: "granted", studentQuota: quota });
+
+  let warning: string | null = null;
+  const connected = await countConnectedStudents(workspace.id);
+  if (connected >= quota) {
+    await revokeWorkspaceCode(code.id, workspace.id);
+    await setWorkspaceCodeAccess(workspace.id, { codeAccessStatus: "quota_filled" });
+    warning = `The quota (${quota}) is at or below the ${connected} students already connected — the code is disabled for new joins; existing students keep access.`;
+  }
+
+  await recordAuditEvent({
+    actorUserId: input.actorId,
+    workspaceId: workspace.id,
+    entityType: "teacher_workspace",
+    entityId: workspace.id,
+    action: "code_access.quota_set",
+    after: { quota, codeId: code.id },
+    requestId: null,
+  });
+  return { quota, displayCode: code.displayCode, warning };
+}
+
+/** Clears the quota (back to unlimited) and keeps the code active. */
+export async function removeWorkspaceQuota(input: {
+  actorId: string;
+  workspaceId: string;
+}): Promise<{ displayCode: string }> {
+  const workspace = await getWorkspaceById(input.workspaceId);
+  if (!workspace) throw new CodeAccessError(404, "Workspace not found.");
+  const code = await issueOrReactivateStudentJoinCode(workspace, input.actorId, null);
+  await setWorkspaceCodeAccess(workspace.id, { codeAccessStatus: "granted", studentQuota: null });
+  await recordAuditEvent({
+    actorUserId: input.actorId,
+    workspaceId: workspace.id,
+    entityType: "teacher_workspace",
+    entityId: workspace.id,
+    action: "code_access.quota_removed",
+    after: { codeId: code.id },
+    requestId: null,
+  });
+  return { displayCode: code.displayCode };
+}
+
+/** Revokes a workspace's active student_join code (disables new joins). */
+export async function revokeWorkspaceCodeAccess(input: {
+  actorId: string;
+  workspaceId: string;
+}): Promise<void> {
+  const workspace = await getWorkspaceById(input.workspaceId);
+  if (!workspace) throw new CodeAccessError(404, "Workspace not found.");
+  const codes = await listCodesForWorkspace(workspace.id, "student_join");
+  for (const c of codes) {
+    if (c.status === "active" || c.status === "reserved") {
+      await revokeWorkspaceCode(c.id, workspace.id);
+    }
+  }
+  await setWorkspaceCodeAccess(workspace.id, { codeAccessStatus: "revoked" });
+  await recordAuditEvent({
+    actorUserId: input.actorId,
+    workspaceId: workspace.id,
+    entityType: "teacher_workspace",
+    entityId: workspace.id,
+    action: "code_access.revoked",
+    after: {},
+    requestId: null,
+  });
 }
 
 // ─── Support phone (D4) ────────────────────────────────────────────────────────

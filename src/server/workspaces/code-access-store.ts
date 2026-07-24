@@ -253,6 +253,64 @@ export async function updateCodeRequestDecision(input: {
   return res.rows[0] ? rowToRequest(res.rows[0]) : null;
 }
 
+export type WorkspaceCodeAccessRow = {
+  workspaceId: string;
+  workspaceName: string;
+  workspaceType: "personal" | "institute";
+  ownerName: string | null;
+  ownerEmail: string | null;
+  codeAccessStatus: CodeAccessStatus;
+  studentQuota: number | null;
+  activeCode: string | null;
+  connectedStudents: number;
+};
+
+/**
+ * Admin "manage a teacher directly" search: teacher/institute workspaces with
+ * their live code-access state (code, quota, connected count). Powers setting a
+ * quota on a grandfathered/legacy teacher who has no pending request.
+ */
+export async function searchWorkspaceCodeAccess(input: {
+  query?: string;
+  limit?: number;
+}): Promise<WorkspaceCodeAccessRow[]> {
+  await ensureCodeAccessSchema();
+  const params: unknown[] = [];
+  let filter = "";
+  if (input.query && input.query.trim()) {
+    params.push(`%${input.query.trim()}%`);
+    filter = `WHERE (w.display_name ILIKE $1 OR u.name ILIKE $1 OR u.email ILIKE $1)`;
+  }
+  params.push(Math.min(Math.max(input.limit ?? 25, 1), 100));
+  const res = await pool().query(
+    `SELECT w.id, w.display_name, w.workspace_type, w.code_access_status, w.student_quota,
+            u.name AS owner_name, u.email AS owner_email,
+            (SELECT c.display_code FROM app.workspace_codes c
+              WHERE c.workspace_id = w.id AND c.code_type = 'student_join' AND c.status = 'active'
+              LIMIT 1) AS active_code,
+            (SELECT COUNT(DISTINCT e.student_id)::int FROM app.workspace_student_enrollments e
+              WHERE e.workspace_id = w.id AND e.status IN ('unassigned','active')) AS connected
+       FROM app.teacher_workspaces w
+       LEFT JOIN origin_users u ON u.id = w.owner_user_id
+       ${filter}
+      ORDER BY w.created_at DESC
+      LIMIT $${params.length}`,
+    params,
+  );
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return res.rows.map((row: any) => ({
+    workspaceId: row.id,
+    workspaceName: row.display_name,
+    workspaceType: row.workspace_type,
+    ownerName: row.owner_name ?? null,
+    ownerEmail: row.owner_email ?? null,
+    codeAccessStatus: (row.code_access_status as CodeAccessStatus) ?? "legacy",
+    studentQuota: row.student_quota === null || row.student_quota === undefined ? null : Number(row.student_quota),
+    activeCode: row.active_code ?? null,
+    connectedStudents: Number(row.connected ?? 0),
+  }));
+}
+
 /**
  * Safety-net query for the drain: workspaces whose active student_join code
  * should already be disabled because the connected count has reached the quota.
