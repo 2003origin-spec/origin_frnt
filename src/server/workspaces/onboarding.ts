@@ -6,6 +6,8 @@
  * an institute workspace (with a user-chosen organization code).
  */
 
+import { isFeatureEnabled } from "@/lib/feature-flags";
+
 import { createTeacherWorkspace } from "./service";
 import {
   createCode,
@@ -13,6 +15,7 @@ import {
   validateCodeFormat,
   WorkspaceCodeError,
 } from "./codes";
+import { setWorkspaceCodeAccess } from "./code-access-store";
 import { recordAuditEvent } from "./audit";
 import { upsertCollaborationRequest } from "../connect/collaboration-store";
 import type { TeacherWorkspace, WorkspaceCode } from "./types";
@@ -40,7 +43,8 @@ export type InstituteOnboardingInput = {
 
 export type OnboardingResult = {
   workspace: TeacherWorkspace;
-  joinCode: WorkspaceCode;
+  /** Null when teacherCodeApproval is ON — no code until an admin approves. */
+  joinCode: WorkspaceCode | null;
 };
 
 export async function onboardPersonalTeacher(
@@ -55,6 +59,14 @@ export async function onboardPersonalTeacher(
     state: input.state ?? null,
     requestId: input.requestId,
   });
+
+  // Admin-gated code access (Feature A): don't auto-issue a code — the teacher
+  // must request it and an admin must approve a quota. Mark the workspace as
+  // awaiting a request. Flag OFF ⇒ exactly the previous auto-issue behaviour.
+  if (isFeatureEnabled("teacherCodeApproval")) {
+    await setWorkspaceCodeAccess(workspace.id, { codeAccessStatus: "none" });
+    return { workspace, joinCode: null };
+  }
 
   // generateDefaultPersonalCode is best-effort unique; on rare collisions the
   // partial unique index forces a retry up to a few attempts.
@@ -100,6 +112,10 @@ export async function onboardInstitute(
     requestId: input.requestId,
   });
 
+  // Admin-gated code access (Feature A): create the chosen code as `reserved`
+  // (holds the name globally but students can't redeem it — that needs 'active')
+  // and mark the workspace as awaiting a request. Flag OFF ⇒ active code, as before.
+  const gated = isFeatureEnabled("teacherCodeApproval");
   const code = await createCode({
     workspaceId: workspace.id,
     createdBy: input.ownerUserId,
@@ -107,7 +123,11 @@ export async function onboardInstitute(
     rawDisplay: normalized,
     requestId: input.requestId,
     metadata: { source: "institute_signup" },
+    status: gated ? "reserved" : "active",
   });
+  if (gated) {
+    await setWorkspaceCodeAccess(workspace.id, { codeAccessStatus: "none" });
+  }
 
   // Every new institute lands in the admin approval queue as `pending` so a
   // platform admin must approve it before it becomes browsable to students

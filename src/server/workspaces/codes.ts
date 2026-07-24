@@ -157,6 +157,9 @@ export type CreateCodeInput = {
   metadata?: Record<string, unknown>;
   batchId?: string | null;
   requestId?: string | null;
+  /** 'active' (default) or 'reserved' — reserved holds the code but keeps it
+   * un-redeemable until an admin activates it (Feature A institute onboarding). */
+  status?: "active" | "reserved";
   client?: PoolClient;
 };
 
@@ -175,6 +178,7 @@ export async function createCode(input: CreateCodeInput): Promise<WorkspaceCode>
     batchId: input.batchId ?? null,
     expiresAt: input.expiresAt ?? null,
     metadata: input.metadata,
+    status: input.status,
     client: input.client,
   });
   await recordAuditEvent({

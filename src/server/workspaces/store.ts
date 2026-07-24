@@ -10,6 +10,7 @@ import { getUserPostgresPool, isUserPostgresConfigured } from "@/server/user-pos
 import { createWorkspaceId, createWorkspaceCodeId } from "./ids";
 import { ensureWorkspaceSchema } from "./schema";
 import type {
+  CodeAccessStatus,
   TeacherWorkspace,
   TeacherWorkspaceType,
   WorkspaceCode,
@@ -51,6 +52,17 @@ function rowToWorkspace(row: Record<string, unknown>): TeacherWorkspace {
     verificationStatus: row.verification_status as WorkspaceVerificationStatus,
     publicProfile: (row.public_profile as Record<string, unknown>) ?? {},
     settings: (row.settings as Record<string, unknown>) ?? {},
+    // Feature A columns are absent only if a stale process reads before
+    // ensureWorkspaceSchema adds them; default to the grandfathered state.
+    codeAccessStatus: (row.code_access_status as CodeAccessStatus) ?? "legacy",
+    studentQuota:
+      row.student_quota === null || row.student_quota === undefined
+        ? null
+        : Number(row.student_quota),
+    codeAiAccess:
+      row.code_ai_access === null || row.code_ai_access === undefined
+        ? null
+        : Boolean(row.code_ai_access),
     createdAt: new Date(row.created_at as string).toISOString(),
     updatedAt: new Date(row.updated_at as string).toISOString(),
   };
@@ -384,6 +396,10 @@ export async function createWorkspaceCode(input: {
   batchId?: string | null;
   expiresAt?: string | null;
   metadata?: Record<string, unknown>;
+  /** 'active' (default) or 'reserved' — reserved holds the code globally
+   * (uq_active_workspace_code covers reserved+active) without letting students
+   * redeem it yet (findWorkspaceByActiveStudentJoinCode requires 'active'). */
+  status?: "active" | "reserved";
   client?: PoolClient;
 }): Promise<WorkspaceCode> {
   await ensureWorkspaceSchema();
@@ -393,7 +409,7 @@ export async function createWorkspaceCode(input: {
     `INSERT INTO app.workspace_codes (
        id, workspace_id, batch_id, normalized_code, display_code,
        code_type, status, created_by, expires_at, metadata
-     ) VALUES ($1,$2,$3,$4,$5,$6,'active',$7,$8,$9::jsonb)
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)
      RETURNING *`,
     [
       id,
@@ -402,6 +418,7 @@ export async function createWorkspaceCode(input: {
       input.normalizedCode,
       input.displayCode,
       input.codeType,
+      input.status ?? "active",
       input.createdBy,
       input.expiresAt ?? null,
       JSON.stringify(input.metadata ?? {}),
@@ -419,6 +436,28 @@ export async function revokeWorkspaceCode(
     `UPDATE app.workspace_codes
      SET status = 'revoked', revoked_at = NOW()
      WHERE id = $1 AND workspace_id = $2 AND status IN ('reserved', 'active')
+     RETURNING *`,
+    [codeId, workspaceId],
+  );
+  return result.rows[0] ? rowToCode(result.rows[0]) : null;
+}
+
+/**
+ * Activates a reserved code (Feature A: an institute's chosen code is held
+ * `reserved` at onboarding, then activated when an admin approves code access).
+ * No-op / null if the code isn't currently reserved.
+ */
+export async function activateWorkspaceCodeById(
+  codeId: string,
+  workspaceId: string,
+  client?: PoolClient,
+): Promise<WorkspaceCode | null> {
+  await ensureWorkspaceSchema();
+  const runner = client ?? pool();
+  const result = await runner.query(
+    `UPDATE app.workspace_codes
+     SET status = 'active'
+     WHERE id = $1 AND workspace_id = $2 AND status = 'reserved'
      RETURNING *`,
     [codeId, workspaceId],
   );

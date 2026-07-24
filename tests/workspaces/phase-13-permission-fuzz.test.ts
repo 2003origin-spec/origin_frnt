@@ -65,6 +65,9 @@ function fakeWorkspace(status: WorkspaceStatus): TeacherWorkspace {
     verificationStatus: "unverified",
     publicProfile: {},
     settings: {},
+    codeAccessStatus: "legacy",
+    studentQuota: null,
+    codeAiAccess: null,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };

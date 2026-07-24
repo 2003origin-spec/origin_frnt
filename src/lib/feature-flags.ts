@@ -45,7 +45,9 @@ type FlagKey =
   | "odgTeacherRanking"
   | "adminPremiumAccess"
   | "aiAccessControls"
-  | "ogcodeScoringV2";
+  | "ogcodeScoringV2"
+  | "teacherCodeApproval"
+  | "adminUserLifecycle";
 
 type FlagSpec = {
   envSuffix: string;
@@ -163,6 +165,21 @@ const FLAG_SPECS: Record<FlagKey, FlagSpec> = {
   // Ships DARK: when off, submission grading + points behave exactly as before.
   // Requires migration 20260712_ogcode_scoring_v2.sql on the OGCODE database.
   ogcodeScoringV2: { envSuffix: "OGCODE_SCORING_V2", defaultDev: false, defaultProd: false },
+  // Teacher Code Access (admin-gated) — replaces auto-issuing a student_join code
+  // at onboarding with a request → admin-approve-with-quota flow, plus quota
+  // enforcement + auto-revoke at the cap. Gates onboarding auto-issue skip, the
+  // teacher request UI/endpoints, the admin request console, and quota
+  // enforcement. Ships DARK (defaultProd:false): when OFF the app behaves exactly
+  // as before (auto-issue, no quota). Grandfathered workspaces (student_quota
+  // NULL) are never enforced. See V1/allmd/TEACHER_CODE_ACCESS_AND_USER_LIFECYCLE_PLAN.md.
+  teacherCodeApproval: { envSuffix: "TEACHER_CODE_APPROVAL", defaultDev: true, defaultProd: false },
+  // Admin user lifecycle — the /admin/users Revoke / Delete actions. Gates ONLY
+  // the admin action UIs/endpoints. Ships DARK (defaultProd:false). NOTE: the
+  // *enforcement* (login-gating of revoked/deleted accounts + re-signup block by
+  // email/phone) is deliberately UNCONDITIONAL — it always respects
+  // origin_users.account_status and the deleted-identity blocklist regardless of
+  // this flag, so flipping the flag off can never un-ban a bad actor.
+  adminUserLifecycle: { envSuffix: "ADMIN_USER_LIFECYCLE", defaultDev: true, defaultProd: false },
 };
 
 /** Every feature-flag key, in declaration order (admin System Config view). */

@@ -25,6 +25,7 @@ import {
     Flag,
     Activity,
     Rocket,
+    KeyRound,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { usePathname, useRouter } from 'next/navigation';
@@ -45,6 +46,8 @@ const navItems = [
     { id: 'admins', label: 'Admins', icon: ShieldCheck, path: '/admin/admins' },
     // Phase 2F.3 — institute/teacher approval queue (the student-visibility gate).
     { id: 'collaborations', label: 'Institute Approvals', icon: Building2, path: '/admin/collaborations' },
+    // Feature A — admin-gated teacher code access (404s when teacherCodeApproval is off).
+    { id: 'teacher-code-requests', label: 'Code Access', icon: KeyRound, path: '/admin/teacher-code-requests' },
     { id: 'workspaces', label: 'Institutes', icon: Store, path: '/admin/workspaces' },
     { id: 'ogcode-moderation', label: 'OG-Code Review', icon: BadgeCheck, path: '/admin/ogcode/moderation' },
     { id: 'ogcode-issues', label: 'OG-Code Issues', icon: Flag, path: '/admin/ogcode/issues' },

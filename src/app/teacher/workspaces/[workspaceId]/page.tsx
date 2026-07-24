@@ -16,6 +16,7 @@ import {
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DashboardHeroControls } from "@/components/teacher/DashboardHeroControls";
+import { isFeatureEnabled } from "@/lib/feature-flags";
 import { loadWorkspaceForRender } from "@/server/workspaces/server-loader";
 import { listEnrollments } from "@/server/workspaces/enrollments";
 import { listWorkspaceImportJobs } from "@/server/workspaces/document-import-service";
@@ -107,7 +108,11 @@ export default async function WorkspaceOverviewPage({ params }: Props) {
         </div>
         
         {/* Code Interaction Area */}
-        <DashboardHeroControls workspaceId={workspaceId} activeCode={activeStudentCode} />
+        <DashboardHeroControls
+          workspaceId={workspaceId}
+          activeCode={activeStudentCode}
+          codeApprovalEnabled={isFeatureEnabled("teacherCodeApproval")}
+        />
       </div>
 
       {/* ActiveAlertsGrid */}

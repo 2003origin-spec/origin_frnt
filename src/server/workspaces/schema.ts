@@ -169,6 +169,28 @@ export async function ensureWorkspaceSchema(): Promise<void> {
             ON app.audit_events(entity_type, entity_id, created_at DESC);
         `);
 
+        // Feature A — admin-gated code access columns on the workspace. Kept
+        // here (not in code-access-schema) so every workspace read/insert always
+        // has them. DEFAULT 'legacy' backfills existing rows → grandfathered
+        // (student_quota stays NULL ⇒ quota enforcement never touches them). See
+        // V1/allmd/TEACHER_CODE_ACCESS_AND_USER_LIFECYCLE_PLAN.md.
+        await client.query(`
+          ALTER TABLE app.teacher_workspaces
+            ADD COLUMN IF NOT EXISTS code_access_status TEXT NOT NULL DEFAULT 'legacy';
+          ALTER TABLE app.teacher_workspaces
+            ADD COLUMN IF NOT EXISTS student_quota INT;
+          ALTER TABLE app.teacher_workspaces
+            ADD COLUMN IF NOT EXISTS code_ai_access BOOLEAN;
+        `);
+        await client.query(`
+          DO $$ BEGIN
+            ALTER TABLE app.teacher_workspaces
+              ADD CONSTRAINT teacher_workspaces_code_access_status_check
+              CHECK (code_access_status IN
+                ('legacy','none','requested','granted','quota_filled','revoked'));
+          EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+        `);
+
         await applyMigrationRecord(client);
         await client.query("COMMIT");
         globalThis.__originWorkspaceSchemaEnsured = true;

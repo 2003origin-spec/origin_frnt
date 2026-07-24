@@ -113,3 +113,9 @@ export function createEnrollmentSubscriptionId(): string {
 export function createConnectJobId(): string {
   return createPrefixedId("cjob");
 }
+
+// ─── Feature A: admin-gated teacher code access ─────────────────────────────────
+
+export function createCodeRequestId(): string {
+  return createPrefixedId("codereq");
+}

@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { z } from "zod";
 
 import { parseJsonBody } from "@/server/http";
-import { requireFeatureEnabled } from "@/lib/feature-flags";
+import { isFeatureEnabled, requireFeatureEnabled } from "@/lib/feature-flags";
 import { requireWorkspaceOwnerOrAdmin } from "@/server/workspaces/authz";
 import { createCode, rotateActiveCode } from "@/server/workspaces/codes";
 import { listCodesForWorkspace } from "@/server/workspaces/store";
@@ -42,6 +42,20 @@ export async function POST(request: NextRequest, context: WorkspaceIdRouteContex
     const ctx = await requireWorkspaceOwnerOrAdmin(request, workspaceId);
     const body = await parseJsonBody(request);
     const parsed = createSchema.parse(body);
+
+    // Feature A: while admin-gated code access is on, teachers cannot mint or
+    // rotate their own student_join (institute) code — that is issued only by an
+    // admin approving a request (code-access-admin-service). Staff/batch codes
+    // are unaffected.
+    if (isFeatureEnabled("teacherCodeApproval") && parsed.codeType === "student_join") {
+      return teacherJson(
+        {
+          detail:
+            "Student join codes are managed by the Origin team. Request code access from your dashboard.",
+        },
+        { status: 403 },
+      );
+    }
 
     if (parsed.rotate) {
       const rotated = await rotateActiveCode({
