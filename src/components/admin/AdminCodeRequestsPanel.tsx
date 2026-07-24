@@ -7,7 +7,7 @@
  */
 
 import { useCallback, useEffect, useState, useTransition } from "react";
-import { KeyRound, Check, X, Phone, Loader2, RefreshCw, AlertTriangle } from "lucide-react";
+import { KeyRound, Check, X, Phone, Loader2, RefreshCw, AlertTriangle, Search, Users, Ban } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { apiJson } from "@/lib/teacher-client";
@@ -110,6 +110,9 @@ export function AdminCodeRequestsPanel() {
           Currently: {supportPhone ? <span className="font-mono">{supportPhone}</span> : <em>not set</em>}
         </p>
       </div>
+
+      {/* Manage an existing teacher directly (no request needed) */}
+      <WorkspaceManageSection />
 
       {/* Tabs */}
       <div className="flex items-center gap-2">
@@ -289,6 +292,169 @@ function Stat({ label, value }: { label: string; value: string }) {
     <div>
       <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</p>
       <p className="font-semibold">{value}</p>
+    </div>
+  );
+}
+
+// ─── Direct-manage: set a quota on an existing (grandfathered) teacher ──────────
+
+type WorkspaceRow = {
+  workspaceId: string;
+  workspaceName: string;
+  workspaceType: "personal" | "institute";
+  ownerName: string | null;
+  ownerEmail: string | null;
+  codeAccessStatus: string;
+  studentQuota: number | null;
+  activeCode: string | null;
+  connectedStudents: number;
+};
+
+function WorkspaceManageSection() {
+  const [query, setQuery] = useState("");
+  const [rows, setRows] = useState<WorkspaceRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const params = new URLSearchParams({ view: "workspaces" });
+    if (query.trim()) params.set("q", query.trim());
+    const res = await apiJson<{ workspaces: WorkspaceRow[] }>(
+      `/api/admin/teacher-code-requests?${params.toString()}`,
+    );
+    if (res.ok) setRows(res.data.workspaces);
+    else toast.error(res.detail || "Failed to load teachers.");
+    setLoading(false);
+  }, [query]);
+
+  useEffect(() => {
+    // Intentional: initial load on mount; searches fire on Enter / the button.
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <div className="rounded-2xl border bg-card p-4 space-y-3">
+      <div>
+        <p className="text-sm font-semibold flex items-center gap-1.5">
+          <Users className="w-4 h-4 text-emerald-500" /> Manage an existing teacher
+        </p>
+        <p className="text-xs text-muted-foreground">
+          Set a student quota on any teacher/institute directly — no request needed. (AI access is managed in AI Access.)
+        </p>
+      </div>
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <Search className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && load()}
+            placeholder="Search by teacher / institute name or owner email"
+            className="h-9 w-full rounded-xl border bg-background pl-8 pr-3 text-sm outline-none focus:border-primary"
+          />
+        </div>
+        <Button size="sm" onClick={() => load()} className="h-9 rounded-xl gap-1.5">
+          <Search className="w-4 h-4" /> Search
+        </Button>
+      </div>
+      {loading ? (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground py-4 justify-center">
+          <Loader2 className="w-4 h-4 animate-spin" /> Loading…
+        </div>
+      ) : rows.length === 0 ? (
+        <div className="text-center py-6 text-sm text-muted-foreground">No teachers found.</div>
+      ) : (
+        <div className="space-y-2">
+          {rows.map((r) => (
+            <WorkspaceRowCard key={r.workspaceId} row={r} onDone={load} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function WorkspaceRowCard({ row, onDone }: { row: WorkspaceRow; onDone: () => void }) {
+  const [quota, setQuota] = useState(row.studentQuota !== null ? String(row.studentQuota) : "");
+  const [busy, startBusy] = useTransition();
+
+  function manage(op: "setQuota" | "removeQuota" | "revoke") {
+    if (op === "revoke" && !window.confirm(`Disable ${row.workspaceName}'s join code? Existing students keep access; no new students can join.`)) {
+      return;
+    }
+    let quotaNum: number | undefined;
+    if (op === "setQuota") {
+      quotaNum = Number(quota);
+      if (!Number.isInteger(quotaNum) || quotaNum <= 0) {
+        toast.error("Enter a valid quota.");
+        return;
+      }
+    }
+    startBusy(async () => {
+      const res = await apiJson<{ warning?: string | null; displayCode?: string }>(
+        `/api/admin/teacher-code-requests`,
+        { method: "POST", json: { action: "manageWorkspace", workspaceId: row.workspaceId, op, quota: quotaNum } },
+      );
+      if (res.ok) {
+        if (res.data?.warning) toast.warning(res.data.warning);
+        else
+          toast.success(
+            op === "revoke"
+              ? "Code disabled."
+              : op === "removeQuota"
+              ? "Set to unlimited."
+              : `Quota set${res.data?.displayCode ? ` — code ${res.data.displayCode}` : ""}.`,
+          );
+        onDone();
+      } else {
+        toast.error(res.detail || "Action failed.");
+      }
+    });
+  }
+
+  return (
+    <div className="rounded-xl border p-3 flex flex-col sm:flex-row sm:items-center gap-3">
+      <div className="flex-1 min-w-0">
+        <p className="font-semibold text-sm truncate">
+          {row.workspaceName}{" "}
+          <span className="text-xs font-medium text-muted-foreground capitalize">({row.workspaceType})</span>
+        </p>
+        <p className="text-xs text-muted-foreground truncate">
+          {row.ownerName ?? "—"} · {row.ownerEmail ?? "—"}
+        </p>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Code: {row.activeCode ? <span className="font-mono">{row.activeCode}</span> : <em>none</em>}
+          {" · "}
+          {row.connectedStudents} connected · quota: {row.studentQuota === null ? "unlimited" : row.studentQuota} ·{" "}
+          {row.codeAccessStatus}
+        </p>
+      </div>
+      <div className="flex items-center gap-1.5">
+        <input
+          type="number"
+          min={1}
+          value={quota}
+          onChange={(e) => setQuota(e.target.value)}
+          placeholder="quota"
+          className="h-8 w-20 rounded-lg border bg-background px-2 text-sm outline-none focus:border-primary"
+        />
+        <Button size="sm" onClick={() => manage("setQuota")} disabled={busy} className="h-8 rounded-lg text-xs">
+          Set
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => manage("removeQuota")} disabled={busy} className="h-8 rounded-lg text-xs">
+          Unlimited
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => manage("revoke")}
+          disabled={busy}
+          className="h-8 rounded-lg text-xs text-destructive border-destructive/30 gap-1"
+        >
+          <Ban className="w-3.5 h-3.5" /> Revoke
+        </Button>
+      </div>
     </div>
   );
 }
