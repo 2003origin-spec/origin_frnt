@@ -18,6 +18,23 @@ export type WorkspaceCodeType = "student_join" | "staff_invite" | "batch_join";
 
 export type WorkspaceCodeStatus = "reserved" | "active" | "revoked" | "expired";
 
+/**
+ * Lifecycle of a workspace's admin-gated student-join code access (Feature A).
+ * `legacy` = pre-feature workspace (grandfathered, unlimited — student_quota
+ * NULL); `none` = created under the new flow, no code yet; `requested` = a
+ * request is pending; `granted` = active code + quota; `quota_filled` = quota
+ * reached, code auto-revoked; `revoked` = access revoked by admin.
+ */
+export const CODE_ACCESS_STATUSES = [
+  "legacy",
+  "none",
+  "requested",
+  "granted",
+  "quota_filled",
+  "revoked",
+] as const;
+export type CodeAccessStatus = (typeof CODE_ACCESS_STATUSES)[number];
+
 export type TeacherWorkspace = {
   id: string;
   workspaceType: TeacherWorkspaceType;
@@ -35,6 +52,12 @@ export type TeacherWorkspace = {
   verificationStatus: WorkspaceVerificationStatus;
   publicProfile: Record<string, unknown>;
   settings: Record<string, unknown>;
+  /** Feature A — admin-gated code access. `legacy` on pre-feature workspaces. */
+  codeAccessStatus: CodeAccessStatus;
+  /** Admin-granted student cap. NULL = unlimited (legacy / not yet granted). */
+  studentQuota: number | null;
+  /** Whether the connected cohort gets Ori/Explainer AI. NULL = unset. */
+  codeAiAccess: boolean | null;
   createdAt: string;
   updatedAt: string;
 };

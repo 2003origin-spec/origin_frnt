@@ -25,7 +25,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { apiJson } from "@/lib/teacher-client";
 import type { TeacherWorkspace, WorkspaceCode } from "@/server/workspaces/types";
 
-type OnboardingResult = { workspace: TeacherWorkspace; joinCode: WorkspaceCode };
+// joinCode is null when teacherCodeApproval is on (no code until admin approval);
+// this form only navigates to the workspace, so it never reads the code.
+type OnboardingResult = { workspace: TeacherWorkspace; joinCode: WorkspaceCode | null };
 type Availability =
   | { available: true; normalizedCode: string; displayCode: string }
   | { available: false; reason: string; normalizedCode: string | null };
