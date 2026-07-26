@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import type { User, StreakData, Task } from '@/types';
 import { clearOriginAiBrowserSession } from '@/features/origin-ai/session';
 import { setSoundPreferences, playCategory } from '@/lib/sound-manager';
-import { AUTH_EXPIRED_EVENT, attemptTokenRefresh } from '@/lib/api';
+import { AUTH_EXPIRED_EVENT, attemptTokenRefresh, consumeAuthExpiredReason } from '@/lib/api';
 import { flushNativeCookies, notifyNativeLogout } from '@/native/bridge';
 import { purgeUserCachesForLogout } from '@/sw/client';
 import {
@@ -304,8 +304,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
         setTasks([]);
         tasksFetched.current = false;
         clearOriginAiBrowserSession();
-        window.location.href = '/';
-        toast.error('Your session expired. Please log in again.');
+        // The server has cleared the auth cookies on this hard refresh failure,
+        // so land on the login page (not home) to avoid the edge /auth→home loop.
+        // Carry a precise revoke/delete notice across the full reload; /auth shows
+        // it via the mount effect below.
+        const reason = consumeAuthExpiredReason();
+        try {
+          sessionStorage.setItem(
+            'origin:auth:notice',
+            reason?.detail || 'Your session has ended. Please sign in again.',
+          );
+        } catch {
+          /* sessionStorage unavailable */
+        }
+        window.location.href = '/auth';
       })().finally(() => {
         authExpiredRecovery.current = null;
       });
@@ -316,6 +328,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
       window.removeEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
     };
   }, [applyUserData]);
+
+  // Show a one-time auth notice (e.g. account revoked/deleted) carried across the
+  // full reload that the auth-expired handler triggers.
+  useEffect(() => {
+    try {
+      const notice = sessionStorage.getItem('origin:auth:notice');
+      if (notice) {
+        sessionStorage.removeItem('origin:auth:notice');
+        toast.error(notice, { duration: 8000 });
+      }
+    } catch {
+      /* sessionStorage unavailable */
+    }
+  }, []);
 
   // Runs on every route change and keeps protected and guest-only pages aligned
   // with the current auth state.

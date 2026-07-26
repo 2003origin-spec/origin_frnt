@@ -2,9 +2,9 @@
 import bcrypt from "bcryptjs";
 import { requireUserFromRequest, resolveTokenToUser, refreshAccessToken, createAuthSessionAsync, extractAccessToken, extractRefreshTokenCookie } from "@/server/auth";
 import { isAuthServiceUnavailableError } from "@/server/auth-errors";
-import { extractAccessFingerprint } from "@/server/auth-jwt";
+import { extractAccessFingerprint, verifyRequestAccessJwt } from "@/server/auth-jwt";
 import { isUserPostgresConfigured } from "@/server/user-postgres";
-import { dbLoginUser, dbRegisterUser, dbGetTasks, dbCreateTask, dbUpdateTask, dbDeleteTask, dbFindUserByEmail, dbCreateUser, dbUpdateUser, dbCreateAuthSession, dbGetUserCount, dbGetUserCountByRole, dbMobileInUse, dbClearUserSessions } from "@/server/db-users";
+import { dbLoginUser, dbRegisterUser, dbGetTasks, dbCreateTask, dbUpdateTask, dbDeleteTask, dbFindUserByEmail, dbFindUserById, dbCreateUser, dbUpdateUser, dbCreateAuthSession, dbGetUserCount, dbGetUserCountByRole, dbMobileInUse, dbClearUserSessions } from "@/server/db-users";
 import { isIdentityBlocked } from "@/server/user-lifecycle-store";
 import { getAllowDeletedIdentityResignup } from "@/server/platform-settings";
 import { OAuth2Client } from "google-auth-library";
@@ -1084,7 +1084,24 @@ export async function handleRefresh(request: Request | null, payload: UserPayloa
     }
     throw error;
   }
-  if (!tokens) return unauthorized("Token is invalid or expired.");
+  if (!tokens) {
+    // Distinguish a revoked/deleted account (for a precise notice) from a plain
+    // expired session. During the loop the access JWT is still signature-valid,
+    // so we can read its sub. The route clears the cookies on this 403.
+    if (request && isUserPostgresConfigured()) {
+      try {
+        const claims = await verifyRequestAccessJwt(request);
+        const user = claims?.sub ? await dbFindUserById(claims.sub) : null;
+        if (user) {
+          const blocked = accountStatusBlock(user);
+          if (blocked) return blocked;
+        }
+      } catch {
+        // Access token expired/invalid — fall through to the generic 401.
+      }
+    }
+    return unauthorized("Token is invalid or expired.");
+  }
   return ok({
     access: tokens.accessToken,
     ...(tokens.refreshToken ? { refresh: tokens.refreshToken } : {}),
