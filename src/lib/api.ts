@@ -53,6 +53,20 @@ export type TokenRefreshResult = 'ok' | 'expired' | 'transient';
 
 let refreshPromise: Promise<TokenRefreshResult> | null = null;
 
+type AuthExpiredReason = { code: 'account_revoked' | 'account_deleted'; detail: string };
+let lastAuthExpiredReason: AuthExpiredReason | null = null;
+
+/**
+ * Reads and clears the last revoke/delete reason captured during a failed token
+ * refresh, so the logout handler can show a precise notice instead of a generic
+ * "session expired". Null when the failure was an ordinary expiry.
+ */
+export function consumeAuthExpiredReason(): AuthExpiredReason | null {
+    const reason = lastAuthExpiredReason;
+    lastAuthExpiredReason = null;
+    return reason;
+}
+
 function readCookie(name: string): string | null {
     if (typeof document === 'undefined') return null;
     const prefix = `${name}=`;
@@ -83,8 +97,21 @@ async function performTokenRefresh(): Promise<TokenRefreshResult> {
             cache: 'no-store',
         });
         const classified = classifyTokenRefreshStatus(response.status);
-        if (classified === 'expired' && await recoverSessionViaMe()) {
-            return 'ok';
+        if (classified === 'expired') {
+            // Capture a precise revoke/delete reason (before the /me recovery,
+            // which also fails for a revoked account) so the logout notice is exact.
+            try {
+                const body = await response.clone().json();
+                const code = body?.code;
+                if (code === 'account_revoked' || code === 'account_deleted') {
+                    lastAuthExpiredReason = { code, detail: String(body?.detail ?? '') };
+                }
+            } catch {
+                /* no JSON body */
+            }
+            if (await recoverSessionViaMe()) {
+                return 'ok';
+            }
         }
         if (classified === 'ok') {
             // Android shell: persist the rotated refresh cookie to disk NOW —

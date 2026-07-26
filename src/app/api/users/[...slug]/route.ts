@@ -146,6 +146,15 @@ async function dispatch(method: string, request: NextRequest, context: RouteCont
     return withAuthCookies(response);
   }
 
+  // A hard refresh failure (revoked/deleted account or a dead session) must clear
+  // the stale HttpOnly cookies. Otherwise the edge access JWT stays signature-
+  // valid until it expires and the browser loops between /auth and the user's
+  // home, and no other account can log in. 503 = transient DB hiccup → keep them.
+  if (isRefresh && (response.status === 401 || response.status === 403)) {
+    const data = await response.clone().json().catch(() => ({}));
+    return withClearedAuthCookies(NextResponse.json(data, { status: response.status }));
+  }
+
   return response;
 }
 
