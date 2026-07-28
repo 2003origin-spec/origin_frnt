@@ -398,6 +398,8 @@ export async function startOriginAiVoiceMode(
   let speechStartedAt = 0;
   let lastLoudAt = 0;
   let isAwaitingTurn = false;
+  let liveTranscript = '';
+  let browserRecognition: { stop: () => void } | null = null;
 
   const maybeReturnToListening = () => {
     if (!isActive) return;
@@ -435,6 +437,69 @@ export async function startOriginAiVoiceMode(
     return btoa(binary);
   };
 
+  const startLiveBrowserTranscript = () => {
+    browserRecognition?.stop();
+    browserRecognition = null;
+
+    const SpeechRecognitionCtor =
+      typeof window !== 'undefined'
+        ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+        : null;
+    if (!SpeechRecognitionCtor) return;
+
+    const recognition = new SpeechRecognitionCtor();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'en-IN';
+
+    let stopped = false;
+    recognition.onresult = (event: any) => {
+      if (!isActive || isAwaitingTurn || audioPlayer.isPlaying()) return;
+      let interim = '';
+      let finalText = '';
+      for (let i = event.resultIndex; i < event.results.length; i += 1) {
+        const result = event.results[i];
+        const piece = result?.[0]?.transcript ?? '';
+        if (result?.isFinal) finalText += `${piece} `;
+        else interim += piece;
+      }
+      if (finalText.trim()) {
+        liveTranscript = `${liveTranscript} ${finalText}`.trim();
+      }
+      const display = `${liveTranscript} ${interim}`.trim();
+      if (display) {
+        callbacks.onUserTranscript?.(display);
+      }
+    };
+    recognition.onerror = () => {
+      // ignore no-speech / aborted — VAD + Gemini still work
+    };
+    recognition.onend = () => {
+      if (!stopped && isActive && !isAwaitingTurn) {
+        try {
+          recognition.start();
+        } catch {
+          // already started
+        }
+      }
+    };
+    try {
+      recognition.start();
+    } catch {
+      // ignore
+    }
+    browserRecognition = {
+      stop: () => {
+        stopped = true;
+        try {
+          recognition.stop();
+        } catch {
+          // ignore
+        }
+      },
+    };
+  };
+
   const stopAndSendUtterance = async () => {
     if (!isActive || !mediaRecorder || mediaRecorder.state === 'inactive') return;
     if (isAwaitingTurn) return;
@@ -447,6 +512,7 @@ export async function startOriginAiVoiceMode(
       }
       recorder.onstop = () => resolve();
       try {
+        recorder.requestData?.();
         recorder.stop();
       } catch {
         resolve();
@@ -457,21 +523,39 @@ export async function startOriginAiVoiceMode(
     const blob = new Blob(recordedChunks, { type: mimeType });
     recordedChunks = [];
     isRecordingUtterance = false;
+    mediaRecorder = null;
 
-    if (!ws || ws.readyState !== WebSocket.OPEN || blob.size < 800) {
-      // Restart listening recorder for next turn
-      startUtteranceRecorder();
+    const fallbackLive = liveTranscript.trim();
+    liveTranscript = '';
+
+    // Too small = likely noise; keep listening
+    if (!ws || ws.readyState !== WebSocket.OPEN || blob.size < 1200) {
+      if (fallbackLive) callbacks.onUserTranscript?.(fallbackLive);
       return;
     }
 
     isAwaitingTurn = true;
+    browserRecognition?.stop();
     emitStatus(callbacks, 'thinking');
+    if (fallbackLive) {
+      callbacks.onUserTranscript?.(fallbackLive);
+    }
+
     const data = await blobToBase64(blob);
-    ws.send(JSON.stringify({ type: 'utterance', data, mimeType }));
+    ws.send(
+      JSON.stringify({
+        type: 'utterance',
+        data,
+        mimeType,
+        // Client live transcript as fallback if Gemini returns junk
+        clientTranscript: fallbackLive || undefined,
+      }),
+    );
   };
 
-  const startUtteranceRecorder = () => {
-    if (!isActive || !audioStream || isAwaitingTurn) return;
+  /** Start MediaRecorder only when speech begins (avoids silent preamble → timestamp junk). */
+  const beginRecording = () => {
+    if (!isActive || !audioStream || isAwaitingTurn || isRecordingUtterance) return;
     if (mediaRecorder && mediaRecorder.state !== 'inactive') return;
 
     const mimeType = pickRecorderMimeType();
@@ -485,17 +569,16 @@ export async function startOriginAiVoiceMode(
     }
 
     recordedChunks = [];
-    isRecordingUtterance = false;
-    speechStartedAt = 0;
-    lastLoudAt = 0;
+    isRecordingUtterance = true;
+    speechStartedAt = Date.now();
+    lastLoudAt = Date.now();
 
     mediaRecorder.ondataavailable = (event) => {
       if (event.data && event.data.size > 0) {
         recordedChunks.push(event.data);
       }
     };
-
-    mediaRecorder.start(250);
+    mediaRecorder.start(200);
   };
 
   const startVad = () => {
@@ -523,23 +606,21 @@ export async function startOriginAiVoiceMode(
       }
       const rms = Math.sqrt(sumSquares / data.length);
       const now = Date.now();
-      const speaking = rms > 0.045;
+      const speaking = rms > 0.04;
 
       if (speaking) {
         if (!isRecordingUtterance) {
-          isRecordingUtterance = true;
-          speechStartedAt = now;
+          beginRecording();
         }
         lastLoudAt = now;
       } else if (isRecordingUtterance) {
         const spokenMs = now - speechStartedAt;
         const silentMs = now - lastLoudAt;
-        // ~0.5s speech minimum, ~0.85s silence to cut
-        if (spokenMs >= 500 && silentMs >= 850) {
+        if (spokenMs >= 450 && silentMs >= 750) {
           void stopAndSendUtterance();
         }
       }
-    }, 100);
+    }, 80);
   };
 
   emitStatus(callbacks, 'connecting');
@@ -565,8 +646,8 @@ export async function startOriginAiVoiceMode(
     ws.onopen = () => {
       if (!isActive) return;
       emitStatus(callbacks, 'listening');
-      startUtteranceRecorder();
       startVad();
+      startLiveBrowserTranscript();
     };
 
     ws.onmessage = async (event) => {
@@ -576,10 +657,12 @@ export async function startOriginAiVoiceMode(
         if (data.type === 'status' && data.status) {
           if (data.status === 'listening') {
             isAwaitingTurn = false;
-            startUtteranceRecorder();
+            liveTranscript = '';
+            startLiveBrowserTranscript();
           }
           if (data.status === 'thinking' || data.status === 'speaking') {
             isAwaitingTurn = true;
+            browserRecognition?.stop();
           }
           emitStatus(callbacks, data.status);
         } else if (data.type === 'transcript' && data.text) {
@@ -597,8 +680,8 @@ export async function startOriginAiVoiceMode(
         } else if (data.type === 'error' && data.message) {
           isAwaitingTurn = false;
           callbacks.onError?.(data.message);
-          startUtteranceRecorder();
           emitStatus(callbacks, 'listening');
+          startLiveBrowserTranscript();
         }
       } catch {
         // Not JSON or unhandled
@@ -628,6 +711,7 @@ export async function startOriginAiVoiceMode(
       isActive = false;
 
       try {
+        browserRecognition?.stop();
         if (vadTimer) {
           window.clearInterval(vadTimer);
           vadTimer = null;
