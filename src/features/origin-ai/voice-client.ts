@@ -1,9 +1,9 @@
 import {
   getOriginAiVoiceBootstrap,
   sendOriginAiMessageStreaming,
-  getOriginAiBrowserSessionId,
   type OriginAiClientPageContext,
 } from '@/features/origin-ai/client';
+import { getOriginAiBrowserSessionId } from '@/features/origin-ai/session';
 import type { OriginAiReply, OriginAiVoiceStatus } from '@/types';
 
 export interface OriginAiVoiceCallbacks {
