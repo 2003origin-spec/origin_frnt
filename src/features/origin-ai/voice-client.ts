@@ -413,7 +413,7 @@ export async function startOriginAiVoiceMode(
     
     // Connect WebSocket
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const baseUrl = process.env.ORIGIN_AI_SERVICE_URL || `${window.location.protocol}//${window.location.host}`;
+    const baseUrl = process.env.NEXT_PUBLIC_ORIGIN_AI_SERVICE_URL || `${window.location.protocol}//${window.location.host}`;
     const wsBaseUrl = baseUrl.replace(/^http/, 'ws');
     const wsUrl = `${wsBaseUrl}/api/v1/voice/ws?browserSessionId=${encodeURIComponent(
       getOriginAiBrowserSessionId()
