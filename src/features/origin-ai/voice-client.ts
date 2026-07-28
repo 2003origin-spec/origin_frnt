@@ -392,7 +392,7 @@ export async function startOriginAiVoiceMode(
   let mediaRecorder: MediaRecorder | null = null;
   let captureContext: AudioContext | null = null;
   let analyser: AnalyserNode | null = null;
-  let vadTimer: ReturnType<typeof setInterval> | null = null;
+  let vadTimer: number | null = null;
   let recordedChunks: Blob[] = [];
   let isRecordingUtterance = false;
   let speechStartedAt = 0;
