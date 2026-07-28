@@ -385,16 +385,16 @@ export async function startOriginAiVoiceMode(
   await getOriginAiVoiceBootstrap(pageContext);
 
   let isActive = true;
-  let isAwaitingResponse = false;
   let assistantPlaybackHoldUntil = 0;
   let isBrowserFallbackSpeaking = false;
   let ws: WebSocket | null = null;
-  let mediaRecorder: MediaRecorder | null = null;
   let audioStream: MediaStream | null = null;
+  let captureContext: AudioContext | null = null;
+  let processor: ScriptProcessorNode | null = null;
+  let sourceNode: MediaStreamAudioSourceNode | null = null;
 
   const maybeReturnToListening = () => {
     if (!isActive) return;
-    if (isAwaitingResponse) return;
     if (audioPlayer.isPlaying()) return;
     if (isBrowserFallbackSpeaking) return;
     if (Date.now() < assistantPlaybackHoldUntil) {
@@ -406,56 +406,105 @@ export async function startOriginAiVoiceMode(
 
   const audioPlayer = createAudioPlayer(callbacks, maybeReturnToListening);
 
+  const floatTo16BitPCMBase64 = (input: Float32Array): string => {
+    const buffer = new ArrayBuffer(input.length * 2);
+    const view = new DataView(buffer);
+    for (let i = 0; i < input.length; i += 1) {
+      const sample = Math.max(-1, Math.min(1, input[i] ?? 0));
+      view.setInt16(i * 2, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+    }
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    const chunk = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunk) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+    }
+    return btoa(binary);
+  };
+
   emitStatus(callbacks, 'connecting');
 
   try {
-    audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    
-    // Connect WebSocket
-    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const baseUrl = process.env.NEXT_PUBLIC_ORIGIN_AI_SERVICE_URL || `${window.location.protocol}//${window.location.host}`;
+    audioStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        channelCount: 1,
+      },
+    });
+
+    const baseUrl =
+      process.env.NEXT_PUBLIC_ORIGIN_AI_SERVICE_URL ||
+      `${window.location.protocol}//${window.location.host}`;
     const wsBaseUrl = baseUrl.replace(/^http/, 'ws');
     const wsUrl = `${wsBaseUrl}/api/v1/voice/ws?browserSessionId=${encodeURIComponent(
-      getOriginAiBrowserSessionId()
+      getOriginAiBrowserSessionId(),
     )}`;
     ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
-      if (!isActive) return;
+      if (!isActive || !audioStream) return;
       emitStatus(callbacks, 'listening');
 
-      mediaRecorder = new MediaRecorder(audioStream as MediaStream);
-      mediaRecorder.ondataavailable = async (e) => {
-        if (e.data.size > 0 && ws?.readyState === WebSocket.OPEN) {
-          // Convert Blob to Base64 (Pipecat FastAPI JSON transport format)
-          const buffer = await e.data.arrayBuffer();
-          const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
-          ws.send(JSON.stringify({ event: "media", media: { payload: base64 } }));
-        }
+      const AudioContextCtor =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AudioContextCtor) {
+        callbacks.onError?.('This browser does not support audio capture for voice mode.');
+        return;
+      }
+
+      captureContext = new AudioContextCtor();
+      void captureContext.resume();
+      sourceNode = captureContext.createMediaStreamSource(audioStream);
+      // ScriptProcessor is deprecated but widely supported; buffer size ~2048 ≈ 40–50ms at 48kHz.
+      processor = captureContext.createScriptProcessor(2048, 1, 1);
+      processor.onaudioprocess = (event) => {
+        if (!isActive || !ws || ws.readyState !== WebSocket.OPEN) return;
+        const input = event.inputBuffer.getChannelData(0);
+        const data = floatTo16BitPCMBase64(input);
+        ws.send(
+          JSON.stringify({
+            type: 'audio',
+            data,
+            sampleRate: captureContext?.sampleRate ?? 48000,
+          }),
+        );
       };
-      // Send small chunks to minimize latency
-      mediaRecorder.start(250);
+      // Keep processor in the graph without audible mic monitoring.
+      const mute = captureContext.createGain();
+      mute.gain.value = 0;
+      sourceNode.connect(processor);
+      processor.connect(mute);
+      mute.connect(captureContext.destination);
     };
 
     ws.onmessage = async (event) => {
       if (!isActive) return;
       try {
         const data = JSON.parse(event.data);
-        if (data.type === "text" && data.delta) {
+        if (data.type === 'status' && data.status) {
+          emitStatus(callbacks, data.status);
+        } else if (data.type === 'transcript' && data.text) {
+          callbacks.onUserTranscript?.(data.text);
+        } else if (data.type === 'text' && data.delta) {
           callbacks.onAssistantTranscript?.(data.delta);
-        } else if (data.type === "audio" && data.data) {
+        } else if (data.type === 'audio' && data.data) {
           emitStatus(callbacks, 'speaking');
           await audioPlayer.enqueue(data.data, data.mimeType);
           assistantPlaybackHoldUntil = Date.now() + ASSISTANT_PLAYBACK_GAP_GRACE_MS;
-        } else if (data.type === "interruption") {
+          maybeReturnToListening();
+        } else if (data.type === 'interruption') {
           audioPlayer.interrupt();
+        } else if (data.type === 'error' && data.message) {
+          callbacks.onError?.(data.message);
         }
-      } catch (e) {
+      } catch {
         // Not JSON or unhandled
       }
     };
 
-    ws.onerror = (error) => {
+    ws.onerror = () => {
       if (isActive) {
         callbacks.onError?.('WebSocket connection error.');
       }
@@ -467,8 +516,7 @@ export async function startOriginAiVoiceMode(
         isActive = false;
       }
     };
-
-  } catch (error) {
+  } catch {
     callbacks.onError?.('Could not access microphone or connect to voice service.');
     isActive = false;
   }
@@ -477,16 +525,18 @@ export async function startOriginAiVoiceMode(
     stop: async () => {
       if (!isActive) return;
       isActive = false;
-      isAwaitingResponse = false;
 
       try {
-        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-          mediaRecorder.stop();
+        processor?.disconnect();
+        sourceNode?.disconnect();
+        if (captureContext && captureContext.state !== 'closed') {
+          await captureContext.close();
         }
         if (audioStream) {
-          audioStream.getTracks().forEach(track => track.stop());
+          audioStream.getTracks().forEach((track) => track.stop());
         }
-        if (ws) {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'end_turn' }));
           ws.close();
         }
         audioPlayer.interrupt();
