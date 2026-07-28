@@ -1,6 +1,7 @@
 import {
   getOriginAiVoiceBootstrap,
   sendOriginAiMessageStreaming,
+  getOriginAiBrowserSessionId,
   type OriginAiClientPageContext,
 } from '@/features/origin-ai/client';
 import type { OriginAiReply, OriginAiVoiceStatus } from '@/types';
@@ -385,23 +386,17 @@ export async function startOriginAiVoiceMode(
 
   let isActive = true;
   let isAwaitingResponse = false;
-  let speechRecognitionPipeline: SpeechRecognitionPipeline | null = null;
   let assistantPlaybackHoldUntil = 0;
   let isBrowserFallbackSpeaking = false;
+  let ws: WebSocket | null = null;
+  let mediaRecorder: MediaRecorder | null = null;
+  let audioStream: MediaStream | null = null;
 
   const maybeReturnToListening = () => {
-    if (!isActive) {
-      return;
-    }
-    if (isAwaitingResponse) {
-      return;
-    }
-    if (audioPlayer.isPlaying()) {
-      return;
-    }
-    if (isBrowserFallbackSpeaking) {
-      return;
-    }
+    if (!isActive) return;
+    if (isAwaitingResponse) return;
+    if (audioPlayer.isPlaying()) return;
+    if (isBrowserFallbackSpeaking) return;
     if (Date.now() < assistantPlaybackHoldUntil) {
       window.setTimeout(maybeReturnToListening, assistantPlaybackHoldUntil - Date.now());
       return;
@@ -413,94 +408,87 @@ export async function startOriginAiVoiceMode(
 
   emitStatus(callbacks, 'connecting');
 
-  speechRecognitionPipeline = await startSpeechRecognitionPipeline(
-    () => isAwaitingResponse || audioPlayer.isPlaying() || Date.now() < assistantPlaybackHoldUntil,
-    (interimText) => {
-      if (!isAwaitingResponse) {
-        callbacks.onUserTranscript?.(interimText);
-      }
-    },
-    (finalText) => {
-      if (!isActive || isAwaitingResponse) {
-        return;
-      }
+  try {
+    audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    
+    // Connect WebSocket
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const baseUrl = process.env.NEXT_PUBLIC_ORIGIN_AI_SERVICE_URL || `${window.location.protocol}//${window.location.host}`;
+    const wsBaseUrl = baseUrl.replace(/^http/, 'ws');
+    const wsUrl = `${wsBaseUrl}/api/v1/voice/ws?browserSessionId=${encodeURIComponent(
+      getOriginAiBrowserSessionId()
+    )}`;
+    ws = new WebSocket(wsUrl);
 
-      isAwaitingResponse = true;
-      emitStatus(callbacks, 'thinking');
+    ws.onopen = () => {
+      if (!isActive) return;
+      emitStatus(callbacks, 'listening');
 
-      void (async () => {
-        try {
-          const highlightedText = getHighlightedText();
-          let streamedText = '';
-          let anyAudioPlayed = false;
-          assistantPlaybackHoldUntil = Date.now() + ASSISTANT_PLAYBACK_GAP_GRACE_MS;
-
-          const reply = await withTimeout(
-            sendOriginAiMessageStreaming(finalText, pageContext, highlightedText, null, {
-              onTextDelta: (delta) => {
-                streamedText += delta;
-                callbacks.onAssistantTranscript?.(streamedText);
-              },
-              onAudio: async (audio) => {
-                if (!isActive || !audio.data) return;
-                emitStatus(callbacks, 'speaking');
-                await audioPlayer.enqueue(audio.data, audio.mimeType);
-                anyAudioPlayed = true;
-                assistantPlaybackHoldUntil = Date.now() + ASSISTANT_PLAYBACK_GAP_GRACE_MS;
-              },
-            }),
-            VOICE_RESPOND_TIMEOUT_MS,
-            'Ori took too long to prepare the voice reply.',
-          );
-
-          if (!isActive) {
-            return;
-          }
-
-          callbacks.onUserTranscript?.(reply.userMessage.content);
-          callbacks.onAssistantTranscript?.(reply.aiMessage.content);
-          callbacks.onReplyCommitted?.(reply);
-
-          if (!isActive) {
-            return;
-          }
-
-          // If the backend couldn't produce audio segments, fall back to browser TTS.
-          if (!anyAudioPlayed && reply.aiMessage.content.trim()) {
-            isBrowserFallbackSpeaking = true;
-            emitStatus(callbacks, 'speaking');
-            try {
-              await speakWithBrowserFallback(reply.aiMessage.content);
-            } catch {
-              // Ignore fallback speech errors; the text reply is already visible.
-            } finally {
-              isBrowserFallbackSpeaking = false;
-            }
-          }
-        } catch (error) {
-          const message =
-            error instanceof Error ? error.message : 'Ori voice mode could not finish the turn.';
-          callbacks.onError?.(message);
-        } finally {
-          isAwaitingResponse = false;
-          maybeReturnToListening();
+      mediaRecorder = new MediaRecorder(audioStream as MediaStream);
+      mediaRecorder.ondataavailable = async (e) => {
+        if (e.data.size > 0 && ws?.readyState === WebSocket.OPEN) {
+          // Convert Blob to Base64 (Pipecat FastAPI JSON transport format)
+          const buffer = await e.data.arrayBuffer();
+          const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+          ws.send(JSON.stringify({ event: "media", media: { payload: base64 } }));
         }
-      })();
-    },
-  );
+      };
+      // Send small chunks to minimize latency
+      mediaRecorder.start(250);
+    };
 
-  emitStatus(callbacks, 'listening');
+    ws.onmessage = async (event) => {
+      if (!isActive) return;
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === "text" && data.delta) {
+          callbacks.onAssistantTranscript?.(data.delta);
+        } else if (data.type === "audio" && data.data) {
+          emitStatus(callbacks, 'speaking');
+          await audioPlayer.enqueue(data.data, data.mimeType);
+          assistantPlaybackHoldUntil = Date.now() + ASSISTANT_PLAYBACK_GAP_GRACE_MS;
+        } else if (data.type === "interruption") {
+          audioPlayer.interrupt();
+        }
+      } catch (e) {
+        // Not JSON or unhandled
+      }
+    };
+
+    ws.onerror = (error) => {
+      if (isActive) {
+        callbacks.onError?.('WebSocket connection error.');
+      }
+    };
+
+    ws.onclose = () => {
+      if (isActive) {
+        callbacks.onError?.('Voice session disconnected.');
+        isActive = false;
+      }
+    };
+
+  } catch (error) {
+    callbacks.onError?.('Could not access microphone or connect to voice service.');
+    isActive = false;
+  }
 
   return {
     stop: async () => {
-      if (!isActive) {
-        return;
-      }
-
+      if (!isActive) return;
       isActive = false;
       isAwaitingResponse = false;
 
       try {
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+          mediaRecorder.stop();
+        }
+        if (audioStream) {
+          audioStream.getTracks().forEach(track => track.stop());
+        }
+        if (ws) {
+          ws.close();
+        }
         audioPlayer.interrupt();
       } catch {
         // ignore shutdown race
@@ -510,14 +498,6 @@ export async function startOriginAiVoiceMode(
         window.speechSynthesis.cancel();
       }
       isBrowserFallbackSpeaking = false;
-
-      if (speechRecognitionPipeline) {
-        try {
-          speechRecognitionPipeline.stop();
-        } catch {
-          // ignore shutdown race
-        }
-      }
 
       await audioPlayer.close();
       emitStatus(callbacks, 'idle');
