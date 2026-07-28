@@ -398,8 +398,11 @@ export async function startOriginAiVoiceMode(
   let speechStartedAt = 0;
   let lastLoudAt = 0;
   let isAwaitingTurn = false;
-  let liveTranscript = '';
-  let browserRecognition: { stop: () => void } | null = null;
+  /** Finalized browser SpeechRecognition segments for this turn. */
+  let liveTranscriptFinal = '';
+  /** Final + interim — always send this with utterance (fallback for empty Gemini STT). */
+  let liveTranscriptLatest = '';
+  let browserRecognition: { stop: () => Promise<void> } | null = null;
 
   const maybeReturnToListening = () => {
     if (!isActive) return;
@@ -438,8 +441,10 @@ export async function startOriginAiVoiceMode(
   };
 
   const startLiveBrowserTranscript = () => {
-    browserRecognition?.stop();
+    void browserRecognition?.stop();
     browserRecognition = null;
+    liveTranscriptFinal = '';
+    liveTranscriptLatest = '';
 
     const SpeechRecognitionCtor =
       typeof window !== 'undefined'
@@ -454,7 +459,8 @@ export async function startOriginAiVoiceMode(
 
     let stopped = false;
     recognition.onresult = (event: any) => {
-      if (!isActive || isAwaitingTurn || audioPlayer.isPlaying()) return;
+      // Keep updating even while we are about to send — we need the latest text.
+      if (!isActive || audioPlayer.isPlaying()) return;
       let interim = '';
       let finalText = '';
       for (let i = event.resultIndex; i < event.results.length; i += 1) {
@@ -464,11 +470,11 @@ export async function startOriginAiVoiceMode(
         else interim += piece;
       }
       if (finalText.trim()) {
-        liveTranscript = `${liveTranscript} ${finalText}`.trim();
+        liveTranscriptFinal = `${liveTranscriptFinal} ${finalText}`.trim();
       }
-      const display = `${liveTranscript} ${interim}`.trim();
-      if (display) {
-        callbacks.onUserTranscript?.(display);
+      liveTranscriptLatest = `${liveTranscriptFinal} ${interim}`.trim();
+      if (liveTranscriptLatest) {
+        callbacks.onUserTranscript?.(liveTranscriptLatest);
       }
     };
     recognition.onerror = () => {
@@ -489,20 +495,46 @@ export async function startOriginAiVoiceMode(
       // ignore
     }
     browserRecognition = {
-      stop: () => {
-        stopped = true;
-        try {
-          recognition.stop();
-        } catch {
-          // ignore
-        }
-      },
+      stop: () =>
+        new Promise<void>((resolve) => {
+          stopped = true;
+          const done = () => resolve();
+          // Give the engine a brief moment to flush a final result on stop.
+          const prevOnEnd = recognition.onend;
+          recognition.onend = () => {
+            try {
+              prevOnEnd?.call(recognition, undefined as any);
+            } catch {
+              // ignore
+            }
+            done();
+          };
+          try {
+            recognition.stop();
+          } catch {
+            done();
+            return;
+          }
+          window.setTimeout(done, 180);
+        }),
     };
   };
 
   const stopAndSendUtterance = async () => {
     if (!isActive || !mediaRecorder || mediaRecorder.state === 'inactive') return;
     if (isAwaitingTurn) return;
+
+    // Snapshot + stop recognition first so interim text is not dropped.
+    let fallbackLive = (liveTranscriptLatest || liveTranscriptFinal).trim();
+    try {
+      await Promise.race([
+        browserRecognition?.stop() ?? Promise.resolve(),
+        new Promise<void>((r) => window.setTimeout(r, 220)),
+      ]);
+    } catch {
+      // ignore
+    }
+    fallbackLive = (liveTranscriptLatest || liveTranscriptFinal || fallbackLive).trim();
 
     await new Promise<void>((resolve) => {
       const recorder = mediaRecorder;
@@ -525,17 +557,19 @@ export async function startOriginAiVoiceMode(
     isRecordingUtterance = false;
     mediaRecorder = null;
 
-    const fallbackLive = liveTranscript.trim();
-    liveTranscript = '';
+    // Prefer whatever recognition produced last (includes interim).
+    fallbackLive = (liveTranscriptLatest || liveTranscriptFinal || fallbackLive).trim();
+    liveTranscriptFinal = '';
+    liveTranscriptLatest = '';
 
     // Too small = likely noise; keep listening
     if (!ws || ws.readyState !== WebSocket.OPEN || blob.size < 1200) {
       if (fallbackLive) callbacks.onUserTranscript?.(fallbackLive);
+      startLiveBrowserTranscript();
       return;
     }
 
     isAwaitingTurn = true;
-    browserRecognition?.stop();
     emitStatus(callbacks, 'thinking');
     if (fallbackLive) {
       callbacks.onUserTranscript?.(fallbackLive);
@@ -547,8 +581,8 @@ export async function startOriginAiVoiceMode(
         type: 'utterance',
         data,
         mimeType,
-        // Client live transcript as fallback if Gemini returns junk
-        clientTranscript: fallbackLive || undefined,
+        // Always send latest live browser text (final+interim) as Gemini STT fallback
+        ...(fallbackLive ? { clientTranscript: fallbackLive } : {}),
       }),
     );
   };
@@ -657,12 +691,13 @@ export async function startOriginAiVoiceMode(
         if (data.type === 'status' && data.status) {
           if (data.status === 'listening') {
             isAwaitingTurn = false;
-            liveTranscript = '';
+            liveTranscriptFinal = '';
+            liveTranscriptLatest = '';
             startLiveBrowserTranscript();
           }
           if (data.status === 'thinking' || data.status === 'speaking') {
             isAwaitingTurn = true;
-            browserRecognition?.stop();
+            void browserRecognition?.stop();
           }
           emitStatus(callbacks, data.status);
         } else if (data.type === 'transcript' && data.text) {
@@ -711,7 +746,7 @@ export async function startOriginAiVoiceMode(
       isActive = false;
 
       try {
-        browserRecognition?.stop();
+        void browserRecognition?.stop();
         if (vadTimer) {
           window.clearInterval(vadTimer);
           vadTimer = null;
