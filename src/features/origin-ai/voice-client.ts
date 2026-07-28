@@ -389,12 +389,19 @@ export async function startOriginAiVoiceMode(
   let isBrowserFallbackSpeaking = false;
   let ws: WebSocket | null = null;
   let audioStream: MediaStream | null = null;
+  let mediaRecorder: MediaRecorder | null = null;
   let captureContext: AudioContext | null = null;
-  let processor: ScriptProcessorNode | null = null;
-  let sourceNode: MediaStreamAudioSourceNode | null = null;
+  let analyser: AnalyserNode | null = null;
+  let vadTimer: ReturnType<typeof setInterval> | null = null;
+  let recordedChunks: Blob[] = [];
+  let isRecordingUtterance = false;
+  let speechStartedAt = 0;
+  let lastLoudAt = 0;
+  let isAwaitingTurn = false;
 
   const maybeReturnToListening = () => {
     if (!isActive) return;
+    if (isAwaitingTurn) return;
     if (audioPlayer.isPlaying()) return;
     if (isBrowserFallbackSpeaking) return;
     if (Date.now() < assistantPlaybackHoldUntil) {
@@ -406,13 +413,19 @@ export async function startOriginAiVoiceMode(
 
   const audioPlayer = createAudioPlayer(callbacks, maybeReturnToListening);
 
-  const floatTo16BitPCMBase64 = (input: Float32Array): string => {
-    const buffer = new ArrayBuffer(input.length * 2);
-    const view = new DataView(buffer);
-    for (let i = 0; i < input.length; i += 1) {
-      const sample = Math.max(-1, Math.min(1, input[i] ?? 0));
-      view.setInt16(i * 2, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
-    }
+  const pickRecorderMimeType = (): string | undefined => {
+    if (typeof MediaRecorder === 'undefined') return undefined;
+    const candidates = [
+      'audio/webm;codecs=opus',
+      'audio/webm',
+      'audio/mp4',
+      'audio/ogg;codecs=opus',
+    ];
+    return candidates.find((type) => MediaRecorder.isTypeSupported(type));
+  };
+
+  const blobToBase64 = async (blob: Blob): Promise<string> => {
+    const buffer = await blob.arrayBuffer();
     const bytes = new Uint8Array(buffer);
     let binary = '';
     const chunk = 0x8000;
@@ -420,6 +433,113 @@ export async function startOriginAiVoiceMode(
       binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
     }
     return btoa(binary);
+  };
+
+  const stopAndSendUtterance = async () => {
+    if (!isActive || !mediaRecorder || mediaRecorder.state === 'inactive') return;
+    if (isAwaitingTurn) return;
+
+    await new Promise<void>((resolve) => {
+      const recorder = mediaRecorder;
+      if (!recorder || recorder.state === 'inactive') {
+        resolve();
+        return;
+      }
+      recorder.onstop = () => resolve();
+      try {
+        recorder.stop();
+      } catch {
+        resolve();
+      }
+    });
+
+    const mimeType = mediaRecorder?.mimeType || pickRecorderMimeType() || 'audio/webm';
+    const blob = new Blob(recordedChunks, { type: mimeType });
+    recordedChunks = [];
+    isRecordingUtterance = false;
+
+    if (!ws || ws.readyState !== WebSocket.OPEN || blob.size < 800) {
+      // Restart listening recorder for next turn
+      startUtteranceRecorder();
+      return;
+    }
+
+    isAwaitingTurn = true;
+    emitStatus(callbacks, 'thinking');
+    const data = await blobToBase64(blob);
+    ws.send(JSON.stringify({ type: 'utterance', data, mimeType }));
+  };
+
+  const startUtteranceRecorder = () => {
+    if (!isActive || !audioStream || isAwaitingTurn) return;
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') return;
+
+    const mimeType = pickRecorderMimeType();
+    try {
+      mediaRecorder = mimeType
+        ? new MediaRecorder(audioStream, { mimeType })
+        : new MediaRecorder(audioStream);
+    } catch {
+      callbacks.onError?.('This browser cannot record audio for voice mode.');
+      return;
+    }
+
+    recordedChunks = [];
+    isRecordingUtterance = false;
+    speechStartedAt = 0;
+    lastLoudAt = 0;
+
+    mediaRecorder.ondataavailable = (event) => {
+      if (event.data && event.data.size > 0) {
+        recordedChunks.push(event.data);
+      }
+    };
+
+    mediaRecorder.start(250);
+  };
+
+  const startVad = () => {
+    if (!audioStream) return;
+    const AudioContextCtor =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextCtor) return;
+
+    captureContext = new AudioContextCtor();
+    void captureContext.resume();
+    const source = captureContext.createMediaStreamSource(audioStream);
+    analyser = captureContext.createAnalyser();
+    analyser.fftSize = 2048;
+    source.connect(analyser);
+
+    const data = new Uint8Array(analyser.fftSize);
+    vadTimer = window.setInterval(() => {
+      if (!isActive || !analyser || isAwaitingTurn || audioPlayer.isPlaying()) return;
+      analyser.getByteTimeDomainData(data);
+      let sumSquares = 0;
+      for (let i = 0; i < data.length; i += 1) {
+        const centered = ((data[i] ?? 128) - 128) / 128;
+        sumSquares += centered * centered;
+      }
+      const rms = Math.sqrt(sumSquares / data.length);
+      const now = Date.now();
+      const speaking = rms > 0.045;
+
+      if (speaking) {
+        if (!isRecordingUtterance) {
+          isRecordingUtterance = true;
+          speechStartedAt = now;
+        }
+        lastLoudAt = now;
+      } else if (isRecordingUtterance) {
+        const spokenMs = now - speechStartedAt;
+        const silentMs = now - lastLoudAt;
+        // ~0.5s speech minimum, ~0.85s silence to cut
+        if (spokenMs >= 500 && silentMs >= 850) {
+          void stopAndSendUtterance();
+        }
+      }
+    }, 100);
   };
 
   emitStatus(callbacks, 'connecting');
@@ -443,40 +563,10 @@ export async function startOriginAiVoiceMode(
     ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
-      if (!isActive || !audioStream) return;
+      if (!isActive) return;
       emitStatus(callbacks, 'listening');
-
-      const AudioContextCtor =
-        window.AudioContext ||
-        (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-      if (!AudioContextCtor) {
-        callbacks.onError?.('This browser does not support audio capture for voice mode.');
-        return;
-      }
-
-      captureContext = new AudioContextCtor();
-      void captureContext.resume();
-      sourceNode = captureContext.createMediaStreamSource(audioStream);
-      // ScriptProcessor is deprecated but widely supported; buffer size ~2048 ≈ 40–50ms at 48kHz.
-      processor = captureContext.createScriptProcessor(2048, 1, 1);
-      processor.onaudioprocess = (event) => {
-        if (!isActive || !ws || ws.readyState !== WebSocket.OPEN) return;
-        const input = event.inputBuffer.getChannelData(0);
-        const data = floatTo16BitPCMBase64(input);
-        ws.send(
-          JSON.stringify({
-            type: 'audio',
-            data,
-            sampleRate: captureContext?.sampleRate ?? 48000,
-          }),
-        );
-      };
-      // Keep processor in the graph without audible mic monitoring.
-      const mute = captureContext.createGain();
-      mute.gain.value = 0;
-      sourceNode.connect(processor);
-      processor.connect(mute);
-      mute.connect(captureContext.destination);
+      startUtteranceRecorder();
+      startVad();
     };
 
     ws.onmessage = async (event) => {
@@ -484,6 +574,13 @@ export async function startOriginAiVoiceMode(
       try {
         const data = JSON.parse(event.data);
         if (data.type === 'status' && data.status) {
+          if (data.status === 'listening') {
+            isAwaitingTurn = false;
+            startUtteranceRecorder();
+          }
+          if (data.status === 'thinking' || data.status === 'speaking') {
+            isAwaitingTurn = true;
+          }
           emitStatus(callbacks, data.status);
         } else if (data.type === 'transcript' && data.text) {
           callbacks.onUserTranscript?.(data.text);
@@ -496,8 +593,12 @@ export async function startOriginAiVoiceMode(
           maybeReturnToListening();
         } else if (data.type === 'interruption') {
           audioPlayer.interrupt();
+          isAwaitingTurn = false;
         } else if (data.type === 'error' && data.message) {
+          isAwaitingTurn = false;
           callbacks.onError?.(data.message);
+          startUtteranceRecorder();
+          emitStatus(callbacks, 'listening');
         }
       } catch {
         // Not JSON or unhandled
@@ -527,8 +628,14 @@ export async function startOriginAiVoiceMode(
       isActive = false;
 
       try {
-        processor?.disconnect();
-        sourceNode?.disconnect();
+        if (vadTimer) {
+          window.clearInterval(vadTimer);
+          vadTimer = null;
+        }
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+          mediaRecorder.onstop = null;
+          mediaRecorder.stop();
+        }
         if (captureContext && captureContext.state !== 'closed') {
           await captureContext.close();
         }
@@ -536,7 +643,6 @@ export async function startOriginAiVoiceMode(
           audioStream.getTracks().forEach((track) => track.stop());
         }
         if (ws && ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: 'end_turn' }));
           ws.close();
         }
         audioPlayer.interrupt();
