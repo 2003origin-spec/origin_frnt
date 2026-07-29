@@ -97,6 +97,7 @@ test("SEO crawl files (robots.txt, sitemap.xml) are public for bots", () => {
   // would break indexing.
   assert.equal(getAppRoutePolicy("/robots.txt").kind, "public");
   assert.equal(getAppRoutePolicy("/sitemap.xml").kind, "public");
+  assert.equal(getAppRoutePolicy("/llms.txt").kind, "public");
 });
 
 test("route handlers do not import low-level JWT primitives directly", () => {

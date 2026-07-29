@@ -9,6 +9,8 @@ import { AuthProvider } from "@/context/AuthContext";
 import { ThemeProvider } from "next-themes";
 import { Toaster } from "@/components/ui/sonner";
 import ClientShell from "@/components/layout/ClientShell";
+import { JsonLd } from "@/components/seo/JsonLd";
+import { WebVitals } from "@/components/seo/WebVitals";
 import ServiceWorkerManager from "@/components/pwa/ServiceWorkerManager";
 import { QuotaProvider } from "@/context/QuotaContext";
 import { NotificationProvider } from "@/context/NotificationContext";
@@ -30,10 +32,38 @@ const darkerGrotesque = Darker_Grotesque({
 
 const siteUrl = getCanonicalSiteUrl();
 
+// Sitewide structured data: who we are (knowledge panel / LLM extraction) and
+// the site entity. No SearchAction — there is no public search page (OGCode is
+// auth-gated), so advertising one would be misleading.
+const organizationJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "EducationalOrganization",
+  name: "O3 Origin",
+  alternateName: "ORIGIN AI",
+  url: siteUrl,
+  logo: `${siteUrl}/origin-new.jpg`,
+  image: `${siteUrl}/origin-new.jpg`,
+  description:
+    "AI-powered learning platform for JEE, NEET and Foundation — diagnoses where a student is going wrong and teaches the fix. Built by SUPERGOAT TECHNOLOGIES PRIVATE LIMITED.",
+  foundingLocation: { "@type": "Place", name: "Agartala, Tripura, India" },
+  sameAs: [
+    "https://www.instagram.com/o3.origin/",
+    "https://www.linkedin.com/in/o3-origin-ba73233a8/",
+  ],
+};
+const websiteJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  name: "O3 Origin",
+  alternateName: "ORIGIN AI",
+  url: siteUrl,
+};
+
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: "ORIGIN AI - Best Preparation Platform for JEE/NEET",
   description: "The most advanced AI-powered learning platform for JEE, NEET, and Foundation. Personalized guidance, infinite practice, and 24/7 AI mentoring.",
+  alternates: { canonical: "/" },
   openGraph: {
     title: "ORIGIN AI - Best Preparation Platform for JEE/NEET",
     description: "Personalized guidance, infinite practice, and 24/7 AI mentoring for JEE and NEET scholars.",
@@ -86,6 +116,8 @@ export default async function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning className={darkerGrotesque.variable}>
       <body className="antialiased" suppressHydrationWarning>
+        <JsonLd data={[organizationJsonLd, websiteJsonLd]} />
+        <WebVitals />
         <ThemeProvider
           attribute="class"
           defaultTheme="light"

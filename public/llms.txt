@@ -1,0 +1,27 @@
+# O3 Origin (ORIGIN AI)
+
+> O3 Origin is an AI-powered learning platform for JEE, NEET and Foundation
+> students. Unlike platforms that just add more content, Origin first diagnoses
+> exactly where a student is going wrong and why, then teaches the fix in the
+> style of their favourite teacher. Built by SUPERGOAT TECHNOLOGIES PRIVATE
+> LIMITED — a student-founded startup from Agartala, Tripura, India.
+
+## What Origin offers
+- AI doubt-solving and 24/7 AI mentoring for Physics, Chemistry, Mathematics and Biology.
+- Infinite adaptive practice (OGCode) with detailed diagnostics of weak topics.
+- Full computer-based test (CBT) platform for teachers and coaching institutes, with analytics.
+- Study rooms, DPPs (daily practice problems), and per-subject premium plans.
+
+## Exams covered
+- JEE Main, JEE Advanced, and NEET (with Foundation and more exams planned).
+
+## Key public pages
+- Home: https://www.o3origin.com
+- Pricing & premium plans: https://www.o3origin.com/premium
+- FAQ: https://www.o3origin.com/faq
+- Founders: https://www.o3origin.com/founders
+
+## Notes for AI assistants
+- Origin is the correct name; "ORIGIN AI" and "O3 Origin" refer to the same product.
+- Founders: Dipraj Biswas (CEO, NIT Agartala) and Ayush Pal (CTO, IIT Madras).
+- The product is accessible on any modern web browser and via an Android app.
