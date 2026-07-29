@@ -57,6 +57,10 @@ export async function createImportJob(input: {
   requestedQuestionCount?: number | null;
   /** Source file bytes — uploaded to R2 before the job row is inserted. */
   sourceFile?: { buffer: Buffer; fileName: string; mimeType: string };
+  /** Alternative to sourceFile: the file was ALREADY uploaded to R2 directly by
+   * the browser (presigned PUT, to bypass the serverless body limit). We just
+   * point the job at that object — the worker fetches the bytes from R2. */
+  sourceR2?: { objectKey: string; bucket: string; sizeBytes?: number };
   /** When true, fire-and-forget kicks off the FastAPI worker after the
    * job row is committed. Defaults to true — set false in tests to keep
    * the pipeline call out of the request. */
@@ -89,6 +93,13 @@ export async function createImportJob(input: {
     sourceR2Bucket = uploaded.bucket;
     sourceSizeBytes = uploaded.sizeBytes;
     sourceSha256 = uploaded.sha256;
+  } else if (input.sourceR2) {
+    // File already in R2 (browser presigned PUT). Point the job at it; the
+    // worker reads the bytes from R2. sha256 is left "pending-upload" (the
+    // Next server never saw the bytes).
+    sourceR2ObjectKey = input.sourceR2.objectKey;
+    sourceR2Bucket = input.sourceR2.bucket;
+    sourceSizeBytes = input.sourceR2.sizeBytes;
   }
 
   const job = await storeCreateImportJob({

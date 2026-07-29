@@ -364,7 +364,23 @@ export default function OGCodeList({
     // from the narrowed facet result; the cascade effects below prune any child
     // SELECTION that falls outside the narrowed set so an orphaned pick can't
     // silently AND the result set to zero.
-    const subjectOptions = facetSubjects;
+    // The four core subjects always appear in the filter, even before their
+    // questions are ingested — otherwise a subject with 0 rows in the DB (e.g.
+    // Chemistry at launch) silently vanishes from the options. Merge the canonical
+    // core list with whatever the DB facets return, deduped case-insensitively
+    // (canonical display wins), so no core subject can ever go missing.
+    const subjectOptions = useMemo(() => {
+        const CORE = ['Physics', 'Chemistry', 'Mathematics', 'Biology'];
+        const seen = new Set<string>();
+        const out: string[] = [];
+        for (const s of [...CORE, ...facetSubjects]) {
+            const key = normalizeSubject(s).toLowerCase();
+            if (!key || seen.has(key)) continue;
+            seen.add(key);
+            out.push(s);
+        }
+        return out;
+    }, [facetSubjects]);
     const chapterOptions = useMemo(() => [...facetChapters].sort(), [facetChapters]);
     const conceptOptions = useMemo(() => [...facetConcepts].sort(), [facetConcepts]);
 
@@ -1955,9 +1971,13 @@ export default function OGCodeList({
                             })}
                         </div>
                     ) : (
-                        <div className="py-20 text-center text-muted-foreground text-sm">
-                            <Image src="/ori2d/ori-curious.png" alt="Ori" width={112} height={112} className="object-contain mx-auto mb-3 drop-shadow-md" />
-                            No questions found matching your criteria.
+                        <div className="py-20 text-center">
+                            <Image src="/ori2d/ori-curious.png" alt="Ori" width={112} height={112} className="object-contain mx-auto mb-4 drop-shadow-md" />
+                            <p className="text-base font-black text-foreground">More questions coming soon</p>
+                            <p className="mt-1.5 text-sm text-muted-foreground">
+                                We&apos;re actively adding questions for this selection. Check back shortly —
+                                or try a different subject or filter for now.
+                            </p>
                         </div>
                     )}
 

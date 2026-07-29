@@ -14,24 +14,68 @@ export function CbtImportUpload({ initialJobs }: { initialJobs: DocumentImportJo
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
+  // Above this, upload straight to R2 (presigned) to dodge Vercel's ~4.5 MB
+  // serverless body limit — this is what let large PDFs fail before.
+  const DIRECT_UPLOAD_THRESHOLD = 4 * 1024 * 1024;
+
   function upload(file: File) {
     setError(null);
-    const form = new FormData();
-    form.append("file", file);
     startTransition(async () => {
-      // mutateJson leaves content-type unset for FormData so the browser sets
-      // the multipart boundary.
-      const res = await mutateJson("/api/cbt/import-jobs", {
-        method: "POST",
-        body: form,
-      });
-      const data = (await res.json().catch(() => ({}))) as { detail?: string; job?: { id: string } };
-      if (!res.ok || !data.job) {
-        setError(data.detail ?? `Upload failed (${res.status})`);
-        return;
+      try {
+        const mimeType = file.type || "application/octet-stream";
+        let res: Response;
+
+        if (file.size > DIRECT_UPLOAD_THRESHOLD) {
+          // 1) ask the server for a presigned R2 PUT URL
+          const presignRes = await mutateJson("/api/cbt/import-jobs/presign", {
+            method: "POST",
+            body: JSON.stringify({ fileName: file.name, mimeType }),
+          });
+          const presign = (await presignRes.json().catch(() => ({}))) as {
+            detail?: string; uploadUrl?: string; objectKey?: string; bucket?: string;
+          };
+          if (!presignRes.ok || !presign.uploadUrl || !presign.objectKey || !presign.bucket) {
+            setError(presign.detail ?? `Upload failed (${presignRes.status})`);
+            return;
+          }
+          // 2) PUT the bytes DIRECTLY to R2 (no server hop → no body-size cap)
+          const put = await fetch(presign.uploadUrl, {
+            method: "PUT",
+            headers: { "Content-Type": mimeType },
+            body: file,
+          });
+          if (!put.ok) {
+            setError(`Direct upload to storage failed (${put.status}). Please retry.`);
+            return;
+          }
+          // 3) register the import job against the uploaded object (small JSON)
+          res = await mutateJson("/api/cbt/import-jobs", {
+            method: "POST",
+            body: JSON.stringify({
+              objectKey: presign.objectKey,
+              bucket: presign.bucket,
+              fileName: file.name,
+              mimeType,
+              size: file.size,
+            }),
+          });
+        } else {
+          // Small file: the simple multipart path (well under the limit).
+          const form = new FormData();
+          form.append("file", file);
+          res = await mutateJson("/api/cbt/import-jobs", { method: "POST", body: form });
+        }
+
+        const data = (await res.json().catch(() => ({}))) as { detail?: string; job?: { id: string } };
+        if (!res.ok || !data.job) {
+          setError(data.detail ?? `Upload failed (${res.status})`);
+          return;
+        }
+        if (inputRef.current) inputRef.current.value = "";
+        router.push(`/cbt/import/${data.job.id}`);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Upload failed. Please retry.");
       }
-      if (inputRef.current) inputRef.current.value = "";
-      router.push(`/cbt/import/${data.job.id}`);
     });
   }
 

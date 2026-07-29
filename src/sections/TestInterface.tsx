@@ -68,7 +68,6 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
   const [isSubmitting, setIsSubmitting] = useState(false);
   // Ref-based guard so simultaneous triggers (timer + malpractice) never both pass
   const isSubmittingRef = useRef(false);
-  const [isPortrait, setIsPortrait] = useState(false);
   const allowSubmittedNavigationRef = useRef(false);
   const questionStartedAtRef = useRef<number>(Date.now());
   // Always holds the latest finalSubmit so timer callbacks never use a stale closure
@@ -84,19 +83,6 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
     };
   }, []);
 
-  // Portrait / landscape detection — tests must be in landscape on mobile
-  useEffect(() => {
-    const check = () => {
-      setIsPortrait(window.innerWidth < window.innerHeight && window.innerWidth < 1024);
-    };
-    check();
-    window.addEventListener('resize', check);
-    window.addEventListener('orientationchange', check);
-    return () => {
-      window.removeEventListener('resize', check);
-      window.removeEventListener('orientationchange', check);
-    };
-  }, []);
 
   const enterFullscreen = () => {
     const el = document.documentElement;
@@ -181,8 +167,21 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
   // Malpractice Detection Logic
   useEffect(() => {
     if (!isExamStarted) return;
-    
+
+    // Anti-false-kick guards (students were auto-exited on entry):
+    //  • SETTLE window — ignore any violation in the first few seconds after the
+    //    exam starts, so the entry/fullscreen/keyboard transition can't rack up
+    //    strikes before the student does anything.
+    //  • Fullscreen-exit only counts on a real desktop (pointer:fine); on phones
+    //    element-fullscreen is unreliable and was firing instant violations, so
+    //    tab-switch / visibility detection carries the anti-cheat there instead.
+    const SETTLE_MS = 4000;
+    const examViolationStart = Date.now();
+    const fullscreenViolationsEnabled =
+      typeof window !== 'undefined' && window.matchMedia?.('(pointer: fine)').matches === true;
+
     const handleViolation = () => {
+      if (Date.now() - examViolationStart < SETTLE_MS) return; // settle window
       setViolations(prev => {
         const next = prev + 1;
         if (next >= 3) {
@@ -265,6 +264,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
     };
 
     const handleFullscreenChange = () => {
+      if (!fullscreenViolationsEnabled) return; // touch devices: fullscreen is unreliable, don't penalize
       if (!document.fullscreenElement && !(document as any).webkitFullscreenElement) {
         handleViolation();
       }
@@ -623,20 +623,6 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
   return (
     <div className="min-h-dvh overflow-x-hidden lg:h-dvh lg:overflow-hidden bg-white text-gray-900 font-sans text-sm selection:bg-blue-200/30 flex flex-col relative" style={{ colorScheme: 'light' }}>
 
-      {/* Portrait orientation guard — mobile must be landscape */}
-      {isPortrait && (
-        <div className="fixed inset-0 z-[999] bg-slate-900 flex flex-col items-center justify-center text-white p-8 text-center">
-          <div className="text-7xl mb-6">📱</div>
-          <h2 className="text-2xl font-black uppercase tracking-tight mb-3">Rotate Your Device</h2>
-          <p className="text-slate-300 text-sm font-medium leading-relaxed max-w-xs">
-            This exam must be taken in landscape mode. Please rotate your phone horizontally to continue.
-          </p>
-          <div className="mt-8 inline-flex items-center gap-4 border border-white/20 rounded-2xl px-6 py-4">
-            <span className="text-3xl">↺</span>
-            <span className="text-sm font-bold text-slate-300">Turn sideways to unlock the test</span>
-          </div>
-        </div>
-      )}
 
       {/* 0. Verification Overlay */}
       {!isExamStarted && (
@@ -996,6 +982,15 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
                   }`}
                 >
                   {subj}
+                  {(() => {
+                    const total = stats.not_answered + stats.answered + stats.marked_review + stats.answered_marked;
+                    const attempted = stats.answered + stats.answered_marked;
+                    return (
+                      <span className={`rounded px-1.5 py-0.5 text-[10px] font-black tabular-nums ${isActive ? 'bg-black/10 text-black' : 'bg-white/20 text-white'}`}>
+                        {attempted}/{total}
+                      </span>
+                    );
+                  })()}
                   <div className="p-0.5 hover:bg-black/10 rounded cursor-help">
                     <Info className="w-3.5 h-3.5" />
                   </div>

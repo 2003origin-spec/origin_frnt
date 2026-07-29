@@ -32,6 +32,20 @@ export function CbtTestList({ initialTests }: { initialTests: CbtTest[] }) {
     });
   }
 
+  function remove(test: CbtTest) {
+    setError(null);
+    if (!window.confirm(`Delete "${test.title}"? This permanently removes the test and its questions list. This cannot be undone.`)) return;
+    startTransition(async () => {
+      const res = await mutateJson(`/api/cbt/tests/${test.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { detail?: string };
+        setError(data.detail ?? `Delete failed (${res.status})`);
+        return;
+      }
+      router.refresh();
+    });
+  }
+
   return (
     <div className="space-y-4">
       <header>
@@ -65,10 +79,10 @@ export function CbtTestList({ initialTests }: { initialTests: CbtTest[] }) {
       ) : (
         <ul className="space-y-2">
           {initialTests.map((t) => (
-            <li key={t.id} className="neu-raised p-4">
-              <Link href={`/cbt/tests/${t.id}`} className="flex items-center justify-between gap-4">
-                <div>
-                  <div className="font-medium text-foreground">{t.title}</div>
+            <li key={t.id} className="neu-raised flex items-center justify-between gap-3 p-4">
+              <Link href={`/cbt/tests/${t.id}`} className="flex min-w-0 flex-1 items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="truncate font-medium text-foreground">{t.title}</div>
                   <div className="text-xs text-muted-foreground">
                     {t.questionCount} questions · {t.maxScore} marks · {t.durationMinutes} min
                   </div>
@@ -76,13 +90,22 @@ export function CbtTestList({ initialTests }: { initialTests: CbtTest[] }) {
                 <span
                   className={
                     t.status === "ready"
-                      ? "rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs text-emerald-600 dark:text-emerald-400"
-                      : "rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground"
+                      ? "shrink-0 rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs text-emerald-600 dark:text-emerald-400"
+                      : "shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground"
                   }
                 >
                   {t.status}
                 </span>
               </Link>
+              <button
+                type="button"
+                onClick={() => remove(t)}
+                disabled={pending}
+                aria-label={`Delete test ${t.title}`}
+                className="shrink-0 rounded-lg px-2 py-1 text-xs font-bold text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50"
+              >
+                Delete
+              </button>
             </li>
           ))}
         </ul>

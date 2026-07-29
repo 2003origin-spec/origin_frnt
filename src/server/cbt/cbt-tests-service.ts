@@ -259,8 +259,15 @@ export async function setTestQuestions(
     await client.query(`DELETE FROM cbt.test_questions WHERE test_id = $1`, [testId]);
     for (let pos = 0; pos < items.length; pos++) {
       const it = items[pos];
-      const marks = Number.isFinite(Number(it.marks)) ? Number(it.marks) : 4;
-      const neg = Number.isFinite(Number(it.negativeMarks)) ? Number(it.negativeMarks) : -1;
+      // Default positive marks to +4 when unset/blank/0 — a 0-mark question is
+      // never intentional and was surfacing as "+0 / -0" in the player. A teacher
+      // who sets an explicit positive value keeps it. Negative marks are kept
+      // as-sent INCLUDING 0, because "no negative marking" is a valid choice
+      // (only fall back to -1 when the value is missing/non-numeric).
+      const rawMarks = Number(it.marks);
+      const marks = Number.isFinite(rawMarks) && rawMarks > 0 ? rawMarks : 4;
+      const rawNeg = Number(it.negativeMarks);
+      const neg = Number.isFinite(rawNeg) ? rawNeg : -1;
       await client.query(
         `INSERT INTO cbt.test_questions (test_id, position, question_id, marks, negative_marks)
            VALUES ($1, $2, $3, $4, $5)`,

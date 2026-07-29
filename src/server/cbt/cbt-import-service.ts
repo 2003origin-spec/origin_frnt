@@ -83,9 +83,25 @@ function sourceTypeForMime(mimeType: string, fileName: string): ImportSourceType
 export async function createCbtImportJob(input: {
   teacher: CbtTeacher;
   userId: string;
-  file: { buffer: Buffer; fileName: string; mimeType: string };
+  /** Small files: bytes uploaded through the server. */
+  file?: { buffer: Buffer; fileName: string; mimeType: string };
+  /** Large files: already uploaded to R2 by the browser (presigned PUT). */
+  r2Object?: { objectKey: string; bucket: string; fileName: string; mimeType: string; sizeBytes?: number };
 }): Promise<DocumentImportJob> {
   const workspaceId = await ensureImportWorkspace(input.teacher, input.userId);
+  if (input.r2Object) {
+    return createImportJob({
+      workspaceId,
+      userId: input.userId,
+      sourceType: sourceTypeForMime(input.r2Object.mimeType, input.r2Object.fileName),
+      fileName: input.r2Object.fileName,
+      mimeType: input.r2Object.mimeType,
+      targetSurface: "question_bag",
+      sourceR2: { objectKey: input.r2Object.objectKey, bucket: input.r2Object.bucket, sizeBytes: input.r2Object.sizeBytes },
+      triggerPipeline: true,
+    });
+  }
+  if (!input.file) throw new Error("A file or an uploaded R2 object is required.");
   return createImportJob({
     workspaceId,
     userId: input.userId,

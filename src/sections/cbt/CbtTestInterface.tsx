@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, CheckCircle2, Play, ShieldCheck } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Play, ShieldCheck, ZoomIn, X } from "lucide-react";
 
 import { LatexRenderer } from "@/components/ui/LatexRenderer";
 import { useCbtRoom } from "@/context/CbtRoomContext";
@@ -61,6 +61,7 @@ export function CbtTestInterface() {
   const [answers, setAnswers] = useState<Record<number, CbtStudentAnswer>>({});
   const [palette, setPalette] = useState<Record<number, CbtPaletteStatus>>({});
   const [index, setIndex] = useState(0);
+  const [imgZoomed, setImgZoomed] = useState(false);
   const [showSubmitModal, setShowSubmitModal] = useState(false);
   // Malpractice / fraud detection (ported from TestInterface): 3-strike
   // tab-switch / full-screen-exit detection that auto-submits on the 3rd strike.
@@ -94,6 +95,33 @@ export function CbtTestInterface() {
   const remaining = payload
     ? Math.max(0, Math.ceil((payload.durationSeconds * 1000 - (Date.now() - new Date(payload.startedAt).getTime())) / 1000))
     : 0;
+
+  // Live attempted / skipped counts (shown in the exam header, mirroring the
+  // main test player). "Attempted" = a question with a saved answer; everything
+  // else in the paper is "skipped". Keyed by q.position, like answers/palette.
+  const { attempted, skipped } = useMemo(() => {
+    let a = 0;
+    for (const f of flat) {
+      const st = palette[f.q.position];
+      if (st === "answered" || st === "answered_marked") a += 1;
+    }
+    return { attempted: a, skipped: Math.max(0, flat.length - a) };
+  }, [flat, palette]);
+
+  // Per-section (per-subject) progress — how many attempted out of the total in
+  // each subject section, shown on the SECTION bar so students see their
+  // progress per subject separately.
+  const sectionStats = useMemo(() => {
+    const stats: Record<string, { attempted: number; total: number }> = {};
+    for (const f of flat) {
+      const subj = f.subject || "General";
+      if (!stats[subj]) stats[subj] = { attempted: 0, total: 0 };
+      stats[subj].total += 1;
+      const st = palette[f.q.position];
+      if (st === "answered" || st === "answered_marked") stats[subj].attempted += 1;
+    }
+    return stats;
+  }, [flat, palette]);
 
   // ── Load payload + hydrate draft (resume) ──────────────────────────────────
   useEffect(() => {
@@ -213,8 +241,22 @@ export function CbtTestInterface() {
   useEffect(() => {
     if (phase !== "running") return;
 
+    // Anti-false-kick guards (students were auto-exited on entry):
+    //  • SETTLE window — ignore ANY violation in the first few seconds after the
+    //    exam opens, so the entry/fullscreen/keyboard transition can't rack up
+    //    strikes before the student has done anything.
+    //  • Fullscreen-exit only counts on a real desktop (pointer:fine). On phones
+    //    element-fullscreen is unreliable (rejects / auto-exits on keyboard or
+    //    notification), which was instantly firing violations — there, tab-switch
+    //    / visibility detection carries the anti-cheat instead.
+    const SETTLE_MS = 4000;
+    const startedAt = Date.now();
+    const fullscreenViolationsEnabled =
+      typeof window !== "undefined" && window.matchMedia?.("(pointer: fine)").matches === true;
+
     const handleViolation = () => {
       if (malpracticeTerminated) return;
+      if (Date.now() - startedAt < SETTLE_MS) return; // settle window
       setViolations((prev) => {
         const next = prev + 1;
         if (next >= 3) {
@@ -248,7 +290,7 @@ export function CbtTestInterface() {
     const onBlur = () => startTimer();
     const onFocus = () => stopTimer();
     const onFullscreenChange = () => {
-      if (!document.fullscreenElement) handleViolation();
+      if (fullscreenViolationsEnabled && !document.fullscreenElement) handleViolation();
     };
 
     document.addEventListener("visibilitychange", onVisibility);
@@ -292,6 +334,7 @@ export function CbtTestInterface() {
         setPalette((prev) => (prev[pos] ? prev : { ...prev, [pos]: "not_answered" }));
       }
       setIndex(clamped);
+      setImgZoomed(false);
     },
     [flat],
   );
@@ -462,7 +505,7 @@ export function CbtTestInterface() {
   const activeSubject = current.subject || "General";
 
   return (
-    <div ref={containerRef} className="flex h-dvh flex-col overflow-y-auto neu-surface text-foreground">
+    <div ref={containerRef} className="flex h-dvh flex-col overflow-y-auto overscroll-contain neu-surface text-foreground" style={{ touchAction: 'pan-y' }}>
       {/* 1. Branded header */}
       <header className="shrink-0 flex flex-col items-center justify-between gap-3 border-b border-border/60 px-3 py-2 sm:flex-row sm:gap-0 sm:px-6">
         <div className="flex w-full items-center justify-between gap-3 sm:w-auto">
@@ -476,6 +519,14 @@ export function CbtTestInterface() {
           <div className="flex"><span className="w-20 text-muted-foreground sm:w-28">Candidate:</span> <span className="truncate font-mono text-primary">{studentCode || "—"}</span></div>
           <div className="flex"><span className="w-20 text-muted-foreground sm:w-28">Subject:</span> <span className="truncate text-primary">{activeSubject}</span></div>
           <div className="flex items-center"><span className="w-20 text-muted-foreground sm:w-28">Remaining:</span> <span className={`rounded px-2 py-0.5 font-mono font-bold text-white ${remaining <= 60 ? "bg-red-600 animate-pulse" : "bg-rose-500"}`} suppressHydrationWarning>{formatClock(remaining)}</span></div>
+          <div className="flex items-center gap-2 pt-0.5">
+            <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/15 px-2 py-0.5 font-bold text-emerald-700 dark:text-emerald-400">
+              Attempted <span className="font-mono">{attempted}</span>
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-md bg-red-500/15 px-2 py-0.5 font-bold text-red-600 dark:text-red-400">
+              Skipped <span className="font-mono">{skipped}</span>
+            </span>
+          </div>
         </div>
       </header>
 
@@ -484,13 +535,19 @@ export function CbtTestInterface() {
         <div className="flex h-[38px] shrink-0 items-center border-r border-white/20 bg-primary px-4 text-xs font-bold text-white">SECTION</div>
         {subjects.map((subj) => {
           const isActive = activeSubject === subj;
+          const st = sectionStats[subj];
           return (
             <button
               key={subj}
               onClick={() => jumpToSubject(subj)}
-              className={`h-[38px] shrink-0 border-r border-white/20 px-4 text-xs font-bold uppercase transition-all ${isActive ? "bg-white text-black" : "bg-primary text-white hover:bg-primary/90"}`}
+              className={`flex h-[38px] shrink-0 items-center gap-2 border-r border-white/20 px-4 text-xs font-bold uppercase transition-all ${isActive ? "bg-white text-black" : "bg-primary text-white hover:bg-primary/90"}`}
             >
               {subj}
+              {st ? (
+                <span className={`rounded px-1.5 py-0.5 text-[10px] font-black tabular-nums ${isActive ? "bg-black/10 text-black" : "bg-white/20 text-white"}`}>
+                  {st.attempted}/{st.total}
+                </span>
+              ) : null}
             </button>
           );
         })}
@@ -510,12 +567,22 @@ export function CbtTestInterface() {
           <div className="neu-raised rounded-2xl p-4 sm:p-5 text-base leading-relaxed">
             <LatexRenderer content={current.q.stem} />
             {current.q.image ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={current.q.image}
-                alt="Question diagram"
-                className="mt-4 max-h-80 w-auto max-w-full rounded-xl object-contain"
-              />
+              <button
+                type="button"
+                onClick={() => setImgZoomed(true)}
+                className="group relative mt-4 block cursor-zoom-in"
+                aria-label="Zoom question image"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={current.q.image}
+                  alt="Question diagram"
+                  className="max-h-80 w-auto max-w-full rounded-xl object-contain"
+                />
+                <span className="absolute right-2 top-2 flex items-center gap-1 rounded-md bg-black/60 px-2 py-1 text-[10px] font-bold text-white opacity-0 transition-opacity group-hover:opacity-100">
+                  <ZoomIn className="h-3.5 w-3.5" /> Zoom
+                </span>
+              </button>
             ) : null}
           </div>
 
@@ -571,6 +638,30 @@ export function CbtTestInterface() {
           </button>
         </aside>
       </div>
+
+      {/* Fullscreen question-image zoom (parity with the main test player) */}
+      {imgZoomed && current.q.image ? (
+        <div
+          className="fixed inset-0 z-[230] flex items-center justify-center bg-black/90 p-4"
+          onClick={() => setImgZoomed(false)}
+        >
+          <button
+            type="button"
+            onClick={() => setImgZoomed(false)}
+            aria-label="Close zoom"
+            className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20"
+          >
+            <X className="h-5 w-5" />
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={current.q.image}
+            alt="Question diagram (zoomed)"
+            className="max-h-[92vh] max-w-[95vw] object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      ) : null}
 
       {/* Submit confirmation modal */}
       {showSubmitModal ? (
