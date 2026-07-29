@@ -95,6 +95,8 @@ export const PUBLIC_APP_PATHS = [
   // Google Search Console HTML-file verification (public/…) — Google fetches
   // it logged-out, so it must bypass the auth middleware.
   "/google04973042719594b9.html",
+  // llms.txt — AI-assistant discovery file; fetched logged-out.
+  "/llms.txt",
   // Play-required public account-deletion page (deletion API itself is
   // authenticated; the page must be reachable logged-out — plan §5.6).
   "/account/delete",

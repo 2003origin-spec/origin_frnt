@@ -27,6 +27,7 @@ import {
   registerAction,
 } from '@/server/actions/auth-actions';
 import { sendOtpAction, verifyOtpAction } from '@/server/actions/otp-actions';
+import { track } from '@/lib/analytics';
 
 interface AuthContextType {
   user: User | null;
@@ -413,6 +414,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
       } else {
         router.push('/dashboard');
       }
+      track('login', { method: 'password', role: result.user.role });
       toast.success('Welcome back to ORIGIN!');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Login failed';
@@ -454,6 +456,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
       } else {
         router.push('/dashboard');
       }
+      track('login', { method: 'otp', role: result.user.role });
       toast.success('Welcome back to ORIGIN!');
     } catch (err: any) {
       setAuthError(err.message || 'An unexpected error occurred.');
@@ -495,6 +498,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
       } else {
         router.push('/dashboard');
       }
+      track('sign_up', { method: 'password', role: result.user.role });
       toast.success('Registration successful! Welcome to ORIGIN!');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Registration failed';
@@ -575,6 +579,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
     } else {
       router.push('/dashboard');
     }
+    track('login', { method: 'google', role: authedUser.role });
     toast.success('Google login successful! Welcome to ORIGIN!');
   };
 

@@ -3,6 +3,7 @@
 import React, { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { HelpCircle, ArrowLeft, Search, Check, ChevronDown, BookOpen, Users, Lock, CreditCard, Laptop, Settings } from 'lucide-react';
+import { JsonLd } from '@/components/seo/JsonLd';
 
 const CATEGORIES = [
   { id: 'all', label: 'All FAQs', icon: HelpCircle },
@@ -164,6 +165,18 @@ export default function FAQPage() {
 
   return (
     <div className="min-h-screen neu-surface text-foreground font-sans relative overflow-x-hidden selection:bg-primary/20 selection:text-primary">
+      {/* FAQ rich-results structured data (built from the same FAQS source). */}
+      <JsonLd
+        data={{
+          '@context': 'https://schema.org',
+          '@type': 'FAQPage',
+          mainEntity: FAQS.map((f) => ({
+            '@type': 'Question',
+            name: f.question,
+            acceptedAnswer: { '@type': 'Answer', text: f.answer },
+          })),
+        }}
+      />
       {/* Background Glows */}
       <div className="absolute inset-0 z-0 pointer-events-none opacity-30 dark:opacity-20">
         <div className="absolute top-[-10%] right-[-20%] w-[60%] h-[60%] bg-primary/10 rounded-full blur-[150px]" />
