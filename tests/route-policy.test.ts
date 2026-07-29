@@ -92,6 +92,13 @@ test("service-worker script and offline fallback are public (offline layer, plan
   assert.equal(getAppRoutePolicy("/offline.html").kind, "public");
 });
 
+test("SEO crawl files (robots.txt, sitemap.xml) are public for bots", () => {
+  // Search-engine + AI crawlers hit these with no session; an auth redirect
+  // would break indexing.
+  assert.equal(getAppRoutePolicy("/robots.txt").kind, "public");
+  assert.equal(getAppRoutePolicy("/sitemap.xml").kind, "public");
+});
+
 test("route handlers do not import low-level JWT primitives directly", () => {
   const routes = walkFiles(join(root, "src/app/api"), (file) => file.endsWith("/route.ts"));
   const offenders = routes.filter((route) => readFileSync(route, "utf8").includes("@/server/auth-jwt"));

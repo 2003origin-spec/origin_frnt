@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
+import { GoogleAnalytics } from "@next/third-parties/google";
 import { Darker_Grotesque } from "next/font/google";
 import "./globals.css";
 import AgentationLoader from "@/components/layout/AgentationLoader";
@@ -53,6 +54,13 @@ export const metadata: Metadata = {
     description: "The most advanced AI-powered learning platform for JEE, NEET, and Foundation.",
     images: ["/origin-new.jpg"],
   },
+  // Google Search Console verification (meta-tag method). Baked in so it ships
+  // without env config; env can override. A second proof (the HTML file at
+  // /google04973042719594b9.html in public/) is also served — Google needs
+  // only one, this is belt-and-suspenders.
+  verification: {
+    google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION || "FLL64KPBN8ThzJs6_foY6ElQNXr52ND6iOU0Bqghcjg",
+  },
 };
 
 export default async function RootLayout({
@@ -101,6 +109,18 @@ export default async function RootLayout({
           <ServiceWorkerManager />
           {process.env.NODE_ENV === "development" && <AgentationLoader />}
         </ThemeProvider>
+        {/* GA4 (Origin Web, G-NGH8J3E2D0). Uses NEXT_PUBLIC_GA_ID if set (any
+            env — handy for testing on a preview), otherwise falls back to the
+            known Measurement ID ONLY on the Vercel production deployment — so
+            dev/preview traffic never pollutes analytics. Enhanced Measurement
+            (on by default in GA4) captures SPA route-change page_views. Fires in
+            the Android shell too, since it loads the production site. */}
+        {(() => {
+          const gaId =
+            process.env.NEXT_PUBLIC_GA_ID ||
+            (process.env.VERCEL_ENV === "production" ? "G-NGH8J3E2D0" : "");
+          return gaId ? <GoogleAnalytics gaId={gaId} /> : null;
+        })()}
       </body>
     </html>
   );
