@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { formatISTTime } from '@/lib/format-time';
 import {
     ChevronLeft, BookOpen, Save, Maximize2, Minimize2,
     PenTool, FileText, CheckCircle2, Clock, Trash2
@@ -128,7 +129,7 @@ export default function PDFReader({ url, name, subject, classNum, onBack }: PDFR
                         )}
                         {lastSaved && (
                             <span className="text-slate-400 ml-1 hidden md:inline">
-                                · {lastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                · {formatISTTime(lastSaved)}
                             </span>
                         )}
                     </div>
@@ -193,7 +194,7 @@ export default function PDFReader({ url, name, subject, classNum, onBack }: PDFR
                         {lastSaved && (
                             <div className="flex items-center gap-1 text-[10px] font-bold text-slate-400 uppercase tracking-wide ml-auto">
                                 <Clock className="w-3 h-3" />
-                                <span>{lastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                <span>{formatISTTime(lastSaved)}</span>
                             </div>
                         )}
                     </div>

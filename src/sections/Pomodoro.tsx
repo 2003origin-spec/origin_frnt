@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useRef, useMemo } from 'react';
+import { formatISTTime } from '@/lib/format-time';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -86,7 +87,7 @@ const formatSessionDate = (dateStr: string | undefined) => {
 
     return {
       date: d.toLocaleDateString(),
-      time: d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      time: formatISTTime(d)
     };
   } catch (e) {
     return { date: 'Error Date', time: 'Error Time' };

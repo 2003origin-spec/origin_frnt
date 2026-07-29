@@ -27,6 +27,32 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const ctx = await requireCbtTeacher(request);
+
+    // JSON path: the browser already PUT the file to R2 via a presigned URL
+    // (large files — bypasses the ~4.5 MB serverless body limit). We just
+    // register the job against that R2 object.
+    if (request.headers.get("content-type")?.includes("application/json")) {
+      const body = (await request.json().catch(() => ({}))) as {
+        objectKey?: string; bucket?: string; fileName?: string; mimeType?: string; size?: number;
+      };
+      if (!body.objectKey || !body.bucket) {
+        return teacherJson({ detail: "objectKey and bucket are required." }, { status: 400 });
+      }
+      const job = await createCbtImportJob({
+        teacher: ctx.cbtTeacher,
+        userId: ctx.userId,
+        r2Object: {
+          objectKey: body.objectKey,
+          bucket: body.bucket,
+          fileName: body.fileName || "upload",
+          mimeType: body.mimeType || "application/octet-stream",
+          sizeBytes: typeof body.size === "number" ? body.size : undefined,
+        },
+      });
+      return teacherJson({ job }, { status: 201 });
+    }
+
+    // Multipart path: small files still upload through the server.
     const form = await request.formData();
     const file = form.get("file");
     if (!(file instanceof File)) {

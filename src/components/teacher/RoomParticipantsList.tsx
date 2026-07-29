@@ -12,6 +12,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { formatISTTime } from "@/lib/format-time";
 
 import { Badge } from "@/components/ui/badge";
 import { apiJson } from "@/lib/teacher-client";
@@ -105,7 +106,7 @@ export function RoomParticipantsList({ workspaceId, room }: Props) {
                 <p className="text-xs text-muted-foreground">
                   Joined {new Date(p.joined_at).toLocaleTimeString()}
                   {p.finished_at
-                    ? ` · finished ${new Date(p.finished_at).toLocaleTimeString()}`
+                    ? ` · finished ${formatISTTime(p.finished_at)}`
                     : null}
                 </p>
               </div>

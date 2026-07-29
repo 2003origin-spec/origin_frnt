@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { formatISTTime } from "@/lib/format-time";
 import { Send, ExternalLink, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -110,7 +111,7 @@ export function BatchChat({ messagesUrl, currentUserId, mineRole, pollMs = 8000 
                   )}
                 </div>
                 <span className="text-[10px] text-muted-foreground mt-0.5 px-1">
-                  {new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  {formatISTTime(m.createdAt)}
                 </span>
               </div>
             );

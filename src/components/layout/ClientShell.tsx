@@ -85,11 +85,16 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnab
   // The join screen is a single-action code entry; on mobile the floating Origin
   // AI launcher overlaps the Join button, so hide it there.
   const isStudyRoomJoinPath = pathname === '/study-rooms/join';
+  // The CBT exam surface (student player + login/join links) must never show the
+  // floating Ori AI — a logged-in student who opens a CBT link would otherwise
+  // get an AI helper mid-exam. CBT is its own proctored test app; suppress Ori
+  // across the whole /cbt route.
+  const isCbtPath = pathname === '/cbt' || pathname.startsWith('/cbt/');
   const isResultPath = pathname.endsWith('/result');
   // Result pages are post-test summaries — keep the nav so students can leave.
   const isSpecialPath = (pathname.startsWith('/tests/') && !isResultPath) || pathname.startsWith('/ogcode/') || isStudyRoomTestPath;
   const isFullViewportApp = pathname === '/doubt-solver' || (pathname.startsWith('/tests/') && !isResultPath) || pathname.startsWith('/ogcode/') || isStudyRoomTestPath;
-  const shouldHideOriginAi = isTestsPath || isStudyRoomTestPath || isStudyRoomJoinPath;
+  const shouldHideOriginAi = isTestsPath || isStudyRoomTestPath || isStudyRoomJoinPath || isCbtPath;
 
   const { resolvedTheme, setTheme } = useTheme();
   const { 

@@ -1,5 +1,6 @@
  'use client';
 import { Fragment, useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { formatISTTime } from '@/lib/format-time';
 import Image from 'next/image';
 import {
   ChevronLeft, Send, ImagePlus, Mic, MicOff,
@@ -1611,7 +1612,7 @@ function ChatMessage({ message }: { message: ChatMessageType }) {
             <FormattedMessage content={message.content} isAssistant={isAI} />
           </div>
           <div className={`text-[10px] mt-3 font-bold uppercase tracking-widest opacity-40 ${isAI ? 'text-muted-foreground' : 'text-white/80'}`}>
-            {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            {formatISTTime(message.timestamp)}
           </div>
         </div>
       </div>

@@ -204,6 +204,70 @@ export async function uploadBytesToR2(input: R2BytesUploadInput): Promise<R2Uplo
   };
 }
 
+/** RFC3986 encode for SigV4 query params (encodeURIComponent + !'()* ). */
+function sigv4Encode(value: string): string {
+  return encodeURIComponent(value).replace(/[!'()*]/gu, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+}
+
+/** A fresh R2 object key for a browser-side import upload (presigned PUT). */
+export function createImportUploadObjectKey(fileName: string): string {
+  const safeName = path.basename(fileName).replace(/[^a-zA-Z0-9._-]/gu, "_") || "document";
+  return `imports/uploads/${randomUUID()}/${safeName}`;
+}
+
+/**
+ * SigV4 query-presigned PUT URL for R2. Lets the browser upload a large file
+ * DIRECTLY to R2, bypassing Vercel's ~4.5 MB serverless request-body limit
+ * (which was the real "4 MB PDF" wall). Only `host` is signed, so the browser
+ * just PUTs the bytes to this URL — no auth headers needed on its side.
+ *
+ * NOTE: must be smoke-tested against live R2 once (a wrong signature → 403).
+ * Reuses the exact key-derivation used by the working header-signed uploads.
+ */
+export function createPresignedR2PutUrl(input: {
+  objectKey: string;
+  bucket?: string;
+  expiresSeconds?: number;
+}): { url: string; bucket: string; objectKey: string } {
+  const bucket = input.bucket ?? importR2BucketName();
+  const accessKeyId = requiredEnv("R2_ACCESS_KEY_ID");
+  const secretAccessKey = requiredEnv("R2_SECRET_ACCESS_KEY");
+  const endpointUrl = new URL(r2Endpoint());
+  const expires = Math.min(Math.max(input.expiresSeconds ?? 600, 60), 3600);
+  const { amzDate, dateStamp } = amzDateParts();
+  const canonicalUri = canonicalObjectPath(bucket, input.objectKey);
+  const credentialScope = `${dateStamp}/auto/s3/aws4_request`;
+
+  const params: Record<string, string> = {
+    "X-Amz-Algorithm": "AWS4-HMAC-SHA256",
+    "X-Amz-Credential": `${accessKeyId}/${credentialScope}`,
+    "X-Amz-Date": amzDate,
+    "X-Amz-Expires": String(expires),
+    "X-Amz-SignedHeaders": "host",
+  };
+  const canonicalQueryString = Object.keys(params)
+    .sort()
+    .map((k) => `${sigv4Encode(k)}=${sigv4Encode(params[k])}`)
+    .join("&");
+  const canonicalHeaders = `host:${endpointUrl.host}\n`;
+  const canonicalRequest = ["PUT", canonicalUri, canonicalQueryString, canonicalHeaders, "host", "UNSIGNED-PAYLOAD"].join("\n");
+  const stringToSign = [
+    "AWS4-HMAC-SHA256",
+    amzDate,
+    credentialScope,
+    createHash("sha256").update(canonicalRequest).digest("hex"),
+  ].join("\n");
+  const signature = createHmac("sha256", signingKey(secretAccessKey, dateStamp))
+    .update(stringToSign, "utf8")
+    .digest("hex");
+
+  return {
+    url: `${endpointUrl.origin}${canonicalUri}?${canonicalQueryString}&X-Amz-Signature=${signature}`,
+    bucket,
+    objectKey: input.objectKey,
+  };
+}
+
 export async function uploadImportDocumentToR2(input: {
   jobId: string;
   fileName: string;

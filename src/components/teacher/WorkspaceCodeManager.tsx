@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { formatISTDateTime } from "@/lib/format-time";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -90,7 +91,7 @@ export function WorkspaceCodeManager({ workspaceId, initialCodes }: Props) {
                   {activeStudentCode.displayCode}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Created {new Date(activeStudentCode.createdAt).toLocaleString()}
+                  Created {formatISTDateTime(activeStudentCode.createdAt)}
                 </p>
               </div>
               <div className="flex gap-2">
