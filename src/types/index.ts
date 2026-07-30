@@ -569,11 +569,16 @@ export interface OriginAiVoiceConversationTurn {
 }
 
 export interface OriginAiVoiceConfig {
-  transport: 'server_voice';
+  transport: 'server_voice' | 'livekit';
   provider: 'gemini';
   speechToTextModel: string;
   textToSpeechModel: string;
   voiceName: string;
+  livekit?: {
+    url: string;
+    token: string;
+    roomName: string;
+  };
 }
 
 export interface OriginAiVoiceBootstrap extends OriginAiSnapshot {
