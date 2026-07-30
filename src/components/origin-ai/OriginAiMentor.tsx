@@ -349,10 +349,16 @@ export default function OriginAiMentor({
   const remainingText = Math.max(0, textLimitTokens - textTokensUsed);
   const remainingVoiceMins = Math.max(0, Math.ceil((voiceLimitSeconds - voiceSecondsUsed) / 60));
 
+  // Once streamed text is on screen, drop Thinking even if the request hasn't settled.
+  const latestAssistant = snapshot?.session.messages.at(-1);
+  const replyAlreadyVisible =
+    latestAssistant?.role === 'assistant' && latestAssistant.content.trim().length > 0;
+  const showThinkingUi = isSending && !replyAlreadyVisible;
+
   // Drive the 3D mascot from the live conversation state.
   const mascotState = useMentorMascotState({
     isLoading,
-    isSending,
+    isSending: showThinkingUi,
     voiceStatus,
     message,
     messageCount: snapshot?.session.messages.length ?? 0,
@@ -431,102 +437,38 @@ export default function OriginAiMentor({
     setLiveAssistantTranscript('');
   }, [pageContext.pathname, pageContext.pageKind]);
 
+  // "Ask Ori" on a selection only prepares the composer — never auto-sends.
+  // That keeps Thinking UI off until the student actually presses Send.
   React.useEffect(() => {
     if (!autoAskSelectionNonce || autoAskSelectionNonce === lastAutoAskedSelectionNonceRef.current) {
-      return;
-    }
-
-    if (isLoading || isSending) {
       return;
     }
 
     const selectedText = getPendingHighlightedText()?.trim();
     lastAutoAskedSelectionNonceRef.current = autoAskSelectionNonce;
 
-    if (!selectedText) {
+    if (!selectedText || isSending) {
       return;
     }
 
-    const sendSelectionPrompt = async () => {
-      setMessage('');
-      setIsSending(true);
-      const tempUserId = `pending-user-${Date.now()}`;
-      const tempAiId = `pending-ai-${Date.now()}`;
+    setMessage('Explain the selected text in the current screen context.');
+    requestAnimationFrame(() => {
+      const el = composerRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+    });
+  }, [autoAskSelectionNonce, isSending]);
 
-      setSnapshot(prev => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          session: {
-            ...prev.session,
-            messages: [
-              ...prev.session.messages,
-              {
-                id: tempUserId,
-                role: 'user' as const,
-                content: 'Explain the selected text in the current screen context.',
-                timestamp: new Date(),
-              },
-              {
-                id: tempAiId,
-                role: 'assistant' as const,
-                content: '',
-                timestamp: new Date(),
-                metadata: { streaming: true },
-              },
-            ],
-          },
-        };
-      });
-
-      try {
-        const reply = await sendOriginAiMessageStreaming(
-          'Explain the selected text in the current screen context.',
-          pageContext,
-          selectedText,
-          null,
-          {
-            onTextDelta: (delta) => {
-              setSnapshot(prev => {
-                if (!prev) return prev;
-                return {
-                  ...prev,
-                  session: {
-                    ...prev.session,
-                    messages: prev.session.messages.map((message) =>
-                      message.id === tempAiId
-                        ? { ...message, content: `${message.content}${delta}` }
-                        : message,
-                    ),
-                  },
-                };
-              });
-            },
-          },
-        );
-        setSnapshot(reply);
-      } catch (error) {
-        setSnapshot(prev => {
-          if (!prev) return prev;
-          return {
-            ...prev,
-            session: {
-              ...prev.session,
-              messages: prev.session.messages.filter(
-                (message) => message.id !== tempUserId && message.id !== tempAiId,
-              ),
-            },
-          };
-        });
-        console.error('Failed to send highlighted Ori prompt', error);
-        toast.error(error instanceof Error ? error.message : 'Ori could not explain the selected text');
-      } finally {
-        setIsSending(false);
-      }
-    };
-
-    void sendSelectionPrompt();
-  }, [autoAskSelectionNonce, isLoading, isSending, pageContext]);
+  // Safety net: never leave Thinking/spinner stuck if a stream hangs after the user
+  // cleared the composer (or the reply already landed visually).
+  React.useEffect(() => {
+    if (!isSending) return;
+    const timer = window.setTimeout(() => {
+      setIsSending(false);
+    }, 45_000);
+    return () => window.clearTimeout(timer);
+  }, [isSending]);
 
   const handleSend = async () => {
     const trimmed = message.trim();
@@ -755,7 +697,7 @@ export default function OriginAiMentor({
               </div>
             )}
             <AnimatePresence>
-              {isSending ? <MentorThinkingBubble state={mascotState} /> : null}
+              {showThinkingUi ? <MentorThinkingBubble state={mascotState} /> : null}
             </AnimatePresence>
             <div ref={scrollAnchorRef} />
           </div>
@@ -881,7 +823,7 @@ export default function OriginAiMentor({
                 disabled={isSending || isTextQuotaReached || (!message.trim() && !highlightedText)}
                 className="h-11 w-11 shrink-0 rounded-full bg-primary px-0 py-0 text-white hover:bg-primary/90 disabled:opacity-50"
               >
-                {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                {showThinkingUi ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               </Button>
             </TooltipProvider>
           </div>
@@ -973,7 +915,7 @@ export default function OriginAiMentor({
                   </div>
                 )}
                 <AnimatePresence>
-                  {isSending ? <MentorThinkingBubble state={mascotState} /> : null}
+                  {showThinkingUi ? <MentorThinkingBubble state={mascotState} /> : null}
                 </AnimatePresence>
                 <div ref={scrollAnchorRef} />
               </div>
@@ -995,7 +937,7 @@ export default function OriginAiMentor({
                   </div>
                 )}
                 <AnimatePresence>
-                  {isSending ? <MentorThinkingBubble state={mascotState} /> : null}
+                  {showThinkingUi ? <MentorThinkingBubble state={mascotState} /> : null}
                 </AnimatePresence>
                 <div ref={scrollAnchorRef} />
               </div>
@@ -1036,7 +978,7 @@ export default function OriginAiMentor({
             <div className={cn('flex min-w-0 items-end', compact ? 'gap-2' : 'gap-3')}>
               <TooltipProvider delayDuration={0}>
                 <div className={cn('min-w-0 flex-1 rounded-3xl border border-muted dark:border-slate-800 bg-muted/40 transition focus-within:border-primary/40 focus-within:bg-muted/60', isTextQuotaReached && 'opacity-50')}>
-                  {!isSending && !isVoiceActive && !highlightedText && !message.trim() ? (
+                  {!showThinkingUi && !isVoiceActive && !highlightedText && !message.trim() ? (
                     <SuggestedQuestions onPick={handlePickSuggestion} />
                   ) : null}
                   <Tooltip>
@@ -1132,7 +1074,7 @@ export default function OriginAiMentor({
                     compact ? 'h-12 w-12 shrink-0 px-0 py-0' : 'h-auto px-4 py-3',
                   )}
                 >
-                  {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  {showThinkingUi ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                 </Button>
               </TooltipProvider>
             </div>
