@@ -788,7 +788,7 @@ export async function getOriginAiVoiceBootstrap(
         speechToTextModel: data.voice_config.speechToTextModel ?? data.voice_config.sttModel ?? 'gemini-2.5-flash',
         textToSpeechModel: data.voice_config.textToSpeechModel ?? data.voice_config.ttsModel ?? 'gemini-2.5-flash-preview-tts',
         voiceName: data.voice_config.voiceName,
-        livekit: data.voice_config.livekit,
+        livekit: (data.voice_config as any).livekit,
       },
     };
   }
