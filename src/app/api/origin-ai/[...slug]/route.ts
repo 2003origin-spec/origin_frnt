@@ -224,6 +224,10 @@ function toPageContext(input?: PageContextLike): OriginAiPageContextInput {
  * TypeScript implementation otherwise.
  * ----------------------------------------------------------------------- */
 
+// We pass a dummy proxyUser since bootstrap doesn't need to record proxy-side DB usage
+// (it doesn't use tokens/minutes), and the Python service validates auth itself.
+const dummyUser = { id: "bootstrap", name: "User", email: "" } as StoredUser;
+
 async function proxyToMicroservice(
   method: string,
   path: string,
@@ -276,12 +280,14 @@ async function proxyToMicroservice(
         [REQUEST_ID_HEADER]: requestId,
         "X-Origin-AI-Session-Id": browserSessionId,
         "X-Origin-User-Id": user.id,
-        "X-Origin-User-Name": user.name,
-        "X-Origin-User-Email": user.email,
-        "X-Origin-User-Role": user.role,
-        "X-Origin-User-Streak": String(user.streak),
+        "X-Origin-User-Name": user.name || "",
+        "X-Origin-User-Email": user.email || "",
+        "X-Origin-User-Role": user.role || "student",
+        "X-Origin-User-Streak": String(user.streak || 0),
         "X-Origin-User-Student-Class": user.studentClass ?? "",
         "X-Origin-User-Selected-Course": user.selectedCourse ?? "",
+        // Forward the caller's auth header to Python so it can do its own authentication.
+        ...(request.headers.has("Authorization") ? { "Authorization": request.headers.get("Authorization")! } : {}),
       },
       body: body ? JSON.stringify(body) : undefined,
     });
@@ -414,12 +420,14 @@ async function proxyToMicroserviceStream(
         [REQUEST_ID_HEADER]: requestId,
         "X-Origin-AI-Session-Id": browserSessionId,
         "X-Origin-User-Id": user.id,
-        "X-Origin-User-Name": user.name,
-        "X-Origin-User-Email": user.email,
-        "X-Origin-User-Role": user.role,
-        "X-Origin-User-Streak": String(user.streak),
+        "X-Origin-User-Name": user.name || "",
+        "X-Origin-User-Email": user.email || "",
+        "X-Origin-User-Role": user.role || "student",
+        "X-Origin-User-Streak": String(user.streak || 0),
         "X-Origin-User-Student-Class": user.studentClass ?? "",
         "X-Origin-User-Selected-Course": user.selectedCourse ?? "",
+        // Forward the caller's auth header to Python so it can do its own authentication.
+        ...(request.headers.has("Authorization") ? { "Authorization": request.headers.get("Authorization")! } : {}),
       },
       body: body ? JSON.stringify(body) : undefined,
     });
@@ -1051,11 +1059,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
       }
 
       if (ORIGIN_AI_SERVICE_URL) {
-        const proxyUser = await resolveProxyUser(request);
-        if (!proxyUser) {
-          return unauthorized();
-        }
-        const proxyResp = await proxyToMicroservice("POST", "/api/v1/voice/bootstrap", parsedBody.data, request, proxyUser);
+        // Fast path: don't await DB user resolution here. The python service authenticates
+        // the request itself via Depends(get_current_user).
+        const proxyResp = await proxyToMicroservice("POST", "/api/v1/voice/bootstrap", parsedBody.data, request, dummyUser);
         if (proxyResp) return proxyResp;
       }
 
@@ -1397,10 +1403,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     if (slug.length === 2 && slug[0] === "voice" && slug[1] === "token") {
-      const proxyUser = await resolveProxyUser(request);
-      if (!proxyUser) {
-        return unauthorized();
-      }
+      // The client no longer uses this fallback token endpoint, but we keep it fast just in case.
       return ok({ transport: "server_voice" });
     }
 
