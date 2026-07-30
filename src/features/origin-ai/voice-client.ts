@@ -4,7 +4,8 @@ import {
   type OriginAiClientPageContext,
 } from '@/features/origin-ai/client';
 import { getOriginAiBrowserSessionId } from '@/features/origin-ai/session';
-import type { OriginAiReply, OriginAiVoiceStatus } from '@/types';
+import type { OriginAiReply, OriginAiVoiceStatus, OriginAiVoiceBootstrap } from '@/types';
+import { Room, RoomEvent, Track } from 'livekit-client';
 
 export interface OriginAiVoiceCallbacks {
   onStatusChange?: (status: OriginAiVoiceStatus) => void;
@@ -368,6 +369,94 @@ async function startSpeechRecognitionPipeline(
   };
 }
 
+async function startLiveKitVoiceMode(
+  bootstrap: OriginAiVoiceBootstrap,
+  callbacks: OriginAiVoiceCallbacks,
+): Promise<OriginAiVoiceController> {
+  const { url, token } = bootstrap.voice.livekit!;
+  let isActive = true;
+
+  const room = new Room({
+    adaptiveStream: true,
+    dynacast: true,
+    audioCaptureDefaults: {
+      autoGainControl: true,
+      echoCancellation: true,
+      noiseSuppression: true,
+    },
+  });
+
+  room.on(RoomEvent.Connected, () => {
+    if (!isActive) return;
+    emitStatus(callbacks, 'listening');
+  });
+
+  room.on(RoomEvent.Disconnected, () => {
+    emitStatus(callbacks, 'idle');
+  });
+
+  room.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
+    if (track.kind === Track.Kind.Audio) {
+      const element = track.attach();
+      document.body.appendChild(element);
+
+      // Playback events to guess when agent is speaking if participant attributes aren't used
+      element.addEventListener('play', () => emitStatus(callbacks, 'speaking'));
+      element.addEventListener('pause', () => emitStatus(callbacks, 'listening'));
+      element.addEventListener('ended', () => emitStatus(callbacks, 'listening'));
+    }
+  });
+
+  room.on(RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
+    track.detach();
+  });
+
+  room.on(RoomEvent.TranscriptionReceived, (transcription, participant) => {
+    // Determine if it's user or assistant based on participant
+    const text = transcription.map(seg => seg.text).join(' ').trim();
+    if (!text) return;
+
+    if (participant === room.localParticipant) {
+      callbacks.onUserTranscript?.(text);
+    } else {
+      callbacks.onAssistantTranscript?.(text);
+    }
+  });
+
+  room.on(RoomEvent.ParticipantAttributesChanged, (changedAttributes, participant) => {
+    // The LiveKit Agent SDK sets agent state in participant attributes (e.g. 'agent_state')
+    const agentState = participant.attributes['agent_state'];
+    if (agentState) {
+      if (agentState === 'speaking') {
+        emitStatus(callbacks, 'speaking');
+      } else if (agentState === 'thinking') {
+        emitStatus(callbacks, 'thinking');
+      } else if (agentState === 'listening') {
+        emitStatus(callbacks, 'listening');
+      }
+    }
+  });
+
+  emitStatus(callbacks, 'connecting');
+
+  try {
+    await room.prepareConnection(url, token);
+    await room.connect(url, token);
+    await room.localParticipant.setMicrophoneEnabled(true);
+  } catch (error: any) {
+    callbacks.onError?.(error.message || 'Could not connect to voice room');
+    emitStatus(callbacks, 'error');
+  }
+
+  return {
+    stop: async () => {
+      isActive = false;
+      await room.disconnect();
+    },
+    isActive: () => isActive,
+  };
+}
+
 export async function startOriginAiVoiceMode(
   pageContext: OriginAiClientPageContext | undefined,
   getHighlightedText: () => string | null | undefined,
@@ -382,7 +471,11 @@ export async function startOriginAiVoiceMode(
   }
 
   emitStatus(callbacks, 'bootstrapping');
-  await getOriginAiVoiceBootstrap(pageContext);
+  const bootstrap = await getOriginAiVoiceBootstrap(pageContext);
+
+  if (bootstrap.voice.transport === 'livekit' && bootstrap.voice.livekit) {
+    return startLiveKitVoiceMode(bootstrap, callbacks);
+  }
 
   let isActive = true;
   let assistantPlaybackHoldUntil = 0;
