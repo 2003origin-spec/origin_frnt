@@ -1,5 +1,6 @@
 import {
   getOriginAiVoiceBootstrap,
+  romanizeOriginAiVoiceTranscript,
   sendOriginAiMessageStreaming,
   type OriginAiClientPageContext,
 } from '@/features/origin-ai/client';
@@ -417,7 +418,11 @@ async function startLiveKitVoiceMode(
     if (!text) return;
 
     if (participant === room.localParticipant) {
-      callbacks.onUserTranscript?.(text);
+      // Show Latin/English letters even when the student spoke Hinglish.
+      void romanizeOriginAiVoiceTranscript(text).then((romanized) => {
+        if (!isActive) return;
+        callbacks.onUserTranscript?.(romanized);
+      });
     } else {
       callbacks.onAssistantTranscript?.(text);
     }

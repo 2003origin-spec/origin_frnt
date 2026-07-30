@@ -158,6 +158,15 @@ const voiceSpeakBodySchema = z.object({
   voiceName: z.string().trim().nullable().optional(),
 });
 
+const voiceRomanizeBodySchema = z.object({
+  text: z.string().trim().min(1).max(2000),
+});
+
+const voiceUsageBodySchema = z.object({
+  voiceMinutes: z.number().finite().min(0).max(120),
+  tokens: z.number().int().min(0).max(1_000_000).optional(),
+});
+
 type PageContextLike = Partial<z.infer<typeof pageContextSchema>> & {
   questionAttempted?: boolean | "true" | "false" | null;
   questionSolved?: boolean | "true" | "false" | null;
@@ -1331,6 +1340,59 @@ export async function POST(request: NextRequest, context: RouteContext) {
       }
 
       return ok(result.reply);
+    }
+
+    if (slug.length === 2 && slug[0] === "voice" && slug[1] === "romanize") {
+      const parsedBody = voiceRomanizeBodySchema.safeParse(body);
+      if (!parsedBody.success) {
+        return badRequest("Transcript text is required.");
+      }
+
+      if (ORIGIN_AI_SERVICE_URL) {
+        const proxyUser = await resolveProxyUser(request);
+        if (!proxyUser) {
+          return unauthorized();
+        }
+        const proxyResp = await proxyToMicroservice(
+          "POST",
+          "/api/v1/voice/romanize",
+          parsedBody.data,
+          request,
+          proxyUser,
+        );
+        if (proxyResp) {
+          const data = await proxyJsonResponse(proxyResp);
+          return new Response(JSON.stringify(data ?? { text: parsedBody.data.text, romanized: false }), {
+            status: proxyResp.status,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      }
+
+      // Local fallback: pass through when microservice is unavailable.
+      return ok({ text: parsedBody.data.text, romanized: false });
+    }
+
+    if (slug.length === 2 && slug[0] === "voice" && slug[1] === "usage") {
+      const parsedBody = voiceUsageBodySchema.safeParse(body);
+      if (!parsedBody.success) {
+        return badRequest("Valid voiceMinutes is required.");
+      }
+
+      const proxyUser = await resolveProxyUser(request);
+      if (!proxyUser) {
+        return unauthorized();
+      }
+
+      const usage = await dbUpdateUsageMetrics(proxyUser.id, {
+        voiceMinutes: parsedBody.data.voiceMinutes,
+        tokens: parsedBody.data.tokens ?? 0,
+      });
+
+      return ok({
+        voiceMinutesUsedToday: usage.voiceMinutesUsedToday,
+        tokensUsedToday: usage.tokensUsedToday,
+      });
     }
 
     if (slug.length === 2 && slug[0] === "voice" && slug[1] === "token") {

@@ -117,6 +117,20 @@ export async function ensureUserSchema(): Promise<void> {
           -- always respects this regardless of the adminUserLifecycle flag.
           ALTER TABLE origin_users ADD COLUMN IF NOT EXISTS account_status TEXT NOT NULL DEFAULT 'active';
           ALTER TABLE origin_users ADD COLUMN IF NOT EXISTS status_reason TEXT;
+
+          -- Per-user per-day usage history (survives daily quota reset on origin_users).
+          CREATE TABLE IF NOT EXISTS origin_user_daily_usage (
+            user_id TEXT NOT NULL REFERENCES origin_users(id) ON DELETE CASCADE,
+            usage_date DATE NOT NULL,
+            tokens_used INTEGER NOT NULL DEFAULT 0,
+            voice_minutes_used DOUBLE PRECISION NOT NULL DEFAULT 0,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            PRIMARY KEY (user_id, usage_date)
+          );
+          CREATE INDEX IF NOT EXISTS idx_origin_user_daily_usage_date
+            ON origin_user_daily_usage (usage_date DESC);
+          CREATE INDEX IF NOT EXISTS idx_origin_user_daily_usage_user_date
+            ON origin_user_daily_usage (user_id, usage_date DESC);
           ALTER TABLE origin_users ADD COLUMN IF NOT EXISTS status_changed_at TIMESTAMPTZ;
           ALTER TABLE origin_users ADD COLUMN IF NOT EXISTS status_changed_by TEXT;
           CREATE INDEX IF NOT EXISTS idx_origin_users_account_status ON origin_users (account_status);
@@ -894,9 +908,26 @@ export async function dbUpdateUsageMetrics(userId: string, metrics: { voiceMinut
   await ensureUserSchema();
   const { voiceMinutes = 0, tokens = 0 } = metrics;
 
-  // Use a single query with daily reset logic:
-  // If usage_reset_at is not today (UTC), reset counters to 0 and update reset time to now.
-  // Then add the new usage values.
+  // Snapshot yesterday's counters before the daily reset wipes them.
+  await pool().query(
+    `INSERT INTO origin_user_daily_usage (user_id, usage_date, tokens_used, voice_minutes_used, updated_at)
+     SELECT
+       id,
+       (usage_reset_at AT TIME ZONE 'UTC')::date,
+       tokens_used_today,
+       voice_minutes_used_today,
+       NOW()
+     FROM origin_users
+     WHERE id = $1
+       AND usage_reset_at < CURRENT_DATE
+     ON CONFLICT (user_id, usage_date) DO UPDATE SET
+       tokens_used = GREATEST(origin_user_daily_usage.tokens_used, EXCLUDED.tokens_used),
+       voice_minutes_used = GREATEST(origin_user_daily_usage.voice_minutes_used, EXCLUDED.voice_minutes_used),
+       updated_at = NOW()`,
+    [userId],
+  );
+
+  // Live quota counters on origin_users (reset at UTC midnight).
   const result = await pool().query(
     `UPDATE origin_users
      SET
@@ -918,10 +949,58 @@ export async function dbUpdateUsageMetrics(userId: string, metrics: { voiceMinut
   );
 
   const row = result.rows[0];
-  return {
-    voiceMinutesUsedToday: row?.voice_minutes_used_today ?? 0,
-    tokensUsedToday: row?.tokens_used_today ?? 0,
-  };
+  const voiceMinutesUsedToday = Number(row?.voice_minutes_used_today ?? 0);
+  const tokensUsedToday = Number(row?.tokens_used_today ?? 0);
+
+  // Keep today's history row in sync with the live counters.
+  await pool().query(
+    `INSERT INTO origin_user_daily_usage (user_id, usage_date, tokens_used, voice_minutes_used, updated_at)
+     VALUES ($1, CURRENT_DATE, $2, $3, NOW())
+     ON CONFLICT (user_id, usage_date) DO UPDATE SET
+       tokens_used = EXCLUDED.tokens_used,
+       voice_minutes_used = EXCLUDED.voice_minutes_used,
+       updated_at = NOW()`,
+    [userId, tokensUsedToday, voiceMinutesUsedToday],
+  );
+
+  return { voiceMinutesUsedToday, tokensUsedToday };
+}
+
+export type UserDailyUsageRow = {
+  userId: string;
+  usageDate: string;
+  tokensUsed: number;
+  voiceMinutesUsed: number;
+  updatedAt: string;
+};
+
+export async function dbGetUserDailyUsage(
+  userId: string,
+  options: { days?: number } = {},
+): Promise<UserDailyUsageRow[]> {
+  await ensureUserSchema();
+  const days = Math.max(1, Math.min(options.days ?? 30, 365));
+  const result = await pool().query(
+    `SELECT user_id, usage_date, tokens_used, voice_minutes_used, updated_at
+     FROM origin_user_daily_usage
+     WHERE user_id = $1
+       AND usage_date >= CURRENT_DATE - ($2::INTEGER - 1)
+     ORDER BY usage_date DESC`,
+    [userId, days],
+  );
+  return result.rows.map((row) => ({
+    userId: String(row.user_id),
+    usageDate:
+      row.usage_date instanceof Date
+        ? row.usage_date.toISOString().slice(0, 10)
+        : String(row.usage_date).slice(0, 10),
+    tokensUsed: Number(row.tokens_used ?? 0),
+    voiceMinutesUsed: Number(row.voice_minutes_used ?? 0),
+    updatedAt:
+      row.updated_at instanceof Date
+        ? row.updated_at.toISOString()
+        : String(row.updated_at),
+  }));
 }
 
 export async function dbGetUserCount(): Promise<number> {
