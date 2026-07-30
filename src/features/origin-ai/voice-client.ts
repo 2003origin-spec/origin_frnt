@@ -1,7 +1,9 @@
 import {
   getOriginAiVoiceBootstrap,
+  prefetchOriginAiVoiceBootstrap,
   romanizeOriginAiVoiceTranscript,
   sendOriginAiMessageStreaming,
+  takeOriginAiVoiceBootstrap,
   type OriginAiClientPageContext,
 } from '@/features/origin-ai/client';
 import { getOriginAiBrowserSessionId } from '@/features/origin-ai/session';
@@ -476,7 +478,20 @@ export async function startOriginAiVoiceMode(
   }
 
   emitStatus(callbacks, 'bootstrapping');
-  const bootstrap = await getOriginAiVoiceBootstrap(pageContext);
+
+  // Overlap mic permission + bootstrap so the click path stays under ~1s when
+  // a prefetch is already warm (or still in flight).
+  const micWarm =
+    typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia
+      ? navigator.mediaDevices
+          .getUserMedia({ audio: true })
+          .then((stream) => {
+            stream.getTracks().forEach((track) => track.stop());
+          })
+          .catch(() => undefined)
+      : Promise.resolve(undefined);
+
+  const [bootstrap] = await Promise.all([takeOriginAiVoiceBootstrap(pageContext), micWarm]);
 
   if (bootstrap.voice.transport === 'livekit' && bootstrap.voice.livekit) {
     return startLiveKitVoiceMode(bootstrap, callbacks);

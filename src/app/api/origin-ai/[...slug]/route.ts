@@ -127,6 +127,7 @@ const updateThreadBodySchema = z.object({
 
 const voiceBootstrapBodySchema = z.object({
   pageContext: pageContextSchema.optional(),
+  browserSessionId: z.string().trim().min(1).optional(),
 });
 
 const voiceTurnBodySchema = z.object({

@@ -773,6 +773,7 @@ export async function getOriginAiVoiceBootstrap(
     },
     body: JSON.stringify({
       pageContext,
+      browserSessionId: getOriginAiBrowserSessionId(),
     }),
   });
 
@@ -847,6 +848,57 @@ export async function getOriginAiVoiceBootstrap(
   }
 
   return normalizeVoiceBootstrap(data as RawVoiceBootstrap);
+}
+
+type VoiceBootstrapPrefetch = {
+  key: string;
+  promise: Promise<OriginAiVoiceBootstrap>;
+};
+
+let voiceBootstrapPrefetch: VoiceBootstrapPrefetch | null = null;
+
+function voiceBootstrapPrefetchKey(pageContext?: OriginAiClientPageContext): string {
+  return JSON.stringify({
+    pathname: pageContext?.pathname ?? null,
+    pageKind: pageContext?.pageKind ?? null,
+    questionId: pageContext?.questionId ?? null,
+    browserSessionId: getOriginAiBrowserSessionId(),
+  });
+}
+
+/** Warm the LiveKit token before the student taps mic (click should be <1s). */
+export function prefetchOriginAiVoiceBootstrap(
+  pageContext?: OriginAiClientPageContext,
+): Promise<OriginAiVoiceBootstrap> {
+  const key = voiceBootstrapPrefetchKey(pageContext);
+  if (voiceBootstrapPrefetch?.key === key) {
+    return voiceBootstrapPrefetch.promise;
+  }
+  const promise = getOriginAiVoiceBootstrap(pageContext).catch((error) => {
+    if (voiceBootstrapPrefetch?.promise === promise) {
+      voiceBootstrapPrefetch = null;
+    }
+    throw error;
+  });
+  voiceBootstrapPrefetch = { key, promise };
+  return promise;
+}
+
+/** Take a prefetched bootstrap if still valid; otherwise fetch fresh. */
+export async function takeOriginAiVoiceBootstrap(
+  pageContext?: OriginAiClientPageContext,
+): Promise<OriginAiVoiceBootstrap> {
+  const key = voiceBootstrapPrefetchKey(pageContext);
+  const cached = voiceBootstrapPrefetch;
+  voiceBootstrapPrefetch = null;
+  if (cached?.key === key) {
+    try {
+      return await cached.promise;
+    } catch {
+      // fall through to fresh fetch
+    }
+  }
+  return getOriginAiVoiceBootstrap(pageContext);
 }
 
 export async function persistOriginAiVoiceTurn(

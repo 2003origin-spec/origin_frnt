@@ -12,6 +12,7 @@ import {
 import { useOriginAiPageContext } from '@/features/origin-ai/page-context-store';
 import { clearHighlightedText, getHighlightedText, getPendingHighlightedText, useHighlightedText } from '@/features/origin-ai/highlight-capture';
 import { startOriginAiVoiceMode, type OriginAiVoiceController } from '@/features/origin-ai/voice-client';
+import { prefetchOriginAiVoiceBootstrap } from '@/features/origin-ai/client';
 import { cn } from '@/lib/utils';
 import type { OriginAiSnapshot, OriginAiVoiceStatus } from '@/types';
 import { FormattedMessage } from './FormattedMessage';
@@ -380,6 +381,11 @@ export default function OriginAiMentor({
   React.useEffect(() => {
     loadSnapshot();
   }, [loadSnapshot]);
+
+  // Warm LiveKit token while Ori is open so mic tap skips the cold bootstrap wait.
+  React.useEffect(() => {
+    void prefetchOriginAiVoiceBootstrap(pageContext);
+  }, [pageContext]);
 
   React.useEffect(() => {
     scrollAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
