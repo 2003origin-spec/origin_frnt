@@ -797,9 +797,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
   const uid = userIdentifier(request);
 
-  const isVoice = slug[0] === "voice";
+  const isVoiceSessionStart = slug.length === 2 && slug[0] === "voice" && (slug[1] === "bootstrap" || slug[1] === "token");
   const isMessage = slug.length === 2 && slug[0] === "session" && slug[1] === "message";
-  const limiter = isMessage ? aiLimiter : isVoice ? voiceLimiter : generalLimiter;
+  const limiter = isMessage ? aiLimiter : isVoiceSessionStart ? voiceLimiter : generalLimiter;
   const limited = await checkRateLimit(limiter, uid);
   if (limited) return limited;
 
