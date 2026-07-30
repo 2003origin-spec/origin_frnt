@@ -145,12 +145,17 @@ type ServiceVoiceBootstrap = {
   session_id: string;
   voice_config: {
     provider: 'gemini';
-    transport: 'server_voice';
+    transport: 'server_voice' | 'livekit';
     sttModel?: string;
     speechToTextModel?: string;
     ttsModel?: string;
     textToSpeechModel?: string;
     voiceName: string;
+    livekit?: {
+      url: string;
+      token: string;
+      roomName: string;
+    };
   };
 };
 
@@ -772,6 +777,61 @@ export async function getOriginAiVoiceBootstrap(
   });
 
   if (isServiceVoiceBootstrap(data)) {
+    const voice = {
+      provider: data.voice_config.provider,
+      transport: data.voice_config.transport,
+      speechToTextModel:
+        data.voice_config.speechToTextModel ?? data.voice_config.sttModel ?? 'gemini-2.5-flash',
+      textToSpeechModel:
+        data.voice_config.textToSpeechModel ?? data.voice_config.ttsModel ?? 'gemini-2.5-flash-preview-tts',
+      voiceName: data.voice_config.voiceName,
+      livekit: data.voice_config.livekit,
+    };
+
+    // LiveKit S2S does not need a chat snapshot before connecting — skip the extra
+    // /chat/session round-trip that was keeping the UI on "bootstrapping" for seconds.
+    if (voice.transport === 'livekit' && voice.livekit) {
+      const now = new Date();
+      return {
+        session: {
+          id: data.session_id,
+          title: 'Voice',
+          summary: null,
+          lastPathname: pageContext?.pathname ?? null,
+          lastPageKind: pageContext?.pageKind ?? null,
+          createdAt: now,
+          updatedAt: now,
+          messages: [],
+          threadId: null,
+          subject: null,
+          activeConcept: null,
+        },
+        memory: {
+          preferredName: '',
+          identitySummary: '',
+          pinnedFacts: [],
+          lastWeakTopics: [],
+          pendingDppCount: 0,
+          pendingAssignmentCount: 0,
+          currentStreak: 0,
+          lastTestSummary: null,
+        },
+        reminders: [],
+        pageContext: buildFallbackPageContext(pageContext),
+        pagePolicy: {
+          mode: 'normal',
+          title: 'Normal',
+          reason: '',
+        },
+        provider: 'gemini',
+        browserSessionId: getOriginAiBrowserSessionId(),
+        liveSystemInstruction: null,
+        contextSeed: '',
+        conversationSeed: [],
+        voice,
+      };
+    }
+
     const snapshot = await fetchSessionSnapshot(pageContext);
     return {
       ...snapshot,
@@ -782,14 +842,7 @@ export async function getOriginAiVoiceBootstrap(
         role: message.role,
         content: message.content,
       })),
-      voice: {
-        provider: data.voice_config.provider,
-        transport: data.voice_config.transport,
-        speechToTextModel: data.voice_config.speechToTextModel ?? data.voice_config.sttModel ?? 'gemini-2.5-flash',
-        textToSpeechModel: data.voice_config.textToSpeechModel ?? data.voice_config.ttsModel ?? 'gemini-2.5-flash-preview-tts',
-        voiceName: data.voice_config.voiceName,
-        livekit: (data.voice_config as any).livekit,
-      },
+      voice,
     };
   }
 

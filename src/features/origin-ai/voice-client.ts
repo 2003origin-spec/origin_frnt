@@ -440,9 +440,9 @@ async function startLiveKitVoiceMode(
   emitStatus(callbacks, 'connecting');
 
   try {
-    await room.prepareConnection(url, token);
     await room.connect(url, token);
     await room.localParticipant.setMicrophoneEnabled(true);
+    if (isActive) emitStatus(callbacks, 'listening');
   } catch (error: any) {
     callbacks.onError?.(error.message || 'Could not connect to voice room');
     emitStatus(callbacks, 'error');
