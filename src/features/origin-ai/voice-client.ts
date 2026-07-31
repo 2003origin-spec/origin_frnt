@@ -468,6 +468,9 @@ export async function startOriginAiVoiceMode(
   pageContext: OriginAiClientPageContext | undefined,
   getHighlightedText: () => string | null | undefined,
   callbacks: OriginAiVoiceCallbacks,
+  /** Thread the student is currently in, so voice continues it rather than
+   *  starting a parallel conversation the text UI never sees. */
+  threadId?: string | null,
 ): Promise<OriginAiVoiceController> {
   // Warm up the speech synthesis engine synchronously with the user interaction
   if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
@@ -491,7 +494,10 @@ export async function startOriginAiVoiceMode(
           .catch(() => undefined)
       : Promise.resolve(undefined);
 
-  const [bootstrap] = await Promise.all([takeOriginAiVoiceBootstrap(pageContext), micWarm]);
+  const [bootstrap] = await Promise.all([
+    takeOriginAiVoiceBootstrap(pageContext, threadId),
+    micWarm,
+  ]);
 
   if (bootstrap.voice.transport === 'livekit' && bootstrap.voice.livekit) {
     return startLiveKitVoiceMode(bootstrap, callbacks);
