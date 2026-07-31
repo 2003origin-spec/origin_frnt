@@ -333,7 +333,7 @@ export default function DailyTracker({ user, view = 'month' }: DailyTrackerProps
                                                 <TooltipTrigger asChild>
                                                     <div
                                                         className={cn(
-                                                            'aspect-square rounded-[4px] transition-all duration-200 relative cursor-pointer',
+                                                            'aspect-square rounded-[4px] transition-all duration-200 relative cursor-pointer flex items-center justify-center',
                                                             getLevelClass(day.level),
                                                             isToday && 'ring-2 ring-primary ring-offset-1 scale-105 z-10',
                                                             day.level !== -1 && 'hover:scale-110 hover:z-20 hover:shadow-lg'
@@ -341,6 +341,16 @@ export default function DailyTracker({ user, view = 'month' }: DailyTrackerProps
                                                     >
                                                         {isToday && (
                                                             <span className="absolute inset-0 rounded-[4px] animate-ping bg-primary/30 pointer-events-none" />
+                                                        )}
+                                                        {day.count > 0 && (
+                                                            <span className={cn(
+                                                                'relative z-10 text-[10px] font-black leading-none tabular-nums pointer-events-none',
+                                                                day.level >= 4
+                                                                    ? 'text-white'
+                                                                    : 'text-emerald-900 dark:text-emerald-100'
+                                                            )}>
+                                                                {day.count}
+                                                            </span>
                                                         )}
                                                     </div>
                                                 </TooltipTrigger>

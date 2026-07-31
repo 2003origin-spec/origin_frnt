@@ -304,7 +304,7 @@ export default function TestResultView({
           </div>
 
           {/* Tab Navigation */}
-          <div className="flex gap-8 overflow-x-auto no-scrollbar border-b border-border/10 mt-2">
+          <div className="flex gap-4 sm:gap-8 overflow-x-auto no-scrollbar border-b border-border/10 mt-2">
             <button 
               onClick={() => setSelectedSubject('overall')}
               className={`pb-4 px-1 text-sm font-bold transition-all relative ${
@@ -656,25 +656,25 @@ export default function TestResultView({
           }}
           className="relative"
         >
-          <TabsList className="bg-card/40 backdrop-blur-lg border border-border/5 p-1 mb-6 rounded-2xl w-full flex overflow-x-auto no-scrollbar">
-            <TabsTrigger value="analysis" className="flex-1 shrink-0 whitespace-nowrap data-[state=active]:bg-primary data-[state=active]:text-white rounded-xl transition-all font-bold py-3">
-              <Image src="/ori2d/ori-reading.png" alt="" width={16} height={16} draggable={false} className="mr-2 object-contain" />
+          <TabsList className="bg-card/40 backdrop-blur-lg border border-border/5 p-1 mb-6 rounded-2xl w-full grid grid-cols-3 gap-1 h-auto sm:flex sm:gap-0">
+            <TabsTrigger value="analysis" className="flex-1 min-w-0 whitespace-nowrap text-[11px] sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-white rounded-xl transition-all font-bold py-2.5 sm:py-3">
+              <Image src="/ori2d/ori-reading.png" alt="" width={16} height={16} draggable={false} className="mr-1.5 sm:mr-2 object-contain shrink-0" />
               Insights
             </TabsTrigger>
-            <TabsTrigger value="mistakes" className="flex-1 shrink-0 whitespace-nowrap data-[state=active]:bg-primary data-[state=active]:text-white rounded-xl transition-all font-bold py-3">
-              <AlertCircle className="w-4 h-4 mr-2" />
+            <TabsTrigger value="mistakes" className="flex-1 min-w-0 whitespace-nowrap text-[11px] sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-white rounded-xl transition-all font-bold py-2.5 sm:py-3">
+              <AlertCircle className="w-4 h-4 mr-1.5 sm:mr-2 shrink-0" />
               Mistake Log
             </TabsTrigger>
-            <TabsTrigger value="correct" className="flex-1 shrink-0 whitespace-nowrap data-[state=active]:bg-primary data-[state=active]:text-white rounded-xl transition-all font-bold py-3">
-              <CheckCircle2 className="w-4 h-4 mr-2" />
+            <TabsTrigger value="correct" className="flex-1 min-w-0 whitespace-nowrap text-[11px] sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-white rounded-xl transition-all font-bold py-2.5 sm:py-3">
+              <CheckCircle2 className="w-4 h-4 mr-1.5 sm:mr-2 shrink-0" />
               Correct Log
             </TabsTrigger>
-            <TabsTrigger value="skipped" className="flex-1 shrink-0 whitespace-nowrap data-[state=active]:bg-primary data-[state=active]:text-white rounded-xl transition-all font-bold py-3">
-              <MinusCircle className="w-4 h-4 mr-2" />
+            <TabsTrigger value="skipped" className="flex-1 min-w-0 whitespace-nowrap text-[11px] sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-white rounded-xl transition-all font-bold py-2.5 sm:py-3">
+              <MinusCircle className="w-4 h-4 mr-1.5 sm:mr-2 shrink-0" />
               Skip Log
             </TabsTrigger>
-            <TabsTrigger value="recommendations" className="flex-1 shrink-0 whitespace-nowrap data-[state=active]:bg-primary data-[state=active]:text-white rounded-xl transition-all font-bold py-3">
-              <Target className="w-4 h-4 mr-2" />
+            <TabsTrigger value="recommendations" className="flex-1 min-w-0 whitespace-nowrap text-[11px] sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-white rounded-xl transition-all font-bold py-2.5 sm:py-3">
+              <Target className="w-4 h-4 mr-1.5 sm:mr-2 shrink-0" />
               Next Steps
             </TabsTrigger>
           </TabsList>
