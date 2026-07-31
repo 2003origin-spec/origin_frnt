@@ -16,6 +16,11 @@ export type CbtTest = {
   status: CbtTestStatus;
   questionCount: number;
   maxScore: number;
+  /**
+   * When true, each student attempting this test sees the questions of every
+   * subject section in their own random order. Section order is unchanged.
+   */
+  shuffleQuestions: boolean;
   createdAt: string;
   updatedAt: string;
 };

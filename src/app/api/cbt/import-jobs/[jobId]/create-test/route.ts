@@ -7,6 +7,7 @@
 
 import type { NextRequest } from "next/server";
 
+import { parseJsonBody } from "@/server/http";
 import { handleTeacherError, teacherJson } from "@/app/api/teacher/_utils";
 import { requireCbtTeacher } from "@/server/cbt/cbt-authz";
 import { createTestFromImportJob } from "@/server/cbt/cbt-import-service";
@@ -17,7 +18,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
   try {
     const ctx = await requireCbtTeacher(request);
     const { jobId } = await context.params;
-    const result = await createTestFromImportJob({ teacher: ctx.cbtTeacher, jobId });
+    // Body is optional — older clients POST with no payload at all.
+    const body = (await parseJsonBody(request).catch(() => ({}))) as { shuffleQuestions?: boolean };
+    const result = await createTestFromImportJob({
+      teacher: ctx.cbtTeacher,
+      jobId,
+      shuffleQuestions: body?.shuffleQuestions === true,
+    });
     return teacherJson(result, { status: 201 });
   } catch (error) {
     return handleTeacherError(error);

@@ -14,6 +14,7 @@ export function CbtTestList({ initialTests }: { initialTests: CbtTest[] }) {
   const [pending, startTransition] = useTransition();
   const [title, setTitle] = useState("");
   const [duration, setDuration] = useState("60");
+  const [shuffleQuestions, setShuffleQuestions] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   function create() {
@@ -21,7 +22,11 @@ export function CbtTestList({ initialTests }: { initialTests: CbtTest[] }) {
     startTransition(async () => {
       const res = await mutateJson("/api/cbt/tests", {
         method: "POST",
-        body: JSON.stringify({ title: title.trim(), durationMinutes: Number(duration) || 60 }),
+        body: JSON.stringify({
+          title: title.trim(),
+          durationMinutes: Number(duration) || 60,
+          shuffleQuestions,
+        }),
       });
       const data = (await res.json().catch(() => ({}))) as { detail?: string; test?: { id: string } };
       if (!res.ok || !data.test) {
@@ -53,18 +58,30 @@ export function CbtTestList({ initialTests }: { initialTests: CbtTest[] }) {
         <p className="text-sm text-muted-foreground">{initialTests.length} test(s)</p>
       </header>
 
-      <div className="neu-raised flex flex-col gap-2 p-4 sm:flex-row">
-        <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="New test title" className="flex-1" />
-        <Input
-          value={duration}
-          onChange={(e) => setDuration(e.target.value)}
-          className="sm:w-32"
-          placeholder="Minutes"
-          inputMode="numeric"
-        />
-        <Button className="shadow-lg shadow-primary/20 transition-transform hover:-translate-y-0.5" disabled={pending || !title.trim()} onClick={create}>
-          Create
-        </Button>
+      <div className="neu-raised space-y-3 p-4">
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="New test title" className="flex-1" />
+          <Input
+            value={duration}
+            onChange={(e) => setDuration(e.target.value)}
+            className="sm:w-32"
+            placeholder="Minutes"
+            inputMode="numeric"
+          />
+          <Button className="shadow-lg shadow-primary/20 transition-transform hover:-translate-y-0.5" disabled={pending || !title.trim()} onClick={create}>
+            Create
+          </Button>
+        </div>
+        <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+          <input
+            type="checkbox"
+            className="h-4 w-4 accent-primary"
+            checked={shuffleQuestions}
+            onChange={(e) => setShuffleQuestions(e.target.checked)}
+            disabled={pending}
+          />
+          Shuffle questions — each student sees a different order
+        </label>
       </div>
       {error ? (
         <p className="text-xs text-destructive" role="alert">
@@ -85,6 +102,7 @@ export function CbtTestList({ initialTests }: { initialTests: CbtTest[] }) {
                   <div className="truncate font-medium text-foreground">{t.title}</div>
                   <div className="text-xs text-muted-foreground">
                     {t.questionCount} questions · {t.maxScore} marks · {t.durationMinutes} min
+                    {t.shuffleQuestions ? " · shuffled" : ""}
                   </div>
                 </div>
                 <span

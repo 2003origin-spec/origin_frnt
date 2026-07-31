@@ -22,8 +22,11 @@ import {
   type CbtTestPayload,
 } from "@/lib/cbt/attempt-model";
 
+import { shuffleQuestionsForParticipant } from "@/lib/cbt/shuffle";
+
 import { ensureCbtSchema } from "./cbt-schema";
 import { cbtError, publishPresence, publishRoomEvent } from "./cbt-rooms-service";
+import { readShuffleQuestions } from "./cbt-tests-service";
 
 function pool() {
   const p = getUserPostgresPool();
@@ -45,6 +48,12 @@ export type TestQuestionRow = {
   marks: number;
   negativeMarks: number;
 };
+
+/** Whether this test is configured to shuffle questions per student. */
+async function loadShuffleQuestions(testId: string): Promise<boolean> {
+  const res = await pool().query(`SELECT settings FROM cbt.tests WHERE id = $1`, [testId]);
+  return readShuffleQuestions(res.rows[0]?.settings);
+}
 
 async function loadTestQuestions(testId: string): Promise<TestQuestionRow[]> {
   const res = await pool().query(
@@ -113,7 +122,10 @@ export async function getStudentTestPayload(participant: CbtParticipant, room: C
   if (participant.finishedAt) throw cbtError(409, "You have already submitted.");
   if (!room.testId || !room.startedAt || !room.durationSeconds) throw cbtError(409, "The test is not ready.");
 
-  const questions = await loadTestQuestions(room.testId);
+  const [questions, shuffle] = await Promise.all([
+    loadTestQuestions(room.testId),
+    loadShuffleQuestions(room.testId),
+  ]);
   const sections: { subject: string; questions: CbtSanitizedQuestion[] }[] = [];
   const bySubject = new Map<string, CbtSanitizedQuestion[]>();
   let maxScore = 0;
@@ -126,6 +138,18 @@ export async function getStudentTestPayload(participant: CbtParticipant, room: C
       sections.push({ subject, questions: bucket });
     }
     bySubject.get(subject)!.push(sanitizeQuestionForStudent(q));
+  }
+
+  // Per-student ordering happens here and ONLY here: each section's questions
+  // are reordered for this participant while section order — and every
+  // question's canonical `position` — stays as authored. Drafts, submissions,
+  // and grading are all keyed by that position, so display order never reaches
+  // the scoring path.
+  if (shuffle) {
+    for (const section of sections) {
+      const ordered = shuffleQuestionsForParticipant(section.questions, participant.id, room.testId);
+      section.questions.splice(0, section.questions.length, ...ordered);
+    }
   }
 
   return {

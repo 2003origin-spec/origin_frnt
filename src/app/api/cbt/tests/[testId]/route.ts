@@ -1,6 +1,6 @@
 /**
  * GET    /api/cbt/tests/[testId]  — test + ordered questions
- * PATCH  /api/cbt/tests/[testId]  — update title/description/duration/status
+ * PATCH  /api/cbt/tests/[testId]  — update title/description/duration/status/shuffleQuestions
  * DELETE /api/cbt/tests/[testId]  — delete a test
  */
 
@@ -40,6 +40,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       description?: string | null;
       durationMinutes?: number;
       status?: CbtTestStatus;
+      shuffleQuestions?: boolean;
     };
     const test = await updateCbtTest(ctx.cbtTeacherId, testId, body);
     if (!test) return teacherJson({ detail: "Test not found." }, { status: 404 });

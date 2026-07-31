@@ -1,15 +1,22 @@
 /**
- * Institute logo shown on the student thank-you screen (cbt.teachers.logo).
+ * Institute branding shown on the student thank-you screen.
  *
  * POST   /api/cbt/teacher/logo — upload an image to R2 + save its URL. (multipart: `file`)
  * DELETE /api/cbt/teacher/logo — clear the logo.
+ * PATCH  /api/cbt/teacher/logo — set the institute display name. { displayName }
+ *
+ * The name handler lives in this file rather than a sibling `…/name/route.ts`
+ * because a brand-new API child route has 404'd in production on Next 16 even
+ * when present in the deployed commit; folding it into an existing route file
+ * avoids that failure mode.
  *
  * Role-gated to cbt_teacher (middleware) + requireCbtTeacher (active allowlist).
  */
 import { NextRequest, NextResponse } from "next/server";
 
+import { parseJsonBody } from "@/server/http";
 import { requireCbtTeacher } from "@/server/cbt/cbt-authz";
-import { updateCbtTeacherLogo } from "@/server/cbt/cbt-teachers-service";
+import { updateCbtTeacherDisplayName, updateCbtTeacherLogo } from "@/server/cbt/cbt-teachers-service";
 import { uploadImageToR2 } from "@/server/media-storage";
 
 const MAX_BYTES = 5 * 1024 * 1024; // 5 MB — a logo, not a document
@@ -56,5 +63,18 @@ export async function DELETE(request: NextRequest) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to remove logo.";
     return NextResponse.json({ detail: message }, { status: 500 });
+  }
+}
+
+export async function PATCH(request: NextRequest) {
+  try {
+    const ctx = await requireCbtTeacher(request);
+    const body = (await parseJsonBody(request)) as { displayName?: string | null };
+    const teacher = await updateCbtTeacherDisplayName(ctx.cbtTeacherId, body?.displayName ?? null);
+    return NextResponse.json({ displayName: teacher?.displayName ?? null });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to save the institute name.";
+    const status = (error as { status?: number }).status ?? 500;
+    return NextResponse.json({ detail: message }, { status });
   }
 }
