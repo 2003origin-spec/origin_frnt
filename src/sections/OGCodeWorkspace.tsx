@@ -1105,8 +1105,8 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                 </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto neu-surface">
-                <div className="max-w-3xl mx-auto px-4 sm:px-8 py-4 sm:py-5 space-y-5">
+            <div className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden neu-surface">
+                <div className="max-w-3xl mx-auto px-4 sm:px-8 py-4 sm:py-5 space-y-5 min-w-0">
                     {/* Question navigation — top of content, always visible */}
                     <div className="flex items-center justify-between">
                         <button

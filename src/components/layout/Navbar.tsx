@@ -690,15 +690,19 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                     'shadow-[0_-4px_14px_hsl(var(--neu-shadow)/40%),0_-1px_0_hsl(var(--neu-light)/60%)]',
                     'safe-area-pb pb-safe'
                 )}>
-                    <div className="grid grid-cols-5 h-14">
-                        {([
+                    {(() => {
+                      const mobileTabs = ([
                             { label: 'Home', icon: LayoutGrid, view: 'dashboard' as ViewState },
                             { label: 'Rooms', icon: UsersRound, view: 'study-rooms' as ViewState },
                             { label: 'OGCode', icon: Code, view: 'ogcode' as ViewState },
+                            { label: 'DPP', icon: Target, view: 'dpp' as ViewState },
                             { label: 'Social', icon: UserPlus, view: 'social' as ViewState },
                             { label: 'More', icon: Menu, view: null },
                         ] as { label: string; icon: typeof LayoutGrid; view: ViewState | null; iconSrc?: string }[])
-                          .filter((item) => socialEnabled || item.view !== 'social')
+                          .filter((item) => socialEnabled || item.view !== 'social');
+                      return (
+                    <div className="grid h-14" style={{ gridTemplateColumns: `repeat(${mobileTabs.length}, minmax(0, 1fr))` }}>
+                        {mobileTabs
                           .map((item) => {
                             const active = item.view ? isActive({ label: item.label, view: item.view }) : false;
                             const Icon = item.icon;
@@ -729,6 +733,8 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                             );
                         })}
                     </div>
+                      );
+                    })()}
                 </nav>
             )}
         </>
