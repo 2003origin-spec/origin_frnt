@@ -9,7 +9,7 @@
     },
     {
       "path": "/api/internal/cron/crystallize",
-      "schedule": "0 */5 * * *"
+      "schedule": "*/15 * * * *"
     }
   ]
 }
