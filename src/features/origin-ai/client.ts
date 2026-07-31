@@ -765,6 +765,7 @@ export async function getOriginAiThreadSnapshot(
 
 export async function getOriginAiVoiceBootstrap(
   pageContext?: OriginAiClientPageContext,
+  threadId?: string | null,
 ): Promise<OriginAiVoiceBootstrap> {
   const data = await aiApiCall('/origin-ai/voice/bootstrap', {
     method: 'POST',
@@ -774,6 +775,9 @@ export async function getOriginAiVoiceBootstrap(
     body: JSON.stringify({
       pageContext,
       browserSessionId: getOriginAiBrowserSessionId(),
+      // Sent so a voice call continues the thread the student is reading,
+      // instead of the backend opening a separate voice-only session.
+      threadId: threadId ?? null,
     }),
   });
 
@@ -857,24 +861,29 @@ type VoiceBootstrapPrefetch = {
 
 let voiceBootstrapPrefetch: VoiceBootstrapPrefetch | null = null;
 
-function voiceBootstrapPrefetchKey(pageContext?: OriginAiClientPageContext): string {
+function voiceBootstrapPrefetchKey(
+  pageContext?: OriginAiClientPageContext,
+  threadId?: string | null,
+): string {
   return JSON.stringify({
     pathname: pageContext?.pathname ?? null,
     pageKind: pageContext?.pageKind ?? null,
     questionId: pageContext?.questionId ?? null,
     browserSessionId: getOriginAiBrowserSessionId(),
+    threadId: threadId ?? null,
   });
 }
 
 /** Warm the LiveKit token before the student taps mic (click should be <1s). */
 export function prefetchOriginAiVoiceBootstrap(
   pageContext?: OriginAiClientPageContext,
+  threadId?: string | null,
 ): Promise<OriginAiVoiceBootstrap> {
-  const key = voiceBootstrapPrefetchKey(pageContext);
+  const key = voiceBootstrapPrefetchKey(pageContext, threadId);
   if (voiceBootstrapPrefetch?.key === key) {
     return voiceBootstrapPrefetch.promise;
   }
-  const promise = getOriginAiVoiceBootstrap(pageContext).catch((error) => {
+  const promise = getOriginAiVoiceBootstrap(pageContext, threadId).catch((error) => {
     if (voiceBootstrapPrefetch?.promise === promise) {
       voiceBootstrapPrefetch = null;
     }
@@ -887,8 +896,9 @@ export function prefetchOriginAiVoiceBootstrap(
 /** Take a prefetched bootstrap if still valid; otherwise fetch fresh. */
 export async function takeOriginAiVoiceBootstrap(
   pageContext?: OriginAiClientPageContext,
+  threadId?: string | null,
 ): Promise<OriginAiVoiceBootstrap> {
-  const key = voiceBootstrapPrefetchKey(pageContext);
+  const key = voiceBootstrapPrefetchKey(pageContext, threadId);
   const cached = voiceBootstrapPrefetch;
   voiceBootstrapPrefetch = null;
   if (cached?.key === key) {
@@ -898,7 +908,7 @@ export async function takeOriginAiVoiceBootstrap(
       // fall through to fresh fetch
     }
   }
-  return getOriginAiVoiceBootstrap(pageContext);
+  return getOriginAiVoiceBootstrap(pageContext, threadId);
 }
 
 export async function persistOriginAiVoiceTurn(

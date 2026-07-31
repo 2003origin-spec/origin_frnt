@@ -384,8 +384,8 @@ export default function OriginAiMentor({
 
   // Warm LiveKit token while Ori is open so mic tap skips the cold bootstrap wait.
   React.useEffect(() => {
-    void prefetchOriginAiVoiceBootstrap(pageContext);
-  }, [pageContext]);
+    void prefetchOriginAiVoiceBootstrap(pageContext, snapshot?.session.threadId ?? null);
+  }, [pageContext, snapshot?.session.threadId]);
 
   React.useEffect(() => {
     scrollAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -614,7 +614,10 @@ export default function OriginAiMentor({
           toast.error(errorMessage);
           setVoiceStatus('error');
         },
-      });
+      },
+      // Continue the thread that is on screen, so voice turns land in the same
+      // session the text UI reads back.
+      snapshot?.session.threadId ?? null);
 
       voiceControllerRef.current = controller;
     } catch (error) {
