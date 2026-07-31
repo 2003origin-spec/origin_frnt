@@ -27,6 +27,7 @@ export async function POST(request: NextRequest) {
       title?: string;
       description?: string | null;
       durationMinutes?: number;
+      shuffleQuestions?: boolean;
     };
     const test = await createCbtTest(ctx.cbtTeacherId, body);
     return teacherJson({ test }, { status: 201 });

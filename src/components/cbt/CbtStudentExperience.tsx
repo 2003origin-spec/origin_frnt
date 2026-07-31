@@ -93,14 +93,36 @@ function OriBrandMark({ className = "h-14 w-14" }: { className?: string }) {
   );
 }
 
+/** One half of the co-branding lockup: a logo with its name directly beneath. */
+function BrandBlock({ children, caption }: { children: React.ReactNode; caption: string }) {
+  return (
+    <div className="flex min-w-0 flex-col items-center gap-2">
+      {children}
+      {caption ? (
+        <span className="max-w-[8.5rem] truncate text-xs font-black tracking-tight text-foreground" title={caption}>
+          {caption}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 /**
- * Post-submission thank-you screen: Origin brand mark × the institute logo (when
- * the institute has set one), a thank-you line, a "click here to continue" link,
- * and a 10-second countdown that redirects to the Origin landing page.
+ * Post-submission thank-you screen: the institute's logo + name × the Origin
+ * logo + o3origin.com, a thank-you line, a "click here to continue" link, and a
+ * 10-second countdown that redirects to the Origin landing page.
+ *
+ * The institute half degrades in three steps: logo + name → logo alone → name
+ * alone → nothing (Origin shows on its own). A logo URL that fails to load
+ * falls back to the name so a dead R2 object never leaves a broken image.
  */
 function ThankYouScreen() {
   const { instituteName, instituteLogo } = useCbtRoom();
   const [secondsLeft, setSecondsLeft] = useState(REDIRECT_SECONDS);
+  const [logoBroken, setLogoBroken] = useState(false);
+
+  const showLogo = Boolean(instituteLogo) && !logoBroken;
+  const showInstitute = showLogo || Boolean(instituteName);
 
   useEffect(() => {
     const goHome = () => {
@@ -122,27 +144,33 @@ function ThankYouScreen() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center overflow-y-auto neu-surface p-6 text-center">
       <div className="neu-raised w-full max-w-md space-y-6 rounded-3xl p-8">
-        {/* Origin × Institute logo lockup */}
-        <div className="flex items-center justify-center gap-4">
-          <OriBrandMark />
-          {instituteLogo ? (
+        {/* Institute (logo + name) × Origin (logo + o3origin.com) */}
+        <div className="flex items-start justify-center gap-4">
+          {showInstitute ? (
             <>
-              <span className="text-2xl font-black text-muted-foreground">×</span>
-              <Image
-                src={instituteLogo}
-                alt={instituteName ?? "Institute"}
-                width={56}
-                height={56}
-                unoptimized
-                className="h-14 w-14 rounded-xl object-contain"
-              />
-            </>
-          ) : instituteName ? (
-            <>
-              <span className="text-2xl font-black text-muted-foreground">×</span>
-              <span className="max-w-[10rem] truncate text-lg font-black text-foreground">{instituteName}</span>
+              <BrandBlock caption={instituteName ?? ""}>
+                {showLogo ? (
+                  <Image
+                    src={instituteLogo!}
+                    alt={instituteName ?? "Institute"}
+                    width={56}
+                    height={56}
+                    unoptimized
+                    onError={() => setLogoBroken(true)}
+                    className="h-14 w-14 rounded-xl object-contain"
+                  />
+                ) : (
+                  <span className="flex h-14 w-14 items-center justify-center rounded-xl neu-inset text-lg font-black text-muted-foreground">
+                    {(instituteName ?? "?").trim().charAt(0).toUpperCase()}
+                  </span>
+                )}
+              </BrandBlock>
+              <span className="pt-4 text-2xl font-black text-muted-foreground">×</span>
             </>
           ) : null}
+          <BrandBlock caption="o3origin.com">
+            <OriBrandMark />
+          </BrandBlock>
         </div>
 
         <div className="space-y-2">

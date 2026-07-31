@@ -34,6 +34,16 @@ function cbtError(status: number, message: string): Error & { status: number } {
   return err;
 }
 
+/**
+ * Reads the per-student shuffle flag out of cbt.tests.settings. Anything other
+ * than an explicit `true` means "authored order", so legacy rows (settings
+ * `{}`) and malformed values both fall back to today's behaviour.
+ */
+export function readShuffleQuestions(settings: unknown): boolean {
+  if (!settings || typeof settings !== "object") return false;
+  return (settings as { shuffleQuestions?: unknown }).shuffleQuestions === true;
+}
+
 function mapTest(row: Record<string, unknown>): CbtTest {
   return {
     id: String(row.id),
@@ -44,6 +54,7 @@ function mapTest(row: Record<string, unknown>): CbtTest {
     status: (row.status as CbtTestStatus) ?? "draft",
     questionCount: Number(row.question_count ?? 0),
     maxScore: Number(row.max_score ?? 0),
+    shuffleQuestions: readShuffleQuestions(row.settings),
     createdAt: new Date(row.created_at as string).toISOString(),
     updatedAt: new Date(row.updated_at as string).toISOString(),
   };
@@ -52,7 +63,7 @@ function mapTest(row: Record<string, unknown>): CbtTest {
 // Derived columns shared by list/get so questionCount + maxScore stay in sync.
 const TEST_SELECT = `
   t.id, t.teacher_id, t.title, t.description, t.duration_minutes, t.status,
-  t.created_at, t.updated_at,
+  t.settings, t.created_at, t.updated_at,
   (SELECT COUNT(*) FROM cbt.test_questions tq WHERE tq.test_id = t.id) AS question_count,
   (SELECT COALESCE(SUM(tq.marks), 0) FROM cbt.test_questions tq WHERE tq.test_id = t.id) AS max_score
 `;
@@ -98,7 +109,12 @@ export async function getCbtTest(teacherId: string, testId: string): Promise<Cbt
 
 export async function createCbtTest(
   teacherId: string,
-  input: { title?: string; description?: string | null; durationMinutes?: number },
+  input: {
+    title?: string;
+    description?: string | null;
+    durationMinutes?: number;
+    shuffleQuestions?: boolean;
+  },
 ): Promise<CbtTest> {
   await ensureCbtSchema();
   const title = (input.title ?? "").trim();
@@ -106,10 +122,11 @@ export async function createCbtTest(
   const duration = Number(input.durationMinutes);
   const durationMinutes = Number.isFinite(duration) && duration > 0 ? Math.floor(duration) : 60;
   const id = cbtId("cbttest");
+  const settings = JSON.stringify({ shuffleQuestions: input.shuffleQuestions === true });
   await pool().query(
-    `INSERT INTO cbt.tests (id, teacher_id, title, description, duration_minutes, status)
-       VALUES ($1, $2, $3, $4, $5, 'draft')`,
-    [id, teacherId, title, input.description?.trim() || null, durationMinutes],
+    `INSERT INTO cbt.tests (id, teacher_id, title, description, duration_minutes, status, settings)
+       VALUES ($1, $2, $3, $4, $5, 'draft', $6::jsonb)`,
+    [id, teacherId, title, input.description?.trim() || null, durationMinutes, settings],
   );
   const created = await getCbtTestMeta(teacherId, id);
   if (!created) throw cbtError(500, "Failed to create test.");
@@ -119,9 +136,34 @@ export async function createCbtTest(
 export async function updateCbtTest(
   teacherId: string,
   testId: string,
-  input: { title?: string; description?: string | null; durationMinutes?: number; status?: CbtTestStatus },
+  input: {
+    title?: string;
+    description?: string | null;
+    durationMinutes?: number;
+    status?: CbtTestStatus;
+    shuffleQuestions?: boolean;
+  },
 ): Promise<CbtTest | null> {
   await ensureCbtSchema();
+
+  // Flipping the shuffle flag while students are mid-attempt would renumber the
+  // paper under anyone who refreshes, so it is only editable off the clock.
+  // Only an actual CHANGE is blocked — the builder re-sends the current value on
+  // every save, and those must still be able to edit the title mid-test.
+  if (input.shuffleQuestions !== undefined) {
+    const current = await pool().query(
+      `SELECT t.settings,
+              EXISTS (SELECT 1 FROM cbt.rooms r WHERE r.test_id = t.id AND r.status = 'in_test') AS live
+         FROM cbt.tests t
+        WHERE t.teacher_id = $1 AND t.id = $2`,
+      [teacherId, testId],
+    );
+    const row = current.rows[0];
+    const changed = row && readShuffleQuestions(row.settings) !== (input.shuffleQuestions === true);
+    if (changed && row.live) {
+      throw cbtError(409, "This test is running in a live room. Shuffle can only be changed once the test has ended.");
+    }
+  }
 
   if (input.status === "ready") {
     const count = await pool().query(
@@ -156,6 +198,11 @@ export async function updateCbtTest(
     if (!["draft", "ready", "archived"].includes(input.status)) throw cbtError(400, "Invalid status.");
     sets.push(`status = $${i++}`);
     values.push(input.status);
+  }
+  if (input.shuffleQuestions !== undefined) {
+    // Merge rather than replace so any future settings key survives the write.
+    sets.push(`settings = COALESCE(settings, '{}'::jsonb) || $${i++}::jsonb`);
+    values.push(JSON.stringify({ shuffleQuestions: input.shuffleQuestions === true }));
   }
   if (sets.length === 0) return getCbtTestMeta(teacherId, testId);
 

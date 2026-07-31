@@ -40,6 +40,7 @@ export function CbtTestBuilder({
   const [description, setDescription] = useState(initialTest.description ?? "");
   const [duration, setDuration] = useState(String(initialTest.durationMinutes));
   const [status, setStatus] = useState(initialTest.status);
+  const [shuffleQuestions, setShuffleQuestions] = useState(initialTest.shuffleQuestions);
   const [rows, setRows] = useState<Row[]>(
     initialTest.questions.map((q) => ({ questionId: q.questionId, marks: q.marks, negativeMarks: q.negativeMarks })),
   );
@@ -98,6 +99,7 @@ export function CbtTestBuilder({
         description: description.trim() || null,
         durationMinutes: Number(duration) || 60,
         status: nextStatus ?? status,
+        shuffleQuestions,
       }),
     });
     const data = (await res.json().catch(() => ({}))) as { detail?: string };
@@ -188,6 +190,23 @@ export function CbtTestBuilder({
           <Input value={duration} onChange={(e) => setDuration(e.target.value)} inputMode="numeric" />
         </div>
         <div className="flex items-end text-sm text-muted-foreground">Max score: {maxScore}</div>
+        <div className="space-y-1 sm:col-span-2">
+          <label className="flex cursor-pointer items-start gap-2.5">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
+              checked={shuffleQuestions}
+              onChange={(e) => setShuffleQuestions(e.target.checked)}
+            />
+            <span>
+              <span className="text-sm font-medium text-foreground">Shuffle questions</span>
+              <span className="block text-xs text-muted-foreground">
+                Every student gets the questions of each subject in their own random order. Subject
+                sections stay in the same order, and scoring is unaffected.
+              </span>
+            </span>
+          </label>
+        </div>
       </section>
 
       <section className="space-y-2">

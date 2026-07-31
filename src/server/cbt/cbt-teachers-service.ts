@@ -109,6 +109,32 @@ export async function updateCbtTeacherLogo(teacherId: string, logoUrl: string | 
   return res.rows[0] ? mapTeacher(res.rows[0]) : null;
 }
 
+const MAX_DISPLAY_NAME_LENGTH = 80;
+
+/**
+ * Set (or clear) the institute display name shown under the logo on the student
+ * thank-you screen. Blank clears it back to NULL, which renders logo-only.
+ */
+export async function updateCbtTeacherDisplayName(
+  teacherId: string,
+  displayName: string | null,
+): Promise<CbtTeacher | null> {
+  await ensureCbtSchema();
+  const trimmed = (displayName ?? "").trim();
+  if (trimmed.length > MAX_DISPLAY_NAME_LENGTH) {
+    const err = new Error(`Institute name must be ${MAX_DISPLAY_NAME_LENGTH} characters or fewer.`) as Error & {
+      status: number;
+    };
+    err.status = 400;
+    throw err;
+  }
+  const res = await pool().query(
+    `UPDATE cbt.teachers SET display_name = $2, updated_at = NOW() WHERE id = $1 RETURNING ${TEACHER_COLUMNS}`,
+    [teacherId, trimmed || null],
+  );
+  return res.rows[0] ? mapTeacher(res.rows[0]) : null;
+}
+
 export async function addCbtTeacher(input: {
   email: string;
   displayName?: string | null;

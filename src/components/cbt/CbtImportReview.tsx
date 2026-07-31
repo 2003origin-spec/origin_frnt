@@ -32,6 +32,8 @@ export function CbtImportReview({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  // Seeds cbt.tests.settings.shuffleQuestions on the test this job creates.
+  const [shuffleQuestions, setShuffleQuestions] = useState(false);
 
   function act(question: ImportJobQuestion, action: "accept" | "reject") {
     setError(null);
@@ -91,6 +93,7 @@ export function CbtImportReview({
     startTransition(async () => {
       const res = await mutateJson(`/api/cbt/import-jobs/${job.id}/create-test`, {
         method: "POST",
+        body: JSON.stringify({ shuffleQuestions }),
       });
       const data = (await res.json().catch(() => ({}))) as { detail?: string; testId?: string };
       if (!res.ok || !data.testId) {
@@ -143,6 +146,16 @@ export function CbtImportReview({
                 {pending ? "Pushing…" : `Push ${stagedCount} to Questions bank`}
               </Button>
             ) : null}
+            <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+              <input
+                type="checkbox"
+                className="h-4 w-4 accent-primary"
+                checked={shuffleQuestions}
+                onChange={(e) => setShuffleQuestions(e.target.checked)}
+                disabled={pending}
+              />
+              Shuffle questions
+            </label>
             <Button className="shadow-lg shadow-primary/20 transition-transform hover:-translate-y-0.5" disabled={pending} onClick={createTest}>
               {pending ? "Working…" : "Create a test from these"}
             </Button>

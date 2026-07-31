@@ -312,6 +312,7 @@ export async function commitImportJobToBank(input: {
 export async function createTestFromImportJob(input: {
   teacher: CbtTeacher;
   jobId: string;
+  shuffleQuestions?: boolean;
 }): Promise<{ testId: string; clusterId: string; questionsAdded: number }> {
   const data = await getCbtImportJob(input.teacher, input.jobId);
   if (!data) throw cbtError(404, "Import job not found.");
@@ -328,7 +329,10 @@ export async function createTestFromImportJob(input: {
   const cluster = await createCluster(input.teacher.id, { name: title });
   await addQuestionsToCluster(input.teacher.id, cluster.id, questionIds);
 
-  const test = await createCbtTest(input.teacher.id, { title });
+  const test = await createCbtTest(input.teacher.id, {
+    title,
+    shuffleQuestions: input.shuffleQuestions === true,
+  });
   // Only add questions not already used by another test (hard-block safe).
   const usedElsewhere = new Set(await listQuestionIdsUsedInOtherTests(input.teacher.id, test.id));
   const addable = questionIds.filter((id) => !usedElsewhere.has(id));
