@@ -116,16 +116,23 @@ function toSessionTokens(session: {
   };
 }
 
+/**
+ * Always a "web" session, deliberately. The handoff is issued inside the app but
+ * consumed in the EXTERNAL browser, so the session it bootstraps is a browser
+ * session and must get the 7-day refresh lifetime — not the app's until-sign-out
+ * one. The consuming request's User-Agent is the browser's anyway; pinning the
+ * value here keeps that from being an accident of UA sniffing.
+ */
 async function createSessionForUser(userId: string): Promise<AuthSessionTokens | null> {
   if (isUserPostgresConfigured()) {
     const user = await dbFindUserById(userId);
     if (!user) return null;
-    return toSessionTokens(await dbCreateAuthSession(user.id));
+    return toSessionTokens(await dbCreateAuthSession(user.id, "web"));
   }
   return withStoreAsync(async (store) => {
     const user = store.users.find((entry) => entry.id === userId);
     if (!user) return null;
-    return toSessionTokens(await createAuthSessionAsync(store, user.id));
+    return toSessionTokens(await createAuthSessionAsync(store, user.id, "web"));
   });
 }
 

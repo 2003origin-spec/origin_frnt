@@ -1,5 +1,5 @@
 import type { AppStore, StoredAuthSession, StoredUser } from "@/server/store";
-import { createId, readStoreAsync } from "@/server/store";
+import { readStoreAsync } from "@/server/store";
 import { isUserPostgresConfigured } from "@/server/user-postgres";
 import {
   dbClearUserSessions,
@@ -9,6 +9,11 @@ import {
   dbRotateAccessToken,
 } from "@/server/db-users";
 import { AuthServiceUnavailableError } from "@/server/auth-errors";
+import {
+  DEFAULT_AUTH_CLIENT_KIND,
+  normalizeAuthClientKind,
+  type AuthClientKind,
+} from "@/server/auth-client-kind";
 import {
   ACCESS_COOKIE_NAME,
   createRefreshToken,
@@ -21,9 +26,6 @@ import {
   parseRefreshToken,
 } from "@/server/auth-jwt";
 import { getAuthContext } from "@/server/authz";
-
-const ACCESS_TOKEN_TTL_MS = 10 * 60 * 1000;
-const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 export { extractBearerToken };
 
@@ -98,32 +100,12 @@ export async function requireUserFromRequest(store: AppStore, request: Request):
   return user;
 }
 
-export function createAuthSession(store: AppStore, userId: string): StoredAuthSession {
-  const now = Date.now();
-  const session: StoredAuthSession = {
-    id: createId("session"),
-    accessToken: createId("access"),
-    refreshToken: createId("refresh"),
-    userId,
-    createdAt: new Date(now).toISOString(),
-    accessTokenExpiresAt: new Date(now + ACCESS_TOKEN_TTL_MS).toISOString(),
-    refreshTokenExpiresAt: new Date(now + REFRESH_TOKEN_TTL_MS).toISOString(),
-    revokedAt: null,
-    lastUsedAt: null,
-    userAgentHash: null,
-    ipPrefixHash: null,
-  };
-
-  store.authSessions = store.authSessions.filter((entry) => entry.userId !== userId);
-  store.authSessions.push(session);
-  return session;
-}
-
 export async function rotateAccessToken(store: AppStore, session: StoredAuthSession): Promise<StoredAuthSession | null> {
   const user = store.users.find((entry) => entry.id === session.userId);
   if (!user) return null;
   const sessionId = session.id && !session.id.includes("_") ? session.id : createSessionId();
-  const refresh = await createRefreshToken(sessionId);
+  const clientKind = normalizeAuthClientKind(session.clientKind);
+  const refresh = await createRefreshToken(sessionId, clientKind);
   const access = await issueAccessTokenForUser(user, refresh.sessionId);
   session.id = refresh.sessionId;
   session.accessToken = access.accessToken;
@@ -133,6 +115,7 @@ export async function rotateAccessToken(store: AppStore, session: StoredAuthSess
   session.accessTokenExpiresAt = access.accessTokenExpiresAt;
   session.refreshTokenExpiresAt = refresh.refreshTokenExpiresAt;
   session.lastUsedAt = new Date().toISOString();
+  session.clientKind = clientKind;
   return session;
 }
 
@@ -170,9 +153,12 @@ export async function resolveTokenToUser(request: Request): Promise<StoredUser |
   return store.users.find((entry) => entry.id === context.userId && (entry.authTokenVersion ?? 0) === context.tokenVersion) ?? null;
 }
 
-export async function refreshAccessToken(
-  refreshToken: string,
-): Promise<{ accessToken: string; accessFingerprint?: string; refreshToken?: string } | null> {
+export async function refreshAccessToken(refreshToken: string): Promise<{
+  accessToken: string;
+  accessFingerprint?: string;
+  refreshToken?: string;
+  clientKind: AuthClientKind;
+} | null> {
   if (isUserPostgresConfigured()) {
     try {
       const updated = await dbRotateAccessToken(refreshToken);
@@ -181,6 +167,7 @@ export async function refreshAccessToken(
           accessToken: updated.accessToken,
           accessFingerprint: updated.accessFingerprint,
           refreshToken: updated.refreshToken,
+          clientKind: normalizeAuthClientKind(updated.clientKind),
         };
       }
       return null;
@@ -199,13 +186,18 @@ export async function refreshAccessToken(
     accessToken: updated.accessToken,
     accessFingerprint: updated.accessFingerprint,
     refreshToken: updated.refreshToken,
+    clientKind: normalizeAuthClientKind(updated.clientKind),
   };
 }
 
-export async function createAuthSessionAsync(store: AppStore, userId: string): Promise<StoredAuthSession> {
+export async function createAuthSessionAsync(
+  store: AppStore,
+  userId: string,
+  clientKind: AuthClientKind = DEFAULT_AUTH_CLIENT_KIND,
+): Promise<StoredAuthSession> {
   if (isUserPostgresConfigured()) {
     try {
-      const session = await dbCreateAuthSession(userId);
+      const session = await dbCreateAuthSession(userId, clientKind);
       store.authSessions = store.authSessions.filter((s) => s.userId !== userId);
       store.authSessions.push(session);
       return session;
@@ -220,7 +212,7 @@ export async function createAuthSessionAsync(store: AppStore, userId: string): P
     throw new Error("Cannot create auth session for missing user.");
   }
   const now = Date.now();
-  const refresh = await createRefreshToken();
+  const refresh = await createRefreshToken(undefined, clientKind);
   const access = await issueAccessTokenForUser(user, refresh.sessionId);
   const session: StoredAuthSession = {
     id: refresh.sessionId,
@@ -236,6 +228,7 @@ export async function createAuthSessionAsync(store: AppStore, userId: string): P
     lastUsedAt: null,
     userAgentHash: null,
     ipPrefixHash: null,
+    clientKind,
   };
 
   store.authSessions = store.authSessions.filter((entry) => entry.userId !== userId);

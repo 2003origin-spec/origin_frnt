@@ -21,6 +21,11 @@ import {
   issueAccessTokenForUser,
   parseRefreshToken,
 } from "@/server/auth-jwt";
+import {
+  DEFAULT_AUTH_CLIENT_KIND,
+  normalizeAuthClientKind,
+  type AuthClientKind,
+} from "@/server/auth-client-kind";
 import type { UserImagePurpose } from "@/server/media-storage";
 
 export const REFRESH_TOKEN_ROTATION_INTERVAL_MS = 24 * 60 * 60 * 1000;
@@ -165,7 +170,8 @@ export async function ensureUserSchema(): Promise<void> {
             revoked_at                TIMESTAMPTZ,
             last_used_at              TIMESTAMPTZ,
             user_agent_hash           TEXT,
-            ip_prefix_hash            TEXT
+            ip_prefix_hash            TEXT,
+            client_kind               TEXT NOT NULL DEFAULT 'web'
           );
 
           ALTER TABLE origin_auth_sessions ADD COLUMN IF NOT EXISTS id TEXT;
@@ -177,6 +183,14 @@ export async function ensureUserSchema(): Promise<void> {
           ALTER TABLE origin_auth_sessions ADD COLUMN IF NOT EXISTS last_used_at TIMESTAMPTZ;
           ALTER TABLE origin_auth_sessions ADD COLUMN IF NOT EXISTS user_agent_hash TEXT;
           ALTER TABLE origin_auth_sessions ADD COLUMN IF NOT EXISTS ip_prefix_hash TEXT;
+          -- Pre-existing rows are browser sessions and keep the 7-day lifetime
+          -- they were minted with; only new android logins get 'android'.
+          ALTER TABLE origin_auth_sessions ADD COLUMN IF NOT EXISTS client_kind TEXT NOT NULL DEFAULT 'web';
+          -- Supports the dormant-session sweep; matters because android rows are
+          -- never expired by a clock, so this table grows monotonically.
+          CREATE INDEX IF NOT EXISTS idx_auth_sessions_dormant
+            ON origin_auth_sessions ((COALESCE(last_used_at, created_at)))
+            WHERE revoked_at IS NULL;
           UPDATE origin_auth_sessions SET id = COALESCE(id, access_token, refresh_token)
           WHERE id IS NULL;
           ALTER TABLE origin_auth_sessions ALTER COLUMN id SET NOT NULL;
@@ -350,6 +364,7 @@ function rowToSession(row: any): StoredAuthSession {
     lastUsedAt: row.last_used_at ? (row.last_used_at instanceof Date ? row.last_used_at.toISOString() : String(row.last_used_at)) : null,
     userAgentHash: row.user_agent_hash ?? null,
     ipPrefixHash: row.ip_prefix_hash ?? null,
+    clientKind: normalizeAuthClientKind(row.client_kind),
   };
 }
 
@@ -681,7 +696,10 @@ export async function dbListAuthSessions(): Promise<StoredAuthSession[]> {
   return result.rows.map(rowToSession);
 }
 
-export async function dbCreateAuthSession(userId: string): Promise<StoredAuthSession> {
+export async function dbCreateAuthSession(
+  userId: string,
+  clientKind: AuthClientKind = DEFAULT_AUTH_CLIENT_KIND,
+): Promise<StoredAuthSession> {
   await ensureUserSchema();
   const user = await dbFindUserById(userId);
   if (!user) {
@@ -689,7 +707,7 @@ export async function dbCreateAuthSession(userId: string): Promise<StoredAuthSes
   }
   const sessionId = createSessionId();
   const now = new Date();
-  const refresh = await createRefreshToken(sessionId);
+  const refresh = await createRefreshToken(sessionId, clientKind);
   const access = await issueAccessTokenForUser(user, sessionId);
   const session: StoredAuthSession = {
     id: sessionId,
@@ -705,6 +723,7 @@ export async function dbCreateAuthSession(userId: string): Promise<StoredAuthSes
     lastUsedAt: null,
     userAgentHash: null,
     ipPrefixHash: null,
+    clientKind,
   };
 
   await pool().query(
@@ -715,8 +734,8 @@ export async function dbCreateAuthSession(userId: string): Promise<StoredAuthSes
     `INSERT INTO origin_auth_sessions
        (id, access_token, access_fingerprint, refresh_token, refresh_token_hash, user_id, created_at,
         access_token_expires_at, refresh_token_expires_at, revoked_at, last_used_at,
-        user_agent_hash, ip_prefix_hash)
-     VALUES ($1, $2, $3, NULL, $4, $5, $6, $7, $8, NULL, NULL, NULL, NULL)`,
+        user_agent_hash, ip_prefix_hash, client_kind)
+     VALUES ($1, $2, $3, NULL, $4, $5, $6, $7, $8, NULL, NULL, NULL, NULL, $9)`,
     [
       session.id,
       session.accessToken,
@@ -726,6 +745,7 @@ export async function dbCreateAuthSession(userId: string): Promise<StoredAuthSes
       session.createdAt,
       session.accessTokenExpiresAt,
       session.refreshTokenExpiresAt,
+      clientKind,
     ],
   );
   return session;
@@ -779,6 +799,9 @@ export async function dbRotateAccessToken(refreshToken: string): Promise<StoredA
     }
     const user = rowToUser(userResult.rows[0]);
     const access = await issueAccessTokenForUser(user, parsed.sessionId);
+    // Authoritative source for the lifetime: the stored row, never a re-read of
+    // the request User-Agent. A session cannot change kind after it is minted.
+    const clientKind = normalizeAuthClientKind(row.client_kind);
     const rotateRefresh = shouldRotateRefreshToken(row.refresh_rotated_at, row.created_at, Date.now(), isGraceReplay);
 
     if (!rotateRefresh) {
@@ -804,11 +827,12 @@ export async function dbRotateAccessToken(refreshToken: string): Promise<StoredA
             accessToken: access.accessToken,
             accessFingerprint: access.accessFingerprint,
             refreshToken: "",
+            clientKind,
           }
         : null;
     }
 
-    const refresh = await createRefreshToken(parsed.sessionId);
+    const refresh = await createRefreshToken(parsed.sessionId, clientKind);
     const result = await client.query(
       `UPDATE origin_auth_sessions
        SET access_token = $1,
@@ -839,6 +863,7 @@ export async function dbRotateAccessToken(refreshToken: string): Promise<StoredA
           accessFingerprint: access.accessFingerprint,
           refreshToken: refresh.refreshToken,
           refreshTokenHash: refresh.refreshTokenHash,
+          clientKind,
         }
       : null;
   } catch (error) {
@@ -847,6 +872,34 @@ export async function dbRotateAccessToken(refreshToken: string): Promise<StoredA
   } finally {
     client.release();
   }
+}
+
+/**
+ * Backstop for the until-sign-out android lifetime (AUTH_TOKEN_LIFETIME_PLAN.md
+ * §3.4). Without a clock bounding them, android sessions are only ever ended by
+ * an explicit sign-out — which never happens for an uninstalled app, so rows
+ * would accumulate forever and a years-dormant refresh token would stay live.
+ *
+ * Revokes any session with no activity for a year. `last_used_at` is written on
+ * every rotation, and an active client rotates hourly, so "opened the app once
+ * in the last 12 months" is enough to stay signed in — which is what the
+ * until-sign-out guarantee actually means to a user. Also sweeps up long-expired
+ * web rows, which are otherwise only tidied on that user's next login.
+ */
+export const DORMANT_SESSION_REVOKE_AFTER_DAYS = 365;
+
+export async function dbRevokeDormantSessions(
+  olderThanDays = DORMANT_SESSION_REVOKE_AFTER_DAYS,
+): Promise<{ revoked: number }> {
+  await ensureUserSchema();
+  const result = await pool().query(
+    `UPDATE origin_auth_sessions
+     SET revoked_at = NOW()
+     WHERE revoked_at IS NULL
+       AND COALESCE(last_used_at, created_at) < NOW() - make_interval(days => $1)`,
+    [olderThanDays],
+  );
+  return { revoked: result.rowCount ?? 0 };
 }
 
 export async function dbClearUserSessions(userId: string): Promise<void> {
@@ -921,12 +974,17 @@ export async function dbDeleteTask(id: string, userId: string): Promise<boolean>
 
 // ─── Login / register helpers (DB-backed) ─────────────────────────────────────
 
-export async function dbLoginUser(email: string, password: string, role: string): Promise<{ user: StoredUser; session: StoredAuthSession } | null> {
+export async function dbLoginUser(
+  email: string,
+  password: string,
+  role: string,
+  clientKind: AuthClientKind = DEFAULT_AUTH_CLIENT_KIND,
+): Promise<{ user: StoredUser; session: StoredAuthSession } | null> {
   const user = await dbFindUserByEmail(email, role);
   if (!user) return null;
   const valid = bcrypt.compareSync(password, user.password);
   if (!valid) return null;
-  const session = await dbCreateAuthSession(user.id);
+  const session = await dbCreateAuthSession(user.id, clientKind);
   return { user, session };
 }
 
@@ -934,6 +992,7 @@ export async function dbRegisterUser(data: {
   name: string; email: string; password: string; role: string;
   studentClass?: string; fieldOfInterest?: string; referralSource?: string;
   mobile?: string | null; location?: string | null;
+  clientKind?: AuthClientKind;
 }): Promise<{ user: StoredUser; session: StoredAuthSession }> {
   const existing = await dbFindUserByEmail(data.email, data.role);
   if (existing) throw new Error("An account with this email already exists for this role.");
@@ -952,7 +1011,7 @@ export async function dbRegisterUser(data: {
     yearsOfExperience: null, subjects: [], studentCapacity: null,
     voiceMinutesUsedToday: 0, tokensUsedToday: 0, usageResetAt: new Date().toISOString(),
   });
-  const session = await dbCreateAuthSession(user.id);
+  const session = await dbCreateAuthSession(user.id, data.clientKind ?? DEFAULT_AUTH_CLIENT_KIND);
   return { user, session };
 }
 

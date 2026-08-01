@@ -15,7 +15,11 @@ import bcrypt from "bcryptjs";
 
 import { getUserPostgresPool } from "@/server/user-postgres";
 import { sendEmail } from "@/server/email";
-import { dbFindUserByEmail, dbUpdateUser } from "@/server/db-users";
+import {
+  dbFindUserByEmail,
+  dbIncrementAuthTokenVersionAndRevokeSessions,
+  dbUpdateUser,
+} from "@/server/db-users";
 
 declare global {
   var __originPasswordResetSchemaReady: Promise<void> | undefined;
@@ -197,5 +201,24 @@ export async function verifyAndResetPassword(
   if (!user) return "not_found";
   const hashed = bcrypt.hashSync(newPassword, 10);
   await dbUpdateUser(user.id, { password: hashed });
+
+  // A password reset is the recovery path for a compromised account, so it must
+  // end every session that already exists — otherwise whoever prompted the reset
+  // keeps their session. This bumps auth_token_version (killing in-flight access
+  // JWTs, which are verified statelessly at the edge) AND revokes the refresh
+  // rows. Load-bearing since android sessions have no expiry to fall back on:
+  // without this, a stolen app session would outlive the reset indefinitely.
+  // Deliberately after the password write and deliberately fatal-free: the reset
+  // itself has already succeeded, so a revoke failure must not report failure to
+  // a user whose password HAS changed — it is logged loudly instead.
+  try {
+    await dbIncrementAuthTokenVersionAndRevokeSessions(user.id);
+  } catch (error) {
+    console.error(
+      "[password-reset] session revocation after reset failed — sessions may survive for user",
+      user.id,
+      error instanceof Error ? error.message : error,
+    );
+  }
   return "ok";
 }

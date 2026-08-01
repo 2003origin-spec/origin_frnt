@@ -15,7 +15,9 @@ import {
   CSRF_COOKIE_NAME,
   createCsrfToken,
   REFRESH_COOKIE_NAME,
+  refreshCookieOptions,
 } from '@/server/auth-jwt';
+import { resolveAuthClientKind, type AuthClientKind } from '@/server/auth-client-kind';
 import { dbCreateAuthSession, dbFindUserByEmail, dbRegisterUser } from '@/server/db-users';
 import { revokeRefreshSession } from '@/server/auth';
 import { isFeatureEnabled } from '@/lib/feature-flags';
@@ -46,6 +48,7 @@ async function setCbtSessionCookies(
   access: string,
   refresh: string,
   accessFingerprint: string | undefined,
+  clientKind: AuthClientKind,
 ): Promise<void> {
   const cookieStore = await cookies();
   cookieStore.set(ACCESS_COOKIE_NAME, access, COOKIE_OPTS_ACCESS);
@@ -53,7 +56,7 @@ async function setCbtSessionCookies(
     cookieStore.set(ACCESS_FINGERPRINT_COOKIE_NAME, accessFingerprint, COOKIE_OPTS_ACCESS_FINGERPRINT);
   }
   if (refresh) {
-    cookieStore.set(REFRESH_COOKIE_NAME, refresh, COOKIE_OPTS_REFRESH);
+    cookieStore.set(REFRESH_COOKIE_NAME, refresh, refreshCookieOptions(clientKind));
   }
   cookieStore.set(CSRF_COOKIE_NAME, createCsrfToken(), COOKIE_OPTS_CSRF);
 }
@@ -114,12 +117,13 @@ export async function loginWithCbtOtpAction(email: string, code: string): Promis
     // Find or provision the cbt_teacher origin_users row. The password is a
     // random inert secret — CBT login is OTP-only and the legacy password/OTP
     // paths hard-reject the cbt_teacher role.
+    const clientKind = resolveAuthClientKind((await headers()).get('user-agent'));
     const existing = await dbFindUserByEmail(normalized, 'cbt_teacher');
     let userId: string;
     let session: Awaited<ReturnType<typeof dbCreateAuthSession>>;
     if (existing) {
       userId = existing.id;
-      session = await dbCreateAuthSession(existing.id);
+      session = await dbCreateAuthSession(existing.id, clientKind);
     } else {
       const inertPassword = randomBytes(24).toString('base64url');
       const created = await dbRegisterUser({
@@ -127,13 +131,14 @@ export async function loginWithCbtOtpAction(email: string, code: string): Promis
         email: normalized,
         password: inertPassword,
         role: 'cbt_teacher',
+        clientKind,
       });
       userId = created.user.id;
       session = created.session;
     }
 
     await linkCbtTeacherUser(normalized, userId);
-    await setCbtSessionCookies(session.accessToken, session.refreshToken, session.accessFingerprint);
+    await setCbtSessionCookies(session.accessToken, session.refreshToken, session.accessFingerprint, clientKind);
     revalidatePath('/', 'layout');
 
     await recordAuditEvent({

@@ -114,8 +114,14 @@ interface AuthProviderProps {
   initialUser: User | null;
 }
 
-const ACCESS_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
-const ACCESS_REFRESH_MIN_SPACING_MS = 60 * 1000;
+// Paced against the 1-hour ACCESS_TOKEN_TTL_SECONDS (server/auth-jwt.ts): renew
+// at 50 min, leaving a 10-minute margin for clock skew and a slow round-trip.
+// Each refresh is a session-row write, so the opportunistic focus/pointerdown
+// path is spaced to match rather than firing on every return to the tab. A tab
+// suspended past the hour is still covered reactively — middleware 302s to
+// /auth/refresh, and AUTH_EXPIRED_EVENT recovers in-flight fetches.
+const ACCESS_REFRESH_INTERVAL_MS = 50 * 60 * 1000;
+const ACCESS_REFRESH_MIN_SPACING_MS = 45 * 60 * 1000;
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUser }) => {
   const [user, setUser] = useState<User | null>(initialUser);

@@ -5,7 +5,9 @@ export {
   COOKIE_OPTS_ACCESS_FINGERPRINT,
   COOKIE_OPTS_CSRF,
   COOKIE_OPTS_REFRESH,
+  COOKIE_OPTS_REFRESH_NATIVE,
   CSRF_COOKIE_NAME,
   createCsrfToken,
   REFRESH_COOKIE_NAME,
+  refreshCookieOptions,
 } from "@/server/auth-jwt";

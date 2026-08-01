@@ -1,5 +1,6 @@
 import { jwtVerify, SignJWT, type JWTPayload } from "jose";
 
+import type { AuthClientKind } from "@/server/auth-client-kind";
 import type { StoredUser } from "@/server/store";
 
 export const ACCESS_COOKIE_NAME = "origin_access_token";
@@ -9,8 +10,28 @@ export const CSRF_COOKIE_NAME = "origin_csrf";
 
 export const AUTH_JWT_ISSUER = "origin-v1";
 export const AUTH_JWT_AUDIENCE = "origin-web";
-export const ACCESS_TOKEN_TTL_SECONDS = 10 * 60;
+/**
+ * Single source of truth for session lifetimes. Everything else derives from
+ * these: the access JWT `exp`, the access/fingerprint/CSRF cookie `maxAge`s,
+ * and the `access_token_expires_at` / `refresh_token_expires_at` columns on
+ * `origin_auth_sessions`. Do not re-declare either value elsewhere.
+ */
+export const ACCESS_TOKEN_TTL_SECONDS = 60 * 60;
 export const REFRESH_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60;
+
+/**
+ * Android sessions live until the user explicitly signs out. Modelled as a
+ * far-future expiry rather than NULL on purpose: every session query filters
+ * `refresh_token_expires_at > NOW()` and the login-time sweep uses `<= NOW()`,
+ * so a nullable column would need all of them touched — and one forgotten
+ * `IS NULL` branch is a silent auth bypass. Ten years is "until sign-out" for
+ * every practical purpose, and the dormant-session sweep bounds it further.
+ */
+export const REFRESH_TOKEN_TTL_SECONDS_NATIVE = 10 * 365 * 24 * 60 * 60;
+
+export function refreshTokenTtlSeconds(clientKind: AuthClientKind): number {
+  return clientKind === "android" ? REFRESH_TOKEN_TTL_SECONDS_NATIVE : REFRESH_TOKEN_TTL_SECONDS;
+}
 
 export const COOKIE_OPTS_ACCESS = {
   httpOnly: true,
@@ -35,6 +56,20 @@ export const COOKIE_OPTS_REFRESH = {
   path: "/",
   maxAge: REFRESH_TOKEN_TTL_SECONDS,
 };
+
+/**
+ * Same flags, native lifetime. Needed as a distinct cookie because the WebView
+ * cookie jar evicts on its own `maxAge` regardless of what the session row says
+ * — a 7-day cookie would strand an android session the DB still considers live.
+ */
+export const COOKIE_OPTS_REFRESH_NATIVE = {
+  ...COOKIE_OPTS_REFRESH,
+  maxAge: REFRESH_TOKEN_TTL_SECONDS_NATIVE,
+};
+
+export function refreshCookieOptions(clientKind: AuthClientKind): typeof COOKIE_OPTS_REFRESH {
+  return clientKind === "android" ? COOKIE_OPTS_REFRESH_NATIVE : COOKIE_OPTS_REFRESH;
+}
 
 export const COOKIE_OPTS_CSRF = {
   httpOnly: false,
@@ -69,6 +104,7 @@ export type RefreshTokenIssue = {
   refreshToken: string;
   refreshTokenHash: string;
   refreshTokenExpiresAt: string;
+  clientKind: AuthClientKind;
 };
 
 export type ParsedRefreshToken = {
@@ -191,7 +227,10 @@ export function createSessionId(): string {
   return randomHex(24);
 }
 
-export async function createRefreshToken(sessionId = createSessionId()): Promise<RefreshTokenIssue> {
+export async function createRefreshToken(
+  sessionId = createSessionId(),
+  clientKind: AuthClientKind = "web",
+): Promise<RefreshTokenIssue> {
   if (sessionId.includes("_")) {
     throw new Error("Refresh-token session IDs must not contain underscores.");
   }
@@ -200,7 +239,8 @@ export async function createRefreshToken(sessionId = createSessionId()): Promise
     sessionId,
     refreshToken: `rt_${sessionId}_${secret}`,
     refreshTokenHash: await hashRefreshTokenSecret(secret),
-    refreshTokenExpiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_SECONDS * 1000).toISOString(),
+    refreshTokenExpiresAt: new Date(Date.now() + refreshTokenTtlSeconds(clientKind) * 1000).toISOString(),
+    clientKind,
   };
 }
 

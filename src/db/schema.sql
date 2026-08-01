@@ -43,12 +43,20 @@ CREATE TABLE IF NOT EXISTS origin_auth_sessions (
   revoked_at                TIMESTAMPTZ,
   last_used_at              TIMESTAMPTZ,
   user_agent_hash           TEXT,
-  ip_prefix_hash            TEXT
+  ip_prefix_hash            TEXT,
+  -- 'web' | 'android'. Decided once at login from the User-Agent and never
+  -- re-derived; drives the refresh lifetime (7 days sliding vs. until sign-out).
+  client_kind               TEXT NOT NULL DEFAULT 'web'
 );
 
 CREATE INDEX IF NOT EXISTS idx_auth_sessions_refresh  ON origin_auth_sessions (refresh_token);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_auth_sessions_refresh_hash ON origin_auth_sessions (refresh_token_hash);
 CREATE INDEX IF NOT EXISTS idx_auth_sessions_user     ON origin_auth_sessions (user_id);
+-- Dormant-session sweep: android rows have no clock expiry, so this table grows
+-- monotonically and the sweep must not seq-scan it.
+CREATE INDEX IF NOT EXISTS idx_auth_sessions_dormant
+  ON origin_auth_sessions ((COALESCE(last_used_at, created_at)))
+  WHERE revoked_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS origin_media_assets (
   id               TEXT PRIMARY KEY,
