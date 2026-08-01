@@ -107,6 +107,16 @@ import { isOgcodePostgresConfigured, getOgcodePostgresPool } from "@/server/post
 import { getGlobalPointsLeaderboard } from "@/server/leaderboard-points";
 import { buildTestClassificationFields } from "@/server/test-classification";
 import { getStudentGate, type StudentGate } from "@/server/entitlements";
+import { isSubjectInMode, occurrenceMatchesMode } from "@/lib/study-mode";
+import {
+  clampSubjectsToScope,
+  getStudentScope,
+  narrowingSubjectsFilter,
+  subjectVisibleUnderMode,
+  subjectVisibleUnderScope,
+  throwOutOfModeForbidden,
+  type StudentScope,
+} from "@/server/study-scope";
 import { FREE_SAMPLE_POOL_SIZE, normalizeSubject as canonicalSubject } from "@/lib/entitlements";
 import { isFeatureEnabled } from "@/lib/feature-flags";
 import {
@@ -390,6 +400,18 @@ function subjectVisibleUnderGate(subjectRaw: string | null | undefined, gate: St
   const canonical = canonicalSubject(raw);
   if (!canonical) return true;
   return gate.subjects.includes(canonical);
+}
+
+/**
+ * OG Code subject visibility. Distinct from the tests/DPP rule because free
+ * students legitimately see the OG Code sample pool: premium students get
+ * entitlements ∩ mode, everyone else gets mode only. Using
+ * `subjectVisibleUnderScope` here would blank the whole free pool.
+ */
+function ogcodeSubjectVisible(subjectRaw: string | null | undefined, scope: StudentScope): boolean {
+  return scope.gate.enforced && scope.gate.anyPremium
+    ? subjectVisibleUnderScope(subjectRaw, scope)
+    : subjectVisibleUnderMode(subjectRaw, scope);
 }
 
 /** Throw a 403 — used to refuse access to content outside a student's entitlement. */
@@ -2279,13 +2301,27 @@ function getTestDetailFallback(store: AppStore, user: StoredUser, testId: string
  * version of this function did exactly that and threw "No questions matched"
  * unconditionally whenever the primary analytics-service path failed.
  */
-async function selectCustomTestQuestions(payload: CustomTestPayload) {
+async function selectCustomTestQuestions(
+  payload: CustomTestPayload,
+  /**
+   * Subjects the requesting student may draw from (entitlements ∩ study mode),
+   * or `null` for no restriction. Critically this also constrains the MIXED
+   * case: with no explicit subject pick the query is otherwise unfiltered, so a
+   * JEE-mode "mixed" test would happily include Biology.
+   */
+  allowedSubjects: string[] | null = null,
+) {
   // Accept multi-select `subjects`, falling back to the legacy single `subject`.
   const rawSubjects = payload.subjects?.length
     ? payload.subjects
     : (payload.subject && payload.subject !== "mixed" && payload.subject !== "all" ? [payload.subject] : []);
-  const subjects = rawSubjects.map((s) => normalizeSubject(String(s ?? "").toLowerCase())).filter(Boolean);
-  const isMixedSubject = subjects.length === 0;
+  const requested = rawSubjects.map((s) => normalizeSubject(String(s ?? "").toLowerCase())).filter(Boolean);
+  const subjects = allowedSubjects == null
+    ? requested
+    : (requested.length
+        ? requested.filter((s) => allowedSubjects.includes(s))
+        : allowedSubjects);
+  const isMixedSubject = requested.length === 0;
   // Representative subject label for the test title (single subject → its name).
   const subject = subjects.length === 1 ? subjects[0] : "mixed";
 
@@ -2412,7 +2448,11 @@ async function createCustomTestFallback(
   user: StoredUser,
   payload: CustomTestPayload,
 ) {
-  const { selected, subject, chapter, difficulty, durationMinutes } = await selectCustomTestQuestions(payload);
+  const scope = await getStudentScope(user.id, user.role, { studyMode: user.studyMode });
+  const { selected, subject, chapter, difficulty, durationMinutes } = await selectCustomTestQuestions(
+    payload,
+    scope.enforced ? scope.subjects : null,
+  );
 
   if (!selected.length) {
     throw new Error("No questions matched that custom test configuration.");
@@ -3145,10 +3185,17 @@ export async function listTests(store: AppStore, user: StoredUser) {
 }
 
 export async function listTestPreviews(store: AppStore, user: StoredUser) {
-  const gate = await getStudentGate(user.id, user.role);
-  // Free students get no tests; premium students get their entitled subjects.
+  const scope = await getStudentScope(user.id, user.role, { studyMode: user.studyMode });
+  // Free students get no tests; premium students get their entitled subjects,
+  // narrowed further to their study mode.
+  //
+  // NOTE this filters only the student's OWN tests. Teacher-assigned tests are
+  // merged afterwards by withAssignedTeacherTests and are deliberately exempt
+  // from both gates — assigned work must never vanish because of a mode switch.
   const gateList = <T extends { subject?: string }>(tests: T[]): T[] =>
-    gate.enforced ? tests.filter((test) => subjectVisibleUnderGate(test.subject, gate)) : tests;
+    scope.gate.enforced || scope.enforced
+      ? tests.filter((test) => subjectVisibleUnderScope(test.subject, scope))
+      : tests;
 
   const seeded = listTestPreviewsFallback(store, user);
   try {
@@ -3321,6 +3368,9 @@ export async function createCustomTest(
   payload: CustomTestPayload,
 ) {
   const generatedId = createId("test");
+  // Study Mode + entitlements. Resolved up front so BOTH the analytics-service
+  // path and the local fallback build from the same allowed subject set.
+  const scope = await getStudentScope(user.id, user.role, { studyMode: user.studyMode });
   try {
     const difficultyValue = (payload.difficulty ?? "medium").toLowerCase();
     const difficulty = difficultyValue === "all" ? null : normalizeDifficulty(difficultyValue);
@@ -3332,11 +3382,21 @@ export async function createCustomTest(
     const durationOverride = payload.duration_minutes != null ? Math.trunc(Number(payload.duration_minutes)) : null;
 
     // Normalize every multi-select dimension (plural arrays, legacy singles).
-    const subjects = (payload.subjects?.length
+    const requestedSubjects = (payload.subjects?.length
       ? payload.subjects
       : (payload.subject && payload.subject !== "mixed" && payload.subject !== "all" ? [payload.subject] : []))
       .map((s) => String(s ?? "").trim().toLowerCase())
       .filter(Boolean);
+    // Clamp the request to the scope. An explicit pick that survives nothing is
+    // a user-visible error rather than a silently-widened "mixed" test.
+    const subjects = scope.enforced
+      ? (clampSubjectsToScope(requestedSubjects, scope) ?? [])
+      : requestedSubjects;
+    if (scope.enforced && requestedSubjects.length > 0 && subjects.length === 0) {
+      const err = new Error("Those subjects aren't part of your current study mode.");
+      (err as { status?: number }).status = 400;
+      throw err;
+    }
     const chapters = (payload.chapters?.length ? payload.chapters : (payload.chapter ? [payload.chapter] : []))
       .map((c) => String(c ?? "").trim())
       .filter(Boolean);
@@ -3351,6 +3411,14 @@ export async function createCustomTest(
     // dimension has more than one selection, use the local bank path
     // (createCustomTestFallback), which union-matches all of them (= ANY(...)).
     if (subjects.length > 1 || chapters.length > 1 || classes.length > 1 || exams.length > 1) {
+      return createCustomTestFallback(store, user, payload);
+    }
+
+    // A scoped "mixed" test cannot be expressed to the service, whose subject
+    // parameter is a single value — sending "mixed" would let it draw from every
+    // subject, so a JEE-mode mixed test could contain Biology. The local path
+    // union-matches the allowed set instead.
+    if (subjects.length === 0 && narrowingSubjectsFilter(scope) != null) {
       return createCustomTestFallback(store, user, payload);
     }
 
@@ -3375,6 +3443,34 @@ export async function createCustomTest(
         err: new Error("Analytics service is not configured."),
       });
       return createCustomTestFallback(store, user, payload);
+    }
+
+    // Never trust the service's question set. It may top up across subjects, and
+    // anything it returns is about to be persisted as this student's test — so
+    // verify every id against the scope before writing. If the check itself
+    // fails (catalog unreachable) we fall back rather than persist unverified.
+    if (scope.enforced && serviceResponse.question_ids.length) {
+      let verifiedIds: string[];
+      try {
+        const map = await getOgcodeCatalogQuestionMap(serviceResponse.question_ids);
+        verifiedIds = serviceResponse.question_ids.filter((id) => {
+          const question = map.get(id);
+          // Unknown ids stay — they are local-fixture questions the catalog does
+          // not hold, and dropping them would empty dev/test builds.
+          return !question || subjectVisibleUnderScope(question.subject, scope);
+        });
+      } catch {
+        return createCustomTestFallback(store, user, payload);
+      }
+      if (verifiedIds.length !== serviceResponse.question_ids.length) {
+        metric("origin.study_mode.service_questions_filtered", {
+          removed: String(serviceResponse.question_ids.length - verifiedIds.length),
+        });
+        if (verifiedIds.length === 0) {
+          return createCustomTestFallback(store, user, payload);
+        }
+        serviceResponse.question_ids = verifiedIds;
+      }
     }
 
     await persistGeneratedCustomTest({
@@ -3830,10 +3926,20 @@ export async function listGeneratedDpps(store: AppStore, user: StoredUser) {
   );
 
   // Free students get no DPPs; premium students get their entitled subjects.
-  const gate = await getStudentGate(user.id, user.role);
-  return gate.enforced
+  // Study Mode narrows that further, but only as a FLAG — a generated DPP is
+  // work already created for this student, so it is marked `outOfMode` for the
+  // UI to badge/collapse rather than removed (plan §3.3, §6.6). The premium gate
+  // still hard-filters, exactly as before.
+  const scope = await getStudentScope(user.id, user.role, { studyMode: user.studyMode });
+  const gate = scope.gate;
+  const entitled = gate.enforced
     ? serialized.filter((dpp) => subjectVisibleUnderGate(dpp.subject, gate))
     : serialized;
+  if (!scope.enforced) return entitled;
+  return entitled.map((dpp) => ({
+    ...dpp,
+    outOfMode: !subjectVisibleUnderMode(dpp.subject, scope),
+  }));
 }
 
 export async function getGeneratedDppDetail(store: AppStore, user: StoredUser, dppId: string) {
@@ -4123,10 +4229,16 @@ export function listPracticeQuestions(
 
 export async function listOgcodeQuestionChapters(
   store: AppStore,
-  _user: StoredUser,
+  user: StoredUser,
   subject: string,
 ) {
   const normalizedSubject = normalizeSubject(subject);
+
+  // Chapter lists are an enumeration surface: without this, a JEE-mode student
+  // could still read the whole Biology chapter tree via ?subject=biology.
+  const scope = await getStudentScope(user.id, user.role, { studyMode: user.studyMode });
+  if (!subjectVisibleUnderMode(normalizedSubject, scope)) return [];
+
   const chapters = new Set<string>();
 
   store.questions.forEach((question) => {
@@ -4159,11 +4271,17 @@ export async function listOgcodeQuestionPage(
   const chapters = normalizeOgcodeChaptersFilter(filters.chapters);
   const status = normalizeOgcodeStatusFilter(filters.status);
 
-  // Phase 1.4 entitlement gate. Free → fixed 500-question mixed sample pool;
-  // premium → full bank scoped to entitled subjects.
-  const gate = await getStudentGate(user.id, user.role);
+  // Phase 1.4 entitlement gate + Study Mode. Free → fixed 500-question sample
+  // pool; premium → full bank scoped to entitled subjects. Study Mode narrows
+  // that further to the subjects of the student's chosen mode (JEE/NEET/PCMB),
+  // and `scope.subjects` is the intersection of the two.
+  const scope = await getStudentScope(user.id, user.role, { studyMode: user.studyMode });
+  const gate = scope.gate;
   const isFree = gate.enforced && !gate.anyPremium;
   const isPremium = gate.enforced && gate.anyPremium;
+  // True when the scope actually removes something — either half may be the
+  // reason, so subject filtering below keys off this rather than `isPremium`.
+  const scoped = isPremium || scope.enforced;
   const emptyPage = (total: number): OgcodeQuestionPage => ({
     items: [],
     total,
@@ -4172,20 +4290,18 @@ export async function listOgcodeQuestionPage(
     hasMore: false,
   });
 
-  // Premium request for an unentitled subject returns nothing.
-  if (isPremium && filters.subject) {
+  // Request for a subject outside the scope (unentitled OR out of mode) returns
+  // nothing. A filter chip that yields no rows is not an error.
+  if (scoped && filters.subject) {
     const requested = canonicalSubject(filters.subject);
-    if (requested && !gate.subjects.includes(requested)) return emptyPage(0);
+    if (requested && !scope.subjects.includes(requested)) return emptyPage(0);
   }
-  // Multi-subject filter: strip subjects the user is not entitled to.
-  if (isPremium && filters.subjects?.length) {
-    const entitled = filters.subjects.filter((s) => {
-      const c = canonicalSubject(s);
-      return c != null && gate.subjects.includes(c);
-    });
-    if (!entitled.length) return emptyPage(0);
+  // Multi-subject filter: strip subjects outside the scope.
+  if (scoped && filters.subjects?.length) {
+    const allowed = clampSubjectsToScope(filters.subjects, scope);
+    if (!allowed?.length) return emptyPage(0);
     // eslint-disable-next-line no-param-reassign
-    filters = { ...filters, subjects: entitled };
+    filters = { ...filters, subjects: allowed };
   }
   // Free pool is capped at the first FREE_SAMPLE_POOL_SIZE questions.
   if (isFree && offset >= FREE_SAMPLE_POOL_SIZE) return emptyPage(FREE_SAMPLE_POOL_SIZE);
@@ -4198,8 +4314,8 @@ export async function listOgcodeQuestionPage(
   store.questions.forEach((question) => {
     localQuestionsById.set(question.id, question);
     if (matchesLocalOgcodeQuestion(question, { ...filters, chapters, status }, attemptState)) {
-      // Premium: hide local questions outside the entitled subjects.
-      if (isPremium && !subjectVisibleUnderGate(question.subject, gate)) return;
+      // Hide local questions outside the scope (unentitled OR out of mode).
+      if (scoped && !ogcodeSubjectVisible(question.subject, scope)) return;
       localIds.push(question.id);
     }
   });
@@ -4234,17 +4350,19 @@ export async function listOgcodeQuestionPage(
   const remotePage = remainingLimit && !(status === "solved" && solvedCatalogIds.length === 0)
     ? await listOgcodeCatalogQuestionPage({
         subject: filters.subject,
-        // Subject scoping for premium (gated) users:
-        //   - explicit subject picks (already intersected with entitlements
-        //     above) → honor them, so "select Biology" shows only Biology;
-        //   - a singular ?subject= filter → let it apply alone (entitlement
-        //     already checked), don't also clamp to the full entitled set;
-        //   - no subject filter at all → restrict to entitled subjects.
-        // Non-premium users pass their picks straight through.
-        subjects: isPremium
+        // Subject scoping (entitlements ∩ study mode):
+        //   - explicit subject picks (already intersected with the scope above)
+        //     → honor them, so "select Biology" shows only Biology;
+        //   - a singular ?subject= filter → let it apply alone (already checked
+        //     against the scope), don't also clamp to the whole scope;
+        //   - no subject filter at all → restrict to the scope, but only when
+        //     the scope actually narrows (narrowingSubjectsFilter), so an
+        //     unscoped request still sees `mixed`/legacy-subject rows.
+        // Unscoped users pass their picks straight through.
+        subjects: scoped
           ? (filters.subjects?.length
               ? filters.subjects
-              : (filters.subject ? null : gate.subjects))
+              : (filters.subject ? null : narrowingSubjectsFilter(scope)))
           : (filters.subjects ?? null),
         difficulty: filters.difficulty,
         type: filters.type,
@@ -4325,14 +4443,16 @@ export async function listOgcodeQuestions(
   filters: { subject?: string | null; difficulty?: string | null; type?: string | null },
 ) {
   const questions = await getOgcodeQuestionBank(store);
-  const gate = await getStudentGate(user.id, user.role);
+  const scope = await getStudentScope(user.id, user.role, { studyMode: user.studyMode });
+  const gate = scope.gate;
   const filtered = questions.filter((question) => {
     const matchesSubject = !filters.subject || question.subject === normalizeSubject(filters.subject);
     const matchesDifficulty = !filters.difficulty || question.difficulty === normalizeDifficulty(filters.difficulty);
     const matchesType = !filters.type || question.questionType === filters.type;
     if (!(matchesSubject && matchesDifficulty && matchesType)) return false;
-    // Premium: only entitled subjects; free: everything (clamped to the pool below).
-    if (gate.enforced && gate.anyPremium && !subjectVisibleUnderGate(question.subject, gate)) return false;
+    // Scope = entitlements ∩ study mode. Free users still see the sample pool,
+    // but mode-scoped — hence ogcodeSubjectVisible rather than the premium rule.
+    if (!ogcodeSubjectVisible(question.subject, scope)) return false;
     return true;
   });
   const scoped = gate.enforced && !gate.anyPremium ? filtered.slice(0, FREE_SAMPLE_POOL_SIZE) : filtered;
@@ -4353,6 +4473,21 @@ export async function listOgcodeQuestions(
 
 export async function getPracticeQuestionDetail(store: AppStore, user: StoredUser, questionId: string) {
   const resolved = await resolvePracticeQuestion(store, questionId);
+
+  // Out-of-mode catalog question (a shared link, a stale bookmark, a hand-typed
+  // id). Refuse with a 403 the UI turns into a "switch mode?" interstitial —
+  // UNLESS the student has already attempted it, because their own history must
+  // stay readable in every mode (plan §3.3).
+  const scope = await getStudentScope(user.id, user.role, { studyMode: user.studyMode });
+  if (!subjectVisibleUnderMode(resolved.question.subject, scope)) {
+    const attemptedBefore = store.practiceAttempts.some(
+      (attempt) => attempt.userId === user.id && attempt.questionId === resolved.question.id,
+    );
+    if (!attemptedBefore) {
+      throwOutOfModeForbidden(resolved.question.subject, scope);
+    }
+  }
+
   const base = serializeQuestion(store, user.id, resolved.question, {
     includeCorrectFields: false,
     presentationContext: {
@@ -4890,8 +5025,13 @@ export async function getOgcodeUserStats(store: AppStore, user: StoredUser) {
 }
 
 export async function getOgcodeSubjectRanks(store: AppStore, user: StoredUser) {
+  // Subject arenas follow the mode: a JEE student has no Biology arena. Their
+  // historical Biology rank is hidden from this view, never deleted.
+  const rankScope = await getStudentScope(user.id, user.role, { studyMode: user.studyMode });
   if (isUserPostgresConfigured() && isOgcodePostgresConfigured()) {
-    const subjects = ["physics", "chemistry", "mathematics", "biology"];
+    const subjects = rankScope.enforced
+      ? rankScope.modeSubjects
+      : ["physics", "chemistry", "mathematics", "biology"];
     const rows = await Promise.all(
       subjects.map(async (subject) => {
         const entries = await buildLeaderboardEntriesFromDb(user, subject);
@@ -4912,7 +5052,7 @@ export async function getOgcodeSubjectRanks(store: AppStore, user: StoredUser) {
 
   // Fallback to in-memory store
   const rows = store.subjectRanks
-    .filter((entry) => entry.userId === user.id)
+    .filter((entry) => entry.userId === user.id && subjectVisibleUnderMode(entry.subject, rankScope))
     .sort((left, right) => right.rankScore - left.rankScore)
     .map((entry, index) => ({
       subject: entry.subject,
@@ -5059,8 +5199,21 @@ export async function getOgcodeLeaderboard(store: AppStore, user: StoredUser, su
   // Overall / regional Hall-of-Fame + the "national AIR" now rank by prestige
   // points (Phase 2) so OG-Code solves actually count toward rank, matching the
   // scoring modal. Subject "arena" boards keep their efficiency ranking below.
+  // The overall / regional board is subject-agnostic and stays global — mode
+  // must never shrink the leaderboard a student is ranked against. Only the
+  // per-subject "arena" boards below are mode-scoped.
   if (!subject && isUserPostgresConfigured()) {
     return getGlobalPointsLeaderboard(user.id, location, topN);
+  }
+
+  if (subject) {
+    const boardScope = await getStudentScope(user.id, user.role, { studyMode: user.studyMode });
+    // An off-mode arena returns the empty board rather than falling through to
+    // another subject's rankings. Same shape as the populated path so callers
+    // (and the render-loader's cached type) stay unchanged.
+    if (!subjectVisibleUnderMode(subject, boardScope)) {
+      return { leaderboard: [] as never[], myRank: null, my_rank: null };
+    }
   }
 
   let entries;
@@ -5146,7 +5299,10 @@ export function updateOgcodeLocation(
 }
 
 export async function getFocusAreas(store: AppStore, user: StoredUser) {
-  const subjects = ["physics", "chemistry", "mathematics", "biology"];
+  const focusScope = await getStudentScope(user.id, user.role, { studyMode: user.studyMode });
+  const subjects = focusScope.enforced
+    ? focusScope.modeSubjects
+    : ["physics", "chemistry", "mathematics", "biology"];
   const questionBank = await getOgcodeQuestionBank(store);
   const totalBySubject = questionBank.reduce<Record<string, number>>((accumulator, question) => {
     accumulator[question.subject] = (accumulator[question.subject] ?? 0) + 1;
@@ -5224,27 +5380,31 @@ export async function getFocusAreas(store: AppStore, user: StoredUser) {
 }
 
 export async function getChallengeOfTheDay(store: AppStore, user: StoredUser) {
+  const scope = await getStudentScope(user.id, user.role, { studyMode: user.studyMode });
+  const mode = scope.mode;
+
   let challenge = null;
   try {
-    challenge = await getOgcodeChallengeQuestion();
+    challenge = await getOgcodeChallengeQuestion(mode);
   } catch {
     challenge = null;
   }
   if (!challenge) {
     const epochDay = Math.floor(Date.now() / 86_400_000);
-    // Match the primary path: Ori Quest is Physics + NEET only (until changed).
-    const isPhysicsNeet = (q: StoredQuestion) =>
-      String(q.subject ?? "").toLowerCase() === "physics" &&
-      /neet/i.test(String(q.occurrence ?? ""));
-    const physicsNeet = store.questions.filter(isPhysicsNeet);
-    const curated = physicsNeet.filter((question) => question.isChallengeOfTheDay);
-    const pool = curated.length > 0
+    // In-memory fallback, mirroring the catalog path: the mode's subjects are a
+    // HARD filter, exam provenance only a preference.
+    const inMode = store.questions.filter((q) => isSubjectInMode(mode, q.subject));
+    const curated = inMode.filter((question) => question.isChallengeOfTheDay);
+    const tier = curated.length > 0
       ? curated
-      : physicsNeet.filter((question) => question.questionType === "mcq" && question.correctOption !== null);
+      : inMode.filter((question) => question.questionType === "mcq" && question.correctOption !== null);
+    const inFamily = tier.filter((question) => occurrenceMatchesMode(mode, question.occurrence));
+    const pool = inFamily.length > 0 ? inFamily : tier;
     if (pool.length > 0) {
       challenge = pool[((epochDay % pool.length) + pool.length) % pool.length];
     } else {
-      challenge = store.questions[0];
+      // Last resort: never hand back an out-of-mode question just to fill the card.
+      challenge = store.questions.find((q) => isSubjectInMode(mode, q.subject)) ?? null;
     }
   }
   if (!challenge) {
@@ -5255,7 +5415,9 @@ export async function getChallengeOfTheDay(store: AppStore, user: StoredUser) {
     includeCorrectFields: false,
     presentationContext: {
       scope: "challenge",
-      assessmentId: "challenge-of-the-day",
+      // Per-mode id so two modes' challenges on the same day get independent
+      // option-presentation state instead of colliding on one key.
+      assessmentId: `challenge-of-the-day:${mode}`,
       attemptKey: epochDay,
     },
   });

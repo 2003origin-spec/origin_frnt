@@ -134,6 +134,12 @@ export const roomJoinLimiter = createLimiter(30, "rl:room-join", "1 h");
 
 export const roomChatLimiter = createLimiter(10, "rl:room-chat", "60 s");
 
+// Study Mode switches (Server Action; keyed per user). Bounds DB churn and
+// cache-key thrash from someone hammering the toggle — NOT an abuse guard:
+// switching modes grants nothing (the daily challenge carries no bonus points,
+// only ordinary OG Code scoring). Generous enough that no real student trips it.
+export const studyModeLimiter = createLimiter(20, "rl:study-mode", "1 h");
+
 // CBT surface limiters. OTP is checked in the CBT auth server actions (which
 // bypass middleware); the rest are applied in-handler on the public student
 // surface. Keyed per-email/per-ip/per-room/per-participant by the caller.

@@ -27,6 +27,7 @@ import { mockBooks } from '@/data/mockData';
 import NCERTReader from '@/components/study/NCERTReader';
 import NCERTCorner from '@/components/study/NCERTCorner';
 import { useAuth } from '@/context/AuthContext';
+import { isSubjectInMode } from '@/lib/study-mode';
 import { apiCall } from '@/lib/api';
 
 interface StudyCornerProps {
@@ -36,7 +37,7 @@ interface StudyCornerProps {
 type TabType = 'dashboard' | 'discover' | 'library' | 'notes' | 'bookmarks' | 'ncert';
 
 export default function StudyCorner({ catalog }: StudyCornerProps) {
-    const { user } = useAuth();
+    const { user, studyMode } = useAuth();
     const [activeTab, setActiveTab] = useState<TabType>('dashboard');
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedBook, setSelectedBook] = useState<Book | null>(null);
@@ -201,7 +202,11 @@ export default function StudyCorner({ catalog }: StudyCornerProps) {
     // --- Dynamic Dashboard Folder Generation ---
     const generateDashboardFolders = () => {
         const folders: any[] = [];
-        const subjects = Array.from(new Set(catalog.map((b: any) => b.subject)));
+        // NCERT subject folders follow the Study Mode: a JEE student's Study
+        // Corner has no Biology shelf. Non-subject material (unmapped values)
+        // still shows, same rule as everywhere else.
+        const subjects = Array.from(new Set(catalog.map((b: any) => b.subject)))
+            .filter((subject: string) => isSubjectInMode(studyMode, subject));
 
         subjects.forEach((subject: string) => {
             const subjectBooks = catalog.filter((b: any) => b.subject === subject);

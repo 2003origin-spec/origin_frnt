@@ -18,6 +18,7 @@ import { listTestPreviews } from "@/server/assessments";
 import { listOgcodeCatalogQuestionPage } from "@/server/ogcode-catalog";
 import { searchStudents } from "@/server/social/social-service";
 import { isFeatureEnabled } from "@/lib/feature-flags";
+import { getStudentScope, narrowingSubjectsFilter } from "@/server/study-scope";
 
 export type SearchScope = "all" | "tests" | "questions" | "people" | "ai" | "books";
 export type SearchResultType = "test" | "question" | "person" | "ai" | "book" | "nav";
@@ -101,8 +102,19 @@ async function searchTests(store: AppStore, user: StoredUser, query: string): Pr
     }));
 }
 
-async function searchQuestions(query: string): Promise<SearchResult[]> {
-  const { items } = await listOgcodeCatalogQuestionPage({ search: query, limit: PER_DOMAIN_LIMIT, offset: 0 });
+async function searchQuestions(user: StoredUser, query: string): Promise<SearchResult[]> {
+  // Scope the search to the student's entitlements ∩ study mode. Without this a
+  // JEE student's results would include Biology questions whose links then 403
+  // on the out-of-mode interstitial — worse than not surfacing them at all.
+  const scope = await getStudentScope(user.id, user.role, { studyMode: user.studyMode });
+  const subjects = scope.enforced ? narrowingSubjectsFilter(scope) : null;
+  if (scope.enforced && scope.starved) return [];
+  const { items } = await listOgcodeCatalogQuestionPage({
+    search: query,
+    subjects,
+    limit: PER_DOMAIN_LIMIT,
+    offset: 0,
+  });
   return items.map((question) => ({
     type: "question" as const,
     id: question.id,
@@ -198,7 +210,7 @@ export async function searchAll(options: {
 
   const asyncTasks: Promise<SearchResult[]>[] = [];
   if (wants("tests")) asyncTasks.push(searchTests(options.store, options.user, query));
-  if (wants("questions")) asyncTasks.push(searchQuestions(query));
+  if (wants("questions")) asyncTasks.push(searchQuestions(options.user, query));
   if (wants("people")) asyncTasks.push(searchPeople(options.user.id, query));
 
   const settled = await Promise.allSettled(asyncTasks);

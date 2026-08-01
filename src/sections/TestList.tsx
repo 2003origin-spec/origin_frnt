@@ -32,9 +32,12 @@ import type { Test, TestPreview, User } from '@/types';
 import { cn } from '@/lib/utils';
 import { apiCall } from '@/lib/api';
 import { createCustomTestAction } from '@/server/actions/test-actions';
+import { useAuth } from '@/context/AuthContext';
+import { isSubjectInMode, studyModeSubjects } from '@/lib/study-mode';
 
 const CLASS_OPTIONS = [11, 12] as const;
 const EXAM_OPTIONS = ['JEE', 'NEET', 'AIPMT'] as const;
+/** Full table; rendered lists are filtered by the active Study Mode. */
 const SUBJECT_OPTIONS = [
   { value: 'physics', label: 'Physics' },
   { value: 'chemistry', label: 'Chemistry' },
@@ -113,6 +116,7 @@ function toTestPreview(test: Test | TestPreview): TestPreview {
 }
 
 export default function TestList({ onStartTest, onViewAnalysis, onBack, user, initialTests }: TestListProps) {
+  const { studyMode } = useAuth();
   const [tests, setTests] = useState<TestPreview[]>(initialTests ?? []);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSubject, setSelectedSubject] = useState('all');
@@ -559,7 +563,9 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                                 <div className="space-y-4">
                                     <Label className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">Domain Calibration</Label>
                                     <ChipMultiSelect
-                                        options={SUBJECT_OPTIONS.map((s) => ({ value: s.value as string, label: s.label }))}
+                                        options={SUBJECT_OPTIONS
+                                          .filter((s) => isSubjectInMode(studyMode, s.value))
+                                          .map((s) => ({ value: s.value as string, label: s.label }))}
                                         selected={customTestConfig.subjects}
                                         emptyLabel="All subjects (mixed)"
                                         onToggle={(s) => setCustomTestConfig((prev) => ({
@@ -753,10 +759,12 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                           className="w-full h-14 px-5 rounded-2xl border border-border/40 bg-background font-bold outline-none focus:border-rose-500 transition-all"
                         >
                           <option value="all">All Subjects</option>
-                          <option value="physics">Physics</option>
-                          <option value="chemistry">Chemistry</option>
-                          <option value="mathematics">Mathematics</option>
-                          <option value="biology">Biology</option>
+                          {/* Only the Study Mode's subjects — the server clamps too. */}
+                          {studyModeSubjects(studyMode).map((subject) => (
+                            <option key={subject} value={subject}>
+                              {subject[0].toUpperCase() + subject.slice(1)}
+                            </option>
+                          ))}
                           <option value="mixed">Mixed</option>
                         </select>
                       </div>

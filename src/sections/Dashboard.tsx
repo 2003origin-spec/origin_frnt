@@ -15,6 +15,8 @@ import {
   PastActivitiesCard,
 } from '@/components/dashboard/DashboardCards';
 import PointsSummary from '@/components/dashboard/PointsSummary';
+import StudyModeToggle from '@/components/dashboard/StudyModeToggle';
+import StudyModeFirstRunPrompt from '@/components/dashboard/StudyModeFirstRunPrompt';
 import { apiCall } from '@/lib/api';
 import { useLayout } from '@/context/LayoutContext';
 import { cn } from '@/lib/utils';
@@ -334,6 +336,12 @@ export default function Dashboard({
   return (
     <div className="min-h-screen neu-surface font-sans selection:bg-primary/20 selection:text-primary">
       <div className="max-w-[1400px] mx-auto px-3 sm:px-6 lg:px-8 py-6 flex flex-col gap-4">
+
+        {/* ── Study Mode: first-run picker, then the persistent toggle ── */}
+        {/* Both self-hide: the prompt after it is answered/dismissed, the toggle
+            for students without a complete JEE/NEET/PCMB subject set. */}
+        <StudyModeFirstRunPrompt />
+        <StudyModeToggle />
 
         {/* ── Seats banner ──────────────────────────────────────── */}
         {regStatus && regStatus.seatsLeft > 0 && regStatus.seatsLeft <= 50 && (

@@ -23,6 +23,7 @@ import {
 import type { User } from '@/types';
 import { cn } from '@/lib/utils';
 import { completeOnboardingAction, completeAccountSetupAction } from '@/server/actions/profile-actions';
+import { inferStudyModeFromProfile } from '@/lib/study-mode';
 
 interface OnboardingPageProps {
   user: User;
@@ -87,6 +88,12 @@ export default function OnboardingPage({ user, onComplete }: OnboardingPageProps
         selectedCourse: formData.selectedCourse,
         subjects: formData.subjects,
         referralSource: formData.referralSource,
+        // The exam choice above IS the study mode for a new student (JEE → jee,
+        // NEET → neet, Foundation → pcmb). Setting it here means they land in
+        // the right scope from their first session and never see the first-run
+        // picker. `selectedCourse` is still written unchanged — it stays as
+        // profile text feeding the AI prompt.
+        studyMode: inferStudyModeFromProfile(formData.selectedCourse, formData.subjects),
       });
       await onComplete(response);
     } catch (error) {

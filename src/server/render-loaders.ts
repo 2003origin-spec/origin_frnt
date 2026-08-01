@@ -1,5 +1,7 @@
 import { unstable_cache } from "next/cache";
 
+import type { StudyMode } from "@/lib/study-mode";
+
 import {
   getOgcodeIndexData,
   getChallengeOfTheDay,
@@ -37,6 +39,14 @@ async function requireStoredUser(userId: string) {
 //   • Subsequent SSR requests within the TTL window skip the Postgres round-trip
 //   • Cold serverless instances share the cached payload via Next.js data cache
 //   • Arguments (userId + any filters) are automatically part of the cache key
+//
+// Study Mode note: loaders whose output depends on the student's mode take it as
+// an explicit leading `mode` argument, so a mode switch lands on a DIFFERENT
+// cache key and is reflected instantly. Resolving the mode only *inside* the
+// cached function would leave the key unchanged and serve pre-switch content for
+// up to the TTL. The alternative — revalidating the shared "ogcode"/"challenge"
+// tags on every toggle — would flush every user's cache platform-wide, so it is
+// deliberately not done. See STUDY_MODE_JEE_NEET_PCMB_PLAN_2026-08-01.md §6.10.
 // ---------------------------------------------------------------------------
 
 export const listTestsForRender = unstable_cache(
@@ -121,7 +131,7 @@ export const getProfileStatsForRender = unstable_cache(
 );
 
 export const getChallengeOfTheDayForRender = unstable_cache(
-  async (userId: string) => {
+  async (mode: StudyMode, userId: string) => {
     const { store, user } = await requireStoredUser(userId);
     return getChallengeOfTheDay(store, user);
   },
@@ -131,7 +141,7 @@ export const getChallengeOfTheDayForRender = unstable_cache(
 );
 
 export const listGeneratedDppsForRender = unstable_cache(
-  async (userId: string) => {
+  async (mode: StudyMode, userId: string) => {
     const { store, user } = await requireStoredUser(userId);
     return listGeneratedDpps(store, user);
   },
@@ -143,6 +153,7 @@ export type GeneratedDppForRender = Awaited<ReturnType<typeof listGeneratedDppsF
 
 export const listOgcodeQuestionsForRender = unstable_cache(
   async (
+    mode: StudyMode,
     userId: string,
     filters: { subject?: string | null; difficulty?: string | null; type?: string | null },
   ) => {
@@ -154,7 +165,7 @@ export const listOgcodeQuestionsForRender = unstable_cache(
 );
 
 export const listOgcodeQuestionPageForRender = unstable_cache(
-  async (userId: string, filters: OgcodeQuestionListFilters) => {
+  async (mode: StudyMode, userId: string, filters: OgcodeQuestionListFilters) => {
     const { store, user } = await requireStoredUser(userId);
     return listOgcodeQuestionPage(store, user, filters);
   },
@@ -163,7 +174,7 @@ export const listOgcodeQuestionPageForRender = unstable_cache(
 );
 
 export const getOgcodeIndexDataForRender = unstable_cache(
-  async (userId: string, filters: OgcodeQuestionListFilters) => {
+  async (mode: StudyMode, userId: string, filters: OgcodeQuestionListFilters) => {
     const { store, user } = await requireStoredUser(userId);
     return getOgcodeIndexData(store, user, filters);
   },
@@ -172,7 +183,7 @@ export const getOgcodeIndexDataForRender = unstable_cache(
 );
 
 export const getPracticeQuestionDetailForRender = unstable_cache(
-  async (userId: string, questionId: string) => {
+  async (mode: StudyMode, userId: string, questionId: string) => {
     const { store, user } = await requireStoredUser(userId);
     return getPracticeQuestionDetail(store, user, questionId);
   },
@@ -181,7 +192,7 @@ export const getPracticeQuestionDetailForRender = unstable_cache(
 );
 
 export const getOgcodeLeaderboardForRender = unstable_cache(
-  async (userId: string, subject: string | null, limit?: number | null) => {
+  async (mode: StudyMode, userId: string, subject: string | null, limit?: number | null) => {
     const { store, user } = await requireStoredUser(userId);
     return getOgcodeLeaderboard(store, user, subject, null, limit);
   },
@@ -199,7 +210,7 @@ export const getOgcodeUserStatsForRender = unstable_cache(
 );
 
 export const getOgcodeSubjectRanksForRender = unstable_cache(
-  async (userId: string) => {
+  async (mode: StudyMode, userId: string) => {
     const { store, user } = await requireStoredUser(userId);
     return getOgcodeSubjectRanks(store, user);
   },
@@ -208,7 +219,7 @@ export const getOgcodeSubjectRanksForRender = unstable_cache(
 );
 
 export const listOgcodeQuestionChaptersForRender = unstable_cache(
-  async (userId: string, subject: string) => {
+  async (mode: StudyMode, userId: string, subject: string) => {
     const { store, user } = await requireStoredUser(userId);
     return listOgcodeQuestionChapters(store, user, subject);
   },

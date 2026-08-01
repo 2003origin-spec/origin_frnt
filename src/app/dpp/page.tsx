@@ -1,5 +1,6 @@
 import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
+import { renderStudyModeKey } from '@/server/study-scope';
 import { getServerUser } from '@/lib/auth-server';
 import { listGeneratedDppsForRender, type GeneratedDppForRender } from '@/server/render-loaders';
 import DPPClient from './_client';
@@ -19,7 +20,7 @@ async function DPPGate() {
 
   let initialDpps: GeneratedDppForRender[] | null = null;
   try {
-    initialDpps = await listGeneratedDppsForRender(user.id);
+    initialDpps = await listGeneratedDppsForRender(renderStudyModeKey(user), user.id);
   } catch {
     // Fall back to the existing client fetch when analytics storage is unavailable.
   }

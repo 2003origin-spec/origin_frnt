@@ -29,6 +29,7 @@ import {
   CheckCircle,
   XCircle,
   Trash2,
+  Layers,
 } from 'lucide-react';
 import { apiCall } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
@@ -45,6 +46,7 @@ import { getUserTitle } from '@/lib/achievements';
 import SocialSettingsCard from '@/components/social/SocialSettingsCard';
 import SoundSettingsCard from '@/components/settings/SoundSettingsCard';
 import { BADGE_TIERS } from '@/lib/badges';
+import { STUDY_MODE_LABELS } from '@/lib/study-mode';
 import Image from 'next/image';
 
 
@@ -98,7 +100,7 @@ export default function Profile({
   socialEnabled = false,
   followCounts = null,
 }: ProfileProps) {
-  const { refreshUser } = useAuth();
+  const { refreshUser, studyMode, studyModeAvailable } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [profileStats, setProfileStats] = useState<ProfileStats | null>(initialProfileStats);
   const [avatarUrl, setAvatarUrl] = useState(user.avatar || '');
@@ -321,6 +323,19 @@ export default function Profile({
                     <Target className="w-3 h-3 text-primary shrink-0" />
                     {editData.selectedCourse || 'No Course'}
                   </span>
+                  {/* Study Mode is the FUNCTIONAL scope (which subjects the app
+                      serves); "Course" above is profile info feeding the AI
+                      prompt. Read-only here — the control lives on the dashboard
+                      so there is only one place to change it. */}
+                  {studyModeAvailable && (
+                    <span
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl neu-inset text-[11px] font-bold text-primary"
+                      title="Change your study mode from the dashboard"
+                    >
+                      <Layers className="w-3 h-3 text-primary shrink-0" />
+                      {STUDY_MODE_LABELS[studyMode]}
+                    </span>
+                  )}
                   <span className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl neu-inset text-[11px] font-bold text-muted-foreground">
                     <MapPin className="w-3 h-3 text-primary shrink-0" />
                     {editData.location || 'Global'}

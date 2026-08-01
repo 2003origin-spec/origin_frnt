@@ -17,6 +17,8 @@ import type { PracticeQuestion, PracticeQuestionPage, SubjectRank, User } from '
 import { usePublishOriginAiPageContext } from '@/features/origin-ai/page-context-store';
 import { saveOgcodeNavQueue } from '@/features/ogcode/nav-queue';
 import { toast } from 'sonner';
+import { useAuth } from '@/context/AuthContext';
+import { isSubjectInMode, studyModeSubjects } from '@/lib/study-mode';
 
 // Characters that imply Markdown / LaTeX. If a string has none of them it is
 // plain text and we can skip the (heavy) ReactMarkdown + KaTeX pipeline entirely
@@ -42,6 +44,7 @@ interface OGCodeListProps {
     scoringV2Enabled?: boolean;
 }
 
+// Full table; the rendered list is filtered by the active Study Mode.
 const SUBJECTS = [
     { name: 'Subject', icon: <Brain className="w-4 h-4" /> },
     { name: 'Physics', icon: <Atom className="w-4 h-4" /> },
@@ -266,6 +269,7 @@ export default function OGCodeList({
     scoringV2Enabled = false,
 }: OGCodeListProps) {
     const searchParams = useSearchParams();
+    const { studyMode } = useAuth();
 
     // Initialize state from URL params
     const initialSubject = parseSubjectFilter(searchParams.get('subject'));
@@ -369,18 +373,22 @@ export default function OGCodeList({
     // Chemistry at launch) silently vanishes from the options. Merge the canonical
     // core list with whatever the DB facets return, deduped case-insensitively
     // (canonical display wins), so no core subject can ever go missing.
+    // Study Mode replaces the fixed four-subject core: a JEE student's filter
+    // never offers Biology. Facet values outside the mode are dropped too — the
+    // server already scopes the facet endpoint, this is the client mirror.
     const subjectOptions = useMemo(() => {
-        const CORE = ['Physics', 'Chemistry', 'Mathematics', 'Biology'];
+        const CORE = studyModeSubjects(studyMode).map((s) => s[0].toUpperCase() + s.slice(1));
         const seen = new Set<string>();
         const out: string[] = [];
         for (const s of [...CORE, ...facetSubjects]) {
             const key = normalizeSubject(s).toLowerCase();
             if (!key || seen.has(key)) continue;
+            if (!isSubjectInMode(studyMode, key)) continue;
             seen.add(key);
             out.push(s);
         }
         return out;
-    }, [facetSubjects]);
+    }, [facetSubjects, studyMode]);
     const chapterOptions = useMemo(() => [...facetChapters].sort(), [facetChapters]);
     const conceptOptions = useMemo(() => [...facetConcepts].sort(), [facetConcepts]);
 

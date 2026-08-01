@@ -21,6 +21,8 @@ import type { PracticeQuestion, User } from '@/types';
 import { submitOgcodeAnswerAction, revealOgcodeQuestionAction, toggleOgcodeQuestionLikeAction, reportOgcodeQuestionAction, ogcodePresenceHeartbeatAction, listOgcodeChallengeMutualsAction, sendOgcodeChallengeAction } from '@/server/actions/ogcode-actions';
 import { playAnswerSound as playAnswerSoundManager, resetAnswerStreak } from '@/lib/sound-manager';
 import { toast } from 'sonner';
+import { useAuth } from '@/context/AuthContext';
+import { isSubjectInMode } from '@/lib/study-mode';
 
 const SUBJECT_META: Record<string, { label: string; emoji: string; param: string }> = {
     phy:  { label: 'Physics',     emoji: '⚛️', param: 'subject=phy'  },
@@ -395,6 +397,7 @@ function renderQuestionText(content: string | null | undefined, keyPrefix: strin
 }
 
 export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, setTimeMode, user, initialQuestion }: OGCodeWorkspaceProps) {
+    const { studyMode } = useAuth();
     const [question, setQuestion] = useState<PracticeQuestionApi | null>(initialQuestion ?? null);
     const [isLoading, setIsLoading] = useState(!initialQuestion);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -502,6 +505,10 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
             } else if (res.error === 'already_pending') {
                 setChallengeSentTo((prev) => new Set(prev).add(toUserId));
                 toast.info(`${toName} already has a pending challenge for this question`);
+            } else if (res.error === 'recipient_out_of_mode') {
+                // Blocked server-side so the invite can't dead-end on the
+                // out-of-mode interstitial for the recipient.
+                toast.info(`${toName} isn't studying this subject right now.`);
             } else {
                 toast.error('Could not send the challenge.');
             }
@@ -737,6 +744,9 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                 // Pick 2 random other subjects
                 const suggestions = Object.keys(SUBJECT_META)
                     .filter(k => k !== currentSubjectKey)
+                    // Never suggest a subject the student's Study Mode excludes —
+                    // the link would land on the out-of-mode interstitial.
+                    .filter(k => isSubjectInMode(studyMode, k))
                     .sort(() => 0.5 - Math.random())
                     .slice(0, 2);
 

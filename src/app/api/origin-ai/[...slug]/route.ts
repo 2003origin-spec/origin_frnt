@@ -2,6 +2,8 @@ import type { NextRequest } from "next/server";
 import { z } from "zod";
 
 import { requireUserFromRequest } from "@/server/auth";
+import { renderStudyModeKey } from "@/server/study-scope";
+import { studyModeSubjects } from "@/lib/study-mode";
 import {
   commitOriginAiVoiceTurn,
   getOriginAiSnapshot,
@@ -36,6 +38,12 @@ import {
   upsertCachedChapters,
 } from "@/server/catalog-cache";
 import { getRequestId, REQUEST_ID_HEADER } from "@/lib/request-id";
+
+/** The mode to advertise to the Python service. Constant when the flag is off. */
+function studyModeForUser(user: StoredUser) {
+  return renderStudyModeKey(user);
+}
+
 import { aiLimiter, voiceLimiter, generalLimiter, checkRateLimit } from "@/lib/rate-limit";
 import { readRequiredServiceToken, ServiceAuthConfigurationError } from "@/server/service-auth";
 import { getAuthContext } from "@/server/authz";
@@ -286,6 +294,11 @@ async function proxyToMicroservice(
         "X-Origin-User-Streak": String(user.streak || 0),
         "X-Origin-User-Student-Class": user.studentClass ?? "",
         "X-Origin-User-Selected-Course": user.selectedCourse ?? "",
+        // Study Mode — which subjects this student is actually working in, so
+        // the model stops volunteering off-mode examples. Additive: the Python
+        // service ignores unknown headers, so this is safe to ship ahead of it.
+        "X-Origin-User-Study-Mode": studyModeForUser(user),
+        "X-Origin-User-Mode-Subjects": studyModeSubjects(studyModeForUser(user)).join(","),
         // Forward the caller's auth header to Python so it can do its own authentication.
         ...(request.headers.has("Authorization") ? { "Authorization": request.headers.get("Authorization")! } : {}),
       },
@@ -426,6 +439,11 @@ async function proxyToMicroserviceStream(
         "X-Origin-User-Streak": String(user.streak || 0),
         "X-Origin-User-Student-Class": user.studentClass ?? "",
         "X-Origin-User-Selected-Course": user.selectedCourse ?? "",
+        // Study Mode — which subjects this student is actually working in, so
+        // the model stops volunteering off-mode examples. Additive: the Python
+        // service ignores unknown headers, so this is safe to ship ahead of it.
+        "X-Origin-User-Study-Mode": studyModeForUser(user),
+        "X-Origin-User-Mode-Subjects": studyModeSubjects(studyModeForUser(user)).join(","),
         // Forward the caller's auth header to Python so it can do its own authentication.
         ...(request.headers.has("Authorization") ? { "Authorization": request.headers.get("Authorization")! } : {}),
       },

@@ -341,9 +341,10 @@ async function upsertUsers(client: PoolClient, users: StoredUser[]): Promise<voi
          premium_expiry, is_onboarded, selected_course, is_dropper,
          years_of_experience, subjects, student_capacity, location,
          voice_minutes_used_today, tokens_used_today, usage_reset_at, auth_token_version,
-         ogcode_correct_sound, ogcode_wrong_sound, sound_preferences
+         ogcode_correct_sound, ogcode_wrong_sound, sound_preferences,
+         study_mode, study_mode_prompted_at
        )
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
        ON CONFLICT (id) DO UPDATE SET
          name = EXCLUDED.name,
          email = EXCLUDED.email,
@@ -370,7 +371,9 @@ async function upsertUsers(client: PoolClient, users: StoredUser[]): Promise<voi
          auth_token_version = EXCLUDED.auth_token_version,
          ogcode_correct_sound = EXCLUDED.ogcode_correct_sound,
          ogcode_wrong_sound = EXCLUDED.ogcode_wrong_sound,
-         sound_preferences = EXCLUDED.sound_preferences`,
+         sound_preferences = EXCLUDED.sound_preferences,
+         study_mode = EXCLUDED.study_mode,
+         study_mode_prompted_at = EXCLUDED.study_mode_prompted_at`,
       [
         user.id,
         user.name,
@@ -400,6 +403,8 @@ async function upsertUsers(client: PoolClient, users: StoredUser[]): Promise<voi
         user.ogcodeCorrectSound ?? null,
         user.ogcodeWrongSound ?? null,
         user.soundPreferences ? JSON.stringify(user.soundPreferences) : null,
+        user.studyMode ?? null,
+        user.studyModePromptedAt ?? null,
       ],
     );
   }

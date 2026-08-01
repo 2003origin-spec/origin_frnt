@@ -1013,6 +1013,12 @@ export async function createCustomTestForRoom(
   roomId: string,
   payload: CustomTestPayload,
 ) {
+  // Study Mode: `user` here is the room ADMIN (enforced below), so the test is
+  // built under the HOST's mode — createCustomTest scopes by the caller. That is
+  // deliberate: the room test is one shared artifact, and scoping it per viewer
+  // would hand different students different papers and break the room
+  // leaderboard. Participants take it regardless of their own mode; the lobby
+  // shows a room-level mode badge. See plan §6.4.
   const test = await createCustomTest(store, user, payload);
   const customTestId = (test as { id?: string }).id;
   if (!customTestId) {

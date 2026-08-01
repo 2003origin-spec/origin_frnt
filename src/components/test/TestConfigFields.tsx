@@ -1,19 +1,24 @@
 'use client';
 
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Check, ChevronDown } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { apiCall } from '@/lib/api';
+import { useAuth } from '@/context/AuthContext';
+import { studyModeSubjects } from '@/lib/study-mode';
 
 const CLASS_OPTIONS = [11, 12] as const;
+// Exam provenance is deliberately INDEPENDENT of Study Mode: a JEE aspirant
+// legitimately practises NEET-origin Physics, so these chips stay complete.
+// Only the subject list follows the mode. (Plan open question Q2.)
 const EXAM_OPTIONS = ['JEE', 'NEET', 'AIPMT'] as const;
-const SUBJECT_OPTIONS = [
-  { value: 'physics', label: 'Physics' },
-  { value: 'chemistry', label: 'Chemistry' },
-  { value: 'mathematics', label: 'Mathematics' },
-  { value: 'biology', label: 'Biology' },
-] as const;
+const SUBJECT_LABELS: Record<string, string> = {
+  physics: 'Physics',
+  chemistry: 'Chemistry',
+  mathematics: 'Mathematics',
+  biology: 'Biology',
+};
 const QUESTION_COUNT_OPTIONS = [10, 20, 30, 40, 50] as const;
 
 export type TestConfigValue = {
@@ -82,6 +87,15 @@ export default function TestConfigFields({
   value: TestConfigValue;
   onChange: (next: TestConfigValue) => void;
 }) {
+  // Only the subjects of the student's Study Mode are offered. The server
+  // clamps the request as well (createCustomTest) — this just keeps the UI from
+  // showing a chip that would silently return nothing.
+  const { studyMode } = useAuth();
+  const subjectOptions = useMemo(
+    () => studyModeSubjects(studyMode).map((s) => ({ value: s as string, label: SUBJECT_LABELS[s] })),
+    [studyMode],
+  );
+
   const [facetChapters, setFacetChapters] = useState<string[]>([]);
   const [facetChaptersLoading, setFacetChaptersLoading] = useState(false);
   const [chapterDropdownOpen, setChapterDropdownOpen] = useState(false);
@@ -96,6 +110,19 @@ export default function TestConfigFields({
     valueRef.current = value;
     onChangeRef.current = onChange;
   });
+
+  // A mode switch can strand an already-selected subject (picked Biology, then
+  // switched to JEE). The server clamps it anyway, but leaving the chip lit
+  // would show a filter that silently returns nothing. Prune on change only —
+  // guarded by the length check so this never loops.
+  useEffect(() => {
+    const allowed = new Set(subjectOptions.map((option) => option.value));
+    const current = valueRef.current;
+    const kept = current.subjects.filter((subject) => allowed.has(subject));
+    if (kept.length !== current.subjects.length) {
+      onChangeRef.current({ ...current, subjects: kept, chapters: [] });
+    }
+  }, [subjectOptions]);
 
   const labelCls = 'text-[10px] uppercase font-black tracking-widest text-muted-foreground';
 
@@ -166,7 +193,7 @@ export default function TestConfigFields({
       <div className="space-y-2.5">
         <span className={labelCls}>Subject</span>
         <ChipMultiSelect
-          options={SUBJECT_OPTIONS.map((s) => ({ value: s.value as string, label: s.label }))}
+          options={subjectOptions}
           selected={value.subjects}
           emptyLabel="All subjects (mixed)"
           onToggle={(s) =>
