@@ -1,5 +1,6 @@
 import type { Subject } from '@/lib/entitlements';
 import type { SoundPreferences } from '@/lib/sound-preferences';
+import type { StudyMode } from '@/lib/study-mode';
 
 export interface User {
   id: string;
@@ -58,6 +59,21 @@ export interface User {
   ogcodeWrongSound?: string | null;
   /** App-wide sound-effect preferences (see src/lib/sound-preferences.ts). */
   soundPreferences?: SoundPreferences | null;
+  /**
+   * Study Mode (JEE / NEET / PCMB). `null`/absent = never chosen, which resolves
+   * to DEFAULT_STUDY_MODE ('pcmb'). See src/lib/study-mode.ts.
+   */
+  studyMode?: StudyMode | null;
+  /** True once the first-run mode picker has been shown (so it never re-asks). */
+  studyModePrompted?: boolean;
+  /**
+   * Whether to offer the Study Mode toggle. Server-derived (it depends on
+   * feature flags the browser never sees) — false for free students and for
+   * anyone who owns fewer than a complete JEE / NEET / PCMB subject set.
+   */
+  studyModeAvailable?: boolean;
+  /** Modes whose subjects the student fully owns — the only selectable ones. */
+  availableStudyModes?: StudyMode[];
 }
 
 export interface Classroom {

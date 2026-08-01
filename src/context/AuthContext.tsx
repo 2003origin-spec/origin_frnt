@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { toast } from 'sonner';
 import type { User, StreakData, Task } from '@/types';
@@ -27,6 +27,11 @@ import {
   registerAction,
 } from '@/server/actions/auth-actions';
 import { sendOtpAction, verifyOtpAction } from '@/server/actions/otp-actions';
+import {
+  dismissStudyModePromptAction,
+  setStudyModeAction,
+} from '@/server/actions/study-mode-actions';
+import { DEFAULT_STUDY_MODE, normalizeStudyMode, type StudyMode } from '@/lib/study-mode';
 import { track } from '@/lib/analytics';
 
 interface AuthContextType {
@@ -57,6 +62,30 @@ interface AuthContextType {
   setIsNavigationLocked: (locked: boolean) => void;
   sendOtp: (email: string, role?: 'student' | 'teacher' | 'admin' | null) => Promise<{ ok: boolean; message: string }>;
   verifyOtp: (email: string, otp: string) => Promise<{ ok: boolean; message: string }>;
+  /**
+   * The student's active Study Mode (JEE / NEET / PCMB). Derived from `user`, so
+   * it is correct on the very first server-rendered paint and after every login,
+   * refresh and logout with no extra state to keep in sync. Non-students and
+   * never-chosen students report DEFAULT_STUDY_MODE.
+   */
+  studyMode: StudyMode;
+  /** False when the student has never chosen — `studyMode` is then the default. */
+  studyModeExplicit: boolean;
+  /**
+   * Whether to render the mode toggle at all. Server-derived: false for free
+   * students and for anyone owning fewer than a complete JEE/NEET/PCMB set.
+   */
+  studyModeAvailable: boolean;
+  /** The modes this student may actually select. Others render disabled. */
+  availableStudyModes: StudyMode[];
+  /** True once the first-run mode picker has been answered or dismissed. */
+  studyModePrompted: boolean;
+  /** True while a switch is in flight (the toggle shows the optimistic value). */
+  studyModePending: boolean;
+  /** Persists a new mode. Optimistic; reverts and toasts on failure. */
+  setStudyMode: (mode: StudyMode) => Promise<boolean>;
+  /** Dismisses the first-run picker without choosing (mode stays the default). */
+  dismissStudyModePrompt: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -111,6 +140,69 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
   useEffect(() => {
     setSoundPreferences(user?.soundPreferences ?? null);
   }, [user?.soundPreferences]);
+
+  // ── Study Mode ────────────────────────────────────────────────────────────
+  // Derived from `user` rather than mirrored into its own state: every auth path
+  // already funnels through setUser(), so there is nothing extra to keep in sync
+  // and no chance of a stale mode surviving a logout on a shared device. The
+  // only local state is the optimistic value held during the server round-trip.
+  const [pendingStudyMode, setPendingStudyMode] = useState<StudyMode | null>(null);
+  const storedStudyMode = normalizeStudyMode(user?.studyMode);
+  const studyMode: StudyMode = pendingStudyMode ?? storedStudyMode ?? DEFAULT_STUDY_MODE;
+  const studyModeExplicit = pendingStudyMode != null || storedStudyMode != null;
+  const studyModePrompted = Boolean(user?.studyModePrompted);
+  const studyModeAvailable = Boolean(user?.studyModeAvailable);
+  const availableStudyModes = useMemo(
+    () => user?.availableStudyModes ?? [],
+    [user?.availableStudyModes],
+  );
+
+  // Drop the optimistic value once the server value catches up (or the user changes).
+  useEffect(() => {
+    if (pendingStudyMode != null && storedStudyMode === pendingStudyMode) {
+      setPendingStudyMode(null);
+    }
+  }, [pendingStudyMode, storedStudyMode]);
+  useEffect(() => {
+    setPendingStudyMode(null);
+  }, [user?.id]);
+
+  const setStudyMode = useCallback(
+    async (mode: StudyMode): Promise<boolean> => {
+      setPendingStudyMode(mode);
+      try {
+        const result = await setStudyModeAction(mode);
+        if (!result.ok) {
+          setPendingStudyMode(null);
+          toast.error(result.error);
+          return false;
+        }
+        setUser((current) =>
+          current ? { ...current, studyMode: result.mode, studyModePrompted: true } : current,
+        );
+        // Re-render the RSC tree so server-scoped lists reflect the new mode
+        // without a manual reload.
+        router.refresh();
+        track('study_mode_switch', { mode: result.mode });
+        return true;
+      } catch (error) {
+        setPendingStudyMode(null);
+        toast.error(error instanceof Error ? error.message : 'Could not change your study mode.');
+        return false;
+      }
+    },
+    [router],
+  );
+
+  const dismissStudyModePrompt = useCallback(async (): Promise<void> => {
+    // Optimistic: the picker must disappear on tap even if the write is slow.
+    setUser((current) => (current ? { ...current, studyModePrompted: true } : current));
+    try {
+      await dismissStudyModePromptAction();
+    } catch {
+      // Best-effort — the picker reappears on the next load if this failed.
+    }
+  }, []);
 
   const applyUserData = useCallback((userData: User) => {
     lastSessionRefreshAt.current = Date.now();
@@ -757,6 +849,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
       setIsNavigationLocked,
       sendOtp,
       verifyOtp,
+      studyMode,
+      studyModeExplicit,
+      studyModeAvailable,
+      availableStudyModes,
+      studyModePrompted,
+      studyModePending: pendingStudyMode != null,
+      setStudyMode,
+      dismissStudyModePrompt,
     }}>
       {children}
     </AuthContext.Provider>

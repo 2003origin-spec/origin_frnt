@@ -11,6 +11,7 @@ import { dbCreateMediaAsset, dbUpdateUser, dbMobileInUse } from '@/server/db-use
 import { uploadImageToR2, type UserImagePurpose } from '@/server/media-storage';
 import type { User } from '@/types';
 import { normalizeSoundPreferences, type SoundPreferences } from '@/lib/sound-preferences';
+import { normalizeStudyMode, type StudyMode } from '@/lib/study-mode';
 
 /** Normalize a mobile number to digits and validate it's a 10-digit Indian number. */
 function normalizeMobile(raw: string): string | null {
@@ -38,6 +39,7 @@ type UpdateProfileInput = Partial<{
   ogcodeCorrectSound: string | null;
   ogcodeWrongSound: string | null;
   soundPreferences: SoundPreferences | null;
+  studyMode: StudyMode | null;
 }>;
 
 export type UserImageUploadResult = {
@@ -96,6 +98,7 @@ async function applyProfileUpdates(userId: string, input: UpdateProfileInput): P
       if ('soundPreferences' in input) {
         user.soundPreferences = input.soundPreferences ? normalizeSoundPreferences(input.soundPreferences) : null;
       }
+      if ('studyMode' in input) user.studyMode = normalizeStudyMode(input.studyMode);
 
       const serialized = serializeUser(store, userId);
       return (serialized as unknown as User) ?? null;
@@ -259,6 +262,15 @@ export async function completeOnboardingAction(input: UpdateProfileInput = {}): 
         yearsOfExperience: input.yearsOfExperience,
         studentCapacity: input.studentCapacity,
         location: input.location,
+        // Onboarding sets the canonical Study Mode alongside the decorative
+        // `selectedCourse`, so a brand-new student never sees the first-run
+        // picker — they already answered it. Stamped as "prompted" too.
+        ...(normalizeStudyMode(input.studyMode)
+          ? {
+              studyMode: normalizeStudyMode(input.studyMode)!,
+              studyModePromptedAt: new Date().toISOString(),
+            }
+          : {}),
       });
     } catch (err) {
       console.error('[profile-actions] Failed to persist onboarding updates to DB:', err);

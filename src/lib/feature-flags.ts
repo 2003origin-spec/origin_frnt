@@ -47,7 +47,8 @@ type FlagKey =
   | "aiAccessControls"
   | "ogcodeScoringV2"
   | "teacherCodeApproval"
-  | "adminUserLifecycle";
+  | "adminUserLifecycle"
+  | "studyModes";
 
 type FlagSpec = {
   envSuffix: string;
@@ -180,6 +181,20 @@ const FLAG_SPECS: Record<FlagKey, FlagSpec> = {
   // origin_users.account_status and the deleted-identity blocklist regardless of
   // this flag, so flipping the flag off can never un-ban a bad actor.
   adminUserLifecycle: { envSuffix: "ADMIN_USER_LIFECYCLE", defaultDev: true, defaultProd: false },
+  // Study Mode (JEE / NEET / PCMB) — the student-side single-select that scopes
+  // every subject-tagged surface (OG Code, Daily Mission, Test Builder, DPP, room
+  // test config, Doubt Solver, leaderboard arenas, Study Corner, search) to the
+  // subjects of the chosen mode. Ships ENABLED in dev AND prod — no env var
+  // required; TEACHER_LAUNCH_STUDY_MODES still overrides per-environment and is
+  // the kill switch if anything goes wrong. Turning it OFF makes getStudentScope
+  // report `enforced:false` with ALL_SUBJECTS, so every gate becomes a no-op and
+  // the app behaves exactly as it did before the feature.
+  // REQUIRES both migrations against Neon: 20260801_user_study_mode.sql (USER db)
+  // and 20260801_ogcode_daily_challenge_mode.sql (OGCODE db). Both are also
+  // mirrored by runtime-ensure blocks (db-users.ts / ogcode-catalog.ts), so an
+  // un-migrated database self-heals on first request rather than erroring.
+  // See V1/allmd/STUDY_MODE_JEE_NEET_PCMB_PLAN_2026-08-01.md.
+  studyModes: { envSuffix: "STUDY_MODES", defaultDev: true, defaultProd: true },
 };
 
 /** Every feature-flag key, in declaration order (admin System Config view). */

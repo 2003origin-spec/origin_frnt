@@ -33,6 +33,8 @@ import {
 import { areMutualFollowers, listMutualFollowers, type SocialUserCard } from '@/server/social/social-service';
 import { recordOgcodeLivePeak } from '@/server/ogcode-presence-peak';
 import { createNotification } from '@/server/notifications';
+import { dbFindUserById } from '@/server/db-users';
+import { getStudentScope, subjectVisibleUnderMode } from '@/server/study-scope';
 
 async function requireUser() {
   const user = await getServerUser();
@@ -144,6 +146,29 @@ export async function sendOgcodeChallengeAction(
   if (!mutual) {
     return { ok: false, error: 'not_mutual' };
   }
+
+  // Study Mode: refuse to create a challenge the RECIPIENT could never open —
+  // a NEET friend sending a Biology question to a JEE student would otherwise
+  // produce a notification that dead-ends on the out-of-mode interstitial.
+  // Checked against the recipient's scope, not the sender's. Best-effort: a
+  // lookup failure must never block a legitimate challenge.
+  try {
+    const recipient = await dbFindUserById(toUserId);
+    if (recipient) {
+      const recipientScope = await getStudentScope(recipient.id, recipient.role, {
+        studyMode: recipient.studyMode,
+      });
+      if (recipientScope.enforced) {
+        const question = await getOgcodeCatalogQuestionById(questionId);
+        if (question && !subjectVisibleUnderMode(question.subject, recipientScope)) {
+          return { ok: false, error: 'recipient_out_of_mode' };
+        }
+      }
+    }
+  } catch {
+    // fall through — never block a challenge on a scope-lookup failure
+  }
+
   const { created } = await createOgcodeChallenge(user.id, toUserId, questionId);
 
   // Notify the recipient so the challenge surfaces in their notification box

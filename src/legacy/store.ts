@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { Mutex } from "async-mutex";
 
 import type { SoundPreferences } from "@/lib/sound-preferences";
+import type { StudyMode } from "@/lib/study-mode";
 
 import {
   mockBooks,
@@ -70,6 +71,14 @@ export interface StoredUser {
   ogcodeWrongSound: string | null;
   /** App-wide sound-effect preferences (see src/lib/sound-preferences.ts). */
   soundPreferences: SoundPreferences | null;
+  /**
+   * Study Mode (JEE / NEET / PCMB) — scopes every subject-tagged surface.
+   * `null` = never chosen; resolves to DEFAULT_STUDY_MODE ('pcmb' = everything
+   * visible). See src/lib/study-mode.ts and src/server/study-scope.ts.
+   */
+  studyMode: StudyMode | null;
+  /** When the first-run mode picker was shown, so it never re-asks. */
+  studyModePromptedAt: string | null;
 }
 
 export interface StoredStreakData {
@@ -543,6 +552,8 @@ type StoredUserDefaultFields = Pick<
   | "mobile"
   | "soundPreferences"
   | "accountStatus"
+  | "studyMode"
+  | "studyModePromptedAt"
 >;
 
 export type StoredUserWithOptionalDefaults = Omit<StoredUser, keyof StoredUserDefaultFields> &
@@ -564,6 +575,8 @@ export function withStoredUserDefaults(user: StoredUserWithOptionalDefaults): St
     mobile: user.mobile ?? null,
     soundPreferences: user.soundPreferences ?? null,
     accountStatus: user.accountStatus ?? "active",
+    studyMode: user.studyMode ?? null,
+    studyModePromptedAt: user.studyModePromptedAt ?? null,
   };
 }
 

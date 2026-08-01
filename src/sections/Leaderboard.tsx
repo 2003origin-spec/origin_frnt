@@ -37,8 +37,11 @@ interface LeaderboardProps {
 
 import { useLayout } from '@/context/LayoutContext';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/context/AuthContext';
+import { studyModeSubjects } from '@/lib/study-mode';
 
 export default function Leaderboard({ currentUser, initialLeaderboard, initialMyRank, socialEnabled }: LeaderboardProps) {
+  const { studyMode } = useAuth();
   const { availableWidth } = useLayout();
   const isConstrained = availableWidth < 1024;
   const isMobile = availableWidth < 640;
@@ -275,10 +278,16 @@ export default function Leaderboard({ currentUser, initialLeaderboard, initialMy
                 </div>
               </SelectTrigger>
               <SelectContent className="neu-raised border-0 rounded-2xl p-1">
+                {/* Global Combined is subject-agnostic and stays for everyone —
+                    mode must never shrink the field a student is ranked against.
+                    Only the per-subject arenas follow the mode. (This also fixes
+                    Biology, which was previously missing from this list.) */}
                 <SelectItem value="overall" className="rounded-xl font-medium focus:bg-primary/10">Global Combined</SelectItem>
-                <SelectItem value="physics" className="rounded-xl font-medium focus:bg-primary/10">Physics Arena</SelectItem>
-                <SelectItem value="chemistry" className="rounded-xl font-medium focus:bg-primary/10">Chemistry Arena</SelectItem>
-                <SelectItem value="mathematics" className="rounded-xl font-medium focus:bg-primary/10">Mathematics Arena</SelectItem>
+                {studyModeSubjects(studyMode).map((subject) => (
+                  <SelectItem key={subject} value={subject} className="rounded-xl font-medium focus:bg-primary/10">
+                    {subject[0].toUpperCase() + subject.slice(1)} Arena
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
             <Select value={topN} onValueChange={setTopN}>

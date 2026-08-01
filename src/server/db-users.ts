@@ -12,6 +12,7 @@ import bcrypt from "bcryptjs";
 import type { Pool } from "pg";
 import { withStoredUserDefaults, type StoredAuthSession, type StoredTask, type StoredUser, type StoredUserWithOptionalDefaults } from "@/server/store";
 import { defaultUsernameFor } from "@/server/social/username";
+import { normalizeStudyMode } from "@/lib/study-mode";
 import { getUserPostgresPool } from "@/server/user-postgres";
 import {
   createRefreshToken,
@@ -117,6 +118,16 @@ export async function ensureUserSchema(): Promise<void> {
           -- always respects this regardless of the adminUserLifecycle flag.
           ALTER TABLE origin_users ADD COLUMN IF NOT EXISTS account_status TEXT NOT NULL DEFAULT 'active';
           ALTER TABLE origin_users ADD COLUMN IF NOT EXISTS status_reason TEXT;
+          -- Study Mode (JEE / NEET / PCMB). NULL = never chosen → resolves to
+          -- DEFAULT_STUDY_MODE ('pcmb', everything visible). study_mode_prompted_at
+          -- records that the first-run picker was shown, so it never re-asks.
+          -- See src/lib/study-mode.ts + 20260801_user_study_mode.sql.
+          ALTER TABLE origin_users ADD COLUMN IF NOT EXISTS study_mode TEXT;
+          ALTER TABLE origin_users ADD COLUMN IF NOT EXISTS study_mode_prompted_at TIMESTAMPTZ;
+          DO $$ BEGIN
+            ALTER TABLE origin_users ADD CONSTRAINT origin_users_study_mode_check
+              CHECK (study_mode IS NULL OR study_mode IN ('jee','neet','pcmb'));
+          EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
           -- Per-user per-day usage history (survives daily quota reset on origin_users).
           CREATE TABLE IF NOT EXISTS origin_user_daily_usage (
@@ -312,6 +323,14 @@ function rowToUser(row: any): StoredUser {
     ogcodeCorrectSound: row.ogcode_correct_sound ?? null,
     ogcodeWrongSound: row.ogcode_wrong_sound ?? null,
     soundPreferences: row.sound_preferences ?? null,
+    // `?? null` also covers a database that predates the column (e.g. mid-rollback);
+    // the runtime-ensure above re-adds it on the next boot.
+    studyMode: normalizeStudyMode(row.study_mode),
+    studyModePromptedAt: row.study_mode_prompted_at
+      ? (row.study_mode_prompted_at instanceof Date
+          ? row.study_mode_prompted_at.toISOString()
+          : String(row.study_mode_prompted_at))
+      : null,
   };
 }
 
@@ -433,6 +452,7 @@ export async function dbUpdateUser(id: string, patch: Partial<StoredUser>): Prom
     ogcodeCorrectSound: "ogcode_correct_sound", ogcodeWrongSound: "ogcode_wrong_sound",
     passwordSet: "password_set", mobile: "mobile",
     soundPreferences: "sound_preferences",
+    studyMode: "study_mode", studyModePromptedAt: "study_mode_prompted_at",
   };
 
   for (const [key, col] of Object.entries(mapping)) {

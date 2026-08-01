@@ -49,7 +49,12 @@ const ENTITLED_CLAUSE = `(
 )`;
 
 /** A subject + its expiry (NULL = never), as resolved from one entitlement source. */
-type EntitlementRow = { subject: Subject; expiresAt: string | null };
+type EntitlementRow = {
+  subject: Subject;
+  expiresAt: string | null;
+  /** Where the access came from — a paid subscription or an admin/teacher grant. */
+  source: "subscription" | "grant";
+};
 
 function toIso(value: Date | string | null | undefined): string | null {
   if (!value) return null;
@@ -69,7 +74,11 @@ async function getSubscriptionEntitlementRows(userId: string): Promise<Entitleme
   );
   return res.rows
     .filter((r) => isSubject(r.subject))
-    .map((r) => ({ subject: r.subject as Subject, expiresAt: toIso(r.current_period_end) }));
+    .map((r) => ({
+      subject: r.subject as Subject,
+      expiresAt: toIso(r.current_period_end),
+      source: "subscription" as const,
+    }));
 }
 
 /**
@@ -87,7 +96,7 @@ async function getActiveEntitlementRows(userId: string): Promise<EntitlementRow[
     getSubscriptionEntitlementRows(userId),
     getActiveSubjectGrantRows(userId),
   ]);
-  return [...subscriptions, ...grants];
+  return [...subscriptions, ...grants.map((g) => ({ ...g, source: "grant" as const }))];
 }
 
 /**
@@ -96,28 +105,69 @@ async function getActiveEntitlementRows(userId: string): Promise<EntitlementRow[
  * deduped subjects. Falls back to `[]` when Postgres is not configured.
  */
 export async function getEntitledSubjects(userId: string): Promise<Subject[]> {
-  if (!userId || !isUserPostgresConfigured()) return [];
+  return (await getEntitlementSummary(userId)).subjects;
+}
+
+/**
+ * `getEntitledSubjects` plus HOW the access was obtained.
+ *
+ * `hasGrant` is true when any live entitlement came from `entitlements.subject_grants`
+ * — an `admin_comp` comp (Premium Pro / Event Mode) or a Flow-1 `teacher_code`
+ * unlock — rather than a paid Razorpay subscription. Study Mode uses it to treat
+ * granted students more permissively than partial purchasers (see
+ * `resolveStudyModeAccess`).
+ *
+ * Costs nothing extra: `getActiveEntitlementRows` already fetches both sources in
+ * parallel and was simply discarding which was which.
+ */
+export async function getEntitlementSummary(
+  userId: string,
+): Promise<{ subjects: Subject[]; hasGrant: boolean }> {
+  if (!userId || !isUserPostgresConfigured()) return { subjects: [], hasGrant: false };
   // While BOTH premium surfaces ship dark, keep this off the hot path entirely —
   // no DB round-trip on every user serialization and no premature schema creation.
   // Gating (getStudentGate) keeps access open in that state regardless.
   if (!isFeatureEnabled("premiumSubscriptions") && !isFeatureEnabled("teacherConnect")) {
-    return [];
+    return { subjects: [], hasGrant: false };
   }
   const rows = await getActiveEntitlementRows(userId);
   const owned = new Set(rows.map((r) => r.subject));
-  return ALL_SUBJECTS.filter((s) => owned.has(s));
+  return {
+    subjects: ALL_SUBJECTS.filter((s) => owned.has(s)),
+    hasGrant: rows.some((r) => r.source === "grant"),
+  };
 }
 
 /**
- * Enriches a serialized user payload with its derived `entitledSubjects`.
- * Used at every client-facing serialization exit (login/register/me/refresh
- * and the RSC seed) so `useAuth().user` and server gates agree.
+ * Enriches a serialized user payload with its derived `entitledSubjects`, plus
+ * the Study Mode toggle eligibility that follows from them.
+ *
+ * Used at every client-facing serialization exit (login/register/me/refresh and
+ * the RSC seed) so `useAuth().user` and server gates agree. Study Mode
+ * eligibility rides along here rather than being computed on the client because
+ * the rule depends on feature flags the browser never sees — and because a
+ * client that disagreed with the server would render a toggle the server then
+ * refuses. `resolveStudyModeAccess` is the single shared definition.
  */
 export async function withEntitledSubjects<T extends Record<string, unknown>>(
   payload: T,
   userId: string,
-): Promise<T & { entitledSubjects: Subject[] }> {
-  return { ...payload, entitledSubjects: await getEntitledSubjects(userId) };
+): Promise<T & { entitledSubjects: Subject[]; studyModeAvailable: boolean; availableStudyModes: string[] }> {
+  const { subjects: entitledSubjects, hasGrant } = await getEntitlementSummary(userId);
+  // Imported lazily: study-scope imports back from this module (getStudentGate),
+  // so a top-level import would close a cycle.
+  const { resolveStudyModeAccess } = await import("@/server/study-scope");
+  const access = resolveStudyModeAccess({
+    role: typeof payload.role === "string" ? payload.role : null,
+    entitledSubjects,
+    hasGrant,
+  });
+  return {
+    ...payload,
+    entitledSubjects,
+    studyModeAvailable: access.canChooseMode,
+    availableStudyModes: access.availableModes,
+  };
 }
 
 /**

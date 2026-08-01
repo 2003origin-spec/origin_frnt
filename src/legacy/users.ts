@@ -25,6 +25,7 @@ import { withEntitledSubjects } from "@/server/entitlements";
 import { maybeGrantEventModePremiumOnSignup } from "@/server/premium-access-admin-service";
 import { countTestResultsForUser } from "@/server/analytics-store";
 import { normalizeSoundPreferences } from "@/lib/sound-preferences";
+import { normalizeStudyMode } from "@/lib/study-mode";
 import type { AccountStatus, AppStore, StoredTask, StoredUser } from "@/server/store";
 import { createId, readStoreAsync, withStoreAsync, withStoreAsyncScoped, withStoredUserDefaults } from "@/server/store";
 import { persistUserCollections } from "@/server/store-postgres";
@@ -182,6 +183,13 @@ export function serializeUser(store: AppStore, userId: string) {
     ogcodeCorrectSound: user.ogcodeCorrectSound ?? null,
     ogcodeWrongSound: user.ogcodeWrongSound ?? null,
     soundPreferences: normalizeSoundPreferences(user.soundPreferences),
+    // Study Mode. `null` is preserved (never coerced to the default) so the
+    // client can tell "never chosen" from "explicitly chose PCMB" and show the
+    // first-run picker exactly once. See src/lib/study-mode.ts.
+    studyMode: normalizeStudyMode(user.studyMode),
+    study_mode: normalizeStudyMode(user.studyMode),
+    studyModePrompted: user.studyModePromptedAt != null,
+    study_mode_prompted: user.studyModePromptedAt != null,
   };
 
   return payload;

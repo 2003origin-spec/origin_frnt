@@ -9,7 +9,14 @@ import {
 const NONE: ReadonlySet<string> = new Set<string>();
 
 function pool(...ids: string[]): DailyChallengeCandidate[] {
-  return ids.map((id, index) => ({ id, sourceIndex: index, isCurated: false }));
+  // matchesExamFamily: true throughout means "no exam preference in play" — the
+  // PCMB case, and the shape every pre-Study-Mode test assumed.
+  return ids.map((id, index) => ({
+    id,
+    sourceIndex: index,
+    isCurated: false,
+    matchesExamFamily: true,
+  }));
 }
 
 test("returns null for an empty pool", () => {
@@ -47,10 +54,10 @@ test("allows repeats only once the window exhausts the whole pool", () => {
 
 test("prefers curated questions without collapsing the pool to one", () => {
   const eligible: DailyChallengeCandidate[] = [
-    { id: "plain-1", sourceIndex: 0, isCurated: false },
-    { id: "curated-x", sourceIndex: 1, isCurated: true },
-    { id: "curated-y", sourceIndex: 2, isCurated: true },
-    { id: "plain-2", sourceIndex: 3, isCurated: false },
+    { id: "plain-1", sourceIndex: 0, isCurated: false, matchesExamFamily: true },
+    { id: "curated-x", sourceIndex: 1, isCurated: true, matchesExamFamily: true },
+    { id: "curated-y", sourceIndex: 2, isCurated: true, matchesExamFamily: true },
+    { id: "plain-2", sourceIndex: 3, isCurated: false, matchesExamFamily: true },
   ];
   // With two curated rows eligible, picks stay within the curated set and still
   // rotate between them across days — not pinned to a single question.
@@ -63,12 +70,72 @@ test("prefers curated questions without collapsing the pool to one", () => {
 
 test("falls back to the broad pool when curated rows are all used up", () => {
   const eligible: DailyChallengeCandidate[] = [
-    { id: "curated-x", sourceIndex: 0, isCurated: true },
-    { id: "plain-1", sourceIndex: 1, isCurated: false },
-    { id: "plain-2", sourceIndex: 2, isCurated: false },
+    { id: "curated-x", sourceIndex: 0, isCurated: true, matchesExamFamily: true },
+    { id: "plain-1", sourceIndex: 1, isCurated: false, matchesExamFamily: true },
+    { id: "plain-2", sourceIndex: 2, isCurated: false, matchesExamFamily: true },
   ];
   // The one curated row is inside the no-repeat window → selection uses the
   // remaining plain questions instead of re-showing the curated one.
   const chosen = pickDailyChallengeId(eligible, new Set(["curated-x"]), 5);
   assert.ok(["plain-1", "plain-2"].includes(chosen!));
+});
+
+
+// ── Study Mode: the exam-family preference tier ──────────────────────────────
+
+test("prefers an in-family question over an out-of-family one", () => {
+  // JEE mode: a JEE-tagged question outranks a NEET-tagged one of the same tier.
+  const eligible: DailyChallengeCandidate[] = [
+    { id: "neet-q", sourceIndex: 0, isCurated: false, matchesExamFamily: false },
+    { id: "jee-q", sourceIndex: 1, isCurated: false, matchesExamFamily: true },
+  ];
+  for (const day of [0, 1, 2, 3]) {
+    assert.equal(pickDailyChallengeId(eligible, NONE, day), "jee-q");
+  }
+});
+
+test("the family preference NEVER empties the pool", () => {
+  // This is why provenance is a preference and not a filter: a JEE student with
+  // no JEE-tagged Physics question still gets a question, not a blank card.
+  const eligible: DailyChallengeCandidate[] = [
+    { id: "neet-1", sourceIndex: 0, isCurated: false, matchesExamFamily: false },
+    { id: "neet-2", sourceIndex: 1, isCurated: false, matchesExamFamily: false },
+  ];
+  const chosen = pickDailyChallengeId(eligible, NONE, 7);
+  assert.ok(["neet-1", "neet-2"].includes(chosen!));
+});
+
+test("curated outranks exam family, and family breaks ties within curated", () => {
+  const eligible: DailyChallengeCandidate[] = [
+    { id: "plain-in-family", sourceIndex: 0, isCurated: false, matchesExamFamily: true },
+    { id: "curated-out", sourceIndex: 1, isCurated: true, matchesExamFamily: false },
+    { id: "curated-in", sourceIndex: 2, isCurated: true, matchesExamFamily: true },
+  ];
+  // Curation is the stronger signal (a human picked it), so the winner comes
+  // from the curated tier; within that tier, family decides.
+  for (const day of [0, 1, 2, 3]) {
+    assert.equal(pickDailyChallengeId(eligible, NONE, day), "curated-in");
+  }
+});
+
+test("family preference still rotates across days when several match", () => {
+  const eligible: DailyChallengeCandidate[] = [
+    { id: "out", sourceIndex: 0, isCurated: false, matchesExamFamily: false },
+    { id: "in-a", sourceIndex: 1, isCurated: false, matchesExamFamily: true },
+    { id: "in-b", sourceIndex: 2, isCurated: false, matchesExamFamily: true },
+  ];
+  const day0 = pickDailyChallengeId(eligible, NONE, 0);
+  const day1 = pickDailyChallengeId(eligible, NONE, 1);
+  assert.ok(["in-a", "in-b"].includes(day0!));
+  assert.ok(["in-a", "in-b"].includes(day1!));
+  assert.notEqual(day0, day1, "must not pin to one question");
+});
+
+test("no-repeat still wins over the family preference", () => {
+  const eligible: DailyChallengeCandidate[] = [
+    { id: "in-used", sourceIndex: 0, isCurated: false, matchesExamFamily: true },
+    { id: "out-fresh", sourceIndex: 1, isCurated: false, matchesExamFamily: false },
+  ];
+  // The in-family question was shown recently → the fresh out-of-family one runs.
+  assert.equal(pickDailyChallengeId(eligible, new Set(["in-used"]), 3), "out-fresh");
 });

@@ -40,6 +40,7 @@ import { ChatBackdrop } from '@/components/chat/ChatBackdrop';
 import { useQuota } from '@/context/QuotaContext';
 import { useNotifications } from '@/context/NotificationContext';
 import { useAuth } from '@/context/AuthContext';
+import { isSubjectInMode } from '@/lib/study-mode';
 import {
   Tooltip,
   TooltipContent,
@@ -1302,6 +1303,7 @@ function SelectionView({ onCreate, onUpload, sessions, onSelectSession, lastSess
   onDeleteSession: (session: DoubtSession) => Promise<void>,
   onGeneralChat?: () => void,
 }) {
+  const { studyMode } = useAuth();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
 
@@ -1316,13 +1318,19 @@ function SelectionView({ onCreate, onUpload, sessions, onSelectSession, lastSess
     ? SUBJECT_ORI[lastSession.subject]
     : '/ori2d/ori-cheerful.png';
 
-  const quickTopics: { name: string; subjectKey: SubjectKey | 'general'; icon: typeof Atom; color: string; desc: string; oriImg?: string }[] = [
+  // Subject cards follow the active Study Mode; "General" is subject-less and
+  // always available. An existing conversation about an out-of-mode subject
+  // still opens from the history list — only NEW entry points are scoped.
+  const allQuickTopics: { name: string; subjectKey: SubjectKey | 'general'; icon: typeof Atom; color: string; desc: string; oriImg?: string }[] = [
     { name: 'Physics', subjectKey: 'phy', icon: Atom, color: 'text-blue-400', desc: 'Chapters & Concepts', oriImg: '/ori2d/ori-physics.png' },
     { name: 'Chemistry', subjectKey: 'chem', icon: FlaskConical, color: 'text-emerald-400', desc: 'Chapters & Concepts', oriImg: '/ori2d/ori-chemistry.png' },
     { name: 'Mathematics', subjectKey: 'math', icon: Calculator, color: 'text-violet-400', desc: 'Chapters & Concepts', oriImg: '/ori2d/ori-maths.png' },
     { name: 'Biology', subjectKey: 'bio', icon: Leaf, color: 'text-green-400', desc: 'Chapters & Concepts', oriImg: '/ori2d/ori-biology.png' },
     { name: 'General', subjectKey: 'general', icon: MessageCircle, color: 'text-amber-400', desc: 'Ask Anything' },
   ];
+  const quickTopics = allQuickTopics.filter(
+    (topic) => topic.subjectKey === 'general' || isSubjectInMode(studyMode, topic.subjectKey),
+  );
 
   const handleStartEdit = (e: React.MouseEvent<HTMLElement>, s: DoubtSession) => {
     e.stopPropagation();
@@ -1627,12 +1635,17 @@ function SubjectPillBar({
   activeSubject: string | null;
   onPick: (subject: SubjectKey) => void;
 }) {
-  const pills: { key: SubjectKey; name: string; icon: typeof Atom; color: string }[] = [
+  const { studyMode } = useAuth();
+  const pills: { key: SubjectKey; name: string; icon: typeof Atom; color: string }[] = ([
     { key: 'phy',  name: 'Physics',     icon: Atom,         color: 'text-blue-400'    },
     { key: 'chem', name: 'Chemistry',   icon: FlaskConical, color: 'text-emerald-400' },
     { key: 'math', name: 'Mathematics', icon: Calculator,   color: 'text-violet-400'  },
     { key: 'bio',  name: 'Biology',     icon: Leaf,         color: 'text-green-400'   },
-  ];
+  ] as const)
+    // Keep the pill for whatever subject is currently open even if it is out of
+    // mode, so an in-progress conversation never loses its own tab.
+    .filter((pill) => isSubjectInMode(studyMode, pill.key) || (activeSubject ?? '').toLowerCase() === pill.key)
+    .map((pill) => ({ ...pill }));
   const normalized = (activeSubject ?? '').toLowerCase();
   return (
     <div className="px-3 sm:px-4 py-1.5 border-b border-border/20 bg-background flex-shrink-0">

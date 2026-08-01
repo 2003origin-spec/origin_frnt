@@ -2,6 +2,12 @@ import { unstable_cache, revalidateTag } from "next/cache";
 import type { DifficultyLevel, QuestionType, StoredAnswerSpec, StoredQuestion } from "@/server/store";
 
 import { getOgcodePostgresPool, isOgcodePostgresConfigured } from "@/server/postgres";
+import {
+  DEFAULT_STUDY_MODE,
+  occurrenceMatchesMode,
+  studyModeSubjects,
+  type StudyMode,
+} from "@/lib/study-mode";
 
 declare global {
   var __originOgcodeCatalogSchemaReady: Promise<void> | undefined;
@@ -139,6 +145,30 @@ const CREATE_TABLE_SQL = `
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
   CREATE INDEX IF NOT EXISTS ogcode_daily_challenges_question_idx ON ogcode_daily_challenges (question_id);
+
+  -- Study Mode: one challenge per (day, mode) instead of one per day, so a JEE
+  -- student is never handed a Biology question. Mirrors
+  -- 20260801_ogcode_daily_challenge_mode.sql; see that file for the backfill
+  -- rationale ('neet' = the old Physics+NEET pool).
+  ALTER TABLE ogcode_daily_challenges ADD COLUMN IF NOT EXISTS mode TEXT;
+  UPDATE ogcode_daily_challenges SET mode = 'neet' WHERE mode IS NULL;
+  ALTER TABLE ogcode_daily_challenges ALTER COLUMN mode SET DEFAULT 'pcmb';
+  ALTER TABLE ogcode_daily_challenges ALTER COLUMN mode SET NOT NULL;
+  DO $$ BEGIN
+    ALTER TABLE ogcode_daily_challenges ADD CONSTRAINT ogcode_daily_challenges_mode_check
+      CHECK (mode IN ('jee','neet','pcmb'));
+  EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+  DO $$
+  BEGIN
+    IF EXISTS (
+      SELECT 1 FROM pg_index i
+       WHERE i.indrelid = 'ogcode_daily_challenges'::regclass
+         AND i.indisprimary AND i.indnatts = 1
+    ) THEN
+      ALTER TABLE ogcode_daily_challenges DROP CONSTRAINT ogcode_daily_challenges_pkey;
+      ALTER TABLE ogcode_daily_challenges ADD PRIMARY KEY (challenge_date, mode);
+    END IF;
+  END $$;
 `;
 
 /** Columns selected into `CatalogRow` — shared by the by-id + daily-challenge reads. */
@@ -163,6 +193,13 @@ export type DailyChallengeCandidate = {
   id: string;
   sourceIndex: number;
   isCurated: boolean;
+  /**
+   * Whether the question's exam provenance matches the mode's preferred family
+   * (JEE → "JEE", NEET → "NEET"/"AIPMT", PCMB → no preference, always true).
+   * A PREFERENCE, not a filter: a JEE aspirant may legitimately be served a
+   * NEET-origin Physics question when no JEE-tagged one is eligible.
+   */
+  matchesExamFamily: boolean;
 };
 
 /**
@@ -174,7 +211,13 @@ export type DailyChallengeCandidate = {
  *    pool, in which case repeats are allowed again);
  *  - prefer curated (`is_challenge_of_day`) rows when any remain eligible, so
  *    hand-picked questions surface first without ever collapsing the pool to one;
+ *  - within that, prefer rows whose exam provenance matches the mode's family
+ *    (Study Mode), again without ever collapsing the pool — if no in-family row
+ *    is eligible the rest of the tier is used unchanged;
  *  - pick a stable-per-day row via `epochDay % count` over a deterministic order.
+ *
+ * Each preference only ever REFINES the current tier, never empties it, so the
+ * challenge is always resolvable while the pool is non-empty.
  */
 export function pickDailyChallengeId(
   eligible: readonly DailyChallengeCandidate[],
@@ -189,7 +232,9 @@ export function pickDailyChallengeId(
     candidates = [...eligible];
   }
   const curated = candidates.filter((question) => question.isCurated);
-  const chosen = curated.length > 0 ? curated : candidates;
+  const tier = curated.length > 0 ? curated : candidates;
+  const inFamily = tier.filter((question) => question.matchesExamFamily);
+  const chosen = inFamily.length > 0 ? inFamily : tier;
   const sorted = [...chosen].sort((left, right) =>
     left.sourceIndex !== right.sourceIndex
       ? left.sourceIndex - right.sourceIndex
@@ -720,6 +765,16 @@ export async function listOgcodeCatalogFacets(params: {
   occurrences?: string[];
   subjects?: string[];
   chapters?: string[];
+  /**
+   * Subjects the caller is allowed to see (entitlements ∩ study mode), always
+   * intersected into the SQL subject filter. `null` means "no restriction".
+   *
+   * Facets are an ENUMERATION surface: without this, `?subjects=biology` would
+   * happily list every Biology chapter and concept to a JEE-mode student even
+   * though the question list itself is filtered. Resolved by the route, not
+   * here, so this module stays free of request/auth concerns.
+   */
+  allowedSubjects?: string[] | null;
 }): Promise<string[]> {
   const pool = getOgcodePostgresPool();
   if (!pool) return [];
@@ -743,7 +798,20 @@ export async function listOgcodeCatalogFacets(params: {
     });
     conds.push(`(${likeConds.join(" OR ")})`);
   }
-  const parsedSubjects = (params.subjects ?? []).map(s => normalizeSubject(String(s))).filter(Boolean);
+  const requestedSubjects = (params.subjects ?? []).map(s => normalizeSubject(String(s))).filter(Boolean);
+  const allowedSubjects = params.allowedSubjects == null
+    ? null
+    : params.allowedSubjects.map(s => normalizeSubject(String(s))).filter(Boolean);
+  // Intersect the caller's picks with what they may see. An empty intersection
+  // is NOT "no filter" — it means the request can only return nothing.
+  const parsedSubjects = allowedSubjects == null
+    ? requestedSubjects
+    : (requestedSubjects.length
+        ? requestedSubjects.filter(s => allowedSubjects.includes(s))
+        : allowedSubjects);
+  if (allowedSubjects != null && parsedSubjects.length === 0) {
+    return [];
+  }
   if (parsedSubjects.length) {
     vals.push(parsedSubjects);
     conds.push(`subject = ANY($${vals.length}::text[])`);
@@ -936,8 +1004,17 @@ async function fetchCatalogQuestionById(
  * Rotation now walks the full eligible pool (curated preferred) instead of the
  * old `epochDay % curatedCount`, which surfaced the same question forever
  * whenever a single row was flagged `is_challenge_of_day`.
+ *
+ * Study Mode: the pool is the MODE's subjects (JEE → P/C/M, NEET → P/C/B, PCMB →
+ * all four), replacing the old hard-coded Physics+NEET constraint. Exam
+ * provenance survives only as a preference tier inside `pickDailyChallengeId`.
+ * Rows and the no-repeat window are scoped per mode, so the three modes rotate
+ * independently and never collide.
  */
-export async function getOgcodeChallengeQuestion(dateKey?: string): Promise<StoredQuestion | null> {
+export async function getOgcodeChallengeQuestion(
+  mode: StudyMode = DEFAULT_STUDY_MODE,
+  dateKey?: string,
+): Promise<StoredQuestion | null> {
   const pool = getOgcodePostgresPool();
   if (!pool) {
     return null;
@@ -947,10 +1024,10 @@ export async function getOgcodeChallengeQuestion(dateKey?: string): Promise<Stor
 
   const today = dateKey ?? new Date().toISOString().slice(0, 10);
 
-  // 1. Already scheduled for today → return it verbatim (stable for the day).
+  // 1. Already scheduled for today in this mode → return it verbatim.
   const existing = await pool.query<{ question_id: string }>(
-    `SELECT question_id FROM ogcode_daily_challenges WHERE challenge_date = $1`,
-    [today],
+    `SELECT question_id FROM ogcode_daily_challenges WHERE challenge_date = $1 AND mode = $2`,
+    [today, mode],
   );
   if (existing.rows[0]?.question_id) {
     const scheduled = await fetchCatalogQuestionById(pool, existing.rows[0].question_id);
@@ -961,29 +1038,36 @@ export async function getOgcodeChallengeQuestion(dateKey?: string): Promise<Stor
   }
 
   // 2. Build the eligible pool (curated OR answerable MCQ) + the no-repeat window.
-  // Product constraint (until changed): the Ori Quest / daily challenge draws
-  // ONLY from Physics NEET questions. Applied as a hard filter over the whole
-  // eligible pool (even curated is_challenge_of_day rows must be Physics+NEET).
-  const eligibleResult = await pool.query<{ id: string; source_index: number | string; is_challenge_of_day: boolean }>(
-    `SELECT id, source_index, is_challenge_of_day
+  // Subject is a HARD filter (the point of the feature); `occurrence` is carried
+  // through only so the exam-family PREFERENCE can be applied when ranking.
+  const eligibleResult = await pool.query<{
+    id: string;
+    source_index: number | string;
+    is_challenge_of_day: boolean;
+    occurrence: string | null;
+  }>(
+    `SELECT id, source_index, is_challenge_of_day, occurrence
        FROM ogcode_questions
-      WHERE LOWER(subject) = 'physics'
-        AND occurrence ILIKE '%neet%'
+      WHERE LOWER(subject) = ANY($1::text[])
         AND (is_challenge_of_day = true
              OR (question_type = 'mcq' AND correct_option IS NOT NULL))`,
+    [studyModeSubjects(mode)],
   );
   const eligible: DailyChallengeCandidate[] = eligibleResult.rows.map((row) => ({
     id: row.id,
     sourceIndex: Number(row.source_index),
     isCurated: Boolean(row.is_challenge_of_day),
+    matchesExamFamily: occurrenceMatchesMode(mode, row.occurrence),
   }));
   if (eligible.length === 0) {
     return null;
   }
 
+  // No-repeat is per mode: JEE using a question must not block NEET from it.
   const usedResult = await pool.query<{ question_id: string }>(
-    `SELECT question_id FROM ogcode_daily_challenges WHERE challenge_date > ($1::date - $2::int)`,
-    [today, DAILY_CHALLENGE_NO_REPEAT_DAYS],
+    `SELECT question_id FROM ogcode_daily_challenges
+      WHERE challenge_date > ($1::date - $2::int) AND mode = $3`,
+    [today, DAILY_CHALLENGE_NO_REPEAT_DAYS, mode],
   );
   const usedIds = new Set(usedResult.rows.map((row) => row.question_id));
 
@@ -996,14 +1080,14 @@ export async function getOgcodeChallengeQuestion(dateKey?: string): Promise<Stor
 
   // 3. Persist the pick (idempotent under concurrency), then read back the winner.
   await pool.query(
-    `INSERT INTO ogcode_daily_challenges (challenge_date, question_id, was_curated)
-     VALUES ($1, $2, $3)
-     ON CONFLICT (challenge_date) DO NOTHING`,
-    [today, chosenId, wasCurated],
+    `INSERT INTO ogcode_daily_challenges (challenge_date, question_id, was_curated, mode)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (challenge_date, mode) DO NOTHING`,
+    [today, chosenId, wasCurated, mode],
   );
   const authoritative = await pool.query<{ question_id: string }>(
-    `SELECT question_id FROM ogcode_daily_challenges WHERE challenge_date = $1`,
-    [today],
+    `SELECT question_id FROM ogcode_daily_challenges WHERE challenge_date = $1 AND mode = $2`,
+    [today, mode],
   );
   const finalId = authoritative.rows[0]?.question_id ?? chosenId;
   return fetchCatalogQuestionById(pool, finalId);

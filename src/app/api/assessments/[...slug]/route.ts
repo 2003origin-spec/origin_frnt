@@ -3,6 +3,7 @@ import { revalidateTag } from "next/cache";
 
 import { listOgcodeCatalogFacets } from "@/server/ogcode-catalog";
 import { requireUserFromRequest } from "@/server/auth";
+import { getStudentScope, renderStudyModeKey } from "@/server/study-scope";
 import { submitLimiter, generalLimiter, checkRateLimit } from "@/lib/rate-limit";
 import {
   type CustomTestPayload,
@@ -334,12 +335,17 @@ export async function GET(request: NextRequest, context: RouteContext) {
       const facetOccurrences = url.searchParams.getAll("occurrences").filter(Boolean);
       const facetSubjects = url.searchParams.getAll("subjects").filter(Boolean);
       const facetChapters = url.searchParams.getAll("chapters").filter(Boolean);
+      // Facets enumerate the catalog, so they must respect the same scope the
+      // question list does — otherwise `?subjects=biology` leaks the Biology
+      // chapter/concept tree to a JEE-mode student.
+      const facetScope = await getStudentScope(user.id, user.role, { studyMode: user.studyMode });
       return ok(await listOgcodeCatalogFacets({
         level: level as 'class' | 'occurrence' | 'subject' | 'chapter' | 'concept',
         classes: facetClasses,
         occurrences: facetOccurrences,
         subjects: facetSubjects,
         chapters: facetChapters,
+        allowedSubjects: facetScope.enforced ? facetScope.subjects : null,
       }));
     }
 
@@ -376,7 +382,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       // (60s revalidate, tag:"leaderboard") so it isn't recomputed on every
       // client mount. The regional view stays live — it's not part of the cache.
       if (!location) {
-        return ok(await getOgcodeLeaderboardForRender(user.id, subject, limit));
+        return ok(await getOgcodeLeaderboardForRender(renderStudyModeKey(user), user.id, subject, limit));
       }
       return ok(await getOgcodeLeaderboard(store, user, subject, location, limit));
     }

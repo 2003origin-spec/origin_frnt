@@ -1,5 +1,6 @@
 import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
+import { renderStudyModeKey } from '@/server/study-scope';
 import { getServerUser } from '@/lib/auth-server';
 import { getOgcodeLeaderboardForRender } from '@/server/render-loaders';
 import { isFeatureEnabled } from '@/lib/feature-flags';
@@ -22,7 +23,7 @@ async function LeaderboardContent() {
   let initialMyRank: number | null = null;
 
   try {
-    const data = await getOgcodeLeaderboardForRender(serverUser.id, null);
+    const data = await getOgcodeLeaderboardForRender(renderStudyModeKey(serverUser), serverUser.id, null);
     initialLeaderboard = data.leaderboard;
     initialMyRank = data.myRank;
   } catch {

@@ -2,6 +2,7 @@ import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
 import { getServerFrontendUser } from '@/lib/auth-server';
 import { isFeatureEnabled } from '@/lib/feature-flags';
+import { renderStudyModeKey } from '@/server/study-scope';
 import {
   getOgcodeIndexDataForRender,
 } from '@/server/render-loaders';
@@ -58,7 +59,7 @@ async function OGCodeContent({ searchParams }: PageProps) {
   let initialData: Awaited<ReturnType<typeof getOgcodeIndexDataForRender>> | null = null;
 
   try {
-    initialData = await getOgcodeIndexDataForRender(user.id, {
+    initialData = await getOgcodeIndexDataForRender(renderStudyModeKey(user), user.id, {
       subject: resolvedSearchParams.subject ?? null,
       difficulty: resolvedSearchParams.difficulty ?? null,
       status: normalizeStatus(resolvedSearchParams.status),
