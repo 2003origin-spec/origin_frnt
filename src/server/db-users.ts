@@ -378,6 +378,38 @@ export async function dbFindUserByEmail(email: string, role: string): Promise<St
   return result.rows[0] ? rowToUser(result.rows[0]) : null;
 }
 
+/**
+ * Authoritative read of just the Study Mode columns.
+ *
+ * Deliberately NOT served from the in-memory `cachedStore`: that is a
+ * per-lambda-instance snapshot with a 5-minute TTL, so on a serverless fleet a
+ * request can easily land on an instance that hydrated before the student's last
+ * mode switch. Reading the mode from there is what made the setting appear to
+ * "jump" between values. Postgres is the only source of truth for it.
+ *
+ * Narrow on purpose (two columns, primary-key lookup) because it runs on scoped
+ * read paths; callers memoise it per request.
+ */
+export async function dbGetStudyMode(
+  id: string,
+): Promise<{ studyMode: string | null; promptedAt: string | null } | null> {
+  await ensureUserSchema();
+  const result = await pool().query(
+    "SELECT study_mode, study_mode_prompted_at FROM origin_users WHERE id = $1 LIMIT 1",
+    [id],
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  return {
+    studyMode: row.study_mode ?? null,
+    promptedAt: row.study_mode_prompted_at
+      ? (row.study_mode_prompted_at instanceof Date
+          ? row.study_mode_prompted_at.toISOString()
+          : String(row.study_mode_prompted_at))
+      : null,
+  };
+}
+
 export async function dbFindUserById(id: string): Promise<StoredUser | null> {
   await ensureUserSchema();
   const result = await pool().query("SELECT * FROM origin_users WHERE id = $1 LIMIT 1", [id]);

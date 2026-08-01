@@ -36,7 +36,7 @@ async function OGCodeContent({ params }: { params: Promise<{ id: string }> }) {
 
   let initialQuestion: PracticeQuestion | null = null;
   try {
-    initialQuestion = (await getPracticeQuestionDetailForRender(renderStudyModeKey(user), user.id, id)) as unknown as PracticeQuestion;
+    initialQuestion = (await getPracticeQuestionDetailForRender(await renderStudyModeKey(user), user.id, id)) as unknown as PracticeQuestion;
   } catch (error) {
     // Out-of-mode is an explainable state, not a failure: show the switch prompt
     // instead of letting the client retry into the same 403.

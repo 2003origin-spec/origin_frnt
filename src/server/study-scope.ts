@@ -17,6 +17,8 @@
  * See V1/allmd/STUDY_MODE_JEE_NEET_PCMB_PLAN_2026-08-01.md.
  */
 
+import { cache } from "react";
+
 import { ALL_SUBJECTS, normalizeSubject, type Subject } from "@/lib/entitlements";
 import { isFeatureEnabled } from "@/lib/feature-flags";
 import {
@@ -28,7 +30,7 @@ import {
   type StudyMode,
 } from "@/lib/study-mode";
 import { getEntitlementSummary, getStudentGate, type StudentGate } from "@/server/entitlements";
-import { dbFindUserById } from "@/server/db-users";
+import { dbGetStudyMode } from "@/server/db-users";
 import { isUserPostgresConfigured } from "@/server/user-postgres";
 
 export type StudentScope = {
@@ -172,36 +174,48 @@ function openScope(
 }
 
 /**
- * Reads the stored mode for a user. Returns `{ mode, explicit }` where
+ * Reads the stored mode for a user, straight from Postgres.
+ *
+ * Wrapped in React `cache()` so however many surfaces resolve a scope during one
+ * request, the database is hit ONCE. That is what makes "always authoritative"
+ * affordable: the alternative — trusting `StoredUser.studyMode` off the
+ * in-memory store — is a per-lambda snapshot with a 5-minute TTL and was the
+ * cause of the mode appearing to flip between values between requests.
+ *
  * `explicit: false` means the student has never chosen and we fell back to
  * DEFAULT_STUDY_MODE. Never throws — a storage failure degrades to the default,
- * which is the fully-open mode.
+ * which is the fully-open mode, so a database blip can never hide content.
  */
-export async function resolveStudyMode(
+export const resolveStudyMode = cache(async function resolveStudyMode(
   userId: string,
-): Promise<{ mode: StudyMode; explicit: boolean }> {
+): Promise<{ mode: StudyMode; explicit: boolean; prompted: boolean }> {
   if (!userId || !isUserPostgresConfigured()) {
-    return { mode: DEFAULT_STUDY_MODE, explicit: false };
+    return { mode: DEFAULT_STUDY_MODE, explicit: false, prompted: false };
   }
   try {
-    const user = await dbFindUserById(userId);
-    const stored = normalizeStudyMode(user?.studyMode);
-    return stored ? { mode: stored, explicit: true } : { mode: DEFAULT_STUDY_MODE, explicit: false };
+    const row = await dbGetStudyMode(userId);
+    const stored = normalizeStudyMode(row?.studyMode);
+    return {
+      mode: stored ?? DEFAULT_STUDY_MODE,
+      explicit: stored != null,
+      prompted: row?.promptedAt != null,
+    };
   } catch {
-    return { mode: DEFAULT_STUDY_MODE, explicit: false };
+    return { mode: DEFAULT_STUDY_MODE, explicit: false, prompted: false };
   }
-}
+});
 
-export type StudentScopeOptions = {
-  /**
-   * The already-loaded `origin_users.study_mode` for this user. Callers that
-   * hold a `StoredUser` (every function in src/legacy/assessments.ts does)
-   * should pass `user.studyMode` — it skips the extra DB round-trip entirely.
-   * Pass `undefined` (not `null`) to force a lookup; `null` means "loaded, and
-   * the student has never chosen".
-   */
-  studyMode?: StudyMode | string | null;
-};
+/**
+ * Reserved for future options.
+ *
+ * There used to be a `studyMode` pass-through here so callers holding a
+ * `StoredUser` could skip a database round-trip. It was REMOVED: every such
+ * caller sources that user from the in-memory store, which is a per-instance
+ * 5-minute snapshot, so the "optimisation" was handing the scope a stale mode
+ * and was the direct cause of out-of-mode content appearing. `resolveStudyMode`
+ * is memoised per request instead, which costs one query and is always correct.
+ */
+export type StudentScopeOptions = Record<string, never>;
 
 /**
  * The mode to pass as the leading argument of a mode-dependent render loader,
@@ -211,13 +225,13 @@ export type StudentScopeOptions = {
  * (flag off, non-student, never chosen) so cache keys do not fragment for users
  * whose content does not vary by mode.
  */
-export function renderStudyModeKey(
-  user: { role?: string | null; studyMode?: string | null } | null | undefined,
-): StudyMode {
-  if (!user || user.role !== "student" || !isFeatureEnabled("studyModes")) {
+export async function renderStudyModeKey(
+  user: { id?: string | null; role?: string | null } | null | undefined,
+): Promise<StudyMode> {
+  if (!user?.id || user.role !== "student" || !isFeatureEnabled("studyModes")) {
     return DEFAULT_STUDY_MODE;
   }
-  return normalizeStudyMode(user.studyMode) ?? DEFAULT_STUDY_MODE;
+  return (await resolveStudyMode(user.id)).mode;
 }
 
 /**
@@ -230,23 +244,15 @@ export function renderStudyModeKey(
 export async function getStudentScope(
   userId: string,
   role: string | null | undefined,
-  options: StudentScopeOptions = {},
+  _options: StudentScopeOptions = {},
 ): Promise<StudentScope> {
   const scoped = role === "student" && isFeatureEnabled("studyModes");
-  const preloaded = "studyMode" in options;
 
   const [gate, resolved] = await Promise.all([
     getStudentGate(userId, role),
-    !scoped
-      ? Promise.resolve({ mode: DEFAULT_STUDY_MODE, explicit: false })
-      : preloaded
-        ? Promise.resolve(((): { mode: StudyMode; explicit: boolean } => {
-            const stored = normalizeStudyMode(options.studyMode);
-            return stored
-              ? { mode: stored, explicit: true }
-              : { mode: DEFAULT_STUDY_MODE, explicit: false };
-          })())
-        : resolveStudyMode(userId),
+    scoped
+      ? resolveStudyMode(userId)
+      : Promise.resolve({ mode: DEFAULT_STUDY_MODE, explicit: false, prompted: false }),
   ]);
 
   // `gate.subjects` is already the entitlement set; the extra summary read only

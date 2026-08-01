@@ -9,10 +9,11 @@ import { useAuth } from '@/context/AuthContext';
 import { studyModeSubjects } from '@/lib/study-mode';
 
 const CLASS_OPTIONS = [11, 12] as const;
-// Exam provenance is deliberately INDEPENDENT of Study Mode: a JEE aspirant
-// legitimately practises NEET-origin Physics, so these chips stay complete.
-// Only the subject list follows the mode. (Plan open question Q2.)
-const EXAM_OPTIONS = ['JEE', 'NEET', 'AIPMT'] as const;
+// The exam picker was removed from the student builder and the study-room test
+// config: Study Mode already expresses which exam the student is preparing for,
+// so asking a second time was redundant and could directly contradict it.
+// `exams` remains in TestConfigValue and is sent empty (= all exams), which
+// keeps the payload shape and every server-side caller unchanged.
 const SUBJECT_LABELS: Record<string, string> = {
   physics: 'Physics',
   chemistry: 'Chemistry',
@@ -159,7 +160,7 @@ export default function TestConfigFields({
 
   return (
     <div className="space-y-5">
-      <div className="grid sm:grid-cols-2 gap-5">
+      <div className="grid gap-5">
         <div className="space-y-2.5">
           <span className={labelCls}>Class</span>
           <ChipMultiSelect
@@ -170,20 +171,6 @@ export default function TestConfigFields({
               onChange({
                 ...value,
                 classLevels: value.classLevels.includes(c) ? value.classLevels.filter((x) => x !== c) : [...value.classLevels, c],
-              })
-            }
-          />
-        </div>
-        <div className="space-y-2.5">
-          <span className={labelCls}>Exam</span>
-          <ChipMultiSelect
-            options={EXAM_OPTIONS.map((e) => ({ value: e as string, label: e }))}
-            selected={value.exams}
-            emptyLabel="All exams"
-            onToggle={(e) =>
-              onChange({
-                ...value,
-                exams: value.exams.includes(e) ? value.exams.filter((x) => x !== e) : [...value.exams, e],
               })
             }
           />

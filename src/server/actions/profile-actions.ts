@@ -98,7 +98,12 @@ async function applyProfileUpdates(userId: string, input: UpdateProfileInput): P
       if ('soundPreferences' in input) {
         user.soundPreferences = input.soundPreferences ? normalizeSoundPreferences(input.soundPreferences) : null;
       }
-      if ('studyMode' in input) user.studyMode = normalizeStudyMode(input.studyMode);
+      if ('studyMode' in input) {
+        user.studyMode = normalizeStudyMode(input.studyMode);
+        // Keep the in-memory row coherent: setting a mode without its prompt
+        // marker leaves a half-written user that the first-run picker misreads.
+        if (user.studyMode) user.studyModePromptedAt = user.studyModePromptedAt ?? new Date().toISOString();
+      }
 
       const serialized = serializeUser(store, userId);
       return (serialized as unknown as User) ?? null;

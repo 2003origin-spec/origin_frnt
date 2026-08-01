@@ -40,7 +40,7 @@ async function DashboardGate() {
   const [tasksResult, pointsResult, challengeResult, regResult] = await Promise.allSettled([
     listTasksForRender(user.id),
     getPointsSummaryForRender(user.id),
-    getChallengeOfTheDayForRender(renderStudyModeKey(user), user.id),
+    getChallengeOfTheDayForRender(await renderStudyModeKey(user), user.id),
     getRegistrationStatus(user.role),
   ]);
 

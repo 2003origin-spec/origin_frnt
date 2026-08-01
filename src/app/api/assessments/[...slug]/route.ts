@@ -338,7 +338,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       // Facets enumerate the catalog, so they must respect the same scope the
       // question list does — otherwise `?subjects=biology` leaks the Biology
       // chapter/concept tree to a JEE-mode student.
-      const facetScope = await getStudentScope(user.id, user.role, { studyMode: user.studyMode });
+      const facetScope = await getStudentScope(user.id, user.role);
       return ok(await listOgcodeCatalogFacets({
         level: level as 'class' | 'occurrence' | 'subject' | 'chapter' | 'concept',
         classes: facetClasses,
@@ -382,7 +382,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       // (60s revalidate, tag:"leaderboard") so it isn't recomputed on every
       // client mount. The regional view stays live — it's not part of the cache.
       if (!location) {
-        return ok(await getOgcodeLeaderboardForRender(renderStudyModeKey(user), user.id, subject, limit));
+        return ok(await getOgcodeLeaderboardForRender(await renderStudyModeKey(user), user.id, subject, limit));
       }
       return ok(await getOgcodeLeaderboard(store, user, subject, location, limit));
     }

@@ -36,7 +36,6 @@ import { useAuth } from '@/context/AuthContext';
 import { isSubjectInMode, studyModeSubjects } from '@/lib/study-mode';
 
 const CLASS_OPTIONS = [11, 12] as const;
-const EXAM_OPTIONS = ['JEE', 'NEET', 'AIPMT'] as const;
 /** Full table; rendered lists are filtered by the active Study Mode. */
 const SUBJECT_OPTIONS = [
   { value: 'physics', label: 'Physics' },
@@ -548,18 +547,10 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                                         }))}
                                     />
                                 </div>
-                                <div className="space-y-4">
-                                    <Label className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">Exam</Label>
-                                    <ChipMultiSelect
-                                        options={EXAM_OPTIONS.map((e) => ({ value: e as string, label: e }))}
-                                        selected={customTestConfig.exams}
-                                        emptyLabel="All exams (mixed)"
-                                        onToggle={(e) => setCustomTestConfig((prev) => ({
-                                            ...prev,
-                                            exams: prev.exams.includes(e) ? prev.exams.filter((x) => x !== e) : [...prev.exams, e],
-                                        }))}
-                                    />
-                                </div>
+                                {/* Exam picker removed — Study Mode now carries that
+                                    intent, so asking again here was redundant and could
+                                    contradict it. `exams` stays in the payload type and
+                                    is simply sent empty (= all exams). */}
                                 <div className="space-y-4">
                                     <Label className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">Domain Calibration</Label>
                                     <ChipMultiSelect

@@ -59,7 +59,7 @@ async function OGCodeContent({ searchParams }: PageProps) {
   let initialData: Awaited<ReturnType<typeof getOgcodeIndexDataForRender>> | null = null;
 
   try {
-    initialData = await getOgcodeIndexDataForRender(renderStudyModeKey(user), user.id, {
+    initialData = await getOgcodeIndexDataForRender(await renderStudyModeKey(user), user.id, {
       subject: resolvedSearchParams.subject ?? null,
       difficulty: resolvedSearchParams.difficulty ?? null,
       status: normalizeStatus(resolvedSearchParams.status),

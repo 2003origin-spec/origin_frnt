@@ -354,3 +354,26 @@ test("a free student gets no toggle even if flagged as granted", () => {
   assert.ok(!scope.canChooseMode);
   assert.deepEqual(scope.availableModes, []);
 });
+
+// ── Regression: the stale write-back that reverted saved modes ──────────────
+
+test("the user snapshot upsert must never write the study-mode columns", async () => {
+  // The bug this pins: `persistUser: true` (8 call sites, including OG Code and
+  // test submit) writes a WHOLE user row from `cachedStore` — a per-lambda
+  // snapshot with a 5-minute TTL. While study_mode was in that column list, any
+  // of those writes from a stale instance silently reverted the student's saved
+  // mode in Postgres, and nulled study_mode_prompted_at with it.
+  //
+  // Columns owned by a dedicated action must stay out of snapshot upserts.
+  const { USER_SNAPSHOT_COLUMNS, USER_SNAPSHOT_EXCLUDED_COLUMNS } = await import(
+    "../../src/server/store-postgres"
+  );
+  const columns = new Set<string>(USER_SNAPSHOT_COLUMNS);
+  for (const excluded of USER_SNAPSHOT_EXCLUDED_COLUMNS) {
+    assert.ok(
+      !columns.has(excluded),
+      `${excluded} is action-owned and must not be written by the snapshot upsert`,
+    );
+  }
+  assert.equal(USER_SNAPSHOT_COLUMNS.length, 28, "column list changed — re-check the exclusions");
+});

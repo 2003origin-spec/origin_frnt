@@ -2448,7 +2448,7 @@ async function createCustomTestFallback(
   user: StoredUser,
   payload: CustomTestPayload,
 ) {
-  const scope = await getStudentScope(user.id, user.role, { studyMode: user.studyMode });
+  const scope = await getStudentScope(user.id, user.role);
   const { selected, subject, chapter, difficulty, durationMinutes } = await selectCustomTestQuestions(
     payload,
     scope.enforced ? scope.subjects : null,
@@ -3185,7 +3185,7 @@ export async function listTests(store: AppStore, user: StoredUser) {
 }
 
 export async function listTestPreviews(store: AppStore, user: StoredUser) {
-  const scope = await getStudentScope(user.id, user.role, { studyMode: user.studyMode });
+  const scope = await getStudentScope(user.id, user.role);
   // Free students get no tests; premium students get their entitled subjects,
   // narrowed further to their study mode.
   //
@@ -3370,7 +3370,7 @@ export async function createCustomTest(
   const generatedId = createId("test");
   // Study Mode + entitlements. Resolved up front so BOTH the analytics-service
   // path and the local fallback build from the same allowed subject set.
-  const scope = await getStudentScope(user.id, user.role, { studyMode: user.studyMode });
+  const scope = await getStudentScope(user.id, user.role);
   try {
     const difficultyValue = (payload.difficulty ?? "medium").toLowerCase();
     const difficulty = difficultyValue === "all" ? null : normalizeDifficulty(difficultyValue);
@@ -3930,7 +3930,7 @@ export async function listGeneratedDpps(store: AppStore, user: StoredUser) {
   // work already created for this student, so it is marked `outOfMode` for the
   // UI to badge/collapse rather than removed (plan §3.3, §6.6). The premium gate
   // still hard-filters, exactly as before.
-  const scope = await getStudentScope(user.id, user.role, { studyMode: user.studyMode });
+  const scope = await getStudentScope(user.id, user.role);
   const gate = scope.gate;
   const entitled = gate.enforced
     ? serialized.filter((dpp) => subjectVisibleUnderGate(dpp.subject, gate))
@@ -4236,7 +4236,7 @@ export async function listOgcodeQuestionChapters(
 
   // Chapter lists are an enumeration surface: without this, a JEE-mode student
   // could still read the whole Biology chapter tree via ?subject=biology.
-  const scope = await getStudentScope(user.id, user.role, { studyMode: user.studyMode });
+  const scope = await getStudentScope(user.id, user.role);
   if (!subjectVisibleUnderMode(normalizedSubject, scope)) return [];
 
   const chapters = new Set<string>();
@@ -4275,7 +4275,7 @@ export async function listOgcodeQuestionPage(
   // pool; premium → full bank scoped to entitled subjects. Study Mode narrows
   // that further to the subjects of the student's chosen mode (JEE/NEET/PCMB),
   // and `scope.subjects` is the intersection of the two.
-  const scope = await getStudentScope(user.id, user.role, { studyMode: user.studyMode });
+  const scope = await getStudentScope(user.id, user.role);
   const gate = scope.gate;
   const isFree = gate.enforced && !gate.anyPremium;
   const isPremium = gate.enforced && gate.anyPremium;
@@ -4443,7 +4443,7 @@ export async function listOgcodeQuestions(
   filters: { subject?: string | null; difficulty?: string | null; type?: string | null },
 ) {
   const questions = await getOgcodeQuestionBank(store);
-  const scope = await getStudentScope(user.id, user.role, { studyMode: user.studyMode });
+  const scope = await getStudentScope(user.id, user.role);
   const gate = scope.gate;
   const filtered = questions.filter((question) => {
     const matchesSubject = !filters.subject || question.subject === normalizeSubject(filters.subject);
@@ -4478,7 +4478,7 @@ export async function getPracticeQuestionDetail(store: AppStore, user: StoredUse
   // id). Refuse with a 403 the UI turns into a "switch mode?" interstitial —
   // UNLESS the student has already attempted it, because their own history must
   // stay readable in every mode (plan §3.3).
-  const scope = await getStudentScope(user.id, user.role, { studyMode: user.studyMode });
+  const scope = await getStudentScope(user.id, user.role);
   if (!subjectVisibleUnderMode(resolved.question.subject, scope)) {
     const attemptedBefore = store.practiceAttempts.some(
       (attempt) => attempt.userId === user.id && attempt.questionId === resolved.question.id,
@@ -5027,7 +5027,7 @@ export async function getOgcodeUserStats(store: AppStore, user: StoredUser) {
 export async function getOgcodeSubjectRanks(store: AppStore, user: StoredUser) {
   // Subject arenas follow the mode: a JEE student has no Biology arena. Their
   // historical Biology rank is hidden from this view, never deleted.
-  const rankScope = await getStudentScope(user.id, user.role, { studyMode: user.studyMode });
+  const rankScope = await getStudentScope(user.id, user.role);
   if (isUserPostgresConfigured() && isOgcodePostgresConfigured()) {
     const subjects = rankScope.enforced
       ? rankScope.modeSubjects
@@ -5207,7 +5207,7 @@ export async function getOgcodeLeaderboard(store: AppStore, user: StoredUser, su
   }
 
   if (subject) {
-    const boardScope = await getStudentScope(user.id, user.role, { studyMode: user.studyMode });
+    const boardScope = await getStudentScope(user.id, user.role);
     // An off-mode arena returns the empty board rather than falling through to
     // another subject's rankings. Same shape as the populated path so callers
     // (and the render-loader's cached type) stay unchanged.
@@ -5299,7 +5299,7 @@ export function updateOgcodeLocation(
 }
 
 export async function getFocusAreas(store: AppStore, user: StoredUser) {
-  const focusScope = await getStudentScope(user.id, user.role, { studyMode: user.studyMode });
+  const focusScope = await getStudentScope(user.id, user.role);
   const subjects = focusScope.enforced
     ? focusScope.modeSubjects
     : ["physics", "chemistry", "mathematics", "biology"];
@@ -5380,7 +5380,7 @@ export async function getFocusAreas(store: AppStore, user: StoredUser) {
 }
 
 export async function getChallengeOfTheDay(store: AppStore, user: StoredUser) {
-  const scope = await getStudentScope(user.id, user.role, { studyMode: user.studyMode });
+  const scope = await getStudentScope(user.id, user.role);
   const mode = scope.mode;
 
   let challenge = null;
