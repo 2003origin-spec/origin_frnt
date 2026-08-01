@@ -332,6 +332,43 @@ export async function ensureAppStoreSchema(): Promise<void> {
   await globalThis.__originAppStoreSchemaPromise;
 }
 
+/**
+ * Whole-row user sync from the in-memory store snapshot.
+ *
+ * `study_mode` / `study_mode_prompted_at` are DELIBERATELY EXCLUDED. This runs
+ * from `cachedStore`, which is a per-lambda-instance snapshot with a 5-minute
+ * TTL — so on a serverless fleet it is routinely STALE. Including the study mode
+ * here meant that any unrelated `persistUser: true` write (submitting a test,
+ * answering an OG Code question, editing a profile — 8 call sites) could write a
+ * stale mode back over the correct one in Postgres, silently reverting the
+ * student's choice. Those columns are owned exclusively by the targeted
+ * `dbUpdateUser` path in study-mode-actions.ts / completeOnboardingAction.
+ *
+ * Rule of thumb: a column that a dedicated action owns must never ride along in
+ * a snapshot upsert.
+ */
+/**
+ * Columns the snapshot upsert writes. Exported so a test can assert that
+ * action-owned columns never creep back in — see USER_SNAPSHOT_EXCLUDED_COLUMNS.
+ */
+export const USER_SNAPSHOT_COLUMNS = [
+  "id", "name", "email", "password_hash", "role", "student_class", "field_of_interest",
+  "referral_source", "avatar", "streak", "total_study_time", "joined_at", "is_premium",
+  "premium_expiry", "is_onboarded", "selected_course", "is_dropper",
+  "years_of_experience", "subjects", "student_capacity", "location",
+  "voice_minutes_used_today", "tokens_used_today", "usage_reset_at", "auth_token_version",
+  "ogcode_correct_sound", "ogcode_wrong_sound", "sound_preferences",
+] as const;
+
+/**
+ * Columns that a dedicated action owns and the snapshot upsert must NEVER write.
+ * See the upsertUsers doc comment for the incident this prevents.
+ */
+export const USER_SNAPSHOT_EXCLUDED_COLUMNS = [
+  "study_mode",
+  "study_mode_prompted_at",
+] as const;
+
 async function upsertUsers(client: PoolClient, users: StoredUser[]): Promise<void> {
   for (const user of users) {
     await client.query(
@@ -341,10 +378,9 @@ async function upsertUsers(client: PoolClient, users: StoredUser[]): Promise<voi
          premium_expiry, is_onboarded, selected_course, is_dropper,
          years_of_experience, subjects, student_capacity, location,
          voice_minutes_used_today, tokens_used_today, usage_reset_at, auth_token_version,
-         ogcode_correct_sound, ogcode_wrong_sound, sound_preferences,
-         study_mode, study_mode_prompted_at
+         ogcode_correct_sound, ogcode_wrong_sound, sound_preferences
        )
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28)
        ON CONFLICT (id) DO UPDATE SET
          name = EXCLUDED.name,
          email = EXCLUDED.email,
@@ -371,9 +407,7 @@ async function upsertUsers(client: PoolClient, users: StoredUser[]): Promise<voi
          auth_token_version = EXCLUDED.auth_token_version,
          ogcode_correct_sound = EXCLUDED.ogcode_correct_sound,
          ogcode_wrong_sound = EXCLUDED.ogcode_wrong_sound,
-         sound_preferences = EXCLUDED.sound_preferences,
-         study_mode = EXCLUDED.study_mode,
-         study_mode_prompted_at = EXCLUDED.study_mode_prompted_at`,
+         sound_preferences = EXCLUDED.sound_preferences`,
       [
         user.id,
         user.name,
@@ -403,8 +437,6 @@ async function upsertUsers(client: PoolClient, users: StoredUser[]): Promise<voi
         user.ogcodeCorrectSound ?? null,
         user.ogcodeWrongSound ?? null,
         user.soundPreferences ? JSON.stringify(user.soundPreferences) : null,
-        user.studyMode ?? null,
-        user.studyModePromptedAt ?? null,
       ],
     );
   }

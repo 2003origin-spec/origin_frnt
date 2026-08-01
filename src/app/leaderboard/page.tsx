@@ -23,7 +23,7 @@ async function LeaderboardContent() {
   let initialMyRank: number | null = null;
 
   try {
-    const data = await getOgcodeLeaderboardForRender(renderStudyModeKey(serverUser), serverUser.id, null);
+    const data = await getOgcodeLeaderboardForRender(await renderStudyModeKey(serverUser), serverUser.id, null);
     initialLeaderboard = data.leaderboard;
     initialMyRank = data.myRank;
   } catch {

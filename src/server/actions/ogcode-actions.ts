@@ -155,9 +155,7 @@ export async function sendOgcodeChallengeAction(
   try {
     const recipient = await dbFindUserById(toUserId);
     if (recipient) {
-      const recipientScope = await getStudentScope(recipient.id, recipient.role, {
-        studyMode: recipient.studyMode,
-      });
+      const recipientScope = await getStudentScope(recipient.id, recipient.role);
       if (recipientScope.enforced) {
         const question = await getOgcodeCatalogQuestionById(questionId);
         if (question && !subjectVisibleUnderMode(question.subject, recipientScope)) {

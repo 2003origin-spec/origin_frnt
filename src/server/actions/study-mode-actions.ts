@@ -27,7 +27,7 @@ import {
 } from '@/lib/study-mode';
 import { dbUpdateUser } from '@/server/db-users';
 import { withStoreAsyncScoped } from '@/server/store';
-import { getStudentScope } from '@/server/study-scope';
+import { getStudentScope, resolveStudyMode } from '@/server/study-scope';
 import { isUserPostgresConfigured } from '@/server/user-postgres';
 
 export type StudyModeActionResult =
@@ -107,7 +107,7 @@ export async function setStudyModeAction(input: unknown): Promise<StudyModeActio
   // into a mode by calling this action directly, because every mode would hide
   // something they paid for. Only modes whose subjects they FULLY own are
   // selectable. Skipped entirely when the scope is not enforced (flag off / dev).
-  const scope = await getStudentScope(user.id, user.role, { studyMode: user.studyMode });
+  const scope = await getStudentScope(user.id, user.role);
   if (scope.enforced) {
     if (!scope.canChooseMode) {
       return {
@@ -126,11 +126,17 @@ export async function setStudyModeAction(input: unknown): Promise<StudyModeActio
     }
   }
 
-  const previous = normalizeStudyMode(user.studyMode);
+  // Compare against POSTGRES, not `user` — that came from the in-memory store,
+  // a per-lambda snapshot with a 5-minute TTL. Comparing against a stale value
+  // meant a student could tap a mode the snapshot already believed was active
+  // and hit the early-return below, so the write never happened and the choice
+  // silently didn't save.
+  const current = await resolveStudyMode(user.id);
+  const previous = current.explicit ? current.mode : null;
   if (previous === mode) {
     // Still stamp the prompt marker: choosing the already-active mode from the
     // first-run picker is a real answer and must stop it re-asking.
-    if (user.studyModePromptedAt == null) {
+    if (!current.prompted) {
       try {
         await persistStudyMode(user.id, { studyModePromptedAt: new Date().toISOString() });
         revalidateForUser(user.id);
@@ -166,7 +172,8 @@ export async function setStudyModeAction(input: unknown): Promise<StudyModeActio
  */
 export async function dismissStudyModePromptAction(): Promise<{ ok: boolean }> {
   const user = await requireStudent();
-  if (user.studyModePromptedAt != null) return { ok: true };
+  // Authoritative — see setStudyModeAction for why `user` cannot be trusted here.
+  if ((await resolveStudyMode(user.id)).prompted) return { ok: true };
 
   try {
     await persistStudyMode(user.id, { studyModePromptedAt: new Date().toISOString() });

@@ -20,7 +20,7 @@ async function DPPGate() {
 
   let initialDpps: GeneratedDppForRender[] | null = null;
   try {
-    initialDpps = await listGeneratedDppsForRender(renderStudyModeKey(user), user.id);
+    initialDpps = await listGeneratedDppsForRender(await renderStudyModeKey(user), user.id);
   } catch {
     // Fall back to the existing client fetch when analytics storage is unavailable.
   }

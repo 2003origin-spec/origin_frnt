@@ -106,7 +106,7 @@ async function searchQuestions(user: StoredUser, query: string): Promise<SearchR
   // Scope the search to the student's entitlements ∩ study mode. Without this a
   // JEE student's results would include Biology questions whose links then 403
   // on the out-of-mode interstitial — worse than not surfacing them at all.
-  const scope = await getStudentScope(user.id, user.role, { studyMode: user.studyMode });
+  const scope = await getStudentScope(user.id, user.role);
   const subjects = scope.enforced ? narrowingSubjectsFilter(scope) : null;
   if (scope.enforced && scope.starved) return [];
   const { items } = await listOgcodeCatalogQuestionPage({

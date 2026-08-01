@@ -152,21 +152,45 @@ export async function getEntitlementSummary(
 export async function withEntitledSubjects<T extends Record<string, unknown>>(
   payload: T,
   userId: string,
-): Promise<T & { entitledSubjects: Subject[]; studyModeAvailable: boolean; availableStudyModes: string[] }> {
+): Promise<
+  T & {
+    entitledSubjects: Subject[];
+    studyModeAvailable: boolean;
+    availableStudyModes: string[];
+    studyMode?: string | null;
+    studyModePrompted?: boolean;
+  }
+> {
   const { subjects: entitledSubjects, hasGrant } = await getEntitlementSummary(userId);
   // Imported lazily: study-scope imports back from this module (getStudentGate),
   // so a top-level import would close a cycle.
-  const { resolveStudyModeAccess } = await import("@/server/study-scope");
-  const access = resolveStudyModeAccess({
-    role: typeof payload.role === "string" ? payload.role : null,
-    entitledSubjects,
-    hasGrant,
-  });
+  const { resolveStudyModeAccess, resolveStudyMode } = await import("@/server/study-scope");
+  const role = typeof payload.role === "string" ? payload.role : null;
+  const access = resolveStudyModeAccess({ role, entitledSubjects, hasGrant });
+
+  // Study Mode is re-read from Postgres and OVERRIDES whatever `serializeUser`
+  // put in the payload. That value comes from the in-memory store — a
+  // per-lambda-instance snapshot with a 5-minute TTL — so on a serverless fleet
+  // it is routinely behind the student's latest choice. Serving it to the client
+  // is what made the toggle appear to jump back to a previous mode (or to PCMB,
+  // when the stale row still had NULL). This is the single serialization exit
+  // for login / register / me / refresh / RSC seed, so overriding here fixes all
+  // of them at once.
+  const stored = role === "student" ? await resolveStudyMode(userId) : null;
+
   return {
     ...payload,
     entitledSubjects,
     studyModeAvailable: access.canChooseMode,
     availableStudyModes: access.availableModes,
+    ...(stored
+      ? {
+          studyMode: stored.explicit ? stored.mode : null,
+          study_mode: stored.explicit ? stored.mode : null,
+          studyModePrompted: stored.prompted,
+          study_mode_prompted: stored.prompted,
+        }
+      : {}),
   };
 }
 
