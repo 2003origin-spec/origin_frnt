@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { Mutex } from "async-mutex";
 
+import type { AuthClientKind } from "@/server/auth-client-kind";
 import type { SoundPreferences } from "@/lib/sound-preferences";
 import type { StudyMode } from "@/lib/study-mode";
 
@@ -445,6 +446,8 @@ export interface StoredAuthSession {
   lastUsedAt?: string | null;
   userAgentHash?: string | null;
   ipPrefixHash?: string | null;
+  /** Which client minted this session; drives the refresh lifetime. */
+  clientKind?: AuthClientKind;
 }
 
 export interface StoredOtp {

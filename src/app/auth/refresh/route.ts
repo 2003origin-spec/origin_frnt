@@ -12,6 +12,7 @@ import {
   CSRF_COOKIE_NAME,
   createCsrfToken,
   REFRESH_COOKIE_NAME,
+  refreshCookieOptions,
 } from "@/server/auth-cookies";
 
 const REQUEST_ID_HEADER = "X-Request-Id";
@@ -88,7 +89,8 @@ export async function GET(request: NextRequest) {
   response.cookies.set(ACCESS_COOKIE_NAME, tokens.accessToken, COOKIE_OPTS_ACCESS);
   response.cookies.set(ACCESS_FINGERPRINT_COOKIE_NAME, tokens.accessFingerprint, COOKIE_OPTS_ACCESS_FINGERPRINT);
   if (tokens.refreshToken) {
-    response.cookies.set(REFRESH_COOKIE_NAME, tokens.refreshToken, COOKIE_OPTS_REFRESH);
+    // Lifetime follows the stored session's client kind, not this request's UA.
+    response.cookies.set(REFRESH_COOKIE_NAME, tokens.refreshToken, refreshCookieOptions(tokens.clientKind));
   }
   response.cookies.set(CSRF_COOKIE_NAME, createCsrfToken(), COOKIE_OPTS_CSRF);
   return response;

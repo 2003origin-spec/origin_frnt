@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { SignJWT } from "jose";
 
 import {
+  ACCESS_TOKEN_TTL_SECONDS,
   AUTH_JWT_AUDIENCE,
   AUTH_JWT_ISSUER,
   COOKIE_OPTS_ACCESS,
@@ -204,13 +205,13 @@ test("refresh rotation rejects replay and revokes the session", async () => {
   }
 });
 
-test("auth cookie flags use short access TTL and strict refresh SameSite", () => {
+test("auth cookie flags use a 1-hour access TTL and strict refresh SameSite", () => {
   assert.deepEqual(COOKIE_OPTS_ACCESS, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
-    maxAge: 600,
+    maxAge: 3600,
   });
   assert.deepEqual(COOKIE_OPTS_ACCESS_FINGERPRINT, COOKIE_OPTS_ACCESS);
   assert.equal(COOKIE_OPTS_REFRESH.httpOnly, true);
@@ -218,4 +219,21 @@ test("auth cookie flags use short access TTL and strict refresh SameSite", () =>
   assert.equal(COOKIE_OPTS_REFRESH.maxAge, 604800);
   assert.equal(COOKIE_OPTS_CSRF.httpOnly, false);
   assert.equal(COOKIE_OPTS_CSRF.sameSite, "lax");
+  // The CSRF cookie is rewritten on every refresh, so it must not outlive the
+  // access token it is paired with.
+  assert.equal(COOKIE_OPTS_CSRF.maxAge, COOKIE_OPTS_ACCESS.maxAge);
+});
+
+test("issued access JWTs expire one hour out", async () => {
+  const user = buildUser();
+  const before = Math.floor(Date.now() / 1000);
+  const issued = await issueAccessTokenForUser(user, createSessionId());
+  const expiresAt = Math.floor(new Date(issued.accessTokenExpiresAt).getTime() / 1000);
+
+  assert.ok(expiresAt - before >= ACCESS_TOKEN_TTL_SECONDS - 2);
+  assert.ok(expiresAt - before <= ACCESS_TOKEN_TTL_SECONDS + 2);
+  assert.equal(ACCESS_TOKEN_TTL_SECONDS, 3600);
+
+  const claims = await verifyAccessJwt(issued.accessToken, issued.accessFingerprint);
+  assert.equal(claims.exp - claims.iat, ACCESS_TOKEN_TTL_SECONDS);
 });

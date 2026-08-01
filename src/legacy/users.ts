@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { requireUserFromRequest, resolveTokenToUser, refreshAccessToken, createAuthSessionAsync, extractAccessToken, extractRefreshTokenCookie } from "@/server/auth";
 import { isAuthServiceUnavailableError } from "@/server/auth-errors";
 import { extractAccessFingerprint, verifyRequestAccessJwt } from "@/server/auth-jwt";
+import { normalizeAuthClientKind, resolveAuthClientKind, type AuthClientKind } from "@/server/auth-client-kind";
 import { isUserPostgresConfigured } from "@/server/user-postgres";
 import { dbLoginUser, dbRegisterUser, dbGetTasks, dbCreateTask, dbUpdateTask, dbDeleteTask, dbFindUserByEmail, dbFindUserById, dbCreateUser, dbUpdateUser, dbCreateAuthSession, dbGetUserCount, dbGetUserCountByRole, dbMobileInUse, dbClearUserSessions } from "@/server/db-users";
 import { isIdentityBlocked } from "@/server/user-lifecycle-store";
@@ -46,6 +47,15 @@ function asBoolean(value: unknown): boolean | null {
 
 function asNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+/**
+ * Which client this login came from. Resolved by the caller (Server Action or
+ * REST route) from the request User-Agent and passed in on the payload — these
+ * handlers have no Request of their own. Defaults to "web" when absent.
+ */
+function payloadClientKind(payload: UserPayload): AuthClientKind {
+  return normalizeAuthClientKind(payload.clientKind);
 }
 
 function asStringArray(value: unknown): string[] | null {
@@ -410,6 +420,7 @@ function serializePomodoro(session: {
 }
 
 export async function handleLogin(payload: UserPayload) {
+  const clientKind = payloadClientKind(payload);
   const email = asString(payload.email)?.trim().toLowerCase();
   const password = asString(payload.password);
   const requestedRole = asString(payload.role)?.trim().toLowerCase();
@@ -434,7 +445,7 @@ export async function handleLogin(payload: UserPayload) {
       const rolesToTry = role ? [role] : ["student", "teacher"];
       let dbResult = null;
       for (const r of rolesToTry) {
-        const res = await dbLoginUser(email, password, r);
+        const res = await dbLoginUser(email, password, r, clientKind);
         if (res) {
           if (dbResult) {
             return badRequest("Multiple accounts use this email. Please select Student or Teacher before logging in.");
@@ -484,7 +495,7 @@ export async function handleLogin(payload: UserPayload) {
     const user = eligibleUsers[0];
     const blocked = accountStatusBlock(user);
     if (blocked) return blocked;
-    const session = await createAuthSessionAsync(store, user.id);
+    const session = await createAuthSessionAsync(store, user.id, clientKind);
     const userData = serializeUser(store, user.id);
     if (!userData) return notFound("User not found.");
 
@@ -508,6 +519,7 @@ function configuredMainAdminEmails(): ReadonlySet<string> {
 }
 
 export async function handleLoginWithOtp(payload: UserPayload) {
+  const clientKind = payloadClientKind(payload);
   const email = asString(payload.email)?.trim().toLowerCase();
   const role = asString(payload.role)?.trim().toLowerCase();
 
@@ -575,7 +587,7 @@ export async function handleLoginWithOtp(payload: UserPayload) {
 
     const blocked = accountStatusBlock(user);
     if (blocked) return blocked;
-    const session = await createAuthSessionAsync(store, user.id);
+    const session = await createAuthSessionAsync(store, user.id, clientKind);
     const userData = serializeUser(store, user.id);
     if (!userData) return notFound("User not found.");
 
@@ -624,6 +636,7 @@ function normalizeMobile(raw: string): string | null {
 }
 
 export async function handleRegister(payload: UserPayload) {
+  const clientKind = payloadClientKind(payload);
   const email = asString(payload.email)?.trim().toLowerCase();
   const password = asString(payload.password);
   const name = asString(payload.name)?.trim() ?? "";
@@ -675,7 +688,7 @@ export async function handleRegister(payload: UserPayload) {
       if (mobile && (await dbMobileInUse(mobile))) {
         return badRequest("This mobile number is already registered.");
       }
-      const { user: dbUser, session } = await dbRegisterUser({ name, email, password, role, mobile, location });
+      const { user: dbUser, session } = await dbRegisterUser({ name, email, password, role, mobile, location, clientKind });
       // Event Mode: auto-grant Premium Pro to students who sign up during a launch
       // event. Best-effort; never blocks/aborts registration.
       await maybeGrantEventModePremiumOnSignup(dbUser.id, dbUser.role);
@@ -730,7 +743,7 @@ export async function handleRegister(payload: UserPayload) {
       studentCapacity: null,
     }));
 
-    const session = await createAuthSessionAsync(store, userId);
+    const session = await createAuthSessionAsync(store, userId, clientKind);
     const userData = serializeUser(store, userId);
     if (!userData) {
       return notFound("User not found.");
@@ -820,6 +833,7 @@ async function resolveGoogleCredential(
 }
 
 export async function handleGoogleLogin(payload: UserPayload) {
+  const clientKind = payloadClientKind(payload);
   // Google auth authenticates existing accounts. A brand-new Google email is
   // not silently auto-created (it would lack the compulsory mobile + state) —
   // instead the response carries `needs_signup: true` plus the verified
@@ -877,7 +891,7 @@ export async function handleGoogleLogin(payload: UserPayload) {
           await dbClearUserSessions(dbUser.id).catch(() => undefined);
           return blocked;
         }
-        const session = await dbCreateAuthSession(dbUser.id);
+        const session = await dbCreateAuthSession(dbUser.id, clientKind);
         const userData = await serializeDbUser(dbUser);
         if (!userData) return notFound("User not found.");
         return ok({
@@ -906,7 +920,7 @@ export async function handleGoogleLogin(payload: UserPayload) {
 
       const blocked = accountStatusBlock(user);
       if (blocked) return blocked;
-      const session = await createAuthSessionAsync(store, user.id);
+      const session = await createAuthSessionAsync(store, user.id, clientKind);
       const userData = serializeUser(store, user.id);
       return ok({ user: userData, refresh: session.refreshToken, access: session.accessToken, accessFingerprint: session.accessFingerprint });
     });
@@ -928,6 +942,7 @@ export async function handleGoogleLogin(payload: UserPayload) {
  * is simply logged in — Google has already proven ownership of the email.
  */
 export async function handleGoogleSignup(payload: UserPayload) {
+  const clientKind = payloadClientKind(payload);
   const credential = asString(payload.credential);
   if (!credential) return badRequest("Missing Google credential token.");
 
@@ -1003,7 +1018,7 @@ export async function handleGoogleSignup(payload: UserPayload) {
           await dbClearUserSessions(dbUser.id).catch(() => undefined);
           return blocked;
         }
-        const session = await dbCreateAuthSession(dbUser.id);
+        const session = await dbCreateAuthSession(dbUser.id, clientKind);
         const userData = await serializeDbUser(dbUser);
         if (!userData) return notFound("User not found.");
         return created({
@@ -1042,7 +1057,7 @@ export async function handleGoogleSignup(payload: UserPayload) {
 
       const blocked = accountStatusBlock(user);
       if (blocked) return blocked;
-      const session = await createAuthSessionAsync(store, user.id);
+      const session = await createAuthSessionAsync(store, user.id, clientKind);
       const userData = serializeUser(store, user.id);
       if (!userData) return notFound("User not found.");
       return created({
@@ -1114,6 +1129,9 @@ export async function handleRefresh(request: Request | null, payload: UserPayloa
     access: tokens.accessToken,
     ...(tokens.refreshToken ? { refresh: tokens.refreshToken } : {}),
     accessFingerprint: tokens.accessFingerprint,
+    // Lets the cookie-setting caller pick the matching refresh cookie maxAge.
+    // Sourced from the stored session row, not from this request's headers.
+    clientKind: tokens.clientKind,
   });
 }
 
@@ -1541,14 +1559,23 @@ async function handleTaskDelete(request: Request, taskId: string) {
 }
 
 export async function handleUsersRequest(method: string, slug: string[], request: Request, payload: UserPayload) {
+  // The REST login surfaces have a Request, so the client kind is resolved from
+  // its User-Agent here and injected onto the payload the handlers read. A
+  // client-supplied `clientKind` in the body is deliberately overwritten — it is
+  // never an input, only a server-derived value.
+  const withClientKind = (): UserPayload => ({
+    ...payload,
+    clientKind: resolveAuthClientKind(request.headers.get("user-agent")),
+  });
+
   if (slug.length === 1 && slug[0] === "login" && method === "POST") {
-    return handleLogin(payload);
+    return handleLogin(withClientKind());
   }
   if (slug.length === 1 && slug[0] === "register" && method === "POST") {
-    return handleRegister(payload);
+    return handleRegister(withClientKind());
   }
   if (slug.length === 1 && slug[0] === "google-login" && method === "POST") {
-    return handleGoogleLogin(payload);
+    return handleGoogleLogin(withClientKind());
   }
   if (slug.length === 2 && slug[0] === "token" && slug[1] === "refresh" && method === "POST") {
     return handleRefresh(request, payload);

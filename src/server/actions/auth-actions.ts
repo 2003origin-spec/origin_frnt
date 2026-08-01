@@ -19,7 +19,13 @@ import {
   CSRF_COOKIE_NAME,
   createCsrfToken,
   REFRESH_COOKIE_NAME,
+  refreshCookieOptions,
 } from '@/server/auth-jwt';
+import {
+  normalizeAuthClientKind,
+  resolveAuthClientKind,
+  type AuthClientKind,
+} from '@/server/auth-client-kind';
 import { isRefreshTokenValid, revokeRefreshSession } from '@/server/auth';
 import { dbGetSessionByRefreshToken } from '@/server/db-users';
 import { isUserPostgresConfigured } from '@/server/user-postgres';
@@ -149,12 +155,26 @@ async function clientIp(): Promise<string> {
   return xff?.split(',')[0]?.trim() || h.get('x-real-ip')?.trim() || 'anonymous';
 }
 
-async function setSessionCookies(access: string, refresh: string, accessFingerprint: string): Promise<void> {
+/**
+ * Server Actions have no Request object, so the client kind for a NEW session
+ * comes from the action's own request headers. Refresh paths must NOT use this
+ * — they read the kind off the stored session instead.
+ */
+async function clientKindFromRequest(): Promise<AuthClientKind> {
+  return resolveAuthClientKind((await headers()).get('user-agent'));
+}
+
+async function setSessionCookies(
+  access: string,
+  refresh: string,
+  accessFingerprint: string,
+  clientKind: AuthClientKind,
+): Promise<void> {
   const cookieStore = await cookies();
   cookieStore.set(ACCESS_COOKIE_NAME, access, COOKIE_OPTS_ACCESS);
   cookieStore.set(ACCESS_FINGERPRINT_COOKIE_NAME, accessFingerprint, COOKIE_OPTS_ACCESS_FINGERPRINT);
   if (refresh) {
-    cookieStore.set(REFRESH_COOKIE_NAME, refresh, COOKIE_OPTS_REFRESH);
+    cookieStore.set(REFRESH_COOKIE_NAME, refresh, refreshCookieOptions(clientKind));
   }
   cookieStore.set(CSRF_COOKIE_NAME, createCsrfToken(), COOKIE_OPTS_CSRF);
 }
@@ -168,14 +188,16 @@ export async function loginAction(input: {
     if (await loginBlockedForRole(input.role)) {
       return { ok: false, status: 403, message: LOGIN_DISABLED_MESSAGE };
     }
+    const clientKind = await clientKindFromRequest();
     const response = await handleLogin({
       email: input.email,
       password: input.password,
       role: input.role ?? undefined,
+      clientKind,
     });
     const parsed = await parseAuthResponse(response);
     if (parsed.ok) {
-      await setSessionCookies(parsed.access, parsed.refresh, parsed.accessFingerprint);
+      await setSessionCookies(parsed.access, parsed.refresh, parsed.accessFingerprint, clientKind);
       revalidatePath('/', 'layout');
     }
     return toPublicAuthResult(parsed);
@@ -199,13 +221,15 @@ export async function loginWithOtpAction(input: {
     if (await loginBlockedForRole(input.role)) {
       return { ok: false, status: 403, message: LOGIN_DISABLED_MESSAGE };
     }
+    const clientKind = await clientKindFromRequest();
     const response = await handleLoginWithOtp({
       email: input.email,
       role: input.role ?? undefined,
+      clientKind,
     });
     const parsed = await parseAuthResponse(response);
     if (parsed.ok) {
-      await setSessionCookies(parsed.access, parsed.refresh, parsed.accessFingerprint);
+      await setSessionCookies(parsed.access, parsed.refresh, parsed.accessFingerprint, clientKind);
       revalidatePath('/', 'layout');
     }
     return toPublicAuthResult(parsed);
@@ -234,6 +258,7 @@ export async function registerAction(input: {
       return { ok: false, status: 400, message: 'Email verification required. Please verify your email first.' };
     }
 
+    const clientKind = await clientKindFromRequest();
     const response = await handleRegister({
       name: input.name,
       email: input.email,
@@ -241,6 +266,7 @@ export async function registerAction(input: {
       mobile: input.mobile,
       location: input.state,
       role: input.role ?? undefined,
+      clientKind,
     });
     const parsed = await parseAuthResponse(response);
     if (parsed.ok) {
@@ -255,7 +281,7 @@ export async function registerAction(input: {
         );
       }
 
-      await setSessionCookies(parsed.access, parsed.refresh, parsed.accessFingerprint);
+      await setSessionCookies(parsed.access, parsed.refresh, parsed.accessFingerprint, clientKind);
       revalidatePath('/', 'layout');
     }
     return toPublicAuthResult(parsed);
@@ -273,10 +299,11 @@ export async function googleLoginAction(input: { credential: string; role?: 'stu
     if (await loginBlockedForRole(input.role)) {
       return { ok: false, status: 403, message: LOGIN_DISABLED_MESSAGE };
     }
-    const response = await handleGoogleLogin({ credential: input.credential, role: input.role ?? null });
+    const clientKind = await clientKindFromRequest();
+    const response = await handleGoogleLogin({ credential: input.credential, role: input.role ?? null, clientKind });
     const parsed = await parseAuthResponse(response);
     if (parsed.ok) {
-      await setSessionCookies(parsed.access, parsed.refresh, parsed.accessFingerprint);
+      await setSessionCookies(parsed.access, parsed.refresh, parsed.accessFingerprint, clientKind);
       revalidatePath('/', 'layout');
     }
     return toPublicAuthResult(parsed);
@@ -303,15 +330,17 @@ export async function googleSignupAction(input: {
     if (await signupBlockedForRole(input.role)) {
       return { ok: false, status: 403, message: SIGNUP_DISABLED_MESSAGE };
     }
+    const clientKind = await clientKindFromRequest();
     const response = await handleGoogleSignup({
       credential: input.credential,
       role: input.role ?? null,
       mobile: input.mobile,
       location: input.state,
+      clientKind,
     });
     const parsed = await parseAuthResponse(response);
     if (parsed.ok) {
-      await setSessionCookies(parsed.access, parsed.refresh, parsed.accessFingerprint);
+      await setSessionCookies(parsed.access, parsed.refresh, parsed.accessFingerprint, clientKind);
       revalidatePath('/', 'layout');
     }
     return toPublicAuthResult(parsed);
@@ -355,7 +384,10 @@ export async function refreshTokenAction(): Promise<{ ok: boolean; status: numbe
   const accessFingerprint = typeof body.accessFingerprint === 'string' ? body.accessFingerprint : '';
   if (!access || !accessFingerprint) return { ok: false, status: 502 };
 
-  await setSessionCookies(access, newRefresh, accessFingerprint);
+  // The kind comes from the rotated session row (via handleRefresh), never from
+  // this request's User-Agent — an android session keeps its long-lived refresh
+  // cookie even when the same jar is later hit by a differently-UA'd request.
+  await setSessionCookies(access, newRefresh, accessFingerprint, normalizeAuthClientKind(body.clientKind));
   return { ok: true, status: response.status };
 }
 
