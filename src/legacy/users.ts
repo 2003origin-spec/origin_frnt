@@ -131,6 +131,7 @@ export function serializeUser(store: AppStore, userId: string) {
     last_study_date: streak.lastStudyDate,
     weeklyData: streak.weeklyData,
     weekly_data: streak.weeklyData,
+    freezesRemaining: streak.freezesRemaining ?? 2,
   };
 
   const payload = {

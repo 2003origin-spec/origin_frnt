@@ -119,14 +119,29 @@ export function calculateTimedPracticeScore(
   };
 }
 
+/** Streak freezes granted per calendar month — auto-consumed to bridge a missed
+ *  day so the streak survives (Duolingo-style loss aversion). */
+export const FREEZES_PER_MONTH = 2;
+
+// India-only product: all day-bucketing rolls over at 00:00 IST (UTC+5:30),
+// not 00:00 UTC. Shift "now" by +5:30 and read the UTC calendar date.
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+function istNow(): Date {
+  return new Date(Date.now() + IST_OFFSET_MS);
+}
 function todayString(): string {
-  return new Date().toISOString().slice(0, 10);
+  return istNow().toISOString().slice(0, 10);
+}
+/** Whole IST days from date-string a → b (both YYYY-MM-DD). */
+function daysBetweenStrings(a: string, b: string): number {
+  const ms = Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`);
+  return Math.round(ms / 86_400_000);
 }
 
 function lastSevenDays(today: Date): string[] {
   return Array.from({ length: 7 }, (_, index) => {
     const target = new Date(today);
-    target.setDate(today.getDate() - (6 - index));
+    target.setUTCDate(today.getUTCDate() - (6 - index));
     return target.toISOString().slice(0, 10);
   });
 }
@@ -166,6 +181,8 @@ export function getOrCreateStreak(store: AppStore, userId: string): StoredStreak
       longestStreak: 0,
       lastStudyDate: null,
       weeklyData: [false, false, false, false, false, false, false],
+      freezesRemaining: FREEZES_PER_MONTH,
+      freezeMonth: todayString().slice(0, 7),
     };
     store.streaks.push(streak);
   }
@@ -190,7 +207,7 @@ export function getOrCreateDailyActivity(store: AppStore, userId: string, date =
 
 export function updateWeeklyData(store: AppStore, userId: string): void {
   const streak = getOrCreateStreak(store, userId);
-  const today = new Date();
+  const today = istNow();
   const dateWindow = lastSevenDays(today);
   const activeDates = new Set(
     store.dailyActivities
@@ -208,19 +225,45 @@ export function updateUserStreak(store: AppStore, userId: string): number {
   }
 
   const today = todayString();
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  const yesterdayString = yesterday.toISOString().slice(0, 10);
 
+  // Replenish the freeze allowance at the start of each (IST) month. Also
+  // back-fills the fields for streak records created before freezes existed.
+  const month = today.slice(0, 7);
+  if (streak.freezeMonth !== month) {
+    streak.freezeMonth = month;
+    streak.freezesRemaining = FREEZES_PER_MONTH;
+  }
+  if (streak.freezesRemaining == null) {
+    streak.freezesRemaining = FREEZES_PER_MONTH;
+  }
+
+  // Same IST day → already counted; nothing to do.
   if (streak.lastStudyDate === today) {
     updateWeeklyData(store, userId);
     return streak.currentStreak;
   }
 
-  if (streak.lastStudyDate === yesterdayString) {
-    streak.currentStreak += 1;
-  } else {
+  if (!streak.lastStudyDate) {
     streak.currentStreak = 1;
+  } else {
+    const gap = daysBetweenStrings(streak.lastStudyDate, today);
+    if (gap === 1) {
+      // Consecutive day.
+      streak.currentStreak += 1;
+    } else if (gap > 1) {
+      // Missed days. A freeze can cover each missed day (loss aversion — the
+      // streak survives) if the student has budget; otherwise it resets.
+      const missed = gap - 1;
+      if ((streak.freezesRemaining ?? 0) >= missed) {
+        streak.freezesRemaining = (streak.freezesRemaining ?? 0) - missed;
+        streak.currentStreak += 1;
+      } else {
+        streak.currentStreak = 1;
+      }
+    } else {
+      // gap <= 0 (clock skew / same day already handled) — treat as no change.
+      streak.currentStreak = Math.max(1, streak.currentStreak);
+    }
   }
 
   streak.lastStudyDate = today;

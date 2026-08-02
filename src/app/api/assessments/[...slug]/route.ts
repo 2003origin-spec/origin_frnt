@@ -44,6 +44,7 @@ import {
   PRACTICE_SUBMIT_PERSIST_COLLECTIONS,
 } from "@/server/store";
 import { getOgcodeLeaderboardForRender } from "@/server/render-loaders";
+import { getChampionshipSnapshot } from "@/server/leaderboard-points";
 
 function revalidateUserProgress(userId: string) {
   revalidateTag("milestones", "max");
@@ -385,6 +386,12 @@ export async function GET(request: NextRequest, context: RouteContext) {
         return ok(await getOgcodeLeaderboardForRender(await renderStudyModeKey(user), user.id, subject, limit));
       }
       return ok(await getOgcodeLeaderboard(store, user, subject, location, limit));
+    }
+
+    // Home championship banner: top-3 + the viewer's rank/points + the rival
+    // ranked directly above them (all-time prestige points).
+    if (root === "ogcode" && first === "championship") {
+      return ok(await getChampionshipSnapshot(user.id));
     }
 
     if (root === "focus-areas") {

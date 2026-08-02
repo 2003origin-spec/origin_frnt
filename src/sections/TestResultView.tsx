@@ -20,7 +20,8 @@ import {
   XCircle,
   FileText,
   BookOpen,
-  MinusCircle
+  MinusCircle,
+  Share2
 } from 'lucide-react';
 import {
   PieChart,
@@ -36,6 +37,8 @@ import {
 } from 'recharts';
 import { FormattedMessage } from '@/components/origin-ai/FormattedMessage';
 import { DegradedBanner } from '@/components/DegradedBanner';
+import ShareableReportCard from '@/components/results/ShareableReportCard';
+import { useAuth } from '@/context/AuthContext';
 import { apiCall } from '@/lib/api';
 import { playCategory } from '@/lib/sound-manager';
 import { buildSubjectTimeBreakdown } from '@/lib/tests/time-stats';
@@ -254,6 +257,46 @@ export default function TestResultView({
   const degradedReason = result.degradedReason ?? result.degraded_reason ?? null;
   const isAnalysisPending = analysisStatus === 'pending';
 
+  // ── Shareable report card (P1 5.5) ──────────────────────────────────────
+  const { user } = useAuth();
+  const [shareOpen, setShareOpen] = useState(false);
+  const shareCardData = useMemo(() => {
+    const correct = result.correctAnswers || 0;
+    const incorrect = result.wrongAnswers || 0;
+    const unattempted = result.unattempted || 0;
+    const totalMarks =
+      (result as any).totalMarks || (correct + incorrect + unattempted) * 4 || 1;
+    const accuracy =
+      result.percentage ??
+      (result as any).accuracy ??
+      Math.round((correct / (((correct + incorrect) || 1))) * 100) ??
+      0;
+    const subjects = result.subjectStats
+      ? Object.entries(result.subjectStats).map(([name, s]) => ({
+          name,
+          score: s.score || 0,
+          totalMarks: s.total_marks || 0,
+          accuracy: Math.round(s.accuracy || 0),
+        }))
+      : [];
+    const testName =
+      (result as any).testName ||
+      (result as any).title ||
+      (subjects.length > 0
+        ? `${subjects.map((s) => s.name).join(' · ')} Test`
+        : 'Practice Test');
+    const dateLabel = result.createdAt
+      ? new Date(result.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+      : '';
+    return {
+      studentName: user?.name?.trim() || 'Origin Scholar',
+      testName,
+      dateLabel,
+      stats: { score: result.score || 0, totalMarks, correct, incorrect, unattempted, accuracy: Math.round(accuracy) },
+      subjects,
+    };
+  }, [result, user?.name]);
+
   return (
     <div className="min-h-screen neu-surface text-foreground font-sans selection:bg-primary/30">
       {/* Header */}
@@ -294,12 +337,19 @@ export default function TestResultView({
             >
               View Solution
             </Button>
-            <Button 
+            <Button
               onClick={onRetakeTest}
-              variant="secondary" 
+              variant="secondary"
               className="flex-1 bg-primary/10 hover:bg-primary/20 text-primary border-none rounded-xl h-9 sm:h-10 text-xs sm:text-sm"
             >
               Reattempt
+            </Button>
+            <Button
+              onClick={() => setShareOpen(true)}
+              className="flex-1 bg-primary text-primary-foreground hover:opacity-90 border-none rounded-xl h-9 sm:h-10 text-xs sm:text-sm gap-1.5"
+            >
+              <Share2 className="w-3.5 h-3.5" />
+              Share
             </Button>
           </div>
 
@@ -745,13 +795,13 @@ export default function TestResultView({
           <TabsContent value="mistakes">
             <div className="grid md:grid-cols-3 lg:grid-cols-3 gap-6">
               {/* Mistake List */}
-              <div className="lg:col-span-1 space-y-3">
+              <div className="lg:col-span-1 flex gap-3 overflow-x-auto pb-2 no-scrollbar snap-x md:flex-col md:gap-0 md:space-y-3 md:overflow-visible md:pb-0">
                 {mistakeEntries.length > 0 ? (
                   mistakeEntries.map((mistake, index) => (
                     <button
                       key={index}
                       onClick={() => setSelectedReviewEntry(index)}
-                      className={`w-full p-5 rounded-2xl text-left transition-all border group relative overflow-hidden ${selectedReviewEntry === index
+                      className={`shrink-0 w-60 sm:w-64 md:w-full snap-start p-4 sm:p-5 rounded-2xl text-left transition-all border group relative overflow-hidden ${selectedReviewEntry === index
                         ? 'bg-primary/10 border-primary/50 shadow-lg shadow-primary/10'
                         : 'bg-card/40 backdrop-blur-md border-border/5 hover:bg-primary/5'
                         }`}
@@ -851,13 +901,13 @@ export default function TestResultView({
 
           <TabsContent value="correct">
             <div className="grid md:grid-cols-3 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-1 space-y-3">
+              <div className="lg:col-span-1 flex gap-3 overflow-x-auto pb-2 no-scrollbar snap-x md:flex-col md:gap-0 md:space-y-3 md:overflow-visible md:pb-0">
                 {correctEntries.length > 0 ? (
                   correctEntries.map((correct, index) => (
                     <button
                       key={index}
                       onClick={() => setSelectedReviewEntry(index)}
-                      className={`w-full p-5 rounded-2xl text-left transition-all border group relative overflow-hidden ${selectedReviewEntry === index
+                      className={`shrink-0 w-60 sm:w-64 md:w-full snap-start p-4 sm:p-5 rounded-2xl text-left transition-all border group relative overflow-hidden ${selectedReviewEntry === index
                         ? 'bg-primary/10 border-primary/50 shadow-lg shadow-primary/10'
                         : 'bg-card/40 backdrop-blur-md border-border/5 hover:bg-primary/5'
                         }`}
@@ -912,13 +962,13 @@ export default function TestResultView({
 
           <TabsContent value="skipped">
             <div className="grid md:grid-cols-3 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-1 space-y-3">
+              <div className="lg:col-span-1 flex gap-3 overflow-x-auto pb-2 no-scrollbar snap-x md:flex-col md:gap-0 md:space-y-3 md:overflow-visible md:pb-0">
                 {skippedEntries.length > 0 ? (
                   skippedEntries.map((skipped, index) => (
                     <button
                       key={index}
                       onClick={() => setSelectedReviewEntry(index)}
-                      className={`w-full p-5 rounded-2xl text-left transition-all border group relative overflow-hidden ${selectedReviewEntry === index
+                      className={`shrink-0 w-60 sm:w-64 md:w-full snap-start p-4 sm:p-5 rounded-2xl text-left transition-all border group relative overflow-hidden ${selectedReviewEntry === index
                         ? 'bg-amber-500/10 border-amber-500/50 shadow-lg shadow-amber-500/10'
                         : 'bg-card/40 backdrop-blur-md border-border/5 hover:bg-amber-500/5'
                         }`}
@@ -1048,6 +1098,16 @@ export default function TestResultView({
 
         </Tabs>
       </main>
+
+      <ShareableReportCard
+        open={shareOpen}
+        onClose={() => setShareOpen(false)}
+        studentName={shareCardData.studentName}
+        testName={shareCardData.testName}
+        dateLabel={shareCardData.dateLabel}
+        stats={shareCardData.stats}
+        subjects={shareCardData.subjects}
+      />
     </div>
   );
 }

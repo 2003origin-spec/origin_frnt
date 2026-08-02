@@ -20,6 +20,7 @@ import {
 import type { PublicProfile as PublicProfileData } from '@/server/social/social-service';
 import type { User } from '@/types';
 import DailyTracker from '@/components/dashboard/DailyTracker';
+import { MilestoneCabinet } from '@/components/badges/MilestoneCabinet';
 import FollowButton from '@/components/social/FollowButton';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -268,6 +269,11 @@ export default function PublicProfile({ initialProfile }: PublicProfileProps) {
                     );
                   })}
                 </div>
+              </div>
+
+              {/* Questions-solved milestone cabinet (flex surface) */}
+              <div className="p-5 sm:p-6 rounded-3xl bg-card/60 backdrop-blur-xl border border-border/60">
+                <MilestoneCabinet totalSolved={stats?.totalSolved ?? 0} />
               </div>
             </>
           )

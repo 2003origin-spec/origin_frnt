@@ -347,6 +347,8 @@ export interface StreakData {
   longestStreak: number;
   lastStudyDate: Date | null;
   weeklyData: boolean[];
+  /** Streak freezes left this month (auto-consumed to bridge a missed day). */
+  freezesRemaining?: number;
 }
 
 export interface LeaderboardEntry {

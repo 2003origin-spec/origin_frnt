@@ -46,7 +46,9 @@ export default function OnboardingPage({ user, onComplete }: OnboardingPageProps
     selectedCourse: '',
     subjects: [] as string[],
     referralSource: '',
-    mobile: '',
+    // Prefill any mobile already captured (email signup / Google details step)
+    // so the account-setup step never asks for it a second time.
+    mobile: user.mobile ?? '',
     password: '',
     confirmPassword: '',
   });
@@ -115,7 +117,7 @@ export default function OnboardingPage({ user, onComplete }: OnboardingPageProps
       case 1: return formData.class !== '';
       case 2: return formData.selectedCourse !== '';
       case 3: return formData.subjects.length > 0;
-      case 4: return formData.referralSource !== '';
+      case 4: return true; // referral source is optional — never block signup on it
       case 5: {
         const mobileOk = /^[6-9]\d{9}$/.test(formData.mobile.replace(/\D/g, '').slice(-10));
         const pwOk = !needsPassword || (formData.password.length >= 8 && formData.confirmPassword.length >= 8);

@@ -30,6 +30,15 @@ type StateResponse = {
   serverNow?: string;
 };
 
+/** Own attempt counts, snapshotted at submit so the terminal ThankYou screen
+ *  can show them after the player (which computes them) has unmounted. */
+export type CbtSubmissionSummary = {
+  attempted: number;
+  skipped: number;
+  total: number;
+  sections: Record<string, { attempted: number; total: number }>;
+};
+
 export type CbtRoomContextValue = {
   phase: CbtStudentPhase;
   studentCode: string | null;
@@ -43,7 +52,9 @@ export type CbtRoomContextValue = {
   instituteName: string | null;
   instituteLogo: string | null;
   markJoined: (identity: { studentCode: string; participantId?: string; displayName?: string }) => void;
-  markSubmitted: () => void;
+  markSubmitted: (summary?: CbtSubmissionSummary) => void;
+  /** Set at submit; null until the student submits in this session. */
+  submissionSummary: CbtSubmissionSummary | null;
   refresh: () => Promise<void>;
 };
 
@@ -75,6 +86,7 @@ export function CbtRoomProvider({
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [rememberedStudentCode, setRememberedStudentCode] = useState<string | null>(null);
   const [room, setRoom] = useState<CbtRoomView | null>(null);
+  const [submissionSummary, setSubmissionSummary] = useState<CbtSubmissionSummary | null>(null);
   const joinedRef = useRef(false);
 
   // What this device remembers about a previous session here. The participant
@@ -127,7 +139,8 @@ export function CbtRoomProvider({
   // Once submitted, stay submitted. Called by the player right after it posts
   // the submission so the context unmounts the player immediately (belt-and-
   // suspenders with the server's finished_at gate + the refresh() below).
-  const markSubmitted = useCallback(() => {
+  const markSubmitted = useCallback((summary?: CbtSubmissionSummary) => {
+    if (summary) setSubmissionSummary(summary);
     setPhase((prev) => nextPhase(prev, "submitted"));
   }, []);
 
@@ -244,6 +257,7 @@ export function CbtRoomProvider({
     instituteLogo,
     markJoined,
     markSubmitted,
+    submissionSummary,
     refresh,
   };
 

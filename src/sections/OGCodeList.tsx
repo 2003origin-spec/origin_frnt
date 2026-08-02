@@ -2111,7 +2111,7 @@ export default function OGCodeList({
                                         <p className="mb-2.5 flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-muted-foreground">
                                             <Target className="h-3.5 w-3.5 text-amber-500" /> Base score (bs) &amp; base time (bt) by difficulty
                                         </p>
-                                        <div className="grid grid-cols-4 gap-2">
+                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                                             {[
                                                 { label: 'Easy', bs: 5, bt: '30s', cls: 'text-emerald-500' },
                                                 { label: 'Medium', bs: 15, bt: '60s', cls: 'text-amber-500' },
@@ -2212,7 +2212,7 @@ export default function OGCodeList({
                                 <p className="mb-2.5 flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-muted-foreground">
                                     <Target className="h-3.5 w-3.5 text-amber-500" /> 1 · The base value
                                 </p>
-                                <div className="grid grid-cols-4 gap-2">
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                                     {[
                                         { label: 'Easy', pts: 10, cls: 'text-emerald-500' },
                                         { label: 'Medium', pts: 25, cls: 'text-amber-500' },
