@@ -5,18 +5,16 @@
  */
 
 import { getUserPostgresPool } from "@/server/user-postgres";
+import { finalizeRemark, finalizeStatusLabel, isCbtFinalizeReason } from "@/lib/cbt/finalize-reason";
+import type { CbtRoomStatus } from "@/lib/cbt/room-model";
 
 import { ensureCbtSchema } from "./cbt-schema";
+import { finalizeIfExpired } from "./cbt-rooms-service";
 
 function pool() {
   const p = getUserPostgresPool();
   if (!p) throw new Error("USER_DATABASE_URL is not configured");
   return p;
-}
-
-function participantStatusLabel(finishedAt: unknown, autoSubmitted: unknown): string {
-  if (!finishedAt) return "absent";
-  return autoSubmitted ? "auto-submitted" : "submitted";
 }
 
 function fmtTime(seconds: number | null): string {
@@ -38,7 +36,7 @@ export async function buildResultsWorkbook(
   await ensureCbtSchema();
 
   const roomRes = await pool().query(
-    `SELECT r.name, r.created_at, r.test_id, t.title AS test_title
+    `SELECT r.name, r.created_at, r.test_id, r.status, t.title AS test_title
        FROM cbt.rooms r LEFT JOIN cbt.tests t ON t.id = r.test_id
       WHERE r.id = $1 AND r.teacher_id = $2`,
     [roomId, teacherId],
@@ -46,9 +44,15 @@ export async function buildResultsWorkbook(
   const room = roomRes.rows[0];
   if (!room) return null;
 
+  // Exporting a room whose time is up finalizes it first. This is the guarantee
+  // that a student whose browser died mid-test is scored from the answers the
+  // server already holds instead of being exported as "absent" with no marks.
+  await finalizeIfExpired({ id: roomId, status: room.status as CbtRoomStatus });
+
   const parts = await pool().query(
     `SELECT id, display_name, student_code, score, max_score, rank, time_taken_seconds,
-            joined_at, finished_at, auto_submitted
+            joined_at, finished_at, auto_submitted, finalize_reason, answered_count,
+            rejoin_count, violation_count
        FROM cbt.room_participants
       WHERE room_id = $1
       ORDER BY (finished_at IS NULL), rank ASC NULLS LAST, score DESC NULLS LAST, joined_at ASC`,
@@ -77,10 +81,14 @@ export async function buildResultsWorkbook(
     "Score",
     "Max Score",
     "Percentage",
+    "Answered",
     "Time Taken",
     "Joined At",
     "Submitted At",
     "Status",
+    "Rejoins",
+    "Violations",
+    "Remark",
   ]);
   headerRow.font = { bold: true };
 
@@ -88,6 +96,8 @@ export async function buildResultsWorkbook(
     const score = p.score != null ? Number(p.score) : null;
     const maxScore = p.max_score != null ? Number(p.max_score) : null;
     const pct = score != null && maxScore ? `${((score / maxScore) * 100).toFixed(1)}%` : "";
+    const reason = isCbtFinalizeReason(p.finalize_reason) ? p.finalize_reason : null;
+    const legacyAuto = Boolean(p.auto_submitted);
     sheet.addRow([
       p.rank ?? "",
       p.display_name ?? "",
@@ -95,15 +105,22 @@ export async function buildResultsWorkbook(
       score ?? "",
       maxScore ?? "",
       pct,
+      Number(p.answered_count ?? 0),
       fmtTime(p.time_taken_seconds != null ? Number(p.time_taken_seconds) : null),
       p.joined_at ? new Date(p.joined_at).toISOString().replace("T", " ").slice(0, 16) : "",
       p.finished_at ? new Date(p.finished_at).toISOString().replace("T", " ").slice(0, 16) : "",
-      participantStatusLabel(p.finished_at, p.auto_submitted),
+      finalizeStatusLabel(reason, p.finished_at, legacyAuto),
+      Number(p.rejoin_count ?? 0),
+      Number(p.violation_count ?? 0),
+      finalizeRemark(reason, p.finished_at, legacyAuto),
     ]);
   }
   sheet.columns.forEach((col) => {
     col.width = 16;
   });
+  // The remark is a sentence, not a value — give it room.
+  const remarkCol = sheet.getColumn(14);
+  remarkCol.width = 46;
 
   // ── Optional per-question detail sheet ──────────────────────────────────────
   if (opts.detail && room.test_id) {

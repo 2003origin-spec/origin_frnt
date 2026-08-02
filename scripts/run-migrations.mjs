@@ -58,6 +58,8 @@ const MIGRATIONS = [
   // Study Mode (JEE / NEET / PCMB) — 2026-08-01.
   { file: "20260801_user_study_mode.sql", target: "user" },
   { file: "20260801_ogcode_daily_challenge_mode.sql", target: "ogcode" },
+  // CBT attempt resilience (offline resume + finalize reasons) — 2026-08-02.
+  { file: "20260802_cbt_attempt_resilience.sql", target: "user" },
 ];
 
 const TARGET_ENV = {

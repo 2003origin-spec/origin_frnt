@@ -5,7 +5,7 @@ import { notFound, redirect } from "next/navigation";
 import { isFeatureEnabled } from "@/lib/feature-flags";
 import { getServerUser } from "@/lib/auth-server";
 import { findActiveCbtTeacherByUserId } from "@/server/cbt/cbt-teachers-service";
-import { getCbtTest, listQuestionIdsUsedInOtherTests } from "@/server/cbt/cbt-tests-service";
+import { getCbtTest, listQuestionTestUsage } from "@/server/cbt/cbt-tests-service";
 import { listCbtQuestions } from "@/server/cbt/cbt-questions-service";
 import { listClusters, listQuestionClusterMap } from "@/server/cbt/cbt-clusters-service";
 import { CbtTestBuilder } from "@/components/cbt/CbtTestBuilder";
@@ -18,12 +18,12 @@ export default async function CbtTestBuilderPage({ params }: { params: Promise<{
   if (!teacher) redirect("/cbt/login");
 
   const { testId } = await params;
-  const [test, questions, clusters, membership, usedElsewhere] = await Promise.all([
+  const [test, questions, clusters, membership, usage] = await Promise.all([
     getCbtTest(teacher.id, testId),
     listCbtQuestions(teacher.id),
     listClusters(teacher.id),
     listQuestionClusterMap(teacher.id),
-    listQuestionIdsUsedInOtherTests(teacher.id, testId),
+    listQuestionTestUsage(teacher.id, testId),
   ]);
   if (!test) notFound();
 
@@ -33,7 +33,7 @@ export default async function CbtTestBuilderPage({ params }: { params: Promise<{
       allQuestions={questions}
       clusters={clusters}
       membershipByQuestion={membership}
-      usedElsewhere={usedElsewhere}
+      usageByQuestion={usage}
     />
   );
 }

@@ -36,12 +36,19 @@ export type PhaseStateInput = {
 
 /**
  * Authoritative phase from a freshly fetched room state. `finishedAt` (set by
- * submit or the timer auto-submit) always wins over `in_test`, so a returning
- * student resolves to `submitted`.
+ * submit, the timer auto-submit, or the server-side finalization of a student
+ * who went offline) always wins over `in_test`, so a returning student resolves
+ * to `submitted`.
+ *
+ * A `finished` room resolves to `submitted` too: the server finalizes every
+ * open attempt before flipping a room to that status, so there is nothing left
+ * for the student to do. Without this it fell through to `lobby` and a student
+ * returning after the deadline saw a waiting-room screen forever.
  */
 export function phaseFromState(state: PhaseStateInput): CbtStudentPhase {
   if (state.room.status === "closed") return "closed";
   if (state.participant.finishedAt) return "submitted";
+  if (state.room.status === "finished") return "submitted";
   if (state.room.status === "in_test") return "in_test";
   return "lobby";
 }

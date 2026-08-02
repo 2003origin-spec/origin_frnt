@@ -21,6 +21,12 @@ import {
   type CbtStudentAnswer,
   type CbtTestPayload,
 } from "@/lib/cbt/attempt-model";
+import {
+  CBT_PRESENCE_WINDOW_MS,
+  deriveFinalizeReason,
+  isGradedReason,
+  type CbtFinalizeReason,
+} from "@/lib/cbt/finalize-reason";
 
 import { shuffleQuestionsForParticipant } from "@/lib/cbt/shuffle";
 
@@ -32,6 +38,13 @@ function pool() {
   const p = getUserPostgresPool();
   if (!p) throw new Error("USER_DATABASE_URL is not configured");
   return p;
+}
+
+/** cbtError plus a machine-readable code for the client to branch on. */
+function codedError(status: number, message: string, code: string): Error & { status: number; code: string } {
+  const err = cbtError(status, message) as Error & { status: number; code: string };
+  err.code = code;
+  return err;
 }
 
 export type TestQuestionRow = {
@@ -118,8 +131,11 @@ export function sanitizeQuestionForStudent(q: TestQuestionRow): CbtSanitizedQues
 
 export async function getStudentTestPayload(participant: CbtParticipant, room: CbtRoom): Promise<CbtTestPayload> {
   await ensureCbtSchema();
+  // `code` lets the player distinguish "your paper is already in" (→ thank-you
+  // screen) from a genuine load failure (→ error screen with a retry).
+  if (participant.finishedAt) throw codedError(409, "You have already submitted.", "already_submitted");
+  if (room.status === "finished") throw codedError(409, "This test has ended.", "test_ended");
   if (room.status !== "in_test") throw cbtError(409, "The test has not started.");
-  if (participant.finishedAt) throw cbtError(409, "You have already submitted.");
   if (!room.testId || !room.startedAt || !room.durationSeconds) throw cbtError(409, "The test is not ready.");
 
   const [questions, shuffle] = await Promise.all([
@@ -163,19 +179,28 @@ export async function getStudentTestPayload(participant: CbtParticipant, room: C
   };
 }
 
-/** Draft answers + palette for resume hydration (student's own only). */
+/**
+ * Draft answers + palette for resume hydration (student's own only). `rev` is
+ * the monotonic client revision the browser must echo back on the next save —
+ * see saveAnswers for why.
+ */
 export async function loadDraft(
   roomId: string,
   participantId: string,
-): Promise<{ answers: Record<number, CbtStudentAnswer>; palette: Record<number, CbtPaletteStatus> }> {
+): Promise<{
+  answers: Record<number, CbtStudentAnswer>;
+  palette: Record<number, CbtPaletteStatus>;
+  rev: number;
+}> {
   const res = await pool().query(
-    `SELECT answers, palette FROM cbt.answer_drafts WHERE room_id = $1 AND participant_id = $2`,
+    `SELECT answers, palette, rev FROM cbt.answer_drafts WHERE room_id = $1 AND participant_id = $2`,
     [roomId, participantId],
   );
   const row = res.rows[0];
   return {
     answers: (row?.answers ?? {}) as Record<number, CbtStudentAnswer>,
     palette: (row?.palette ?? {}) as Record<number, CbtPaletteStatus>,
+    rev: Number(row?.rev ?? 0),
   };
 }
 
@@ -187,14 +212,28 @@ function countAnswered(answers: Record<number, CbtStudentAnswer>): number {
   return Object.values(answers).filter((a) => isAnswered(a)).length;
 }
 
+/**
+ * Persists the student's draft.
+ *
+ * `rev` is a monotonic counter owned by the browser. Without it, the last write
+ * to land wins — so a tab left open on a dead laptop (or its `sendBeacon` fired
+ * on pagehide) could overwrite the newer answers the student had just written
+ * from the phone they resumed on. A save whose `rev` is below the stored one is
+ * rejected with 409 `stale_draft`, and the client re-syncs from the server
+ * instead of clobbering it. Clients that send no `rev` keep the old
+ * last-write-wins behaviour, so an older bundle still works during a rollout.
+ */
 export async function saveAnswers(
   participant: CbtParticipant,
   room: CbtRoom,
   answers: Record<number, CbtStudentAnswer>,
   palette: Record<number, CbtPaletteStatus>,
-): Promise<{ answeredCount: number }> {
-  if (room.status !== "in_test") throw cbtError(409, "The test is not active.");
-  if (participant.finishedAt) throw cbtError(409, "You have already submitted.");
+  rev?: number,
+): Promise<{ answeredCount: number; rev: number }> {
+  // Coded so the player stops retrying a save the server will never accept —
+  // e.g. the deadline finalization landed while this tab was reconnecting.
+  if (room.status !== "in_test") throw codedError(409, "The test is not active.", "test_ended");
+  if (participant.finishedAt) throw codedError(409, "You have already submitted.", "already_submitted");
 
   // Cap the draft payload (~64KB each) so a malicious client can't bloat the row.
   const answersJson = JSON.stringify(answers ?? {});
@@ -204,13 +243,38 @@ export async function saveAnswers(
   }
 
   const answeredCount = countAnswered(answers);
-  await pool().query(
-    `INSERT INTO cbt.answer_drafts (room_id, participant_id, answers, palette, updated_at)
-       VALUES ($1, $2, $3::jsonb, $4::jsonb, NOW())
+  const incomingRev = Number.isFinite(Number(rev)) && Number(rev) > 0 ? Math.floor(Number(rev)) : null;
+
+  const saved = await pool().query(
+    `INSERT INTO cbt.answer_drafts (room_id, participant_id, answers, palette, rev, updated_at)
+       VALUES ($1, $2, $3::jsonb, $4::jsonb, COALESCE($5::bigint, 0), NOW())
      ON CONFLICT (room_id, participant_id)
-       DO UPDATE SET answers = EXCLUDED.answers, palette = EXCLUDED.palette, updated_at = NOW()`,
-    [room.id, participant.id, answersJson, paletteJson],
+       DO UPDATE SET answers = EXCLUDED.answers,
+                     palette = EXCLUDED.palette,
+                     rev = GREATEST(answer_drafts.rev, EXCLUDED.rev),
+                     updated_at = NOW()
+       WHERE $5::bigint IS NULL OR EXCLUDED.rev >= answer_drafts.rev
+     RETURNING rev`,
+    [room.id, participant.id, answersJson, paletteJson, incomingRev],
   );
+
+  if (!saved.rows[0]) {
+    // The stored draft is newer than this payload — surface the current rev so
+    // the client can re-hydrate rather than retry the stale body forever.
+    const current = await pool().query(
+      `SELECT rev FROM cbt.answer_drafts WHERE room_id = $1 AND participant_id = $2`,
+      [room.id, participant.id],
+    );
+    const err = cbtError(409, "A newer version of your answers is already saved.") as Error & {
+      status: number;
+      code?: string;
+      rev?: number;
+    };
+    err.code = "stale_draft";
+    err.rev = Number(current.rows[0]?.rev ?? 0);
+    throw err;
+  }
+
   await pool().query(
     `UPDATE cbt.room_participants SET answered_count = $3, last_seen_at = NOW(),
             entered_test_at = COALESCE(entered_test_at, NOW())
@@ -225,7 +289,7 @@ export async function saveAnswers(
     lastPresencePublish.set(room.id, now);
     await publishPresence(room.id, room.status);
   }
-  return { answeredCount };
+  return { answeredCount, rev: Number(saved.rows[0].rev ?? 0) };
 }
 
 // ── Grading ──────────────────────────────────────────────────────────────────
@@ -403,13 +467,31 @@ async function persistRanks(roomId: string): Promise<void> {
   );
 }
 
+export type SubmitAttemptOptions = {
+  /** Legacy flag kept for callers that only know "the student didn't press it". */
+  auto?: boolean;
+  /** Why this attempt is ending. Defaults from `auto` when not given. */
+  reason?: CbtFinalizeReason;
+  /** Integrity strikes reported by the player (malpractice submissions). */
+  violationCount?: number;
+  /**
+   * Skip the room-wide rank recompute. The sweep sets this and re-ranks once at
+   * the end — otherwise finalizing 200 students re-ranks the room 200 times.
+   */
+  deferRanks?: boolean;
+};
+
 export async function submitAttempt(
   participant: CbtParticipant,
   room: CbtRoom,
-  opts: { auto?: boolean } = {},
-): Promise<{ alreadySubmitted: boolean; score?: number; maxScore?: number }> {
+  opts: SubmitAttemptOptions = {},
+): Promise<{ alreadySubmitted: boolean; score?: number; maxScore?: number; reason?: CbtFinalizeReason }> {
   await ensureCbtSchema();
   if (!room.testId) throw cbtError(409, "This room has no test.");
+
+  const reason: CbtFinalizeReason = opts.reason ?? (opts.auto ? "timer" : "manual");
+  const autoSubmitted = reason !== "manual";
+  const violationCount = Math.max(0, Math.floor(Number(opts.violationCount) || 0));
 
   // Idempotency guard: lock the participant row and bail if already finished.
   const client = await pool().connect();
@@ -430,8 +512,11 @@ export async function submitAttempt(
     }
     // Claim the submission immediately so a concurrent auto+manual can't double-grade.
     await client.query(
-      `UPDATE cbt.room_participants SET finished_at = NOW(), auto_submitted = $3 WHERE id = $1 AND room_id = $2`,
-      [participant.id, room.id, Boolean(opts.auto)],
+      `UPDATE cbt.room_participants
+          SET finished_at = NOW(), auto_submitted = $3, finalize_reason = $4,
+              violation_count = GREATEST(violation_count, $5)
+        WHERE id = $1 AND room_id = $2`,
+      [participant.id, room.id, autoSubmitted, reason, violationCount],
     );
     await client.query("COMMIT");
     shouldGrade = true;
@@ -442,6 +527,19 @@ export async function submitAttempt(
     client.release();
   }
   if (!shouldGrade) return { alreadySubmitted: true };
+
+  // A true no-show (never opened the paper, no draft) is recorded as finished so
+  // the room can close, but deliberately left ungraded: a blank score is how the
+  // teacher tells "absent" apart from "sat the test and scored 0".
+  if (!isGradedReason(reason)) {
+    await publishRoomEvent(room.id, {
+      type: "participant_finished",
+      participant_id: participant.id,
+      student_code: participant.studentCode,
+    });
+    if (!opts.deferRanks) await maybeFinishRoom(room.id);
+    return { alreadySubmitted: false, reason };
+  }
 
   // Grade from the server-held draft.
   const draftRes = await pool().query(
@@ -501,20 +599,25 @@ export async function submitAttempt(
     [participant.id, room.id, Number(score.toFixed(3)), Number(maxScore.toFixed(3)), answeredCount, timeTaken],
   );
 
-  await persistRanks(room.id);
+  if (!opts.deferRanks) await persistRanks(room.id);
   await publishRoomEvent(room.id, {
     type: "participant_finished",
     participant_id: participant.id,
     student_code: participant.studentCode,
   });
 
-  await maybeFinishRoom(room.id);
+  if (!opts.deferRanks) await maybeFinishRoom(room.id);
 
-  return { alreadySubmitted: false, score: Number(score.toFixed(3)), maxScore: Number(maxScore.toFixed(3)) };
+  return {
+    alreadySubmitted: false,
+    score: Number(score.toFixed(3)),
+    maxScore: Number(maxScore.toFixed(3)),
+    reason,
+  };
 }
 
 /** Finishes the room + broadcasts test_ended once every active participant is done. */
-async function maybeFinishRoom(roomId: string): Promise<void> {
+export async function maybeFinishRoom(roomId: string): Promise<void> {
   const res = await pool().query(
     `SELECT COUNT(*) FILTER (WHERE finished_at IS NULL AND kicked = FALSE) AS pending
        FROM cbt.room_participants WHERE room_id = $1`,
@@ -529,63 +632,19 @@ async function maybeFinishRoom(roomId: string): Promise<void> {
   if (upd.rows[0]) await publishRoomEvent(roomId, { type: "test_ended" });
 }
 
-// ── Drain / sweep ──────────────────────────────────────────────────────────────
+// ── Finalization (deadline, teacher-forced, room close) ──────────────────────
 
-/**
- * Auto-submits participants in rooms whose time is up (started_at + duration +
- * 10s grace), then finishes those rooms. Backstop for the client auto-submit.
- */
-export async function sweepExpiredCbtRooms(limit = 20): Promise<{ roomsSwept: number; participantsSubmitted: number }> {
-  await ensureCbtSchema();
-  const rooms = await pool().query(
-    `SELECT id, teacher_id, name, public_slug, status, test_id, started_at, duration_seconds, ended_at,
-            capacity, created_at, updated_at
-       FROM cbt.rooms
-      WHERE status = 'in_test' AND started_at IS NOT NULL AND duration_seconds IS NOT NULL
-        AND NOW() > started_at + (duration_seconds || ' seconds')::interval + INTERVAL '10 seconds'
-      ORDER BY started_at ASC
-      LIMIT $1`,
-    [limit],
-  );
+const ROOM_SWEEP_COLUMNS = `id, teacher_id, name, public_slug, status, test_id, started_at,
+  duration_seconds, ended_at, capacity, rejoin_policy, created_at, updated_at`;
 
-  let participantsSubmitted = 0;
-  for (const roomRow of rooms.rows) {
-    const room = mapRoomRow(roomRow);
-    const parts = await pool().query(
-      `SELECT id, student_code, token_version FROM cbt.room_participants
-        WHERE room_id = $1 AND finished_at IS NULL AND kicked = FALSE`,
-      [room.id],
-    );
-    for (const p of parts.rows) {
-      try {
-        const stub: CbtParticipant = {
-          id: String(p.id),
-          roomId: room.id,
-          displayName: "",
-          studentCode: String(p.student_code),
-          status: "giving_test",
-          joinedAt: new Date().toISOString(),
-          enteredTestAt: null,
-          lastSeenAt: null,
-          finishedAt: null,
-          autoSubmitted: false,
-          answeredCount: 0,
-          score: null,
-          maxScore: null,
-          rank: null,
-          timeTakenSeconds: null,
-        };
-        const result = await submitAttempt(stub, room, { auto: true });
-        if (!result.alreadySubmitted) participantsSubmitted += 1;
-      } catch {
-        // one bad participant must not stall the sweep
-      }
-    }
-    // submitAttempt→maybeFinishRoom finishes the room once all are done; ensure it.
-    await maybeFinishRoom(room.id);
-  }
-  return { roomsSwept: rooms.rows.length, participantsSubmitted };
-}
+/** Grace after the deadline before the server takes over the submission. */
+const FINALIZE_GRACE_SECONDS = 10;
+
+/** Concurrency for grading a room's stragglers (each one hits the grader service). */
+const FINALIZE_CONCURRENCY = 4;
+
+/** Per-invocation wall-clock budget so a huge room can't blow the function limit. */
+const FINALIZE_BUDGET_MS = 40_000;
 
 function mapRoomRow(row: Record<string, unknown>): CbtRoom {
   return {
@@ -599,7 +658,235 @@ function mapRoomRow(row: Record<string, unknown>): CbtRoom {
     durationSeconds: row.duration_seconds != null ? Number(row.duration_seconds) : null,
     endedAt: row.ended_at ? new Date(row.ended_at as string).toISOString() : null,
     capacity: Number(row.capacity ?? 200),
+    rejoinPolicy: row.rejoin_policy === "id_only" ? "id_only" : "name_or_id",
     createdAt: new Date(row.created_at as string).toISOString(),
     updatedAt: new Date(row.updated_at as string).toISOString(),
   };
+}
+
+/** Minimal participant stub for a server-side finalization. */
+function stubParticipant(row: Record<string, unknown>, roomId: string): CbtParticipant {
+  return {
+    id: String(row.id),
+    roomId,
+    displayName: String(row.display_name ?? ""),
+    studentCode: String(row.student_code),
+    status: "giving_test",
+    joinedAt: new Date().toISOString(),
+    enteredTestAt: row.entered_test_at ? new Date(row.entered_test_at as string).toISOString() : null,
+    lastSeenAt: row.last_seen_at ? new Date(row.last_seen_at as string).toISOString() : null,
+    finishedAt: null,
+    autoSubmitted: false,
+    finalizeReason: null,
+    rejoinCount: Number(row.rejoin_count ?? 0),
+    lastRejoinAt: null,
+    violationCount: Number(row.violation_count ?? 0),
+    answeredCount: Number(row.answered_count ?? 0),
+    score: null,
+    maxScore: null,
+    rank: null,
+    timeTakenSeconds: null,
+  };
+}
+
+type PendingRow = Record<string, unknown> & { has_draft?: boolean };
+
+/** Unfinished, un-kicked participants of a room, with "does a draft exist". */
+async function loadPendingParticipants(roomId: string): Promise<PendingRow[]> {
+  const res = await pool().query(
+    `SELECT p.id, p.display_name, p.student_code, p.entered_test_at, p.last_seen_at,
+            p.answered_count, p.rejoin_count, p.violation_count,
+            EXISTS (
+              SELECT 1 FROM cbt.answer_drafts d
+               WHERE d.room_id = p.room_id AND d.participant_id = p.id
+                 AND d.answers <> '{}'::jsonb
+            ) AS has_draft
+       FROM cbt.room_participants p
+      WHERE p.room_id = $1 AND p.finished_at IS NULL AND p.kicked = FALSE
+      ORDER BY p.joined_at ASC`,
+    [roomId],
+  );
+  return res.rows as PendingRow[];
+}
+
+/**
+ * Finalizes every still-open attempt in a room.
+ *
+ * `reasonFor` decides per participant — at a deadline it distinguishes a student
+ * who was still at the keyboard (`timer`) from one who disappeared and never
+ * returned (`expired_offline`, the case that used to be reported as "absent"
+ * with no score) from a true no-show (`absent`).
+ *
+ * Ranks are recomputed once at the end rather than per participant, and the
+ * whole pass is bounded so a 200-seat room cannot exhaust the function budget.
+ * Everything is idempotent — a partial pass simply resumes on the next call.
+ */
+async function finalizeRoomParticipants(
+  room: CbtRoom,
+  reasonFor: (row: PendingRow, now: number) => CbtFinalizeReason,
+  opts: { budgetMs?: number } = {},
+): Promise<number> {
+  const pending = await loadPendingParticipants(room.id);
+  if (pending.length === 0) {
+    await maybeFinishRoom(room.id);
+    return 0;
+  }
+
+  const deadline = Date.now() + (opts.budgetMs ?? FINALIZE_BUDGET_MS);
+  const queue = [...pending];
+  let submitted = 0;
+
+  const worker = async () => {
+    for (;;) {
+      const row = queue.shift();
+      if (!row || Date.now() > deadline) return;
+      try {
+        const result = await submitAttempt(stubParticipant(row, room.id), room, {
+          reason: reasonFor(row, Date.now()),
+          violationCount: Number(row.violation_count ?? 0),
+          deferRanks: true,
+        });
+        if (!result.alreadySubmitted) submitted += 1;
+      } catch (error) {
+        // One bad participant must never stall the rest of the room.
+        console.error(`[cbt] finalize failed for participant ${String(row.id)}`, error);
+      }
+    }
+  };
+
+  await Promise.all(Array.from({ length: Math.min(FINALIZE_CONCURRENCY, queue.length) }, worker));
+
+  await persistRanks(room.id);
+  await maybeFinishRoom(room.id);
+  return submitted;
+}
+
+/** Deadline reason: offline students are the "never came back" case. */
+function deadlineReasonFor(row: PendingRow, now: number): CbtFinalizeReason {
+  return deriveFinalizeReason({
+    enteredTestAt: (row.entered_test_at as string | null) ?? null,
+    lastSeenAt: (row.last_seen_at as string | null) ?? null,
+    hasDraft: Boolean(row.has_draft),
+    now,
+    presenceWindowMs: CBT_PRESENCE_WINDOW_MS,
+  });
+}
+
+/** Debounce so a busy dashboard doesn't re-scan the same room on every poll. */
+const lastLazyFinalize = new Map<string, number>();
+const LAZY_FINALIZE_DEBOUNCE_MS = 15_000;
+
+/**
+ * Finalizes ONE room if its deadline has passed — the lazy half of the
+ * guarantee that nobody is ever left unsubmitted.
+ *
+ * Called from every teacher/student read path (room view, leaderboard, export,
+ * student state), so results are correct the moment anyone looks at them even
+ * if the cron is down. Concurrent callers are safe: `submitAttempt` claims each
+ * participant row with `SELECT … FOR UPDATE` and bails when `finished_at` is
+ * already set.
+ */
+export async function finalizeExpiredRoom(roomId: string, opts: { force?: boolean } = {}): Promise<number> {
+  if (!opts.force) {
+    const last = lastLazyFinalize.get(roomId) ?? 0;
+    if (Date.now() - last < LAZY_FINALIZE_DEBOUNCE_MS) return 0;
+    lastLazyFinalize.set(roomId, Date.now());
+  }
+
+  const res = await pool().query(
+    `SELECT ${ROOM_SWEEP_COLUMNS}
+       FROM cbt.rooms
+      WHERE id = $1 AND status = 'in_test' AND started_at IS NOT NULL AND duration_seconds IS NOT NULL
+        AND NOW() > started_at + (duration_seconds || ' seconds')::interval
+                  + ($2 || ' seconds')::interval`,
+    [roomId, String(FINALIZE_GRACE_SECONDS)],
+  );
+  const row = res.rows[0];
+  if (!row) return 0;
+  return finalizeRoomParticipants(mapRoomRow(row), deadlineReasonFor);
+}
+
+/** Same as finalizeExpiredRoom but never debounced — used by explicit actions. */
+export async function finalizeExpiredRoomNow(roomId: string): Promise<number> {
+  return finalizeExpiredRoom(roomId, { force: true });
+}
+
+/**
+ * Teacher-driven finalization of a live room ("finalize now" / room close).
+ * Unlike the deadline path this does not wait for the clock, so every open
+ * attempt is graded from its draft with the caller's reason.
+ */
+export async function finalizeRoomNow(roomId: string, reason: CbtFinalizeReason): Promise<number> {
+  await ensureCbtSchema();
+  const res = await pool().query(
+    `SELECT ${ROOM_SWEEP_COLUMNS} FROM cbt.rooms WHERE id = $1 AND status = 'in_test'`,
+    [roomId],
+  );
+  const row = res.rows[0];
+  if (!row) return 0;
+  const room = mapRoomRow(row);
+  return finalizeRoomParticipants(room, (pending, now) => {
+    // A participant who never opened the paper is still absent, whatever the
+    // teacher's reason for ending the room.
+    const derived = deadlineReasonFor(pending, now);
+    return derived === "absent" ? "absent" : reason;
+  });
+}
+
+/** Finalizes a single participant on the teacher's instruction. */
+export async function finalizeParticipantNow(
+  roomId: string,
+  participantId: string,
+  reason: CbtFinalizeReason = "forced_by_teacher",
+): Promise<{ finalized: boolean; alreadySubmitted: boolean }> {
+  await ensureCbtSchema();
+  const roomRes = await pool().query(`SELECT ${ROOM_SWEEP_COLUMNS} FROM cbt.rooms WHERE id = $1`, [roomId]);
+  if (!roomRes.rows[0]) return { finalized: false, alreadySubmitted: false };
+  const room = mapRoomRow(roomRes.rows[0]);
+
+  const pending = (await loadPendingParticipants(roomId)).find((row) => String(row.id) === participantId);
+  if (!pending) return { finalized: false, alreadySubmitted: true };
+
+  const derived = deadlineReasonFor(pending, Date.now());
+  const result = await submitAttempt(stubParticipant(pending, roomId), room, {
+    reason: derived === "absent" ? "absent" : reason,
+    violationCount: Number(pending.violation_count ?? 0),
+  });
+  return { finalized: !result.alreadySubmitted, alreadySubmitted: result.alreadySubmitted };
+}
+
+// ── Drain / sweep ──────────────────────────────────────────────────────────────
+
+/**
+ * Auto-submits participants in rooms whose time is up (started_at + duration +
+ * 10s grace), then finishes those rooms. Unattended backstop for the client
+ * auto-submit and for the lazy finalize-on-read above.
+ */
+export async function sweepExpiredCbtRooms(limit = 20): Promise<{ roomsSwept: number; participantsSubmitted: number }> {
+  await ensureCbtSchema();
+  const rooms = await pool().query(
+    `SELECT ${ROOM_SWEEP_COLUMNS}
+       FROM cbt.rooms
+      WHERE status = 'in_test' AND started_at IS NOT NULL AND duration_seconds IS NOT NULL
+        AND NOW() > started_at + (duration_seconds || ' seconds')::interval
+                  + ($2 || ' seconds')::interval
+      ORDER BY started_at ASC
+      LIMIT $1`,
+    [limit, String(FINALIZE_GRACE_SECONDS)],
+  );
+
+  const budgetPerRoom = Math.max(5_000, Math.floor(FINALIZE_BUDGET_MS / Math.max(1, rooms.rows.length)));
+  let participantsSubmitted = 0;
+  for (const roomRow of rooms.rows) {
+    const room = mapRoomRow(roomRow);
+    try {
+      participantsSubmitted += await finalizeRoomParticipants(room, deadlineReasonFor, {
+        budgetMs: budgetPerRoom,
+      });
+    } catch (error) {
+      // One bad room must not stall the sweep; the next tick retries it.
+      console.error(`[cbt] sweep failed for room ${room.id}`, error);
+    }
+  }
+  return { roomsSwept: rooms.rows.length, participantsSubmitted };
 }

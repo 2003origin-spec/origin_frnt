@@ -77,6 +77,21 @@ export async function requireInternal(request: Request, tokenName: ServiceTokenN
   }
 }
 
+/**
+ * Authorises a scheduled invocation.
+ *
+ * Vercel Cron signs its own requests with `Authorization: Bearer $CRON_SECRET`,
+ * which is a different project secret from the INTERNAL_CRON_TOKEN our manual
+ * drains use. Accepting either means a cron entry works without the two values
+ * having to be kept identical, and a hand-triggered drain keeps working exactly
+ * as before. Both are compared in constant time.
+ */
+export async function requireCronCaller(request: Request): Promise<void> {
+  if (isBearerTokenAuthorized(request, "INTERNAL_CRON_TOKEN")) return;
+  if (isBearerTokenAuthorized(request, "CRON_SECRET")) return;
+  throw new AuthzError(401, "Invalid internal service token.");
+}
+
 export async function getAuthenticatedUser(request: Request): Promise<StoredUser | null> {
   const context = await getAuthContext(request);
   if (!context) {

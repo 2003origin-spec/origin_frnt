@@ -19,17 +19,30 @@ export async function POST(request: NextRequest) {
   if (!cbtEnabled()) return notFoundWhenDisabled();
   try {
     if (!requireJsonContentType(request)) return studentJson({ detail: "Invalid content type." }, { status: 415 });
-    const body = (await request.json().catch(() => ({}))) as { roomCode?: string; studentCode?: string };
+    const body = (await request.json().catch(() => ({}))) as {
+      roomCode?: string;
+      studentCode?: string;
+      /** Sent when the student came in via the room link — makes the match exact. */
+      slug?: string;
+    };
     if (!body.roomCode || !body.studentCode) {
       return studentJson({ detail: "Room code and student ID are required." }, { status: 400 });
     }
     const limited = await checkRateLimit(cbtResumeLimiter, `${clientIpOf(request)}:${body.studentCode}`);
     if (limited) return limited as unknown as NextResponse;
 
-    const result = await resumeParticipant({ roomCode: body.roomCode, studentCode: body.studentCode });
+    const result = await resumeParticipant({
+      roomCode: body.roomCode,
+      studentCode: body.studentCode,
+      slug: body.slug,
+    });
     if (!result) return studentJson({ detail: "No matching session found." }, { status: 404 });
 
-    const res = studentJson({ roomId: result.roomId, participantId: result.participantId });
+    const res = studentJson({
+      roomId: result.roomId,
+      participantId: result.participantId,
+      studentCode: result.studentCode,
+    });
     res.cookies.set(CBT_PARTICIPANT_COOKIE, result.token, CBT_PARTICIPANT_COOKIE_OPTS);
     return res;
   } catch (error) {

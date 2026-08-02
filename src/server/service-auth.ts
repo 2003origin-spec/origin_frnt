@@ -1,5 +1,10 @@
 export type ServiceTokenName =
   | "INTERNAL_CRON_TOKEN"
+  // Vercel Cron sends `Authorization: Bearer $CRON_SECRET` on its own schedule
+  // invocations. Accepted alongside INTERNAL_CRON_TOKEN by requireCronCaller so
+  // a scheduled job authenticates whether or not the two secrets were given the
+  // same value on the project.
+  | "CRON_SECRET"
   | "ORIGIN_AI_SERVICE_TOKEN"
   | "GRADER_SERVICE_TOKEN"
   | "ANALYTICS_SERVICE_TOKEN"

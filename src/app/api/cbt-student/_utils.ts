@@ -33,8 +33,17 @@ export function requireJsonContentType(request: NextRequest): boolean {
   return ct.includes("application/json");
 }
 
+/**
+ * Errors carry an optional machine-readable `code` (and `rev` for a stale
+ * draft) so the player can react precisely — showing the thank-you screen for
+ * `already_submitted`, re-syncing on `stale_draft` — instead of parsing prose.
+ */
 export function handleStudentError(error: unknown): NextResponse {
-  const status = (error as { status?: number })?.status ?? 400;
+  const err = error as { status?: number; code?: string; rev?: number };
+  const status = err?.status ?? 400;
   const message = error instanceof Error ? error.message : "Request failed.";
-  return NextResponse.json({ detail: message }, { status });
+  const body: { detail: string; code?: string; rev?: number } = { detail: message };
+  if (typeof err?.code === "string") body.code = err.code;
+  if (typeof err?.rev === "number") body.rev = err.rev;
+  return NextResponse.json(body, { status });
 }

@@ -42,14 +42,21 @@ function Inner() {
 }
 
 function PhaseCard() {
-  const { phase, studentCode, slug, roomName, markJoined } = useCbtRoom();
+  const { phase, studentCode, slug, roomName, markJoined, rememberedStudentCode } = useCbtRoom();
 
   if (phase === "checking") {
     return <p className="text-sm text-muted-foreground">Loading…</p>;
   }
 
   if (phase === "join") {
-    return <CbtJoinCard slug={slug} roomName={roomName} onJoined={markJoined} />;
+    return (
+      <CbtJoinCard
+        slug={slug}
+        roomName={roomName}
+        rememberedStudentCode={rememberedStudentCode}
+        onJoined={markJoined}
+      />
+    );
   }
 
   if (phase === "lobby") {

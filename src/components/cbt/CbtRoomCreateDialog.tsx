@@ -22,6 +22,10 @@ export function CbtRoomCreateDialog() {
   const [pending, startTransition] = useTransition();
   const [name, setName] = useState("");
   const [capacity, setCapacity] = useState("200");
+  // Default ON: getting a disconnected student back into their own paper
+  // matters more in practice than the narrow case of two students sharing a
+  // name. Institutes that disagree can turn it off per room.
+  const [allowNameRejoin, setAllowNameRejoin] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<{ id: string; code: string; slug: string } | null>(null);
 
@@ -32,7 +36,11 @@ export function CbtRoomCreateDialog() {
     startTransition(async () => {
       const res = await mutateJson("/api/cbt/rooms", {
         method: "POST",
-        body: JSON.stringify({ name: name.trim(), capacity: Number(capacity) || 200 }),
+        body: JSON.stringify({
+          name: name.trim(),
+          capacity: Number(capacity) || 200,
+          rejoinPolicy: allowNameRejoin ? "name_or_id" : "id_only",
+        }),
       });
       const data = (await res.json().catch(() => ({}))) as {
         detail?: string;
@@ -81,6 +89,22 @@ export function CbtRoomCreateDialog() {
               <Label>Capacity</Label>
               <Input value={capacity} onChange={(e) => setCapacity(e.target.value)} inputMode="numeric" />
             </div>
+            <label className="flex cursor-pointer items-start gap-2.5">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
+                checked={allowNameRejoin}
+                onChange={(e) => setAllowNameRejoin(e.target.checked)}
+              />
+              <span>
+                <span className="text-sm font-medium text-foreground">Allow rejoining by name</span>
+                <span className="block text-xs text-muted-foreground">
+                  A student who loses their session (crash, cleared browser, new device) can get their
+                  answers back by entering the same name and confirming — only while that attempt is
+                  idle. Turn off to require the CBT-XXXXXX Student ID.
+                </span>
+              </span>
+            </label>
             {error ? <p className="text-xs text-destructive" role="alert">{error}</p> : null}
           </div>
         )}

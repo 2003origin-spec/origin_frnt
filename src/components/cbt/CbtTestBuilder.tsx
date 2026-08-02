@@ -14,27 +14,31 @@ import type { CbtTestWithQuestions } from "@/lib/cbt/test-model";
 
 type Row = { questionId: string; marks: number; negativeMarks: number };
 
+type QuestionUsage = { testCount: number; titles: string[]; liveCount: number };
+
 export function CbtTestBuilder({
   initialTest,
   allQuestions,
   clusters,
   membershipByQuestion,
-  usedElsewhere,
+  usageByQuestion,
 }: {
   initialTest: CbtTestWithQuestions;
   allQuestions: CbtQuestion[];
   clusters: CbtCluster[];
   membershipByQuestion: Record<string, string[]>;
-  usedElsewhere: string[];
+  /**
+   * Where each question is already used. Informational only — reuse across
+   * tests is allowed (the old D2 hard block was removed 2026-08-02), so this
+   * exists to warn, never to disable.
+   */
+  usageByQuestion: Record<string, QuestionUsage>;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [savedNote, setSavedNote] = useState<string | null>(null);
   const [addFilter, setAddFilter] = useState<string | null>(null); // cluster id or null (All)
-
-  // D2 hard-block: a question already in another test can never be added here.
-  const usedSet = useMemo(() => new Set(usedElsewhere), [usedElsewhere]);
 
   const [title, setTitle] = useState(initialTest.title);
   const [description, setDescription] = useState(initialTest.description ?? "");
@@ -64,16 +68,14 @@ export function CbtTestBuilder({
   const maxScore = rows.reduce((sum, r) => sum + (Number(r.marks) || 0), 0);
 
   function addQuestion(id: string) {
-    if (usedSet.has(id) || selectedIds.has(id)) return;
+    if (selectedIds.has(id)) return;
     setRows((prev) => [...prev, { questionId: id, marks: 4, negativeMarks: -1 }]);
   }
 
-  // Add every addable question in the current cluster filter at once. Questions
-  // already used by another test are skipped (hard-block).
+  /** Adds every question in the current cluster filter, reused ones included. */
   function addAllVisible() {
-    const toAdd = available.filter((q) => !usedSet.has(q.id));
-    if (toAdd.length === 0) return;
-    setRows((prev) => [...prev, ...toAdd.map((q) => ({ questionId: q.id, marks: 4, negativeMarks: -1 }))]);
+    if (available.length === 0) return;
+    setRows((prev) => [...prev, ...available.map((q) => ({ questionId: q.id, marks: 4, negativeMarks: -1 }))]);
   }
 
   function move(index: number, dir: -1 | 1) {
@@ -278,7 +280,7 @@ export function CbtTestBuilder({
               size="sm"
               variant="outline"
               className="neu-raised border-0 shadow-none transition-transform hover:-translate-y-0.5"
-              disabled={available.filter((q) => !usedSet.has(q.id)).length === 0}
+              disabled={available.length === 0}
               onClick={addAllVisible}
             >
               Add all{addFilter ? " in cluster" : ""}
@@ -292,21 +294,31 @@ export function CbtTestBuilder({
         ) : (
           <ul className="max-h-72 space-y-2 overflow-y-auto">
             {available.map((q) => {
-              const blocked = usedSet.has(q.id);
+              const usage = usageByQuestion[q.id];
               return (
                 <li key={q.id} className="neu-raised flex items-center justify-between gap-3 p-3">
                   <div className="min-w-0">
                     <div className="line-clamp-1 text-sm text-foreground">{q.stem}</div>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                       <span>{q.questionType}</span>
-                      {blocked ? (
+                      {/* Informational, never blocking: the same question may be
+                          reused across as many tests as the teacher likes. */}
+                      {usage?.testCount ? (
+                        <span
+                          title={`Also in: ${usage.titles.join(", ")}`}
+                          className="rounded bg-muted px-1.5 py-0.5"
+                        >
+                          in {usage.testCount} other test{usage.testCount === 1 ? "" : "s"}
+                        </span>
+                      ) : null}
+                      {usage?.liveCount ? (
                         <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-amber-700 dark:text-amber-400">
-                          already in another test
+                          ⚠ running live now — edits affect that test
                         </span>
                       ) : null}
                     </div>
                   </div>
-                  <Button size="sm" variant="outline" className="neu-raised border-0 shadow-none transition-transform hover:-translate-y-0.5" disabled={blocked} onClick={() => addQuestion(q.id)}>
+                  <Button size="sm" variant="outline" className="neu-raised border-0 shadow-none transition-transform hover:-translate-y-0.5" onClick={() => addQuestion(q.id)}>
                     Add
                   </Button>
                 </li>

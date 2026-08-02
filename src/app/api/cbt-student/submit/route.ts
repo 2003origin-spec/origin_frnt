@@ -15,13 +15,24 @@ export async function POST(request: NextRequest) {
 
     const raw = await request.text().catch(() => "");
     let auto = false;
+    let malpractice = false;
+    let violationCount = 0;
     try {
-      auto = Boolean(raw ? (JSON.parse(raw) as { auto?: boolean }).auto : false);
+      const body = raw ? (JSON.parse(raw) as { auto?: boolean; malpractice?: boolean; violations?: number }) : {};
+      auto = Boolean(body.auto);
+      malpractice = Boolean(body.malpractice);
+      violationCount = Math.max(0, Math.floor(Number(body.violations) || 0));
     } catch {
       auto = false;
     }
 
-    const result = await submitAttempt(participant, room, { auto });
+    // The player has always sent `malpractice`; it used to be dropped here, so
+    // an integrity termination was indistinguishable from a timer auto-submit
+    // in the export. It is now recorded as the finalize reason.
+    const result = await submitAttempt(participant, room, {
+      reason: malpractice ? "malpractice" : auto ? "timer" : "manual",
+      violationCount,
+    });
     // Students never see their score here — only confirmation.
     return studentJson({ ok: true, submitted: true, alreadySubmitted: result.alreadySubmitted });
   } catch (error) {

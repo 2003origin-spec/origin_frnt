@@ -3,8 +3,17 @@
  */
 
 import type { CbtParticipantStatus } from "./events";
+import type { CbtFinalizeReason } from "./finalize-reason";
 
 export type CbtRoomStatus = "lobby" | "in_test" | "finished" | "closed";
+
+/**
+ * How a student who lost their session may get their attempt back.
+ *  • `name_or_id` (default) — the student ID, or their name with an explicit
+ *    confirmation prompt when the matching attempt is currently offline.
+ *  • `id_only` — the student ID only; no name matching.
+ */
+export type CbtRejoinPolicy = "name_or_id" | "id_only";
 
 export type CbtRoom = {
   id: string;
@@ -17,6 +26,7 @@ export type CbtRoom = {
   durationSeconds: number | null;
   endedAt: string | null;
   capacity: number;
+  rejoinPolicy: CbtRejoinPolicy;
   createdAt: string;
   updatedAt: string;
 };
@@ -32,6 +42,13 @@ export type CbtParticipant = {
   lastSeenAt: string | null;
   finishedAt: string | null;
   autoSubmitted: boolean;
+  /** Why the attempt ended; null while it is still running. */
+  finalizeReason: CbtFinalizeReason | null;
+  /** How many times this student recovered their session (cookie/ID/name). */
+  rejoinCount: number;
+  lastRejoinAt: string | null;
+  /** Integrity strikes recorded at submit time. */
+  violationCount: number;
   answeredCount: number;
   score: number | null;
   maxScore: number | null;

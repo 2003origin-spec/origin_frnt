@@ -146,8 +146,17 @@ export const studyModeLimiter = createLimiter(20, "rl:study-mode", "1 h");
 export const cbtOtpLimiter = createLimiter(5, "rl:cbt-otp", "15 m");
 
 // CBT student surface (in-handler; keyed per ip+room / ip+code / participant).
-export const cbtJoinLimiter = createLimiter(10, "rl:cbt-join", "1 h");
-export const cbtResumeLimiter = createLimiter(5, "rl:cbt-resume", "15 m");
+// Join throughput, keyed by (ip, room slug). A computer lab shares one NAT IP,
+// so this ceiling has to fit a whole room plus the rejoins that follow a crash
+// — the previous 10/hour blocked the 11th student of the hour outright. Brute
+// force is guarded by cbtJoinFailureLimiter below, which only counts *wrong*
+// room codes, so the real secret stays as protected as it was.
+export const cbtJoinLimiter = createLimiter(120, "rl:cbt-join", "10 m");
+export const cbtJoinFailureLimiter = createLimiter(10, "rl:cbt-join-fail", "1 h");
+// Identity recovery: reclaiming an idle attempt by name, and the probe that
+// offers it. Bounded so names can't be enumerated cheaply.
+export const cbtReclaimLimiter = createLimiter(20, "rl:cbt-reclaim", "15 m");
+export const cbtResumeLimiter = createLimiter(10, "rl:cbt-resume", "15 m");
 export const cbtAutosaveLimiter = createLimiter(60, "rl:cbt-autosave", "60 s");
 export const cbtExportLimiter = createLimiter(6, "rl:cbt-export", "1 h");
 

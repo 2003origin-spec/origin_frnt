@@ -5,13 +5,25 @@
 
 import type { NextRequest } from "next/server";
 
+import { finalizeIfExpired, resolveParticipantFromToken } from "@/server/cbt/cbt-rooms-service";
+import { CBT_PARTICIPANT_COOKIE } from "@/lib/cbt/participant-token";
+
 import { cbtEnabled, handleStudentError, notFoundWhenDisabled, resolveStudent, studentJson } from "../_utils";
 
 export async function GET(request: NextRequest) {
   if (!cbtEnabled()) return notFoundWhenDisabled();
   try {
-    const resolved = await resolveStudent(request);
+    let resolved = await resolveStudent(request);
     if (!resolved) return studentJson({ detail: "Not in a room." }, { status: 401 });
+
+    // A student coming back after the deadline must land on the "submitted"
+    // screen, not an un-finalized test. Finalizing here also means the act of
+    // reopening the room link grades everyone whose time is already up.
+    if (await finalizeIfExpired(resolved.room)) {
+      const token = request.cookies.get(CBT_PARTICIPANT_COOKIE)?.value;
+      resolved = (await resolveParticipantFromToken(token)) ?? resolved;
+    }
+
     const { participant, room } = resolved;
     return studentJson({
       room: {
@@ -30,6 +42,8 @@ export async function GET(request: NextRequest) {
         finishedAt: participant.finishedAt,
         enteredTestAt: participant.enteredTestAt,
       },
+      /** Server clock, so the player can correct a skewed device clock. */
+      serverNow: new Date().toISOString(),
     });
   } catch (error) {
     return handleStudentError(error);
