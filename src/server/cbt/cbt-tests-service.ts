@@ -20,7 +20,7 @@ import { cbtId } from "./ids";
 
 export type { CbtTest, CbtTestQuestion, CbtTestQuestionInput, CbtTestStatus, CbtTestWithQuestions };
 
-const MAX_QUESTIONS_PER_TEST = 200;
+export const MAX_QUESTIONS_PER_TEST = 200;
 
 function pool() {
   const p = getUserPostgresPool();
@@ -234,20 +234,54 @@ export async function deleteCbtTest(teacherId: string, testId: string): Promise<
  * Replaces the test's full ordered question list. Positions are the array
  * order. Validates that the test AND every question belong to the teacher.
  */
-/** Question ids already used by *other* tests of this teacher (excludes excludeTestId). */
-export async function listQuestionIdsUsedInOtherTests(
+export type CbtQuestionUsage = {
+  /** How many OTHER tests of this teacher currently include the question. */
+  testCount: number;
+  /** Their titles (capped), for an informational tooltip. */
+  titles: string[];
+  /** How many of those are attached to a room that is running right now. */
+  liveCount: number;
+};
+
+/**
+ * Where each question is already used, excluding the test being edited.
+ *
+ * This used to be a hard block (design decision D2: "a question may live in at
+ * most one test"). It is now purely informational — teachers legitimately reuse
+ * a question across a mock, a revision paper and a retest, and re-running
+ * "create test from import" on the same document must not silently drop
+ * questions. Historical results are unaffected either way: every submission
+ * snapshots its question at submit time (`cbt.submission_answers`).
+ *
+ * `liveCount` still matters — editing a question that a live test is serving
+ * changes it under the students sitting it — so the builder surfaces a warning.
+ */
+export async function listQuestionTestUsage(
   teacherId: string,
   excludeTestId: string,
-): Promise<string[]> {
+): Promise<Record<string, CbtQuestionUsage>> {
   await ensureCbtSchema();
   const res = await pool().query(
-    `SELECT DISTINCT tq.question_id
+    `SELECT tq.question_id, t.title,
+            EXISTS (
+              SELECT 1 FROM cbt.rooms r WHERE r.test_id = t.id AND r.status = 'in_test'
+            ) AS live
        FROM cbt.test_questions tq
        JOIN cbt.tests t ON t.id = tq.test_id
-      WHERE t.teacher_id = $1 AND tq.test_id <> $2`,
+      WHERE t.teacher_id = $1 AND tq.test_id <> $2
+      ORDER BY t.created_at DESC`,
     [teacherId, excludeTestId],
   );
-  return res.rows.map((r) => String(r.question_id));
+
+  const usage: Record<string, CbtQuestionUsage> = {};
+  for (const row of res.rows) {
+    const id = String(row.question_id);
+    const entry = (usage[id] ??= { testCount: 0, titles: [], liveCount: 0 });
+    entry.testCount += 1;
+    if (entry.titles.length < 5) entry.titles.push(String(row.title ?? ""));
+    if (row.live) entry.liveCount += 1;
+  }
+  return usage;
 }
 
 export async function setTestQuestions(
@@ -281,25 +315,10 @@ export async function setTestQuestions(
       const ownedSet = new Set(owned.rows.map((r) => String(r.id)));
       const missing = ids.filter((id) => !ownedSet.has(id));
       if (missing.length > 0 || new Set(ids).size !== ids.length) {
+        // The same question twice in ONE paper is still an error — the student
+        // would be asked it twice. Sharing across DIFFERENT tests is allowed
+        // (D2 retired 2026-08-02; see listQuestionTestUsage).
         throw cbtError(400, "One or more questions are invalid or duplicated.");
-      }
-
-      // Hard-block (design decision D2): a question may live in at most one test,
-      // so no two tests ever share questions. Reject if any incoming question is
-      // already used by a different test of this teacher.
-      const clash = await client.query(
-        `SELECT t.title
-           FROM cbt.test_questions tq
-           JOIN cbt.tests t ON t.id = tq.test_id
-          WHERE t.teacher_id = $1 AND tq.test_id <> $2 AND tq.question_id = ANY($3::text[])
-          LIMIT 1`,
-        [teacherId, testId, ids],
-      );
-      if (clash.rows[0]) {
-        throw cbtError(
-          409,
-          `One or more questions are already used in test “${String(clash.rows[0].title)}”. A question can only belong to one test.`,
-        );
       }
     }
 

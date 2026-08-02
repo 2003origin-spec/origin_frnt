@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, CheckCircle2, Play, ShieldCheck, ZoomIn, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, CloudOff, Play, ShieldCheck, ZoomIn, X } from "lucide-react";
 
 import { LatexRenderer } from "@/components/ui/LatexRenderer";
 import { useCbtRoom } from "@/context/CbtRoomContext";
@@ -14,18 +14,35 @@ import {
   type CbtStudentAnswer,
   type CbtTestPayload,
 } from "@/lib/cbt/attempt-model";
+import {
+  clearLocalDraft,
+  loadLocalDraft,
+  localDraftIsAhead,
+  saveLocalDraft,
+} from "@/lib/cbt/local-attempt";
 
 /**
  * CBT test player. A purpose-built fork of the Origin TestInterface: it keeps
  * sections, the 5-status palette, all question-type renderers, the
  * server-anchored timer, and mark/save/clear — and DROPS all camera / mic /
- * face-verification / malpractice-auto-submit machinery. Fullscreen, autosave
- * (debounce + interval + sendBeacon), resume hydration, and auto-submit-at-zero
- * are added. Grading is entirely server-side; this component never sees answers.
+ * face-verification machinery. Fullscreen, autosave (debounce + interval +
+ * sendBeacon), resume hydration, and auto-submit-at-zero are added. Grading is
+ * entirely server-side; this component never sees answers.
+ *
+ * Disconnection handling (the thing this player is judged on):
+ *  • answers are mirrored to this device and replayed when they are ahead of
+ *    the server, so nothing typed during an outage is lost;
+ *  • every save carries a revision, so a stale tab can't overwrite newer work;
+ *  • a failed submit NEVER pretends to have succeeded — it retries and the
+ *    student keeps their paper;
+ *  • integrity strikes are suppressed while offline: losing the network is not
+ *    cheating, and it must never end the test early.
  */
 
 type FlatQuestion = { subject: string; q: CbtSanitizedQuestion };
 type Phase = "loading" | "error" | "ready" | "running" | "submitting" | "submitted";
+/** Whether the last write reached the server. Drives the sync indicator. */
+type SyncState = "synced" | "pending" | "offline";
 
 const PALETTE_STYLE: Record<CbtPaletteStatus, string> = {
   not_visited: "bg-muted text-muted-foreground",
@@ -50,7 +67,7 @@ function paletteFor(hasAnswer: boolean, marked: boolean): CbtPaletteStatus {
 }
 
 export function CbtTestInterface() {
-  const { markSubmitted } = useCbtRoom();
+  const { markSubmitted, roomId } = useCbtRoom();
   // Android shell: FLAG_SECURE (no screenshots/recording) + keep the display
   // awake for the whole attempt surface (plan ledger #41/#42). Browser no-op.
   useSecureExamScreen();
@@ -70,6 +87,10 @@ export function CbtTestInterface() {
   const [malpracticeTerminated, setMalpracticeTerminated] = useState(false);
   // Instructions gate before the exam starts.
   const [acceptedRules, setAcceptedRules] = useState(false);
+  // Connectivity + save state, surfaced to the student so they never wonder
+  // whether their answers made it.
+  const [sync, setSync] = useState<SyncState>("synced");
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const stateRef = useRef({ answers, palette });
@@ -77,6 +98,11 @@ export function CbtTestInterface() {
   const submittedRef = useRef(false);
   const debounceRef = useRef<number | undefined>(undefined);
   const malpracticeTimerRef = useRef<number | undefined>(undefined);
+  /** Monotonic draft revision; the server rejects anything below its own. */
+  const revRef = useRef(0);
+  const participantIdRef = useRef<string>("");
+  /** Server-clock offset, so a skewed device clock can't fake "time up". */
+  const skewRef = useRef(0);
 
   stateRef.current = { answers, palette };
 
@@ -92,8 +118,17 @@ export function CbtTestInterface() {
   // The hook drives a 250ms re-render tick; we compute the shown value freshly
   // from the payload each render so a stale initial 0 can never auto-submit.
   useServerAnchoredTimer(timerSource, phase === "running");
+  // skewRef corrects for a device clock that disagrees with the server: an
+  // uncorrected fast clock made the paper auto-submit the moment it loaded.
   const remaining = payload
-    ? Math.max(0, Math.ceil((payload.durationSeconds * 1000 - (Date.now() - new Date(payload.startedAt).getTime())) / 1000))
+    ? Math.max(
+        0,
+        Math.ceil(
+          (payload.durationSeconds * 1000 -
+            (Date.now() - skewRef.current - new Date(payload.startedAt).getTime())) /
+            1000,
+        ),
+      )
     : 0;
 
   // Live attempted / skipped counts (shown in the exam header, mirroring the
@@ -128,23 +163,73 @@ export function CbtTestInterface() {
     let cancelled = false;
     (async () => {
       try {
+        const sentAt = Date.now();
         const res = await fetch("/api/cbt-student/test", { credentials: "include" });
         if (!res.ok) {
-          const d = (await res.json().catch(() => ({}))) as { detail?: string };
+          const d = (await res.json().catch(() => ({}))) as { detail?: string; code?: string };
+          // The server already has this paper — finished by the student, by the
+          // timer, or by the deadline finalization that runs when someone who
+          // went offline never came back. Show the end screen, not an error.
+          if (d.code === "already_submitted" || d.code === "test_ended") {
+            if (!cancelled) {
+              setPhase("submitted");
+              markSubmitted();
+            }
+            return;
+          }
           throw new Error(d.detail ?? `Could not load the test (${res.status}).`);
         }
         const data = (await res.json()) as {
           payload: CbtTestPayload;
-          draft: { answers: Record<number, CbtStudentAnswer>; palette: Record<number, CbtPaletteStatus> };
+          draft: {
+            answers: Record<number, CbtStudentAnswer>;
+            palette: Record<number, CbtPaletteStatus>;
+            rev?: number;
+          };
           studentCode: string;
+          participantId?: string;
+          enteredTestAt?: string | null;
+          serverNow?: string;
         };
         if (cancelled) return;
+
+        // Halve the round trip to approximate the moment the server read its
+        // own clock. Sub-second precision is plenty for a minutes-long paper.
+        if (data.serverNow) {
+          const rtt = Date.now() - sentAt;
+          skewRef.current = sentAt + rtt / 2 - new Date(data.serverNow).getTime();
+        }
+
+        participantIdRef.current = data.participantId ?? "";
+
+        const serverRev = Number(data.draft.rev ?? 0);
+        let answers = data.draft.answers ?? {};
+        let palette = data.draft.palette ?? {};
+        revRef.current = serverRev;
+
+        // Answers typed while the connection was down never reached the server.
+        // If this device holds a newer revision, it wins and is pushed back up
+        // before the student can type over it.
+        const local = participantIdRef.current ? loadLocalDraft(roomId, participantIdRef.current) : null;
+        if (localDraftIsAhead(local, serverRev) && local) {
+          answers = local.answers;
+          palette = local.palette;
+          revRef.current = local.rev;
+          dirtyRef.current = true;
+        }
+
         setPayload(data.payload);
         setStudentCode(data.studentCode);
-        setAnswers(data.draft.answers ?? {});
-        setPalette(data.draft.palette ?? {});
-        // If a draft already exists, the student is resuming — go straight in.
-        setPhase(Object.keys(data.draft.answers ?? {}).length > 0 ? "running" : "ready");
+        setAnswers(answers);
+        setPalette(palette);
+        // A draft row exists only once the student has actually opened the
+        // paper (beginAttempt writes one), so its presence — not merely being
+        // present in the room — is what "resuming" means. A student who
+        // reconnects with minutes left goes straight back into the questions
+        // instead of being held at the instructions screen again.
+        const resuming =
+          revRef.current > 0 || Object.keys(answers).length > 0 || Object.keys(palette).length > 0;
+        setPhase(resuming ? "running" : "ready");
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : "Could not load the test.");
@@ -155,78 +240,191 @@ export function CbtTestInterface() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [markSubmitted, roomId]);
 
   // ── Autosave: debounce 2s + 15s interval + sendBeacon on pagehide ──────────
-  const flushSave = useCallback(async () => {
-    if (!dirtyRef.current) return;
+  /**
+   * Pushes the draft. Unlike the original, a non-2xx response re-arms the dirty
+   * flag: a 413/429/5xx used to clear it silently and those answers were never
+   * retried. A 409 `stale_draft` means another device saved something newer —
+   * we adopt the server's revision instead of fighting it.
+   */
+  const flushSave = useCallback(async (): Promise<boolean> => {
+    if (!dirtyRef.current) return true;
     dirtyRef.current = false;
+    const snapshot = { ...stateRef.current, rev: revRef.current };
     try {
-      await fetch("/api/cbt-student/answers", {
+      const res = await fetch("/api/cbt-student/answers", {
         method: "POST",
         headers: { "content-type": "application/json" },
         credentials: "include",
-        body: JSON.stringify(stateRef.current),
+        body: JSON.stringify(snapshot),
       });
+      if (res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { rev?: number };
+        if (typeof data.rev === "number") revRef.current = Math.max(revRef.current, data.rev);
+        setSync("synced");
+        return true;
+      }
+      const data = (await res.json().catch(() => ({}))) as { code?: string; rev?: number };
+      if (res.status === 409 && data.code === "stale_draft") {
+        revRef.current = Math.max(revRef.current, Number(data.rev ?? 0)) + 1;
+        dirtyRef.current = true;
+        setSync("pending");
+        return false;
+      }
+      if (data.code === "already_submitted" || data.code === "test_ended") {
+        // The server finalized this attempt (deadline sweep, or the teacher)
+        // while we were reconnecting. Stop retrying and show the end screen
+        // rather than looping on a save that can never be accepted.
+        setSync("synced");
+        submittedRef.current = true;
+        setPhase("submitted");
+        markSubmitted();
+        return false;
+      }
+      if (res.status === 401) {
+        // Kicked, or this attempt was resumed elsewhere. Stop writing; the room
+        // context resolves the correct terminal screen on its next refresh.
+        setSync("offline");
+        return false;
+      }
+      dirtyRef.current = true;
+      setSync("pending");
+      return false;
     } catch {
-      dirtyRef.current = true; // retry on next tick
+      dirtyRef.current = true; // retry on the next tick / when we're back online
+      setSync(typeof navigator !== "undefined" && navigator.onLine === false ? "offline" : "pending");
+      return false;
     }
-  }, []);
+  }, [markSubmitted]);
 
   useEffect(() => {
     if (phase !== "running") return;
     const interval = window.setInterval(() => void flushSave(), 15_000);
     const onPageHide = () => {
       if (!dirtyRef.current) return;
-      const blob = new Blob([JSON.stringify(stateRef.current)], { type: "application/json" });
+      const blob = new Blob([JSON.stringify({ ...stateRef.current, rev: revRef.current })], {
+        type: "application/json",
+      });
       navigator.sendBeacon("/api/cbt-student/answers", blob);
     };
+    // Reconnecting: flush immediately rather than waiting up to 15s.
+    const onOnline = () => {
+      setSync("pending");
+      void flushSave();
+    };
+    const onOffline = () => setSync("offline");
     window.addEventListener("pagehide", onPageHide);
     window.addEventListener("beforeunload", onPageHide);
+    window.addEventListener("online", onOnline);
+    window.addEventListener("offline", onOffline);
+    if (typeof navigator !== "undefined" && navigator.onLine === false) setSync("offline");
     return () => {
       window.clearInterval(interval);
       window.removeEventListener("pagehide", onPageHide);
       window.removeEventListener("beforeunload", onPageHide);
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("offline", onOffline);
       void flushSave();
     };
   }, [phase, flushSave]);
 
   const markDirtyAndDebounce = useCallback(() => {
     dirtyRef.current = true;
+    revRef.current += 1;
+    setSync((prev) => (prev === "offline" ? prev : "pending"));
     if (debounceRef.current) window.clearTimeout(debounceRef.current);
     debounceRef.current = window.setTimeout(() => void flushSave(), 2000);
   }, [flushSave]);
+
+  // Mirror every change to this device. Runs as an effect (not inline in the
+  // mutation) so it sees the committed state rather than the pre-update
+  // snapshot. This copy is what survives a crash, a killed tab, or an outage
+  // that outlives the session — it is replayed on the next load when it is
+  // ahead of the server.
+  useEffect(() => {
+    if (phase !== "running" && phase !== "ready") return;
+    if (!roomId || !participantIdRef.current) return;
+    saveLocalDraft(roomId, participantIdRef.current, { rev: revRef.current, answers, palette });
+  }, [answers, palette, phase, roomId]);
 
   // ── Full-screen request ────────────────────────────────────────────────────
   const enterFullscreen = useCallback(() => {
     containerRef.current?.requestFullscreen?.().catch(() => undefined);
   }, []);
 
+  /**
+   * Opening the paper. The immediate save is what makes a resume exact: it
+   * creates the draft row, so if the machine dies before a single answer is
+   * given, coming back lands in the questions rather than at the instructions
+   * screen with the clock already half gone.
+   */
+  const beginAttempt = useCallback(() => {
+    enterFullscreen();
+    setPhase("running");
+    markDirtyAndDebounce();
+  }, [enterFullscreen, markDirtyAndDebounce]);
+
   // ── Submit (manual, auto-at-zero, and drain-safe idempotent) ───────────────
+  /**
+   * A submission only counts once the SERVER says so.
+   *
+   * This used to set the terminal "submitted" phase even when the request threw
+   * — so a student who pressed Submit during a network blip was locked out of a
+   * test the server still considered live, with no way back in. Now a failure
+   * keeps them in the paper (answers intact, timer running) and retries in the
+   * background; the deadline finalization remains the backstop if they never
+   * get a connection back.
+   */
   const submit = useCallback(
     async (auto: boolean, malpractice = false) => {
       if (submittedRef.current) return;
       submittedRef.current = true;
       setPhase("submitting");
+      setSubmitError(null);
       await flushSave();
-      try {
-        await fetch("/api/cbt-student/submit", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ auto, malpractice }),
-        });
-      } catch {
-        // Server sweep is the backstop; still show the end screen.
+
+      const body = JSON.stringify({ auto, malpractice, violations });
+      // ~1s, 2s, 4s, 8s, 15s — about half a minute of trying before we hand the
+      // student back their paper with an explanation.
+      const backoffs = [1_000, 2_000, 4_000, 8_000, 15_000];
+      for (let attempt = 0; attempt <= backoffs.length; attempt += 1) {
+        try {
+          const res = await fetch("/api/cbt-student/submit", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            credentials: "include",
+            body,
+          });
+          if (res.ok) {
+            if (roomId && participantIdRef.current) clearLocalDraft(roomId, participantIdRef.current);
+            if (document.fullscreenElement) document.exitFullscreen?.().catch(() => undefined);
+            setPhase("submitted");
+            // Promote to the room-level terminal phase so the context unmounts
+            // this player: a submitted student must never re-enter the test
+            // (e.g. via a browser Back / bfcache restore of this frozen view).
+            markSubmitted();
+            return;
+          }
+          if (res.status === 401) break; // kicked or resumed elsewhere
+        } catch {
+          // network down — fall through to the retry delay
+        }
+        if (attempt < backoffs.length) {
+          setSubmitError("Couldn't reach the server. Your answers are saved — retrying…");
+          await new Promise((resolve) => setTimeout(resolve, backoffs[attempt]));
+        }
       }
-      if (document.fullscreenElement) document.exitFullscreen?.().catch(() => undefined);
-      setPhase("submitted");
-      // Promote to the room-level terminal phase so the context unmounts this
-      // player: a submitted student must never re-enter the test (e.g. via a
-      // browser Back / bfcache restore of this frozen mid-test view).
-      markSubmitted();
+
+      // Give the paper back rather than pretending it was submitted.
+      submittedRef.current = false;
+      setPhase("running");
+      setSubmitError(
+        "We couldn't submit yet — you're offline. Your answers are saved and will be submitted automatically when the time ends. Keep this page open if you can.",
+      );
     },
-    [flushSave, markSubmitted],
+    [flushSave, markSubmitted, roomId, violations],
   );
 
   // Auto-submit when the server-anchored timer hits zero.
@@ -249,14 +447,24 @@ export function CbtTestInterface() {
     //    element-fullscreen is unreliable (rejects / auto-exits on keyboard or
     //    notification), which was instantly firing violations — there, tab-switch
     //    / visibility detection carries the anti-cheat instead.
+    //  • OFFLINE SUPPRESSION — a dropped connection is not cheating. A frozen
+    //    machine, an OS network dialog, or alt-tabbing to reconnect Wi-Fi all
+    //    look exactly like a tab switch, and three of them used to auto-submit
+    //    the paper. While the browser reports no connection, strikes are not
+    //    counted at all.
+    //  • GRACE 3s (was 1s) — a phone call or a system notification shouldn't
+    //    cost a strike either.
     const SETTLE_MS = 4000;
+    const VIOLATION_GRACE_MS = 3000;
     const startedAt = Date.now();
     const fullscreenViolationsEnabled =
       typeof window !== "undefined" && window.matchMedia?.("(pointer: fine)").matches === true;
+    const isOffline = () => typeof navigator !== "undefined" && navigator.onLine === false;
 
     const handleViolation = () => {
       if (malpracticeTerminated) return;
       if (Date.now() - startedAt < SETTLE_MS) return; // settle window
+      if (isOffline()) return; // disconnection, not malpractice
       setViolations((prev) => {
         const next = prev + 1;
         if (next >= 3) {
@@ -272,11 +480,12 @@ export function CbtTestInterface() {
     };
 
     const startTimer = () => {
+      if (isOffline()) return;
       if (!malpracticeTimerRef.current && !malpracticeTerminated) {
         malpracticeTimerRef.current = window.setTimeout(() => {
           handleViolation();
           malpracticeTimerRef.current = undefined;
-        }, 1000);
+        }, VIOLATION_GRACE_MS);
       }
     };
     const stopTimer = () => {
@@ -293,15 +502,20 @@ export function CbtTestInterface() {
       if (fullscreenViolationsEnabled && !document.fullscreenElement) handleViolation();
     };
 
+    // Losing the connection cancels any pending strike outright.
+    const onOffline = () => stopTimer();
+
     document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("blur", onBlur);
     window.addEventListener("focus", onFocus);
+    window.addEventListener("offline", onOffline);
     document.addEventListener("fullscreenchange", onFullscreenChange);
     return () => {
       stopTimer();
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("blur", onBlur);
       window.removeEventListener("focus", onFocus);
+      window.removeEventListener("offline", onOffline);
       document.removeEventListener("fullscreenchange", onFullscreenChange);
     };
   }, [phase, submit, malpracticeTerminated]);
@@ -437,6 +651,11 @@ export function CbtTestInterface() {
                   <li>The clock is set on the server. The countdown timer at the top shows the time remaining to complete the examination.</li>
                   <li>The Question Palette on the right shows the status of each question (not visited, not answered, answered, marked for review, answered &amp; marked).</li>
                   <li>Your answers autosave. The test auto-submits when the timer reaches zero.</li>
+                  <li>
+                    If you lose your connection, <span className="font-bold text-foreground">keep calm</span> — your
+                    answers are saved and the test is <span className="font-bold text-foreground">not</span> submitted
+                    early. Reopen this link with your room code to carry on where you left off.
+                  </li>
                 </ul>
               </section>
 
@@ -487,7 +706,7 @@ export function CbtTestInterface() {
               </label>
 
               <button
-                onClick={() => { enterFullscreen(); setPhase("running"); }}
+                onClick={beginAttempt}
                 disabled={!acceptedRules}
                 className="flex w-full items-center justify-center gap-2 rounded-2xl bg-primary py-4 text-lg font-black uppercase tracking-tight text-primary-foreground shadow-lg shadow-primary/25 transition-all hover:bg-primary/90 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
               >
@@ -506,6 +725,28 @@ export function CbtTestInterface() {
 
   return (
     <div ref={containerRef} className="flex h-dvh flex-col overflow-y-auto overscroll-contain neu-surface text-foreground" style={{ touchAction: 'pan-y' }}>
+      {/* 0. Connectivity banner — the student must never have to guess whether
+             their answers are safe, or fear being cut off for going offline. */}
+      {sync !== "synced" || submitError ? (
+        <div
+          role="status"
+          className={`shrink-0 flex items-start gap-2 px-3 py-2 text-[11px] font-bold sm:px-6 ${
+            sync === "offline"
+              ? "bg-amber-500/15 text-amber-800 dark:text-amber-300"
+              : "bg-sky-500/10 text-sky-800 dark:text-sky-300"
+          }`}
+        >
+          <CloudOff className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span>
+            {submitError
+              ? submitError
+              : sync === "offline"
+                ? "You're offline. Your answers are saved on this device and will sync automatically — your test will NOT be submitted early."
+                : "Saving your answers…"}
+          </span>
+        </div>
+      ) : null}
+
       {/* 1. Branded header */}
       <header className="shrink-0 flex flex-col items-center justify-between gap-3 border-b border-border/60 px-3 py-2 sm:flex-row sm:gap-0 sm:px-6">
         <div className="flex w-full items-center justify-between gap-3 sm:w-auto">

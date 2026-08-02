@@ -187,7 +187,9 @@ export async function listClusterQuestionIds(teacherId: string, clusterId: strin
        FROM cbt.question_cluster_members m
        JOIN cbt.question_clusters c ON c.id = m.cluster_id
       WHERE m.cluster_id = $1 AND c.teacher_id = $2
-      ORDER BY m.added_at ASC`,
+      -- question_id breaks ties: a bulk add shares one timestamp, which left
+      -- the stacked paper order non-deterministic.
+      ORDER BY m.added_at ASC, m.question_id ASC`,
     [clusterId, teacherId],
   );
   return res.rows.map((r) => String(r.question_id));

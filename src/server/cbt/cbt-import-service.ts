@@ -24,6 +24,12 @@ import type {
 import type { CbtQuestionInput, CbtQuestionType } from "@/lib/cbt/question-model";
 import { CBT_QUESTION_TYPES } from "@/lib/cbt/question-model";
 import { parseNumericAnswer } from "@/lib/cbt/answer-format";
+import {
+  stackSources,
+  type CbtTestSource,
+  type ResolvedSource,
+  type StackResult,
+} from "@/lib/cbt/source-stack";
 
 import { ensureCbtSchema } from "./cbt-schema";
 import {
@@ -31,9 +37,12 @@ import {
   listCbtQuestionIdsByImportJob,
   type CbtQuestion,
 } from "./cbt-questions-service";
-import { createCbtTest, listQuestionIdsUsedInOtherTests, setTestQuestions } from "./cbt-tests-service";
-import { addQuestionsToCluster, createCluster } from "./cbt-clusters-service";
+import { createCbtTest, MAX_QUESTIONS_PER_TEST, setTestQuestions } from "./cbt-tests-service";
+import { addQuestionsToCluster, createCluster, listClusterQuestionIds } from "./cbt-clusters-service";
 import type { CbtTeacher } from "./cbt-teachers-service";
+
+/** Guardrail on the picker: enough for a full paper, not an accidental 500. */
+const MAX_SOURCES = 30;
 
 function pool() {
   const p = getUserPostgresPool();
@@ -305,9 +314,12 @@ export async function commitImportJobToBank(input: {
  * Builds a ready-to-run test from an import job (mirrors the Origin teacher
  * "create test from import"): commits every accepted question to the bank, groups
  * the job's questions into a new cluster named after the source file (D3), and
- * creates a test seeded with those questions. Questions already used by another
- * test are skipped (D2 hard-block) so re-running never 409s. Returns the new
- * test id for the caller to redirect into the builder.
+ * creates a test seeded with those questions.
+ *
+ * Every question from the job is included. Reuse across tests is allowed since
+ * 2026-08-02, so questions that already appear in another test are no longer
+ * silently dropped — building two papers from the same document used to give
+ * the second one nothing.
  */
 export async function createTestFromImportJob(input: {
   teacher: CbtTeacher;
@@ -333,18 +345,87 @@ export async function createTestFromImportJob(input: {
     title,
     shuffleQuestions: input.shuffleQuestions === true,
   });
-  // Only add questions not already used by another test (hard-block safe).
-  const usedElsewhere = new Set(await listQuestionIdsUsedInOtherTests(input.teacher.id, test.id));
-  const addable = questionIds.filter((id) => !usedElsewhere.has(id));
-  if (addable.length > 0) {
-    await setTestQuestions(
-      input.teacher.id,
-      test.id,
-      addable.map((questionId) => ({ questionId, marks: 4, negativeMarks: -1 })),
+  await setTestQuestions(
+    input.teacher.id,
+    test.id,
+    questionIds.map((questionId) => ({ questionId, marks: 4, negativeMarks: -1 })),
+  );
+
+  return { testId: test.id, clusterId: cluster.id, questionsAdded: questionIds.length };
+}
+
+/**
+ * Builds ONE test out of several documents and/or clusters, stacked in the
+ * order the teacher picked them.
+ *
+ * Each `import_job` source is committed to the bank first, so questions the
+ * teacher accepted moments earlier are included. Ordering, de-duplication and
+ * per-source marks are decided by the pure `stackSources` helper; this function
+ * only resolves ids and persists.
+ */
+export async function createTestFromSources(input: {
+  teacher: CbtTeacher;
+  title: string;
+  durationMinutes?: number;
+  shuffleQuestions?: boolean;
+  sources: CbtTestSource[];
+}): Promise<{
+  testId: string;
+  questionsAdded: number;
+  perSource: StackResult["perSource"];
+}> {
+  await ensureCbtSchema();
+  const title = input.title.trim();
+  if (!title) throw cbtError(400, "A test title is required.");
+  if (input.sources.length === 0) throw cbtError(400, "Pick at least one document or cluster.");
+  if (input.sources.length > MAX_SOURCES) {
+    throw cbtError(400, `You can combine at most ${MAX_SOURCES} sources in one test.`);
+  }
+
+  // Resolve every source to its question ids, in the source's own order.
+  const resolved: ResolvedSource[] = [];
+  for (const source of input.sources) {
+    let questionIds: string[] = [];
+    if (source.kind === "import_job") {
+      // Pull anything still staged into the bank so a just-reviewed document
+      // contributes its questions rather than silently adding nothing.
+      await commitImportJobToBank({ teacher: input.teacher, jobId: source.id }).catch(() => undefined);
+      questionIds = await listCbtQuestionIdsByImportJob(input.teacher.id, source.id);
+    } else {
+      // Teacher-scoped: a cluster they don't own resolves to nothing rather
+      // than leaking its existence.
+      questionIds = await listClusterQuestionIds(input.teacher.id, source.id);
+    }
+    resolved.push({ ...source, questionIds });
+  }
+
+  const stacked = stackSources(resolved);
+  if (stacked.questions.length === 0) {
+    throw cbtError(400, "None of the selected sources have any questions in your bank yet.");
+  }
+  if (stacked.questions.length > MAX_QUESTIONS_PER_TEST) {
+    throw cbtError(
+      400,
+      `That selection makes ${stacked.questions.length} questions; a test can have at most ${MAX_QUESTIONS_PER_TEST}. Remove a source and try again.`,
     );
   }
 
-  return { testId: test.id, clusterId: cluster.id, questionsAdded: addable.length };
+  const test = await createCbtTest(input.teacher.id, {
+    title,
+    durationMinutes: input.durationMinutes,
+    shuffleQuestions: input.shuffleQuestions === true,
+  });
+  await setTestQuestions(
+    input.teacher.id,
+    test.id,
+    stacked.questions.map((q) => ({
+      questionId: q.questionId,
+      marks: q.marks,
+      negativeMarks: q.negativeMarks,
+    })),
+  );
+
+  return { testId: test.id, questionsAdded: stacked.questions.length, perSource: stacked.perSource };
 }
 
 export async function rejectImportQuestion(input: {

@@ -10,6 +10,10 @@
     {
       "path": "/api/internal/cron/crystallize",
       "schedule": "0 */5 * * *"
+    },
+    {
+      "path": "/api/internal/cbt/drain",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

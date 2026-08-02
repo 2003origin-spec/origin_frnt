@@ -23,15 +23,22 @@ export async function POST(request: NextRequest) {
     if (limited) return limited as unknown as NextResponse;
 
     const raw = await request.text().catch(() => "");
-    let body: { answers?: Record<number, CbtStudentAnswer>; palette?: Record<number, CbtPaletteStatus> } = {};
+    let body: {
+      answers?: Record<number, CbtStudentAnswer>;
+      palette?: Record<number, CbtPaletteStatus>;
+      rev?: number;
+    } = {};
     try {
       body = raw ? JSON.parse(raw) : {};
     } catch {
       return studentJson({ detail: "Invalid body." }, { status: 400 });
     }
 
-    const result = await saveAnswers(participant, room, body.answers ?? {}, body.palette ?? {});
-    return studentJson({ ok: true, answeredCount: result.answeredCount });
+    // `rev` is the browser's monotonic draft counter — a save from a stale tab
+    // (or a sendBeacon fired by a dying device) is rejected with 409
+    // `stale_draft` rather than overwriting newer answers.
+    const result = await saveAnswers(participant, room, body.answers ?? {}, body.palette ?? {}, body.rev);
+    return studentJson({ ok: true, answeredCount: result.answeredCount, rev: result.rev });
   } catch (error) {
     return handleStudentError(error);
   }

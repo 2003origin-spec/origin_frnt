@@ -191,10 +191,27 @@ export async function getCbtQuestion(teacherId: string, questionId: string): Pro
 export async function listCbtQuestionIdsByImportJob(teacherId: string, jobId: string): Promise<string[]> {
   await ensureCbtSchema();
   const res = await pool().query(
-    `SELECT id FROM cbt.questions WHERE teacher_id = $1 AND import_job_id = $2 ORDER BY created_at ASC`,
+    // `id` breaks ties: a bulk commit writes many rows inside the same
+    // millisecond, so created_at alone left the paper order non-deterministic.
+    `SELECT id FROM cbt.questions WHERE teacher_id = $1 AND import_job_id = $2 ORDER BY created_at ASC, id ASC`,
     [teacherId, jobId],
   );
   return res.rows.map((r) => String(r.id));
+}
+
+/** How many banked questions came from each import job (drives the source picker). */
+export async function countCbtQuestionsByImportJob(teacherId: string): Promise<Record<string, number>> {
+  await ensureCbtSchema();
+  const res = await pool().query(
+    `SELECT import_job_id, COUNT(*)::int AS n
+       FROM cbt.questions
+      WHERE teacher_id = $1 AND import_job_id IS NOT NULL
+      GROUP BY import_job_id`,
+    [teacherId],
+  );
+  const counts: Record<string, number> = {};
+  for (const row of res.rows) counts[String(row.import_job_id)] = Number(row.n ?? 0);
+  return counts;
 }
 
 export async function createCbtQuestion(
@@ -272,8 +289,24 @@ export async function deleteCbtQuestion(teacherId: string, questionId: string): 
     return (res.rowCount ?? 0) > 0;
   } catch (error) {
     // ON DELETE RESTRICT from cbt.test_questions — the question is in use.
+    // Questions may now belong to several tests, so name them: "remove it from
+    // the test first" is unhelpful when there are three.
     if ((error as { code?: string })?.code === "23503") {
-      throw cbtError(409, "This question is used by a test. Remove it from the test first.");
+      const inUse = await pool().query(
+        `SELECT DISTINCT t.title
+           FROM cbt.test_questions tq
+           JOIN cbt.tests t ON t.id = tq.test_id
+          WHERE tq.question_id = $1 AND t.teacher_id = $2
+          LIMIT 5`,
+        [questionId, teacherId],
+      );
+      const titles = inUse.rows.map((r) => `“${String(r.title)}”`);
+      throw cbtError(
+        409,
+        titles.length > 0
+          ? `This question is used by ${titles.length === 1 ? "test" : "tests"} ${titles.join(", ")}. Remove it there first.`
+          : "This question is used by a test. Remove it from the test first.",
+      );
     }
     throw error;
   }

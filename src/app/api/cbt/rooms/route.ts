@@ -23,8 +23,15 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const ctx = await requireCbtTeacher(request);
-    const body = (await parseJsonBody(request)) as { name?: string; capacity?: number };
-    const { room, code } = await createRoom(ctx.cbtTeacherId, body);
+    const body = (await parseJsonBody(request)) as {
+      name?: string;
+      capacity?: number;
+      rejoinPolicy?: string;
+    };
+    const { room, code } = await createRoom(ctx.cbtTeacherId, {
+      ...body,
+      rejoinPolicy: body.rejoinPolicy === "id_only" ? "id_only" : "name_or_id",
+    });
     return teacherJson({ room, code }, { status: 201 });
   } catch (error) {
     return handleTeacherError(error);

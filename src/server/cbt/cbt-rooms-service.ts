@@ -11,15 +11,24 @@ import { generateRoomCode, hashRoomCode, normalizeRoomCode } from "@/lib/study-r
 import { generateRoomSlug, generateStudentCode, normalizeStudentCode } from "@/lib/cbt/student-code";
 import { signParticipantToken, verifyParticipantToken } from "@/lib/cbt/participant-token";
 import type { CbtParticipantSummary, CbtRoomEvent } from "@/lib/cbt/events";
-import type { CbtParticipant, CbtRoom, CbtRoomStatus, CbtRoomWithParticipants } from "@/lib/cbt/room-model";
+import type {
+  CbtParticipant,
+  CbtRejoinPolicy,
+  CbtRoom,
+  CbtRoomStatus,
+  CbtRoomWithParticipants,
+} from "@/lib/cbt/room-model";
+import { CBT_PRESENCE_WINDOW_MS, isCbtFinalizeReason } from "@/lib/cbt/finalize-reason";
+import { normalizeParticipantName, pickReclaimCandidates, type CbtReclaimCandidate } from "@/lib/cbt/reclaim";
 
 import { ensureCbtSchema } from "./cbt-schema";
 import { appendCbtRoomEvent, deleteCbtRoomStream } from "./cbt-redis";
 import { cbtId } from "./ids";
 
-export type { CbtParticipant, CbtRoom, CbtRoomStatus, CbtRoomWithParticipants };
+export type { CbtParticipant, CbtRejoinPolicy, CbtRoom, CbtRoomStatus, CbtRoomWithParticipants };
+export type { CbtReclaimCandidate };
 
-const PRESENCE_WINDOW_MS = 45_000;
+const PRESENCE_WINDOW_MS = CBT_PRESENCE_WINDOW_MS;
 const MAX_CAPACITY = 500;
 const MAX_DISPLAY_NAME = 60;
 
@@ -35,8 +44,8 @@ function cbtError(status: number, message: string): Error & { status: number } {
   return err;
 }
 
-const ROOM_COLUMNS = `id, teacher_id, name, public_slug, status, test_id, started_at, duration_seconds, ended_at, capacity, created_at, updated_at`;
-const PARTICIPANT_COLUMNS = `id, room_id, display_name, student_code, token_version, joined_at, kicked, entered_test_at, last_seen_at, finished_at, auto_submitted, answered_count, score, max_score, rank, time_taken_seconds`;
+const ROOM_COLUMNS = `id, teacher_id, name, public_slug, status, test_id, started_at, duration_seconds, ended_at, capacity, rejoin_policy, created_at, updated_at`;
+const PARTICIPANT_COLUMNS = `id, room_id, display_name, student_code, token_version, joined_at, kicked, entered_test_at, last_seen_at, finished_at, auto_submitted, finalize_reason, rejoin_count, last_rejoin_at, violation_count, answered_count, score, max_score, rank, time_taken_seconds`;
 
 function mapRoom(row: Record<string, unknown>): CbtRoom {
   return {
@@ -50,6 +59,7 @@ function mapRoom(row: Record<string, unknown>): CbtRoom {
     durationSeconds: row.duration_seconds != null ? Number(row.duration_seconds) : null,
     endedAt: row.ended_at ? new Date(row.ended_at as string).toISOString() : null,
     capacity: Number(row.capacity ?? 200),
+    rejoinPolicy: row.rejoin_policy === "id_only" ? "id_only" : "name_or_id",
     createdAt: new Date(row.created_at as string).toISOString(),
     updatedAt: new Date(row.updated_at as string).toISOString(),
   };
@@ -80,6 +90,10 @@ function mapParticipant(row: Record<string, unknown>, roomStatus: CbtRoomStatus,
     lastSeenAt: row.last_seen_at ? new Date(row.last_seen_at as string).toISOString() : null,
     finishedAt: row.finished_at ? new Date(row.finished_at as string).toISOString() : null,
     autoSubmitted: Boolean(row.auto_submitted),
+    finalizeReason: isCbtFinalizeReason(row.finalize_reason) ? row.finalize_reason : null,
+    rejoinCount: Number(row.rejoin_count ?? 0),
+    lastRejoinAt: row.last_rejoin_at ? new Date(row.last_rejoin_at as string).toISOString() : null,
+    violationCount: Number(row.violation_count ?? 0),
     answeredCount: Number(row.answered_count ?? 0),
     score: row.score != null ? Number(row.score) : null,
     maxScore: row.max_score != null ? Number(row.max_score) : null,
@@ -98,20 +112,37 @@ function sanitizeDisplayName(raw: string): string {
 
 export async function createRoom(
   teacherId: string,
-  input: { name?: string; capacity?: number },
+  input: { name?: string; capacity?: number; rejoinPolicy?: CbtRejoinPolicy },
 ): Promise<{ room: CbtRoom; code: string }> {
   await ensureCbtSchema();
   const name = (input.name ?? "").trim() || "Untitled room";
   const capacity = Math.min(Math.max(1, Math.floor(Number(input.capacity) || 200)), MAX_CAPACITY);
+  const rejoinPolicy: CbtRejoinPolicy = input.rejoinPolicy === "id_only" ? "id_only" : "name_or_id";
   const code = generateRoomCode();
   const slug = generateRoomSlug();
   const res = await pool().query(
-    `INSERT INTO cbt.rooms (id, teacher_id, name, public_slug, code_hash, status, capacity)
-       VALUES ($1, $2, $3, $4, $5, 'lobby', $6)
+    `INSERT INTO cbt.rooms (id, teacher_id, name, public_slug, code_hash, status, capacity, rejoin_policy)
+       VALUES ($1, $2, $3, $4, $5, 'lobby', $6, $7)
      RETURNING ${ROOM_COLUMNS}`,
-    [cbtId("cbtroom"), teacherId, name, slug, hashRoomCode(code), capacity],
+    [cbtId("cbtroom"), teacherId, name, slug, hashRoomCode(code), capacity, rejoinPolicy],
   );
   return { room: mapRoom(res.rows[0]), code };
+}
+
+/** Toggles how students may recover a lost session (teacher-scoped). */
+export async function setRoomRejoinPolicy(
+  teacherId: string,
+  roomId: string,
+  rejoinPolicy: CbtRejoinPolicy,
+): Promise<CbtRoom | null> {
+  await ensureCbtSchema();
+  const res = await pool().query(
+    `UPDATE cbt.rooms SET rejoin_policy = $3, updated_at = NOW()
+       WHERE teacher_id = $1 AND id = $2
+     RETURNING ${ROOM_COLUMNS}`,
+    [teacherId, roomId, rejoinPolicy === "id_only" ? "id_only" : "name_or_id"],
+  );
+  return res.rows[0] ? mapRoom(res.rows[0]) : null;
 }
 
 export async function listRooms(teacherId: string): Promise<(CbtRoom & { participantCount: number })[]> {
@@ -167,10 +198,31 @@ export async function getRoomWithParticipants(
   teacherId: string,
   roomId: string,
 ): Promise<CbtRoomWithParticipants | null> {
-  const room = await getRoomForTeacher(teacherId, roomId);
+  let room = await getRoomForTeacher(teacherId, roomId);
   if (!room) return null;
+  // Reading a past-deadline room finalizes it first, so the teacher never sees
+  // (or exports) a student left unsubmitted because their browser died.
+  if (await finalizeIfExpired(room)) {
+    room = (await getRoomForTeacher(teacherId, roomId)) ?? room;
+  }
   const participants = await listParticipants(roomId, room.status);
   return { ...room, participants };
+}
+
+/**
+ * Lazy deadline finalization. Imported dynamically because the attempts service
+ * imports this module — a static edge would be a cycle.
+ */
+export async function finalizeIfExpired(room: Pick<CbtRoom, "id" | "status">): Promise<boolean> {
+  if (room.status !== "in_test") return false;
+  try {
+    const { finalizeExpiredRoom } = await import("./cbt-attempts-service");
+    return (await finalizeExpiredRoom(room.id)) > 0;
+  } catch (error) {
+    // Never let a finalize failure break a read path; the cron retries.
+    console.error("[cbt] lazy finalize failed", error);
+    return false;
+  }
 }
 
 export async function listParticipants(roomId: string, roomStatus: CbtRoomStatus): Promise<CbtParticipant[]> {
@@ -255,6 +307,21 @@ export async function startRoomTest(
 
 export async function closeRoom(teacherId: string, roomId: string): Promise<boolean> {
   await ensureCbtSchema();
+
+  // Grade everyone still in the paper BEFORE closing. A closed room is
+  // unreachable for students and invisible to the deadline sweep, so anyone
+  // left unfinished here would have been stranded as "absent" with no score
+  // even though the server was holding their answers.
+  const room = await getRoomForTeacher(teacherId, roomId);
+  if (room?.status === "in_test") {
+    try {
+      const { finalizeRoomNow } = await import("./cbt-attempts-service");
+      await finalizeRoomNow(roomId, "room_closed");
+    } catch (error) {
+      console.error("[cbt] finalize-before-close failed", error);
+    }
+  }
+
   const res = await pool().query(
     `UPDATE cbt.rooms SET status = 'closed', ended_at = NOW(), updated_at = NOW()
        WHERE teacher_id = $1 AND id = $2 AND status != 'closed' RETURNING id`,
@@ -294,11 +361,32 @@ export async function kickParticipant(teacherId: string, roomId: string, partici
 
 // ── Student-side anonymous identity ─────────────────────────────────────────
 
+export type CbtJoinResult =
+  | {
+      kind: "joined";
+      participant: CbtParticipant;
+      token: string;
+      studentCode: string;
+      roomId: string;
+    }
+  | {
+      /**
+       * An unfinished attempt under this name is sitting idle in the room. We
+       * refuse to silently create a second identity (that is what stranded
+       * students as "absent" with a blank score) and instead let them confirm.
+       */
+      kind: "reclaim_available";
+      roomId: string;
+      candidates: CbtReclaimCandidate[];
+    };
+
 export async function joinRoom(input: {
   slug: string;
   code: string;
   displayName: string;
-}): Promise<{ participant: CbtParticipant; token: string; studentCode: string; roomId: string }> {
+  /** Set by the student after confirming the prompt; skips the probe. */
+  forceNew?: boolean;
+}): Promise<CbtJoinResult> {
   await ensureCbtSchema();
   const displayName = sanitizeDisplayName(input.displayName);
   if (!displayName) throw cbtError(400, "Please enter your name.");
@@ -312,6 +400,15 @@ export async function joinRoom(input: {
   if (hashRoomCode(input.code) !== roomRow.code_hash) throw cbtError(403, "Incorrect room code.");
 
   const room = mapRoom(roomRow);
+
+  // Identity recovery probe: does this name already have an idle, unfinished
+  // attempt here? Only offered for attempts nobody is currently sitting at, so
+  // a live session can never be taken over.
+  if (!input.forceNew) {
+    const candidates = await findReclaimCandidates(room, displayName);
+    if (candidates.length > 0) return { kind: "reclaim_available", roomId: room.id, candidates };
+  }
+
   const count = await pool().query(`SELECT COUNT(*)::int AS n FROM cbt.room_participants WHERE room_id = $1`, [room.id]);
   if ((count.rows[0]?.n ?? 0) >= room.capacity) throw cbtError(409, "This room is full.");
 
@@ -344,32 +441,127 @@ export async function joinRoom(input: {
   await publishRoomEvent(room.id, { type: "participant_joined", participant: toSummary(participantRow, room.status) });
   await publishPresence(room.id, room.status);
 
-  return { participant, token, studentCode: participant.studentCode, roomId: room.id };
+  return { kind: "joined", participant, token, studentCode: participant.studentCode, roomId: room.id };
+}
+
+/** Idle unfinished attempts in this room that the entered name may reclaim. */
+async function findReclaimCandidates(room: CbtRoom, displayName: string): Promise<CbtReclaimCandidate[]> {
+  if (room.rejoinPolicy === "id_only") return [];
+  if (!normalizeParticipantName(displayName)) return [];
+  const res = await pool().query(
+    `SELECT id, display_name, student_code, answered_count, last_seen_at, finished_at, kicked
+       FROM cbt.room_participants
+      WHERE room_id = $1 AND finished_at IS NULL AND kicked = FALSE`,
+    [room.id],
+  );
+  return pickReclaimCandidates({
+    rows: res.rows.map((row) => ({
+      participantId: String(row.id),
+      displayName: String(row.display_name ?? ""),
+      studentCode: String(row.student_code),
+      answeredCount: Number(row.answered_count ?? 0),
+      lastSeenAt: row.last_seen_at ? new Date(row.last_seen_at as string).toISOString() : null,
+      finishedAt: row.finished_at ? new Date(row.finished_at as string).toISOString() : null,
+      kicked: Boolean(row.kicked),
+    })),
+    enteredName: displayName,
+    policy: room.rejoinPolicy,
+    now: Date.now(),
+  });
+}
+
+/**
+ * Hands a specific idle attempt back to the student who confirmed it is theirs.
+ *
+ * Bumping `token_version` is deliberate: it invalidates every other outstanding
+ * token for this participant, so the device they abandoned can no longer save
+ * over the answers they are about to continue writing.
+ */
+export async function reclaimParticipant(input: {
+  slug: string;
+  code: string;
+  displayName: string;
+  participantId: string;
+}): Promise<{ token: string; roomId: string; participantId: string; studentCode: string }> {
+  await ensureCbtSchema();
+  const displayName = sanitizeDisplayName(input.displayName);
+
+  const roomRes = await pool().query(`SELECT ${ROOM_COLUMNS}, code_hash FROM cbt.rooms WHERE public_slug = $1`, [
+    input.slug,
+  ]);
+  const roomRow = roomRes.rows[0];
+  if (!roomRow) throw cbtError(404, "This room does not exist.");
+  if (roomRow.status === "closed") throw cbtError(410, "This room has closed.");
+  if (hashRoomCode(input.code) !== roomRow.code_hash) throw cbtError(403, "Incorrect room code.");
+  const room = mapRoom(roomRow);
+
+  // Re-derive the candidate list rather than trusting the id from the client:
+  // policy, name match, unfinished and offline are all re-checked here.
+  const candidates = await findReclaimCandidates(room, displayName);
+  const match = candidates.find((c) => c.participantId === input.participantId);
+  if (!match) {
+    throw cbtError(409, "That attempt can no longer be resumed. Please start again or use your Student ID.");
+  }
+
+  return grantSession(room, match.participantId, match.studentCode);
+}
+
+/**
+ * Issues a fresh session for an existing participant and records the rejoin.
+ * Shared by the reclaim path and the Student-ID resume path.
+ */
+async function grantSession(
+  room: CbtRoom,
+  participantId: string,
+  studentCode: string,
+): Promise<{ token: string; roomId: string; participantId: string; studentCode: string }> {
+  const updated = await pool().query(
+    `UPDATE cbt.room_participants
+        SET token_version = token_version + 1,
+            rejoin_count = rejoin_count + 1,
+            last_rejoin_at = NOW(),
+            last_seen_at = NOW()
+      WHERE id = $1 AND room_id = $2
+      RETURNING token_version`,
+    [participantId, room.id],
+  );
+  if (!updated.rows[0]) throw cbtError(404, "That attempt no longer exists.");
+
+  const token = await signParticipantToken({
+    room_id: room.id,
+    participant_id: participantId,
+    tv: Number(updated.rows[0].token_version ?? 1),
+  });
+  await publishPresence(room.id, room.status);
+  return { token, roomId: room.id, participantId, studentCode };
 }
 
 export async function resumeParticipant(input: {
   roomCode: string;
   studentCode: string;
-}): Promise<{ token: string; roomId: string; participantId: string } | null> {
+  /** Preferred when the student came from the room link — makes the match exact. */
+  slug?: string;
+}): Promise<{ token: string; roomId: string; participantId: string; studentCode: string } | null> {
   await ensureCbtSchema();
   const codeHash = hashRoomCode(normalizeRoomCode(input.roomCode));
   const studentCode = normalizeStudentCode(input.studentCode);
+  const slug = input.slug?.trim() || null;
   const res = await pool().query(
-    `SELECT p.id, p.token_version, p.room_id
+    `SELECT p.id AS participant_id, p.student_code, p.room_id
        FROM cbt.room_participants p
        JOIN cbt.rooms r ON r.id = p.room_id
       WHERE p.student_code = $1 AND r.code_hash = $2 AND r.status != 'closed' AND p.kicked = FALSE
+        AND ($3::text IS NULL OR r.public_slug = $3)
+      ORDER BY p.joined_at DESC
       LIMIT 1`,
-    [studentCode, codeHash],
+    [studentCode, codeHash, slug],
   );
   const row = res.rows[0];
   if (!row) return null;
-  const token = await signParticipantToken({
-    room_id: String(row.room_id),
-    participant_id: String(row.id),
-    tv: Number(row.token_version ?? 1),
-  });
-  return { token, roomId: String(row.room_id), participantId: String(row.id) };
+
+  const roomRes = await pool().query(`SELECT ${ROOM_COLUMNS} FROM cbt.rooms WHERE id = $1`, [row.room_id]);
+  if (!roomRes.rows[0]) return null;
+  return grantSession(mapRoom(roomRes.rows[0]), String(row.participant_id), String(row.student_code));
 }
 
 export type ResolvedParticipant = {

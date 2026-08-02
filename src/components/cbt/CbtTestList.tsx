@@ -9,7 +9,15 @@ import { Input } from "@/components/ui/input";
 import { mutateJson } from "@/lib/csrf";
 import type { CbtTest } from "@/lib/cbt/test-model";
 
-export function CbtTestList({ initialTests }: { initialTests: CbtTest[] }) {
+import { CbtTestSourceBuilder, type CbtTestSourceOption } from "./CbtTestSourceBuilder";
+
+export function CbtTestList({
+  initialTests,
+  sourceOptions = [],
+}: {
+  initialTests: CbtTest[];
+  sourceOptions?: CbtTestSourceOption[];
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [title, setTitle] = useState("");
@@ -83,6 +91,10 @@ export function CbtTestList({ initialTests }: { initialTests: CbtTest[] }) {
           Shuffle questions — each student sees a different order
         </label>
       </div>
+
+      {/* Assemble one paper from several documents/clusters, stacked in pick order. */}
+      <CbtTestSourceBuilder options={sourceOptions} />
+
       {error ? (
         <p className="text-xs text-destructive" role="alert">
           {error}

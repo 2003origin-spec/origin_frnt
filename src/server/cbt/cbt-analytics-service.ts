@@ -7,9 +7,10 @@
 import { getUserPostgresPool } from "@/server/user-postgres";
 import type { CbtParticipantStatus } from "@/lib/cbt/events";
 import type { CbtRoomStatus } from "@/lib/cbt/room-model";
+import { CBT_PRESENCE_WINDOW_MS, isCbtFinalizeReason, type CbtFinalizeReason } from "@/lib/cbt/finalize-reason";
 
 import { ensureCbtSchema } from "./cbt-schema";
-import { cbtError } from "./cbt-rooms-service";
+import { cbtError, finalizeIfExpired } from "./cbt-rooms-service";
 
 function pool() {
   const p = getUserPostgresPool();
@@ -17,7 +18,7 @@ function pool() {
   return p;
 }
 
-const PRESENCE_WINDOW_MS = 45_000;
+const PRESENCE_WINDOW_MS = CBT_PRESENCE_WINDOW_MS;
 
 function deriveStatus(
   row: { last_seen_at: unknown; entered_test_at: unknown; finished_at: unknown },
@@ -43,6 +44,12 @@ export type CbtLeaderboardRow = {
   timeTakenSeconds: number | null;
   finishedAt: string | null;
   autoSubmitted: boolean;
+  /** Why the attempt ended — drives the "went offline" badge and the export. */
+  finalizeReason: CbtFinalizeReason | null;
+  /** How long since the last heartbeat, for the "offline for 12m" column. */
+  offlineForSeconds: number | null;
+  rejoinCount: number;
+  violationCount: number;
 };
 
 export type CbtLeaderboard = {
@@ -54,10 +61,20 @@ export type CbtLeaderboard = {
 
 export async function getRoomLeaderboard(teacherId: string, roomId: string): Promise<CbtLeaderboard | null> {
   await ensureCbtSchema();
-  const roomRes = await pool().query(
-    `SELECT status, test_id FROM cbt.rooms WHERE id = $1 AND teacher_id = $2`,
+  let roomRes = await pool().query(
+    `SELECT id, status, test_id FROM cbt.rooms WHERE id = $1 AND teacher_id = $2`,
     [roomId, teacherId],
   );
+  if (!roomRes.rows[0]) return null;
+
+  // Reading results past the deadline finalizes the room first, so a student
+  // whose browser died is scored from their draft instead of showing as absent.
+  if (await finalizeIfExpired({ id: roomId, status: roomRes.rows[0].status as CbtRoomStatus })) {
+    roomRes = await pool().query(`SELECT id, status, test_id FROM cbt.rooms WHERE id = $1 AND teacher_id = $2`, [
+      roomId,
+      teacherId,
+    ]);
+  }
   const room = roomRes.rows[0];
   if (!room) return null;
 
@@ -75,7 +92,8 @@ export async function getRoomLeaderboard(teacherId: string, roomId: string): Pro
 
   const parts = await pool().query(
     `SELECT id, display_name, student_code, answered_count, score, max_score, rank,
-            time_taken_seconds, finished_at, auto_submitted, last_seen_at, entered_test_at
+            time_taken_seconds, finished_at, auto_submitted, last_seen_at, entered_test_at,
+            finalize_reason, rejoin_count, violation_count
        FROM cbt.room_participants
       WHERE room_id = $1
       ORDER BY (finished_at IS NULL), rank ASC NULLS LAST, score DESC NULLS LAST,
@@ -101,8 +119,21 @@ export async function getRoomLeaderboard(teacherId: string, roomId: string): Pro
       timeTakenSeconds: r.time_taken_seconds != null ? Number(r.time_taken_seconds) : null,
       finishedAt: r.finished_at ? new Date(r.finished_at as string).toISOString() : null,
       autoSubmitted: Boolean(r.auto_submitted),
+      finalizeReason: isCbtFinalizeReason(r.finalize_reason) ? r.finalize_reason : null,
+      offlineForSeconds: offlineSecondsOf(r.last_seen_at, r.finished_at, now),
+      rejoinCount: Number(r.rejoin_count ?? 0),
+      violationCount: Number(r.violation_count ?? 0),
     })),
   };
+}
+
+/** Seconds since the last heartbeat for a still-running attempt (else null). */
+function offlineSecondsOf(lastSeenAt: unknown, finishedAt: unknown, now: number): number | null {
+  if (finishedAt || !lastSeenAt) return null;
+  const seen = new Date(lastSeenAt as string).getTime();
+  if (!Number.isFinite(seen)) return null;
+  const elapsed = Math.floor((now - seen) / 1000);
+  return elapsed * 1000 > PRESENCE_WINDOW_MS ? elapsed : null;
 }
 
 export type CbtDrilldownQuestion = {

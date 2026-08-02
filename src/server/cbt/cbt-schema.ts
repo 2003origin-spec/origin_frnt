@@ -102,6 +102,8 @@ export async function ensureCbtSchema(): Promise<void> {
           );
 
           -- Additive columns for environments that already have these tables.
+          -- (Only for tables created ABOVE this point — an ALTER of a table
+          -- that is still further down the script fails on a fresh database.)
           ALTER TABLE cbt.questions ADD COLUMN IF NOT EXISTS image TEXT;
           ALTER TABLE cbt.teachers ADD COLUMN IF NOT EXISTS logo TEXT;
 
@@ -142,6 +144,9 @@ export async function ensureCbtSchema(): Promise<void> {
             updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
           );
 
+          -- Identity-recovery policy (20260802), additive for existing rooms.
+          ALTER TABLE cbt.rooms ADD COLUMN IF NOT EXISTS rejoin_policy TEXT NOT NULL DEFAULT 'name_or_id';
+
           CREATE TABLE IF NOT EXISTS cbt.room_participants (
             id                 TEXT PRIMARY KEY,
             room_id            TEXT NOT NULL REFERENCES cbt.rooms(id) ON DELETE CASCADE,
@@ -162,6 +167,14 @@ export async function ensureCbtSchema(): Promise<void> {
             UNIQUE (room_id, student_code)
           );
 
+          -- Attempt-resilience columns (20260802): why an attempt ended, the
+          -- identity-recovery audit trail, and the integrity strike count.
+          ALTER TABLE cbt.room_participants
+            ADD COLUMN IF NOT EXISTS finalize_reason TEXT,
+            ADD COLUMN IF NOT EXISTS rejoin_count    INTEGER NOT NULL DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS last_rejoin_at  TIMESTAMPTZ,
+            ADD COLUMN IF NOT EXISTS violation_count INTEGER NOT NULL DEFAULT 0;
+
           CREATE TABLE IF NOT EXISTS cbt.answer_drafts (
             room_id        TEXT NOT NULL REFERENCES cbt.rooms(id) ON DELETE CASCADE,
             participant_id TEXT NOT NULL REFERENCES cbt.room_participants(id) ON DELETE CASCADE,
@@ -170,6 +183,11 @@ export async function ensureCbtSchema(): Promise<void> {
             updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             PRIMARY KEY (room_id, participant_id)
           );
+
+          -- Monotonic client revision: a stale tab or a late sendBeacon can
+          -- never overwrite newer answers saved from the device the student
+          -- actually resumed on.
+          ALTER TABLE cbt.answer_drafts ADD COLUMN IF NOT EXISTS rev BIGINT NOT NULL DEFAULT 0;
 
           CREATE TABLE IF NOT EXISTS cbt.submission_answers (
             room_id           TEXT NOT NULL REFERENCES cbt.rooms(id) ON DELETE CASCADE,
@@ -207,6 +225,36 @@ export async function ensureCbtSchema(): Promise<void> {
           CREATE INDEX IF NOT EXISTS idx_cbt_cluster_members_q ON cbt.question_cluster_members (question_id);
         `);
 
+        // 20260802 CHECK constraints. ADD CONSTRAINT has no IF NOT EXISTS, and
+        // re-adding one unconditionally would re-scan the table, so they are
+        // guarded by pg_constraint and added NOT VALID — instant, enforced for
+        // every new/updated row. The existing-row VALIDATE (plus the two new
+        // partial indexes, built CONCURRENTLY) happens online in
+        // advanceCbtResilienceBackfill(), which cannot run inside this
+        // transaction.
+        await client.query(`
+          DO $$
+          BEGIN
+            IF NOT EXISTS (
+              SELECT 1 FROM pg_constraint WHERE conname = 'cbt_participants_finalize_reason_check'
+            ) THEN
+              ALTER TABLE cbt.room_participants
+                ADD CONSTRAINT cbt_participants_finalize_reason_check
+                CHECK (finalize_reason IS NULL OR finalize_reason IN (
+                  'manual', 'timer', 'malpractice', 'expired_offline',
+                  'room_closed', 'forced_by_teacher', 'absent')) NOT VALID;
+            END IF;
+
+            IF NOT EXISTS (
+              SELECT 1 FROM pg_constraint WHERE conname = 'cbt_rooms_rejoin_policy_check'
+            ) THEN
+              ALTER TABLE cbt.rooms
+                ADD CONSTRAINT cbt_rooms_rejoin_policy_check
+                CHECK (rejoin_policy IN ('name_or_id', 'id_only')) NOT VALID;
+            END IF;
+          END $$;
+        `);
+
         await recordMigration(client);
         await client.query(
           "INSERT INTO app.migrations (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING",
@@ -215,6 +263,10 @@ export async function ensureCbtSchema(): Promise<void> {
         await client.query(
           "INSERT INTO app.migrations (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING",
           ["20260714_cbt_questions_image", "cbt questions image column"],
+        );
+        await client.query(
+          "INSERT INTO app.migrations (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING",
+          ["20260802_cbt_attempt_resilience", "cbt attempt resilience columns"],
         );
         await client.query("COMMIT");
         globalThis.__originCbtSchemaEnsured = true;
