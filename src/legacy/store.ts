@@ -509,7 +509,6 @@ export interface AppStore {
   authSessions: StoredAuthSession[];
   leaderboardSeed: LeaderboardSeedEntry[];
   tasks: StoredTask[];
-  otps: StoredOtp[];
 }
 
 type SeedUserConfig = {
@@ -1025,7 +1024,6 @@ function buildSeedStore(): AppStore {
     authSessions: [],
     leaderboardSeed,
     tasks: [],
-    otps: [],
   };
 }
 
@@ -1098,7 +1096,6 @@ function ensureAllCollections(store: AppStore): boolean {
     "authSessions",
     "leaderboardSeed",
     "tasks",
-    "otps",
   ];
 
   for (const key of collections) {

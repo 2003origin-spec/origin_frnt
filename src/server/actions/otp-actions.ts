@@ -4,7 +4,8 @@ import { randomInt } from 'node:crypto';
 
 import { headers } from 'next/headers';
 
-import { withStoreAsync } from '@/server/store';
+import { readStoreAsync } from '@/server/store';
+import { getActiveOtp, putOtp, verifyOtp } from '@/server/otp-store';
 import { sendEmail } from '@/server/email';
 import {
   emailSendLimiter,
@@ -72,7 +73,12 @@ export async function sendOtpAction(
   let expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString(); // 5 minutes from now
 
   try {
-    const preflight = await withStoreAsync(async (store) => {
+    // Read-only: the user lookup needs the store, but the OTP itself is written
+    // through otp-store's row-scoped SQL. Using withStoreAsync here would
+    // persist (and therefore DELETE + rewrite) every collection just to save one
+    // code — the very thing that was destroying freshly-issued OTPs.
+    const preflight = await (async () => {
+      const store = await readStoreAsync();
       // "Already exists" check must be role-scoped: the same email can legally
       // be both a student and a teacher row (UNIQUE constraint is on
       // (email, role)). Without this scoping the preflight silently blocks
@@ -92,21 +98,17 @@ export async function sendOtpAction(
       // a "Resend" otherwise mints a new code that silently invalidates the
       // (slower) first email — the user types the first code and gets "invalid".
       // Reusing keeps every delivered email's code valid until it expires.
-      const now = Date.now();
-      const existing = store.otps.find(
-        (o) => o.email.toLowerCase() === normalizedEmail && o.verified !== true && new Date(o.expiresAt).getTime() > now,
-      );
+      const existing = await getActiveOtp(normalizedEmail);
       if (existing) {
         otp = existing.otp;
         expiresAt = existing.expiresAt;
       } else {
-        // Normalise both sides (case-insensitive) so a previous send to
-        // "Foo@Bar.com" + a new send to "foo@bar.com" don't leave two rows.
-        store.otps = store.otps.filter((o) => o.email.toLowerCase() !== normalizedEmail);
-        store.otps.push({ email: normalizedEmail, otp, expiresAt });
+        // Keyed by the lower-cased email, so a previous send to "Foo@Bar.com"
+        // and a new one to "foo@bar.com" can't leave two rows.
+        await putOtp({ email: normalizedEmail, otp, expiresAt });
       }
       return { ok: true as const };
-    });
+    })();
 
     if (!preflight.ok) {
       return preflight;
@@ -166,27 +168,17 @@ export async function verifyOtpAction(email: string, otp: string) {
   }
 
   try {
-    return await withStoreAsync(async (store) => {
-      const storedOtp = store.otps.find(
-        (o) => o.email.toLowerCase() === normalizedEmail && o.otp === otp,
-      );
-
-      if (!storedOtp) {
-        return { ok: false, message: 'Invalid verification code.' };
-      }
-
-      const now = new Date();
-      const expiry = new Date(storedOtp.expiresAt);
-
-      if (now > expiry) {
-        store.otps = store.otps.filter((o) => o.email.toLowerCase() !== normalizedEmail);
-        return { ok: false, message: 'Verification code has expired. Please request a new one.' };
-      }
-
-      storedOtp.verified = true;
-      storedOtp.expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+    // One guarded UPDATE against the single row — no full-store read/modify/
+    // write, so a concurrent request on another instance can no longer delete
+    // the code between issuing it and checking it.
+    const outcome = await verifyOtp(normalizedEmail, otp);
+    if (outcome === 'ok') {
       return { ok: true, message: 'Email verified successfully.' };
-    });
+    }
+    if (outcome === 'expired') {
+      return { ok: false, message: 'Verification code has expired. Please request a new one.' };
+    }
+    return { ok: false, message: 'Invalid verification code.' };
   } catch (error) {
     console.error('verifyOtpAction error:', error);
     return { ok: false, message: 'An error occurred while verifying code.' };

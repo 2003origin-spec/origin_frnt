@@ -6,7 +6,8 @@ import { revalidatePath } from 'next/cache';
 import { emailSendLimiter, otpVerifyLimiter, refreshLimiter, isWithinLimit } from '@/lib/rate-limit';
 
 import { handleGoogleLogin, handleGoogleSignup, handleLogin, handleRegister, handleRefresh, serializeUser, handleLoginWithOtp } from '@/server/users';
-import { readStoreAsync, withStoreAsync } from '@/server/store';
+import { readStoreAsync } from '@/server/store';
+import { deleteOtp, isEmailVerified } from '@/server/otp-store';
 import { getServerUser } from '@/lib/auth-server';
 import { withEntitledSubjects } from '@/server/entitlements';
 import {
@@ -250,9 +251,9 @@ export async function registerAction(input: {
     if (await signupBlockedForRole(input.role)) {
       return { ok: false, status: 403, message: SIGNUP_DISABLED_MESSAGE };
     }
-    // Check if email was verified via OTP
-    const store = await readStoreAsync();
-    const isVerified = store.otps.some(o => o.email.toLowerCase() === input.email.toLowerCase() && o.verified === true);
+    // Check if email was verified via OTP. Row-scoped read (otp-store), not the
+    // full store — see src/server/otp-store.ts for why OTPs left the AppStore.
+    const isVerified = await isEmailVerified(input.email);
 
     if (!isVerified) {
       return { ok: false, status: 400, message: 'Email verification required. Please verify your email first.' };
@@ -271,9 +272,7 @@ export async function registerAction(input: {
     const parsed = await parseAuthResponse(response);
     if (parsed.ok) {
       try {
-        await withStoreAsync(async (cleanupStore) => {
-          cleanupStore.otps = cleanupStore.otps.filter(o => o.email.toLowerCase() !== input.email.toLowerCase());
-        });
+        await deleteOtp(input.email);
       } catch (cleanupError) {
         console.error(
           '[auth-actions] OTP cleanup failed after successful registration:',

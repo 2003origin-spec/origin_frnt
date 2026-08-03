@@ -14,7 +14,6 @@ import type {
   StoredOriginAiProfileMemory,
   StoredOriginAiReminder,
   StoredOriginAiSession,
-  StoredOtp,
   StoredPointLog,
   StoredPomodoroSession,
   StoredPracticeAttempt,
@@ -46,8 +45,7 @@ export type MutableCollectionKey =
   | "doubtSessions"
   | "originAiProfiles"
   | "originAiSessions"
-  | "originAiReminders"
-  | "otps";
+  | "originAiReminders";
 
 type MutableCollectionValue = AppStore[MutableCollectionKey][number];
 
@@ -66,6 +64,17 @@ type CollectionSpec<T extends MutableCollectionValue = MutableCollectionValue> =
 declare global {
   var __originAppStoreSchemaEnsured: boolean | undefined;
   var __originAppStoreSchemaPromise: Promise<void> | undefined;
+}
+
+/**
+ * Tables the full-store persist owns — every one of these is `DELETE`d in full
+ * and rewritten from one instance's in-memory snapshot on each
+ * `persistStoreToPostgres()`. Exported so a test can assert what is NOT here:
+ * `app.otps` was removed after that wholesale delete was found destroying
+ * freshly-issued login codes (see src/server/otp-store.ts).
+ */
+export function collectionTables(): string[] {
+  return COLLECTION_SPECS.map((spec) => spec.table);
 }
 
 const APP_STORE_MIGRATION_ID = "20260504_week2_app_store";
@@ -211,13 +220,6 @@ const COLLECTION_SPECS: CollectionSpec[] = [
     idOf: (item) => (item as StoredOriginAiReminder).id,
     userIdOf: (item) => (item as StoredOriginAiReminder).userId,
     createdAtOf: (item) => (item as StoredOriginAiReminder).createdAt,
-  },
-  {
-    key: "otps",
-    table: "otps",
-    idOf: (item) => (item as StoredOtp).email.toLowerCase(),
-    userIdOf: () => null,
-    updatedAtOf: (item) => (item as StoredOtp).expiresAt,
   },
 ];
 

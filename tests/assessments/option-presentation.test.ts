@@ -143,7 +143,6 @@ function buildPracticeStore() {
     authSessions: [],
     leaderboardSeed: [],
     tasks: [],
-    otps: [],
   };
   return { store, user, question };
 }
