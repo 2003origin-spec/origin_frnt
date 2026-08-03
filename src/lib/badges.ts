@@ -37,6 +37,13 @@ export function getUnlockedBadges(totalPoints: number): BadgeMeta[] {
   return BADGE_TIERS.filter((b) => totalPoints >= b.points);
 }
 
+/** The student's current rank badge — the highest tier unlocked by their points
+ *  (Novice is the floor at 0). Used on profiles as their identity badge. */
+export function getCurrentBadge(totalPoints: number): BadgeMeta {
+  const unlocked = getUnlockedBadges(totalPoints);
+  return unlocked[unlocked.length - 1] ?? BADGE_TIERS[0];
+}
+
 export function getLockedBadges(totalPoints: number): BadgeMeta[] {
   return BADGE_TIERS.filter((b) => totalPoints < b.points);
 }

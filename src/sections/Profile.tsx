@@ -46,7 +46,7 @@ import { cn } from '@/lib/utils';
 import { getUserTitle } from '@/lib/achievements';
 import SocialSettingsCard from '@/components/social/SocialSettingsCard';
 import SoundSettingsCard from '@/components/settings/SoundSettingsCard';
-import { BADGE_TIERS } from '@/lib/badges';
+import { BADGE_TIERS, getCurrentBadge } from '@/lib/badges';
 import { MilestoneCabinet } from '@/components/badges/MilestoneCabinet';
 import { StreakCabinet } from '@/components/badges/StreakCabinet';
 import ShareableProfileCard from '@/components/profile/ShareableProfileCard';
@@ -286,6 +286,16 @@ export default function Profile({
                   />
                 ) : (
                   <div className="flex flex-col items-center gap-1.5">
+                    {/* Current rank badge — the student's identity badge, name below it */}
+                    {(() => {
+                      const badge = getCurrentBadge(user.points ?? 0);
+                      return (
+                        <div className="flex flex-col items-center gap-1">
+                          <Image src={badge.image} alt={badge.name} width={56} height={56} className="drop-shadow-md" style={{ height: 'auto' }} />
+                          <span className="text-[10px] font-black uppercase tracking-wider text-primary">{badge.name}</span>
+                        </div>
+                      );
+                    })()}
                     <h2 className="text-xl font-black tracking-tight text-foreground leading-tight">{displayName}</h2>
                     {user.isPremium && (
                       <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full bg-amber-400/15 border border-amber-400/40 text-amber-600">

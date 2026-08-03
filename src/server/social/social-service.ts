@@ -14,7 +14,7 @@
 import { readStoreAsync } from "@/server/store";
 import type { AppStore, StoredUser } from "@/server/store";
 import { buildUserStatsSnapshot, type UserStatsSnapshot } from "@/server/users";
-import { buildContributionData, getOrCreateStreak } from "@/server/gamification";
+import { buildContributionData, getOrCreateStreak, getOrCreateUserScore } from "@/server/gamification";
 import { getUserPostgresPool } from "@/server/user-postgres";
 import { ensureSocialSchema } from "@/server/social/social-schema";
 import { createNotification } from "@/server/notifications";
@@ -39,6 +39,8 @@ export type RecentActivityItem = {
 
 export type PublicProfileStats = {
   globalRank: number | null;
+  /** Prestige points — drives the current rank badge shown on the profile. */
+  points: number;
   testsTaken: number;
   studyHours: number;
   overallAccuracy: number;
@@ -191,8 +193,10 @@ async function buildStats(store: AppStore, user: StoredUser): Promise<PublicProf
   const streak = getOrCreateStreak(store, user.id);
   const contributionData = buildContributionData(store, user.id);
   const totalSolved = contributionData.reduce((sum, entry) => sum + entry.count, 0);
+  const points = getOrCreateUserScore(store, user.id).totalPoints;
   return {
     globalRank: snapshot.global_rank,
+    points,
     testsTaken: snapshot.tests_taken,
     studyHours: snapshot.study_hours,
     overallAccuracy: snapshot.overall_accuracy,

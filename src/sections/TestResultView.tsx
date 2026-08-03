@@ -760,7 +760,7 @@ export default function TestResultView({
                     <div className="flex flex-wrap gap-2">
                       {displayStrongAreas && displayStrongAreas.length > 0 ? (
                         displayStrongAreas.map((area: any, index: number) => (
-                          <Badge key={index} className="bg-primary/10 hover:bg-primary/20 text-primary border-primary/20 px-4 py-1.5 rounded-xl transition-colors">
+                          <Badge key={index} className="bg-primary/10 hover:bg-primary/20 text-primary border-primary/20 px-4 py-1.5 rounded-xl transition-colors max-w-full min-w-0 whitespace-normal break-words text-left h-auto leading-snug">
                             {typeof area === 'object' ? `${area.topic} (${area.accuracy}%)` : area}
                           </Badge>
                         ))
@@ -777,7 +777,7 @@ export default function TestResultView({
                     <div className="flex flex-wrap gap-2">
                       {displayWeakAreas && displayWeakAreas.length > 0 ? (
                         displayWeakAreas.map((area: any, index: number) => (
-                          <Badge key={index} className="bg-primary/10 hover:bg-primary/20 text-primary border-primary/20 px-4 py-1.5 rounded-xl transition-colors">
+                          <Badge key={index} className="bg-primary/10 hover:bg-primary/20 text-primary border-primary/20 px-4 py-1.5 rounded-xl transition-colors max-w-full min-w-0 whitespace-normal break-words text-left h-auto leading-snug">
                             {typeof area === 'object' ? `${area.topic} (${area.accuracy}%)` : area}
                           </Badge>
                         ))

@@ -228,34 +228,36 @@ export default function Leaderboard({ currentUser, initialLeaderboard, initialMy
     <div className="relative min-h-screen neu-surface text-foreground transition-colors duration-500 overflow-x-hidden">
       <main className="max-w-4xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8 pb-24 md:pb-10 relative z-10">
         {/* Hero card — gradient accent, kept intentionally */}
-        <div className="bg-gradient-to-br from-primary via-primary/90 to-primary/80 text-primary-foreground mb-8 overflow-hidden relative rounded-[2.5rem] shadow-[8px_8px_24px_hsl(var(--neu-shadow)),_-4px_-4px_16px_hsl(var(--neu-light))]">
+        <div className="bg-gradient-to-br from-primary via-primary/90 to-primary/80 text-primary-foreground mb-8 overflow-hidden relative rounded-3xl sm:rounded-[2.5rem] shadow-[8px_8px_24px_hsl(var(--neu-shadow)),_-4px_-4px_16px_hsl(var(--neu-light))]">
           <div className="absolute inset-0 bg-[url('/noise.svg')] opacity-[0.05] mix-blend-overlay pointer-events-none" />
-          <div className={cn("relative z-10", isMobile ? "p-6" : "p-8 sm:p-10")}>
+          <div className={cn("relative z-10", isMobile ? "p-5" : "p-8 sm:p-10")}>
             <div className={cn(
-              "flex items-center justify-between gap-6",
-              isMobile ? "flex-col" : "flex-row"
+              "flex gap-5",
+              isMobile ? "flex-col items-stretch" : "flex-row items-center justify-between gap-6"
             )}>
-              <div className="flex items-center gap-6">
+              <div className="flex items-center gap-4 sm:gap-6 min-w-0">
                 <div className={cn(
-                  "rounded-3xl bg-white/10 flex items-center justify-center border border-white/20 backdrop-blur-md shadow-xl",
-                  isMobile ? "w-16 h-16" : "w-20 h-20"
+                  "rounded-2xl sm:rounded-3xl bg-white/10 flex items-center justify-center border border-white/20 backdrop-blur-md shadow-xl shrink-0",
+                  isMobile ? "w-14 h-14" : "w-20 h-20"
                 )}>
-                  <span className={cn("font-black", isMobile ? "text-2xl" : "text-3xl")}>#{myRank || ' - '}</span>
+                  <span className={cn("font-black", isMobile ? "text-xl" : "text-3xl")}>#{myRank || ' - '}</span>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <p className="text-white/70 text-[10px] font-black uppercase tracking-[0.2em] mb-1">Global Standing</p>
-                  <p className={cn("font-black tracking-tight leading-none mb-2", isMobile ? "text-xl" : "text-2xl")}>{currentUser?.name}</p>
+                  <p className={cn("font-black tracking-tight leading-none mb-2 truncate", isMobile ? "text-xl" : "text-2xl")}>{currentUser?.name}</p>
                   <div className="flex items-center gap-2">
                     <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/10 border border-white/10">
                       <Flame className="w-3.5 h-3.5 text-orange-400" />
-                      <span className="text-xs font-bold">{currentUser?.streak} Day Streak</span>
+                      <span className="text-xs font-bold whitespace-nowrap">{currentUser?.streak} Day Streak</span>
                     </div>
                   </div>
                 </div>
               </div>
-              <div className={cn("text-center", isMobile ? "" : "sm:text-right")}>
-                <p className={cn("font-black tracking-tighter drop-shadow-md", isMobile ? "text-4xl" : "text-5xl")}>{pointsMode ? myHeadline.toLocaleString() : `${(myScore ?? 0).toFixed(1)}%`}</p>
-                <p className="text-white/70 text-[10px] font-black uppercase tracking-[0.2em]">{pointsMode ? 'Prestige Points' : 'Efficiency Rating'}</p>
+              <div className={cn(
+                isMobile ? "flex items-end justify-between gap-3 pt-4 border-t border-white/15" : "text-right shrink-0",
+              )}>
+                <p className={cn("font-black tracking-tighter drop-shadow-md leading-none", isMobile ? "text-4xl" : "text-5xl")}>{pointsMode ? myHeadline.toLocaleString() : `${(myScore ?? 0).toFixed(1)}%`}</p>
+                <p className={cn("text-white/70 text-[10px] font-black uppercase tracking-[0.2em]", isMobile && "pb-1")}>{pointsMode ? 'Prestige Points' : 'Efficiency Rating'}</p>
               </div>
             </div>
           </div>
