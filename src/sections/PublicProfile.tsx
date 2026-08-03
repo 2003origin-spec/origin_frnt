@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
+import { getCurrentBadge } from '@/lib/badges';
 import {
   BookOpen,
   Clock,
@@ -111,6 +113,16 @@ export default function PublicProfile({ initialProfile }: PublicProfileProps) {
             </Avatar>
 
             <div className="flex-1 min-w-0">
+              {/* Current rank badge — the student's identity badge, name below it */}
+              {stats && (() => {
+                const badge = getCurrentBadge(stats.points ?? 0);
+                return (
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <Image src={badge.image} alt={badge.name} width={40} height={40} className="drop-shadow-md shrink-0" style={{ height: 'auto' }} />
+                    <span className="text-[10px] font-black uppercase tracking-wider text-primary">{badge.name}</span>
+                  </div>
+                );
+              })()}
               <h1 className="text-2xl font-black tracking-tight truncate">{profile.name}</h1>
               <p className="text-sm font-bold text-primary/80">@{profile.username}</p>
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-xs text-muted-foreground font-medium">
