@@ -16,7 +16,9 @@ import {
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DashboardHeroControls } from "@/components/teacher/DashboardHeroControls";
+import { WorkspaceOverviewAnalytics } from "@/components/teacher/WorkspaceOverviewAnalytics";
 import { isFeatureEnabled } from "@/lib/feature-flags";
+import { getWorkspaceOverviewAnalytics } from "@/server/workspaces/workspace-analytics-service";
 import { loadWorkspaceForRender } from "@/server/workspaces/server-loader";
 import { listEnrollments } from "@/server/workspaces/enrollments";
 import { listWorkspaceImportJobs } from "@/server/workspaces/document-import-service";
@@ -33,6 +35,10 @@ export default async function WorkspaceOverviewPage({ params }: Props) {
   const { workspaceId } = await params;
   const { workspace, membership } = await loadWorkspaceForRender(workspaceId);
 
+  // Deep-Dive analytics is additive and independently killable: when the flag is
+  // off this page renders exactly as it did before the upgrade.
+  const deepAnalyticsEnabled = isFeatureEnabled("teacherDeepAnalytics");
+
   // Fetch all parallel overview telemetry
   const [
     enrollments,
@@ -40,14 +46,16 @@ export default async function WorkspaceOverviewPage({ params }: Props) {
     rooms,
     codes,
     tests,
-    batches
+    batches,
+    analytics
   ] = await Promise.all([
     listEnrollments(workspaceId, { status: "all" }),
     listWorkspaceImportJobs(workspaceId),
     listTeacherRooms(workspaceId),
     listCodesForWorkspace(workspaceId),
     listTeacherTests(workspaceId, { status: "all" }),
-    listBatches(workspaceId, { status: "active" })
+    listBatches(workspaceId, { status: "active" }),
+    deepAnalyticsEnabled ? getWorkspaceOverviewAnalytics(workspaceId) : Promise.resolve(null)
   ]);
 
   // Telemetry filtering
@@ -322,6 +330,12 @@ export default async function WorkspaceOverviewPage({ params }: Props) {
           </CardContent>
         </Card>
       </div>
+
+      {/* Institute analytics — appended below the existing overview, never
+          replacing it. See V1/allmd/TEACHER_ANALYTICS_DEEP_DIVE_PLAN_2026-08-03.md */}
+      {analytics ? (
+        <WorkspaceOverviewAnalytics workspaceId={workspaceId} data={analytics} />
+      ) : null}
 
     </div>
   );

@@ -21,6 +21,7 @@
  * pods — flagged on first read with a one-shot console error.
  */
 
+import { unstable_rethrow } from "next/navigation";
 import { Redis } from "@upstash/redis";
 
 import type { FlagKey } from "@/lib/feature-flags";
@@ -111,6 +112,10 @@ async function loadSnapshot(): Promise<Snapshot> {
       fetchedAt: Date.now(),
     };
   } catch (err) {
+    // Same reason as launch-settings: a DynamicServerError thrown during static
+    // prerendering is Next.js control flow, not a Redis outage. Counting it as
+    // one also fired a false `origin.incidents.degraded` metric on every build.
+    unstable_rethrow(err);
     console.error("[incidents] failed to load snapshot from Redis; using last known state", err);
     metric("origin.incidents.degraded", { reason: "redis_error" });
     if (!snapshot) {

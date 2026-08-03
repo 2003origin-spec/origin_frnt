@@ -10,6 +10,7 @@
  * them consistent across pods.
  */
 
+import { unstable_rethrow } from "next/navigation";
 import { Redis } from "@upstash/redis";
 
 const redisUrl = process.env.UPSTASH_REDIS_REST_URL?.trim();
@@ -61,6 +62,14 @@ export async function getLaunchSettings(): Promise<LaunchSettings> {
     snapshot = { value, fetchedAt: Date.now() };
     return value;
   } catch (err) {
+    // Next.js signals "this route read dynamic data" by THROWING
+    // DynamicServerError while it attempts a static prerender. That is control
+    // flow, not a Redis failure: swallowing it logged 18 bogus errors per build,
+    // and would let a route that IS statically prerenderable bake the DEFAULT
+    // launch settings in — freezing the admin cover/login/signup kill switches
+    // at build time. Hand framework errors back so the route opts into dynamic
+    // rendering; only real Redis failures fall through to the fallback below.
+    unstable_rethrow(err);
     console.error("[launch-settings] Redis read failed; using last known/defaults", err);
     const value = snapshot?.value ?? { ...memory };
     snapshot = { value, fetchedAt: Date.now() };

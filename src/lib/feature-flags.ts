@@ -24,6 +24,7 @@ type FlagKey =
   | "teacherRooms"
   | "studyMaterials"
   | "teacherAnalytics"
+  | "teacherDeepAnalytics"
   | "ogcodePublishing"
   | "documentImport"
   | "adminControlCenter"
@@ -66,6 +67,14 @@ const FLAG_SPECS: Record<FlagKey, FlagSpec> = {
   teacherRooms:      { envSuffix: "TEACHER_ROOMS",       defaultDev: true,  defaultProd: true },
   studyMaterials:    { envSuffix: "STUDY_MATERIALS",     defaultDev: true,  defaultProd: true },
   teacherAnalytics:  { envSuffix: "TEACHER_ANALYTICS",   defaultDev: true,  defaultProd: true },
+  // Teacher Analytics Deep-Dive — the Overview / Batches / Students analytics
+  // upgrade (V1/allmd/TEACHER_ANALYTICS_DEEP_DIVE_PLAN_2026-08-03.md): workspace
+  // KPI + batch comparison + subject×batch heatmap on Overview, a batch Analytics
+  // deep-dive tab, and the 360° student profile behind a searchable directory.
+  // Gates ONLY the added analytics blocks and their `?type=` API branches — with
+  // this OFF all three sections render exactly the pre-upgrade UI, so the env var
+  // is a full one-flip rollback without reverting a deploy.
+  teacherDeepAnalytics: { envSuffix: "TEACHER_DEEP_ANALYTICS", defaultDev: true, defaultProd: true },
   ogcodePublishing:  { envSuffix: "OGCODE_PUBLISHING",   defaultDev: true,  defaultProd: true },
   documentImport:    { envSuffix: "DOCUMENT_IMPORT",     defaultDev: true,  defaultProd: true },
   adminControlCenter:{ envSuffix: "ADMIN_CONTROL",       defaultDev: true,  defaultProd: true },

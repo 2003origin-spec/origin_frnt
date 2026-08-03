@@ -5,6 +5,7 @@ import { isAuthServiceUnavailableError } from "@/server/auth-errors";
 import { extractAccessFingerprint, verifyRequestAccessJwt } from "@/server/auth-jwt";
 import { normalizeAuthClientKind, resolveAuthClientKind, type AuthClientKind } from "@/server/auth-client-kind";
 import { isUserPostgresConfigured } from "@/server/user-postgres";
+import { deleteOtp, isEmailVerified } from "@/server/otp-store";
 import { dbLoginUser, dbRegisterUser, dbGetTasks, dbCreateTask, dbUpdateTask, dbDeleteTask, dbFindUserByEmail, dbFindUserById, dbCreateUser, dbUpdateUser, dbCreateAuthSession, dbGetUserCount, dbGetUserCountByRole, dbMobileInUse, dbClearUserSessions } from "@/server/db-users";
 import { isIdentityBlocked } from "@/server/user-lifecycle-store";
 import { getAllowDeletedIdentityResignup } from "@/server/platform-settings";
@@ -535,12 +536,13 @@ export async function handleLoginWithOtp(payload: UserPayload) {
     return badRequest('Must include "email".');
   }
 
+  // OTP verification is checked BEFORE taking the store, against the row-scoped
+  // otp-store — see src/server/otp-store.ts.
+  if (!(await isEmailVerified(email))) {
+    return unauthorized("Email verification required.");
+  }
+
   return withStoreAsync(async (store) => {
-    // Check if OTP was verified for this email
-    const isVerified = store.otps.some(o => o.email.toLowerCase() === email && o.verified === true);
-    if (!isVerified) {
-      return unauthorized("Email verification required.");
-    }
 
     let user = store.users.find((entry) => entry.email.toLowerCase() === email && (role ? entry.role === role : true));
     if (!user) {
@@ -592,8 +594,10 @@ export async function handleLoginWithOtp(payload: UserPayload) {
     const userData = serializeUser(store, user.id);
     if (!userData) return notFound("User not found.");
 
-    // Clean up OTP after successful login
-    store.otps = store.otps.filter(o => o.email.toLowerCase() !== email);
+    // Clean up OTP after successful login (row-scoped delete). Awaited, not
+    // fire-and-forget: a serverless instance can freeze the moment the response
+    // is returned, which would leave the code verified until it expires.
+    await deleteOtp(email).catch(() => {});
 
     return ok({ user: userData, refresh: session.refreshToken, access: session.accessToken, accessFingerprint: session.accessFingerprint });
   });
