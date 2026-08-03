@@ -52,6 +52,22 @@ const DB_SORT_COLUMNS: Partial<Record<StudentSortKey, string>> = {
  */
 const MAX_METRIC_SORT_SCAN = 2000;
 
+/**
+ * SQL predicate matching an enrollment against a list of statuses.
+ *
+ * `app.workspace_student_enrollments.status` is the ENUM `app.enrollment_status`,
+ * **not** text — so the bind parameter must be cast to `app.enrollment_status[]`.
+ * Casting it to `text[]` instead makes Postgres reject the whole query with
+ * `operator does not exist: app.enrollment_status = text`, which surfaces as an
+ * empty directory rather than an error. Casting the *column* to text would work
+ * too but would forfeit idx_workspace_enrollments_workspace_status.
+ *
+ * Callers MUST whitelist the values first (the enum cast rejects unknown labels).
+ */
+export function enrollmentStatusPredicate(paramIndex: number): string {
+  return `e.status = ANY($${paramIndex}::app.enrollment_status[])`;
+}
+
 export type DirectoryStudentRow = {
   studentId: string;
   name: string | null;
@@ -123,7 +139,7 @@ async function searchStudentsPostgres(
 
   if (input.statuses && input.statuses.length > 0) {
     params.push([...input.statuses]);
-    where.push(`e.status = ANY($${params.length}::text[])`);
+    where.push(enrollmentStatusPredicate(params.length));
   }
 
   if (input.batchId) {

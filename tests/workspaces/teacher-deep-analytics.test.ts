@@ -35,6 +35,7 @@ import {
   weekdayLabel,
 } from "../../src/lib/teacher-analytics";
 import { summariseBatchLeaderboard } from "../../src/server/workspaces/workspace-analytics-service";
+import { enrollmentStatusPredicate } from "../../src/server/workspaces/student-directory-store";
 import { isFeatureEnabled } from "../../src/lib/feature-flags";
 
 // ─── Tone bands ───────────────────────────────────────────────────────────────
@@ -189,6 +190,23 @@ test("pagination input is clamped in both directions", () => {
   assert.equal(clampPage("0"), 1);
   assert.equal(clampPage("-3"), 1);
   assert.equal(clampPage("7"), 7);
+});
+
+// ─── Enrollment status predicate ──────────────────────────────────────────────
+
+test("status filter casts to the enum type, never to text[]", () => {
+  const predicate = enrollmentStatusPredicate(2);
+  assert.equal(predicate, "e.status = ANY($2::app.enrollment_status[])");
+  // Regression guard: `app.workspace_student_enrollments.status` is the ENUM
+  // app.enrollment_status. A `::text[]` cast makes Postgres reject the query
+  // with `operator does not exist: app.enrollment_status = text`, which the UI
+  // rendered as an empty Onboarding Queue rather than an error.
+  assert.ok(!predicate.includes("text[]"), "must not cast the parameter to text[]");
+  assert.ok(predicate.includes("app.enrollment_status[]"));
+});
+
+test("status predicate honours the parameter index it is given", () => {
+  assert.equal(enrollmentStatusPredicate(5), "e.status = ANY($5::app.enrollment_status[])");
 });
 
 // ─── IST day bucketing ────────────────────────────────────────────────────────

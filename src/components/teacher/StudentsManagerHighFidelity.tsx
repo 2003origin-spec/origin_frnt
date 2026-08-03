@@ -18,6 +18,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Flame,
+  AlertTriangle,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -122,6 +123,7 @@ export function StudentsManagerHighFidelity({
   const [rows, setRows] = useState<DirectoryRow[] | null>(null);
   const [total, setTotal] = useState(0);
   const [loadingRows, setLoadingRows] = useState(deepAnalyticsEnabled);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Search-as-you-type without hammering the server: the query is debounced, and
   // a monotonically increasing token drops any response that arrives out of
@@ -166,9 +168,13 @@ export function StudentsManagerHighFidelity({
     if (result.ok) {
       setRows(result.data.rows ?? []);
       setTotal(result.data.total ?? 0);
+      setLoadError(null);
     } else {
+      // A failed request must NOT render as "no students match your filters" —
+      // that reads as an empty roster and hides a real outage.
       setRows([]);
       setTotal(0);
+      setLoadError(result.detail || "Could not load the student directory.");
     }
     setLoadingRows(false);
   }, [deepAnalyticsEnabled, workspaceId, activeTab, sort, page, debouncedQuery, selectedBatchId]);
@@ -479,6 +485,20 @@ export function StudentsManagerHighFidelity({
               <Skeleton key={i} className="h-12 rounded-lg" />
             ))}
           </div>
+        ) : loadError ? (
+          <div className="p-12 text-center space-y-3">
+            <AlertTriangle className="w-8 h-8 mx-auto text-destructive" />
+            <p className="text-sm font-medium">Could not load the student directory.</p>
+            <p className="text-xs text-muted-foreground max-w-sm mx-auto">{loadError}</p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void loadDirectory()}
+              className="rounded-lg h-8"
+            >
+              Try again
+            </Button>
+          </div>
         ) : visibleRows.length === 0 ? (
           <div className="p-12 text-center text-muted-foreground space-y-2">
             <Users className="w-8 h-8 mx-auto text-muted-foreground" />
@@ -688,7 +708,7 @@ export function StudentsManagerHighFidelity({
       </div>
 
       {/* Pagination — server-paged, so a large institute never ships one huge page. */}
-      {deepAnalyticsEnabled && totalCount > 0 && (
+      {deepAnalyticsEnabled && !loadError && totalCount > 0 && (
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-muted-foreground">
           <span>
             Showing {(page - 1) * DEFAULT_PAGE_SIZE + 1}–
