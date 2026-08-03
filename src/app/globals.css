@@ -105,6 +105,12 @@
   * {
     @apply border-border outline-ring/50;
   }
+  /* Readability (P1 5.2): nudge the root size up so every rem-based text/spacing
+     utility scales ~6% larger app-wide. Darker Grotesque runs visually small, so
+     this makes body copy clearer without touching individual components. */
+  html {
+    font-size: 106.25%; /* 16px → 17px */
+  }
   body {
     @apply bg-background text-foreground antialiased transition-colors duration-500;
     font-family: var(--font-grotesque), system-ui, sans-serif;

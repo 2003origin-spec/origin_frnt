@@ -30,6 +30,7 @@ import {
   XCircle,
   Trash2,
   Layers,
+  Share2,
 } from 'lucide-react';
 import { apiCall } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
@@ -46,6 +47,10 @@ import { getUserTitle } from '@/lib/achievements';
 import SocialSettingsCard from '@/components/social/SocialSettingsCard';
 import SoundSettingsCard from '@/components/settings/SoundSettingsCard';
 import { BADGE_TIERS } from '@/lib/badges';
+import { MilestoneCabinet } from '@/components/badges/MilestoneCabinet';
+import { StreakCabinet } from '@/components/badges/StreakCabinet';
+import ShareableProfileCard from '@/components/profile/ShareableProfileCard';
+import { totalQuestionsSolved } from '@/lib/milestone-badges';
 import { STUDY_MODE_LABELS } from '@/lib/study-mode';
 import Image from 'next/image';
 
@@ -106,6 +111,7 @@ export default function Profile({
   const [avatarUrl, setAvatarUrl] = useState(user.avatar || '');
   const [isAvatarUploading, setIsAvatarUploading] = useState(false);
   const [activeTab, setActiveTab] = useState<typeof TABS[number]['value']>('progress');
+  const [flexOpen, setFlexOpen] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -241,6 +247,7 @@ export default function Profile({
   );
 
   return (
+    <>
     <div className="min-h-screen neu-surface font-sans">
       <div className="max-w-[1400px] mx-auto px-3 sm:px-6 lg:px-8 pb-20">
 
@@ -594,7 +601,28 @@ export default function Profile({
 
               {/* Badges */}
               {activeTab === 'achievements' && (
-                <div className="space-y-3">
+                <div className="space-y-5">
+                  <button
+                    onClick={() => setFlexOpen(true)}
+                    className="w-full flex items-center justify-center gap-2 rounded-2xl bg-primary py-3 text-sm font-black uppercase tracking-widest text-primary-foreground shadow-lg shadow-primary/20 transition hover:opacity-90 active:scale-[0.99]"
+                  >
+                    <Share2 className="h-4 w-4" /> Flex your profile
+                  </button>
+
+                  {/* Questions-solved milestone cabinet */}
+                  <div className="neu-raised rounded-2xl p-4 sm:p-5">
+                    <MilestoneCabinet totalSolved={totalQuestionsSolved(user)} />
+                  </div>
+
+                  {/* Streak milestone badges */}
+                  <div className="neu-raised rounded-2xl p-4 sm:p-5">
+                    <StreakCabinet
+                      currentStreak={user.streakData?.currentStreak ?? user.streak ?? 0}
+                      longestStreak={user.streakData?.longestStreak ?? 0}
+                      freezesRemaining={user.streakData?.freezesRemaining}
+                    />
+                  </div>
+
                   <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest px-1">
                     {BADGE_TIERS.filter(b => (user.points ?? 0) >= b.points).length} / {BADGE_TIERS.length} Badges Unlocked
                   </p>
@@ -712,5 +740,14 @@ export default function Profile({
         </div>
       </div>
     </div>
+    <ShareableProfileCard
+      open={flexOpen}
+      onClose={() => setFlexOpen(false)}
+      name={user.name || 'Origin Scholar'}
+      currentStreak={user.streakData?.currentStreak ?? user.streak ?? 0}
+      longestStreak={user.streakData?.longestStreak ?? 0}
+      totalSolved={totalQuestionsSolved(user)}
+    />
+    </>
   );
 }

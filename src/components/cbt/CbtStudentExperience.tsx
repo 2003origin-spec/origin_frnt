@@ -10,7 +10,7 @@ import { CbtJoinCard } from "./CbtJoinCard";
 
 /** Origin landing page — where the thank-you screen redirects after the test. */
 const ORIGIN_LANDING_URL = "/";
-const REDIRECT_SECONDS = 10;
+const REDIRECT_SECONDS = 20;
 
 function StudentIdBadge({ studentCode }: { studentCode: string }) {
   return (
@@ -124,7 +124,7 @@ function BrandBlock({ children, caption }: { children: React.ReactNode; caption:
  * falls back to the name so a dead R2 object never leaves a broken image.
  */
 function ThankYouScreen() {
-  const { instituteName, instituteLogo } = useCbtRoom();
+  const { instituteName, instituteLogo, submissionSummary } = useCbtRoom();
   const [secondsLeft, setSecondsLeft] = useState(REDIRECT_SECONDS);
   const [logoBroken, setLogoBroken] = useState(false);
 
@@ -184,6 +184,41 @@ function ThankYouScreen() {
           <h1 className="text-2xl font-black tracking-tight text-foreground">Thanks for using Origin</h1>
           <p className="text-sm text-muted-foreground">Your test has been submitted successfully.</p>
         </div>
+
+        {/* Post-submit attempt summary (P1 3.5) — own counts only; CBT grading
+            is server-side, so correct/incorrect is intentionally not shown. */}
+        {submissionSummary && (
+          <div className="rounded-2xl neu-inset p-4 text-left">
+            <p className="mb-3 text-center text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+              Your Attempt Summary
+            </p>
+            <div className="mb-3 grid grid-cols-2 gap-2">
+              <div className="rounded-xl bg-primary/10 p-3 text-center">
+                <div className="text-2xl font-black text-primary tabular-nums">{submissionSummary.attempted}</div>
+                <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Attempted</div>
+              </div>
+              <div className="rounded-xl neu-raised p-3 text-center">
+                <div className="text-2xl font-black text-foreground tabular-nums">{submissionSummary.skipped}</div>
+                <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Skipped</div>
+              </div>
+            </div>
+            {Object.keys(submissionSummary.sections).length > 1 && (
+              <div className="space-y-1.5 border-t border-border/40 pt-3">
+                {Object.entries(submissionSummary.sections).map(([subj, st]) => (
+                  <div key={subj} className="flex items-center justify-between text-xs">
+                    <span className="font-bold capitalize text-foreground">{subj}</span>
+                    <span className="font-mono font-bold text-muted-foreground tabular-nums">
+                      {st.attempted}/{st.total}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <p className="mt-3 text-center text-[10px] text-muted-foreground">
+              Attempted {submissionSummary.attempted} of {submissionSummary.total} questions
+            </p>
+          </div>
+        )}
 
         <a
           href={ORIGIN_LANDING_URL}

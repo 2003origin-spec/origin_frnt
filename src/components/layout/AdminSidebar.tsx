@@ -26,6 +26,7 @@ import {
     Activity,
     Rocket,
     KeyRound,
+    Trophy,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { usePathname, useRouter } from 'next/navigation';
@@ -62,6 +63,7 @@ const navItems = [
     { id: 'cbt', label: 'CBT', icon: ClipboardCheck, path: '/admin/cbt' },
     { id: 'analytics', label: 'Global Analytics', icon: BarChart3, path: '/admin/analytics' },
     { id: 'launch', label: 'Launch Controls', icon: Rocket, path: '/admin/launch' },
+    { id: 'championship', label: 'Championship', icon: Trophy, path: '/admin/championship' },
     // Audit fix R-5 (A-15): incidents + audit log had no sidebar entry.
     { id: 'incidents', label: 'Incidents', icon: Siren, path: '/admin/incidents' },
     { id: 'audit-events', label: 'Audit Log', icon: FileText, path: '/admin/audit-events' },

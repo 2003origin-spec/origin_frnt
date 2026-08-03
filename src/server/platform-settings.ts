@@ -29,6 +29,8 @@ const MIGRATION_ID = "20260724_platform_settings";
 
 export const SETTING_TEACHER_CODE_SUPPORT_PHONE = "teacher_code_support_phone";
 export const SETTING_ALLOW_DELETED_IDENTITY_RESIGNUP = "allow_deleted_identity_resignup";
+export const SETTING_CHAMPIONSHIP_PRIZE_IMAGE_URL = "championship_prize_image_url";
+export const SETTING_CHAMPIONSHIP_PRIZE_LABEL = "championship_prize_label";
 
 function pool() {
   const p = getUserPostgresPool();
@@ -165,4 +167,28 @@ export async function setAllowDeletedIdentityResignup(
   updatedBy: string | null,
 ): Promise<void> {
   await setSetting(SETTING_ALLOW_DELETED_IDENTITY_RESIGNUP, allow ? "true" : "false", updatedBy);
+}
+
+/**
+ * Monthly-championship prize shown on the home banner (retention Layer 4).
+ * imageUrl is an R2 public URL; label is a short caption. Both null until an
+ * admin uploads one (the banner then shows a trophy fallback).
+ */
+export async function getChampionshipPrize(): Promise<{ imageUrl: string | null; label: string | null }> {
+  const [imageUrl, label] = await Promise.all([
+    getSetting(SETTING_CHAMPIONSHIP_PRIZE_IMAGE_URL),
+    getSetting(SETTING_CHAMPIONSHIP_PRIZE_LABEL),
+  ]);
+  return {
+    imageUrl: imageUrl && imageUrl.trim() ? imageUrl.trim() : null,
+    label: label && label.trim() ? label.trim() : null,
+  };
+}
+
+export async function setChampionshipPrizeImageUrl(url: string | null, updatedBy: string | null): Promise<void> {
+  await setSetting(SETTING_CHAMPIONSHIP_PRIZE_IMAGE_URL, url && url.trim() ? url.trim() : null, updatedBy);
+}
+
+export async function setChampionshipPrizeLabel(label: string | null, updatedBy: string | null): Promise<void> {
+  await setSetting(SETTING_CHAMPIONSHIP_PRIZE_LABEL, label && label.trim() ? label.trim() : null, updatedBy);
 }

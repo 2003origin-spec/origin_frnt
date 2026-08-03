@@ -88,6 +88,10 @@ export interface StoredStreakData {
   longestStreak: number;
   lastStudyDate: string | null;
   weeklyData: boolean[];
+  /** Streak freezes left this month (auto-consumed to bridge a missed day). */
+  freezesRemaining?: number;
+  /** IST month (YYYY-MM) the freeze allowance was last reset for. */
+  freezeMonth?: string;
 }
 
 export interface StoredDailyActivity {

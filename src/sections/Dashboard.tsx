@@ -16,6 +16,7 @@ import {
 } from '@/components/dashboard/DashboardCards';
 import PointsSummary from '@/components/dashboard/PointsSummary';
 import StudyModeToggle from '@/components/dashboard/StudyModeToggle';
+import { ChampionshipBanner } from '@/components/dashboard/ChampionshipBanner';
 import StudyModeFirstRunPrompt from '@/components/dashboard/StudyModeFirstRunPrompt';
 import { apiCall } from '@/lib/api';
 import { useLayout } from '@/context/LayoutContext';
@@ -342,6 +343,9 @@ export default function Dashboard({
             for students without a complete JEE/NEET/PCMB subject set. */}
         <StudyModeFirstRunPrompt />
         <StudyModeToggle />
+
+        {/* ── Monthly Championship banner (retention Layer 4) ── */}
+        <ChampionshipBanner onPractice={() => onNavigate('ogcode')} />
 
         {/* ── Seats banner ──────────────────────────────────────── */}
         {regStatus && regStatus.seatsLeft > 0 && regStatus.seatsLeft <= 50 && (

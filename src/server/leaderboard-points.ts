@@ -13,6 +13,7 @@
  */
 
 import { getUserPostgresPool } from "@/server/user-postgres";
+import { getChampionshipPrize } from "@/server/platform-settings";
 
 export type PointsLeaderboardEntry = {
   userId: string;
@@ -180,4 +181,139 @@ export async function getGlobalPointsLeaderboard(
   }
 
   return buildPointsLeaderboardResult(rows.map(toRankedRow), userId, topN);
+}
+
+// ── Championship snapshot (home banner) ─────────────────────────────────────
+
+export type ChampionEntry = {
+  userId: string;
+  name: string;
+  avatar: string | null;
+  points: number;
+  rank: number;
+};
+
+export type ChampionshipSnapshot = {
+  myRank: number | null;
+  myPoints: number;
+  totalStudents: number;
+  top3: ChampionEntry[];
+  /** The student ranked directly above the viewer, or null if they lead / have no rank. */
+  rivalAbove: ChampionEntry | null;
+  /** Prestige points needed to overtake the rival above, or null. */
+  pointsToClimb: number | null;
+  /** Admin-set prize photo (R2 URL) + label shown on the banner, or null. */
+  prizeImageUrl: string | null;
+  prizeLabel: string | null;
+};
+
+type SnapshotRow = {
+  user_id: string;
+  name: string | null;
+  avatar: string | null;
+  points: number | string | null;
+  rank: number | string;
+  rownum: number | string;
+  total_students: number | string;
+  my_rank: number | string | null;
+  my_points: number | string | null;
+};
+
+const EMPTY_SNAPSHOT: ChampionshipSnapshot = {
+  myRank: null,
+  myPoints: 0,
+  totalStudents: 0,
+  top3: [],
+  rivalAbove: null,
+  pointsToClimb: null,
+  prizeImageUrl: null,
+  prizeLabel: null,
+};
+
+/**
+ * One-query snapshot for the home championship banner: the top 3, the viewer's
+ * rank/points, the total student count, and the single student ranked directly
+ * above the viewer ("closest rival"). Uses the same all-time prestige-points
+ * ranking as the global leaderboard. Works for any rank — the rival row is
+ * selected by strict position (ROW_NUMBER), so it is present even when the
+ * viewer is far outside the top N.
+ */
+export async function getChampionshipSnapshot(userId: string): Promise<ChampionshipSnapshot> {
+  const pool = getUserPostgresPool();
+  if (!pool) return { ...EMPTY_SNAPSHOT };
+
+  const points = `COALESCE((s.data->>'totalPoints')::numeric, 0)`;
+  const sql = `
+    WITH ranked AS (
+      SELECT
+        s.user_id,
+        u.name,
+        u.avatar,
+        ${points} AS points,
+        DENSE_RANK() OVER (ORDER BY ${points} DESC) AS rank,
+        ROW_NUMBER() OVER (ORDER BY ${points} DESC, s.user_id) AS rownum
+      FROM app.user_scores s
+      JOIN origin_users u ON u.id = s.user_id
+      WHERE u.role = 'student'
+    )
+    SELECT
+      r.user_id, r.name, r.avatar, r.points, r.rank, r.rownum,
+      (SELECT COUNT(*) FROM ranked) AS total_students,
+      (SELECT rank FROM ranked WHERE user_id = $1) AS my_rank,
+      (SELECT points FROM ranked WHERE user_id = $1) AS my_points
+    FROM ranked r
+    WHERE r.rank <= 3
+       OR r.user_id = $1
+       OR r.rownum = (SELECT rownum FROM ranked WHERE user_id = $1) - 1
+    ORDER BY r.rownum
+  `;
+
+  let rows: SnapshotRow[];
+  try {
+    const result = await pool.query<SnapshotRow>(sql, [userId]);
+    rows = result.rows;
+  } catch (error) {
+    console.error("[getChampionshipSnapshot] query failed:", error instanceof Error ? error.message : String(error));
+    return { ...EMPTY_SNAPSHOT };
+  }
+
+  if (rows.length === 0) return { ...EMPTY_SNAPSHOT };
+
+  const toEntry = (r: SnapshotRow): ChampionEntry => ({
+    userId: r.user_id,
+    name: r.name ?? "Unknown",
+    avatar: r.avatar ?? null,
+    points: Math.max(0, Math.round(Number(r.points ?? 0))),
+    rank: Number(r.rank),
+  });
+
+  const myRankRaw = rows[0].my_rank;
+  const myRank = myRankRaw == null ? null : Number(myRankRaw);
+  const myPoints = Math.max(0, Math.round(Number(rows[0].my_points ?? 0)));
+  const totalStudents = Number(rows[0].total_students ?? 0);
+
+  const top3 = rows
+    .filter((r) => Number(r.rank) <= 3)
+    .sort((a, b) => Number(a.rownum) - Number(b.rownum))
+    .slice(0, 3)
+    .map(toEntry);
+
+  // Rival = the row whose strict position is one above the viewer's.
+  const myRow = rows.find((r) => r.user_id === userId)?.rownum;
+  const rivalRow = myRow != null ? rows.find((r) => Number(r.rownum) === Number(myRow) - 1) : undefined;
+  const rivalAbove = rivalRow ? toEntry(rivalRow) : null;
+  const pointsToClimb = rivalAbove ? Math.max(0, rivalAbove.points - myPoints) : null;
+
+  const prize = await getChampionshipPrize().catch(() => ({ imageUrl: null, label: null }));
+
+  return {
+    myRank,
+    myPoints,
+    totalStudents,
+    top3,
+    rivalAbove,
+    pointsToClimb,
+    prizeImageUrl: prize.imageUrl,
+    prizeLabel: prize.label,
+  };
 }

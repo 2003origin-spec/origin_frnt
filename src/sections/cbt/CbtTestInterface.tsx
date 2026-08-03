@@ -158,6 +158,13 @@ export function CbtTestInterface() {
     return stats;
   }, [flat, palette]);
 
+  // Mirror the live counts into a ref so submit() (whose closure must not be
+  // recreated on every answer) reads the FINAL counts, not a stale snapshot.
+  const summaryRef = useRef({ attempted: 0, skipped: 0, total: 0, sections: {} as Record<string, { attempted: number; total: number }> });
+  useEffect(() => {
+    summaryRef.current = { attempted, skipped, total: flat.length, sections: sectionStats };
+  }, [attempted, skipped, flat.length, sectionStats]);
+
   // ── Load payload + hydrate draft (resume) ──────────────────────────────────
   useEffect(() => {
     let cancelled = false;
@@ -404,7 +411,9 @@ export function CbtTestInterface() {
             // Promote to the room-level terminal phase so the context unmounts
             // this player: a submitted student must never re-enter the test
             // (e.g. via a browser Back / bfcache restore of this frozen view).
-            markSubmitted();
+            // Hand off the own-attempt counts so the terminal ThankYou screen
+            // can show a post-submit summary (P1 3.5) after this unmounts.
+            markSubmitted(summaryRef.current);
             return;
           }
           if (res.status === 401) break; // kicked or resumed elsewhere

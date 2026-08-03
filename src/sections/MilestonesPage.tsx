@@ -14,6 +14,9 @@ interface MilestonesPageProps {
 
 import { TIER_THRESHOLDS } from '@/lib/achievements';
 import { BADGE_TIERS } from '@/lib/badges';
+import { MilestoneCabinet } from '@/components/badges/MilestoneCabinet';
+import { totalQuestionsSolved } from '@/lib/milestone-badges';
+import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
 
 const HOW_EARNED = [
@@ -42,6 +45,8 @@ const HOW_EARNED = [
 
 export default function MilestonesPage({ onBack, userPoints }: MilestonesPageProps) {
   const totalPoints = userPoints;
+  const { user } = useAuth();
+  const totalSolved = user ? totalQuestionsSolved(user) : 0;
   const [activeTab, setActiveTab] = useState<'milestones' | 'how'>('milestones');
   const [expandedTier, setExpandedTier] = useState<string | null>(null);
 
@@ -174,6 +179,11 @@ export default function MilestonesPage({ onBack, userPoints }: MilestonesPagePro
         {/* Milestones list — badge-driven */}
         {activeTab === 'milestones' && (
           <div className="space-y-3">
+            {/* Questions-solved milestone cabinet */}
+            <div className="neu-raised rounded-2xl p-4 sm:p-5 mb-2">
+              <MilestoneCabinet totalSolved={totalSolved} />
+            </div>
+
             {BADGE_TIERS.map((badge, i) => {
               const tier = TIER_THRESHOLDS.find(t => t.tier === badge.name);
               const unlocked = totalPoints >= badge.points;
