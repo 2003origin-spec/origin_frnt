@@ -7,6 +7,10 @@ import {
   getBatchTopicAccuracyLive,
   getBatchLeaderboardLive,
 } from "@/server/workspaces/batch-cohort-store";
+import {
+  getBatchDeepAnalytics,
+  getBatchRoster,
+} from "@/server/workspaces/workspace-analytics-service";
 import { setBatchTopicCoverage } from "@/server/workspaces/batch-topic-coverage-store";
 import { recordAuditEvent } from "@/server/workspaces/audit";
 
@@ -44,6 +48,22 @@ export async function GET(
         ? [{ entries, snapshotAt: new Date().toISOString() }]
         : [];
       return teacherJson({ leaderboardHistory });
+    }
+
+    // ── Deep-Dive branches ────────────────────────────────────────────────────
+    // Folded into this already-registered route rather than child `deep/` or
+    // `roster/` subroutes: a brand-new API child path failed to register in a
+    // Next.js 16 production build (see the PATCH note below and plan D1).
+    if (type === "deep") {
+      requireFeatureEnabled("teacherDeepAnalytics");
+      const analytics = await getBatchDeepAnalytics(workspaceId, batchId);
+      return teacherJson(analytics);
+    }
+
+    if (type === "roster") {
+      requireFeatureEnabled("teacherDeepAnalytics");
+      const roster = await getBatchRoster(workspaceId, batchId);
+      return teacherJson({ roster });
     }
 
     const snapshots = await getBatchTopicAccuracyLive(workspaceId, batchId, {

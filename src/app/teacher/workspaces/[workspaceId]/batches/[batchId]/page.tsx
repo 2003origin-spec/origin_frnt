@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { BatchDeleteButton } from "@/components/teacher/BatchDeleteButton";
 import { BatchRosterManager } from "@/components/teacher/BatchRosterManager";
 import { BatchPlannerHighFidelity } from "@/components/teacher/BatchPlannerHighFidelity";
+import { isFeatureEnabled } from "@/lib/feature-flags";
 import { getBatch, listBatchMembers } from "@/server/workspaces/batches";
 import { listEnrollments } from "@/server/workspaces/enrollments";
 import { loadWorkspaceForRender } from "@/server/workspaces/server-loader";
@@ -141,6 +142,7 @@ export default async function BatchDetailPage({ params }: Props) {
             tests={tests}
             syllabus={syllabus}
             canManage={canManage}
+            analyticsEnabled={isFeatureEnabled("teacherDeepAnalytics") && isFeatureEnabled("teacherAnalytics")}
           />
         </div>
 

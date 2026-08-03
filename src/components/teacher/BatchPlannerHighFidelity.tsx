@@ -27,6 +27,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { BatchChat } from "@/components/batch/BatchChat";
+import { BatchAnalyticsDeepDive } from "@/components/teacher/BatchAnalyticsDeepDive";
 import { apiJson } from "@/lib/teacher-client";
 import type { Batch, StudyMaterialWithAssets, AssessmentTest } from "@/server/workspaces/types";
 import type { SyllabusTree, SyllabusStatus } from "@/server/workspaces/syllabus-store";
@@ -39,11 +40,13 @@ type Props = {
   tests: AssessmentTest[];
   syllabus: SyllabusTree | null;
   canManage: boolean;
+  /** Deep-Dive analytics tab; hidden when teacherDeepAnalytics is off. */
+  analyticsEnabled?: boolean;
 };
 
-type ActiveTab = "syllabus" | "tests" | "materials" | "messages";
+type ActiveTab = "syllabus" | "tests" | "materials" | "messages" | "analytics";
 
-export function BatchPlannerHighFidelity({ workspaceId, batch, materials: initialMaterials, tests, syllabus: initialSyllabus, canManage }: Props) {
+export function BatchPlannerHighFidelity({ workspaceId, batch, materials: initialMaterials, tests, syllabus: initialSyllabus, canManage, analyticsEnabled = false }: Props) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<ActiveTab>("syllabus");
   const [materials, setMaterials] = useState(initialMaterials);
@@ -294,6 +297,17 @@ export function BatchPlannerHighFidelity({ workspaceId, batch, materials: initia
         >
           Messages
         </Button>
+        {analyticsEnabled && (
+          <Button
+            variant="ghost"
+            onClick={() => setActiveTab("analytics")}
+            className={`h-11 px-6 rounded-none border-b-2 font-bold ${
+              activeTab === "analytics" ? "border-primary text-primary" : "border-transparent text-muted-foreground"
+            }`}
+          >
+            Analytics
+          </Button>
+        )}
       </div>
 
       {/* Tab Panels */}
@@ -558,6 +572,18 @@ export function BatchPlannerHighFidelity({ workspaceId, batch, materials: initia
             <BatchChat
               messagesUrl={`/api/teacher/workspaces/${workspaceId}/batches/${batch.id}/messages`}
               mineRole="teacher"
+            />
+          </div>
+        )}
+
+        {/* Mounted only while selected, so its two analytics requests are not
+            paid for by teachers who never open the tab. */}
+        {activeTab === "analytics" && analyticsEnabled && (
+          <div className="animate-fade-in">
+            <BatchAnalyticsDeepDive
+              workspaceId={workspaceId}
+              batchId={batch.id}
+              batchSubject={batch.subject}
             />
           </div>
         )}
