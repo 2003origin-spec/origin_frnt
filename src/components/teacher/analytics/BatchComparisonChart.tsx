@@ -6,6 +6,7 @@ import {
   CartesianGrid,
   Cell,
   LabelList,
+  Legend,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -30,9 +31,12 @@ export type BatchComparisonDatum = {
 };
 
 /**
- * Average score per batch, colour-banded by performance tier with the value
- * printed on each bar — colour alone is never the signal (ledger #24), and
- * labelled bars are the accessible default for category comparison.
+ * Average **and top** score per batch, grouped.
+ *
+ * Two series on purpose: the average alone hides whether a weak batch has no
+ * strong students or a few carrying it — the gap between the bars is the
+ * insight. The average is colour-banded by performance tier and labelled, so
+ * colour is never the only signal (ledger #24).
  *
  * Batches with no submissions are dropped rather than drawn as 0%-tall bars.
  */
@@ -86,12 +90,40 @@ export function BatchComparisonChart({ data }: { data: BatchComparisonDatum[] })
               );
             }}
           />
-          <Bar dataKey="average" radius={[6, 6, 0, 0]} maxBarSize={54} isAnimationActive={false}>
+          <Legend wrapperStyle={{ fontSize: 11 }} iconType="circle" iconSize={8} />
+          <Bar
+            dataKey="average"
+            name="Average score"
+            radius={[6, 6, 0, 0]}
+            maxBarSize={38}
+            isAnimationActive={false}
+          >
             {rows.map((row) => (
               <Cell key={row.batchId} fill={TONE_HEX[scoreTone(row.average)]} fillOpacity={0.85} />
             ))}
             <LabelList
               dataKey="average"
+              position="top"
+              formatter={(value) => (typeof value === "number" ? `${Math.round(value)}%` : "")}
+              className="fill-muted-foreground"
+              style={{ fontSize: 10, fontWeight: 600 }}
+            />
+          </Bar>
+          {/* Outlined, not filled — the top score is context for the average, not
+              a second thing to compare across batches. */}
+          <Bar
+            dataKey="top"
+            name="Top score"
+            radius={[6, 6, 0, 0]}
+            maxBarSize={38}
+            isAnimationActive={false}
+            fill={CHART_COLORS.primary}
+            fillOpacity={0.18}
+            stroke={CHART_COLORS.primary}
+            strokeWidth={1.5}
+          >
+            <LabelList
+              dataKey="top"
               position="top"
               formatter={(value) => (typeof value === "number" ? `${Math.round(value)}%` : "")}
               className="fill-muted-foreground"

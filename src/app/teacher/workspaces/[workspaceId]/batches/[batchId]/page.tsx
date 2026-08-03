@@ -143,6 +143,7 @@ export default async function BatchDetailPage({ params }: Props) {
             syllabus={syllabus}
             canManage={canManage}
             analyticsEnabled={isFeatureEnabled("teacherDeepAnalytics") && isFeatureEnabled("teacherAnalytics")}
+            studentCount={members.length}
           />
         </div>
 

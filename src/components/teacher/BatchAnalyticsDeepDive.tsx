@@ -6,7 +6,10 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   BarChart3,
+  BookOpen,
+  CalendarClock,
   Flame,
+  GraduationCap,
   LineChart as LineChartIcon,
   Target,
   Timer,
@@ -27,6 +30,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiJson } from "@/lib/teacher-client";
 import { cn } from "@/lib/utils";
+import type { Batch } from "@/server/workspaces/types";
 import {
   CHART_COLORS,
   formatPercent,
@@ -96,13 +100,25 @@ type RosterRow = {
   meanPercentage: number;
   attempts: number;
   platformRank: number;
+  /** Mean TOPIC accuracy 0–100 — a different question from meanPercentage. */
   accuracy: number | null;
+  /** BKT mastery 0–100 from analytics-service. */
+  mastery: number | null;
+  anomalousTopics: number;
   streak: number;
   studyMinutes: number;
   points: number;
 };
 
-type SortKey = "rank" | "meanPercentage" | "attempts" | "streak" | "studyMinutes" | "points";
+type SortKey =
+  | "rank"
+  | "meanPercentage"
+  | "accuracy"
+  | "mastery"
+  | "attempts"
+  | "streak"
+  | "studyMinutes"
+  | "points";
 
 /**
  * The batch **Analytics** tab — the PRD's batch deep-dive, living inside the
@@ -113,13 +129,16 @@ type SortKey = "rank" | "meanPercentage" | "attempts" | "streak" | "studyMinutes
  */
 export function BatchAnalyticsDeepDive({
   workspaceId,
-  batchId,
-  batchSubject,
+  batch,
+  studentCount,
 }: {
   workspaceId: string;
-  batchId: string;
-  batchSubject?: string | null;
+  batch: Batch;
+  /** Roster size from the batch page — distinct from "ranked" students. */
+  studentCount: number;
 }) {
+  const batchId = batch.id;
+  const batchSubject = batch.subject;
   const [data, setData] = useState<DeepPayload | null>(null);
   const [roster, setRoster] = useState<RosterRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -155,7 +174,16 @@ export function BatchAnalyticsDeepDive({
 
   const sortedRoster = useMemo(() => {
     const factor = sort.dir === "desc" ? -1 : 1;
-    return [...roster].sort((a, b) => (a[sort.key] - b[sort.key]) * factor);
+    return [...roster].sort((a, b) => {
+      const left = a[sort.key];
+      const right = b[sort.key];
+      // Students with no topic analysis sink to the bottom in BOTH directions —
+      // "no data" is not the same as "scored zero".
+      if (left == null && right == null) return 0;
+      if (left == null) return 1;
+      if (right == null) return -1;
+      return (left - right) * factor;
+    });
   }, [roster, sort]);
 
   const radarData = useMemo(
@@ -208,8 +236,68 @@ export function BatchAnalyticsDeepDive({
 
   return (
     <div className="space-y-5">
+      {/* Batch header — identity for the analytics below it, matching the batch
+          card the teacher clicked through from. */}
+      <div className="flex flex-wrap items-center gap-4 rounded-xl border bg-card p-5">
+        <span
+          aria-hidden="true"
+          className="grid size-12 shrink-0 place-items-center rounded-xl bg-primary/15 text-lg font-bold text-primary"
+        >
+          {batch.name.trim().charAt(0).toUpperCase() || "B"}
+        </span>
+        <div className="min-w-0 flex-1">
+          <h3 className="truncate text-base font-bold tracking-tight">{batch.name}</h3>
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+            {batch.course ? (
+              <span className="inline-flex items-center gap-1">
+                <BookOpen aria-hidden="true" className="size-3" />
+                {batch.course}
+              </span>
+            ) : null}
+            {batch.subject ? (
+              <span className="inline-flex items-center gap-1 capitalize">
+                <Target aria-hidden="true" className="size-3" />
+                {batch.subject}
+              </span>
+            ) : null}
+            {batch.classLevel ? (
+              <span className="inline-flex items-center gap-1">
+                <GraduationCap aria-hidden="true" className="size-3" />
+                Class {batch.classLevel}
+              </span>
+            ) : null}
+            {batch.scheduleText ? (
+              <span className="inline-flex items-center gap-1">
+                <CalendarClock aria-hidden="true" className="size-3" />
+                {batch.scheduleText}
+              </span>
+            ) : null}
+          </div>
+        </div>
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <span
+            className={cn(
+              "rounded-full border px-2.5 py-0.5 text-[0.6rem] font-bold uppercase tracking-wider",
+              batch.status === "active"
+                ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                : "border-border bg-muted text-muted-foreground",
+            )}
+          >
+            {batch.status}
+          </span>
+          <span className="rounded-full border bg-muted/50 px-2.5 py-0.5 text-[0.65rem] font-medium text-muted-foreground">
+            Since{" "}
+            {new Date(batch.startsAt ?? batch.createdAt).toLocaleDateString("en-IN", {
+              day: "numeric",
+              month: "short",
+              year: "numeric",
+            })}
+          </span>
+        </div>
+      </div>
+
       {/* Performance summary strip */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-7">
         <MetricTile
           label="Average"
           value={formatPercent(summary.averagePercentage, 1)}
@@ -234,7 +322,17 @@ export function BatchAnalyticsDeepDive({
           tone="danger"
           icon={ArrowDownRight}
         />
-        <MetricTile label="Ranked" value={String(summary.rankedStudents)} icon={Users} />
+        <MetricTile label="Students" value={String(studentCount)} icon={Users} />
+        <MetricTile
+          label="Ranked"
+          value={String(summary.rankedStudents)}
+          icon={Trophy}
+          hint={
+            studentCount > summary.rankedStudents
+              ? `${studentCount - summary.rankedStudents} yet to submit`
+              : undefined
+          }
+        />
         <MetricTile
           label="Weak topics"
           value={String(summary.weakTopics)}
@@ -442,6 +540,8 @@ export function BatchAnalyticsDeepDive({
                     />
                     <th className="px-2 py-2 font-semibold">Student</th>
                     <SortableHeader label="Mean" sortKey="meanPercentage" active={sort} onSort={toggleSort} />
+                    <SortableHeader label="Accuracy" sortKey="accuracy" active={sort} onSort={toggleSort} />
+                    <SortableHeader label="Mastery" sortKey="mastery" active={sort} onSort={toggleSort} />
                     <SortableHeader label="Tests" sortKey="attempts" active={sort} onSort={toggleSort} />
                     <SortableHeader label="Streak" sortKey="streak" active={sort} onSort={toggleSort} />
                     <SortableHeader
@@ -488,8 +588,38 @@ export function BatchAnalyticsDeepDive({
                       >
                         {row.meanPercentage.toFixed(1)}%
                       </td>
+                      <td
+                        className={cn(
+                          "px-2 py-2.5 text-center font-mono font-semibold tabular-nums",
+                          TONE_TEXT[scoreTone(row.accuracy)],
+                        )}
+                        title="Mean accuracy across every topic this student has been assessed on"
+                      >
+                        {formatPercent(row.accuracy)}
+                      </td>
+                      <td className="px-2 py-2.5" title="Bayesian Knowledge Tracing mastery">
+                        <div className="flex items-center justify-center gap-2">
+                          <span className="h-1.5 w-10 overflow-hidden rounded-full bg-muted">
+                            <span
+                              className="block h-full rounded-full bg-primary"
+                              style={{ width: `${Math.max(0, Math.min(100, row.mastery ?? 0))}%` }}
+                            />
+                          </span>
+                          <span className="font-mono text-[0.65rem] tabular-nums text-muted-foreground">
+                            {formatPercent(row.mastery)}
+                          </span>
+                        </div>
+                      </td>
                       <td className="px-2 py-2.5 text-center font-mono tabular-nums text-muted-foreground">
                         {row.attempts}
+                        {row.anomalousTopics > 0 ? (
+                          <span
+                            className="ml-1 inline-flex align-middle text-amber-500"
+                            title={`${row.anomalousTopics} topic${row.anomalousTopics === 1 ? "" : "s"} flagged as an anomalous answer pattern by the analytics service`}
+                          >
+                            <AlertTriangle aria-hidden="true" className="size-3" />
+                          </span>
+                        ) : null}
                       </td>
                       <td className="px-2 py-2.5 text-center text-muted-foreground">
                         <span className="inline-flex items-center gap-1">

@@ -27,12 +27,14 @@ import {
 import { listBatches } from "./batches";
 import {
   getBatchLeaderboardLive,
+  getBatchStudentMasteryLive,
   getBatchTestTimelineLive,
   getBatchTopicAccuracyLive,
   getStudentSubjectAccuracyLive,
   getStudentTestHistoryLive,
   getStudentTopicProfileLive,
   type BatchLeaderboardEntryLite,
+  type BatchStudentMastery,
   type BatchTimelinePoint,
   type BatchTopicSnapshotLite,
   type StudentSubjectAccuracy,
@@ -208,10 +210,12 @@ export async function getWorkspaceOverviewAnalytics(
   const topPerformers = [...studentRows]
     .sort((a, b) => b.meanPercentage - a.meanPercentage || b.attempts - a.attempts)
     .slice(0, 8);
+  // Every at-risk student, not a top-N: a teacher needs the whole list to act on
+  // it. The UI scrolls; the cap is only a runaway guard for a huge institute.
   const atRisk = studentRows
     .filter((s) => s.meanPercentage < AT_RISK_THRESHOLD)
     .sort((a, b) => a.meanPercentage - b.meanPercentage)
-    .slice(0, 10);
+    .slice(0, 200);
 
   // Subject × batch heatmap: roll the per-topic cells up to subject level.
   const activeBatchIds = new Set(activeBatches.map((b) => b.id));
@@ -345,9 +349,14 @@ export async function getBatchDeepAnalytics(
   };
 }
 
-/** One row of the batch ranking table — leaderboard ⋈ engagement. */
+/** One row of the batch ranking table — leaderboard ⋈ mastery ⋈ engagement. */
 export type BatchRosterRow = BatchLeaderboardEntryLite & {
+  /** Mean TOPIC accuracy 0–100 — a different question from `meanPercentage`. */
   accuracy: number | null;
+  /** BKT mastery 0–100 for display. */
+  mastery: number | null;
+  /** Topics analytics-service flagged as anomalous. */
+  anomalousTopics: number;
   streak: number;
   studyMinutes: number;
   points: number;
@@ -369,25 +378,33 @@ export async function getBatchRoster(
   );
   if (leaderboard.length === 0) return [];
   const ids = leaderboard.map((entry) => entry.studentId);
-  const [streaks, points, activity] = await Promise.all([
+  const [streaks, points, activity, mastery] = await Promise.all([
     safe(() => getStreaksForStudents(ids), new Map<string, StudentStreak>(), "streaks"),
     safe(() => getPointsForStudents(ids), new Map(), "points"),
     safe(() => getDailyActivityForStudents(ids, 30), [], "daily activity"),
+    safe(
+      () => getBatchStudentMasteryLive(workspaceId, batchId),
+      new Map<string, BatchStudentMastery>(),
+      "batch student mastery",
+    ),
   ]);
   const minutesById = new Map<string, number>();
   for (const row of activity) {
     const minutes = row.webpageTime + row.practiceTime + row.pomodoroTime;
     minutesById.set(row.studentId, (minutesById.get(row.studentId) ?? 0) + minutes);
   }
-  return leaderboard.map((entry) => ({
-    ...entry,
-    // Mean percentage IS the batch accuracy signal we have per student; topic
-    // accuracy is a per-topic concept and lives in the mastery matrix instead.
-    accuracy: entry.attempts > 0 ? entry.meanPercentage : null,
-    streak: streaks.get(entry.studentId)?.currentStreak ?? 0,
-    studyMinutes: minutesById.get(entry.studentId) ?? 0,
-    points: points.get(entry.studentId)?.totalPoints ?? 0,
-  }));
+  return leaderboard.map((entry) => {
+    const row = mastery.get(entry.studentId);
+    return {
+      ...entry,
+      accuracy: row ? row.topicAccuracy : null,
+      mastery: row ? Math.round(row.mastery * 1000) / 10 : null,
+      anomalousTopics: row?.anomalousTopics ?? 0,
+      streak: streaks.get(entry.studentId)?.currentStreak ?? 0,
+      studyMinutes: minutesById.get(entry.studentId) ?? 0,
+      points: points.get(entry.studentId)?.totalPoints ?? 0,
+    };
+  });
 }
 
 // ─── Student 360° ─────────────────────────────────────────────────────────────

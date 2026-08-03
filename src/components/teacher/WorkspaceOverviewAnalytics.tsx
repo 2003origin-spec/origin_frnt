@@ -213,9 +213,13 @@ export function WorkspaceOverviewAnalytics({ workspaceId, data }: Props) {
                   <AlertTriangle aria-hidden="true" className="size-4 text-destructive" />
                   Needs attention
                 </CardTitle>
-                <CardDescription>Students averaging under 40% across their tests.</CardDescription>
+                <CardDescription>
+                  {data.atRisk.length > 0
+                    ? `${data.atRisk.length} student${data.atRisk.length === 1 ? "" : "s"} averaging under 40% across their tests.`
+                    : "Students averaging under 40% across their tests."}
+                </CardDescription>
               </CardHeader>
-              <CardContent className="p-0 pb-4">
+              <CardContent className="max-h-[24rem] overflow-y-auto p-0 pb-4">
                 {data.atRisk.length === 0 ? (
                   <div className="px-6">
                     <AnalyticsEmptyState
@@ -227,7 +231,8 @@ export function WorkspaceOverviewAnalytics({ workspaceId, data }: Props) {
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full border-collapse text-left">
-                      <thead>
+                      {/* Sticky: the list scrolls, so the header must stay put. */}
+                      <thead className="sticky top-0 z-10 bg-card">
                         <tr className="border-b text-[0.65rem] uppercase tracking-wider text-muted-foreground">
                           <th className="px-6 py-2 font-semibold">Student</th>
                           <th className="px-2 py-2 font-semibold">Batch</th>

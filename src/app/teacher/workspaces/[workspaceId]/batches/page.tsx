@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
-import { ArrowDownRight, ArrowUpRight, Target, Users } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, CalendarClock, Target, Users } from "lucide-react";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { BatchCreateButton } from "@/components/teacher/BatchCreateButton";
@@ -68,14 +68,34 @@ export default async function WorkspaceBatchesPage({ params }: Props) {
               >
                 <Card className="h-full transition-all hover:border-primary/40 hover:shadow-md">
                   <CardHeader>
-                    <CardTitle className="flex items-center justify-between gap-2">
+                    <CardTitle className="flex items-start justify-between gap-2">
                       <span className="min-w-0 truncate">{batch.name}</span>
-                      <span className="shrink-0 font-mono text-xs uppercase tracking-wide text-muted-foreground">
+                      <span
+                        className={cn(
+                          "shrink-0 rounded-full border px-2 py-0.5 text-[0.6rem] font-bold uppercase tracking-wider",
+                          batch.status === "active"
+                            ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                            : "border-border bg-muted text-muted-foreground",
+                        )}
+                      >
                         {batch.status}
                       </span>
                     </CardTitle>
-                    <CardDescription>
-                      {[batch.course, batch.subject, batch.classLevel].filter(Boolean).join(" · ") || "—"}
+                    <CardDescription className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                      {[
+                        batch.course,
+                        batch.subject,
+                        batch.classLevel ? `Class ${batch.classLevel}` : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ") || "—"}
+                      {batch.scheduleText ? (
+                        <span className="inline-flex items-center gap-1 text-muted-foreground">
+                          <span aria-hidden="true">·</span>
+                          <CalendarClock aria-hidden="true" className="size-3" />
+                          {batch.scheduleText}
+                        </span>
+                      ) : null}
                     </CardDescription>
                   </CardHeader>
                   <CardContent>

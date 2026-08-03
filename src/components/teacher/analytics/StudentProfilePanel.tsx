@@ -57,7 +57,9 @@ type TopicRow = {
   totalAttempts: number;
   correctAttempts: number;
   accuracy: number; // 0–1
-  masteryScore: number; // 0–1
+  /** BKT posterior from analytics-service (0–1), not a copy of accuracy. */
+  masteryScore: number;
+  anomaly?: boolean;
   lastAttemptAt: string | null;
 };
 
@@ -421,6 +423,14 @@ export function StudentProfilePanel({ workspaceId, studentId, onClose }: Props) 
                               <tr key={`${topic.subject}-${topic.topic}`} className="hover:bg-muted/30">
                                 <td className="max-w-[12rem] truncate py-2.5 pr-3 font-semibold">
                                   {topic.topic}
+                                  {topic.anomaly ? (
+                                    <span
+                                      className="ml-1.5 inline-flex align-middle text-amber-500"
+                                      title="The analytics service flagged an anomalous answer pattern on this topic (e.g. correct answers far faster than expected)"
+                                    >
+                                      <AlertTriangle aria-hidden="true" className="size-3" />
+                                    </span>
+                                  ) : null}
                                 </td>
                                 <td className="px-2 py-2.5 capitalize text-muted-foreground">
                                   {topic.subject}

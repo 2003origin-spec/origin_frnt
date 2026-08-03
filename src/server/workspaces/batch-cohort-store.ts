@@ -68,7 +68,10 @@ export type StudentTopicProfileLite = {
   totalAttempts: number;
   correctAttempts: number;
   accuracy: number; // 0–1
-  masteryScore: number; // 0–1
+  /** Bayesian Knowledge Tracing posterior from analytics-service (0–1). */
+  masteryScore: number;
+  /** analytics-service flagged an anomalous answer pattern on this topic. */
+  anomaly?: boolean;
   lastAttemptAt: string | null;
 };
 
@@ -191,6 +194,8 @@ export async function getStudentTopicProfileLive(
             SUM(tta.attempts)::int AS total_attempts,
             SUM(ROUND(tta.accuracy / 100.0 * tta.attempts))::int AS correct_attempts,
             AVG(tta.accuracy)::float8 AS avg_accuracy,
+            AVG(tta.bkt_mastery)::float8 AS avg_mastery,
+            BOOL_OR(tta.anomaly) AS anomaly,
             MAX(tr.created_at) AS last_attempt_at
        FROM analytics.test_topic_analytics tta
        JOIN analytics.test_results tr ON tr.id = tta.test_result_id
@@ -203,6 +208,12 @@ export async function getStudentTopicProfileLive(
     const totalAttempts = Number(row.total_attempts) || 0;
     const correctAttempts = Number(row.correct_attempts) || 0;
     const accuracy = totalAttempts > 0 ? correctAttempts / totalAttempts : 0;
+    // Mastery is the analytics-service's Bayesian Knowledge Tracing posterior
+    // (`bkt_mastery`, already 0–1) — NOT a copy of accuracy. It answers "has this
+    // student actually learnt the topic", which diverges from raw accuracy when
+    // attempts are few or streaky. Falls back to accuracy only for legacy rows
+    // written before the column was populated.
+    const mastery = Number(row.avg_mastery);
     return {
       topic: row.topic as string,
       subject: row.subject as string,
@@ -210,7 +221,9 @@ export async function getStudentTopicProfileLive(
       totalAttempts,
       correctAttempts,
       accuracy,
-      masteryScore: accuracy,
+      masteryScore: Number.isFinite(mastery) && mastery > 0 ? mastery : accuracy,
+      /** analytics-service flagged this topic's pattern as anomalous. */
+      anomaly: row.anomaly === true,
       lastAttemptAt: row.last_attempt_at ? new Date(row.last_attempt_at as string).toISOString() : null,
     };
   });
@@ -343,6 +356,51 @@ export async function getStudentTestHistoryLive(
       ? (row.recommendations as unknown[]).map((r) => String(r)).filter(Boolean)
       : [],
   }));
+}
+
+/** Per-student topic accuracy + mastery inside one batch. */
+export type BatchStudentMastery = {
+  /** Mean topic accuracy 0–100 — distinct from mean TEST percentage. */
+  topicAccuracy: number;
+  /** Mean BKT mastery 0–1. */
+  mastery: number;
+  /** Topics where analytics-service flagged an anomalous pattern. */
+  anomalousTopics: number;
+};
+
+/**
+ * Mean topic accuracy and BKT mastery per student for a batch, in ONE query.
+ *
+ * This is the ranking table's "Accuracy" column, which is deliberately NOT the
+ * same number as "Mean %": mean percentage is how they scored on whole tests,
+ * topic accuracy is how they perform per concept. A student can pass tests while
+ * being weak across many topics, and that gap is the point of the column.
+ */
+export async function getBatchStudentMasteryLive(
+  workspaceId: string,
+  batchId: string,
+): Promise<Map<string, BatchStudentMastery>> {
+  await ensureAnalyticsTables();
+  const result = await analyticsPool().query(
+    `SELECT tr.user_id,
+            AVG(tta.accuracy)::float8    AS topic_accuracy,
+            AVG(tta.bkt_mastery)::float8 AS mastery,
+            COUNT(*) FILTER (WHERE tta.anomaly)::int AS anomalous_topics
+       FROM analytics.test_topic_analytics tta
+       JOIN analytics.test_results tr ON tr.id = tta.test_result_id
+      WHERE tr.workspace_id = $1 AND tr.batch_id = $2 AND tr.is_malpractice = FALSE
+      GROUP BY tr.user_id`,
+    [workspaceId, batchId],
+  );
+  const map = new Map<string, BatchStudentMastery>();
+  for (const row of result.rows) {
+    map.set(row.user_id as string, {
+      topicAccuracy: Math.round((Number(row.topic_accuracy) || 0) * 10) / 10,
+      mastery: Number(row.mastery) || 0,
+      anomalousTopics: Number(row.anomalous_topics) || 0,
+    });
+  }
+  return map;
 }
 
 /** Per-subject accuracy for one student — the 360° subject radar. */

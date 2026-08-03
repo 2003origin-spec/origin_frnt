@@ -42,11 +42,13 @@ type Props = {
   canManage: boolean;
   /** Deep-Dive analytics tab; hidden when teacherDeepAnalytics is off. */
   analyticsEnabled?: boolean;
+  /** Active roster size, shown alongside the "ranked" (has-submitted) count. */
+  studentCount?: number;
 };
 
 type ActiveTab = "syllabus" | "tests" | "materials" | "messages" | "analytics";
 
-export function BatchPlannerHighFidelity({ workspaceId, batch, materials: initialMaterials, tests, syllabus: initialSyllabus, canManage, analyticsEnabled = false }: Props) {
+export function BatchPlannerHighFidelity({ workspaceId, batch, materials: initialMaterials, tests, syllabus: initialSyllabus, canManage, analyticsEnabled = false, studentCount = 0 }: Props) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<ActiveTab>("syllabus");
   const [materials, setMaterials] = useState(initialMaterials);
@@ -582,8 +584,8 @@ export function BatchPlannerHighFidelity({ workspaceId, batch, materials: initia
           <div className="animate-fade-in">
             <BatchAnalyticsDeepDive
               workspaceId={workspaceId}
-              batchId={batch.id}
-              batchSubject={batch.subject}
+              batch={batch}
+              studentCount={studentCount}
             />
           </div>
         )}
