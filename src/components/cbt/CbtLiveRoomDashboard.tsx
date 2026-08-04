@@ -26,9 +26,20 @@ type LeaderboardRow = {
   offlineForSeconds?: number | null;
   rejoinCount?: number;
   violationCount?: number;
+  /** Per-subject marks, keyed by canonical subject. Empty until graded. */
+  sectionScores?: Record<string, { label: string; score: number; maxScore: number }>;
 };
 
-type Leaderboard = { roomStatus: string; totalQuestions: number; maxScore: number; participants: LeaderboardRow[] };
+type LeaderboardSection = { key: string; label: string; maxScore: number };
+
+type Leaderboard = {
+  roomStatus: string;
+  totalQuestions: number;
+  maxScore: number;
+  /** Section columns from the TEST — empty for a single-subject paper. */
+  sections?: LeaderboardSection[];
+  participants: LeaderboardRow[];
+};
 
 const STATUS_LABEL: Record<CbtParticipantSummary["status"], string> = {
   in_lobby: "In lobby",
@@ -197,6 +208,10 @@ export function CbtLiveRoomDashboard({
 
   const total = board?.totalQuestions ?? 0;
   const showScores = roomStatus === "in_test" || roomStatus === "finished" || closed;
+  // Section columns come from the TEST, so the table keeps the same shape for a
+  // student marked absent as for one who sat the whole paper. The server sends
+  // [] for a single-subject paper.
+  const sectionColumns = board?.sections ?? [];
 
   return (
     <div className="neu-raised overflow-hidden">
@@ -241,6 +256,16 @@ export function CbtLiveRoomDashboard({
                 <th className="px-3 py-2 font-medium">Status</th>
                 <th className="px-3 py-2 font-medium">Progress</th>
                 {showScores ? <th className="px-3 py-2 text-right font-medium">Score</th> : null}
+                {/* Sectional marking: one column per subject, in paper order.
+                    Absent for a single-subject paper, where it would only
+                    restate the total. */}
+                {showScores
+                  ? sectionColumns.map((s) => (
+                      <th key={s.key} className="px-3 py-2 text-right font-medium capitalize">
+                        {s.label}
+                      </th>
+                    ))
+                  : null}
                 {showScores ? <th className="px-3 py-2 text-right font-medium">Time</th> : null}
                 <th className="px-3 py-2" />
               </tr>
@@ -292,6 +317,18 @@ export function CbtLiveRoomDashboard({
                       {r.score != null ? `${r.score}/${r.maxScore ?? board?.maxScore ?? "—"}` : "—"}
                     </td>
                   ) : null}
+                  {showScores
+                    ? sectionColumns.map((s) => {
+                        const section = r.sectionScores?.[s.key];
+                        return (
+                          <td key={s.key} className="px-3 py-2 text-right tabular-nums text-muted-foreground">
+                            {/* Blank, not zero — an absent attempt has no
+                                sectional marks, exactly as it has no total. */}
+                            {section ? `${section.score}/${section.maxScore}` : "—"}
+                          </td>
+                        );
+                      })
+                    : null}
                   {showScores ? (
                     <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{formatTime(r.timeTakenSeconds)}</td>
                   ) : null}

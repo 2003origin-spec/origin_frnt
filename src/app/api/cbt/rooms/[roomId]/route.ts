@@ -1,7 +1,8 @@
 /**
  * GET    /api/cbt/rooms/[roomId]  — room + participants
  * PATCH  /api/cbt/rooms/[roomId]  — { action: "close" | "finalize" |
- *                                     "finalize_participant" | "rejoin_policy" }
+ *                                     "finalize_participant" | "rejoin_policy" |
+ *                                     "report_share" }
  * DELETE /api/cbt/rooms/[roomId]  — delete a room
  *
  * The finalize actions live here as `action` values rather than in new child
@@ -11,6 +12,7 @@
 import type { NextRequest } from "next/server";
 
 import { parseJsonBody } from "@/server/http";
+import { requireFeatureEnabled } from "@/lib/feature-flags";
 import { handleTeacherError, requestIdOf, teacherJson } from "@/app/api/teacher/_utils";
 import { requireCbtTeacher } from "@/server/cbt/cbt-authz";
 import {
@@ -19,6 +21,7 @@ import {
   getRoomForTeacher,
   getRoomWithParticipants,
   setRoomRejoinPolicy,
+  setRoomReportShare,
 } from "@/server/cbt/cbt-rooms-service";
 import { finalizeParticipantNow, finalizeRoomNow } from "@/server/cbt/cbt-attempts-service";
 import { recordAuditEvent } from "@/server/workspaces/audit";
@@ -45,7 +48,42 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       action?: string;
       participantId?: string;
       rejoinPolicy?: string;
+      reportShareEnabled?: boolean;
     };
+
+    // Publish / unpublish this room's participant report cards. Requires the
+    // premium add-on on the teacher, so a teacher whose entitlement was revoked
+    // cannot leave a live link behind. Only a finished room can be published:
+    // sharing answer keys while an attempt is still open would leak the paper.
+    if (body.action === "report_share") {
+      requireFeatureEnabled("cbtReportCards");
+      if (!ctx.cbtTeacher.reportCardsEnabled) {
+        return teacherJson(
+          { detail: "Report cards are not enabled for your account." },
+          { status: 403 },
+        );
+      }
+      const room = await getRoomForTeacher(ctx.cbtTeacherId, roomId);
+      if (!room) return teacherJson({ detail: "Room not found." }, { status: 404 });
+      const enabled = body.reportShareEnabled === true;
+      if (enabled && room.status !== "finished" && room.status !== "closed") {
+        return teacherJson(
+          { detail: "Finish the test before sharing report cards." },
+          { status: 409 },
+        );
+      }
+      const updated = await setRoomReportShare(ctx.cbtTeacherId, roomId, enabled);
+      if (!updated) return teacherJson({ detail: "Room not found." }, { status: 404 });
+      await recordAuditEvent({
+        actorUserId: ctx.userId,
+        workspaceId: null,
+        entityType: "cbt_room",
+        entityId: roomId,
+        action: enabled ? "cbt.report_share_enabled" : "cbt.report_share_disabled",
+        requestId: requestIdOf(request),
+      });
+      return teacherJson({ ok: true, reportShareEnabled: updated.reportShareEnabled });
+    }
 
     // Grade everyone still open, right now, from the answers the server holds.
     // The teacher's lever for "this student's machine died and isn't coming

@@ -35,6 +35,8 @@ export type CbtLocalDraft = {
   rev: number;
   answers: Record<number, CbtStudentAnswer>;
   palette: Record<number, CbtPaletteStatus>;
+  /** Per-question seconds, mirrored so an offline stretch isn't lost either. */
+  times?: Record<number, number>;
   savedAt: number;
 };
 
@@ -110,6 +112,7 @@ export function loadLocalDraft(roomId: string, participantId: string): CbtLocalD
     rev: found.rev,
     answers: found.answers ?? {},
     palette: found.palette ?? {},
+    times: found.times ?? {},
     savedAt: found.savedAt ?? 0,
   };
 }

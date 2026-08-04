@@ -10,6 +10,8 @@ import type { CbtTeacher, CbtUsageStats } from "@/server/cbt/cbt-teachers-servic
 type Props = {
   initialTeachers: CbtTeacher[];
   initialStats: CbtUsageStats;
+  /** Kill switch for the premium report-card column. */
+  reportCardsAvailable: boolean;
 };
 
 const STAT_CARDS: { key: keyof CbtUsageStats; label: string }[] = [
@@ -21,12 +23,43 @@ const STAT_CARDS: { key: keyof CbtUsageStats; label: string }[] = [
   { key: "totalParticipants", label: "Participants" },
 ];
 
-export function AdminCbtTeachers({ initialTeachers, initialStats }: Props) {
+export function AdminCbtTeachers({ initialTeachers, initialStats, reportCardsAvailable }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState<string | null>(null);
+
+  /**
+   * Premium add-on: shareable participant report cards, per teacher.
+   *
+   * Off for every teacher by default — this switch IS the rollout gate, so a
+   * deploy of the feature makes nothing publicly reachable until an admin turns
+   * it on here. Turning it off 404s that teacher's published links at once.
+   */
+  async function setReportCards(teacher: CbtTeacher, enabled: boolean) {
+    setError(null);
+    if (
+      !enabled &&
+      !window.confirm(
+        `Disable report cards for ${teacher.email}? Every report link they have shared stops working immediately.`,
+      )
+    ) {
+      return;
+    }
+    const res = await fetch("/api/admin/cbt/teachers", {
+      method: "PATCH",
+      headers: { "content-type": "application/json", ...csrfHeaders() },
+      credentials: "include",
+      body: JSON.stringify({ id: teacher.id, reportCardsEnabled: enabled }),
+    });
+    if (!res.ok) {
+      const data = (await res.json().catch(() => ({}))) as { detail?: string };
+      setError(data.detail ?? `Update failed (${res.status})`);
+      return;
+    }
+    router.refresh();
+  }
 
   async function addTeacher() {
     setError(null);
@@ -122,6 +155,14 @@ export function AdminCbtTeachers({ initialTeachers, initialStats }: Props) {
               <th className="px-4 py-3 font-medium">Email</th>
               <th className="px-4 py-3 font-medium">Display name</th>
               <th className="px-4 py-3 font-medium">Status</th>
+              {reportCardsAvailable ? (
+                <th className="px-4 py-3 font-medium">
+                  Report cards
+                  <span className="ml-1.5 rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary">
+                    Premium
+                  </span>
+                </th>
+              ) : null}
               <th className="px-4 py-3 font-medium">Added</th>
               <th className="px-4 py-3 font-medium text-right">Actions</th>
             </tr>
@@ -129,7 +170,7 @@ export function AdminCbtTeachers({ initialTeachers, initialStats }: Props) {
           <tbody>
             {initialTeachers.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
+                <td colSpan={reportCardsAvailable ? 6 : 5} className="px-4 py-8 text-center text-muted-foreground">
                   No CBT teachers yet.
                 </td>
               </tr>
@@ -149,6 +190,28 @@ export function AdminCbtTeachers({ initialTeachers, initialStats }: Props) {
                       {teacher.status}
                     </span>
                   </td>
+                  {reportCardsAvailable ? (
+                    <td className="px-4 py-3">
+                      {teacher.status === "active" ? (
+                        <label className="inline-flex cursor-pointer items-center gap-2">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 accent-primary"
+                            checked={teacher.reportCardsEnabled}
+                            disabled={isPending}
+                            onChange={(e) =>
+                              startTransition(() => setReportCards(teacher, e.target.checked))
+                            }
+                          />
+                          <span className="text-xs text-muted-foreground">
+                            {teacher.reportCardsEnabled ? "Enabled" : "Disabled"}
+                          </span>
+                        </label>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </td>
+                  ) : null}
                   <td className="px-4 py-3 text-muted-foreground">
                     {new Date(teacher.createdAt).toLocaleDateString()}
                   </td>

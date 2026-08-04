@@ -27,6 +27,7 @@ export async function POST(request: NextRequest) {
       answers?: Record<number, CbtStudentAnswer>;
       palette?: Record<number, CbtPaletteStatus>;
       rev?: number;
+      times?: Record<number, number>;
     } = {};
     try {
       body = raw ? JSON.parse(raw) : {};
@@ -37,7 +38,14 @@ export async function POST(request: NextRequest) {
     // `rev` is the browser's monotonic draft counter — a save from a stale tab
     // (or a sendBeacon fired by a dying device) is rejected with 409
     // `stale_draft` rather than overwriting newer answers.
-    const result = await saveAnswers(participant, room, body.answers ?? {}, body.palette ?? {}, body.rev);
+    const result = await saveAnswers(
+      participant,
+      room,
+      body.answers ?? {},
+      body.palette ?? {},
+      body.rev,
+      body.times,
+    );
     return studentJson({ ok: true, answeredCount: result.answeredCount, rev: result.rev });
   } catch (error) {
     return handleStudentError(error);

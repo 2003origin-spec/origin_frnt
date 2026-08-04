@@ -16,6 +16,7 @@ import type { QuestionWithVersion, BatchWithCounts, AssessmentTest } from "@/ser
 import { toast } from "sonner";
 
 import { QuestionPicker, type SelectedQuestion } from "./QuestionPicker";
+import { TestSourceStackPanel } from "./TestSourceStackPanel";
 
 export type WizardInitial = {
   title: string;
@@ -64,6 +65,20 @@ export function TestCreatorWizard({ workspaceId, questions, batches, ogcodeEnabl
 
   // Step 2: Selected Questions (mixed-source: OG Code + Question Bag)
   const [selectedQuestions, setSelectedQuestions] = useState<SelectedQuestion[]>(initial?.selectedQuestions ?? []);
+
+  /**
+   * Appends a resolved source stack to the cart, skipping anything already in
+   * it. Appending (rather than replacing) lets a teacher stack two documents in
+   * separate passes, and the skip keeps the same question from being asked
+   * twice in one paper — reuse across DIFFERENT tests stays perfectly fine.
+   */
+  const appendResolvedQuestions = (incoming: SelectedQuestion[]) => {
+    setSelectedQuestions((prev) => {
+      const seen = new Set(prev.map((q) => `${q.sourceBank}:${q.id}`));
+      const additions = incoming.filter((q) => q.id && !seen.has(`${q.sourceBank}:${q.id}`));
+      return [...prev, ...additions];
+    });
+  };
 
   // Step 3: Target & Schedule (drafts have no assignment yet — teacher picks here)
   const [selectedBatchId, setSelectedBatchId] = useState("");
@@ -282,8 +297,10 @@ export function TestCreatorWizard({ workspaceId, questions, batches, ogcodeEnabl
           )}
 
           {currentStep === 1 && (
-            /* Step 2: mixed-source question picker (OG Code + Question Bag) */
+            /* Step 2: mixed-source question picker (OG Code + Question Bag),
+               plus bulk stacking from whole documents / topics / past tests. */
             <div className="space-y-4">
+              <TestSourceStackPanel workspaceId={workspaceId} onResolved={appendResolvedQuestions} />
               <QuestionPicker
                 value={selectedQuestions}
                 onChange={setSelectedQuestions}
@@ -292,6 +309,7 @@ export function TestCreatorWizard({ workspaceId, questions, batches, ogcodeEnabl
                 ogcodeEnabled={ogcodeEnabled}
                 defaultMarks={marksPositive}
                 defaultNegativeMarks={marksNegative}
+                excludeTestId={isEdit ? testId : undefined}
               />
               <div className="flex justify-between border-t pt-4">
                 <Button variant="outline" onClick={prevStep} className="rounded-xl"><ArrowLeft className="w-4 h-4" /> Back</Button>

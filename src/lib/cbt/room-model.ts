@@ -27,6 +27,12 @@ export type CbtRoom = {
   endedAt: string | null;
   capacity: number;
   rejoinPolicy: CbtRejoinPolicy;
+  /**
+   * Has the teacher published this room's participant report cards? The public
+   * report link resolves only when this is true AND the teacher's admin-level
+   * report-card add-on is enabled.
+   */
+  reportShareEnabled: boolean;
   createdAt: string;
   updatedAt: string;
 };

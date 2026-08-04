@@ -49,7 +49,8 @@ type FlagKey =
   | "ogcodeScoringV2"
   | "teacherCodeApproval"
   | "adminUserLifecycle"
-  | "studyModes";
+  | "studyModes"
+  | "cbtReportCards";
 
 type FlagSpec = {
   envSuffix: string;
@@ -204,6 +205,21 @@ const FLAG_SPECS: Record<FlagKey, FlagSpec> = {
   // un-migrated database self-heals on first request rather than erroring.
   // See V1/allmd/STUDY_MODE_JEE_NEET_PCMB_PLAN_2026-08-01.md.
   studyModes: { envSuffix: "STUDY_MODES", defaultDev: true, defaultProd: true },
+  // CBT premium report cards — the shareable per-participant analysis link
+  // (/cbt/r/<slug>/report), its public unlock endpoint, the admin per-teacher
+  // switch and the teacher per-room publish switch.
+  //
+  // This is the KILL SWITCH, not the rollout gate. The actual gate is
+  // cbt.teachers.report_cards_enabled, which defaults FALSE for every teacher,
+  // so with this flag on and no admin action nothing is publicly reachable.
+  // Defaulting it ON in prod is therefore safe AND keeps the surface testable
+  // on Vercel previews (a defaultProd:false flag is off on previews too, since
+  // NODE_ENV is "production" there — the known preview/flag gap).
+  //
+  // Turning it OFF 404s every published link immediately, without a redeploy.
+  // Sectional marking is deliberately NOT behind it: it is additive, it cannot
+  // change an existing number, and it is part of the teacher's own results.
+  cbtReportCards: { envSuffix: "CBT_REPORT_CARDS", defaultDev: true, defaultProd: true },
 };
 
 /** Every feature-flag key, in declaration order (admin System Config view). */
