@@ -57,6 +57,8 @@ export type CbtTestPayload = {
 export type CbtDraftState = {
   answers: Record<number, CbtStudentAnswer>;
   palette: Record<number, CbtPaletteStatus>;
+  /** Seconds spent per question position — advisory, never scored. */
+  times?: Record<number, number>;
 };
 
 export function isAnswered(answer: CbtStudentAnswer | undefined): boolean {

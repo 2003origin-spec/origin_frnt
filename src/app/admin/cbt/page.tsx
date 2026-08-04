@@ -22,7 +22,11 @@ export default async function AdminCbtPage() {
 
   return (
     <AdminLayout>
-      <AdminCbtTeachers initialTeachers={teachers} initialStats={stats} />
+      <AdminCbtTeachers
+        initialTeachers={teachers}
+        initialStats={stats}
+        reportCardsAvailable={isFeatureEnabled("cbtReportCards")}
+      />
     </AdminLayout>
   );
 }

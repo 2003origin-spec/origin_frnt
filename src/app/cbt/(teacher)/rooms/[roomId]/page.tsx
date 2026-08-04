@@ -30,5 +30,14 @@ export default async function CbtRoomPage({ params }: { params: Promise<{ roomId
   }));
 
   const { participants: _participants, ...roomMeta } = room;
-  return <CbtRoomConsole room={roomMeta} initialParticipants={initialParticipants} />;
+  // The premium report-card surface needs BOTH the platform kill switch and
+  // this teacher's admin-granted entitlement.
+  const reportCardsEnabled = isFeatureEnabled("cbtReportCards") && teacher.reportCardsEnabled;
+  return (
+    <CbtRoomConsole
+      room={roomMeta}
+      initialParticipants={initialParticipants}
+      reportCardsEnabled={reportCardsEnabled}
+    />
+  );
 }

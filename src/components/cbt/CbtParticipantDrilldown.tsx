@@ -16,6 +16,17 @@ type Drilldown = {
     autoSubmitted: boolean;
   };
   summary: { correct: number; wrong: number; unattempted: number; needsReview: number };
+  sections: {
+    key: string;
+    label: string;
+    score: number;
+    maxScore: number;
+    correct: number;
+    wrong: number;
+    skipped: number;
+    accuracy: number;
+    timeSeconds: number;
+  }[];
   questions: {
     position: number;
     questionType: string;
@@ -26,8 +37,16 @@ type Drilldown = {
     isCorrect: boolean;
     needsReview: boolean;
     attempted: boolean;
+    timeSpentSeconds: number;
   }[];
 };
+
+function fmtDuration(seconds: number): string {
+  if (!seconds) return "—";
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return m > 0 ? `${m}m ${String(s).padStart(2, "0")}s` : `${s}s`;
+}
 
 function verdict(q: Drilldown["questions"][number]): { label: string; cls: string } {
   if (q.needsReview) return { label: "Review", cls: "bg-violet-500/15 text-violet-600 dark:text-violet-400" };
@@ -101,6 +120,45 @@ export function CbtParticipantDrilldown({
                 <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-violet-600">{data.summary.needsReview} to review</span>
               ) : null}
             </div>
+            {/* Sectional marks — one row per subject, in paper order. Absent
+                for a single-subject paper, where it would only restate the
+                total. */}
+            {data.sections.length > 0 ? (
+              <div className="neu-raised overflow-x-auto rounded-xl">
+                <table className="w-full min-w-[26rem] text-left text-xs">
+                  <thead className="border-b border-border/40 text-muted-foreground">
+                    <tr>
+                      <th className="px-3 py-2 font-medium">Section</th>
+                      <th className="px-3 py-2 text-right font-medium">Marks</th>
+                      <th className="px-3 py-2 text-right font-medium">Correct</th>
+                      <th className="px-3 py-2 text-right font-medium">Wrong</th>
+                      <th className="px-3 py-2 text-right font-medium">Skipped</th>
+                      <th className="px-3 py-2 text-right font-medium">Accuracy</th>
+                      <th className="px-3 py-2 text-right font-medium">Time</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.sections.map((s) => (
+                      <tr key={s.key} className="border-b border-border/30 last:border-0">
+                        <td className="px-3 py-2 font-medium capitalize text-foreground">{s.label}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">
+                          <b>{s.score}</b>
+                          <span className="text-muted-foreground"> / {s.maxScore}</span>
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums text-emerald-600">{s.correct}</td>
+                        <td className="px-3 py-2 text-right tabular-nums text-red-600">{s.wrong}</td>
+                        <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{s.skipped}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{s.accuracy}%</td>
+                        <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
+                          {fmtDuration(s.timeSeconds)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+
             <ul className="neu-raised divide-y divide-border/40 text-sm">
               {data.questions.map((q) => {
                 const v = verdict(q);
@@ -112,6 +170,11 @@ export function CbtParticipantDrilldown({
                       </p>
                     </div>
                     <div className="flex items-center gap-3">
+                      {q.timeSpentSeconds > 0 ? (
+                        <span className="hidden tabular-nums text-xs text-muted-foreground sm:inline">
+                          {fmtDuration(q.timeSpentSeconds)}
+                        </span>
+                      ) : null}
                       <span className="tabular-nums text-muted-foreground">
                         {q.marksAwarded} / {q.marks}
                       </span>

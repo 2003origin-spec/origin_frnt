@@ -107,6 +107,10 @@ export async function ensureCbtSchema(): Promise<void> {
           ALTER TABLE cbt.questions ADD COLUMN IF NOT EXISTS image TEXT;
           ALTER TABLE cbt.teachers ADD COLUMN IF NOT EXISTS logo TEXT;
 
+          -- Report cards (20260804): the ADMIN switch for the premium
+          -- report-card feature. FALSE for every existing teacher.
+          ALTER TABLE cbt.teachers ADD COLUMN IF NOT EXISTS report_cards_enabled BOOLEAN NOT NULL DEFAULT FALSE;
+
           CREATE TABLE IF NOT EXISTS cbt.tests (
             id               TEXT PRIMARY KEY,
             teacher_id       TEXT NOT NULL REFERENCES cbt.teachers(id) ON DELETE CASCADE,
@@ -147,6 +151,10 @@ export async function ensureCbtSchema(): Promise<void> {
           -- Identity-recovery policy (20260802), additive for existing rooms.
           ALTER TABLE cbt.rooms ADD COLUMN IF NOT EXISTS rejoin_policy TEXT NOT NULL DEFAULT 'name_or_id';
 
+          -- Report cards (20260804): the TEACHER switch, per room. Only a
+          -- published room can resolve a shareable report link.
+          ALTER TABLE cbt.rooms ADD COLUMN IF NOT EXISTS report_share_enabled BOOLEAN NOT NULL DEFAULT FALSE;
+
           CREATE TABLE IF NOT EXISTS cbt.room_participants (
             id                 TEXT PRIMARY KEY,
             room_id            TEXT NOT NULL REFERENCES cbt.rooms(id) ON DELETE CASCADE,
@@ -175,6 +183,12 @@ export async function ensureCbtSchema(): Promise<void> {
             ADD COLUMN IF NOT EXISTS last_rejoin_at  TIMESTAMPTZ,
             ADD COLUMN IF NOT EXISTS violation_count INTEGER NOT NULL DEFAULT 0;
 
+          -- Sectional marking (20260804): per-subject breakdown written at
+          -- grading time. Legacy rows stay '{}' and are derived on read from
+          -- cbt.submission_answers, so no backfill is required.
+          ALTER TABLE cbt.room_participants
+            ADD COLUMN IF NOT EXISTS section_scores JSONB NOT NULL DEFAULT '{}'::jsonb;
+
           CREATE TABLE IF NOT EXISTS cbt.answer_drafts (
             room_id        TEXT NOT NULL REFERENCES cbt.rooms(id) ON DELETE CASCADE,
             participant_id TEXT NOT NULL REFERENCES cbt.room_participants(id) ON DELETE CASCADE,
@@ -189,6 +203,10 @@ export async function ensureCbtSchema(): Promise<void> {
           -- actually resumed on.
           ALTER TABLE cbt.answer_drafts ADD COLUMN IF NOT EXISTS rev BIGINT NOT NULL DEFAULT 0;
 
+          -- Per-question timing (20260804): {position: seconds} accumulated by
+          -- the player. Advisory only — it never influences a mark or a rank.
+          ALTER TABLE cbt.answer_drafts ADD COLUMN IF NOT EXISTS times JSONB NOT NULL DEFAULT '{}'::jsonb;
+
           CREATE TABLE IF NOT EXISTS cbt.submission_answers (
             room_id           TEXT NOT NULL REFERENCES cbt.rooms(id) ON DELETE CASCADE,
             participant_id    TEXT NOT NULL REFERENCES cbt.room_participants(id) ON DELETE CASCADE,
@@ -199,6 +217,11 @@ export async function ensureCbtSchema(): Promise<void> {
             marks_awarded     DOUBLE PRECISION NOT NULL DEFAULT 0,
             PRIMARY KEY (room_id, participant_id, position)
           );
+
+          -- Per-question timing snapshot (20260804), taken at grading time from
+          -- the draft's times map. 0 for every attempt finished before that ship.
+          ALTER TABLE cbt.submission_answers
+            ADD COLUMN IF NOT EXISTS time_spent_seconds INTEGER NOT NULL DEFAULT 0;
 
           -- Question clusters (many-to-many collections; see 20260707_cbt_clusters.sql).
           CREATE TABLE IF NOT EXISTS cbt.question_clusters (
@@ -267,6 +290,10 @@ export async function ensureCbtSchema(): Promise<void> {
         await client.query(
           "INSERT INTO app.migrations (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING",
           ["20260802_cbt_attempt_resilience", "cbt attempt resilience columns"],
+        );
+        await client.query(
+          "INSERT INTO app.migrations (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING",
+          ["20260804_cbt_report_cards", "cbt sectional marking + report cards"],
         );
         await client.query("COMMIT");
         globalThis.__originCbtSchemaEnsured = true;

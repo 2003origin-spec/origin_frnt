@@ -20,6 +20,7 @@ import {
   localDraftIsAhead,
   saveLocalDraft,
 } from "@/lib/cbt/local-attempt";
+import { QuestionTimer, type CbtQuestionTimes } from "@/lib/cbt/question-timing";
 
 /**
  * CBT test player. A purpose-built fork of the Origin TestInterface: it keeps
@@ -103,6 +104,13 @@ export function CbtTestInterface() {
   const participantIdRef = useRef<string>("");
   /** Server-clock offset, so a skewed device clock can't fake "time up". */
   const skewRef = useRef(0);
+  /**
+   * Per-question stopwatch for the report card. Advisory only — it never
+   * reaches grading — and it is paused whenever the student isn't actually
+   * looking at the paper (tab hidden, window blurred, connection lost), so an
+   * outage can't be recorded as twenty minutes of thinking about question 7.
+   */
+  const questionTimerRef = useRef<QuestionTimer | null>(null);
 
   stateRef.current = { answers, palette };
 
@@ -191,6 +199,7 @@ export function CbtTestInterface() {
           draft: {
             answers: Record<number, CbtStudentAnswer>;
             palette: Record<number, CbtPaletteStatus>;
+            times?: CbtQuestionTimes;
             rev?: number;
           };
           studentCode: string;
@@ -212,6 +221,7 @@ export function CbtTestInterface() {
         const serverRev = Number(data.draft.rev ?? 0);
         let answers = data.draft.answers ?? {};
         let palette = data.draft.palette ?? {};
+        let times: CbtQuestionTimes = data.draft.times ?? {};
         revRef.current = serverRev;
 
         // Answers typed while the connection was down never reached the server.
@@ -221,9 +231,14 @@ export function CbtTestInterface() {
         if (localDraftIsAhead(local, serverRev) && local) {
           answers = local.answers;
           palette = local.palette;
+          times = local.times ?? times;
           revRef.current = local.rev;
           dirtyRef.current = true;
         }
+
+        // Resuming (another device, a reload) continues the stopwatch from what
+        // has already been recorded rather than restarting every question at 0.
+        questionTimerRef.current = new QuestionTimer(times, data.payload.durationSeconds);
 
         setPayload(data.payload);
         setStudentCode(data.studentCode);
@@ -259,7 +274,14 @@ export function CbtTestInterface() {
   const flushSave = useCallback(async (): Promise<boolean> => {
     if (!dirtyRef.current) return true;
     dirtyRef.current = false;
-    const snapshot = { ...stateRef.current, rev: revRef.current };
+    const snapshot = {
+      ...stateRef.current,
+      rev: revRef.current,
+      // Includes the segment still running, without banking it — so a mid-
+      // question autosave reports the truth and the later close() still counts
+      // those seconds exactly once.
+      times: questionTimerRef.current?.snapshot(Date.now()) ?? {},
+    };
     try {
       const res = await fetch("/api/cbt-student/answers", {
         method: "POST",
@@ -310,10 +332,20 @@ export function CbtTestInterface() {
     if (phase !== "running") return;
     const interval = window.setInterval(() => void flushSave(), 15_000);
     const onPageHide = () => {
+      // Bank the open segment BEFORE serialising, so the last question the
+      // student was on doesn't lose the time they spent on it.
+      questionTimerRef.current?.close(Date.now());
       if (!dirtyRef.current) return;
-      const blob = new Blob([JSON.stringify({ ...stateRef.current, rev: revRef.current })], {
-        type: "application/json",
-      });
+      const blob = new Blob(
+        [
+          JSON.stringify({
+            ...stateRef.current,
+            rev: revRef.current,
+            times: questionTimerRef.current?.snapshot(Date.now()) ?? {},
+          }),
+        ],
+        { type: "application/json" },
+      );
       navigator.sendBeacon("/api/cbt-student/answers", blob);
     };
     // Reconnecting: flush immediately rather than waiting up to 15s.
@@ -353,8 +385,52 @@ export function CbtTestInterface() {
   useEffect(() => {
     if (phase !== "running" && phase !== "ready") return;
     if (!roomId || !participantIdRef.current) return;
-    saveLocalDraft(roomId, participantIdRef.current, { rev: revRef.current, answers, palette });
+    saveLocalDraft(roomId, participantIdRef.current, {
+      rev: revRef.current,
+      answers,
+      palette,
+      times: questionTimerRef.current?.snapshot(Date.now()) ?? {},
+    });
   }, [answers, palette, phase, roomId]);
+
+  // ── Per-question stopwatch lifecycle ───────────────────────────────────────
+  // One segment is open at a time, for the question actually on screen. Every
+  // transition — navigating, backgrounding, losing the network, leaving the
+  // running phase — closes it, so seconds are counted in exactly one place and
+  // no path can double-count them.
+  const activePosition = flat[index]?.q.position ?? null;
+  useEffect(() => {
+    const timer = questionTimerRef.current;
+    if (!timer) return;
+    if (phase !== "running" || activePosition === null) {
+      timer.close(Date.now());
+      return;
+    }
+
+    const resume = () => {
+      if (typeof document !== "undefined" && document.hidden) return;
+      if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+      timer.open(activePosition, Date.now());
+    };
+    const pause = () => timer.close(Date.now());
+
+    resume();
+
+    const onVisibility = () => (document.hidden ? pause() : resume());
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("blur", pause);
+    window.addEventListener("focus", resume);
+    window.addEventListener("offline", pause);
+    window.addEventListener("online", resume);
+    return () => {
+      pause();
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("blur", pause);
+      window.removeEventListener("focus", resume);
+      window.removeEventListener("offline", pause);
+      window.removeEventListener("online", resume);
+    };
+  }, [phase, activePosition]);
 
   // ── Full-screen request ────────────────────────────────────────────────────
   const enterFullscreen = useCallback(() => {
@@ -390,6 +466,13 @@ export function CbtTestInterface() {
       submittedRef.current = true;
       setPhase("submitting");
       setSubmitError(null);
+      // Bank the segment for the question they were on and force the flush:
+      // grading reads the server-held draft, so the final seconds have to be up
+      // there before the submit request — and flushSave() no-ops when nothing
+      // else changed since the last autosave.
+      questionTimerRef.current?.close(Date.now());
+      dirtyRef.current = true;
+      revRef.current += 1;
       await flushSave();
 
       const body = JSON.stringify({ auto, malpractice, violations });

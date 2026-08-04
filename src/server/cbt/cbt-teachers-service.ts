@@ -23,6 +23,12 @@ export type CbtTeacher = {
   logo: string | null;
   status: CbtTeacherStatus;
   importWorkspaceId: string | null;
+  /**
+   * Premium add-on: may this teacher publish shareable participant report
+   * cards? Admin-controlled, FALSE for every teacher until an admin turns it
+   * on, and re-checked on every report request so revoking is instant.
+   */
+  reportCardsEnabled: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -36,7 +42,8 @@ export type CbtUsageStats = {
   totalParticipants: number;
 };
 
-const TEACHER_COLUMNS = `id, user_id, email, display_name, logo, status, import_workspace_id, created_at, updated_at`;
+const TEACHER_COLUMNS = `id, user_id, email, display_name, logo, status, import_workspace_id,
+  report_cards_enabled, created_at, updated_at`;
 
 function pool() {
   const p = getUserPostgresPool();
@@ -53,6 +60,7 @@ function mapTeacher(row: Record<string, unknown>): CbtTeacher {
     logo: row.logo ? String(row.logo) : null,
     status: row.status === "disabled" ? "disabled" : "active",
     importWorkspaceId: row.import_workspace_id ? String(row.import_workspace_id) : null,
+    reportCardsEnabled: row.report_cards_enabled === true,
     createdAt: new Date(row.created_at as string).toISOString(),
     updatedAt: new Date(row.updated_at as string).toISOString(),
   };
@@ -131,6 +139,26 @@ export async function updateCbtTeacherDisplayName(
   const res = await pool().query(
     `UPDATE cbt.teachers SET display_name = $2, updated_at = NOW() WHERE id = $1 RETURNING ${TEACHER_COLUMNS}`,
     [teacherId, trimmed || null],
+  );
+  return res.rows[0] ? mapTeacher(res.rows[0]) : null;
+}
+
+/**
+ * Admin switch for the premium report-card add-on.
+ *
+ * Turning it OFF does not touch any room's own publish flag — it simply makes
+ * every report request for that teacher 404, so re-enabling restores exactly
+ * what the teacher had published before.
+ */
+export async function setCbtTeacherReportCards(
+  teacherId: string,
+  enabled: boolean,
+): Promise<CbtTeacher | null> {
+  await ensureCbtSchema();
+  const res = await pool().query(
+    `UPDATE cbt.teachers SET report_cards_enabled = $2, updated_at = NOW()
+       WHERE id = $1 RETURNING ${TEACHER_COLUMNS}`,
+    [teacherId, enabled],
   );
   return res.rows[0] ? mapTeacher(res.rows[0]) : null;
 }

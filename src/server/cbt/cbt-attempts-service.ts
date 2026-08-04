@@ -27,6 +27,8 @@ import {
   isGradedReason,
   type CbtFinalizeReason,
 } from "@/lib/cbt/finalize-reason";
+import { sanitizeQuestionTimes, type CbtQuestionTimes } from "@/lib/cbt/question-timing";
+import { buildSectionScores, type CbtSectionInput } from "@/lib/cbt/sections";
 
 import { shuffleQuestionsForParticipant } from "@/lib/cbt/shuffle";
 
@@ -190,16 +192,18 @@ export async function loadDraft(
 ): Promise<{
   answers: Record<number, CbtStudentAnswer>;
   palette: Record<number, CbtPaletteStatus>;
+  times: CbtQuestionTimes;
   rev: number;
 }> {
   const res = await pool().query(
-    `SELECT answers, palette, rev FROM cbt.answer_drafts WHERE room_id = $1 AND participant_id = $2`,
+    `SELECT answers, palette, times, rev FROM cbt.answer_drafts WHERE room_id = $1 AND participant_id = $2`,
     [roomId, participantId],
   );
   const row = res.rows[0];
   return {
     answers: (row?.answers ?? {}) as Record<number, CbtStudentAnswer>,
     palette: (row?.palette ?? {}) as Record<number, CbtPaletteStatus>,
+    times: sanitizeQuestionTimes(row?.times, Number.MAX_SAFE_INTEGER),
     rev: Number(row?.rev ?? 0),
   };
 }
@@ -229,6 +233,7 @@ export async function saveAnswers(
   answers: Record<number, CbtStudentAnswer>,
   palette: Record<number, CbtPaletteStatus>,
   rev?: number,
+  times?: unknown,
 ): Promise<{ answeredCount: number; rev: number }> {
   // Coded so the player stops retrying a save the server will never accept —
   // e.g. the deadline finalization landed while this tab was reconnecting.
@@ -245,17 +250,30 @@ export async function saveAnswers(
   const answeredCount = countAnswered(answers);
   const incomingRev = Number.isFinite(Number(rev)) && Number(rev) > 0 ? Math.floor(Number(rev)) : null;
 
+  // Per-question timing rides the same rev-guarded write, so it inherits the
+  // stale-tab protection for free: the client always sends a CUMULATIVE map it
+  // hydrated from the server, and a payload whose rev is behind is rejected
+  // outright below. An EMPTY map is treated as "this client has nothing to say
+  // about timing" and leaves the stored value alone — that is what keeps an
+  // older bundle (which sends no `times` at all) from wiping a newer one during
+  // a rollout.
+  const incomingTimes = sanitizeQuestionTimes(times, room.durationSeconds ?? Number.MAX_SAFE_INTEGER);
+  const timesJson = JSON.stringify(incomingTimes);
+
   const saved = await pool().query(
-    `INSERT INTO cbt.answer_drafts (room_id, participant_id, answers, palette, rev, updated_at)
-       VALUES ($1, $2, $3::jsonb, $4::jsonb, COALESCE($5::bigint, 0), NOW())
+    `INSERT INTO cbt.answer_drafts (room_id, participant_id, answers, palette, times, rev, updated_at)
+       VALUES ($1, $2, $3::jsonb, $4::jsonb, $6::jsonb, COALESCE($5::bigint, 0), NOW())
      ON CONFLICT (room_id, participant_id)
        DO UPDATE SET answers = EXCLUDED.answers,
                      palette = EXCLUDED.palette,
+                     times = CASE WHEN EXCLUDED.times = '{}'::jsonb
+                                  THEN answer_drafts.times
+                                  ELSE EXCLUDED.times END,
                      rev = GREATEST(answer_drafts.rev, EXCLUDED.rev),
                      updated_at = NOW()
        WHERE $5::bigint IS NULL OR EXCLUDED.rev >= answer_drafts.rev
      RETURNING rev`,
-    [room.id, participant.id, answersJson, paletteJson, incomingRev],
+    [room.id, participant.id, answersJson, paletteJson, incomingRev, timesJson],
   );
 
   if (!saved.rows[0]) {
@@ -543,28 +561,50 @@ export async function submitAttempt(
 
   // Grade from the server-held draft.
   const draftRes = await pool().query(
-    `SELECT answers FROM cbt.answer_drafts WHERE room_id = $1 AND participant_id = $2`,
+    `SELECT answers, times FROM cbt.answer_drafts WHERE room_id = $1 AND participant_id = $2`,
     [room.id, participant.id],
   );
   const answers = (draftRes.rows[0]?.answers ?? {}) as Record<number, CbtStudentAnswer>;
+  // Advisory per-question seconds, clamped to the room duration. Attempts that
+  // finished before this shipped simply have none, and every reader treats a
+  // missing entry as "not recorded" rather than as zero seconds.
+  const questionTimes = sanitizeQuestionTimes(
+    draftRes.rows[0]?.times,
+    room.durationSeconds ?? Number.MAX_SAFE_INTEGER,
+  );
   const questions = await loadTestQuestions(room.testId);
   const grades = await gradeAll(room.id, participant.id, questions, answers);
 
   let score = 0;
   const maxScore = questions.reduce((sum, q) => sum + q.marks, 0);
   const qByPos = new Map(questions.map((q) => [q.position, q]));
+  // Sectional marking is assembled from the SAME grading pass, so the per-
+  // subject rows can never disagree with the total written just below.
+  const sectionInput: CbtSectionInput[] = [];
 
   for (const { position, outcome } of grades) {
     score += outcome.marksAwarded;
     const q = qByPos.get(position)!;
+    sectionInput.push({
+      position,
+      subject: q.subject,
+      marks: q.marks,
+      marksAwarded: outcome.marksAwarded,
+      isCorrect: outcome.isCorrect,
+      needsReview: outcome.needsReview,
+      attempted: isAnswered(answers[position] ?? {}),
+      timeSeconds: questionTimes[position] ?? 0,
+    });
     await pool().query(
       `INSERT INTO cbt.submission_answers
-         (room_id, participant_id, position, question_snapshot, submitted_answer, grading_result, marks_awarded)
-       VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb, $7)
+         (room_id, participant_id, position, question_snapshot, submitted_answer, grading_result,
+          marks_awarded, time_spent_seconds)
+       VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb, $7, $8)
        ON CONFLICT (room_id, participant_id, position) DO UPDATE
          SET submitted_answer = EXCLUDED.submitted_answer,
              grading_result = EXCLUDED.grading_result,
-             marks_awarded = EXCLUDED.marks_awarded`,
+             marks_awarded = EXCLUDED.marks_awarded,
+             time_spent_seconds = EXCLUDED.time_spent_seconds`,
       [
         room.id,
         participant.id,
@@ -576,13 +616,16 @@ export async function submitAttempt(
           image: q.image,
           options: q.options,
           answer: q.answer,
+          explanation: q.explanation,
           marks: q.marks,
           negativeMarks: q.negativeMarks,
           subject: q.subject,
+          chapter: q.chapter,
         }),
         JSON.stringify(answers[position] ?? {}),
         JSON.stringify({ isCorrect: outcome.isCorrect, needsReview: outcome.needsReview }),
         Number(outcome.marksAwarded.toFixed(3)),
+        questionTimes[position] ?? 0,
       ],
     );
   }
@@ -594,9 +637,18 @@ export async function submitAttempt(
 
   await pool().query(
     `UPDATE cbt.room_participants
-        SET score = $3, max_score = $4, answered_count = $5, time_taken_seconds = $6, last_seen_at = NOW()
+        SET score = $3, max_score = $4, answered_count = $5, time_taken_seconds = $6,
+            section_scores = $7::jsonb, last_seen_at = NOW()
       WHERE id = $1 AND room_id = $2`,
-    [participant.id, room.id, Number(score.toFixed(3)), Number(maxScore.toFixed(3)), answeredCount, timeTaken],
+    [
+      participant.id,
+      room.id,
+      Number(score.toFixed(3)),
+      Number(maxScore.toFixed(3)),
+      answeredCount,
+      timeTaken,
+      JSON.stringify(buildSectionScores(sectionInput)),
+    ],
   );
 
   if (!opts.deferRanks) await persistRanks(room.id);
@@ -635,7 +687,7 @@ export async function maybeFinishRoom(roomId: string): Promise<void> {
 // ── Finalization (deadline, teacher-forced, room close) ──────────────────────
 
 const ROOM_SWEEP_COLUMNS = `id, teacher_id, name, public_slug, status, test_id, started_at,
-  duration_seconds, ended_at, capacity, rejoin_policy, created_at, updated_at`;
+  duration_seconds, ended_at, capacity, rejoin_policy, report_share_enabled, created_at, updated_at`;
 
 /** Grace after the deadline before the server takes over the submission. */
 const FINALIZE_GRACE_SECONDS = 10;
@@ -659,6 +711,7 @@ function mapRoomRow(row: Record<string, unknown>): CbtRoom {
     endedAt: row.ended_at ? new Date(row.ended_at as string).toISOString() : null,
     capacity: Number(row.capacity ?? 200),
     rejoinPolicy: row.rejoin_policy === "id_only" ? "id_only" : "name_or_id",
+    reportShareEnabled: row.report_share_enabled === true,
     createdAt: new Date(row.created_at as string).toISOString(),
     updatedAt: new Date(row.updated_at as string).toISOString(),
   };

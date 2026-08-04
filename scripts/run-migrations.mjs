@@ -60,6 +60,8 @@ const MIGRATIONS = [
   { file: "20260801_ogcode_daily_challenge_mode.sql", target: "ogcode" },
   // CBT attempt resilience (offline resume + finalize reasons) — 2026-08-02.
   { file: "20260802_cbt_attempt_resilience.sql", target: "user" },
+  // CBT sectional marking + shareable report cards — 2026-08-04.
+  { file: "20260804_cbt_report_cards.sql", target: "user" },
 ];
 
 const TARGET_ENV = {

@@ -44,7 +44,8 @@ function cbtError(status: number, message: string): Error & { status: number } {
   return err;
 }
 
-const ROOM_COLUMNS = `id, teacher_id, name, public_slug, status, test_id, started_at, duration_seconds, ended_at, capacity, rejoin_policy, created_at, updated_at`;
+const ROOM_COLUMNS = `id, teacher_id, name, public_slug, status, test_id, started_at, duration_seconds,
+  ended_at, capacity, rejoin_policy, report_share_enabled, created_at, updated_at`;
 const PARTICIPANT_COLUMNS = `id, room_id, display_name, student_code, token_version, joined_at, kicked, entered_test_at, last_seen_at, finished_at, auto_submitted, finalize_reason, rejoin_count, last_rejoin_at, violation_count, answered_count, score, max_score, rank, time_taken_seconds`;
 
 function mapRoom(row: Record<string, unknown>): CbtRoom {
@@ -60,6 +61,7 @@ function mapRoom(row: Record<string, unknown>): CbtRoom {
     endedAt: row.ended_at ? new Date(row.ended_at as string).toISOString() : null,
     capacity: Number(row.capacity ?? 200),
     rejoinPolicy: row.rejoin_policy === "id_only" ? "id_only" : "name_or_id",
+    reportShareEnabled: row.report_share_enabled === true,
     createdAt: new Date(row.created_at as string).toISOString(),
     updatedAt: new Date(row.updated_at as string).toISOString(),
   };
@@ -141,6 +143,29 @@ export async function setRoomRejoinPolicy(
        WHERE teacher_id = $1 AND id = $2
      RETURNING ${ROOM_COLUMNS}`,
     [teacherId, roomId, rejoinPolicy === "id_only" ? "id_only" : "name_or_id"],
+  );
+  return res.rows[0] ? mapRoom(res.rows[0]) : null;
+}
+
+/**
+ * Publishes (or unpublishes) this room's participant report cards.
+ *
+ * Two separate switches guard the public link on purpose: the ADMIN one on the
+ * teacher (the premium entitlement) and this one on the room (the teacher's own
+ * "these results are ready to share"). A teacher whose add-on is off cannot
+ * publish at all, so a lapsed subscription can never leave a live link behind.
+ */
+export async function setRoomReportShare(
+  teacherId: string,
+  roomId: string,
+  enabled: boolean,
+): Promise<CbtRoom | null> {
+  await ensureCbtSchema();
+  const res = await pool().query(
+    `UPDATE cbt.rooms SET report_share_enabled = $3, updated_at = NOW()
+       WHERE teacher_id = $1 AND id = $2
+     RETURNING ${ROOM_COLUMNS}`,
+    [teacherId, roomId, enabled],
   );
   return res.rows[0] ? mapRoom(res.rows[0]) : null;
 }

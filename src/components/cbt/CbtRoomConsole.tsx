@@ -15,9 +15,12 @@ import { CbtLiveRoomDashboard } from "./CbtLiveRoomDashboard";
 export function CbtRoomConsole({
   room,
   initialParticipants,
+  reportCardsEnabled = false,
 }: {
   room: CbtRoom;
   initialParticipants: CbtParticipantSummary[];
+  /** Premium add-on state for this teacher (admin-controlled). */
+  reportCardsEnabled?: boolean;
 }) {
   const router = useRouter();
   const { participants, connected, lifecycle } = useCbtRoomStream(room.id, initialParticipants);
@@ -27,6 +30,8 @@ export function CbtRoomConsole({
   const [readyTests, setReadyTests] = useState<{ id: string; title: string }[]>([]);
   const [selectedTestId, setSelectedTestId] = useState<string>(room.testId ?? "");
   const [assignedTestId, setAssignedTestId] = useState<string | null>(room.testId);
+  const [reportShared, setReportShared] = useState(room.reportShareEnabled);
+  const [linkCopied, setLinkCopied] = useState(false);
 
   useEffect(() => {
     if (room.status !== "lobby") return;
@@ -79,6 +84,10 @@ export function CbtRoomConsole({
     () => `${typeof window !== "undefined" ? window.location.origin : ""}/cbt/r/${room.publicSlug}`,
     [room.publicSlug],
   );
+  const reportUrl = useMemo(
+    () => `${typeof window !== "undefined" ? window.location.origin : ""}/cbt/r/${room.publicSlug}/report`,
+    [room.publicSlug],
+  );
 
   const online = participants.filter((p) => p.status !== "offline").length;
   const closed = room.status === "closed";
@@ -111,6 +120,27 @@ export function CbtRoomConsole({
         method: "POST",
         body: JSON.stringify({ participantId }),
       });
+    });
+  }
+
+  /**
+   * Publish (or unpublish) this room's participant report cards. Only offered
+   * once the test has ended — the report shows correct answers, so sharing it
+   * while an attempt is still open would hand out the paper.
+   */
+  function toggleReportShare(next: boolean) {
+    setError(null);
+    startTransition(async () => {
+      const res = await mutateJson(`/api/cbt/rooms/${room.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ action: "report_share", reportShareEnabled: next }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { detail?: string };
+      if (!res.ok) {
+        setError(data.detail ?? "Could not update report sharing.");
+        return;
+      }
+      setReportShared(next);
     });
   }
 
@@ -197,6 +227,59 @@ export function CbtRoomConsole({
         <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm">
           Test in progress. Students are answering now.
         </div>
+      ) : null}
+
+      {/* Premium: shareable participant report cards. Offered only once the
+          test has ended, because the report reveals the answer key. */}
+      {reportCardsEnabled && (room.status === "finished" || closed) ? (
+        <section className="neu-raised space-y-3 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                Student report cards
+                <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-primary">
+                  Premium
+                </span>
+              </h2>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Share one link with the whole room. Each student opens it, enters the CBT ID they got
+                during the test, and sees their own full analysis.
+              </p>
+            </div>
+            <label className="flex shrink-0 cursor-pointer items-center gap-2 text-xs font-medium">
+              <input
+                type="checkbox"
+                className="h-4 w-4 accent-primary"
+                checked={reportShared}
+                disabled={pending}
+                onChange={(e) => toggleReportShare(e.target.checked)}
+              />
+              {reportShared ? "Published" : "Not published"}
+            </label>
+          </div>
+
+          {reportShared ? (
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Input readOnly value={reportUrl} onFocus={(e) => e.currentTarget.select()} />
+              <Button
+                variant="outline"
+                size="sm"
+                className="neu-raised shrink-0 border-0 shadow-none transition-transform hover:-translate-y-0.5"
+                onClick={() => {
+                  void navigator.clipboard?.writeText(reportUrl).then(
+                    () => {
+                      setLinkCopied(true);
+                      window.setTimeout(() => setLinkCopied(false), 2000);
+                    },
+                    () => setError("Could not copy — select the link and copy it manually."),
+                  );
+                }}
+              >
+                {linkCopied ? "Copied" : "Copy link"}
+              </Button>
+            </div>
+          ) : null}
+        </section>
       ) : null}
 
       <CbtLiveRoomDashboard

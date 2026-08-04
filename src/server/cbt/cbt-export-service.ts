@@ -10,6 +10,8 @@ import type { CbtRoomStatus } from "@/lib/cbt/room-model";
 
 import { ensureCbtSchema } from "./cbt-schema";
 import { finalizeIfExpired } from "./cbt-rooms-service";
+import { loadTestSections } from "./cbt-analytics-service";
+import { loadSectionScores } from "./cbt-sections-service";
 
 function pool() {
   const p = getUserPostgresPool();
@@ -52,11 +54,24 @@ export async function buildResultsWorkbook(
   const parts = await pool().query(
     `SELECT id, display_name, student_code, score, max_score, rank, time_taken_seconds,
             joined_at, finished_at, auto_submitted, finalize_reason, answered_count,
-            rejoin_count, violation_count
+            rejoin_count, violation_count, section_scores
        FROM cbt.room_participants
       WHERE room_id = $1
       ORDER BY (finished_at IS NULL), rank ASC NULLS LAST, score DESC NULLS LAST, joined_at ASC`,
     [roomId],
+  );
+
+  // Sectional marking: one Score/Max column pair per subject, in paper order,
+  // after the total. Empty for a single-subject paper (the total already says
+  // it). Legacy attempts are derived + healed by loadSectionScores.
+  const sections = room.test_id ? await loadTestSections(room.test_id) : [];
+  const sectionsByParticipant = await loadSectionScores(
+    roomId,
+    parts.rows.map((r) => ({
+      id: String(r.id),
+      sectionScores: r.section_scores,
+      finished: Boolean(r.finished_at),
+    })),
   );
 
   const ExcelJSNS = await import("exceljs");
@@ -81,6 +96,7 @@ export async function buildResultsWorkbook(
     "Score",
     "Max Score",
     "Percentage",
+    ...sections.flatMap((s) => [`${s.label} Score`, `${s.label} Max`]),
     "Answered",
     "Time Taken",
     "Joined At",
@@ -98,6 +114,9 @@ export async function buildResultsWorkbook(
     const pct = score != null && maxScore ? `${((score / maxScore) * 100).toFixed(1)}%` : "";
     const reason = isCbtFinalizeReason(p.finalize_reason) ? p.finalize_reason : null;
     const legacyAuto = Boolean(p.auto_submitted);
+    // A participant with no sectional data (absent, or never graded) gets blank
+    // cells rather than zeros — the same distinction the total score makes.
+    const participantSections = sectionsByParticipant[String(p.id)] ?? {};
     sheet.addRow([
       p.rank ?? "",
       p.display_name ?? "",
@@ -105,6 +124,10 @@ export async function buildResultsWorkbook(
       score ?? "",
       maxScore ?? "",
       pct,
+      ...sections.flatMap((s): (string | number)[] => {
+        const row = participantSections[s.key];
+        return row ? [row.score, row.maxScore] : ["", ""];
+      }),
       Number(p.answered_count ?? 0),
       fmtTime(p.time_taken_seconds != null ? Number(p.time_taken_seconds) : null),
       p.joined_at ? new Date(p.joined_at).toISOString().replace("T", " ").slice(0, 16) : "",
@@ -118,8 +141,9 @@ export async function buildResultsWorkbook(
   sheet.columns.forEach((col) => {
     col.width = 16;
   });
-  // The remark is a sentence, not a value — give it room.
-  const remarkCol = sheet.getColumn(14);
+  // The remark is a sentence, not a value — give it room. Its index shifts by
+  // the Score/Max pair each section adds.
+  const remarkCol = sheet.getColumn(14 + sections.length * 2);
   remarkCol.width = 46;
 
   // ── Optional per-question detail sheet ──────────────────────────────────────

@@ -9,14 +9,15 @@
  * general tests and room tests share one authoring surface.
  */
 
-import { useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, ChevronsUp, Minus, Plus, Search } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { AlertTriangle, ArrowDown, ArrowUp, ChevronsUp, Minus, Plus, Search } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { apiJson } from "@/lib/teacher-client";
 import type { QuestionWithVersion } from "@/server/workspaces/types";
 
 import { OgcodeQuestionList } from "./OgcodeQuestionList";
@@ -31,6 +32,9 @@ export type SelectedQuestion = {
   negativeMarks: number;
 };
 
+/** Where a bag question is already used, excluding the test being edited. */
+type QuestionUsage = { testCount: number; titles: string[]; liveCount: number };
+
 type Props = {
   value: SelectedQuestion[];
   onChange: (next: SelectedQuestion[]) => void;
@@ -39,6 +43,8 @@ type Props = {
   ogcodeEnabled: boolean;
   defaultMarks?: number;
   defaultNegativeMarks?: number;
+  /** Excluded from the "already used in" counts when editing an existing test. */
+  excludeTestId?: string;
 };
 
 export function QuestionPicker({
@@ -49,9 +55,33 @@ export function QuestionPicker({
   ogcodeEnabled,
   defaultMarks = 4,
   defaultNegativeMarks = 1,
+  excludeTestId,
 }: Props) {
   const [bagSearch, setBagSearch] = useState("");
   const [bagChapter, setBagChapter] = useState("");
+
+  /**
+   * Reuse visibility. A question living in several tests is allowed and always
+   * has been — a teacher legitimately reuses one across a mock, a revision
+   * paper and a retest, and every attempt snapshots its question so historical
+   * results never move. Showing the count just removes the guesswork; the
+   * `liveCount` warning is the part that matters, because editing a question a
+   * live test is serving changes it under the students sitting it.
+   */
+  const [usage, setUsage] = useState<Record<string, QuestionUsage>>({});
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const query = excludeTestId ? `&excludeTestId=${encodeURIComponent(excludeTestId)}` : "";
+      const res = await apiJson<{ usage: Record<string, QuestionUsage> }>(
+        `/api/teacher/workspaces/${workspaceId}/tests?view=sources${query}`,
+      );
+      if (!cancelled && res.ok) setUsage(res.data.usage ?? {});
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [workspaceId, excludeTestId]);
 
   // Topics present in this workspace's bag (for the topic segregation dropdown).
   const bagChapters = useMemo(() => {
@@ -155,15 +185,35 @@ export function QuestionPicker({
               </p>
             ) : (
               <div className="space-y-2">
-                {filteredBag.map((q) => (
+                {filteredBag.map((q) => {
+                  const used = usage[q.id];
+                  return (
                   <div
                     key={q.id}
                     className="flex items-center justify-between gap-2 rounded-lg border p-2 text-xs"
                   >
                     <div className="min-w-0 flex-1">
                       <p className="line-clamp-2 font-medium">{q.currentVersion?.stem}</p>
-                      <p className="text-[10px] text-muted-foreground">
-                        {q.currentVersion?.chapter} · {q.currentVersion?.questionType.toUpperCase()}
+                      <p className="flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
+                        <span>
+                          {q.currentVersion?.chapter} · {q.currentVersion?.questionType.toUpperCase()}
+                        </span>
+                        {used && used.testCount > 0 ? (
+                          <span
+                            title={`Already in: ${used.titles.join(", ")}`}
+                            className="rounded-full bg-muted px-1.5 py-0.5 font-medium"
+                          >
+                            in {used.testCount} test{used.testCount === 1 ? "" : "s"}
+                          </span>
+                        ) : null}
+                        {used && used.liveCount > 0 ? (
+                          <span
+                            title="A test using this question is live right now — editing it changes the paper under the students sitting it."
+                            className="inline-flex items-center gap-0.5 rounded-full bg-amber-500/15 px-1.5 py-0.5 font-medium text-amber-600 dark:text-amber-400"
+                          >
+                            <AlertTriangle className="h-2.5 w-2.5" /> live
+                          </span>
+                        ) : null}
                       </p>
                     </div>
                     <Button
@@ -183,7 +233,8 @@ export function QuestionPicker({
                       <Plus className="h-4 w-4" />
                     </Button>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </TabsContent>

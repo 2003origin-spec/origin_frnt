@@ -8,8 +8,15 @@ import { getUserPostgresPool } from "@/server/user-postgres";
 import type { CbtParticipantStatus } from "@/lib/cbt/events";
 import type { CbtRoomStatus } from "@/lib/cbt/room-model";
 import { CBT_PRESENCE_WINDOW_MS, isCbtFinalizeReason, type CbtFinalizeReason } from "@/lib/cbt/finalize-reason";
+import {
+  canonicalSubjectLabel,
+  orderedSections,
+  type CbtSectionScore,
+  type CbtSectionScores,
+} from "@/lib/cbt/sections";
 
 import { ensureCbtSchema } from "./cbt-schema";
+import { loadSectionScores } from "./cbt-sections-service";
 import { cbtError, finalizeIfExpired } from "./cbt-rooms-service";
 
 function pool() {
@@ -50,12 +57,19 @@ export type CbtLeaderboardRow = {
   offlineForSeconds: number | null;
   rejoinCount: number;
   violationCount: number;
+  /** Per-subject breakdown, empty for an in-flight or absent attempt. */
+  sectionScores: CbtSectionScores;
 };
+
+/** A section column header for the leaderboard table, in paper order. */
+export type CbtLeaderboardSection = { key: string; label: string; maxScore: number };
 
 export type CbtLeaderboard = {
   roomStatus: CbtRoomStatus;
   totalQuestions: number;
   maxScore: number;
+  /** Empty when the paper has a single section (the total already says it). */
+  sections: CbtLeaderboardSection[];
   participants: CbtLeaderboardRow[];
 };
 
@@ -80,6 +94,10 @@ export async function getRoomLeaderboard(teacherId: string, roomId: string): Pro
 
   let totalQuestions = 0;
   let maxScore = 0;
+  // Section headers come from the TEST, not from any one attempt, so the table
+  // has the same columns for a student who was marked absent as for one who
+  // sat the whole paper.
+  let sections: CbtLeaderboardSection[] = [];
   if (room.test_id) {
     const meta = await pool().query(
       `SELECT COUNT(*)::int AS n, COALESCE(SUM(marks), 0)::float8 AS max_score
@@ -88,12 +106,13 @@ export async function getRoomLeaderboard(teacherId: string, roomId: string): Pro
     );
     totalQuestions = Number(meta.rows[0]?.n ?? 0);
     maxScore = Number(meta.rows[0]?.max_score ?? 0);
+    sections = await loadTestSections(room.test_id);
   }
 
   const parts = await pool().query(
     `SELECT id, display_name, student_code, answered_count, score, max_score, rank,
             time_taken_seconds, finished_at, auto_submitted, last_seen_at, entered_test_at,
-            finalize_reason, rejoin_count, violation_count
+            finalize_reason, rejoin_count, violation_count, section_scores
        FROM cbt.room_participants
       WHERE room_id = $1
       ORDER BY (finished_at IS NULL), rank ASC NULLS LAST, score DESC NULLS LAST,
@@ -103,10 +122,22 @@ export async function getRoomLeaderboard(teacherId: string, roomId: string): Pro
   const now = Date.now();
   const roomStatus = (room.status as CbtRoomStatus) ?? "lobby";
 
+  // Attempts graded before 2026-08-04 carry no section_scores; they are derived
+  // from their submissions and healed in place on this read.
+  const sectionsByParticipant = await loadSectionScores(
+    roomId,
+    parts.rows.map((r) => ({
+      id: String(r.id),
+      sectionScores: r.section_scores,
+      finished: Boolean(r.finished_at),
+    })),
+  );
+
   return {
     roomStatus,
     totalQuestions,
     maxScore: Number(maxScore.toFixed(3)),
+    sections,
     participants: parts.rows.map((r) => ({
       participantId: String(r.id),
       displayName: String(r.display_name ?? ""),
@@ -123,8 +154,40 @@ export async function getRoomLeaderboard(teacherId: string, roomId: string): Pro
       offlineForSeconds: offlineSecondsOf(r.last_seen_at, r.finished_at, now),
       rejoinCount: Number(r.rejoin_count ?? 0),
       violationCount: Number(r.violation_count ?? 0),
+      sectionScores: sectionsByParticipant[String(r.id)] ?? {},
     })),
   };
+}
+
+/**
+ * The paper's subject sections with their maximum marks, in paper order.
+ *
+ * Returns `[]` for a single-section paper: "Physics 72/80" printed directly
+ * above "Total 72/80" reads like a rendering bug, so the UI shows only the
+ * total in that case.
+ */
+export async function loadTestSections(testId: string): Promise<CbtLeaderboardSection[]> {
+  const res = await pool().query(
+    `SELECT COALESCE(NULLIF(btrim(lower(q.subject)), ''), 'general') AS section_key,
+            (array_agg(q.subject ORDER BY tq.position))[1]           AS label,
+            MIN(tq.position)                                         AS order_pos,
+            COALESCE(SUM(tq.marks), 0)::float8                       AS max_score
+       FROM cbt.test_questions tq
+       JOIN cbt.questions q ON q.id = tq.question_id
+      WHERE tq.test_id = $1
+      GROUP BY section_key
+      ORDER BY order_pos ASC`,
+    [testId],
+  );
+  if (res.rows.length <= 1) return [];
+  return res.rows.map((r) => {
+    const key = String(r.section_key);
+    return {
+      key,
+      label: canonicalSubjectLabel(typeof r.label === "string" && r.label.trim() ? r.label : key),
+      maxScore: Number(Number(r.max_score ?? 0).toFixed(3)),
+    };
+  });
 }
 
 /** Seconds since the last heartbeat for a still-running attempt (else null). */
@@ -146,6 +209,8 @@ export type CbtDrilldownQuestion = {
   isCorrect: boolean;
   needsReview: boolean;
   attempted: boolean;
+  /** Advisory seconds; 0 for attempts finished before timing shipped. */
+  timeSpentSeconds: number;
 };
 
 export type CbtParticipantDrilldown = {
@@ -161,6 +226,8 @@ export type CbtParticipantDrilldown = {
     autoSubmitted: boolean;
   };
   summary: { correct: number; wrong: number; unattempted: number; needsReview: number };
+  /** Per-subject marks, in paper order. Empty for a single-section paper. */
+  sections: CbtSectionScore[];
   questions: CbtDrilldownQuestion[];
 };
 
@@ -175,7 +242,7 @@ export async function getParticipantDrilldown(
 
   const pRes = await pool().query(
     `SELECT id, display_name, student_code, score, max_score, rank, time_taken_seconds,
-            finished_at, auto_submitted
+            finished_at, auto_submitted, section_scores
        FROM cbt.room_participants WHERE id = $1 AND room_id = $2`,
     [participantId, roomId],
   );
@@ -183,10 +250,16 @@ export async function getParticipantDrilldown(
   if (!p) return null;
 
   const aRes = await pool().query(
-    `SELECT position, question_snapshot, submitted_answer, grading_result, marks_awarded
+    `SELECT position, question_snapshot, submitted_answer, grading_result, marks_awarded,
+            time_spent_seconds
        FROM cbt.submission_answers WHERE room_id = $1 AND participant_id = $2 ORDER BY position ASC`,
     [roomId, participantId],
   );
+
+  const sectionMap = await loadSectionScores(roomId, [
+    { id: participantId, sectionScores: p.section_scores, finished: Boolean(p.finished_at) },
+  ]);
+  const sections = orderedSections(sectionMap[participantId]);
 
   let correct = 0;
   let wrong = 0;
@@ -220,6 +293,7 @@ export async function getParticipantDrilldown(
       isCorrect,
       needsReview: review,
       attempted,
+      timeSpentSeconds: Number(r.time_spent_seconds ?? 0),
     };
   });
 
@@ -236,6 +310,8 @@ export async function getParticipantDrilldown(
       autoSubmitted: Boolean(p.auto_submitted),
     },
     summary: { correct, wrong, unattempted, needsReview },
+    // A one-section paper repeats the total, so it is suppressed here too.
+    sections: sections.length > 1 ? sections : [],
     questions,
   };
 }

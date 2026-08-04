@@ -1102,3 +1102,31 @@ main {
 
 
 
+
+/* ── CBT report card: print / "Save as PDF" ─────────────────────────────────
+   The one-click export rasterises the report with html-to-image; this is the
+   always-available fallback (and what the Print button uses). Printing must
+   force the light theme — a dark-mode report floods an A4 page with ink — and
+   keep chart fills, which browsers strip by default. */
+@media print {
+  .cbt-report-page {
+    color-scheme: light;
+    background: #ffffff;
+  }
+  .cbt-report-page,
+  .cbt-report-page * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .cbt-report-page section,
+  .cbt-report-page header {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    box-shadow: none !important;
+  }
+  /* The per-question chart and wide tables scroll on screen; on paper they
+     must show everything they have rather than clipping at the fold. */
+  .cbt-report-page .overflow-x-auto {
+    overflow: visible !important;
+  }
+}

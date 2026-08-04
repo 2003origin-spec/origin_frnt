@@ -159,6 +159,13 @@ export const cbtReclaimLimiter = createLimiter(20, "rl:cbt-reclaim", "15 m");
 export const cbtResumeLimiter = createLimiter(10, "rl:cbt-resume", "15 m");
 export const cbtAutosaveLimiter = createLimiter(60, "rl:cbt-autosave", "60 s");
 export const cbtExportLimiter = createLimiter(6, "rl:cbt-export", "1 h");
+// Report cards. The student's CBT ID is the credential, so the FAILURE limiter
+// is the one that matters — it is what makes guessing a classmate's 6-character
+// code impractical. The throughput limiter is generous because a whole class
+// opening the same link shares one NAT IP, and each of them will legitimately
+// re-open the page (print, share, come back later).
+export const cbtReportUnlockLimiter = createLimiter(60, "rl:cbt-report", "15 m");
+export const cbtReportFailureLimiter = createLimiter(10, "rl:cbt-report-fail", "1 h");
 
 /**
  * Fail-open per-key check for Server Actions, which need a boolean rather than
