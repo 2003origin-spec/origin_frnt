@@ -28,7 +28,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { QUESTION_SUBJECTS, isOriginBankQuestion } from "@/lib/question-subjects";
+import { QUESTION_SUBJECTS, isOriginBankQuestion, canonicalizeSubject } from "@/lib/question-subjects";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -50,6 +50,29 @@ const DIFFICULTY_LABELS: Record<string, string> = {
   hard: "Hard",
   insane: "Insane",
 };
+
+// Matrix-match labels: List I rows are A, B, C… — List II columns are P, Q, R, S…
+const matrixRowLabel = (i: number) => String.fromCharCode(65 + i); // A, B, C…
+const matrixColLabel = (i: number) => String.fromCharCode(80 + i); // P, Q, R, S…
+const pairKey = (a: number, b: number) => `${a}:${b}`;
+
+/** Read a stored matrixData (tolerating legacy left/right keys) into grid state. */
+function matrixDataToState(md: unknown): { colA: string[]; colB: string[]; pairs: Set<string> } {
+  const rec = (md ?? {}) as Record<string, unknown>;
+  const colA = (Array.isArray(rec.column_a) ? rec.column_a : Array.isArray(rec.left) ? rec.left : []).map(String);
+  const colB = (Array.isArray(rec.column_b) ? rec.column_b : Array.isArray(rec.right) ? rec.right : []).map(String);
+  const pairs = new Set<string>();
+  if (Array.isArray(rec.correct_pairs)) {
+    for (const p of rec.correct_pairs as unknown[]) {
+      if (Array.isArray(p) && p.length === 2) pairs.add(pairKey(Number(p[0]), Number(p[1])));
+    }
+  }
+  return {
+    colA: colA.length ? colA : ["", ""],
+    colB: colB.length ? colB : ["", ""],
+    pairs,
+  };
+}
 
 const DIFFICULTY_COLORS: Record<string, string> = {
   easy: "text-green-600 border-green-200 bg-green-50 dark:bg-green-950/20 dark:border-green-800/30",
@@ -95,7 +118,11 @@ export function QuestionBagManagerHighFidelity({ workspaceId, initialQuestions, 
   // Numerical tolerance/units (→ answerSpec) + structured matrix (→ matrixData).
   const [editTolerance, setEditTolerance] = useState("0");
   const [editUnits, setEditUnits] = useState("");
-  const [editMatrixJson, setEditMatrixJson] = useState("");
+  // Matrix-match authored as a grid: List I (column A) × List II (column B) with
+  // a correct-pair set keyed "aIndex:bIndex". Serialised to matrixData on save.
+  const [editMatrixColA, setEditMatrixColA] = useState<string[]>(["", ""]);
+  const [editMatrixColB, setEditMatrixColB] = useState<string[]>(["", ""]);
+  const [editMatrixPairs, setEditMatrixPairs] = useState<Set<string>>(new Set());
   const [editHint, setEditHint] = useState("");
   const [editExplanation, setEditExplanation] = useState("");
   const [editFullSolution, setEditFullSolution] = useState("");
@@ -200,7 +227,9 @@ export function QuestionBagManagerHighFidelity({ workspaceId, initialQuestions, 
     setEditType(v.questionType);
     setEditStem(v.stem);
     setEditImageUrl(v.imageUrl ?? null);
-    setEditSubject(v.subject);
+    // Map legacy/imported subjects ("general", "maths") onto the canonical
+    // dropdown value; keep the raw value if unrecognised so it's never lost.
+    setEditSubject(canonicalizeSubject(v.subject) ?? v.subject);
     setEditChapter(v.chapter);
     setEditConcept(v.concept);
     setEditDifficulty(v.difficulty);
@@ -216,7 +245,12 @@ export function QuestionBagManagerHighFidelity({ workspaceId, initialQuestions, 
     const spec = (v.answerSpec ?? {}) as { tolerance?: number; units?: string };
     setEditTolerance(spec.tolerance != null ? String(spec.tolerance) : "0");
     setEditUnits(spec.units ?? "");
-    setEditMatrixJson(v.matrixData ? JSON.stringify(v.matrixData, null, 2) : "");
+    {
+      const m = matrixDataToState(v.matrixData);
+      setEditMatrixColA(m.colA);
+      setEditMatrixColB(m.colB);
+      setEditMatrixPairs(m.pairs);
+    }
     setEditHint(v.hint || "");
     setEditExplanation(v.explanation || "");
     setEditFullSolution(v.fullSolution || "");
@@ -243,7 +277,9 @@ export function QuestionBagManagerHighFidelity({ workspaceId, initialQuestions, 
     setEditAnswerText("");
     setEditTolerance("0");
     setEditUnits("");
-    setEditMatrixJson("");
+    setEditMatrixColA(["", ""]);
+    setEditMatrixColB(["", ""]);
+    setEditMatrixPairs(new Set());
     setEditHint("");
     setEditExplanation("");
     setEditFullSolution("");
@@ -251,9 +287,43 @@ export function QuestionBagManagerHighFidelity({ workspaceId, initialQuestions, 
   };
 
   const toggleMsqOption = (index: number) => {
-    setEditCorrectOptions(prev => 
+    setEditCorrectOptions(prev =>
       prev.includes(index) ? prev.filter(i => i !== index) : [...prev, index]
     );
+  };
+
+  // ── Matrix-match grid handlers ───────────────────────────────────────────
+  const setMatrixItem = (col: "a" | "b", idx: number, val: string) => {
+    const setter = col === "a" ? setEditMatrixColA : setEditMatrixColB;
+    setter((p) => p.map((t, i) => (i === idx ? val : t)));
+  };
+  const addMatrixRow = (col: "a" | "b") => {
+    (col === "a" ? setEditMatrixColA : setEditMatrixColB)((p) => [...p, ""]);
+  };
+  const removeMatrixRow = (col: "a" | "b", idx: number) => {
+    (col === "a" ? setEditMatrixColA : setEditMatrixColB)((p) => p.filter((_, i) => i !== idx));
+    // Drop pairs that used the removed item and shift higher indices down by one.
+    setEditMatrixPairs((prev) => {
+      const next = new Set<string>();
+      for (const k of prev) {
+        const [a, b] = k.split(":").map(Number);
+        const target = col === "a" ? a : b;
+        if (target === idx) continue;
+        const na = col === "a" ? (a > idx ? a - 1 : a) : a;
+        const nb = col === "b" ? (b > idx ? b - 1 : b) : b;
+        next.add(pairKey(na, nb));
+      }
+      return next;
+    });
+  };
+  const toggleMatrixPair = (a: number, b: number) => {
+    setEditMatrixPairs((prev) => {
+      const next = new Set(prev);
+      const k = pairKey(a, b);
+      if (next.has(k)) next.delete(k);
+      else next.add(k);
+      return next;
+    });
   };
 
   // API Mutating Actions
@@ -333,13 +403,31 @@ export function QuestionBagManagerHighFidelity({ workspaceId, initialQuestions, 
           ? { tolerance: Number(editTolerance) || 0, units: editUnits.trim() || null }
           : null;
     let matrixData: Record<string, unknown> | null = null;
-    if (editType === "matrix_match" && editMatrixJson.trim()) {
-      try {
-        matrixData = JSON.parse(editMatrixJson);
-      } catch {
-        toast.error("Matrix data must be valid JSON.");
+    if (editType === "matrix_match") {
+      // Trim to non-empty rows/columns and drop pairs that referenced a removed
+      // or blank item; renumber correct_pairs against the trimmed lists.
+      const colA = editMatrixColA.map((s) => s.trim());
+      const colB = editMatrixColB.map((s) => s.trim());
+      const keptA = colA.map((t, i) => (t ? i : -1)).filter((i) => i >= 0);
+      const keptB = colB.map((t, i) => (t ? i : -1)).filter((i) => i >= 0);
+      const remapA = new Map(keptA.map((old, next) => [old, next]));
+      const remapB = new Map(keptB.map((old, next) => [old, next]));
+      const finalA = keptA.map((i) => colA[i]);
+      const finalB = keptB.map((i) => colB[i]);
+      const correctPairs: number[][] = [];
+      for (const key of editMatrixPairs) {
+        const [a, b] = key.split(":").map(Number);
+        if (remapA.has(a) && remapB.has(b)) correctPairs.push([remapA.get(a)!, remapB.get(b)!]);
+      }
+      if (finalA.length < 2 || finalB.length < 2) {
+        toast.error("A matrix needs at least 2 items in each list.");
         return;
       }
+      if (correctPairs.length === 0) {
+        toast.error("Mark at least one correct match in the grid.");
+        return;
+      }
+      matrixData = { column_a: finalA, column_b: finalB, correct_pairs: correctPairs };
     }
 
     startTransition(async () => {
@@ -587,6 +675,11 @@ export function QuestionBagManagerHighFidelity({ workspaceId, initialQuestions, 
                         {QUESTION_SUBJECTS.map((s) => (
                           <SelectItem key={s} value={s}>{s}</SelectItem>
                         ))}
+                        {/* Preserve an unrecognised legacy subject as its own option
+                            so opening the question doesn't blank/lose the value. */}
+                        {editSubject && !QUESTION_SUBJECTS.includes(editSubject as (typeof QUESTION_SUBJECTS)[number]) && (
+                          <SelectItem value={editSubject}>{editSubject}</SelectItem>
+                        )}
                       </SelectContent>
                     </Select>
                   </div>
@@ -683,6 +776,11 @@ export function QuestionBagManagerHighFidelity({ workspaceId, initialQuestions, 
                             {optionImageUploading === i ? "…" : opt.image ? "Replace" : "Image"}
                           </label>
                         </div>
+                        {opt.text.trim() && (
+                          <div className="ml-12 rounded-lg bg-muted/20 px-3 py-1.5">
+                            <FormattedMessage content={opt.text} className="text-xs select-text" inline />
+                          </div>
+                        )}
                         {opt.image && (
                           <div className="relative ml-12 inline-block">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -723,17 +821,79 @@ export function QuestionBagManagerHighFidelity({ workspaceId, initialQuestions, 
                   </div>
                 )}
 
-                {/* Matrix-match: structured JSON */}
+                {/* Matrix-match: structured grid editor (List I × List II) */}
                 {editType === "matrix_match" && (
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Matrix data (JSON)</Label>
-                    <Textarea
-                      value={editMatrixJson}
-                      onChange={(e) => setEditMatrixJson(e.target.value)}
-                      rows={5}
-                      placeholder='{ "left": ["A","B"], "right": ["P","Q"], "correct_pairs": [[0,1],[1,0]] }'
-                      className="rounded-xl font-mono text-xs"
-                    />
+                  <div className="space-y-3 rounded-xl border border-border/60 p-3">
+                    <Label className="text-xs font-semibold">Matrix match</Label>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {/* List I (column A) */}
+                      <div className="space-y-1.5">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">List I</p>
+                        {editMatrixColA.map((item, i) => (
+                          <div key={i} className="flex items-center gap-1.5">
+                            <span className="w-5 shrink-0 text-center text-xs font-bold text-muted-foreground">{matrixRowLabel(i)}</span>
+                            <Input value={item} onChange={(e) => setMatrixItem("a", i, e.target.value)} placeholder={`Item ${matrixRowLabel(i)}`} className="h-8 rounded-lg text-xs" />
+                            {editMatrixColA.length > 2 && (
+                              <button type="button" onClick={() => removeMatrixRow("a", i)} className="shrink-0 rounded-md px-1.5 py-1 text-[10px] font-bold text-muted-foreground hover:text-destructive" aria-label={`Remove item ${matrixRowLabel(i)}`}>✕</button>
+                            )}
+                          </div>
+                        ))}
+                        <Button type="button" variant="ghost" size="sm" onClick={() => addMatrixRow("a")} className="h-7 rounded-lg text-[11px]">+ Add to List I</Button>
+                      </div>
+                      {/* List II (column B) */}
+                      <div className="space-y-1.5">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">List II</p>
+                        {editMatrixColB.map((item, i) => (
+                          <div key={i} className="flex items-center gap-1.5">
+                            <span className="w-5 shrink-0 text-center text-xs font-bold text-muted-foreground">{matrixColLabel(i)}</span>
+                            <Input value={item} onChange={(e) => setMatrixItem("b", i, e.target.value)} placeholder={`Item ${matrixColLabel(i)}`} className="h-8 rounded-lg text-xs" />
+                            {editMatrixColB.length > 2 && (
+                              <button type="button" onClick={() => removeMatrixRow("b", i)} className="shrink-0 rounded-md px-1.5 py-1 text-[10px] font-bold text-muted-foreground hover:text-destructive" aria-label={`Remove item ${matrixColLabel(i)}`}>✕</button>
+                            )}
+                          </div>
+                        ))}
+                        <Button type="button" variant="ghost" size="sm" onClick={() => addMatrixRow("b")} className="h-7 rounded-lg text-[11px]">+ Add to List II</Button>
+                      </div>
+                    </div>
+                    {/* Correct-match grid: tap a cell to mark A↔B as a correct pair */}
+                    <div className="space-y-1.5">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Correct matches — tap the cells</p>
+                      <div className="overflow-x-auto">
+                        <table className="border-collapse text-xs">
+                          <thead>
+                            <tr>
+                              <th className="p-1" />
+                              {editMatrixColB.map((_, b) => (
+                                <th key={b} className="min-w-8 p-1 text-center font-bold text-muted-foreground">{matrixColLabel(b)}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {editMatrixColA.map((_, a) => (
+                              <tr key={a}>
+                                <td className="p-1 text-center font-bold text-muted-foreground">{matrixRowLabel(a)}</td>
+                                {editMatrixColB.map((_, b) => {
+                                  const on = editMatrixPairs.has(pairKey(a, b));
+                                  return (
+                                    <td key={b} className="p-0.5">
+                                      <button
+                                        type="button"
+                                        onClick={() => toggleMatrixPair(a, b)}
+                                        aria-pressed={on}
+                                        aria-label={`Match ${matrixRowLabel(a)} with ${matrixColLabel(b)}`}
+                                        className={`h-7 w-7 rounded-md border text-xs font-bold transition-colors ${on ? "border-emerald-500 bg-emerald-500 text-black" : "border-border bg-muted/30 text-transparent hover:border-emerald-500/50"}`}
+                                      >
+                                        ✓
+                                      </button>
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
                   </div>
                 )}
 
@@ -819,6 +979,16 @@ export function QuestionBagManagerHighFidelity({ workspaceId, initialQuestions, 
                 <div className="prose dark:prose-invert max-w-none bg-muted/10 p-5 rounded-2xl border">
                   <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider mb-2">Question Text</p>
                   <FormattedMessage content={activeQuestion.currentVersion?.stem || ""} className="text-base select-text leading-relaxed font-medium" />
+                  {activeQuestion.currentVersion?.imageUrl && (
+                    <>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={activeQuestion.currentVersion.imageUrl}
+                        alt="Question diagram"
+                        className="mt-3 block max-h-72 w-auto max-w-full rounded-xl border border-border object-contain"
+                      />
+                    </>
+                  )}
                 </div>
 
                 {/* Render Options list */}
@@ -842,7 +1012,15 @@ export function QuestionBagManagerHighFidelity({ workspaceId, initialQuestions, 
                             }`}>
                               {String.fromCharCode(65 + i)}
                             </span>
-                            <span className="text-sm font-medium">{opt.text}</span>
+                            <span className="text-sm font-medium min-w-0 flex-1">
+                              {opt.text?.trim() ? (
+                                <FormattedMessage content={opt.text} className="select-text" inline />
+                              ) : null}
+                              {opt.image && (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={opt.image} alt={`Option ${String.fromCharCode(65 + i)}`} className="mt-2 block max-h-32 w-auto max-w-full rounded-lg border border-border object-contain" />
+                              )}
+                            </span>
                             {isCorrect && <Check className="w-4 h-4 text-emerald-500 ml-auto shrink-0" />}
                           </div>
                         );

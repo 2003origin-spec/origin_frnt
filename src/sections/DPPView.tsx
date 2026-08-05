@@ -89,6 +89,7 @@ interface GeneratedDpp {
 type DppQuestion = {
   id: string;
   text: string;
+  image?: string | null;
   options?: string[];
   optionImages?: (string | null)[] | null;
   explanation?: string;
@@ -588,6 +589,10 @@ export default function DPPView({ onBack, initialDpps, user }: DPPViewProps) {
                     <>
                       <div className="text-lg sm:text-xl font-medium text-slate-900 dark:text-white mb-6 leading-relaxed overflow-x-auto">
                         <FormattedMessage content={currentQuestion.text} />
+                        {currentQuestion.image && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={currentQuestion.image} alt="Question diagram" className="mt-3 block max-h-72 w-auto max-w-full rounded-xl border border-border/60 object-contain" />
+                        )}
                       </div>
 
                       <div className="space-y-3 mb-6">

@@ -347,11 +347,18 @@ async function writeContributedCatalogQuestion(publication: OgcodePublication): 
     id: publication.questionId,
     text: version.stem,
     options: version.options ? version.options.map((o) => o.text) : null,
+    // Carry the question diagram + per-option images into the OG Code catalog
+    // so a contributed question keeps its images in practice + OG-Code DPPs.
+    image: version.imageUrl ?? null,
+    optionImages: version.options ? version.options.map((o) => o.image ?? null) : null,
     correctOption: version.correctOption,
     correctOptions: version.correctOptions,
     answerText: version.answerText,
     answerSpec: version.answerSpec,
-    tolerance: null,
+    // Surface the teacher's numeric tolerance into the catalog's own column so
+    // OG Code grading uses it (grading reads `tolerance`, not answerSpec) instead
+    // of falling back to a default band.
+    tolerance: (version.answerSpec as { tolerance?: number | null } | null)?.tolerance ?? null,
     matrixData: version.matrixData,
     explanation: version.fullSolution ?? version.explanation ?? "",
     hint: version.hint,

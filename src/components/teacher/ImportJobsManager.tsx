@@ -24,7 +24,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { apiJson } from "@/lib/teacher-client";
+import { uploadUserImageAction } from "@/server/actions/profile-actions";
+import { QUESTION_SUBJECTS, canonicalizeSubject } from "@/lib/question-subjects";
 import type { DocumentImportJob, ImportJobQuestion } from "@/server/workspaces/types";
 import { toast } from "sonner";
 
@@ -61,6 +64,10 @@ export function ImportJobsManager({ workspaceId, initialJobs, defaultJobId }: Pr
   const [editStem, setEditStem] = useState("");
   const [editAnswer, setEditAnswer] = useState("");
   const [editOptions, setEditOptions] = useState<string[]>([]);
+  const [editOptionImages, setEditOptionImages] = useState<(string | null)[]>([]);
+  const [editImageUrl, setEditImageUrl] = useState<string | null>(null);
+  const [imageUploading, setImageUploading] = useState(false);
+  const [optionImageUploading, setOptionImageUploading] = useState<number | null>(null);
   const [editCorrectOption, setEditCorrectOption] = useState<number>(0);
   // Classification (subject / chapter / topic / difficulty) — editable so the
   // teacher can segregate like OG Code before approving.
@@ -85,11 +92,15 @@ export function ImportJobsManager({ workspaceId, initialJobs, defaultJobId }: Pr
         typeof opt === "object" && opt !== null && "text" in opt ? String(opt.text) : String(opt)
       );
       setEditOptions(opts);
+      setEditOptionImages(opts.map((_, i) => q.optionImages?.[i] ?? null));
     } else {
       setEditOptions([]);
+      setEditOptionImages([]);
     }
+    setEditImageUrl(q.imageUrl ?? null);
     setEditCorrectOption(q.correctOption ?? 0);
-    setEditSubject(q.subject || "");
+    // Map OCR's lowercase/short subject onto the canonical dropdown value.
+    setEditSubject(canonicalizeSubject(q.subject) ?? q.subject ?? "");
     setEditChapter(q.chapter || "");
     setEditConcept(q.concept || "");
     const diff = (q.difficulty || "medium") as "easy" | "medium" | "hard" | "insane";
@@ -202,6 +213,12 @@ export function ImportJobsManager({ workspaceId, initialJobs, defaultJobId }: Pr
       editOptions.length > 0
         ? Object.fromEntries(editOptions.map((text, i) => [String.fromCharCode(97 + i), text]))
         : null;
+    // Only send an option-images array when at least one image is set — a fully
+    // null array would clear nothing but bloats the row.
+    const optionImagesPayload =
+      editOptions.length > 0 && editOptionImages.some(Boolean)
+        ? editOptions.map((_, i) => editOptionImages[i] ?? null)
+        : null;
     return {
       questionId,
       questionText: editStem,
@@ -212,7 +229,52 @@ export function ImportJobsManager({ workspaceId, initialJobs, defaultJobId }: Pr
       chapter: editChapter.trim() || "general",
       concept: editConcept.trim() || editChapter.trim() || "general",
       difficulty: editDifficulty,
+      imageUrl: editImageUrl,
+      optionImages: optionImagesPayload,
     };
+  }
+
+  // Upload an image to R2 (workspace question image purpose) and return its URL.
+  async function uploadReviewImage(file: File): Promise<string> {
+    const form = new FormData();
+    form.set("purpose", "workspace_question_image");
+    form.set("file", file);
+    const res = await uploadUserImageAction(form);
+    return res.url;
+  }
+
+  async function onPickReviewQuestionImage(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setImageUploading(true);
+    try {
+      setEditImageUrl(await uploadReviewImage(file));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Image upload failed");
+    } finally {
+      setImageUploading(false);
+    }
+  }
+
+  async function onPickReviewOptionImage(index: number, e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setOptionImageUploading(index);
+    try {
+      const url = await uploadReviewImage(file);
+      setEditOptionImages((prev) => {
+        const next = [...prev];
+        while (next.length < editOptions.length) next.push(null);
+        next[index] = url;
+        return next;
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Image upload failed");
+    } finally {
+      setOptionImageUploading(null);
+    }
   }
 
   // Persist the current editor (content + subject/chapter/topic/difficulty) without approving.
@@ -470,13 +532,16 @@ export function ImportJobsManager({ workspaceId, initialJobs, defaultJobId }: Pr
               </div>
               <div className="flex items-center gap-2">
                 {/* Single-subject paper: stamp the subject on every question at once */}
-                <Input
-                  value={bulkSubject}
-                  onChange={(e) => setBulkSubject(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleApplySubjectToAll()}
-                  placeholder="Subject for all…"
-                  className="h-9 w-36 rounded-lg text-xs"
-                />
+                <Select value={bulkSubject} onValueChange={setBulkSubject}>
+                  <SelectTrigger className="h-9 w-40 rounded-lg text-xs">
+                    <SelectValue placeholder="Subject for all…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {QUESTION_SUBJECTS.map((s) => (
+                      <SelectItem key={s} value={s}>{s}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <Button
                   variant="outline"
                   onClick={handleApplySubjectToAll}
@@ -502,10 +567,10 @@ export function ImportJobsManager({ workspaceId, initialJobs, defaultJobId }: Pr
               <div className="lg:w-1/2 border-r bg-muted/20 overflow-y-auto p-4 flex flex-col items-center custom-scrollbar h-full justify-center">
                 <div className="border border-border/80 rounded-2xl bg-background max-w-md w-full shadow-lg relative aspect-[3/4] overflow-hidden group">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  {activeQuestion?.metadata?.imageUrl ? (
-                    <img 
-                      src={activeQuestion.metadata.imageUrl as string} 
-                      alt={`Diagram for Question ${activeQuestion.questionNumber}`} 
+                  {(editImageUrl ?? (activeQuestion?.metadata?.imageUrl as string | undefined)) ? (
+                    <img
+                      src={(editImageUrl ?? (activeQuestion?.metadata?.imageUrl as string)) as string}
+                      alt={`Diagram for Question ${activeQuestion?.questionNumber}`}
                       className="w-full h-full object-contain p-4"
                     />
                   ) : (
@@ -535,6 +600,20 @@ export function ImportJobsManager({ workspaceId, initialJobs, defaultJobId }: Pr
                     Page 1 of 1
                   </div>
                 </div>
+                {/* Manual question diagram — attach/replace before publishing to the bag */}
+                {activeQuestion && (
+                  <div className="mt-3 flex items-center gap-2">
+                    <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-bold text-muted-foreground transition-colors hover:text-foreground">
+                      <input type="file" accept="image/*" className="hidden" onChange={onPickReviewQuestionImage} disabled={imageUploading} />
+                      {imageUploading ? "Uploading…" : editImageUrl ? "Replace diagram image" : "Add diagram image"}
+                    </label>
+                    {editImageUrl && (
+                      <Button variant="ghost" size="sm" className="h-8 rounded-lg text-xs text-muted-foreground" onClick={() => setEditImageUrl(null)}>
+                        Remove
+                      </Button>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Right pane: ParsedQuestionsList / Corrective form */}
@@ -616,21 +695,40 @@ export function ImportJobsManager({ workspaceId, initialJobs, defaultJobId }: Pr
                           <Label className="text-xs font-bold text-muted-foreground">OCR Options Mapping</Label>
                           <div className="space-y-2">
                             {editOptions.map((opt, i) => (
-                              <div key={i} className="flex items-center gap-2">
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  variant={i === editCorrectOption ? "default" : "outline"}
-                                  onClick={() => setEditCorrectOption(i)}
-                                  className="w-8 h-8 rounded-lg shrink-0 font-extrabold text-xs"
-                                >
-                                  {String.fromCharCode(65 + i)}
-                                </Button>
-                                <Input 
-                                  value={opt}
-                                  onChange={(e) => handleOptionEdit(i, e.target.value)}
-                                  className="h-8 rounded-lg text-xs"
-                                />
+                              <div key={i} className="space-y-1.5 rounded-lg border border-border/50 p-1.5">
+                                <div className="flex items-center gap-2">
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant={i === editCorrectOption ? "default" : "outline"}
+                                    onClick={() => setEditCorrectOption(i)}
+                                    className="w-8 h-8 rounded-lg shrink-0 font-extrabold text-xs"
+                                  >
+                                    {String.fromCharCode(65 + i)}
+                                  </Button>
+                                  <Input
+                                    value={opt}
+                                    onChange={(e) => handleOptionEdit(i, e.target.value)}
+                                    className="h-8 rounded-lg text-xs"
+                                  />
+                                  <label className="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-lg border border-border px-2 py-1.5 text-[10px] font-bold text-muted-foreground transition-colors hover:text-foreground">
+                                    <input type="file" accept="image/*" className="hidden" onChange={(e) => onPickReviewOptionImage(i, e)} disabled={optionImageUploading === i} />
+                                    {optionImageUploading === i ? "…" : editOptionImages[i] ? "Replace" : "Image"}
+                                  </label>
+                                </div>
+                                {editOptionImages[i] && (
+                                  <div className="relative ml-10 inline-block">
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img src={editOptionImages[i] as string} alt={`Option ${String.fromCharCode(65 + i)}`} className="max-h-24 w-auto max-w-full rounded-md border border-border object-contain" />
+                                    <button
+                                      type="button"
+                                      onClick={() => setEditOptionImages((prev) => prev.map((im, j) => (j === i ? null : im)))}
+                                      className="absolute right-1 top-1 rounded bg-black/60 px-1 py-0.5 text-[9px] font-bold uppercase text-white hover:bg-black/80"
+                                    >
+                                      Remove
+                                    </button>
+                                  </div>
+                                )}
                               </div>
                             ))}
                           </div>
@@ -652,7 +750,19 @@ export function ImportJobsManager({ workspaceId, initialJobs, defaultJobId }: Pr
                         <div className="grid grid-cols-2 gap-2">
                           <div className="space-y-1">
                             <span className="text-[10px] text-muted-foreground">Subject</span>
-                            <Input value={editSubject} onChange={(e) => setEditSubject(e.target.value)} placeholder="e.g. Chemistry" className="h-8 rounded-lg text-xs" />
+                            <Select value={editSubject} onValueChange={setEditSubject}>
+                              <SelectTrigger className="h-8 rounded-lg text-xs">
+                                <SelectValue placeholder="Pick subject" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {QUESTION_SUBJECTS.map((s) => (
+                                  <SelectItem key={s} value={s}>{s}</SelectItem>
+                                ))}
+                                {editSubject && !QUESTION_SUBJECTS.includes(editSubject as (typeof QUESTION_SUBJECTS)[number]) && (
+                                  <SelectItem value={editSubject}>{editSubject}</SelectItem>
+                                )}
+                              </SelectContent>
+                            </Select>
                           </div>
                           <div className="space-y-1">
                             <span className="text-[10px] text-muted-foreground">Chapter</span>

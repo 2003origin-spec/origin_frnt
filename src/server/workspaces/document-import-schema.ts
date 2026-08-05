@@ -178,6 +178,14 @@ export async function ensureDocumentImportSchema(): Promise<void> {
           ALTER TABLE import.import_job_questions
             ADD COLUMN IF NOT EXISTS difficulty TEXT NOT NULL DEFAULT 'medium';
 
+          -- Manual images added during import review: a question diagram plus a
+          -- JSONB array of per-option images (parallel to options). Carried onto
+          -- the Question Bag question at publish time.
+          ALTER TABLE import.import_job_questions
+            ADD COLUMN IF NOT EXISTS image_url TEXT;
+          ALTER TABLE import.import_job_questions
+            ADD COLUMN IF NOT EXISTS option_images JSONB;
+
           CREATE INDEX IF NOT EXISTS idx_import_questions_job_status
             ON import.import_job_questions(job_id, status, question_number);
         `);

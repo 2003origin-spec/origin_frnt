@@ -43,6 +43,8 @@ const updateQuestionSchema = z.object({
   options: z.record(z.string(), z.unknown()).nullable().optional(),
   correctOption: z.number().int().nullable().optional(),
   answerText: z.string().nullable().optional(),
+  imageUrl: z.string().url().nullable().optional(),
+  optionImages: z.array(z.string().url().nullable()).nullable().optional(),
 });
 
 const applySubjectSchema = z.object({ subject: z.string().min(1).max(80) });
