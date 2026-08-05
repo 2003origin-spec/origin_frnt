@@ -75,8 +75,12 @@ function mapQuestion(row: Record<string, unknown>): CbtQuestion {
 function normalizeOptions(raw: unknown): CbtQuestionOption[] {
   if (!Array.isArray(raw)) return [];
   return raw
-    .map((o) => ({ text: String((o as { text?: unknown })?.text ?? "").trim() }))
-    .filter((o) => o.text.length > 0);
+    .map((o) => ({
+      text: String((o as { text?: unknown })?.text ?? "").trim(),
+      image: normalizeImageUrl((o as { image?: unknown })?.image),
+    }))
+    // An option is kept if it has text OR an image (image-only options allowed).
+    .filter((o) => o.text.length > 0 || o.image);
 }
 
 function toFiniteNumber(value: unknown): number | null {

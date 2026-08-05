@@ -59,8 +59,22 @@ test("Phase 8: sanitized MCQ payload deep-scans clean of forbidden keys", () => 
   const out = sanitizeQuestionForStudent(makeQuestion({}));
   const hits = deepScanForForbiddenKeys(out);
   assert.deepEqual(hits, [], `sanitized payload leaked: ${hits.join(", ")}`);
-  assert.deepEqual(out.options, ["3", "4", "5"]);
+  assert.deepEqual(out.options, [
+    { text: "3", image: null },
+    { text: "4", image: null },
+    { text: "5", image: null },
+  ]);
   assert.equal(out.marks, 4);
+});
+
+test("sanitized options carry per-option images through to the student", () => {
+  const out = sanitizeQuestionForStudent(
+    makeQuestion({ options: [{ text: "A", image: "https://cdn/o1.png" }, { text: "", image: "https://cdn/o2.png" }] }),
+  );
+  assert.deepEqual(out.options, [
+    { text: "A", image: "https://cdn/o1.png" },
+    { text: "", image: "https://cdn/o2.png" },
+  ]);
 });
 
 test("Phase 8: sanitized matrix_match strips correct_pairs but keeps display rows", () => {

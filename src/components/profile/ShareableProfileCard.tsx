@@ -2,10 +2,9 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { toPng } from 'html-to-image';
-import download from 'downloadjs';
 import { Share2, Download, MessageCircle, Loader2, X } from 'lucide-react';
 import { toast } from 'sonner';
-import { saveFileNative } from '@/native/save-file';
+import { shareImage, saveImage, type ShareTarget } from '@/lib/share';
 import { apiCall } from '@/lib/api';
 import { getCanonicalSiteUrl } from '@/lib/site-url';
 import { MILESTONE_BADGES } from '@/lib/milestone-badges';
@@ -58,38 +57,24 @@ export default function ShareableProfileCard({ open, onClose, name, currentStrea
       .catch(() => setRank(null));
   }, [open]);
 
+  const fileName = `Origin_Profile_${name.replace(/[^\w-]+/g, '_') || 'Scholar'}_${Date.now()}.png`;
+
   const handleShare = useCallback(
-    async (platform?: 'whatsapp') => {
+    async (target?: ShareTarget) => {
       if (!imageUrl) return;
-      try {
-        const blob = await (await fetch(imageUrl)).blob();
-        const file = new File([blob], `Origin_Profile_${Date.now()}.png`, { type: 'image/png' });
-        const data: ShareData = { files: [file], title: 'My ORIGIN AI profile', text: shareText };
-        if (typeof navigator.share === 'function' && typeof navigator.canShare === 'function' && navigator.canShare(data)) {
-          await navigator.share(data);
-        } else if (platform === 'whatsapp') {
-          window.open(`https://wa.me/?text=${encodeURIComponent(shareText)}`, '_blank');
-        } else {
-          await navigator.clipboard.writeText(shareText);
-          toast.success('Copied — paste it anywhere to flex.');
-        }
-      } catch (err) {
-        if (err instanceof DOMException && err.name === 'AbortError') return;
-        window.open(`https://wa.me/?text=${encodeURIComponent(shareText)}`, '_blank');
+      const result = await shareImage({ imageUrl, fileName, title: 'My ORIGIN AI profile', text: shareText, target });
+      if (result === 'downloaded') {
+        toast.success(target ? 'Image saved — attach it in the chat that just opened.' : 'Image saved to your device.');
       }
     },
-    [imageUrl, shareText],
+    [imageUrl, fileName, shareText],
   );
 
   const handleDownload = useCallback(async () => {
     if (!imageUrl) return;
-    const fileName = `Origin_Profile_${name.replace(/[^\w-]+/g, '_') || 'Scholar'}_${Date.now()}.png`;
-    if (await saveFileNative(fileName, 'image/png', imageUrl)) {
-      toast.success('Saved to your Downloads.');
-      return;
-    }
-    download(imageUrl, fileName);
-  }, [imageUrl, name]);
+    await saveImage(imageUrl, fileName);
+    toast.success('Saved to your device.');
+  }, [imageUrl, fileName]);
 
   if (!open) return null;
 

@@ -68,7 +68,8 @@ function paletteFor(hasAnswer: boolean, marked: boolean): CbtPaletteStatus {
 }
 
 export function CbtTestInterface() {
-  const { markSubmitted, roomId } = useCbtRoom();
+  const { markSubmitted, roomId, instituteName, instituteLogo } = useCbtRoom();
+  const [instituteLogoBroken, setInstituteLogoBroken] = useState(false);
   // Android shell: FLAG_SECURE (no screenshots/recording) + keep the display
   // awake for the whole attempt surface (plan ledger #41/#42). Browser no-op.
   useSecureExamScreen();
@@ -667,6 +668,35 @@ export function CbtTestInterface() {
     return seen;
   }, [flat]);
 
+  // Per-subject LOCAL numbering: each flat item's 1-based index within its own
+  // subject section (so the student sees "Question 1..N" per subject, not a
+  // global 1..total). Also groups flat indices by subject for the palette.
+  const localInfo = useMemo(() => {
+    const counters = new Map<string, number>();
+    return flat.map((f) => {
+      const subj = f.subject || "General";
+      const n = (counters.get(subj) ?? 0) + 1;
+      counters.set(subj, n);
+      return { subject: subj, localNumber: n };
+    });
+  }, [flat]);
+
+  const paletteGroups = useMemo(() => {
+    const groups: { subject: string; items: { flatIndex: number; localNumber: number }[] }[] = [];
+    const bySubject = new Map<string, { subject: string; items: { flatIndex: number; localNumber: number }[] }>();
+    flat.forEach((f, idx) => {
+      const subj = f.subject || "General";
+      let g = bySubject.get(subj);
+      if (!g) {
+        g = { subject: subj, items: [] };
+        bySubject.set(subj, g);
+        groups.push(g);
+      }
+      g.items.push({ flatIndex: idx, localNumber: localInfo[idx].localNumber });
+    });
+    return groups;
+  }, [flat, localInfo]);
+
   const jumpToSubject = useCallback(
     (subject: string) => {
       const idx = flat.findIndex((f) => (f.subject || "General") === subject);
@@ -847,6 +877,27 @@ export function CbtTestInterface() {
             <h1 className="text-sm font-black leading-tight text-rose-900 dark:text-rose-300 sm:text-xl">O3 ORIGIN TESTING AGENCY</h1>
             <p className="text-[10px] font-semibold italic text-emerald-700 dark:text-emerald-400 sm:text-xs">Excellence in Assessment</p>
           </div>
+          {/* Co-branding lockup: Origin × the institute (logo + name), shown only
+              when the room has an institute set. */}
+          {(instituteName || (instituteLogo && !instituteLogoBroken)) ? (
+            <div className="flex items-center gap-2 border-l border-border/50 pl-3">
+              <span className="text-lg font-black text-muted-foreground">×</span>
+              {instituteLogo && !instituteLogoBroken ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={instituteLogo}
+                  alt={instituteName ?? "Institute"}
+                  onError={() => setInstituteLogoBroken(true)}
+                  className="h-8 w-8 shrink-0 rounded-lg object-contain sm:h-10 sm:w-10"
+                />
+              ) : null}
+              {instituteName ? (
+                <span className="max-w-[8rem] truncate text-xs font-black tracking-tight text-foreground sm:text-sm" title={instituteName}>
+                  {instituteName}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
         </div>
         <div className="flex flex-col gap-0.5 text-[10px] font-semibold sm:gap-1 sm:text-xs">
           <div className="flex"><span className="w-20 text-muted-foreground sm:w-28">Candidate:</span> <span className="truncate font-mono text-primary">{studentCode || "—"}</span></div>
@@ -890,7 +941,10 @@ export function CbtTestInterface() {
         {/* Main question column */}
         <main className="flex-1 space-y-4">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-black text-foreground">Question {index + 1} <span className="text-muted-foreground">of {flat.length}</span></span>
+            <span className="text-sm font-black text-foreground">
+              <span className="text-primary">{activeSubject}</span> · Question {localInfo[index]?.localNumber ?? index + 1}{" "}
+              <span className="text-muted-foreground">of {sectionStats[activeSubject]?.total ?? flat.length}</span>
+            </span>
             <span className="flex items-center gap-2 text-[11px] font-bold">
               <span className="rounded-md bg-emerald-500/15 px-2 py-0.5 text-emerald-600 dark:text-emerald-400">+{current.q.marks}</span>
               <span className="rounded-md bg-red-500/15 px-2 py-0.5 text-red-600 dark:text-red-400">{current.q.negativeMarks}</span>
@@ -942,23 +996,32 @@ export function CbtTestInterface() {
             </div>
           </div>
 
-          {/* Grid */}
+          {/* Grid — grouped by subject, numbered 1..N within each section.
+              Its own bounded scroll region so dragging it doesn't scroll the
+              whole page (max-height caps it; overscroll-contain traps the wheel). */}
           <div className="neu-raised rounded-2xl p-4">
             <p className="mb-3 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Question Palette</p>
-            <div className="grid grid-cols-6 gap-1.5">
-              {flat.map((f, i) => {
-                const status = palette[f.q.position] ?? "not_visited";
-                return (
-                  <button
-                    key={f.q.position}
-                    onClick={() => goTo(i)}
-                    className={`h-8 rounded-lg text-xs font-bold transition-all ${PALETTE_STYLE[status]} ${i === index ? "outline outline-2 outline-primary" : ""}`}
-                    title={`Question ${i + 1}`}
-                  >
-                    {i + 1}
-                  </button>
-                );
-              })}
+            <div className="max-h-[45vh] space-y-4 overflow-y-auto overscroll-contain pr-1 lg:max-h-[420px]" style={{ touchAction: 'pan-y' }}>
+              {paletteGroups.map((group) => (
+                <div key={group.subject} className="space-y-2">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-primary">{group.subject}</p>
+                  <div className="grid grid-cols-6 gap-1.5">
+                    {group.items.map(({ flatIndex, localNumber }) => {
+                      const status = palette[flat[flatIndex].q.position] ?? "not_visited";
+                      return (
+                        <button
+                          key={flat[flatIndex].q.position}
+                          onClick={() => goTo(flatIndex)}
+                          className={`h-8 rounded-lg text-xs font-bold transition-all ${PALETTE_STYLE[status]} ${flatIndex === index ? "outline outline-2 outline-primary" : ""}`}
+                          title={`${group.subject} · Question ${localNumber}`}
+                        >
+                          {localNumber}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 
@@ -1128,7 +1191,13 @@ function QuestionInput({
                 <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-black transition-colors ${active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
                   {String.fromCharCode(65 + i)}
                 </span>
-                <span className="pt-0.5"><LatexRenderer content={opt} /></span>
+                <span className="min-w-0 space-y-2 pt-0.5">
+                  {opt.text ? <LatexRenderer content={opt.text} /> : null}
+                  {opt.image ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={opt.image} alt={`Option ${String.fromCharCode(65 + i)}`} className="max-h-48 w-auto max-w-full rounded-lg border border-border/60 object-contain" />
+                  ) : null}
+                </span>
               </button>
             );
           })}
@@ -1153,7 +1222,13 @@ function QuestionInput({
                 <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sm font-black transition-colors ${active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
                   {String.fromCharCode(65 + i)}
                 </span>
-                <span className="pt-0.5"><LatexRenderer content={opt} /></span>
+                <span className="min-w-0 space-y-2 pt-0.5">
+                  {opt.text ? <LatexRenderer content={opt.text} /> : null}
+                  {opt.image ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={opt.image} alt={`Option ${String.fromCharCode(65 + i)}`} className="max-h-48 w-auto max-w-full rounded-lg border border-border/60 object-contain" />
+                  ) : null}
+                </span>
               </button>
             );
           })}

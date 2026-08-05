@@ -17,7 +17,26 @@ export const CBT_QUESTION_TYPES = [
 
 export type CbtQuestionType = (typeof CBT_QUESTION_TYPES)[number];
 
-export type CbtQuestionOption = { text: string };
+/** Canonical CBT subjects — the section-splitting keys. "General" is the
+ *  catch-all for mixed papers / questions with no specific subject. */
+export const CBT_SUBJECTS = ["Physics", "Chemistry", "Mathematics", "Biology", "General"] as const;
+export type CbtSubject = (typeof CBT_SUBJECTS)[number];
+
+/** Normalize free/legacy subject text to a canonical subject (used for imports
+ *  and older rows). Falls back to "General" when it can't be matched. */
+export function normalizeCbtSubject(raw: string | null | undefined): CbtSubject {
+  const v = (raw ?? "").trim().toLowerCase();
+  if (!v) return "General";
+  if (v.startsWith("phy")) return "Physics";
+  if (v.startsWith("chem")) return "Chemistry";
+  if (v.startsWith("math") || v === "maths") return "Mathematics";
+  if (v.startsWith("bio")) return "Biology";
+  const exact = CBT_SUBJECTS.find((s) => s.toLowerCase() === v);
+  return exact ?? "General";
+}
+
+/** An answer option — text and/or an optional image (both may render). */
+export type CbtQuestionOption = { text: string; image?: string | null };
 
 export type CbtQuestionAnswer = {
   correctOption?: number | null;

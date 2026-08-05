@@ -26,6 +26,8 @@ import { LatexRenderer } from "@/components/ui/LatexRenderer";
 import { mutateJson } from "@/lib/csrf";
 import {
   CBT_QUESTION_TYPES,
+  CBT_SUBJECTS,
+  normalizeCbtSubject,
   type CbtQuestion,
   type CbtQuestionInput,
   type CbtQuestionType,
@@ -91,9 +93,13 @@ export function CbtQuestionEditorDialog({
   const seed = seedNumericAnswer(initialQuestion);
   const [questionType, setQuestionType] = useState<CbtQuestionType>(seed.questionType);
   const [stem, setStem] = useState(initialQuestion?.stem ?? "");
-  const [options, setOptions] = useState<string[]>(
-    initialQuestion?.options.length ? initialQuestion.options.map((o) => o.text) : ["", ""],
+  const [options, setOptions] = useState<{ text: string; image: string | null }[]>(
+    initialQuestion?.options.length
+      ? initialQuestion.options.map((o) => ({ text: o.text, image: o.image ?? null }))
+      : [{ text: "", image: null }, { text: "", image: null }],
   );
+  // Which option's image is currently uploading (index), or null.
+  const [optionImageUploading, setOptionImageUploading] = useState<number | null>(null);
   const [correctOption, setCorrectOption] = useState<number>(initialQuestion?.answer.correctOption ?? 0);
   const [correctOptions, setCorrectOptions] = useState<number[]>(initialQuestion?.answer.correctOptions ?? []);
   const [answerText, setAnswerText] = useState<string>(seed.answerText);
@@ -105,13 +111,28 @@ export function CbtQuestionEditorDialog({
     initialQuestion?.answer.matrixData ? JSON.stringify(initialQuestion.answer.matrixData, null, 2) : "",
   );
   const [explanation, setExplanation] = useState(initialQuestion?.explanation ?? "");
-  const [subject, setSubject] = useState(initialQuestion?.subject ?? "");
+  // Normalize any legacy/free-text subject to a canonical dropdown value; blank
+  // for brand-new questions so the teacher must pick one.
+  const [subject, setSubject] = useState<string>(
+    initialQuestion?.subject ? normalizeCbtSubject(initialQuestion.subject) : "",
+  );
   const [chapter, setChapter] = useState(initialQuestion?.chapter ?? "");
   const [concept, setConcept] = useState(initialQuestion?.concept ?? "");
   const [difficulty, setDifficulty] = useState(initialQuestion?.difficulty ?? "medium");
   // Question diagram image (import-populated or manually uploaded to R2).
   const [image, setImage] = useState<string | null>(initialQuestion?.image ?? null);
   const [imageUploading, setImageUploading] = useState(false);
+
+  // Upload one image file to R2 and return its public URL (shared by the
+  // question diagram and per-option images).
+  async function uploadImageFile(file: File): Promise<string> {
+    const fd = new FormData();
+    fd.append("file", file);
+    const res = await mutateJson("/api/cbt/uploads/image", { method: "POST", body: fd });
+    const data = (await res.json().catch(() => ({}))) as { url?: string; detail?: string };
+    if (!res.ok || !data.url) throw new Error(data.detail ?? "Upload failed.");
+    return data.url;
+  }
 
   async function onPickImage(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -120,16 +141,27 @@ export function CbtQuestionEditorDialog({
     setError(null);
     setImageUploading(true);
     try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const res = await mutateJson("/api/cbt/uploads/image", { method: "POST", body: fd });
-      const data = (await res.json().catch(() => ({}))) as { url?: string; detail?: string };
-      if (!res.ok || !data.url) throw new Error(data.detail ?? "Upload failed.");
-      setImage(data.url);
+      setImage(await uploadImageFile(file));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Image upload failed.");
     } finally {
       setImageUploading(false);
+    }
+  }
+
+  async function onPickOptionImage(index: number, e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setError(null);
+    setOptionImageUploading(index);
+    try {
+      const url = await uploadImageFile(file);
+      setOptions((prev) => prev.map((p, j) => (j === index ? { ...p, image: url } : p)));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Image upload failed.");
+    } finally {
+      setOptionImageUploading(null);
     }
   }
 
@@ -165,6 +197,10 @@ export function CbtQuestionEditorDialog({
 
   function save() {
     setError(null);
+    if (!subject) {
+      setError("Please pick a subject — it groups the question into its section.");
+      return;
+    }
     if (questionType === "matrix_match" && matrixJson.trim()) {
       try {
         JSON.parse(matrixJson);
@@ -176,7 +212,7 @@ export function CbtQuestionEditorDialog({
     const payload = {
       questionType,
       stem,
-      options: usesOptions ? options.map((text) => ({ text })) : [],
+      options: usesOptions ? options.map((o) => ({ text: o.text, image: o.image || null })) : [],
       answer: buildAnswer(),
       explanation: explanation || null,
       subject: subject || null,
@@ -289,34 +325,53 @@ export function CbtQuestionEditorDialog({
             <div className="space-y-2">
               <Label>Options ({questionType === "mcq" ? "pick one correct" : "pick all correct"})</Label>
               {options.map((opt, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  {questionType === "mcq" ? (
-                    <input
-                      type="radio"
-                      name="cbt-correct"
-                      checked={correctOption === i}
-                      onChange={() => setCorrectOption(i)}
+                <div key={i} className="space-y-1.5 rounded-xl border border-border/60 p-2">
+                  <div className="flex items-center gap-2">
+                    {questionType === "mcq" ? (
+                      <input
+                        type="radio"
+                        name="cbt-correct"
+                        checked={correctOption === i}
+                        onChange={() => setCorrectOption(i)}
+                      />
+                    ) : (
+                      <input type="checkbox" checked={correctOptions.includes(i)} onChange={() => toggleMsq(i)} />
+                    )}
+                    <Input
+                      value={opt.text}
+                      onChange={(e) => setOptions((prev) => prev.map((p, j) => (j === i ? { ...p, text: e.target.value } : p)))}
+                      placeholder={`Option ${i + 1}`}
                     />
-                  ) : (
-                    <input type="checkbox" checked={correctOptions.includes(i)} onChange={() => toggleMsq(i)} />
-                  )}
-                  <Input
-                    value={opt}
-                    onChange={(e) => setOptions((prev) => prev.map((p, j) => (j === i ? e.target.value : p)))}
-                    placeholder={`Option ${i + 1}`}
-                  />
-                  {options.length > 2 ? (
-                    <button
-                      type="button"
-                      className="text-xs text-destructive"
-                      onClick={() => setOptions((prev) => prev.filter((_, j) => j !== i))}
-                    >
-                      Remove
-                    </button>
+                    <label className="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-lg border border-border px-2 py-1.5 text-[11px] font-bold text-muted-foreground transition-colors hover:text-foreground">
+                      <input type="file" accept="image/*" className="hidden" onChange={(e) => onPickOptionImage(i, e)} disabled={optionImageUploading === i} />
+                      {optionImageUploading === i ? "Uploading…" : opt.image ? "Replace image" : "Add image"}
+                    </label>
+                    {options.length > 2 ? (
+                      <button
+                        type="button"
+                        className="shrink-0 text-xs text-destructive"
+                        onClick={() => setOptions((prev) => prev.filter((_, j) => j !== i))}
+                      >
+                        Remove
+                      </button>
+                    ) : null}
+                  </div>
+                  {opt.image ? (
+                    <div className="relative ml-6 inline-block">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={opt.image} alt={`Option ${i + 1}`} className="max-h-32 w-auto max-w-full rounded-lg border border-border object-contain" />
+                      <button
+                        type="button"
+                        onClick={() => setOptions((prev) => prev.map((p, j) => (j === i ? { ...p, image: null } : p)))}
+                        className="absolute right-1 top-1 rounded-md bg-black/60 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white hover:bg-black/80"
+                      >
+                        Remove
+                      </button>
+                    </div>
                   ) : null}
                 </div>
               ))}
-              <Button type="button" size="sm" variant="outline" className="neu-raised border-0 shadow-none transition-transform hover:-translate-y-0.5" onClick={() => setOptions((p) => [...p, ""])}>
+              <Button type="button" size="sm" variant="outline" className="neu-raised border-0 shadow-none transition-transform hover:-translate-y-0.5" onClick={() => setOptions((p) => [...p, { text: "", image: null }])}>
                 Add option
               </Button>
             </div>
@@ -370,8 +425,19 @@ export function CbtQuestionEditorDialog({
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <Label>Subject</Label>
-              <Input value={subject} onChange={(e) => setSubject(e.target.value)} />
+              <Label>Subject <span className="text-destructive">*</span></Label>
+              <Select value={subject} onValueChange={setSubject}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Pick a subject" />
+                </SelectTrigger>
+                <SelectContent>
+                  {CBT_SUBJECTS.map((s) => (
+                    <SelectItem key={s} value={s}>
+                      {s}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1">
               <Label>Chapter</Label>

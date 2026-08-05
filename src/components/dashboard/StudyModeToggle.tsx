@@ -68,28 +68,20 @@ export default function StudyModeToggle({ className }: { className?: string }) {
     optionRefs.current[next]?.focus();
   };
 
+  // Compact segmented control — one slim row instead of three stacked cards.
+  const shortLabel = (mode: StudyMode) => STUDY_MODE_LABELS[mode].replace(/\s*Mode$/i, '');
+
   return (
-    <div className={cn('neu-raised p-4 sm:p-5', className)}>
-      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-        <div className="min-w-0">
-          <h3 className="text-xs font-black text-foreground uppercase tracking-widest">Study Mode</h3>
-          <p className="text-[11px] font-bold text-muted-foreground mt-0.5">
-            Origin shows only the subjects in the mode you pick.
-          </p>
-        </div>
-        {studyModePending && (
-          <span className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-muted-foreground">
-            <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" />
-            Saving
-          </span>
-        )}
-      </div>
+    <div className={cn('neu-raised flex items-center gap-2 px-2.5 py-1.5', className)}>
+      <span className="hidden sm:inline shrink-0 text-[9px] font-black uppercase tracking-widest text-muted-foreground">
+        Mode
+      </span>
 
       <div
         role="radiogroup"
         aria-label="Study mode"
         aria-busy={studyModePending}
-        className="grid grid-cols-1 sm:grid-cols-3 gap-2"
+        className="neu-inset grid flex-1 grid-cols-3 gap-1 rounded-xl p-1"
       >
         {ALL_STUDY_MODES.map((mode, index) => {
           const selected = mode === studyMode;
@@ -110,63 +102,46 @@ export default function StudyModeToggle({ className }: { className?: string }) {
               role="radio"
               aria-checked={selected}
               aria-disabled={blocked || undefined}
-              // Roving tabindex: only the active option is in the tab order, so
-              // Tab moves past the whole group and arrows move within it.
+              // Roving tabindex: only the active option is in the tab order.
               tabIndex={selected ? 0 : -1}
               disabled={studyModePending}
+              // Subject list + any lock reason live in the tooltip to save space.
               title={
                 isNavigationLocked && selectable
                   ? 'Finish your test before changing study mode'
-                  : lockReason
+                  : lockReason ?? STUDY_MODE_BLURB[mode]
               }
               onClick={() => select(mode)}
               onKeyDown={(event) => onKeyDown(event, index)}
               className={cn(
-                'relative text-left rounded-xl px-3.5 py-3 transition-all',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-visible:ring-offset-background',
-                selected ? 'neu-inset bg-primary/10 ring-2 ring-primary' : 'neu-raised',
-                !selected && !blocked && 'hover:-translate-y-0.5 hover:bg-primary/5',
-                blocked && !selected && 'opacity-50 cursor-not-allowed',
+                'flex items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-xs font-black tracking-tight transition-all',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
+                selected
+                  ? 'bg-primary text-primary-foreground shadow'
+                  : 'text-foreground hover:bg-primary/5',
+                blocked && !selected && 'opacity-40 cursor-not-allowed',
                 studyModePending && 'cursor-wait',
               )}
             >
-              <span className="flex items-center justify-between gap-2">
-                <span
-                  className={cn(
-                    'text-sm font-black tracking-tight',
-                    selected ? 'text-primary' : 'text-foreground',
-                  )}
-                >
-                  {STUDY_MODE_LABELS[mode]}
-                </span>
-                {selected ? (
-                  <Check className="w-4 h-4 text-primary shrink-0" aria-hidden="true" />
-                ) : !selectable ? (
-                  <Lock className="w-3.5 h-3.5 text-muted-foreground shrink-0" aria-hidden="true" />
-                ) : null}
-              </span>
-              <span className="block text-[11px] font-bold text-muted-foreground mt-0.5">
-                {STUDY_MODE_BLURB[mode]}
-              </span>
-              {lockReason && (
-                <span className="block text-[10px] font-bold text-amber-600 dark:text-amber-500 mt-1">
-                  Needs {missing.map(subjectLabel).join(' and ')}
-                </span>
-              )}
+              {shortLabel(mode)}
+              {selected ? (
+                <Check className="w-3 h-3 shrink-0" aria-hidden="true" />
+              ) : !selectable ? (
+                <Lock className="w-2.5 h-2.5 text-muted-foreground shrink-0" aria-hidden="true" />
+              ) : null}
             </button>
           );
         })}
       </div>
 
-      {isNavigationLocked && (
-        <p className="text-[10px] font-bold text-amber-600 dark:text-amber-500 mt-2.5">
-          Finish your test before changing study mode.
-        </p>
+      {studyModePending && (
+        <Loader2 className="w-3.5 h-3.5 shrink-0 animate-spin text-muted-foreground" aria-hidden="true" />
       )}
 
       {/* Announced to screen readers on every change without stealing focus. */}
       <p aria-live="polite" className="sr-only">
         {STUDY_MODE_LABELS[studyMode]} selected. Showing {STUDY_MODE_BLURB[studyMode]}.
+        {isNavigationLocked ? ' Finish your test before changing study mode.' : ''}
       </p>
     </div>
   );

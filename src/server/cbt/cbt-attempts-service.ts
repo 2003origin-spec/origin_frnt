@@ -55,7 +55,7 @@ export type TestQuestionRow = {
   questionType: CbtQuestionType;
   stem: string;
   image: string | null;
-  options: { text: string }[];
+  options: { text: string; image?: string | null }[];
   answer: CbtQuestionAnswer;
   explanation: string | null;
   subject: string | null;
@@ -87,7 +87,7 @@ async function loadTestQuestions(testId: string): Promise<TestQuestionRow[]> {
     questionType: row.question_type as CbtQuestionType,
     stem: String(row.stem ?? ""),
     image: typeof row.image === "string" && row.image.trim() ? String(row.image).trim() : null,
-    options: Array.isArray(row.options) ? (row.options as { text: string }[]) : [],
+    options: Array.isArray(row.options) ? (row.options as { text: string; image?: string | null }[]) : [],
     answer: (row.answer ?? {}) as CbtQuestionAnswer,
     explanation: row.explanation ?? null,
     subject: row.subject ?? null,
@@ -118,7 +118,10 @@ export function sanitizeQuestionForStudent(q: TestQuestionRow): CbtSanitizedQues
     questionType: q.questionType,
     stem: q.stem,
     image: q.image,
-    options: q.options.map((o) => String(o?.text ?? "")),
+    options: q.options.map((o) => ({
+      text: String(o?.text ?? ""),
+      image: typeof o?.image === "string" && o.image.trim() ? o.image.trim() : null,
+    })),
     marks: q.marks,
     negativeMarks: q.negativeMarks,
     subject: q.subject,
