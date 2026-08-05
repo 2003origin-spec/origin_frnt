@@ -27,11 +27,14 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { QUESTION_SUBJECTS, isOriginBankQuestion } from "@/lib/question-subjects";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { FormattedMessage } from "@/components/origin-ai/FormattedMessage";
 import { apiJson } from "@/lib/teacher-client";
+import { uploadUserImageAction } from "@/server/actions/profile-actions";
 import type { QuestionWithVersion, QuestionType, QuestionStatus } from "@/server/workspaces/types";
 import { toast } from "sonner";
 
@@ -72,11 +75,15 @@ export function QuestionBagManagerHighFidelity({ workspaceId, initialQuestions, 
   const [editMode, setEditMode] = useState(false);
   const [editType, setEditType] = useState<QuestionType>("mcq");
   const [editStem, setEditStem] = useState("");
+  // Manually-attached question diagram image (R2 URL).
+  const [editImageUrl, setEditImageUrl] = useState<string | null>(null);
+  const [imageUploading, setImageUploading] = useState(false);
+  const [optionImageUploading, setOptionImageUploading] = useState<number | null>(null);
   const [editSubject, setEditSubject] = useState("");
   const [editChapter, setEditChapter] = useState("");
   const [editConcept, setEditConcept] = useState("");
   const [editDifficulty, setEditDifficulty] = useState<"easy" | "medium" | "hard" | "insane">("medium");
-  const [editOptions, setEditOptions] = useState<Array<{ id: string; text: string }>>([
+  const [editOptions, setEditOptions] = useState<Array<{ id: string; text: string; image?: string | null }>>([
     { id: "a", text: "" },
     { id: "b", text: "" },
     { id: "c", text: "" },
@@ -85,6 +92,10 @@ export function QuestionBagManagerHighFidelity({ workspaceId, initialQuestions, 
   const [editCorrectOption, setEditCorrectOption] = useState<number | null>(0);
   const [editCorrectOptions, setEditCorrectOptions] = useState<number[]>([]);
   const [editAnswerText, setEditAnswerText] = useState("");
+  // Numerical tolerance/units (→ answerSpec) + structured matrix (→ matrixData).
+  const [editTolerance, setEditTolerance] = useState("0");
+  const [editUnits, setEditUnits] = useState("");
+  const [editMatrixJson, setEditMatrixJson] = useState("");
   const [editHint, setEditHint] = useState("");
   const [editExplanation, setEditExplanation] = useState("");
   const [editFullSolution, setEditFullSolution] = useState("");
@@ -145,16 +156,55 @@ export function QuestionBagManagerHighFidelity({ workspaceId, initialQuestions, 
     setEditMode(false);
   };
 
+  // Upload a question/option image to R2 and return its URL.
+  async function uploadImage(file: File): Promise<string> {
+    const fd = new FormData();
+    fd.set("purpose", "workspace_question_image");
+    fd.set("file", file);
+    const res = await uploadUserImageAction(fd);
+    return res.url;
+  }
+
+  async function onPickQuestionImage(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setImageUploading(true);
+    try {
+      setEditImageUrl(await uploadImage(file));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Image upload failed.");
+    } finally {
+      setImageUploading(false);
+    }
+  }
+
+  async function onPickOptionImage(index: number, e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setOptionImageUploading(index);
+    try {
+      const url = await uploadImage(file);
+      setEditOptions((prev) => prev.map((o, i) => (i === index ? { ...o, image: url } : o)));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Image upload failed.");
+    } finally {
+      setOptionImageUploading(null);
+    }
+  }
+
   const enterEditMode = () => {
     if (!activeQuestion || !activeQuestion.currentVersion) return;
     const v = activeQuestion.currentVersion;
     setEditType(v.questionType);
     setEditStem(v.stem);
+    setEditImageUrl(v.imageUrl ?? null);
     setEditSubject(v.subject);
     setEditChapter(v.chapter);
     setEditConcept(v.concept);
     setEditDifficulty(v.difficulty);
-    setEditOptions(v.options?.map(o => ({ id: o.id, text: o.text })) || [
+    setEditOptions(v.options?.map(o => ({ id: o.id, text: o.text, image: o.image ?? null })) || [
       { id: "a", text: "" },
       { id: "b", text: "" },
       { id: "c", text: "" },
@@ -163,6 +213,10 @@ export function QuestionBagManagerHighFidelity({ workspaceId, initialQuestions, 
     setEditCorrectOption(v.correctOption);
     setEditCorrectOptions(v.correctOptions || []);
     setEditAnswerText(v.answerText || "");
+    const spec = (v.answerSpec ?? {}) as { tolerance?: number; units?: string };
+    setEditTolerance(spec.tolerance != null ? String(spec.tolerance) : "0");
+    setEditUnits(spec.units ?? "");
+    setEditMatrixJson(v.matrixData ? JSON.stringify(v.matrixData, null, 2) : "");
     setEditHint(v.hint || "");
     setEditExplanation(v.explanation || "");
     setEditFullSolution(v.fullSolution || "");
@@ -173,6 +227,7 @@ export function QuestionBagManagerHighFidelity({ workspaceId, initialQuestions, 
     setActiveQuestion(null);
     setEditType("mcq");
     setEditStem("");
+    setEditImageUrl(null);
     setEditSubject("");
     setEditChapter("");
     setEditConcept("");
@@ -186,6 +241,9 @@ export function QuestionBagManagerHighFidelity({ workspaceId, initialQuestions, 
     setEditCorrectOption(0);
     setEditCorrectOptions([]);
     setEditAnswerText("");
+    setEditTolerance("0");
+    setEditUnits("");
+    setEditMatrixJson("");
     setEditHint("");
     setEditExplanation("");
     setEditFullSolution("");
@@ -266,6 +324,24 @@ export function QuestionBagManagerHighFidelity({ workspaceId, initialQuestions, 
       return;
     }
 
+    // Numerical tolerance/units → answerSpec (resolver reads answerSpec.tolerance
+    // for grading). Matrix → structured matrixData (must be valid JSON).
+    const answerSpec =
+      editType === "numerical"
+        ? { tolerance: Number(editTolerance) || 0 }
+        : editType === "numerical_with_units"
+          ? { tolerance: Number(editTolerance) || 0, units: editUnits.trim() || null }
+          : null;
+    let matrixData: Record<string, unknown> | null = null;
+    if (editType === "matrix_match" && editMatrixJson.trim()) {
+      try {
+        matrixData = JSON.parse(editMatrixJson);
+      } catch {
+        toast.error("Matrix data must be valid JSON.");
+        return;
+      }
+    }
+
     startTransition(async () => {
       const isEdit = !!activeQuestion;
       const url = isEdit
@@ -276,6 +352,7 @@ export function QuestionBagManagerHighFidelity({ workspaceId, initialQuestions, 
       const payload = {
         questionType: editType,
         stem: editStem,
+        imageUrl: editImageUrl,
         subject: editSubject,
         chapter: editChapter,
         concept: editConcept,
@@ -287,6 +364,8 @@ export function QuestionBagManagerHighFidelity({ workspaceId, initialQuestions, 
         correctOption: editType === "mcq" ? editCorrectOption : null,
         correctOptions: editType === "msq" ? editCorrectOptions : null,
         answerText: editType !== "mcq" && editType !== "msq" ? editAnswerText : null,
+        answerSpec,
+        matrixData,
       };
 
       const result = await apiJson<any>(url, { method, json: payload });
@@ -500,7 +579,16 @@ export function QuestionBagManagerHighFidelity({ workspaceId, initialQuestions, 
                 <div className="grid grid-cols-3 gap-3">
                   <div className="space-y-1.5">
                     <Label className="text-xs font-semibold">Subject *</Label>
-                    <Input value={editSubject} onChange={(e) => setEditSubject(e.target.value)} placeholder="Physics" className="h-10 rounded-xl" />
+                    <Select value={editSubject} onValueChange={setEditSubject}>
+                      <SelectTrigger className="h-10 rounded-xl">
+                        <SelectValue placeholder="Pick a subject" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {QUESTION_SUBJECTS.map((s) => (
+                          <SelectItem key={s} value={s}>{s}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-xs font-semibold">Chapter *</Label>
@@ -528,6 +616,27 @@ export function QuestionBagManagerHighFidelity({ workspaceId, initialQuestions, 
                       <FormattedMessage content={editStem} className="text-sm select-text" />
                     </div>
                   )}
+
+                  {/* Question diagram image — upload / replace / remove */}
+                  <div className="space-y-2">
+                    {editImageUrl && (
+                      <div className="relative inline-block">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={editImageUrl} alt="Question diagram" className="max-h-52 w-auto max-w-full rounded-lg border border-border object-contain" />
+                        <button
+                          type="button"
+                          onClick={() => setEditImageUrl(null)}
+                          className="absolute right-2 top-2 rounded-md bg-black/60 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white hover:bg-black/80"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    )}
+                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-xs font-bold text-muted-foreground transition-colors hover:text-foreground">
+                      <input type="file" accept="image/*" className="hidden" onChange={onPickQuestionImage} disabled={imageUploading} />
+                      {imageUploading ? "Uploading…" : editImageUrl ? "Replace diagram image" : "Add diagram image"}
+                    </label>
+                  </div>
                 </div>
 
                 {/* Dynamic Options Grid */}
@@ -538,7 +647,8 @@ export function QuestionBagManagerHighFidelity({ workspaceId, initialQuestions, 
                     </Label>
                     <div className="space-y-2">
                       {editOptions.map((opt, i) => (
-                        <div key={opt.id} className="flex items-center gap-2">
+                        <div key={opt.id} className="space-y-1.5 rounded-xl border border-border/60 p-2">
+                        <div className="flex items-center gap-2">
                           <Button
                             type="button"
                             size="sm"
@@ -568,6 +678,24 @@ export function QuestionBagManagerHighFidelity({ workspaceId, initialQuestions, 
                             placeholder={`Option ${String.fromCharCode(65 + i)}`}
                             className="h-10 rounded-xl border-border/80"
                           />
+                          <label className="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-lg border border-border px-2 py-1.5 text-[11px] font-bold text-muted-foreground transition-colors hover:text-foreground">
+                            <input type="file" accept="image/*" className="hidden" onChange={(e) => onPickOptionImage(i, e)} disabled={optionImageUploading === i} />
+                            {optionImageUploading === i ? "…" : opt.image ? "Replace" : "Image"}
+                          </label>
+                        </div>
+                        {opt.image && (
+                          <div className="relative ml-12 inline-block">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={opt.image} alt={`Option ${String.fromCharCode(65 + i)}`} className="max-h-28 w-auto max-w-full rounded-lg border border-border object-contain" />
+                            <button
+                              type="button"
+                              onClick={() => setEditOptions((prev) => prev.map((o, j) => (j === i ? { ...o, image: null } : o)))}
+                              className="absolute right-1 top-1 rounded-md bg-black/60 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white hover:bg-black/80"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        )}
                         </div>
                       ))}
                     </div>
@@ -575,13 +703,48 @@ export function QuestionBagManagerHighFidelity({ workspaceId, initialQuestions, 
                 )}
 
                 {/* Numerical / Subjective Answer Input */}
-                {!showOptions && (
+                {/* Numerical: value + tolerance (+ units) */}
+                {(editType === "numerical" || editType === "numerical_with_units") && (
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold">Answer value</Label>
+                      <Input value={editAnswerText} onChange={(e) => setEditAnswerText(e.target.value)} placeholder="e.g. 9.8" className="h-10 rounded-xl" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold">Tolerance (±)</Label>
+                      <Input value={editTolerance} onChange={(e) => setEditTolerance(e.target.value)} placeholder="0" className="h-10 rounded-xl" />
+                    </div>
+                    {editType === "numerical_with_units" && (
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold">Units</Label>
+                        <Input value={editUnits} onChange={(e) => setEditUnits(e.target.value)} placeholder="m/s^2" className="h-10 rounded-xl" />
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Matrix-match: structured JSON */}
+                {editType === "matrix_match" && (
                   <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Correct Answer Value</Label>
-                    <Input 
-                      value={editAnswerText} 
+                    <Label className="text-xs font-semibold">Matrix data (JSON)</Label>
+                    <Textarea
+                      value={editMatrixJson}
+                      onChange={(e) => setEditMatrixJson(e.target.value)}
+                      rows={5}
+                      placeholder='{ "left": ["A","B"], "right": ["P","Q"], "correct_pairs": [[0,1],[1,0]] }'
+                      className="rounded-xl font-mono text-xs"
+                    />
+                  </div>
+                )}
+
+                {/* Symbolic / equation / subjective: plain answer text */}
+                {(editType === "symbolic_expression" || editType === "equation" || editType === "subjective") && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold">{editType === "subjective" ? "Model answer (optional)" : "Correct answer / expression"}</Label>
+                    <Input
+                      value={editAnswerText}
                       onChange={(e) => setEditAnswerText(e.target.value)}
-                      placeholder="e.g. 5.6 or equation expression"
+                      placeholder="e.g. x^2 + 1"
                       className="h-10 rounded-xl"
                     />
                   </div>
@@ -621,21 +784,31 @@ export function QuestionBagManagerHighFidelity({ workspaceId, initialQuestions, 
                   </span>
                   <span className="text-xs text-muted-foreground font-semibold uppercase">{activeQuestion.status.replace(/_/g, " ")}</span>
                 </div>
-                <div className="flex gap-2">
-                  {canEdit && (
-                    <Button variant="outline" size="sm" onClick={enterEditMode} className="h-8 rounded-lg gap-1">
-                      <Edit className="w-3.5 h-3.5" /> Edit
-                    </Button>
-                  )}
-                  {canEdit && (
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
-                      onClick={() => handleArchive(activeQuestion.id)}
-                      className="h-8 w-8 rounded-lg text-destructive hover:bg-destructive/10"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
+                <div className="flex items-center gap-2">
+                  {/* Questions from Origin's own banks (OGCode / platform content)
+                      are read-only — teachers can use them in tests but not edit. */}
+                  {isOriginBankQuestion(activeQuestion.ownerScope) ? (
+                    <span className="flex items-center gap-1 rounded-lg bg-muted px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                      <Lock className="h-3 w-3" /> Origin bank · read-only
+                    </span>
+                  ) : (
+                    <>
+                      {canEdit && (
+                        <Button variant="outline" size="sm" onClick={enterEditMode} className="h-8 rounded-lg gap-1">
+                          <Edit className="w-3.5 h-3.5" /> Edit
+                        </Button>
+                      )}
+                      {canEdit && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleArchive(activeQuestion.id)}
+                          className="h-8 w-8 rounded-lg text-destructive hover:bg-destructive/10"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      )}
+                    </>
                   )}
                 </div>
               </div>

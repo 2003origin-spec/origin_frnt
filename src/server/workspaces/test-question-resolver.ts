@@ -27,8 +27,10 @@ export function mapContentQuestionToStored(qwv: QuestionWithVersion): StoredQues
   return {
     id: qwv.id,
     text: v.stem,
-    // content options are { id, text } objects; the legacy renderer wants string[].
+    // content options are { id, text, image? } objects; the legacy renderer wants
+    // string[] for text + a parallel image array.
     options: v.options ? v.options.map((o) => o.text) : null,
+    optionImages: v.options ? v.options.map((o) => o.image ?? null) : null,
     correctOption: v.correctOption,
     correctOptions: v.correctOptions,
     answerText: v.answerText,
@@ -47,7 +49,7 @@ export function mapContentQuestionToStored(qwv: QuestionWithVersion): StoredQues
     chapter: (v.chapter?.trim() || "Uncategorized"),
     concept: (v.concept?.trim() || v.chapter?.trim() || "General"),
     difficulty: VALID_DIFFICULTIES.has(String(v.difficulty)) ? (v.difficulty as StoredQuestion["difficulty"]) : "medium",
-    image: null,
+    image: v.imageUrl ?? null,
     tags: v.tags ?? null,
     questionType: v.questionType as StoredQuestion["questionType"],
     acceptanceRate: 0,

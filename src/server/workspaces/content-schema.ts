@@ -152,6 +152,7 @@ export async function ensureContentSchema(): Promise<void> {
             answer_text TEXT,
             answer_spec JSONB,
             matrix_data JSONB,
+            image_url TEXT,
             hint TEXT,
             explanation TEXT,
             full_solution TEXT,
@@ -171,6 +172,9 @@ export async function ensureContentSchema(): Promise<void> {
             ON content.question_versions(subject, chapter, concept);
           CREATE INDEX IF NOT EXISTS idx_question_versions_question
             ON content.question_versions(question_id, version_number DESC);
+
+          -- Additive: manual question diagram image (existing DBs).
+          ALTER TABLE content.question_versions ADD COLUMN IF NOT EXISTS image_url TEXT;
         `);
 
         await client.query(`

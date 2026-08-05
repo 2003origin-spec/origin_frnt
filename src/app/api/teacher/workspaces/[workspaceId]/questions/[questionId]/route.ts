@@ -31,7 +31,9 @@ const difficultyEnum = z.enum(["easy", "medium", "hard", "insane"]);
 
 const optionSchema = z.object({
   id: z.string().min(1),
-  text: z.string().min(1),
+  // text may be empty for an image-only option.
+  text: z.string().default(""),
+  image: z.string().url().optional().nullable(),
 });
 
 const editSchema = z.object({
@@ -43,6 +45,7 @@ const editSchema = z.object({
   answerText: z.string().optional().nullable(),
   answerSpec: z.record(z.string(), z.unknown()).optional().nullable(),
   matrixData: z.record(z.string(), z.unknown()).optional().nullable(),
+  imageUrl: z.string().url().optional().nullable(),
   hint: z.string().optional().nullable(),
   explanation: z.string().optional().nullable(),
   fullSolution: z.string().optional().nullable(),
@@ -107,6 +110,7 @@ export async function PATCH(
       answerText: parsed.answerText ?? null,
       answerSpec: parsed.answerSpec ?? null,
       matrixData: parsed.matrixData ?? null,
+      imageUrl: parsed.imageUrl ?? null,
       hint: parsed.hint ?? null,
       explanation: parsed.explanation ?? null,
       fullSolution: parsed.fullSolution ?? null,

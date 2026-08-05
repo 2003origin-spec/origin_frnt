@@ -7,7 +7,8 @@ export type UserImagePurpose =
   | "memory_booth_card"
   | "cbt_institute_logo"
   | "cbt_question_image"
-  | "championship_prize";
+  | "championship_prize"
+  | "workspace_question_image";
 
 export type R2UploadInput = {
   userId: string;

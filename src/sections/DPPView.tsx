@@ -90,6 +90,7 @@ type DppQuestion = {
   id: string;
   text: string;
   options?: string[];
+  optionImages?: (string | null)[] | null;
   explanation?: string;
   concept: string;
   difficulty: string;
@@ -638,7 +639,11 @@ export default function DPPView({ onBack, initialDpps, user }: DPPViewProps) {
                                       : 'text-slate-700 dark:text-slate-300'
                                 }`}
                               >
-                                <FormattedMessage content={String(option)} inline />
+                                {String(option).trim() && <FormattedMessage content={String(option)} inline />}
+                                {currentQuestion.optionImages?.[index] && (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img src={currentQuestion.optionImages[index] as string} alt={`Option ${index + 1}`} className="mt-2 block max-h-40 w-auto max-w-full rounded-lg border border-border/60 object-contain" />
+                                )}
                               </span>
                             </div>
                           </button>

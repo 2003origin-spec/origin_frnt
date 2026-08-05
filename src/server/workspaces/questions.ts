@@ -84,6 +84,7 @@ function rowToVersion(row: Record<string, unknown>): QuestionVersion {
     answerText: (row.answer_text as string | null) ?? null,
     answerSpec: (row.answer_spec as Record<string, unknown> | null) ?? null,
     matrixData: (row.matrix_data as Record<string, unknown> | null) ?? null,
+    imageUrl: (row.image_url as string | null) ?? null,
     hint: (row.hint as string | null) ?? null,
     explanation: (row.explanation as string | null) ?? null,
     fullSolution: (row.full_solution as string | null) ?? null,
@@ -303,7 +304,7 @@ export async function listQuestions(
   const result = await pool().query(
     `SELECT q.*, v.id AS ver_id, v.question_id AS ver_qid, v.version_number,
             v.question_type, v.stem, v.options, v.correct_option, v.correct_options,
-            v.answer_text, v.answer_spec, v.matrix_data, v.hint, v.explanation,
+            v.answer_text, v.answer_spec, v.matrix_data, v.image_url, v.hint, v.explanation,
             v.full_solution, v.subject, v.chapter, v.concept, v.difficulty,
             v.tags, v.import_evidence, v.metadata AS ver_metadata, v.created_by AS ver_created_by,
             v.created_at AS ver_created_at
@@ -331,6 +332,7 @@ export async function listQuestions(
         answerText: (row.answer_text as string | null) ?? null,
         answerSpec: (row.answer_spec as Record<string, unknown> | null) ?? null,
         matrixData: (row.matrix_data as Record<string, unknown> | null) ?? null,
+    imageUrl: (row.image_url as string | null) ?? null,
         hint: (row.hint as string | null) ?? null,
         explanation: (row.explanation as string | null) ?? null,
         fullSolution: (row.full_solution as string | null) ?? null,
@@ -379,6 +381,7 @@ export type CreateVersionInput = {
   answerText?: string | null;
   answerSpec?: Record<string, unknown> | null;
   matrixData?: Record<string, unknown> | null;
+  imageUrl?: string | null;
   hint?: string | null;
   explanation?: string | null;
   fullSolution?: string | null;
@@ -406,10 +409,10 @@ export async function createVersion(input: CreateVersionInput): Promise<Question
     const result = await client.query(
       `INSERT INTO content.question_versions (
          id, question_id, version_number, question_type, stem, options,
-         correct_option, correct_options, answer_text, answer_spec, matrix_data,
+         correct_option, correct_options, answer_text, answer_spec, matrix_data, image_url,
          hint, explanation, full_solution, subject, chapter, concept, difficulty,
          tags, import_evidence, metadata, created_by
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20::jsonb,$21::jsonb,$22)
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21::jsonb,$22::jsonb,$23)
        RETURNING *`,
       [
         id,
@@ -423,6 +426,7 @@ export async function createVersion(input: CreateVersionInput): Promise<Question
         input.answerText ?? null,
         input.answerSpec ? JSON.stringify(input.answerSpec) : null,
         input.matrixData ? JSON.stringify(input.matrixData) : null,
+        input.imageUrl ?? null,
         input.hint ?? null,
         input.explanation ?? null,
         input.fullSolution ?? null,

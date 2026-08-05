@@ -162,6 +162,8 @@ export interface StoredQuestion {
   id: string;
   text: string;
   options: string[] | null;
+  /** Parallel to `options`: an optional image URL per option (or null). */
+  optionImages?: (string | null)[] | null;
   correctOption: number | null;
   correctOptions: number[] | null;
   answerText: string | null;

@@ -58,6 +58,9 @@ const USER_IMAGE_PURPOSES = new Set<UserImagePurpose>([
   'profile_avatar',
   'memory_booth_source',
   'memory_booth_card',
+  // Teacher question authoring — diagram + per-option images (R2, any logged-in
+  // teacher). Reuses this generic user-image upload action.
+  'workspace_question_image',
 ]);
 const MAX_USER_IMAGE_BYTES = 10 * 1024 * 1024;
 

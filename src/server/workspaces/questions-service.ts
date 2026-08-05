@@ -47,6 +47,7 @@ export type CreateQuestionInputFull = CreateQuestionInput & {
   answerText?: string | null;
   answerSpec?: Record<string, unknown> | null;
   matrixData?: Record<string, unknown> | null;
+  imageUrl?: string | null;
   hint?: string | null;
   explanation?: string | null;
   fullSolution?: string | null;
@@ -100,6 +101,7 @@ export async function createTeacherQuestion(input: CreateQuestionInputFull): Pro
     answerText: input.answerText ?? null,
     answerSpec: input.answerSpec ?? null,
     matrixData: input.matrixData ?? null,
+    imageUrl: input.imageUrl ?? null,
     hint: input.hint ?? null,
     explanation: input.explanation ?? null,
     fullSolution: input.fullSolution ?? null,
@@ -150,6 +152,7 @@ export async function editTeacherQuestion(input: EditQuestionInput): Promise<Que
     answerText: input.answerText ?? null,
     answerSpec: input.answerSpec ?? null,
     matrixData: input.matrixData ?? null,
+    imageUrl: input.imageUrl ?? null,
     hint: input.hint ?? null,
     explanation: input.explanation ?? null,
     fullSolution: input.fullSolution ?? null,

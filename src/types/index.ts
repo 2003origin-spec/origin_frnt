@@ -137,6 +137,8 @@ export interface Question {
   id: string;
   text: string;
   options: string[];
+  /** Parallel to `options`: optional per-option image URL (or null). */
+  optionImages?: (string | null)[] | null;
   correctOption?: number;
   explanation?: string;
   hint?: string;
