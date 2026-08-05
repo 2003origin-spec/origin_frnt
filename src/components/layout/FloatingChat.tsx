@@ -8,6 +8,7 @@ import dynamic from 'next/dynamic';
 import { useHighlightedSelection, snapshotHighlightedText } from '@/features/origin-ai/highlight-capture';
 import OriMascotStatic from '@/features/mascot/OriMascotStatic';
 import { setOriHidden, readOriPos, setOriPos, type OriPos } from '@/lib/ori-visibility';
+import { toast } from 'sonner';
 
 // Hold thresholds: 3s → Ori becomes draggable; 4s held still → offer to hide it.
 const DRAG_HOLD_MS = 3000;
@@ -189,6 +190,11 @@ export default function FloatingChat({ onOpen, hideMainButton, userName }: Float
     setHideOffer(false);
     suppressClickRef.current = false;
     setOriHidden(true);
+    toast('Ori hidden', {
+      description: 'You can bring it back anytime from Profile → Settings.',
+      icon: <EyeOff className="h-4 w-4" />,
+      duration: 6000,
+    });
   };
 
   return (

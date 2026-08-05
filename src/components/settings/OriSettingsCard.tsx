@@ -2,7 +2,7 @@
 
 import { Sparkles } from 'lucide-react';
 import { useOriHidden, setOriHidden } from '@/lib/ori-visibility';
-import { cn } from '@/lib/utils';
+import { Switch } from '@/components/ui/switch';
 
 /**
  * Profile settings row to show / hide the floating Ori assistant. Mirrors the
@@ -24,24 +24,12 @@ export default function OriSettingsCard() {
           Show the floating Ori button. Tip: hold Ori for 3s to move it, 4s to hide it.
         </p>
       </div>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={shown}
-        onClick={() => setOriHidden(shown)}
-        className={cn(
-          'relative h-7 w-12 shrink-0 rounded-full transition-colors',
-          shown ? 'bg-primary' : 'bg-muted-foreground/30',
-        )}
+      <Switch
+        checked={shown}
+        onCheckedChange={(checked) => setOriHidden(!checked)}
         aria-label={shown ? 'Hide Ori assistant' : 'Show Ori assistant'}
-      >
-        <span
-          className={cn(
-            'absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-transform',
-            shown ? 'translate-x-6' : 'translate-x-1',
-          )}
-        />
-      </button>
+        className="shrink-0"
+      />
     </div>
   );
 }
