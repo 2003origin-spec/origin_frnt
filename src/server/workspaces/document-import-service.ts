@@ -290,7 +290,15 @@ export async function publishImportQuestionToBag(input: {
   const stem = (question.questionText ?? "").trim();
   if (!stem) return null;
 
-  const options = normalizeImportOptions(question.options);
+  const baseOptions = normalizeImportOptions(question.options);
+  // Attach per-option images captured during review (parallel array → option.image).
+  const options = baseOptions
+    ? baseOptions.map((o, i) => ({ ...o, image: question.optionImages?.[i] ?? null }))
+    : null;
+  // Manual review image wins; fall back to an OCR-extracted crop if present so
+  // imported figures are no longer dropped on the way into the bag.
+  const questionImageUrl =
+    question.imageUrl ?? (question.metadata?.imageUrl as string | undefined) ?? null;
   const questionType: QuestionType =
     question.questionType && VALID_QUESTION_TYPES.includes(question.questionType as QuestionType)
       ? (question.questionType as QuestionType)
@@ -310,6 +318,7 @@ export async function publishImportQuestionToBag(input: {
     questionType,
     stem,
     options,
+    imageUrl: questionImageUrl,
     correctOption: question.correctOption ?? null,
     correctOptions: correctOptions && correctOptions.length ? correctOptions : null,
     answerText: question.answerText ?? null,

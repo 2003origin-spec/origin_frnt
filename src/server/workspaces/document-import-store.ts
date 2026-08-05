@@ -87,6 +87,8 @@ function rowToQuestion(row: Record<string, unknown>): ImportJobQuestion {
     reviewNotes: (row.review_notes as string | null) ?? null,
     rejectionReason: (row.rejection_reason as string | null) ?? null,
     questionBagQuestionId: (row.question_bag_question_id as string | null) ?? null,
+    imageUrl: (row.image_url as string | null) ?? null,
+    optionImages: (row.option_images as (string | null)[] | null) ?? null,
     metadata: (row.metadata as Record<string, unknown>) ?? {},
     createdAt: new Date(row.created_at as string).toISOString(),
     updatedAt: new Date(row.updated_at as string).toISOString(),
@@ -304,6 +306,7 @@ export async function updateImportQuestionFields(jobId: string, questionId: stri
   subject?: string | null; chapter?: string | null; concept?: string | null; difficulty?: string | null;
   questionText?: string | null; options?: Record<string, unknown> | null;
   correctOption?: number | null; answerText?: string | null;
+  imageUrl?: string | null; optionImages?: (string | null)[] | null;
 }): Promise<ImportJobQuestion | null> {
   await ensureDocumentImportSchema();
   const sets: string[] = ["updated_at = NOW()"];
@@ -317,6 +320,8 @@ export async function updateImportQuestionFields(jobId: string, questionId: stri
   if (fields.options !== undefined) { sets.push(`options = $${i++}::jsonb`); params.push(fields.options ? JSON.stringify(fields.options) : null); }
   if (fields.correctOption !== undefined) { sets.push(`correct_option = $${i++}`); params.push(fields.correctOption); }
   if (fields.answerText !== undefined) { sets.push(`answer_text = $${i++}`); params.push(fields.answerText); }
+  if (fields.imageUrl !== undefined) { sets.push(`image_url = $${i++}`); params.push(fields.imageUrl); }
+  if (fields.optionImages !== undefined) { sets.push(`option_images = $${i++}::jsonb`); params.push(fields.optionImages ? JSON.stringify(fields.optionImages) : null); }
   if (sets.length === 1) return null;
   const idPlaceholder = i++;
   const jobPlaceholder = i;

@@ -56,6 +56,7 @@ type CatalogRow = {
   concept: string;
   difficulty: string;
   image: string | null;
+  option_images: (string | null)[] | null;
   tags: string[] | string | null;
   question_type: string;
   acceptance_rate: number | string | null;
@@ -104,6 +105,9 @@ const CREATE_TABLE_SQL = `
   CREATE INDEX IF NOT EXISTS ogcode_questions_difficulty_idx ON ogcode_questions (difficulty);
   CREATE INDEX IF NOT EXISTS ogcode_questions_question_type_idx ON ogcode_questions (question_type);
   ALTER TABLE ogcode_questions ADD COLUMN IF NOT EXISTS answer_spec JSONB;
+  -- Per-option images (JSONB array parallel to options) for contributed
+  -- questions with an image on one or more options; question diagram is image.
+  ALTER TABLE ogcode_questions ADD COLUMN IF NOT EXISTS option_images JSONB;
   -- Institute hallmark (Admin Control Plane Phase 3): attribution for questions
   -- contributed by a coaching center and published via admin moderation.
   ALTER TABLE ogcode_questions ADD COLUMN IF NOT EXISTS contributor_workspace_id TEXT;
@@ -175,7 +179,7 @@ const CREATE_TABLE_SQL = `
 const CATALOG_COLUMNS = `
   id, source_index, text, options, correct_option, correct_options, answer_text,
   answer_spec, tolerance, matrix_data, explanation, hint, subject, chapter, concept,
-  difficulty, image, tags, question_type, acceptance_rate, total_correct, frequency,
+  difficulty, image, option_images, tags, question_type, acceptance_rate, total_correct, frequency,
   is_challenge_of_day, contributor_workspace_id, attribution_name, attribution_logo_url,
   is_contributed, occurrence, class, previous_year_question
 `;
@@ -413,6 +417,7 @@ function mapCatalogRow(row: CatalogRow): StoredQuestion {
     concept: row.concept,
     difficulty: normalizeDifficulty(String(row.difficulty)),
     image: row.image ?? null,
+    optionImages: Array.isArray(row.option_images) ? row.option_images : null,
     tags: Array.isArray(row.tags) ? row.tags.map((entry) => String(entry)) : row.tags ?? null,
     questionType,
     acceptanceRate: Number(row.acceptance_rate ?? 0),
@@ -597,6 +602,7 @@ async function _listOgcodeCatalogQuestions(filters: CatalogFilters = {}): Promis
         concept,
         difficulty,
         image,
+        option_images,
         tags,
         question_type,
         acceptance_rate,
@@ -708,6 +714,7 @@ export async function listOgcodeCatalogQuestionPage(filters: CatalogPageFilters)
         concept,
         difficulty,
         image,
+        option_images,
         tags,
         question_type,
         acceptance_rate,
@@ -880,6 +887,7 @@ export async function getOgcodeCatalogQuestionById(questionId: string): Promise<
         concept,
         difficulty,
         image,
+        option_images,
         tags,
         question_type,
         acceptance_rate,
@@ -931,6 +939,7 @@ export async function getOgcodeCatalogQuestionMap(questionIds: string[]): Promis
         concept,
         difficulty,
         image,
+        option_images,
         tags,
         question_type,
         acceptance_rate,
@@ -1241,6 +1250,8 @@ export type ContributedCatalogInput = {
   id: string;
   text: string;
   options: string[] | null;
+  image?: string | null;
+  optionImages?: (string | null)[] | null;
   correctOption: number | null;
   correctOptions: number[] | null;
   answerText: string | null;
@@ -1281,16 +1292,19 @@ export async function upsertContributedCatalogQuestion(input: ContributedCatalog
         id, source_index, text, options, correct_option, correct_options,
         answer_text, answer_spec, tolerance, matrix_data, explanation, hint,
         subject, chapter, concept, difficulty, tags, question_type,
-        contributor_workspace_id, attribution_name, attribution_logo_url, is_contributed
+        contributor_workspace_id, attribution_name, attribution_logo_url,
+        image, option_images, is_contributed
       ) VALUES (
         $1,
         (SELECT COALESCE(MAX(source_index), 0) + 1 FROM ogcode_questions),
         $2, $3::jsonb, $4, $5::jsonb, $6, $7::jsonb, $8, $9::jsonb, $10, $11,
-        $12, $13, $14, $15, $16::jsonb, $17, $18, $19, $20, TRUE
+        $12, $13, $14, $15, $16::jsonb, $17, $18, $19, $20, $21, $22::jsonb, TRUE
       )
       ON CONFLICT (id) DO UPDATE SET
         text = EXCLUDED.text,
         options = EXCLUDED.options,
+        image = EXCLUDED.image,
+        option_images = EXCLUDED.option_images,
         correct_option = EXCLUDED.correct_option,
         correct_options = EXCLUDED.correct_options,
         answer_text = EXCLUDED.answer_text,
@@ -1332,6 +1346,8 @@ export async function upsertContributedCatalogQuestion(input: ContributedCatalog
       input.contributorWorkspaceId,
       input.attributionName,
       input.attributionLogoUrl,
+      input.image ?? null,
+      JSON.stringify(input.optionImages ?? null),
     ],
   );
   // Bust the catalog cache so the question appears promptly. Never let a

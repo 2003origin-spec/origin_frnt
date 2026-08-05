@@ -622,6 +622,10 @@ export type ImportJobQuestion = {
   hasDiagram: boolean; diagramDescription: string | null; status: ImportQuestionStatus;
   confidenceScore: number | null; reviewNotes: string | null; rejectionReason: string | null;
   questionBagQuestionId: string | null; metadata: Record<string, unknown>;
+  /** Manual question diagram attached during review (→ Question Bag on publish). */
+  imageUrl: string | null;
+  /** Per-option images (parallel to options) attached during review. */
+  optionImages: (string | null)[] | null;
   createdAt: string; updatedAt: string;
 };
 
