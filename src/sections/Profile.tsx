@@ -46,6 +46,7 @@ import { cn } from '@/lib/utils';
 import { getUserTitle } from '@/lib/achievements';
 import SocialSettingsCard from '@/components/social/SocialSettingsCard';
 import SoundSettingsCard from '@/components/settings/SoundSettingsCard';
+import OriSettingsCard from '@/components/settings/OriSettingsCard';
 import { BADGE_TIERS, getCurrentBadge } from '@/lib/badges';
 import { MilestoneCabinet } from '@/components/badges/MilestoneCabinet';
 import { StreakCabinet } from '@/components/badges/StreakCabinet';
@@ -689,6 +690,7 @@ export default function Profile({
                     />
                   )}
                   <SoundSettingsCard user={user} />
+                  <OriSettingsCard />
                   {[
                     { icon: User,   label: 'Personal Information', desc: 'Update your name, email, and bio',  accent: 'text-primary',    accentBg: 'bg-primary/10'    },
                     { icon: Bell,   label: 'Notifications',        desc: 'Manage your alert preferences',     accent: 'text-blue-500',   accentBg: 'bg-blue-500/10'   },

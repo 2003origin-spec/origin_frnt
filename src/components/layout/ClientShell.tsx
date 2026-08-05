@@ -5,6 +5,7 @@ import { AnimatePresence } from 'framer-motion';
 import dynamic from 'next/dynamic';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
+import { useOriHidden } from '@/lib/ori-visibility';
 import { useGlobalPresence } from '@/features/presence/useGlobalPresence';
 import { armSoundUnlock } from '@/lib/sound-manager';
 import type { ViewState } from '@/types';
@@ -164,6 +165,9 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnab
 
   // Side AI State
   const [isAiOpen, setIsAiOpenInternal] = React.useState(false);
+  // Student preference: the floating Ori can be hidden (long-press → Hide Ori,
+  // or the Profile toggle). Only hides the mascot button; AI itself is untouched.
+  const oriHidden = useOriHidden();
 
   // Sync state with context
   React.useEffect(() => {
@@ -340,7 +344,7 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnab
           <FloatingChat
             onOpen={toggleAi}
             autoAskSelectionNonce={globalAskNonce}
-            hideMainButton={isAiOpen}
+            hideMainButton={isAiOpen || oriHidden}
             userName={user?.name}
           />
         )}

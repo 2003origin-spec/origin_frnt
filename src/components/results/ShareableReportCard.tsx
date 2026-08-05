@@ -2,10 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toPng } from 'html-to-image';
-import download from 'downloadjs';
 import { Share2, Download, MessageCircle, Loader2, X } from 'lucide-react';
 import { toast } from 'sonner';
-import { saveFileNative } from '@/native/save-file';
+import { shareImage, saveImage, type ShareTarget } from '@/lib/share';
 import { getCanonicalSiteUrl } from '@/lib/site-url';
 
 const PUBLIC_SITE_URL = getCanonicalSiteUrl();
@@ -89,45 +88,31 @@ export default function ShareableReportCard({
     }
   }, [open, generate]);
 
+  const fileName = `Origin_Report_${studentName.replace(/[^\w-]+/g, '_') || 'Scholar'}_${Date.now()}.png`;
+
   const handleShare = useCallback(
-    async (platform?: 'whatsapp') => {
+    async (target?: ShareTarget) => {
       if (!imageUrl) return;
       const message = SHARE_TEXT(studentName, stats.score, stats.totalMarks);
-      try {
-        const blob = await (await fetch(imageUrl)).blob();
-        const file = new File([blob], `Origin_Report_${Date.now()}.png`, { type: 'image/png' });
-        const shareData: ShareData = { files: [file], title: 'My ORIGIN AI Report Card', text: message };
-        const canShareFile =
-          typeof navigator.share === 'function' &&
-          typeof navigator.canShare === 'function' &&
-          navigator.canShare(shareData);
-        if (canShareFile) {
-          await navigator.share(shareData);
-        } else if (platform === 'whatsapp') {
-          window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank');
-        } else {
-          await navigator.clipboard.writeText(message);
-          toast.success('Message copied — paste it anywhere to share.');
-        }
-      } catch (err) {
-        // User-cancelled share throws AbortError — ignore it silently.
-        if (err instanceof DOMException && err.name === 'AbortError') return;
-        window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank');
+      const result = await shareImage({ imageUrl, fileName, title: 'My ORIGIN AI Report Card', text: message, target });
+      // Desktop / no native file-share: we saved the image + opened the target's
+      // text window — tell the user to attach the image they now have.
+      if (result === 'downloaded') {
+        toast.success(
+          target
+            ? 'Image saved — attach it in the chat that just opened.'
+            : 'Image saved to your device.',
+        );
       }
     },
-    [imageUrl, studentName, stats.score, stats.totalMarks],
+    [imageUrl, fileName, studentName, stats.score, stats.totalMarks],
   );
 
   const handleDownload = useCallback(async () => {
     if (!imageUrl) return;
-    const fileName = `Origin_Report_${studentName.replace(/[^\w-]+/g, '_') || 'Scholar'}_${Date.now()}.png`;
-    // Android shell: blob/dataURL downloads no-op in a WebView — use the bridge.
-    if (await saveFileNative(fileName, 'image/png', imageUrl)) {
-      toast.success('Saved to your Downloads.');
-      return;
-    }
-    download(imageUrl, fileName);
-  }, [imageUrl, studentName]);
+    await saveImage(imageUrl, fileName);
+    toast.success('Saved to your device.');
+  }, [imageUrl, fileName]);
 
   if (!open) return null;
 

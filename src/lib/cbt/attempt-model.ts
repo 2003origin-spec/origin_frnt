@@ -30,7 +30,8 @@ export type CbtSanitizedQuestion = {
   stem: string;
   /** Public diagram URL when the question has an attached image. */
   image: string | null;
-  options: string[];
+  /** Each option carries text and/or an image (both may render). */
+  options: { text: string; image: string | null }[];
   marks: number;
   negativeMarks: number;
   subject: string | null;

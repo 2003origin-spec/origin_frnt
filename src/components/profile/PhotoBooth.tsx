@@ -20,8 +20,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toPng } from 'html-to-image';
-import download from 'downloadjs';
-import { saveFileNative } from '@/native/save-file';
+import { shareImage, saveImage } from '@/lib/share';
 import { getCanonicalSiteUrl } from '@/lib/site-url';
 import { uploadUserImageAction, type UserImageUploadResult } from '@/server/actions/profile-actions';
 import { toast } from 'sonner';
@@ -258,8 +257,6 @@ export default function PhotoBooth() {
         }
     };
 
-    const shareUrl = cardAsset?.url ?? PUBLIC_SITE_URL;
-
     const brandedShareMessage = () => {
         const cardLine = cardAsset?.url ? `\n\nMy Origin Scholar card: ${cardAsset.url}` : '';
         return `${SHARE_MESSAGE}${cardLine}`;
@@ -272,57 +269,25 @@ export default function PhotoBooth() {
 
     const handleShare = async (platform?: 'whatsapp' | 'twitter') => {
         if (!framedImage) return;
-
         const message = brandedShareMessage();
-
-        try {
-            const response = await fetch(framedImage);
-            const blob = await response.blob();
-            const filename = `Origin_Scholar_${cardNickname.replace(/[^\w-]+/g, '_')}_${Date.now()}.png`;
-            const file = new File([blob], filename, { type: 'image/png' });
-            const shareData: ShareData = {
-                files: [file],
-                title: 'ORIGIN AI Scholar Memory Card',
-                text: message,
-                url: shareUrl,
-            };
-
-            const canNativeShareFile =
-                typeof navigator.share === 'function' &&
-                typeof navigator.canShare === 'function' &&
-                navigator.canShare(shareData);
-
-            if (canNativeShareFile) {
-                await navigator.share(shareData);
-            } else if (platform === 'whatsapp') {
-                window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank');
-            } else if (platform === 'twitter') {
-                window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(message)}`, '_blank');
-            } else {
-                await navigator.clipboard.writeText(message);
-                alert('Branded message & link copied!');
-            }
-        } catch (error) {
-            console.error('Sharing failed:', error);
-            if (platform === 'twitter') {
-                window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(message)}`, '_blank');
-            } else {
-                window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank');
-            }
+        const fileName = `Origin_Scholar_${cardNickname.replace(/[^\w-]+/g, '_')}_${Date.now()}.png`;
+        const result = await shareImage({
+            imageUrl: framedImage,
+            fileName,
+            title: 'ORIGIN AI Scholar Memory Card',
+            text: message,
+            target: platform ?? undefined,
+        });
+        if (result === 'downloaded') {
+            toast.success(platform ? 'Image saved — attach it in the chat that just opened.' : 'Image saved to your device.');
         }
     };
 
     const handleDownload = async () => {
         if (!framedImage) return;
         const safeNickname = cardNickname.replace(/[^\w-]+/g, '_');
-        const fileName = `Origin_Memory_${safeNickname}_${Date.now()}.png`;
-        // Android shell: blob/dataURL downloads silently no-op in a WebView —
-        // hand the file to the native bridge instead (plan ledger #26).
-        if (await saveFileNative(fileName, 'image/png', framedImage)) {
-            toast.success('Saved to your Downloads.');
-            return;
-        }
-        download(framedImage, fileName);
+        await saveImage(framedImage, `Origin_Memory_${safeNickname}_${Date.now()}.png`);
+        toast.success('Saved to your device.');
     };
 
     const reset = () => {

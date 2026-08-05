@@ -22,7 +22,7 @@ import type {
   ImportSourceType,
 } from "@/server/workspaces/types";
 import type { CbtQuestionInput, CbtQuestionType } from "@/lib/cbt/question-model";
-import { CBT_QUESTION_TYPES } from "@/lib/cbt/question-model";
+import { CBT_QUESTION_TYPES, normalizeCbtSubject } from "@/lib/cbt/question-model";
 import { parseNumericAnswer } from "@/lib/cbt/answer-format";
 import {
   stackSources,
@@ -230,7 +230,10 @@ export function importQuestionToCbtInput(iq: ImportJobQuestion): CbtQuestionInpu
     options,
     answer,
     explanation: iq.explanation,
-    subject: iq.subject,
+    // Map the parsed subject to a canonical CBT subject so imported questions
+    // section correctly; the teacher confirms it via the required dropdown on
+    // publish. Only override when the parser actually found something.
+    subject: iq.subject ? normalizeCbtSubject(iq.subject) : iq.subject,
     chapter: iq.chapter,
     concept: iq.concept,
     difficulty: null,
