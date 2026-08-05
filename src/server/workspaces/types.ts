@@ -385,6 +385,8 @@ export type QuestionVersion = {
   answerText: string | null;
   answerSpec: Record<string, unknown> | null;
   matrixData: Record<string, unknown> | null;
+  /** Public R2 URL for a manually-attached question diagram, if any. */
+  imageUrl: string | null;
   hint: string | null;
   explanation: string | null;
   fullSolution: string | null;
@@ -402,6 +404,8 @@ export type QuestionVersion = {
 export type QuestionOption = {
   id: string;
   text: string;
+  /** Optional per-option image (public R2 URL). */
+  image?: string | null;
 };
 
 export type QuestionAssetLink = {

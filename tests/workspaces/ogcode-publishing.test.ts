@@ -22,6 +22,7 @@ function baseMcqVersion(overrides: Partial<QuestionVersion> = {}): QuestionVersi
     answerText: null,
     answerSpec: null,
     matrixData: null,
+    imageUrl: null,
     hint: "Add the numbers.",
     explanation: null,
     fullSolution: "2 + 2 equals 4 because integer addition.",

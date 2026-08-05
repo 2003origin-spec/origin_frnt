@@ -106,6 +106,7 @@ type SubmitPayload = {
 type PracticeQuestionApi = PracticeQuestion & {
     question_type?: PracticeQuestion['questionType'];
     matrix_data?: PracticeQuestion['matrixData'] | string;
+    optionImages?: (string | null)[] | null;
     explanation?: string;
     answerText?: string;
     attempted?: boolean;
@@ -1482,7 +1483,13 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                         />
                                     )}
                                     <span className="font-mono text-xs mr-3 opacity-50">({String.fromCharCode(65 + idx)})</span>
-                                    <span className="select-text">{renderInlineSegments(String(opt), `mcq-option-${idx}`)}</span>
+                                    <span className="inline-block min-w-0 align-top space-y-2">
+                                        {String(opt).trim() && <span className="select-text">{renderInlineSegments(String(opt), `mcq-option-${idx}`)}</span>}
+                                        {question.optionImages?.[idx] && (
+                                            // eslint-disable-next-line @next/next/no-img-element
+                                            <img src={question.optionImages[idx] as string} alt={`Option ${String.fromCharCode(65 + idx)}`} className="block max-h-40 w-auto max-w-full rounded-lg border border-border/60 object-contain" />
+                                        )}
+                                    </span>
                                 </button>
                             ))}
 
@@ -1515,7 +1522,13 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                             {selectedOptions.includes(idx) && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
                                         </div>
                                         <span className="font-mono text-xs opacity-50">({String.fromCharCode(65 + idx)})</span>
-                                        <span className="select-text">{renderInlineSegments(String(opt), `msq-option-${idx}`)}</span>
+                                        <span className="inline-block min-w-0 align-top space-y-2">
+                                            {String(opt).trim() && <span className="select-text">{renderInlineSegments(String(opt), `msq-option-${idx}`)}</span>}
+                                            {question.optionImages?.[idx] && (
+                                                // eslint-disable-next-line @next/next/no-img-element
+                                                <img src={question.optionImages[idx] as string} alt={`Option ${String.fromCharCode(65 + idx)}`} className="block max-h-40 w-auto max-w-full rounded-lg border border-border/60 object-contain" />
+                                            )}
+                                        </span>
                                     </div>
                                 </button>
                             ))}

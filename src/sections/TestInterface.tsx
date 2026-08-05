@@ -1143,8 +1143,12 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
                       )}>
                         {String.fromCharCode(65 + idx)}
                       </div>
-                      <div className="flex-1 pt-0.5 sm:pt-1 min-w-0 break-words">
-                        <span className="text-slate-900 font-medium select-text">{renderInlineSegments(String(option), `test-mcq-option-${idx}`, 'plain')}</span>
+                      <div className="flex-1 pt-0.5 sm:pt-1 min-w-0 break-words space-y-2">
+                        {String(option).trim() && <span className="text-slate-900 font-medium select-text">{renderInlineSegments(String(option), `test-mcq-option-${idx}`, 'plain')}</span>}
+                        {currentQuestion.optionImages?.[idx] && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={currentQuestion.optionImages[idx] as string} alt={`Option ${String.fromCharCode(65 + idx)}`} className="max-h-40 w-auto max-w-full rounded-lg border border-slate-200 object-contain" />
+                        )}
                       </div>
                     </button>
                   ))}
@@ -1167,8 +1171,12 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
                         className="mt-1.5 w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
                       />
                       <span className="group-hover:text-primary transition-colors">({idx + 1})</span>
-                      <span className="group-hover:text-primary transition-colors">
-                        {renderInlineSegments(String(option), `test-msq-option-${idx}`, 'plain')}
+                      <span className="min-w-0 space-y-2 group-hover:text-primary transition-colors">
+                        {String(option).trim() && renderInlineSegments(String(option), `test-msq-option-${idx}`, 'plain')}
+                        {currentQuestion.optionImages?.[idx] && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={currentQuestion.optionImages[idx] as string} alt={`Option ${idx + 1}`} className="max-h-40 w-auto max-w-full rounded-lg border border-slate-200 object-contain" />
+                        )}
                       </span>
                     </label>
                   ))}

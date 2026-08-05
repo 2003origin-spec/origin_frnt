@@ -1848,16 +1848,30 @@ export function serializeQuestion(
   );
   const isSolved = attempts.some((attempt) => attempt.isCorrect);
   const isAttempted = attempts.length > 0;
-  const presented =
-    presentationContext && isPresentedChoiceQuestion(question)
-      ? presentOptions(question.options, {
+  // Pair each option's text with its optional image and present them TOGETHER,
+  // so a per-user option shuffle (OGCode anti-cheat) keeps images aligned.
+  const hasOptions = Boolean(question.options?.length);
+  const optionPairs = hasOptions
+    ? question.options!.map((text, i) => ({ text, image: question.optionImages?.[i] ?? null }))
+    : [];
+  const presentedPairs =
+    presentationContext && isPresentedChoiceQuestion(question) && hasOptions
+      ? presentOptions(optionPairs, {
           userId,
           scope: presentationContext.scope,
           assessmentId: presentationContext.assessmentId,
           questionId: question.id,
           attemptKey: presentationContext.attemptKey,
         })
-      : { options: question.options ?? undefined, presentationId: undefined };
+      : { options: hasOptions ? optionPairs : undefined, presentationId: undefined };
+  const presented = {
+    options: presentedPairs.options ? presentedPairs.options.map((p) => p.text) : undefined,
+    presentationId: presentedPairs.presentationId,
+  };
+  const presentedOptionImages =
+    presentedPairs.options && presentedPairs.options.some((p) => p.image)
+      ? presentedPairs.options.map((p) => p.image)
+      : undefined;
   const matrixData = question.matrixData
     ? {
         ...question.matrixData,
@@ -1869,6 +1883,7 @@ export function serializeQuestion(
     id: question.id,
     text: question.text,
     options: presented.options,
+    optionImages: presentedOptionImages,
     presentationId: presented.presentationId,
     presentation_id: presented.presentationId,
     correctOption: includeCorrectFields ? question.correctOption : undefined,

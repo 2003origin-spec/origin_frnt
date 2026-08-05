@@ -17,6 +17,7 @@ function makeVersion(overrides: Partial<QuestionVersion> = {}): QuestionVersion 
     answerText: null,
     answerSpec: null,
     matrixData: null,
+    imageUrl: null,
     hint: null,
     explanation: "Basic arithmetic.",
     fullSolution: null,
