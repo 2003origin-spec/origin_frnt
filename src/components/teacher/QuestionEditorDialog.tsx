@@ -50,6 +50,10 @@ const DIFFICULTIES = [
   { value: "insane", label: "Insane" },
 ];
 
+// Canonical subjects — a fixed dropdown (not free text) so questions group into
+// consistent subject sections in the test player. "General" is the catch-all.
+const QUESTION_SUBJECTS = ["Physics", "Chemistry", "Mathematics", "Biology", "General"];
+
 export function QuestionEditorDialog({ workspaceId, initialQuestion, onSuccess }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -116,6 +120,10 @@ export function QuestionEditorDialog({ workspaceId, initialQuestion, onSuccess }
 
   async function submit() {
     setError(null);
+    if (!subject) {
+      setError("Please pick a subject — it groups the question into its section.");
+      return;
+    }
     const parsedOptions = questionType === "mcq" || questionType === "msq"
       ? options.map((o, i) => ({ id: o.id, text: o.text, isCorrect: questionType === "msq" ? correctOptions.includes(i) : i === correctOption }))
       : null;
@@ -221,13 +229,18 @@ export function QuestionEditorDialog({ workspaceId, initialQuestion, onSuccess }
           <div className="grid grid-cols-3 gap-4">
             <div className="space-y-2">
               <Label htmlFor="q-subject">Subject *</Label>
-              <Input
-                id="q-subject"
-                value={subject}
-                onChange={(e) => setSubject(e.target.value)}
-                required
-                placeholder="Physics"
-              />
+              <Select value={subject} onValueChange={setSubject}>
+                <SelectTrigger id="q-subject">
+                  <SelectValue placeholder="Pick a subject" />
+                </SelectTrigger>
+                <SelectContent>
+                  {QUESTION_SUBJECTS.map((s) => (
+                    <SelectItem key={s} value={s}>
+                      {s}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label htmlFor="q-chapter">Chapter *</Label>

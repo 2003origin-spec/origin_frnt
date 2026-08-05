@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Camera, AlertTriangle, ShieldCheck, CheckCircle2, Loader2, Play, Info, X, ZoomIn } from 'lucide-react';
 import type { Test, TestResult, UserAnswer } from '@/types';
 import { FormattedMessage } from '@/components/origin-ai/FormattedMessage';
@@ -413,6 +413,23 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
   };
 
   const currentQuestion = test.questions[currentQuestionIndex];
+
+  // Per-subject LOCAL numbering: each question's 1-based index within its own
+  // subject section, so the header reads "Physics · Question 3 of 15" instead of
+  // a global count. Falls back to a global count for untagged questions.
+  const subjectLocalNumbers = useMemo(() => {
+    const counters = new Map<string, number>();
+    return test.questions.map((q) => {
+      const s = q.subject || 'General';
+      const n = (counters.get(s) ?? 0) + 1;
+      counters.set(s, n);
+      return n;
+    });
+  }, [test.questions]);
+  const currentLocalNumber = subjectLocalNumbers[currentQuestionIndex] ?? currentQuestionIndex + 1;
+  const currentSubjectTotal = test.questions.filter(
+    (q) => (q.subject || 'General') === (activeSubject || 'General'),
+  ).length;
 
   // Reset image view state when moving to a new question
   useEffect(() => {
@@ -1056,7 +1073,11 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
 
           {/* Question Header */}
           <div className="flex justify-between items-center px-3 sm:px-4 py-2 border-b border-gray-300 font-bold text-sm sm:text-lg border-t-4 border-t-white bg-slate-50 text-gray-900 lg:sticky lg:top-0 z-20">
-            <span>Question {currentQuestionIndex + 1}:</span>
+            <span>
+              {activeSubject ? <span className="text-primary">{activeSubject} · </span> : null}
+              Question {currentLocalNumber}
+              {currentSubjectTotal ? <span className="font-medium text-gray-500"> of {currentSubjectTotal}</span> : null}:
+            </span>
             <div className="w-5 h-5 sm:w-6 sm:h-6 bg-primary rounded-full text-white flex items-center justify-center font-bold text-xs sm:text-sm shadow-sm">&darr;</div>
           </div>
 
