@@ -77,6 +77,7 @@ import {
   getPersistedResultById,
   getRecentWeakTopicsForUser,
   getOgcodeProgressForUser,
+  listDppQuestionResultsForPlans,
   listPendingDppPlans,
   listPersistedCustomTests,
   listPersistedTestResults,
@@ -86,6 +87,7 @@ import {
   recordDppQuestionResult,
   recordDppQuestionResults,
   type PersistedCustomTestRecord,
+  type DppQuestionResultRecord,
   type PersistedDppAttemptRecord,
   type PersistedDppPlanRecord,
   type PersistedTestResultRecord,
@@ -2233,8 +2235,60 @@ async function serializePersistedDppPlan(
   plan: PersistedDppPlanRecord,
   latestAttempt: PersistedDppAttemptRecord | null,
 ) {
-  const lookup = await buildQuestionLookup(store, plan.questionIds);
-  return serializePersistedDppPlanWithLookup(store, userId, plan, latestAttempt, lookup);
+  const [lookup, resultsByPlan] = await Promise.all([
+    buildQuestionLookup(store, plan.questionIds),
+    listDppQuestionResultsForPlans(userId, [plan.id]).catch(() => new Map()),
+  ]);
+  return serializePersistedDppPlanWithLookup(
+    store,
+    userId,
+    plan,
+    latestAttempt,
+    lookup,
+    resultsByPlan.get(plan.id) ?? [],
+  );
+}
+
+/**
+ * Per-question progress the STUDENT sees: which questions they have already
+ * answered, whether each was right, and the running score.
+ *
+ * A DPP is never submitted, so without this the palette is rebuilt from client
+ * state alone and reopening a set shows every question as untouched — which is
+ * how a student ends up re-answering questions expecting the score to climb.
+ * Only the first answer to a question is ever scored, so that expectation has
+ * to be corrected in the UI, not just in the data.
+ */
+export function buildDppProgress(
+  questionIds: readonly string[],
+  results: readonly DppQuestionResultRecord[],
+) {
+  const byQuestion = new Map(results.map((row) => [row.questionId, row]));
+  const attempted = questionIds
+    .map((questionId) => {
+      const row = byQuestion.get(questionId);
+      return row
+        ? {
+            questionId,
+            isCorrect: row.isCorrect,
+            marksAwarded: row.marksAwarded,
+            maxMarks: row.maxMarks,
+          }
+        : null;
+    })
+    .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+
+  const score = attempted.reduce((sum, entry) => sum + entry.marksAwarded, 0);
+  const marksAttempted = attempted.reduce((sum, entry) => sum + entry.maxMarks, 0);
+  return {
+    attempted,
+    questionsAttempted: attempted.length,
+    questionsTotal: questionIds.length,
+    correctCount: attempted.filter((entry) => entry.isCorrect).length,
+    score: Math.round(score * 100) / 100,
+    marksAttempted: Math.round(marksAttempted * 100) / 100,
+    accuracy: marksAttempted > 0 ? Math.round((score / marksAttempted) * 1000) / 10 : null,
+  };
 }
 
 function serializePersistedDppPlanWithLookup(
@@ -2243,6 +2297,7 @@ function serializePersistedDppPlanWithLookup(
   plan: PersistedDppPlanRecord,
   latestAttempt: PersistedDppAttemptRecord | null,
   lookup: Map<string, StoredQuestion>,
+  questionResults: readonly DppQuestionResultRecord[] = [],
 ) {
   const presentationContext: QuestionPresentationContext = {
     scope: "dpp",
@@ -2277,6 +2332,8 @@ function serializePersistedDppPlanWithLookup(
     teacher_logo_url: plan.teacherLogoUrl,
     expiresAt: plan.expiresAt,
     expires_at: plan.expiresAt,
+    // The student's own running record for this DPP.
+    progress: buildDppProgress(plan.questionIds, questionResults),
     createdAt: plan.createdAt,
     created_at: plan.createdAt,
     completed: plan.completed,
@@ -3967,7 +4024,7 @@ export async function listGeneratedDpps(store: AppStore, user: StoredUser) {
     return [];
   }
 
-  const [latestAttemptMap, questionLookup] = await Promise.all([
+  const [latestAttemptMap, questionLookup, questionResultsByPlan] = await Promise.all([
     listLatestDppAttemptsForPlans(
       user.id,
       visiblePlans.map((plan) => plan.id),
@@ -3976,6 +4033,12 @@ export async function listGeneratedDpps(store: AppStore, user: StoredUser) {
       store,
       visiblePlans.flatMap((plan) => plan.questionIds),
     ),
+    // Per-question progress so a DPP card can show how far in the student is.
+    // Best-effort: a failure here must not cost them the DPP list itself.
+    listDppQuestionResultsForPlans(
+      user.id,
+      visiblePlans.map((plan) => plan.id),
+    ).catch(() => new Map<string, DppQuestionResultRecord[]>()),
   ]);
 
   const serialized = visiblePlans
@@ -3986,6 +4049,7 @@ export async function listGeneratedDpps(store: AppStore, user: StoredUser) {
         plan,
         latestAttemptMap.get(plan.id) ?? null,
         questionLookup,
+        questionResultsByPlan.get(plan.id) ?? [],
       ),
     )
     // A teacher DPP whose source questions were all deleted from the Question

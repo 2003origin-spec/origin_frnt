@@ -1228,6 +1228,52 @@ export async function recordDppQuestionResult(input: DppQuestionResultInput): Pr
   );
 }
 
+export type DppQuestionResultRecord = {
+  dppId: string;
+  questionId: string;
+  isCorrect: boolean;
+  marksAwarded: number;
+  maxMarks: number;
+};
+
+/**
+ * Every graded answer this student has recorded across the given DPPs.
+ *
+ * This is what lets the student SEE their own progress. Without it the DPP
+ * palette is rebuilt from client state alone, so reopening a DPP showed all 50
+ * questions as untouched even though 43 had been answered — and a student with
+ * no visible record will re-answer questions expecting the score to climb.
+ */
+export async function listDppQuestionResultsForPlans(
+  userId: string,
+  dppIds: readonly string[],
+): Promise<Map<string, DppQuestionResultRecord[]>> {
+  const map = new Map<string, DppQuestionResultRecord[]>();
+  const ids = [...new Set(dppIds)].filter(Boolean);
+  if (!userId || ids.length === 0) return map;
+  await ensureSchema();
+  const pool = getPoolOrThrow();
+  const result = await pool.query(
+    `SELECT dpp_id, question_id, is_correct, marks_awarded, max_marks
+       FROM analytics.dpp_question_results
+      WHERE user_id = $1 AND dpp_id = ANY($2::text[])`,
+    [userId, ids],
+  );
+  for (const row of result.rows) {
+    const dppId = String(row.dpp_id);
+    const list = map.get(dppId) ?? [];
+    list.push({
+      dppId,
+      questionId: String(row.question_id),
+      isCorrect: Boolean(row.is_correct),
+      marksAwarded: Number(row.marks_awarded) || 0,
+      maxMarks: Number(row.max_marks) || 0,
+    });
+    map.set(dppId, list);
+  }
+  return map;
+}
+
 /** Bulk sibling of recordDppQuestionResult, for the full-submit path. */
 export async function recordDppQuestionResults(
   results: readonly DppQuestionResultInput[],
