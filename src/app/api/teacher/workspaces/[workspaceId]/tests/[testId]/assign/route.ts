@@ -56,6 +56,9 @@ const shareDppSchema = z.object({
 export async function POST(request: NextRequest, context: RouteContext) {
   try {
     const workspaceId = await getWorkspaceId(context);
+    // Authorise BEFORE touching the body — both branches need the same roles,
+    // so there is no reason to parse an unauthenticated caller's JSON.
+    const ctx = await requireWorkspaceMember(request, workspaceId, ["owner", "admin", "teacher"]);
     const { testId } = await context.params;
     const body = await request.json();
 
@@ -63,7 +66,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
     // keeps the original scheduled-test assignment behaviour untouched.
     if ((body as { action?: unknown })?.action === "share_dpp") {
       requireFeatureEnabled("teacherDppShare");
-      const ctx = await requireWorkspaceMember(request, workspaceId, ["owner", "admin", "teacher"]);
       const parsed = shareDppSchema.parse(body);
       const share = await shareTestAsDpp({
         actorUserId: ctx.auth.userId,
@@ -76,7 +78,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     requireFeatureEnabled("teacherTests");
-    const ctx = await requireWorkspaceMember(request, workspaceId, ["owner", "admin", "teacher"]);
     const parsed = assignSchema.parse(body);
 
     const assignments = await assignTestToBatches({
