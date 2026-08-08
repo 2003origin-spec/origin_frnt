@@ -9,6 +9,7 @@ import {
   teacherDppExpiryFrom,
 } from "../../src/server/workspaces/teacher-dpp-service";
 import { teacherDppPlanId } from "../../src/legacy/analytics-store";
+import { toIsoTimestamp } from "../../src/server/workspaces/teacher-dpp-store";
 import { toMaterializations } from "../../src/server/teacher-dpp-materializer";
 import type { TestQuestion, TeacherDppShareForStudent } from "../../src/server/workspaces/types";
 
@@ -115,6 +116,25 @@ test("only a settled test can be shared — a draft has no stable question set",
   for (const status of ["published", "scheduled", "live", "closed"]) {
     assert.equal(isTestShareableAsDpp(status), true, status);
   }
+});
+
+// ─── timestamp round-trip ──────────────────────────────────────────────────────
+
+test("expiresAt read back from Postgres round-trips as ISO, not Date.toString()", () => {
+  // Regression: node-postgres hands back a Date for TIMESTAMPTZ. String(date)
+  // gives "Mon Sep 07 2026 11:53:43 GMT+0530 (India Standard Time)", which
+  // Postgres then refuses as a TIMESTAMPTZ parameter ("time zone \"gmt+0530\"
+  // not recognized") — and since the materializer writes this value straight
+  // back, that silently rolled back every materialization transaction.
+  const iso = toIsoTimestamp(new Date("2026-09-07T06:23:43.862Z"));
+  assert.equal(iso, "2026-09-07T06:23:43.862Z");
+  assert.doesNotMatch(iso, /GMT/);
+  // Must survive a second pass unchanged (values already stored as ISO).
+  assert.equal(toIsoTimestamp(iso), iso);
+});
+
+test("toIsoTimestamp leaves an unparseable value alone rather than emitting Invalid Date", () => {
+  assert.equal(toIsoTimestamp("not-a-date"), "not-a-date");
 });
 
 // ─── materialization (decision D1) ─────────────────────────────────────────────

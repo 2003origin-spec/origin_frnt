@@ -18,6 +18,19 @@ function pool() {
   return p;
 }
 
+/**
+ * node-postgres parses TIMESTAMPTZ into a JS Date, and `String(date)` yields
+ * `"Mon Sep 07 2026 11:53:43 GMT+0530 (India Standard Time)"` — which Postgres
+ * cannot parse back ("time zone \"gmt+0530\" not recognized"). `expiresAt` is
+ * read here and then written straight back as a TIMESTAMPTZ parameter by the
+ * materializer, so it MUST round-trip as ISO 8601.
+ */
+export function toIsoTimestamp(value: unknown): string {
+  if (value instanceof Date) return value.toISOString();
+  const parsed = new Date(String(value));
+  return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toISOString();
+}
+
 function toStringArray(value: unknown): string[] {
   if (Array.isArray(value)) return value.map((entry) => String(entry)).filter(Boolean);
   if (typeof value === "string") {
@@ -44,9 +57,9 @@ function rowToShare(row: Record<string, unknown>): TeacherDppShare {
     teacherDisplayName: String(row.teacher_display_name),
     teacherLogoUrl: (row.teacher_logo_url as string | null) ?? null,
     sharedBy: String(row.shared_by),
-    sharedAt: String(row.shared_at),
-    expiresAt: String(row.expires_at),
-    revokedAt: row.revoked_at ? String(row.revoked_at) : null,
+    sharedAt: toIsoTimestamp(row.shared_at),
+    expiresAt: toIsoTimestamp(row.expires_at),
+    revokedAt: row.revoked_at ? toIsoTimestamp(row.revoked_at) : null,
     batchIds: toStringArray(row.batch_ids),
   };
 }
@@ -256,7 +269,8 @@ export async function listActiveTeacherDppSharesForStudent(
     questionIds: toStringArray(row.question_ids),
     teacherDisplayName: String(row.teacher_display_name),
     teacherLogoUrl: (row.teacher_logo_url as string | null) ?? null,
-    expiresAt: String(row.expires_at),
+    // MUST be ISO — the materializer writes this straight back as a TIMESTAMPTZ.
+    expiresAt: toIsoTimestamp(row.expires_at),
   }));
 }
 
