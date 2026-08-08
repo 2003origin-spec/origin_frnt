@@ -51,7 +51,8 @@ type FlagKey =
   | "adminUserLifecycle"
   | "studyModes"
   | "cbtReportCards"
-  | "teacherDppShare";
+  | "teacherDppShare"
+  | "cbtParticipationQuota";
 
 type FlagSpec = {
   envSuffix: string;
@@ -234,6 +235,23 @@ const FLAG_SPECS: Record<FlagKey, FlagSpec> = {
   // flag flip would let the 30-plan window delete them.
   // See V1/allmd/TEACHER_TEST_AS_DPP_PLAN.md.
   teacherDppShare: { envSuffix: "TEACHER_DPP_SHARE", defaultDev: true, defaultProd: true },
+  // CBT participation quota — admin-set caps on how many test participations a
+  // CBT teacher may consume, the append-only participation meter, the blocked
+  // room link/code once the cap is reached, the navbar usage meter and the
+  // teacher→admin "request more" flow.
+  //
+  // This is the KILL SWITCH, not the rollout gate. The actual gate is
+  // cbt.teachers.participation_quota, which is NULL (= unlimited) for every
+  // existing teacher, so with this flag on and no admin action nothing changes
+  // for anyone. Defaulting it ON in prod is therefore safe AND keeps the
+  // surface testable on Vercel previews (a defaultProd:false flag is off on
+  // previews too, since NODE_ENV is "production" there).
+  //
+  // Turning it OFF makes every enforcement point a no-op, hides the meter and
+  // the admin panel, and unblocks any teacher who was over their cap — without
+  // deleting a single ledger row, so flipping it back on restores exact usage.
+  // See V1/CBT_PARTICIPATION_QUOTA_PLAN.md.
+  cbtParticipationQuota: { envSuffix: "CBT_PARTICIPATION_QUOTA", defaultDev: true, defaultProd: true },
 };
 
 /** Every feature-flag key, in declaration order (admin System Config view). */

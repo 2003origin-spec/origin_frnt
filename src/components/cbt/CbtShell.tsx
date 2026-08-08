@@ -9,6 +9,9 @@ import { Moon, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cbtLogoutAction } from "@/server/actions/cbt-auth-actions";
 
+import { CbtQuotaMeter } from "./CbtQuotaMeter";
+import type { CbtQuotaClientState } from "./quota-client";
+
 const NAV_ITEMS = [
   { label: "Rooms", href: "/cbt/rooms" },
   { label: "Tests", href: "/cbt/tests" },
@@ -18,15 +21,22 @@ const NAV_ITEMS = [
 ];
 
 /**
- * Teacher shell chrome for the /cbt app (top nav + sign out). Wraps every
- * teacher page via the (teacher) layout.
+ * Teacher shell chrome for the /cbt app (top nav + participation meter + sign
+ * out). Wraps every teacher page via the (teacher) layout.
  */
 export function CbtShell({
   children,
   teacherName,
+  quota = null,
 }: {
   children: React.ReactNode;
   teacherName?: string | null;
+  /**
+   * Server-rendered participation-quota state. `null` (or a state with no cap)
+   * renders no meter at all, so a teacher without a quota sees the original
+   * navbar exactly as before.
+   */
+  quota?: CbtQuotaClientState | null;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -74,6 +84,7 @@ export function CbtShell({
             </nav>
           </div>
           <div className="flex items-center gap-3">
+            <CbtQuotaMeter initial={quota} />
             {teacherName ? (
               <span className="hidden text-sm text-muted-foreground sm:inline">{teacherName}</span>
             ) : null}

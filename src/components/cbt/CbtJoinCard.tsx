@@ -45,20 +45,30 @@ export function CbtJoinCard({
   slug,
   roomName,
   rememberedStudentCode,
+  quotaBlocked = false,
   onJoined,
 }: {
   slug: string;
   roomName: string;
   rememberedStudentCode?: string | null;
+  /**
+   * The institute's participation limit leaves no seat for a NEW student, so the
+   * Join half is closed. Resume stays open on purpose: a student who already
+   * holds a seat must always be able to get back into their own paper.
+   */
+  quotaBlocked?: boolean;
   onJoined: (identity: { studentCode: string; participantId?: string; displayName?: string }) => void;
 }) {
-  const [mode, setMode] = useState<"join" | "resume">("join");
+  const [mode, setMode] = useState<"join" | "resume">(quotaBlocked ? "resume" : "join");
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
   const [studentId, setStudentId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<CbtReclaimCandidate[] | null>(null);
   const [pending, startTransition] = useTransition();
+  // Set when the server refuses a join on quota grounds, so the form stops
+  // inviting retries that cannot succeed.
+  const [joinClosed, setJoinClosed] = useState(quotaBlocked);
 
   // A remembered ID means this browser has been here before — default to the
   // path that gets their answers back rather than the one that starts over.
@@ -85,6 +95,9 @@ export function CbtJoinCard({
       }
       if (!res.ok || !data.studentCode) {
         setError(data.detail ?? `Could not join (${res.status}).`);
+        // The institute is out of participations (or every seat is reserved):
+        // close the Join half rather than let the student keep retrying.
+        if (data.code === "quota_exhausted" || data.code === "quota_no_seats") setJoinClosed(true);
         return;
       }
       onOk(data);
@@ -217,7 +230,20 @@ export function CbtJoinCard({
       </div>
 
       <div className="space-y-3">
-        {mode === "join" ? (
+        {mode === "join" && joinClosed ? (
+          <div
+            role="status"
+            className="space-y-1 rounded-2xl border border-amber-500/40 bg-amber-500/[0.06] p-3 text-center"
+          >
+            <p className="text-sm font-bold text-amber-700 dark:text-amber-400">
+              Not accepting new students
+            </p>
+            <p className="text-[11px] text-muted-foreground">
+              This room has no places left. Please contact your teacher or institute. If you already started
+              this test, use <span className="font-bold">Resume</span>.
+            </p>
+          </div>
+        ) : mode === "join" ? (
           <div className="space-y-1">
             <Label htmlFor="cbt-name">Your name</Label>
             <Input
@@ -269,7 +295,7 @@ export function CbtJoinCard({
         <Button
           className="w-full shadow-lg shadow-primary/20 transition-transform hover:-translate-y-0.5"
           onClick={mode === "join" ? join : resume}
-          disabled={pending}
+          disabled={pending || (mode === "join" && joinClosed)}
         >
           {pending ? "Please wait…" : mode === "join" ? "Join" : "Resume my test"}
         </Button>

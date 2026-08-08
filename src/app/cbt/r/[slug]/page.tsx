@@ -43,6 +43,11 @@ export default async function CbtStudentRoomPage({
       roomName={room.name}
       instituteName={room.instituteName}
       instituteLogo={room.instituteLogo}
+      // The institute's participation limit leaves no seat for a new student.
+      // Only the Join half closes — a student who already holds a seat resumes
+      // through their participant cookie or their Student ID, neither of which
+      // is quota-gated.
+      quotaBlocked={room.quotaBlocked}
     />
   );
 }

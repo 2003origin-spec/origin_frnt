@@ -34,6 +34,7 @@ import { shuffleQuestionsForParticipant } from "@/lib/cbt/shuffle";
 
 import { ensureCbtSchema } from "./cbt-schema";
 import { cbtError, publishPresence, publishRoomEvent } from "./cbt-rooms-service";
+import { recordParticipation } from "./cbt-quota-service";
 import { readShuffleQuestions } from "./cbt-tests-service";
 
 function pool() {
@@ -302,6 +303,12 @@ export async function saveAnswers(
        WHERE id = $1 AND room_id = $2`,
     [participant.id, room.id, answeredCount],
   );
+
+  // E5 — the participation meter. The first autosave lands as soon as the student
+  // presses "Enter Full-screen & Begin", so this covers a student whose
+  // heartbeat never made it. Idempotent (PK on participant_id) and it swallows
+  // its own failures: quota bookkeeping must never break a live attempt.
+  await recordParticipation(participant.id, room.id);
 
   // Coalesced presence re-publish (≥5s) so the teacher's progress column moves
   // without a publish per keystroke.

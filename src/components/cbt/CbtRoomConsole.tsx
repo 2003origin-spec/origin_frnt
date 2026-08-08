@@ -11,16 +11,25 @@ import type { CbtRoom } from "@/lib/cbt/room-model";
 
 import { useCbtRoomStream } from "./useCbtRoomStream";
 import { CbtLiveRoomDashboard } from "./CbtLiveRoomDashboard";
+import { CbtQuotaBanner } from "./CbtQuotaBanner";
+import { notifyCbtQuotaChanged, type CbtQuotaClientState } from "./quota-client";
 
 export function CbtRoomConsole({
   room,
   initialParticipants,
   reportCardsEnabled = false,
+  quota = null,
 }: {
   room: CbtRoom;
   initialParticipants: CbtParticipantSummary[];
   /** Premium add-on state for this teacher (admin-controlled). */
   reportCardsEnabled?: boolean;
+  /**
+   * Participation-quota state. When the cap is spent the student link and the
+   * room code are replaced by a blocked notice — the server refuses to issue a
+   * code either way, this makes the reason visible instead of a bare error.
+   */
+  quota?: CbtQuotaClientState | null;
 }) {
   const router = useRouter();
   const { participants, connected, lifecycle } = useCbtRoomStream(room.id, initialParticipants);
@@ -91,6 +100,7 @@ export function CbtRoomConsole({
 
   const online = participants.filter((p) => p.status !== "offline").length;
   const closed = room.status === "closed";
+  const quotaBlocked = Boolean(quota?.enforced && quota.blocked);
 
   // Reflect server-side status flips (auto test-end, close) without a manual reload.
   useEffect(() => {
@@ -108,6 +118,9 @@ export function CbtRoomConsole({
       const data = (await res.json().catch(() => ({}))) as { code?: string; detail?: string };
       if (!res.ok || !data.code) {
         setError(data.detail ?? "Could not regenerate the code.");
+        // A 403 here is almost always the participation limit; re-read the meter
+        // so the banner appears in the same beat as the error.
+        if (res.status === 403) notifyCbtQuotaChanged();
         return;
       }
       setCode(data.code);
@@ -178,7 +191,23 @@ export function CbtRoomConsole({
         </div>
       </div>
 
-      {!closed ? (
+      <CbtQuotaBanner initial={quota} />
+
+      {closed ? null : quotaBlocked ? (
+        /* R5 — the link and the code are both withheld once the participation
+           limit is full. The banner above explains why and offers "request
+           more"; repeating the copy here would just be noise. */
+        <div className="neu-raised space-y-1 p-4">
+          <p className="text-xs font-medium text-muted-foreground">Student link &amp; room code</p>
+          <p className="text-sm font-semibold text-destructive">
+            Blocked — your participation limit is full.
+          </p>
+          <p className="text-xs text-muted-foreground">
+            No new student can join this room. Request more participations above to unblock the link and
+            code.
+          </p>
+        </div>
+      ) : (
         <div className="neu-raised grid gap-4 p-4 sm:grid-cols-2">
           <div className="space-y-1">
             <p className="text-xs font-medium text-muted-foreground">Student link</p>
@@ -197,7 +226,7 @@ export function CbtRoomConsole({
           </div>
           {error ? <p className="text-xs text-destructive sm:col-span-2">{error}</p> : null}
         </div>
-      ) : null}
+      )}
 
       {room.status === "lobby" ? (
         <div className="neu-raised flex flex-wrap items-end gap-3 p-4">

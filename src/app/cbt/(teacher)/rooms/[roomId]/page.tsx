@@ -5,9 +5,11 @@ import { notFound, redirect } from "next/navigation";
 import { isFeatureEnabled } from "@/lib/feature-flags";
 import { getServerUser } from "@/lib/auth-server";
 import { findActiveCbtTeacherByUserId } from "@/server/cbt/cbt-teachers-service";
+import { getCbtQuotaState } from "@/server/cbt/cbt-quota-service";
 import { getRoomWithParticipants } from "@/server/cbt/cbt-rooms-service";
 import type { CbtParticipantSummary } from "@/lib/cbt/events";
 import { CbtRoomConsole } from "@/components/cbt/CbtRoomConsole";
+import type { CbtQuotaClientState } from "@/components/cbt/quota-client";
 
 export default async function CbtRoomPage({ params }: { params: Promise<{ roomId: string }> }) {
   if (!isFeatureEnabled("cbtModule")) notFound();
@@ -38,6 +40,18 @@ export default async function CbtRoomPage({ params }: { params: Promise<{ roomId
       room={roomMeta}
       initialParticipants={initialParticipants}
       reportCardsEnabled={reportCardsEnabled}
+      quota={await loadQuota(teacher.id)}
     />
   );
+}
+
+/** Best-effort: a quota read failure must not take down the room console. */
+async function loadQuota(teacherId: string): Promise<CbtQuotaClientState | null> {
+  if (!isFeatureEnabled("cbtParticipationQuota")) return null;
+  try {
+    return await getCbtQuotaState(teacherId);
+  } catch (error) {
+    console.error("[cbt] room quota load failed", error instanceof Error ? error.message : error);
+    return null;
+  }
 }

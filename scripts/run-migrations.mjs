@@ -75,6 +75,9 @@ const MIGRATIONS = [
   // Per-question DPP results — 2026-08-08. A DPP has no submit button, so
   // progress must be durable per checked answer rather than at submit.
   { file: "20260808_dpp_question_results.sql", target: "ogcode" },
+  // CBT participation quota — 2026-08-08. Admin-set caps per CBT teacher, the
+  // append-only participation meter, and the request/approval ledger.
+  { file: "20260808_cbt_participation_quota.sql", target: "user" },
 ];
 
 const TARGET_ENV = {

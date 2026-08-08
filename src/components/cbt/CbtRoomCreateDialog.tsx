@@ -16,7 +16,18 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { mutateJson } from "@/lib/csrf";
 
-export function CbtRoomCreateDialog() {
+import { notifyCbtQuotaChanged } from "./quota-client";
+
+export function CbtRoomCreateDialog({
+  /**
+   * Seats the teacher's participation quota still leaves for new students.
+   * `null` = no cap. `0` blocks the button outright — the API refuses anyway,
+   * this just says so before the click.
+   */
+  remainingSeats = null,
+}: {
+  remainingSeats?: number | null;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -52,13 +63,25 @@ export function CbtRoomCreateDialog() {
         return;
       }
       setCreated({ id: data.room.id, code: data.code, slug: data.room.publicSlug });
+      // A fresh room can immediately start reserving seats — keep the navbar
+      // meter honest without waiting for its 60s poll.
+      notifyCbtQuotaChanged();
     });
   }
+
+  const quotaBlocked = remainingSeats !== null && remainingSeats <= 0;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button size="sm" className="shadow-lg shadow-primary/20 transition-transform hover:-translate-y-0.5">New room</Button>
+        <Button
+          size="sm"
+          className="shadow-lg shadow-primary/20 transition-transform hover:-translate-y-0.5"
+          disabled={quotaBlocked}
+          title={quotaBlocked ? "Your participation limit is full." : undefined}
+        >
+          New room
+        </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
@@ -88,6 +111,14 @@ export function CbtRoomCreateDialog() {
             <div className="space-y-1">
               <Label>Capacity</Label>
               <Input value={capacity} onChange={(e) => setCapacity(e.target.value)} inputMode="numeric" />
+              {remainingSeats !== null ? (
+                <p className="text-xs text-muted-foreground">
+                  Your participation limit leaves{" "}
+                  <strong className="text-foreground">{remainingSeats.toLocaleString("en-IN")}</strong> seat
+                  {remainingSeats === 1 ? "" : "s"} for new students, so that&apos;s the real ceiling however
+                  high you set capacity.
+                </p>
+              ) : null}
             </div>
             <label className="flex cursor-pointer items-start gap-2.5">
               <input
