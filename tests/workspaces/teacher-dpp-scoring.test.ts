@@ -112,7 +112,8 @@ function practiceRow(overrides: Partial<BatchPracticeRowLite>): BatchPracticeRow
     displayName: "Student One",
     dppScore: 0,
     dppTotalMarks: 0,
-    dppsCompleted: 0,
+    dppsAttempted: 0,
+    questionsAttempted: 0,
     ogcodeScore: 0,
     ogcodeQuestions: 0,
     lastPractisedAt: null,
@@ -162,14 +163,16 @@ test("ties break on DPP accuracy, then volume", () => {
       displayName: "Sloppy",
       dppScore: 50,
       dppTotalMarks: 200,
-      dppsCompleted: 4,
+      dppsAttempted: 1,
+      questionsAttempted: 4,
     }),
     practiceRow({
       studentId: "sharp",
       displayName: "Sharp",
       dppScore: 50,
       dppTotalMarks: 60,
-      dppsCompleted: 1,
+      dppsAttempted: 1,
+      questionsAttempted: 1,
     }),
   ];
   const ranked = rankPractitioners(rows, "dpp");
@@ -181,7 +184,7 @@ test("students who have not practised are ranked last, not dropped", () => {
   // "Who has not started" is exactly the signal a teacher opens this for.
   const ranked = rankPractitioners([
     practiceRow({ studentId: "idle", displayName: "Idle" }),
-    practiceRow({ studentId: "busy", displayName: "Busy", dppScore: 40, dppsCompleted: 2 }),
+    practiceRow({ studentId: "busy", displayName: "Busy", dppScore: 40, dppsAttempted: 1, questionsAttempted: 2 }),
   ]);
   assert.equal(ranked.length, 2);
   assert.equal(ranked[1].studentId, "idle");
@@ -191,13 +194,13 @@ test("students who have not practised are ranked last, not dropped", () => {
 test("summary counts a student active on EITHER source", () => {
   const summary = summarisePractice(
     rankPractitioners([
-      practiceRow({ studentId: "a", displayName: "A", dppScore: 8, dppTotalMarks: 10, dppsCompleted: 1 }),
+      practiceRow({ studentId: "a", displayName: "A", dppScore: 8, dppTotalMarks: 10, dppsAttempted: 1, questionsAttempted: 1 }),
       practiceRow({ studentId: "b", displayName: "B", ogcodeQuestions: 3, ogcodeScore: 30 }),
       practiceRow({ studentId: "c", displayName: "C" }),
     ]),
   );
   assert.equal(summary.totalStudents, 3);
   assert.equal(summary.activePractitioners, 2);
-  assert.equal(summary.dppsCompleted, 1);
+  assert.equal(summary.questionsAttempted, 1);
   assert.equal(summary.meanDppAccuracy, 80);
 });

@@ -93,17 +93,18 @@ export function rankPractitioners(
       (a, b) =>
         keyOf(b) - keyOf(a) ||
         (b.dppAccuracy ?? -1) - (a.dppAccuracy ?? -1) ||
-        b.dppsCompleted - a.dppsCompleted ||
+        b.questionsAttempted - a.questionsAttempted ||
         a.displayName.localeCompare(b.displayName),
     )
     .map((entry, index) => ({ ...entry, rank: index + 1 }));
 }
 
 export type PracticeLeaderboardSummary = {
-  /** Students with at least one scored DPP or one attempted OG Code question. */
+  /** Students with at least one answered DPP question or OG Code question. */
   activePractitioners: number;
   totalStudents: number;
-  dppsCompleted: number;
+  /** DPP questions answered across the batch — the real unit of DPP effort. */
+  questionsAttempted: number;
   /** Mean DPP accuracy across students who attempted at least one. */
   meanDppAccuracy: number | null;
   totalOgcodeQuestions: number;
@@ -116,9 +117,10 @@ export function summarisePractice(
     .map((e) => e.dppAccuracy)
     .filter((a): a is number => a !== null);
   return {
-    activePractitioners: entries.filter((e) => e.dppsCompleted > 0 || e.ogcodeQuestions > 0).length,
+    activePractitioners: entries.filter((e) => e.questionsAttempted > 0 || e.ogcodeQuestions > 0)
+      .length,
     totalStudents: entries.length,
-    dppsCompleted: entries.reduce((sum, e) => sum + e.dppsCompleted, 0),
+    questionsAttempted: entries.reduce((sum, e) => sum + e.questionsAttempted, 0),
     meanDppAccuracy: accuracies.length
       ? Math.round((accuracies.reduce((s, a) => s + a, 0) / accuracies.length) * 10) / 10
       : null,

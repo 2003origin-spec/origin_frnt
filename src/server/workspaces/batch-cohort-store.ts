@@ -178,9 +178,12 @@ export type BatchPracticeRowLite = {
   displayName: string;
   /** Marks scored across the teacher's shared DPPs in this batch. */
   dppScore: number;
-  /** Marks available across those DPPs (for accuracy). */
+  /** Marks available across the questions they actually attempted. */
   dppTotalMarks: number;
-  dppsCompleted: number;
+  /** Distinct shared DPPs the student has answered at least one question in. */
+  dppsAttempted: number;
+  /** Individual DPP questions answered — the real unit of DPP effort. */
+  questionsAttempted: number;
   /** All-time OG Code practice score (platform-wide — the student's own work). */
   ogcodeScore: number;
   ogcodeQuestions: number;
@@ -212,30 +215,26 @@ export async function getBatchPracticeLeaderboardLive(
   const pool = analyticsPool();
 
   const [dppResult, ogcodeResult] = await Promise.all([
-    // DISTINCT ON keeps only each student's LATEST attempt per DPP, so
-    // re-submitting the same set cannot farm the leaderboard. `score IS NOT
-    // NULL` excludes attempts made before marks-based scoring existed — those
-    // are unknown, not zero, and ranking them as zero would mis-rank students.
+    // Per-QUESTION results, not per-attempt. A DPP has no submit button, so a
+    // student who answers 43 of 50 questions and leaves has no attempt row at
+    // all — aggregating attempts reported "0 DPPs, 0 points" for real work.
+    // Unattempted questions simply have no row: they add 0 to the score and 0
+    // to the marks available, so partial completion is scored honestly rather
+    // than as a failed paper.
     pool.query(
-      `WITH latest AS (
-         SELECT DISTINCT ON (a.dpp_id)
-                a.dpp_id, a.user_id, a.score, a.total_marks, a.created_at
-           FROM analytics.dpp_attempts a
-           JOIN analytics.dpp_plans p ON p.id = a.dpp_id
-          WHERE p.origin = 'teacher'
-            AND p.workspace_id = $1
-            AND p.batch_id = $2
-            AND a.user_id = ANY($3::text[])
-            AND a.score IS NOT NULL
-          ORDER BY a.dpp_id, a.created_at DESC
-       )
-       SELECT user_id,
-              SUM(score)::float8       AS dpp_score,
-              SUM(total_marks)::float8 AS dpp_total_marks,
-              COUNT(*)::int            AS dpps_completed,
-              MAX(created_at)          AS last_practised_at
-         FROM latest
-        GROUP BY user_id`,
+      `SELECT r.user_id,
+              SUM(r.marks_awarded)::float8      AS dpp_score,
+              SUM(r.max_marks)::float8          AS dpp_total_marks,
+              COUNT(*)::int                     AS questions_attempted,
+              COUNT(DISTINCT r.dpp_id)::int     AS dpps_attempted,
+              MAX(r.answered_at)                AS last_practised_at
+         FROM analytics.dpp_question_results r
+         JOIN analytics.dpp_plans p ON p.id = r.dpp_id
+        WHERE p.origin = 'teacher'
+          AND p.workspace_id = $1
+          AND p.batch_id = $2
+          AND r.user_id = ANY($3::text[])
+        GROUP BY r.user_id`,
       [workspaceId, batchId, ids],
     ),
     pool.query(
@@ -270,7 +269,8 @@ export async function getBatchPracticeLeaderboardLive(
       displayName: names.get(studentId) ?? "Student",
       dppScore: Math.round((Number(dpp?.dpp_score) || 0) * 100) / 100,
       dppTotalMarks: Math.round((Number(dpp?.dpp_total_marks) || 0) * 100) / 100,
-      dppsCompleted: Number(dpp?.dpps_completed) || 0,
+      dppsAttempted: Number(dpp?.dpps_attempted) || 0,
+      questionsAttempted: Number(dpp?.questions_attempted) || 0,
       ogcodeScore: Math.round((ogcode?.score ?? 0) * 100) / 100,
       ogcodeQuestions: ogcode?.questions ?? 0,
       lastPractisedAt: lastRaw instanceof Date ? lastRaw.toISOString() : lastRaw ? String(lastRaw) : null,
@@ -278,7 +278,7 @@ export async function getBatchPracticeLeaderboardLive(
   });
 }
 
-/** One shared DPP a student has completed, for the 360° profile. */
+/** One shared DPP a student has practised, for the 360° profile. */
 export type StudentDppHistoryEntry = {
   dppId: string;
   title: string;
@@ -286,13 +286,17 @@ export type StudentDppHistoryEntry = {
   score: number;
   totalMarks: number;
   percentage: number | null;
+  /** Questions answered vs questions in the set — coverage, not just quality. */
+  questionsAttempted: number;
+  questionsTotal: number;
   timeTakenSeconds: number;
-  completedAt: string;
+  lastAnsweredAt: string;
 };
 
 /** Practice totals + per-DPP history for one student inside one workspace. */
 export type StudentPracticeProfile = {
-  dppsCompleted: number;
+  dppsAttempted: number;
+  questionsAttempted: number;
   dppScore: number;
   dppTotalMarks: number;
   dppAccuracy: number | null;
@@ -307,8 +311,9 @@ export type StudentPracticeProfile = {
  * all-time OG Code score (platform-wide — it is the student's own practice and
  * is not workspace-owned).
  *
- * Latest attempt per DPP only, matching the leaderboard, so the profile and the
- * board can never disagree about the same student.
+ * Aggregated from per-QUESTION results for the same reason the leaderboard is:
+ * a DPP is never submitted, so attempt rows mostly do not exist and would
+ * report a student who answered most of a set as having done nothing.
  */
 export async function getStudentPracticeProfileLive(
   workspaceId: string,
@@ -319,16 +324,23 @@ export async function getStudentPracticeProfileLive(
 
   const [dppResult, ogcodeResult] = await Promise.all([
     pool.query(
-      `SELECT DISTINCT ON (a.dpp_id)
-              a.dpp_id, a.title, p.subject, a.score, a.total_marks, a.percentage,
-              a.time_taken_seconds, a.created_at
-         FROM analytics.dpp_attempts a
-         JOIN analytics.dpp_plans p ON p.id = a.dpp_id
+      `SELECT r.dpp_id,
+              MAX(p.title)   AS title,
+              MAX(p.subject) AS subject,
+              SUM(r.marks_awarded)::float8 AS score,
+              SUM(r.max_marks)::float8     AS total_marks,
+              COUNT(*)::int                AS questions_attempted,
+              SUM(r.time_spent_seconds)::int AS time_taken_seconds,
+              MAX(r.answered_at)           AS last_answered_at,
+              (SELECT COUNT(*)::int FROM analytics.dpp_questions q WHERE q.dpp_id = r.dpp_id)
+                AS questions_total
+         FROM analytics.dpp_question_results r
+         JOIN analytics.dpp_plans p ON p.id = r.dpp_id
         WHERE p.origin = 'teacher'
           AND p.workspace_id = $1
-          AND a.user_id = $2
-          AND a.score IS NOT NULL
-        ORDER BY a.dpp_id, a.created_at DESC`,
+          AND r.user_id = $2
+        GROUP BY r.dpp_id
+        ORDER BY MAX(r.answered_at) DESC`,
       [workspaceId, studentId],
     ),
     pool.query(
@@ -340,29 +352,31 @@ export async function getStudentPracticeProfileLive(
     ),
   ]);
 
-  const history: StudentDppHistoryEntry[] = dppResult.rows
-    .map((row) => {
-      const completedAt = row.created_at;
-      return {
-        dppId: String(row.dpp_id),
-        title: String(row.title),
-        subject: String(row.subject ?? ""),
-        score: Math.round((Number(row.score) || 0) * 100) / 100,
-        totalMarks: Math.round((Number(row.total_marks) || 0) * 100) / 100,
-        percentage: row.percentage === null ? null : Math.round(Number(row.percentage) * 10) / 10,
-        timeTakenSeconds: Number(row.time_taken_seconds) || 0,
-        completedAt:
-          completedAt instanceof Date ? completedAt.toISOString() : String(completedAt),
-      };
-    })
-    .sort((a, b) => b.completedAt.localeCompare(a.completedAt));
+  const history: StudentDppHistoryEntry[] = dppResult.rows.map((row) => {
+    const score = Math.round((Number(row.score) || 0) * 100) / 100;
+    const totalMarks = Math.round((Number(row.total_marks) || 0) * 100) / 100;
+    const last = row.last_answered_at;
+    return {
+      dppId: String(row.dpp_id),
+      title: String(row.title ?? "Shared DPP"),
+      subject: String(row.subject ?? ""),
+      score,
+      totalMarks,
+      percentage: totalMarks > 0 ? Math.round((score / totalMarks) * 1000) / 10 : null,
+      questionsAttempted: Number(row.questions_attempted) || 0,
+      questionsTotal: Number(row.questions_total) || 0,
+      timeTakenSeconds: Number(row.time_taken_seconds) || 0,
+      lastAnsweredAt: last instanceof Date ? last.toISOString() : String(last),
+    };
+  });
 
   const dppScore = history.reduce((sum, entry) => sum + entry.score, 0);
   const dppTotalMarks = history.reduce((sum, entry) => sum + entry.totalMarks, 0);
   const ogcodeRow = ogcodeResult.rows[0];
 
   return {
-    dppsCompleted: history.length,
+    dppsAttempted: history.length,
+    questionsAttempted: history.reduce((sum, entry) => sum + entry.questionsAttempted, 0),
     dppScore: Math.round(dppScore * 100) / 100,
     dppTotalMarks: Math.round(dppTotalMarks * 100) / 100,
     dppAccuracy: dppTotalMarks > 0 ? Math.round((dppScore / dppTotalMarks) * 1000) / 10 : null,

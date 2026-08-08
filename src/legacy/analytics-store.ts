@@ -160,6 +160,27 @@ ALTER TABLE analytics.dpp_attempts ADD COLUMN IF NOT EXISTS percentage DOUBLE PR
 CREATE INDEX IF NOT EXISTS idx_analytics_dpp_attempts_plan_created
   ON analytics.dpp_attempts (dpp_id, created_at DESC);
 
+-- Per-question DPP results. A DPP has no submit button — the student checks one
+-- answer at a time — so scoring hung off submit recorded nothing for a student
+-- who answered most of a set and then navigated away. Each checked answer is
+-- written here the instant it is graded, making progress durable with no
+-- session-end flush to miss. One row per (dpp, question); dpp_id already
+-- encodes the student. Unattempted questions have no row and so contribute 0 to
+-- both score and marks-available. Mirrors 20260808_dpp_question_results.sql.
+CREATE TABLE IF NOT EXISTS analytics.dpp_question_results (
+  dpp_id             TEXT NOT NULL REFERENCES analytics.dpp_plans(id) ON DELETE CASCADE,
+  question_id        TEXT NOT NULL,
+  user_id            TEXT NOT NULL,
+  is_correct         BOOLEAN NOT NULL,
+  marks_awarded      DOUBLE PRECISION NOT NULL,
+  max_marks          DOUBLE PRECISION NOT NULL,
+  time_spent_seconds INTEGER NOT NULL DEFAULT 0,
+  answered_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (dpp_id, question_id)
+);
+CREATE INDEX IF NOT EXISTS idx_dpp_question_results_user
+  ON analytics.dpp_question_results (user_id, answered_at DESC);
+
 CREATE TABLE IF NOT EXISTS analytics.dpp_questions (
   dpp_id TEXT NOT NULL REFERENCES analytics.dpp_plans(id) ON DELETE CASCADE,
   question_id TEXT NOT NULL,
@@ -1161,6 +1182,88 @@ export async function getDppPlanDetail(userId: string, dppId: string): Promise<P
   return plans.find((plan) => plan.id === dppId) ?? null;
 }
 
+export type DppQuestionResultInput = {
+  dppId: string;
+  questionId: string;
+  userId: string;
+  isCorrect: boolean;
+  marksAwarded: number;
+  maxMarks: number;
+  timeSpentSeconds?: number;
+};
+
+/**
+ * Records one graded DPP answer, the moment it is graded.
+ *
+ * This is what makes DPP practice measurable at all: a DPP has no submit
+ * button, so there is no later point at which a whole set gets handed in. A
+ * student who answers 43 of 50 questions and then opens something else has
+ * genuinely done that work, and it has to be on record before they navigate
+ * away — which it is, because every "Check Answer" lands here.
+ *
+ * DO NOTHING on conflict keeps the FIRST grading of a question: revisiting a
+ * revealed answer must not let a student re-grade their way to a better score.
+ *
+ * Best-effort by contract — the caller must not fail a student's answer check
+ * because analytics bookkeeping failed.
+ */
+export async function recordDppQuestionResult(input: DppQuestionResultInput): Promise<void> {
+  if (!input.dppId || !input.questionId || !input.userId) return;
+  await ensureSchema();
+  const pool = getPoolOrThrow();
+  await pool.query(
+    `INSERT INTO analytics.dpp_question_results (
+       dpp_id, question_id, user_id, is_correct, marks_awarded, max_marks, time_spent_seconds
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7)
+     ON CONFLICT (dpp_id, question_id) DO NOTHING`,
+    [
+      input.dppId,
+      input.questionId,
+      input.userId,
+      input.isCorrect,
+      Number.isFinite(input.marksAwarded) ? input.marksAwarded : 0,
+      Number.isFinite(input.maxMarks) ? input.maxMarks : 0,
+      Math.max(0, Math.round(input.timeSpentSeconds ?? 0)),
+    ],
+  );
+}
+
+/** Bulk sibling of recordDppQuestionResult, for the full-submit path. */
+export async function recordDppQuestionResults(
+  results: readonly DppQuestionResultInput[],
+): Promise<void> {
+  if (results.length === 0) return;
+  await ensureSchema();
+  const pool = getPoolOrThrow();
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    for (const result of results) {
+      await client.query(
+        `INSERT INTO analytics.dpp_question_results (
+           dpp_id, question_id, user_id, is_correct, marks_awarded, max_marks, time_spent_seconds
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7)
+         ON CONFLICT (dpp_id, question_id) DO NOTHING`,
+        [
+          result.dppId,
+          result.questionId,
+          result.userId,
+          result.isCorrect,
+          Number.isFinite(result.marksAwarded) ? result.marksAwarded : 0,
+          Number.isFinite(result.maxMarks) ? result.maxMarks : 0,
+          Math.max(0, Math.round(result.timeSpentSeconds ?? 0)),
+        ],
+      );
+    }
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 // ─── Teacher test → batch DPP (V1/allmd/TEACHER_TEST_AS_DPP_PLAN.md) ───────────
 //
 // A teacher's share is stored ONCE, batch-scoped, in the USER database. The
@@ -1222,8 +1325,19 @@ export async function materializeTeacherDppPlans(
            batch_id
          ) VALUES ($1,$2,NULL,$3,$4,$5,'[]'::jsonb,'[]'::jsonb,$6,$7,1,false,$8,$9,
                    'teacher',$10,$11,$12,$13,$14)
-         ON CONFLICT (id) DO NOTHING
-         RETURNING id`,
+         -- Backfill the cohort stamp on plans materialized before batch_id
+         -- existed (or before the student's batch could be resolved). Without
+         -- this, DO NOTHING would leave batch_id NULL forever and those
+         -- students could never appear on their batch's leaderboard.
+         --
+         -- Guarded so the steady state is still a no-op: once stamped, the
+         -- value is never rewritten, which keeps attribution stable if the
+         -- student is later moved between batches. The snapshot columns
+         -- (title, questions, marks, branding) are never touched here.
+         ON CONFLICT (id) DO UPDATE
+           SET batch_id = EXCLUDED.batch_id
+           WHERE dpp_plans.batch_id IS NULL AND EXCLUDED.batch_id IS NOT NULL
+         RETURNING (xmax = 0) AS inserted`,
         [
           planId,
           userId,
@@ -1241,7 +1355,9 @@ export async function materializeTeacherDppPlans(
           share.batchId,
         ],
       );
-      if ((inserted.rowCount ?? 0) === 0) continue;
+      // No row = nothing to do (already stamped). Row with inserted=false = we
+      // only backfilled the cohort stamp, so the questions are already written.
+      if (!inserted.rows[0]?.inserted) continue;
       created += 1;
       for (const [index, questionId] of share.questionIds.entries()) {
         await client.query(
