@@ -763,3 +763,43 @@ export type InstitutePublicProfile = {
   batchCount: number;
   verified: boolean;
 };
+
+// ─── Teacher test → batch DPP share ────────────────────────────────────────────
+// V1/allmd/TEACHER_TEST_AS_DPP_PLAN.md
+
+/** One "share this test as a DPP" action, targeting one or more batches. */
+export type TeacherDppShare = {
+  id: string;
+  workspaceId: string;
+  testId: string;
+  /** Title/subject/summary/duration snapshotted from the test at share time. */
+  title: string;
+  subject: string;
+  summary: string | null;
+  durationMinutes: number;
+  /** Ordered question-id snapshot — a later test edit cannot mutate a live DPP. */
+  questionIds: string[];
+  /** Institute branding snapshotted at share time (logo optional). */
+  teacherDisplayName: string;
+  teacherLogoUrl: string | null;
+  sharedBy: string;
+  sharedAt: string;
+  /** sharedAt + 30 days. */
+  expiresAt: string;
+  revokedAt: string | null;
+  batchIds: string[];
+};
+
+/** The subset of a share the student-side materializer needs. */
+export type TeacherDppShareForStudent = {
+  shareId: string;
+  workspaceId: string;
+  title: string;
+  subject: string;
+  summary: string | null;
+  durationMinutes: number;
+  questionIds: string[];
+  teacherDisplayName: string;
+  teacherLogoUrl: string | null;
+  expiresAt: string;
+};

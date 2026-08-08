@@ -25,6 +25,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { requireCronCaller } from "@/server/authz";
 import { sweepExpiredCbtRooms } from "@/server/cbt/cbt-attempts-service";
 import { advanceCbtResilienceBackfill } from "@/server/cbt/cbt-backfill";
+import { sweepExpiredTeacherDpps } from "@/server/teacher-dpp-sweeper";
 import { isFeatureEnabled } from "@/lib/feature-flags";
 
 import { handleTeacherError } from "@/app/api/teacher/_utils";
@@ -32,7 +33,28 @@ import { handleTeacherError } from "@/app/api/teacher/_utils";
 async function drain(request: NextRequest) {
   try {
     await requireCronCaller(request);
-    if (!isFeatureEnabled("cbtModule")) return NextResponse.json({ ok: true, skipped: "cbt_disabled" });
+
+    // Teacher test → batch DPP: reclaim shares past their 30 days (plan
+    // V1/allmd/TEACHER_TEST_AS_DPP_PLAN.md). It rides this tick rather than
+    // owning a route because this is the one internal cron proven to fire in
+    // production, and because a brand-new route file is exposed to the Next-16
+    // phantom-404 incident. Deliberately ABOVE the cbtModule gate and inside its
+    // own try/catch: it is unrelated to CBT, so neither feature's flag or
+    // failure may take the other down. Expiry itself does NOT depend on this —
+    // both the eligibility query and the student DPP list filter on expires_at,
+    // so a missed tick only delays reclaiming storage.
+    let teacherDpp = null;
+    try {
+      if (isFeatureEnabled("teacherDppShare")) {
+        teacherDpp = await sweepExpiredTeacherDpps(200);
+      }
+    } catch (error) {
+      console.error("[cbt/drain] teacher DPP expiry sweep failed", error);
+    }
+
+    if (!isFeatureEnabled("cbtModule")) {
+      return NextResponse.json({ ok: true, skipped: "cbt_disabled", teacherDpp });
+    }
 
     const url = new URL(request.url);
     const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 20, 1), 200);
@@ -46,7 +68,7 @@ async function drain(request: NextRequest) {
       console.error("[cbt/drain] resilience backfill tick failed", error);
     }
 
-    return NextResponse.json({ ok: true, ...result, backfill });
+    return NextResponse.json({ ok: true, ...result, backfill, teacherDpp });
   } catch (error) {
     return handleTeacherError(error);
   }

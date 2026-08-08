@@ -50,7 +50,8 @@ type FlagKey =
   | "teacherCodeApproval"
   | "adminUserLifecycle"
   | "studyModes"
-  | "cbtReportCards";
+  | "cbtReportCards"
+  | "teacherDppShare";
 
 type FlagSpec = {
   envSuffix: string;
@@ -220,6 +221,19 @@ const FLAG_SPECS: Record<FlagKey, FlagSpec> = {
   // Sectional marking is deliberately NOT behind it: it is additive, it cannot
   // change an existing number, and it is part of the teacher's own results.
   cbtReportCards: { envSuffix: "CBT_REPORT_CARDS", defaultDev: true, defaultProd: true },
+  // Teacher test → batch DPP — the teacher "Share as DPP" action (test + batch
+  // multi-select → 30-day share) and the highlighted institute-branded card it
+  // produces in the student /dpp list. Gates the teacher UI/routes, the
+  // student-side materializer, and the expiry sweeper.
+  //
+  // Turning it OFF hides the teacher action, 404s its routes, and stops
+  // already-materialized teacher DPPs from being listed — but deletes NOTHING,
+  // so flipping it back on restores every live share. The retention scoping
+  // (pruneDppPlansForUser only ranking origin='auto' rows) is deliberately NOT
+  // behind the flag: it must hold whenever teacher DPP rows exist at all, or a
+  // flag flip would let the 30-plan window delete them.
+  // See V1/allmd/TEACHER_TEST_AS_DPP_PLAN.md.
+  teacherDppShare: { envSuffix: "TEACHER_DPP_SHARE", defaultDev: true, defaultProd: true },
 };
 
 /** Every feature-flag key, in declaration order (admin System Config view). */

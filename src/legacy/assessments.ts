@@ -133,6 +133,10 @@ import {
   studentHasActiveEnrollment,
 } from "@/server/workspaces/enrollments";
 import {
+  canStudentUseTeacherDpp,
+  syncTeacherDppsForStudent,
+} from "@/server/teacher-dpp-materializer";
+import {
   getOptionDisplayOrder,
   presentOptions,
   verifyOptionPresentationToken,
@@ -2257,6 +2261,14 @@ function serializePersistedDppPlanWithLookup(
     generated_from: plan.generatedFrom,
     provenanceNote: plan.provenanceNote,
     provenance_note: plan.provenanceNote,
+    // Teacher test → batch DPP: drives the highlighted institute-branded card.
+    origin: plan.origin,
+    teacherDisplayName: plan.teacherDisplayName,
+    teacher_display_name: plan.teacherDisplayName,
+    teacherLogoUrl: plan.teacherLogoUrl,
+    teacher_logo_url: plan.teacherLogoUrl,
+    expiresAt: plan.expiresAt,
+    expires_at: plan.expiresAt,
     createdAt: plan.createdAt,
     created_at: plan.createdAt,
     completed: plan.completed,
@@ -3895,6 +3907,10 @@ export async function listGeneratedDpps(store: AppStore, user: StoredUser) {
     return [];
   }
   await drainOneAnalysisJobWithTimeout();
+  // Teacher test → batch DPP: reconcile the student's materialized teacher DPPs
+  // with what they are eligible for right now, before reading the list. Never
+  // throws — a failure here leaves the student's own DPPs untouched.
+  await syncTeacherDppsForStudent(user.id);
   const plans = await listPendingDppPlans(user.id);
   if (plans.length === 0) {
     return [];
@@ -3915,6 +3931,11 @@ export async function listGeneratedDpps(store: AppStore, user: StoredUser) {
       (plan) => !plan.workspaceId || allowedWorkspaceIds.has(plan.workspaceId),
     );
   }
+  // Flag off = teacher DPPs go dark, but nothing is deleted, so flipping the
+  // flag back on restores every live share exactly as it was.
+  if (!isFeatureEnabled("teacherDppShare")) {
+    visiblePlans = visiblePlans.filter((plan) => plan.origin !== "teacher");
+  }
   if (visiblePlans.length === 0) {
     return [];
   }
@@ -3930,31 +3951,63 @@ export async function listGeneratedDpps(store: AppStore, user: StoredUser) {
     ),
   ]);
 
-  const serialized = visiblePlans.map((plan) =>
-    serializePersistedDppPlanWithLookup(
-      store,
-      user.id,
-      plan,
-      latestAttemptMap.get(plan.id) ?? null,
-      questionLookup,
-    ),
-  );
+  const serialized = visiblePlans
+    .map((plan) =>
+      serializePersistedDppPlanWithLookup(
+        store,
+        user.id,
+        plan,
+        latestAttemptMap.get(plan.id) ?? null,
+        questionLookup,
+      ),
+    )
+    // A teacher DPP whose source questions were all deleted from the Question
+    // Bag would render as an empty paper — drop it rather than show a dead card.
+    .filter((dpp) => dpp.origin !== "teacher" || dpp.questions.length > 0)
+    // Teacher DPPs lead: they are dated work from the student's own institute.
+    .sort((a, b) => Number(b.origin === "teacher") - Number(a.origin === "teacher"));
 
   // Free students get no DPPs; premium students get their entitled subjects.
   // Study Mode narrows that further, but only as a FLAG — a generated DPP is
   // work already created for this student, so it is marked `outOfMode` for the
   // UI to badge/collapse rather than removed (plan §3.3, §6.6). The premium gate
   // still hard-filters, exactly as before.
+  //
+  // Teacher-shared DPPs are exempt from the premium gate (plan decision D3):
+  // like a teacher-assigned TEST, batch membership + live enrollment IS the
+  // entitlement — the teacher picked these students. Study Mode still applies
+  // as a flag below, same as for auto DPPs.
   const scope = await getStudentScope(user.id, user.role);
   const gate = scope.gate;
   const entitled = gate.enforced
-    ? serialized.filter((dpp) => subjectVisibleUnderGate(dpp.subject, gate))
+    ? serialized.filter(
+        (dpp) => dpp.origin === "teacher" || subjectVisibleUnderGate(dpp.subject, gate),
+      )
     : serialized;
   if (!scope.enforced) return entitled;
   return entitled.map((dpp) => ({
     ...dpp,
     outOfMode: !subjectVisibleUnderMode(dpp.subject, scope),
   }));
+}
+
+/**
+ * Teacher test → batch DPP: re-verify a teacher-shared DPP is still reachable by
+ * this student before serving, grading or accepting it. The list read filters on
+ * expiry, but a student can hold a plan id from a stale tab long after they left
+ * the batch — so batch membership, enrollment, revocation and expiry are all
+ * re-checked server-side on every one of these paths. No-op for auto DPPs.
+ */
+async function assertTeacherDppStillAccessible(
+  plan: PersistedDppPlanRecord,
+  user: StoredUser,
+): Promise<void> {
+  if (plan.origin !== "teacher") return;
+  if (!(await canStudentUseTeacherDpp(plan.teacherShareId, user.id))) {
+    throwEntitlementForbidden(
+      "This practice set is no longer available — it has ended, or you are no longer in the batch it was shared with.",
+    );
+  }
 }
 
 export async function getGeneratedDppDetail(store: AppStore, user: StoredUser, dppId: string) {
@@ -3971,8 +4024,11 @@ export async function getGeneratedDppDetail(store: AppStore, user: StoredUser, d
   if (plan.workspaceId && !(await studentHasActiveEnrollment(plan.workspaceId, user.id))) {
     throwEntitlementForbidden("This DPP is only available to students enrolled with the issuing institute.");
   }
+  await assertTeacherDppStillAccessible(plan, user);
   const gate = await getStudentGate(user.id, user.role);
-  if (gate.enforced && !subjectVisibleUnderGate(plan.subject, gate)) {
+  // Teacher-shared DPPs are exempt from the premium subject gate — batch
+  // membership is the entitlement (plan decision D3).
+  if (plan.origin !== "teacher" && gate.enforced && !subjectVisibleUnderGate(plan.subject, gate)) {
     throwEntitlementForbidden("This DPP requires a subscription to its subject.");
   }
   const latestAttempt = await getLatestDppAttemptForPlan(user.id, dppId);
@@ -3998,6 +4054,7 @@ export async function checkGeneratedDppQuestion(
   if (!plan) {
     throw new Error(`DPP ${dppId} was not found.`);
   }
+  await assertTeacherDppStillAccessible(plan, user);
   if (!plan.questionIds.includes(questionId)) {
     throw new Error(`Question ${questionId} is not part of DPP ${dppId}.`);
   }
@@ -4053,8 +4110,10 @@ export async function submitGeneratedDpp(
   if (!plan) {
     throw new Error(`DPP ${dppId} was not found.`);
   }
+  await assertTeacherDppStillAccessible(plan, user);
   const submitGate = await getStudentGate(user.id, user.role);
-  if (submitGate.enforced && !subjectVisibleUnderGate(plan.subject, submitGate)) {
+  // Teacher-shared DPPs bypass the premium gate (plan decision D3).
+  if (plan.origin !== "teacher" && submitGate.enforced && !subjectVisibleUnderGate(plan.subject, submitGate)) {
     throwEntitlementForbidden("This DPP requires a subscription to its subject.");
   }
 

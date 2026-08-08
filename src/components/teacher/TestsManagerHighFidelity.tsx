@@ -3,13 +3,14 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Plus, Search, Calendar, Clock, HelpCircle, Trash2, Loader2, Pencil, BarChart3 } from "lucide-react";
+import { Plus, Search, Calendar, Clock, HelpCircle, Trash2, Loader2, Pencil, BarChart3, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { apiJson } from "@/lib/teacher-client";
 import { toast } from "sonner";
 import { TestCreatorWizard } from "./TestCreatorWizard";
+import { ShareTestAsDppDialog } from "./ShareTestAsDppDialog";
 import type { QuestionWithVersion, BatchWithCounts, AssessmentTest } from "@/server/workspaces/types";
 
 type Props = {
@@ -19,7 +20,11 @@ type Props = {
   batches: BatchWithCounts[];
   canManage: boolean;
   ogcodeEnabled: boolean;
+  dppShareEnabled: boolean;
 };
+
+/** A draft has no settled question set, so it cannot be shared as a DPP. */
+const DPP_SHAREABLE_STATUSES = ["published", "scheduled", "live", "closed"];
 
 const STATUS_LABELS: Record<string, string> = {
   draft: "Draft",
@@ -39,12 +44,13 @@ const STATUS_COLORS: Record<string, string> = {
   archived: "text-gray-400 bg-muted border-muted",
 };
 
-export function TestsManagerHighFidelity({ workspaceId, initialTests, questions, batches, canManage, ogcodeEnabled }: Props) {
+export function TestsManagerHighFidelity({ workspaceId, initialTests, questions, batches, canManage, ogcodeEnabled, dppShareEnabled }: Props) {
   const router = useRouter();
   const [isCreating, setIsCreating] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [tests, setTests] = useState(initialTests);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [sharingTest, setSharingTest] = useState<AssessmentTest | null>(null);
 
   const filteredTests = tests.filter(test => {
     if (searchQuery.trim()) {
@@ -145,6 +151,18 @@ export function TestsManagerHighFidelity({ workspaceId, initialTests, questions,
                         </Link>
                       </Button>
                     ) : null}
+                    {canManage && dppShareEnabled && DPP_SHAREABLE_STATUSES.includes(test.status) ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 gap-1 px-2 text-primary hover:bg-primary/10"
+                        onClick={() => setSharingTest(test)}
+                        title="Share this test with your batches as a DPP"
+                      >
+                        <Sparkles className="h-3.5 w-3.5" />
+                        <span className="text-[10px] font-bold uppercase">Share as DPP</span>
+                      </Button>
+                    ) : null}
                     {canManage && !["live", "closed", "archived"].includes(test.status) ? (
                       <Button
                         asChild
@@ -196,6 +214,18 @@ export function TestsManagerHighFidelity({ workspaceId, initialTests, questions,
         )}
       </div>
 
+      {sharingTest ? (
+        <ShareTestAsDppDialog
+          workspaceId={workspaceId}
+          testId={sharingTest.id}
+          testTitle={sharingTest.title}
+          batches={batches}
+          open
+          onOpenChange={(open) => {
+            if (!open) setSharingTest(null);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

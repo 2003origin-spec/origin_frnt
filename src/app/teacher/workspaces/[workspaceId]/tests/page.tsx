@@ -37,6 +37,7 @@ export default async function TeacherTestsPage({ params }: Props) {
         batches={batches}
         canManage={canManage}
         ogcodeEnabled={isFeatureEnabled("teacherOgcode")}
+        dppShareEnabled={isFeatureEnabled("teacherDppShare")}
       />
     </div>
   );

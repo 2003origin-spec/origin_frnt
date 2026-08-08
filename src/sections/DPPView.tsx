@@ -17,6 +17,7 @@ import {
   ArrowRight,
   CheckCircle2,
   ChevronLeft,
+  GraduationCap,
   Lightbulb,
   Loader2,
   MessageCircle,
@@ -84,6 +85,67 @@ interface GeneratedDpp {
   targetQuestionCount?: number;
   questions: DppQuestion[];
   latestAttempt?: GeneratedDppAttemptSummary | null;
+  /** 'teacher' = shared to your batch by your institute; 'auto' = generated from a test you took. */
+  origin?: 'auto' | 'teacher';
+  teacherDisplayName?: string | null;
+  teacher_display_name?: string | null;
+  teacherLogoUrl?: string | null;
+  teacher_logo_url?: string | null;
+  /** Teacher DPPs only — the card counts down to this. */
+  expiresAt?: string | null;
+  expires_at?: string | null;
+}
+
+function isTeacherDpp(dpp: GeneratedDpp): boolean {
+  return dpp.origin === 'teacher';
+}
+
+function teacherNameOf(dpp: GeneratedDpp): string | null {
+  return dpp.teacherDisplayName ?? dpp.teacher_display_name ?? null;
+}
+
+function teacherLogoOf(dpp: GeneratedDpp): string | null {
+  return dpp.teacherLogoUrl ?? dpp.teacher_logo_url ?? null;
+}
+
+/** Whole days left before a teacher DPP disappears; null when it never expires. */
+function daysLeftOf(dpp: GeneratedDpp): number | null {
+  const raw = dpp.expiresAt ?? dpp.expires_at;
+  if (!raw) return null;
+  const expiry = new Date(raw).getTime();
+  if (Number.isNaN(expiry)) return null;
+  return Math.max(0, Math.ceil((expiry - Date.now()) / (24 * 60 * 60 * 1000)));
+}
+
+/**
+ * Institute lockup for a teacher-shared DPP — logo + name, name-only when the
+ * institute has no logo or the image fails to load (same fallback the CBT
+ * co-branded exam header uses).
+ */
+function InstituteLockup({
+  name,
+  logoUrl,
+  className = '',
+}: {
+  name: string;
+  logoUrl: string | null;
+  className?: string;
+}) {
+  const [logoBroken, setLogoBroken] = useState(false);
+  return (
+    <span className={`inline-flex items-center gap-2 min-w-0 ${className}`}>
+      {logoUrl && !logoBroken ? (
+        <img
+          src={logoUrl}
+          alt={name}
+          draggable={false}
+          onError={() => setLogoBroken(true)}
+          className="w-6 h-6 rounded-full object-cover select-none flex-shrink-0 ring-1 ring-primary/30"
+        />
+      ) : null}
+      <span className="truncate font-semibold text-primary">{name}</span>
+    </span>
+  );
 }
 
 type DppQuestion = {
@@ -708,6 +770,16 @@ export default function DPPView({ onBack, initialDpps, user }: DPPViewProps) {
             <div className="space-y-4">
               <Card className="neu-raised border-0 shadow-none">
                 <CardContent className="p-4">
+                  {isTeacherDpp(currentDpp) && teacherNameOf(currentDpp) ? (
+                    <div className="flex items-center justify-between gap-2 mb-3 pb-3 border-b border-primary/15 min-w-0">
+                      <InstituteLockup
+                        name={teacherNameOf(currentDpp) as string}
+                        logoUrl={teacherLogoOf(currentDpp)}
+                        className="text-sm"
+                      />
+                      <GraduationCap className="w-4 h-4 text-primary flex-shrink-0" />
+                    </div>
+                  ) : null}
                   <h3 className="font-semibold text-slate-900 dark:text-white mb-3 line-clamp-2">{currentDpp.title}</h3>
                   <p className="text-sm text-slate-500 dark:text-slate-400 mb-2">
                     {currentDpp.summary ?? 'Targeted practice generated from your latest weak-topic analytics.'}
@@ -796,6 +868,8 @@ function DppSelectionGrid({
     return DPP_DATE_FORMATTER.format(parsed);
   };
 
+  const teacherDppCount = dpps.filter(isTeacherDpp).length;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -804,7 +878,9 @@ function DppSelectionGrid({
             {dpps.length} DPP{dpps.length === 1 ? '' : 's'} ready for you
           </h2>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Each card comes from a test you submitted. Pick one to start solving.
+            {teacherDppCount > 0
+              ? `${teacherDppCount} shared by your institute, the rest from tests you submitted. Pick one to start solving.`
+              : 'Each card comes from a test you submitted. Pick one to start solving.'}
           </p>
         </div>
       </div>
@@ -815,6 +891,9 @@ function DppSelectionGrid({
           const weakTopics = dpp.weakTopics ?? dpp.weak_topics ?? [];
           const generatedDate = formatDate(dpp.createdAt);
           const progressScore = dpp.latestAttempt?.progress_score ?? dpp.latestAttempt?.progressScore ?? null;
+          const fromTeacher = isTeacherDpp(dpp);
+          const teacherName = teacherNameOf(dpp);
+          const daysLeft = daysLeftOf(dpp);
 
           return (
             <Card
@@ -828,8 +907,21 @@ function DppSelectionGrid({
                   onSelect(dpp.id);
                 }
               }}
-              className="h-full min-w-0 max-w-full overflow-hidden cursor-pointer neu-raised neu-pressable border-0 shadow-none"
+              className={`h-full min-w-0 max-w-full overflow-hidden cursor-pointer neu-raised neu-pressable shadow-none ${
+                fromTeacher
+                  ? 'border-2 border-primary/40 ring-2 ring-primary/10 bg-primary/[0.03] dark:bg-primary/[0.06]'
+                  : 'border-0'
+              }`}
             >
+              {fromTeacher && teacherName ? (
+                <div className="flex items-center justify-between gap-2 px-4 sm:px-6 pt-4 pb-3 border-b border-primary/15 min-w-0">
+                  <InstituteLockup name={teacherName} logoUrl={teacherLogoOf(dpp)} className="text-sm" />
+                  <Badge className="shrink-0 bg-primary text-white dark:text-white">
+                    <GraduationCap className="w-3 h-3 mr-1" />
+                    From your institute
+                  </Badge>
+                </div>
+              ) : null}
               <CardContent className="p-4 sm:p-6 space-y-4">
                   <div className="flex items-start justify-between gap-3 min-w-0">
                     <div className="flex-1 min-w-0">
@@ -893,7 +985,17 @@ function DppSelectionGrid({
                       {dpp.duration ? (
                         <span>{dpp.duration} min</span>
                       ) : null}
-                      {generatedDate ? <span>Generated {generatedDate}</span> : null}
+                      {fromTeacher ? (
+                        daysLeft !== null ? (
+                          <span className={daysLeft <= 3 ? 'text-amber-600 dark:text-amber-400 font-semibold' : ''}>
+                            {daysLeft === 0
+                              ? 'Ends today'
+                              : `${daysLeft} day${daysLeft === 1 ? '' : 's'} left`}
+                          </span>
+                        ) : null
+                      ) : generatedDate ? (
+                        <span>Generated {generatedDate}</span>
+                      ) : null}
                     </div>
                     {progressScore !== null ? (
                       <span className="text-primary font-semibold">{Math.round(progressScore)}%</span>
