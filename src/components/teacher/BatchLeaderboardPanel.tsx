@@ -106,9 +106,9 @@ export function BatchLeaderboardPanel({ workspaceId, batchId }: Props) {
             hint="Students with a scored DPP or OG Code work"
           />
           <MetricTile
-            label="DPPs completed"
-            value={String(practiceSummary.dppsCompleted)}
-            hint="Across the batch"
+            label="DPP questions done"
+            value={String(practiceSummary.questionsAttempted)}
+            hint="Answered across the batch"
           />
           <MetricTile
             label="Mean DPP accuracy"
@@ -239,7 +239,8 @@ export function BatchLeaderboardPanel({ workspaceId, batchId }: Props) {
                       <td className="py-2">
                         <span className="font-medium">{entry.displayName}</span>
                         <span className="ml-2 text-[0.7rem] text-muted-foreground">
-                          {entry.dppsCompleted} DPP{entry.dppsCompleted === 1 ? "" : "s"}
+                          {entry.questionsAttempted}q in {entry.dppsAttempted} DPP
+                          {entry.dppsAttempted === 1 ? "" : "s"}
                           {entry.dppAccuracy !== null ? ` · ${entry.dppAccuracy}%` : ""}
                         </span>
                       </td>

@@ -83,6 +83,8 @@ import {
   persistDppAttemptResult,
   persistGeneratedCustomTest,
   persistTestAnalysisResult,
+  recordDppQuestionResult,
+  recordDppQuestionResults,
   type PersistedCustomTestRecord,
   type PersistedDppAttemptRecord,
   type PersistedDppPlanRecord,
@@ -4035,6 +4037,35 @@ async function assertTeacherDppStillAccessible(
   }
 }
 
+/**
+ * Per-question scoring overrides for a teacher-shared DPP, or null for an auto
+ * DPP / a share taken before scoring existed. Shared by the per-question check
+ * and the full submit so both paths score a question identically — the check is
+ * the ONLY path most students ever take, so a divergence here would mean the
+ * teacher's board disagreed with what the student was shown.
+ *
+ * Best-effort: a snapshot lookup failure degrades to the default policy rather
+ * than blocking the student.
+ */
+async function teacherDppScoringOverridesFor(
+  plan: PersistedDppPlanRecord,
+  dppId: string,
+): Promise<Map<string, GraderScoringPolicy> | null> {
+  if (plan.origin !== "teacher" || !plan.teacherShareId) return null;
+  try {
+    const snapshot = await getTeacherDppScoringSnapshot(plan.teacherShareId);
+    if (!snapshot) return null;
+    return buildTeacherDppScoringOverrides(snapshot.questionIds, snapshot.questionMarks);
+  } catch (error) {
+    console.error("[teacher-dpp] scoring snapshot lookup failed", {
+      dppId,
+      shareId: plan.teacherShareId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
 export async function getGeneratedDppDetail(store: AppStore, user: StoredUser, dppId: string) {
   if (!isOgcodePostgresConfigured()) {
     throw new Error("DPP analytics database is not configured.");
@@ -4096,6 +4127,12 @@ export async function checkGeneratedDppQuestion(
     scope: "dpp",
     assessmentId: dppId,
   });
+  // Teacher-shared DPP: this question is worth what the teacher gave it in the
+  // source test, on the per-question check exactly as on a full submit.
+  const checkOverrides = await teacherDppScoringOverridesFor(plan, dppId);
+  const policy =
+    checkOverrides?.get(question.id) ?? scoringPolicyForQuestion(question, "dpp");
+
   const remoteGrades = await gradeAssessmentBatchWithService({
     userId: user.id,
     assessmentId: dppId,
@@ -4106,12 +4143,46 @@ export async function checkGeneratedDppQuestion(
         question,
         answer: prepared.answer,
         attemptRef: question.id,
-        scoringPolicy: scoringPolicyForQuestion(question, "dpp"),
+        scoringPolicy: policy,
       },
     ],
   });
   const grade = remoteGrades?.[0] ?? gradeAnswer(question, prepared.answer, "dpp");
   const info = toPresentedGradeInfo(question, grade.info, prepared.displayOrder);
+
+  // A DPP is never "submitted" — the student just works through it and leaves.
+  // Recording the graded answer HERE is what makes their practice count at all;
+  // by the time they navigate away it is already durable. Best-effort: a
+  // bookkeeping failure must never break the student's answer check.
+  try {
+    const answered = hasResponse(prepared.answer);
+    const overridden = Boolean(checkOverrides?.has(question.id));
+    const maxMarks = overridden ? policy.correctMarks : grade.maxMarks ?? policy.correctMarks;
+    const marksAwarded =
+      overridden || grade.marksAwarded === undefined || grade.marksAwarded === null
+        ? computeMarksFromCredit({
+            answered,
+            isCorrect: grade.isCorrect,
+            creditAwarded: grade.creditAwarded,
+            policy,
+          })
+        : grade.marksAwarded;
+    await recordDppQuestionResult({
+      dppId,
+      questionId: question.id,
+      userId: user.id,
+      isCorrect: grade.isCorrect,
+      marksAwarded,
+      maxMarks,
+      timeSpentSeconds: prepared.answer.timeSpent,
+    });
+  } catch (error) {
+    console.error("[dpp] failed to record checked answer", {
+      dppId,
+      questionId: question.id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 
   return {
     isCorrect: grade.isCorrect,
@@ -4152,27 +4223,8 @@ export async function submitGeneratedDpp(
   });
 
   // Teacher-shared DPP: score each question at the marks the teacher assigned
-  // it in the source test, instead of the flat practice default. Best-effort —
-  // if the snapshot cannot be read the DPP still grades on the default policy
-  // rather than failing the student's submission.
-  let scoringOverrides: Map<string, GraderScoringPolicy> | null = null;
-  if (plan.origin === "teacher" && plan.teacherShareId) {
-    try {
-      const snapshot = await getTeacherDppScoringSnapshot(plan.teacherShareId);
-      if (snapshot) {
-        scoringOverrides = buildTeacherDppScoringOverrides(
-          snapshot.questionIds,
-          snapshot.questionMarks,
-        );
-      }
-    } catch (error) {
-      console.error("[teacher-dpp] scoring snapshot lookup failed", {
-        dppId,
-        shareId: plan.teacherShareId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
+  // it in the source test, instead of the flat practice default.
+  const scoringOverrides = await teacherDppScoringOverridesFor(plan, dppId);
 
   const analytics = await buildAnalyticsAttempts(
     store,
@@ -4232,6 +4284,31 @@ export async function submitGeneratedDpp(
         }
       : {}),
   };
+
+  // Mirror every graded answer into the per-question table the teacher's
+  // practice board reads. DO NOTHING on conflict means answers the student
+  // already checked keep their original grading — this only fills in anything a
+  // full submit covered that the per-question path did not.
+  try {
+    await recordDppQuestionResults(
+      analytics.gradedAttempts
+        .filter((attempt) => attempt.answered)
+        .map((attempt) => ({
+          dppId,
+          questionId: attempt.question_id,
+          userId: user.id,
+          isCorrect: attempt.is_correct,
+          marksAwarded: attempt.marks_awarded,
+          maxMarks: attempt.max_marks,
+          timeSpentSeconds: attempt.time_spent_seconds,
+        })),
+    );
+  } catch (error) {
+    console.error("[dpp] failed to record submitted answers", {
+      dppId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
   // ODG Phase 3: a Question-Bag-sourced DPP carries its owning workspace; the
   // workspace owner is the teacher credited when this DPP resolves weak topics.
   // Best-effort — a failed lookup just skips teacher crediting, never the analysis.

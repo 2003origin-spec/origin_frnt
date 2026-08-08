@@ -105,7 +105,8 @@ type DeepProfile = {
   testHistory: TestRow[];
   /** Shared-DPP + OG Code practice — effort alongside outcome. */
   practice: {
-    dppsCompleted: number;
+    dppsAttempted: number;
+    questionsAttempted: number;
     dppScore: number;
     dppTotalMarks: number;
     dppAccuracy: number | null;
@@ -118,8 +119,10 @@ type DeepProfile = {
       score: number;
       totalMarks: number;
       percentage: number | null;
+      questionsAttempted: number;
+      questionsTotal: number;
       timeTakenSeconds: number;
-      completedAt: string;
+      lastAnsweredAt: string;
     }>;
   };
   timeAnalytics: Array<{
@@ -527,8 +530,10 @@ export function StudentProfilePanel({ workspaceId, studentId, onClose }: Props) 
                   test history so a teacher reads outcome and effort together. */}
               <Panel
                 title="Practice record"
-                description={`${profile.practice.dppsCompleted} DPP${
-                  profile.practice.dppsCompleted === 1 ? "" : "s"
+                description={`${profile.practice.questionsAttempted} DPP question${
+                  profile.practice.questionsAttempted === 1 ? "" : "s"
+                } across ${profile.practice.dppsAttempted} set${
+                  profile.practice.dppsAttempted === 1 ? "" : "s"
                 } · ${profile.practice.ogcodeQuestions} OG Code questions`}
               >
                 <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -539,7 +544,7 @@ export function StudentProfilePanel({ workspaceId, studentId, onClose }: Props) 
                         ? `${profile.practice.dppScore}/${profile.practice.dppTotalMarks}`
                         : "—"
                     }
-                    hint="Marks across your shared DPPs"
+                    hint="Marks on questions actually answered"
                   />
                   <MetricTile
                     label="DPP accuracy"
@@ -562,7 +567,7 @@ export function StudentProfilePanel({ workspaceId, studentId, onClose }: Props) 
                   <AnalyticsEmptyState
                     icon={ClipboardList}
                     title="No DPP practice yet"
-                    description="Share a test as a DPP with this student's batch — their scored attempts appear here."
+                    description="Share a test as a DPP with this student's batch — each answer they check appears here."
                   />
                 ) : (
                   <div className="overflow-x-auto">
@@ -571,6 +576,7 @@ export function StudentProfilePanel({ workspaceId, studentId, onClose }: Props) 
                         <tr className="border-b text-[0.65rem] uppercase tracking-wider text-muted-foreground">
                           <th className="py-2 pr-3 font-semibold">DPP</th>
                           <th className="px-2 py-2 font-semibold">Date</th>
+                          <th className="px-2 py-2 text-center font-semibold">Done</th>
                           <th className="px-2 py-2 text-center font-semibold">Score</th>
                           <th className="px-2 py-2 text-center font-semibold">%</th>
                         </tr>
@@ -582,10 +588,13 @@ export function StudentProfilePanel({ workspaceId, studentId, onClose }: Props) 
                               {dpp.title}
                             </td>
                             <td className="px-2 py-2.5 text-[0.7rem] text-muted-foreground">
-                              {new Date(dpp.completedAt).toLocaleDateString("en-IN", {
+                              {new Date(dpp.lastAnsweredAt).toLocaleDateString("en-IN", {
                                 day: "numeric",
                                 month: "short",
                               })}
+                            </td>
+                            <td className="px-2 py-2.5 text-center font-mono text-[0.7rem] tabular-nums text-muted-foreground">
+                              {dpp.questionsAttempted}/{dpp.questionsTotal}
                             </td>
                             <td className="px-2 py-2.5 text-center font-mono tabular-nums text-muted-foreground">
                               {dpp.score}/{dpp.totalMarks}

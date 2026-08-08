@@ -72,6 +72,9 @@ const MIGRATIONS = [
   // the share (user) + scored, batch-stamped attempts (ogcode).
   { file: "20260808_teacher_dpp_scoring.sql", target: "user" },
   { file: "20260808_dpp_attempt_scoring.sql", target: "ogcode" },
+  // Per-question DPP results — 2026-08-08. A DPP has no submit button, so
+  // progress must be durable per checked answer rather than at submit.
+  { file: "20260808_dpp_question_results.sql", target: "ogcode" },
 ];
 
 const TARGET_ENV = {

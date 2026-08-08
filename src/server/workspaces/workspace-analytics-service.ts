@@ -535,7 +535,8 @@ export async function getStudentDeepProfile(
   if (!student) return null;
 
   const emptyPractice: StudentPracticeProfile = {
-    dppsCompleted: 0,
+    dppsAttempted: 0,
+    questionsAttempted: 0,
     dppScore: 0,
     dppTotalMarks: 0,
     dppAccuracy: null,
