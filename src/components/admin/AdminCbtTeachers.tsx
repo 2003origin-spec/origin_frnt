@@ -6,12 +6,17 @@ import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { csrfHeaders } from "@/lib/csrf";
 import type { CbtTeacher, CbtUsageStats } from "@/server/cbt/cbt-teachers-service";
+import type { CbtQuotaOverview } from "@/server/cbt/cbt-quota-admin-service";
+
+import { AdminCbtQuotaPanel } from "./AdminCbtQuotaPanel";
 
 type Props = {
   initialTeachers: CbtTeacher[];
   initialStats: CbtUsageStats;
   /** Kill switch for the premium report-card column. */
   reportCardsAvailable: boolean;
+  /** Participation-quota overview; `null` when the flag is off (panel hidden). */
+  initialQuota?: CbtQuotaOverview | null;
 };
 
 const STAT_CARDS: { key: keyof CbtUsageStats; label: string }[] = [
@@ -23,7 +28,12 @@ const STAT_CARDS: { key: keyof CbtUsageStats; label: string }[] = [
   { key: "totalParticipants", label: "Participants" },
 ];
 
-export function AdminCbtTeachers({ initialTeachers, initialStats, reportCardsAvailable }: Props) {
+export function AdminCbtTeachers({
+  initialTeachers,
+  initialStats,
+  reportCardsAvailable,
+  initialQuota = null,
+}: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [email, setEmail] = useState("");
@@ -115,6 +125,8 @@ export function AdminCbtTeachers({ initialTeachers, initialStats, reportCardsAva
           </div>
         ))}
       </section>
+
+      {initialQuota ? <AdminCbtQuotaPanel initial={initialQuota} /> : null}
 
       <section className="neu-raised p-4">
         <h2 className="mb-3 text-sm font-semibold text-foreground">Add a teacher</h2>

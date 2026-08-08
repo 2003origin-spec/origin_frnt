@@ -23,6 +23,13 @@ import { normalizeParticipantName, pickReclaimCandidates, type CbtReclaimCandida
 
 import { ensureCbtSchema } from "./cbt-schema";
 import { appendCbtRoomEvent, deleteCbtRoomStream } from "./cbt-redis";
+import {
+  assertJoinAllowed,
+  assertQuotaNotExhausted,
+  ensureCbtQuotaReady,
+  isRoomQuotaBlocked,
+  recordParticipation,
+} from "./cbt-quota-service";
 import { cbtId } from "./ids";
 
 export type { CbtParticipant, CbtRejoinPolicy, CbtRoom, CbtRoomStatus, CbtRoomWithParticipants };
@@ -117,6 +124,8 @@ export async function createRoom(
   input: { name?: string; capacity?: number; rejoinPolicy?: CbtRejoinPolicy },
 ): Promise<{ room: CbtRoom; code: string }> {
   await ensureCbtSchema();
+  // A teacher whose participation quota is spent cannot open more rooms (E1).
+  await assertQuotaNotExhausted(teacherId);
   const name = (input.name ?? "").trim() || "Untitled room";
   const capacity = Math.min(Math.max(1, Math.floor(Number(input.capacity) || 200)), MAX_CAPACITY);
   const rejoinPolicy: CbtRejoinPolicy = input.rejoinPolicy === "id_only" ? "id_only" : "name_or_id";
@@ -190,10 +199,18 @@ export async function getPublicRoomBySlug(
   status: CbtRoomStatus;
   instituteName: string | null;
   instituteLogo: string | null;
+  /**
+   * True when the teacher's participation quota leaves no seat for a NEW
+   * student (E4). The page then says so instead of showing a join form that is
+   * guaranteed to fail; students already holding a seat are unaffected because
+   * they resume through their participant cookie, not this form.
+   */
+  quotaBlocked: boolean;
 } | null> {
   await ensureCbtSchema();
   const res = await pool().query(
-    `SELECT r.id, r.name, r.status, t.display_name AS institute_name, t.logo AS institute_logo
+    `SELECT r.id, r.name, r.status, r.teacher_id,
+            t.display_name AS institute_name, t.logo AS institute_logo
        FROM cbt.rooms r
        JOIN cbt.teachers t ON t.id = r.teacher_id
       WHERE r.public_slug = $1`,
@@ -207,6 +224,7 @@ export async function getPublicRoomBySlug(
     status: (row.status as CbtRoomStatus) ?? "lobby",
     instituteName: row.institute_name ? String(row.institute_name) : null,
     instituteLogo: row.institute_logo ? String(row.institute_logo) : null,
+    quotaBlocked: await isRoomQuotaBlocked(String(row.teacher_id)),
   };
 }
 
@@ -259,8 +277,15 @@ export async function listParticipants(roomId: string, roomStatus: CbtRoomStatus
   return res.rows.map((row) => mapParticipant(row, roomStatus, now));
 }
 
+/**
+ * Issues a fresh join code and returns the plaintext ONCE — only `code_hash` is
+ * stored, so this is the sole way a teacher can ever see or copy a room code.
+ * That makes it the enforcement point for "the code is blocked" (E2): a teacher
+ * whose quota is spent cannot reveal or rotate a code at all.
+ */
 export async function regenerateRoomCode(teacherId: string, roomId: string): Promise<{ code: string } | null> {
   await ensureCbtSchema();
+  await assertQuotaNotExhausted(teacherId);
   const code = generateRoomCode();
   const res = await pool().query(
     `UPDATE cbt.rooms SET code_hash = $3, updated_at = NOW() WHERE teacher_id = $1 AND id = $2 RETURNING id`,
@@ -434,27 +459,57 @@ export async function joinRoom(input: {
     if (candidates.length > 0) return { kind: "reclaim_available", roomId: room.id, candidates };
   }
 
-  const count = await pool().query(`SELECT COUNT(*)::int AS n FROM cbt.room_participants WHERE room_id = $1`, [room.id]);
-  if ((count.rows[0]?.n ?? 0) >= room.capacity) throw cbtError(409, "This room is full.");
+  // Seat allocation is transactional: the capacity check, the participation-quota
+  // check and the participant INSERT must be atomic, or two students racing for
+  // the last seat both win. Applied outside the transaction so no DDL runs while
+  // it holds row locks.
+  await ensureCbtQuotaReady();
 
-  // Insert the participant, retrying on a student-code collision.
   let participantRow: Record<string, unknown> | null = null;
-  for (let attempt = 0; attempt < 5 && !participantRow; attempt += 1) {
-    const studentCode = generateStudentCode();
-    try {
-      const res = await pool().query(
-        `INSERT INTO cbt.room_participants (id, room_id, display_name, student_code, last_seen_at)
-           VALUES ($1, $2, $3, $4, NOW())
-         RETURNING ${PARTICIPANT_COLUMNS}`,
-        [cbtId("cbtp"), room.id, displayName, studentCode],
-      );
-      participantRow = res.rows[0];
-    } catch (error) {
-      if ((error as { code?: string })?.code === "23505") continue; // unique(room_id, student_code) collision
-      throw error;
+  const client = await pool().connect();
+  try {
+    await client.query("BEGIN");
+
+    // E3 — serialises on the teacher row, so the quota can never be overshot.
+    // A no-op (and no lock at all) for a teacher with no cap.
+    await assertJoinAllowed(client, room.teacherId);
+
+    const count = await client.query(
+      `SELECT COUNT(*)::int AS n FROM cbt.room_participants WHERE room_id = $1`,
+      [room.id],
+    );
+    if ((count.rows[0]?.n ?? 0) >= room.capacity) throw cbtError(409, "This room is full.");
+
+    // Insert the participant, retrying on a student-code collision. Each attempt
+    // needs its own SAVEPOINT: inside a transaction a failed INSERT poisons
+    // everything after it, which would throw away the seat we just reserved.
+    for (let attempt = 0; attempt < 5 && !participantRow; attempt += 1) {
+      const studentCode = generateStudentCode();
+      await client.query("SAVEPOINT cbt_join_insert");
+      try {
+        const res = await client.query(
+          `INSERT INTO cbt.room_participants (id, room_id, display_name, student_code, last_seen_at)
+             VALUES ($1, $2, $3, $4, NOW())
+           RETURNING ${PARTICIPANT_COLUMNS}`,
+          [cbtId("cbtp"), room.id, displayName, studentCode],
+        );
+        participantRow = res.rows[0];
+        await client.query("RELEASE SAVEPOINT cbt_join_insert");
+      } catch (error) {
+        await client.query("ROLLBACK TO SAVEPOINT cbt_join_insert");
+        if ((error as { code?: string })?.code === "23505") continue; // unique(room_id, student_code)
+        throw error;
+      }
     }
+    if (!participantRow) throw cbtError(500, "Could not join the room. Please try again.");
+
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
   }
-  if (!participantRow) throw cbtError(500, "Could not join the room. Please try again.");
 
   const participant = mapParticipant(participantRow, room.status);
   const token = await signParticipantToken({
@@ -625,6 +680,11 @@ export async function recordHeartbeat(participantId: string, roomId: string, inT
       WHERE id = $1 AND room_id = $2`,
     [participantId, roomId],
   );
+  // E5 — the participation meter. This is the earliest reliable server-side
+  // signal that the student is sitting the test, and it is exactly the signal
+  // the teacher dashboard already renders as "giving_test". Idempotent, and it
+  // swallows its own failures so quota bookkeeping can never break an exam.
+  if (inTest) await recordParticipation(participantId, roomId);
 }
 
 // ── Presence ────────────────────────────────────────────────────────────────

@@ -25,6 +25,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { requireCronCaller } from "@/server/authz";
 import { sweepExpiredCbtRooms } from "@/server/cbt/cbt-attempts-service";
 import { advanceCbtResilienceBackfill } from "@/server/cbt/cbt-backfill";
+import { reconcileCbtParticipations } from "@/server/cbt/cbt-quota-service";
 import { sweepExpiredTeacherDpps } from "@/server/teacher-dpp-sweeper";
 import { isFeatureEnabled } from "@/lib/feature-flags";
 
@@ -68,7 +69,18 @@ async function drain(request: NextRequest) {
       console.error("[cbt/drain] resilience backfill tick failed", error);
     }
 
-    return NextResponse.json({ ok: true, ...result, backfill, teacherDpp });
+    // Participation-quota safety net: the inline metering in recordHeartbeat /
+    // saveAnswers is the primary path and swallows its own failures, so this
+    // catches the rows a DB blip (or a deploy landing mid-test) missed. It is
+    // scoped to live/recent rooms, so it can never retro-charge closed history.
+    let quota = null;
+    try {
+      quota = await reconcileCbtParticipations();
+    } catch (error) {
+      console.error("[cbt/drain] participation reconcile failed", error);
+    }
+
+    return NextResponse.json({ ok: true, ...result, backfill, quota, teacherDpp });
   } catch (error) {
     return handleTeacherError(error);
   }

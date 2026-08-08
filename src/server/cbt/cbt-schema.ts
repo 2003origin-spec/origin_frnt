@@ -111,6 +111,22 @@ export async function ensureCbtSchema(): Promise<void> {
           -- report-card feature. FALSE for every existing teacher.
           ALTER TABLE cbt.teachers ADD COLUMN IF NOT EXISTS report_cards_enabled BOOLEAN NOT NULL DEFAULT FALSE;
 
+          -- Participation quota (20260808): the ADMIN cap on cumulative test
+          -- participations. NULL = UNLIMITED, which is the grandfather rule —
+          -- every enforcement branch short-circuits on a null quota, so an
+          -- existing teacher is untouched until an admin sets a number.
+          -- The renewal policy (CBT is sold as a subscription): the current
+          -- window is DERIVED from (anchor, mode, days, now) at read time and
+          -- usage counts only ledger rows inside it, so the allowance returns to
+          -- 0 with no reset job and no stored window to drift.
+          ALTER TABLE cbt.teachers
+            ADD COLUMN IF NOT EXISTS participation_quota INTEGER,
+            ADD COLUMN IF NOT EXISTS quota_updated_at    TIMESTAMPTZ,
+            ADD COLUMN IF NOT EXISTS quota_notified_at   TIMESTAMPTZ,
+            ADD COLUMN IF NOT EXISTS quota_reset_mode    TEXT NOT NULL DEFAULT 'none',
+            ADD COLUMN IF NOT EXISTS quota_period_days   INTEGER,
+            ADD COLUMN IF NOT EXISTS quota_period_anchor TIMESTAMPTZ;
+
           CREATE TABLE IF NOT EXISTS cbt.tests (
             id               TEXT PRIMARY KEY,
             teacher_id       TEXT NOT NULL REFERENCES cbt.teachers(id) ON DELETE CASCADE,
@@ -275,6 +291,30 @@ export async function ensureCbtSchema(): Promise<void> {
                 ADD CONSTRAINT cbt_rooms_rejoin_policy_check
                 CHECK (rejoin_policy IN ('name_or_id', 'id_only')) NOT VALID;
             END IF;
+
+            -- 20260808: a quota of 0 would mean "blocked forever" (that is what
+            -- disabling the teacher is for); NULL is how "no cap" is expressed.
+            IF NOT EXISTS (
+              SELECT 1 FROM pg_constraint WHERE conname = 'cbt_teachers_participation_quota_check'
+            ) THEN
+              ALTER TABLE cbt.teachers
+                ADD CONSTRAINT cbt_teachers_participation_quota_check
+                CHECK (participation_quota IS NULL OR participation_quota > 0) NOT VALID;
+            END IF;
+
+            -- A renewing mode needs an anchor to renew from; mode 'days' needs
+            -- a length.
+            IF NOT EXISTS (
+              SELECT 1 FROM pg_constraint WHERE conname = 'cbt_teachers_quota_reset_check'
+            ) THEN
+              ALTER TABLE cbt.teachers
+                ADD CONSTRAINT cbt_teachers_quota_reset_check
+                CHECK (
+                  quota_reset_mode IN ('none', 'monthly', 'days')
+                  AND (quota_reset_mode = 'none' OR quota_period_anchor IS NOT NULL)
+                  AND (quota_reset_mode <> 'days' OR (quota_period_days IS NOT NULL AND quota_period_days > 0))
+                ) NOT VALID;
+            END IF;
           END $$;
         `);
 
@@ -295,6 +335,8 @@ export async function ensureCbtSchema(): Promise<void> {
           "INSERT INTO app.migrations (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING",
           ["20260804_cbt_report_cards", "cbt sectional marking + report cards"],
         );
+        // Only the cbt.teachers columns of 20260808 are applied here; the two
+        // new tables live in ensureCbtQuotaSchema, which records the receipt.
         await client.query("COMMIT");
         globalThis.__originCbtSchemaEnsured = true;
       } catch (error) {

@@ -123,6 +123,9 @@ test("CBT surfaces classify as role/public per the mutual-lockout design", () =>
   assert.deepEqual(getAppRoutePolicy("/cbt"), { kind: "role", roles: ["cbt_teacher"] });
   assert.deepEqual(getApiRoutePolicy("/api/cbt/health"), { kind: "role", roles: ["cbt_teacher"] });
   assert.deepEqual(getApiRoutePolicy("/api/cbt/rooms"), { kind: "role", roles: ["cbt_teacher"] });
+  // Participation quota: the teacher-facing endpoint inherits the same role
+  // prefix, so the feature needed no route-policy edit. Asserted, not assumed.
+  assert.deepEqual(getApiRoutePolicy("/api/cbt/quota"), { kind: "role", roles: ["cbt_teacher"] });
   // Public exceptions inside the role-gated /cbt app tree.
   assert.equal(getAppRoutePolicy("/cbt/login").kind, "public");
   assert.equal(getAppRoutePolicy("/cbt/r/abcd1234").kind, "public");

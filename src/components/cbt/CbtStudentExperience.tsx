@@ -26,7 +26,7 @@ function Centered({ children }: { children: React.ReactNode }) {
   return <div className="neu-raised w-full max-w-sm space-y-6 rounded-3xl p-6 text-center">{children}</div>;
 }
 
-function Inner() {
+function Inner({ quotaBlocked }: { quotaBlocked: boolean }) {
   const { phase } = useCbtRoom();
 
   // The player owns the full viewport (fullscreen, its own header/timer).
@@ -36,12 +36,12 @@ function Inner() {
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center neu-surface p-6">
-      <PhaseCard />
+      <PhaseCard quotaBlocked={quotaBlocked} />
     </main>
   );
 }
 
-function PhaseCard() {
+function PhaseCard({ quotaBlocked }: { quotaBlocked: boolean }) {
   const { phase, studentCode, slug, roomName, markJoined, rememberedStudentCode } = useCbtRoom();
 
   if (phase === "checking") {
@@ -54,6 +54,7 @@ function PhaseCard() {
         slug={slug}
         roomName={roomName}
         rememberedStudentCode={rememberedStudentCode}
+        quotaBlocked={quotaBlocked}
         onJoined={markJoined}
       />
     );
@@ -242,12 +243,19 @@ export function CbtStudentExperience({
   roomName,
   instituteName = null,
   instituteLogo = null,
+  quotaBlocked = false,
 }: {
   slug: string;
   roomId: string;
   roomName: string;
   instituteName?: string | null;
   instituteLogo?: string | null;
+  /**
+   * The institute's participation limit leaves no seat for a new student. Only
+   * the Join half of the entry card is closed — Resume stays open so anyone who
+   * already holds a seat can get back into their own paper.
+   */
+  quotaBlocked?: boolean;
 }) {
   return (
     <CbtRoomProvider
@@ -257,7 +265,7 @@ export function CbtStudentExperience({
       instituteName={instituteName}
       instituteLogo={instituteLogo}
     >
-      <Inner />
+      <Inner quotaBlocked={quotaBlocked} />
     </CbtRoomProvider>
   );
 }

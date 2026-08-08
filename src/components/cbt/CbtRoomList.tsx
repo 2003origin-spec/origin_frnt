@@ -9,6 +9,8 @@ import { mutateJson } from "@/lib/csrf";
 import type { CbtRoom } from "@/lib/cbt/room-model";
 
 import { CbtRoomCreateDialog } from "./CbtRoomCreateDialog";
+import { CbtQuotaBanner } from "./CbtQuotaBanner";
+import type { CbtQuotaClientState } from "./quota-client";
 
 type RoomRow = CbtRoom & { participantCount: number };
 
@@ -19,7 +21,14 @@ const STATUS_LABEL: Record<CbtRoom["status"], string> = {
   closed: "Closed",
 };
 
-export function CbtRoomList({ initialRooms }: { initialRooms: RoomRow[] }) {
+export function CbtRoomList({
+  initialRooms,
+  quota = null,
+}: {
+  initialRooms: RoomRow[];
+  /** Participation-quota state; `null` (or no cap) hides every quota surface. */
+  quota?: CbtQuotaClientState | null;
+}) {
   const router = useRouter();
   const [rooms, setRooms] = useState(initialRooms);
   const [pending, startTransition] = useTransition();
@@ -44,8 +53,10 @@ export function CbtRoomList({ initialRooms }: { initialRooms: RoomRow[] }) {
           <h1 className="text-xl font-semibold">Rooms</h1>
           <p className="text-sm text-muted-foreground">Live sessions students join with a link + code.</p>
         </div>
-        <CbtRoomCreateDialog />
+        <CbtRoomCreateDialog remainingSeats={quota?.enforced ? quota.remaining : null} />
       </div>
+
+      <CbtQuotaBanner initial={quota} />
 
       {rooms.length === 0 ? (
         <p className="neu-inset rounded-2xl border border-dashed border-border/50 py-12 text-center text-sm text-muted-foreground">
