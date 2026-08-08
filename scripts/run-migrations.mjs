@@ -68,6 +68,10 @@ const MIGRATIONS = [
   // share before the first exists; both are additive and idempotent.
   { file: "20260808_teacher_dpp_shares.sql", target: "user" },
   { file: "20260808_dpp_plans_teacher_origin.sql", target: "ogcode" },
+  // Teacher DPP scoring + batch leaderboards — 2026-08-08. Marks snapshot on
+  // the share (user) + scored, batch-stamped attempts (ogcode).
+  { file: "20260808_teacher_dpp_scoring.sql", target: "user" },
+  { file: "20260808_dpp_attempt_scoring.sql", target: "ogcode" },
 ];
 
 const TARGET_ENV = {

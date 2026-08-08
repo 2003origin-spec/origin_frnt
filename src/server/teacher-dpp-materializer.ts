@@ -38,6 +38,7 @@ export function toMaterializations(
     .map((share) => ({
       shareId: share.shareId,
       workspaceId: share.workspaceId,
+      batchId: share.batchId,
       title: share.title,
       subject: share.subject,
       summary:

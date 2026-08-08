@@ -25,7 +25,12 @@ import {
 } from "./teacher-dpp-store";
 import { getTestWithQuestions } from "./tests-store";
 import { getWorkspaceById } from "./store";
-import type { TeacherDppShare, TeacherDppShareForStudent, TestQuestion } from "./types";
+import type {
+  TeacherDppQuestionMarks,
+  TeacherDppShare,
+  TeacherDppShareForStudent,
+  TestQuestion,
+} from "./types";
 
 /** A shared DPP lives for 30 days, then the sweeper removes it. */
 export const TEACHER_DPP_LIFETIME_DAYS = 30;
@@ -47,9 +52,24 @@ export function isTestShareableAsDpp(status: string): boolean {
  * (dpp_id, position) and a repeated question would render twice.
  */
 export function resolveShareQuestionIds(questions: TestQuestion[]): string[] {
+  return resolveShareQuestions(questions).questionIds;
+}
+
+/**
+ * Ordered question-id snapshot PLUS the per-question marks the teacher assigned
+ * in the source test (decision D1), so a correct answer in the shared DPP is
+ * worth exactly what it was worth in the test. The two arrays are parallel by
+ * construction — they are built in the same pass, which is what the scoring
+ * override relies on.
+ */
+export function resolveShareQuestions(questions: TestQuestion[]): {
+  questionIds: string[];
+  questionMarks: TeacherDppQuestionMarks[];
+} {
   const ordered = [...questions].sort((a, b) => a.position - b.position);
   const seen = new Set<string>();
-  const ids: string[] = [];
+  const questionIds: string[] = [];
+  const questionMarks: TeacherDppQuestionMarks[] = [];
   for (const question of ordered) {
     const id =
       question.sourceBank === "ogcode"
@@ -57,9 +77,15 @@ export function resolveShareQuestionIds(questions: TestQuestion[]): string[] {
         : question.contentQuestionId;
     if (!id || seen.has(id)) continue;
     seen.add(id);
-    ids.push(id);
+    questionIds.push(id);
+    questionMarks.push({
+      m: Number.isFinite(question.marks) ? question.marks : 4,
+      // Stored as-is: a teacher who set 0 negative marks gets no negative
+      // marking in the DPP either. Their number always wins (decision D2).
+      n: Number.isFinite(question.negativeMarks) ? question.negativeMarks : 0,
+    });
   }
-  return ids;
+  return { questionIds, questionMarks };
 }
 
 /**
@@ -132,7 +158,7 @@ export async function shareTestAsDpp(input: {
     throw new AuthzError(400, "Publish the test before sharing it as a DPP.");
   }
 
-  const questionIds = resolveShareQuestionIds(test.questions);
+  const { questionIds, questionMarks } = resolveShareQuestions(test.questions);
   if (questionIds.length === 0) {
     throw new AuthzError(400, "This test has no questions to share.");
   }
@@ -171,6 +197,7 @@ export async function shareTestAsDpp(input: {
     summary: test.description,
     durationMinutes: test.durationMinutes,
     questionIds,
+    questionMarks,
     teacherDisplayName: branding.displayName,
     teacherLogoUrl: branding.logoUrl,
     sharedBy: input.actorUserId,

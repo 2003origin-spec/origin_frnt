@@ -103,6 +103,25 @@ type DeepProfile = {
   strengths: TopicRow[];
   weaknesses: TopicRow[];
   testHistory: TestRow[];
+  /** Shared-DPP + OG Code practice — effort alongside outcome. */
+  practice: {
+    dppsCompleted: number;
+    dppScore: number;
+    dppTotalMarks: number;
+    dppAccuracy: number | null;
+    ogcodeScore: number;
+    ogcodeQuestions: number;
+    history: Array<{
+      dppId: string;
+      title: string;
+      subject: string;
+      score: number;
+      totalMarks: number;
+      percentage: number | null;
+      timeTakenSeconds: number;
+      completedAt: string;
+    }>;
+  };
   timeAnalytics: Array<{
     date: string;
     dayName: string;
@@ -503,6 +522,89 @@ export function StudentProfilePanel({ workspaceId, studentId, onClose }: Props) 
                   ) : null}
                 </div>
               ) : null}
+
+              {/* Practice record — the effort half of the picture. Kept next to
+                  test history so a teacher reads outcome and effort together. */}
+              <Panel
+                title="Practice record"
+                description={`${profile.practice.dppsCompleted} DPP${
+                  profile.practice.dppsCompleted === 1 ? "" : "s"
+                } · ${profile.practice.ogcodeQuestions} OG Code questions`}
+              >
+                <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+                  <MetricTile
+                    label="DPP score"
+                    value={
+                      profile.practice.dppTotalMarks > 0
+                        ? `${profile.practice.dppScore}/${profile.practice.dppTotalMarks}`
+                        : "—"
+                    }
+                    hint="Marks across your shared DPPs"
+                  />
+                  <MetricTile
+                    label="DPP accuracy"
+                    value={formatPercent(profile.practice.dppAccuracy, 1)}
+                    tone={scoreTone(profile.practice.dppAccuracy)}
+                    hint="Scored ÷ available"
+                  />
+                  <MetricTile
+                    label="OG Code score"
+                    value={profile.practice.ogcodeScore.toLocaleString("en-IN")}
+                    hint="Self-directed, all-time"
+                  />
+                  <MetricTile
+                    label="OG Code solved"
+                    value={profile.practice.ogcodeQuestions.toLocaleString("en-IN")}
+                    hint="Questions attempted"
+                  />
+                </div>
+                {profile.practice.history.length === 0 ? (
+                  <AnalyticsEmptyState
+                    icon={ClipboardList}
+                    title="No DPP practice yet"
+                    description="Share a test as a DPP with this student's batch — their scored attempts appear here."
+                  />
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse text-left">
+                      <thead>
+                        <tr className="border-b text-[0.65rem] uppercase tracking-wider text-muted-foreground">
+                          <th className="py-2 pr-3 font-semibold">DPP</th>
+                          <th className="px-2 py-2 font-semibold">Date</th>
+                          <th className="px-2 py-2 text-center font-semibold">Score</th>
+                          <th className="px-2 py-2 text-center font-semibold">%</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y text-xs">
+                        {profile.practice.history.map((dpp) => (
+                          <tr key={dpp.dppId} className="hover:bg-muted/30">
+                            <td className="max-w-[12rem] truncate py-2.5 pr-3 font-semibold">
+                              {dpp.title}
+                            </td>
+                            <td className="px-2 py-2.5 text-[0.7rem] text-muted-foreground">
+                              {new Date(dpp.completedAt).toLocaleDateString("en-IN", {
+                                day: "numeric",
+                                month: "short",
+                              })}
+                            </td>
+                            <td className="px-2 py-2.5 text-center font-mono tabular-nums text-muted-foreground">
+                              {dpp.score}/{dpp.totalMarks}
+                            </td>
+                            <td
+                              className={cn(
+                                "px-2 py-2.5 text-center font-mono font-bold tabular-nums",
+                                TONE_TEXT[scoreTone(dpp.percentage)],
+                              )}
+                            >
+                              {dpp.percentage === null ? "—" : `${Math.round(dpp.percentage)}%`}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </Panel>
 
               {/* Test history */}
               <Panel title="Test history" description={`${profile.testHistory.length} submitted`}>

@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
-import { AnalyticsCenterHighFidelity } from "@/components/teacher/AnalyticsCenterHighFidelity";
+import { AnalyticsBatchScope } from "@/components/teacher/AnalyticsBatchScope";
+import { isFeatureEnabled } from "@/lib/feature-flags";
 import { listBatches } from "@/server/workspaces/batches";
 import { loadWorkspaceForRender } from "@/server/workspaces/server-loader";
 
@@ -22,20 +23,20 @@ export default async function WorkspaceAnalyticsPage({ params }: Props) {
     );
   }
 
-  const defaultBatchId = batches[0].id;
-
   return (
     <div className="space-y-6 max-w-6xl mx-auto animate-fade-in">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Performance Analytics</h1>
         <p className="text-muted-foreground text-sm mt-1">
-          Monitor subject mastery levels, identify chapter weakness clusters, and issue remedial worksheets.
+          Pick a batch to see its subject mastery, weak-chapter clusters, and how its students rank
+          on tests taken and practice done.
         </p>
       </div>
 
-      <AnalyticsCenterHighFidelity
+      <AnalyticsBatchScope
         workspaceId={workspaceId}
-        batchId={defaultBatchId}
+        batches={batches}
+        analyticsEnabled={isFeatureEnabled("teacherDeepAnalytics")}
       />
     </div>
   );

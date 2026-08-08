@@ -81,6 +81,16 @@ export async function ensureTeacherDppSchema(): Promise<void> {
             ON assessment.teacher_dpp_share_batches(batch_id);
         `);
 
+        // Marks snapshot parallel to question_ids — a correct answer in the
+        // shared DPP is worth what it was worth in the teacher's test. NULL on
+        // shares created before this column existed; those fall back to the
+        // default practice policy rather than re-scoring.
+        // Mirrors 20260808_teacher_dpp_scoring.sql.
+        await client.query(`
+          ALTER TABLE assessment.teacher_dpp_shares
+            ADD COLUMN IF NOT EXISTS question_marks JSONB;
+        `);
+
         await recordMigration(client);
         await client.query("COMMIT");
         globalThis.__originTeacherDppSchemaEnsured = true;

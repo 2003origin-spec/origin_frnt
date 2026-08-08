@@ -28,6 +28,7 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { BatchChat } from "@/components/batch/BatchChat";
 import { BatchAnalyticsDeepDive } from "@/components/teacher/BatchAnalyticsDeepDive";
+import { BatchLeaderboardPanel } from "@/components/teacher/BatchLeaderboardPanel";
 import { apiJson } from "@/lib/teacher-client";
 import type { Batch, StudyMaterialWithAssets, AssessmentTest } from "@/server/workspaces/types";
 import type { SyllabusTree, SyllabusStatus } from "@/server/workspaces/syllabus-store";
@@ -46,7 +47,7 @@ type Props = {
   studentCount?: number;
 };
 
-type ActiveTab = "syllabus" | "tests" | "materials" | "messages" | "analytics";
+type ActiveTab = "syllabus" | "tests" | "materials" | "messages" | "analytics" | "leaderboard";
 
 export function BatchPlannerHighFidelity({ workspaceId, batch, materials: initialMaterials, tests, syllabus: initialSyllabus, canManage, analyticsEnabled = false, studentCount = 0 }: Props) {
   const router = useRouter();
@@ -308,6 +309,17 @@ export function BatchPlannerHighFidelity({ workspaceId, batch, materials: initia
             }`}
           >
             Analytics
+          </Button>
+        )}
+        {analyticsEnabled && (
+          <Button
+            variant="ghost"
+            onClick={() => setActiveTab("leaderboard")}
+            className={`h-11 px-6 rounded-none border-b-2 font-bold ${
+              activeTab === "leaderboard" ? "border-primary text-primary" : "border-transparent text-muted-foreground"
+            }`}
+          >
+            Leaderboard
           </Button>
         )}
       </div>
@@ -580,6 +592,15 @@ export function BatchPlannerHighFidelity({ workspaceId, batch, materials: initia
 
         {/* Mounted only while selected, so its two analytics requests are not
             paid for by teachers who never open the tab. */}
+        {/* Mounted only when opened, for the same reason as the Analytics tab:
+            the leaderboard fires live aggregate queries against the analytics
+            pool and must not be paid for by teachers who never open it. */}
+        {activeTab === "leaderboard" && analyticsEnabled && (
+          <div className="animate-fade-in">
+            <BatchLeaderboardPanel workspaceId={workspaceId} batchId={batch.id} />
+          </div>
+        )}
+
         {activeTab === "analytics" && analyticsEnabled && (
           <div className="animate-fade-in">
             <BatchAnalyticsDeepDive

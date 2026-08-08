@@ -143,6 +143,8 @@ function share(overrides: Partial<TeacherDppShareForStudent>): TeacherDppShareFo
   return {
     shareId: "tdshare_1",
     workspaceId: "ws_1",
+    batchId: "batch_1",
+    questionMarks: null,
     title: "Kinematics Drill",
     subject: "physics",
     summary: null,
