@@ -24,9 +24,20 @@ import {
   type ScoreBucket,
 } from "@/lib/teacher-analytics";
 
-import { listBatches } from "./batches";
+import { isFeatureEnabled } from "@/lib/feature-flags";
+
+import { listBatches, listBatchMembers } from "./batches";
+import {
+  rankPractitioners,
+  summarisePractice,
+  type PracticeLeaderboardEntry,
+  type PracticeLeaderboardSummary,
+  type PracticeRankBasis,
+} from "./practice-leaderboard";
 import {
   getBatchLeaderboardLive,
+  getBatchPracticeLeaderboardLive,
+  getStudentPracticeProfileLive,
   getBatchStudentMasteryLive,
   getBatchTestTimelineLive,
   getBatchTopicAccuracyLive,
@@ -39,6 +50,7 @@ import {
   type BatchTopicSnapshotLite,
   type StudentSubjectAccuracy,
   type StudentTestHistoryEntry,
+  type StudentPracticeProfile,
   type StudentTopicProfileLite,
 } from "./batch-cohort-store";
 import {
@@ -349,6 +361,69 @@ export async function getBatchDeepAnalytics(
   };
 }
 
+// ─── Batch leaderboards (performers + practitioners) ──────────────────────────
+
+export type BatchLeaderboards = {
+  /** Ranked on TESTS the batch has sat — outcome. */
+  performers: BatchLeaderboardEntryLite[];
+  /** Ranked on PRACTICE — the teacher's shared DPPs plus OG Code — effort. */
+  practitioners: PracticeLeaderboardEntry[];
+  practiceSummary: PracticeLeaderboardSummary;
+  /** Which key the practitioner board was ranked on. */
+  basis: PracticeRankBasis;
+  /** False when teacherDppShare is off — the UI hides the practice half. */
+  practiceEnabled: boolean;
+};
+
+/**
+ * Both boards for one batch.
+ *
+ * They are deliberately two separate rankings rather than one blended score:
+ * test performance and practice effort answer different questions, and the
+ * student a teacher most wants to find is usually the one who ranks high on one
+ * and low on the other. Collapsing them would hide exactly that contrast.
+ *
+ * The batch roster comes from the USER pool and is passed into the practice
+ * query, which runs entirely in the OGCODE pool — no cross-pool join.
+ */
+export async function getBatchLeaderboards(
+  workspaceId: string,
+  batchId: string,
+  basis: PracticeRankBasis = "combined",
+): Promise<BatchLeaderboards> {
+  const practiceEnabled = isFeatureEnabled("teacherDppShare");
+
+  const [performers, members] = await Promise.all([
+    safe(() => getBatchLeaderboardLive(workspaceId, batchId), [], "batch leaderboard"),
+    practiceEnabled
+      ? safe(() => listBatchMembers(workspaceId, batchId), [], "batch members")
+      : Promise.resolve([]),
+  ]);
+
+  const practiceRows = practiceEnabled
+    ? await safe(
+        () =>
+          getBatchPracticeLeaderboardLive(
+            workspaceId,
+            batchId,
+            members.map((member) => member.studentId),
+          ),
+        [],
+        "batch practice leaderboard",
+      )
+    : [];
+
+  const practitioners = rankPractitioners(practiceRows, basis);
+
+  return {
+    performers,
+    practitioners,
+    practiceSummary: summarisePractice(practitioners),
+    basis,
+    practiceEnabled,
+  };
+}
+
 /** One row of the batch ranking table — leaderboard ⋈ mastery ⋈ engagement. */
 export type BatchRosterRow = BatchLeaderboardEntryLite & {
   /** Mean TOPIC accuracy 0–100 — a different question from `meanPercentage`. */
@@ -436,6 +511,8 @@ export type StudentDeepProfile = {
   streak: StudentStreak | null;
   points: number;
   latestAnalysis: { summary: string; recommendations: string[]; testTitle: string } | null;
+  /** Shared-DPP + OG Code practice record — effort alongside outcome. */
+  practice: StudentPracticeProfile;
 };
 
 /** How many days the 360° contribution grid covers. */
@@ -457,13 +534,29 @@ export async function getStudentDeepProfile(
   const student = await getDirectoryStudent(workspaceId, studentId);
   if (!student) return null;
 
-  const [testHistory, subjects, topics, activity, streaks, points] = await Promise.all([
+  const emptyPractice: StudentPracticeProfile = {
+    dppsCompleted: 0,
+    dppScore: 0,
+    dppTotalMarks: 0,
+    dppAccuracy: null,
+    ogcodeScore: 0,
+    ogcodeQuestions: 0,
+    history: [],
+  };
+  const [testHistory, subjects, topics, activity, streaks, points, practice] = await Promise.all([
     safe(() => getStudentTestHistoryLive(workspaceId, studentId), [], "student test history"),
     safe(() => getStudentSubjectAccuracyLive(workspaceId, studentId), [], "student subjects"),
     safe(() => getStudentTopicProfileLive(workspaceId, studentId), [], "student topics"),
     safe(() => getDailyActivityForStudents([studentId], CONTRIBUTION_DAYS), [], "daily activity"),
     safe(() => getStreaksForStudents([studentId]), new Map<string, StudentStreak>(), "streaks"),
     safe(() => getPointsForStudents([studentId]), new Map(), "points"),
+    isFeatureEnabled("teacherDppShare")
+      ? safe(
+          () => getStudentPracticeProfileLive(workspaceId, studentId),
+          emptyPractice,
+          "student practice",
+        )
+      : Promise.resolve(emptyPractice),
   ]);
 
   const percentages = testHistory.map((t) => t.percentage);
@@ -494,6 +587,7 @@ export async function getStudentDeepProfile(
 
   return {
     student,
+    practice,
     kpis: {
       averagePercentage: roundOrNull(average(percentages)),
       bestPercentage: percentages.length ? roundOrNull(Math.max(...percentages)) : null,

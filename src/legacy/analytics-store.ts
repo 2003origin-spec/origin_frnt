@@ -144,6 +144,22 @@ CREATE INDEX IF NOT EXISTS idx_analytics_dpp_plans_origin
 CREATE INDEX IF NOT EXISTS idx_analytics_dpp_plans_teacher_share
   ON analytics.dpp_plans (teacher_share_id) WHERE teacher_share_id IS NOT NULL;
 
+-- Teacher DPP scoring: batch_id completes the cohort context already on this
+-- table (workspace_id / origin / teacher_share_id), so every teacher-facing
+-- practice aggregate is a dpp_attempts JOIN dpp_plans inside THIS pool. The
+-- score columns persist what buildAnalyticsAttempts already computes, making
+-- the practice leaderboard a SUM/AVG instead of a re-grade. NULL score means
+-- "attempted before scoring existed" and is excluded from ranking, not zeroed.
+-- Mirrors 20260808_dpp_attempt_scoring.sql.
+ALTER TABLE analytics.dpp_plans ADD COLUMN IF NOT EXISTS batch_id TEXT;
+CREATE INDEX IF NOT EXISTS idx_analytics_dpp_plans_batch
+  ON analytics.dpp_plans (workspace_id, batch_id, origin);
+ALTER TABLE analytics.dpp_attempts ADD COLUMN IF NOT EXISTS score DOUBLE PRECISION;
+ALTER TABLE analytics.dpp_attempts ADD COLUMN IF NOT EXISTS total_marks DOUBLE PRECISION;
+ALTER TABLE analytics.dpp_attempts ADD COLUMN IF NOT EXISTS percentage DOUBLE PRECISION;
+CREATE INDEX IF NOT EXISTS idx_analytics_dpp_attempts_plan_created
+  ON analytics.dpp_attempts (dpp_id, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS analytics.dpp_questions (
   dpp_id TEXT NOT NULL REFERENCES analytics.dpp_plans(id) ON DELETE CASCADE,
   question_id TEXT NOT NULL,
@@ -411,6 +427,15 @@ export type PersistDppAttemptInput = {
   response: AnalyticsDppAttemptResponse;
   analysisStatus?: "pending" | "complete" | "failed";
   analysisError?: string | null;
+  /**
+   * Marks-based result. Set for teacher-shared DPPs, where each question is
+   * worth what the teacher assigned it in the source test; null for auto DPPs,
+   * which have no teacher-defined mark scheme. Null is meaningful — it keeps
+   * the attempt out of the practice leaderboard instead of ranking it as zero.
+   */
+  score?: number | null;
+  totalMarks?: number | null;
+  percentage?: number | null;
 };
 
 function getPoolOrThrow() {
@@ -1147,6 +1172,8 @@ export async function getDppPlanDetail(userId: string, dppId: string): Promise<P
 export type TeacherDppMaterialization = {
   shareId: string;
   workspaceId: string;
+  /** Which of the share's batches this student came through (cohort stamp). */
+  batchId: string | null;
   title: string;
   subject: string;
   summary: string;
@@ -1191,9 +1218,10 @@ export async function materializeTeacherDppPlans(
            id, user_id, source_test_result_id, title, subject, summary,
            weak_topics, generated_from, duration_minutes, target_question_count,
            sequence, completed, workspace_id, provenance_note,
-           origin, teacher_share_id, teacher_display_name, teacher_logo_url, expires_at
+           origin, teacher_share_id, teacher_display_name, teacher_logo_url, expires_at,
+           batch_id
          ) VALUES ($1,$2,NULL,$3,$4,$5,'[]'::jsonb,'[]'::jsonb,$6,$7,1,false,$8,$9,
-                   'teacher',$10,$11,$12,$13)
+                   'teacher',$10,$11,$12,$13,$14)
          ON CONFLICT (id) DO NOTHING
          RETURNING id`,
         [
@@ -1210,6 +1238,7 @@ export async function materializeTeacherDppPlans(
           share.teacherDisplayName,
           share.teacherLogoUrl,
           share.expiresAt,
+          share.batchId,
         ],
       );
       if ((inserted.rowCount ?? 0) === 0) continue;
@@ -1319,9 +1348,11 @@ export async function persistDppAttemptResult(input: PersistDppAttemptInput): Pr
       `INSERT INTO analytics.dpp_attempts (
          id, user_id, dpp_id, title, source_test_result_id, focus_topics, time_taken_seconds,
          summary, recommendations, weak_topics, strong_topics, resolved_topics, still_weak_topics,
-         progress_score, completed, analysis_status, analysis_error, answers, created_at
+         progress_score, completed, analysis_status, analysis_error, answers, created_at,
+         score, total_marks, percentage
        ) VALUES (
-         $1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9::jsonb,$10::jsonb,$11::jsonb,$12::jsonb,$13::jsonb,$14,$15,$16,$17,$18::jsonb,$19
+         $1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9::jsonb,$10::jsonb,$11::jsonb,$12::jsonb,$13::jsonb,$14,$15,$16,$17,$18::jsonb,$19,
+         $20,$21,$22
        )
        ON CONFLICT (id) DO UPDATE SET
          title = EXCLUDED.title,
@@ -1338,7 +1369,10 @@ export async function persistDppAttemptResult(input: PersistDppAttemptInput): Pr
          completed = EXCLUDED.completed,
          analysis_status = EXCLUDED.analysis_status,
          analysis_error = EXCLUDED.analysis_error,
-         answers = EXCLUDED.answers`,
+         answers = EXCLUDED.answers,
+         score = EXCLUDED.score,
+         total_marks = EXCLUDED.total_marks,
+         percentage = EXCLUDED.percentage`,
       [
         attemptId,
         input.userId,
@@ -1359,6 +1393,9 @@ export async function persistDppAttemptResult(input: PersistDppAttemptInput): Pr
         input.analysisError ?? null,
         JSON.stringify(input.answers),
         createdAt,
+        input.score ?? null,
+        input.totalMarks ?? null,
+        input.percentage ?? null,
       ],
     );
     await client.query(`UPDATE analytics.dpp_plans SET completed = $2 WHERE id = $1`, [

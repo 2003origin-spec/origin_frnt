@@ -767,6 +767,17 @@ export type InstitutePublicProfile = {
 // ─── Teacher test → batch DPP share ────────────────────────────────────────────
 // V1/allmd/TEACHER_TEST_AS_DPP_PLAN.md
 
+/**
+ * Per-question marks snapshotted from the teacher's test, parallel to
+ * `questionIds`. Short keys because this is stored as JSONB per share.
+ */
+export type TeacherDppQuestionMarks = {
+  /** Marks for a correct answer. */
+  m: number;
+  /** Marks for a wrong answer — the test's own negative marking (usually ≤ 0). */
+  n: number;
+};
+
 /** One "share this test as a DPP" action, targeting one or more batches. */
 export type TeacherDppShare = {
   id: string;
@@ -779,6 +790,11 @@ export type TeacherDppShare = {
   durationMinutes: number;
   /** Ordered question-id snapshot — a later test edit cannot mutate a live DPP. */
   questionIds: string[];
+  /**
+   * Per-question marks, parallel to `questionIds`. Null on shares created
+   * before scoring existed — those fall back to the default practice policy.
+   */
+  questionMarks: TeacherDppQuestionMarks[] | null;
   /** Institute branding snapshotted at share time (logo optional). */
   teacherDisplayName: string;
   teacherLogoUrl: string | null;
@@ -794,11 +810,19 @@ export type TeacherDppShare = {
 export type TeacherDppShareForStudent = {
   shareId: string;
   workspaceId: string;
+  /**
+   * Which of the share's batches this student came through. Stamped onto the
+   * materialized plan so every teacher-facing practice aggregate can join
+   * inside the analytics pool. A student in two of the share's batches resolves
+   * to one deterministic batch, so their score is never double-counted.
+   */
+  batchId: string | null;
   title: string;
   subject: string;
   summary: string | null;
   durationMinutes: number;
   questionIds: string[];
+  questionMarks: TeacherDppQuestionMarks[] | null;
   teacherDisplayName: string;
   teacherLogoUrl: string | null;
   expiresAt: string;

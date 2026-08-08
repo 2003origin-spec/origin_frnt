@@ -47,6 +47,7 @@ import {
   gradeAssessmentBatchWithService,
   gradePracticeAnswerWithService,
   type AssessmentBatchGradeResult,
+  type GraderScoringPolicy,
 } from "@/server/grader-client";
 import {
   DEFAULT_TEST_SCORING_POLICY,
@@ -136,6 +137,11 @@ import {
   canStudentUseTeacherDpp,
   syncTeacherDppsForStudent,
 } from "@/server/teacher-dpp-materializer";
+import {
+  buildTeacherDppScoringOverrides,
+  safePercentage,
+} from "@/server/teacher-dpp-scoring";
+import { getTeacherDppScoringSnapshot } from "@/server/workspaces/teacher-dpp-store";
 import {
   getOptionDisplayOrder,
   presentOptions,
@@ -2766,7 +2772,16 @@ async function buildAnalyticsAttempts(
   answersMap: Map<string, StoredUserAnswer>,
   presentationContext: Pick<QuestionPresentationContext, "scope" | "assessmentId">,
   sourceType: AssessmentSourceType,
+  /**
+   * Per-question scoring overrides. Used by teacher-shared DPPs, where each
+   * question is worth the marks the teacher gave it in the source test instead
+   * of the flat platform default. A question absent from the map keeps the
+   * default policy, so a partial snapshot degrades rather than zero-scores.
+   */
+  policyOverrides?: Map<string, GraderScoringPolicy> | null,
 ) {
+  const policyFor = (question: StoredQuestion): GraderScoringPolicy =>
+    policyOverrides?.get(question.id) ?? scoringPolicyForQuestion(question, sourceType);
   const questionLookup = await buildQuestionLookup(store, questionIds);
   const resolvedQuestionIds = questionIds.filter((questionId) => questionLookup.has(questionId));
   const preparedRows = resolvedQuestionIds.map((questionId) => {
@@ -2795,7 +2810,7 @@ async function buildAnalyticsAttempts(
         question,
         answer,
         attemptRef: question.id,
-        scoringPolicy: scoringPolicyForQuestion(question, sourceType),
+        scoringPolicy: policyFor(question),
       })),
     });
   } catch (error) {
@@ -2847,14 +2862,24 @@ async function buildAnalyticsAttempts(
     const answered = hasResponse(answer);
     const grade = remoteGradeMap.get(question.id) ?? gradeAnswer(question, answer, sourceType);
     const isCorrect = grade.isCorrect;
-    const policy = scoringPolicyForQuestion(question, sourceType);
-    const maxMarks = grade.maxMarks ?? policy.correctMarks;
-    const marksAwarded = grade.marksAwarded ?? computeMarksFromCredit({
-      answered,
-      isCorrect,
-      creditAwarded: grade.creditAwarded,
-      policy,
-    });
+    const policy = policyFor(question);
+    // With a teacher mark scheme the policy IS the authority on what the
+    // question is worth, so an override must win over whatever max the remote
+    // grader assumed from the platform default.
+    const maxMarks = policyOverrides?.has(question.id)
+      ? policy.correctMarks
+      : grade.maxMarks ?? policy.correctMarks;
+    // Same reasoning as maxMarks: the remote grader computed its marksAwarded
+    // against the platform default, so under a teacher mark scheme it must be
+    // recomputed locally from the credit it returned.
+    const marksAwarded = policyOverrides?.has(question.id)
+      ? computeMarksFromCredit({ answered, isCorrect, creditAwarded: grade.creditAwarded, policy })
+      : grade.marksAwarded ?? computeMarksFromCredit({
+          answered,
+          isCorrect,
+          creditAwarded: grade.creditAwarded,
+          policy,
+        });
     const creditAwarded = grade.creditAwarded ?? (isCorrect ? 1 : 0);
 
     totalMarks += maxMarks;
@@ -4126,6 +4151,29 @@ export async function submitGeneratedDpp(
     }
   });
 
+  // Teacher-shared DPP: score each question at the marks the teacher assigned
+  // it in the source test, instead of the flat practice default. Best-effort —
+  // if the snapshot cannot be read the DPP still grades on the default policy
+  // rather than failing the student's submission.
+  let scoringOverrides: Map<string, GraderScoringPolicy> | null = null;
+  if (plan.origin === "teacher" && plan.teacherShareId) {
+    try {
+      const snapshot = await getTeacherDppScoringSnapshot(plan.teacherShareId);
+      if (snapshot) {
+        scoringOverrides = buildTeacherDppScoringOverrides(
+          snapshot.questionIds,
+          snapshot.questionMarks,
+        );
+      }
+    } catch (error) {
+      console.error("[teacher-dpp] scoring snapshot lookup failed", {
+        dppId,
+        shareId: plan.teacherShareId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   const analytics = await buildAnalyticsAttempts(
     store,
     user.id,
@@ -4136,6 +4184,7 @@ export async function submitGeneratedDpp(
       assessmentId: dppId,
     },
     "dpp",
+    scoringOverrides,
   );
   const timeTakenSeconds = payload.timeTaken ?? payload.time_taken ?? 0;
   const progressScore =
@@ -4171,6 +4220,17 @@ export async function submitGeneratedDpp(
     response: pendingResponse,
     analysisStatus: "pending",
     analysisError: null,
+    // Marks-based result, persisted only for teacher-shared DPPs. Auto DPPs
+    // keep NULL: they have no teacher mark scheme, and a NULL here is what
+    // keeps them out of the teacher's practice leaderboard (rather than
+    // ranking them as a zero score).
+    ...(scoringOverrides
+      ? {
+          score: analytics.score,
+          totalMarks: analytics.totalMarks,
+          percentage: safePercentage(analytics.score, analytics.totalMarks),
+        }
+      : {}),
   };
   // ODG Phase 3: a Question-Bag-sourced DPP carries its owning workspace; the
   // workspace owner is the teacher credited when this DPP resolves weak topics.

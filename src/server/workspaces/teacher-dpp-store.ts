@@ -10,7 +10,11 @@
 import { getUserPostgresPool } from "@/server/user-postgres";
 
 import { ensureTeacherDppSchema } from "./teacher-dpp-schema";
-import type { TeacherDppShare, TeacherDppShareForStudent } from "./types";
+import type {
+  TeacherDppQuestionMarks,
+  TeacherDppShare,
+  TeacherDppShareForStudent,
+} from "./types";
 
 function pool() {
   const p = getUserPostgresPool();
@@ -44,6 +48,29 @@ function toStringArray(value: unknown): string[] {
   return [];
 }
 
+/**
+ * Reads the per-question marks snapshot. NULL (a share created before scoring
+ * existed) stays null so the caller can fall back to the default practice
+ * policy rather than silently scoring everything as zero.
+ */
+export function toQuestionMarks(value: unknown): TeacherDppQuestionMarks[] | null {
+  const raw =
+    typeof value === "string"
+      ? (() => {
+          try {
+            return JSON.parse(value) as unknown;
+          } catch {
+            return null;
+          }
+        })()
+      : value;
+  if (!Array.isArray(raw)) return null;
+  return raw.map((entry) => {
+    const row = (entry ?? {}) as { m?: unknown; n?: unknown };
+    return { m: Number(row.m) || 0, n: Number(row.n) || 0 };
+  });
+}
+
 function rowToShare(row: Record<string, unknown>): TeacherDppShare {
   return {
     id: String(row.id),
@@ -54,6 +81,7 @@ function rowToShare(row: Record<string, unknown>): TeacherDppShare {
     summary: (row.summary as string | null) ?? null,
     durationMinutes: Number(row.duration_minutes ?? 0),
     questionIds: toStringArray(row.question_ids),
+    questionMarks: toQuestionMarks(row.question_marks),
     teacherDisplayName: String(row.teacher_display_name),
     teacherLogoUrl: (row.teacher_logo_url as string | null) ?? null,
     sharedBy: String(row.shared_by),
@@ -73,6 +101,7 @@ export type CreateTeacherDppShareInput = {
   summary: string | null;
   durationMinutes: number;
   questionIds: string[];
+  questionMarks: TeacherDppQuestionMarks[];
   teacherDisplayName: string;
   teacherLogoUrl: string | null;
   sharedBy: string;
@@ -90,8 +119,9 @@ export async function insertTeacherDppShare(
     await client.query(
       `INSERT INTO assessment.teacher_dpp_shares (
          id, workspace_id, test_id, title, subject, summary, duration_minutes,
-         question_ids, teacher_display_name, teacher_logo_url, shared_by, expires_at
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12)`,
+         question_ids, teacher_display_name, teacher_logo_url, shared_by, expires_at,
+         question_marks
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12,$13::jsonb)`,
       [
         input.id,
         input.workspaceId,
@@ -105,6 +135,7 @@ export async function insertTeacherDppShare(
         input.teacherLogoUrl,
         input.sharedBy,
         input.expiresAt,
+        JSON.stringify(input.questionMarks),
       ],
     );
     for (const batchId of input.batchIds) {
@@ -131,6 +162,7 @@ export async function insertTeacherDppShare(
     summary: input.summary,
     durationMinutes: input.durationMinutes,
     questionIds: input.questionIds,
+    questionMarks: input.questionMarks,
     teacherDisplayName: input.teacherDisplayName,
     teacherLogoUrl: input.teacherLogoUrl,
     sharedBy: input.sharedBy,
@@ -239,8 +271,9 @@ export async function listActiveTeacherDppSharesForStudent(
   const result = await pool().query(
     `SELECT DISTINCT ON (s.id)
             s.id, s.workspace_id, s.title, s.subject, s.summary,
-            s.duration_minutes, s.question_ids, s.teacher_display_name,
-            s.teacher_logo_url, s.expires_at
+            s.duration_minutes, s.question_ids, s.question_marks,
+            s.teacher_display_name, s.teacher_logo_url, s.expires_at,
+            sb.batch_id
        FROM assessment.teacher_dpp_shares s
        JOIN assessment.teacher_dpp_share_batches sb ON sb.share_id = s.id
        JOIN app.batches b
@@ -256,17 +289,22 @@ export async function listActiveTeacherDppSharesForStudent(
         AND e.status IN ('active', 'unassigned')
       WHERE s.revoked_at IS NULL
         AND s.expires_at > NOW()
-      ORDER BY s.id, s.expires_at DESC`,
+      -- batch_id ASC makes the cohort stamp deterministic for a student who is
+      -- in two of the share's batches: they land in exactly one board rather
+      -- than being counted twice.
+      ORDER BY s.id, sb.batch_id ASC`,
     [studentId],
   );
   return result.rows.map((row) => ({
     shareId: String(row.id),
     workspaceId: String(row.workspace_id),
+    batchId: row.batch_id ? String(row.batch_id) : null,
     title: String(row.title),
     subject: String(row.subject),
     summary: (row.summary as string | null) ?? null,
     durationMinutes: Number(row.duration_minutes ?? 0),
     questionIds: toStringArray(row.question_ids),
+    questionMarks: toQuestionMarks(row.question_marks),
     teacherDisplayName: String(row.teacher_display_name),
     teacherLogoUrl: (row.teacher_logo_url as string | null) ?? null,
     // MUST be ISO — the materializer writes this straight back as a TIMESTAMPTZ.
@@ -308,6 +346,30 @@ export async function isStudentEligibleForTeacherDppShare(
     [shareId, studentId],
   );
   return (result.rowCount ?? 0) > 0;
+}
+
+/**
+ * The marks snapshot for one share, for scoring a submission. Deliberately a
+ * narrow read — the submit path needs the mark scheme and nothing else, and it
+ * must work for a share that has since expired (a student mid-attempt when the
+ * clock ran out still gets scored on the scheme they sat).
+ */
+export async function getTeacherDppScoringSnapshot(
+  shareId: string,
+): Promise<{ questionIds: string[]; questionMarks: TeacherDppQuestionMarks[] | null } | null> {
+  if (!shareId) return null;
+  await ensureTeacherDppSchema();
+  const result = await pool().query(
+    `SELECT question_ids, question_marks
+       FROM assessment.teacher_dpp_shares WHERE id = $1`,
+    [shareId],
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  return {
+    questionIds: toStringArray(row.question_ids),
+    questionMarks: toQuestionMarks(row.question_marks),
+  };
 }
 
 /**

@@ -9,8 +9,10 @@ import {
 } from "@/server/workspaces/batch-cohort-store";
 import {
   getBatchDeepAnalytics,
+  getBatchLeaderboards,
   getBatchRoster,
 } from "@/server/workspaces/workspace-analytics-service";
+import type { PracticeRankBasis } from "@/server/workspaces/practice-leaderboard";
 import { setBatchTopicCoverage } from "@/server/workspaces/batch-topic-coverage-store";
 import { recordAuditEvent } from "@/server/workspaces/audit";
 
@@ -64,6 +66,18 @@ export async function GET(
       requireFeatureEnabled("teacherDeepAnalytics");
       const roster = await getBatchRoster(workspaceId, batchId);
       return teacherJson({ roster });
+    }
+
+    // Top Performers (tests) + Top Practitioners (shared DPPs + OG Code).
+    // Same reason as the branches above: a new child route file is not worth
+    // the Next-16 phantom-404 risk.
+    if (type === "leaderboards") {
+      requireFeatureEnabled("teacherDeepAnalytics");
+      const basisParam = url.searchParams.get("basis");
+      const basis: PracticeRankBasis =
+        basisParam === "dpp" || basisParam === "ogcode" ? basisParam : "combined";
+      const leaderboards = await getBatchLeaderboards(workspaceId, batchId, basis);
+      return teacherJson(leaderboards);
     }
 
     const snapshots = await getBatchTopicAccuracyLive(workspaceId, batchId, {
