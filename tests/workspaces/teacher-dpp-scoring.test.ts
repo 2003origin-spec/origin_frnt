@@ -7,6 +7,7 @@ import {
   safePercentage,
 } from "../../src/server/teacher-dpp-scoring";
 import { resolveShareQuestions } from "../../src/server/workspaces/teacher-dpp-service";
+import { buildDppProgress } from "../../src/legacy/assessments";
 import {
   PRACTICE_INDEX_DPP_WEIGHT,
   computePracticeIndex,
@@ -203,4 +204,42 @@ test("summary counts a student active on EITHER source", () => {
   assert.equal(summary.activePractitioners, 2);
   assert.equal(summary.questionsAttempted, 1);
   assert.equal(summary.meanDppAccuracy, 80);
+});
+
+// ─── student-facing progress (a DPP is never submitted) ────────────────────────
+
+test("progress sums only answered questions and reports coverage separately", () => {
+  const progress = buildDppProgress(
+    ["q1", "q2", "q3", "q4"],
+    [
+      { dppId: "d", questionId: "q1", isCorrect: true, marksAwarded: 4, maxMarks: 4 },
+      { dppId: "d", questionId: "q3", isCorrect: false, marksAwarded: -1, maxMarks: 4 },
+    ],
+  );
+
+  assert.equal(progress.score, 3);
+  assert.equal(progress.marksAttempted, 8);
+  assert.equal(progress.questionsAttempted, 2);
+  assert.equal(progress.questionsTotal, 4);
+  assert.equal(progress.correctCount, 1);
+  // Accuracy describes the work actually done, not the whole paper — 3/8, not 3/16.
+  assert.equal(progress.accuracy, 37.5);
+});
+
+test("progress keeps the DPP's question order, not the order rows came back in", () => {
+  const progress = buildDppProgress(
+    ["q1", "q2"],
+    [
+      { dppId: "d", questionId: "q2", isCorrect: true, marksAwarded: 4, maxMarks: 4 },
+      { dppId: "d", questionId: "q1", isCorrect: true, marksAwarded: 4, maxMarks: 4 },
+    ],
+  );
+  assert.deepEqual(progress.attempted.map((a) => a.questionId), ["q1", "q2"]);
+});
+
+test("a DPP with nothing answered reports null accuracy, not a fabricated zero", () => {
+  const progress = buildDppProgress(["q1", "q2"], []);
+  assert.equal(progress.questionsAttempted, 0);
+  assert.equal(progress.score, 0);
+  assert.equal(progress.accuracy, null);
 });

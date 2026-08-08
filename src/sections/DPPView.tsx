@@ -94,6 +94,23 @@ interface GeneratedDpp {
   /** Teacher DPPs only — the card counts down to this. */
   expiresAt?: string | null;
   expires_at?: string | null;
+  /** The student's own graded record for this DPP, from the server. */
+  progress?: DppProgress | null;
+}
+
+type DppProgress = {
+  attempted: Array<{
+    questionId: string;
+    isCorrect: boolean;
+    marksAwarded: number;
+    maxMarks: number;
+  }>;
+  questionsAttempted: number;
+  questionsTotal: number;
+  correctCount: number;
+  score: number;
+  marksAttempted: number;
+  accuracy: number | null;
 }
 
 function isTeacherDpp(dpp: GeneratedDpp): boolean {
@@ -351,6 +368,58 @@ export default function DPPView({ onBack, initialDpps, user }: DPPViewProps) {
     questionStartedAtRef.current = Date.now();
   };
 
+  /**
+   * The student's graded record for the open DPP: what the server has, plus
+   * anything they have checked in this session (which the server also has by
+   * now — every Check Answer is written immediately — but merging locally keeps
+   * the header live without a refetch per question).
+   *
+   * Keyed by question id rather than index so it survives the palette order.
+   */
+  const answeredByQuestionId = useMemo(() => {
+    const map = new Map<string, { isCorrect: boolean; marksAwarded: number; maxMarks: number }>();
+    for (const entry of currentDpp?.progress?.attempted ?? []) {
+      map.set(entry.questionId, {
+        isCorrect: entry.isCorrect,
+        marksAwarded: entry.marksAwarded,
+        maxMarks: entry.maxMarks,
+      });
+    }
+    currentQuestions.forEach((question, index) => {
+      const result = checkResults[index];
+      if (!result || map.has(question.id)) return;
+      map.set(question.id, {
+        isCorrect: Boolean(result.isCorrect ?? result.is_correct),
+        marksAwarded: 0,
+        maxMarks: 0,
+      });
+    });
+    return map;
+  }, [currentDpp?.progress, currentQuestions, checkResults]);
+
+  const liveProgress = useMemo(() => {
+    const base = currentDpp?.progress;
+    const sessionOnly = currentQuestions.filter(
+      (question, index) =>
+        checkResults[index] && !(base?.attempted ?? []).some((a) => a.questionId === question.id),
+    ).length;
+    const answered = (base?.questionsAttempted ?? 0) + sessionOnly;
+    return {
+      answered,
+      total: currentQuestions.length,
+      score: base?.score ?? 0,
+      marksAttempted: base?.marksAttempted ?? 0,
+      accuracy: base?.accuracy ?? null,
+    };
+  }, [currentDpp?.progress, currentQuestions, checkResults]);
+
+  /** Already graded — the first answer is the one that counts, so it is locked. */
+  const isQuestionLocked = (index: number): boolean => {
+    const question = currentQuestions[index];
+    if (!question) return false;
+    return Boolean(revealedAnswers[index]) || answeredByQuestionId.has(question.id);
+  };
+
   const goToQuestion = (nextIndex: number) => {
     recordCurrentQuestionTime();
     setCurrentQuestionIndex(nextIndex);
@@ -361,11 +430,15 @@ export default function DPPView({ onBack, initialDpps, user }: DPPViewProps) {
 
   const handleOptionSelect = (optionIndex: number) => {
     if (showSolution || !currentQuestion) return;
+    // Re-answering cannot change the score — only the first grading counts —
+    // so the option is inert rather than quietly doing nothing.
+    if (isQuestionLocked(currentQuestionIndex)) return;
     setSelectedOption(optionIndex);
   };
 
   const handleCheck = async () => {
     if (selectedOption === null || !currentQuestion || !currentDpp) return;
+    if (isQuestionLocked(currentQuestionIndex)) return;
     const elapsedSeconds = getElapsedSeconds();
     recordCurrentQuestionTime();
     setChecking(true);
@@ -662,7 +735,7 @@ export default function DPPView({ onBack, initialDpps, user }: DPPViewProps) {
                           <button
                             key={`${currentQuestion.id}-${index}`}
                             onClick={() => handleOptionSelect(index)}
-                            disabled={showSolution}
+                            disabled={showSolution || isQuestionLocked(currentQuestionIndex)}
                             className={`w-full p-4 rounded-xl border-2 text-left transition-all ${
                               showSolution
                                 ? index === getCorrectOption(currentQuestionIndex)
@@ -740,7 +813,17 @@ export default function DPPView({ onBack, initialDpps, user }: DPPViewProps) {
                           Previous
                         </Button>
 
-                        {!showSolution ? (
+                        {!showSolution && isQuestionLocked(currentQuestionIndex) ? (
+                          // Answered in an earlier session. Say so plainly —
+                          // silently ignoring taps is what makes students think
+                          // re-answering might bump their score.
+                          <span className="inline-flex items-center gap-2 rounded-full bg-muted px-4 py-2 text-xs font-semibold text-muted-foreground">
+                            <CheckCircle2 className="h-4 w-4" />
+                            {answeredByQuestionId.get(currentQuestion.id)?.isCorrect
+                              ? 'Already answered — you got this right'
+                              : 'Already answered — this one was wrong'}
+                          </span>
+                        ) : !showSolution ? (
                           <Button
                             onClick={handleCheck}
                             disabled={selectedOption === null || checking}
@@ -784,6 +867,48 @@ export default function DPPView({ onBack, initialDpps, user }: DPPViewProps) {
                   <p className="text-sm text-slate-500 dark:text-slate-400 mb-2">
                     {currentDpp.summary ?? 'Targeted practice generated from your latest weak-topic analytics.'}
                   </p>
+                  {/* Running score. A DPP is never submitted, so this is the
+                      only place the student sees what their practice is worth —
+                      and seeing it is what stops them re-answering questions
+                      expecting the number to move. */}
+                  <div className="mb-4 rounded-xl border border-primary/20 bg-primary/5 p-3">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        Your score
+                      </span>
+                      <span className="font-mono text-lg font-bold tabular-nums text-primary">
+                        {liveProgress.score}
+                        {liveProgress.marksAttempted > 0 ? (
+                          <span className="text-xs font-semibold text-muted-foreground">
+                            {' '}/ {liveProgress.marksAttempted}
+                          </span>
+                        ) : null}
+                      </span>
+                    </div>
+                    <div className="mt-1 flex items-center justify-between gap-2 text-[0.7rem] text-muted-foreground">
+                      <span>
+                        {liveProgress.answered} of {liveProgress.total} answered
+                      </span>
+                      {liveProgress.accuracy !== null ? <span>{liveProgress.accuracy}% accuracy</span> : null}
+                    </div>
+                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
+                      <div
+                        className="h-full rounded-full bg-primary transition-all"
+                        style={{
+                          width: `${
+                            liveProgress.total > 0
+                              ? Math.round((liveProgress.answered / liveProgress.total) * 100)
+                              : 0
+                          }%`,
+                        }}
+                      />
+                    </div>
+                    <p className="mt-2 text-[0.65rem] leading-snug text-muted-foreground">
+                      Only your first answer to each question is scored — re-opening one will not
+                      change your score.
+                    </p>
+                  </div>
+
                   {(currentDpp.provenanceNote ?? currentDpp.provenance_note) ? (
                     <p className="text-xs text-primary/80 font-medium mb-4 flex items-center gap-1.5 min-w-0">
                       <Sparkles className="w-3.5 h-3.5 flex-shrink-0" />
@@ -791,23 +916,34 @@ export default function DPPView({ onBack, initialDpps, user }: DPPViewProps) {
                     </p>
                   ) : null}
                   <div className="grid grid-cols-5 gap-2">
-                    {currentQuestions.map((question, index) => (
-                      <button
-                        key={question.id}
-                        onClick={() => goToQuestion(index)}
-                        className={`w-10 h-10 rounded-lg font-medium text-sm transition-all ${
-                          index === currentQuestionIndex ? 'ring-2 ring-primary ring-offset-2' : ''
-                        } ${
-                          answers[index] !== null
-                            ? Boolean(checkResults[index]?.isCorrect ?? checkResults[index]?.is_correct)
-                              ? 'bg-primary text-white'
-                              : 'bg-red-500 text-white'
-                            : 'neu-inset text-muted-foreground'
-                        }`}
-                      >
-                        {index + 1}
-                      </button>
-                    ))}
+                    {currentQuestions.map((question, index) => {
+                      // Colour from the graded record, so a question answered in
+                      // an earlier session still reads as done after a reload.
+                      const graded = answeredByQuestionId.get(question.id);
+                      const sessionResult = checkResults[index];
+                      const isCorrect =
+                        graded?.isCorrect ??
+                        Boolean(sessionResult?.isCorrect ?? sessionResult?.is_correct);
+                      const done = Boolean(graded) || answers[index] !== null;
+                      return (
+                        <button
+                          key={question.id}
+                          onClick={() => goToQuestion(index)}
+                          title={done ? `Question ${index + 1} — already answered` : `Question ${index + 1}`}
+                          className={`w-10 h-10 rounded-lg font-medium text-sm transition-all ${
+                            index === currentQuestionIndex ? 'ring-2 ring-primary ring-offset-2' : ''
+                          } ${
+                            done
+                              ? isCorrect
+                                ? 'bg-primary text-white'
+                                : 'bg-red-500 text-white'
+                              : 'neu-inset text-muted-foreground'
+                          }`}
+                        >
+                          {index + 1}
+                        </button>
+                      );
+                    })}
                   </div>
                 </CardContent>
               </Card>

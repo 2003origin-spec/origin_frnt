@@ -221,14 +221,25 @@ export function BatchLeaderboardPanel({ workspaceId, batchId }: Props) {
                   <tr className="border-b text-xs uppercase text-muted-foreground">
                     <th className="pb-2 pl-1 font-semibold">#</th>
                     <th className="pb-2 font-semibold">Student</th>
-                    <th className="pb-2 text-right font-semibold" title="Marks scored across your shared DPPs">
-                      DPP
+                    <th
+                      className={`pb-2 text-right font-semibold ${basis === "dpp" ? "text-primary" : ""}`}
+                      title="Marks scored across your shared DPPs"
+                    >
+                      DPP{basis === "dpp" ? " ▾" : ""}
                     </th>
-                    <th className="pb-2 text-right font-semibold" title="All-time OG Code practice score">
-                      OG Code
+                    <th
+                      className={`pb-2 text-right font-semibold ${basis === "ogcode" ? "text-primary" : ""}`}
+                      title="All-time OG Code practice score"
+                    >
+                      OG Code{basis === "ogcode" ? " ▾" : ""}
                     </th>
-                    <th className="pb-2 pr-1 text-right font-semibold" title="Blended 0–100 practice index">
-                      Index
+                    <th
+                      className={`pb-2 pr-1 text-right font-semibold ${
+                        basis === "combined" ? "text-primary" : ""
+                      }`}
+                      title="Blended 0–100 practice index"
+                    >
+                      Index{basis === "combined" ? " ▾" : ""}
                     </th>
                   </tr>
                 </thead>
@@ -269,9 +280,11 @@ export function BatchLeaderboardPanel({ workspaceId, batchId }: Props) {
         <p className="flex items-start gap-2 text-xs text-muted-foreground">
           <Award className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <span>
-            <strong className="text-foreground">Index</strong> blends both practice sources, each
-            scaled against this batch&apos;s best, weighted 60% toward the DPPs you shared. Raw
-            scores are shown alongside so you can always see where the effort actually went.
+            <strong className="text-foreground">Index</strong> is 0–100: each student&apos;s DPP
+            and OG Code scores are scaled against this batch&apos;s best on that source, then
+            blended 60% DPP / 40% OG Code. It exists because raw OG Code totals dwarf DPP marks,
+            so summing them would rank purely on OG Code. Whoever leads both sources scores 100 —
+            in a small batch that can mean the ranking looks the same on every toggle.
           </span>
         </p>
       ) : null}
