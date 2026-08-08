@@ -62,6 +62,12 @@ const MIGRATIONS = [
   { file: "20260802_cbt_attempt_resilience.sql", target: "user" },
   // CBT sectional marking + shareable report cards — 2026-08-04.
   { file: "20260804_cbt_report_cards.sql", target: "user" },
+  // Teacher test → batch DPP shares — 2026-08-08. The USER-side share tables
+  // and the OGCODE-side analytics.dpp_plans columns are two different physical
+  // targets, hence two entries. Order matters only in that a teacher cannot
+  // share before the first exists; both are additive and idempotent.
+  { file: "20260808_teacher_dpp_shares.sql", target: "user" },
+  { file: "20260808_dpp_plans_teacher_origin.sql", target: "ogcode" },
 ];
 
 const TARGET_ENV = {

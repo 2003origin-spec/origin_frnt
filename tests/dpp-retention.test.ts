@@ -26,6 +26,28 @@ test("DPP retention keeps a 30-plan window and deletes older plan roots", async 
   assert.match(calls[0].sql, /dpp_rank > \$2/);
 });
 
+test("DPP retention only ranks auto-generated plans, never teacher-shared ones", async () => {
+  // Teacher-shared DPPs live in the same table but have their own 30-day
+  // lifetime and sweeper. If the window ranked them too it would both delete a
+  // teacher's DPP early AND let teacher DPPs evict the student's own generated
+  // DPPs — the exact analytics interference this feature must not cause.
+  const calls: Array<{ sql: string; params?: unknown[] }> = [];
+  const fakeClient = {
+    query: async (sql: string, params?: unknown[]) => {
+      calls.push({ sql, params });
+      return { rows: [{ deleted_count: 0 }] };
+    },
+  } as unknown as NonNullable<Parameters<typeof pruneDppPlansForUser>[2]>;
+
+  await pruneDppPlansForUser("user_1", DPP_PLAN_RETENTION_LIMIT, fakeClient);
+
+  const [{ sql }] = calls;
+  assert.match(sql, /WHERE user_id = \$1 AND origin = 'auto'/);
+  // The delete must join back through the ranked CTE, so an unranked
+  // (teacher) row can never be reached by it.
+  assert.match(sql, /USING ranked r\s+WHERE d\.id = r\.id AND r\.dpp_rank > \$2/);
+});
+
 test("DPP retention skips invalid limits without touching storage", async () => {
   let queryCount = 0;
   const fakeClient = {

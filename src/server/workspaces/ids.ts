@@ -119,3 +119,9 @@ export function createConnectJobId(): string {
 export function createCodeRequestId(): string {
   return createPrefixedId("codereq");
 }
+
+// ─── Teacher test → batch DPP share ────────────────────────────────────────────
+
+export function createTeacherDppShareId(): string {
+  return createPrefixedId("tdshare");
+}
