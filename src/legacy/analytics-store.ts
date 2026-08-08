@@ -1085,7 +1085,11 @@ function mapPersistedDppRow(row: Record<string, unknown>): PersistedDppPlanRecor
     teacherShareId: row.teacher_share_id ? String(row.teacher_share_id) : null,
     teacherDisplayName: row.teacher_display_name ? String(row.teacher_display_name) : null,
     teacherLogoUrl: row.teacher_logo_url ? String(row.teacher_logo_url) : null,
-    expiresAt: row.expires_at ? String(row.expires_at) : null,
+    expiresAt: row.expires_at instanceof Date
+      ? row.expires_at.toISOString()
+      : row.expires_at
+        ? String(row.expires_at)
+        : null,
   };
 }
 
