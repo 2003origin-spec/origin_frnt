@@ -88,6 +88,32 @@ export async function createCluster(
   return mapCluster(res.rows[0]);
 }
 
+/**
+ * Find an existing cluster for this teacher by name, or create one. Used when
+ * committing an import to the bank so the source file always appears as a
+ * selectable "file" in the Questions filter — re-committing the same file (or
+ * accepting more of its questions later) reuses the cluster instead of spawning
+ * duplicates.
+ */
+export async function getOrCreateClusterByName(
+  teacherId: string,
+  name: unknown,
+): Promise<CbtCluster> {
+  await ensureCbtSchema();
+  const cleanName = sanitizeName(name);
+  const existing = await pool().query(
+    `SELECT c.id, c.teacher_id, c.name, c.description, c.created_at, c.updated_at,
+            (SELECT COUNT(*)::int FROM cbt.question_cluster_members m WHERE m.cluster_id = c.id) AS question_count
+       FROM cbt.question_clusters c
+      WHERE c.teacher_id = $1 AND c.name = $2
+      ORDER BY c.created_at ASC
+      LIMIT 1`,
+    [teacherId, cleanName],
+  );
+  if (existing.rows[0]) return mapCluster(existing.rows[0]);
+  return createCluster(teacherId, { name: cleanName });
+}
+
 export async function updateCluster(
   teacherId: string,
   clusterId: string,

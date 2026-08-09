@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { isFeatureEnabled } from "@/lib/feature-flags";
 import { QuestionBagManagerHighFidelity } from "@/components/teacher/QuestionBagManagerHighFidelity";
 import { listTeacherQuestions } from "@/server/workspaces/questions-service";
-import { listWorkspaceImportJobs } from "@/server/workspaces/document-import-service";
+import { getImportJobFileNames } from "@/server/workspaces/document-import-store";
 import { loadWorkspaceForRender } from "@/server/workspaces/server-loader";
 
 type Props = {
@@ -27,12 +27,19 @@ export default async function QuestionBagPage({ params }: Props) {
   const questions = await listTeacherQuestions(workspaceId, { status: "all" });
   const importEnabled = isFeatureEnabled("documentImport");
 
-  // Source-file labels for the "imported files" filter — id → file name. Best
-  // effort: a failure here just drops the filter, never the page.
+  // Source-file labels for the "imported files" filter — resolved by the exact
+  // import-job ids the questions carry (global by-id lookup, NOT workspace-scoped,
+  // so a job under a different/older workspace still shows its real name instead
+  // of a generic "Imported file"). Best effort: a failure just drops the filter.
   let importFiles: { id: string; name: string }[] = [];
   try {
-    const jobs = await listWorkspaceImportJobs(workspaceId, { limit: 500 });
-    importFiles = jobs.map((job) => ({ id: job.id, name: job.sourceFileName }));
+    const jobIds = [
+      ...new Set(questions.map((q) => q.importedJobId).filter((id): id is string => Boolean(id))),
+    ];
+    const nameById = await getImportJobFileNames(jobIds);
+    importFiles = [...nameById.entries()]
+      .filter(([, name]) => name.trim().length > 0)
+      .map(([id, name]) => ({ id, name }));
   } catch {
     importFiles = [];
   }
