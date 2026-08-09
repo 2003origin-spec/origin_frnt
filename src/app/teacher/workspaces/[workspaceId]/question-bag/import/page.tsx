@@ -70,7 +70,7 @@ export default async function ImportLandingPage({ params }: Props) {
   const jobs = await listWorkspaceImportJobs(workspaceId, { limit: 25 });
 
   return (
-    <div className="space-y-8 max-w-6xl mx-auto animate-fade-in pb-12">
+    <div className="space-y-8 max-w-[1400px] mx-auto animate-fade-in pb-12">
       {/* Premium Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-border pb-6">
         <div>

@@ -42,7 +42,7 @@ export default async function WorkspaceStudentsPage({ params }: Props) {
   }
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto animate-fade-in">
+    <div className="space-y-6 max-w-[1400px] mx-auto animate-fade-in">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Students Directory</h1>
         <p className="text-muted-foreground text-sm mt-1">

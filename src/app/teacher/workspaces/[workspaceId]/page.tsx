@@ -96,7 +96,7 @@ export default async function WorkspaceOverviewPage({ params }: Props) {
   ].slice(0, 5);
 
   return (
-    <div className="space-y-8 max-w-6xl mx-auto animate-fade-in">
+    <div className="space-y-8 max-w-[1400px] mx-auto animate-fade-in">
       
       {/* WelcomeHeroPanel */}
       <div className="rounded-3xl border border-border bg-card p-6 md:p-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 shadow-sm">

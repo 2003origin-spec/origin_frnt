@@ -20,7 +20,7 @@ export default async function TeacherTestResultsPage({ params }: Props) {
   if (!test) notFound();
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 animate-fade-in">
+    <div className="max-w-[1400px] mx-auto space-y-6 animate-fade-in">
       <div className="space-y-2">
         <Link
           href={`/teacher/workspaces/${workspaceId}/tests`}

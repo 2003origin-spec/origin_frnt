@@ -101,6 +101,113 @@
   --neu-shadow: 0 0% 4%;
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   TEACHER "DATA-TERMINAL" THEME — scoped reskin (light + dark)
+   Applied only under `.theme-teacher` (teacher route subtree + <html> while a
+   teacher route is mounted, so portals inherit it). Student + CBT never receive
+   the class, so they keep the default palette. Emerald accent (#06d6a0), layered
+   surfaces, hairline borders. Components re-theme automatically because the
+   teacher tree renders on semantic tokens — no component logic changes.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.theme-teacher {
+  --background: 200 20% 97%;
+  --foreground: 222 47% 11%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 11%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 47% 11%;
+  --primary: 164 84% 40%;
+  --primary-foreground: 165 82% 6%;
+  --secondary: 213 22% 95%;
+  --secondary-foreground: 215 25% 27%;
+  --muted: 213 22% 95%;
+  --muted-foreground: 215 16% 42%;
+  --accent: 210 24% 93%;
+  --accent-foreground: 222 47% 11%;
+  --destructive: 0 72% 48%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 214 22% 88%;
+  --input: 214 22% 88%;
+  --ring: 164 84% 40%;
+  /* neumorphism layer kept coherent (teacher tree doesn't use it, but portals might) */
+  --neu-bg: 200 20% 97%;
+  --neu-light: 0 0% 100%;
+  --neu-shadow: 214 22% 82%;
+  /* premium elevation (light): soft, cool-biased, layered */
+  --card-shadow: 0 1px 2px hsl(214 30% 25% / .05), 0 6px 20px -10px hsl(214 30% 25% / .12);
+  --card-shadow-hover: 0 2px 6px hsl(214 30% 25% / .07), 0 16px 34px -12px hsl(214 30% 25% / .18);
+}
+.dark .theme-teacher,
+.dark.theme-teacher {
+  --background: 240 33% 4%;
+  --foreground: 240 15% 94%;
+  --card: 240 19% 8%;
+  --card-foreground: 240 15% 94%;
+  --popover: 240 21% 12%;
+  --popover-foreground: 240 15% 94%;
+  --primary: 164 90% 43%;
+  --primary-foreground: 165 84% 6%;
+  --secondary: 240 24% 9%;
+  --secondary-foreground: 240 12% 90%;
+  --muted: 240 20% 13%;
+  --muted-foreground: 240 10% 60%;
+  --accent: 240 20% 15%;
+  --accent-foreground: 240 15% 94%;
+  --destructive: 0 74% 52%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 240 15% 16%;
+  --input: 240 15% 16%;
+  --ring: 164 90% 43%;
+  --neu-bg: 240 19% 8%;
+  --neu-light: 240 18% 13%;
+  --neu-shadow: 240 40% 2%;
+  /* premium elevation (dark): deep shadow + a faint top inset highlight so cards
+     read as raised charcoal, not flat panels */
+  --card-shadow: 0 1px 2px rgb(0 0 0 / .5), 0 10px 26px -14px rgb(0 0 0 / .7), inset 0 1px 0 hsl(240 40% 100% / .04);
+  --card-shadow-hover: 0 2px 6px rgb(0 0 0 / .55), 0 20px 42px -14px rgb(0 0 0 / .8), inset 0 1px 0 hsl(240 40% 100% / .06);
+}
+
+/* ── Teacher premium layer — elevation, focus, data-UI polish. Scoped to
+   .theme-teacher, hooks shadcn's stable data-slots, so it lifts every card /
+   button with zero component edits. Restrained on purpose: depth + precision,
+   not motion. ── */
+.theme-teacher [data-slot="card"]:not(.shadow-none) {
+  box-shadow: var(--card-shadow);
+  transition: box-shadow .22s cubic-bezier(.4,0,.2,1),
+              border-color .22s cubic-bezier(.4,0,.2,1),
+              transform .22s cubic-bezier(.4,0,.2,1);
+}
+.theme-teacher [data-slot="card"]:not(.shadow-none):hover {
+  box-shadow: var(--card-shadow-hover);
+  border-color: hsl(var(--foreground) / .14);
+}
+/* lift ONLY genuinely-clickable cards (wrapped in a link/button or role=button),
+   so static container cards stay put */
+.theme-teacher a [data-slot="card"]:hover,
+.theme-teacher button [data-slot="card"]:hover,
+.theme-teacher [data-slot="card"][role="button"]:hover,
+.theme-teacher [data-slot="card"].cursor-pointer:hover {
+  transform: translateY(-2px);
+}
+/* emerald raised primary buttons — on-brand depth */
+.theme-teacher [data-slot="button"].bg-primary {
+  box-shadow: 0 1px 2px hsl(var(--primary) / .28), 0 6px 16px -6px hsl(var(--primary) / .40);
+}
+.theme-teacher [data-slot="button"].bg-primary:hover {
+  box-shadow: 0 2px 4px hsl(var(--primary) / .34), 0 10px 22px -6px hsl(var(--primary) / .5);
+}
+/* data-UI polish: aligned figures, on-brand selection, refined scrollbars */
+.theme-teacher { font-variant-numeric: tabular-nums; }
+.theme-teacher ::selection { background: hsl(var(--primary) / .85); color: hsl(var(--primary-foreground)); }
+.theme-teacher *::-webkit-scrollbar { width: 8px; height: 8px; }
+.theme-teacher *::-webkit-scrollbar-track { background: transparent; }
+.theme-teacher *::-webkit-scrollbar-thumb { background: hsl(var(--muted-foreground) / .32); border-radius: 99px; }
+.theme-teacher *::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / .5); }
+@media (prefers-reduced-motion: reduce) {
+  .theme-teacher [data-slot="card"] { transition: none; }
+  .theme-teacher [data-slot="card"]:hover { transform: none; }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

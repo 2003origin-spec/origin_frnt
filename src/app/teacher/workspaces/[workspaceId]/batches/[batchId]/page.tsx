@@ -54,7 +54,7 @@ export default async function BatchDetailPage({ params }: Props) {
   );
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto animate-fade-in">
+    <div className="space-y-6 max-w-[1400px] mx-auto animate-fade-in">
       
       {/* Title & Metadata Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b pb-4 gap-4">
