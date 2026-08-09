@@ -159,6 +159,25 @@ export async function getImportJob(workspaceId: string, jobId: string): Promise<
   return result.rows[0] ? rowToJob(result.rows[0]) : null;
 }
 
+/**
+ * Resolve import-job file names for a specific set of job ids, keyed by id.
+ *
+ * Unlike listWorkspaceImportJobs this is NOT workspace-scoped: it looks the jobs
+ * up by their (globally-unique) ids, so a question whose import job lives under a
+ * different/older workspace still resolves its real file name instead of falling
+ * back to a generic "Imported file" label.
+ */
+export async function getImportJobFileNames(jobIds: string[]): Promise<Map<string, string>> {
+  await ensureDocumentImportSchema();
+  const ids = [...new Set(jobIds.filter((id): id is string => typeof id === "string" && id.length > 0))];
+  if (ids.length === 0) return new Map();
+  const result = await pool().query(
+    `SELECT id, source_file_name FROM import.document_import_jobs WHERE id = ANY($1::text[])`,
+    [ids],
+  );
+  return new Map(result.rows.map((r) => [String(r.id), String(r.source_file_name ?? "")]));
+}
+
 export async function listWorkspaceImportJobs(workspaceId: string, filter?: { status?: ImportJobStatus; limit?: number }): Promise<DocumentImportJob[]> {
   await ensureDocumentImportSchema();
   const params: unknown[] = [workspaceId];
