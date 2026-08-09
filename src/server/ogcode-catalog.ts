@@ -1,5 +1,6 @@
 import { unstable_cache, revalidateTag } from "next/cache";
 import type { DifficultyLevel, QuestionType, StoredAnswerSpec, StoredQuestion } from "@/server/store";
+import { toAbsoluteMediaUrl } from "@/lib/media-url";
 
 import { getOgcodePostgresPool, isOgcodePostgresConfigured } from "@/server/postgres";
 import {
@@ -416,8 +417,8 @@ function mapCatalogRow(row: CatalogRow): StoredQuestion {
     chapter: row.chapter,
     concept: row.concept,
     difficulty: normalizeDifficulty(String(row.difficulty)),
-    image: row.image ?? null,
-    optionImages: Array.isArray(row.option_images) ? row.option_images : null,
+    image: toAbsoluteMediaUrl(row.image ?? null),
+    optionImages: Array.isArray(row.option_images) ? row.option_images.map((u) => toAbsoluteMediaUrl(u)) : null,
     tags: Array.isArray(row.tags) ? row.tags.map((entry) => String(entry)) : row.tags ?? null,
     questionType,
     acceptanceRate: Number(row.acceptance_rate ?? 0),

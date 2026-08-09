@@ -87,6 +87,9 @@ interface GeneratedDpp {
   latestAttempt?: GeneratedDppAttemptSummary | null;
   /** 'teacher' = shared to your batch by your institute; 'auto' = generated from a test you took. */
   origin?: 'auto' | 'teacher';
+  /** "Institute mode" — show every question at once instead of one at a time. */
+  showAllQuestions?: boolean;
+  show_all_questions?: boolean;
   teacherDisplayName?: string | null;
   teacher_display_name?: string | null;
   teacherLogoUrl?: string | null;
@@ -235,6 +238,8 @@ export default function DPPView({ onBack, initialDpps, user }: DPPViewProps) {
   );
   const currentQuestions = currentDpp?.questions ?? [];
   const currentQuestion = currentQuestions[currentQuestionIndex] ?? null;
+  // "Institute mode": show every question at once instead of one-at-a-time.
+  const allAtOnce = Boolean(currentDpp?.showAllQuestions ?? currentDpp?.show_all_questions);
   const progress = currentQuestions.length > 0 ? ((currentQuestionIndex + 1) / currentQuestions.length) * 100 : 0;
   const isCompleted = Boolean(submissionResult);
   const submissionAnalysisStatus = submissionResult?.analysisStatus ?? submissionResult?.analysis_status ?? 'complete';
@@ -483,6 +488,46 @@ export default function DPPView({ onBack, initialDpps, user }: DPPViewProps) {
     goToQuestion(currentQuestionIndex - 1);
   };
 
+  // ── "Institute mode" (all questions at once) — index-aware variants ────────
+  // The one-at-a-time path above stays untouched; these drive the stacked view.
+  const selectOptionAt = (qIndex: number, optIndex: number) => {
+    if (revealedAnswers[qIndex] || isQuestionLocked(qIndex)) return;
+    setAnswers((prev) => {
+      const next = [...prev];
+      while (next.length < currentQuestions.length) next.push(null);
+      next[qIndex] = optIndex;
+      return next;
+    });
+  };
+
+  const checkAt = async (qIndex: number) => {
+    const question = currentQuestions[qIndex];
+    const selection = answers[qIndex];
+    if (selection === null || selection === undefined || !question || !currentDpp) return;
+    if (isQuestionLocked(qIndex) || revealedAnswers[qIndex]) return;
+    setChecking(true);
+    setError('');
+    try {
+      const response = await apiCall(`/assessments/dpps/${currentDpp.id}/check/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question_id: question.id,
+          presentation_id: question.presentationId ?? question.presentation_id ?? null,
+          selected_option: selection,
+          time_spent: timeSpentByQuestion[qIndex] ?? 0,
+        }),
+      });
+      playAnswerSound(Boolean(response?.isCorrect ?? response?.is_correct));
+      setRevealedAnswers((prev) => { const n = [...prev]; n[qIndex] = true; return n; });
+      setCheckResults((prev) => { const n = [...prev]; n[qIndex] = response; return n; });
+    } catch (checkError) {
+      setError(getErrorMessage(checkError, 'Failed to check answer.'));
+    } finally {
+      setChecking(false);
+    }
+  };
+
   const submitCurrentDpp = async () => {
     if (!currentDpp) return;
     recordCurrentQuestionTime();
@@ -703,6 +748,101 @@ export default function DPPView({ onBack, initialDpps, user }: DPPViewProps) {
               </div>
             </CardContent>
           </Card>
+        ) : allAtOnce ? (
+          <div className="max-w-3xl mx-auto space-y-4">
+            {isTeacherDpp(currentDpp) && teacherNameOf(currentDpp) ? (
+              <div className="flex items-center justify-between gap-2 rounded-2xl neu-raised p-4">
+                <InstituteLockup name={teacherNameOf(currentDpp) as string} logoUrl={teacherLogoOf(currentDpp)} className="text-sm" />
+                <Badge variant="outline">{currentQuestions.length} questions</Badge>
+              </div>
+            ) : null}
+            {currentQuestions.map((q, qi) => {
+              const revealed = revealedAnswers[qi] || isQuestionLocked(qi);
+              const locked = isQuestionLocked(qi);
+              const sel = answers[qi] ?? null;
+              const correct = getCorrectOption(qi);
+              return (
+                <Card key={q.id} className="neu-raised border-0 shadow-none">
+                  <CardContent className="p-4 sm:p-6">
+                    <div className="flex items-center flex-wrap gap-2 mb-4">
+                      <Badge className="bg-primary/10 text-primary">Q{qi + 1}</Badge>
+                      <Badge variant="secondary" className="capitalize">{q.difficulty}</Badge>
+                      <Badge variant="outline" className="capitalize">{q.subject}</Badge>
+                    </div>
+                    <div className="min-w-0 text-base sm:text-lg font-medium text-slate-900 dark:text-white mb-4 leading-relaxed break-words overflow-x-hidden">
+                      <FormattedMessage content={q.text} />
+                      {q.image && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={q.image} alt="Question diagram" className="mt-3 block max-h-72 w-auto max-w-full rounded-xl border border-border/60 object-contain" />
+                      )}
+                    </div>
+                    <div className="space-y-2.5 mb-4">
+                      {(q.options ?? []).map((option, index) => (
+                        <button
+                          key={`${q.id}-${index}`}
+                          onClick={() => selectOptionAt(qi, index)}
+                          disabled={revealed}
+                          className={`w-full p-3 sm:p-4 rounded-xl border-2 text-left transition-all ${
+                            revealed
+                              ? index === correct
+                                ? 'border-primary bg-primary/5'
+                                : sel === index
+                                  ? 'border-red-500 bg-red-500/10'
+                                  : 'border-border/40 opacity-50'
+                              : sel === index
+                                ? 'border-primary bg-primary/5'
+                                : 'border-border/40 hover:border-primary/50 hover:bg-primary/5'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className={`w-8 h-8 shrink-0 rounded-full flex items-center justify-center font-medium ${
+                              revealed
+                                ? index === correct ? 'bg-primary text-white' : sel === index ? 'bg-red-500 text-white' : 'neu-inset text-muted-foreground'
+                                : sel === index ? 'bg-primary text-white' : 'neu-inset text-muted-foreground'
+                            }`}>
+                              {revealed && index === correct ? <CheckCircle2 className="w-5 h-5" /> : revealed && sel === index ? <XCircle className="w-5 h-5" /> : String.fromCharCode(65 + index)}
+                            </div>
+                            <span className="text-sm sm:text-base min-w-0 break-words text-slate-700 dark:text-slate-300">
+                              {String(option).trim() && <FormattedMessage content={String(option)} inline />}
+                              {q.optionImages?.[index] && (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={q.optionImages[index] as string} alt={`Option ${index + 1}`} className="mt-2 block max-h-40 w-auto max-w-full rounded-lg border border-border/60 object-contain" />
+                              )}
+                            </span>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                    {revealed ? (
+                      <div className="p-4 rounded-xl bg-primary/5 dark:bg-primary/10 border border-primary/20">
+                        <h4 className="font-semibold text-slate-900 dark:text-white mb-2 flex items-center gap-2 text-sm">
+                          <Lightbulb className="w-4 h-4 text-primary" /> Explanation
+                        </h4>
+                        <div className="min-w-0 break-words overflow-x-hidden text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
+                          <FormattedMessage content={checkResults[qi]?.explanation ?? q.explanation ?? ''} />
+                        </div>
+                      </div>
+                    ) : locked ? (
+                      <span className="inline-flex items-center gap-2 rounded-full bg-muted px-4 py-2 text-xs font-semibold text-muted-foreground">
+                        <CheckCircle2 className="h-4 w-4" /> Already answered
+                      </span>
+                    ) : (
+                      <Button onClick={() => checkAt(qi)} disabled={sel === null || checking} className="rounded-full bg-gradient-to-r from-primary to-[#1E3A5F] text-white">
+                        {checking ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
+                        Check Answer
+                      </Button>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
+            <div className="flex justify-end pt-2 pb-10">
+              <Button onClick={submitCurrentDpp} disabled={submitting} className="rounded-full bg-gradient-to-r from-primary to-[#1E3A5F] text-white">
+                {submitting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                Finish DPP
+              </Button>
+            </div>
+          </div>
         ) : (
           <div className="grid lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 min-w-0">
@@ -722,7 +862,7 @@ export default function DPPView({ onBack, initialDpps, user }: DPPViewProps) {
 
                   {currentQuestion ? (
                     <>
-                      <div className="text-lg sm:text-xl font-medium text-slate-900 dark:text-white mb-6 leading-relaxed overflow-x-auto">
+                      <div className="min-w-0 text-lg sm:text-xl font-medium text-slate-900 dark:text-white mb-6 leading-relaxed break-words overflow-x-hidden">
                         <FormattedMessage content={currentQuestion.text} />
                         {currentQuestion.image && (
                           // eslint-disable-next-line @next/next/no-img-element
@@ -796,7 +936,7 @@ export default function DPPView({ onBack, initialDpps, user }: DPPViewProps) {
                             <Lightbulb className="w-5 h-5 text-primary" />
                             Explanation
                           </h4>
-                          <div className="text-slate-700 dark:text-slate-300 leading-relaxed">
+                          <div className="min-w-0 break-words overflow-x-hidden text-slate-700 dark:text-slate-300 leading-relaxed">
                             <FormattedMessage content={checkResults[currentQuestionIndex]?.explanation ?? currentQuestion.explanation ?? ''} />
                           </div>
                           <div className="mt-4 pt-4 border-t border-primary/20">

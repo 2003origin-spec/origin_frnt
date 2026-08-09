@@ -804,6 +804,8 @@ export type TeacherDppShare = {
   expiresAt: string;
   revokedAt: string | null;
   batchIds: string[];
+  /** TRUE = "Institute mode": student sees all questions at once. Default FALSE. */
+  showAllQuestions: boolean;
 };
 
 /** The subset of a share the student-side materializer needs. */
@@ -826,4 +828,6 @@ export type TeacherDppShareForStudent = {
   teacherDisplayName: string;
   teacherLogoUrl: string | null;
   expiresAt: string;
+  /** TRUE = "Institute mode": student sees all questions at once. Default FALSE. */
+  showAllQuestions: boolean;
 };

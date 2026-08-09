@@ -892,8 +892,8 @@ export function CbtTestInterface() {
                 />
               ) : null}
               {instituteName ? (
-                <span className="max-w-[8rem] truncate text-xs font-black tracking-tight text-foreground sm:text-sm" title={instituteName}>
-                  {instituteName}
+                <span className="whitespace-nowrap text-xs font-black tracking-tight text-foreground sm:text-sm" title={instituteName}>
+                  {instituteName.length > 25 ? `${instituteName.slice(0, 25)}…` : instituteName}
                 </span>
               ) : null}
             </div>

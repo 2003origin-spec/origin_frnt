@@ -112,7 +112,7 @@ async function listImportJobSources(workspaceId: string): Promise<TeacherTestSou
        JOIN content.questions q
          ON q.imported_job_id = j.id
         AND q.workspace_id = j.workspace_id
-        AND q.status = ANY($2::text[])
+        AND q.status::text = ANY($2::text[])
       WHERE j.workspace_id = $1
       GROUP BY j.id, label, j.status
      HAVING COUNT(q.id) > 0
@@ -134,7 +134,7 @@ async function listBagTopicSources(workspaceId: string): Promise<TeacherTestSour
     `SELECT v.subject, v.chapter, COUNT(*)::int AS question_count
        FROM content.questions q
        JOIN content.question_versions v ON v.id = q.current_version_id
-      WHERE q.workspace_id = $1 AND q.status = ANY($2::text[])
+      WHERE q.workspace_id = $1 AND q.status::text = ANY($2::text[])
       GROUP BY v.subject, v.chapter
       ORDER BY COUNT(*) DESC, v.subject ASC, v.chapter ASC
       LIMIT 60`,
@@ -181,7 +181,7 @@ async function resolveImportJob(workspaceId: string, jobId: string): Promise<str
   const res = await pool().query(
     `SELECT q.id
        FROM content.questions q
-      WHERE q.workspace_id = $1 AND q.imported_job_id = $2 AND q.status = ANY($3::text[])
+      WHERE q.workspace_id = $1 AND q.imported_job_id = $2 AND q.status::text = ANY($3::text[])
       ORDER BY q.created_at ASC, q.id ASC`,
     [workspaceId, jobId, USABLE_STATUSES],
   );
@@ -196,7 +196,7 @@ async function resolveBagTopic(workspaceId: string, id: string): Promise<string[
        FROM content.questions q
        JOIN content.question_versions v ON v.id = q.current_version_id
       WHERE q.workspace_id = $1 AND v.subject = $2 AND v.chapter = $3
-        AND q.status = ANY($4::text[])
+        AND q.status::text = ANY($4::text[])
       ORDER BY q.created_at ASC, q.id ASC`,
     [workspaceId, parsed.subject, parsed.chapter, USABLE_STATUSES],
   );

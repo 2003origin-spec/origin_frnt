@@ -91,6 +91,14 @@ export async function ensureTeacherDppSchema(): Promise<void> {
             ADD COLUMN IF NOT EXISTS question_marks JSONB;
         `);
 
+        // Presentation mode. TRUE = "Institute mode": the student sees every
+        // question at once (worksheet). FALSE (default) = one at a time.
+        // Mirrors 20260809_teacher_dpp_show_all.sql.
+        await client.query(`
+          ALTER TABLE assessment.teacher_dpp_shares
+            ADD COLUMN IF NOT EXISTS show_all_questions BOOLEAN NOT NULL DEFAULT FALSE;
+        `);
+
         await recordMigration(client);
         await client.query("COMMIT");
         globalThis.__originTeacherDppSchemaEnsured = true;

@@ -49,6 +49,7 @@ export function toMaterializations(
       teacherDisplayName: share.teacherDisplayName,
       teacherLogoUrl: share.teacherLogoUrl,
       expiresAt: share.expiresAt,
+      showAllQuestions: share.showAllQuestions,
     }));
 }
 

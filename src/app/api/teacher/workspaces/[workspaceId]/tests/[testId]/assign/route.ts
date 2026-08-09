@@ -51,6 +51,8 @@ const assignSchema = z.object({
 const shareDppSchema = z.object({
   action: z.literal("share_dpp"),
   batchIds: z.array(z.string().min(1)).min(1).max(100),
+  // "Institute mode" — student sees all questions at once. Default one-at-a-time.
+  showAllQuestions: z.boolean().optional(),
 });
 
 export async function POST(request: NextRequest, context: RouteContext) {
@@ -72,6 +74,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         workspaceId,
         testId,
         batchIds: parsed.batchIds,
+        showAllQuestions: parsed.showAllQuestions ?? false,
         requestId: requestIdOf(request),
       });
       return teacherJson({ share }, { status: 201 });
