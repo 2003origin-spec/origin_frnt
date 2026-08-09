@@ -1144,25 +1144,50 @@ function DppSelectionGrid({
     return DPP_DATE_FORMATTER.format(parsed);
   };
 
+  // Student view filter: "General" = every DPP; "Institute" = only the ones
+  // shared by their institute (teacher-origin).
+  const [mode, setMode] = useState<'general' | 'institute'>('general');
   const teacherDppCount = dpps.filter(isTeacherDpp).length;
+  const visibleDpps = mode === 'institute' ? dpps.filter(isTeacherDpp) : dpps;
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h2 className="text-2xl font-bold text-slate-900 dark:text-white">
-            {dpps.length} DPP{dpps.length === 1 ? '' : 's'} ready for you
+            {visibleDpps.length} DPP{visibleDpps.length === 1 ? '' : 's'} {mode === 'institute' ? 'from your institute' : 'ready for you'}
           </h2>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            {teacherDppCount > 0
-              ? `${teacherDppCount} shared by your institute, the rest from tests you submitted. Pick one to start solving.`
-              : 'Each card comes from a test you submitted. Pick one to start solving.'}
+            {mode === 'institute'
+              ? 'Practice sets your institute shared with your batch. Pick one to start solving.'
+              : teacherDppCount > 0
+                ? `${teacherDppCount} shared by your institute, the rest from tests you submitted. Pick one to start solving.`
+                : 'Each card comes from a test you submitted. Pick one to start solving.'}
           </p>
         </div>
+        {/* General = all DPPs · Institute = only institute-shared ones. Hidden
+            when the student has no institute DPPs (nothing to filter to). */}
+        {teacherDppCount > 0 ? (
+          <div className="inline-flex shrink-0 rounded-full neu-inset p-1 text-xs font-bold">
+            {(['general', 'institute'] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setMode(m)}
+                aria-pressed={mode === m}
+                className={`rounded-full px-4 py-1.5 capitalize transition-colors ${
+                  mode === m ? 'bg-primary text-primary-foreground shadow' : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+        ) : null}
       </div>
 
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {dpps.map((dpp) => {
+        {visibleDpps.map((dpp) => {
           const questionCount = dpp.questions?.length ?? dpp.targetQuestionCount ?? 0;
           const weakTopics = dpp.weakTopics ?? dpp.weak_topics ?? [];
           const generatedDate = formatDate(dpp.createdAt);
