@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { isFeatureEnabled } from "@/lib/feature-flags";
 import { QuestionBagManagerHighFidelity } from "@/components/teacher/QuestionBagManagerHighFidelity";
 import { listTeacherQuestions } from "@/server/workspaces/questions-service";
+import { listWorkspaceImportJobs } from "@/server/workspaces/document-import-service";
 import { loadWorkspaceForRender } from "@/server/workspaces/server-loader";
 
 type Props = {
@@ -25,6 +26,16 @@ export default async function QuestionBagPage({ params }: Props) {
   // Fetch all questions
   const questions = await listTeacherQuestions(workspaceId, { status: "all" });
   const importEnabled = isFeatureEnabled("documentImport");
+
+  // Source-file labels for the "imported files" filter — id → file name. Best
+  // effort: a failure here just drops the filter, never the page.
+  let importFiles: { id: string; name: string }[] = [];
+  try {
+    const jobs = await listWorkspaceImportJobs(workspaceId, { limit: 500 });
+    importFiles = jobs.map((job) => ({ id: job.id, name: job.sourceFileName }));
+  } catch {
+    importFiles = [];
+  }
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto animate-fade-in">
@@ -49,6 +60,7 @@ export default async function QuestionBagPage({ params }: Props) {
       <QuestionBagManagerHighFidelity
         workspaceId={workspaceId}
         initialQuestions={questions}
+        importFiles={importFiles}
         canEdit={canEdit}
       />
     </div>

@@ -42,6 +42,8 @@ import { toast } from "sonner";
 type Props = {
   workspaceId: string;
   initialQuestions: QuestionWithVersion[];
+  /** Imported source PDFs (import job id → file name) for the file filter. */
+  importFiles?: { id: string; name: string }[];
   canEdit: boolean;
 };
 
@@ -82,7 +84,7 @@ const DIFFICULTY_COLORS: Record<string, string> = {
   insane: "text-red-600 border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-800/30",
 };
 
-export function QuestionBagManagerHighFidelity({ workspaceId, initialQuestions, canEdit }: Props) {
+export function QuestionBagManagerHighFidelity({ workspaceId, initialQuestions, importFiles = [], canEdit }: Props) {
   const router = useRouter();
   const [questions, setQuestions] = useState<QuestionWithVersion[]>(initialQuestions);
   const [activeQuestion, setActiveQuestion] = useState<QuestionWithVersion | null>(
@@ -95,6 +97,8 @@ export function QuestionBagManagerHighFidelity({ workspaceId, initialQuestions, 
   const [filterSubjects, setFilterSubjects] = useState<string[]>([]);
   const [filterDifficulty, setFilterDifficulty] = useState("all");
   const [filterType, setFilterType] = useState("all");
+  // Source-file filter — multi-select union over imported PDFs (empty = all).
+  const [filterFiles, setFilterFiles] = useState<string[]>([]);
   
   // Editor State
   const [editMode, setEditMode] = useState(false);
@@ -137,6 +141,19 @@ export function QuestionBagManagerHighFidelity({ workspaceId, initialQuestions, 
     new Set(questions.map(q => q.currentVersion?.subject).filter((s): s is string => Boolean(s))),
   );
 
+  // Source-file filter options: only imported PDFs that actually have questions
+  // in the bag, labelled by file name with a per-file question count.
+  const fileOptions = (() => {
+    const counts = new Map<string, number>();
+    for (const q of questions) {
+      if (q.importedJobId) counts.set(q.importedJobId, (counts.get(q.importedJobId) ?? 0) + 1);
+    }
+    const nameById = new Map(importFiles.map((f) => [f.id, f.name]));
+    return [...counts.entries()]
+      .map(([id, count]) => ({ value: id, label: nameById.get(id) ?? "Imported file", count }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  })();
+
   // Filter implementation
   const filteredQuestions = questions.filter(q => {
     const v = q.currentVersion;
@@ -154,6 +171,8 @@ export function QuestionBagManagerHighFidelity({ workspaceId, initialQuestions, 
     if (filterSubjects.length > 0 && !filterSubjects.includes(v.subject)) return false;
     if (filterDifficulty !== "all" && v.difficulty !== filterDifficulty) return false;
     if (filterType !== "all" && v.questionType !== filterType) return false;
+    // Source-file filter: union over the selected imported PDFs.
+    if (filterFiles.length > 0 && !(q.importedJobId && filterFiles.includes(q.importedJobId))) return false;
 
     return true;
   });
@@ -515,7 +534,7 @@ export function QuestionBagManagerHighFidelity({ workspaceId, initialQuestions, 
               className="pl-9 h-9 rounded-xl text-xs border-border/80"
             />
           </div>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-2">
             {/* Subject — multi-select union (empty = all) */}
             <MultiSelectDropdown
               allLabel="All Subjects"
@@ -524,6 +543,18 @@ export function QuestionBagManagerHighFidelity({ workspaceId, initialQuestions, 
               buttonClassName="h-8 w-full text-[10px]"
               options={subjectsList.map((s) => ({ value: s, label: s }))}
             />
+            {/* Source file — multi-select union over imported PDFs (empty = all).
+                Hidden when nothing in the bag was imported. */}
+            {fileOptions.length > 0 ? (
+              <MultiSelectDropdown
+                allLabel="All Files"
+                selected={filterFiles}
+                onChange={setFilterFiles}
+                buttonClassName="h-8 w-full text-[10px]"
+                contentClassName="w-72"
+                options={fileOptions}
+              />
+            ) : null}
             {/* Difficulty */}
             <select
               value={filterDifficulty}
