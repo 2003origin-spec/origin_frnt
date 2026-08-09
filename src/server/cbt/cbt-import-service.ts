@@ -38,7 +38,7 @@ import {
   type CbtQuestion,
 } from "./cbt-questions-service";
 import { createCbtTest, MAX_QUESTIONS_PER_TEST, setTestQuestions } from "./cbt-tests-service";
-import { addQuestionsToCluster, createCluster, listClusterQuestionIds } from "./cbt-clusters-service";
+import { addQuestionsToCluster, getOrCreateClusterByName, listClusterQuestionIds } from "./cbt-clusters-service";
 import type { CbtTeacher } from "./cbt-teachers-service";
 
 /** Guardrail on the picker: enough for a full paper, not an accidental 500. */
@@ -126,6 +126,54 @@ export async function createCbtImportJob(input: {
 export async function listCbtImportJobs(teacher: CbtTeacher): Promise<DocumentImportJob[]> {
   if (!teacher.importWorkspaceId) return [];
   return listWorkspaceImportJobs(teacher.importWorkspaceId, { limit: 50 });
+}
+
+/**
+ * Lazily ensures every imported source file appears as a cluster in the
+ * Questions filter. Historically only "build a test from import" created the
+ * cluster, so questions imported straight to the bank had none. This backfills
+ * those: for each import job with un-clustered bank questions, create/reuse a
+ * cluster named after the file and attach them.
+ *
+ * Best-effort + convergent: once a file's questions are clustered the guard
+ * query returns nothing, so steady-state page loads do almost no work. Never
+ * throws — a reconcile failure must not break the Questions page.
+ */
+export async function reconcileImportClusters(teacher: CbtTeacher): Promise<void> {
+  if (!teacher.importWorkspaceId) return;
+  try {
+    // Import jobs that still have at least one bank question in no cluster.
+    const orphans = await pool().query(
+      `SELECT DISTINCT q.import_job_id
+         FROM cbt.questions q
+        WHERE q.teacher_id = $1
+          AND q.import_job_id IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1
+              FROM cbt.question_cluster_members m
+              JOIN cbt.question_clusters c ON c.id = m.cluster_id AND c.teacher_id = $1
+             WHERE m.question_id = q.id
+          )`,
+      [teacher.id],
+    );
+    if (orphans.rows.length === 0) return;
+
+    const jobs = await listWorkspaceImportJobs(teacher.importWorkspaceId, { limit: 500 });
+    const nameById = new Map(jobs.map((j) => [j.id, j.sourceFileName]));
+
+    for (const row of orphans.rows) {
+      const jobId = String(row.import_job_id);
+      const questionIds = await listCbtQuestionIdsByImportJob(teacher.id, jobId);
+      if (questionIds.length === 0) continue;
+      const cluster = await getOrCreateClusterByName(
+        teacher.id,
+        (nameById.get(jobId) || "Imported file").slice(0, 120),
+      );
+      await addQuestionsToCluster(teacher.id, cluster.id, questionIds);
+    }
+  } catch (error) {
+    console.error("[cbt-import] reconcileImportClusters failed", { teacherId: teacher.id, error });
+  }
 }
 
 export async function getCbtImportJob(
@@ -269,6 +317,19 @@ export async function publishImportQuestionToCbt(input: {
   await updateQuestionStatus(input.jobId, input.questionId, "published", {
     questionBagQuestionId: created.id,
   });
+
+  // Attach to the source-file cluster so a per-question accept (not just a bulk
+  // commit) still surfaces the file in the Questions filter. Best-effort.
+  try {
+    const cluster = await getOrCreateClusterByName(
+      input.teacher.id,
+      (job.sourceFileName || "Imported file").slice(0, 120),
+    );
+    await addQuestionsToCluster(input.teacher.id, cluster.id, [created.id]);
+  } catch {
+    // Filter convenience only — never fail the publish over clustering.
+  }
+
   return created;
 }
 
@@ -284,7 +345,7 @@ export async function publishImportQuestionToCbt(input: {
 export async function commitImportJobToBank(input: {
   teacher: CbtTeacher;
   jobId: string;
-}): Promise<{ published: number; failed: number }> {
+}): Promise<{ published: number; failed: number; clusterId: string | null }> {
   const workspaceId = input.teacher.importWorkspaceId;
   if (!workspaceId) throw cbtError(404, "Import job not found.");
   const job = await getImportJob(workspaceId, input.jobId);
@@ -310,7 +371,26 @@ export async function commitImportJobToBank(input: {
       failed += 1;
     }
   }
-  return { published, failed };
+
+  // Group this file's bank questions under a cluster named after the source file
+  // so an import-to-bank (not just build-a-test) always shows up as a selectable
+  // "file" in the Questions filter. Idempotent: re-committing reuses the cluster.
+  let clusterId: string | null = null;
+  try {
+    const questionIds = await listCbtQuestionIdsByImportJob(input.teacher.id, input.jobId);
+    if (questionIds.length > 0) {
+      const cluster = await getOrCreateClusterByName(
+        input.teacher.id,
+        (job.sourceFileName || "Imported file").slice(0, 120),
+      );
+      await addQuestionsToCluster(input.teacher.id, cluster.id, questionIds);
+      clusterId = cluster.id;
+    }
+  } catch {
+    // Clustering is a convenience for the filter — never fail the publish over it.
+  }
+
+  return { published, failed, clusterId };
 }
 
 /**
@@ -333,16 +413,24 @@ export async function createTestFromImportJob(input: {
   if (!data) throw cbtError(404, "Import job not found.");
   const title = (data.job.sourceFileName || "Imported test").slice(0, 120);
 
-  await commitImportJobToBank({ teacher: input.teacher, jobId: input.jobId });
+  // Commit already creates/attaches the source-file cluster and returns its id.
+  const { clusterId } = await commitImportJobToBank({ teacher: input.teacher, jobId: input.jobId });
 
   const questionIds = await listCbtQuestionIdsByImportJob(input.teacher.id, input.jobId);
   if (questionIds.length === 0) {
     throw cbtError(400, "No accepted questions to build a test from. Accept some questions first.");
   }
 
-  // Reusable cluster from the import (collections may overlap freely).
-  const cluster = await createCluster(input.teacher.id, { name: title });
-  await addQuestionsToCluster(input.teacher.id, cluster.id, questionIds);
+  // Reuse the cluster from the commit; fall back to creating one only if the
+  // commit somehow produced none (e.g. clustering was skipped).
+  let cluster: { id: string };
+  if (clusterId) {
+    cluster = { id: clusterId };
+  } else {
+    const created = await getOrCreateClusterByName(input.teacher.id, title);
+    await addQuestionsToCluster(input.teacher.id, created.id, questionIds);
+    cluster = { id: created.id };
+  }
 
   const test = await createCbtTest(input.teacher.id, {
     title,
