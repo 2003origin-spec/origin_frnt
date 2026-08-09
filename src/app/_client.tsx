@@ -3,7 +3,6 @@
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import LandingPage from '@/sections/LandingPage';
-import { motion } from 'framer-motion';
 
 export default function HomeClient() {
   const { user } = useAuth();
@@ -26,17 +25,10 @@ export default function HomeClient() {
     router.push(user.isOnboarded ? '/dashboard' : '/onboarding');
   };
 
-  // The app-start intro video was removed — open straight to the landing/content.
+  // No intro video / splash gate — render the landing content immediately.
   return (
-    <main className="relative min-h-screen bg-background text-foreground transition-colors duration-500">
-      <motion.div
-        key="content"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.6, ease: 'easeOut' }}
-      >
-        <LandingPage onGetStarted={handleGetStarted} />
-      </motion.div>
+    <main className="relative min-h-screen bg-background text-foreground">
+      <LandingPage onGetStarted={handleGetStarted} />
     </main>
   );
 }
