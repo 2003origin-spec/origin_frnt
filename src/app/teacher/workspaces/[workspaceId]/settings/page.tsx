@@ -28,7 +28,7 @@ export default async function WorkspaceSettingsPage({ params }: Props) {
   const collaboration = showCollaboration ? await getCollaboration(workspaceId) : null;
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto">
+    <div className="space-y-6 max-w-[1400px] mx-auto">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Workspace Settings</h1>
         <p className="text-muted-foreground mt-1 text-sm">

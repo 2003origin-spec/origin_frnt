@@ -29,7 +29,7 @@ export default async function TeacherTestsPage({ params }: Props) {
   ]);
 
   return (
-    <div className="max-w-6xl mx-auto animate-fade-in">
+    <div className="max-w-[1400px] mx-auto animate-fade-in">
       <TestsManagerHighFidelity
         workspaceId={workspaceId}
         initialTests={tests}

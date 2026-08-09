@@ -57,7 +57,7 @@ export default async function LiveStudyRoomPage({ params }: Props) {
   }
 
   return (
-    <div className="mx-auto max-w-6xl animate-fade-in space-y-6">
+    <div className="mx-auto max-w-[1400px] animate-fade-in space-y-6">
       {/* Room test setup — build a mixed-source test in place, or attach an existing one. */}
       <Card>
         <CardHeader className="pb-3">

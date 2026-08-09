@@ -13,7 +13,7 @@ export default async function TeacherHomePage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-12">
+    <div className="mx-auto max-w-[1400px] px-4 py-12">
       <div className="mb-8 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-3xl font-semibold tracking-tight">Your workspaces</h1>
@@ -41,7 +41,7 @@ export default async function TeacherHomePage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {workspaces.map((workspace) => (
             <Link key={workspace.id} href={`/teacher/workspaces/${workspace.id}`} className="block">
               <Card className="transition-all hover:border-primary/40 hover:shadow-md">

@@ -45,7 +45,7 @@ export default async function QuestionBagPage({ params }: Props) {
   }
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto animate-fade-in">
+    <div className="space-y-6 max-w-[1400px] mx-auto animate-fade-in">
       
       {/* Title & Import Pipeline trigger header */}
       <div className="flex justify-between items-center border-b pb-4 shrink-0">

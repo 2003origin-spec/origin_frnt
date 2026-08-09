@@ -19,7 +19,7 @@ export default async function ImportReviewPage({ params }: Props) {
   if (!job) notFound();
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto animate-fade-in">
+    <div className="space-y-6 max-w-[1400px] mx-auto animate-fade-in">
       <ImportJobsManager
         workspaceId={workspaceId}
         initialJobs={[job]}
