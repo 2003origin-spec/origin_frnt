@@ -25,6 +25,7 @@ import {
   toDisplayedOptionDistribution,
 } from "@/server/ogcode-option-stats";
 import { completeOgcodeChallengesForAttempt } from "@/server/ogcode-challenges";
+import { toAbsoluteMediaUrl } from "@/lib/media-url";
 import { createNotification } from "@/server/notifications";
 import {
   OGCODE_ATTEMPT_CAPS,
@@ -1897,7 +1898,7 @@ export function serializeQuestion(
     id: question.id,
     text: question.text,
     options: presented.options,
-    optionImages: presentedOptionImages,
+    optionImages: presentedOptionImages?.map((u) => toAbsoluteMediaUrl(u)),
     presentationId: presented.presentationId,
     presentation_id: presented.presentationId,
     correctOption: includeCorrectFields ? question.correctOption : undefined,
@@ -1914,7 +1915,7 @@ export function serializeQuestion(
     chapter: question.chapter,
     concept: question.concept,
     difficulty: question.difficulty,
-    image: question.image ?? undefined,
+    image: toAbsoluteMediaUrl(question.image) ?? undefined,
     tags: question.tags ?? undefined,
     questionType: question.questionType,
     question_type: question.questionType,
@@ -2332,6 +2333,9 @@ function serializePersistedDppPlanWithLookup(
     teacher_logo_url: plan.teacherLogoUrl,
     expiresAt: plan.expiresAt,
     expires_at: plan.expiresAt,
+    // "Institute mode" — student sees all questions at once.
+    showAllQuestions: plan.showAllQuestions,
+    show_all_questions: plan.showAllQuestions,
     // The student's own running record for this DPP.
     progress: buildDppProgress(plan.questionIds, questionResults),
     createdAt: plan.createdAt,

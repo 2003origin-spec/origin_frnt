@@ -6,6 +6,7 @@
  */
 
 import { getUserPostgresPool } from "@/server/user-postgres";
+import { toAbsoluteMediaUrl } from "@/lib/media-url";
 
 import { ensureContentSchema } from "./content-schema";
 import {
@@ -84,7 +85,7 @@ function rowToVersion(row: Record<string, unknown>): QuestionVersion {
     answerText: (row.answer_text as string | null) ?? null,
     answerSpec: (row.answer_spec as Record<string, unknown> | null) ?? null,
     matrixData: (row.matrix_data as Record<string, unknown> | null) ?? null,
-    imageUrl: (row.image_url as string | null) ?? null,
+    imageUrl: toAbsoluteMediaUrl((row.image_url as string | null) ?? null),
     hint: (row.hint as string | null) ?? null,
     explanation: (row.explanation as string | null) ?? null,
     fullSolution: (row.full_solution as string | null) ?? null,
@@ -332,7 +333,7 @@ export async function listQuestions(
         answerText: (row.answer_text as string | null) ?? null,
         answerSpec: (row.answer_spec as Record<string, unknown> | null) ?? null,
         matrixData: (row.matrix_data as Record<string, unknown> | null) ?? null,
-    imageUrl: (row.image_url as string | null) ?? null,
+    imageUrl: toAbsoluteMediaUrl((row.image_url as string | null) ?? null),
         hint: (row.hint as string | null) ?? null,
         explanation: (row.explanation as string | null) ?? null,
         fullSolution: (row.full_solution as string | null) ?? null,

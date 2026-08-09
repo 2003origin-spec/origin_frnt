@@ -6,6 +6,8 @@
  */
 
 import { getUserPostgresPool } from "@/server/user-postgres";
+import { toAbsoluteMediaUrl } from "@/lib/media-url";
+import { normalizeCbtOptions } from "@/lib/cbt/options";
 import {
   gradeAssessmentBatchWithService,
   type AssessmentBatchGradeItem,
@@ -87,8 +89,8 @@ async function loadTestQuestions(testId: string): Promise<TestQuestionRow[]> {
     questionId: String(row.question_id),
     questionType: row.question_type as CbtQuestionType,
     stem: String(row.stem ?? ""),
-    image: typeof row.image === "string" && row.image.trim() ? String(row.image).trim() : null,
-    options: Array.isArray(row.options) ? (row.options as { text: string; image?: string | null }[]) : [],
+    image: typeof row.image === "string" && row.image.trim() ? toAbsoluteMediaUrl(String(row.image).trim()) : null,
+    options: normalizeCbtOptions(row.options),
     answer: (row.answer ?? {}) as CbtQuestionAnswer,
     explanation: row.explanation ?? null,
     subject: row.subject ?? null,

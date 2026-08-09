@@ -149,6 +149,7 @@ export async function shareTestAsDpp(input: {
   workspaceId: string;
   testId: string;
   batchIds: string[];
+  showAllQuestions?: boolean;
   requestId?: string | null;
 }): Promise<TeacherDppShare> {
   const test = await getTestWithQuestions(input.testId);
@@ -203,6 +204,7 @@ export async function shareTestAsDpp(input: {
     sharedBy: input.actorUserId,
     expiresAt: teacherDppExpiryFrom(new Date()),
     batchIds: accepted,
+    showAllQuestions: input.showAllQuestions ?? false,
   });
 
   await recordAuditEvent({

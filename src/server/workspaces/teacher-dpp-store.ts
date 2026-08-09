@@ -89,6 +89,7 @@ function rowToShare(row: Record<string, unknown>): TeacherDppShare {
     expiresAt: toIsoTimestamp(row.expires_at),
     revokedAt: row.revoked_at ? toIsoTimestamp(row.revoked_at) : null,
     batchIds: toStringArray(row.batch_ids),
+    showAllQuestions: Boolean(row.show_all_questions),
   };
 }
 
@@ -107,6 +108,7 @@ export type CreateTeacherDppShareInput = {
   sharedBy: string;
   expiresAt: string;
   batchIds: string[];
+  showAllQuestions: boolean;
 };
 
 export async function insertTeacherDppShare(
@@ -120,8 +122,8 @@ export async function insertTeacherDppShare(
       `INSERT INTO assessment.teacher_dpp_shares (
          id, workspace_id, test_id, title, subject, summary, duration_minutes,
          question_ids, teacher_display_name, teacher_logo_url, shared_by, expires_at,
-         question_marks
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12,$13::jsonb)`,
+         question_marks, show_all_questions
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12,$13::jsonb,$14)`,
       [
         input.id,
         input.workspaceId,
@@ -136,6 +138,7 @@ export async function insertTeacherDppShare(
         input.sharedBy,
         input.expiresAt,
         JSON.stringify(input.questionMarks),
+        input.showAllQuestions,
       ],
     );
     for (const batchId of input.batchIds) {
@@ -170,6 +173,7 @@ export async function insertTeacherDppShare(
     expiresAt: input.expiresAt,
     revokedAt: null,
     batchIds: input.batchIds,
+    showAllQuestions: input.showAllQuestions,
   };
 }
 
@@ -273,7 +277,7 @@ export async function listActiveTeacherDppSharesForStudent(
             s.id, s.workspace_id, s.title, s.subject, s.summary,
             s.duration_minutes, s.question_ids, s.question_marks,
             s.teacher_display_name, s.teacher_logo_url, s.expires_at,
-            sb.batch_id
+            s.show_all_questions, sb.batch_id
        FROM assessment.teacher_dpp_shares s
        JOIN assessment.teacher_dpp_share_batches sb ON sb.share_id = s.id
        JOIN app.batches b
@@ -309,6 +313,7 @@ export async function listActiveTeacherDppSharesForStudent(
     teacherLogoUrl: (row.teacher_logo_url as string | null) ?? null,
     // MUST be ISO — the materializer writes this straight back as a TIMESTAMPTZ.
     expiresAt: toIsoTimestamp(row.expires_at),
+    showAllQuestions: Boolean(row.show_all_questions),
   }));
 }
 

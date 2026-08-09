@@ -28,6 +28,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { MultiSelectDropdown } from "@/components/ui/multi-select";
 import { QUESTION_SUBJECTS, isOriginBankQuestion, canonicalizeSubject } from "@/lib/question-subjects";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -90,7 +91,8 @@ export function QuestionBagManagerHighFidelity({ workspaceId, initialQuestions, 
 
   // Filters State
   const [searchQuery, setSearchQuery] = useState("");
-  const [filterSubject, setFilterSubject] = useState("all");
+  // Multi-select subject filter — empty = All; multiple = union.
+  const [filterSubjects, setFilterSubjects] = useState<string[]>([]);
   const [filterDifficulty, setFilterDifficulty] = useState("all");
   const [filterType, setFilterType] = useState("all");
   
@@ -131,7 +133,9 @@ export function QuestionBagManagerHighFidelity({ workspaceId, initialQuestions, 
   const [pending, startTransition] = useTransition();
 
   // Distinct subjects list from questions
-  const subjectsList = Array.from(new Set(questions.map(q => q.currentVersion?.subject).filter(Boolean)));
+  const subjectsList = Array.from(
+    new Set(questions.map(q => q.currentVersion?.subject).filter((s): s is string => Boolean(s))),
+  );
 
   // Filter implementation
   const filteredQuestions = questions.filter(q => {
@@ -147,7 +151,7 @@ export function QuestionBagManagerHighFidelity({ workspaceId, initialQuestions, 
     }
 
     // Dropdown filters
-    if (filterSubject !== "all" && v.subject !== filterSubject) return false;
+    if (filterSubjects.length > 0 && !filterSubjects.includes(v.subject)) return false;
     if (filterDifficulty !== "all" && v.difficulty !== filterDifficulty) return false;
     if (filterType !== "all" && v.questionType !== filterType) return false;
 
@@ -512,15 +516,14 @@ export function QuestionBagManagerHighFidelity({ workspaceId, initialQuestions, 
             />
           </div>
           <div className="grid grid-cols-3 gap-2">
-            {/* Subject */}
-            <select
-              value={filterSubject}
-              onChange={(e) => setFilterSubject(e.target.value)}
-              className="h-8 rounded-lg border bg-background px-2 text-[10px] font-semibold focus:outline-none"
-            >
-              <option value="all">All Subjects</option>
-              {subjectsList.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
+            {/* Subject — multi-select union (empty = all) */}
+            <MultiSelectDropdown
+              allLabel="All Subjects"
+              selected={filterSubjects}
+              onChange={setFilterSubjects}
+              buttonClassName="h-8 w-full text-[10px]"
+              options={subjectsList.map((s) => ({ value: s, label: s }))}
+            />
             {/* Difficulty */}
             <select
               value={filterDifficulty}

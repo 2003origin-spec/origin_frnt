@@ -6,6 +6,7 @@ import { Loader2, Send, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
@@ -52,6 +53,8 @@ export function ShareTestAsDppDialog({
   const [shares, setShares] = useState<TeacherDppShare[]>([]);
   const [loadingShares, setLoadingShares] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  // "Institute mode": student sees all questions at once instead of one-at-a-time.
+  const [showAllQuestions, setShowAllQuestions] = useState(false);
 
   // Batches that already have this test live as a DPP are shown with their
   // expiry and locked — re-sharing to them is refused server-side anyway.
@@ -64,6 +67,7 @@ export function ShareTestAsDppDialog({
     if (!open) return;
     let cancelled = false;
     setSelected([]);
+    setShowAllQuestions(false);
     setLoadingShares(true);
     void (async () => {
       const res = await apiJson<{ shares: TeacherDppShare[] }>(
@@ -92,7 +96,7 @@ export function ShareTestAsDppDialog({
     setSubmitting(true);
     const res = await apiJson<{ share: TeacherDppShare }>(
       `/api/teacher/workspaces/${workspaceId}/tests/${testId}/assign`,
-      { method: "POST", json: { action: "share_dpp", batchIds: selected } },
+      { method: "POST", json: { action: "share_dpp", batchIds: selected, showAllQuestions } },
     );
     setSubmitting(false);
     if (!res.ok) {
@@ -156,6 +160,17 @@ export function ShareTestAsDppDialog({
             })
           )}
         </div>
+
+        {/* Institute mode: present the whole set at once instead of one-by-one. */}
+        <label className="flex cursor-pointer items-start justify-between gap-3 rounded-xl border border-border/60 p-3">
+          <span className="min-w-0">
+            <span className="block text-sm font-semibold text-foreground">Institute mode</span>
+            <span className="block text-xs text-muted-foreground">
+              Show all questions at once (worksheet). Off = one question at a time.
+            </span>
+          </span>
+          <Switch checked={showAllQuestions} onCheckedChange={setShowAllQuestions} className="mt-0.5 shrink-0" />
+        </label>
 
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={submitting}>

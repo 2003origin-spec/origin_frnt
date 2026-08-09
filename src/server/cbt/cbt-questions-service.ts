@@ -6,6 +6,8 @@
  */
 
 import { getUserPostgresPool } from "@/server/user-postgres";
+import { toAbsoluteMediaUrl } from "@/lib/media-url";
+import { normalizeCbtOptions } from "@/lib/cbt/options";
 import {
   CBT_QUESTION_TYPES,
   type CbtQuestion,
@@ -36,7 +38,7 @@ const COLUMNS = `id, teacher_id, question_type, stem, image, options, answer, ex
 function normalizeImageUrl(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
+  return trimmed.length > 0 ? toAbsoluteMediaUrl(trimmed) : null;
 }
 
 function pool() {
@@ -58,7 +60,7 @@ function mapQuestion(row: Record<string, unknown>): CbtQuestion {
     questionType: row.question_type as CbtQuestionType,
     stem: String(row.stem ?? ""),
     image: normalizeImageUrl(row.image),
-    options: Array.isArray(row.options) ? (row.options as CbtQuestionOption[]) : [],
+    options: normalizeCbtOptions(row.options),
     answer: (row.answer as CbtQuestionAnswer) ?? {},
     explanation: row.explanation ? String(row.explanation) : null,
     subject: row.subject ? String(row.subject) : null,
@@ -73,14 +75,8 @@ function mapQuestion(row: Record<string, unknown>): CbtQuestion {
 }
 
 function normalizeOptions(raw: unknown): CbtQuestionOption[] {
-  if (!Array.isArray(raw)) return [];
-  return raw
-    .map((o) => ({
-      text: String((o as { text?: unknown })?.text ?? "").trim(),
-      image: normalizeImageUrl((o as { image?: unknown })?.image),
-    }))
-    // An option is kept if it has text OR an image (image-only options allowed).
-    .filter((o) => o.text.length > 0 || o.image);
+  // Shared normalizer: tolerates legacy string[] options + repairs image URLs.
+  return normalizeCbtOptions(raw);
 }
 
 function toFiniteNumber(value: unknown): number | null {

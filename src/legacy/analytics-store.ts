@@ -139,6 +139,9 @@ ALTER TABLE analytics.dpp_plans ADD COLUMN IF NOT EXISTS teacher_share_id TEXT;
 ALTER TABLE analytics.dpp_plans ADD COLUMN IF NOT EXISTS teacher_display_name TEXT;
 ALTER TABLE analytics.dpp_plans ADD COLUMN IF NOT EXISTS teacher_logo_url TEXT;
 ALTER TABLE analytics.dpp_plans ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;
+-- Presentation mode carried from the teacher share: TRUE = show all questions at
+-- once ("Institute mode"). Mirrors 20260809_dpp_plans_show_all.sql.
+ALTER TABLE analytics.dpp_plans ADD COLUMN IF NOT EXISTS show_all_questions BOOLEAN NOT NULL DEFAULT FALSE;
 CREATE INDEX IF NOT EXISTS idx_analytics_dpp_plans_origin
   ON analytics.dpp_plans (user_id, origin, completed, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_analytics_dpp_plans_teacher_share
@@ -356,6 +359,8 @@ export interface PersistedDppPlanRecord {
   teacherLogoUrl: string | null;
   /** 30-day lifetime for teacher DPPs; null for auto DPPs (never expire). */
   expiresAt: string | null;
+  /** TRUE = "Institute mode": student sees all questions at once. */
+  showAllQuestions: boolean;
 }
 
 export interface PersistedDppAttemptRecord {
@@ -1136,6 +1141,7 @@ function mapPersistedDppRow(row: Record<string, unknown>): PersistedDppPlanRecor
       : row.expires_at
         ? String(row.expires_at)
         : null,
+    showAllQuestions: Boolean(row.show_all_questions),
   };
 }
 
@@ -1332,6 +1338,8 @@ export type TeacherDppMaterialization = {
   teacherDisplayName: string;
   teacherLogoUrl: string | null;
   expiresAt: string;
+  /** TRUE = "Institute mode": student sees all questions at once. */
+  showAllQuestions: boolean;
 };
 
 /**
@@ -1368,9 +1376,9 @@ export async function materializeTeacherDppPlans(
            weak_topics, generated_from, duration_minutes, target_question_count,
            sequence, completed, workspace_id, provenance_note,
            origin, teacher_share_id, teacher_display_name, teacher_logo_url, expires_at,
-           batch_id
+           batch_id, show_all_questions
          ) VALUES ($1,$2,NULL,$3,$4,$5,'[]'::jsonb,'[]'::jsonb,$6,$7,1,false,$8,$9,
-                   'teacher',$10,$11,$12,$13,$14)
+                   'teacher',$10,$11,$12,$13,$14,$15)
          -- Backfill the cohort stamp on plans materialized before batch_id
          -- existed (or before the student's batch could be resolved). Without
          -- this, DO NOTHING would leave batch_id NULL forever and those
@@ -1399,6 +1407,7 @@ export async function materializeTeacherDppPlans(
           share.teacherLogoUrl,
           share.expiresAt,
           share.batchId,
+          share.showAllQuestions,
         ],
       );
       // No row = nothing to do (already stamped). Row with inserted=false = we

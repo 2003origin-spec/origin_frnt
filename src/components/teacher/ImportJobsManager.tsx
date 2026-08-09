@@ -28,6 +28,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { apiJson } from "@/lib/teacher-client";
 import { uploadUserImageAction } from "@/server/actions/profile-actions";
 import { QUESTION_SUBJECTS, canonicalizeSubject } from "@/lib/question-subjects";
+import { toAbsoluteMediaUrl } from "@/lib/media-url";
 import type { DocumentImportJob, ImportJobQuestion } from "@/server/workspaces/types";
 import { toast } from "sonner";
 
@@ -569,7 +570,7 @@ export function ImportJobsManager({ workspaceId, initialJobs, defaultJobId }: Pr
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   {(editImageUrl ?? (activeQuestion?.metadata?.imageUrl as string | undefined)) ? (
                     <img
-                      src={(editImageUrl ?? (activeQuestion?.metadata?.imageUrl as string)) as string}
+                      src={toAbsoluteMediaUrl((editImageUrl ?? (activeQuestion?.metadata?.imageUrl as string)) as string) as string}
                       alt={`Diagram for Question ${activeQuestion?.questionNumber}`}
                       className="w-full h-full object-contain p-4"
                     />

@@ -153,6 +153,7 @@ function share(overrides: Partial<TeacherDppShareForStudent>): TeacherDppShareFo
     teacherDisplayName: "Origin Institute",
     teacherLogoUrl: null,
     expiresAt: "2026-09-07T10:00:00.000Z",
+    showAllQuestions: false,
     ...overrides,
   };
 }

@@ -5,6 +5,7 @@ import { useMemo, useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
 import { LatexRenderer } from "@/components/ui/LatexRenderer";
+import { MultiSelectDropdown } from "@/components/ui/multi-select";
 import { mutateJson } from "@/lib/csrf";
 import type { CbtQuestion } from "@/lib/cbt/question-model";
 import type { CbtCluster } from "@/lib/cbt/cluster-model";
@@ -34,8 +35,12 @@ export function CbtQuestionBank({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [activeCluster, setActiveCluster] = useState<string | null>(null); // null = All
+  // Multi-select cluster/file filter — empty = All; multiple = union.
+  const [selectedClusters, setSelectedClusters] = useState<string[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  // Cluster-management actions (rename/delete/remove-from) target a single
+  // cluster, so they light up only when exactly one is selected.
+  const activeCluster = selectedClusters.length === 1 ? selectedClusters[0] : null;
 
   const clusterName = useMemo(
     () => new Map(initialClusters.map((c) => [c.id, c.name])),
@@ -43,9 +48,10 @@ export function CbtQuestionBank({
   );
 
   const visible = useMemo(() => {
-    if (!activeCluster) return initialQuestions;
-    return initialQuestions.filter((q) => (membershipByQuestion[q.id] ?? []).includes(activeCluster));
-  }, [initialQuestions, membershipByQuestion, activeCluster]);
+    if (selectedClusters.length === 0) return initialQuestions;
+    const set = new Set(selectedClusters);
+    return initialQuestions.filter((q) => (membershipByQuestion[q.id] ?? []).some((cid) => set.has(cid)));
+  }, [initialQuestions, membershipByQuestion, selectedClusters]);
 
   async function call(url: string, method: string, body?: unknown): Promise<boolean> {
     const res = await mutateJson(url, {
@@ -94,7 +100,7 @@ export function CbtQuestionBank({
     if (!window.confirm("Delete this cluster? The questions themselves are kept.")) return;
     startTransition(async () => {
       if (await call(`/api/cbt/clusters/${activeCluster}`, "DELETE")) {
-        setActiveCluster(null);
+        setSelectedClusters([]);
         router.refresh();
       }
     });
@@ -142,23 +148,15 @@ export function CbtQuestionBank({
         <CbtQuestionEditorDialog />
       </header>
 
-      {/* Cluster filter bar */}
+      {/* Cluster / file filter — multi-select union (empty = All) */}
       <div className="flex flex-wrap items-center gap-2">
-        <button
-          onClick={() => setActiveCluster(null)}
-          className={`rounded-full px-3 py-1 text-xs font-medium ${activeCluster === null ? "bg-foreground text-background" : "bg-muted text-muted-foreground hover:bg-accent"}`}
-        >
-          All ({initialQuestions.length})
-        </button>
-        {initialClusters.map((c) => (
-          <button
-            key={c.id}
-            onClick={() => setActiveCluster(c.id)}
-            className={`rounded-full px-3 py-1 text-xs font-medium ${activeCluster === c.id ? "bg-foreground text-background" : "bg-muted text-muted-foreground hover:bg-accent"}`}
-          >
-            {c.name} ({c.questionCount})
-          </button>
-        ))}
+        <MultiSelectDropdown
+          allLabel={`All files (${initialQuestions.length})`}
+          selected={selectedClusters}
+          onChange={setSelectedClusters}
+          buttonClassName="min-w-48"
+          options={initialClusters.map((c) => ({ value: c.id, label: c.name, count: c.questionCount }))}
+        />
         <button
           onClick={createCluster}
           disabled={pending}
@@ -167,7 +165,7 @@ export function CbtQuestionBank({
           + New cluster
         </button>
         {activeCluster ? (
-          <span className="ml-2 flex gap-2">
+          <span className="ml-1 flex gap-2">
             <button onClick={renameActiveCluster} disabled={pending} className="text-xs text-muted-foreground underline">
               Rename
             </button>
@@ -175,6 +173,9 @@ export function CbtQuestionBank({
               Delete cluster
             </button>
           </span>
+        ) : null}
+        {selectedClusters.length > 1 ? (
+          <span className="text-[11px] text-muted-foreground">Select one file to rename or delete it.</span>
         ) : null}
       </div>
 
