@@ -8,6 +8,7 @@
  * propagate and a revoke stays a one-row operation.
  */
 
+import { canonicalNegativeMarks } from "@/lib/assessments/source-stack";
 import { AuthzError } from "@/server/authz";
 import { getUserPostgresPool } from "@/server/user-postgres";
 
@@ -80,9 +81,12 @@ export function resolveShareQuestions(questions: TestQuestion[]): {
     questionIds.push(id);
     questionMarks.push({
       m: Number.isFinite(question.marks) ? question.marks : 4,
-      // Stored as-is: a teacher who set 0 negative marks gets no negative
-      // marking in the DPP either. Their number always wins (decision D2).
-      n: Number.isFinite(question.negativeMarks) ? question.negativeMarks : 0,
+      // Canonical sign, so a legacy row that stored the magnitude (+1) cannot be
+      // snapshotted as "wrong answers are worth +1". A teacher who set 0 still
+      // gets no negative marking — their number always wins (decision D2).
+      n: Number.isFinite(question.negativeMarks)
+        ? canonicalNegativeMarks(question.negativeMarks)
+        : 0,
     });
   }
   return { questionIds, questionMarks };

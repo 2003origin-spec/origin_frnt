@@ -82,6 +82,7 @@ export function TestsManagerHighFidelity({ workspaceId, initialTests, questions,
         questions={questions}
         batches={batches}
         ogcodeEnabled={ogcodeEnabled}
+        dppShareEnabled={dppShareEnabled}
         onSuccess={() => setIsCreating(false)}
         onCancel={() => setIsCreating(false)}
       />

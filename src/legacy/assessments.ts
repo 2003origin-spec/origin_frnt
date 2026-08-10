@@ -222,6 +222,13 @@ export type CustomTestPayload = {
 export type DppQuestionCheckPayload = PracticeSubmissionPayload & {
   question_id?: string | number;
   questionId?: string | number;
+  /**
+   * Practice re-attempt of a question that is already graded. The answer is
+   * graded and explained exactly as normal but NOTHING is written: the first
+   * answer is the one that counts, so a retry can never move the score.
+   * Plan: V1/allmd/TEACHER_DPP_DELIVERY_AND_LIVE_SCORING_PLAN.md (D5)
+   */
+  retry?: boolean;
 };
 
 export type UpdateOgcodeLocationPayload = {
@@ -4218,46 +4225,110 @@ export async function checkGeneratedDppQuestion(
   const grade = remoteGrades?.[0] ?? gradeAnswer(question, prepared.answer, "dpp");
   const info = toPresentedGradeInfo(question, grade.info, prepared.displayOrder);
 
+  const answered = hasResponse(prepared.answer);
+  const overridden = Boolean(checkOverrides?.has(question.id));
+  const maxMarks = overridden ? policy.correctMarks : grade.maxMarks ?? policy.correctMarks;
+  const marksAwarded =
+    overridden || grade.marksAwarded === undefined || grade.marksAwarded === null
+      ? computeMarksFromCredit({
+          answered,
+          isCorrect: grade.isCorrect,
+          creditAwarded: grade.creditAwarded,
+          policy,
+        })
+      : grade.marksAwarded;
+
+  // What is already on the record for this DPP. Read BEFORE the write, because
+  // whether this question is already graded decides both of the questions below.
+  const existingRows = await listDppQuestionResultsForPlans(user.id, [dppId])
+    .then((byPlan) => byPlan.get(dppId) ?? [])
+    .catch(() => null);
+  const alreadyGraded = existingRows?.some((row) => row.questionId === question.id) ?? false;
+
+  /**
+   * A retry writes NOTHING — not even through `ON CONFLICT DO NOTHING`. Relying
+   * on the conflict clause would mean that if the first answer's write had
+   * failed, a later "practice" attempt would quietly become the scored one.
+   *
+   * And `retry` is only honoured on a question that IS already graded. Otherwise
+   * the flag would be a free preview: send `retry: true`, read the correct
+   * option out of the response, then send the real answer and collect full
+   * marks. On an ungraded question the request is simply a normal attempt.
+   */
+  const isRetry = payload.retry === true && alreadyGraded;
+
   // A DPP is never "submitted" — the student just works through it and leaves.
   // Recording the graded answer HERE is what makes their practice count at all;
   // by the time they navigate away it is already durable. Best-effort: a
   // bookkeeping failure must never break the student's answer check.
-  try {
-    const answered = hasResponse(prepared.answer);
-    const overridden = Boolean(checkOverrides?.has(question.id));
-    const maxMarks = overridden ? policy.correctMarks : grade.maxMarks ?? policy.correctMarks;
-    const marksAwarded =
-      overridden || grade.marksAwarded === undefined || grade.marksAwarded === null
-        ? computeMarksFromCredit({
-            answered,
-            isCorrect: grade.isCorrect,
-            creditAwarded: grade.creditAwarded,
-            policy,
-          })
-        : grade.marksAwarded;
-    await recordDppQuestionResult({
-      dppId,
-      questionId: question.id,
-      userId: user.id,
-      isCorrect: grade.isCorrect,
-      marksAwarded,
-      maxMarks,
-      timeSpentSeconds: prepared.answer.timeSpent,
-    });
-  } catch (error) {
-    console.error("[dpp] failed to record checked answer", {
-      dppId,
-      questionId: question.id,
-      error: error instanceof Error ? error.message : String(error),
-    });
+  let scored = false;
+  if (!isRetry) {
+    try {
+      // False when a row was already there — a re-check of a graded question
+      // changed nothing, and saying otherwise would show marks that are not real.
+      scored = await recordDppQuestionResult({
+        dppId,
+        questionId: question.id,
+        userId: user.id,
+        isCorrect: grade.isCorrect,
+        marksAwarded,
+        maxMarks,
+        timeSpentSeconds: prepared.answer.timeSpent,
+      });
+    } catch (error) {
+      // Report it as unscored rather than showing a number that vanishes on the
+      // next reload (edge case E7).
+      scored = false;
+      console.error("[dpp] failed to record checked answer", {
+        dppId,
+        questionId: question.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
+  // The student's running total. Returning it here is what lets the score move
+  // the moment an answer is graded, with no refetch — and it is server truth, so
+  // a retry, a second tab or a lost write can never leave a fabricated number on
+  // screen (plan D3). Built from the pre-write rows plus the one just inserted,
+  // which is exact because the insert only lands when the question was absent.
+  // Null when the record could not be read at all, so the client keeps its own.
+  const progress = existingRows
+    ? buildDppProgress(
+        plan.questionIds,
+        scored
+          ? [
+              ...existingRows,
+              {
+                dppId,
+                questionId: question.id,
+                isCorrect: grade.isCorrect,
+                marksAwarded,
+                maxMarks,
+              },
+            ]
+          : existingRows,
+      )
+    : null;
+
   return {
+    // `info` FIRST: on the local-fallback path it carries its own marksAwarded /
+    // maxMarks, computed before the teacher's mark scheme was applied. The
+    // authoritative values below must win.
+    ...info,
     isCorrect: grade.isCorrect,
     is_correct: grade.isCorrect,
     questionId: question.id,
     question_id: question.id,
-    ...info,
+    // Did this answer count? False for a retry, and false when the write failed.
+    scored,
+    // What this question moved the score by. Always 0 when it did not count, so
+    // the client can add it blindly.
+    marksAwarded: scored ? marksAwarded : 0,
+    marks_awarded: scored ? marksAwarded : 0,
+    maxMarks: scored ? maxMarks : 0,
+    max_marks: scored ? maxMarks : 0,
+    progress,
   };
 }
 

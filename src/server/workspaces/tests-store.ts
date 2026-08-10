@@ -2,6 +2,7 @@
  * Assessment store: tests, test_questions, test_assignments, test_attempts, test_answers.
  */
 
+import { canonicalNegativeMarks } from "@/lib/assessments/source-stack";
 import { getUserPostgresPool } from "@/server/user-postgres";
 
 import { ensureAssessmentSchema } from "./assessment-schema";
@@ -64,7 +65,9 @@ function rowToTestQuestion(row: Record<string, unknown>): TestQuestion {
     contentQuestionId: (row.content_question_id as string | null) ?? null,
     contentQuestionVersionId: (row.content_question_version_id as string | null) ?? null,
     marks: Number(row.marks) || 4,
-    negativeMarks: Number(row.negative_marks) || -1,
+    // `|| -1` would turn a deliberate 0 ("no negative marking") back into -1 and
+    // silently reinstate a penalty the teacher removed, so 0 is read as 0.
+    negativeMarks: Number.isFinite(Number(row.negative_marks)) ? Number(row.negative_marks) : -1,
     metadata: (row.metadata as Record<string, unknown>) ?? {},
   };
 }
@@ -297,7 +300,10 @@ export async function addQuestionToTest(input: {
       input.contentQuestionId ?? null,
       input.contentQuestionVersionId ?? null,
       input.marks ?? 4,
-      input.negativeMarks ?? -1,
+      // Single canonical sign for every writer (wizard, dialog, source stack,
+      // importer). A positive value here used to AWARD marks for a wrong answer
+      // in a shared DPP — see canonicalNegativeMarks.
+      canonicalNegativeMarks(input.negativeMarks ?? -1),
       JSON.stringify(input.metadata ?? {}),
     ],
   );

@@ -64,6 +64,19 @@ function revalidateTestMutation(userId: string, testId?: string) {
   revalidateTag("ogcode-catalog", "max");
 }
 
+/**
+ * `/dpp` server-renders from `listGeneratedDppsForRender`, an `unstable_cache`
+ * with `revalidate: 30, tags: ["dpps"]`. Nothing used to bust that tag, so a
+ * student who answered a question and came back saw a score up to 30 s old —
+ * sometimes fresh, sometimes not, which is precisely how the staleness was
+ * reported. Every write to a DPP's graded record now invalidates it.
+ * Plan: V1/allmd/TEACHER_DPP_DELIVERY_AND_LIVE_SCORING_PLAN.md (D4)
+ */
+function revalidateDppMutation(userId: string) {
+  revalidateTag("dpps", "max");
+  revalidateUserProgress(userId);
+}
+
 function revalidateOgcodeMutation(userId: string, questionId?: string) {
   revalidateUserProgress(userId);
   revalidateTag("ogcode-catalog", "max");
@@ -469,6 +482,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         { userId: auth.user.id, collections: TEST_SUBMIT_PERSIST_COLLECTIONS, persistUser: true },
       );
       revalidateTestMutation(auth.user.id);
+      revalidateDppMutation(auth.user.id);
       return created(response);
     }
 
@@ -481,6 +495,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
         }
         return checkGeneratedDppQuestion(store, user, first, body);
       });
+      // A retry writes nothing, so there is nothing to invalidate.
+      if (response.scored) {
+        revalidateDppMutation(auth.user.id);
+      }
       return ok(response);
     }
 

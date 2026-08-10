@@ -87,6 +87,7 @@ export default async function EditTestPage({ params }: Props) {
       questions={questions}
       batches={batches}
       ogcodeEnabled={isFeatureEnabled("teacherOgcode")}
+      dppShareEnabled={isFeatureEnabled("teacherDppShare")}
       initial={initial}
     />
   );

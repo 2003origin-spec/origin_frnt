@@ -78,6 +78,10 @@ const MIGRATIONS = [
   // CBT participation quota — 2026-08-08. Admin-set caps per CBT teacher, the
   // append-only participation meter, and the request/approval ledger.
   { file: "20260808_cbt_participation_quota.sql", target: "user" },
+  // Canonical sign for teacher negative marks — 2026-08-10. Data tidy-up; the
+  // real fix is canonicalNegativeMarks at the point of use, so this is safe to
+  // apply late (or never) without leaving DPP scoring wrong.
+  { file: "20260810_negative_marks_sign.sql", target: "user" },
 ];
 
 const TARGET_ENV = {
