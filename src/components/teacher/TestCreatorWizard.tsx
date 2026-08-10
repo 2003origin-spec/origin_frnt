@@ -38,6 +38,8 @@ type Props = {
   questions: QuestionWithVersion[];
   batches: BatchWithCounts[];
   ogcodeEnabled: boolean;
+  /** `teacherDppShare` — hides the DPP delivery modes when the feature is dark. */
+  dppShareEnabled?: boolean;
   onSuccess: () => void;
   onCancel: () => void;
   /** "edit" resumes an existing (draft) test, pre-filled from `initial`. */
@@ -46,9 +48,26 @@ type Props = {
   initial?: WizardInitial;
 };
 
-const STEPS = ["Details", "Select Questions", "Target & Schedule"];
+const STEPS = ["Details", "Select Questions", "Deliver"];
 
-export function TestCreatorWizard({ workspaceId, questions, batches, ogcodeEnabled, onSuccess, onCancel, mode = "create", testId, initial }: Props) {
+/**
+ * How the finished paper reaches the batch.
+ *
+ * Until now this was not a choice: the wizard always published AND assigned a
+ * scheduled test, so "share as DPP" could only ever be a second trip made after
+ * the batch had already been given the same paper as an exam. A teacher who only
+ * wanted to push practice had no route to it.
+ *
+ * `dpp` publishes but creates no assignment. Students discover teacher tests
+ * exclusively through assignments (listTestPreviews → withAssignedTeacherTests),
+ * so a published-but-unassigned paper never surfaces as an exam — which is what
+ * makes DPP-only delivery safe without a new lifecycle state.
+ *
+ * Plan: V1/allmd/TEACHER_DPP_DELIVERY_AND_LIVE_SCORING_PLAN.md (D1)
+ */
+type DeliveryMode = "test" | "dpp" | "both";
+
+export function TestCreatorWizard({ workspaceId, questions, batches, ogcodeEnabled, dppShareEnabled = false, onSuccess, onCancel, mode = "create", testId, initial }: Props) {
   const router = useRouter();
   const isEdit = mode === "edit";
   const [currentStep, setCurrentStep] = useState(0);
@@ -80,10 +99,23 @@ export function TestCreatorWizard({ workspaceId, questions, batches, ogcodeEnabl
     });
   };
 
-  // Step 3: Target & Schedule (drafts have no assignment yet — teacher picks here)
+  // Step 3: Deliver (drafts have no assignment yet — teacher picks here)
+  const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>("test");
   const [selectedBatchId, setSelectedBatchId] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  // DPP delivery targets every selected batch at once — unlike the scheduled
+  // test, which the existing flow assigns to exactly one.
+  const [dppBatchIds, setDppBatchIds] = useState<string[]>([]);
+  const [showAllQuestions, setShowAllQuestions] = useState(false);
+
+  const sendsTest = deliveryMode === "test" || deliveryMode === "both";
+  const sendsDpp = dppShareEnabled && (deliveryMode === "dpp" || deliveryMode === "both");
+
+  const toggleDppBatch = (batchId: string) =>
+    setDppBatchIds((prev) =>
+      prev.includes(batchId) ? prev.filter((id) => id !== batchId) : [...prev, batchId],
+    );
   const [shuffle, setShuffle] = useState(initial?.shuffle ?? true);
   const [autoSubmit, setAutoSubmit] = useState(initial?.autoSubmit ?? true);
   const [hideLeaderboard, setHideLeaderboard] = useState(initial?.hideLeaderboard ?? false);
@@ -111,12 +143,18 @@ export function TestCreatorWizard({ workspaceId, questions, batches, ogcodeEnabl
   };
 
   async function submit() {
-    if (!selectedBatchId) {
+    // A scheduled test needs a batch and a window; a DPP needs neither — it just
+    // needs somewhere to go.
+    if (sendsTest && !selectedBatchId) {
       toast.error("Please select a target batch.");
       return;
     }
-    if (!startDate || !endDate) {
+    if (sendsTest && (!startDate || !endDate)) {
       toast.error("Please specify a scheduled window.");
+      return;
+    }
+    if (sendsDpp && dppBatchIds.length === 0) {
+      toast.error("Select at least one batch to share the DPP with.");
       return;
     }
 
@@ -179,25 +217,58 @@ export function TestCreatorWizard({ workspaceId, questions, batches, ogcodeEnabl
         }
       }
 
+      const assignUrl = `/api/teacher/workspaces/${workspaceId}/tests/${resolvedTestId}/assign`;
+
       // 3. Assign to the batch with the scheduled window (batchIds is an array).
-      const assignResult = await apiJson(
-        `/api/teacher/workspaces/${workspaceId}/tests/${resolvedTestId}/assign`,
-        {
+      //    Skipped entirely in DPP-only mode — no assignment row is what keeps
+      //    the paper from showing up as an exam.
+      if (sendsTest) {
+        const assignResult = await apiJson(assignUrl, {
           method: "POST",
           json: {
             batchIds: [selectedBatchId],
             scheduledStartAt: new Date(startDate).toISOString(),
             scheduledEndAt: new Date(endDate).toISOString(),
-          }
-        }
-      );
+          },
+        });
 
-      if (!assignResult.ok) {
-        toast.error(assignResult.detail || "Failed to assign test to batch");
-        return;
+        if (!assignResult.ok) {
+          toast.error(assignResult.detail || "Failed to assign test to batch");
+          return;
+        }
       }
 
-      toast.success("Test published and assigned — your students can see it now.");
+      // 4. Share as a DPP. Same endpoint, `action: "share_dpp"` — the paper lands
+      //    in every selected batch's students' DPP section for 30 days.
+      if (sendsDpp) {
+        const shareResult = await apiJson(assignUrl, {
+          method: "POST",
+          json: { action: "share_dpp", batchIds: dppBatchIds, showAllQuestions },
+        });
+
+        if (!shareResult.ok) {
+          // In "both" mode the test half has already landed, so say what did and
+          // did not happen rather than implying the whole thing failed.
+          toast.error(
+            sendsTest
+              ? `Test assigned, but the DPP share failed: ${shareResult.detail || "unknown error"}`
+              : shareResult.detail || "Failed to share this test as a DPP.",
+          );
+          if (sendsTest) {
+            onSuccess();
+            router.refresh();
+          }
+          return;
+        }
+      }
+
+      toast.success(
+        sendsTest && sendsDpp
+          ? "Published — assigned as a scheduled test and shared as a DPP."
+          : sendsDpp
+            ? "Shared as a DPP — it is in your students' DPP section for 30 days."
+            : "Test published and assigned — your students can see it now.",
+      );
       onSuccess();
       router.refresh();
     });
@@ -321,40 +392,124 @@ export function TestCreatorWizard({ workspaceId, questions, batches, ogcodeEnabl
           )}
 
           {currentStep === 2 && (
-            /* Step 3: Target & Schedule */
+            /* Step 3: Deliver — as a scheduled test, as a DPP, or both. */
             <Card className="border">
               <CardHeader>
-                <CardTitle className="text-base">Target Schedule & Settings</CardTitle>
-                <CardDescription>Assign the compiled test to student batches and set deadlines.</CardDescription>
+                <CardTitle className="text-base">Deliver this paper</CardTitle>
+                <CardDescription>
+                  Send it to your batches as a timed exam, as daily practice, or both.
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-5">
-                <div className="space-y-1.5">
-                  <Label htmlFor="t-batch">Target Classroom Batch *</Label>
-                  <select
-                    value={selectedBatchId}
-                    onChange={(e) => setSelectedBatchId(e.target.value)}
-                    required
-                    className="w-full h-10 rounded-xl border bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                  >
-                    <option value="">Select a batch...</option>
-                    {batches.map(b => (
-                      <option key={b.id} value={b.id}>{b.name} ({b.studentCount} students)</option>
+                {dppShareEnabled ? (
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    {([
+                      { id: "test", title: "Scheduled test", blurb: "A timed exam in a window you set." },
+                      { id: "dpp", title: "DPP only", blurb: "Practice set for 30 days. No exam." },
+                      { id: "both", title: "Both", blurb: "Sit the exam, keep it as practice." },
+                    ] as const).map((option) => (
+                      <button
+                        key={option.id}
+                        type="button"
+                        onClick={() => setDeliveryMode(option.id)}
+                        aria-pressed={deliveryMode === option.id}
+                        className={`rounded-xl border p-3 text-left transition-colors ${
+                          deliveryMode === option.id
+                            ? "border-primary bg-primary/5 ring-1 ring-primary/30"
+                            : "hover:border-primary/40 hover:bg-muted/10"
+                        }`}
+                      >
+                        <span className="block text-sm font-semibold">{option.title}</span>
+                        <span className="mt-0.5 block text-[11px] text-muted-foreground">{option.blurb}</span>
+                      </button>
                     ))}
-                  </select>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="t-start">Scheduled Start Date/Time *</Label>
-                    <Input type="datetime-local" value={startDate} onChange={(e) => setStartDate(e.target.value)} id="t-start" required />
                   </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="t-end">Scheduled End Date/Time *</Label>
-                    <Input type="datetime-local" value={endDate} onChange={(e) => setEndDate(e.target.value)} id="t-end" required />
-                  </div>
-                </div>
+                ) : null}
 
-                <div className="space-y-3 pt-4 border-t">
+                {sendsTest ? (
+                  <>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="t-batch">Target Classroom Batch *</Label>
+                      <select
+                        id="t-batch"
+                        value={selectedBatchId}
+                        onChange={(e) => setSelectedBatchId(e.target.value)}
+                        required
+                        className="w-full h-10 rounded-xl border bg-background px-3 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                      >
+                        <option value="">Select a batch...</option>
+                        {batches.map(b => (
+                          <option key={b.id} value={b.id}>{b.name} ({b.studentCount} students)</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="t-start">Scheduled Start Date/Time *</Label>
+                        <Input type="datetime-local" value={startDate} onChange={(e) => setStartDate(e.target.value)} id="t-start" required />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="t-end">Scheduled End Date/Time *</Label>
+                        <Input type="datetime-local" value={endDate} onChange={(e) => setEndDate(e.target.value)} id="t-end" required />
+                      </div>
+                    </div>
+                  </>
+                ) : null}
+
+                {sendsDpp ? (
+                  <div className="space-y-3 rounded-xl border border-primary/30 bg-primary/[0.03] p-4">
+                    <div>
+                      <Label className="text-sm font-semibold">DPP batches *</Label>
+                      <p className="text-[11px] text-muted-foreground">
+                        Appears in each student&apos;s DPP section under your institute&apos;s name,
+                        live for 30 days.
+                      </p>
+                    </div>
+                    {batches.length === 0 ? (
+                      <p className="py-2 text-sm text-muted-foreground">
+                        No active batches yet. Create a batch first.
+                      </p>
+                    ) : (
+                      <div className="max-h-48 space-y-2 overflow-y-auto pr-1">
+                        {batches.map((b) => (
+                          <label
+                            key={b.id}
+                            className="flex cursor-pointer items-center gap-3 rounded-xl border p-2.5 hover:border-primary/40"
+                          >
+                            <Checkbox
+                              checked={dppBatchIds.includes(b.id)}
+                              onCheckedChange={() => toggleDppBatch(b.id)}
+                            />
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-sm font-semibold">{b.name}</span>
+                              <span className="block text-[11px] text-muted-foreground">
+                                {b.studentCount} student{b.studentCount === 1 ? "" : "s"}
+                              </span>
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                    <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border p-3">
+                      <Checkbox
+                        checked={showAllQuestions}
+                        onCheckedChange={(c) => setShowAllQuestions(!!c)}
+                        className="mt-0.5"
+                      />
+                      <span className="min-w-0">
+                        <span className="block text-sm font-semibold">Institute mode</span>
+                        <span className="block text-[11px] text-muted-foreground">
+                          Show all questions at once (worksheet). Off = one question at a time.
+                        </span>
+                      </span>
+                    </label>
+                  </div>
+                ) : null}
+
+                {/* Proctoring only means something for a timed exam — a DPP is
+                    untimed practice with no leaderboard of its own. */}
+                <div className={`space-y-3 pt-4 border-t ${sendsTest ? "" : "hidden"}`}>
                   <Label className="text-xs font-bold text-muted-foreground uppercase">Proctoring & Delivery Toggles</Label>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm font-medium">
                     <label className="flex items-center gap-2.5 border rounded-xl p-3 cursor-pointer hover:bg-muted/10">
@@ -389,7 +544,11 @@ export function TestCreatorWizard({ workspaceId, questions, batches, ogcodeEnabl
                     className="bg-primary hover:bg-primary/95 text-black font-bold rounded-xl gap-1.5"
                   >
                     {pending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-                    Confirm & Publish Test
+                    {sendsTest && sendsDpp
+                      ? "Publish as Test + DPP"
+                      : sendsDpp
+                        ? "Publish as DPP"
+                        : "Confirm & Publish Test"}
                   </Button>
                 </div>
               </CardContent>

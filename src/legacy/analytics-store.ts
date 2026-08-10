@@ -1213,15 +1213,21 @@ export type DppQuestionResultInput = {
  * Best-effort by contract — the caller must not fail a student's answer check
  * because analytics bookkeeping failed.
  */
-export async function recordDppQuestionResult(input: DppQuestionResultInput): Promise<void> {
-  if (!input.dppId || !input.questionId || !input.userId) return;
+/**
+ * Records a graded answer, keeping the FIRST one. Returns whether this call is
+ * the one that landed — false means a row was already there, so this answer
+ * changed nothing and must not be reported to the student as scored.
+ */
+export async function recordDppQuestionResult(input: DppQuestionResultInput): Promise<boolean> {
+  if (!input.dppId || !input.questionId || !input.userId) return false;
   await ensureSchema();
   const pool = getPoolOrThrow();
-  await pool.query(
+  const result = await pool.query(
     `INSERT INTO analytics.dpp_question_results (
        dpp_id, question_id, user_id, is_correct, marks_awarded, max_marks, time_spent_seconds
      ) VALUES ($1,$2,$3,$4,$5,$6,$7)
-     ON CONFLICT (dpp_id, question_id) DO NOTHING`,
+     ON CONFLICT (dpp_id, question_id) DO NOTHING
+     RETURNING question_id`,
     [
       input.dppId,
       input.questionId,
@@ -1232,6 +1238,7 @@ export async function recordDppQuestionResult(input: DppQuestionResultInput): Pr
       Math.max(0, Math.round(input.timeSpentSeconds ?? 0)),
     ],
   );
+  return (result.rowCount ?? 0) > 0;
 }
 
 export type DppQuestionResultRecord = {

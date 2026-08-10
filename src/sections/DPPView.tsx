@@ -168,6 +168,83 @@ function InstituteLockup({
   );
 }
 
+type LiveProgress = {
+  answered: number;
+  correct: number;
+  total: number;
+  score: number;
+  marksAttempted: number;
+};
+
+/**
+ * The running score. A DPP has no submit button, so this is the only place the
+ * student ever sees what their practice is worth — and it now moves the instant
+ * an answer is graded, from the total the server returns with each check.
+ *
+ * The headline is marks, not a percentage: with negative marking a score can be
+ * below zero, and "-25% accuracy" is not a sentence anyone can act on. Correct
+ * count is reported alongside, which stays true at any score.
+ */
+function DppScorePanel({ progress, className = '' }: { progress: LiveProgress; className?: string }) {
+  const coverage = progress.total > 0 ? Math.round((progress.answered / progress.total) * 100) : 0;
+  const negative = progress.score < 0;
+  return (
+    <div className={`rounded-xl border border-primary/20 bg-primary/5 p-3 ${className}`}>
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Your score
+        </span>
+        <span
+          className={`font-mono text-lg font-bold tabular-nums ${
+            negative ? 'text-red-600 dark:text-red-400' : 'text-primary'
+          }`}
+        >
+          {progress.score}
+          {progress.marksAttempted > 0 ? (
+            <span className="text-xs font-semibold text-muted-foreground">
+              {' '}/ {progress.marksAttempted}
+            </span>
+          ) : null}
+        </span>
+      </div>
+      <div className="mt-1 flex items-center justify-between gap-2 text-[0.7rem] text-muted-foreground">
+        <span>
+          {progress.answered} of {progress.total} answered
+        </span>
+        {progress.answered > 0 ? (
+          <span>
+            {progress.correct} correct
+          </span>
+        ) : null}
+      </div>
+      {/* Tracks coverage, never score — a negative score must not render a
+          negative bar width. */}
+      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
+        <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${coverage}%` }} />
+      </div>
+      <p className="mt-2 text-[0.65rem] leading-snug text-muted-foreground">
+        Only your first answer to each question is scored. Retry is practice — it never changes
+        your score.
+      </p>
+    </div>
+  );
+}
+
+/** Says out loud that the attempt in progress is unscored, so nobody expects otherwise. */
+function PracticeAttemptNotice({ className = '' }: { className?: string }) {
+  return (
+    <div
+      className={`flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300 ${className}`}
+    >
+      <RotateCcw className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+      <span>
+        <strong className="font-semibold">Practice attempt.</strong> Your first answer is the one
+        that counts — this retry will not change your score.
+      </span>
+    </div>
+  );
+}
+
 type DppQuestion = {
   id: string;
   text: string;
@@ -210,7 +287,22 @@ type DppCheckResult = {
   correctOption?: number | null;
   correct_option?: number | null;
   explanation?: string;
+  /** False for a practice retry, and for an answer the server failed to record. */
+  scored?: boolean;
+  marksAwarded?: number;
+  marks_awarded?: number;
+  maxMarks?: number;
+  max_marks?: number;
+  /** The student's whole running record, recomputed server-side after the write. */
+  progress?: DppProgress | null;
 };
+
+function marksOf(result: DppCheckResult): { marksAwarded: number; maxMarks: number } {
+  return {
+    marksAwarded: Number(result.marksAwarded ?? result.marks_awarded ?? 0),
+    maxMarks: Number(result.maxMarks ?? result.max_marks ?? 0),
+  };
+}
 
 export default function DPPView({ onBack, initialDpps, user }: DPPViewProps) {
   const searchParams = useSearchParams();
@@ -224,7 +316,22 @@ export default function DPPView({ onBack, initialDpps, user }: DPPViewProps) {
   const [showSolution, setShowSolution] = useState(false);
   const [answers, setAnswers] = useState<(number | null)[]>([]);
   const [revealedAnswers, setRevealedAnswers] = useState<boolean[]>([]);
+  /** Scored results only — the first answer to a question, which is the one that counts. */
   const [checkResults, setCheckResults] = useState<(DppCheckResult | null)[]>([]);
+  /**
+   * Retry state, kept deliberately separate from `checkResults` so a practice
+   * attempt can never overwrite the graded record the score and palette read.
+   */
+  const [retrying, setRetrying] = useState<boolean[]>([]);
+  const [retryResults, setRetryResults] = useState<(DppCheckResult | null)[]>([]);
+  /**
+   * The scored answer a retried question had before it was reopened. `answers`
+   * holds the practice selection while retrying, and a full submit must still
+   * report the answer that actually counted.
+   */
+  const [preRetryAnswers, setPreRetryAnswers] = useState<(number | null)[]>([]);
+  /** Server-recomputed progress from the latest check — newer than the page's snapshot. */
+  const [progressOverride, setProgressOverride] = useState<DppProgress | null>(null);
   const [timeSpentByQuestion, setTimeSpentByQuestion] = useState<number[]>([]);
   const [checking, setChecking] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -295,6 +402,31 @@ export default function DPPView({ onBack, initialDpps, user }: DPPViewProps) {
     loadDetail();
   }, [dpps, selectedDppId]);
 
+  /**
+   * Re-reads the graded record when the tab regains focus. Within one tab every
+   * check already returns the fresh total, so this exists for the case that tab
+   * cannot see: the same DPP answered somewhere else. Server truth replaces the
+   * local override rather than merging with it.
+   */
+  useEffect(() => {
+    if (!selectedDppId) return;
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const detail = await apiCall(`/assessments/dpps/${selectedDppId}/`);
+        if (cancelled || !detail) return;
+        setProgressOverride(detail.progress ?? null);
+      } catch {
+        // Keep whatever the student is already looking at.
+      }
+    };
+    window.addEventListener('focus', refresh);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('focus', refresh);
+    };
+  }, [selectedDppId]);
+
   useEffect(() => {
     const questionCount = currentDpp?.questions?.length ?? 0;
     setCurrentQuestionIndex(0);
@@ -303,6 +435,10 @@ export default function DPPView({ onBack, initialDpps, user }: DPPViewProps) {
     setAnswers(new Array(questionCount).fill(null));
     setRevealedAnswers(new Array(questionCount).fill(false));
     setCheckResults(new Array(questionCount).fill(null));
+    setRetrying(new Array(questionCount).fill(false));
+    setRetryResults(new Array(questionCount).fill(null));
+    setPreRetryAnswers(new Array(questionCount).fill(null));
+    setProgressOverride(null);
     setTimeSpentByQuestion(new Array(questionCount).fill(0));
     setSubmissionResult(null);
     questionStartedAtRef.current = Date.now();
@@ -351,8 +487,12 @@ export default function DPPView({ onBack, initialDpps, user }: DPPViewProps) {
     };
   }, [selectedDppId, submissionAnalysisStatus]);
 
+  /** The result driving the reveal at `index` — the practice one while retrying. */
+  const resultAt = (index: number): DppCheckResult | null =>
+    (retrying[index] ? retryResults[index] : checkResults[index]) ?? null;
+
   const getCorrectOption = (index: number) => {
-    const result = checkResults[index];
+    const result = resultAt(index);
     return result?.correctOption ?? result?.correct_option ?? null;
   };
 
@@ -381,48 +521,142 @@ export default function DPPView({ onBack, initialDpps, user }: DPPViewProps) {
    *
    * Keyed by question id rather than index so it survives the palette order.
    */
+  const serverProgress = progressOverride ?? currentDpp?.progress ?? null;
+
   const answeredByQuestionId = useMemo(() => {
     const map = new Map<string, { isCorrect: boolean; marksAwarded: number; maxMarks: number }>();
-    for (const entry of currentDpp?.progress?.attempted ?? []) {
+    for (const entry of serverProgress?.attempted ?? []) {
       map.set(entry.questionId, {
         isCorrect: entry.isCorrect,
         marksAwarded: entry.marksAwarded,
         maxMarks: entry.maxMarks,
       });
     }
+    // Anything checked in this session that the server record has not caught up
+    // with — normally nothing, since every check returns fresh progress, but it
+    // keeps the header honest if that read failed. A retry is never in here:
+    // `checkResults` only ever holds the scored answer.
     currentQuestions.forEach((question, index) => {
       const result = checkResults[index];
-      if (!result || map.has(question.id)) return;
+      if (!result || result.scored === false || map.has(question.id)) return;
       map.set(question.id, {
         isCorrect: Boolean(result.isCorrect ?? result.is_correct),
-        marksAwarded: 0,
-        maxMarks: 0,
+        ...marksOf(result),
       });
     });
     return map;
-  }, [currentDpp?.progress, currentQuestions, checkResults]);
+  }, [serverProgress, currentQuestions, checkResults]);
 
+  /**
+   * The running score, rebuilt from the merged graded record above rather than
+   * read off the page's server snapshot. That snapshot is a cached render and
+   * never moved while the student worked, which is why the number looked frozen
+   * and stale; this recomputes from whatever is newest per question.
+   */
   const liveProgress = useMemo(() => {
-    const base = currentDpp?.progress;
-    const sessionOnly = currentQuestions.filter(
-      (question, index) =>
-        checkResults[index] && !(base?.attempted ?? []).some((a) => a.questionId === question.id),
-    ).length;
-    const answered = (base?.questionsAttempted ?? 0) + sessionOnly;
+    let score = 0;
+    let marksAttempted = 0;
+    let correct = 0;
+    for (const entry of answeredByQuestionId.values()) {
+      score += entry.marksAwarded;
+      marksAttempted += entry.maxMarks;
+      if (entry.isCorrect) correct += 1;
+    }
     return {
-      answered,
+      answered: answeredByQuestionId.size,
+      correct,
       total: currentQuestions.length,
-      score: base?.score ?? 0,
-      marksAttempted: base?.marksAttempted ?? 0,
-      accuracy: base?.accuracy ?? null,
+      score: Math.round(score * 100) / 100,
+      marksAttempted: Math.round(marksAttempted * 100) / 100,
     };
-  }, [currentDpp?.progress, currentQuestions, checkResults]);
+  }, [answeredByQuestionId, currentQuestions.length]);
+
+  /**
+   * Files a check response. A practice retry goes to its own slot so it can be
+   * displayed without ever touching the graded record; anything else replaces
+   * the graded slot and hands the score the server's fresh total.
+   *
+   * Both signals matter. The client's intent alone would misfile an answer the
+   * server graded but failed to persist (`scored: false`, yet it still has to
+   * render its explanation). The server's flag alone would misfile a "retry" the
+   * server declined to treat as one — it only honours the flag on a question it
+   * has already graded, so a retry of something it has no record of comes back
+   * genuinely scored and belongs in the graded slot.
+   */
+  const applyCheckResponse = (index: number, response: DppCheckResult, isRetry: boolean) => {
+    if (isRetry && response.scored !== true) {
+      setRetryResults((previous) => {
+        const next = [...previous];
+        next[index] = response;
+        return next;
+      });
+      return;
+    }
+    if (isRetry) {
+      // The server scored it after all — drop the practice framing.
+      setRetrying((previous) => {
+        const next = [...previous];
+        next[index] = false;
+        return next;
+      });
+    }
+    setCheckResults((previous) => {
+      const next = [...previous];
+      next[index] = response;
+      return next;
+    });
+    if (response.progress) setProgressOverride(response.progress);
+  };
 
   /** Already graded — the first answer is the one that counts, so it is locked. */
   const isQuestionLocked = (index: number): boolean => {
     const question = currentQuestions[index];
     if (!question) return false;
     return Boolean(revealedAnswers[index]) || answeredByQuestionId.has(question.id);
+  };
+
+  /** Locked, but the student has explicitly opened it as unscored practice. */
+  const canAnswer = (index: number): boolean =>
+    !revealedAnswers[index] && (!isQuestionLocked(index) || Boolean(retrying[index]));
+
+  /**
+   * Reopens a settled question for practice. The graded record is untouched —
+   * the server refuses to write on a retry — so the score, the palette colour
+   * and the teacher's board all keep showing the first answer.
+   */
+  const startRetry = (index: number) => {
+    setRetrying((previous) => {
+      const next = [...previous];
+      next[index] = true;
+      return next;
+    });
+    setRetryResults((previous) => {
+      const next = [...previous];
+      next[index] = null;
+      return next;
+    });
+    setPreRetryAnswers((previous) => {
+      const next = [...previous];
+      // Only the FIRST retry captures it — a second retry must not overwrite the
+      // stashed original with the previous practice attempt.
+      if (next[index] === null || next[index] === undefined) next[index] = answers[index] ?? null;
+      return next;
+    });
+    setAnswers((previous) => {
+      const next = [...previous];
+      next[index] = null;
+      return next;
+    });
+    setRevealedAnswers((previous) => {
+      const next = [...previous];
+      next[index] = false;
+      return next;
+    });
+    if (index === currentQuestionIndex) {
+      setSelectedOption(null);
+      setShowSolution(false);
+    }
+    questionStartedAtRef.current = Date.now();
   };
 
   const goToQuestion = (nextIndex: number) => {
@@ -435,15 +669,16 @@ export default function DPPView({ onBack, initialDpps, user }: DPPViewProps) {
 
   const handleOptionSelect = (optionIndex: number) => {
     if (showSolution || !currentQuestion) return;
-    // Re-answering cannot change the score — only the first grading counts —
-    // so the option is inert rather than quietly doing nothing.
-    if (isQuestionLocked(currentQuestionIndex)) return;
+    // Re-answering cannot change the score — only the first grading counts — so
+    // the option is inert unless the student opened this one as practice.
+    if (!canAnswer(currentQuestionIndex)) return;
     setSelectedOption(optionIndex);
   };
 
   const handleCheck = async () => {
     if (selectedOption === null || !currentQuestion || !currentDpp) return;
-    if (isQuestionLocked(currentQuestionIndex)) return;
+    if (!canAnswer(currentQuestionIndex)) return;
+    const isRetry = Boolean(retrying[currentQuestionIndex]);
     const elapsedSeconds = getElapsedSeconds();
     recordCurrentQuestionTime();
     setChecking(true);
@@ -457,6 +692,7 @@ export default function DPPView({ onBack, initialDpps, user }: DPPViewProps) {
           presentation_id: currentQuestion.presentationId ?? currentQuestion.presentation_id ?? null,
           selected_option: selectedOption,
           time_spent: (timeSpentByQuestion[currentQuestionIndex] ?? 0) + elapsedSeconds,
+          retry: isRetry,
         }),
       });
       setShowSolution(true);
@@ -471,11 +707,7 @@ export default function DPPView({ onBack, initialDpps, user }: DPPViewProps) {
         next[currentQuestionIndex] = true;
         return next;
       });
-      setCheckResults((previous) => {
-        const next = [...previous];
-        next[currentQuestionIndex] = response;
-        return next;
-      });
+      applyCheckResponse(currentQuestionIndex, response, isRetry);
     } catch (checkError) {
       setError(getErrorMessage(checkError, 'Failed to check answer.'));
     } finally {
@@ -491,7 +723,7 @@ export default function DPPView({ onBack, initialDpps, user }: DPPViewProps) {
   // ── "Institute mode" (all questions at once) — index-aware variants ────────
   // The one-at-a-time path above stays untouched; these drive the stacked view.
   const selectOptionAt = (qIndex: number, optIndex: number) => {
-    if (revealedAnswers[qIndex] || isQuestionLocked(qIndex)) return;
+    if (!canAnswer(qIndex)) return;
     setAnswers((prev) => {
       const next = [...prev];
       while (next.length < currentQuestions.length) next.push(null);
@@ -504,7 +736,8 @@ export default function DPPView({ onBack, initialDpps, user }: DPPViewProps) {
     const question = currentQuestions[qIndex];
     const selection = answers[qIndex];
     if (selection === null || selection === undefined || !question || !currentDpp) return;
-    if (isQuestionLocked(qIndex) || revealedAnswers[qIndex]) return;
+    if (!canAnswer(qIndex)) return;
+    const isRetry = Boolean(retrying[qIndex]);
     setChecking(true);
     setError('');
     try {
@@ -516,11 +749,12 @@ export default function DPPView({ onBack, initialDpps, user }: DPPViewProps) {
           presentation_id: question.presentationId ?? question.presentation_id ?? null,
           selected_option: selection,
           time_spent: timeSpentByQuestion[qIndex] ?? 0,
+          retry: isRetry,
         }),
       });
       playAnswerSound(Boolean(response?.isCorrect ?? response?.is_correct));
       setRevealedAnswers((prev) => { const n = [...prev]; n[qIndex] = true; return n; });
-      setCheckResults((prev) => { const n = [...prev]; n[qIndex] = response; return n; });
+      applyCheckResponse(qIndex, response, isRetry);
     } catch (checkError) {
       setError(getErrorMessage(checkError, 'Failed to check answer.'));
     } finally {
@@ -538,7 +772,9 @@ export default function DPPView({ onBack, initialDpps, user }: DPPViewProps) {
         answers: currentQuestions.map((question, index) => ({
           question_id: question.id,
           presentation_id: question.presentationId ?? question.presentation_id ?? null,
-          selected_option: answers[index],
+          // A retried question reports the answer that was scored, not the
+          // practice one, so the attempt summary agrees with the graded record.
+          selected_option: retrying[index] ? preRetryAnswers[index] ?? null : answers[index],
           time_spent: timeSpentByQuestion[index] ?? 0,
           is_marked_for_review: false,
         })),
@@ -583,6 +819,9 @@ export default function DPPView({ onBack, initialDpps, user }: DPPViewProps) {
     setAnswers(new Array(currentQuestions.length).fill(null));
     setRevealedAnswers(new Array(currentQuestions.length).fill(false));
     setCheckResults(new Array(currentQuestions.length).fill(null));
+    setRetrying(new Array(currentQuestions.length).fill(false));
+    setRetryResults(new Array(currentQuestions.length).fill(null));
+    setPreRetryAnswers(new Array(currentQuestions.length).fill(null));
     setTimeSpentByQuestion(new Array(currentQuestions.length).fill(0));
     setSubmissionResult(null);
     questionStartedAtRef.current = Date.now();
@@ -756,8 +995,12 @@ export default function DPPView({ onBack, initialDpps, user }: DPPViewProps) {
                 <Badge variant="outline">{currentQuestions.length} questions</Badge>
               </div>
             ) : null}
+            {/* Institute mode had no score surface at all — the same running
+                total the one-at-a-time view shows belongs here too. */}
+            <DppScorePanel progress={liveProgress} />
             {currentQuestions.map((q, qi) => {
-              const revealed = revealedAnswers[qi] || isQuestionLocked(qi);
+              const isRetrying = Boolean(retrying[qi]);
+              const revealed = revealedAnswers[qi] || (isQuestionLocked(qi) && !isRetrying);
               const locked = isQuestionLocked(qi);
               const sel = answers[qi] ?? null;
               const correct = getCorrectOption(qi);
@@ -813,25 +1056,40 @@ export default function DPPView({ onBack, initialDpps, user }: DPPViewProps) {
                         </button>
                       ))}
                     </div>
-                    {revealed ? (
-                      <div className="p-4 rounded-xl bg-primary/5 dark:bg-primary/10 border border-primary/20">
-                        <h4 className="font-semibold text-slate-900 dark:text-white mb-2 flex items-center gap-2 text-sm">
-                          <Lightbulb className="w-4 h-4 text-primary" /> Explanation
-                        </h4>
-                        <div className="min-w-0 break-words overflow-x-hidden text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
-                          <FormattedMessage content={checkResults[qi]?.explanation ?? q.explanation ?? ''} />
+                    {isRetrying ? <PracticeAttemptNotice className="mb-3" /> : null}
+                    <div className="flex flex-wrap items-center gap-2">
+                      {revealed ? (
+                        <div className="w-full p-4 rounded-xl bg-primary/5 dark:bg-primary/10 border border-primary/20">
+                          <h4 className="font-semibold text-slate-900 dark:text-white mb-2 flex items-center gap-2 text-sm">
+                            <Lightbulb className="w-4 h-4 text-primary" /> Explanation
+                          </h4>
+                          <div className="min-w-0 break-words overflow-x-hidden text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
+                            <FormattedMessage content={resultAt(qi)?.explanation ?? q.explanation ?? ''} />
+                          </div>
                         </div>
-                      </div>
-                    ) : locked ? (
-                      <span className="inline-flex items-center gap-2 rounded-full bg-muted px-4 py-2 text-xs font-semibold text-muted-foreground">
-                        <CheckCircle2 className="h-4 w-4" /> Already answered
-                      </span>
-                    ) : (
-                      <Button onClick={() => checkAt(qi)} disabled={sel === null || checking} className="rounded-full bg-gradient-to-r from-primary to-[#1E3A5F] text-white">
-                        {checking ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
-                        Check Answer
-                      </Button>
-                    )}
+                      ) : !canAnswer(qi) ? (
+                        <span className="inline-flex items-center gap-2 rounded-full bg-muted px-4 py-2 text-xs font-semibold text-muted-foreground">
+                          <CheckCircle2 className="h-4 w-4" /> Already answered
+                        </span>
+                      ) : (
+                        <Button onClick={() => checkAt(qi)} disabled={sel === null || checking} className="rounded-full bg-gradient-to-r from-primary to-[#1E3A5F] text-white">
+                          {checking ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
+                          {isRetrying ? 'Check (practice)' : 'Check Answer'}
+                        </Button>
+                      )}
+                      {locked && !canAnswer(qi) ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => startRetry(qi)}
+                          className="rounded-full"
+                          title="Try this question again for practice — your score will not change"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
+                          Retry
+                        </Button>
+                      ) : null}
+                    </div>
                   </CardContent>
                 </Card>
               );
@@ -875,7 +1133,7 @@ export default function DPPView({ onBack, initialDpps, user }: DPPViewProps) {
                           <button
                             key={`${currentQuestion.id}-${index}`}
                             onClick={() => handleOptionSelect(index)}
-                            disabled={showSolution || isQuestionLocked(currentQuestionIndex)}
+                            disabled={showSolution || !canAnswer(currentQuestionIndex)}
                             className={`w-full p-4 rounded-xl border-2 text-left transition-all ${
                               showSolution
                                 ? index === getCorrectOption(currentQuestionIndex)
@@ -930,6 +1188,10 @@ export default function DPPView({ onBack, initialDpps, user }: DPPViewProps) {
                         ))}
                       </div>
 
+                      {retrying[currentQuestionIndex] ? (
+                        <PracticeAttemptNotice className="mb-6" />
+                      ) : null}
+
                       {showSolution && (
                         <div className="mb-6 p-6 rounded-xl bg-primary/5 dark:bg-primary/10 border border-primary/20">
                           <h4 className="font-semibold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
@@ -937,7 +1199,7 @@ export default function DPPView({ onBack, initialDpps, user }: DPPViewProps) {
                             Explanation
                           </h4>
                           <div className="min-w-0 break-words overflow-x-hidden text-slate-700 dark:text-slate-300 leading-relaxed">
-                            <FormattedMessage content={checkResults[currentQuestionIndex]?.explanation ?? currentQuestion.explanation ?? ''} />
+                            <FormattedMessage content={resultAt(currentQuestionIndex)?.explanation ?? currentQuestion.explanation ?? ''} />
                           </div>
                           <div className="mt-4 pt-4 border-t border-primary/20">
                             <p className="text-sm text-slate-600 dark:text-slate-400">
@@ -953,36 +1215,53 @@ export default function DPPView({ onBack, initialDpps, user }: DPPViewProps) {
                           Previous
                         </Button>
 
-                        {!showSolution && isQuestionLocked(currentQuestionIndex) ? (
-                          // Answered in an earlier session. Say so plainly —
-                          // silently ignoring taps is what makes students think
-                          // re-answering might bump their score.
-                          <span className="inline-flex items-center gap-2 rounded-full bg-muted px-4 py-2 text-xs font-semibold text-muted-foreground">
-                            <CheckCircle2 className="h-4 w-4" />
-                            {answeredByQuestionId.get(currentQuestion.id)?.isCorrect
-                              ? 'Already answered — you got this right'
-                              : 'Already answered — this one was wrong'}
-                          </span>
-                        ) : !showSolution ? (
-                          <Button
-                            onClick={handleCheck}
-                            disabled={selectedOption === null || checking}
-                            className="rounded-full bg-gradient-to-r from-primary to-[#1E3A5F] text-white"
-                          >
-                            {checking ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
-                            {checking ? 'Checking...' : 'Check Answer'}
-                          </Button>
-                        ) : (
-                          <Button
-                            onClick={handleNext}
-                            disabled={submitting}
-                            className="rounded-full bg-gradient-to-r from-primary to-[#1E3A5F] text-white"
-                          >
-                            {submitting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-                            {currentQuestionIndex === currentQuestions.length - 1 ? 'Finish' : 'Next'}
-                            <ArrowRight className="w-4 h-4 ml-2" />
-                          </Button>
-                        )}
+                        <div className="flex items-center flex-wrap gap-2">
+                          {/* Offered whenever the question is settled and not
+                              mid-attempt — whether it was graded just now, in an
+                              earlier session, or on a previous practice run. */}
+                          {isQuestionLocked(currentQuestionIndex) && !canAnswer(currentQuestionIndex) ? (
+                            <Button
+                              variant="outline"
+                              onClick={() => startRetry(currentQuestionIndex)}
+                              className="rounded-full"
+                              title="Try this question again for practice — your score will not change"
+                            >
+                              <RotateCcw className="w-4 h-4 mr-2" />
+                              Retry
+                            </Button>
+                          ) : null}
+
+                          {!showSolution && !canAnswer(currentQuestionIndex) ? (
+                            // Answered in an earlier session. Say so plainly —
+                            // silently ignoring taps is what makes students think
+                            // re-answering might bump their score.
+                            <span className="inline-flex items-center gap-2 rounded-full bg-muted px-4 py-2 text-xs font-semibold text-muted-foreground">
+                              <CheckCircle2 className="h-4 w-4" />
+                              {answeredByQuestionId.get(currentQuestion.id)?.isCorrect
+                                ? 'Already answered — you got this right'
+                                : 'Already answered — this one was wrong'}
+                            </span>
+                          ) : !showSolution ? (
+                            <Button
+                              onClick={handleCheck}
+                              disabled={selectedOption === null || checking}
+                              className="rounded-full bg-gradient-to-r from-primary to-[#1E3A5F] text-white"
+                            >
+                              {checking ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
+                              {checking ? 'Checking...' : retrying[currentQuestionIndex] ? 'Check (practice)' : 'Check Answer'}
+                            </Button>
+                          ) : (
+                            <Button
+                              onClick={handleNext}
+                              disabled={submitting}
+                              className="rounded-full bg-gradient-to-r from-primary to-[#1E3A5F] text-white"
+                            >
+                              {submitting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                              {currentQuestionIndex === currentQuestions.length - 1 ? 'Finish' : 'Next'}
+                              <ArrowRight className="w-4 h-4 ml-2" />
+                            </Button>
+                          )}
+                        </div>
                       </div>
                     </>
                   ) : null}
@@ -1007,47 +1286,7 @@ export default function DPPView({ onBack, initialDpps, user }: DPPViewProps) {
                   <p className="text-sm text-slate-500 dark:text-slate-400 mb-2">
                     {currentDpp.summary ?? 'Targeted practice generated from your latest weak-topic analytics.'}
                   </p>
-                  {/* Running score. A DPP is never submitted, so this is the
-                      only place the student sees what their practice is worth —
-                      and seeing it is what stops them re-answering questions
-                      expecting the number to move. */}
-                  <div className="mb-4 rounded-xl border border-primary/20 bg-primary/5 p-3">
-                    <div className="flex items-baseline justify-between gap-2">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                        Your score
-                      </span>
-                      <span className="font-mono text-lg font-bold tabular-nums text-primary">
-                        {liveProgress.score}
-                        {liveProgress.marksAttempted > 0 ? (
-                          <span className="text-xs font-semibold text-muted-foreground">
-                            {' '}/ {liveProgress.marksAttempted}
-                          </span>
-                        ) : null}
-                      </span>
-                    </div>
-                    <div className="mt-1 flex items-center justify-between gap-2 text-[0.7rem] text-muted-foreground">
-                      <span>
-                        {liveProgress.answered} of {liveProgress.total} answered
-                      </span>
-                      {liveProgress.accuracy !== null ? <span>{liveProgress.accuracy}% accuracy</span> : null}
-                    </div>
-                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
-                      <div
-                        className="h-full rounded-full bg-primary transition-all"
-                        style={{
-                          width: `${
-                            liveProgress.total > 0
-                              ? Math.round((liveProgress.answered / liveProgress.total) * 100)
-                              : 0
-                          }%`,
-                        }}
-                      />
-                    </div>
-                    <p className="mt-2 text-[0.65rem] leading-snug text-muted-foreground">
-                      Only your first answer to each question is scored — re-opening one will not
-                      change your score.
-                    </p>
-                  </div>
+                  <DppScorePanel progress={liveProgress} className="mb-4" />
 
                   {(currentDpp.provenanceNote ?? currentDpp.provenance_note) ? (
                     <p className="text-xs text-primary/80 font-medium mb-4 flex items-center gap-1.5 min-w-0">

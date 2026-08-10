@@ -1,0 +1,14 @@
+-- Rollback for 20260810_negative_marks_sign.sql — deliberately a NO-OP.
+--
+-- The pre-migration state cannot be reconstructed. After normalisation a row
+-- reading -1 is indistinguishable from one that always read -1, so flipping
+-- signs back would corrupt the 36 rows that were correct all along (verified in
+-- production: 96 rows were +1, 36 were -1).
+--
+-- Nothing depends on the old state anyway. The application canonicalises the
+-- sign at the point of use (canonicalNegativeMarks in policyFromQuestionMarks
+-- and resolveShareQuestions), so a code revert alone restores the previous
+-- BEHAVIOUR — bug included — without needing the data back.
+--
+-- Intentionally empty.
+SELECT 1;

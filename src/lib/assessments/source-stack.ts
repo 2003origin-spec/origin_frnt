@@ -50,11 +50,34 @@ function normalizeMarks(value: unknown): number {
   return Number.isFinite(n) && n > 0 ? n : DEFAULT_SOURCE_MARKS;
 }
 
-function normalizeNegativeMarks(value: unknown): number {
+/**
+ * Canonical sign for negative marks: **stored values are always ≤ 0**.
+ *
+ * Two UIs disagree about what the teacher types. The wizard's "Negative Marks (−)"
+ * field is a magnitude (`min={0}`, default `1`) and the test-edit page converts
+ * storage back with `Math.abs`, while `CreateTestDialog`, the source stack and the
+ * document importer all send `-1`. Nothing on the write path ever reconciled them,
+ * so `assessment.test_questions.negative_marks` holds both signs — and a positive
+ * one made `policyFromQuestionMarks` read "no negative marking, worth +1", which
+ * *awarded* a mark for every wrong answer in a shared DPP.
+ *
+ * `1` and `-1` therefore both mean "deduct one mark". `0` is preserved exactly:
+ * "no negative marking" is a real choice a teacher makes, and their number wins
+ * (TEACHER_DPP_SCORING_AND_ANALYTICS_PLAN.md D2).
+ *
+ * Plan: V1/allmd/TEACHER_DPP_DELIVERY_AND_LIVE_SCORING_PLAN.md (D2)
+ */
+export function canonicalNegativeMarks(value: unknown): number {
+  // `Number(null)` and `Number("")` are both 0, so a missing value would read as
+  // the deliberate "no negative marking" choice. Absence is not a choice.
+  if (value === null || value === undefined || value === "") {
+    return DEFAULT_SOURCE_NEGATIVE_MARKS;
+  }
   const n = Number(value);
-  // 0 is a valid choice here ("no negative marking"), so only a non-number falls back.
-  return Number.isFinite(n) ? n : DEFAULT_SOURCE_NEGATIVE_MARKS;
+  if (!Number.isFinite(n)) return DEFAULT_SOURCE_NEGATIVE_MARKS;
+  return n === 0 ? 0 : -Math.abs(n);
 }
+
 
 export function stackSources<K extends string>(sources: ResolvedTestSource<K>[]): SourceStackResult<K> {
   const seen = new Set<string>();
@@ -63,7 +86,7 @@ export function stackSources<K extends string>(sources: ResolvedTestSource<K>[])
 
   for (const source of sources) {
     const marks = normalizeMarks(source.marks);
-    const negativeMarks = normalizeNegativeMarks(source.negativeMarks);
+    const negativeMarks = canonicalNegativeMarks(source.negativeMarks);
     let added = 0;
     let duplicates = 0;
 

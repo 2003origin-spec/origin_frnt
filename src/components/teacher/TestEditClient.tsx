@@ -16,10 +16,11 @@ type Props = {
   questions: QuestionWithVersion[];
   batches: BatchWithCounts[];
   ogcodeEnabled: boolean;
+  dppShareEnabled: boolean;
   initial: WizardInitial;
 };
 
-export function TestEditClient({ workspaceId, testId, questions, batches, ogcodeEnabled, initial }: Props) {
+export function TestEditClient({ workspaceId, testId, questions, batches, ogcodeEnabled, dppShareEnabled, initial }: Props) {
   const router = useRouter();
   const back = () => router.push(`/teacher/workspaces/${workspaceId}/tests`);
 
@@ -30,6 +31,7 @@ export function TestEditClient({ workspaceId, testId, questions, batches, ogcode
         questions={questions}
         batches={batches}
         ogcodeEnabled={ogcodeEnabled}
+        dppShareEnabled={dppShareEnabled}
         mode="edit"
         testId={testId}
         initial={initial}

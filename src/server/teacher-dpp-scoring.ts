@@ -9,6 +9,7 @@
  * so a correct answer in the DPP is worth exactly what it was worth in the test.
  */
 
+import { canonicalNegativeMarks } from "@/lib/assessments/source-stack";
 import { DEFAULT_TEST_SCORING_POLICY } from "@/server/assessment-orchestrator";
 import type { GraderScoringPolicy } from "@/server/grader-client";
 import type { TeacherDppQuestionMarks } from "@/server/workspaces/types";
@@ -20,10 +21,17 @@ import type { TeacherDppQuestionMarks } from "@/server/workspaces/types";
  * negative gets NO negative marking here, even though the platform default for
  * a DPP question would apply -1. That includes numerical questions, whose
  * usual no-negative special case is simply subsumed by the teacher's own value.
+ *
+ * The snapshot's `n` is canonicalised on the way in, NOT trusted as stored. Every
+ * share taken before 2026-08-10 snapshotted whatever sign the authoring UI
+ * happened to use, and the wizard used a positive magnitude — which read here as
+ * "no negative marking, and a wrong answer is worth +1", so a student who got
+ * every question wrong scored +7/28 instead of -7/28. Normalising at the point of
+ * use is what repairs those live shares with no migration and no re-share.
  */
 export function policyFromQuestionMarks(marks: TeacherDppQuestionMarks): GraderScoringPolicy {
   const correctMarks = Number.isFinite(marks.m) ? marks.m : DEFAULT_TEST_SCORING_POLICY.correctMarks;
-  const incorrectMarks = Number.isFinite(marks.n) ? marks.n : 0;
+  const incorrectMarks = Number.isFinite(marks.n) ? canonicalNegativeMarks(marks.n) : 0;
   return {
     correctMarks,
     incorrectMarks,

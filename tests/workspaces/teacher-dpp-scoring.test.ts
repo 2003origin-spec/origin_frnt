@@ -7,6 +7,8 @@ import {
   safePercentage,
 } from "../../src/server/teacher-dpp-scoring";
 import { resolveShareQuestions } from "../../src/server/workspaces/teacher-dpp-service";
+import { canonicalNegativeMarks } from "../../src/lib/assessments/source-stack";
+import { computeMarksFromCredit } from "../../src/server/assessment-orchestrator";
 import { buildDppProgress } from "../../src/legacy/assessments";
 import {
   PRACTICE_INDEX_DPP_WEIGHT,
@@ -31,6 +33,58 @@ function question(overrides: Partial<TestQuestion>): TestQuestion {
     ...overrides,
   };
 }
+
+// ─── negative-marks sign ───────────────────────────────────────────────────────
+//
+// These fixtures use the value the SHIPPING wizard produces (+1), not the one
+// the rest of this file assumes (-1). That gap is the whole bug: every existing
+// test here asserted a convention the authoring UI never wrote, so a suite of 13
+// green tests sat on top of production DPPs that awarded a mark for every wrong
+// answer. Verified in production 2026-08-10: 96 of 132 test_questions rows
+// stored +1.
+
+test("negative marks canonicalise to a deduction, whichever sign was typed", () => {
+  assert.equal(canonicalNegativeMarks(1), -1);
+  assert.equal(canonicalNegativeMarks(-1), -1);
+  assert.equal(canonicalNegativeMarks(2.5), -2.5);
+  assert.equal(canonicalNegativeMarks(-2.5), -2.5);
+  // 0 is a real teacher choice ("no negative marking") and survives untouched.
+  assert.equal(canonicalNegativeMarks(0), 0);
+  assert.equal(canonicalNegativeMarks(-0), 0);
+  // Garbage falls back to the platform default rather than to "no penalty".
+  assert.equal(canonicalNegativeMarks("abc"), -1);
+  assert.equal(canonicalNegativeMarks(null), -1);
+  assert.equal(canonicalNegativeMarks(undefined), -1);
+});
+
+test("a magnitude stored by the wizard costs a mark, it does not award one", () => {
+  // The reported bug, end to end: +4/-1 as the wizard writes it (n = +1).
+  const policy = policyFromQuestionMarks({ m: 4, n: 1 });
+  assert.equal(policy.correctMarks, 4);
+  assert.equal(policy.incorrectMarks, -1);
+  assert.equal(policy.negativeMarkingMode, "answered_only");
+
+  const wrong = computeMarksFromCredit({
+    answered: true,
+    isCorrect: false,
+    creditAwarded: 0,
+    policy,
+  });
+  assert.equal(wrong, -1);
+
+  // Seven wrong answers out of seven: -7 of 28, not the +7 of 28 that shipped.
+  assert.equal(wrong * 7, -7);
+  assert.equal(policy.correctMarks * 7, 28);
+});
+
+test("the snapshot canonicalises too, so a new share never carries a positive n", () => {
+  const { questionMarks } = resolveShareQuestions([
+    question({ position: 1, ogcodeQuestionId: "og_1", marks: 4, negativeMarks: 1 }),
+    question({ position: 2, ogcodeQuestionId: "og_2", marks: 4, negativeMarks: -1 }),
+    question({ position: 3, ogcodeQuestionId: "og_3", marks: 4, negativeMarks: 0 }),
+  ]);
+  assert.deepEqual(questionMarks.map((m) => m.n), [-1, -1, 0]);
+});
 
 // ─── marks snapshot ────────────────────────────────────────────────────────────
 
@@ -235,6 +289,25 @@ test("progress keeps the DPP's question order, not the order rows came back in",
     ],
   );
   assert.deepEqual(progress.attempted.map((a) => a.questionId), ["q1", "q2"]);
+});
+
+test("an all-wrong DPP reports a negative score, not a positive one", () => {
+  // The screenshot: 7 questions, all wrong, +4/-1. The student saw 7/28.
+  const progress = buildDppProgress(
+    ["q1", "q2", "q3", "q4", "q5", "q6", "q7"],
+    Array.from({ length: 7 }, (_, i) => ({
+      dppId: "d",
+      questionId: `q${i + 1}`,
+      isCorrect: false,
+      marksAwarded: -1,
+      maxMarks: 4,
+    })),
+  );
+
+  assert.equal(progress.score, -7);
+  assert.equal(progress.marksAttempted, 28);
+  assert.equal(progress.correctCount, 0);
+  assert.equal(progress.questionsAttempted, 7);
 });
 
 test("a DPP with nothing answered reports null accuracy, not a fabricated zero", () => {
