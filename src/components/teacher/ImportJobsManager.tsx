@@ -16,7 +16,8 @@ import {
   CheckCircle,
   Clock,
   RefreshCw,
-  FolderOpen
+  FolderOpen,
+  Layers,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -34,6 +35,8 @@ import { toast } from "sonner";
 
 type Props = {
   workspaceId: string;
+  /** `questionClusters` — hides the "Save as cluster" option when dark. */
+  clustersEnabled?: boolean;
   initialJobs: DocumentImportJob[];
   defaultJobId?: string;
 };
@@ -47,7 +50,7 @@ const JOB_STATUS_COLORS: Record<string, string> = {
   cancelled: "bg-muted text-muted-foreground border-muted",
 };
 
-export function ImportJobsManager({ workspaceId, initialJobs, defaultJobId }: Props) {
+export function ImportJobsManager({ workspaceId, initialJobs, defaultJobId, clustersEnabled = false }: Props) {
   const router = useRouter();
   const [jobs, setJobs] = useState<DocumentImportJob[]>(initialJobs);
   const [selectedJob, setSelectedJob] = useState<DocumentImportJob | null>(
@@ -57,6 +60,10 @@ export function ImportJobsManager({ workspaceId, initialJobs, defaultJobId }: Pr
   const [loadingQuestions, setLoadingQuestions] = useState(false);
   const [pending, startTransition] = useTransition();
   const [showFinishModal, setShowFinishModal] = useState(false);
+  // "Save as cluster": the teacher names it themselves (prefilled with the file
+  // name but fully editable) — nothing is auto-created behind their back.
+  const [clusterNameOpen, setClusterNameOpen] = useState(false);
+  const [clusterName, setClusterName] = useState("");
 
   // Selected question in details edit view
   const [activeQuestion, setActiveQuestion] = useState<ImportJobQuestion | null>(null);
@@ -396,6 +403,31 @@ export function ImportJobsManager({ workspaceId, initialJobs, defaultJobId }: Pr
       setShowFinishModal(false);
       toast.success(`Draft test created with ${result.data.questionCount ?? 0} questions — finish the setup.`);
       router.push(`/teacher/workspaces/${workspaceId}/tests/${result.data.testId}/edit`);
+    });
+  }
+
+  async function handleCreateCluster() {
+    if (!selectedJob) return;
+    startTransition(async () => {
+      const result = await apiJson<{ clusterId?: string; name?: string; questionCount?: number }>(
+        `/api/teacher/workspaces/${workspaceId}/import-jobs/${selectedJob.id}?action=create-cluster`,
+        { method: "POST", json: { name: clusterName.trim() || undefined } }
+      );
+      if (!result.ok) {
+        toast.error(result.detail || "Failed to save these questions as a cluster.");
+        return;
+      }
+      if (!result.data?.clusterId) {
+        toast.error("Failed to save these questions as a cluster.");
+        return;
+      }
+      setClusterNameOpen(false);
+      setShowFinishModal(false);
+      toast.success(
+        `Cluster "${result.data.name}" saved with ${result.data.questionCount ?? 0} questions.`,
+        { description: "Find it under Question Bag → Clusters, or stack it into a test." },
+      );
+      router.push(`/teacher/workspaces/${workspaceId}/question-bag`);
     });
   }
 
@@ -877,6 +909,51 @@ export function ImportJobsManager({ workspaceId, initialJobs, defaultJobId }: Pr
                     batch &amp; schedule to publish.
                   </p>
                 </button>
+
+                {clustersEnabled && (
+                  clusterNameOpen ? (
+                    <div className="rounded-xl border border-primary/50 bg-primary/[0.03] p-4 space-y-3">
+                      <div className="flex items-center gap-2 font-bold text-sm">
+                        <Layers className="w-4 h-4 text-primary" /> Name this cluster
+                      </div>
+                      <Input
+                        autoFocus
+                        value={clusterName}
+                        onChange={(e) => setClusterName(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && !pending && handleCreateCluster()}
+                        placeholder={selectedJob.sourceFileName}
+                        maxLength={120}
+                        className="h-9 rounded-xl text-sm"
+                      />
+                      <div className="flex justify-end gap-2">
+                        <Button variant="ghost" size="sm" className="rounded-lg" disabled={pending} onClick={() => setClusterNameOpen(false)}>
+                          Back
+                        </Button>
+                        <Button size="sm" className="rounded-lg" disabled={pending} onClick={handleCreateCluster}>
+                          Save cluster
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      disabled={pending}
+                      onClick={() => {
+                        // Prefill with the file name, minus its extension.
+                        setClusterName(selectedJob.sourceFileName.replace(/\.[^.]+$/u, ""));
+                        setClusterNameOpen(true);
+                      }}
+                      className="text-left rounded-xl border p-4 hover:border-primary/60 hover:bg-primary/[0.03] transition-colors disabled:opacity-60"
+                    >
+                      <div className="flex items-center gap-2 font-bold text-sm">
+                        <Layers className="w-4 h-4 text-primary" /> Save as a cluster
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Saves them to the bag AND keeps them together as a named, reorderable set you
+                        can stack straight into a paper.
+                      </p>
+                    </button>
+                  )
+                )}
               </div>
 
               <div className="flex justify-end gap-2 pt-1">

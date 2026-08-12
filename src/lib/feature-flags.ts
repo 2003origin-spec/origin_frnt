@@ -53,7 +53,8 @@ type FlagKey =
   | "cbtReportCards"
   | "teacherDppShare"
   | "cbtParticipationQuota"
-  | "fullLengthMocks";
+  | "fullLengthMocks"
+  | "questionClusters";
 
 type FlagSpec = {
   envSuffix: string;
@@ -264,7 +265,20 @@ const FLAG_SPECS: Record<FlagKey, FlagSpec> = {
   // persisted custom test and stays takeable and gradeable, so a flag flip can
   // never strand a student mid-attempt.
   // See V1/FULL_LENGTH_MOCK_TESTS_PLAN.md.
-  fullLengthMocks: { envSuffix: "FULL_LENGTH_MOCKS", defaultDev: true, defaultProd: false },
+  // Now shipped and enabled in production, so the default no longer depends on a
+  // hand-set env var. TEACHER_LAUNCH_FULL_LENGTH_MOCKS still overrides per
+  // environment and remains the kill switch.
+  fullLengthMocks: { envSuffix: "FULL_LENGTH_MOCKS", defaultDev: true, defaultProd: true },
+  // Question clusters — named, ordered, reusable groups of Question-Bag
+  // questions: the Question Bag "Clusters" tab, the import "Save as cluster"
+  // action, and the cluster source in the Build-from-documents stack.
+  //
+  // This is the KILL SWITCH, not a rollout gate: it ships ON in dev AND prod.
+  // Turning it OFF hides the tab, 404s the cluster routes and drops clusters
+  // from the source picker, but DELETES NOTHING — every cluster and membership
+  // row survives, so flipping it back on restores them all. Tests already built
+  // from clusters are ordinary tests and are unaffected either way.
+  questionClusters: { envSuffix: "QUESTION_CLUSTERS", defaultDev: true, defaultProd: true },
 };
 
 /** Every feature-flag key, in declaration order (admin System Config view). */

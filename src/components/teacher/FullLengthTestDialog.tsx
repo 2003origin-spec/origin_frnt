@@ -44,6 +44,7 @@ export function FullLengthTestDialog({ workspaceId }: { workspaceId: string }) {
   const [preset, setPreset] = useState<ExamPresetId>("jee-main");
   const [title, setTitle] = useState("");
   const [generating, setGenerating] = useState(false);
+  const [prefill, setPrefill] = useState(false);
 
   const blueprint = EXAM_BLUEPRINTS[preset];
 
@@ -51,7 +52,7 @@ export function FullLengthTestDialog({ workspaceId }: { workspaceId: string }) {
     setGenerating(true);
     const res = await apiJson<{ test: { id: string; title: string }; adaptationSummary: string | null }>(
       `/api/teacher/workspaces/${workspaceId}/tests`,
-      { method: "POST", json: { fullLength: { preset, title: title.trim() || undefined } } },
+      { method: "POST", json: { fullLength: { preset, title: title.trim() || undefined, prefillFromOgCode: prefill } } },
     );
     setGenerating(false);
 
@@ -61,8 +62,12 @@ export function FullLengthTestDialog({ workspaceId }: { workspaceId: string }) {
     }
     setOpen(false);
     setTitle("");
-    toast.success(`${blueprint.label} paper created as a draft.`, {
-      description: res.data?.adaptationSummary ?? "Review it, then publish and assign to your batches.",
+    toast.success(`${blueprint.label} draft created.`, {
+      description:
+        res.data?.adaptationSummary ??
+        (prefill
+          ? "Review it, then publish and assign to your batches."
+          : "Empty blueprint — add your questions section by section, then publish."),
     });
     router.refresh();
   }
@@ -86,8 +91,9 @@ export function FullLengthTestDialog({ workspaceId }: { workspaceId: string }) {
               Generate a full-length mock
             </DialogTitle>
             <DialogDescription>
-              Builds a sectional paper from the OG Code bank on the real exam&apos;s pattern and marking.
-              It is created as a draft — publish and assign it when you are happy with it.
+              Creates a draft carrying the exam&apos;s sectional architecture — section names, question
+              counts and marking — for you to fill with your own questions. Nothing is published until
+              you say so.
             </DialogDescription>
           </DialogHeader>
 
@@ -132,6 +138,22 @@ export function FullLengthTestDialog({ workspaceId }: { workspaceId: string }) {
               </ul>
             </div>
 
+            <label className="flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition-colors hover:border-primary/40">
+              <input
+                type="checkbox"
+                checked={prefill}
+                onChange={(event) => setPrefill(event.target.checked)}
+                className="mt-0.5 h-4 w-4 accent-current"
+              />
+              <span className="min-w-0">
+                <span className="block text-xs font-bold">Pre-fill from the OG Code bank</span>
+                <span className="mt-0.5 block text-[11px] leading-relaxed text-muted-foreground">
+                  Off by default. Turn this on to have every section filled with OG Code questions at
+                  the right difficulty — you can still swap any of them afterwards.
+                </span>
+              </span>
+            </label>
+
             <div className="space-y-2">
               <Label htmlFor="full-mock-title" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Title (optional)
@@ -155,12 +177,12 @@ export function FullLengthTestDialog({ workspaceId }: { workspaceId: string }) {
               {generating ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Building paper…
+                  {prefill ? "Building paper…" : "Creating blueprint…"}
                 </>
               ) : (
                 <>
                   <Wand2 className="h-4 w-4" />
-                  Generate draft
+                  {prefill ? "Generate filled draft" : "Create blueprint draft"}
                 </>
               )}
             </Button>

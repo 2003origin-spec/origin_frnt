@@ -18,7 +18,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, FileText, FolderOpen, Layers, Loader2, Plus, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Boxes, FileText, FolderOpen, Layers, Loader2, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -28,7 +28,7 @@ import { apiJson } from "@/lib/teacher-client";
 
 import type { SelectedQuestion } from "./QuestionPicker";
 
-type SourceKind = "import_job" | "bag_topic" | "test";
+type SourceKind = "import_job" | "bag_topic" | "test" | "cluster";
 
 export type TestSourceOption = {
   kind: SourceKind;
@@ -40,24 +40,41 @@ export type TestSourceOption = {
 
 type Picked = { kind: SourceKind; id: string; marks: string; negativeMarks: string };
 
-type PerSource = { kind: SourceKind; id: string; added: number; duplicates: number; skipped: number };
+type PerSource = {
+  kind: SourceKind;
+  id: string;
+  added: number;
+  duplicates: number;
+  skipped: number;
+  /** Present when the target test carries a full-mock blueprint (plan D6). */
+  sectionId?: string;
+  sectionLabel?: string;
+};
 
 const KIND_ICON: Record<SourceKind, typeof FileText> = {
   import_job: FileText,
   bag_topic: FolderOpen,
   test: Layers,
+  cluster: Boxes,
 };
 
 const KIND_LABEL: Record<SourceKind, string> = {
   import_job: "Document",
   bag_topic: "Topic",
   test: "Test",
+  cluster: "Cluster",
 };
 
 export function TestSourceStackPanel({
   workspaceId,
+  testId,
   onResolved,
 }: {
+  /**
+   * The test being built, when editing an existing one. Lets the server apply
+   * that test's blueprint so stacked sources land in its sections (plan D6).
+   */
+  testId?: string;
   workspaceId: string;
   /** Receives the resolved questions to append to the wizard's cart. */
   onResolved: (questions: SelectedQuestion[]) => void;
@@ -128,6 +145,7 @@ export function TestSourceStackPanel({
         method: "POST",
         json: {
           preview: true,
+          testId,
           sources: picked.map((p) => ({
             kind: p.kind,
             id: p.id,

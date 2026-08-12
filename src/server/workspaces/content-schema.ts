@@ -191,6 +191,39 @@ export async function ensureContentSchema(): Promise<void> {
             ON content.question_asset_links(asset_id);
         `);
 
+        // Question clusters — mirrors 20260813_question_clusters.sql so an
+        // un-migrated database self-heals. Membership is ORDERED: a cluster is
+        // stacked into a paper, so its order is the order questions get asked.
+        // See V1/QUESTION_CLUSTERS_AND_BLUEPRINT_DRAFTS_PLAN.md §3.
+        await client.query(`
+          CREATE TABLE IF NOT EXISTS content.question_clusters (
+            id                   TEXT PRIMARY KEY,
+            workspace_id         TEXT NOT NULL REFERENCES app.teacher_workspaces(id) ON DELETE CASCADE,
+            name                 TEXT NOT NULL,
+            description          TEXT,
+            source_import_job_id TEXT,
+            created_by           TEXT REFERENCES origin_users(id),
+            created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          );
+
+          CREATE INDEX IF NOT EXISTS idx_content_clusters_workspace
+            ON content.question_clusters(workspace_id, created_at DESC);
+
+          CREATE TABLE IF NOT EXISTS content.question_cluster_members (
+            cluster_id  TEXT NOT NULL REFERENCES content.question_clusters(id) ON DELETE CASCADE,
+            question_id TEXT NOT NULL REFERENCES content.questions(id) ON DELETE CASCADE,
+            position    INTEGER NOT NULL,
+            added_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            PRIMARY KEY (cluster_id, question_id)
+          );
+
+          CREATE INDEX IF NOT EXISTS idx_content_cluster_members_ordered
+            ON content.question_cluster_members(cluster_id, position);
+          CREATE INDEX IF NOT EXISTS idx_content_cluster_members_question
+            ON content.question_cluster_members(question_id);
+        `);
+
         await recordMigration(client);
         await client.query("COMMIT");
         globalThis.__originContentSchemaEnsured = true;

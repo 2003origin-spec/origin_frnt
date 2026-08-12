@@ -37,6 +37,7 @@ import { FormattedMessage } from "@/components/origin-ai/FormattedMessage";
 import { apiJson } from "@/lib/teacher-client";
 import { uploadUserImageAction } from "@/server/actions/profile-actions";
 import type { QuestionWithVersion, QuestionType, QuestionStatus } from "@/server/workspaces/types";
+import { ClustersPanel, type ClusterView } from "@/components/teacher/ClustersPanel";
 import { toast } from "sonner";
 
 type Props = {
@@ -45,6 +46,9 @@ type Props = {
   /** Imported source PDFs (import job id → file name) for the file filter. */
   importFiles?: { id: string; name: string }[];
   canEdit: boolean;
+  /** Question clusters. Absent/empty when the feature is off — the tab hides. */
+  initialClusters?: ClusterView[];
+  clustersEnabled?: boolean;
 };
 
 const DIFFICULTY_LABELS: Record<string, string> = {
@@ -84,7 +88,24 @@ const DIFFICULTY_COLORS: Record<string, string> = {
   insane: "text-red-600 border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-800/30",
 };
 
-export function QuestionBagManagerHighFidelity({ workspaceId, initialQuestions, importFiles = [], canEdit }: Props) {
+export function QuestionBagManagerHighFidelity({
+  workspaceId,
+  initialQuestions,
+  importFiles = [],
+  canEdit,
+  initialClusters = [],
+  clustersEnabled = false,
+}: Props) {
+  // Library / Clusters tabs. Clusters live here rather than in their own nav
+  // item so "add from bag" and "create a question into a cluster" are one click
+  // from the library they draw on (plan D1).
+  const [activeTab, setActiveTab] = useState<"library" | "clusters">("library");
+  /**
+   * Set when the teacher hits "New question" from inside a cluster: the Library
+   * tab takes over in create mode, and the saved question is appended to this
+   * cluster instead of just landing loose in the bag.
+   */
+  const [pendingClusterId, setPendingClusterId] = useState<string | null>(null);
   const router = useRouter();
   const [questions, setQuestions] = useState<QuestionWithVersion[]>(initialQuestions);
   const [activeQuestion, setActiveQuestion] = useState<QuestionWithVersion | null>(
@@ -483,6 +504,20 @@ export function QuestionBagManagerHighFidelity({ workspaceId, initialQuestions, 
 
       if (result.ok) {
         toast.success(isEdit ? "Question changes saved!" : "New question added!");
+
+        // Created from inside a cluster — put it there, then go back to the tab
+        // the teacher started from.
+        const createdId = !isEdit ? (result.data?.question?.id as string | undefined) : undefined;
+        if (createdId && pendingClusterId) {
+          const linked = await apiJson(
+            `/api/teacher/workspaces/${workspaceId}/clusters/${pendingClusterId}`,
+            { method: "PATCH", json: { action: "add-questions", questionIds: [createdId] } },
+          );
+          if (linked.ok) toast.success("Added to the cluster.");
+          else toast.error(linked.detail || "Saved to the bag, but could not add it to the cluster.");
+          setPendingClusterId(null);
+          setActiveTab("clusters");
+        }
         
         // Fetch refreshed question directory
         const refreshed = await apiJson<any>(
@@ -509,8 +544,38 @@ export function QuestionBagManagerHighFidelity({ workspaceId, initialQuestions, 
 
   const showOptions = editType === "mcq" || editType === "msq";
 
+  // Clusters render as a sibling tab. The library keeps its exact previous
+  // markup so nothing about the existing surface shifts.
+  if (clustersEnabled && activeTab === "clusters") {
+    return (
+      <div className="mx-auto max-w-6xl">
+        <ClusterTabBar activeTab={activeTab} onChange={setActiveTab} />
+        <div className="h-[74vh]">
+          <ClustersPanel
+            workspaceId={workspaceId}
+            initialClusters={initialClusters}
+            questions={questions}
+            canEdit={canEdit}
+            onCreateQuestionForCluster={(clusterId) => {
+              setPendingClusterId(clusterId);
+              setActiveTab("library");
+              enterCreateMode();
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 max-w-6xl mx-auto h-[78vh]">
+    <div className="mx-auto max-w-6xl">
+      {clustersEnabled && <ClusterTabBar activeTab={activeTab} onChange={setActiveTab} />}
+      {pendingClusterId && (
+        <div className="mb-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-2 text-xs font-semibold text-primary">
+          This question will be added to the cluster you started from once you save it.
+        </div>
+      )}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 h-[78vh]">
       
       {/* Left Pane: Filters & Listing */}
       <div className="lg:col-span-2 flex flex-col border rounded-2xl bg-card overflow-hidden h-full">
@@ -1148,6 +1213,36 @@ export function QuestionBagManagerHighFidelity({ workspaceId, initialQuestions, 
         </AnimatePresence>
       </div>
 
+      </div>
+    </div>
+  );
+}
+
+/** Library / Clusters switcher shown above the Question Bag. */
+function ClusterTabBar({
+  activeTab,
+  onChange,
+}: {
+  activeTab: "library" | "clusters";
+  onChange: (tab: "library" | "clusters") => void;
+}) {
+  return (
+    <div className="mb-4 flex gap-1 border-b">
+      {(["library", "clusters"] as const).map((tab) => (
+        <button
+          key={tab}
+          type="button"
+          onClick={() => onChange(tab)}
+          className={
+            "-mb-px border-b-2 px-4 py-2 text-xs font-bold uppercase tracking-wide transition-colors " +
+            (activeTab === tab
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground")
+          }
+        >
+          {tab === "library" ? "Library" : "Clusters"}
+        </button>
+      ))}
     </div>
   );
 }

@@ -105,15 +105,19 @@ test("mixed kinds stack together", () => {
 // ── Parsing ──────────────────────────────────────────────────────────────────
 
 test("parseSources keeps only the caller's own kinds", () => {
+  // `cluster` used to be CBT-only; the teacher builder gained its own clusters
+  // (V1/QUESTION_CLUSTERS_AND_BLUEPRINT_DRAFTS_PLAN.md), so it is now shared
+  // vocabulary and must survive. An unknown kind still must not.
   const parsed = parseSources(
     [
       { kind: "import_job", id: "a" },
-      { kind: "cluster", id: "b" }, // CBT's kind — not the teacher's
+      { kind: "cluster", id: "b" },
       { kind: "bag_topic", id: "c" },
+      { kind: "not_a_real_kind", id: "d" },
     ],
     TEACHER_TEST_SOURCE_KINDS,
   );
-  assert.deepEqual(parsed.map((s) => s.id), ["a", "c"]);
+  assert.deepEqual(parsed.map((s) => s.id), ["a", "b", "c"]);
 });
 
 test("the CBT wrapper keeps its own vocabulary after the refactor", () => {

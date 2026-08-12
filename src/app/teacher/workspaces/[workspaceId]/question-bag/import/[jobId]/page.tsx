@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { notFound } from "next/navigation";
+import { isFeatureEnabled } from "@/lib/feature-flags";
 import { ImportJobsManager } from "@/components/teacher/ImportJobsManager";
 import {
   getJobWithProgress,
@@ -21,6 +22,7 @@ export default async function ImportReviewPage({ params }: Props) {
   return (
     <div className="space-y-6 max-w-[1400px] mx-auto animate-fade-in">
       <ImportJobsManager
+        clustersEnabled={isFeatureEnabled("questionClusters")}
         workspaceId={workspaceId}
         initialJobs={[job]}
         defaultJobId={jobId}

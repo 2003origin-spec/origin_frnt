@@ -30,6 +30,12 @@ export type SelectedQuestion = {
   label: string;
   marks: number;
   negativeMarks: number;
+  /**
+   * Blueprint section this question belongs to, when it was stacked into a
+   * full-mock draft. Carried through the cart so saving preserves the sectional
+   * structure (plan D6).
+   */
+  sectionId?: string;
 };
 
 /** Where a bag question is already used, excluding the test being edited. */

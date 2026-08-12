@@ -23,7 +23,7 @@ import {
   summarizeAdaptations,
   type ExamPresetId,
 } from "@/lib/exam-blueprints";
-import { buildFullLengthTestSelection } from "@/server/assessments/full-test-builder";
+import { buildFullLengthTestSelection, type FullTestSelection } from "@/server/assessments/full-test-builder";
 
 import { createTeacherTest, type TestQuestionInput } from "./tests-service";
 import type { TestWithQuestions } from "./types";
@@ -34,8 +34,50 @@ export type GenerateFullLengthTestInput = {
   preset: ExamPresetId;
   /** Optional override; defaults to "<Exam> Full Mock Test". */
   title?: string | null;
+  /**
+   * Draw the questions from the OG Code bank as well.
+   *
+   * Defaults to FALSE: a teacher wants the sectional architecture to build
+   * against, not 180 questions chosen for them. When true, the shipped
+   * auto-fill behaviour is restored exactly (plan D3).
+   */
+  prefillFromOgCode?: boolean;
   requestId?: string | null;
 };
+
+/**
+ * The blueprint as a SELECTION with no questions — the scaffold a teacher fills
+ * themselves (plan D3).
+ *
+ * `plannedCount` keeps the blueprint's target while `count` reports the zero
+ * actually placed, which is exactly what the editor's "18 / 20" progress reads.
+ * Shaped identically to a real selection so everything downstream — the
+ * snapshot, the student taker's section model — needs no special case.
+ */
+function emptySelectionFor(preset: ExamPresetId): FullTestSelection {
+  const blueprint = getExamBlueprint(preset);
+  return {
+    preset,
+    blueprintLabel: blueprint.label,
+    durationMinutes: blueprint.durationMinutes,
+    questions: [],
+    sections: blueprint.sections.map((section) => ({
+      id: section.id,
+      label: section.label,
+      shortLabel: section.shortLabel,
+      subject: section.subject,
+      stream: section.stream,
+      kind: section.kind,
+      plannedCount: section.count,
+      count: 0,
+      marks: { ...section.marking },
+    })),
+    adaptations: [],
+    totalQuestions: 0,
+    totalMarks: 0,
+    seed: "",
+  };
+}
 
 export async function generateFullLengthTeacherTest(
   input: GenerateFullLengthTestInput,
@@ -44,15 +86,21 @@ export async function generateFullLengthTeacherTest(
     throw new AuthzError(400, "Unknown exam preset.");
   }
   const blueprint = getExamBlueprint(input.preset);
+  const prefill = input.prefillFromOgCode === true;
 
-  const selection = await buildFullLengthTestSelection({
-    preset: input.preset,
-    // Scoped to the workspace so two teachers generating the same preset on the
-    // same day do not hand out identical papers.
-    seed: `${input.workspaceId}:${input.actorUserId}:${input.preset}:${Date.now()}`,
-  });
+  // Blueprint-only is the default and costs NOTHING: there is no bank to query,
+  // so the draft is created instantly with the sectional scaffold and no
+  // questions. Only the opt-in pre-fill path touches the OG Code catalog.
+  const selection = prefill
+    ? await buildFullLengthTestSelection({
+        preset: input.preset,
+        // Scoped to the workspace so two teachers generating the same preset on
+        // the same day do not hand out identical papers.
+        seed: `${input.workspaceId}:${input.actorUserId}:${input.preset}:${Date.now()}`,
+      })
+    : emptySelectionFor(input.preset);
 
-  if (selection.totalQuestions === 0) {
+  if (prefill && selection.totalQuestions === 0) {
     throw new AuthzError(503, "The question bank could not supply a full-length paper right now.");
   }
 
@@ -75,13 +123,23 @@ export async function generateFullLengthTeacherTest(
     },
   }));
 
-  const description = [
-    `${selection.totalQuestions} questions · ${selection.totalMarks} marks · ${blueprint.durationMinutes} minutes.`,
-    `Sectional paper generated on the ${blueprint.label} pattern with that exam's marking.`,
-    adaptationSummary,
-  ]
-    .filter(Boolean)
-    .join(" ");
+  const plannedQuestions = blueprint.sections.reduce((sum, section) => sum + section.count, 0);
+  const plannedMarks = blueprint.sections.reduce(
+    (sum, section) => sum + section.count * section.marking.correct,
+    0,
+  );
+
+  const description = prefill
+    ? [
+        `${selection.totalQuestions} questions · ${selection.totalMarks} marks · ${blueprint.durationMinutes} minutes.`,
+        `Sectional paper generated on the ${blueprint.label} pattern with that exam's marking.`,
+        adaptationSummary,
+      ]
+        .filter(Boolean)
+        .join(" ")
+    : `Blueprint for a ${blueprint.label} paper — ${plannedQuestions} questions · ${plannedMarks} marks · ` +
+      `${blueprint.durationMinutes} minutes across ${blueprint.sections.length} sections. ` +
+      `Add your own questions section by section; each section's marking is already set.`;
 
   const test = await createTeacherTest({
     workspaceId: input.workspaceId,
