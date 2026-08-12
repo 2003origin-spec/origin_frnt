@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { apiJson } from "@/lib/teacher-client";
 import { toast } from "sonner";
+import { FullLengthTestDialog } from "@/components/teacher/FullLengthTestDialog";
 import { TestCreatorWizard } from "./TestCreatorWizard";
 import { ShareTestAsDppDialog } from "./ShareTestAsDppDialog";
 import type { QuestionWithVersion, BatchWithCounts, AssessmentTest } from "@/server/workspaces/types";
@@ -20,6 +21,8 @@ type Props = {
   batches: BatchWithCounts[];
   canManage: boolean;
   ogcodeEnabled: boolean;
+  /** `fullLengthMocks` — hides the generator when the feature is dark. */
+  fullLengthMocksEnabled?: boolean;
   dppShareEnabled: boolean;
 };
 
@@ -44,7 +47,7 @@ const STATUS_COLORS: Record<string, string> = {
   archived: "text-gray-400 bg-muted border-muted",
 };
 
-export function TestsManagerHighFidelity({ workspaceId, initialTests, questions, batches, canManage, ogcodeEnabled, dppShareEnabled }: Props) {
+export function TestsManagerHighFidelity({ workspaceId, initialTests, questions, batches, canManage, ogcodeEnabled, dppShareEnabled, fullLengthMocksEnabled = false }: Props) {
   const router = useRouter();
   const [isCreating, setIsCreating] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -101,12 +104,15 @@ export function TestsManagerHighFidelity({ workspaceId, initialTests, questions,
           </p>
         </div>
         {canManage && (
-          <Button 
-            onClick={() => setIsCreating(true)}
-            className="bg-primary hover:bg-primary/95 text-black font-semibold gap-1.5 h-10 rounded-xl w-full sm:w-auto"
-          >
-            <Plus className="w-4 h-4" /> Create Scheduled Test
-          </Button>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+            {fullLengthMocksEnabled && <FullLengthTestDialog workspaceId={workspaceId} />}
+            <Button
+              onClick={() => setIsCreating(true)}
+              className="bg-primary hover:bg-primary/95 text-black font-semibold gap-1.5 h-10 rounded-xl w-full sm:w-auto"
+            >
+              <Plus className="w-4 h-4" /> Create Scheduled Test
+            </Button>
+          </div>
         )}
       </div>
 

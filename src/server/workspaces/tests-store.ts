@@ -314,6 +314,68 @@ export async function addQuestionToTest(input: {
   return rowToTestQuestion(result.rows[0]);
 }
 
+export type AddTestQuestionInput = {
+  position: number;
+  sourceBank: QuestionSourceBank;
+  ogcodeQuestionId?: string | null;
+  contentQuestionId?: string | null;
+  contentQuestionVersionId?: string | null;
+  marks?: number;
+  negativeMarks?: number;
+  metadata?: Record<string, unknown>;
+};
+
+/**
+ * Write a whole question set in ONE statement.
+ *
+ * Semantically identical to calling {@link addQuestionToTest} per row (same
+ * upsert, same canonical negative-marks rule), but a generated full-length paper
+ * is up to 180 questions and one round trip each spends the entire creation
+ * budget on network latency. UNNEST keeps the statement a fixed size no matter
+ * how long the paper is.
+ */
+export async function addQuestionsToTest(
+  testId: string,
+  questions: readonly AddTestQuestionInput[],
+): Promise<void> {
+  if (questions.length === 0) return;
+  await ensureAssessmentSchema();
+  await pool().query(
+    `INSERT INTO assessment.test_questions (
+       test_id, position, source_bank, ogcode_question_id,
+       content_question_id, content_question_version_id, marks, negative_marks, metadata
+     )
+     SELECT $1, q.position, q.source_bank::assessment.question_source_bank, q.ogcode_question_id,
+            q.content_question_id, q.content_question_version_id, q.marks, q.negative_marks, q.metadata::jsonb
+     FROM UNNEST(
+       $2::int[], $3::text[], $4::text[], $5::text[], $6::text[],
+       $7::double precision[], $8::double precision[], $9::text[]
+     ) AS q(position, source_bank, ogcode_question_id, content_question_id,
+            content_question_version_id, marks, negative_marks, metadata)
+     ON CONFLICT (test_id, position) DO UPDATE
+       SET source_bank = EXCLUDED.source_bank,
+           ogcode_question_id = EXCLUDED.ogcode_question_id,
+           content_question_id = EXCLUDED.content_question_id,
+           content_question_version_id = EXCLUDED.content_question_version_id,
+           marks = EXCLUDED.marks,
+           negative_marks = EXCLUDED.negative_marks,
+           metadata = EXCLUDED.metadata`,
+    [
+      testId,
+      questions.map((q) => q.position),
+      questions.map((q) => q.sourceBank),
+      questions.map((q) => q.ogcodeQuestionId ?? null),
+      questions.map((q) => q.contentQuestionId ?? null),
+      questions.map((q) => q.contentQuestionVersionId ?? null),
+      questions.map((q) => q.marks ?? 4),
+      // Same canonical sign rule as the single-row writer — a positive value
+      // here would AWARD marks for a wrong answer.
+      questions.map((q) => canonicalNegativeMarks(q.negativeMarks ?? -1)),
+      questions.map((q) => JSON.stringify(q.metadata ?? {})),
+    ],
+  );
+}
+
 export async function listTestQuestions(testId: string): Promise<TestQuestion[]> {
   await ensureAssessmentSchema();
   const result = await pool().query(
@@ -429,6 +491,22 @@ export type AssignedTestForStudent = {
    * taker resolves each via the store → ogcode → content lookup chain.
    */
   orderedQuestionIds: string[];
+  /**
+   * Per-question marks the TEACHER set, positionally aligned with
+   * `orderedQuestionIds`. Replayed as grader policy overrides so a teacher's
+   * paper grades on their mark scheme (and, for a generated full-length paper,
+   * on the real exam's sectional marking) rather than the flat platform default.
+   * Plan: V1/FULL_LENGTH_MOCK_TESTS_PLAN.md Phase 7.
+   */
+  orderedQuestionMarking: TeacherTestQuestionMarking[];
+};
+
+/** One question's marks + blueprint section inside a teacher test. */
+export type TeacherTestQuestionMarking = {
+  questionId: string;
+  sectionId: string | null;
+  marks: number;
+  negativeMarks: number;
 };
 
 /**
@@ -436,22 +514,37 @@ export type AssignedTestForStudent = {
  * workspace_bag), in position order. ogcode rows contribute their
  * `ogcode_question_id`; workspace_bag rows contribute their `content_question_id`.
  */
-async function loadOrderedTestQuestionRefIds(testId: string): Promise<string[]> {
+async function loadOrderedTestQuestions(
+  testId: string,
+): Promise<{ ids: string[]; marking: TeacherTestQuestionMarking[] }> {
   const res = await pool().query(
-    `SELECT source_bank, ogcode_question_id, content_question_id
+    `SELECT source_bank, ogcode_question_id, content_question_id, marks, negative_marks, metadata
        FROM assessment.test_questions
       WHERE test_id = $1
       ORDER BY position ASC`,
     [testId],
   );
-  return res.rows
-    .map((r) =>
-      (r.source_bank as string) === "ogcode"
-        ? ((r.ogcode_question_id as string | null) ?? null)
-        : ((r.content_question_id as string | null) ?? null),
-    )
-    .filter((id): id is string => Boolean(id));
+
+  const ids: string[] = [];
+  const marking: TeacherTestQuestionMarking[] = [];
+  for (const row of res.rows) {
+    const id =
+      (row.source_bank as string) === "ogcode"
+        ? ((row.ogcode_question_id as string | null) ?? null)
+        : ((row.content_question_id as string | null) ?? null);
+    if (!id) continue;
+    ids.push(id);
+    const metadata = (row.metadata ?? {}) as { sectionId?: unknown };
+    marking.push({
+      questionId: id,
+      sectionId: typeof metadata.sectionId === "string" ? metadata.sectionId : null,
+      marks: Number(row.marks),
+      negativeMarks: Number(row.negative_marks),
+    });
+  }
+  return { ids, marking };
 }
+
 
 const ASSIGNED_TEST_WHERE = `
   t.status IN ('published', 'live')
@@ -535,7 +628,7 @@ export async function getAssignedTestForStudent(
   const row = result.rows[0];
   if (!row) return null;
 
-  const orderedQuestionIds = await loadOrderedTestQuestionRefIds(testId);
+  const { ids: orderedQuestionIds, marking: orderedQuestionMarking } = await loadOrderedTestQuestions(testId);
   return {
     test: rowToTest(row),
     assignmentId: row.assignment_id as string,
@@ -543,6 +636,7 @@ export async function getAssignedTestForStudent(
     batchId: (row.assignment_batch_id as string | null) ?? null,
     windowEndsAt: row.scheduled_end_at ? new Date(row.scheduled_end_at as string).toISOString() : null,
     orderedQuestionIds,
+    orderedQuestionMarking,
   };
 }
 
@@ -560,7 +654,7 @@ export async function getTeacherTestForRoom(testId: string): Promise<AssignedTes
   const row = testResult.rows[0];
   if (!row) return null;
 
-  const orderedQuestionIds = await loadOrderedTestQuestionRefIds(testId);
+  const { ids: orderedQuestionIds, marking: orderedQuestionMarking } = await loadOrderedTestQuestions(testId);
   return {
     test: rowToTest(row),
     assignmentId: "",
@@ -568,6 +662,7 @@ export async function getTeacherTestForRoom(testId: string): Promise<AssignedTes
     batchId: null,
     windowEndsAt: null,
     orderedQuestionIds,
+    orderedQuestionMarking,
   };
 }
 

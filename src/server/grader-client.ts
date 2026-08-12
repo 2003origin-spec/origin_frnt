@@ -7,6 +7,23 @@ export type GraderScoringPolicy = {
   unattemptedMarks: number;
   partialCreditPolicy?: "none" | "fractional";
   negativeMarkingMode?: "answered_only" | "none" | "no_negative";
+  /**
+   * LOCAL-ONLY (never sent to grader-service — see `toRemotePolicy`).
+   *
+   * `"per_correct_option"` replaces fractional partial credit with the JEE
+   * Advanced multiple-correct rule: a strict, all-correct selection scores
+   * `partialUnitMarks` per correct option chosen rather than a fraction of the
+   * full marks. Used by full-length mock tests (V1/FULL_LENGTH_MOCK_TESTS_PLAN.md §4.2).
+   *
+   * These fields are deliberately kept off the wire: the microservice validates
+   * `partial_credit_policy` against its own enum, so widening it here would
+   * break the contract. The authoritative recompute happens locally anyway —
+   * `buildAnalyticsAttempts` recomputes marks from the returned credit whenever
+   * a per-question policy override is in play.
+   */
+  partialCreditMode?: "per_correct_option";
+  /** Marks per correct option under `"per_correct_option"`. Defaults to 1. */
+  partialUnitMarks?: number;
 };
 
 type RemoteBatchEvaluationRequest = {

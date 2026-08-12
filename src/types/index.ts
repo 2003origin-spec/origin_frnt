@@ -86,6 +86,39 @@ export interface Classroom {
   students: User[];
 }
 
+/**
+ * One blueprint section of a full-length mock, as snapshotted onto the test when
+ * it was generated. See V1/FULL_LENGTH_MOCK_TESTS_PLAN.md §4.
+ */
+export interface TestBlueprintSection {
+  id: string;
+  label: string;
+  shortLabel: string;
+  subject: string;
+  stream: string | null;
+  kind: string;
+  plannedCount: number;
+  count: number;
+  marks: { correct: number; incorrect: number; unattempted: number; partialPerCorrectOption?: number };
+}
+
+export interface TestBlueprint {
+  preset?: string;
+  label?: string;
+  totalMarks?: number;
+  sections?: TestBlueprintSection[];
+  /** One sentence naming anything the bank could not supply as specified. */
+  adaptationSummary?: string | null;
+}
+
+/** A question's exam marking inside a full-length paper. */
+export interface TestQuestionMarking {
+  questionId: string;
+  sectionId: string | null;
+  marks: number;
+  negativeMarks: number;
+}
+
 export interface Test {
   id: string;
   title: string;
@@ -102,6 +135,11 @@ export interface Test {
   score?: number;
   attemptCount?: number;
   allScores?: number[];
+  // ── Full-length mocks only; absent on every other test.
+  /** "jee-main" | "jee-advanced" | "neet", or null/absent for ordinary tests. */
+  examPreset?: string | null;
+  blueprint?: TestBlueprint | null;
+  questionMarking?: TestQuestionMarking[];
 }
 
 export interface TestPreview {

@@ -82,6 +82,12 @@ const MIGRATIONS = [
   // real fix is canonicalNegativeMarks at the point of use, so this is safe to
   // apply late (or never) without leaving DPP scoring wrong.
   { file: "20260810_negative_marks_sign.sql", target: "user" },
+  // Full-length mock tests (JEE Main / JEE Advanced / NEET) — 2026-08-12.
+  // Adds the exam preset + blueprint to analytics.custom_tests and the
+  // per-question section/marking to analytics.custom_test_questions, so a
+  // generated paper grades on the real exam's scheme rather than the platform
+  // default. Additive; NULL marks keep every existing custom test unchanged.
+  { file: "20260812_full_length_mock_tests.sql", target: "ogcode" },
 ];
 
 const TARGET_ENV = {
