@@ -29,6 +29,8 @@ const questionInputSchema = z.object({
   contentQuestionVersionId: z.string().nullish(),
   marks: z.number().optional().default(4),
   negativeMarks: z.number().optional().default(-1),
+  /** Blueprint section, when the paper is a full-mock draft (plan D6). */
+  sectionId: z.string().min(1).nullish(),
 });
 
 const updateSchema = z.object({
@@ -86,7 +88,12 @@ export async function PATCH(
     ]);
     const { testId } = await context.params;
     const body = await parseJsonBody(request);
-    const { questions, ...rest } = updateSchema.parse(body);
+    const { questions: rawQuestions, ...rest } = updateSchema.parse(body);
+    // sectionId rides on the wire as a scalar; storage keeps it in metadata.
+    const questions = rawQuestions?.map(({ sectionId, ...q }) => ({
+      ...q,
+      ...(sectionId ? { metadata: { sectionId } } : {}),
+    }));
 
     const updated = await updateTeacherTest({
       actorUserId: ctx.auth.userId,

@@ -6,6 +6,7 @@ import { isFeatureEnabled } from "@/lib/feature-flags";
 import { QuestionBagManagerHighFidelity } from "@/components/teacher/QuestionBagManagerHighFidelity";
 import { listTeacherQuestions } from "@/server/workspaces/questions-service";
 import { getImportJobFileNames } from "@/server/workspaces/document-import-store";
+import { listWorkspaceClusters } from "@/server/workspaces/clusters-service";
 import { loadWorkspaceForRender } from "@/server/workspaces/server-loader";
 
 type Props = {
@@ -26,6 +27,18 @@ export default async function QuestionBagPage({ params }: Props) {
   // Fetch all questions
   const questions = await listTeacherQuestions(workspaceId, { status: "all" });
   const importEnabled = isFeatureEnabled("documentImport");
+
+  // Clusters for the "Clusters" tab. A read failure must not take down the
+  // Question Bag, so the tab simply starts empty and the client refetches.
+  const clustersEnabled = isFeatureEnabled("questionClusters");
+  let clusters: Awaited<ReturnType<typeof listWorkspaceClusters>> = [];
+  if (clustersEnabled) {
+    try {
+      clusters = await listWorkspaceClusters(workspaceId);
+    } catch {
+      clusters = [];
+    }
+  }
 
   // Source-file labels for the "imported files" filter — resolved by the exact
   // import-job ids the questions carry (global by-id lookup, NOT workspace-scoped,
@@ -69,6 +82,8 @@ export default async function QuestionBagPage({ params }: Props) {
         initialQuestions={questions}
         importFiles={importFiles}
         canEdit={canEdit}
+        initialClusters={clusters}
+        clustersEnabled={clustersEnabled}
       />
     </div>
   );

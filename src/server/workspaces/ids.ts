@@ -125,3 +125,7 @@ export function createCodeRequestId(): string {
 export function createTeacherDppShareId(): string {
   return createPrefixedId("tdshare");
 }
+
+export function createQuestionClusterId(): string {
+  return createPrefixedId("qcl");
+}

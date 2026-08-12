@@ -8,6 +8,7 @@ import {
   applyImportSubject,
   bulkAcceptReviewQuestions,
   cancelJob,
+  createClusterFromImportJob,
   createDraftTestFromImportJob,
   getJobPages,
   getJobQuestions,
@@ -48,6 +49,12 @@ const updateQuestionSchema = z.object({
 });
 
 const applySubjectSchema = z.object({ subject: z.string().min(1).max(80) });
+// Saving an import as a cluster: the teacher edits the name (the dialog
+// prefills it with the file name), so it is optional here, not derived.
+const createClusterSchema = z.object({
+  name: z.string().max(120).optional(),
+  questionIds: z.array(z.string().min(1)).max(500).optional(),
+});
 
 export async function GET(
   request: NextRequest,
@@ -160,6 +167,22 @@ export async function POST(
           requestId: requestIdOf(request),
         });
         return teacherJson(result);
+      }
+      case "create-cluster": {
+        requireFeatureEnabled("questionClusters");
+        const ctx = await requireWorkspaceMember(request, workspaceId, [
+          "owner", "admin", "teacher", "content_manager",
+        ]);
+        const parsed = createClusterSchema.parse(body);
+        const result = await createClusterFromImportJob({
+          workspaceId,
+          jobId,
+          actorUserId: ctx.auth.userId,
+          name: parsed.name ?? null,
+          questionIds: parsed.questionIds,
+          requestId: requestIdOf(request),
+        });
+        return teacherJson(result, { status: 201 });
       }
       case "update-question": {
         const ctx = await requireWorkspaceMember(request, workspaceId, [

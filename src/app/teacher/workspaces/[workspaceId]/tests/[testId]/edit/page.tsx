@@ -11,6 +11,7 @@ import { getContentQuestionStoredMap } from "@/server/workspaces/test-question-r
 import { getTeacherTest } from "@/server/workspaces/tests-service";
 import { TestEditClient } from "@/components/teacher/TestEditClient";
 import type { WizardInitial } from "@/components/teacher/TestCreatorWizard";
+import { blueprintSectionsOf } from "@/server/workspaces/test-sources-service";
 import type { SelectedQuestion } from "@/components/teacher/QuestionPicker";
 
 type Props = {
@@ -54,6 +55,7 @@ export default async function EditTestPage({ params }: Props) {
         marks: q.marks,
         // stored negative is a negative number; the picker edits a positive value.
         negativeMarks: Math.abs(q.negativeMarks),
+        sectionId: (q.metadata as { sectionId?: string } | undefined)?.sectionId,
       };
     })
     .filter((q) => q.id);
@@ -64,6 +66,9 @@ export default async function EditTestPage({ params }: Props) {
     autoSubmit?: boolean;
     hideLeaderboard?: boolean;
   };
+
+  // Full-mock drafts carry their sectional blueprint; ordinary tests do not.
+  const blueprintSections = blueprintSectionsOf(test.selectionPolicy);
 
   const initial: WizardInitial = {
     title: test.title,
@@ -89,6 +94,7 @@ export default async function EditTestPage({ params }: Props) {
       ogcodeEnabled={isFeatureEnabled("teacherOgcode")}
       dppShareEnabled={isFeatureEnabled("teacherDppShare")}
       initial={initial}
+      blueprintSections={blueprintSections}
     />
   );
 }

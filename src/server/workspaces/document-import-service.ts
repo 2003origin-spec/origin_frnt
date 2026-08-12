@@ -26,6 +26,7 @@ import { updateQuestion } from "./questions";
 import { createTeacherQuestion } from "./questions-service";
 import { getActiveMembership } from "./store";
 import { createTeacherTest } from "./tests-service";
+import { createWorkspaceCluster, deleteWorkspaceCluster } from "./clusters-service";
 import type { DocumentImportJob, ImportJobQuestion, ImportJobStatus, ImportJobWithProgress, ImportPageStatus, ImportQuestionStatus, ImportSourceType, ImportTargetSurface, QuestionOption, QuestionType } from "./types";
 
 /** Cap on simultaneously queued+processing jobs per workspace. Phase 13
@@ -513,6 +514,94 @@ export async function createDraftTestFromImportJob(input: {
   });
 
   return { testId: test.id, questionCount: contentIds.length };
+}
+
+/**
+ * Save a reviewed document import as a question CLUSTER.
+ *
+ * Publishes every non-rejected question into the Question Bag (idempotent — the
+ * same call the test path uses), then groups those bag questions into a new
+ * cluster **in review order**, so the cluster reads like the source paper.
+ *
+ * Deliberately NOT automatic: unlike CBT's `reconcileImportClusters`, nothing
+ * here fires unless the teacher asks, and the teacher supplies the name (the
+ * dialog prefills it with the file name but it is fully editable).
+ *
+ * Plan: V1/QUESTION_CLUSTERS_AND_BLUEPRINT_DRAFTS_PLAN.md D2.
+ */
+export async function createClusterFromImportJob(input: {
+  workspaceId: string;
+  jobId: string;
+  actorUserId: string;
+  /** Teacher-supplied; falls back to the source file name. */
+  name?: string | null;
+  /** Restrict to these import-question ids. Omit for "everything not rejected". */
+  questionIds?: string[];
+  requestId?: string | null;
+}): Promise<{ clusterId: string; name: string; questionCount: number }> {
+  const membership = await getActiveMembership(input.workspaceId, input.actorUserId);
+  if (!membership || !["owner", "admin", "teacher", "content_manager"].includes(membership.role)) {
+    throw new AuthzError(403, "Insufficient permissions to create a cluster from this import.");
+  }
+  const job = await getImportJob(input.workspaceId, input.jobId);
+  if (!job) throw new AuthzError(404, "Import job not found.");
+
+  const all = await storeGetJobQuestions(input.jobId, { limit: 500 });
+  const wanted = input.questionIds?.length ? new Set(input.questionIds) : null;
+  const eligible = all.filter((q) => q.status !== "rejected" && (!wanted || wanted.has(q.id)));
+
+  const contentIds: string[] = [];
+  for (const question of eligible) {
+    try {
+      const bagId = await publishImportQuestionToBag({
+        workspaceId: input.workspaceId,
+        jobId: input.jobId,
+        question,
+        actorUserId: input.actorUserId,
+        requestId: input.requestId,
+      });
+      if (bagId) contentIds.push(bagId);
+    } catch (error) {
+      // One bad extraction must not lose the whole cluster — same rule as the
+      // bulk-accept and create-test paths.
+      console.error("publishImportQuestionToBag failed (create-cluster)", { questionId: question.id, error });
+    }
+  }
+  if (contentIds.length === 0) {
+    throw new AuthzError(400, "Accept at least one question before saving a cluster.");
+  }
+
+  const fallbackName = job.sourceFileName.replace(/\.[^.]+$/u, "").trim() || "Imported questions";
+  const cluster = await createWorkspaceCluster({
+    workspaceId: input.workspaceId,
+    actorUserId: input.actorUserId,
+    name: (input.name ?? "").trim() || fallbackName,
+    description: `Saved from ${job.sourceFileName}.`,
+    sourceImportJobId: input.jobId,
+    questionIds: contentIds,
+    requestId: input.requestId,
+  });
+
+  // Cluster membership is workspace-scoped in SQL, and an import job's bag
+  // questions do not always live in the job's own workspace — older jobs were
+  // re-homed, which is why the Question Bag looks import-job names up globally
+  // rather than by workspace. When that happens every id is (correctly)
+  // rejected and we would otherwise hand back a silently empty cluster. Bin it
+  // and say what went wrong instead.
+  if (cluster.members.length === 0) {
+    await deleteWorkspaceCluster({
+      workspaceId: input.workspaceId,
+      actorUserId: input.actorUserId,
+      clusterId: cluster.id,
+      requestId: input.requestId,
+    });
+    throw new AuthzError(
+      400,
+      "These questions are not in this workspace's Question Bag, so they cannot be clustered here.",
+    );
+  }
+
+  return { clusterId: cluster.id, name: cluster.name, questionCount: cluster.members.length };
 }
 
 export async function reviewQuestionService(input: {

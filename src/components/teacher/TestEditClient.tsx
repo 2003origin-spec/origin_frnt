@@ -7,7 +7,7 @@
 
 import { useRouter } from "next/navigation";
 
-import { TestCreatorWizard, type WizardInitial } from "./TestCreatorWizard";
+import { TestCreatorWizard, type BlueprintSection, type WizardInitial } from "./TestCreatorWizard";
 import type { QuestionWithVersion, BatchWithCounts } from "@/server/workspaces/types";
 
 type Props = {
@@ -18,9 +18,11 @@ type Props = {
   ogcodeEnabled: boolean;
   dppShareEnabled: boolean;
   initial: WizardInitial;
+  /** Blueprint sections when this draft is a full-mock scaffold. */
+  blueprintSections?: BlueprintSection[] | null;
 };
 
-export function TestEditClient({ workspaceId, testId, questions, batches, ogcodeEnabled, dppShareEnabled, initial }: Props) {
+export function TestEditClient({ workspaceId, testId, questions, batches, ogcodeEnabled, dppShareEnabled, initial, blueprintSections }: Props) {
   const router = useRouter();
   const back = () => router.push(`/teacher/workspaces/${workspaceId}/tests`);
 
@@ -35,6 +37,7 @@ export function TestEditClient({ workspaceId, testId, questions, batches, ogcode
         mode="edit"
         testId={testId}
         initial={initial}
+        blueprintSections={blueprintSections}
         onSuccess={back}
         onCancel={back}
       />

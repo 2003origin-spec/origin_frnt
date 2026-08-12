@@ -6,11 +6,13 @@ import { requireFeatureEnabled } from "@/lib/feature-flags";
 import { requireWorkspaceMember } from "@/server/workspaces/authz";
 import {
   createTeacherTest,
+  getTeacherTest,
   listTeacherTests,
   type CreateTeacherTestInput,
   type TestQuestionInput,
 } from "@/server/workspaces/tests-service";
 import {
+  blueprintSectionsOf,
   listTeacherTestSources,
   listWorkspaceQuestionUsage,
   resolveTeacherTestSources,
@@ -39,6 +41,8 @@ const questionInputSchema = z.object({
   contentQuestionVersionId: z.string().nullish(),
   marks: z.number().optional().default(4),
   negativeMarks: z.number().optional().default(-1),
+  /** Blueprint section, when the paper is a full-mock draft (plan D6). */
+  sectionId: z.string().min(1).nullish(),
 });
 
 // Multi-source ("build from documents") stack. Questions are resolved
@@ -46,7 +50,7 @@ const questionInputSchema = z.object({
 // `sources` is present. This is an extra FIELD on this handler rather than a
 // new child route — see the Next-16 phantom-404 incident.
 const sourceInputSchema = z.object({
-  kind: z.enum(["import_job", "bag_topic", "test"]),
+  kind: z.enum(["import_job", "bag_topic", "test", "cluster"]),
   id: z.string().min(1),
   marks: z.number().optional(),
   negativeMarks: z.number().optional(),
@@ -55,6 +59,8 @@ const sourceInputSchema = z.object({
 const previewSourcesSchema = z.object({
   preview: z.literal(true),
   sources: z.array(sourceInputSchema).min(1),
+  /** The test being edited — lets its blueprint drive section assignment (D6). */
+  testId: z.string().min(1).optional(),
 });
 
 /**
@@ -66,6 +72,8 @@ const fullLengthSchema = z.object({
   fullLength: z.object({
     preset: z.enum(["jee-main", "jee-advanced", "neet"]),
     title: z.string().max(200).optional(),
+    /** Opt in to drawing the questions from OG Code too (plan D3). */
+    prefillFromOgCode: z.boolean().optional(),
   }),
 });
 
@@ -130,7 +138,14 @@ export async function POST(request: NextRequest, context: WorkspaceIdRouteContex
     // route (Next-16 phantom-404 incident).
     if ((body as { preview?: unknown }).preview === true) {
       const previewInput = previewSourcesSchema.parse(body);
-      const resolution = await resolveTeacherTestSources(workspaceId, previewInput.sources);
+      // When the target test is a full-mock draft, each stacked source lands in
+      // the next blueprint section and inherits its marks (plan D6).
+      const target = previewInput.testId ? await getTeacherTest(workspaceId, previewInput.testId) : null;
+      const resolution = await resolveTeacherTestSources(
+        workspaceId,
+        previewInput.sources,
+        blueprintSectionsOf(target?.selectionPolicy),
+      );
       const labels = await getContentQuestionStoredMap(
         resolution.questions.map((q) => q.contentQuestionId ?? "").filter(Boolean),
       );
@@ -142,6 +157,7 @@ export async function POST(request: NextRequest, context: WorkspaceIdRouteContex
           marks: q.marks ?? 4,
           // The picker edits a positive value; storage keeps it negative.
           negativeMarks: Math.abs(q.negativeMarks ?? -1),
+          sectionId: (q.metadata as { sectionId?: string } | undefined)?.sectionId,
         })),
         perSource: resolution.perSource,
         totalQuestions: resolution.totalQuestions,
@@ -158,6 +174,7 @@ export async function POST(request: NextRequest, context: WorkspaceIdRouteContex
         actorUserId: ctx.auth.userId,
         preset: fullLength.preset,
         title: fullLength.title ?? null,
+        prefillFromOgCode: fullLength.prefillFromOgCode === true,
         requestId: requestIdOf(request),
       });
       // Drop the question bodies: the caller shows a toast and refreshes the
@@ -171,7 +188,11 @@ export async function POST(request: NextRequest, context: WorkspaceIdRouteContex
     // Sources win when both are sent: the teacher explicitly asked for the
     // stack, and silently preferring a stale `questions` array would build the
     // wrong paper.
-    let questions: TestQuestionInput[] = parsed.questions ?? [];
+    // sectionId rides on the wire as a scalar; storage keeps it in metadata.
+    let questions: TestQuestionInput[] = (parsed.questions ?? []).map(({ sectionId, ...q }) => ({
+      ...q,
+      ...(sectionId ? { metadata: { sectionId } } : {}),
+    }));
     let perSource: Awaited<ReturnType<typeof resolveTeacherTestSources>>["perSource"] | undefined;
     if (parsed.sources && parsed.sources.length > 0) {
       const resolution = await resolveTeacherTestSources(workspaceId, parsed.sources);

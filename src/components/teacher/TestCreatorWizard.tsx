@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, ArrowRight, ArrowLeft, Loader2, Sparkles } from "lucide-react";
+import { Check, ArrowRight, ArrowLeft, Layers, Loader2, Sparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -46,6 +46,20 @@ type Props = {
   mode?: "create" | "edit";
   testId?: string;
   initial?: WizardInitial;
+  /**
+   * Sections of the full-mock blueprint this draft was created from, when it
+   * has one. Purely advisory — the panel reports progress, nothing blocks
+   * (plan D7).
+   */
+  blueprintSections?: BlueprintSection[] | null;
+};
+
+/** One blueprint section, as the wizard needs it. */
+export type BlueprintSection = {
+  id: string;
+  label: string;
+  plannedCount: number;
+  marks: { correct: number; incorrect: number };
 };
 
 const STEPS = ["Details", "Select Questions", "Deliver"];
@@ -67,7 +81,7 @@ const STEPS = ["Details", "Select Questions", "Deliver"];
  */
 type DeliveryMode = "test" | "dpp" | "both";
 
-export function TestCreatorWizard({ workspaceId, questions, batches, ogcodeEnabled, dppShareEnabled = false, onSuccess, onCancel, mode = "create", testId, initial }: Props) {
+export function TestCreatorWizard({ workspaceId, questions, batches, ogcodeEnabled, dppShareEnabled = false, onSuccess, onCancel, mode = "create", testId, initial, blueprintSections }: Props) {
   const router = useRouter();
   const isEdit = mode === "edit";
   const [currentStep, setCurrentStep] = useState(0);
@@ -167,6 +181,7 @@ export function TestCreatorWizard({ workspaceId, questions, batches, ogcodeEnabl
         contentQuestionId: q.sourceBank === "workspace_bag" ? q.id : null,
         marks: q.marks,
         negativeMarks: q.negativeMarks,
+        sectionId: q.sectionId,
       }));
 
       const testPayload = {
@@ -371,7 +386,10 @@ export function TestCreatorWizard({ workspaceId, questions, batches, ogcodeEnabl
             /* Step 2: mixed-source question picker (OG Code + Question Bag),
                plus bulk stacking from whole documents / topics / past tests. */
             <div className="space-y-4">
-              <TestSourceStackPanel workspaceId={workspaceId} onResolved={appendResolvedQuestions} />
+              {blueprintSections && blueprintSections.length > 0 && (
+                <BlueprintScaffold sections={blueprintSections} selected={selectedQuestions} />
+              )}
+              <TestSourceStackPanel workspaceId={workspaceId} testId={testId} onResolved={appendResolvedQuestions} />
               <QuestionPicker
                 value={selectedQuestions}
                 onChange={setSelectedQuestions}
@@ -557,6 +575,78 @@ export function TestCreatorWizard({ workspaceId, questions, batches, ogcodeEnabl
         </motion.div>
       </AnimatePresence>
 
+    </div>
+  );
+}
+
+/**
+ * The exam's sectional architecture, with live progress against what is in the
+ * cart. Advisory only — it tells the teacher what a real paper looks like and
+ * how far along they are, and never blocks saving (plan D7).
+ */
+function BlueprintScaffold({
+  sections,
+  selected,
+}: {
+  sections: BlueprintSection[];
+  selected: SelectedQuestion[];
+}) {
+  const bySection = new Map<string, number>();
+  for (const question of selected) {
+    if (question.sectionId) bySection.set(question.sectionId, (bySection.get(question.sectionId) ?? 0) + 1);
+  }
+  const planned = sections.reduce((sum, s) => sum + s.plannedCount, 0);
+  const placed = sections.reduce((sum, s) => sum + (bySection.get(s.id) ?? 0), 0);
+  const unassigned = selected.length - placed;
+
+  return (
+    <div className="rounded-2xl border bg-card p-4">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Layers className="h-4 w-4 text-primary" />
+          <h4 className="text-sm font-bold">Paper blueprint</h4>
+        </div>
+        <span className="text-xs font-semibold tabular-nums text-muted-foreground">
+          {placed} / {planned} placed
+        </span>
+      </div>
+      <p className="mb-3 text-[11px] leading-relaxed text-muted-foreground">
+        This is the architecture a real paper follows. Stack one cluster per section below and its
+        questions land in that section with its marking. Nothing here is enforced — it is a guide.
+      </p>
+      <div className="space-y-1">
+        {sections.map((section) => {
+          const have = bySection.get(section.id) ?? 0;
+          const full = have >= section.plannedCount;
+          return (
+            <div
+              key={section.id}
+              className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-[11px]"
+            >
+              <span className="min-w-0 truncate font-semibold">{section.label}</span>
+              <span className="flex shrink-0 items-center gap-3">
+                <span className="text-muted-foreground">
+                  +{section.marks.correct} / {section.marks.incorrect === 0 ? "0" : section.marks.incorrect}
+                </span>
+                <span
+                  className={
+                    "w-12 text-right font-bold tabular-nums " +
+                    (full ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground")
+                  }
+                >
+                  {have} / {section.plannedCount}
+                </span>
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      {unassigned > 0 && (
+        <p className="mt-3 text-[11px] font-semibold text-amber-600 dark:text-amber-400">
+          {unassigned} question{unassigned === 1 ? "" : "s"} in this paper are not tied to a section —
+          they will still be asked, grouped by subject.
+        </p>
+      )}
     </div>
   );
 }

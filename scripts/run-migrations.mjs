@@ -88,6 +88,9 @@ const MIGRATIONS = [
   // generated paper grades on the real exam's scheme rather than the platform
   // default. Additive; NULL marks keep every existing custom test unchanged.
   { file: "20260812_full_length_mock_tests.sql", target: "ogcode" },
+  // Question clusters — named, ordered, reusable groups of Question-Bag
+  // questions, stackable into a paper. Additive; nothing existing changes.
+  { file: "20260813_question_clusters.sql", target: "user" },
 ];
 
 const TARGET_ENV = {
