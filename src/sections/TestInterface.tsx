@@ -389,18 +389,61 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
     return 'not_answered';
   };
 
-  // Group questions by subject for NTA-style sections
-  const subjects = Array.from(new Set(test.questions.map((q) => q.subject))).filter(Boolean);
-  const activeSubject = test.questions[currentQuestionIndex]?.subject;
+  /**
+   * NTA-style sections.
+   *
+   * A full-length mock carries its own blueprint sections — JEE Main has two per
+   * subject (A and B), JEE Advanced three, and NEET splits Biology into Botany
+   * and Zoology, which grouping by `q.subject` alone cannot express. Every other
+   * test falls back to exactly the previous behaviour: one section per subject.
+   *
+   * Sections come from the snapshot persisted WITH the paper, so a mock taken
+   * today keeps its own section layout regardless of later blueprint changes.
+   * Plan: V1/FULL_LENGTH_MOCK_TESTS_PLAN.md §5.
+   */
+  const sectionModel = useMemo(() => {
+    const blueprintSections = test.blueprint?.sections ?? [];
+    const sectionByQuestionId = new Map(
+      (test.questionMarking ?? [])
+        .filter((entry) => entry.sectionId)
+        .map((entry) => [entry.questionId, entry.sectionId as string]),
+    );
 
-  const getSubjectStats = (subjectName: string) => {
+    const useBlueprint = blueprintSections.length > 0 && sectionByQuestionId.size > 0;
+    const keyOf = (question: (typeof test.questions)[number]) =>
+      (useBlueprint ? sectionByQuestionId.get(question.id) : null) ?? question.subject ?? 'General';
+
+    const keys = test.questions.map(keyOf);
+    const labels = new Map<string, string>();
+    for (const section of blueprintSections) labels.set(section.id, section.shortLabel || section.label);
+
+    // Section ORDER follows the paper, so tabs read left-to-right exactly as the
+    // questions are laid out.
+    const ordered: string[] = [];
+    for (const key of keys) {
+      if (key && !ordered.includes(key)) ordered.push(key);
+    }
+    return { keys, ordered, labels, useBlueprint };
+  }, [test.questions, test.blueprint, test.questionMarking]);
+
+  const sections = sectionModel.ordered;
+  const activeSection = sectionModel.keys[currentQuestionIndex];
+  const sectionLabel = (key: string) => sectionModel.labels.get(key) ?? key;
+
+  /** Per-question exam marking, when the paper carries one. */
+  const markingByQuestionId = useMemo(
+    () => new Map((test.questionMarking ?? []).map((entry) => [entry.questionId, entry])),
+    [test.questionMarking],
+  );
+
+  const getSectionStats = (sectionKey: string) => {
     let not_answered = 0;
     let answered = 0;
     let marked_review = 0;
     let answered_marked = 0;
 
-    test.questions.forEach((q, i) => {
-      if (q.subject === subjectName) {
+    test.questions.forEach((_q, i) => {
+      if (sectionModel.keys[i] === sectionKey) {
         const status = getQuestionStatus(i);
         if (status === 'not_answered') not_answered++;
         else if (status === 'answered') answered++;
@@ -414,22 +457,20 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
 
   const currentQuestion = test.questions[currentQuestionIndex];
 
-  // Per-subject LOCAL numbering: each question's 1-based index within its own
-  // subject section, so the header reads "Physics · Question 3 of 15" instead of
-  // a global count. Falls back to a global count for untagged questions.
-  const subjectLocalNumbers = useMemo(() => {
+  // Per-section LOCAL numbering: each question's 1-based index within its own
+  // section, so the header reads "Physics — Section A · Question 3 of 20"
+  // instead of a global count. Falls back to a global count for untagged
+  // questions.
+  const sectionLocalNumbers = useMemo(() => {
     const counters = new Map<string, number>();
-    return test.questions.map((q) => {
-      const s = q.subject || 'General';
-      const n = (counters.get(s) ?? 0) + 1;
-      counters.set(s, n);
+    return sectionModel.keys.map((key) => {
+      const n = (counters.get(key) ?? 0) + 1;
+      counters.set(key, n);
       return n;
     });
-  }, [test.questions]);
-  const currentLocalNumber = subjectLocalNumbers[currentQuestionIndex] ?? currentQuestionIndex + 1;
-  const currentSubjectTotal = test.questions.filter(
-    (q) => (q.subject || 'General') === (activeSubject || 'General'),
-  ).length;
+  }, [sectionModel.keys]);
+  const currentLocalNumber = sectionLocalNumbers[currentQuestionIndex] ?? currentQuestionIndex + 1;
+  const currentSectionTotal = sectionModel.keys.filter((key) => key === activeSection).length;
 
   // Reset image view state when moving to a new question
   useEffect(() => {
@@ -984,21 +1025,21 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
           <div className="flex bg-primary text-white px-4 h-full items-center font-bold text-xs border-r border-white/20 whitespace-nowrap">
             SECTION
           </div>
-          {subjects.map((subj) => {
-            const isActive = activeSubject === subj;
-            const stats = getSubjectStats(subj);
+          {sections.map((subj) => {
+            const isActive = activeSection === subj;
+            const stats = getSectionStats(subj);
             return (
               <div key={subj} className="group relative h-full flex items-center">
                 <button
                   onClick={() => {
-                    const firstIdx = test.questions.findIndex(q => q.subject === subj);
+                    const firstIdx = sectionModel.keys.findIndex((key) => key === subj);
                     if (firstIdx !== -1) navigateToQuestion(firstIdx);
                   }}
                   className={`h-full px-4 text-xs font-bold uppercase transition-all flex items-center gap-2 border-r border-white/20 ${
                     isActive ? 'bg-white text-black' : 'bg-primary text-white hover:bg-primary/90'
                   }`}
                 >
-                  {subj}
+                  {sectionLabel(subj)}
                   {(() => {
                     const total = stats.not_answered + stats.answered + stats.marked_review + stats.answered_marked;
                     const attempted = stats.answered + stats.answered_marked;
@@ -1074,12 +1115,40 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
           {/* Question Header */}
           <div className="flex justify-between items-center px-3 sm:px-4 py-2 border-b border-gray-300 font-bold text-sm sm:text-lg border-t-4 border-t-white bg-slate-50 text-gray-900 lg:sticky lg:top-0 z-20">
             <span>
-              {activeSubject ? <span className="text-primary">{activeSubject} · </span> : null}
+              {activeSection ? <span className="text-primary">{sectionLabel(activeSection)} · </span> : null}
               Question {currentLocalNumber}
-              {currentSubjectTotal ? <span className="font-medium text-gray-500"> of {currentSubjectTotal}</span> : null}:
+              {currentSectionTotal ? <span className="font-medium text-gray-500"> of {currentSectionTotal}</span> : null}:
             </span>
-            <div className="w-5 h-5 sm:w-6 sm:h-6 bg-primary rounded-full text-white flex items-center justify-center font-bold text-xs sm:text-sm shadow-sm">&darr;</div>
+            <div className="flex items-center gap-2">
+              {/* Exam marking for THIS question. A full-length paper is not
+                  uniformly marked — JEE Advanced runs +3/−1, +4/−2 and +4/0 in
+                  three sections of the same test — so the student has to be able
+                  to see what the question in front of them is worth. */}
+              {(() => {
+                const marking = currentQuestion ? markingByQuestionId.get(currentQuestion.id) : undefined;
+                if (!marking) return null;
+                return (
+                  <span className="hidden sm:flex items-center gap-1 rounded-full border border-gray-300 bg-white px-2.5 py-0.5 text-[11px] font-black tabular-nums">
+                    <span className="text-emerald-600">+{marking.marks}</span>
+                    <span className="text-gray-300">/</span>
+                    <span className={marking.negativeMarks === 0 ? 'text-gray-500' : 'text-rose-600'}>
+                      {marking.negativeMarks === 0 ? '0' : `−${Math.abs(marking.negativeMarks)}`}
+                    </span>
+                  </span>
+                );
+              })()}
+              <div className="w-5 h-5 sm:w-6 sm:h-6 bg-primary rounded-full text-white flex items-center justify-center font-bold text-xs sm:text-sm shadow-sm">&darr;</div>
+            </div>
           </div>
+
+          {/* Adaptation notice — says out loud where the generated paper had to
+              deviate from the real exam's pattern (D1), rather than quietly
+              shipping MCQs in a section labelled "Numerical". */}
+          {test.blueprint?.adaptationSummary ? (
+            <div className="border-b border-amber-200 bg-amber-50 px-3 sm:px-4 py-2 text-[11px] font-semibold leading-relaxed text-amber-800">
+              {test.blueprint.adaptationSummary}
+            </div>
+          ) : null}
 
           {/* Question Text & Options */}
           <div className="flex-1 overflow-y-visible lg:overflow-y-auto p-3 sm:p-8 relative">

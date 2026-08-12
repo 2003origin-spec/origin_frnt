@@ -52,7 +52,8 @@ type FlagKey =
   | "studyModes"
   | "cbtReportCards"
   | "teacherDppShare"
-  | "cbtParticipationQuota";
+  | "cbtParticipationQuota"
+  | "fullLengthMocks";
 
 type FlagSpec = {
   envSuffix: string;
@@ -252,6 +253,18 @@ const FLAG_SPECS: Record<FlagKey, FlagSpec> = {
   // deleting a single ledger row, so flipping it back on restores exact usage.
   // See V1/CBT_PARTICIPATION_QUOTA_PLAN.md.
   cbtParticipationQuota: { envSuffix: "CBT_PARTICIPATION_QUOTA", defaultDev: true, defaultProd: true },
+  // Full-length exam mocks — the JEE Main / JEE Advanced / NEET one-click
+  // presets in the student Test Builder and the matching teacher generator.
+  // Papers are sectional, drawn from the OG Code bank against a declarative
+  // blueprint, and graded on the REAL exam's marking (+4/-1, JEE Advanced
+  // partial marking) rather than the platform default.
+  //
+  // Ships DARK in prod. Turning it OFF hides both builders and 404s their
+  // routes but deletes NOTHING: an already-generated mock is an ordinary
+  // persisted custom test and stays takeable and gradeable, so a flag flip can
+  // never strand a student mid-attempt.
+  // See V1/FULL_LENGTH_MOCK_TESTS_PLAN.md.
+  fullLengthMocks: { envSuffix: "FULL_LENGTH_MOCKS", defaultDev: true, defaultProd: false },
 };
 
 /** Every feature-flag key, in declaration order (admin System Config view). */

@@ -38,6 +38,7 @@ export default async function TeacherTestsPage({ params }: Props) {
         canManage={canManage}
         ogcodeEnabled={isFeatureEnabled("teacherOgcode")}
         dppShareEnabled={isFeatureEnabled("teacherDppShare")}
+        fullLengthMocksEnabled={isFeatureEnabled("fullLengthMocks")}
       />
     </div>
   );

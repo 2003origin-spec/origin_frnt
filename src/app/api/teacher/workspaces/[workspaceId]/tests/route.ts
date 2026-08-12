@@ -16,6 +16,7 @@ import {
   resolveTeacherTestSources,
 } from "@/server/workspaces/test-sources-service";
 import { getContentQuestionStoredMap } from "@/server/workspaces/test-question-resolver";
+import { generateFullLengthTeacherTest } from "@/server/workspaces/full-test-generator";
 
 import {
   getWorkspaceId,
@@ -54,6 +55,18 @@ const sourceInputSchema = z.object({
 const previewSourcesSchema = z.object({
   preview: z.literal(true),
   sources: z.array(sourceInputSchema).min(1),
+});
+
+/**
+ * Full-length mock generation. An extra MODE on this handler rather than a new
+ * child route — same reasoning as `preview` below (the Next-16 phantom-404
+ * incident). See V1/FULL_LENGTH_MOCK_TESTS_PLAN.md Phase 6.
+ */
+const fullLengthSchema = z.object({
+  fullLength: z.object({
+    preset: z.enum(["jee-main", "jee-advanced", "neet"]),
+    title: z.string().max(200).optional(),
+  }),
 });
 
 const createTestSchema = z
@@ -133,6 +146,24 @@ export async function POST(request: NextRequest, context: WorkspaceIdRouteContex
         perSource: resolution.perSource,
         totalQuestions: resolution.totalQuestions,
       });
+    }
+
+    // Generated full-length paper: the whole question set is chosen server-side
+    // from a blueprint, so there is no `questions` array to validate.
+    if ((body as { fullLength?: unknown }).fullLength) {
+      requireFeatureEnabled("fullLengthMocks");
+      const { fullLength } = fullLengthSchema.parse(body);
+      const { test, adaptationSummary } = await generateFullLengthTeacherTest({
+        workspaceId,
+        actorUserId: ctx.auth.userId,
+        preset: fullLength.preset,
+        title: fullLength.title ?? null,
+        requestId: requestIdOf(request),
+      });
+      // Drop the question bodies: the caller shows a toast and refreshes the
+      // list, and a NEET paper is 180 fully-hydrated rows it would throw away.
+      const { questions: _questions, ...testSummary } = test;
+      return teacherJson({ test: testSummary, adaptationSummary }, { status: 201 });
     }
 
     const parsed = createTestSchema.parse(body);

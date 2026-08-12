@@ -42,6 +42,7 @@ import {
   listOgcodeCatalogQuestionPage,
   listOgcodeCatalogQuestions,
 } from "@/server/ogcode-catalog";
+import { policyOverridesFromPersistedTest } from "@/server/assessments/full-test-builder";
 import { getUserPostgresPool, isUserPostgresConfigured } from "@/server/user-postgres";
 import {
   GraderContractError,
@@ -1379,6 +1380,16 @@ function hasResponse(answer: StoredUserAnswer): boolean {
   );
 }
 
+/**
+ * How many units full credit is made of, for policies that award marks per unit
+ * rather than as a fraction (JEE Advanced multiple-correct: +1 per correct
+ * option chosen). Only MSQ has such units; every other type is all-or-nothing,
+ * so 0 tells `computeMarksFromCredit` to stay on the fractional path.
+ */
+function partialUnitsForQuestion(question: StoredQuestion): number {
+  return question.questionType === "msq" ? (question.correctOptions?.length ?? 0) : 0;
+}
+
 function withLocalScoring(
   question: StoredQuestion,
   answer: StoredUserAnswer,
@@ -1392,6 +1403,7 @@ function withLocalScoring(
     isCorrect: grade.isCorrect,
     creditAwarded,
     policy,
+    partialUnits: partialUnitsForQuestion(question),
   });
   return {
     ...grade,
@@ -2168,6 +2180,13 @@ function serializePersistedCustomTestWithLookup(
     recommended_time_per_question_seconds: test.recommendedTimePerQuestionSeconds,
     createdAt: test.createdAt,
     created_at: test.createdAt,
+    // Full-length mocks: the taker renders section headers, per-question marks
+    // and the adaptation banner from these. Null for free-form custom tests.
+    examPreset: test.examPreset,
+    exam_preset: test.examPreset,
+    blueprint: test.blueprint,
+    questionMarking: test.questionMarking,
+    question_marking: test.questionMarking,
   }, metadata);
 }
 
@@ -2197,6 +2216,8 @@ function serializePersistedCustomTestPreview(test: PersistedCustomTestRecord, re
     attempt_count: test.attemptCount,
     allScores: test.allScores,
     all_scores: test.allScores,
+    examPreset: test.examPreset,
+    exam_preset: test.examPreset,
   }, metadata);
 }
 
@@ -2206,6 +2227,10 @@ function serializePersistedResult(result: PersistedTestResultRecord) {
     testId: result.testId,
     test_id: result.testId,
     score: result.score,
+    // Full-length mocks are scored out of the exam's own total (300 / 198 / 720);
+    // without the denominator the score reads as a bare number.
+    totalMarks: result.totalMarks,
+    total_marks: result.totalMarks,
     percentage: result.percentage,
     correctAnswers: result.correctAnswers,
     correct_answers: result.correctAnswers,
@@ -2942,13 +2967,15 @@ async function buildAnalyticsAttempts(
     // Same reasoning as maxMarks: the remote grader computed its marksAwarded
     // against the platform default, so under a teacher mark scheme it must be
     // recomputed locally from the credit it returned.
+    const partialUnits = partialUnitsForQuestion(question);
     const marksAwarded = policyOverrides?.has(question.id)
-      ? computeMarksFromCredit({ answered, isCorrect, creditAwarded: grade.creditAwarded, policy })
+      ? computeMarksFromCredit({ answered, isCorrect, creditAwarded: grade.creditAwarded, policy, partialUnits })
       : grade.marksAwarded ?? computeMarksFromCredit({
           answered,
           isCorrect,
           creditAwarded: grade.creditAwarded,
           policy,
+          partialUnits,
         });
     const creditAwarded = grade.creditAwarded ?? (isCorrect ? 1 : 0);
 
@@ -3425,7 +3452,33 @@ function assignedTeacherTestToRecord(
     attemptCount: 0,
     averageScore: null,
     allScores: [],
+    // The teacher's own mark scheme, carried through so the paper grades on what
+    // they set rather than the flat platform default — and, for a generated
+    // full-length paper, on the real exam's sectional marking.
+    // Plan: V1/FULL_LENGTH_MOCK_TESTS_PLAN.md Phase 7.
+    examPreset: fullLengthPresetOf(assigned.test),
+    blueprint: fullLengthBlueprintOf(assigned.test),
+    questionMarking: assigned.orderedQuestionMarking,
   };
+}
+
+/**
+ * The blueprint snapshot a GENERATED teacher paper carries in its
+ * `selection_policy`, or null for a hand-built test.
+ *
+ * The `kind` discriminator matters: `selection_policy` is a free-form JSONB that
+ * other builders also write into, so it must be positively identified as a
+ * full-length blueprint before its shape is trusted.
+ */
+function fullLengthBlueprintOf(test: { selectionPolicy?: Record<string, unknown> }): Record<string, unknown> | null {
+  const policy = test.selectionPolicy;
+  if (!policy || policy.kind !== "full_length_mock") return null;
+  return policy;
+}
+
+function fullLengthPresetOf(test: { selectionPolicy?: Record<string, unknown> }): string | null {
+  const policy = fullLengthBlueprintOf(test);
+  return typeof policy?.preset === "string" ? policy.preset : null;
 }
 
 /** A 403-tagged error: a teacher test exists but the student is not a member. */
@@ -3786,6 +3839,13 @@ export async function submitTest(
           : "custom_test");
 
   const isMalpractice = payload.isMalpractice || payload.is_malpractice || false;
+  // Full-length mock: each question is worth what its blueprint SECTION says,
+  // not the flat platform default — a JEE Advanced paper is +3/−1, +4/−2 with
+  // partial credit, and +4/0 in three different sections of the same test. The
+  // scheme was persisted with the paper, so it is replayed here rather than
+  // re-derived from a blueprint that may have moved on since.
+  // Plan: V1/FULL_LENGTH_MOCK_TESTS_PLAN.md D4.
+  const examPolicyOverrides = persistedTest ? policyOverridesFromPersistedTest(persistedTest) : null;
   const analytics = await buildAnalyticsAttempts(
     store,
     user.id,
@@ -3796,6 +3856,7 @@ export async function submitTest(
       assessmentId: testId,
     },
     sourceType,
+    examPolicyOverrides,
   );
   const resolution = validateResolvedAssessmentQuestions({
     declaredTotalQuestions,

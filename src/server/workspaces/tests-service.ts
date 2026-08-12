@@ -7,13 +7,13 @@ import { AuthzError } from "@/server/authz";
 
 import { recordAuditEvent } from "./audit";
 import {
+  addQuestionsToTest,
   createTest,
   createAssignment,
   getTestById,
   getTestWithQuestions,
   listTests,
   updateTest,
-  addQuestionToTest,
   clearTestQuestions,
   deleteTest,
   listAttemptResults,
@@ -21,7 +21,7 @@ import {
   type CreateTestInput,
 } from "./tests-store";
 import { getQuestionWithVersion } from "./questions";
-import { getOgcodeCatalogQuestionMap } from "@/server/ogcode-catalog";
+import { filterExistingOgcodeQuestionIds } from "@/server/ogcode-catalog";
 import {
   getTestAttemptCohort,
   getTestTopicWeakness,
@@ -46,6 +46,11 @@ export type TestQuestionInput = {
   contentQuestionVersionId?: string | null;
   marks?: number;
   negativeMarks?: number;
+  /**
+   * Free-form per-question context. Full-length generated papers put their
+   * blueprint `sectionId` here so a taken paper can be re-sectioned.
+   */
+  metadata?: Record<string, unknown>;
 };
 
 export type CreateTeacherTestInput = Omit<CreateTestInput, "totalQuestions"> & {
@@ -67,13 +72,18 @@ async function applyTestQuestions(
   opts?: { replace?: boolean },
 ): Promise<void> {
   // Batch-validate ogcode ids exist (one query — the bank has thousands of rows).
+  // An EXISTENCE check, not a hydration: a generated full-length paper validates
+  // up to 180 ids, and pulling every column of every row to answer "does this
+  // exist" moves megabytes for nothing.
   const ogcodeIds = questions
     .filter((q) => q.sourceBank === "ogcode")
     .map((q) => q.ogcodeQuestionId)
     .filter((id): id is string => Boolean(id));
-  const ogcodeMap = ogcodeIds.length ? await getOgcodeCatalogQuestionMap(ogcodeIds) : new Map();
+  const existingOgcodeIds = ogcodeIds.length
+    ? await filterExistingOgcodeQuestionIds(ogcodeIds)
+    : new Set<string>();
   for (const id of ogcodeIds) {
-    if (!ogcodeMap.has(id)) throw new AuthzError(400, `OG Code question ${id} not found.`);
+    if (!existingOgcodeIds.has(id)) throw new AuthzError(400, `OG Code question ${id} not found.`);
   }
 
   // Resolve/validate every row (no writes yet).
@@ -105,11 +115,13 @@ async function applyTestQuestions(
     resolved.push({ ...q, contentQuestionVersionId });
   }
 
-  // Commit: replace existing rows only after validation succeeds.
+  // Commit: replace existing rows only after validation succeeds. Written in one
+  // statement — a generated full-length paper is up to 180 questions, and a
+  // round trip per row is the whole creation budget spent on latency.
   if (opts?.replace) await clearTestQuestions(testId);
-  for (const q of resolved) {
-    await addQuestionToTest({
-      testId,
+  await addQuestionsToTest(
+    testId,
+    resolved.map((q) => ({
       position: q.position,
       sourceBank: q.sourceBank,
       ogcodeQuestionId: q.ogcodeQuestionId ?? null,
@@ -117,8 +129,9 @@ async function applyTestQuestions(
       contentQuestionVersionId: q.contentQuestionVersionId,
       marks: q.marks ?? 4,
       negativeMarks: q.negativeMarks ?? -1,
-    });
-  }
+      metadata: q.metadata,
+    })),
+  );
 }
 
 export async function createTeacherTest(input: CreateTeacherTestInput): Promise<TestWithQuestions> {
@@ -140,7 +153,8 @@ export async function createTeacherTest(input: CreateTeacherTestInput): Promise<
     durationMinutes: input.durationMinutes,
     totalQuestions: input.questions.length,
     status: input.status ?? "draft",
-    source: "manual",
+    // Generated papers record HOW they were built; hand-picked ones stay manual.
+    source: input.source ?? "manual",
     selectionPolicy: input.selectionPolicy ?? {},
     scoringPolicy: input.scoringPolicy ?? {},
     settings: input.settings ?? {},

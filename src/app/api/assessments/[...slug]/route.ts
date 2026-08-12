@@ -2,6 +2,8 @@ import type { NextRequest } from "next/server";
 import { revalidateTag } from "next/cache";
 
 import { listOgcodeCatalogFacets } from "@/server/ogcode-catalog";
+import { requireFeatureEnabled } from "@/lib/feature-flags";
+import { isExamPresetId } from "@/lib/exam-blueprints";
 import { requireUserFromRequest } from "@/server/auth";
 import { getStudentScope, renderStudyModeKey } from "@/server/study-scope";
 import { submitLimiter, generalLimiter, checkRateLimit } from "@/lib/rate-limit";
@@ -9,6 +11,7 @@ import {
   type CustomTestPayload,
   checkGeneratedDppQuestion,
   createCustomTest,
+  createFullLengthTest,
   getGeneratedDppDetail,
   getChallengeOfTheDay,
   getFocusAreas,
@@ -445,6 +448,31 @@ export async function POST(request: NextRequest, context: RouteContext) {
           throw new Error("Authentication credentials were not provided.");
         }
         return createCustomTest(store, user, body);
+      }, null);
+      revalidateTag("tests", "max");
+      revalidateTag(`progress-user:${auth.user.id}`, "max");
+      return created(response);
+    }
+
+    // POST /api/assessments/tests/full-length — generate a JEE Main / JEE
+    // Advanced / NEET mock. Mirrors createFullLengthTestAction for non-RSC
+    // callers (the mobile shell). Entitlement is decided server-side from the
+    // resolved scope; the client's view of what is unlocked is never trusted.
+    if (root === "tests" && first === "full-length") {
+      requireFeatureEnabled("fullLengthMocks");
+      const body = await parseJsonBody<{ preset?: string }>(request);
+      if (!isExamPresetId(body?.preset)) {
+        return badRequest("Unknown exam preset.");
+      }
+      const preset = body.preset;
+      const response = await withStoreAsyncScoped(async (store) => {
+        const user = await requireUserFromRequest(store, request);
+        if (!user) {
+          throw new Error("Authentication credentials were not provided.");
+        }
+        const scope = await getStudentScope(user.id, user.role);
+        const { testId } = await createFullLengthTest({ userId: user.id, preset, scope });
+        return getTestDetail(store, user, testId);
       }, null);
       revalidateTag("tests", "max");
       revalidateTag(`progress-user:${auth.user.id}`, "max");

@@ -19,6 +19,11 @@ type CatalogFilters = {
   /** Premium entitlement allow-list (Phase 1.4): restrict to these subjects. */
   subjects?: string[] | null;
   difficulty?: string | null;
+  /**
+   * Union-matched difficulty band (e.g. `["hard", "insane"]`). Independent of
+   * the singular `difficulty` above — both may be supplied, and both apply.
+   */
+  difficulties?: string[] | null;
   type?: string | null;
   search?: string | null;
   chapters?: string[] | null;
@@ -495,6 +500,14 @@ function buildFilterClause(filters: CatalogFilters) {
     clauses.push(`LOWER(difficulty) = $${values.length}`);
   }
 
+  const difficulties = (filters.difficulties ?? [])
+    .map((entry) => String(entry ?? "").trim().toLowerCase())
+    .filter(Boolean);
+  if (difficulties.length) {
+    values.push(difficulties);
+    clauses.push(`LOWER(difficulty) = ANY($${values.length}::text[])`);
+  }
+
   if (filters.type) {
     const type = String(filters.type).trim().toLowerCase();
     // Mirrors reconcileQuestionType(): option-less "mcq" rows are really
@@ -745,6 +758,107 @@ export async function listOgcodeCatalogQuestionPage(filters: CatalogPageFilters)
   };
 }
 
+/**
+ * A question as the full-length test builder sees it: enough to place it in a
+ * section and report the paper's composition, without hauling the stem, options
+ * and explanation across for questions that may not even be picked.
+ */
+export type CatalogSampleRow = {
+  id: string;
+  subject: string;
+  chapter: string;
+  difficulty: string;
+  questionType: QuestionType;
+};
+
+/**
+ * Randomised-but-reproducible sampling for full-length mock tests.
+ *
+ * Every other read in this module is `ORDER BY source_index ASC`, which is the
+ * right call for browsing (stable paging) and exactly wrong for building a mock
+ * paper: it would hand every student the same first N questions of each filter.
+ * Ordering by `md5(seed || id)` instead spreads the draw across the whole
+ * matching set while staying deterministic for a given seed, so a test can be
+ * rebuilt identically for debugging and two students never get the same paper.
+ *
+ * Randomising in SQL (rather than fetching all ids and shuffling in Node) keeps
+ * the transfer proportional to what is actually needed — a NEET Biology band can
+ * match 1,700+ rows for a 16-question draw.
+ *
+ * See V1/FULL_LENGTH_MOCK_TESTS_PLAN.md §5, D7.
+ */
+export async function sampleOgcodeCatalogQuestionIds(
+  filters: CatalogFilters & {
+    excludeIds?: string[] | null;
+    seed: string;
+    limit: number;
+  },
+): Promise<CatalogSampleRow[]> {
+  const pool = getOgcodePostgresPool();
+  if (!pool) {
+    return [];
+  }
+  const limit = Math.max(0, Math.trunc(filters.limit));
+  if (limit === 0) {
+    return [];
+  }
+
+  await ensureCatalogSchema();
+  const base = buildFilterClause(filters);
+  const clauses = [...base.clauses];
+  const values = [...base.values];
+
+  const excludeIds = [...new Set((filters.excludeIds ?? []).filter(Boolean))];
+  if (excludeIds.length) {
+    values.push(excludeIds);
+    clauses.push(`NOT (id = ANY($${values.length}::text[]))`);
+  }
+
+  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+  values.push(filters.seed);
+  const seedParam = `$${values.length}`;
+  values.push(limit);
+
+  const result = await pool.query<{
+    id: string;
+    subject: string;
+    chapter: string;
+    difficulty: string;
+    question_type: string;
+    options: unknown;
+    answer_text: string | null;
+    correct_options: unknown;
+  }>(
+    `
+      SELECT id, subject, chapter, difficulty, question_type, options, answer_text, correct_options
+      FROM ogcode_questions
+      ${where}
+      ORDER BY md5(${seedParam} || id) ASC
+      LIMIT $${values.length}
+    `,
+    values,
+  );
+
+  return result.rows.map((row) => {
+    // Classify exactly as mapCatalogRow would, so a row sampled as "mcq" can
+    // never render as something else once the taker resolves it in full.
+    const options = toTextArray(row.options);
+    const reconciled = reconcileQuestionType(
+      normalizeQuestionType(String(row.question_type)),
+      options,
+      row.answer_text ?? null,
+      row.correct_options,
+    );
+    return {
+      id: row.id,
+      subject: normalizeSubject(row.subject),
+      chapter: row.chapter,
+      difficulty: normalizeDifficulty(String(row.difficulty)),
+      questionType: reconciled.questionType,
+    };
+  });
+}
+
 export async function listOgcodeCatalogChapters(subject: string): Promise<string[]> {
   const pool = getOgcodePostgresPool();
   if (!pool) {
@@ -910,6 +1024,27 @@ export async function getOgcodeCatalogQuestionById(questionId: string): Promise<
   );
 
   return result.rows[0] ? mapCatalogRow(result.rows[0]) : null;
+}
+
+/**
+ * Which of these ids actually exist in the catalog.
+ *
+ * For pure existence checks, use this instead of `getOgcodeCatalogQuestionMap`:
+ * that one hydrates every column — stem, options, explanation, images — of every
+ * row, which is a lot of bytes to move in order to answer a yes/no question. A
+ * generated full-length paper validates up to 180 ids at once.
+ */
+export async function filterExistingOgcodeQuestionIds(questionIds: string[]): Promise<Set<string>> {
+  const pool = getOgcodePostgresPool();
+  if (!pool || !questionIds.length) {
+    return new Set();
+  }
+  await ensureCatalogSchema();
+  const result = await pool.query<{ id: string }>(
+    `SELECT id FROM ogcode_questions WHERE id = ANY($1::text[])`,
+    [[...new Set(questionIds)]],
+  );
+  return new Set(result.rows.map((row) => row.id));
 }
 
 export async function getOgcodeCatalogQuestionMap(questionIds: string[]): Promise<Map<string, StoredQuestion>> {

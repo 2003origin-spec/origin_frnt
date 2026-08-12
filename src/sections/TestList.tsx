@@ -31,7 +31,9 @@ import {
 import type { Test, TestPreview, User } from '@/types';
 import { cn } from '@/lib/utils';
 import { apiCall } from '@/lib/api';
-import { createCustomTestAction } from '@/server/actions/test-actions';
+import { createCustomTestAction, createFullLengthTestAction } from '@/server/actions/test-actions';
+import ExamPresetCards, { type ExamPresetCard } from '@/components/test/ExamPresetCards';
+import type { ExamPresetId } from '@/lib/exam-blueprints';
 import { useAuth } from '@/context/AuthContext';
 import { isSubjectInMode, studyModeSubjects } from '@/lib/study-mode';
 
@@ -93,6 +95,12 @@ interface TestListProps {
   user?: User | null;
   /** Pre-loaded by the Server Component — skips the initial client-side fetch */
   initialTests?: TestPreview[];
+  /**
+   * Full-length exam presets, already resolved against the student's
+   * entitlements on the server. Empty/absent hides the surface entirely (which
+   * is also what the feature flag being off produces).
+   */
+  examPresets?: ExamPresetCard[];
 }
 
 function toTestPreview(test: Test | TestPreview): TestPreview {
@@ -114,7 +122,7 @@ function toTestPreview(test: Test | TestPreview): TestPreview {
   };
 }
 
-export default function TestList({ onStartTest, onViewAnalysis, onBack, user, initialTests }: TestListProps) {
+export default function TestList({ onStartTest, onViewAnalysis, onBack, user, initialTests, examPresets }: TestListProps) {
   const { studyMode } = useAuth();
   const [tests, setTests] = useState<TestPreview[]>(initialTests ?? []);
   const [searchQuery, setSearchQuery] = useState('');
@@ -204,6 +212,25 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
     } finally {
       setCreatingTest(false);
     }
+  };
+
+  /**
+   * Generates a full-length mock and starts it immediately, the same way the
+   * free-form builder behaves. Errors propagate to ExamPresetCards, which shows
+   * the server's message (e.g. the entitlement refusal from D2) rather than a
+   * generic failure.
+   */
+  const handleGenerateFullLength = async (preset: ExamPresetId) => {
+    const response = (await createFullLengthTestAction(preset)) as Test;
+    const newTest: TestPreview = {
+      ...toTestPreview(response),
+      isCustom: true,
+      origin: 'custom',
+      isPyq: false,
+      examType: null,
+    };
+    setTests((prev) => [newTest, ...prev]);
+    onStartTest(newTest);
   };
 
   useEffect(() => {
@@ -525,11 +552,14 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
               {/* Build Lab (The Creator UI) */}
               <TabsContent value="build" className="mt-0 outline-none">
                 <div className="max-w-4xl mx-auto">
+                    {examPresets && examPresets.length > 0 && (
+                      <ExamPresetCards presets={examPresets} onGenerate={handleGenerateFullLength} />
+                    )}
                     <Card className="neu-raised border-0 shadow-none rounded-[40px] overflow-hidden">
                         <div className="p-6 sm:p-10 border-b border-border/40 bg-primary text-white relative">
                             <div className="relative z-10">
-                                <h2 className="text-xl sm:text-3xl font-black uppercase tracking-tighter mb-2">Test Builder</h2>
-                                <p className="text-[10px] sm:text-xs font-bold opacity-80 uppercase tracking-widest">Configure your session</p>
+                                <h2 className="text-xl sm:text-3xl font-black uppercase tracking-tighter mb-2">Custom Test Builder</h2>
+                                <p className="text-[10px] sm:text-xs font-bold opacity-80 uppercase tracking-widest">Build your own practice set</p>
                             </div>
                             <Plus className="absolute top-6 right-6 sm:top-10 sm:right-10 w-12 h-12 sm:w-20 sm:h-20 opacity-10" />
                         </div>

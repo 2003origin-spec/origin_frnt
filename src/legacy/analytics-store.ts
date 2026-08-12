@@ -246,6 +246,19 @@ ALTER TABLE analytics.test_results ALTER COLUMN score TYPE DOUBLE PRECISION USIN
 ALTER TABLE analytics.test_results ALTER COLUMN total_marks TYPE DOUBLE PRECISION USING total_marks::double precision;
 ALTER TABLE analytics.dpp_attempts ADD COLUMN IF NOT EXISTS analysis_status TEXT NOT NULL DEFAULT 'complete';
 ALTER TABLE analytics.dpp_attempts ADD COLUMN IF NOT EXISTS analysis_error TEXT;
+
+-- Full-length mock tests (JEE Main / JEE Advanced / NEET) — mirrors
+-- 20260812_full_length_mock_tests.sql so an un-migrated database self-heals.
+-- NULL marks mean "platform default", which is how every pre-existing custom
+-- test must keep grading. See V1/FULL_LENGTH_MOCK_TESTS_PLAN.md §6.1.
+ALTER TABLE analytics.custom_tests ADD COLUMN IF NOT EXISTS exam_preset TEXT;
+ALTER TABLE analytics.custom_tests ADD COLUMN IF NOT EXISTS blueprint JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE analytics.custom_test_questions ADD COLUMN IF NOT EXISTS section_id TEXT;
+ALTER TABLE analytics.custom_test_questions ADD COLUMN IF NOT EXISTS marks DOUBLE PRECISION;
+ALTER TABLE analytics.custom_test_questions ADD COLUMN IF NOT EXISTS negative_marks DOUBLE PRECISION;
+CREATE INDEX IF NOT EXISTS idx_analytics_custom_tests_user_preset
+  ON analytics.custom_tests(user_id, exam_preset, created_at DESC)
+  WHERE exam_preset IS NOT NULL;
 `;
 
 export interface PersistedCustomTestRecord {
@@ -266,6 +279,26 @@ export interface PersistedCustomTestRecord {
   attemptCount: number;
   averageScore: number | null;
   allScores: number[];
+  /**
+   * Full-length mock tests only. `null` for an ordinary free-form custom test,
+   * which is what every row created before this feature is.
+   */
+  examPreset: string | null;
+  /** The blueprint the paper was built from (sections, marking, adaptations). */
+  blueprint: Record<string, unknown> | null;
+  /**
+   * Per-question section + exam marking, positionally aligned with
+   * `questionIds`. Empty for tests that carry no per-question mark scheme.
+   */
+  questionMarking: PersistedTestQuestionMarking[];
+}
+
+/** One question's placement + marks inside a full-length paper. */
+export interface PersistedTestQuestionMarking {
+  questionId: string;
+  sectionId: string | null;
+  marks: number;
+  negativeMarks: number;
 }
 
 export interface PersistedTestResultRecord {
@@ -273,6 +306,12 @@ export interface PersistedTestResultRecord {
   testId: string;
   userId: string;
   score: number;
+  /**
+   * Marks the paper was out of. Persisted since the schema's first version but
+   * never surfaced — a full-length mock is scored out of 300 / 198 / 720, so
+   * "score" alone is unreadable without it.
+   */
+  totalMarks: number;
   percentage: number;
   correctAnswers: number;
   wrongAnswers: number;
@@ -402,6 +441,14 @@ type PersistGeneratedCustomTestInput = {
   focusTopics: string[];
   generationSummary: string;
   recommendedTimePerQuestionSeconds: number;
+  /** Full-length mocks only — see PersistedCustomTestRecord.examPreset. */
+  examPreset?: string | null;
+  blueprint?: Record<string, unknown> | null;
+  /**
+   * Per-question section + marking, keyed by question id. Omitted entirely for
+   * free-form custom tests, whose questions grade on the platform default.
+   */
+  questionMarking?: ReadonlyMap<string, { sectionId: string | null; marks: number; negativeMarks: number }> | null;
 };
 
 export type PersistTestAnalysisInput = {
@@ -507,6 +554,27 @@ function mapPersistedCustomTestRow(row: any): PersistedCustomTestRecord {
     attemptCount: row.attempt_count ?? 0,
     averageScore: row.average_score ?? null,
     allScores: fromJsonArray<number>(row.all_scores),
+    examPreset: row.exam_preset ?? null,
+    // The column defaults to '{}', which carries no more meaning than NULL here.
+    blueprint:
+      row.blueprint && typeof row.blueprint === "object" && Object.keys(row.blueprint).length > 0
+        ? (row.blueprint as Record<string, unknown>)
+        : null,
+    questionMarking: fromJsonArray<{
+      question_id: string;
+      section_id: string | null;
+      marks: number | string | null;
+      negative_marks: number | string | null;
+    }>(row.question_marking)
+      // A row with no marks is an ordinary question graded on the platform
+      // default; carrying it here as 0/0 would silently zero it out.
+      .filter((entry) => entry && entry.marks != null)
+      .map((entry) => ({
+        questionId: entry.question_id,
+        sectionId: entry.section_id ?? null,
+        marks: Number(entry.marks),
+        negativeMarks: Number(entry.negative_marks ?? 0),
+      })),
   };
 }
 
@@ -678,8 +746,9 @@ export async function persistGeneratedCustomTest(input: PersistGeneratedCustomTe
     await client.query(
       `INSERT INTO analytics.custom_tests (
          id, user_id, title, description, subject, chapter, difficulty, duration_minutes,
-         question_count, focus_topics, generation_summary, recommended_time_per_question_seconds
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,$12)
+         question_count, focus_topics, generation_summary, recommended_time_per_question_seconds,
+         exam_preset, blueprint
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,$12,$13,$14::jsonb)
        ON CONFLICT (id) DO UPDATE SET
          title = EXCLUDED.title,
          description = EXCLUDED.description,
@@ -690,7 +759,9 @@ export async function persistGeneratedCustomTest(input: PersistGeneratedCustomTe
          question_count = EXCLUDED.question_count,
          focus_topics = EXCLUDED.focus_topics,
          generation_summary = EXCLUDED.generation_summary,
-         recommended_time_per_question_seconds = EXCLUDED.recommended_time_per_question_seconds`,
+         recommended_time_per_question_seconds = EXCLUDED.recommended_time_per_question_seconds,
+         exam_preset = EXCLUDED.exam_preset,
+         blueprint = EXCLUDED.blueprint`,
       [
         input.id,
         input.userId,
@@ -704,13 +775,36 @@ export async function persistGeneratedCustomTest(input: PersistGeneratedCustomTe
         JSON.stringify(input.focusTopics),
         input.generationSummary,
         input.recommendedTimePerQuestionSeconds,
+        input.examPreset ?? null,
+        JSON.stringify(input.blueprint ?? {}),
       ],
     );
     await client.query(`DELETE FROM analytics.custom_test_questions WHERE test_id = $1`, [input.id]);
-    for (const [index, questionId] of input.questionIds.entries()) {
+    if (input.questionIds.length > 0) {
+      // ONE round trip, not one per question. A full-length NEET mock is 180
+      // questions; inserting them individually cost ~60s against Neon, which is
+      // the whole generation budget spent on network latency. UNNEST keeps the
+      // statement a fixed size regardless of paper length.
+      //
+      // A question with no entry in questionMarking gets NULL marks, meaning
+      // "grade on the platform default" — exactly like every custom test that
+      // existed before full-length mocks.
+      const marking = input.questionIds.map((questionId) => input.questionMarking?.get(questionId) ?? null);
       await client.query(
-        `INSERT INTO analytics.custom_test_questions (test_id, question_id, position) VALUES ($1, $2, $3)`,
-        [input.id, questionId, index],
+        `INSERT INTO analytics.custom_test_questions
+           (test_id, question_id, position, section_id, marks, negative_marks)
+         SELECT $1, q.question_id, q.position, q.section_id, q.marks, q.negative_marks
+         FROM UNNEST(
+           $2::text[], $3::int[], $4::text[], $5::double precision[], $6::double precision[]
+         ) AS q(question_id, position, section_id, marks, negative_marks)`,
+        [
+          input.id,
+          input.questionIds,
+          input.questionIds.map((_, index) => index),
+          marking.map((entry) => entry?.sectionId ?? null),
+          marking.map((entry) => entry?.marks ?? null),
+          marking.map((entry) => entry?.negativeMarks ?? null),
+        ],
       );
     }
     await client.query("COMMIT");
@@ -733,6 +827,21 @@ export async function listPersistedCustomTests(userId: string): Promise<Persiste
          FROM analytics.custom_test_questions q
          WHERE q.test_id = t.id
        ) AS question_ids,
+       (
+         SELECT COALESCE(
+           json_agg(
+             json_build_object(
+               'question_id', q.question_id,
+               'section_id', q.section_id,
+               'marks', q.marks,
+               'negative_marks', q.negative_marks
+             ) ORDER BY q.position
+           ),
+           '[]'::json
+         )
+         FROM analytics.custom_test_questions q
+         WHERE q.test_id = t.id
+       ) AS question_marking,
        (
          SELECT COUNT(*)::int
          FROM analytics.test_results r
@@ -757,9 +866,19 @@ export async function listPersistedCustomTests(userId: string): Promise<Persiste
   return result.rows.map(mapPersistedCustomTestRow);
 }
 
+/**
+ * A single custom test, ownership-checked in SQL.
+ *
+ * Deliberately NOT `listPersistedCustomTests(userId).find(...)`: that loads
+ * every test the student has ever generated — each with its full question list
+ * and per-question mark scheme — to return one of them, on the hot path that
+ * every test-open goes through. With full-length mocks a single row now carries
+ * up to 180 questions, so the wasted transfer grows with each paper generated.
+ */
 export async function getPersistedCustomTest(testId: string, userId: string): Promise<PersistedCustomTestRecord | null> {
-  const tests = await listPersistedCustomTests(userId);
-  return tests.find((test) => test.id === testId) ?? null;
+  const test = await getPersistedCustomTestById(testId);
+  // Ownership is the caller's entitlement here, exactly as the list scoping was.
+  return test && test.userId === userId ? test : null;
 }
 
 export async function getPersistedCustomTestById(testId: string): Promise<PersistedCustomTestRecord | null> {
@@ -773,6 +892,21 @@ export async function getPersistedCustomTestById(testId: string): Promise<Persis
          FROM analytics.custom_test_questions q
          WHERE q.test_id = t.id
        ) AS question_ids,
+       (
+         SELECT COALESCE(
+           json_agg(
+             json_build_object(
+               'question_id', q.question_id,
+               'section_id', q.section_id,
+               'marks', q.marks,
+               'negative_marks', q.negative_marks
+             ) ORDER BY q.position
+           ),
+           '[]'::json
+         )
+         FROM analytics.custom_test_questions q
+         WHERE q.test_id = t.id
+       ) AS question_marking,
        (
          SELECT COUNT(*)::int
          FROM analytics.test_results r
@@ -1007,6 +1141,7 @@ export async function persistTestAnalysisResult(input: PersistTestAnalysisInput)
     testId: input.testId,
     userId: input.userId,
     score: input.score,
+    totalMarks: input.totalMarks,
     percentage: input.percentage,
     correctAnswers: input.correctAnswers,
     wrongAnswers: input.wrongAnswers,
@@ -1040,6 +1175,7 @@ function mapPersistedResultRow(row: Record<string, unknown>): PersistedTestResul
     testId: String(row.test_id),
     userId: String(row.user_id),
     score: Number(row.score ?? 0),
+    totalMarks: Number(row.total_marks ?? 0),
     percentage: Number(row.percentage ?? 0),
     correctAnswers: Number(row.correct_answers ?? 0),
     wrongAnswers: Number(row.wrong_answers ?? 0),
