@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Plus, Search, Calendar, Clock, HelpCircle, Trash2, Loader2, Pencil, BarChart3, Sparkles } from "lucide-react";
@@ -55,6 +55,24 @@ export function TestsManagerHighFidelity({ workspaceId, initialTests, questions,
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [sharingTest, setSharingTest] = useState<AssessmentTest | null>(null);
 
+  /**
+   * Follow the server's list.
+   *
+   * `useState(initialTests)` reads the prop ONLY on first mount, so a
+   * `router.refresh()` — which is what every create path fires — re-rendered
+   * the server component with fresh data that this state then ignored. The new
+   * test existed and the toast fired, but the list kept showing the stale array
+   * until a full page load remounted the component.
+   *
+   * Delete only appeared to work because it mutates `tests` itself below.
+   *
+   * Local mutations here are optimistic overlays; the server list is the truth,
+   * so re-syncing whenever it arrives is both the fix and the right model.
+   */
+  useEffect(() => {
+    setTests(initialTests);
+  }, [initialTests]);
+
   const filteredTests = tests.filter(test => {
     if (searchQuery.trim()) {
       return test.title.toLowerCase().includes(searchQuery.toLowerCase());
@@ -105,7 +123,12 @@ export function TestsManagerHighFidelity({ workspaceId, initialTests, questions,
         </div>
         {canManage && (
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-            {fullLengthMocksEnabled && <FullLengthTestDialog workspaceId={workspaceId} />}
+            {fullLengthMocksEnabled && (
+              <FullLengthTestDialog
+                workspaceId={workspaceId}
+                onCreated={(test) => setTests((prev) => [test, ...prev])}
+              />
+            )}
             <Button
               onClick={() => setIsCreating(true)}
               className="bg-primary hover:bg-primary/95 text-black font-semibold gap-1.5 h-10 rounded-xl w-full sm:w-auto"

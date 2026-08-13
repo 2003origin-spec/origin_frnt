@@ -28,6 +28,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { apiJson } from "@/lib/teacher-client";
+import type { AssessmentTest } from "@/server/workspaces/types";
 import { cn } from "@/lib/utils";
 import {
   EXAM_BLUEPRINTS,
@@ -38,7 +39,18 @@ import {
   type ExamPresetId,
 } from "@/lib/exam-blueprints";
 
-export function FullLengthTestDialog({ workspaceId }: { workspaceId: string }) {
+export function FullLengthTestDialog({
+  workspaceId,
+  onCreated,
+}: {
+  workspaceId: string;
+  /**
+   * Hands the new draft to the list so it appears immediately, instead of only
+   * after `router.refresh()` completes its server round trip. The refresh still
+   * runs and replaces this optimistic row with the server's copy.
+   */
+  onCreated?: (test: AssessmentTest) => void;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [preset, setPreset] = useState<ExamPresetId>("jee-main");
@@ -50,7 +62,7 @@ export function FullLengthTestDialog({ workspaceId }: { workspaceId: string }) {
 
   async function handleGenerate() {
     setGenerating(true);
-    const res = await apiJson<{ test: { id: string; title: string }; adaptationSummary: string | null }>(
+    const res = await apiJson<{ test: AssessmentTest; adaptationSummary: string | null }>(
       `/api/teacher/workspaces/${workspaceId}/tests`,
       { method: "POST", json: { fullLength: { preset, title: title.trim() || undefined, prefillFromOgCode: prefill } } },
     );
@@ -62,6 +74,7 @@ export function FullLengthTestDialog({ workspaceId }: { workspaceId: string }) {
     }
     setOpen(false);
     setTitle("");
+    if (res.data?.test) onCreated?.(res.data.test);
     toast.success(`${blueprint.label} draft created.`, {
       description:
         res.data?.adaptationSummary ??
