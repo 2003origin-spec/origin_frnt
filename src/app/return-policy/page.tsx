@@ -2,20 +2,18 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, XCircle, PackageX, AlertTriangle, RefreshCw, ShieldCheck, Wallet, Mail } from 'lucide-react';
+import { ArrowLeft, RotateCcw, CheckCircle2, Ban, ClipboardCheck, Mail } from 'lucide-react';
 
 const SECTIONS = [
-  { id: 'cancellations', title: '1. Cancellations', icon: XCircle },
-  { id: 'perishable', title: '2. Perishable Items', icon: PackageX },
-  { id: 'damaged', title: '3. Damaged or Defective', icon: AlertTriangle },
-  { id: 'not-as-described', title: '4. Not as Described', icon: RefreshCw },
-  { id: 'warranty', title: '5. Manufacturer Warranty', icon: ShieldCheck },
-  { id: 'refund-processing', title: '6. Refund Processing', icon: Wallet },
-  { id: 'contact', title: '7. Contact', icon: Mail },
+  { id: 'window', title: '1. Return & Exchange Window', icon: RotateCcw },
+  { id: 'eligibility', title: '2. Eligibility', icon: CheckCircle2 },
+  { id: 'exempted', title: '3. Exempted Categories', icon: Ban },
+  { id: 'process', title: '4. Inspection & Approval', icon: ClipboardCheck },
+  { id: 'contact', title: '5. Contact', icon: Mail },
 ];
 
-export default function RefundPolicyPage() {
-  const [activeSection, setActiveSection] = useState('cancellations');
+export default function ReturnPolicyPage() {
+  const [activeSection, setActiveSection] = useState('window');
 
   useEffect(() => {
     const container = document.querySelector('main');
@@ -94,17 +92,17 @@ export default function RefundPolicyPage() {
             Back to Home
           </Link>
           <span className="neu-raised rounded-full px-3 py-1 text-xs font-semibold tracking-wider text-muted-foreground uppercase">
-            REFUNDS
+            RETURNS
           </span>
         </div>
 
         {/* Page Title */}
         <header className="mb-16 text-center max-w-3xl mx-auto">
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black tracking-tight mb-6 bg-gradient-to-r from-gray-900 via-gray-700 to-gray-900 dark:from-white dark:via-gray-300 dark:to-white bg-clip-text text-transparent">
-            Refund &amp; Cancellation Policy
+            Return Policy
           </h1>
           <p className="text-lg text-muted-foreground font-medium leading-relaxed mb-4">
-            How you can cancel an order or seek a refund for a product / service purchased through O3 Origin.
+            Our terms for returns, exchanges, and replacements on purchases made through O3 Origin.
           </p>
           <div className="flex justify-center items-center gap-2 flex-wrap text-xs text-muted-foreground font-bold uppercase tracking-widest neu-inset rounded-full px-4 py-2 w-max mx-auto">
             <span>O3 ORIGIN · SUPERGOAT TECHNOLOGIES PRIVATE LIMITED</span>
@@ -151,139 +149,104 @@ export default function RefundPolicyPage() {
           <article className="lg:col-span-8 space-y-12">
             <div className="neu-raised rounded-3xl p-8 sm:p-12 space-y-12">
 
-              <div className="text-muted-foreground leading-relaxed font-medium">
-                <p>
-                  This refund and cancellation policy outlines how you can cancel or seek a refund for a product /
-                  service that you have purchased through the Platform. Under this policy:
-                </p>
-              </div>
-
-              {/* 1. Cancellations */}
-              <section id="cancellations" className="scroll-mt-36">
+              {/* 1. Return & Exchange Window */}
+              <section id="window" className="scroll-mt-36">
                 <div className="flex items-center gap-3 mb-6">
                   <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
-                    <XCircle className="w-5 h-5" />
+                    <RotateCcw className="w-5 h-5" />
                   </div>
-                  <h2 className="text-2xl font-black tracking-tight">1. Cancellations</h2>
+                  <h2 className="text-2xl font-black tracking-tight">1. Return &amp; Exchange Window</h2>
                 </div>
                 <div className="text-muted-foreground leading-relaxed space-y-4 font-medium">
                   <p>
-                    Cancellations will only be considered if the request is made within <strong>7 days</strong> of
-                    placing the order. However, cancellation requests may not be entertained if the orders have been
-                    communicated to such sellers / merchant(s) listed on the Platform and they have initiated the
-                    process of shipping them, or the product is out for delivery. In such an event, you may choose to
-                    reject the product at the doorstep.
+                    We offer refund / exchange within the first <strong>3 days</strong> from the date of your purchase.
+                    If 3 days have passed since your purchase, you will not be offered a return, exchange or refund of
+                    any kind.
                   </p>
                 </div>
               </section>
 
               <hr className="border-border/40" />
 
-              {/* 2. Perishable Items */}
-              <section id="perishable" className="scroll-mt-36">
+              {/* 2. Eligibility */}
+              <section id="eligibility" className="scroll-mt-36">
                 <div className="flex items-center gap-3 mb-6">
                   <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
-                    <PackageX className="w-5 h-5" />
+                    <CheckCircle2 className="w-5 h-5" />
                   </div>
-                  <h2 className="text-2xl font-black tracking-tight">2. Perishable Items</h2>
+                  <h2 className="text-2xl font-black tracking-tight">2. Eligibility</h2>
                 </div>
                 <div className="text-muted-foreground leading-relaxed space-y-4 font-medium">
+                  <p>In order to become eligible for a return or an exchange:</p>
+                  <ul className="space-y-3 list-none pl-0">
+                    {[
+                      'The purchased item should be unused and in the same condition as you received it.',
+                      'The item must have its original packaging.',
+                      'If the item was purchased on a sale, then the item may not be eligible for a return / exchange.',
+                    ].map((item, idx) => (
+                      <li key={idx} className="flex items-start gap-2.5">
+                        <CheckCircle2 className="w-4 h-4 text-primary shrink-0 mt-1" />
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
                   <p>
-                    O3 Origin does not accept cancellation requests for perishable items like flowers, eatables, etc.
-                    However, the refund / replacement can be made if the user establishes that the quality of the
-                    product delivered is not good.
+                    Further, only such items are replaced by us (based on an exchange request), if such items are found
+                    defective or damaged.
                   </p>
                 </div>
               </section>
 
               <hr className="border-border/40" />
 
-              {/* 3. Damaged or Defective Items */}
-              <section id="damaged" className="scroll-mt-36">
+              {/* 3. Exempted Categories */}
+              <section id="exempted" className="scroll-mt-36">
                 <div className="flex items-center gap-3 mb-6">
                   <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
-                    <AlertTriangle className="w-5 h-5" />
+                    <Ban className="w-5 h-5" />
                   </div>
-                  <h2 className="text-2xl font-black tracking-tight">3. Damaged or Defective Items</h2>
+                  <h2 className="text-2xl font-black tracking-tight">3. Exempted Categories</h2>
                 </div>
                 <div className="text-muted-foreground leading-relaxed space-y-4 font-medium">
                   <p>
-                    In case of receipt of damaged or defective items, please report to our customer service team. The
-                    request would be entertained once the seller / merchant listed on the Platform has checked and
-                    determined the same at its own end. This should be reported within <strong>7 days</strong> of
-                    receipt of the products.
+                    You agree that there may be a certain category of products / items that are exempted from returns or
+                    refunds. Such categories of the products would be identified to you at the time of purchase.
                   </p>
                 </div>
               </section>
 
               <hr className="border-border/40" />
 
-              {/* 4. Not as Described */}
-              <section id="not-as-described" className="scroll-mt-36">
+              {/* 4. Inspection & Approval */}
+              <section id="process" className="scroll-mt-36">
                 <div className="flex items-center gap-3 mb-6">
                   <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
-                    <RefreshCw className="w-5 h-5" />
+                    <ClipboardCheck className="w-5 h-5" />
                   </div>
-                  <h2 className="text-2xl font-black tracking-tight">4. Product Not as Described</h2>
+                  <h2 className="text-2xl font-black tracking-tight">4. Inspection &amp; Approval</h2>
                 </div>
                 <div className="text-muted-foreground leading-relaxed space-y-4 font-medium">
                   <p>
-                    In case you feel that the product received is not as shown on the site or as per your expectations,
-                    you must bring it to the notice of our customer service within <strong>7 days</strong> of receiving
-                    the product. The customer service team, after looking into your complaint, will take an appropriate
-                    decision.
+                    For exchange / return accepted request(s) (as applicable), once your returned product / item is
+                    received and inspected by us, we will send you an email to notify you about the receipt of the
+                    returned / exchanged product. Further, if the same has been approved after the quality check at our
+                    end, your request (i.e. return / exchange) will be processed in accordance with our policies.
                   </p>
                 </div>
               </section>
 
               <hr className="border-border/40" />
 
-              {/* 5. Manufacturer Warranty */}
-              <section id="warranty" className="scroll-mt-36">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
-                    <ShieldCheck className="w-5 h-5" />
-                  </div>
-                  <h2 className="text-2xl font-black tracking-tight">5. Manufacturer Warranty</h2>
-                </div>
-                <div className="text-muted-foreground leading-relaxed space-y-4 font-medium">
-                  <p>
-                    In case of complaints regarding the products that come with a warranty from the manufacturers,
-                    please refer the issue to them.
-                  </p>
-                </div>
-              </section>
-
-              <hr className="border-border/40" />
-
-              {/* 6. Refund Processing */}
-              <section id="refund-processing" className="scroll-mt-36">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
-                    <Wallet className="w-5 h-5" />
-                  </div>
-                  <h2 className="text-2xl font-black tracking-tight">6. Refund Processing</h2>
-                </div>
-                <div className="text-muted-foreground leading-relaxed space-y-4 font-medium">
-                  <p>
-                    In case of any refunds approved by O3 Origin, it will take <strong>3 days</strong> for the refund to
-                    be processed to you.
-                  </p>
-                </div>
-              </section>
-
-              <hr className="border-border/40" />
-
-              {/* 7. Contact */}
+              {/* 5. Contact */}
               <section id="contact" className="scroll-mt-36">
                 <div className="flex items-center gap-3 mb-6">
                   <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
                     <Mail className="w-5 h-5" />
                   </div>
-                  <h2 className="text-2xl font-black tracking-tight">7. Contact</h2>
+                  <h2 className="text-2xl font-black tracking-tight">5. Contact</h2>
                 </div>
                 <div className="text-muted-foreground leading-relaxed space-y-4 font-medium">
-                  <p>For any cancellation or refund queries, please reach out to our customer service team:</p>
+                  <p>For any return or exchange queries, please reach out to our customer service team:</p>
                   <div className="neu-inset rounded-2xl p-6 space-y-2 text-sm font-semibold">
                     <p className="text-foreground font-bold">Brand: O3 Origin</p>
                     <p className="text-foreground font-bold">Legal Entity: SUPERGOAT TECHNOLOGIES PRIVATE LIMITED</p>

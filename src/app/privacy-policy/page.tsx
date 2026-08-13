@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Shield, ArrowLeft, Info, Database, Eye, Lock, FileText, CheckCircle2, User, Key, RefreshCw, Cookie, Mail } from 'lucide-react';
+import { Shield, ArrowLeft, Info, Database, Eye, Lock, FileText, CheckCircle2, User, Key, RefreshCw, Cookie, Mail, UserCheck, Gavel } from 'lucide-react';
 
 const SECTIONS = [
   { id: 'who-we-are', title: '1. Who We Are', icon: Info },
@@ -15,7 +15,9 @@ const SECTIONS = [
   { id: 'your-rights', title: '8. Your Rights', icon: User },
   { id: 'cookies', title: '9. Cookies', icon: Cookie },
   { id: 'policy-changes', title: '10. Policy Changes', icon: Shield },
-  { id: 'contact-us', title: '11. Contact Us', icon: Mail },
+  { id: 'consent', title: '11. Consent & Withdrawal', icon: UserCheck },
+  { id: 'contact-us', title: '12. Contact Us', icon: Mail },
+  { id: 'grievance-officer', title: '13. Grievance Officer', icon: Gavel },
 ];
 
 export default function PrivacyPolicyPage() {
@@ -111,7 +113,7 @@ export default function PrivacyPolicyPage() {
             How O3 Origin collects, uses, and protects your information.
           </p>
           <div className="flex justify-center items-center gap-2 flex-wrap text-xs text-muted-foreground font-bold uppercase tracking-widest neu-inset rounded-full px-4 py-2 w-max mx-auto">
-            <span>SUPERGOAT TECHNOLOGIES PRIVATE LIMITED</span>
+            <span>O3 ORIGIN · SUPERGOAT TECHNOLOGIES PRIVATE LIMITED</span>
             <span className="text-border">•</span>
             <span>o3origin.com</span>
             <span className="text-border">•</span>
@@ -166,15 +168,23 @@ export default function PrivacyPolicyPage() {
                 <div className="text-muted-foreground leading-relaxed space-y-4 font-medium">
                   <p>
                     O3 Origin is an AI-powered education platform operated by{' '}
-                    <strong>SUPERGOAT TECHNOLOGIES PRIVATE LIMITED</strong>, incorporated in India.
+                    <strong>SUPERGOAT TECHNOLOGIES PRIVATE LIMITED</strong> (brand: O3 Origin), incorporated under the Companies Act, 2013 (CIN: U85500TR2026PTC014780).
                   </p>
                   <p>
                     Our platform helps students prepare for JEE, NEET, and other competitive examinations through
                     personalised AI-driven learning. We are reachable at{' '}
-                    <a href="mailto:2003origin@gmail.com" className="text-primary hover:underline font-bold">
-                      2003origin@gmail.com
+                    <a href="mailto:adminoffice@o3origin.com" className="text-primary hover:underline font-bold">
+                      adminoffice@o3origin.com
                     </a>
                     .
+                  </p>
+                  <p>
+                    We do not offer any product/service under this Platform outside India and your personal data will
+                    primarily be stored and processed in India. By visiting this Platform, providing your information or
+                    availing any product/service offered on the Platform, you expressly agree to be bound by this Privacy
+                    Policy, the Terms of Use, and the applicable service/product terms and conditions, and agree to be
+                    governed by the laws of India including the laws applicable to data protection and privacy. If you do
+                    not agree, please do not use or access our Platform.
                   </p>
                 </div>
               </section>
@@ -306,8 +316,8 @@ export default function PrivacyPolicyPage() {
                     Parents and guardians have the right to review the personal data we hold about their child, request
                     corrections to inaccurate data, withdraw consent and request deletion of their child's account and data
                     at any time, and restrict certain types of data processing. To exercise any of these rights, contact us at{' '}
-                    <a href="mailto:2003origin@gmail.com" className="text-primary hover:underline font-bold">
-                      2003origin@gmail.com
+                    <a href="mailto:adminoffice@o3origin.com" className="text-primary hover:underline font-bold">
+                      adminoffice@o3origin.com
                     </a>
                     .
                   </p>
@@ -362,8 +372,8 @@ export default function PrivacyPolicyPage() {
                   <p>
                     However, no system is completely immune to risk. If you suspect a security breach affecting your account,
                     contact us immediately at{' '}
-                    <a href="mailto:2003origin@gmail.com" className="text-primary hover:underline font-bold">
-                      2003origin@gmail.com
+                    <a href="mailto:adminoffice@o3origin.com" className="text-primary hover:underline font-bold">
+                      adminoffice@o3origin.com
                     </a>
                     .
                   </p>
@@ -409,8 +419,8 @@ export default function PrivacyPolicyPage() {
                   </p>
                   <p>
                     To exercise these rights, write to us at{' '}
-                    <a href="mailto:2003origin@gmail.com" className="text-primary hover:underline font-bold">
-                      2003origin@gmail.com
+                    <a href="mailto:adminoffice@o3origin.com" className="text-primary hover:underline font-bold">
+                      adminoffice@o3origin.com
                     </a>
                     . We will respond within 15 business days.
                   </p>
@@ -457,22 +467,63 @@ export default function PrivacyPolicyPage() {
 
               <hr className="border-border/40" />
 
-              {/* 11. Contact Us */}
+              {/* 11. Consent & Withdrawal */}
+              <section id="consent" className="scroll-mt-36">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
+                    <UserCheck className="w-5 h-5" />
+                  </div>
+                  <h2 className="text-2xl font-black tracking-tight">11. Consent &amp; Withdrawal</h2>
+                </div>
+                <div className="text-muted-foreground leading-relaxed space-y-4 font-medium">
+                  <p>
+                    By visiting our Platform or by providing your information, you consent to the collection, use,
+                    storage, disclosure and otherwise processing of your information on the Platform in accordance with
+                    this Privacy Policy. If you disclose to us any personal data relating to other people, you represent
+                    that you have the authority to do so and permit us to use the information in accordance with this
+                    Privacy Policy.
+                  </p>
+                  <p>
+                    While providing your personal data over the Platform, you consent to us (including our other
+                    corporate entities, affiliates, lending partners, technology partners, marketing channels, business
+                    partners and other third parties) contacting you through SMS, instant messaging apps, call and/or
+                    e-mail for the purposes specified in this Privacy Policy.
+                  </p>
+                  <p>
+                    You have an option to withdraw your consent that you have already provided by writing to the
+                    Grievance Officer at the contact information provided below, with the subject line &ldquo;Withdrawal
+                    of consent for processing personal data&rdquo;. We may verify such requests before acting on them.
+                    Please note that your withdrawal of consent will not be retrospective and will be in accordance with
+                    the Terms of Use, this Privacy Policy, and applicable laws. In the event you withdraw consent, we
+                    reserve the right to restrict or deny the provision of our services for which we consider such
+                    information to be necessary.
+                  </p>
+                </div>
+              </section>
+
+              <hr className="border-border/40" />
+
+              {/* 12. Contact Us */}
               <section id="contact-us" className="scroll-mt-36">
                 <div className="flex items-center gap-3 mb-6">
                   <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
                     <Mail className="w-5 h-5" />
                   </div>
-                  <h2 className="text-2xl font-black tracking-tight">11. Contact Us</h2>
+                  <h2 className="text-2xl font-black tracking-tight">12. Contact Us</h2>
                 </div>
                 <div className="text-muted-foreground leading-relaxed space-y-4 font-medium">
                   <p>For any questions, concerns, or requests related to this Privacy Policy, contact:</p>
                   <div className="neu-inset rounded-2xl p-6 space-y-2 text-sm font-semibold">
-                    <p className="text-foreground font-bold">SUPERGOAT TECHNOLOGIES PRIVATE LIMITED</p>
+                    <p className="text-foreground font-bold">Brand: O3 Origin</p>
+                    <p className="text-foreground font-bold">Legal Entity: SUPERGOAT TECHNOLOGIES PRIVATE LIMITED</p>
+                    <p className="flex items-center gap-2">
+                      <span className="text-muted-foreground">CIN:</span>{' '}
+                      <span className="text-foreground">U85500TR2026PTC014780</span>
+                    </p>
                     <p className="flex items-center gap-2">
                       <span className="text-muted-foreground">Email:</span>{' '}
-                      <a href="mailto:2003origin@gmail.com" className="text-primary hover:underline">
-                        2003origin@gmail.com
+                      <a href="mailto:adminoffice@o3origin.com" className="text-primary hover:underline">
+                        adminoffice@o3origin.com
                       </a>
                     </p>
                     <p className="flex items-center gap-2">
@@ -481,7 +532,51 @@ export default function PrivacyPolicyPage() {
                         o3origin.com
                       </a>
                     </p>
-                    <p className="text-muted-foreground font-medium">Agartala, Tripura, India</p>
+                    <p className="text-muted-foreground font-medium">Ramnagar Road No. 1, Ramnagar, Sadar, West Tripura – 799002, Tripura, India</p>
+                  </div>
+                </div>
+              </section>
+
+              <hr className="border-border/40" />
+
+              {/* 13. Grievance Officer */}
+              <section id="grievance-officer" className="scroll-mt-36">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
+                    <Gavel className="w-5 h-5" />
+                  </div>
+                  <h2 className="text-2xl font-black tracking-tight">13. Grievance Officer</h2>
+                </div>
+                <div className="text-muted-foreground leading-relaxed space-y-4 font-medium">
+                  <p>
+                    In accordance with the Information Technology Act, 2000 and the rules made thereunder, and the
+                    Consumer Protection (E-Commerce) Rules, 2020, the name and contact details of the Grievance Officer
+                    are provided below. You may contact the Grievance Officer for any concerns, complaints, or to
+                    withdraw consent regarding the processing of your personal data.
+                  </p>
+                  <div className="neu-inset rounded-2xl p-6 space-y-2 text-sm font-semibold">
+                    <p className="text-foreground font-bold">Brand: O3 Origin</p>
+                    <p className="text-foreground font-bold">Legal Entity: SUPERGOAT TECHNOLOGIES PRIVATE LIMITED</p>
+                    <p className="flex items-center gap-2">
+                      <span className="text-muted-foreground">CIN:</span>{' '}
+                      <span className="text-foreground">U85500TR2026PTC014780</span>
+                    </p>
+                    <p className="flex items-center gap-2">
+                      <span className="text-muted-foreground">Name:</span>{' '}
+                      <span className="text-foreground">Dipraj Biswas</span>
+                    </p>
+                    <p className="flex items-center gap-2">
+                      <span className="text-muted-foreground">Designation:</span>{' '}
+                      <span className="text-foreground">Grievance Officer</span>
+                    </p>
+                    <p className="flex items-center gap-2">
+                      <span className="text-muted-foreground">Email:</span>{' '}
+                      <a href="mailto:adminoffice@o3origin.com" className="text-primary hover:underline">
+                        adminoffice@o3origin.com
+                      </a>
+                    </p>
+                    <p className="text-muted-foreground font-medium">Ramnagar Road No. 1, Ramnagar, Sadar, West Tripura – 799002, Tripura, India</p>
+                    <p className="text-muted-foreground font-medium">Time: Monday – Friday (9:00 – 18:00)</p>
                   </div>
                 </div>
               </section>

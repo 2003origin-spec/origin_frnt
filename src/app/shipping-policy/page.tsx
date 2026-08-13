@@ -2,20 +2,18 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, XCircle, PackageX, AlertTriangle, RefreshCw, ShieldCheck, Wallet, Mail } from 'lucide-react';
+import { ArrowLeft, Truck, Clock, MapPin, BadgeInfo, Mail } from 'lucide-react';
 
 const SECTIONS = [
-  { id: 'cancellations', title: '1. Cancellations', icon: XCircle },
-  { id: 'perishable', title: '2. Perishable Items', icon: PackageX },
-  { id: 'damaged', title: '3. Damaged or Defective', icon: AlertTriangle },
-  { id: 'not-as-described', title: '4. Not as Described', icon: RefreshCw },
-  { id: 'warranty', title: '5. Manufacturer Warranty', icon: ShieldCheck },
-  { id: 'refund-processing', title: '6. Refund Processing', icon: Wallet },
-  { id: 'contact', title: '7. Contact', icon: Mail },
+  { id: 'dispatch', title: '1. Dispatch & Carriers', icon: Truck },
+  { id: 'timelines', title: '2. Delivery Timelines', icon: Clock },
+  { id: 'address', title: '3. Delivery & Confirmation', icon: MapPin },
+  { id: 'charges', title: '4. Shipping Charges', icon: BadgeInfo },
+  { id: 'contact', title: '5. Contact', icon: Mail },
 ];
 
-export default function RefundPolicyPage() {
-  const [activeSection, setActiveSection] = useState('cancellations');
+export default function ShippingPolicyPage() {
+  const [activeSection, setActiveSection] = useState('dispatch');
 
   useEffect(() => {
     const container = document.querySelector('main');
@@ -94,17 +92,17 @@ export default function RefundPolicyPage() {
             Back to Home
           </Link>
           <span className="neu-raised rounded-full px-3 py-1 text-xs font-semibold tracking-wider text-muted-foreground uppercase">
-            REFUNDS
+            SHIPPING
           </span>
         </div>
 
         {/* Page Title */}
         <header className="mb-16 text-center max-w-3xl mx-auto">
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black tracking-tight mb-6 bg-gradient-to-r from-gray-900 via-gray-700 to-gray-900 dark:from-white dark:via-gray-300 dark:to-white bg-clip-text text-transparent">
-            Refund &amp; Cancellation Policy
+            Shipping Policy
           </h1>
           <p className="text-lg text-muted-foreground font-medium leading-relaxed mb-4">
-            How you can cancel an order or seek a refund for a product / service purchased through O3 Origin.
+            How orders are shipped, delivered, and confirmed for purchases made through O3 Origin.
           </p>
           <div className="flex justify-center items-center gap-2 flex-wrap text-xs text-muted-foreground font-bold uppercase tracking-widest neu-inset rounded-full px-4 py-2 w-max mx-auto">
             <span>O3 ORIGIN · SUPERGOAT TECHNOLOGIES PRIVATE LIMITED</span>
@@ -151,139 +149,94 @@ export default function RefundPolicyPage() {
           <article className="lg:col-span-8 space-y-12">
             <div className="neu-raised rounded-3xl p-8 sm:p-12 space-y-12">
 
-              <div className="text-muted-foreground leading-relaxed font-medium">
-                <p>
-                  This refund and cancellation policy outlines how you can cancel or seek a refund for a product /
-                  service that you have purchased through the Platform. Under this policy:
-                </p>
-              </div>
-
-              {/* 1. Cancellations */}
-              <section id="cancellations" className="scroll-mt-36">
+              {/* 1. Dispatch & Carriers */}
+              <section id="dispatch" className="scroll-mt-36">
                 <div className="flex items-center gap-3 mb-6">
                   <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
-                    <XCircle className="w-5 h-5" />
+                    <Truck className="w-5 h-5" />
                   </div>
-                  <h2 className="text-2xl font-black tracking-tight">1. Cancellations</h2>
+                  <h2 className="text-2xl font-black tracking-tight">1. Dispatch &amp; Carriers</h2>
                 </div>
                 <div className="text-muted-foreground leading-relaxed space-y-4 font-medium">
                   <p>
-                    Cancellations will only be considered if the request is made within <strong>7 days</strong> of
-                    placing the order. However, cancellation requests may not be entertained if the orders have been
-                    communicated to such sellers / merchant(s) listed on the Platform and they have initiated the
-                    process of shipping them, or the product is out for delivery. In such an event, you may choose to
-                    reject the product at the doorstep.
+                    The orders for the user are shipped through registered domestic courier companies and/or speed post
+                    only.
                   </p>
                 </div>
               </section>
 
               <hr className="border-border/40" />
 
-              {/* 2. Perishable Items */}
-              <section id="perishable" className="scroll-mt-36">
+              {/* 2. Delivery Timelines */}
+              <section id="timelines" className="scroll-mt-36">
                 <div className="flex items-center gap-3 mb-6">
                   <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
-                    <PackageX className="w-5 h-5" />
+                    <Clock className="w-5 h-5" />
                   </div>
-                  <h2 className="text-2xl font-black tracking-tight">2. Perishable Items</h2>
+                  <h2 className="text-2xl font-black tracking-tight">2. Delivery Timelines</h2>
                 </div>
                 <div className="text-muted-foreground leading-relaxed space-y-4 font-medium">
                   <p>
-                    O3 Origin does not accept cancellation requests for perishable items like flowers, eatables, etc.
-                    However, the refund / replacement can be made if the user establishes that the quality of the
-                    product delivered is not good.
+                    Orders are shipped within <strong>24 hours</strong> from the date of the order and/or payment or as
+                    per the delivery date agreed at the time of order confirmation and delivering of the shipment,
+                    subject to courier company / post office norms.
+                  </p>
+                  <p>
+                    O3 Origin (a brand operated by SUPERGOAT TECHNOLOGIES PRIVATE LIMITED, the &lsquo;Platform
+                    Owner&rsquo;) shall not be liable for any delay in delivery by the courier company / postal
+                    authority.
                   </p>
                 </div>
               </section>
 
               <hr className="border-border/40" />
 
-              {/* 3. Damaged or Defective Items */}
-              <section id="damaged" className="scroll-mt-36">
+              {/* 3. Delivery & Confirmation */}
+              <section id="address" className="scroll-mt-36">
                 <div className="flex items-center gap-3 mb-6">
                   <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
-                    <AlertTriangle className="w-5 h-5" />
+                    <MapPin className="w-5 h-5" />
                   </div>
-                  <h2 className="text-2xl font-black tracking-tight">3. Damaged or Defective Items</h2>
+                  <h2 className="text-2xl font-black tracking-tight">3. Delivery &amp; Confirmation</h2>
                 </div>
                 <div className="text-muted-foreground leading-relaxed space-y-4 font-medium">
                   <p>
-                    In case of receipt of damaged or defective items, please report to our customer service team. The
-                    request would be entertained once the seller / merchant listed on the Platform has checked and
-                    determined the same at its own end. This should be reported within <strong>7 days</strong> of
-                    receipt of the products.
+                    Delivery of all orders will be made to the address provided by the buyer at the time of purchase.
+                    Delivery of our services will be confirmed on your email ID as specified at the time of registration.
                   </p>
                 </div>
               </section>
 
               <hr className="border-border/40" />
 
-              {/* 4. Not as Described */}
-              <section id="not-as-described" className="scroll-mt-36">
+              {/* 4. Shipping Charges */}
+              <section id="charges" className="scroll-mt-36">
                 <div className="flex items-center gap-3 mb-6">
                   <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
-                    <RefreshCw className="w-5 h-5" />
+                    <BadgeInfo className="w-5 h-5" />
                   </div>
-                  <h2 className="text-2xl font-black tracking-tight">4. Product Not as Described</h2>
+                  <h2 className="text-2xl font-black tracking-tight">4. Shipping Charges</h2>
                 </div>
                 <div className="text-muted-foreground leading-relaxed space-y-4 font-medium">
                   <p>
-                    In case you feel that the product received is not as shown on the site or as per your expectations,
-                    you must bring it to the notice of our customer service within <strong>7 days</strong> of receiving
-                    the product. The customer service team, after looking into your complaint, will take an appropriate
-                    decision.
+                    If there are any shipping cost(s) levied by the seller or the Platform Owner (as the case may be),
+                    the same is not refundable.
                   </p>
                 </div>
               </section>
 
               <hr className="border-border/40" />
 
-              {/* 5. Manufacturer Warranty */}
-              <section id="warranty" className="scroll-mt-36">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
-                    <ShieldCheck className="w-5 h-5" />
-                  </div>
-                  <h2 className="text-2xl font-black tracking-tight">5. Manufacturer Warranty</h2>
-                </div>
-                <div className="text-muted-foreground leading-relaxed space-y-4 font-medium">
-                  <p>
-                    In case of complaints regarding the products that come with a warranty from the manufacturers,
-                    please refer the issue to them.
-                  </p>
-                </div>
-              </section>
-
-              <hr className="border-border/40" />
-
-              {/* 6. Refund Processing */}
-              <section id="refund-processing" className="scroll-mt-36">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
-                    <Wallet className="w-5 h-5" />
-                  </div>
-                  <h2 className="text-2xl font-black tracking-tight">6. Refund Processing</h2>
-                </div>
-                <div className="text-muted-foreground leading-relaxed space-y-4 font-medium">
-                  <p>
-                    In case of any refunds approved by O3 Origin, it will take <strong>3 days</strong> for the refund to
-                    be processed to you.
-                  </p>
-                </div>
-              </section>
-
-              <hr className="border-border/40" />
-
-              {/* 7. Contact */}
+              {/* 5. Contact */}
               <section id="contact" className="scroll-mt-36">
                 <div className="flex items-center gap-3 mb-6">
                   <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
                     <Mail className="w-5 h-5" />
                   </div>
-                  <h2 className="text-2xl font-black tracking-tight">7. Contact</h2>
+                  <h2 className="text-2xl font-black tracking-tight">5. Contact</h2>
                 </div>
                 <div className="text-muted-foreground leading-relaxed space-y-4 font-medium">
-                  <p>For any cancellation or refund queries, please reach out to our customer service team:</p>
+                  <p>For any shipping or delivery queries, please reach out to our customer service team:</p>
                   <div className="neu-inset rounded-2xl p-6 space-y-2 text-sm font-semibold">
                     <p className="text-foreground font-bold">Brand: O3 Origin</p>
                     <p className="text-foreground font-bold">Legal Entity: SUPERGOAT TECHNOLOGIES PRIVATE LIMITED</p>
