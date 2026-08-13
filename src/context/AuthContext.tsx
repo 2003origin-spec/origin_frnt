@@ -98,7 +98,7 @@ const EMPTY_STREAK: StreakData = {
 };
 
 const GUEST_ONLY_PATHS = ['/', '/auth', '/role-selection'];
-const SHARED_PUBLIC_PATHS = ['/terms-and-conditions', '/privacy-policy', '/childrens-policy', '/faq', '/founders'];
+const SHARED_PUBLIC_PATHS = ['/terms-and-conditions', '/privacy-policy', '/childrens-policy', '/refund-policy', '/faq', '/founders'];
 
 function normalizeRole(role: User['role'] | undefined): 'student' | 'teacher' | 'admin' | null {
   return role === 'student' || role === 'teacher' || role === 'admin' ? role : null;
