@@ -575,6 +575,12 @@ export default function PrivacyPolicyPage() {
                         adminoffice@o3origin.com
                       </a>
                     </p>
+                    <p className="flex items-center gap-2">
+                      <span className="text-muted-foreground">Phone:</span>{' '}
+                      <a href="tel:+919366738658" className="text-primary hover:underline">
+                        +91 93667 38658
+                      </a>
+                    </p>
                     <p className="text-muted-foreground font-medium">Ramnagar Road No. 1, Ramnagar, Sadar, West Tripura – 799002, Tripura, India</p>
                     <p className="text-muted-foreground font-medium">Time: Monday – Friday (9:00 – 18:00)</p>
                   </div>
