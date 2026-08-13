@@ -1032,6 +1032,8 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
                 <span className="hidden sm:inline text-border">•</span>
                 <a href="/childrens-policy" className="hover:text-primary transition-colors font-medium">Children's Safety Policy</a>
                 <span className="hidden sm:inline text-border">•</span>
+                <a href="/refund-policy" className="hover:text-primary transition-colors font-medium">Refund Policy</a>
+                <span className="hidden sm:inline text-border">•</span>
                 <a href="/faq" className="hover:text-primary transition-colors font-medium">FAQ</a>
               </div>
               <img src="/origin-new.jpg" alt="ORIGIN" className="h-12 w-auto dark:brightness-110 mt-3" />
