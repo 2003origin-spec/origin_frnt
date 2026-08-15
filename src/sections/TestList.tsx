@@ -65,6 +65,13 @@ const SUBJECT_LABELS: Record<string, string> = {
   mathematics: 'Mathematics',
   biology: 'Biology',
 };
+/** Quick-pick presets for the base question count (free input still allowed). */
+const QUICK_COUNTS = [10, 20, 30, 40, 50] as const;
+/** Quick-pick presets for the per-question timer, in seconds. */
+const QUICK_SECONDS = [60, 120, 180, 300] as const;
+/** Hide the native number-input spinner arrows (they overlap the suffix label). */
+const NO_SPINNER = '[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-inner-spin-button]:m-0';
+const clampCount = (n: number) => Math.max(MIN_QUESTIONS_PER_SUBJECT, Math.min(MAX_QUESTIONS_PER_SUBJECT, Math.trunc(Number(n) || 0)));
 
 /**
  * Multi-select toggle chips for the small fixed sets (class / exam / subject).
@@ -817,25 +824,53 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                                     <p className="text-[11px] font-bold text-muted-foreground normal-case">Select at least one unlocked subject to set the question load.</p>
                                 ) : customTestConfig.sameForAll ? (
                                     <div className="space-y-3">
-                                        <div className="flex items-center gap-3">
-                                            <div className="relative w-40">
+                                        {/* Quick-pick presets. */}
+                                        <div className="grid grid-cols-5 gap-2 sm:gap-3">
+                                            {QUICK_COUNTS.map((count) => (
+                                                <button
+                                                    key={count}
+                                                    type="button"
+                                                    onClick={() => setCustomTestConfig((prev) => ({ ...prev, baseCount: count }))}
+                                                    className={`h-12 rounded-xl font-black text-sm transition-all border ${
+                                                        customTestConfig.baseCount === count
+                                                            ? 'bg-primary text-white border-primary shadow-lg shadow-primary/20'
+                                                            : 'bg-background border-border/40 text-foreground hover:border-primary/40'
+                                                    }`}
+                                                >
+                                                    {count}
+                                                </button>
+                                            ))}
+                                        </div>
+                                        {/* Custom value with external −/+ steppers (native spinner hidden so it
+                                            no longer overlaps the "/ subject" label). */}
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <button
+                                                type="button"
+                                                onClick={() => setCustomTestConfig((prev) => ({ ...prev, baseCount: clampCount(prev.baseCount - 1) }))}
+                                                className="h-12 w-12 shrink-0 rounded-xl border border-border/40 bg-background text-lg font-black text-foreground hover:border-primary/40"
+                                                aria-label="Decrease"
+                                            >−</button>
+                                            <div className="relative flex-1 min-w-[8rem]">
                                                 <Input
                                                     type="number"
                                                     min={MIN_QUESTIONS_PER_SUBJECT}
                                                     max={MAX_QUESTIONS_PER_SUBJECT}
                                                     value={customTestConfig.baseCount}
-                                                    onChange={(e) => setCustomTestConfig((prev) => ({
-                                                        ...prev,
-                                                        baseCount: Math.max(MIN_QUESTIONS_PER_SUBJECT, Math.min(MAX_QUESTIONS_PER_SUBJECT, Math.trunc(Number(e.target.value) || 0))),
-                                                    }))}
-                                                    className="h-14 rounded-2xl bg-white dark:bg-white/5 border border-border/40 px-5 text-sm font-black"
+                                                    onChange={(e) => setCustomTestConfig((prev) => ({ ...prev, baseCount: clampCount(Number(e.target.value)) }))}
+                                                    className={cn('h-12 rounded-xl bg-white dark:bg-white/5 border border-border/40 pl-4 pr-24 text-sm font-black', NO_SPINNER)}
                                                 />
-                                                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-black text-muted-foreground uppercase tracking-widest">/ subject</span>
+                                                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-black text-muted-foreground uppercase tracking-widest pointer-events-none">/ subject</span>
                                             </div>
-                                            {doubleBio && activeSubjects.some((s) => normalizeSubject(s) === 'biology') && (
-                                                <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 normal-case">Biology gets 2× on NEET</span>
-                                            )}
+                                            <button
+                                                type="button"
+                                                onClick={() => setCustomTestConfig((prev) => ({ ...prev, baseCount: clampCount(prev.baseCount + 1) }))}
+                                                className="h-12 w-12 shrink-0 rounded-xl border border-border/40 bg-background text-lg font-black text-foreground hover:border-primary/40"
+                                                aria-label="Increase"
+                                            >+</button>
                                         </div>
+                                        {doubleBio && activeSubjects.some((s) => normalizeSubject(s) === 'biology') && (
+                                            <span className="block text-[10px] font-bold text-amber-600 dark:text-amber-400 normal-case">Biology gets 2× on NEET</span>
+                                        )}
                                         {/* Preview of the resolved per-subject counts. */}
                                         <div className="flex flex-wrap gap-2">
                                             {activeSubjects.map((s) => {
@@ -852,23 +887,26 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                                     <div className="space-y-2">
                                         {activeSubjects.map((s) => {
                                             const canonical = normalizeSubject(s) ?? s;
+                                            const val = customTestConfig.perSubjectCounts[canonical] ?? customTestConfig.baseCount;
+                                            const setVal = (n: number) => setCustomTestConfig((prev) => ({
+                                                ...prev,
+                                                perSubjectCounts: { ...prev.perSubjectCounts, [canonical]: clampCount(n) },
+                                            }));
                                             return (
                                                 <div key={s} className="flex items-center justify-between gap-3">
                                                     <span className="text-xs font-black text-foreground/80">{SUBJECT_LABELS[canonical] ?? canonical}</span>
-                                                    <Input
-                                                        type="number"
-                                                        min={MIN_QUESTIONS_PER_SUBJECT}
-                                                        max={MAX_QUESTIONS_PER_SUBJECT}
-                                                        value={customTestConfig.perSubjectCounts[canonical] ?? customTestConfig.baseCount}
-                                                        onChange={(e) => setCustomTestConfig((prev) => ({
-                                                            ...prev,
-                                                            perSubjectCounts: {
-                                                                ...prev.perSubjectCounts,
-                                                                [canonical]: Math.max(MIN_QUESTIONS_PER_SUBJECT, Math.min(MAX_QUESTIONS_PER_SUBJECT, Math.trunc(Number(e.target.value) || 0))),
-                                                            },
-                                                        }))}
-                                                        className="h-12 w-28 rounded-xl bg-white dark:bg-white/5 border border-border/40 px-4 text-sm font-black"
-                                                    />
+                                                    <div className="flex items-center gap-2">
+                                                        <button type="button" onClick={() => setVal(val - 1)} className="h-11 w-11 shrink-0 rounded-xl border border-border/40 bg-background text-lg font-black hover:border-primary/40" aria-label={`Decrease ${canonical}`}>−</button>
+                                                        <Input
+                                                            type="number"
+                                                            min={MIN_QUESTIONS_PER_SUBJECT}
+                                                            max={MAX_QUESTIONS_PER_SUBJECT}
+                                                            value={val}
+                                                            onChange={(e) => setVal(Number(e.target.value))}
+                                                            className={cn('h-11 w-20 rounded-xl bg-white dark:bg-white/5 border border-border/40 px-3 text-sm font-black text-center', NO_SPINNER)}
+                                                        />
+                                                        <button type="button" onClick={() => setVal(val + 1)} className="h-11 w-11 shrink-0 rounded-xl border border-border/40 bg-background text-lg font-black hover:border-primary/40" aria-label={`Increase ${canonical}`}>+</button>
+                                                    </div>
                                                 </div>
                                             );
                                         })}
@@ -882,20 +920,52 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                                     <Label className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">Time Per Question</Label>
                                     <span className="text-[10px] font-bold text-muted-foreground normal-case">{MIN_SECONDS_PER_QUESTION}s – {Math.round(MAX_SECONDS_PER_QUESTION / 60)} min</span>
                                 </div>
-                                <div className="relative w-40">
-                                    <Input
-                                        type="number"
-                                        min={MIN_SECONDS_PER_QUESTION}
-                                        max={MAX_SECONDS_PER_QUESTION}
-                                        step={10}
-                                        value={customTestConfig.secondsPerQuestion}
-                                        onChange={(e) => setCustomTestConfig((prev) => ({
-                                            ...prev,
-                                            secondsPerQuestion: Math.max(MIN_SECONDS_PER_QUESTION, Math.min(MAX_SECONDS_PER_QUESTION, Math.trunc(Number(e.target.value) || DEFAULT_SECONDS_PER_QUESTION))),
-                                        }))}
-                                        className="h-14 rounded-2xl bg-white dark:bg-white/5 border border-border/40 px-5 text-sm font-black"
-                                    />
-                                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-black text-muted-foreground uppercase tracking-widest">sec</span>
+                                <div className="space-y-3">
+                                    <div className="flex flex-wrap gap-2">
+                                        {QUICK_SECONDS.map((sec) => (
+                                            <button
+                                                key={sec}
+                                                type="button"
+                                                onClick={() => setCustomTestConfig((prev) => ({ ...prev, secondsPerQuestion: sec }))}
+                                                className={`h-11 px-4 rounded-xl font-black text-xs transition-all border ${
+                                                    customTestConfig.secondsPerQuestion === sec
+                                                        ? 'bg-primary text-white border-primary shadow-lg shadow-primary/20'
+                                                        : 'bg-background border-border/40 text-foreground hover:border-primary/40'
+                                                }`}
+                                            >
+                                                {sec % 60 === 0 ? `${sec / 60} min` : `${sec}s`}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <button
+                                            type="button"
+                                            onClick={() => setCustomTestConfig((prev) => ({ ...prev, secondsPerQuestion: Math.max(MIN_SECONDS_PER_QUESTION, prev.secondsPerQuestion - 10) }))}
+                                            className="h-12 w-12 shrink-0 rounded-xl border border-border/40 bg-background text-lg font-black hover:border-primary/40"
+                                            aria-label="Decrease time"
+                                        >−</button>
+                                        <div className="relative flex-1 min-w-[8rem]">
+                                            <Input
+                                                type="number"
+                                                min={MIN_SECONDS_PER_QUESTION}
+                                                max={MAX_SECONDS_PER_QUESTION}
+                                                step={10}
+                                                value={customTestConfig.secondsPerQuestion}
+                                                onChange={(e) => setCustomTestConfig((prev) => ({
+                                                    ...prev,
+                                                    secondsPerQuestion: Math.max(MIN_SECONDS_PER_QUESTION, Math.min(MAX_SECONDS_PER_QUESTION, Math.trunc(Number(e.target.value) || DEFAULT_SECONDS_PER_QUESTION))),
+                                                }))}
+                                                className={cn('h-12 rounded-xl bg-white dark:bg-white/5 border border-border/40 pl-4 pr-14 text-sm font-black', NO_SPINNER)}
+                                            />
+                                            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-black text-muted-foreground uppercase tracking-widest pointer-events-none">sec</span>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setCustomTestConfig((prev) => ({ ...prev, secondsPerQuestion: Math.min(MAX_SECONDS_PER_QUESTION, prev.secondsPerQuestion + 10) }))}
+                                            className="h-12 w-12 shrink-0 rounded-xl border border-border/40 bg-background text-lg font-black hover:border-primary/40"
+                                            aria-label="Increase time"
+                                        >+</button>
+                                    </div>
                                 </div>
                             </div>
 
