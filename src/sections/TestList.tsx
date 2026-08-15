@@ -27,7 +27,8 @@ import {
   Sparkles,
   ArrowRight,
   ChevronDown,
-  Check
+  Check,
+  Info
 } from 'lucide-react';
 import type { Test, TestPreview, User } from '@/types';
 import { cn } from '@/lib/utils';
@@ -188,6 +189,8 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
   const [chapterSearch, setChapterSearch] = useState('');
   const [creatingTest, setCreatingTest] = useState(false);
   const [customTestError, setCustomTestError] = useState('');
+  // "How it works" explainer dialog for the Custom Test Builder.
+  const [infoOpen, setInfoOpen] = useState(false);
 
   // Only selected subjects the student actually owns count toward the test — a
   // locked subject can't be selected, but guard here too (source of truth).
@@ -640,11 +643,23 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                     )}
                     <Card className="neu-raised border-0 shadow-none rounded-[40px] overflow-hidden">
                         <div className="p-6 sm:p-10 border-b border-border/40 bg-primary text-white relative">
-                            <div className="relative z-10">
-                                <h2 className="text-xl sm:text-3xl font-black uppercase tracking-tighter mb-2">Custom Test Builder</h2>
-                                <p className="text-[10px] sm:text-xs font-bold opacity-80 uppercase tracking-widest">Build your own practice set</p>
+                            <div className="relative z-10 flex items-start justify-between gap-3">
+                                <div>
+                                    <h2 className="text-xl sm:text-3xl font-black uppercase tracking-tighter mb-2">Custom Test Builder</h2>
+                                    <p className="text-[10px] sm:text-xs font-bold opacity-80 uppercase tracking-widest">Build your own practice set</p>
+                                </div>
+                                {/* How-it-works explainer. */}
+                                <button
+                                    type="button"
+                                    onClick={() => setInfoOpen(true)}
+                                    aria-label="How the Custom Test Builder works"
+                                    title="How it works"
+                                    className="shrink-0 w-9 h-9 rounded-full bg-white/15 hover:bg-white/25 border border-white/20 flex items-center justify-center transition-colors"
+                                >
+                                    <Info className="w-5 h-5" />
+                                </button>
                             </div>
-                            <Plus className="absolute top-6 right-6 sm:top-10 sm:right-10 w-12 h-12 sm:w-20 sm:h-20 opacity-10" />
+                            <Plus className="absolute top-6 right-20 sm:top-10 sm:right-24 w-12 h-12 sm:w-20 sm:h-20 opacity-10 pointer-events-none" />
                         </div>
                         <div className="p-6 sm:p-10 space-y-6 sm:space-y-10">
                             <div className="grid sm:grid-cols-2 gap-10">
@@ -1004,6 +1019,47 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                             </Button>
                         </div>
                     </Card>
+
+                    {/* How-it-works explainer dialog. */}
+                    <Dialog open={infoOpen} onOpenChange={setInfoOpen}>
+                        <DialogContent className="max-w-lg rounded-3xl">
+                            <DialogHeader>
+                                <DialogTitle className="flex items-center gap-2 text-lg font-black uppercase tracking-tight">
+                                    <Sparkles className="w-5 h-5 text-primary" />
+                                    How your custom test is built
+                                </DialogTitle>
+                                <DialogDescription className="sr-only">
+                                    An explanation of how the Custom Test Builder generates each practice set.
+                                </DialogDescription>
+                            </DialogHeader>
+                            <div className="space-y-4 text-sm text-foreground/80 max-h-[60vh] overflow-y-auto pr-1">
+                                <p className="font-bold text-foreground">Every time you tap <span className="text-primary">Initialize Test Session</span>, a fresh paper is assembled just for you from the live question bank — no two builds are identical.</p>
+                                <ol className="space-y-3 list-none">
+                                    <li className="flex gap-3">
+                                        <span className="shrink-0 w-6 h-6 rounded-full bg-primary/10 text-primary font-black text-xs flex items-center justify-center">1</span>
+                                        <span><span className="font-bold text-foreground">You choose the shape.</span> Pick subjects, optional class &amp; chapters, how many questions per subject, and the time per question. The total questions and total duration update live.</span>
+                                    </li>
+                                    <li className="flex gap-3">
+                                        <span className="shrink-0 w-6 h-6 rounded-full bg-primary/10 text-primary font-black text-xs flex items-center justify-center">2</span>
+                                        <span><span className="font-bold text-foreground">Per-subject counts.</span> Each subject gets exactly the number you set. With <span className="font-bold">Same for all</span> on, one number applies to every subject — and on <span className="font-bold">NEET</span>, Biology is automatically doubled to match the real paper.</span>
+                                    </li>
+                                    <li className="flex gap-3">
+                                        <span className="shrink-0 w-6 h-6 rounded-full bg-primary/10 text-primary font-black text-xs flex items-center justify-center">3</span>
+                                        <span><span className="font-bold text-foreground">Smart selection.</span> Questions are pulled matching your filters and biased toward your recent <span className="font-bold">weak topics</span>; ones you&apos;ve already attempted are skipped so you keep seeing something new.</span>
+                                    </li>
+                                    <li className="flex gap-3">
+                                        <span className="shrink-0 w-6 h-6 rounded-full bg-primary/10 text-primary font-black text-xs flex items-center justify-center">4</span>
+                                        <span><span className="font-bold text-foreground">Auto top-up.</span> If a chosen chapter is thin, the rest is filled from other chapters in the same subject so you always get the full count.</span>
+                                    </li>
+                                    <li className="flex gap-3">
+                                        <span className="shrink-0 w-6 h-6 rounded-full bg-primary/10 text-primary font-black text-xs flex items-center justify-center">5</span>
+                                        <span><span className="font-bold text-foreground">Grouped &amp; timed.</span> Questions are grouped subject-by-subject (like a real CBT section), the duration is set from your per-question timer, and the test starts immediately.</span>
+                                    </li>
+                                </ol>
+                                <p className="text-xs text-muted-foreground normal-case">Subjects you haven&apos;t subscribed to appear locked — unlock them anytime from the subject chips.</p>
+                            </div>
+                        </DialogContent>
+                    </Dialog>
                 </div>
               </TabsContent>
 
