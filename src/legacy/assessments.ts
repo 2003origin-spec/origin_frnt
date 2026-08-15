@@ -124,7 +124,12 @@ import {
   throwOutOfModeForbidden,
   type StudentScope,
 } from "@/server/study-scope";
-import { FREE_SAMPLE_POOL_SIZE, normalizeSubject as canonicalSubject } from "@/lib/entitlements";
+import { FREE_SAMPLE_POOL_SIZE, normalizeSubject as canonicalSubject, type Subject } from "@/lib/entitlements";
+import {
+  clampSecondsPerQuestion,
+  clampSubjectCounts,
+  type SubjectCounts,
+} from "@/lib/subject-test-plan";
 import { isFeatureEnabled } from "@/lib/feature-flags";
 import {
   getAssignedTestForStudent,
@@ -216,6 +221,19 @@ export type CustomTestPayload = {
   /** Multiple exams (multi-select). Union-matched. */
   exams?: string[];
   question_count?: number;
+  /**
+   * Subject-wise question load: canonical subject → count (1..500). When present
+   * this supersedes `question_count` and forces the local bank path (the
+   * analytics service takes a single count capped at 50). Empty/omitted = use
+   * `question_count`. Plan: V1/SUBJECTWISE_TEST_BUILDER_PLAN.md
+   */
+  subject_question_counts?: Record<string, number>;
+  /**
+   * Configurable per-question timer in seconds (clamped 30..300, default 120).
+   * Total duration = ceil(totalQuestions × seconds_per_question / 60) unless
+   * `duration_minutes` overrides.
+   */
+  seconds_per_question?: number;
   /** Optional override; omit to auto-compute. */
   duration_minutes?: number;
 };
@@ -2468,13 +2486,35 @@ async function selectCustomTestQuestions(
   const exams = (payload.exams?.length ? payload.exams : (payload.exam ? [payload.exam] : []))
     .map((e) => String(e ?? "").trim())
     .filter(Boolean);
-  const questionCount = Math.max(1, Math.min(50, Number(payload.question_count ?? 10)));
+  // Subject-wise question load: canonical subject → count (1..500). Scope it to
+  // the subjects this student may draw from (entitlements ∩ study mode); a count
+  // for a non-entitled subject is dropped rather than honoured. When present it
+  // supersedes the single `question_count` and drives a per-subject selection.
+  const scopedSubjectCounts: SubjectCounts = {};
+  {
+    const rawCounts = clampSubjectCounts(payload.subject_question_counts ?? null);
+    for (const [subj, n] of Object.entries(rawCounts) as [Subject, number][]) {
+      if (allowedSubjects == null || allowedSubjects.includes(subj)) {
+        scopedSubjectCounts[subj] = n;
+      }
+    }
+  }
+  const perSubjectMode = Object.keys(scopedSubjectCounts).length > 0;
+  const secondsPerQuestion =
+    payload.seconds_per_question != null ? clampSecondsPerQuestion(payload.seconds_per_question) : null;
+
+  // In per-subject mode the effective subject list and total come from the map;
+  // otherwise fall back to the single-total behaviour (clamped 1..50).
+  const effectiveSubjects: string[] = perSubjectMode ? Object.keys(scopedSubjectCounts) : subjects;
+  const questionCount = perSubjectMode
+    ? Object.values(scopedSubjectCounts).reduce<number>((sum, n) => sum + (n ?? 0), 0)
+    : Math.max(1, Math.min(50, Number(payload.question_count ?? 10)));
   const durationOverride = payload.duration_minutes != null ? Math.trunc(Number(payload.duration_minutes)) : null;
 
   // subject/class/exam are hard constraints (never relaxed below), same as the
   // analytics-service's primary path — only chapter(s) are dropped to top up.
   const baseFilters = {
-    subjects: subjects.length ? subjects : null,
+    subjects: effectiveSubjects.length ? effectiveSubjects : null,
     difficulty,
     classes: classes.length ? classes : undefined,
     occurrences: exams.length ? exams : undefined,
@@ -2496,7 +2536,36 @@ async function selectCustomTestQuestions(
   const selected: Awaited<ReturnType<typeof collect>> = [];
   const chapterExtra = { chapters: chapters.length ? chapters : undefined };
 
-  if (subjects.length > 1) {
+  if (perSubjectMode) {
+    // Subject-wise load: each chosen subject gets EXACTLY its requested count
+    // (Physics=N, Chemistry=N, Biology=2N on NEET etc — the caller already did
+    // that arithmetic). Fetch per subject with a chapter-drop top-up so a thin
+    // chapter still fills from the same subject; grouped by subject below.
+    for (const subj of effectiveSubjects) {
+      const target = scopedSubjectCounts[subj as Subject] ?? 0;
+      if (target <= 0) continue;
+      let took = 0;
+      const primary = await collect({ ...chapterExtra, subjects: [subj] }, target);
+      for (const q of primary) {
+        if (took >= target) break;
+        if (seenIds.has(q.id)) continue;
+        selected.push(q);
+        seenIds.add(q.id);
+        took++;
+      }
+      // Short in the chosen chapter(s)? Top up from any chapter in this subject.
+      if (took < target && chapters.length) {
+        const more = await collect({ subjects: [subj] }, target - took);
+        for (const q of more) {
+          if (took >= target) break;
+          if (seenIds.has(q.id)) continue;
+          selected.push(q);
+          seenIds.add(q.id);
+          took++;
+        }
+      }
+    }
+  } else if (subjects.length > 1) {
     // A single LIMIT query over the union orders by source_index and clusters
     // into whichever subject sorts first — so it returns only one subject's
     // questions. Fetch each subject's share separately so every chosen subject
@@ -2530,8 +2599,10 @@ async function selectCustomTestQuestions(
 
   // Top up (drop chapters, keep subject/class/exam) to reach the target count —
   // the same "drop chapter, keep everything else" broaden step the primary
-  // analytics-service path already does.
-  if (selected.length < questionCount) {
+  // analytics-service path already does. Skipped in per-subject mode, where each
+  // subject was already topped up to its own target above (a global top-up would
+  // over-fill whichever subject happens to have the most spare questions).
+  if (!perSubjectMode && selected.length < questionCount) {
     const topUp = await collect({}, questionCount - selected.length);
     for (const question of topUp) {
       if (selected.length >= questionCount) break;
@@ -2545,11 +2616,12 @@ async function selectCustomTestQuestions(
   // subject together (a CBT section) instead of toggling subject every question
   // as you press Next. Preserve the requested subject order; any extra subjects
   // pulled in by the top-up broaden step are grouped after, in first-seen order.
+  const orderingSubjects = perSubjectMode ? effectiveSubjects : subjects;
   const grouped = (() => {
     if (selected.length <= 1) return selected;
     const order = new Map<string, number>();
-    subjects.forEach((s, idx) => order.set(normalizeSubject(s), idx));
-    let nextRank = subjects.length;
+    orderingSubjects.forEach((s, idx) => order.set(normalizeSubject(s), idx));
+    let nextRank = orderingSubjects.length;
     const rankOf = (q: (typeof selected)[number]) => {
       const key = normalizeSubject(String(q.subject ?? ""));
       if (!order.has(key)) order.set(key, nextRank++);
@@ -2562,12 +2634,30 @@ async function selectCustomTestQuestions(
       .map((x) => x.q);
   })();
 
+  // In per-subject mode the label follows the effective subject set; otherwise the
+  // requested-subject label computed above.
+  const labelSubject = perSubjectMode
+    ? (effectiveSubjects.length === 1 ? normalizeSubject(effectiveSubjects[0]) : "mixed")
+    : isMixedSubject
+      ? "mixed"
+      : normalizeSubject(subject);
+
+  // Duration: explicit override → per-question timer (subject-wise mode) → legacy
+  // auto (3 min/question, min 10). Uses the ACTUAL selected count so a thin bank
+  // yields an honest duration.
+  const durationMinutes =
+    durationOverride && durationOverride > 0
+      ? durationOverride
+      : secondsPerQuestion != null
+        ? Math.max(1, Math.ceil((selected.length * secondsPerQuestion) / 60))
+        : Math.max(10, selected.length * 3);
+
   return {
     selected: grouped,
-    subject: isMixedSubject ? "mixed" : normalizeSubject(subject),
+    subject: labelSubject,
     chapter: chapter || null,
     difficulty: difficulty ?? "medium",
-    durationMinutes: durationOverride && durationOverride > 0 ? durationOverride : Math.max(10, selected.length * 3),
+    durationMinutes,
   };
 }
 
@@ -2594,6 +2684,10 @@ async function createCustomTestFallback(
   // can't find — the multi-chapter "0 questions loaded" bug.
   const generatedId = createId("test");
   const title = `${subject === "mixed" ? "Mixed" : subject[0].toUpperCase() + subject.slice(1)} Custom Test`;
+  // Persist the configured per-question timer (default 2 min) so the runner and
+  // any re-render reflect the duration the student chose.
+  const recommendedTimePerQuestionSeconds =
+    payload.seconds_per_question != null ? clampSecondsPerQuestion(payload.seconds_per_question) : 120;
 
   if (isOgcodePostgresConfigured()) {
     try {
@@ -2611,7 +2705,7 @@ async function createCustomTestFallback(
         durationMinutes,
         focusTopics: [],
         generationSummary: "Built from your selected filters across the question bank.",
-        recommendedTimePerQuestionSeconds: 120,
+        recommendedTimePerQuestionSeconds,
       });
       const latest = await getPersistedCustomTest(generatedId, user.id);
       if (latest) {
@@ -3582,6 +3676,23 @@ export async function createCustomTest(
       .map((e) => String(e ?? "").trim())
       .filter(Boolean);
 
+    // Subject-wise question load: a per-subject count map cannot be expressed to
+    // the analytics service (single count, capped at 50), so it always takes the
+    // local bank path. Validate the map against scope up front so an explicit
+    // pick that survives nothing is the same user-visible 400 as the single case.
+    const requestedSubjectCounts = clampSubjectCounts(payload.subject_question_counts ?? null);
+    if (Object.keys(requestedSubjectCounts).length > 0) {
+      if (scope.enforced) {
+        const allowed = clampSubjectsToScope(Object.keys(requestedSubjectCounts), scope) ?? [];
+        if (allowed.length === 0) {
+          const err = new Error("Those subjects aren't part of your current study mode.");
+          (err as { status?: number }).status = 400;
+          throw err;
+        }
+      }
+      return createCustomTestFallback(store, user, payload);
+    }
+
     // The analytics service takes a single value per dimension. When any
     // dimension has more than one selection, use the local bank path
     // (createCustomTestFallback), which union-matches all of them (= ANY(...)).
@@ -3708,35 +3819,43 @@ export async function generateOgcodeSelectionForWorkspace(
   const classLevel = payload.class_level != null ? Math.trunc(Number(payload.class_level)) : null;
   const durationOverride = payload.duration_minutes != null ? Math.trunc(Number(payload.duration_minutes)) : null;
 
-  try {
-    const serviceResponse = await generateCustomTestWithService({
-      user_id: actorUserId,
-      subject: subject === "all" ? "mixed" : subject,
-      difficulty,
-      chapter: payload.chapter?.trim() || null,
-      class_level: classLevel && classLevel > 0 ? classLevel : null,
-      exam: payload.exam?.trim() || null,
-      question_count: Math.max(1, Math.min(50, Number(payload.question_count ?? 10))),
-      duration_minutes: durationOverride && durationOverride > 0 ? durationOverride : null,
-      recent_weak_topics: [],
-      attempted_question_ids: [],
-    });
-    if (serviceResponse) {
-      return {
-        questionIds: serviceResponse.question_ids,
-        subject: serviceResponse.subject,
-        chapter: serviceResponse.chapter ?? null,
-        difficulty: serviceResponse.difficulty,
-        durationMinutes: serviceResponse.duration_minutes,
-      };
+  // Subject-wise load can't be expressed to the analytics service (single count,
+  // capped at 50) — go straight to the local per-subject selection. No scope
+  // filter: the room builder runs as the teacher, who is treated as entitled to
+  // every subject (authz is the workspace membership check on the route).
+  const hasPerSubjectCounts = Object.keys(clampSubjectCounts(payload.subject_question_counts ?? null)).length > 0;
+
+  if (!hasPerSubjectCounts) {
+    try {
+      const serviceResponse = await generateCustomTestWithService({
+        user_id: actorUserId,
+        subject: subject === "all" ? "mixed" : subject,
+        difficulty,
+        chapter: payload.chapter?.trim() || null,
+        class_level: classLevel && classLevel > 0 ? classLevel : null,
+        exam: payload.exam?.trim() || null,
+        question_count: Math.max(1, Math.min(50, Number(payload.question_count ?? 10))),
+        duration_minutes: durationOverride && durationOverride > 0 ? durationOverride : null,
+        recent_weak_topics: [],
+        attempted_question_ids: [],
+      });
+      if (serviceResponse) {
+        return {
+          questionIds: serviceResponse.question_ids,
+          subject: serviceResponse.subject,
+          chapter: serviceResponse.chapter ?? null,
+          difficulty: serviceResponse.difficulty,
+          durationMinutes: serviceResponse.duration_minutes,
+        };
+      }
+    } catch (err) {
+      recordAnalyticsFallback({
+        scope: "generateOgcodeSelection",
+        userId: actorUserId,
+        assessmentId: null,
+        err,
+      });
     }
-  } catch (err) {
-    recordAnalyticsFallback({
-      scope: "generateOgcodeSelection",
-      userId: actorUserId,
-      assessmentId: null,
-      err,
-    });
   }
 
   const { selected, subject: fallbackSubject, chapter, difficulty: fallbackDifficulty, durationMinutes } =
