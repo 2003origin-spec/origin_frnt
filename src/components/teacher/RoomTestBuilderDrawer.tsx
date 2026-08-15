@@ -35,10 +35,28 @@ import type {
 import { toast } from "sonner";
 
 import { QuestionPicker, type SelectedQuestion } from "./QuestionPicker";
+import { normalizeSubject } from "@/lib/entitlements";
+import type { StudyMode } from "@/lib/study-mode";
+import {
+  resolveEqualCounts,
+  computeDurationMinutes,
+  totalQuestions,
+  DEFAULT_SECONDS_PER_QUESTION,
+  MIN_QUESTIONS_PER_SUBJECT,
+  MAX_QUESTIONS_PER_SUBJECT,
+  MIN_SECONDS_PER_QUESTION,
+  MAX_SECONDS_PER_QUESTION,
+  type SubjectCounts,
+} from "@/lib/subject-test-plan";
 
 const CLASS_OPTIONS = [11, 12] as const;
 const EXAM_OPTIONS = ["JEE", "NEET", "AIPMT"] as const;
-const QUESTION_COUNT_OPTIONS = [10, 20, 30, 40, 50] as const;
+const SUBJECT_OPTIONS = [
+  { value: "physics", label: "Physics" },
+  { value: "chemistry", label: "Chemistry" },
+  { value: "mathematics", label: "Mathematics" },
+  { value: "biology", label: "Biology" },
+] as const;
 
 type OgcodeAutoSelection = {
   questionIds: string[];
@@ -73,15 +91,25 @@ export function RoomTestBuilderDrawer({ workspaceId, room, bagQuestions, ogcodeE
   const [autoConfig, setAutoConfig] = useState({
     classLevel: "" as "" | (typeof CLASS_OPTIONS)[number],
     exam: "" as "" | (typeof EXAM_OPTIONS)[number],
-    subject: "mixed",
+    // Subject-wise auto-build. The teacher is treated as entitled to every
+    // subject (workspace membership is the authz on the route), so all four are
+    // available — no locks here, unlike the student builder.
+    subjects: [] as string[],
     chapter: "",
-    questionCount: 10 as (typeof QUESTION_COUNT_OPTIONS)[number],
+    sameForAll: true,
+    baseCount: 10,
+    perSubjectCounts: {} as Record<string, number>,
+    secondsPerQuestion: DEFAULT_SECONDS_PER_QUESTION,
     durationMinutes: "" as "" | number,
   });
   const [facetChapters, setFacetChapters] = useState<string[]>([]);
   const [facetChaptersLoading, setFacetChaptersLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const chapterFacetReq = useRef(0);
+
+  // Chapter picking only makes sense for a single subject; with a multi-subject
+  // mix we skip it (the selection tops up across chapters per subject anyway).
+  const singleSubject = autoConfig.subjects.length === 1 ? autoConfig.subjects[0] : null;
 
   useEffect(() => {
     if (mode !== "auto") return;
@@ -91,7 +119,7 @@ export function RoomTestBuilderDrawer({ workspaceId, room, bagQuestions, ogcodeE
     qs.set("level", "chapter");
     if (autoConfig.classLevel) qs.append("classes", String(autoConfig.classLevel));
     if (autoConfig.exam) qs.append("occurrences", autoConfig.exam);
-    if (autoConfig.subject !== "mixed") qs.append("subjects", autoConfig.subject);
+    if (singleSubject) qs.append("subjects", singleSubject);
 
     fetch(`/api/assessments/ogcode/facets?${qs.toString()}`, { credentials: "include" })
       .then((res) => (res.ok ? res.json() : []))
@@ -107,9 +135,30 @@ export function RoomTestBuilderDrawer({ workspaceId, room, bagQuestions, ogcodeE
       .finally(() => {
         if (req === chapterFacetReq.current) setFacetChaptersLoading(false);
       });
-  }, [mode, autoConfig.classLevel, autoConfig.exam, autoConfig.subject]);
+  }, [mode, autoConfig.classLevel, autoConfig.exam, singleSubject]);
+
+  // Exam → mode for the double-Biology rule (NEET/AIPMT double Biology).
+  const autoMode: StudyMode = autoConfig.exam === "NEET" || autoConfig.exam === "AIPMT" ? "neet" : "jee";
+  const autoResolvedCounts: SubjectCounts = (() => {
+    if (!autoConfig.subjects.length) return {};
+    if (autoConfig.sameForAll) return resolveEqualCounts(autoConfig.subjects, autoConfig.baseCount, autoMode);
+    const out: SubjectCounts = {};
+    for (const raw of autoConfig.subjects) {
+      const subject = normalizeSubject(raw);
+      if (!subject) continue;
+      const n = autoConfig.perSubjectCounts[subject] ?? autoConfig.baseCount;
+      out[subject] = Math.max(MIN_QUESTIONS_PER_SUBJECT, Math.min(MAX_QUESTIONS_PER_SUBJECT, Math.trunc(Number(n) || 0)));
+    }
+    return out;
+  })();
+  const autoTotalQ = totalQuestions(autoResolvedCounts);
+  const autoDurationMin = computeDurationMinutes(autoResolvedCounts, autoConfig.secondsPerQuestion);
 
   async function generateFromOgcode() {
+    if (!autoConfig.subjects.length || autoTotalQ <= 0) {
+      toast.error("Pick at least one subject and set a question count.");
+      return;
+    }
     setGenerating(true);
     setError(null);
     try {
@@ -118,11 +167,12 @@ export function RoomTestBuilderDrawer({ workspaceId, room, bagQuestions, ogcodeE
         {
           method: "POST",
           json: {
-            subject: autoConfig.subject,
-            chapter: autoConfig.chapter || undefined,
+            subjects: autoConfig.subjects,
+            subject_question_counts: autoResolvedCounts as Record<string, number>,
+            chapter: singleSubject ? autoConfig.chapter || undefined : undefined,
             class_level: autoConfig.classLevel || undefined,
             exam: autoConfig.exam || undefined,
-            question_count: autoConfig.questionCount,
+            seconds_per_question: autoConfig.secondsPerQuestion,
             duration_minutes: autoConfig.durationMinutes || undefined,
           },
         },
@@ -322,29 +372,15 @@ export function RoomTestBuilderDrawer({ workspaceId, room, bagQuestions, ogcodeE
                   </select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Subject</Label>
-                  <select
-                    value={autoConfig.subject}
-                    onChange={(e) => setAutoConfig({ ...autoConfig, subject: e.target.value, chapter: "" })}
-                    className="h-10 w-full rounded-xl border bg-background px-3 text-sm"
-                  >
-                    <option value="mixed">Mixed</option>
-                    <option value="physics">Physics</option>
-                    <option value="chemistry">Chemistry</option>
-                    <option value="mathematics">Mathematics</option>
-                    <option value="biology">Biology</option>
-                  </select>
-                </div>
-                <div className="space-y-1.5">
                   <Label>Chapter</Label>
                   <select
                     value={autoConfig.chapter}
                     onChange={(e) => setAutoConfig({ ...autoConfig, chapter: e.target.value })}
-                    disabled={autoConfig.subject === "mixed" || facetChaptersLoading}
+                    disabled={!singleSubject || facetChaptersLoading}
                     className="h-10 w-full rounded-xl border bg-background px-3 text-sm disabled:opacity-50"
                   >
                     <option value="">
-                      {autoConfig.subject === "mixed" ? "Pick a subject" : facetChaptersLoading ? "Loading…" : "Any"}
+                      {!singleSubject ? "Single subject only" : facetChaptersLoading ? "Loading…" : "Any"}
                     </option>
                     {facetChapters.map((chapter) => (
                       <option key={chapter} value={chapter}>{chapter}</option>
@@ -353,48 +389,118 @@ export function RoomTestBuilderDrawer({ workspaceId, room, bagQuestions, ogcodeE
                 </div>
               </div>
 
+              {/* Subjects — multi-select; the teacher may build across any subjects. */}
               <div className="space-y-1.5">
-                <Label>Question count</Label>
-                <div className="grid grid-cols-5 gap-2">
-                  {QUESTION_COUNT_OPTIONS.map((count) => (
-                    <button
-                      key={count}
-                      type="button"
-                      onClick={() => setAutoConfig({ ...autoConfig, questionCount: count })}
-                      className={`h-9 rounded-lg border text-sm font-medium transition-colors ${
-                        autoConfig.questionCount === count
-                          ? "border-primary bg-primary text-primary-foreground"
-                          : "hover:border-primary/40"
-                      }`}
-                    >
-                      {count}
-                    </button>
-                  ))}
+                <Label>Subjects</Label>
+                <div className="flex flex-wrap gap-2">
+                  {SUBJECT_OPTIONS.map((opt) => {
+                    const active = autoConfig.subjects.includes(opt.value);
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setAutoConfig((prev) => ({
+                          ...prev,
+                          subjects: prev.subjects.includes(opt.value)
+                            ? prev.subjects.filter((x) => x !== opt.value)
+                            : [...prev.subjects, opt.value],
+                          chapter: "",
+                        }))}
+                        className={`h-9 px-3 rounded-lg border text-sm font-medium transition-colors ${
+                          active ? "border-primary bg-primary text-primary-foreground" : "hover:border-primary/40"
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
+              {/* Subject-wise question load. */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-3">
+                  <Label>Question load</Label>
+                  <button
+                    type="button"
+                    onClick={() => setAutoConfig((prev) => ({ ...prev, sameForAll: !prev.sameForAll }))}
+                    className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground"
+                  >
+                    <span className={`inline-block h-3.5 w-3.5 rounded border ${autoConfig.sameForAll ? "bg-primary border-primary" : "border-muted-foreground/40"}`} />
+                    Same for all
+                  </button>
+                </div>
+                {autoConfig.subjects.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">Pick one or more subjects to set the load.</p>
+                ) : autoConfig.sameForAll ? (
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      min={MIN_QUESTIONS_PER_SUBJECT}
+                      max={MAX_QUESTIONS_PER_SUBJECT}
+                      value={autoConfig.baseCount}
+                      onChange={(e) => setAutoConfig((prev) => ({
+                        ...prev,
+                        baseCount: Math.max(MIN_QUESTIONS_PER_SUBJECT, Math.min(MAX_QUESTIONS_PER_SUBJECT, Math.trunc(Number(e.target.value) || 0))),
+                      }))}
+                      className="w-28"
+                    />
+                    <span className="text-xs text-muted-foreground">per subject{autoMode === "neet" && autoConfig.subjects.includes("biology") ? " · Biology 2× (NEET)" : ""}</span>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {autoConfig.subjects.map((s) => {
+                      const canonical = normalizeSubject(s) ?? s;
+                      return (
+                        <div key={s} className="flex items-center justify-between gap-2">
+                          <span className="text-sm">{SUBJECT_OPTIONS.find((o) => o.value === canonical)?.label ?? canonical}</span>
+                          <Input
+                            type="number"
+                            min={MIN_QUESTIONS_PER_SUBJECT}
+                            max={MAX_QUESTIONS_PER_SUBJECT}
+                            value={autoConfig.perSubjectCounts[canonical] ?? autoConfig.baseCount}
+                            onChange={(e) => setAutoConfig((prev) => ({
+                              ...prev,
+                              perSubjectCounts: {
+                                ...prev.perSubjectCounts,
+                                [canonical]: Math.max(MIN_QUESTIONS_PER_SUBJECT, Math.min(MAX_QUESTIONS_PER_SUBJECT, Math.trunc(Number(e.target.value) || 0))),
+                              },
+                            }))}
+                            className="w-24"
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
               <div className="space-y-1.5">
-                <Label>Duration override (min, optional)</Label>
+                <Label>Time per question (sec)</Label>
                 <Input
                   type="number"
-                  min={1}
-                  placeholder="Auto"
-                  value={autoConfig.durationMinutes}
-                  onChange={(e) =>
-                    setAutoConfig({ ...autoConfig, durationMinutes: e.target.value ? Math.max(1, Number(e.target.value)) : "" })
-                  }
+                  min={MIN_SECONDS_PER_QUESTION}
+                  max={MAX_SECONDS_PER_QUESTION}
+                  step={10}
+                  value={autoConfig.secondsPerQuestion}
+                  onChange={(e) => setAutoConfig((prev) => ({
+                    ...prev,
+                    secondsPerQuestion: Math.max(MIN_SECONDS_PER_QUESTION, Math.min(MAX_SECONDS_PER_QUESTION, Math.trunc(Number(e.target.value) || DEFAULT_SECONDS_PER_QUESTION))),
+                  }))}
+                  className="w-28"
                 />
               </div>
 
-              {autoConfig.chapter ? (
+              {autoConfig.subjects.length > 0 && autoTotalQ > 0 ? (
                 <p className="text-xs text-muted-foreground">
-                  Short on questions in this chapter? We&apos;ll fill the rest from other {autoConfig.subject} chapters automatically.
+                  {autoTotalQ} question{autoTotalQ === 1 ? "" : "s"} · {autoDurationMin} min total.
+                  {autoConfig.chapter ? ` Short on questions in this chapter? We'll top up from other ${singleSubject} chapters.` : ""}
                 </p>
               ) : null}
 
-              <Button type="button" onClick={generateFromOgcode} disabled={generating} variant="secondary" className="w-full">
+              <Button type="button" onClick={generateFromOgcode} disabled={generating || autoConfig.subjects.length === 0 || autoTotalQ <= 0} variant="secondary" className="w-full">
                 {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-                Generate {autoConfig.questionCount} questions
+                Generate {autoTotalQ} question{autoTotalQ === 1 ? "" : "s"}
               </Button>
 
               {questions.length > 0 ? (

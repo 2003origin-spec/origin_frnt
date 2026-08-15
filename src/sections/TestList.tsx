@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -35,17 +36,35 @@ import { createCustomTestAction, createFullLengthTestAction } from '@/server/act
 import ExamPresetCards, { type ExamPresetCard } from '@/components/test/ExamPresetCards';
 import type { ExamPresetId } from '@/lib/exam-blueprints';
 import { useAuth } from '@/context/AuthContext';
-import { isSubjectInMode, studyModeSubjects } from '@/lib/study-mode';
+import { studyModeSubjects } from '@/lib/study-mode';
+import { ALL_SUBJECTS, normalizeSubject } from '@/lib/entitlements';
+import {
+  resolveEqualCounts,
+  computeDurationMinutes,
+  totalQuestions,
+  biologyIsDoubled,
+  DEFAULT_SECONDS_PER_QUESTION,
+  MIN_QUESTIONS_PER_SUBJECT,
+  MAX_QUESTIONS_PER_SUBJECT,
+  MIN_SECONDS_PER_QUESTION,
+  MAX_SECONDS_PER_QUESTION,
+  type SubjectCounts,
+} from '@/lib/subject-test-plan';
 
 const CLASS_OPTIONS = [11, 12] as const;
-/** Full table; rendered lists are filtered by the active Study Mode. */
+/** All four subjects; the builder shows every one and locks the non-owned. */
 const SUBJECT_OPTIONS = [
   { value: 'physics', label: 'Physics' },
   { value: 'chemistry', label: 'Chemistry' },
   { value: 'mathematics', label: 'Mathematics' },
   { value: 'biology', label: 'Biology' },
 ] as const;
-const QUESTION_COUNT_OPTIONS = [10, 20, 30, 40, 50] as const;
+const SUBJECT_LABELS: Record<string, string> = {
+  physics: 'Physics',
+  chemistry: 'Chemistry',
+  mathematics: 'Mathematics',
+  biology: 'Biology',
+};
 
 /**
  * Multi-select toggle chips for the small fixed sets (class / exam / subject).
@@ -101,6 +120,13 @@ interface TestListProps {
    * is also what the feature flag being off produces).
    */
   examPresets?: ExamPresetCard[];
+  /**
+   * Subjects the student is entitled to (server-resolved). The Custom Test
+   * Builder shows all four subjects and locks the ones NOT in this set behind a
+   * "Subscribe to unlock" prompt. Absent → treat everything as unlocked (the
+   * premium gate being off yields ALL_SUBJECTS server-side anyway).
+   */
+  ownedSubjects?: string[];
 }
 
 function toTestPreview(test: Test | TestPreview): TestPreview {
@@ -122,13 +148,21 @@ function toTestPreview(test: Test | TestPreview): TestPreview {
   };
 }
 
-export default function TestList({ onStartTest, onViewAnalysis, onBack, user, initialTests, examPresets }: TestListProps) {
+export default function TestList({ onStartTest, onViewAnalysis, onBack, user, initialTests, examPresets, ownedSubjects }: TestListProps) {
   const { studyMode } = useAuth();
+  const router = useRouter();
   const [tests, setTests] = useState<TestPreview[]>(initialTests ?? []);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSubject, setSelectedSubject] = useState('all');
   const [selectedDifficulty, setSelectedDifficulty] = useState('all');
   const [loading, setLoading] = useState(!initialTests);
+
+  // Subjects the student may build from. Locked (non-owned) subjects render a
+  // "Subscribe to unlock" prompt instead of a count input.
+  const ownedSet = useMemo(
+    () => new Set((ownedSubjects ?? ALL_SUBJECTS).map((s) => normalizeSubject(s)).filter(Boolean) as string[]),
+    [ownedSubjects],
+  );
 
   const [customTestConfig, setCustomTestConfig] = useState({
     // Multi-select: empty array = "any" (class/exam) or "all/mixed" (subjects).
@@ -136,14 +170,47 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
     exams: [] as string[],
     subjects: [] as string[],
     chapters: [] as string[],
-    question_count: 10 as (typeof QUESTION_COUNT_OPTIONS)[number],
-    duration_minutes: '' as '' | number,
+    // Subject-wise question load.
+    sameForAll: true,
+    baseCount: 10,
+    perSubjectCounts: {} as Record<string, number>,
+    secondsPerQuestion: DEFAULT_SECONDS_PER_QUESTION,
   });
   // OGCode-style multi-select chapter picker.
   const [chapterDropdownOpen, setChapterDropdownOpen] = useState(false);
   const [chapterSearch, setChapterSearch] = useState('');
   const [creatingTest, setCreatingTest] = useState(false);
   const [customTestError, setCustomTestError] = useState('');
+
+  // Only selected subjects the student actually owns count toward the test — a
+  // locked subject can't be selected, but guard here too (source of truth).
+  const activeSubjects = useMemo(
+    () => customTestConfig.subjects.filter((s) => ownedSet.has(normalizeSubject(s) ?? '')),
+    [customTestConfig.subjects, ownedSet],
+  );
+
+  // Resolve the configured load into a concrete { subject → count } map. "Same
+  // for all" expands one base number (Biology doubled on NEET); otherwise each
+  // subject carries its own entered count (falling back to the base).
+  const resolvedCounts: SubjectCounts = useMemo(() => {
+    if (!activeSubjects.length) return {};
+    if (customTestConfig.sameForAll) {
+      return resolveEqualCounts(activeSubjects, customTestConfig.baseCount, studyMode);
+    }
+    const out: SubjectCounts = {};
+    for (const raw of activeSubjects) {
+      const subject = normalizeSubject(raw);
+      if (!subject) continue;
+      const n = customTestConfig.perSubjectCounts[subject] ?? customTestConfig.baseCount;
+      const clamped = Math.max(MIN_QUESTIONS_PER_SUBJECT, Math.min(MAX_QUESTIONS_PER_SUBJECT, Math.trunc(Number(n) || 0)));
+      out[subject] = clamped;
+    }
+    return out;
+  }, [activeSubjects, customTestConfig.sameForAll, customTestConfig.baseCount, customTestConfig.perSubjectCounts, studyMode]);
+
+  const totalQ = totalQuestions(resolvedCounts);
+  const durationMin = computeDurationMinutes(resolvedCounts, customTestConfig.secondsPerQuestion);
+  const doubleBio = biologyIsDoubled(studyMode);
 
   // Chapters are the only dynamically-faceted filter here (class/exam are a
   // small fixed set; subject is the existing fixed 4+mixed enum) — narrowed by
@@ -186,12 +253,20 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
   ]);
 
   const handleCreateCustomTest = async () => {
+    if (!activeSubjects.length) {
+      setCustomTestError('Pick at least one subject you have access to.');
+      return;
+    }
+    if (totalQ <= 0) {
+      setCustomTestError('Set at least one question per subject.');
+      return;
+    }
     setCreatingTest(true);
     setCustomTestError('');
     try {
       const response = (await createCustomTestAction({
-        // Empty subjects = all/mixed.
-        subjects: customTestConfig.subjects.length ? customTestConfig.subjects : undefined,
+        // Only owned subjects are sent; the server re-checks entitlement.
+        subjects: activeSubjects,
         // No user-facing difficulty filter anymore — "all" maps to no
         // difficulty constraint server-side (the request default would
         // otherwise silently narrow to "medium" if this were omitted).
@@ -199,8 +274,9 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
         chapters: customTestConfig.chapters.length ? customTestConfig.chapters : undefined,
         class_levels: customTestConfig.classLevels.length ? customTestConfig.classLevels : undefined,
         exams: customTestConfig.exams.length ? customTestConfig.exams : undefined,
-        question_count: customTestConfig.question_count,
-        duration_minutes: customTestConfig.duration_minutes || undefined,
+        // Subject-wise load supersedes the single total server-side.
+        subject_question_counts: resolvedCounts as Record<string, number>,
+        seconds_per_question: customTestConfig.secondsPerQuestion,
       })) as Test;
       // Add the new test to the top of the list and mark as custom
       const newTest: TestPreview = { ...toTestPreview(response), isCustom: true, origin: 'custom', isPyq: false, examType: null };
@@ -583,19 +659,52 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                                     is simply sent empty (= all exams). */}
                                 <div className="space-y-4">
                                     <Label className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">Domain Calibration</Label>
-                                    <ChipMultiSelect
-                                        options={SUBJECT_OPTIONS
-                                          .filter((s) => isSubjectInMode(studyMode, s.value))
-                                          .map((s) => ({ value: s.value as string, label: s.label }))}
-                                        selected={customTestConfig.subjects}
-                                        emptyLabel="All subjects (mixed)"
-                                        onToggle={(s) => setCustomTestConfig((prev) => ({
-                                            ...prev,
-                                            subjects: prev.subjects.includes(s) ? prev.subjects.filter((x) => x !== s) : [...prev.subjects, s],
-                                            // Changing subjects invalidates the chapter selection.
-                                            chapters: [],
-                                        }))}
-                                    />
+                                    <div className="flex flex-wrap gap-2">
+                                        {SUBJECT_OPTIONS.map((opt) => {
+                                            const canonical = normalizeSubject(opt.value) ?? opt.value;
+                                            const owned = ownedSet.has(canonical);
+                                            const active = customTestConfig.subjects.includes(opt.value);
+                                            if (!owned) {
+                                                // Locked: route to per-subject checkout instead of toggling.
+                                                return (
+                                                    <button
+                                                        key={opt.value}
+                                                        type="button"
+                                                        onClick={() => router.push(`/premium?subject=${canonical}`)}
+                                                        title={`Subscribe to unlock ${opt.label}`}
+                                                        className="h-11 px-4 rounded-xl font-black text-xs uppercase tracking-widest transition-all border bg-muted/40 border-amber-500/30 text-muted-foreground hover:border-amber-500/60 inline-flex items-center gap-1.5"
+                                                    >
+                                                        <Lock className="w-3.5 h-3.5 text-amber-500" />
+                                                        {opt.label}
+                                                    </button>
+                                                );
+                                            }
+                                            return (
+                                                <button
+                                                    key={opt.value}
+                                                    type="button"
+                                                    onClick={() => setCustomTestConfig((prev) => ({
+                                                        ...prev,
+                                                        subjects: prev.subjects.includes(opt.value)
+                                                            ? prev.subjects.filter((x) => x !== opt.value)
+                                                            : [...prev.subjects, opt.value],
+                                                        // Changing subjects invalidates the chapter selection.
+                                                        chapters: [],
+                                                    }))}
+                                                    className={`h-11 px-4 rounded-xl font-black text-xs uppercase tracking-widest transition-all border ${
+                                                        active
+                                                            ? 'bg-primary text-white border-primary shadow-lg shadow-primary/20'
+                                                            : 'bg-background border-border/40 text-foreground hover:border-primary/40'
+                                                    }`}
+                                                >
+                                                    {opt.label}
+                                                </button>
+                                            );
+                                        })}
+                                        {customTestConfig.subjects.length === 0 && (
+                                            <span className="self-center text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Pick one or more subjects</span>
+                                        )}
+                                    </div>
                                 </div>
                                 <div className="space-y-4 relative">
                                     <Label className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">Chapter (Optional)</Label>
@@ -688,43 +797,117 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                                 </div>
                             </div>
 
-                            <div className="space-y-6">
-                                <Label className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">Question Load</Label>
-                                <div className="grid grid-cols-5 gap-2 sm:gap-3">
-                                    {QUESTION_COUNT_OPTIONS.map((count) => (
-                                        <button
-                                            key={count}
-                                            type="button"
-                                            onClick={() => setCustomTestConfig({ ...customTestConfig, question_count: count })}
-                                            className={`h-14 rounded-2xl font-black text-sm transition-all border ${
-                                                customTestConfig.question_count === count
-                                                    ? 'bg-primary text-white border-primary shadow-lg shadow-primary/20'
-                                                    : 'bg-background border-border/40 text-foreground hover:border-primary/40'
-                                            }`}
-                                        >
-                                            {count}
-                                        </button>
-                                    ))}
+                            <div className="space-y-5">
+                                <div className="flex items-center justify-between gap-3">
+                                    <Label className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">Question Load</Label>
+                                    {/* Same-for-all toggle. */}
+                                    <button
+                                        type="button"
+                                        onClick={() => setCustomTestConfig((prev) => ({ ...prev, sameForAll: !prev.sameForAll }))}
+                                        className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-foreground/80"
+                                    >
+                                        <span className={cn('w-4 h-4 rounded border flex items-center justify-center shrink-0', customTestConfig.sameForAll ? 'bg-primary border-primary' : 'border-muted-foreground/40')}>
+                                            {customTestConfig.sameForAll && <Check className="w-3 h-3 text-white" />}
+                                        </span>
+                                        Same questions in all subjects
+                                    </button>
+                                </div>
+
+                                {activeSubjects.length === 0 ? (
+                                    <p className="text-[11px] font-bold text-muted-foreground normal-case">Select at least one unlocked subject to set the question load.</p>
+                                ) : customTestConfig.sameForAll ? (
+                                    <div className="space-y-3">
+                                        <div className="flex items-center gap-3">
+                                            <div className="relative w-40">
+                                                <Input
+                                                    type="number"
+                                                    min={MIN_QUESTIONS_PER_SUBJECT}
+                                                    max={MAX_QUESTIONS_PER_SUBJECT}
+                                                    value={customTestConfig.baseCount}
+                                                    onChange={(e) => setCustomTestConfig((prev) => ({
+                                                        ...prev,
+                                                        baseCount: Math.max(MIN_QUESTIONS_PER_SUBJECT, Math.min(MAX_QUESTIONS_PER_SUBJECT, Math.trunc(Number(e.target.value) || 0))),
+                                                    }))}
+                                                    className="h-14 rounded-2xl bg-white dark:bg-white/5 border border-border/40 px-5 text-sm font-black"
+                                                />
+                                                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-black text-muted-foreground uppercase tracking-widest">/ subject</span>
+                                            </div>
+                                            {doubleBio && activeSubjects.some((s) => normalizeSubject(s) === 'biology') && (
+                                                <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 normal-case">Biology gets 2× on NEET</span>
+                                            )}
+                                        </div>
+                                        {/* Preview of the resolved per-subject counts. */}
+                                        <div className="flex flex-wrap gap-2">
+                                            {activeSubjects.map((s) => {
+                                                const canonical = normalizeSubject(s) ?? s;
+                                                return (
+                                                    <span key={s} className="px-3 py-1.5 rounded-lg bg-primary/5 border border-primary/10 text-[11px] font-black text-foreground/80">
+                                                        {SUBJECT_LABELS[canonical] ?? canonical} · {resolvedCounts[canonical as keyof SubjectCounts] ?? 0}
+                                                    </span>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-2">
+                                        {activeSubjects.map((s) => {
+                                            const canonical = normalizeSubject(s) ?? s;
+                                            return (
+                                                <div key={s} className="flex items-center justify-between gap-3">
+                                                    <span className="text-xs font-black text-foreground/80">{SUBJECT_LABELS[canonical] ?? canonical}</span>
+                                                    <Input
+                                                        type="number"
+                                                        min={MIN_QUESTIONS_PER_SUBJECT}
+                                                        max={MAX_QUESTIONS_PER_SUBJECT}
+                                                        value={customTestConfig.perSubjectCounts[canonical] ?? customTestConfig.baseCount}
+                                                        onChange={(e) => setCustomTestConfig((prev) => ({
+                                                            ...prev,
+                                                            perSubjectCounts: {
+                                                                ...prev.perSubjectCounts,
+                                                                [canonical]: Math.max(MIN_QUESTIONS_PER_SUBJECT, Math.min(MAX_QUESTIONS_PER_SUBJECT, Math.trunc(Number(e.target.value) || 0))),
+                                                            },
+                                                        }))}
+                                                        className="h-12 w-28 rounded-xl bg-white dark:bg-white/5 border border-border/40 px-4 text-sm font-black"
+                                                    />
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Per-question timer → total duration. */}
+                            <div className="space-y-4">
+                                <div className="flex justify-between items-center">
+                                    <Label className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">Time Per Question</Label>
+                                    <span className="text-[10px] font-bold text-muted-foreground normal-case">{MIN_SECONDS_PER_QUESTION}s – {Math.round(MAX_SECONDS_PER_QUESTION / 60)} min</span>
+                                </div>
+                                <div className="relative w-40">
+                                    <Input
+                                        type="number"
+                                        min={MIN_SECONDS_PER_QUESTION}
+                                        max={MAX_SECONDS_PER_QUESTION}
+                                        step={10}
+                                        value={customTestConfig.secondsPerQuestion}
+                                        onChange={(e) => setCustomTestConfig((prev) => ({
+                                            ...prev,
+                                            secondsPerQuestion: Math.max(MIN_SECONDS_PER_QUESTION, Math.min(MAX_SECONDS_PER_QUESTION, Math.trunc(Number(e.target.value) || DEFAULT_SECONDS_PER_QUESTION))),
+                                        }))}
+                                        className="h-14 rounded-2xl bg-white dark:bg-white/5 border border-border/40 px-5 text-sm font-black"
+                                    />
+                                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-black text-muted-foreground uppercase tracking-widest">sec</span>
                                 </div>
                             </div>
 
-                            <div className="space-y-4">
-                                <div className="flex justify-between items-center">
-                                    <Label className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">Duration (Optional)</Label>
-                                    <span className="text-[10px] font-bold text-muted-foreground normal-case">Leave blank to auto-calculate</span>
+                            {/* Live summary: total questions + total duration. */}
+                            {activeSubjects.length > 0 && totalQ > 0 && (
+                                <div className="flex items-center justify-between gap-3 p-4 rounded-2xl bg-primary/5 border border-primary/10">
+                                    <span className="text-[11px] font-black uppercase tracking-widest text-muted-foreground">Total</span>
+                                    <span className="text-sm font-black text-foreground">
+                                        {totalQ} question{totalQ === 1 ? '' : 's'} · {durationMin} min
+                                    </span>
                                 </div>
-                                <div className="relative">
-                                    <Input
-                                        type="number"
-                                        min={1}
-                                        placeholder="Auto"
-                                        value={customTestConfig.duration_minutes}
-                                        onChange={(e) => setCustomTestConfig({ ...customTestConfig, duration_minutes: e.target.value ? Math.max(1, Number(e.target.value)) : '' })}
-                                        className="h-14 rounded-2xl bg-white dark:bg-white/5 border border-border/40 px-5 text-sm font-bold"
-                                    />
-                                    <span className="absolute right-5 top-1/2 -translate-y-1/2 text-xs font-black text-muted-foreground uppercase tracking-widest">min</span>
-                                </div>
-                            </div>
+                            )}
 
                             {customTestError && (
                                 <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-500 text-xs font-bold text-center">
@@ -734,8 +917,8 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
 
                             <Button
                                 onClick={handleCreateCustomTest}
-                                disabled={creatingTest}
-                                className="w-full h-16 rounded-3xl bg-primary text-white font-black text-lg uppercase tracking-tighter transition-all shadow-xl shadow-primary/20"
+                                disabled={creatingTest || activeSubjects.length === 0 || totalQ <= 0}
+                                className="w-full h-16 rounded-3xl bg-primary text-white font-black text-lg uppercase tracking-tighter transition-all shadow-xl shadow-primary/20 disabled:opacity-50"
                             >
                                 {creatingTest ? (
                                     <div className="flex items-center gap-3">

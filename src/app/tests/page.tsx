@@ -8,6 +8,7 @@ import { listTestsForRender } from '@/server/render-loaders';
 import { getStudentScope } from '@/server/study-scope';
 import { describePresetAvailability } from '@/server/assessments/full-test-service';
 import { ALL_EXAM_PRESETS } from '@/lib/exam-blueprints';
+import { ALL_SUBJECTS } from '@/lib/entitlements';
 import TestsClient from './_client';
 import TestsLoading from './loading';
 import type { ExamPresetCard } from '@/components/test/ExamPresetCards';
@@ -47,21 +48,28 @@ async function TestsContent() {
     // Fall back gracefully; TestList will fetch client-side on mount
   }
 
-  // Full-length exam presets. Resolved here, on the server, so the locked state
-  // reflects the student's real entitlements rather than anything the browser
-  // could assert (the action re-checks regardless — see D2). An empty array
-  // hides the whole surface, which is also what the flag being off produces.
+  // Resolve the student's scope once (React-cached) — used both for the preset
+  // lock state and for the Custom Test Builder's per-subject premium locks. The
+  // builder shows all four subjects and locks the ones the student is not
+  // entitled to; `ownedSubjects` is that unlock set (ALL_SUBJECTS when the
+  // premium gate is off, so dev/free-flag builds are fully unlocked).
+  let ownedSubjects: string[] = [...ALL_SUBJECTS];
   let examPresets: ExamPresetCard[] = [];
-  if (isFeatureEnabled('fullLengthMocks')) {
-    try {
-      const scope = await getStudentScope(user.id, user.role);
+  try {
+    const scope = await getStudentScope(user.id, user.role);
+    ownedSubjects = scope.ownedSubjects;
+    // Full-length exam presets. Resolved here, on the server, so the locked state
+    // reflects the student's real entitlements rather than anything the browser
+    // could assert (the action re-checks regardless — see D2). An empty array
+    // hides the whole surface, which is also what the flag being off produces.
+    if (isFeatureEnabled('fullLengthMocks')) {
       examPresets = describePresetAvailability(scope, ALL_EXAM_PRESETS) as ExamPresetCard[];
-    } catch {
-      // A scope-resolution failure must not take down the Tests hub; the presets
-      // simply do not render this time.
-      examPresets = [];
     }
+  } catch {
+    // A scope-resolution failure must not take down the Tests hub; presets simply
+    // do not render and the builder falls back to "all unlocked".
+    examPresets = [];
   }
 
-  return <TestsClient initialTests={initialTests} examPresets={examPresets} />;
+  return <TestsClient initialTests={initialTests} examPresets={examPresets} ownedSubjects={ownedSubjects} />;
 }
