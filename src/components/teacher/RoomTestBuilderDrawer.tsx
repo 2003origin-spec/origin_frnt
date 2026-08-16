@@ -106,8 +106,8 @@ export function RoomTestBuilderDrawer({ workspaceId, room, bagQuestions, ogcodeE
     sameForAll: true,
     baseCount: 10,
     perSubjectCounts: {} as Record<string, number>,
-    // Time: per-question timer OR fixed total exam time (hh:mm:ss).
-    timeMode: "perQuestion" as "perQuestion" | "total",
+    // Time: fixed total exam time (hh:mm:ss, default) OR per-question timer.
+    timeMode: "total" as "perQuestion" | "total",
     secondsPerQuestion: DEFAULT_SECONDS_PER_QUESTION,
     totalTime: { h: 0, m: 30, s: 0 } as Hms,
   });
@@ -509,7 +509,7 @@ export function RoomTestBuilderDrawer({ workspaceId, room, bagQuestions, ogcodeE
                 <div className="flex items-center justify-between gap-3">
                   <Label>Timing</Label>
                   <div className="inline-flex rounded-lg border p-0.5">
-                    {(["perQuestion", "total"] as const).map((tm) => (
+                    {(["total", "perQuestion"] as const).map((tm) => (
                       <button
                         key={tm}
                         type="button"
@@ -563,10 +563,29 @@ export function RoomTestBuilderDrawer({ workspaceId, room, bagQuestions, ogcodeE
               </div>
 
               {autoConfig.subjects.length > 0 && autoTotalQ > 0 ? (
-                <p className="text-xs text-muted-foreground">
-                  {autoTotalQ} question{autoTotalQ === 1 ? "" : "s"} · {autoDurationMin} min · {autoMaxScore} marks total.
-                  {autoConfig.chapter ? ` Short on questions in this chapter? We'll top up from other ${singleSubject} chapters.` : ""}
-                </p>
+                <div className="rounded-lg border bg-muted/30 p-3 space-y-1.5">
+                  {/* Subject-wise first. */}
+                  <div className="space-y-1">
+                    {autoConfig.subjects.map((s) => {
+                      const canonical = normalizeSubject(s) ?? s;
+                      const count = autoResolvedCounts[canonical as keyof SubjectCounts] ?? 0;
+                      return (
+                        <div key={s} className="flex items-center justify-between gap-3 text-xs">
+                          <span className="font-medium">{SUBJECT_OPTIONS.find((o) => o.value === canonical)?.label ?? canonical}</span>
+                          <span className="font-semibold">{count} Q · {count * 4} marks</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {/* Grand total. */}
+                  <div className="flex items-center justify-between gap-3 pt-1.5 border-t text-xs font-semibold">
+                    <span className="uppercase tracking-wide text-muted-foreground">Total</span>
+                    <span>{autoTotalQ} question{autoTotalQ === 1 ? "" : "s"} · {autoDurationMin} min · {autoMaxScore} marks</span>
+                  </div>
+                  {autoConfig.chapter ? (
+                    <p className="text-[11px] text-muted-foreground">Short on questions in this chapter? We&apos;ll top up from other {singleSubject} chapters.</p>
+                  ) : null}
+                </div>
               ) : null}
 
               <Button type="button" onClick={generateFromOgcode} disabled={generating || autoConfig.subjects.length === 0 || autoTotalQ <= 0} variant="secondary" className="w-full">

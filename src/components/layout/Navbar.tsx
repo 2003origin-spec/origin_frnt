@@ -414,15 +414,17 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                                 {expanded ? (user.name.split(' ')[0] || 'Profile') : 'Profile'}
                             </span>
                         </button>
-                        {/* Hover expand tooltip */}
-                        {!expanded && (
+                        {/* Hover expand tooltip — suppressed while the profile menu is
+                            open (the same hover opens it), so the label no longer
+                            overlaps the menu / logout row. */}
+                        {!expanded && !showProfileMenu && (
                         <div className="absolute left-[72px] bottom-0 pointer-events-none z-[60] flex items-center">
                             <div className={cn(
                                 'flex items-center h-9 rounded-r-xl bg-[hsl(var(--neu-bg))] backdrop-blur-xl',
                                 'border border-l-0 border-primary/20 shadow-lg overflow-hidden',
                                 'w-0 group-hover/profile:w-28 transition-all duration-200 ease-out'
                             )}>
-                                <span className="whitespace-nowrap text-xs font-bold text-foreground px-3">{user.name.split(' ')[0]}</span>
+                                <span className="whitespace-nowrap text-xs font-bold text-foreground px-3">Profile</span>
                             </div>
                         </div>
                         )}

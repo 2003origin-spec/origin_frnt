@@ -195,8 +195,8 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
     sameForAll: true,
     baseCount: 10,
     perSubjectCounts: {} as Record<string, number>,
-    // Time: either a per-question timer OR a fixed total exam time (hh:mm:ss).
-    timeMode: 'perQuestion' as 'perQuestion' | 'total',
+    // Time: either a fixed total exam time (hh:mm:ss, default) OR a per-question timer.
+    timeMode: 'total' as 'perQuestion' | 'total',
     secondsPerQuestion: DEFAULT_SECONDS_PER_QUESTION,
     totalTime: { h: 0, m: 30, s: 0 } as Hms,
   });
@@ -686,7 +686,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
 
               {/* Build Lab (The Creator UI) */}
               <TabsContent value="build" className="mt-0 outline-none">
-                <div className="max-w-4xl mx-auto">
+                <div className="max-w-6xl mx-auto">
                     {examPresets && examPresets.length > 0 && (
                       <ExamPresetCards presets={examPresets} onGenerate={handleGenerateFullLength} />
                     )}
@@ -710,7 +710,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                             </div>
                             <Plus className="absolute top-6 right-20 sm:top-10 sm:right-24 w-12 h-12 sm:w-20 sm:h-20 opacity-10 pointer-events-none" />
                         </div>
-                        <div className="p-6 sm:p-10 space-y-6 sm:space-y-10">
+                        <div className="p-6 sm:p-8 lg:p-10">
                             {/* Exam quick-preset: sets the subjects + ratio for JEE/NEET.
                                 Locked unless the student owns all that exam's subjects. */}
                             <div className="space-y-4">
@@ -755,7 +755,11 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                                 </div>
                             </div>
 
-                            <div className="grid sm:grid-cols-2 gap-10">
+                            {/* Two-panel layout: left = what to practise, right = load,
+                                timing & action. Stacks to one column on mobile/tablet. */}
+                            <div className="mt-6 sm:mt-8 grid gap-8 lg:gap-12 lg:grid-cols-12 lg:items-start">
+                              {/* LEFT — subject/class/chapter selection */}
+                              <div className="lg:col-span-7 space-y-6">
                                 <div className="space-y-4">
                                     <Label className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">Class</Label>
                                     <ChipMultiSelect
@@ -913,8 +917,10 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                                         </p>
                                     )}
                                 </div>
-                            </div>
+                              </div>{/* end LEFT panel */}
 
+                              {/* RIGHT — question load, timing, summary & action */}
+                              <div className="lg:col-span-5 space-y-6">
                             <div className="space-y-5">
                                 <div className="flex items-center justify-between gap-3">
                                     <Label className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">Question Load</Label>
@@ -1031,7 +1037,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                                     <Label className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">Timing</Label>
                                     {/* Mode toggle. */}
                                     <div className="inline-flex rounded-xl border border-border/40 p-0.5 bg-background">
-                                        {(['perQuestion', 'total'] as const).map((mode) => (
+                                        {(['total', 'perQuestion'] as const).map((mode) => (
                                             <button
                                                 key={mode}
                                                 type="button"
@@ -1123,10 +1129,24 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                                 )}
                             </div>
 
-                            {/* Live summary: total questions · duration · max score. */}
+                            {/* Live summary: per-subject counts first, then the grand total. */}
                             {activeSubjects.length > 0 && totalQ > 0 && (
-                                <div className="p-4 rounded-2xl bg-primary/5 border border-primary/10 space-y-1.5">
-                                    <div className="flex items-center justify-between gap-3">
+                                <div className="p-4 rounded-2xl bg-primary/5 border border-primary/10 space-y-2">
+                                    {/* Subject-wise breakdown. */}
+                                    <div className="space-y-1">
+                                        {activeSubjects.map((s) => {
+                                            const canonical = normalizeSubject(s) ?? s;
+                                            const count = resolvedCounts[canonical as keyof SubjectCounts] ?? 0;
+                                            return (
+                                                <div key={s} className="flex items-center justify-between gap-3">
+                                                    <span className="text-xs font-bold text-foreground/80">{SUBJECT_LABELS[canonical] ?? canonical}</span>
+                                                    <span className="text-xs font-black text-foreground">{count} Q · {count * 4} marks</span>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                    {/* Grand total. */}
+                                    <div className="flex items-center justify-between gap-3 pt-2 border-t border-primary/10">
                                         <span className="text-[11px] font-black uppercase tracking-widest text-muted-foreground">Total</span>
                                         <span className="text-sm font-black text-foreground">
                                             {totalQ} question{totalQ === 1 ? '' : 's'} · {durationMin} min · {maxScore} marks
@@ -1159,6 +1179,8 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                                     </div>
                                 )}
                             </Button>
+                              </div>{/* end RIGHT panel */}
+                            </div>{/* end config grid */}
                         </div>
                     </Card>
 

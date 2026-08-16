@@ -13,12 +13,16 @@
  */
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ChevronDown, Clock, FileText, Loader2, Lock, Play, Target, Trophy } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { ChevronDown, Clock, FileText, Loader2, Lock, Play, Target, Trophy, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ExamPresetId } from '@/lib/exam-blueprints';
+
+const SUBJECT_TITLE = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /** Mirrors `PresetAvailability` from the server, kept structural for the client bundle. */
 export type ExamPresetCard = {
@@ -48,11 +52,19 @@ export default function ExamPresetCards({
   /** Creates the mock server-side and starts it. Rejects with a user-safe message. */
   onGenerate: (preset: ExamPresetId) => Promise<void>;
 }) {
+  const router = useRouter();
   const [pending, setPending] = useState<ExamPresetId | null>(null);
   const [expanded, setExpanded] = useState<ExamPresetId | null>(null);
   const [error, setError] = useState('');
+  // The locked preset whose "unlock" popup is open (null = closed).
+  const [lockedPreset, setLockedPreset] = useState<ExamPresetCard | null>(null);
 
   if (presets.length === 0) return null;
+
+  // Subjects still needed to unlock a preset — the server-derived list when
+  // present, else every subject the preset requires.
+  const missingSubjects = (p: ExamPresetCard) =>
+    (p.lockReason?.missing?.length ? p.lockReason.missing : p.subjects).map((s) => s.toLowerCase());
 
   const handleGenerate = async (preset: ExamPresetId) => {
     setPending(preset);
@@ -168,8 +180,10 @@ export default function ExamPresetCards({
                   </p>
                 ) : null}
                 <Button
-                  onClick={() => handleGenerate(preset.preset)}
-                  disabled={disabled}
+                  onClick={() => (preset.locked ? setLockedPreset(preset) : handleGenerate(preset.preset))}
+                  // Locked cards stay clickable (to open the unlock popup); only a
+                  // build in flight disables everything.
+                  disabled={pending !== null}
                   className="h-12 w-full rounded-2xl bg-primary text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-primary/20 transition-all disabled:opacity-50 disabled:shadow-none"
                 >
                   {isPending ? (
@@ -194,6 +208,57 @@ export default function ExamPresetCards({
           );
         })}
       </div>
+
+      {/* Unlock popup for a locked preset. */}
+      <Dialog open={lockedPreset !== null} onOpenChange={(open) => !open && setLockedPreset(null)}>
+        <DialogContent className="max-w-md rounded-3xl">
+          {lockedPreset && (() => {
+            const missing = missingSubjects(lockedPreset);
+            const required = lockedPreset.subjects.map((s) => s.toLowerCase());
+            const missingSet = new Set(missing);
+            return (
+              <>
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2 text-lg font-black uppercase tracking-tight">
+                    <Lock className="h-5 w-5 text-amber-500" />
+                    Unlock {lockedPreset.label}
+                  </DialogTitle>
+                  <DialogDescription className="text-sm font-medium text-muted-foreground">
+                    The {lockedPreset.label} mock needs all {required.length} subjects. Go premium on the missing one{missing.length === 1 ? '' : 's'} to unlock it.
+                  </DialogDescription>
+                </DialogHeader>
+                <ul className="my-2 space-y-2">
+                  {required.map((s) => {
+                    const isMissing = missingSet.has(s);
+                    return (
+                      <li
+                        key={s}
+                        className={cn(
+                          'flex items-center justify-between gap-2 rounded-xl border px-3 py-2 text-sm font-bold',
+                          isMissing ? 'border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400' : 'border-emerald-500/20 bg-emerald-500/5 text-emerald-600 dark:text-emerald-400',
+                        )}
+                      >
+                        <span>{SUBJECT_TITLE(s)}</span>
+                        {isMissing ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-widest"><Lock className="h-3 w-3" /> Locked</span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-widest"><Check className="h-3 w-3" /> Owned</span>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+                <Button
+                  onClick={() => router.push(`/premium?subject=${missing[0] ?? ''}`)}
+                  className="h-12 w-full rounded-2xl bg-primary text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-primary/20"
+                >
+                  Go Premium to unlock {lockedPreset.label}
+                </Button>
+              </>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }
