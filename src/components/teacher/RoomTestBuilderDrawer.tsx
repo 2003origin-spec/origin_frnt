@@ -36,21 +36,29 @@ import { toast } from "sonner";
 
 import { QuestionPicker, type SelectedQuestion } from "./QuestionPicker";
 import { normalizeSubject } from "@/lib/entitlements";
-import type { StudyMode } from "@/lib/study-mode";
 import {
   resolveEqualCounts,
   computeDurationMinutes,
+  computeMaxScore,
   totalQuestions,
+  examMode,
+  hmsToMinutes,
+  clampHms,
+  formatHms,
+  BUILDER_EXAMS,
+  EXAM_SUBJECTS,
+  EXAM_LABELS,
   DEFAULT_SECONDS_PER_QUESTION,
   MIN_QUESTIONS_PER_SUBJECT,
   MAX_QUESTIONS_PER_SUBJECT,
   MIN_SECONDS_PER_QUESTION,
   MAX_SECONDS_PER_QUESTION,
   type SubjectCounts,
+  type BuilderExam,
+  type Hms,
 } from "@/lib/subject-test-plan";
 
 const CLASS_OPTIONS = [11, 12] as const;
-const EXAM_OPTIONS = ["JEE", "NEET", "AIPMT"] as const;
 const SUBJECT_OPTIONS = [
   { value: "physics", label: "Physics" },
   { value: "chemistry", label: "Chemistry" },
@@ -90,17 +98,18 @@ export function RoomTestBuilderDrawer({ workspaceId, room, bagQuestions, ogcodeE
   // /api/assessments/ogcode/facets endpoint for the chapter cascade.
   const [autoConfig, setAutoConfig] = useState({
     classLevel: "" as "" | (typeof CLASS_OPTIONS)[number],
-    exam: "" as "" | (typeof EXAM_OPTIONS)[number],
-    // Subject-wise auto-build. The teacher is treated as entitled to every
-    // subject (workspace membership is the authz on the route), so all four are
-    // available — no locks here, unlike the student builder.
+    // Exam preset chip (JEE/NEET) — presets subjects + ratio; all unlocked for
+    // the teacher (workspace membership is the authz on the route).
+    exam: null as BuilderExam | null,
     subjects: [] as string[],
     chapter: "",
     sameForAll: true,
     baseCount: 10,
     perSubjectCounts: {} as Record<string, number>,
+    // Time: per-question timer OR fixed total exam time (hh:mm:ss).
+    timeMode: "perQuestion" as "perQuestion" | "total",
     secondsPerQuestion: DEFAULT_SECONDS_PER_QUESTION,
-    durationMinutes: "" as "" | number,
+    totalTime: { h: 0, m: 30, s: 0 } as Hms,
   });
   const [facetChapters, setFacetChapters] = useState<string[]>([]);
   const [facetChaptersLoading, setFacetChaptersLoading] = useState(false);
@@ -137,8 +146,9 @@ export function RoomTestBuilderDrawer({ workspaceId, room, bagQuestions, ogcodeE
       });
   }, [mode, autoConfig.classLevel, autoConfig.exam, singleSubject]);
 
-  // Exam → mode for the double-Biology rule (NEET/AIPMT double Biology).
-  const autoMode: StudyMode = autoConfig.exam === "NEET" || autoConfig.exam === "AIPMT" ? "neet" : "jee";
+  // Exam → mode for the double-Biology rule (NEET doubles Biology). No exam
+  // selected → plain equal split (jee).
+  const autoMode = autoConfig.exam ? examMode(autoConfig.exam) : "jee";
   const autoResolvedCounts: SubjectCounts = (() => {
     if (!autoConfig.subjects.length) return {};
     if (autoConfig.sameForAll) return resolveEqualCounts(autoConfig.subjects, autoConfig.baseCount, autoMode);
@@ -152,7 +162,18 @@ export function RoomTestBuilderDrawer({ workspaceId, room, bagQuestions, ogcodeE
     return out;
   })();
   const autoTotalQ = totalQuestions(autoResolvedCounts);
-  const autoDurationMin = computeDurationMinutes(autoResolvedCounts, autoConfig.secondsPerQuestion);
+  const autoDurationMin = autoConfig.timeMode === "total"
+    ? hmsToMinutes(autoConfig.totalTime)
+    : computeDurationMinutes(autoResolvedCounts, autoConfig.secondsPerQuestion);
+  const autoMaxScore = computeMaxScore(autoResolvedCounts);
+
+  // Tapping an exam chip presets subjects + ratio (still editable). Tapping the
+  // active one clears it.
+  const selectAutoExam = (exam: BuilderExam) => {
+    setAutoConfig((prev) => prev.exam === exam
+      ? { ...prev, exam: null }
+      : { ...prev, exam, subjects: [...EXAM_SUBJECTS[exam]], chapter: "", sameForAll: true, perSubjectCounts: {} });
+  };
 
   async function generateFromOgcode() {
     if (!autoConfig.subjects.length || autoTotalQ <= 0) {
@@ -171,9 +192,10 @@ export function RoomTestBuilderDrawer({ workspaceId, room, bagQuestions, ogcodeE
             subject_question_counts: autoResolvedCounts as Record<string, number>,
             chapter: singleSubject ? autoConfig.chapter || undefined : undefined,
             class_level: autoConfig.classLevel || undefined,
-            exam: autoConfig.exam || undefined,
-            seconds_per_question: autoConfig.secondsPerQuestion,
-            duration_minutes: autoConfig.durationMinutes || undefined,
+            exam: autoConfig.exam ? EXAM_LABELS[autoConfig.exam] : undefined,
+            ...(autoConfig.timeMode === "total"
+              ? { duration_minutes: hmsToMinutes(autoConfig.totalTime) }
+              : { seconds_per_question: autoConfig.secondsPerQuestion }),
           },
         },
       );
@@ -339,7 +361,26 @@ export function RoomTestBuilderDrawer({ workspaceId, room, bagQuestions, ogcodeE
 
           {mode === "auto" && ogcodeEnabled ? (
             <div className="space-y-4 rounded-xl border p-4">
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {/* Exam preset — presets subjects + ratio (JEE 1:1:1, NEET Bio 2×). */}
+              <div className="space-y-1.5">
+                <Label>Exam preset</Label>
+                <div className="flex flex-wrap gap-2">
+                  {BUILDER_EXAMS.map((ex) => (
+                    <button
+                      key={ex}
+                      type="button"
+                      onClick={() => selectAutoExam(ex)}
+                      className={`h-9 px-4 rounded-lg border text-sm font-medium transition-colors ${
+                        autoConfig.exam === ex ? "border-primary bg-primary text-primary-foreground" : "hover:border-primary/40"
+                      }`}
+                    >
+                      {EXAM_LABELS[ex]}
+                    </button>
+                  ))}
+                  <span className="self-center text-xs text-muted-foreground">Optional — presets subjects &amp; ratio</span>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label>Class</Label>
                   <select
@@ -355,19 +396,6 @@ export function RoomTestBuilderDrawer({ workspaceId, room, bagQuestions, ogcodeE
                     <option value="">Any</option>
                     {CLASS_OPTIONS.map((c) => (
                       <option key={c} value={c}>Class {c}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Exam</Label>
-                  <select
-                    value={autoConfig.exam}
-                    onChange={(e) => setAutoConfig({ ...autoConfig, exam: e.target.value as "" | (typeof EXAM_OPTIONS)[number] })}
-                    className="h-10 w-full rounded-xl border bg-background px-3 text-sm"
-                  >
-                    <option value="">Any</option>
-                    {EXAM_OPTIONS.map((exam) => (
-                      <option key={exam} value={exam}>{exam}</option>
                     ))}
                   </select>
                 </div>
@@ -404,6 +432,7 @@ export function RoomTestBuilderDrawer({ workspaceId, room, bagQuestions, ogcodeE
                           subjects: prev.subjects.includes(opt.value)
                             ? prev.subjects.filter((x) => x !== opt.value)
                             : [...prev.subjects, opt.value],
+                          exam: null,
                           chapter: "",
                         }))}
                         className={`h-9 px-3 rounded-lg border text-sm font-medium transition-colors ${
@@ -475,25 +504,67 @@ export function RoomTestBuilderDrawer({ workspaceId, room, bagQuestions, ogcodeE
                 )}
               </div>
 
-              <div className="space-y-1.5">
-                <Label>Time per question (sec)</Label>
-                <Input
-                  type="number"
-                  min={MIN_SECONDS_PER_QUESTION}
-                  max={MAX_SECONDS_PER_QUESTION}
-                  step={10}
-                  value={autoConfig.secondsPerQuestion}
-                  onChange={(e) => setAutoConfig((prev) => ({
-                    ...prev,
-                    secondsPerQuestion: Math.max(MIN_SECONDS_PER_QUESTION, Math.min(MAX_SECONDS_PER_QUESTION, Math.trunc(Number(e.target.value) || DEFAULT_SECONDS_PER_QUESTION))),
-                  }))}
-                  className="w-28"
-                />
+              {/* Timing: per-question OR fixed total exam time. */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-3">
+                  <Label>Timing</Label>
+                  <div className="inline-flex rounded-lg border p-0.5">
+                    {(["perQuestion", "total"] as const).map((tm) => (
+                      <button
+                        key={tm}
+                        type="button"
+                        onClick={() => setAutoConfig((prev) => ({ ...prev, timeMode: tm }))}
+                        className={`h-8 px-3 rounded-md text-xs font-medium transition-colors ${
+                          autoConfig.timeMode === tm ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        {tm === "perQuestion" ? "Per question" : "Total time"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {autoConfig.timeMode === "perQuestion" ? (
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      min={MIN_SECONDS_PER_QUESTION}
+                      max={MAX_SECONDS_PER_QUESTION}
+                      step={10}
+                      value={autoConfig.secondsPerQuestion}
+                      onChange={(e) => setAutoConfig((prev) => ({
+                        ...prev,
+                        secondsPerQuestion: Math.max(MIN_SECONDS_PER_QUESTION, Math.min(MAX_SECONDS_PER_QUESTION, Math.trunc(Number(e.target.value) || DEFAULT_SECONDS_PER_QUESTION))),
+                      }))}
+                      className="w-28"
+                    />
+                    <span className="text-xs text-muted-foreground">sec / question</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    {(["h", "m", "s"] as const).map((seg, i) => (
+                      <div key={seg} className="flex items-center gap-2">
+                        {i > 0 && <span className="text-sm font-bold text-muted-foreground">:</span>}
+                        <Input
+                          type="number"
+                          min={0}
+                          max={seg === "h" ? 6 : 59}
+                          value={autoConfig.totalTime[seg]}
+                          onChange={(e) => setAutoConfig((prev) => ({
+                            ...prev,
+                            totalTime: clampHms({ ...prev.totalTime, [seg]: Math.trunc(Number(e.target.value) || 0) }),
+                          }))}
+                          className="w-20 text-center"
+                        />
+                      </div>
+                    ))}
+                    <span className="text-xs text-muted-foreground">hh:mm:ss ({formatHms(clampHms(autoConfig.totalTime))})</span>
+                  </div>
+                )}
               </div>
 
               {autoConfig.subjects.length > 0 && autoTotalQ > 0 ? (
                 <p className="text-xs text-muted-foreground">
-                  {autoTotalQ} question{autoTotalQ === 1 ? "" : "s"} · {autoDurationMin} min total.
+                  {autoTotalQ} question{autoTotalQ === 1 ? "" : "s"} · {autoDurationMin} min · {autoMaxScore} marks total.
                   {autoConfig.chapter ? ` Short on questions in this chapter? We'll top up from other ${singleSubject} chapters.` : ""}
                 </p>
               ) : null}
