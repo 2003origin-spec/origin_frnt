@@ -851,7 +851,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                                       <>
                                         {/* click-away backdrop */}
                                         <div className="fixed inset-0 z-40" onClick={() => setChapterDropdownOpen(false)} />
-                                        <div className="absolute left-0 right-0 z-50 mt-2 max-h-[420px] flex flex-col rounded-2xl border border-border/40 bg-background shadow-xl overflow-hidden">
+                                        <div className="absolute left-0 right-0 z-50 mt-2 flex flex-col rounded-2xl border border-border/40 bg-background shadow-xl overflow-hidden">
                                             <div className="p-2 border-b border-border/40 shrink-0">
                                                 <input
                                                     type="text"
@@ -861,7 +861,10 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                                                     className="w-full bg-muted/40 border border-border/40 rounded-lg px-3 py-2 text-xs outline-none focus:border-primary/50"
                                                 />
                                             </div>
-                                            <div className="overflow-y-auto p-2 flex-1 space-y-1">
+                                            {/* Explicit bounded height + own scroll — the popover is absolute inside
+                                                a Card with overflow-hidden, so it must scroll internally rather than
+                                                grow past the card edge (which clipped it, blocking scroll). */}
+                                            <div className="overflow-y-auto overscroll-contain p-2 space-y-1 max-h-[min(60vh,320px)]">
                                                 {(() => {
                                                     const filtered = facetChapters.filter((ch) => ch.toLowerCase().includes(chapterSearch.toLowerCase()));
                                                     if (filtered.length === 0) {
@@ -1073,30 +1076,42 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                                         <div className="flex items-center gap-2 flex-wrap">
                                             <button
                                                 type="button"
-                                                onClick={() => setCustomTestConfig((prev) => ({ ...prev, secondsPerQuestion: Math.max(MIN_SECONDS_PER_QUESTION, prev.secondsPerQuestion - 10) }))}
+                                                onClick={() => setCustomTestConfig((prev) => ({ ...prev, secondsPerQuestion: Math.max(MIN_SECONDS_PER_QUESTION, prev.secondsPerQuestion - 1) }))}
                                                 className="h-12 w-12 shrink-0 rounded-xl border border-border/40 bg-background text-lg font-black hover:border-primary/40"
-                                                aria-label="Decrease time"
+                                                aria-label="Decrease time by one second"
                                             >−</button>
                                             <div className="relative flex-1 min-w-[8rem]">
                                                 <Input
                                                     type="number"
                                                     min={MIN_SECONDS_PER_QUESTION}
                                                     max={MAX_SECONDS_PER_QUESTION}
-                                                    step={10}
+                                                    step={1}
                                                     value={customTestConfig.secondsPerQuestion}
+                                                    // Allow free typing (any value up to the max) so intermediate
+                                                    // entries like "3" on the way to "34" aren't snapped to the min;
+                                                    // the minimum is enforced on blur instead.
                                                     onChange={(e) => setCustomTestConfig((prev) => ({
                                                         ...prev,
-                                                        secondsPerQuestion: Math.max(MIN_SECONDS_PER_QUESTION, Math.min(MAX_SECONDS_PER_QUESTION, Math.trunc(Number(e.target.value) || DEFAULT_SECONDS_PER_QUESTION))),
+                                                        secondsPerQuestion: Math.min(MAX_SECONDS_PER_QUESTION, Math.max(0, Math.trunc(Number(e.target.value) || 0))),
                                                     }))}
+                                                    onBlur={(e) => {
+                                                        const raw = Math.trunc(Number(e.target.value) || 0);
+                                                        setCustomTestConfig((prev) => ({
+                                                            ...prev,
+                                                            secondsPerQuestion: raw <= 0
+                                                                ? DEFAULT_SECONDS_PER_QUESTION
+                                                                : Math.max(MIN_SECONDS_PER_QUESTION, Math.min(MAX_SECONDS_PER_QUESTION, raw)),
+                                                        }));
+                                                    }}
                                                     className={cn('h-12 rounded-xl bg-white dark:bg-white/5 border border-border/40 pl-4 pr-14 text-sm font-black', NO_SPINNER)}
                                                 />
                                                 <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-black text-muted-foreground uppercase tracking-widest pointer-events-none">sec</span>
                                             </div>
                                             <button
                                                 type="button"
-                                                onClick={() => setCustomTestConfig((prev) => ({ ...prev, secondsPerQuestion: Math.min(MAX_SECONDS_PER_QUESTION, prev.secondsPerQuestion + 10) }))}
+                                                onClick={() => setCustomTestConfig((prev) => ({ ...prev, secondsPerQuestion: Math.min(MAX_SECONDS_PER_QUESTION, Math.max(MIN_SECONDS_PER_QUESTION, prev.secondsPerQuestion) + 1) }))}
                                                 className="h-12 w-12 shrink-0 rounded-xl border border-border/40 bg-background text-lg font-black hover:border-primary/40"
-                                                aria-label="Increase time"
+                                                aria-label="Increase time by one second"
                                             >+</button>
                                         </div>
                                     </div>

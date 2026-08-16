@@ -529,12 +529,22 @@ export function RoomTestBuilderDrawer({ workspaceId, room, bagQuestions, ogcodeE
                       type="number"
                       min={MIN_SECONDS_PER_QUESTION}
                       max={MAX_SECONDS_PER_QUESTION}
-                      step={10}
+                      step={1}
                       value={autoConfig.secondsPerQuestion}
+                      // Free typing; minimum enforced on blur (so "34" isn't snapped).
                       onChange={(e) => setAutoConfig((prev) => ({
                         ...prev,
-                        secondsPerQuestion: Math.max(MIN_SECONDS_PER_QUESTION, Math.min(MAX_SECONDS_PER_QUESTION, Math.trunc(Number(e.target.value) || DEFAULT_SECONDS_PER_QUESTION))),
+                        secondsPerQuestion: Math.min(MAX_SECONDS_PER_QUESTION, Math.max(0, Math.trunc(Number(e.target.value) || 0))),
                       }))}
+                      onBlur={(e) => {
+                        const raw = Math.trunc(Number(e.target.value) || 0);
+                        setAutoConfig((prev) => ({
+                          ...prev,
+                          secondsPerQuestion: raw <= 0
+                            ? DEFAULT_SECONDS_PER_QUESTION
+                            : Math.max(MIN_SECONDS_PER_QUESTION, Math.min(MAX_SECONDS_PER_QUESTION, raw)),
+                        }));
+                      }}
                       className="w-28"
                     />
                     <span className="text-xs text-muted-foreground">sec / question</span>
