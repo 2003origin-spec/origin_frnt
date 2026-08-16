@@ -76,6 +76,80 @@ export function biologyIsDoubled(mode: StudyMode): boolean {
   return mode === "neet";
 }
 
+// ─── Exam presets ────────────────────────────────────────────────────────────
+
+export type BuilderExam = "jee" | "neet";
+export const BUILDER_EXAMS: BuilderExam[] = ["jee", "neet"];
+
+/** Subjects each exam draws from. JEE = PCM, NEET = PCB. */
+export const EXAM_SUBJECTS: Readonly<Record<BuilderExam, readonly Subject[]>> = Object.freeze({
+  jee: Object.freeze<Subject[]>(["physics", "chemistry", "mathematics"]),
+  neet: Object.freeze<Subject[]>(["physics", "chemistry", "biology"]),
+});
+
+export const EXAM_LABELS: Record<BuilderExam, string> = { jee: "JEE", neet: "NEET" };
+
+/** The study mode an exam maps to — drives the double-Biology rule on NEET. */
+export function examMode(exam: BuilderExam): StudyMode {
+  return exam;
+}
+
+/**
+ * An exam chip is unlocked only when the student owns ALL of that exam's
+ * subjects (JEE → P∧C∧M, NEET → P∧C∧B). `owned` is the entitled-subject set.
+ */
+export function examUnlocked(exam: BuilderExam, owned: ReadonlySet<string> | readonly string[]): boolean {
+  const set = owned instanceof Set ? owned : new Set(owned);
+  return EXAM_SUBJECTS[exam].every((s) => set.has(s));
+}
+
+// ─── Scoring ─────────────────────────────────────────────────────────────────
+
+/**
+ * Marks awarded for a correct answer. Every JEE/NEET question type (MCQ, MSQ,
+ * numerical) awards +4 for a correct answer — only the negative differs — so the
+ * MAX attainable score is `4 × totalQuestions` regardless of the type mix.
+ */
+export const MARKS_PER_QUESTION = 4;
+
+/** Maximum attainable score for the configured load (marks-per-question × total). */
+export function computeMaxScore(counts: SubjectCounts): number {
+  return totalQuestions(counts) * MARKS_PER_QUESTION;
+}
+
+// ─── Total-exam-time (hh:mm:ss) ────────────────────────────────────────────────
+
+export type Hms = { h: number; m: number; s: number };
+/** Total-exam-time bounds: 1 minute … 6 hours. */
+export const MIN_TOTAL_MINUTES = 1;
+export const MAX_TOTAL_MINUTES = 6 * 60;
+
+export function clampHms(hms: Hms): Hms {
+  const h = Math.max(0, Math.min(6, Math.trunc(Number(hms.h) || 0)));
+  const m = Math.max(0, Math.min(59, Math.trunc(Number(hms.m) || 0)));
+  const s = Math.max(0, Math.min(59, Math.trunc(Number(hms.s) || 0)));
+  return { h, m, s };
+}
+
+/** Whole minutes for an hh:mm:ss value, ceil (so 45s → 1 min), clamped to bounds. */
+export function hmsToMinutes({ h, m, s }: Hms): number {
+  const totalSeconds = (Number(h) || 0) * 3600 + (Number(m) || 0) * 60 + (Number(s) || 0);
+  const minutes = Math.ceil(totalSeconds / 60);
+  return Math.max(MIN_TOTAL_MINUTES, Math.min(MAX_TOTAL_MINUTES, minutes));
+}
+
+/** Split whole seconds into an hh:mm:ss triple (for seeding the total-time field). */
+export function secondsToHms(totalSeconds: number): Hms {
+  const t = Math.max(0, Math.trunc(Number(totalSeconds) || 0));
+  return { h: Math.floor(t / 3600), m: Math.floor((t % 3600) / 60), s: t % 60 };
+}
+
+/** Zero-padded "hh:mm:ss" for display. */
+export function formatHms({ h, m, s }: Hms): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${p(h)}:${p(m)}:${p(s)}`;
+}
+
 /**
  * Expand a single base count `N` across the given subjects — the "same questions
  * in all subjects" path. Biology becomes `2N` on NEET; every other subject is
