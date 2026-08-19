@@ -131,12 +131,16 @@ export const getProfileStatsForRender = unstable_cache(
 );
 
 export const getChallengeOfTheDayForRender = unstable_cache(
-  async (mode: StudyMode, userId: string) => {
+  // Keyed on the IST DAY, not the study mode. The mode no longer discriminates
+  // anything (the cohort does), and the day key is what makes the card flip at
+  // 00:00 IST: the cache key changes, so the next render is a miss rather than
+  // a 5-minute-stale hit. Pass istDateKey() at the call site.
+  async (dateKey: string, userId: string) => {
     const { store, user } = await requireStoredUser(userId);
     return getChallengeOfTheDay(store, user);
   },
   ["rl:challenge-of-day"],
-  // Challenge is the same all day — 5-minute TTL is plenty
+  // Same question all day; the TTL only bounds within-day staleness.
   { revalidate: 300, tags: ["challenge"] },
 );
 

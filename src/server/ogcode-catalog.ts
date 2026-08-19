@@ -3,12 +3,7 @@ import type { DifficultyLevel, QuestionType, StoredAnswerSpec, StoredQuestion } 
 import { toAbsoluteMediaUrl } from "@/lib/media-url";
 
 import { getOgcodePostgresPool, isOgcodePostgresConfigured } from "@/server/postgres";
-import {
-  DEFAULT_STUDY_MODE,
-  occurrenceMatchesMode,
-  studyModeSubjects,
-  type StudyMode,
-} from "@/lib/study-mode";
+import { studyModeSubjects } from "@/lib/study-mode";
 
 declare global {
   var __originOgcodeCatalogSchemaReady: Promise<void> | undefined;
@@ -144,44 +139,9 @@ const CREATE_TABLE_SQL = `
     PRIMARY KEY (question_id, bucket_index)
   );
 
-  -- Daily Mission (Phase 1): one persisted challenge question per calendar day.
-  -- Recording the per-day pick makes the challenge stable for the whole day
-  -- (immune to catalog edits) and lets the selector enforce a no-repeat window
-  -- so the same question can't surface two days running.
-  CREATE TABLE IF NOT EXISTS ogcode_daily_challenges (
-    challenge_date DATE PRIMARY KEY,
-    question_id TEXT NOT NULL,
-    was_curated BOOLEAN NOT NULL DEFAULT FALSE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-  );
-  CREATE INDEX IF NOT EXISTS ogcode_daily_challenges_question_idx ON ogcode_daily_challenges (question_id);
-
-  -- Study Mode: one challenge per (day, mode) instead of one per day, so a JEE
-  -- student is never handed a Biology question. Mirrors
-  -- 20260801_ogcode_daily_challenge_mode.sql; see that file for the backfill
-  -- rationale ('neet' = the old Physics+NEET pool).
-  ALTER TABLE ogcode_daily_challenges ADD COLUMN IF NOT EXISTS mode TEXT;
-  UPDATE ogcode_daily_challenges SET mode = 'neet' WHERE mode IS NULL;
-  ALTER TABLE ogcode_daily_challenges ALTER COLUMN mode SET DEFAULT 'pcmb';
-  ALTER TABLE ogcode_daily_challenges ALTER COLUMN mode SET NOT NULL;
-  DO $$ BEGIN
-    ALTER TABLE ogcode_daily_challenges ADD CONSTRAINT ogcode_daily_challenges_mode_check
-      CHECK (mode IN ('jee','neet','pcmb'));
-  EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-  DO $$
-  BEGIN
-    IF EXISTS (
-      SELECT 1 FROM pg_index i
-       WHERE i.indrelid = 'ogcode_daily_challenges'::regclass
-         AND i.indisprimary AND i.indnatts = 1
-    ) THEN
-      ALTER TABLE ogcode_daily_challenges DROP CONSTRAINT ogcode_daily_challenges_pkey;
-      ALTER TABLE ogcode_daily_challenges ADD PRIMARY KEY (challenge_date, mode);
-    END IF;
-  END $$;
 `;
 
-/** Columns selected into `CatalogRow` — shared by the by-id + daily-challenge reads. */
+/** Columns selected into `CatalogRow` — shared by every full-question read. */
 const CATALOG_COLUMNS = `
   id, source_index, text, options, correct_option, correct_options, answer_text,
   answer_spec, tolerance, matrix_data, explanation, hint, subject, chapter, concept,
@@ -189,74 +149,6 @@ const CATALOG_COLUMNS = `
   is_challenge_of_day, contributor_workspace_id, attribution_name, attribution_logo_url,
   is_contributed, occurrence, class, previous_year_question
 `;
-
-/**
- * No-repeat window for the Daily Mission. A question used as the daily challenge
- * within this many days is excluded from re-selection, so the challenge rotates
- * even when only a handful of questions are curated. If the eligible pool is
- * smaller than the window the exclusion relaxes automatically (see
- * `pickDailyChallengeId`).
- */
-export const DAILY_CHALLENGE_NO_REPEAT_DAYS = 60;
-
-export type DailyChallengeCandidate = {
-  id: string;
-  sourceIndex: number;
-  isCurated: boolean;
-  /**
-   * Whether the question's exam provenance matches the mode's preferred family
-   * (JEE → "JEE", NEET → "NEET"/"AIPMT", PCMB → no preference, always true).
-   * A PREFERENCE, not a filter: a JEE aspirant may legitimately be served a
-   * NEET-origin Physics question when no JEE-tagged one is eligible.
-   */
-  matchesExamFamily: boolean;
-};
-
-/**
- * Pure, deterministic per-day selection of the daily-challenge question.
- *
- * Rules (see PLATFORM_GAP_AUDIT_AND_COMPLETION_PLAN.md, Phase 1):
- *  - rotate over the FULL eligible pool, not just curated rows;
- *  - skip questions used within the no-repeat window (unless that empties the
- *    pool, in which case repeats are allowed again);
- *  - prefer curated (`is_challenge_of_day`) rows when any remain eligible, so
- *    hand-picked questions surface first without ever collapsing the pool to one;
- *  - within that, prefer rows whose exam provenance matches the mode's family
- *    (Study Mode), again without ever collapsing the pool — if no in-family row
- *    is eligible the rest of the tier is used unchanged;
- *  - pick a stable-per-day row via `epochDay % count` over a deterministic order.
- *
- * Each preference only ever REFINES the current tier, never empties it, so the
- * challenge is always resolvable while the pool is non-empty.
- */
-export function pickDailyChallengeId(
-  eligible: readonly DailyChallengeCandidate[],
-  usedIds: ReadonlySet<string>,
-  epochDay: number,
-): string | null {
-  if (eligible.length === 0) {
-    return null;
-  }
-  let candidates = eligible.filter((question) => !usedIds.has(question.id));
-  if (candidates.length === 0) {
-    candidates = [...eligible];
-  }
-  const curated = candidates.filter((question) => question.isCurated);
-  const tier = curated.length > 0 ? curated : candidates;
-  const inFamily = tier.filter((question) => question.matchesExamFamily);
-  const chosen = inFamily.length > 0 ? inFamily : tier;
-  const sorted = [...chosen].sort((left, right) =>
-    left.sourceIndex !== right.sourceIndex
-      ? left.sourceIndex - right.sourceIndex
-      : left.id < right.id
-        ? -1
-        : left.id > right.id
-          ? 1
-          : 0,
-  );
-  const offset = ((epochDay % sorted.length) + sorted.length) % sorted.length;
-  return sorted[offset].id;
-}
 
 function normalizeDifficulty(value: string): DifficultyLevel {
   const normalized = String(value ?? "").trim().toLowerCase();
@@ -1138,104 +1030,96 @@ async function fetchCatalogQuestionById(
 }
 
 /**
- * Resolve the Daily Mission question for a given day (defaults to today, UTC).
+ * A Question-of-the-Day "bag": one subject within one class band.
  *
- * The pick is recorded in `ogcode_daily_challenges`, so:
- *  - the challenge is stable for the whole day even if the catalog is edited;
- *  - the no-repeat window can be computed from prior days;
- *  - concurrent first-hits of a fresh day converge on one row via
- *    `ON CONFLICT DO NOTHING` + read-back.
- *
- * Rotation now walks the full eligible pool (curated preferred) instead of the
- * old `epochDay % curatedCount`, which surfaced the same question forever
- * whenever a single row was flagged `is_challenge_of_day`.
- *
- * Study Mode: the pool is the MODE's subjects (JEE → P/C/M, NEET → P/C/B, PCMB →
- * all four), replacing the old hard-coded Physics+NEET constraint. Exam
- * provenance survives only as a preference tier inside `pickDailyChallengeId`.
- * Rows and the no-repeat window are scoped per mode, so the three modes rotate
- * independently and never collide.
+ * `alreadyServed` is the ids this bag has handed out in its CURRENT cycle, which
+ * is what makes the draw non-repeating. `includeUnclassified` decides whether
+ * rows with `class IS NULL` belong to the band (senior only — see
+ * src/lib/qotd-eligibility.ts).
  */
-export async function getOgcodeChallengeQuestion(
-  mode: StudyMode = DEFAULT_STUDY_MODE,
-  dateKey?: string,
-): Promise<StoredQuestion | null> {
+export type OgcodeBagDrawParams = {
+  subject: string;
+  classes: readonly number[];
+  includeUnclassified: boolean;
+  alreadyServed: readonly string[];
+};
+
+export type OgcodeBagDrawResult = {
+  /** How many questions the bag holds in total. 0 means the bag does not exist. */
+  bagTotal: number;
+  /** How many of those have not been served in the current cycle. */
+  unservedTotal: number;
+  /** The drawn question, or null when the bag is empty. */
+  questionId: string | null;
+};
+
+/**
+ * Draw one question from a bag — uniformly at random, without repeating.
+ *
+ * The rule, in one statement: **take a random question this bag has not served
+ * yet; if there is none left, the bag is exhausted, so refill it and take a
+ * random one from the whole bag.** That `COALESCE` IS the recycle — the caller
+ * only has to notice `unservedTotal === 0` and bump the bag's cycle counter.
+ *
+ * `bagTotal === 0` means no such bag exists today, which is how the class 9-10
+ * gate falls out of the data rather than out of a special case: a junior-band
+ * student resolves to a band that currently matches no rows, so there is nothing
+ * to draw and no card to show.
+ *
+ * Eligibility is the pre-existing challenge predicate — an answerable MCQ — so a
+ * Question of the Day is always solvable in one tap. Widening it to numerical
+ * questions later is a change to this WHERE clause alone.
+ *
+ * Cost against the live 6 232-row bank: ~4.5 ms. It runs four times a day.
+ */
+export async function drawOgcodeBagQuestion(
+  params: OgcodeBagDrawParams,
+): Promise<OgcodeBagDrawResult> {
   const pool = getOgcodePostgresPool();
   if (!pool) {
-    return null;
+    return { bagTotal: 0, unservedTotal: 0, questionId: null };
   }
-
   await ensureCatalogSchema();
 
-  const today = dateKey ?? new Date().toISOString().slice(0, 10);
-
-  // 1. Already scheduled for today in this mode → return it verbatim.
-  const existing = await pool.query<{ question_id: string }>(
-    `SELECT question_id FROM ogcode_daily_challenges WHERE challenge_date = $1 AND mode = $2`,
-    [today, mode],
-  );
-  if (existing.rows[0]?.question_id) {
-    const scheduled = await fetchCatalogQuestionById(pool, existing.rows[0].question_id);
-    if (scheduled) {
-      return scheduled;
-    }
-    // The recorded question was deleted from the catalog — fall through and re-pick.
-  }
-
-  // 2. Build the eligible pool (curated OR answerable MCQ) + the no-repeat window.
-  // Subject is a HARD filter (the point of the feature); `occurrence` is carried
-  // through only so the exam-family PREFERENCE can be applied when ranking.
-  const eligibleResult = await pool.query<{
-    id: string;
-    source_index: number | string;
-    is_challenge_of_day: boolean;
-    occurrence: string | null;
+  const result = await pool.query<{
+    bag_total: number;
+    unserved_total: number;
+    question_id: string | null;
   }>(
-    `SELECT id, source_index, is_challenge_of_day, occurrence
-       FROM ogcode_questions
-      WHERE LOWER(subject) = ANY($1::text[])
-        AND (is_challenge_of_day = true
-             OR (question_type = 'mcq' AND correct_option IS NOT NULL))`,
-    [studyModeSubjects(mode)],
+    `
+      WITH bag AS (
+        SELECT id
+          FROM ogcode_questions
+         WHERE LOWER(subject) = $1
+           AND (class = ANY($2::int[]) OR ($3::boolean AND class IS NULL))
+           AND question_type = 'mcq'
+           AND correct_option IS NOT NULL
+      ),
+      unserved AS (
+        SELECT id FROM bag WHERE NOT (id = ANY($4::text[]))
+      )
+      SELECT
+        (SELECT count(*)::int FROM bag)      AS bag_total,
+        (SELECT count(*)::int FROM unserved) AS unserved_total,
+        COALESCE(
+          (SELECT id FROM unserved ORDER BY random() LIMIT 1),
+          (SELECT id FROM bag      ORDER BY random() LIMIT 1)
+        ) AS question_id
+    `,
+    [
+      String(params.subject).trim().toLowerCase(),
+      [...params.classes],
+      params.includeUnclassified,
+      [...params.alreadyServed],
+    ],
   );
-  const eligible: DailyChallengeCandidate[] = eligibleResult.rows.map((row) => ({
-    id: row.id,
-    sourceIndex: Number(row.source_index),
-    isCurated: Boolean(row.is_challenge_of_day),
-    matchesExamFamily: occurrenceMatchesMode(mode, row.occurrence),
-  }));
-  if (eligible.length === 0) {
-    return null;
-  }
 
-  // No-repeat is per mode: JEE using a question must not block NEET from it.
-  const usedResult = await pool.query<{ question_id: string }>(
-    `SELECT question_id FROM ogcode_daily_challenges
-      WHERE challenge_date > ($1::date - $2::int) AND mode = $3`,
-    [today, DAILY_CHALLENGE_NO_REPEAT_DAYS, mode],
-  );
-  const usedIds = new Set(usedResult.rows.map((row) => row.question_id));
-
-  const epochDay = Math.floor(new Date(`${today}T00:00:00Z`).getTime() / 86_400_000);
-  const chosenId = pickDailyChallengeId(eligible, usedIds, epochDay);
-  if (!chosenId) {
-    return null;
-  }
-  const wasCurated = eligible.find((question) => question.id === chosenId)?.isCurated ?? false;
-
-  // 3. Persist the pick (idempotent under concurrency), then read back the winner.
-  await pool.query(
-    `INSERT INTO ogcode_daily_challenges (challenge_date, question_id, was_curated, mode)
-     VALUES ($1, $2, $3, $4)
-     ON CONFLICT (challenge_date, mode) DO NOTHING`,
-    [today, chosenId, wasCurated, mode],
-  );
-  const authoritative = await pool.query<{ question_id: string }>(
-    `SELECT question_id FROM ogcode_daily_challenges WHERE challenge_date = $1 AND mode = $2`,
-    [today, mode],
-  );
-  const finalId = authoritative.rows[0]?.question_id ?? chosenId;
-  return fetchCatalogQuestionById(pool, finalId);
+  const row = result.rows[0];
+  return {
+    bagTotal: Number(row?.bag_total ?? 0),
+    unservedTotal: Number(row?.unserved_total ?? 0),
+    questionId: row?.question_id ?? null,
+  };
 }
 
 /** §9 time-bucket width (seconds) and the overflow-bucket index cap. */

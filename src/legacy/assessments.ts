@@ -35,13 +35,16 @@ import {
   getOgcodeCatalogCounts,
   getOgcodeCatalogQuestionById,
   getOgcodeCatalogQuestionMap,
-  getOgcodeChallengeQuestion,
   getOgcodeQuestionStatsMessage,
   incrementOgcodeCatalogQuestionStats,
   listOgcodeCatalogChapters,
   listOgcodeCatalogQuestionPage,
   listOgcodeCatalogQuestions,
 } from "@/server/ogcode-catalog";
+import { getDailyQuestionId } from "@/server/ogcode-daily-question";
+import { istDateKey, istEpochDay } from "@/lib/ist-day";
+import { eligibleClassBand } from "@/lib/qotd-eligibility";
+import { subjectForDay } from "@/lib/qotd-rotation";
 import { policyOverridesFromPersistedTest } from "@/server/assessments/full-test-builder";
 import { getUserPostgresPool, isUserPostgresConfigured } from "@/server/user-postgres";
 import {
@@ -114,7 +117,6 @@ import { isOgcodePostgresConfigured, getOgcodePostgresPool } from "@/server/post
 import { getGlobalPointsLeaderboard } from "@/server/leaderboard-points";
 import { buildTestClassificationFields } from "@/server/test-classification";
 import { getStudentGate, type StudentGate } from "@/server/entitlements";
-import { isSubjectInMode, occurrenceMatchesMode } from "@/lib/study-mode";
 import {
   clampSubjectsToScope,
   getStudentScope,
@@ -5909,46 +5911,58 @@ export async function getFocusAreas(store: AppStore, user: StoredUser) {
     .sort((left, right) => right.score - left.score);
 }
 
+/**
+ * The student's Question of the Day.
+ *
+ * Four questions are drawn platform-wide each night — one per subject bag
+ * (see src/server/ogcode-daily-question.ts). This resolves WHICH of them this
+ * student sees, from three derived values and no stored state:
+ *
+ *   cohort  = scope.subjects              study mode INTERSECT entitlements
+ *   band    = eligibleClassBand()         11/12/dropper -> senior, 9/10 -> junior
+ *   subject = cohort[istEpochDay % cohort.length]
+ *
+ * So every student with the same access sees the same question on the same day,
+ * a multi-subject student rotates through their subjects, and someone who gains
+ * a subject moves cohort on their very next request.
+ *
+ * Returns null — rather than throwing — whenever there is nothing to show: a
+ * student starved by their study mode, a junior-band student while the bank is
+ * class 11-12 only, or an unreachable catalog. The dashboard card already
+ * renders an empty state for null, and a missing quest is not an error.
+ */
 export async function getChallengeOfTheDay(store: AppStore, user: StoredUser) {
   const scope = await getStudentScope(user.id, user.role);
-  const mode = scope.mode;
+  const band = eligibleClassBand(user.studentClass);
+  // One clock read for both: reading the date key and the day number separately
+  // could straddle midnight and look up day N's bag under day N+1's date.
+  const now = Date.now();
+  const dateKey = istDateKey(now);
+  const subject = subjectForDay(scope.subjects, istEpochDay(now));
+  if (!subject) {
+    return null;
+  }
 
-  let challenge = null;
+  let challenge: StoredQuestion | null = null;
   try {
-    challenge = await getOgcodeChallengeQuestion(mode);
+    const questionId = await getDailyQuestionId({ band, subject }, dateKey);
+    challenge = questionId ? await getOgcodeCatalogQuestionById(questionId) : null;
   } catch {
     challenge = null;
   }
   if (!challenge) {
-    const epochDay = Math.floor(Date.now() / 86_400_000);
-    // In-memory fallback, mirroring the catalog path: the mode's subjects are a
-    // HARD filter, exam provenance only a preference.
-    const inMode = store.questions.filter((q) => isSubjectInMode(mode, q.subject));
-    const curated = inMode.filter((question) => question.isChallengeOfTheDay);
-    const tier = curated.length > 0
-      ? curated
-      : inMode.filter((question) => question.questionType === "mcq" && question.correctOption !== null);
-    const inFamily = tier.filter((question) => occurrenceMatchesMode(mode, question.occurrence));
-    const pool = inFamily.length > 0 ? inFamily : tier;
-    if (pool.length > 0) {
-      challenge = pool[((epochDay % pool.length) + pool.length) % pool.length];
-    } else {
-      // Last resort: never hand back an out-of-mode question just to fill the card.
-      challenge = store.questions.find((q) => isSubjectInMode(mode, q.subject)) ?? null;
-    }
+    return null;
   }
-  if (!challenge) {
-    throw new Error("No challenge of the day set.");
-  }
-  const epochDay = Math.floor(Date.now() / 86_400_000);
+
   const data = serializeQuestion(store, user.id, challenge, {
     includeCorrectFields: false,
+    // One presentation per student per day. presentOptions already keys on
+    // userId, so the day is all that has to vary for the option order to stay
+    // stable while the card is up and re-roll when tomorrow's question lands.
     presentationContext: {
       scope: "challenge",
-      // Per-mode id so two modes' challenges on the same day get independent
-      // option-presentation state instead of colliding on one key.
-      assessmentId: `challenge-of-the-day:${mode}`,
-      attemptKey: epochDay,
+      assessmentId: "challenge-of-the-day",
+      attemptKey: dateKey,
     },
   });
   return {
