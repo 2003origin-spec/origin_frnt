@@ -7,7 +7,7 @@ import {
   listTasksForRender,
 } from '@/server/render-loaders';
 import { getRegistrationStatus } from '@/server/users';
-import { renderStudyModeKey } from '@/server/study-scope';
+import { istDateKey } from '@/lib/ist-day';
 import type { Task } from '@/types';
 
 type RegistrationStatus = { count: number; limit: number; seatsLeft: number };
@@ -40,7 +40,7 @@ async function DashboardGate() {
   const [tasksResult, pointsResult, challengeResult, regResult] = await Promise.allSettled([
     listTasksForRender(user.id),
     getPointsSummaryForRender(user.id),
-    getChallengeOfTheDayForRender(await renderStudyModeKey(user), user.id),
+    getChallengeOfTheDayForRender(istDateKey(), user.id),
     getRegistrationStatus(user.role),
   ]);
 

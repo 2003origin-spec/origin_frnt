@@ -91,6 +91,10 @@ const MIGRATIONS = [
   // Question clusters — named, ordered, reusable groups of Question-Bag
   // questions, stackable into a paper. Additive; nothing existing changes.
   { file: "20260813_question_clusters.sql", target: "user" },
+  // Question of the Day — four per-subject daily draws replacing the global
+  // per-mode pick. Creates ogcode_daily_subject_questions and drops
+  // ogcode_daily_challenges, whose only reader goes in the same commit.
+  { file: "20260819_ogcode_daily_subject_questions.sql", target: "ogcode" },
 ];
 
 const TARGET_ENV = {
