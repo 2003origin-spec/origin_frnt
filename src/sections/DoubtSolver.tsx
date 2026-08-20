@@ -26,13 +26,13 @@ import {
   listOriginAiChapters,
   listOriginAiThreads,
   renameOriginAiThread,
+  sendDoubtSolverMessageStreaming,
   speakDoubtSolverSummary,
 
   solveOriginAiImage,
   type ChapterItem,
   type ImageSolveResult,
 } from '@/features/origin-ai/client';
-import { sendDoubtSolverMessageStreaming } from '@/features/origin-ai/stream-client';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { usePublishOriginAiPageContext } from '@/features/origin-ai/page-context-store';
