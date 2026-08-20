@@ -3,6 +3,7 @@
 import { revalidatePath, revalidateTag } from 'next/cache';
 
 import { getServerUser } from '@/lib/auth-server';
+import { normalizeIndianMobile } from '@/lib/mobile';
 import { withStoreAsyncScoped, type StoredUser } from '@/server/store';
 import { serializeUser } from '@/server/users';
 import { isUserPostgresConfigured } from '@/server/user-postgres';
@@ -13,12 +14,10 @@ import type { User } from '@/types';
 import { normalizeSoundPreferences, type SoundPreferences } from '@/lib/sound-preferences';
 import { normalizeStudyMode, type StudyMode } from '@/lib/study-mode';
 
-/** Normalize a mobile number to digits and validate it's a 10-digit Indian number. */
+/** Normalize a mobile number to a valid 10-digit Indian number (rejects fakes
+ *  like all-same-digit). Shared logic in @/lib/mobile. */
 function normalizeMobile(raw: string): string | null {
-  const digits = String(raw ?? '').replace(/\D/g, '');
-  // Accept a leading country code (91) and strip it; require exactly 10 digits.
-  const local = digits.length === 12 && digits.startsWith('91') ? digits.slice(2) : digits;
-  return /^[6-9]\d{9}$/.test(local) ? local : null;
+  return normalizeIndianMobile(raw);
 }
 
 type UpdateProfileInput = Partial<{

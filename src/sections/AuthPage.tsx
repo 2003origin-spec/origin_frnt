@@ -24,6 +24,7 @@ import { isNativeApp } from '@/native/is-native-app';
 import { nativeGoogleSignIn } from '@/native/google';
 import { ForgotPasswordModal } from '@/components/auth/ForgotPasswordModal';
 import { cn } from '@/lib/utils';
+import { isValidIndianMobile } from '@/lib/mobile';
 import { motion, AnimatePresence } from 'framer-motion';
 
 
@@ -202,7 +203,7 @@ export default function AuthPage({
   const handleSendOtp = async () => {
     if (!email || !sendOtp) return;
     // Signups collect a mobile number up front; validate before spending an OTP.
-    if (!isLogin && userRole !== 'admin' && !/^[6-9]\d{9}$/.test(mobile)) {
+    if (!isLogin && userRole !== 'admin' && !isValidIndianMobile(mobile)) {
       toast.error('Enter a valid 10-digit mobile number.');
       return;
     }
@@ -440,7 +441,7 @@ export default function AuthPage({
                   type="button"
                   disabled={isLoading}
                   onClick={() => {
-                    if (!/^[6-9]\d{9}$/.test(gMobile)) { toast.error('Enter a valid 10-digit mobile number.'); return; }
+                    if (!isValidIndianMobile(gMobile)) { toast.error('Enter a valid 10-digit mobile number.'); return; }
                     if (!gState) { toast.error('Please select your state.'); return; }
                     onGoogleSignup?.(gMobile, gState);
                   }}

@@ -12,6 +12,8 @@ import { randomUUID } from "node:crypto";
 
 import type { PoolClient } from "pg";
 
+import { normalizeIndianMobile } from "@/lib/mobile";
+
 import { ensureUserSchema } from "@/server/db-users";
 import { getUserPostgresPool, isUserPostgresConfigured } from "@/server/user-postgres";
 
@@ -34,11 +36,10 @@ export function normalizeEmailForBlock(email: string | null | undefined): string
   return e.length > 0 ? e : null;
 }
 
-/** 10-digit Indian mobile (strips a leading +91/91) — matches dbCreateUser's form. */
+/** 10-digit Indian mobile (strips a leading +91/91; rejects fakes like
+ *  all-same-digit) — matches dbCreateUser's form. Shared logic in @/lib/mobile. */
 export function normalizeMobileForBlock(mobile: string | null | undefined): string | null {
-  const digits = String(mobile ?? "").replace(/\D/g, "");
-  const local = digits.length === 12 && digits.startsWith("91") ? digits.slice(2) : digits;
-  return /^[6-9]\d{9}$/.test(local) ? local : null;
+  return normalizeIndianMobile(mobile);
 }
 
 async function recordMigration(client: PoolClient): Promise<void> {
