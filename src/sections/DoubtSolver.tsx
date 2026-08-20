@@ -26,7 +26,8 @@ import {
   listOriginAiChapters,
   listOriginAiThreads,
   renameOriginAiThread,
-  sendOriginAiMessageStreaming,
+  sendDoubtSolverMessageStreaming,
+  speakDoubtSolverSummary,
 
   solveOriginAiImage,
   type ChapterItem,
@@ -1577,6 +1578,121 @@ function ProgressiveResponse({
   );
 }
 
+import {
+  Volume2, Square, Loader2, Play
+} from 'lucide-react';
+
+function DoubtSolverMessageAudio({ message }: { message: ChatMessageType }) {
+  const isStreaming = message.metadata?.streaming;
+  const content = message.content?.trim();
+  const [status, setStatus] = useState<'idle' | 'loading' | 'playing'>('idle');
+  const [error, setError] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  // Cache URL so we don't re-fetch
+  const audioUrlRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      // Cleanup object URL and audio
+      if (audioUrlRef.current) {
+        URL.revokeObjectURL(audioUrlRef.current);
+      }
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.src = "";
+      }
+    };
+  }, []);
+
+  if (isStreaming || !content) return null;
+
+  const handleClick = async () => {
+    if (status === 'playing') {
+      audioRef.current?.pause();
+      setStatus('idle');
+      return;
+    }
+
+    if (audioUrlRef.current && audioRef.current) {
+      audioRef.current.play();
+      setStatus('playing');
+      return;
+    }
+
+    setStatus('loading');
+    setError(null);
+    try {
+      // Detect language roughly (Hinglish/Hindi words)
+      const hiWords = ['hai', 'kya', 'kaise', 'bhai', 'nahi', 'mujhe', 'hum', 'aur'];
+      const textLower = content.toLowerCase();
+      const isHindi = hiWords.some(w => new RegExp(`\\b${w}\\b`).test(textLower)) || /[\u0900-\u097F]/.test(content);
+      const languageCode = isHindi ? 'hi-IN' : 'en-IN';
+
+      const response = await speakDoubtSolverSummary(content, languageCode);
+      if (response.error || !response.data) {
+        throw new Error(response.error || 'Failed to synthesize speech');
+      }
+
+      const binaryStr = atob(response.data);
+      const bytes = new Uint8Array(binaryStr.length);
+      for (let i = 0; i < binaryStr.length; i++) {
+        bytes[i] = binaryStr.charCodeAt(i);
+      }
+      const blob = new Blob([bytes], { type: response.mimeType || 'audio/wav' });
+      const url = URL.createObjectURL(blob);
+      audioUrlRef.current = url;
+      
+      const audio = new Audio(url);
+      audio.onended = () => setStatus('idle');
+      audio.onerror = () => {
+        setStatus('idle');
+        setError('Playback failed');
+      };
+      audioRef.current = audio;
+      
+      audio.play();
+      setStatus('playing');
+    } catch (err) {
+      console.error("Summary speech error:", err);
+      setError('Could not generate speech');
+      setStatus('idle');
+    }
+  };
+
+  return (
+    <div className="mt-2 flex items-center gap-2">
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={handleClick}
+              disabled={status === 'loading'}
+              className={`p-1.5 rounded-full transition-colors ${
+                status === 'playing' ? 'bg-primary/20 text-primary' : 'bg-transparent text-muted-foreground hover:bg-primary/10 hover:text-primary'
+              }`}
+              aria-label={status === 'playing' ? "Stop summary" : "Play summary"}
+            >
+              {status === 'loading' ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : status === 'playing' ? (
+                <Square className="w-4 h-4 fill-current" />
+              ) : (
+                <Volume2 className="w-4 h-4" />
+              )}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            <p className="text-xs">
+              {status === 'playing' ? 'Stop summary' : 'Listen to a short summary'}
+            </p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+      {error && <span className="text-[10px] text-red-500">{error}</span>}
+    </div>
+  );
+}
+
 function ChatMessage({ message }: { message: ChatMessageType }) {
   const isAI = message.role === 'assistant';
   const progressiveReveal = isAI && shouldUseProgressiveReveal(message);
@@ -1619,6 +1735,7 @@ function ChatMessage({ message }: { message: ChatMessageType }) {
           <div className="break-words overflow-hidden">
             <FormattedMessage content={message.content} isAssistant={isAI} />
           </div>
+          {isAI && <DoubtSolverMessageAudio message={message} />}
           <div className={`text-[10px] mt-3 font-bold uppercase tracking-widest opacity-40 ${isAI ? 'text-muted-foreground' : 'text-white/80'}`}>
             {formatISTTime(message.timestamp)}
           </div>

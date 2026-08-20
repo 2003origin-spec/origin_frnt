@@ -218,6 +218,26 @@ export async function streamOriginAiMessage(
   return consumeSseStream(response, handlers);
 }
 
+export async function sendDoubtSolverMessageStreaming(
+  message: string,
+  pageContext?: OriginAiStreamPageContext,
+  highlightedText?: string | null,
+  threadId?: string | null,
+  handlers: OriginAiStreamHandlers = {},
+): Promise<OriginAiStreamFinalEvent> {
+  const response = await openStreamRequest(
+    '/origin-ai/doubt-solver/stream',
+    {
+      message,
+      pageContext,
+      highlightedText: highlightedText || null,
+      threadId: threadId ?? null,
+    },
+    handlers.signal,
+  );
+  return consumeSseStream(response, handlers);
+}
+
 export async function streamOriginAiVoiceRespond(
   audioData: string,
   mimeType: string,

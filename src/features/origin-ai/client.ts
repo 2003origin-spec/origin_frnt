@@ -1006,6 +1006,31 @@ export async function synthesizeOriginAiVoiceText(
   return normalizeVoiceSpeakResponse(data as RawVoiceSpeakResponse);
 }
 
+export type OriginAiDoubtSolverSpeakSummaryResponse = {
+  summary: string;
+  data: string | null;
+  mimeType: string | null;
+  error: string | null;
+};
+
+export async function speakDoubtSolverSummary(
+  text: string,
+  languageCode: 'en-IN' | 'hi-IN',
+): Promise<OriginAiDoubtSolverSpeakSummaryResponse> {
+  const data = await aiApiCall('/origin-ai/doubt-solver/speak-summary', {
+    method: 'POST',
+    headers: {
+      'X-Origin-AI-Session-Id': getOriginAiBrowserSessionId(),
+    },
+    body: JSON.stringify({
+      text,
+      languageCode,
+    }),
+  });
+
+  return data as OriginAiDoubtSolverSpeakSummaryResponse;
+}
+
 const NATIVE_SCRIPT_RE =
   /[\u0900-\u097F\u0980-\u09FF\u0A00-\u0A7F\u0A80-\u0AFF\u0B00-\u0B7F\u0B80-\u0BFF\u0C00-\u0C7F\u0C80-\u0CFF\u0D00-\u0D7F\u0600-\u06FF\u0750-\u077F]/;
 
