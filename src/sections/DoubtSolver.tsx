@@ -397,7 +397,7 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
         ctx.imageContext = lastImageContextRef.current;
         lastImageContextRef.current = null;
       }
-      const response = await sendOriginAiMessageStreaming(
+      const response = await sendDoubtSolverMessageStreaming(
         outboundMessage,
         ctx,
         snappedHighlight,
@@ -727,7 +727,7 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
           ],
           updatedAt: new Date(),
         } : prev);
-        const response = await sendOriginAiMessageStreaming(
+        const response = await sendDoubtSolverMessageStreaming(
           autoMessage,
           ctx,
           null,
