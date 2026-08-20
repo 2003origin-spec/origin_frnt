@@ -10,8 +10,8 @@ import OriMascotStatic from '@/features/mascot/OriMascotStatic';
 import { setOriHidden, readOriPos, setOriPos, type OriPos } from '@/lib/ori-visibility';
 import { toast } from 'sonner';
 
-// Hold thresholds: 3s → Ori becomes draggable; 4s held still → offer to hide it.
-const DRAG_HOLD_MS = 3000;
+// Hold thresholds: 2s → Ori becomes draggable; 4s held still → offer to hide it.
+const DRAG_HOLD_MS = 2000;
 const HIDE_HOLD_MS = 4000;
 const MOVE_THRESHOLD_PX = 8;
 
