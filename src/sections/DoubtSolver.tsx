@@ -1,4 +1,4 @@
- 'use client';
+'use client';
 import { Fragment, useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { formatISTTime } from '@/lib/format-time';
 import Image from 'next/image';
@@ -11,7 +11,7 @@ import {
 import { useHighlightedText, clearHighlightedText, getHighlightedText, getPendingHighlightedText } from '@/features/origin-ai/highlight-capture';
 import { motion, AnimatePresence } from 'framer-motion';
 import type {
-  DoubtSession, 
+  DoubtSession,
   User,
   ChatMessage as ChatMessageType,
   OriginAiSession,
