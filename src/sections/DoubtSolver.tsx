@@ -11,7 +11,7 @@ import {
 import { useHighlightedText, clearHighlightedText, getHighlightedText, getPendingHighlightedText } from '@/features/origin-ai/highlight-capture';
 import { motion, AnimatePresence } from 'framer-motion';
 import type {
-  DoubtSession,
+  DoubtSession, 
   User,
   ChatMessage as ChatMessageType,
   OriginAiSession,
