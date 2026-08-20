@@ -9,7 +9,7 @@ import {
     CheckCircle2, Search,
     Trophy, Zap, Flame, Brain, Circle,
     TrendingUp, Atom, Beaker, Calculator, Leaf,
-    ChevronRight, Target, Shuffle, ArrowRight, X, Info, Building2, Check, ChevronDown, Heart, Swords, Layers
+    ChevronRight, Target, Shuffle, ArrowRight, X, Info, Building2, Check, ChevronDown, Heart, Swords, Layers, SlidersHorizontal
 } from 'lucide-react';
 import { apiCall } from '@/lib/api';
 import { ogcodePresenceCountsAction, ogcodeScreenHeartbeatAction, listOgcodeChallengeInboxAction, toggleOgcodeQuestionLikeAction, type HydratedChallenge } from '@/server/actions/ogcode-actions';
@@ -338,6 +338,9 @@ export default function OGCodeList({
         initialChapters ?? deriveChapterOptions(initialSubject, prefetchedQuestionPage?.items ?? []),
     );
     const [openDropdown, setOpenDropdown] = useState<'difficulty' | 'status' | 'subject' | 'type' | 'class' | 'occurrence' | 'hier-subject' | 'hier-chapter' | 'hier-concept' | null>(null);
+    // Mobile: the Smart Filter block is collapsed behind a toggle so questions
+    // show directly on small screens. Always expanded on md+ (see #filter-area).
+    const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
     const [chapterSearchQuery, setChapterSearchQuery] = useState('');
     const [conceptSearchQuery, setConceptSearchQuery] = useState('');
     const [isStatsExpanded, setIsStatsExpanded] = useState(false);
@@ -1077,22 +1080,24 @@ export default function OGCodeList({
                         )}
                     </motion.div>
 
-                    {/* Right side: OG Points + AIR stats */}
-                    <div className="flex items-center gap-2 sm:gap-3 self-start w-full md:w-auto justify-end">
+                    {/* Right side: OG Points + AIR stats. On mobile the two cards
+                        split the full row as equal-width tiles; on md+ they sit
+                        naturally right-aligned. */}
+                    <div className="flex items-stretch gap-2 sm:gap-3 self-start w-full md:w-auto">
 
                     {/* OG Points chip */}
-                    <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl neu-raised border border-amber-500/15 bg-amber-500/5 shrink-0">
-                        <Trophy className="w-3.5 h-3.5 text-amber-500" />
+                    <div className="flex flex-1 md:flex-none items-center justify-center md:justify-start gap-1.5 px-3 py-2 rounded-xl neu-raised border border-amber-500/15 bg-amber-500/5">
+                        <Trophy className="w-3.5 h-3.5 text-amber-500 shrink-0" />
                         <span className="text-sm font-black text-amber-500 font-mono">{user.points || 0}</span>
                         <span className="text-[9px] font-black text-amber-500/60 uppercase tracking-widest">PTS</span>
                     </div>
 
                     {/* AIR Badge & Stats Dropdown */}
-                    <div ref={statsRef} className="relative z-[220]">
+                    <div ref={statsRef} className="relative z-[220] flex-1 md:flex-none">
                         <button
                             onClick={() => setIsStatsExpanded(!isStatsExpanded)}
                             className={cn(
-                                'neu-raised flex items-center gap-2 sm:gap-3 px-3 py-2 sm:px-5 sm:py-3 rounded-2xl transition-all duration-300 text-foreground',
+                                'neu-raised flex items-center gap-2 sm:gap-3 px-3 py-2 sm:px-5 sm:py-3 rounded-2xl transition-all duration-300 text-foreground w-full md:w-auto',
                                 isStatsExpanded && 'bg-primary !text-white',
                             )}
                         >
@@ -1103,7 +1108,7 @@ export default function OGCodeList({
                                 <div className="text-[9px] font-black uppercase tracking-wider opacity-60">National Rank</div>
                                 <div className="text-base sm:text-lg font-black leading-none">AIR {myRank ? `#${myRank}` : '—'}</div>
                             </div>
-                            <ChevronRight className={cn('w-4 h-4 sm:ml-1 shrink-0 transition-transform duration-300', isStatsExpanded && 'rotate-90')} />
+                            <ChevronRight className={cn('w-4 h-4 ml-auto sm:ml-1 shrink-0 transition-transform duration-300', isStatsExpanded && 'rotate-90')} />
                         </button>
 
                         <AnimatePresence>
@@ -1232,7 +1237,28 @@ export default function OGCodeList({
                 {/* ── Filters ── */}
                 <div className="space-y-3">
                     {/* Hierarchical Cascade Filters */}
-                    <div id="filter-area" className="neu-inset rounded-2xl p-4 sm:p-5 relative z-[80] space-y-4">
+                    {/* Mobile-only Smart Filter toggle — on small screens the filter
+                        block is collapsed so the question list shows directly; tap to reveal. */}
+                    <button
+                        type="button"
+                        onClick={() => setMobileFiltersOpen((open) => !open)}
+                        aria-expanded={mobileFiltersOpen}
+                        aria-controls="filter-area"
+                        className="md:hidden w-full neu-raised rounded-2xl px-4 h-11 flex items-center justify-between gap-2 text-[11px] font-black uppercase tracking-widest text-muted-foreground"
+                    >
+                        <span className="flex items-center gap-2">
+                            <SlidersHorizontal className="w-4 h-4" />
+                            Filters
+                            {(hierClasses.length + hierOccurrences.length + hierSubjects.length + hierChapters.length + hierConcepts.length) > 0 && (
+                                <span className="ml-1 min-w-[18px] h-[18px] px-1 rounded-full bg-primary/15 text-primary text-[10px] flex items-center justify-center">
+                                    {hierClasses.length + hierOccurrences.length + hierSubjects.length + hierChapters.length + hierConcepts.length}
+                                </span>
+                            )}
+                        </span>
+                        <ChevronDown className={cn('w-4 h-4 transition-transform', mobileFiltersOpen && 'rotate-180')} />
+                    </button>
+
+                    <div id="filter-area" className={cn('neu-inset rounded-2xl p-4 sm:p-5 relative z-[80] space-y-4', !mobileFiltersOpen && 'hidden md:block')}>
                         <div className="flex items-center justify-between">
                             <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Smart Filter</label>
                             {(hierClasses.length > 0 || hierOccurrences.length > 0 || hierSubjects.length > 0 || hierChapters.length > 0 || hierConcepts.length > 0) && (

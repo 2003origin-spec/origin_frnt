@@ -352,17 +352,27 @@ export async function GET(request: NextRequest, context: RouteContext) {
       const facetOccurrences = url.searchParams.getAll("occurrences").filter(Boolean);
       const facetSubjects = url.searchParams.getAll("subjects").filter(Boolean);
       const facetChapters = url.searchParams.getAll("chapters").filter(Boolean);
-      // Facets enumerate the catalog, so they must respect the same scope the
-      // question list does — otherwise `?subjects=biology` leaks the Biology
-      // chapter/concept tree to a JEE-mode student.
+      // Facets enumerate the catalog, so they must respect the student's scope —
+      // otherwise `?subjects=biology` leaks the Biology tree to a JEE-mode
+      // student. But the SCOPE differs by facet level: chapter/concept names are
+      // non-sensitive public syllabus and the test builder legitimately offers
+      // every STUDY-MODE subject (not just the premium-entitled ones), so those
+      // facets scope to the study mode. Question ACCESS stays entitlement-gated
+      // at generation/take time. class/occurrence/subject keep the tighter
+      // entitlement scope. (Study mode still bounds it — Biology never leaks to
+      // a JEE-mode student.)
       const facetScope = await getStudentScope(user.id, user.role);
+      const scopeSubjects =
+        level === 'chapter' || level === 'concept'
+          ? facetScope.modeSubjects
+          : facetScope.subjects;
       return ok(await listOgcodeCatalogFacets({
         level: level as 'class' | 'occurrence' | 'subject' | 'chapter' | 'concept',
         classes: facetClasses,
         occurrences: facetOccurrences,
         subjects: facetSubjects,
         chapters: facetChapters,
-        allowedSubjects: facetScope.enforced ? facetScope.subjects : null,
+        allowedSubjects: facetScope.enforced ? scopeSubjects : null,
       }));
     }
 

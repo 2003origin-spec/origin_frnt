@@ -10,8 +10,8 @@ import OriMascotStatic from '@/features/mascot/OriMascotStatic';
 import { setOriHidden, readOriPos, setOriPos, type OriPos } from '@/lib/ori-visibility';
 import { toast } from 'sonner';
 
-// Hold thresholds: 3s → Ori becomes draggable; 4s held still → offer to hide it.
-const DRAG_HOLD_MS = 3000;
+// Hold thresholds: 2s → Ori becomes draggable; 4s held still → offer to hide it.
+const DRAG_HOLD_MS = 2000;
 const HIDE_HOLD_MS = 4000;
 const MOVE_THRESHOLD_PX = 8;
 
@@ -46,7 +46,8 @@ export default function FloatingChat({ onOpen, hideMainButton, userName }: Float
     if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
     if (pickNew) setMsgIndex(Math.floor(Math.random() * GREET_MESSAGES.length));
     setBubbleVisible(true);
-    dismissTimerRef.current = setTimeout(() => setBubbleVisible(false), 4000);
+    // Hold the greeting bubble for 5s before auto-hiding.
+    dismissTimerRef.current = setTimeout(() => setBubbleVisible(false), 5000);
   };
 
   // Auto-show once after 2 s on mount
@@ -250,8 +251,9 @@ export default function FloatingChat({ onOpen, hideMainButton, userName }: Float
               <motion.div
                 initial={{ opacity: 0, scale: 0.8, y: 12 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.8, y: 12 }}
-                transition={{ type: 'spring', stiffness: 280, damping: 20 }}
+                exit={{ opacity: 0, scale: 0.8, y: 12, transition: { duration: 0.25 } }}
+                // ~1s ease to move/settle into view; exit stays quick (in the exit prop).
+                transition={{ duration: 1, ease: 'easeOut' }}
                 className="relative mr-10 text-white dark:text-slate-100"
               >
                 {/* Cloud shape, stretched to hug the one-line message behind it */}
