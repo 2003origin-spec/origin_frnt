@@ -624,20 +624,24 @@ async function proxyJsonResponse(proxyResp: Response): Promise<unknown> {
 }
 
 // AI Feature Toggle epic — which toggle feature does this request draw on?
-// Doubt-Solver traffic carries pageKind=doubt_solver (query); everything else
-// is Ori chat. In v1 both toggles move in lockstep, so this only shapes the 403
-// `feature` field and which client surface reacts (doc 04 §2.1).
-function featureForAiRequest(request: NextRequest): AiFeature {
+// Doubt-Solver traffic carries pageKind=doubt_solver (query) or lives under
+// /origin-ai/doubt-solver/*; everything else is Ori chat. In v1 both toggles
+// move in lockstep, so this only shapes the 403 `feature` field and which
+// client surface reacts (doc 04 §2.1).
+function featureForAiRequest(request: NextRequest, slug: string[] = []): AiFeature {
   const pageKind =
     request.nextUrl.searchParams.get("pageKind") ??
     request.nextUrl.searchParams.get("page_kind");
-  return pageKind === "doubt_solver" ? "aiExplainer" : "originAi";
+  if (pageKind === "doubt_solver" || slug[0] === "doubt-solver") {
+    return "aiExplainer";
+  }
+  return "originAi";
 }
 
 export async function GET(request: NextRequest, context: RouteContext) {
   const slug = await resolveSlug(context);
 
-  const aiBlock = await requireAiFeature(request, featureForAiRequest(request));
+  const aiBlock = await requireAiFeature(request, featureForAiRequest(request, slug));
   if (aiBlock) return aiBlock;
 
   const premiumBlock = await enforceOriginAiPremium(request);
@@ -817,7 +821,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
 export async function POST(request: NextRequest, context: RouteContext) {
   const slug = await resolveSlug(context);
 
-  const aiBlock = await requireAiFeature(request, featureForAiRequest(request));
+  const aiBlock = await requireAiFeature(request, featureForAiRequest(request, slug));
   if (aiBlock) return aiBlock;
 
   const premiumBlock = await enforceOriginAiPremium(request);
@@ -1372,48 +1376,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
       return created(result.reply);
     }
 
-    if (slug.length === 2 && slug[0] === "doubt-solver" && slug[1] === "speak-summary") {
-      const parsedBody = doubtSolverSpeakSummaryBodySchema.safeParse(body);
-      if (!parsedBody.success) {
-        return badRequest("Text and languageCode are required.");
-      }
-
-      if (ORIGIN_AI_SERVICE_URL) {
-        const proxyUser = await resolveProxyUser(request);
-        if (!proxyUser) {
-          return unauthorized();
-        }
-        
-        // Count summary playback under the voice quota
-        const quotaResponse = await checkOriginAiUsageLimit(proxyUser, { voice: true });
-        if (quotaResponse) {
-          return quotaResponse;
-        }
-
-        const proxyResp = await proxyToMicroservice(
-          "POST", 
-          "/api/v1/chat/doubt-solver/speak-summary", 
-          parsedBody.data, 
-          request, 
-          proxyUser
-        );
-        
-        if (proxyResp) {
-          const data = await proxyJsonResponse(proxyResp);
-          if (proxyResp.ok) {
-            await recordOriginAiProxyUsage(proxyUser.id, data, {
-              voiceText: parsedBody.data.text,
-            });
-          }
-          return new Response(JSON.stringify(data ?? {}), {
-            status: proxyResp.status,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-      }
-      return badRequest("Speak summary requires the Ori microservice.");
-    }
-
     if (slug.length === 2 && slug[0] === "voice" && slug[1] === "speak") {
       const parsedBody = voiceSpeakBodySchema.safeParse(body);
       if (!parsedBody.success) {
@@ -1470,6 +1432,60 @@ export async function POST(request: NextRequest, context: RouteContext) {
       }
 
       return ok(result.reply);
+    }
+
+    if (slug.length === 2 && slug[0] === "doubt-solver" && slug[1] === "speak-summary") {
+      const parsedBody = doubtSolverSpeakSummaryBodySchema.safeParse(body);
+      if (!parsedBody.success) {
+        return badRequest("Text and languageCode are required.");
+      }
+
+      if (ORIGIN_AI_SERVICE_URL) {
+        const proxyUser = await resolveProxyUser(request);
+        if (!proxyUser) {
+          return unauthorized();
+        }
+
+        // Opt-in Doubt Solver summary speech shares the AI Explainer token budget,
+        // not Ori's 10-minute live-voice quota.
+        const quotaResponse = await checkOriginAiUsageLimit(proxyUser, {
+          pageKind: "doubt_solver",
+        });
+        if (quotaResponse) {
+          return quotaResponse;
+        }
+
+        const proxyResp = await proxyToMicroservice(
+          "POST",
+          "/api/v1/chat/doubt-solver/speak-summary",
+          parsedBody.data,
+          request,
+          proxyUser,
+        );
+
+        if (proxyResp) {
+          const data = await proxyJsonResponse(proxyResp);
+          const record = data && typeof data === "object" ? (data as Record<string, unknown>) : null;
+          const hasAudio = typeof record?.data === "string" && record.data.length > 0;
+          const summaryText =
+            typeof record?.summary === "string" && record.summary.trim()
+              ? record.summary
+              : null;
+
+          // Only charge usage when audio was actually produced, and bill the
+          // short spoken summary — not the full explanation text.
+          if (proxyResp.ok && hasAudio) {
+            await recordOriginAiProxyUsage(proxyUser.id, data, {
+              voiceText: summaryText,
+            });
+          }
+          return new Response(JSON.stringify(data ?? {}), {
+            status: proxyResp.status,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      }
+      return badRequest("Speak summary requires the Ori microservice.");
     }
 
     if (slug.length === 2 && slug[0] === "voice" && slug[1] === "romanize") {
@@ -1542,7 +1558,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   if (slug.length !== 2 || slug[0] !== "threads") {
     return notFound();
   }
-  const aiBlock = await requireAiFeature(request, featureForAiRequest(request));
+  const aiBlock = await requireAiFeature(request, featureForAiRequest(request, slug));
   if (aiBlock) return aiBlock;
   const limited = await checkRateLimit(generalLimiter, userIdentifier(request));
   if (limited) return limited;
@@ -1596,7 +1612,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
   if (slug.length !== 2 || slug[0] !== "threads") {
     return notFound();
   }
-  const aiBlock = await requireAiFeature(request, featureForAiRequest(request));
+  const aiBlock = await requireAiFeature(request, featureForAiRequest(request, slug));
   if (aiBlock) return aiBlock;
   const limited = await checkRateLimit(generalLimiter, userIdentifier(request));
   if (limited) return limited;
