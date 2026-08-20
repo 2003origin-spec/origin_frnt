@@ -3,6 +3,7 @@ import { notifyAiDisabled } from '@/features/origin-ai/ai-access-client';
 import { getOriginAiBrowserSessionId } from '@/features/origin-ai/session';
 import { firstImageAttachmentUrl, normalizeAttachments } from '@/features/origin-ai/attachments';
 import {
+  streamDoubtSolverMessage,
   streamOriginAiMessage,
   type OriginAiStreamHandlers,
   type OriginAiStreamPageContext,
@@ -620,6 +621,36 @@ export async function sendOriginAiMessageStreaming(
   handlers: OriginAiStreamHandlers = {},
 ): Promise<OriginAiReply> {
   const finalEvent = await streamOriginAiMessage(
+    message,
+    pageContext as OriginAiStreamPageContext | undefined,
+    highlightedText,
+    threadId,
+    handlers,
+  );
+
+  const snapshot = threadId
+    ? await fetchThreadSnapshot(threadId, {
+        subject:
+          (typeof pageContext?.activeSubject === 'string' ? pageContext.activeSubject : null) ??
+          null,
+      })
+    : await fetchSessionSnapshot(pageContext as OriginAiClientPageContext | undefined);
+
+  return toReplyFromSnapshot(snapshot, finalEvent.user_message_id, finalEvent.ai_message_id);
+}
+
+/**
+ * Doubt Solver text-only stream — same OriginAiReply shape as sendOriginAiMessageStreaming,
+ * but routes through /origin-ai/doubt-solver/stream (no TTS on the chat path).
+ */
+export async function sendDoubtSolverMessageStreaming(
+  message: string,
+  pageContext?: OriginAiClientPageContext | Record<string, unknown>,
+  highlightedText?: string | null,
+  threadId?: string | null,
+  handlers: OriginAiStreamHandlers = {},
+): Promise<OriginAiReply> {
+  const finalEvent = await streamDoubtSolverMessage(
     message,
     pageContext as OriginAiStreamPageContext | undefined,
     highlightedText,

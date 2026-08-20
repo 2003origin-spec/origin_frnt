@@ -218,7 +218,7 @@ export async function streamOriginAiMessage(
   return consumeSseStream(response, handlers);
 }
 
-export async function sendDoubtSolverMessageStreaming(
+export async function streamDoubtSolverMessage(
   message: string,
   pageContext?: OriginAiStreamPageContext,
   highlightedText?: string | null,
