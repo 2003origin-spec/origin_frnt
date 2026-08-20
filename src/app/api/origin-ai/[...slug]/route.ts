@@ -167,6 +167,11 @@ const voiceSpeakBodySchema = z.object({
   voiceName: z.string().trim().nullable().optional(),
 });
 
+const doubtSolverSpeakSummaryBodySchema = z.object({
+  text: z.string().trim().min(1).max(10000),
+  languageCode: z.enum(["en-IN", "hi-IN"]),
+});
+
 const voiceRomanizeBodySchema = z.object({
   text: z.string().trim().min(1).max(2000),
 });
@@ -973,6 +978,59 @@ export async function POST(request: NextRequest, context: RouteContext) {
       return badRequest("Ori streaming is temporarily unavailable.");
     }
 
+    if (slug.length === 2 && slug[0] === "doubt-solver" && slug[1] === "stream") {
+      const parsedBody = messageBodySchema.safeParse(body);
+      if (!parsedBody.success) {
+        return badRequest("Message is required.");
+      }
+
+      if (!ORIGIN_AI_SERVICE_URL) {
+        return badRequest("Streaming requires the Ori microservice.");
+      }
+
+      const proxyUser = await resolveProxyUser(request);
+      if (!proxyUser) {
+        return unauthorized();
+      }
+      const quotaResponse = await checkOriginAiUsageLimit(proxyUser, {
+        pageKind: "doubt_solver",
+      });
+      if (quotaResponse) {
+        return quotaResponse;
+      }
+
+      let threadSubject: string | null = null;
+      if (parsedBody.data.threadId) {
+        threadSubject = await withStoreAsync(async (store) => {
+          const thread = getThreadById(store, proxyUser.id, parsedBody.data.threadId!);
+          return thread?.subject ?? null;
+        });
+      }
+      const enrichedPayload = {
+        ...parsedBody.data,
+        subject: threadSubject ?? parsedBody.data.pageContext?.activeSubject ?? null,
+        pageContext: {
+          ...(parsedBody.data.pageContext ?? {}),
+          pageKind: "doubt_solver", // enforce Doubt Solver context
+          ...(threadSubject && !parsedBody.data.pageContext?.activeSubject
+            ? { activeSubject: threadSubject }
+            : {}),
+        },
+      };
+
+      const proxyResp = await proxyToMicroserviceStream(
+        "POST",
+        "/api/v1/chat/doubt-solver/stream",
+        enrichedPayload,
+        request,
+        proxyUser,
+      );
+      if (proxyResp) {
+        return proxyResp;
+      }
+      return badRequest("Doubt Solver streaming is temporarily unavailable.");
+    }
+
     if (slug.length === 2 && slug[0] === "session" && slug[1] === "message") {
       const parsedBody = messageBodySchema.safeParse(body);
       if (!parsedBody.success) {
@@ -1312,6 +1370,48 @@ export async function POST(request: NextRequest, context: RouteContext) {
       }
 
       return created(result.reply);
+    }
+
+    if (slug.length === 2 && slug[0] === "doubt-solver" && slug[1] === "speak-summary") {
+      const parsedBody = doubtSolverSpeakSummaryBodySchema.safeParse(body);
+      if (!parsedBody.success) {
+        return badRequest("Text and languageCode are required.");
+      }
+
+      if (ORIGIN_AI_SERVICE_URL) {
+        const proxyUser = await resolveProxyUser(request);
+        if (!proxyUser) {
+          return unauthorized();
+        }
+        
+        // Count summary playback under the voice quota
+        const quotaResponse = await checkOriginAiUsageLimit(proxyUser, { voice: true });
+        if (quotaResponse) {
+          return quotaResponse;
+        }
+
+        const proxyResp = await proxyToMicroservice(
+          "POST", 
+          "/api/v1/chat/doubt-solver/speak-summary", 
+          parsedBody.data, 
+          request, 
+          proxyUser
+        );
+        
+        if (proxyResp) {
+          const data = await proxyJsonResponse(proxyResp);
+          if (proxyResp.ok) {
+            await recordOriginAiProxyUsage(proxyUser.id, data, {
+              voiceText: parsedBody.data.text,
+            });
+          }
+          return new Response(JSON.stringify(data ?? {}), {
+            status: proxyResp.status,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      }
+      return badRequest("Speak summary requires the Ori microservice.");
     }
 
     if (slug.length === 2 && slug[0] === "voice" && slug[1] === "speak") {
