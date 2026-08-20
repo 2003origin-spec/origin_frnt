@@ -1579,7 +1579,7 @@ function ProgressiveResponse({
 }
 
 import {
-  Volume2, Square, Loader2, Play
+  Volume2, Square, Play
 } from 'lucide-react';
 
 function DoubtSolverMessageAudio({ message }: { message: ChatMessageType }) {
