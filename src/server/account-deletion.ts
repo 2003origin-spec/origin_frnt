@@ -30,6 +30,7 @@ import {
   dbUpdateUser,
 } from "@/server/db-users";
 import { revokeDeviceTokensForUser } from "@/server/push/device-tokens";
+import { purgeLiveContestStateForUser } from "@/server/contest/contest-account-deletion";
 import { isUserPostgresConfigured } from "@/server/user-postgres";
 import { withStoreAsync } from "@/server/store";
 import type { AppStore, StoredUser } from "@/server/store";
@@ -136,6 +137,19 @@ export async function deleteAccountForUser(userId: string): Promise<AccountDelet
   } catch (error) {
     console.error(
       "[account-deletion] push token revoke failed",
+      error instanceof Error ? error.message : error,
+    );
+  }
+
+  // Purge transient live contest state (in-progress draft). Contest history/
+  // ratings hold no direct PII and are retained for leaderboard integrity;
+  // only the live draft must go so no finalize sweep can auto-submit it.
+  // Failure here must not block the PII-critical anonymization above.
+  try {
+    await purgeLiveContestStateForUser(userId);
+  } catch (error) {
+    console.error(
+      "[account-deletion] contest state purge failed",
       error instanceof Error ? error.message : error,
     );
   }

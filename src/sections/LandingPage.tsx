@@ -6,6 +6,7 @@ import { useMainScrollContainer } from '@/hooks/useMainScrollContainer';
 import { Button } from '@/components/ui/button';
 import SmoothScroll from '@/components/providers/SmoothScroll';
 import LiveCounter from '@/components/landing/LiveCounter';
+import { ContestBanner } from '@/components/contest/ContestBanner';
 import ActivityTicker from '@/components/landing/ActivityTicker';
 import NoiseOverlay from '@/components/landing/NoiseOverlay';
 import { useTypewriter } from '@/hooks/useTypewriter';
@@ -764,6 +765,12 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
             {/* Live student counter */}
             <div className="w-full flex justify-center">
               <LiveCounter />
+            </div>
+
+            {/* Weekly Contest register banner (client-fetched; self-hides when
+                no contest is scheduled or the flag is off). */}
+            <div className="w-full max-w-3xl mx-auto mt-6">
+              <ContestBanner userId={user?.id ?? null} />
             </div>
 
             {/* Powered by Sarvam AI — sits above the CTA */}

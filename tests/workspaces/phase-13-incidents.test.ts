@@ -108,6 +108,42 @@ test("R-6 A-18: documentImport kill-switch is scoped to import-jobs", async () =
   await setFlagOverride("documentImport", "clear");
 });
 
+// Contest (Phase 9): killing the `contest` flag 404s the STUDENT surfaces but
+// must NOT take down the internal drain/finalize/publish crons (buffered answers
+// still need to persist to Neon during an incident) nor the admin management
+// surface (so an admin can still cancel/reschedule to stop the bleeding).
+test("Phase 9: contest kill-switch scopes to student surfaces only", async () => {
+  await setFlagOverride("contest", "off");
+  // Should match — every student contest surface
+  for (const p of [
+    "/api/contest/register",
+    "/api/contest/paper",
+    "/api/contest/start",
+    "/api/contest/submit",
+    "/api/contest/answers",
+    "/api/contest/state",
+    "/api/contest/result",
+    "/api/contest/leaderboard",
+    "/api/contest/practice",
+    "/api/contest/dpp",
+  ]) {
+    assert.equal(await findKillSwitchForPath(p), "contest", `expected kill for ${p}`);
+  }
+  // Should NOT match — internal crons keep draining/finalizing/publishing
+  for (const p of [
+    "/api/internal/contest/drain",
+    "/api/internal/contest/finalize",
+    "/api/internal/contest/publish-results",
+    "/api/internal/contest/reminders",
+  ]) {
+    assert.equal(await findKillSwitchForPath(p), null, `cron must survive: ${p}`);
+  }
+  // Should NOT match — admin can still cancel/reschedule the live contest
+  assert.equal(await findKillSwitchForPath("/api/admin/contest"), null);
+  assert.equal(await findKillSwitchForPath("/api/admin/contest/c_x/cancel"), null);
+  await setFlagOverride("contest", "clear");
+});
+
 test("Phase 13: rate-limit mode round-trips", async () => {
   for (const mode of ["relaxed", "normal", "strict", "lockdown"] as RateLimitMode[]) {
     await setRateLimitMode(mode);

@@ -7,6 +7,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useTimeTracker } from '@/hooks/useTimeTracker';
 import type { Task } from '@/types';
+import type { ContestStatus } from '@/server/contest/contest-status';
 
 interface DashboardClientProps {
   initialTasks: Task[];
@@ -20,6 +21,7 @@ interface DashboardClientProps {
   } | null;
   initialChallenge: DashboardChallengePreview | null;
   initialRegStatus: { count: number; limit: number; seatsLeft: number } | null;
+  initialContest: ContestStatus | null;
 }
 
 export default function DashboardClient({
@@ -27,6 +29,7 @@ export default function DashboardClient({
   initialPointsData,
   initialChallenge,
   initialRegStatus,
+  initialContest,
 }: DashboardClientProps) {
   const { user, tasks, addTask, editTask, toggleTask, removeTask, primeTasks } = useAuth();
   const router = useRouter();
@@ -83,6 +86,7 @@ export default function DashboardClient({
       initialPointsData={initialPointsData}
       initialChallenge={initialChallenge}
       initialRegStatus={initialRegStatus}
+      initialContest={initialContest}
     />
   );
 }

@@ -95,6 +95,18 @@ const MIGRATIONS = [
   // per-mode pick. Creates ogcode_daily_subject_questions and drops
   // ogcode_daily_challenges, whose only reader goes in the same commit.
   { file: "20260819_ogcode_daily_subject_questions.sql", target: "ogcode" },
+  // Origin Weekly Contest + ORBIT — foundation schema (Phase 0). Creates the
+  // isolated contest.* schema (contests, questions, registrations, attempts,
+  // drafts, submissions, leaderboard, orbit ratings/history, rewards, practice,
+  // gamification) on the USER database. Additive; touches nothing existing.
+  // Plan: V1/CONTEST_ORBIT_IMPLEMENTATION_PLAN.md
+  { file: "20260819_contest_core.sql", target: "user" },
+  // Contest cancel/reschedule — adds 'cancelled' to the contests status CHECK.
+  { file: "20260819_contest_cancelled_status.sql", target: "user" },
+  // Contest reminders (Phase 2b) — idempotency ledger for lifecycle notifications.
+  { file: "20260819_contest_reminders.sql", target: "user" },
+  // Contest per-event partition helpers + retention bookkeeping (Phase 9).
+  { file: "20260821_contest_partitions.sql", target: "user" },
 ];
 
 const TARGET_ENV = {

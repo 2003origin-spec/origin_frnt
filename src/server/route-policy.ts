@@ -61,6 +61,11 @@ export const AUTHENTICATED_API_PREFIXES = [
   // Android app endpoints (link-out issue, push-token registry). The two
   // public exceptions above are matched before this prefix.
   "/api/mobile",
+  // Weekly Contest — student attempt surface (register/paper/answers/submit/
+  // state). Authenticated JWT users; gated in-handler by the `contest` flag +
+  // registration/eligibility. /api/admin/contest/* is already covered by
+  // "/api/admin". Plan: V1/CONTEST_ORBIT_IMPLEMENTATION_PLAN.md.
+  "/api/contest",
 ] as const;
 
 export const MEMBERSHIP_API_PREFIXES = ["/api/study-rooms/[id]"] as const;
@@ -122,6 +127,7 @@ export const AUTHENTICATED_APP_PREFIXES = [
   "/dashboard",
   "/tests",
   "/ogcode",
+  "/contest",
   "/leaderboard",
   "/milestones",
   "/profile",

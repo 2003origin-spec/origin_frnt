@@ -1,0 +1,84 @@
+/**
+ * DB-backed test for contest registration — the SQL window check (fail-closed,
+ * DB NOW()) + idempotency + the authoritative isRegistered read.
+ *
+ * Skips when USER_DATABASE_URL is not configured.
+ */
+
+import test from "node:test";
+import assert from "node:assert/strict";
+
+import { dbConfigured, makeId, rawPool } from "./_db";
+import {
+  isRegisteredForContest,
+  registerForContest,
+} from "@/server/contest/contest-registration-service";
+
+const maybe = dbConfigured() ? test : test.skip;
+
+async function seedUser(id: string) {
+  await rawPool().query(
+    `INSERT INTO origin_users (id, name, email, role, password_hash)
+       VALUES ($1, 'Reg', $2, 'student', 'x') ON CONFLICT (id) DO NOTHING`,
+    [id, `${id}@test.local`],
+  );
+}
+
+async function seedContest(id: string, regOpenMs: number, regCloseMs: number, endMs: number) {
+  const now = Date.now();
+  await rawPool().query(
+    `INSERT INTO contest.contests (id, name, status, reg_open, reg_close, start_at, end_at)
+     VALUES ($1, 'Reg Contest', 'scheduled', $2, $3, $3, $4)`,
+    [
+      id,
+      new Date(now + regOpenMs).toISOString(),
+      new Date(now + regCloseMs).toISOString(),
+      new Date(now + endMs).toISOString(),
+    ],
+  );
+}
+
+maybe("registration is window-checked, idempotent, and readable", async () => {
+  const pool = rawPool();
+  const userId = makeId("user_reg");
+  const openId = makeId("contest_open");
+  const closedId = makeId("contest_closed");
+
+  try {
+    await seedUser(userId);
+    // open: reg opened 1d ago, closes in 1h, ends in 2h
+    await seedContest(openId, -86_400_000, 3_600_000, 7_200_000);
+    // closed: reg window already ended 1h ago
+    await seedContest(closedId, -7_200_000, -3_600_000, 3_600_000);
+
+    // not registered yet
+    assert.equal(await isRegisteredForContest(openId, userId), false);
+
+    // register succeeds within the window
+    const r1 = await registerForContest(openId, userId);
+    assert.equal(r1.registered, true);
+    assert.equal(r1.alreadyRegistered, false);
+    assert.equal(await isRegisteredForContest(openId, userId), true);
+
+    // idempotent: second register is a success, flagged alreadyRegistered
+    const r2 = await registerForContest(openId, userId);
+    assert.equal(r2.registered, true);
+    assert.equal(r2.alreadyRegistered, true);
+    assert.equal(r2.registeredAt, r1.registeredAt); // same original timestamp
+
+    // exactly one row
+    const count = await pool.query(
+      `SELECT COUNT(*)::int AS n FROM contest.registrations WHERE contest_id=$1 AND user_id=$2`,
+      [openId, userId],
+    );
+    assert.equal(count.rows[0].n, 1);
+
+    // a closed-window contest rejects (fail-closed)
+    await assert.rejects(() => registerForContest(closedId, userId), /not open/i);
+    assert.equal(await isRegisteredForContest(closedId, userId), false);
+  } finally {
+    await pool.query(`DELETE FROM contest.registrations WHERE user_id = $1`, [userId]);
+    await pool.query(`DELETE FROM contest.contests WHERE id = ANY($1::text[])`, [[openId, closedId]]);
+    await pool.query(`DELETE FROM origin_users WHERE id = $1`, [userId]);
+  }
+});

@@ -54,7 +54,8 @@ type FlagKey =
   | "teacherDppShare"
   | "cbtParticipationQuota"
   | "fullLengthMocks"
-  | "questionClusters";
+  | "questionClusters"
+  | "contest";
 
 type FlagSpec = {
   envSuffix: string;
@@ -279,6 +280,10 @@ const FLAG_SPECS: Record<FlagKey, FlagSpec> = {
   // row survives, so flipping it back on restores them all. Tests already built
   // from clusters are ordinary tests and are unaffected either way.
   questionClusters: { envSuffix: "QUESTION_CLUSTERS", defaultDev: true, defaultProd: true },
+  // Origin Weekly Contest + ORBIT. Ships DARK: on in dev so the surface can be
+  // built/tested, OFF in prod until the Phase 9 game-day load test passes, then
+  // flipped via TEACHER_LAUNCH_CONTEST=1. Plan: V1/CONTEST_ORBIT_IMPLEMENTATION_PLAN.md
+  contest: { envSuffix: "CONTEST", defaultDev: true, defaultProd: false },
 };
 
 /** Every feature-flag key, in declaration order (admin System Config view). */
