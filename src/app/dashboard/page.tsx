@@ -7,6 +7,7 @@ import {
   listTasksForRender,
 } from '@/server/render-loaders';
 import { getRegistrationStatus } from '@/server/users';
+import { getContestStatus, type ContestStatus } from '@/server/contest/contest-status';
 import { istDateKey } from '@/lib/ist-day';
 import type { Task } from '@/types';
 
@@ -36,12 +37,14 @@ async function DashboardGate() {
   let initialPointsData: Awaited<ReturnType<typeof getPointsSummaryForRender>> | null = null;
   let initialChallenge: Awaited<ReturnType<typeof getChallengeOfTheDayForRender>> | null = null;
   let initialRegStatus: RegistrationStatus | null = null;
+  let initialContest: ContestStatus | null = null;
 
-  const [tasksResult, pointsResult, challengeResult, regResult] = await Promise.allSettled([
+  const [tasksResult, pointsResult, challengeResult, regResult, contestResult] = await Promise.allSettled([
     listTasksForRender(user.id),
     getPointsSummaryForRender(user.id),
     getChallengeOfTheDayForRender(istDateKey(), user.id),
     getRegistrationStatus(user.role),
+    getContestStatus(user.id),
   ]);
 
   if (tasksResult.status === 'fulfilled') {
@@ -56,6 +59,9 @@ async function DashboardGate() {
   if (regResult.status === 'fulfilled') {
     initialRegStatus = regResult.value;
   }
+  if (contestResult.status === 'fulfilled') {
+    initialContest = contestResult.value;
+  }
 
   return (
     <DashboardClient
@@ -63,6 +69,7 @@ async function DashboardGate() {
       initialPointsData={initialPointsData}
       initialTasks={initialTasks}
       initialRegStatus={initialRegStatus}
+      initialContest={initialContest}
     />
   );
 }

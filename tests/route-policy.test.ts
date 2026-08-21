@@ -77,6 +77,15 @@ test("mobile shell endpoints: config + handoff consumption are public, everythin
   assert.equal(getApiRoutePolicy("/api/mobile/link-out").kind, "authenticated");
   assert.equal(getApiRoutePolicy("/api/mobile/push-tokens").kind, "authenticated");
   assert.equal(getApiRoutePolicy("/api/mobile").kind, "authenticated");
+  // Contest student surface is authenticated; admin contest rides /api/admin.
+  assert.equal(getApiRoutePolicy("/api/contest/answers").kind, "authenticated");
+  assert.equal(getApiRoutePolicy("/api/contest/result").kind, "authenticated");
+  assert.equal(getApiRoutePolicy("/api/contest/leaderboard").kind, "authenticated");
+  assert.equal(getApiRoutePolicy("/api/admin/contest").kind, "authenticated");
+  // Contest internal cron rides /api/internal (INTERNAL_CRON_TOKEN).
+  assert.equal(getApiRoutePolicy("/api/internal/contest/publish-results").kind, "internal");
+  // The /contest app pages are authenticated.
+  assert.equal(getAppRoutePolicy("/contest/abc/play").kind, "authenticated");
 });
 
 test("auth refresh page route is public for expired access-cookie recovery", () => {

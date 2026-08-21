@@ -17,6 +17,8 @@ import {
 import PointsSummary from '@/components/dashboard/PointsSummary';
 import StudyModeToggle from '@/components/dashboard/StudyModeToggle';
 import { ChampionshipBanner } from '@/components/dashboard/ChampionshipBanner';
+import { ContestBanner } from '@/components/contest/ContestBanner';
+import type { ContestStatus } from '@/server/contest/contest-status';
 import StudyModeFirstRunPrompt from '@/components/dashboard/StudyModeFirstRunPrompt';
 import { apiCall } from '@/lib/api';
 import { useLayout } from '@/context/LayoutContext';
@@ -116,6 +118,7 @@ interface DashboardProps {
   } | null;
   initialChallenge?: DashboardChallengePreview | null;
   initialRegStatus?: { count: number; limit: number; seatsLeft: number } | null;
+  initialContest?: ContestStatus | null;
 }
 
 import { useNotifications } from '@/context/NotificationContext';
@@ -134,6 +137,7 @@ export default function Dashboard({
   initialPointsData = null,
   initialChallenge = null,
   initialRegStatus = null,
+  initialContest = null,
 }: DashboardProps) {
   const { addNotification } = useNotifications();
   const [pointsData, setPointsData] = useState<{
@@ -343,6 +347,9 @@ export default function Dashboard({
             for students without a complete JEE/NEET/PCMB subject set. */}
         <StudyModeFirstRunPrompt />
         <StudyModeToggle />
+
+        {/* ── Weekly Contest register banner (server-seeded) ── */}
+        <ContestBanner initial={initialContest} userId={user?.id} />
 
         {/* ── Monthly Championship banner (retention Layer 4) ── */}
         <ChampionshipBanner onPractice={() => onNavigate('ogcode')} />

@@ -240,6 +240,14 @@ export const FLAG_KILL_PREFIXES: Partial<Record<FlagKey, FlagKillMatcher>> = {
   // "/api/cbt-student" (startsWith), but both are listed for clarity; the admin
   // allowlist routes live under "/api/admin/cbt".
   cbtModule: ["/api/cbt", "/api/cbt-student", "/api/admin/cbt"],
+  // Killing `contest` 404s every STUDENT contest surface (register / paper /
+  // start / submit / answers / state / result / leaderboard / practice / dpp).
+  // Deliberately scoped so it does NOT match `/api/internal/contest/*` — the
+  // drain/finalize/publish-results/reminders crons must keep running during an
+  // incident so buffered answers still persist to Neon and don't expire in
+  // Redis. It also leaves `/api/admin/contest/*` alive so an admin can still
+  // cancel/reschedule the live contest to stop the bleeding.
+  contest: ["/api/contest"],
 };
 
 function matchKillSwitch(matcher: FlagKillMatcher, pathname: string): boolean {

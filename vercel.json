@@ -18,6 +18,26 @@
     {
       "path": "/api/internal/cron/qotd-rollover",
       "schedule": "30 18 * * *"
+    },
+    {
+      "path": "/api/internal/contest/drain",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/internal/contest/reminders",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/internal/contest/finalize",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/internal/contest/publish-results",
+      "schedule": "*/2 * * * *"
+    },
+    {
+      "path": "/api/internal/contest/retention",
+      "schedule": "15 3 * * *"
     }
   ]
 }
