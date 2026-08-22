@@ -45,6 +45,16 @@ test("all app page sections are covered by public/authenticated/admin route poli
   assert.deepEqual(uncovered, []);
 });
 
+test("contest share is public (page + sanitized read); attempt surfaces stay authenticated", () => {
+  // The opt-in, revocable, sanitized shared-result page + its read are public.
+  assert.equal(getAppRoutePolicy("/contest/share/abc123").kind, "public");
+  assert.equal(getApiRoutePolicy("/api/public/contest-share/abc123").kind, "public");
+  // Regression: the rest of the contest surface must remain authenticated.
+  assert.equal(getAppRoutePolicy("/contest/c1/play").kind, "authenticated");
+  assert.equal(getAppRoutePolicy("/contest/c1/result").kind, "authenticated");
+  assert.equal(getApiRoutePolicy("/api/contest/submit").kind, "authenticated");
+});
+
 test("future API routes are denied by default", () => {
   assert.equal(getApiRoutePolicy("/api/new-feature").kind, "unconfigured");
   assert.equal(getAppRoutePolicy("/new-feature").kind, "unconfigured");

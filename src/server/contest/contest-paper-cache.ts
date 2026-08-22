@@ -34,6 +34,8 @@ export interface PaperQuestion {
   text: unknown;
   options: unknown;
   questionType: unknown;
+  image: unknown;
+  optionImages: unknown;
   marks: number | null;
   negativeMarks: number | null;
 }
@@ -89,6 +91,9 @@ function sanitizeQuestion(row: {
     text: s.text,
     options: s.options,
     questionType: s.questionType,
+    // Diagrams are renderable, answer-free content — safe to expose.
+    image: s.image ?? null,
+    optionImages: s.optionImages ?? null,
     marks: row.marks,
     negativeMarks: row.negative_marks,
     // DELIBERATELY OMITTED: correctOption, correctOptions, answerText, tolerance,

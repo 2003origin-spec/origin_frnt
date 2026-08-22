@@ -13,6 +13,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  shouldCountViolation,
+  VIOLATION_GRACE_MS,
   CONTEST_END_GRACE_SECONDS,
   areResultsPublished,
   canStartAttempt,
@@ -87,24 +89,24 @@ test("scheduled contest with missing windows is UPCOMING, not a throw", () => {
   assert.equal(resolveContestState(w, START), "UPCOMING");
 });
 
-test("registration window is fail-closed and correct at boundaries", () => {
+test("registration window is [reg_open, end_at) — late walk-up allowed, fail-closed", () => {
   const w = scheduled();
   assert.equal(isRegistrationOpen(w, at("2026-08-19T23:59:59.999Z")), false); // before reg_open
   assert.equal(isRegistrationOpen(w, REG_OPEN), true); // at reg_open (inclusive)
-  assert.equal(isRegistrationOpen(w, at("2026-08-22T00:00:00Z")), true); // mid
-  assert.equal(isRegistrationOpen(w, at("2026-08-25T12:59:59.999Z")), true); // 1ms before reg_close
-  assert.equal(isRegistrationOpen(w, REG_CLOSE), false); // at reg_close (exclusive)
+  assert.equal(isRegistrationOpen(w, at("2026-08-22T00:00:00Z")), true); // mid (upcoming)
+  assert.equal(isRegistrationOpen(w, at("2026-08-25T12:59:59.999Z")), true); // just before start
+  // LATE REGISTRATION: open through the LIVE window until end_at.
+  assert.equal(isRegistrationOpen(w, START), true); // at start (now registrable + startable)
+  assert.equal(isRegistrationOpen(w, at("2026-08-25T13:45:00Z")), true); // mid-LIVE walk-up
+  assert.equal(isRegistrationOpen(w, at("2026-08-25T13:59:59.999Z")), true); // 1ms before end
+  assert.equal(isRegistrationOpen(w, END), false); // at end (exclusive)
+  assert.equal(isRegistrationOpen(w, at("2026-08-25T14:30:00Z")), false); // past end
   // wrong status ⇒ closed even if the clock is inside the window
   assert.equal(isRegistrationOpen(scheduled({ status: "draft" }), REG_OPEN), false);
   assert.equal(isRegistrationOpen(scheduled({ status: "result_published" }), REG_OPEN), false);
   // missing windows ⇒ closed (fail-closed)
   assert.equal(isRegistrationOpen(scheduled({ regOpen: null }), REG_OPEN), false);
-});
-
-test("registration cannot reopen after the contest has ended", () => {
-  // A (misconfigured) reg_close after end_at must still be blocked once ended.
-  const w = scheduled({ regClose: at("2026-08-25T15:00:00Z") });
-  assert.equal(isRegistrationOpen(w, at("2026-08-25T14:30:00Z")), false); // past end_at
+  assert.equal(isRegistrationOpen(scheduled({ endAt: null }), REG_OPEN), false);
 });
 
 test("canStartAttempt is true only while LIVE (late entry allowed within LIVE)", () => {
@@ -170,4 +172,12 @@ test("DST-boundary invariance: a contest spanning a DST transition keeps exact U
   // the instant of the DST jump — squarely mid-contest
   assert.equal(resolveContestState(dstWindow, at("2026-03-08T07:00:00Z")), "LIVE");
   assert.equal(resolveContestState(dstWindow, at("2026-03-08T07:30:00Z")), "ENDED");
+});
+
+test("shouldCountViolation: only sustained backgrounding counts (mobile-safe)", () => {
+  assert.equal(shouldCountViolation(0), false); // instant
+  assert.equal(shouldCountViolation(500), false); // notification glance
+  assert.equal(shouldCountViolation(VIOLATION_GRACE_MS - 1), false);
+  assert.equal(shouldCountViolation(VIOLATION_GRACE_MS), true); // sustained exit
+  assert.equal(shouldCountViolation(10_000), true);
 });

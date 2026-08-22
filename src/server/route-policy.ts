@@ -72,7 +72,9 @@ export const MEMBERSHIP_API_PREFIXES = ["/api/study-rooms/[id]"] as const;
 
 // CBT student surface: public at the edge, gated in-handler by a signed
 // room-bound participant JWT. Checked before role/authenticated prefixes.
-export const PUBLIC_API_PREFIXES = ["/api/cbt-student"] as const;
+// Contest share read: unauthenticated, returns only SANITIZED result data for a
+// revocable opt-in slug (no answers/PII) — the growth-loop referral surface.
+export const PUBLIC_API_PREFIXES = ["/api/cbt-student", "/api/public/contest-share"] as const;
 
 // CBT teacher surface: role-gated to cbt_teacher. Checked before the
 // authenticated prefixes (there is no `authenticated` policy on any CBT
@@ -121,7 +123,9 @@ export const PUBLIC_APP_PATHS = [
 // `/cbt/r` = student join/test pages, public at the edge (participant-token
 // gated in-handler). Public is checked before the `/cbt` role prefix, so the
 // student surface stays reachable under the role-gated `/cbt` tree.
-export const PUBLIC_APP_PREFIXES = ["/videos", "/cbt/r"] as const;
+// `/contest/share/<slug>` is the public shared-result page (checked BEFORE the
+// authenticated `/contest` prefix, so a logged-out visitor can view it).
+export const PUBLIC_APP_PREFIXES = ["/videos", "/cbt/r", "/contest/share"] as const;
 
 export const AUTHENTICATED_APP_PREFIXES = [
   "/dashboard",

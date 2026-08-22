@@ -6,6 +6,7 @@ import { ArrowLeft, Trophy } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { NeuButton } from '@/components/ui/neu';
+import { useAuth } from '@/context/AuthContext';
 
 /**
  * Contest global leaderboard (plan Phase 6 UI) — keyset-paged from
@@ -21,6 +22,7 @@ interface Row {
 
 export function ContestLeaderboard({ contestId }: { contestId: string }) {
   const router = useRouter();
+  const { user } = useAuth();
   const [rows, setRows] = useState<Row[]>([]);
   const [cursor, setCursor] = useState<number | null>(0);
   const [status, setStatus] = useState<'loading' | 'ok' | 'pending' | 'error'>('loading');
@@ -82,8 +84,13 @@ export function ContestLeaderboard({ contestId }: { contestId: string }) {
         </div>
 
         <div className="neu-raised rounded-2xl divide-y divide-border/20">
-          {rows.map((r) => (
-            <div key={r.userId} className="flex items-center justify-between px-4 py-3">
+          {rows.map((r) => {
+            const isMe = user?.id != null && r.userId === user.id;
+            return (
+            <div
+              key={r.userId}
+              className={cn('flex items-center justify-between px-4 py-3', isMe && 'bg-primary/10')}
+            >
               <div className="flex items-center gap-3">
                 <span
                   className={cn(
@@ -93,14 +100,17 @@ export function ContestLeaderboard({ contestId }: { contestId: string }) {
                 >
                   {r.rank}
                 </span>
-                <span className="text-[13px] font-bold text-foreground">Player {r.userId.slice(-4)}</span>
+                <span className={cn('text-[13px] font-bold', isMe ? 'text-primary' : 'text-foreground')}>
+                  {isMe ? 'You' : `Player ${r.userId.slice(-4)}`}
+                </span>
               </div>
               <div className="flex items-center gap-4">
                 <span className="text-[11px] font-bold text-muted-foreground">{r.percentile}%ile</span>
                 <span className="text-sm font-black text-primary tabular-nums">{r.score}</span>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
 
         {cursor !== null && (

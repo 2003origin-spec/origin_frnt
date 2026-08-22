@@ -2,13 +2,34 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Plus, Trophy, Ban, Rocket, Loader2, ChevronDown, Eye, Save, Pencil } from 'lucide-react';
+import { Plus, Trophy, Ban, Rocket, Loader2, ChevronDown, Eye, Save, Pencil, Trash2, RefreshCw, Clock, BarChart3 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { NeuButton } from '@/components/ui/neu';
+import { LatexRenderer } from '@/components/ui/LatexRenderer';
 import { apiCall } from '@/lib/api';
 import { formatIST, istLocalToUtcIso, utcIsoToIstLocal } from '@/lib/contest/ist';
 import type { ContestRecord } from '@/server/contest/contest-admin-service';
+import type { ContestAnalytics } from '@/server/contest/contest-analytics-service';
+
+/** One resolved question as returned by the /questions/resolve preview. The
+ *  snapshot carries the renderable stem/options (+ the answer key, which the
+ *  admin is allowed to see for review). */
+interface ResolvedQuestion {
+  questionId: string;
+  subject?: string | null;
+  snapshot: {
+    text?: string;
+    options?: string[] | null;
+    image?: string | null;
+    optionImages?: (string | null)[] | null;
+    correctOption?: number | null;
+    correctOptions?: number[] | null;
+    explanation?: string;
+    chapter?: string;
+    difficulty?: string;
+  };
+}
 
 /**
  * Admin contest builder — a single in-page form (no browser prompts). Select
@@ -48,7 +69,7 @@ export function AdminContestPanel({ initial }: { initial: ContestRecord[] }) {
   const [chapters, setChapters] = useState<Record<string, string[]>>({});
   const [loadingChapters, setLoadingChapters] = useState<Record<string, boolean>>({});
   const [expandedSubject, setExpandedSubject] = useState<string | null>(null);
-  const [preview, setPreview] = useState<{ count: number; questions: unknown[] } | null>(null);
+  const [preview, setPreview] = useState<{ count: number; questions: ResolvedQuestion[] } | null>(null);
   const [busy, setBusy] = useState<string | null>(null); // action label while running
   const [rowBusy, setRowBusy] = useState<string | null>(null);
 
@@ -116,6 +137,7 @@ export function AdminContestPanel({ initial }: { initial: ContestRecord[] }) {
     if (!startIso) return { error: 'Set a valid start date & time (IST).' } as const;
     if (!Number.isFinite(b.durationMin) || b.durationMin <= 0) return { error: 'Set a valid duration.' } as const;
     const startMs = new Date(startIso).getTime();
+    if (startMs <= Date.now()) return { error: 'Start time must be in the future.' } as const;
     const endIso = new Date(startMs + b.durationMin * 60_000).toISOString();
     const regOpenIso = b.regOpenLocal
       ? istLocalToUtcIso(b.regOpenLocal)
@@ -187,7 +209,7 @@ export function AdminContestPanel({ initial }: { initial: ContestRecord[] }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ selections }),
-      })) as { questions: unknown[]; count: number };
+      })) as { questions: ResolvedQuestion[]; count: number };
       setPreview(resolved);
       toast.success(`Resolved ${resolved.count} questions.`);
     } catch (e) {
@@ -197,8 +219,44 @@ export function AdminContestPanel({ initial }: { initial: ContestRecord[] }) {
     }
   };
 
-  const publish = async () => {
+  // Remove a question from the preview paper (publishing freezes the remainder).
+  const deleteQuestion = (index: number) => {
+    setPreview((prev) =>
+      prev ? { questions: prev.questions.filter((_, i) => i !== index), count: prev.questions.length - 1 } : prev,
+    );
+  };
+
+  // Swap one question for a fresh one on the same subject/topic (never a dup).
+  const [replacing, setReplacing] = useState<number | null>(null);
+  const replaceQuestion = async (index: number) => {
     if (!b.id || !preview) return;
+    const q = preview.questions[index];
+    const subject = q.subject ?? '';
+    if (!subject) return;
+    setReplacing(index);
+    try {
+      const excludeIds = preview.questions.map((x) => x.questionId);
+      const res = (await apiCall(`/admin/contest/${b.id}/questions/replace`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subject, topics: b.topics[subject] ?? undefined, excludeIds }),
+      })) as { question: ResolvedQuestion };
+      setPreview((prev) => {
+        if (!prev) return prev;
+        const questions = [...prev.questions];
+        questions[index] = res.question;
+        return { ...prev, questions };
+      });
+      toast.success('Question swapped.');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'No replacement available.');
+    } finally {
+      setReplacing(null);
+    }
+  };
+
+  const publish = async () => {
+    if (!b.id || !preview || preview.questions.length === 0) return;
     setBusy('publish');
     try {
       await apiCall(`/admin/contest/${b.id}/publish`, {
@@ -236,6 +294,7 @@ export function AdminContestPanel({ initial }: { initial: ContestRecord[] }) {
   };
 
   const cancel = async (c: ContestRecord) => {
+    if (!window.confirm(`Cancel "${c.name}"? Registrations are released and it won't run.`)) return;
     setRowBusy(c.id);
     try {
       await apiCall(`/admin/contest/${c.id}/cancel`, { method: 'POST' });
@@ -248,11 +307,40 @@ export function AdminContestPanel({ initial }: { initial: ContestRecord[] }) {
     }
   };
 
+  // Incident control: extend a live contest's deadline for everyone.
+  const [extendOpen, setExtendOpen] = useState<string | null>(null);
+  const extend = async (c: ContestRecord, minutes: number) => {
+    setRowBusy(c.id);
+    try {
+      await apiCall(`/admin/contest/${c.id}/extend`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ addMinutes: minutes }),
+      });
+      toast.success(`Extended by ${minutes} min — everyone's clock moved.`);
+      setExtendOpen(null);
+      await refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Extend failed.');
+    } finally {
+      setRowBusy(null);
+    }
+  };
+
+  const isLiveNow = (c: ContestRecord) => {
+    if (c.status !== 'scheduled' || !c.startAt || !c.endAt) return false;
+    const now = Date.now();
+    return new Date(c.startAt).getTime() <= now && now < new Date(c.endAt).getTime();
+  };
+
   return (
     <div className="max-w-3xl mx-auto p-4 sm:p-6 space-y-6">
       <h1 className="text-2xl font-black text-foreground flex items-center gap-2">
         <Trophy className="w-6 h-6 text-amber-500" /> Weekly Contests
       </h1>
+
+      {/* ── Metrics (funnel + retention) ────────────────────────────────── */}
+      <ContestMetrics />
 
       {/* ── Builder ─────────────────────────────────────────────────────── */}
       <div className="neu-raised rounded-2xl p-5 space-y-5">
@@ -424,11 +512,30 @@ export function AdminContestPanel({ initial }: { initial: ContestRecord[] }) {
           </div>
         )}
 
-        {/* Preview result */}
+        {/* Preview result — the actual resolved questions, reviewable before publish */}
         {preview && (
-          <div className="neu-inset rounded-xl p-3 text-[12px] font-bold text-foreground">
-            Resolved <span className="text-primary font-black">{preview.count}</span> questions across{' '}
-            {b.subjects.join(' · ')}. Publishing freezes this paper.
+          <div className="space-y-3">
+            <div className="neu-inset rounded-xl p-3 text-[12px] font-bold text-foreground">
+              Resolved <span className="text-primary font-black">{preview.count}</span> questions across{' '}
+              {b.subjects.join(' · ')}. Review below — publishing freezes this paper.
+            </div>
+            <div className="max-h-[32rem] overflow-y-auto space-y-3 pr-1">
+              {preview.questions.map((q, qi) => (
+                <QuestionPreview
+                  key={q.questionId ?? qi}
+                  q={q}
+                  index={qi}
+                  busy={replacing === qi}
+                  onDelete={() => deleteQuestion(qi)}
+                  onReplace={() => void replaceQuestion(qi)}
+                />
+              ))}
+              {preview.questions.length === 0 && (
+                <div className="text-[12px] font-bold text-rose-500">
+                  You removed every question — add subjects/counts and preview again before publishing.
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -446,7 +553,7 @@ export function AdminContestPanel({ initial }: { initial: ContestRecord[] }) {
               Preview paper
             </span>
           </NeuButton>
-          <NeuButton onClick={publish} disabled={!!busy || !preview}>
+          <NeuButton onClick={publish} disabled={!!busy || !preview || preview.questions.length === 0}>
             <span className={cn('inline-flex items-center gap-2 font-black text-[12px] uppercase tracking-wider', preview ? 'text-primary' : 'text-muted-foreground/50')}>
               {busy === 'publish' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Rocket className="w-4 h-4" />}
               Publish contest
@@ -476,17 +583,226 @@ export function AdminContestPanel({ initial }: { initial: ContestRecord[] }) {
                 {c.startAt && ` · ${formatIST(c.startAt)}`}
               </div>
             </div>
-            <div className="flex gap-2 shrink-0">
-              {c.status === 'draft' && (
-                <IconBtn onClick={() => editDraft(c)} busy={rowBusy === c.id} icon={<Pencil className="w-3.5 h-3.5" />} label="Edit" primary />
-              )}
-              {(c.status === 'draft' || c.status === 'scheduled') && (
-                <IconBtn onClick={() => cancel(c)} busy={rowBusy === c.id} icon={<Ban className="w-3.5 h-3.5" />} label="Cancel" />
+            <div className="flex flex-col items-end gap-2 shrink-0">
+              <div className="flex gap-2">
+                {c.status === 'draft' && (
+                  <IconBtn onClick={() => editDraft(c)} busy={rowBusy === c.id} icon={<Pencil className="w-3.5 h-3.5" />} label="Edit" primary />
+                )}
+                {isLiveNow(c) && (
+                  <IconBtn
+                    onClick={() => setExtendOpen((v) => (v === c.id ? null : c.id))}
+                    busy={rowBusy === c.id}
+                    icon={<Clock className="w-3.5 h-3.5" />}
+                    label="Extend"
+                  />
+                )}
+                {(c.status === 'draft' || c.status === 'scheduled') && (
+                  <IconBtn onClick={() => cancel(c)} busy={rowBusy === c.id} icon={<Ban className="w-3.5 h-3.5" />} label="Cancel" />
+                )}
+              </div>
+              {extendOpen === c.id && isLiveNow(c) && (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">+min</span>
+                  {[5, 10, 15, 30].map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => void extend(c, m)}
+                      disabled={rowBusy === c.id}
+                      className="px-2.5 py-1.5 rounded-lg text-[11px] font-black neu-raised text-primary disabled:opacity-50"
+                    >
+                      {m}
+                    </button>
+                  ))}
+                </div>
               )}
             </div>
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+/** Collapsible funnel + week-over-week retention metrics (loaded on demand). */
+function ContestMetrics() {
+  const [open, setOpen] = useState(false);
+  const [data, setData] = useState<ContestAnalytics | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const load = async () => {
+    setOpen((v) => !v);
+    if (data || loading) return;
+    setLoading(true);
+    try {
+      setData((await apiCall('/admin/contest/analytics')) as ContestAnalytics);
+    } catch {
+      toast.error('Could not load metrics.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const pct = (v: number | null) => (v == null ? '—' : `${Math.round(v * 100)}%`);
+
+  return (
+    <div className="neu-raised rounded-2xl p-4 sm:p-5">
+      <button type="button" onClick={load} className="flex items-center gap-2 w-full text-left">
+        <BarChart3 className="w-4 h-4 text-primary" />
+        <span className="text-[11px] font-black uppercase tracking-widest text-foreground">Metrics · funnel &amp; retention</span>
+        {data?.totals.avgReturnRate != null && (
+          <span className="text-[10px] font-bold text-muted-foreground">avg return {pct(data.totals.avgReturnRate)}</span>
+        )}
+        <ChevronDown className={cn('w-4 h-4 ml-auto text-muted-foreground transition-transform', open && 'rotate-180')} />
+      </button>
+
+      {open && (
+        <div className="mt-4">
+          {loading && (
+            <div className="flex items-center gap-2 text-muted-foreground text-xs py-2">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading…
+            </div>
+          )}
+          {data && data.contests.length === 0 && (
+            <div className="text-[12px] text-muted-foreground">No published contests yet — metrics appear after the first results.</div>
+          )}
+          {data && data.contests.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-[12px]">
+                <thead>
+                  <tr className="text-[9px] font-black uppercase tracking-widest text-muted-foreground text-left">
+                    <th className="py-1.5 pr-3">Contest</th>
+                    <th className="py-1.5 px-2 text-right">Reg</th>
+                    <th className="py-1.5 px-2 text-right">Played</th>
+                    <th className="py-1.5 px-2 text-right">Sub</th>
+                    <th className="py-1.5 pl-2 text-right">Return→next</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.contests.map((c) => (
+                    <tr key={c.contestId} className="border-t border-border/30">
+                      <td className="py-2 pr-3 font-bold text-foreground truncate max-w-[10rem]">{c.name}</td>
+                      <td className="py-2 px-2 text-right tabular-nums text-muted-foreground">{c.registered.toLocaleString()}</td>
+                      <td className="py-2 px-2 text-right tabular-nums text-muted-foreground">{c.played.toLocaleString()}</td>
+                      <td className="py-2 px-2 text-right tabular-nums text-muted-foreground">{c.submitted.toLocaleString()}</td>
+                      <td className="py-2 pl-2 text-right tabular-nums font-black text-primary">{pct(c.returnRate)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Renders one resolved question (stem + options + images) with the correct
+ *  option marked and the solution, plus delete/replace controls — an admin-only
+ *  review + curation of exactly what will be frozen. */
+function QuestionPreview({
+  q,
+  index,
+  busy,
+  onDelete,
+  onReplace,
+}: {
+  q: ResolvedQuestion;
+  index: number;
+  busy: boolean;
+  onDelete: () => void;
+  onReplace: () => void;
+}) {
+  const [showSolution, setShowSolution] = useState(false);
+  const s = q.snapshot ?? {};
+  const options = Array.isArray(s.options) ? s.options : [];
+  const isCorrect = (oi: number) =>
+    (Array.isArray(s.correctOptions) && s.correctOptions.length
+      ? s.correctOptions.includes(oi)
+      : s.correctOption === oi);
+  return (
+    <div className={cn('neu-raised rounded-xl p-4', busy && 'opacity-60')}>
+      <div className="flex items-center gap-2 mb-2">
+        <span className="text-[10px] font-black uppercase tracking-widest text-primary">Q{index + 1}</span>
+        {q.subject && <span className="text-[10px] font-bold text-muted-foreground">{q.subject}</span>}
+        {s.chapter && <span className="text-[10px] font-bold text-muted-foreground/70 truncate">· {s.chapter}</span>}
+        {s.difficulty && (
+          <span className="text-[9px] font-black uppercase tracking-wider text-muted-foreground/70 ml-auto">{s.difficulty}</span>
+        )}
+        {/* Curation controls */}
+        <div className={cn('flex items-center gap-1.5', !s.difficulty && 'ml-auto')}>
+          <button
+            type="button"
+            onClick={onReplace}
+            disabled={busy}
+            title="Swap for a different question"
+            className="p-1.5 rounded-lg neu-raised text-muted-foreground hover:text-primary disabled:opacity-50"
+          >
+            {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+          </button>
+          <button
+            type="button"
+            onClick={onDelete}
+            disabled={busy}
+            title="Remove this question"
+            className="p-1.5 rounded-lg neu-raised text-muted-foreground hover:text-rose-500 disabled:opacity-50"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+      <div className="text-[14px] font-bold text-foreground leading-relaxed mb-2">
+        <LatexRenderer content={String(s.text ?? '')} />
+      </div>
+      {s.image && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={s.image} alt="" className="mb-3 max-h-52 w-auto max-w-full rounded-lg object-contain neu-inset p-1.5" />
+      )}
+      <div className="space-y-1.5">
+        {options.map((opt, oi) => (
+          <div
+            key={oi}
+            className={cn(
+              'flex items-start gap-2 px-3 py-2 rounded-lg text-[13px]',
+              isCorrect(oi) ? 'bg-emerald-500/10 ring-1 ring-emerald-500/40' : 'neu-inset',
+            )}
+          >
+            <span
+              className={cn(
+                'w-5 h-5 shrink-0 rounded flex items-center justify-center text-[11px] font-black',
+                isCorrect(oi) ? 'bg-emerald-500 text-white' : 'bg-muted text-muted-foreground',
+              )}
+            >
+              {String.fromCharCode(65 + oi)}
+            </span>
+            <span className="text-foreground flex-1 min-w-0">
+              <LatexRenderer content={String(opt)} />
+              {s.optionImages?.[oi] && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={s.optionImages[oi] as string} alt="" className="mt-1.5 max-h-24 w-auto max-w-full rounded object-contain" />
+              )}
+            </span>
+          </div>
+        ))}
+      </div>
+      {/* Solution / explanation */}
+      {s.explanation && (
+        <div className="mt-2">
+          <button
+            type="button"
+            onClick={() => setShowSolution((v) => !v)}
+            className="text-[11px] font-black uppercase tracking-wider text-primary"
+          >
+            {showSolution ? 'Hide solution' : 'Show solution'}
+          </button>
+          {showSolution && (
+            <div className="mt-1.5 neu-inset rounded-lg p-3 text-[13px] font-medium text-muted-foreground leading-relaxed">
+              <LatexRenderer content={String(s.explanation)} />
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

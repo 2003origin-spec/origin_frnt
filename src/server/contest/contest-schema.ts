@@ -281,6 +281,16 @@ BEGIN
   RETURN true;
 END;
 $fn$;
+
+-- Public sanitized share links (mirrors 20260823_contest_share_links.sql).
+CREATE TABLE IF NOT EXISTS contest.share_links (
+  slug        TEXT PRIMARY KEY,
+  contest_id  TEXT NOT NULL REFERENCES contest.contests(id) ON DELETE CASCADE,
+  user_id     TEXT NOT NULL REFERENCES origin_users(id) ON DELETE CASCADE,
+  revoked     BOOLEAN NOT NULL DEFAULT false,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (contest_id, user_id)
+);
 `;
 
 function pool() {

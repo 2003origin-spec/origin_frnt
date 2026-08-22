@@ -112,20 +112,22 @@ export function resolveContestState(window: ContestWindow, now: Date): ContestSt
 }
 
 /**
- * Registration is open iff the contest is scheduled AND now ∈ [reg_open,
- * reg_close) AND the contest has not ended. Fail-CLOSED: any missing window or
- * wrong status ⇒ not open (plan §1.3, Phase 2). Server-checked against DB NOW().
+ * Registration is open iff the contest is scheduled AND now ∈ [reg_open, end_at).
+ * Late registration (walk-up) is allowed: a user who finds a LIVE contest can
+ * register and immediately start on the reduced clock (canStartAttempt = LIVE).
+ * reg_close is retained only as informational metadata — the true cutoff is
+ * end_at. Fail-CLOSED: any missing window or wrong status ⇒ not open. Server-
+ * checked against DB NOW().
  */
 export function isRegistrationOpen(window: ContestWindow, now: Date): boolean {
   if (window.status !== "scheduled") return false;
   const t = now.getTime();
   const open = ms(window.regOpen);
-  const close = ms(window.regClose);
   const end = ms(window.endAt);
-  if (open === null || close === null) return false;
-  if (t < open || t >= close) return false;
+  if (open === null || end === null) return false;
+  if (t < open) return false;
   // Cannot register once the contest itself has ended.
-  if (end !== null && t >= end) return false;
+  if (t >= end) return false;
   return true;
 }
 
@@ -161,6 +163,19 @@ export function remainingSeconds(window: ContestWindow, now: Date): number {
   const end = ms(window.endAt);
   if (end === null) return 0;
   return Math.max(0, Math.floor((end - now.getTime()) / 1000));
+}
+
+/**
+ * Anti-cheat: only a SUSTAINED backgrounding counts as a violation. Brief blurs
+ * (notification pull-down, a quick app-switch, the mobile keyboard) fire
+ * visibilitychange too, and counting them ejected legitimate mobile students.
+ * A real "look something up" exit lasts well over this grace.
+ */
+export const VIOLATION_GRACE_MS = 2000;
+
+/** True when a hidden span of `hiddenMs` should count as an anti-cheat strike. */
+export function shouldCountViolation(hiddenMs: number): boolean {
+  return hiddenMs >= VIOLATION_GRACE_MS;
 }
 
 /** True once results are visible to students (hard gate for result/answer reads). */

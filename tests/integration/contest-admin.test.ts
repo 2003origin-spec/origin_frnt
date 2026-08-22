@@ -17,6 +17,7 @@ import { dbConfigured, makeId, rawPool } from "./_db";
 import {
   cancelContest,
   createContest,
+  extendContest,
   getContest,
   publishContest,
   rescheduleContest,
@@ -133,5 +134,41 @@ maybe("admin contest builder — full create → schedule → publish lifecycle 
     await assert.rejects(() => cancelContest(contestId), /cannot be cancelled/i);
   } finally {
     if (contestId) await cleanup(contestId, adminId);
+  }
+});
+
+maybe("extendContest bumps end_at for a LIVE contest; refuses an ended one", async () => {
+  const adminId = await seedAdmin();
+  const pool = rawPool();
+  const liveId = makeId("contest_live_ext");
+  const endedId = makeId("contest_ended_ext");
+  try {
+    // LIVE: started 10m ago, ends in 20m
+    await pool.query(
+      `INSERT INTO contest.contests (id, name, status, start_at, end_at, duration_seconds, created_by)
+       VALUES ($1, 'Live Ext', 'scheduled', NOW() - INTERVAL '10 min', NOW() + INTERVAL '20 min', 1800, $2)`,
+      [liveId, adminId],
+    );
+    const before = await getContest(liveId);
+    const beforeEnd = new Date(before!.endAt!).getTime();
+
+    const after = await extendContest(liveId, 15);
+    const afterEnd = new Date(after.endAt!).getTime();
+    const deltaMin = Math.round((afterEnd - beforeEnd) / 60000);
+    assert.equal(deltaMin, 15, "end_at moved +15 min");
+    assert.equal(after.durationSeconds, 1800 + 15 * 60, "duration bumped");
+
+    // ENDED: end_at already in the past → refuse
+    await pool.query(
+      `INSERT INTO contest.contests (id, name, status, start_at, end_at, created_by)
+       VALUES ($1, 'Ended Ext', 'scheduled', NOW() - INTERVAL '2 hours', NOW() - INTERVAL '1 hour', $2)`,
+      [endedId, adminId],
+    );
+    await assert.rejects(() => extendContest(endedId, 10), /already ended/i);
+    // bad amount → rejected
+    await assert.rejects(() => extendContest(liveId, 0), /between 1 and 180/i);
+  } finally {
+    await pool.query(`DELETE FROM contest.contests WHERE id = ANY($1::text[])`, [[liveId, endedId]]);
+    await pool.query(`DELETE FROM origin_users WHERE id = $1`, [adminId]);
   }
 });

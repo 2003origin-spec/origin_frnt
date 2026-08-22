@@ -26,6 +26,7 @@ interface SectionScore {
 
 interface ResultData {
   contestName: string;
+  correctMarks: number;
   personal: { rank: number; percentile: number; score: number; totalRanked: number } | null;
   orbit: { rating: number; tier: string; provisional: boolean } | null;
   orbitMovement: { before: number; after: number; change: number } | null;
@@ -73,15 +74,16 @@ export function ContestResult({ contestId }: { contestId: string }) {
     };
   }, [contestId]);
 
+  const perCorrect = data?.correctMarks ?? 10;
   const subjects = useMemo(() => {
     const s = data?.attempt?.sectionScores ?? {};
     return Object.entries(s).map(([name, v]) => ({
       name,
       score: v.score,
-      totalMarks: v.total * 10, // display scale
+      totalMarks: v.total * perCorrect, // true max = questions × marks-per-correct
       accuracy: v.total > 0 ? Math.round((v.correct / v.total) * 100) : 0,
     }));
-  }, [data]);
+  }, [data, perCorrect]);
 
   if (status === 'loading') return <Centered>Loading result…</Centered>;
   if (status === 'error') return <Centered>Couldn't load your result. Please try again.</Centered>;
@@ -165,6 +167,14 @@ export function ContestResult({ contestId }: { contestId: string }) {
             <span className="font-black text-[12px] uppercase tracking-wider">Leaderboard</span>
           </NeuButton>
         </div>
+
+        {/* Practice from mistakes (DPP) — gated server-side; the page shows the
+            locked/subscribe state itself for non-premium participants. */}
+        <NeuButton onClick={() => router.push(`/contest/${contestId}/dpp`)} className="w-full">
+          <span className="inline-flex items-center gap-2 text-primary font-black text-[12px] uppercase tracking-wider">
+            <Target className="w-4 h-4" /> Practice your mistakes
+          </span>
+        </NeuButton>
       </div>
 
       {/* Rated participants get the ORBIT-centric growth card ("Beat my ORBIT",
@@ -174,6 +184,7 @@ export function ContestResult({ contestId }: { contestId: string }) {
         <ContestShareCard
           open={shareOpen}
           onClose={() => setShareOpen(false)}
+          contestId={contestId}
           studentName={user?.name ?? 'A student'}
           contestName={data?.contestName ?? 'Origin Weekly'}
           orbit={data.orbit}
@@ -199,7 +210,7 @@ export function ContestResult({ contestId }: { contestId: string }) {
             dateLabel=""
             stats={{
               score: attempt.score,
-              totalMarks: (attempt.correct + attempt.incorrect + attempt.unattempted) * 10,
+              totalMarks: (attempt.correct + attempt.incorrect + attempt.unattempted) * perCorrect,
               correct: attempt.correct,
               incorrect: attempt.incorrect,
               unattempted: attempt.unattempted,

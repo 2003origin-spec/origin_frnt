@@ -10,6 +10,7 @@ import { getUserPostgresPool } from "@/server/user-postgres";
 
 import { claimActiveSession } from "./contest-session-registry";
 import { ensureContestSchema } from "./contest-schema";
+import { readContestDraft } from "./contest-draft-store";
 
 function pool() {
   const p = getUserPostgresPool();
@@ -39,6 +40,14 @@ export interface AttemptState {
   remainingSeconds: number;
   /** True once the attempt is locked (submitted/finalized). */
   locked: boolean;
+  /** The durable draft (answers/palette) so a reload mid-attempt rehydrates the
+   *  UI instead of showing a blank paper. Null when there's no draft yet. */
+  savedAnswers: Record<string, { selectedOption?: number }> | null;
+  savedPalette: Record<string, unknown> | null;
+  /** The draft's monotonic rev, so the resumed client continues the rev sequence
+   *  (never sends a lower rev that the buffer would reject, or a partial set that
+   *  a higher rev would overwrite the durable draft with). */
+  savedRev: number;
 }
 
 interface ContestRow {
@@ -134,6 +143,20 @@ export async function getAttemptState(contestId: string, userId: string): Promis
   const a = attempt.rows[0] ?? null;
   const now = contest.server_now;
 
+  // Rehydrate the durable draft for a resuming client (only while the attempt is
+  // live and unfinished — a finished attempt has no editable draft).
+  let savedAnswers: Record<string, { selectedOption?: number }> | null = null;
+  let savedPalette: Record<string, unknown> | null = null;
+  let savedRev = 0;
+  if (a?.started_at && !a?.finished_at) {
+    const draft = await readContestDraft(contestId, userId);
+    if (draft) {
+      savedAnswers = (draft.answers ?? {}) as Record<string, { selectedOption?: number }>;
+      savedPalette = (draft.palette ?? {}) as Record<string, unknown>;
+      savedRev = typeof draft.rev === "number" ? draft.rev : 0;
+    }
+  }
+
   return {
     contestId,
     userId,
@@ -145,5 +168,8 @@ export async function getAttemptState(contestId: string, userId: string): Promis
     serverNow: new Date(now).toISOString(),
     remainingSeconds: remaining(contest.end_at, now),
     locked: Boolean(a?.finished_at),
+    savedAnswers,
+    savedPalette,
+    savedRev,
   };
 }

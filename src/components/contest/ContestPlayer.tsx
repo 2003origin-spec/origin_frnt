@@ -33,6 +33,18 @@ export function ContestPlayer({ contestId }: { contestId: string }) {
   const [confirmSubmit, setConfirmSubmit] = useState(false);
 
   const answeredCount = useMemo(() => Object.keys(answers).length, [answers]);
+
+  // Throttled screen-reader countdown: the visible timer ticks every 500ms
+  // (aria-live off), but this polite region announces only at milestones — each
+  // minute, the 30s mark, and the final 10s — so it's useful, not spammy.
+  const srCountdown = useMemo(() => {
+    const r = remaining;
+    if (r <= 0) return 'Time is up.';
+    if (r <= 10) return `${r} seconds remaining.`;
+    if (r === 30) return '30 seconds remaining.';
+    if (r % 60 === 0) return `${r / 60} minute${r / 60 === 1 ? '' : 's'} remaining.`;
+    return '';
+  }, [remaining]);
   const current = questions[index];
   const low = remaining <= 60;
 
@@ -104,6 +116,10 @@ export function ContestPlayer({ contestId }: { contestId: string }) {
           >
             {formatClock(remaining)}
           </span>
+          {/* Sparse screen-reader announcements (visible timer stays aria-live off) */}
+          <span className="sr-only" aria-live="polite" role="status">
+            {srCountdown}
+          </span>
         </div>
         <div className="text-[11px] font-bold text-muted-foreground">
           {answeredCount}/{questions.length} answered
@@ -152,9 +168,17 @@ export function ContestPlayer({ contestId }: { contestId: string }) {
           <div className="text-[10px] font-black uppercase tracking-widest text-primary mb-2">
             {current.subject ?? 'Question'} · Q{index + 1}
           </div>
-          <div className="text-[15px] font-bold text-foreground leading-relaxed mb-5">
+          <div className="text-[15px] font-bold text-foreground leading-relaxed mb-3">
             <LatexRenderer content={String(current.text ?? '')} />
           </div>
+          {current.image && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={current.image}
+              alt="Question diagram"
+              className="mb-5 max-h-72 w-auto max-w-full rounded-xl object-contain neu-inset p-2"
+            />
+          )}
           <div className="space-y-3">
             {(current.options ?? []).map((opt, oi) => {
               const selected = answers[String(current.position)]?.selectedOption === oi;
@@ -176,8 +200,16 @@ export function ContestPlayer({ contestId }: { contestId: string }) {
                   >
                     {String.fromCharCode(65 + oi)}
                   </span>
-                  <span className="text-[14px] font-medium text-foreground">
+                  <span className="text-[14px] font-medium text-foreground flex-1 min-w-0">
                     <LatexRenderer content={String(opt)} />
+                    {current.optionImages?.[oi] && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={current.optionImages[oi] as string}
+                        alt={`Option ${String.fromCharCode(65 + oi)}`}
+                        className="mt-2 max-h-32 w-auto max-w-full rounded-lg object-contain"
+                      />
+                    )}
                   </span>
                 </button>
               );

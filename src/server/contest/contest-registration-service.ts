@@ -6,10 +6,37 @@
  * registered-count (display-only, best-effort).
  */
 
+import { Redis } from "@upstash/redis";
+
 import { getUserPostgresPool } from "@/server/user-postgres";
 
 import { recordRegistration } from "./contest-counts";
 import { ensureContestSchema } from "./contest-schema";
+
+const redisUrl = process.env.UPSTASH_REDIS_REST_URL?.trim();
+const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN?.trim();
+const redis: Redis | null =
+  redisUrl && redisToken ? new Redis({ url: redisUrl, token: redisToken }) : null;
+
+const REGISTERED_SET_TTL_SECONDS = 3 * 24 * 60 * 60; // outlives any contest
+
+/** Redis set of registered userIds — a read-through cache for the hot paper gate
+ *  (Neon stays authoritative). Offloads the start_at read burst off Postgres. */
+function registeredSetKey(contestId: string): string {
+  return `contest:${contestId}:registered`;
+}
+
+/** Best-effort add to the registered-set cache; never blocks the real write. */
+async function cacheRegistration(contestId: string, userId: string): Promise<void> {
+  if (!redis) return;
+  try {
+    const key = registeredSetKey(contestId);
+    await redis.sadd(key, userId);
+    await redis.expire(key, REGISTERED_SET_TTL_SECONDS);
+  } catch {
+    /* cache is advisory — a miss just falls through to Neon */
+  }
+}
 
 function pool() {
   const p = getUserPostgresPool();
@@ -46,17 +73,19 @@ export async function registerForContest(contestId: string, userId: string): Pro
        FROM contest.contests c
       WHERE c.id = $1
         AND c.status = 'scheduled'
-        AND c.reg_open IS NOT NULL AND c.reg_close IS NOT NULL
-        AND NOW() >= c.reg_open AND NOW() < c.reg_close
-        AND (c.end_at IS NULL OR NOW() < c.end_at)
+        AND c.reg_open IS NOT NULL AND c.end_at IS NOT NULL
+        -- Late registration (walk-up) allowed: open from reg_open until the
+        -- contest ends, so a user can register during a LIVE contest and start.
+        AND NOW() >= c.reg_open AND NOW() < c.end_at
      ON CONFLICT (contest_id, user_id) DO NOTHING
      RETURNING registered_at`,
     [contestId, userId],
   );
 
   if (inserted.rows[0]) {
-    // best-effort approximate counter (never blocks the real write)
+    // best-effort approximate counter + registered-set cache (never block).
     void recordRegistration(contestId, userId);
+    void cacheRegistration(contestId, userId);
     return {
       registered: true,
       registeredAt: new Date(inserted.rows[0].registered_at).toISOString(),
@@ -86,10 +115,26 @@ export async function registerForContest(contestId: string, userId: string): Pro
  * fail-closed (used at take-time / DPP-gate, NOT the approximate counter).
  */
 export async function isRegisteredForContest(contestId: string, userId: string): Promise<boolean> {
+  // Hot path (paper gate at the start_at burst): check the Redis registered-set
+  // cache first so 1M reads don't each hit Neon. A HIT is authoritative-enough
+  // (the set is only ever added to, never speculatively). A MISS falls through to
+  // Neon and self-heals the cache, so a non-registered user is never wrongly
+  // admitted and Redis being down just degrades to the DB path.
+  if (redis) {
+    try {
+      const member = await redis.sismember(registeredSetKey(contestId), userId);
+      if (member === 1) return true;
+    } catch {
+      /* fall through to the authoritative DB check */
+    }
+  }
+
   await ensureContestSchema();
   const res = await pool().query(
     `SELECT 1 FROM contest.registrations WHERE contest_id = $1 AND user_id = $2`,
     [contestId, userId],
   );
-  return res.rowCount === 1;
+  const registered = res.rowCount === 1;
+  if (registered) void cacheRegistration(contestId, userId); // self-heal the cache
+  return registered;
 }

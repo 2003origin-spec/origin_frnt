@@ -10,7 +10,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { dbConfigured, makeId, rawPool } from "./_db";
-import { getContestMistakeDpp } from "@/server/contest/contest-dpp-service";
+import { getContestMistakeDpp, gradeContestDppAnswer } from "@/server/contest/contest-dpp-service";
 
 const maybe = dbConfigured() ? test : test.skip;
 
@@ -93,6 +93,13 @@ maybe("custom DPP gates on publish/registration/premium, then excludes contest i
       const ids = r.questions.map((q) => q.id);
       assert.ok(!ids.includes(contestQId), "the contest's own question is excluded");
       assert.ok(ids.includes(freshIds[0]) || ids.includes(freshIds[1]), "fresh questions returned");
+
+      // 5) grade one DPP answer — correct option 1 (seeded correct_option=1) reveals feedback
+      const graded = await gradeContestDppAnswer(contestId, userId, ids[0], 1);
+      assert.equal(graded.isCorrect, true);
+      assert.equal(graded.correctOption, 1, "reveals the correct option");
+      const wrong = await gradeContestDppAnswer(contestId, userId, ids[0], 0);
+      assert.equal(wrong.isCorrect, false);
     }
   } finally {
     await pool.query(`DELETE FROM entitlements.subject_grants WHERE user_id = $1`, [userId]);

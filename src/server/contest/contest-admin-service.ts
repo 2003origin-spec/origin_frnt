@@ -411,3 +411,39 @@ export async function cancelContest(id: string): Promise<ContestRecord> {
   if (!updated) throw contestError(500, "Failed to cancel contest.");
   return updated;
 }
+
+/**
+ * Incident control: atomically extend a LIVE (or scheduled-not-yet-started)
+ * contest's deadline by `addMinutes` for EVERYONE, without corrupting idempotency
+ * keys — the paper is unchanged (no cache bust), the timer/grace/finalize all key
+ * off end_at, so bumping end_at just moves the deadline. Guarded on
+ * `end_at > NOW()` so a just-ended contest can't be extended in a race (that
+ * would resurrect it after finalize). Duration is bumped to match.
+ */
+export async function extendContest(id: string, addMinutes: number): Promise<ContestRecord> {
+  await ensureContestSchema();
+  if (!Number.isFinite(addMinutes) || addMinutes <= 0 || addMinutes > 180) {
+    throw contestError(400, "Extension must be between 1 and 180 minutes.");
+  }
+  const existing = await getContest(id);
+  if (!existing) throw contestError(404, "Contest not found.");
+  if (existing.status !== "scheduled") {
+    throw contestError(409, `A ${existing.status} contest cannot be extended.`);
+  }
+  if (!existing.endAt) throw contestError(409, "Contest has no end time to extend.");
+  if (new Date(existing.endAt).getTime() <= Date.now()) {
+    throw contestError(409, "The contest has already ended; it can no longer be extended.");
+  }
+  const res = await pool().query(
+    `UPDATE contest.contests
+       SET end_at = end_at + ($2 || ' minutes')::interval,
+           duration_seconds = COALESCE(duration_seconds, 0) + $3,
+           updated_at = NOW()
+     WHERE id = $1 AND status = 'scheduled' AND end_at > NOW()`,
+    [id, String(addMinutes), addMinutes * 60],
+  );
+  if (res.rowCount === 0) throw contestError(409, "The contest just ended; extend is no longer possible.");
+  const updated = await getContest(id);
+  if (!updated) throw contestError(500, "Failed to extend contest.");
+  return updated;
+}

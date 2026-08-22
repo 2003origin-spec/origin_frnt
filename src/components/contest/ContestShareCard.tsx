@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toPng } from 'html-to-image';
-import { Share2, Download, MessageCircle, Loader2, X } from 'lucide-react';
+import { Share2, Download, MessageCircle, Loader2, X, Twitter, Send, Check, Link as LinkIcon } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { shareImage, saveImage, type ShareTarget } from '@/lib/share';
 import { getCanonicalSiteUrl } from '@/lib/site-url';
 import { track } from '@/lib/analytics';
+import { mutateJson } from '@/lib/csrf';
 
 /**
  * Contest-specific share card (plan Phase 8 — growth loop). Unlike the generic
@@ -25,6 +26,7 @@ const PUBLIC_SITE_URL = getCanonicalSiteUrl();
 export interface ContestShareCardProps {
   open: boolean;
   onClose: () => void;
+  contestId: string;
   studentName: string;
   contestName: string;
   orbit: { rating: number; tier: string; provisional: boolean };
@@ -34,7 +36,7 @@ export interface ContestShareCardProps {
   percentile: number | null;
   score: number | null;
   accuracy: number | null;
-  /** Growth-loop deep link a friend follows to join the next contest. */
+  /** Landing fallback if the public share slug can't be minted. */
   shareUrl?: string;
 }
 
@@ -56,6 +58,7 @@ function tierAccent(tier: string): string {
 export default function ContestShareCard({
   open,
   onClose,
+  contestId,
   studentName,
   contestName,
   orbit,
@@ -70,10 +73,28 @@ export default function ContestShareCard({
   const cardRef = useRef<HTMLDivElement>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [slugUrl, setSlugUrl] = useState<string | null>(null);
 
   const accent = tierAccent(orbit.tier);
   const up = (movement?.change ?? 0) >= 0;
-  const deepLink = shareUrl || PUBLIC_SITE_URL;
+  // Prefer the public, sanitized share page (minted on open); fall back to the
+  // landing so a mint failure never breaks sharing.
+  const deepLink = slugUrl || shareUrl || PUBLIC_SITE_URL;
+
+  // Mint the opt-in public share slug when the sheet opens (idempotent server-side).
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    void mutateJson('/api/contest/share', { method: 'POST', body: JSON.stringify({ contestId }) })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((b) => {
+        if (!cancelled && b?.slug) setSlugUrl(`${PUBLIC_SITE_URL}/contest/share/${b.slug}`);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [open, contestId]);
 
   const generate = useCallback(async () => {
     if (!cardRef.current) return;
@@ -123,6 +144,18 @@ export default function ContestShareCard({
     await saveImage(imageUrl, fileName);
     toast.success('Saved to your device.');
   }, [imageUrl, fileName, orbit.tier]);
+
+  const [copied, setCopied] = useState(false);
+  const copyLink = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(deepLink);
+      track('contest_share', { channel: 'copy_link', tier: orbit.tier });
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error('Could not copy the link.');
+    }
+  }, [deepLink, orbit.tier]);
 
   if (!open) return null;
 
@@ -174,6 +207,30 @@ export default function ContestShareCard({
             className="h-12 rounded-2xl bg-primary text-primary-foreground font-black uppercase tracking-widest text-xs flex items-center justify-center gap-2 disabled:opacity-50 transition hover:opacity-90 shadow-lg shadow-primary/20"
           >
             <Share2 className="w-4 h-4" /> Share
+          </button>
+        </div>
+        {/* Secondary intents — X / Telegram / Copy link */}
+        <div className="mt-3 grid grid-cols-3 gap-3">
+          <button
+            onClick={() => void handleShare('twitter')}
+            disabled={!imageUrl || isGenerating}
+            className="h-11 rounded-2xl neu-raised text-foreground font-black uppercase tracking-widest text-[11px] flex items-center justify-center gap-1.5 disabled:opacity-50"
+          >
+            <Twitter className="w-4 h-4" /> X
+          </button>
+          <button
+            onClick={() => void handleShare('telegram')}
+            disabled={!imageUrl || isGenerating}
+            className="h-11 rounded-2xl neu-raised text-foreground font-black uppercase tracking-widest text-[11px] flex items-center justify-center gap-1.5 disabled:opacity-50"
+          >
+            <Send className="w-4 h-4" /> Telegram
+          </button>
+          <button
+            onClick={copyLink}
+            disabled={isGenerating}
+            className="h-11 rounded-2xl neu-raised text-foreground font-black uppercase tracking-widest text-[11px] flex items-center justify-center gap-1.5 disabled:opacity-50"
+          >
+            {copied ? <Check className="w-4 h-4 text-emerald-500" /> : <LinkIcon className="w-4 h-4" />} {copied ? 'Copied' : 'Link'}
           </button>
         </div>
         <button
