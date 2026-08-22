@@ -28,7 +28,6 @@ import {
   renameOriginAiThread,
   sendDoubtSolverMessageStreaming,
   speakDoubtSolverSummary,
-
   solveOriginAiImage,
   type ChapterItem,
   type ImageSolveResult,
