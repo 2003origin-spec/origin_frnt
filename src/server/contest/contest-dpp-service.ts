@@ -12,7 +12,7 @@
  * show "Subscribe to unlock".
  */
 
-import { listOgcodeCatalogQuestionPage } from "@/server/ogcode-catalog";
+import { listOgcodeCatalogQuestionPage, getOgcodeCatalogQuestionById } from "@/server/ogcode-catalog";
 import { getEntitledSubjects } from "@/server/entitlements";
 import { getUserPostgresPool } from "@/server/user-postgres";
 
@@ -39,6 +39,8 @@ export interface DppQuestion {
   subject: string;
   chapter: string;
   questionType: string;
+  image: string | null;
+  optionImages: (string | null)[] | null;
 }
 
 export type ContestDppResult =
@@ -103,6 +105,7 @@ export async function getContestMistakeDpp(contestId: string, userId: string): P
     subjects: entitled as string[],
     chapters: weakChapters,
     excludeIds,
+    type: "mcq", // DPP UI renders single-select MCQ (matches contest/practice)
     limit: 20,
     offset: 0,
   });
@@ -113,7 +116,46 @@ export async function getContestMistakeDpp(contestId: string, userId: string): P
     subject: q.subject,
     chapter: q.chapter,
     questionType: q.questionType,
+    image: q.image ?? null,
+    optionImages: q.optionImages ?? null,
   }));
 
   return { locked: false, weakChapters, questions };
+}
+
+/** Feedback for one DPP answer (no tally — the DPP is pure extra practice). */
+export interface DppAnswerResult {
+  isCorrect: boolean;
+  correctOption: number | null;
+  correctOptions: number[] | null;
+  explanation: string | null;
+}
+
+/**
+ * Grade a single DPP answer server-side and return the reveal (correct option +
+ * explanation). Gated exactly like the DPP itself — published + registered +
+ * premium — so the answer key is never exposed to a non-entitled caller.
+ */
+export async function gradeContestDppAnswer(
+  contestId: string,
+  userId: string,
+  questionId: string,
+  selectedOption: number,
+): Promise<DppAnswerResult> {
+  // Reuse the same gate as the DPP fetch (fail-closed).
+  const gate = await getContestMistakeDpp(contestId, userId);
+  if (gate.locked) throw dppError(403, "This DPP is locked.", gate.reason);
+
+  const question = await getOgcodeCatalogQuestionById(questionId);
+  if (!question) throw dppError(404, "Question not found.");
+  const isCorrect =
+    Array.isArray(question.correctOptions) && question.correctOptions.length > 0
+      ? question.correctOptions.includes(selectedOption)
+      : question.correctOption === selectedOption;
+  return {
+    isCorrect,
+    correctOption: question.correctOption ?? null,
+    correctOptions: question.correctOptions ?? null,
+    explanation: question.explanation ?? null,
+  };
 }

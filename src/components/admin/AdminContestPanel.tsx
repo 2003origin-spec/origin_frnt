@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Plus, Trophy, Ban, Rocket, Loader2, ChevronDown, Eye, Save, Pencil, Trash2, RefreshCw } from 'lucide-react';
+import { Plus, Trophy, Ban, Rocket, Loader2, ChevronDown, Eye, Save, Pencil, Trash2, RefreshCw, Clock } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { NeuButton } from '@/components/ui/neu';
@@ -293,6 +293,7 @@ export function AdminContestPanel({ initial }: { initial: ContestRecord[] }) {
   };
 
   const cancel = async (c: ContestRecord) => {
+    if (!window.confirm(`Cancel "${c.name}"? Registrations are released and it won't run.`)) return;
     setRowBusy(c.id);
     try {
       await apiCall(`/admin/contest/${c.id}/cancel`, { method: 'POST' });
@@ -303,6 +304,32 @@ export function AdminContestPanel({ initial }: { initial: ContestRecord[] }) {
     } finally {
       setRowBusy(null);
     }
+  };
+
+  // Incident control: extend a live contest's deadline for everyone.
+  const [extendOpen, setExtendOpen] = useState<string | null>(null);
+  const extend = async (c: ContestRecord, minutes: number) => {
+    setRowBusy(c.id);
+    try {
+      await apiCall(`/admin/contest/${c.id}/extend`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ addMinutes: minutes }),
+      });
+      toast.success(`Extended by ${minutes} min — everyone's clock moved.`);
+      setExtendOpen(null);
+      await refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Extend failed.');
+    } finally {
+      setRowBusy(null);
+    }
+  };
+
+  const isLiveNow = (c: ContestRecord) => {
+    if (c.status !== 'scheduled' || !c.startAt || !c.endAt) return false;
+    const now = Date.now();
+    return new Date(c.startAt).getTime() <= now && now < new Date(c.endAt).getTime();
   };
 
   return (
@@ -552,12 +579,38 @@ export function AdminContestPanel({ initial }: { initial: ContestRecord[] }) {
                 {c.startAt && ` · ${formatIST(c.startAt)}`}
               </div>
             </div>
-            <div className="flex gap-2 shrink-0">
-              {c.status === 'draft' && (
-                <IconBtn onClick={() => editDraft(c)} busy={rowBusy === c.id} icon={<Pencil className="w-3.5 h-3.5" />} label="Edit" primary />
-              )}
-              {(c.status === 'draft' || c.status === 'scheduled') && (
-                <IconBtn onClick={() => cancel(c)} busy={rowBusy === c.id} icon={<Ban className="w-3.5 h-3.5" />} label="Cancel" />
+            <div className="flex flex-col items-end gap-2 shrink-0">
+              <div className="flex gap-2">
+                {c.status === 'draft' && (
+                  <IconBtn onClick={() => editDraft(c)} busy={rowBusy === c.id} icon={<Pencil className="w-3.5 h-3.5" />} label="Edit" primary />
+                )}
+                {isLiveNow(c) && (
+                  <IconBtn
+                    onClick={() => setExtendOpen((v) => (v === c.id ? null : c.id))}
+                    busy={rowBusy === c.id}
+                    icon={<Clock className="w-3.5 h-3.5" />}
+                    label="Extend"
+                  />
+                )}
+                {(c.status === 'draft' || c.status === 'scheduled') && (
+                  <IconBtn onClick={() => cancel(c)} busy={rowBusy === c.id} icon={<Ban className="w-3.5 h-3.5" />} label="Cancel" />
+                )}
+              </div>
+              {extendOpen === c.id && isLiveNow(c) && (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">+min</span>
+                  {[5, 10, 15, 30].map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => void extend(c, m)}
+                      disabled={rowBusy === c.id}
+                      className="px-2.5 py-1.5 rounded-lg text-[11px] font-black neu-raised text-primary disabled:opacity-50"
+                    >
+                      {m}
+                    </button>
+                  ))}
+                </div>
               )}
             </div>
           </div>

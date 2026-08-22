@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toPng } from 'html-to-image';
-import { Share2, Download, MessageCircle, Loader2, X } from 'lucide-react';
+import { Share2, Download, MessageCircle, Loader2, X, Twitter, Send, Check, Link as LinkIcon } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { shareImage, saveImage, type ShareTarget } from '@/lib/share';
@@ -124,6 +124,18 @@ export default function ContestShareCard({
     toast.success('Saved to your device.');
   }, [imageUrl, fileName, orbit.tier]);
 
+  const [copied, setCopied] = useState(false);
+  const copyLink = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(deepLink);
+      track('contest_share', { channel: 'copy_link', tier: orbit.tier });
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error('Could not copy the link.');
+    }
+  }, [deepLink, orbit.tier]);
+
   if (!open) return null;
 
   return (
@@ -174,6 +186,30 @@ export default function ContestShareCard({
             className="h-12 rounded-2xl bg-primary text-primary-foreground font-black uppercase tracking-widest text-xs flex items-center justify-center gap-2 disabled:opacity-50 transition hover:opacity-90 shadow-lg shadow-primary/20"
           >
             <Share2 className="w-4 h-4" /> Share
+          </button>
+        </div>
+        {/* Secondary intents — X / Telegram / Copy link */}
+        <div className="mt-3 grid grid-cols-3 gap-3">
+          <button
+            onClick={() => void handleShare('twitter')}
+            disabled={!imageUrl || isGenerating}
+            className="h-11 rounded-2xl neu-raised text-foreground font-black uppercase tracking-widest text-[11px] flex items-center justify-center gap-1.5 disabled:opacity-50"
+          >
+            <Twitter className="w-4 h-4" /> X
+          </button>
+          <button
+            onClick={() => void handleShare('telegram')}
+            disabled={!imageUrl || isGenerating}
+            className="h-11 rounded-2xl neu-raised text-foreground font-black uppercase tracking-widest text-[11px] flex items-center justify-center gap-1.5 disabled:opacity-50"
+          >
+            <Send className="w-4 h-4" /> Telegram
+          </button>
+          <button
+            onClick={copyLink}
+            disabled={isGenerating}
+            className="h-11 rounded-2xl neu-raised text-foreground font-black uppercase tracking-widest text-[11px] flex items-center justify-center gap-1.5 disabled:opacity-50"
+          >
+            {copied ? <Check className="w-4 h-4 text-emerald-500" /> : <LinkIcon className="w-4 h-4" />} {copied ? 'Copied' : 'Link'}
           </button>
         </div>
         <button

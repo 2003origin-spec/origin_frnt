@@ -33,6 +33,18 @@ export function ContestPlayer({ contestId }: { contestId: string }) {
   const [confirmSubmit, setConfirmSubmit] = useState(false);
 
   const answeredCount = useMemo(() => Object.keys(answers).length, [answers]);
+
+  // Throttled screen-reader countdown: the visible timer ticks every 500ms
+  // (aria-live off), but this polite region announces only at milestones — each
+  // minute, the 30s mark, and the final 10s — so it's useful, not spammy.
+  const srCountdown = useMemo(() => {
+    const r = remaining;
+    if (r <= 0) return 'Time is up.';
+    if (r <= 10) return `${r} seconds remaining.`;
+    if (r === 30) return '30 seconds remaining.';
+    if (r % 60 === 0) return `${r / 60} minute${r / 60 === 1 ? '' : 's'} remaining.`;
+    return '';
+  }, [remaining]);
   const current = questions[index];
   const low = remaining <= 60;
 
@@ -103,6 +115,10 @@ export function ContestPlayer({ contestId }: { contestId: string }) {
             role="timer"
           >
             {formatClock(remaining)}
+          </span>
+          {/* Sparse screen-reader announcements (visible timer stays aria-live off) */}
+          <span className="sr-only" aria-live="polite" role="status">
+            {srCountdown}
           </span>
         </div>
         <div className="text-[11px] font-bold text-muted-foreground">
