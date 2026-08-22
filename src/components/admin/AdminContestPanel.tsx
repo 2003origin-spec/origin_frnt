@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Plus, Trophy, Ban, Rocket, Loader2, ChevronDown, Eye, Save, Pencil } from 'lucide-react';
+import { Plus, Trophy, Ban, Rocket, Loader2, ChevronDown, Eye, Save, Pencil, Trash2, RefreshCw } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { NeuButton } from '@/components/ui/neu';
@@ -24,7 +24,9 @@ interface ResolvedQuestion {
     optionImages?: (string | null)[] | null;
     correctOption?: number | null;
     correctOptions?: number[] | null;
+    explanation?: string;
     chapter?: string;
+    difficulty?: string;
   };
 }
 
@@ -216,8 +218,44 @@ export function AdminContestPanel({ initial }: { initial: ContestRecord[] }) {
     }
   };
 
-  const publish = async () => {
+  // Remove a question from the preview paper (publishing freezes the remainder).
+  const deleteQuestion = (index: number) => {
+    setPreview((prev) =>
+      prev ? { questions: prev.questions.filter((_, i) => i !== index), count: prev.questions.length - 1 } : prev,
+    );
+  };
+
+  // Swap one question for a fresh one on the same subject/topic (never a dup).
+  const [replacing, setReplacing] = useState<number | null>(null);
+  const replaceQuestion = async (index: number) => {
     if (!b.id || !preview) return;
+    const q = preview.questions[index];
+    const subject = q.subject ?? '';
+    if (!subject) return;
+    setReplacing(index);
+    try {
+      const excludeIds = preview.questions.map((x) => x.questionId);
+      const res = (await apiCall(`/admin/contest/${b.id}/questions/replace`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subject, topics: b.topics[subject] ?? undefined, excludeIds }),
+      })) as { question: ResolvedQuestion };
+      setPreview((prev) => {
+        if (!prev) return prev;
+        const questions = [...prev.questions];
+        questions[index] = res.question;
+        return { ...prev, questions };
+      });
+      toast.success('Question swapped.');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'No replacement available.');
+    } finally {
+      setReplacing(null);
+    }
+  };
+
+  const publish = async () => {
+    if (!b.id || !preview || preview.questions.length === 0) return;
     setBusy('publish');
     try {
       await apiCall(`/admin/contest/${b.id}/publish`, {
@@ -450,10 +488,22 @@ export function AdminContestPanel({ initial }: { initial: ContestRecord[] }) {
               Resolved <span className="text-primary font-black">{preview.count}</span> questions across{' '}
               {b.subjects.join(' · ')}. Review below — publishing freezes this paper.
             </div>
-            <div className="max-h-[28rem] overflow-y-auto space-y-3 pr-1">
+            <div className="max-h-[32rem] overflow-y-auto space-y-3 pr-1">
               {preview.questions.map((q, qi) => (
-                <QuestionPreview key={q.questionId ?? qi} q={q} index={qi} />
+                <QuestionPreview
+                  key={q.questionId ?? qi}
+                  q={q}
+                  index={qi}
+                  busy={replacing === qi}
+                  onDelete={() => deleteQuestion(qi)}
+                  onReplace={() => void replaceQuestion(qi)}
+                />
               ))}
+              {preview.questions.length === 0 && (
+                <div className="text-[12px] font-bold text-rose-500">
+                  You removed every question — add subjects/counts and preview again before publishing.
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -472,7 +522,7 @@ export function AdminContestPanel({ initial }: { initial: ContestRecord[] }) {
               Preview paper
             </span>
           </NeuButton>
-          <NeuButton onClick={publish} disabled={!!busy || !preview}>
+          <NeuButton onClick={publish} disabled={!!busy || !preview || preview.questions.length === 0}>
             <span className={cn('inline-flex items-center gap-2 font-black text-[12px] uppercase tracking-wider', preview ? 'text-primary' : 'text-muted-foreground/50')}>
               {busy === 'publish' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Rocket className="w-4 h-4" />}
               Publish contest
@@ -518,8 +568,22 @@ export function AdminContestPanel({ initial }: { initial: ContestRecord[] }) {
 }
 
 /** Renders one resolved question (stem + options + images) with the correct
- *  option marked — an admin-only review of exactly what will be frozen. */
-function QuestionPreview({ q, index }: { q: ResolvedQuestion; index: number }) {
+ *  option marked and the solution, plus delete/replace controls — an admin-only
+ *  review + curation of exactly what will be frozen. */
+function QuestionPreview({
+  q,
+  index,
+  busy,
+  onDelete,
+  onReplace,
+}: {
+  q: ResolvedQuestion;
+  index: number;
+  busy: boolean;
+  onDelete: () => void;
+  onReplace: () => void;
+}) {
+  const [showSolution, setShowSolution] = useState(false);
   const s = q.snapshot ?? {};
   const options = Array.isArray(s.options) ? s.options : [];
   const isCorrect = (oi: number) =>
@@ -527,11 +591,35 @@ function QuestionPreview({ q, index }: { q: ResolvedQuestion; index: number }) {
       ? s.correctOptions.includes(oi)
       : s.correctOption === oi);
   return (
-    <div className="neu-raised rounded-xl p-4">
+    <div className={cn('neu-raised rounded-xl p-4', busy && 'opacity-60')}>
       <div className="flex items-center gap-2 mb-2">
         <span className="text-[10px] font-black uppercase tracking-widest text-primary">Q{index + 1}</span>
         {q.subject && <span className="text-[10px] font-bold text-muted-foreground">{q.subject}</span>}
         {s.chapter && <span className="text-[10px] font-bold text-muted-foreground/70 truncate">· {s.chapter}</span>}
+        {s.difficulty && (
+          <span className="text-[9px] font-black uppercase tracking-wider text-muted-foreground/70 ml-auto">{s.difficulty}</span>
+        )}
+        {/* Curation controls */}
+        <div className={cn('flex items-center gap-1.5', !s.difficulty && 'ml-auto')}>
+          <button
+            type="button"
+            onClick={onReplace}
+            disabled={busy}
+            title="Swap for a different question"
+            className="p-1.5 rounded-lg neu-raised text-muted-foreground hover:text-primary disabled:opacity-50"
+          >
+            {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+          </button>
+          <button
+            type="button"
+            onClick={onDelete}
+            disabled={busy}
+            title="Remove this question"
+            className="p-1.5 rounded-lg neu-raised text-muted-foreground hover:text-rose-500 disabled:opacity-50"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
       <div className="text-[14px] font-bold text-foreground leading-relaxed mb-2">
         <LatexRenderer content={String(s.text ?? '')} />
@@ -567,6 +655,23 @@ function QuestionPreview({ q, index }: { q: ResolvedQuestion; index: number }) {
           </div>
         ))}
       </div>
+      {/* Solution / explanation */}
+      {s.explanation && (
+        <div className="mt-2">
+          <button
+            type="button"
+            onClick={() => setShowSolution((v) => !v)}
+            className="text-[11px] font-black uppercase tracking-wider text-primary"
+          >
+            {showSolution ? 'Hide solution' : 'Show solution'}
+          </button>
+          {showSolution && (
+            <div className="mt-1.5 neu-inset rounded-lg p-3 text-[13px] font-medium text-muted-foreground leading-relaxed">
+              <LatexRenderer content={String(s.explanation)} />
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

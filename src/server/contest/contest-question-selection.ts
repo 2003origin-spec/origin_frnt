@@ -140,3 +140,41 @@ export async function resolveContestQuestions(
   }
   return questions;
 }
+
+/**
+ * Resolve ONE fresh replacement question for a subject/topic, excluding the ids
+ * already in the (preview) paper so the swap is never a duplicate. Used by the
+ * admin builder's per-question "replace" action. Throws (400) when the scoped
+ * pool is exhausted. MCQ-only, same as the paper.
+ */
+export async function resolveOneReplacement(input: {
+  contestId: string;
+  subject: string;
+  topics?: string[];
+  difficulties?: string[];
+  excludeIds: string[];
+}): Promise<ContestQuestionInput> {
+  const rows = await sampleOgcodeCatalogQuestionIds({
+    subject: input.subject,
+    chapters: input.topics && input.topics.length ? input.topics : null,
+    difficulties: input.difficulties && input.difficulties.length ? input.difficulties : null,
+    type: "mcq",
+    excludeIds: input.excludeIds,
+    seed: `${input.contestId}:${input.subject}:replace`,
+    limit: 1,
+  });
+  if (rows.length === 0) {
+    throw selectionError(400, `No more ${input.subject} questions available to swap in.`);
+  }
+  const dataMap = await getOgcodeCatalogQuestionMap([rows[0].id]);
+  const q = dataMap.get(rows[0].id);
+  if (!q) throw selectionError(409, "Question is no longer available; try again.");
+  return {
+    questionId: q.id,
+    subject: input.subject,
+    sectionId: input.subject,
+    snapshot: freezeSnapshot(q),
+    marks: null,
+    negativeMarks: null,
+  };
+}
