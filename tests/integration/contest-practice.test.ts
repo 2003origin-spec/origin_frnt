@@ -13,6 +13,7 @@ import assert from "node:assert/strict";
 import { dbConfigured, makeId, rawPool } from "./_db";
 import {
   getPracticeMetrics,
+  getPracticeQuestions,
   recordPracticeAttempt,
 } from "@/server/contest/contest-practice-service";
 import { registerForContest } from "@/server/contest/contest-registration-service";
@@ -64,6 +65,15 @@ maybe("practice grades server-side, tallies per subject, and stays isolated", as
     // practice requires registration
     await assert.rejects(() => getPracticeMetrics(contestId, userId), /Register/i);
     await registerForContest(contestId, userId);
+
+    // SUBJECT SELECTION: scoping to the seeded subject returns ONLY that
+    // subject's questions (drives the practice subject tabs).
+    const scoped = await getPracticeQuestions(contestId, userId, { subject: SUBJECT });
+    assert.ok(scoped.items.length > 0, "questions for the selected subject");
+    assert.ok(
+      scoped.items.every((q) => q.subject.toLowerCase() === SUBJECT.toLowerCase()),
+      "the scoped fetch returns only the selected subject",
+    );
 
     // starts at zero
     let m = await getPracticeMetrics(contestId, userId);

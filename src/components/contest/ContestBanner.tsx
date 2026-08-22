@@ -88,10 +88,23 @@ export function ContestBanner({ initial, userId }: { initial?: ContestStatus | n
     }
   }, [storeKey]);
 
-  const isLive = contest?.state === 'LIVE';
+  // Derive LIVE/ENDED from the clock (not the fetched-once server snapshot), so
+  // the banner FLIPS to "Live now / Enter" the instant the countdown reaches
+  // start_at — instead of getting stuck on "starts in 00:00:00" with a dead
+  // Register button.
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const startMs = contest?.startAt ? new Date(contest.startAt).getTime() : null;
+  const endMs = contest?.endAt ? new Date(contest.endAt).getTime() : null;
+  const isLive = startMs != null && endMs != null && nowMs >= startMs && nowMs < endMs;
+  const isEnded = endMs != null && nowMs >= endMs;
   const countdown = useCountdown(isLive ? contest?.endAt ?? null : contest?.startAt ?? null);
 
-  if (!status?.enabled || !contest || dismissed) return null;
+  // Once the contest is over, the banner has nothing to offer — hide it.
+  if (!status?.enabled || !contest || dismissed || isEnded) return null;
 
   const dismiss = () => {
     setDismissed(true);

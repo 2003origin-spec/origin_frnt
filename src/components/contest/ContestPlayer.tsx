@@ -153,7 +153,7 @@ export function ContestPlayer({ contestId }: { contestId: string }) {
                   ? 'bg-primary text-white'
                   : answered
                     ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
-                    : 'neu-raised text-muted-foreground',
+                    : 'neu-raised text-foreground',
               )}
             >
               {i + 1}
