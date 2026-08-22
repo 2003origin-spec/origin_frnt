@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, ArrowRight, CheckCircle2, XCircle, Dumbbell } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CheckCircle2, XCircle, Dumbbell, Loader2 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { NeuButton } from '@/components/ui/neu';
@@ -59,6 +59,9 @@ export function ContestPractice({ contestId }: { contestId: string }) {
     >
   >({});
   const [submitting, setSubmitting] = useState(false);
+  // null = All subjects; otherwise a specific subject to drill.
+  const [selectedSubject, setSelectedSubject] = useState<string | null>(null);
+  const [loadingQ, setLoadingQ] = useState(false);
 
   const loadMetrics = useCallback(async () => {
     const res = await fetch(`/api/contest/practice?contestId=${encodeURIComponent(contestId)}&mode=metrics`, {
@@ -67,31 +70,49 @@ export function ContestPractice({ contestId }: { contestId: string }) {
     if (res.ok) setMetrics((await res.json()).metrics as Metrics);
   }, [contestId]);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
+  const loadQuestions = useCallback(
+    async (subject: string | null) => {
+      setLoadingQ(true);
       try {
-        const res = await fetch(`/api/contest/practice?contestId=${encodeURIComponent(contestId)}&mode=questions&limit=20`, {
-          credentials: 'include',
-        });
+        const url =
+          `/api/contest/practice?contestId=${encodeURIComponent(contestId)}&mode=questions&limit=20` +
+          (subject ? `&subject=${encodeURIComponent(subject)}` : '');
+        const res = await fetch(url, { credentials: 'include' });
         if (res.status === 403) {
-          if (!cancelled) setStatus('locked');
+          setStatus('locked');
           return;
         }
         if (!res.ok) throw new Error('failed');
         const body = (await res.json()) as { items: PracticeQuestion[] };
-        if (cancelled) return;
         setQuestions(body.items);
-        await loadMetrics();
+        setIndex(0);
+        setAnswered({});
         setStatus('ok');
       } catch {
-        if (!cancelled) setStatus('error');
+        setStatus('error');
+      } finally {
+        setLoadingQ(false);
       }
+    },
+    [contestId],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      await loadMetrics();
+      if (!cancelled) await loadQuestions(null);
     })();
     return () => {
       cancelled = true;
     };
-  }, [contestId, loadMetrics]);
+  }, [loadMetrics, loadQuestions]);
+
+  const selectSubject = (subject: string | null) => {
+    if (subject === selectedSubject) return;
+    setSelectedSubject(subject);
+    void loadQuestions(subject);
+  };
 
   const current = questions[index];
   const currentAnswered = current ? answered[current.id] : undefined;
@@ -187,8 +208,35 @@ export function ContestPractice({ contestId }: { contestId: string }) {
           </div>
         )}
 
+        {/* Subject selector — drill one subject or practice across all */}
+        {metrics && metrics.perSubject.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {[{ subject: null as string | null, label: 'All' }, ...metrics.perSubject.map((s) => ({ subject: s.subject, label: s.subject }))].map((t) => {
+              const on = selectedSubject === t.subject;
+              return (
+                <button
+                  key={t.label}
+                  type="button"
+                  onClick={() => selectSubject(t.subject)}
+                  disabled={loadingQ}
+                  className={cn(
+                    'px-3.5 py-2 rounded-xl text-[12px] font-black uppercase tracking-wider transition-colors min-h-[40px] disabled:opacity-50',
+                    on ? 'bg-primary text-white' : 'neu-raised text-muted-foreground',
+                  )}
+                >
+                  {t.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         {/* Current practice question */}
-        {current ? (
+        {loadingQ ? (
+          <div className="neu-raised rounded-2xl p-8 flex items-center justify-center gap-2 text-muted-foreground text-xs font-bold uppercase tracking-widest">
+            <Loader2 className="w-4 h-4 animate-spin" /> Loading {selectedSubject ?? 'practice'} questions…
+          </div>
+        ) : current ? (
           <div className="neu-raised rounded-2xl p-5">
             <div className="text-[10px] font-black uppercase tracking-widest text-primary mb-2">
               {current.subject} · Practice {index + 1}/{questions.length}
@@ -293,7 +341,7 @@ export function ContestPractice({ contestId }: { contestId: string }) {
         ) : (
           <div className="neu-raised rounded-2xl p-6 text-center text-muted-foreground">
             <XCircle className="w-8 h-8 mx-auto mb-2 opacity-50" />
-            No practice questions available for this contest's topics yet.
+            No practice questions available for {selectedSubject ?? "this contest's topics"} yet.
           </div>
         )}
       </div>

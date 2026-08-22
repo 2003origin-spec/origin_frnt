@@ -91,11 +91,14 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnab
   // get an AI helper mid-exam. CBT is its own proctored test app; suppress Ori
   // across the whole /cbt route.
   const isCbtPath = pathname === '/cbt' || pathname.startsWith('/cbt/');
+  // The live contest attempt (/contest/<id>/play) is a timed, proctored surface —
+  // suppress the floating Ori AI so a taker can't get an AI helper mid-contest.
+  const isContestAttemptPath = /^\/contest\/[^/]+\/play\/?$/.test(pathname);
   const isResultPath = pathname.endsWith('/result');
   // Result pages are post-test summaries — keep the nav so students can leave.
   const isSpecialPath = (pathname.startsWith('/tests/') && !isResultPath) || pathname.startsWith('/ogcode/') || isStudyRoomTestPath;
   const isFullViewportApp = pathname === '/doubt-solver' || (pathname.startsWith('/tests/') && !isResultPath) || pathname.startsWith('/ogcode/') || isStudyRoomTestPath;
-  const shouldHideOriginAi = isTestsPath || isStudyRoomTestPath || isStudyRoomJoinPath || isCbtPath;
+  const shouldHideOriginAi = isTestsPath || isStudyRoomTestPath || isStudyRoomJoinPath || isCbtPath || isContestAttemptPath;
 
   const { resolvedTheme, setTheme } = useTheme();
   const { 
