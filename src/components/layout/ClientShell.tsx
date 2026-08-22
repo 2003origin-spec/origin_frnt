@@ -96,7 +96,10 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnab
   const isContestAttemptPath = /^\/contest\/[^/]+\/play\/?$/.test(pathname);
   const isResultPath = pathname.endsWith('/result');
   // Result pages are post-test summaries — keep the nav so students can leave.
-  const isSpecialPath = (pathname.startsWith('/tests/') && !isResultPath) || pathname.startsWith('/ogcode/') || isStudyRoomTestPath;
+  // Contest attempt hides the app navbar/sidebar (proctored surface) but keeps
+  // page scroll (isFullViewportApp stays false) — the player is min-h-dvh and
+  // relies on the content wrapper's overflow-y-auto for long questions/images.
+  const isSpecialPath = (pathname.startsWith('/tests/') && !isResultPath) || pathname.startsWith('/ogcode/') || isStudyRoomTestPath || isContestAttemptPath;
   const isFullViewportApp = pathname === '/doubt-solver' || (pathname.startsWith('/tests/') && !isResultPath) || pathname.startsWith('/ogcode/') || isStudyRoomTestPath;
   const shouldHideOriginAi = isTestsPath || isStudyRoomTestPath || isStudyRoomJoinPath || isCbtPath || isContestAttemptPath;
 
