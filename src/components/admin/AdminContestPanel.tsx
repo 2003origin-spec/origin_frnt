@@ -6,9 +6,27 @@ import { Plus, Trophy, Ban, Rocket, Loader2, ChevronDown, Eye, Save, Pencil } fr
 
 import { cn } from '@/lib/utils';
 import { NeuButton } from '@/components/ui/neu';
+import { LatexRenderer } from '@/components/ui/LatexRenderer';
 import { apiCall } from '@/lib/api';
 import { formatIST, istLocalToUtcIso, utcIsoToIstLocal } from '@/lib/contest/ist';
 import type { ContestRecord } from '@/server/contest/contest-admin-service';
+
+/** One resolved question as returned by the /questions/resolve preview. The
+ *  snapshot carries the renderable stem/options (+ the answer key, which the
+ *  admin is allowed to see for review). */
+interface ResolvedQuestion {
+  questionId: string;
+  subject?: string | null;
+  snapshot: {
+    text?: string;
+    options?: string[] | null;
+    image?: string | null;
+    optionImages?: (string | null)[] | null;
+    correctOption?: number | null;
+    correctOptions?: number[] | null;
+    chapter?: string;
+  };
+}
 
 /**
  * Admin contest builder — a single in-page form (no browser prompts). Select
@@ -48,7 +66,7 @@ export function AdminContestPanel({ initial }: { initial: ContestRecord[] }) {
   const [chapters, setChapters] = useState<Record<string, string[]>>({});
   const [loadingChapters, setLoadingChapters] = useState<Record<string, boolean>>({});
   const [expandedSubject, setExpandedSubject] = useState<string | null>(null);
-  const [preview, setPreview] = useState<{ count: number; questions: unknown[] } | null>(null);
+  const [preview, setPreview] = useState<{ count: number; questions: ResolvedQuestion[] } | null>(null);
   const [busy, setBusy] = useState<string | null>(null); // action label while running
   const [rowBusy, setRowBusy] = useState<string | null>(null);
 
@@ -188,7 +206,7 @@ export function AdminContestPanel({ initial }: { initial: ContestRecord[] }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ selections }),
-      })) as { questions: unknown[]; count: number };
+      })) as { questions: ResolvedQuestion[]; count: number };
       setPreview(resolved);
       toast.success(`Resolved ${resolved.count} questions.`);
     } catch (e) {
@@ -425,11 +443,18 @@ export function AdminContestPanel({ initial }: { initial: ContestRecord[] }) {
           </div>
         )}
 
-        {/* Preview result */}
+        {/* Preview result — the actual resolved questions, reviewable before publish */}
         {preview && (
-          <div className="neu-inset rounded-xl p-3 text-[12px] font-bold text-foreground">
-            Resolved <span className="text-primary font-black">{preview.count}</span> questions across{' '}
-            {b.subjects.join(' · ')}. Publishing freezes this paper.
+          <div className="space-y-3">
+            <div className="neu-inset rounded-xl p-3 text-[12px] font-bold text-foreground">
+              Resolved <span className="text-primary font-black">{preview.count}</span> questions across{' '}
+              {b.subjects.join(' · ')}. Review below — publishing freezes this paper.
+            </div>
+            <div className="max-h-[28rem] overflow-y-auto space-y-3 pr-1">
+              {preview.questions.map((q, qi) => (
+                <QuestionPreview key={q.questionId ?? qi} q={q} index={qi} />
+              ))}
+            </div>
           </div>
         )}
 
@@ -485,6 +510,60 @@ export function AdminContestPanel({ initial }: { initial: ContestRecord[] }) {
                 <IconBtn onClick={() => cancel(c)} busy={rowBusy === c.id} icon={<Ban className="w-3.5 h-3.5" />} label="Cancel" />
               )}
             </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Renders one resolved question (stem + options + images) with the correct
+ *  option marked — an admin-only review of exactly what will be frozen. */
+function QuestionPreview({ q, index }: { q: ResolvedQuestion; index: number }) {
+  const s = q.snapshot ?? {};
+  const options = Array.isArray(s.options) ? s.options : [];
+  const isCorrect = (oi: number) =>
+    (Array.isArray(s.correctOptions) && s.correctOptions.length
+      ? s.correctOptions.includes(oi)
+      : s.correctOption === oi);
+  return (
+    <div className="neu-raised rounded-xl p-4">
+      <div className="flex items-center gap-2 mb-2">
+        <span className="text-[10px] font-black uppercase tracking-widest text-primary">Q{index + 1}</span>
+        {q.subject && <span className="text-[10px] font-bold text-muted-foreground">{q.subject}</span>}
+        {s.chapter && <span className="text-[10px] font-bold text-muted-foreground/70 truncate">· {s.chapter}</span>}
+      </div>
+      <div className="text-[14px] font-bold text-foreground leading-relaxed mb-2">
+        <LatexRenderer content={String(s.text ?? '')} />
+      </div>
+      {s.image && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={s.image} alt="" className="mb-3 max-h-52 w-auto max-w-full rounded-lg object-contain neu-inset p-1.5" />
+      )}
+      <div className="space-y-1.5">
+        {options.map((opt, oi) => (
+          <div
+            key={oi}
+            className={cn(
+              'flex items-start gap-2 px-3 py-2 rounded-lg text-[13px]',
+              isCorrect(oi) ? 'bg-emerald-500/10 ring-1 ring-emerald-500/40' : 'neu-inset',
+            )}
+          >
+            <span
+              className={cn(
+                'w-5 h-5 shrink-0 rounded flex items-center justify-center text-[11px] font-black',
+                isCorrect(oi) ? 'bg-emerald-500 text-white' : 'bg-muted text-muted-foreground',
+              )}
+            >
+              {String.fromCharCode(65 + oi)}
+            </span>
+            <span className="text-foreground flex-1 min-w-0">
+              <LatexRenderer content={String(opt)} />
+              {s.optionImages?.[oi] && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={s.optionImages[oi] as string} alt="" className="mt-1.5 max-h-24 w-auto max-w-full rounded object-contain" />
+              )}
+            </span>
           </div>
         ))}
       </div>
