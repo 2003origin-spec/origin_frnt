@@ -116,6 +116,7 @@ export function AdminContestPanel({ initial }: { initial: ContestRecord[] }) {
     if (!startIso) return { error: 'Set a valid start date & time (IST).' } as const;
     if (!Number.isFinite(b.durationMin) || b.durationMin <= 0) return { error: 'Set a valid duration.' } as const;
     const startMs = new Date(startIso).getTime();
+    if (startMs <= Date.now()) return { error: 'Start time must be in the future.' } as const;
     const endIso = new Date(startMs + b.durationMin * 60_000).toISOString();
     const regOpenIso = b.regOpenLocal
       ? istLocalToUtcIso(b.regOpenLocal)

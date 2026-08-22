@@ -7,6 +7,7 @@ import { ArrowLeft, ArrowRight, CheckCircle2, XCircle, Dumbbell } from 'lucide-r
 import { cn } from '@/lib/utils';
 import { NeuButton } from '@/components/ui/neu';
 import { LatexRenderer } from '@/components/ui/LatexRenderer';
+import { mutateJson } from '@/lib/csrf';
 
 /**
  * Pre-contest practice module (plan Phase 2c UI). Registered-only warm-up
@@ -20,6 +21,8 @@ interface PracticeQuestion {
   options: string[] | null;
   subject: string;
   questionType: string;
+  image: string | null;
+  optionImages: (string | null)[] | null;
 }
 
 interface SubjectReadiness {
@@ -97,10 +100,8 @@ export function ContestPractice({ contestId }: { contestId: string }) {
     if (!current || currentAnswered || submitting) return;
     setSubmitting(true);
     try {
-      const res = await fetch('/api/contest/practice', {
+      const res = await mutateJson('/api/contest/practice', {
         method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ contestId, questionId: current.id, selectedOption: selected }),
       });
       if (res.ok) {
@@ -192,9 +193,18 @@ export function ContestPractice({ contestId }: { contestId: string }) {
             <div className="text-[10px] font-black uppercase tracking-widest text-primary mb-2">
               {current.subject} · Practice {index + 1}/{questions.length}
             </div>
-            <div className="text-[15px] font-bold text-foreground leading-relaxed mb-5">
+            <div className="text-[15px] font-bold text-foreground leading-relaxed mb-3">
               <LatexRenderer content={String(current.text ?? '')} />
             </div>
+            {/* Question diagram (if any) */}
+            {current.image && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={current.image}
+                alt="Question diagram"
+                className="mb-5 max-h-72 w-auto max-w-full rounded-xl object-contain neu-inset p-2"
+              />
+            )}
             <div className="space-y-3">
               {(current.options ?? []).map((opt, oi) => {
                 const chosen = currentAnswered?.selected === oi;
@@ -228,8 +238,16 @@ export function ContestPractice({ contestId }: { contestId: string }) {
                     >
                       {String.fromCharCode(65 + oi)}
                     </span>
-                    <span className="text-[14px] font-medium text-foreground flex-1">
+                    <span className="text-[14px] font-medium text-foreground flex-1 min-w-0">
                       <LatexRenderer content={String(opt)} />
+                      {current.optionImages?.[oi] && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={current.optionImages[oi] as string}
+                          alt={`Option ${String.fromCharCode(65 + oi)}`}
+                          className="mt-2 max-h-32 w-auto max-w-full rounded-lg object-contain"
+                        />
+                      )}
                     </span>
                     {isCorrectOption && <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-500" />}
                     {wrongChoice && <XCircle className="w-4 h-4 shrink-0 text-rose-500" />}

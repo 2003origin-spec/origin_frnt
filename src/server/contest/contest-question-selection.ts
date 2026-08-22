@@ -53,10 +53,14 @@ function freezeSnapshot(q: {
   chapter: string;
   difficulty: string;
   questionType: string;
+  image?: string | null;
+  optionImages?: (string | null)[] | null;
 }): Record<string, unknown> {
   return {
     text: q.text,
     options: q.options,
+    image: q.image ?? null,
+    optionImages: q.optionImages ?? null,
     correctOption: q.correctOption,
     correctOptions: q.correctOptions,
     answerText: q.answerText,
@@ -94,6 +98,10 @@ export async function resolveContestQuestions(
       subject: sel.subject,
       chapters: sel.topics && sel.topics.length ? sel.topics : null,
       difficulties: sel.difficulties && sel.difficulties.length ? sel.difficulties : null,
+      // Contest player + practice render single-select MCQ only. Restrict the
+      // pool to real (option-bearing) MCQs so numerical/MSQ/subjective questions
+      // — which would be unanswerable in the UI — never enter a contest paper.
+      type: "mcq",
       seed: `${contestId}:${sel.subject}`,
       limit: count,
     });

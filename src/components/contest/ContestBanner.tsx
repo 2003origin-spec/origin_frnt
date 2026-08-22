@@ -120,6 +120,12 @@ export function ContestBanner({ initial, userId }: { initial?: ContestStatus | n
           ? { ...prev, contest: { ...prev.contest, isRegistered: true, registeredCount: prev.contest.registeredCount + (res.alreadyRegistered ? 0 : 1) } }
           : prev,
       );
+      // Walk-up: registered during a LIVE contest → jump straight into the attempt.
+      if (isLive) {
+        toast.success("You're in — entering the contest!");
+        router.push(`/contest/${contest.id}/play`);
+        return;
+      }
       toast.success(res.alreadyRegistered ? "You're already registered." : "You're in! See you at the contest.");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not register — please try again.');

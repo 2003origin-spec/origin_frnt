@@ -47,6 +47,8 @@ export interface PracticeQuestion {
   chapter: string;
   difficulty: string;
   questionType: string;
+  image: string | null;
+  optionImages: (string | null)[] | null;
 }
 
 /**
@@ -71,6 +73,8 @@ export async function getPracticeQuestions(
   const page = await listOgcodeCatalogQuestionPage({
     subjects,
     chapters: chapters.length ? chapters : null,
+    // Practice renders single-select MCQ only — match the contest paper.
+    type: "mcq",
     limit: Math.min(50, Math.max(1, opts.limit ?? 20)),
     offset: Math.max(0, opts.offset ?? 0),
   });
@@ -83,6 +87,8 @@ export async function getPracticeQuestions(
     chapter: q.chapter,
     difficulty: q.difficulty,
     questionType: q.questionType,
+    image: q.image ?? null,
+    optionImages: q.optionImages ?? null,
     // answer key deliberately omitted
   }));
   return { items, total: page.total };

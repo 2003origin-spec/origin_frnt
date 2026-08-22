@@ -80,6 +80,17 @@ maybe("start requires registration then LIVE; resume is idempotent", async () =>
       [contestId, userId],
     );
     assert.ok(denorm.rows[0].registered_at, "registered_at denormalized");
+
+    // RESUME REHYDRATION: after saving a draft, getAttemptState returns the saved
+    // answers + rev so a reloaded client restores state (not a blank paper).
+    const { saveContestDraft } = await import("@/server/contest/contest-draft-store");
+    await saveContestDraft(contestId, userId, {
+      answers: { "0": { selectedOption: 2 }, "1": { selectedOption: 0 } },
+      rev: 4,
+    });
+    const resumed = await getAttemptState(contestId, userId);
+    assert.deepEqual(resumed.savedAnswers, { "0": { selectedOption: 2 }, "1": { selectedOption: 0 } });
+    assert.equal(resumed.savedRev, 4, "resumed rev continues the sequence");
   } finally {
     await pool.query(`DELETE FROM contest.attempts WHERE contest_id=$1`, [contestId]);
     await pool.query(`DELETE FROM contest.registrations WHERE contest_id=$1`, [contestId]);

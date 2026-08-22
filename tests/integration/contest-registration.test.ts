@@ -38,23 +38,33 @@ async function seedContest(id: string, regOpenMs: number, regCloseMs: number, en
   );
 }
 
-maybe("registration is window-checked, idempotent, and readable", async () => {
+maybe("registration is window-checked ([reg_open, end_at)), idempotent, readable", async () => {
   const pool = rawPool();
   const userId = makeId("user_reg");
+  const walkupId = makeId("user_walkup");
   const openId = makeId("contest_open");
-  const closedId = makeId("contest_closed");
+  const liveId = makeId("contest_live");
+  const endedId = makeId("contest_ended");
 
   try {
     await seedUser(userId);
-    // open: reg opened 1d ago, closes in 1h, ends in 2h
+    await seedUser(walkupId);
+    // upcoming: reg opened 1d ago, starts in 1h, ends in 2h
     await seedContest(openId, -86_400_000, 3_600_000, 7_200_000);
-    // closed: reg window already ended 1h ago
-    await seedContest(closedId, -7_200_000, -3_600_000, 3_600_000);
+    // LIVE now: reg opened 1d ago, started 10m ago, ends in 50m
+    await pool.query(
+      `INSERT INTO contest.contests (id, name, status, reg_open, reg_close, start_at, end_at)
+       VALUES ($1, 'Live', 'scheduled', NOW() - INTERVAL '1 day', NOW() - INTERVAL '10 min',
+               NOW() - INTERVAL '10 min', NOW() + INTERVAL '50 min')`,
+      [liveId],
+    );
+    // ended: the contest itself is over (end_at 1h ago) → registration closed
+    await seedContest(endedId, -7_200_000, -3_900_000, -3_600_000);
 
     // not registered yet
     assert.equal(await isRegisteredForContest(openId, userId), false);
 
-    // register succeeds within the window
+    // register succeeds (upcoming, within the window)
     const r1 = await registerForContest(openId, userId);
     assert.equal(r1.registered, true);
     assert.equal(r1.alreadyRegistered, false);
@@ -73,12 +83,17 @@ maybe("registration is window-checked, idempotent, and readable", async () => {
     );
     assert.equal(count.rows[0].n, 1);
 
-    // a closed-window contest rejects (fail-closed)
-    await assert.rejects(() => registerForContest(closedId, userId), /not open/i);
-    assert.equal(await isRegisteredForContest(closedId, userId), false);
+    // LATE REGISTRATION (walk-up): a user can register during a LIVE contest.
+    const live = await registerForContest(liveId, walkupId);
+    assert.equal(live.registered, true);
+    assert.equal(await isRegisteredForContest(liveId, walkupId), true);
+
+    // an ENDED contest rejects (fail-closed — past end_at)
+    await assert.rejects(() => registerForContest(endedId, userId), /not open/i);
+    assert.equal(await isRegisteredForContest(endedId, userId), false);
   } finally {
-    await pool.query(`DELETE FROM contest.registrations WHERE user_id = $1`, [userId]);
-    await pool.query(`DELETE FROM contest.contests WHERE id = ANY($1::text[])`, [[openId, closedId]]);
-    await pool.query(`DELETE FROM origin_users WHERE id = $1`, [userId]);
+    await pool.query(`DELETE FROM contest.registrations WHERE user_id = ANY($1::text[])`, [[userId, walkupId]]);
+    await pool.query(`DELETE FROM contest.contests WHERE id = ANY($1::text[])`, [[openId, liveId, endedId]]);
+    await pool.query(`DELETE FROM origin_users WHERE id = ANY($1::text[])`, [[userId, walkupId]]);
   }
 });

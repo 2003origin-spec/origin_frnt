@@ -152,9 +152,17 @@ export function ContestPlayer({ contestId }: { contestId: string }) {
           <div className="text-[10px] font-black uppercase tracking-widest text-primary mb-2">
             {current.subject ?? 'Question'} · Q{index + 1}
           </div>
-          <div className="text-[15px] font-bold text-foreground leading-relaxed mb-5">
+          <div className="text-[15px] font-bold text-foreground leading-relaxed mb-3">
             <LatexRenderer content={String(current.text ?? '')} />
           </div>
+          {current.image && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={current.image}
+              alt="Question diagram"
+              className="mb-5 max-h-72 w-auto max-w-full rounded-xl object-contain neu-inset p-2"
+            />
+          )}
           <div className="space-y-3">
             {(current.options ?? []).map((opt, oi) => {
               const selected = answers[String(current.position)]?.selectedOption === oi;
@@ -176,8 +184,16 @@ export function ContestPlayer({ contestId }: { contestId: string }) {
                   >
                     {String.fromCharCode(65 + oi)}
                   </span>
-                  <span className="text-[14px] font-medium text-foreground">
+                  <span className="text-[14px] font-medium text-foreground flex-1 min-w-0">
                     <LatexRenderer content={String(opt)} />
+                    {current.optionImages?.[oi] && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={current.optionImages[oi] as string}
+                        alt={`Option ${String.fromCharCode(65 + oi)}`}
+                        className="mt-2 max-h-32 w-auto max-w-full rounded-lg object-contain"
+                      />
+                    )}
                   </span>
                 </button>
               );

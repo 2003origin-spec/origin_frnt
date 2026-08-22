@@ -13,6 +13,7 @@ import { getUserPostgresReplicaPool } from "@/server/user-postgres";
 import { getPersonalResult } from "@/server/contest/contest-ranking-service";
 import { getOrbitSummary } from "@/server/contest/contest-orbit-service";
 import { ensureContestSchema } from "@/server/contest/contest-schema";
+import { normalizeScoringConfig } from "@/lib/contest/contest-config";
 
 import { handleTeacherError, teacherJson } from "@/app/api/teacher/_utils";
 
@@ -27,7 +28,7 @@ export async function GET(request: NextRequest) {
     const pool = getUserPostgresReplicaPool();
     if (!pool) return teacherJson({ detail: "Unavailable." }, { status: 503 });
 
-    const contest = await pool.query(`SELECT status, name FROM contest.contests WHERE id = $1`, [contestId]);
+    const contest = await pool.query(`SELECT status, name, scoring_config FROM contest.contests WHERE id = $1`, [contestId]);
     if (!contest.rows[0]) return teacherJson({ detail: "Contest not found." }, { status: 404 });
     // Hard gate: results are hidden until published.
     if (contest.rows[0].status !== "result_published" && contest.rows[0].status !== "archived") {
@@ -52,6 +53,9 @@ export async function GET(request: NextRequest) {
 
     return teacherJson({
       contestName: contest.rows[0].name,
+      // Marks-per-correct so the client can render the true out-of total instead
+      // of assuming a fixed scale.
+      correctMarks: normalizeScoringConfig(contest.rows[0].scoring_config).correctMarks,
       personal,
       orbit,
       orbitMovement: orbitDelta.rows[0]

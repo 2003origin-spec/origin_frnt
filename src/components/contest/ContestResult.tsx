@@ -26,6 +26,7 @@ interface SectionScore {
 
 interface ResultData {
   contestName: string;
+  correctMarks: number;
   personal: { rank: number; percentile: number; score: number; totalRanked: number } | null;
   orbit: { rating: number; tier: string; provisional: boolean } | null;
   orbitMovement: { before: number; after: number; change: number } | null;
@@ -73,15 +74,16 @@ export function ContestResult({ contestId }: { contestId: string }) {
     };
   }, [contestId]);
 
+  const perCorrect = data?.correctMarks ?? 10;
   const subjects = useMemo(() => {
     const s = data?.attempt?.sectionScores ?? {};
     return Object.entries(s).map(([name, v]) => ({
       name,
       score: v.score,
-      totalMarks: v.total * 10, // display scale
+      totalMarks: v.total * perCorrect, // true max = questions × marks-per-correct
       accuracy: v.total > 0 ? Math.round((v.correct / v.total) * 100) : 0,
     }));
-  }, [data]);
+  }, [data, perCorrect]);
 
   if (status === 'loading') return <Centered>Loading result…</Centered>;
   if (status === 'error') return <Centered>Couldn't load your result. Please try again.</Centered>;
@@ -199,7 +201,7 @@ export function ContestResult({ contestId }: { contestId: string }) {
             dateLabel=""
             stats={{
               score: attempt.score,
-              totalMarks: (attempt.correct + attempt.incorrect + attempt.unattempted) * 10,
+              totalMarks: (attempt.correct + attempt.incorrect + attempt.unattempted) * perCorrect,
               correct: attempt.correct,
               incorrect: attempt.incorrect,
               unattempted: attempt.unattempted,

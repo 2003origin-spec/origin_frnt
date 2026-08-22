@@ -47,6 +47,11 @@ export type SaveResult =
  * the incoming rev is strictly greater than the stored rev; returns the stored
  * rev on reject (so the caller can tell the client to re-sync).
  */
+// ARGV[4] = TTL seconds for the draft + dirty-set keys. A safety net well beyond
+// any contest's duration+grace so keys can't accumulate unbounded in Redis if the
+// drain worker isn't running (e.g. CONTEST_SERVICE_URL unset), while never
+// expiring a draft mid-contest.
+const DRAFT_TTL_SECONDS = 2 * 24 * 60 * 60; // 2 days
 const CAS_LUA = `
 local cur = redis.call('HGET', KEYS[1], 'rev')
 local incoming = tonumber(ARGV[1])
@@ -54,7 +59,9 @@ if cur and tonumber(cur) >= incoming then
   return {0, tonumber(cur)}
 end
 redis.call('HSET', KEYS[1], 'rev', incoming, 'draft', ARGV[2])
+redis.call('EXPIRE', KEYS[1], ARGV[4])
 redis.call('SADD', KEYS[2], ARGV[3])
+redis.call('EXPIRE', KEYS[2], ARGV[4])
 return {1, incoming}
 `;
 
@@ -81,7 +88,7 @@ export async function saveContestDraft(
     const [written, rev] = (await redis.eval(
       CAS_LUA,
       [key, dirty],
-      [String(draft.rev), draftJson, userId],
+      [String(draft.rev), draftJson, userId, String(DRAFT_TTL_SECONDS)],
     )) as [number, number];
     if (written === 1) return { ok: true, rev };
     return { ok: false, code: 409, reason: "stale_draft" };

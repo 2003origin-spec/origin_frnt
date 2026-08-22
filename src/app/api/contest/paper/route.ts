@@ -33,7 +33,11 @@ export async function GET(request: NextRequest) {
     }
 
     const paper = await getContestPaper(contestId);
-    return teacherJson({ paper });
+    // The paper is immutable once published and carries no answer keys, so a
+    // client may safely reuse it (e.g. a resume re-fetch) without re-hitting the
+    // origin. `private` keeps it out of shared/CDN caches (the per-user
+    // registration gate above must run for every viewer).
+    return teacherJson({ paper }, { headers: { "Cache-Control": "private, max-age=60" } });
   } catch (error) {
     return handleTeacherError(error);
   }

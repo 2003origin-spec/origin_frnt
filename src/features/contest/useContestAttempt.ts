@@ -10,7 +10,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { toast } from 'sonner';
+
 import { track } from '@/lib/analytics';
+import { mutateJson, csrfHeaders } from '@/lib/csrf';
+import { shouldCountViolation } from '@/lib/contest/contest-state';
 
 export interface PaperQuestion {
   position: number;
@@ -19,6 +23,8 @@ export interface PaperQuestion {
   text: string;
   options: string[] | null;
   questionType: string;
+  image: string | null;
+  optionImages: (string | null)[] | null;
 }
 
 export interface AttemptState {
@@ -28,6 +34,9 @@ export interface AttemptState {
   serverNow: string;
   remainingSeconds: number;
   locked: boolean;
+  savedAnswers?: AnswerMap | null;
+  savedPalette?: Record<string, unknown> | null;
+  savedRev?: number;
 }
 
 export type Phase = 'loading' | 'instructions' | 'running' | 'submitting' | 'submitted' | 'error';
@@ -101,9 +110,16 @@ export function useContestAttempt(contestId: string) {
         if (st.locked) {
           setPhase('submitted');
         } else if (st.started) {
-          // resume: skip the instructions gate, load the paper
+          // resume: skip the instructions gate, load the paper AND rehydrate the
+          // saved answers/rev so the user doesn't see a blank paper (and later
+          // autosaves don't overwrite the durable draft with a partial set).
           const qs = await loadPaper();
           if (cancelled) return;
+          if (st.savedAnswers) {
+            setAnswers(st.savedAnswers);
+            answersRef.current = st.savedAnswers;
+          }
+          revRef.current = st.savedRev ?? 0;
           setQuestions(qs);
           setPhase('running');
         } else {
@@ -126,11 +142,9 @@ export function useContestAttempt(contestId: string) {
     if (submittingRef.current) return;
     revRef.current += 1;
     try {
-      await fetch('/api/contest/answers', {
+      await mutateJson('/api/contest/answers', {
         method: 'POST',
-        credentials: 'include',
         keepalive: true,
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ contestId, answers: answersRef.current, rev: revRef.current }),
       });
     } catch {
@@ -143,8 +157,15 @@ export function useContestAttempt(contestId: string) {
     const interval = window.setInterval(() => void flushSave(), 15_000);
     const onHide = () => {
       revRef.current += 1;
-      const blob = JSON.stringify({ contestId, answers: answersRef.current, rev: revRef.current });
-      navigator.sendBeacon?.('/api/contest/answers', new Blob([blob], { type: 'application/json' }));
+      // sendBeacon can't set the CSRF header (→ 403), so use a keepalive fetch
+      // that carries it. keepalive lets the request outlive the unloading page.
+      void fetch('/api/contest/answers', {
+        method: 'POST',
+        credentials: 'include',
+        keepalive: true,
+        headers: { 'Content-Type': 'application/json', ...csrfHeaders() },
+        body: JSON.stringify({ contestId, answers: answersRef.current, rev: revRef.current }),
+      }).catch(() => undefined);
     };
     window.addEventListener('pagehide', onHide);
     return () => {
@@ -170,10 +191,8 @@ export function useContestAttempt(contestId: string) {
       setPhase('submitting');
       await flushSave().catch(() => undefined);
       try {
-        const res = await fetch('/api/contest/submit', {
+        const res = await mutateJson('/api/contest/submit', {
           method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ contestId, ...opts }),
         });
         if (!res.ok && res.status !== 409) {
@@ -197,29 +216,44 @@ export function useContestAttempt(contestId: string) {
     }
   }, [phase, remaining, state?.started, submit, violations]);
 
-  // ── 3-strike anti-cheat: tab-switch / blur counts a violation ──────────────
+  // ── 3-strike anti-cheat: only a SUSTAINED exit counts (mobile-safe) ─────────
+  // Brief blurs (notifications, quick switches, the keyboard) fire
+  // visibilitychange too; counting them ejected legit mobile students. We start
+  // a timer on hide and only count a strike when the user RETURNS after ≥ the
+  // grace, with an escalating warning each time.
   useEffect(() => {
     if (phase !== 'running') return;
-    const onHidden = () => {
+    let hiddenAt = 0;
+    const onVisibility = () => {
       if (document.visibilityState === 'hidden') {
-        setViolations((v) => {
-          const next = v + 1;
-          if (next >= MAX_VIOLATIONS) void submit({ malpractice: true, violationCount: next });
-          return next;
-        });
+        hiddenAt = Date.now();
+        return;
       }
+      // back to visible
+      if (!hiddenAt) return;
+      const away = Date.now() - hiddenAt;
+      hiddenAt = 0;
+      if (!shouldCountViolation(away)) return; // brief blur — ignore
+      setViolations((v) => {
+        const next = v + 1;
+        if (next >= MAX_VIOLATIONS) {
+          toast.error('Final warning — your attempt has been submitted for leaving the test repeatedly.');
+          void submit({ malpractice: true, violationCount: next });
+        } else {
+          toast.warning(`Warning ${next}/${MAX_VIOLATIONS} — leaving the test is flagged. Stay on this screen.`);
+        }
+        return next;
+      });
     };
-    document.addEventListener('visibilitychange', onHidden);
-    return () => document.removeEventListener('visibilitychange', onHidden);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
   }, [phase, submit]);
 
   const begin = useCallback(async () => {
     try {
       setPhase('loading');
-      const res = await fetch('/api/contest/start', {
+      const res = await mutateJson('/api/contest/start', {
         method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ contestId }),
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || 'Could not start.');
