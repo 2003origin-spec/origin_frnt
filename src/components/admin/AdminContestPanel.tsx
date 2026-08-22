@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Plus, Trophy, Ban, Rocket, Loader2, ChevronDown, Eye, Save, Pencil, Trash2, RefreshCw, Clock } from 'lucide-react';
+import { Plus, Trophy, Ban, Rocket, Loader2, ChevronDown, Eye, Save, Pencil, Trash2, RefreshCw, Clock, BarChart3 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { NeuButton } from '@/components/ui/neu';
@@ -10,6 +10,7 @@ import { LatexRenderer } from '@/components/ui/LatexRenderer';
 import { apiCall } from '@/lib/api';
 import { formatIST, istLocalToUtcIso, utcIsoToIstLocal } from '@/lib/contest/ist';
 import type { ContestRecord } from '@/server/contest/contest-admin-service';
+import type { ContestAnalytics } from '@/server/contest/contest-analytics-service';
 
 /** One resolved question as returned by the /questions/resolve preview. The
  *  snapshot carries the renderable stem/options (+ the answer key, which the
@@ -338,6 +339,9 @@ export function AdminContestPanel({ initial }: { initial: ContestRecord[] }) {
         <Trophy className="w-6 h-6 text-amber-500" /> Weekly Contests
       </h1>
 
+      {/* ── Metrics (funnel + retention) ────────────────────────────────── */}
+      <ContestMetrics />
+
       {/* ── Builder ─────────────────────────────────────────────────────── */}
       <div className="neu-raised rounded-2xl p-5 space-y-5">
         <div className="flex items-center justify-between">
@@ -616,6 +620,80 @@ export function AdminContestPanel({ initial }: { initial: ContestRecord[] }) {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+/** Collapsible funnel + week-over-week retention metrics (loaded on demand). */
+function ContestMetrics() {
+  const [open, setOpen] = useState(false);
+  const [data, setData] = useState<ContestAnalytics | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const load = async () => {
+    setOpen((v) => !v);
+    if (data || loading) return;
+    setLoading(true);
+    try {
+      setData((await apiCall('/admin/contest/analytics')) as ContestAnalytics);
+    } catch {
+      toast.error('Could not load metrics.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const pct = (v: number | null) => (v == null ? '—' : `${Math.round(v * 100)}%`);
+
+  return (
+    <div className="neu-raised rounded-2xl p-4 sm:p-5">
+      <button type="button" onClick={load} className="flex items-center gap-2 w-full text-left">
+        <BarChart3 className="w-4 h-4 text-primary" />
+        <span className="text-[11px] font-black uppercase tracking-widest text-foreground">Metrics · funnel &amp; retention</span>
+        {data?.totals.avgReturnRate != null && (
+          <span className="text-[10px] font-bold text-muted-foreground">avg return {pct(data.totals.avgReturnRate)}</span>
+        )}
+        <ChevronDown className={cn('w-4 h-4 ml-auto text-muted-foreground transition-transform', open && 'rotate-180')} />
+      </button>
+
+      {open && (
+        <div className="mt-4">
+          {loading && (
+            <div className="flex items-center gap-2 text-muted-foreground text-xs py-2">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading…
+            </div>
+          )}
+          {data && data.contests.length === 0 && (
+            <div className="text-[12px] text-muted-foreground">No published contests yet — metrics appear after the first results.</div>
+          )}
+          {data && data.contests.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-[12px]">
+                <thead>
+                  <tr className="text-[9px] font-black uppercase tracking-widest text-muted-foreground text-left">
+                    <th className="py-1.5 pr-3">Contest</th>
+                    <th className="py-1.5 px-2 text-right">Reg</th>
+                    <th className="py-1.5 px-2 text-right">Played</th>
+                    <th className="py-1.5 px-2 text-right">Sub</th>
+                    <th className="py-1.5 pl-2 text-right">Return→next</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.contests.map((c) => (
+                    <tr key={c.contestId} className="border-t border-border/30">
+                      <td className="py-2 pr-3 font-bold text-foreground truncate max-w-[10rem]">{c.name}</td>
+                      <td className="py-2 px-2 text-right tabular-nums text-muted-foreground">{c.registered.toLocaleString()}</td>
+                      <td className="py-2 px-2 text-right tabular-nums text-muted-foreground">{c.played.toLocaleString()}</td>
+                      <td className="py-2 px-2 text-right tabular-nums text-muted-foreground">{c.submitted.toLocaleString()}</td>
+                      <td className="py-2 pl-2 text-right tabular-nums font-black text-primary">{pct(c.returnRate)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
