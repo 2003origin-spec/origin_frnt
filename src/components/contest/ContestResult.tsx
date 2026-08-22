@@ -184,6 +184,7 @@ export function ContestResult({ contestId }: { contestId: string }) {
         <ContestShareCard
           open={shareOpen}
           onClose={() => setShareOpen(false)}
+          contestId={contestId}
           studentName={user?.name ?? 'A student'}
           contestName={data?.contestName ?? 'Origin Weekly'}
           orbit={data.orbit}
