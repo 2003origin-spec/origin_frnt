@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Trophy, X, ArrowRight, CheckCircle2, Clock } from 'lucide-react';
+import { Trophy, X, ArrowRight, CheckCircle2, Clock, Dumbbell } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { NeuButton } from '@/components/ui/neu';
@@ -104,6 +104,13 @@ export function ContestBanner({ initial, userId }: { initial?: ContestStatus | n
 
   const onRegister = async () => {
     if (registering) return;
+    // Logged-out visitor (landing page): registration needs an account. Route to
+    // sign-in with a return path instead of firing an action that would 401.
+    if (!userId) {
+      const back = typeof window !== 'undefined' ? window.location.pathname + window.location.search : '/';
+      router.push(`/auth?next=${encodeURIComponent(back)}`);
+      return;
+    }
     setRegistering(true);
     try {
       const res = await registerForContestAction(contest.id);
@@ -180,8 +187,16 @@ export function ContestBanner({ initial, userId }: { initial?: ContestStatus | n
               </span>
             </NeuButton>
           ) : contest.isRegistered ? (
-            <div className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[12px] font-black uppercase tracking-wider">
-              <CheckCircle2 className="w-4 h-4" /> Registered
+            // Registered + upcoming → warm up with OGCode practice (registered-only).
+            <div className="flex flex-col items-stretch sm:items-end gap-1.5">
+              <span className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400">
+                <CheckCircle2 className="w-3.5 h-3.5" /> Registered
+              </span>
+              <NeuButton onClick={() => router.push(`/contest/${contest.id}/practice`)} className="w-full sm:w-auto">
+                <span className="inline-flex items-center gap-2 text-primary font-black uppercase tracking-wider text-[12px]">
+                  <Dumbbell className="w-3.5 h-3.5" /> Practice now
+                </span>
+              </NeuButton>
             </div>
           ) : (
             <NeuButton onClick={onRegister} disabled={registering} className={cn('w-full sm:w-auto')}>

@@ -49,7 +49,12 @@ export function ContestPractice({ contestId }: { contestId: string }) {
   const [questions, setQuestions] = useState<PracticeQuestion[]>([]);
   const [index, setIndex] = useState(0);
   const [metrics, setMetrics] = useState<Metrics | null>(null);
-  const [answered, setAnswered] = useState<Record<string, { selected: number; correct: boolean }>>({});
+  const [answered, setAnswered] = useState<
+    Record<
+      string,
+      { selected: number; correct: boolean; correctOption: number | null; correctOptions: number[] | null; explanation: string | null }
+    >
+  >({});
   const [submitting, setSubmitting] = useState(false);
 
   const loadMetrics = useCallback(async () => {
@@ -99,12 +104,24 @@ export function ContestPractice({ contestId }: { contestId: string }) {
         body: JSON.stringify({ contestId, questionId: current.id, selectedOption: selected }),
       });
       if (res.ok) {
-        const body = (await res.json()) as { metrics: Metrics };
-        // The server tallied the result; we don't get per-question correctness
-        // back, so mark it optimistically from the accuracy delta is unreliable —
-        // instead re-read metrics and just record that it was attempted.
+        const body = (await res.json()) as {
+          isCorrect: boolean;
+          correctOption: number | null;
+          correctOptions: number[] | null;
+          explanation: string | null;
+          metrics: Metrics;
+        };
         setMetrics(body.metrics);
-        setAnswered((prev) => ({ ...prev, [current.id]: { selected, correct: false } }));
+        setAnswered((prev) => ({
+          ...prev,
+          [current.id]: {
+            selected,
+            correct: body.isCorrect,
+            correctOption: body.correctOption,
+            correctOptions: body.correctOptions,
+            explanation: body.explanation,
+          },
+        }));
       }
     } finally {
       setSubmitting(false);
@@ -181,6 +198,14 @@ export function ContestPractice({ contestId }: { contestId: string }) {
             <div className="space-y-3">
               {(current.options ?? []).map((opt, oi) => {
                 const chosen = currentAnswered?.selected === oi;
+                // Once answered, reveal the correct option (from correctOptions set
+                // or the single correctOption).
+                const isCorrectOption = currentAnswered
+                  ? (currentAnswered.correctOptions?.length
+                      ? currentAnswered.correctOptions.includes(oi)
+                      : currentAnswered.correctOption === oi)
+                  : false;
+                const wrongChoice = Boolean(currentAnswered) && chosen && !currentAnswered?.correct;
                 return (
                   <button
                     key={oi}
@@ -189,23 +214,49 @@ export function ContestPractice({ contestId }: { contestId: string }) {
                     onClick={() => void answer(oi)}
                     className={cn(
                       'w-full text-left px-4 py-3.5 rounded-2xl flex items-center gap-3 transition-all min-h-[52px]',
-                      chosen ? 'bg-primary/10 ring-2 ring-primary' : 'neu-raised',
-                      currentAnswered && !chosen && 'opacity-60',
+                      !currentAnswered && 'neu-raised',
+                      isCorrectOption && 'bg-emerald-500/10 ring-2 ring-emerald-500',
+                      wrongChoice && 'bg-rose-500/10 ring-2 ring-rose-500',
+                      currentAnswered && !isCorrectOption && !wrongChoice && 'neu-raised opacity-60',
                     )}
                   >
-                    <span className="w-7 h-7 shrink-0 rounded-lg flex items-center justify-center text-[13px] font-black bg-muted text-muted-foreground">
+                    <span
+                      className={cn(
+                        'w-7 h-7 shrink-0 rounded-lg flex items-center justify-center text-[13px] font-black',
+                        isCorrectOption ? 'bg-emerald-500 text-white' : wrongChoice ? 'bg-rose-500 text-white' : 'bg-muted text-muted-foreground',
+                      )}
+                    >
                       {String.fromCharCode(65 + oi)}
                     </span>
-                    <span className="text-[14px] font-medium text-foreground">
+                    <span className="text-[14px] font-medium text-foreground flex-1">
                       <LatexRenderer content={String(opt)} />
                     </span>
+                    {isCorrectOption && <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-500" />}
+                    {wrongChoice && <XCircle className="w-4 h-4 shrink-0 text-rose-500" />}
                   </button>
                 );
               })}
             </div>
             {currentAnswered && (
-              <div className="mt-4 flex items-center gap-2 text-[12px] font-bold text-muted-foreground">
-                <CheckCircle2 className="w-4 h-4 text-emerald-500" /> Recorded — your prep score updated above.
+              <div className="mt-4 space-y-2">
+                <div
+                  className={cn(
+                    'flex items-center gap-2 text-[13px] font-black',
+                    currentAnswered.correct ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400',
+                  )}
+                >
+                  {currentAnswered.correct ? (
+                    <><CheckCircle2 className="w-4 h-4" /> Correct!</>
+                  ) : (
+                    <><XCircle className="w-4 h-4" /> Not quite — the right answer is highlighted.</>
+                  )}
+                </div>
+                {currentAnswered.explanation && (
+                  <div className="neu-inset rounded-xl p-3 text-[13px] font-medium text-muted-foreground leading-relaxed">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-primary block mb-1">Explanation</span>
+                    <LatexRenderer content={currentAnswered.explanation} />
+                  </div>
+                )}
               </div>
             )}
             <div className="mt-5 flex justify-between">

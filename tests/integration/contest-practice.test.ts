@@ -70,14 +70,19 @@ maybe("practice grades server-side, tallies per subject, and stays isolated", as
     assert.equal(m.attempted, 0);
     assert.equal(m.prepScore, 0);
 
-    // a CORRECT answer (option 1)
-    m = await recordPracticeAttempt(contestId, userId, qCorrectId, 1);
-    assert.equal(m.attempted, 1);
-    assert.equal(m.correct, 1);
-    assert.equal(m.accuracy, 100);
+    // a CORRECT answer (option 1) — feedback + metrics
+    let r = await recordPracticeAttempt(contestId, userId, qCorrectId, 1);
+    assert.equal(r.isCorrect, true, "correct answer flagged correct");
+    assert.equal(r.correctOption, 1, "reveals the correct option");
+    assert.equal(r.metrics.attempted, 1);
+    assert.equal(r.metrics.correct, 1);
+    assert.equal(r.metrics.accuracy, 100);
 
-    // a WRONG answer (option 0 ≠ correct 1)
-    m = await recordPracticeAttempt(contestId, userId, qWrongId, 0);
+    // a WRONG answer (option 0 ≠ correct 1) — feedback + metrics
+    r = await recordPracticeAttempt(contestId, userId, qWrongId, 0);
+    assert.equal(r.isCorrect, false, "wrong answer flagged wrong");
+    assert.equal(r.correctOption, 1, "still reveals the correct option");
+    m = r.metrics;
     assert.equal(m.attempted, 2);
     assert.equal(m.correct, 1);
     assert.equal(m.accuracy, 50);
