@@ -56,8 +56,9 @@ export async function POST(request: NextRequest) {
     const parsed = AttemptSchema.safeParse(await parseJsonBody(request));
     if (!parsed.success) return teacherJson({ detail: parsed.error.message }, { status: 400 });
     const { contestId, questionId, selectedOption } = parsed.data;
-    const metrics = await recordPracticeAttempt(contestId, ctx.userId, questionId, selectedOption);
-    return teacherJson({ metrics });
+    const result = await recordPracticeAttempt(contestId, ctx.userId, questionId, selectedOption);
+    // result = { isCorrect, correctOption, correctOptions, explanation, metrics }
+    return teacherJson(result);
   } catch (error) {
     return handleTeacherError(error);
   }

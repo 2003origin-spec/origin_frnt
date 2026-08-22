@@ -8,6 +8,13 @@ import { AdminContestPanel } from '@/components/admin/AdminContestPanel';
 
 export default async function AdminContestPage() {
   if (!isFeatureEnabled('contest')) notFound();
-  const contests = await listContests();
+  // Fail soft: a schema-not-yet-migrated or transient DB error must not 500 the
+  // whole admin surface — render the builder with an empty list instead.
+  let contests: Awaited<ReturnType<typeof listContests>> = [];
+  try {
+    contests = await listContests();
+  } catch (err) {
+    console.error('[admin/contest] listContests failed:', err);
+  }
   return <AdminContestPanel initial={contests} />;
 }

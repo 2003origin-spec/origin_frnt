@@ -96,16 +96,26 @@ function gradeMcq(q: { correctOption: number | null; correctOptions: number[] | 
   return q.correctOption === selected;
 }
 
+/** The graded outcome of one practice answer + the refreshed metrics. */
+export interface PracticeAttemptResult {
+  isCorrect: boolean;
+  correctOption: number | null;
+  correctOptions: number[] | null;
+  explanation: string | null;
+  metrics: PracticeMetrics;
+}
+
 /**
- * Record a graded practice attempt and return the updated metrics. Grades the
- * MCQ server-side (authoritative). Requires registration.
+ * Record a graded practice attempt and return the per-question feedback
+ * (correct/wrong + the right option + explanation) plus the updated metrics.
+ * Grades the MCQ server-side (authoritative). Requires registration.
  */
 export async function recordPracticeAttempt(
   contestId: string,
   userId: string,
   questionId: string,
   selectedOption: number,
-): Promise<PracticeMetrics> {
+): Promise<PracticeAttemptResult> {
   await requireRegistered(contestId, userId);
   const contest = await getContest(contestId);
   if (!contest) throw practiceError(404, "Contest not found.");
@@ -146,7 +156,14 @@ export async function recordPracticeAttempt(
     [contestId, userId, subject, isCorrect ? 1 : 0],
   );
 
-  return getPracticeMetrics(contestId, userId);
+  const metrics = await getPracticeMetrics(contestId, userId);
+  return {
+    isCorrect,
+    correctOption: question.correctOption ?? null,
+    correctOptions: question.correctOptions ?? null,
+    explanation: question.explanation ?? null,
+    metrics,
+  };
 }
 
 /** Current Prep Score + Accuracy + per-subject readiness. Requires registration. */
