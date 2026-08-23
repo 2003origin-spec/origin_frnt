@@ -34,6 +34,30 @@ export function ContestPlayer({ contestId }: { contestId: string }) {
 
   const answeredCount = useMemo(() => Object.keys(answers).length, [answers]);
 
+  // Subject sections (CBT-style): the ordered distinct subjects + per-subject
+  // answered/total, so the palette groups by subject instead of one long row.
+  const subjects = useMemo(
+    () => Array.from(new Set(questions.map((q) => q.subject ?? 'General'))),
+    [questions],
+  );
+  const sectionStats = useMemo(() => {
+    const m: Record<string, { answered: number; total: number }> = {};
+    questions.forEach((q) => {
+      const s = q.subject ?? 'General';
+      m[s] ??= { answered: 0, total: 0 };
+      m[s].total += 1;
+      if (answers[String(q.position)] != null) m[s].answered += 1;
+    });
+    return m;
+  }, [questions, answers]);
+  const activeSubject = questions[index]?.subject ?? 'General';
+  const jumpToSubject = (subject: string) => {
+    // First unanswered question of that subject, else its first question.
+    const firstUnanswered = questions.findIndex((q) => (q.subject ?? 'General') === subject && answers[String(q.position)] == null);
+    const firstAny = questions.findIndex((q) => (q.subject ?? 'General') === subject);
+    setIndex(firstUnanswered >= 0 ? firstUnanswered : firstAny >= 0 ? firstAny : index);
+  };
+
   // Throttled screen-reader countdown: the visible timer ticks every 500ms
   // (aria-live off), but this polite region announces only at milestones — each
   // minute, the 30s mark, and the final 10s — so it's useful, not spammy.
@@ -144,9 +168,33 @@ export function ContestPlayer({ contestId }: { contestId: string }) {
         </NeuButton>
       </div>
 
-      {/* Question palette */}
-      <div className="px-4 py-3 flex gap-2 overflow-x-auto">
+      {/* Subject section tabs (CBT-style) — jump + per-subject progress */}
+      {subjects.length > 1 && (
+        <div className="px-4 pt-3 flex gap-2 overflow-x-auto">
+          {subjects.map((s) => {
+            const st = sectionStats[s] ?? { answered: 0, total: 0 };
+            const on = s === activeSubject;
+            return (
+              <button
+                key={s}
+                type="button"
+                onClick={() => jumpToSubject(s)}
+                className={cn(
+                  'shrink-0 px-3.5 py-2 rounded-xl text-[11px] font-black uppercase tracking-wider transition-colors',
+                  on ? 'bg-primary text-white' : 'neu-raised text-muted-foreground',
+                )}
+              >
+                {s} <span className={cn('ml-1 tabular-nums', on ? 'text-white/80' : 'text-muted-foreground/70')}>{st.answered}/{st.total}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Question palette for the ACTIVE subject only (numbers centered) */}
+      <div className="px-4 py-3 flex flex-wrap gap-2">
         {questions.map((q, i) => {
+          if ((q.subject ?? 'General') !== activeSubject) return null;
           const answered = answers[String(q.position)] != null;
           return (
             <button
@@ -156,7 +204,7 @@ export function ContestPlayer({ contestId }: { contestId: string }) {
               aria-label={`Question ${i + 1}${answered ? ', answered' : ''}`}
               aria-current={i === index}
               className={cn(
-                'shrink-0 w-9 h-9 rounded-xl text-[12px] font-black transition-colors',
+                'shrink-0 w-9 h-9 rounded-xl text-[12px] font-black transition-colors flex items-center justify-center',
                 i === index
                   ? 'bg-primary text-white'
                   : answered
