@@ -161,21 +161,27 @@ export async function submitAttempt(
       const values: unknown[] = [];
       const rows: string[] = [];
       graded.perQuestion.forEach((pq, i) => {
-        const b = i * 6;
-        rows.push(`($${b + 1}, $${b + 2}, $${b + 3}, $${b + 4}, $${b + 5}::jsonb, $${b + 6})`);
+        const b = i * 8;
+        rows.push(`($${b + 1}, $${b + 2}, $${b + 3}, $${b + 4}, $${b + 5}::jsonb, $${b + 6}::jsonb, $${b + 7}, $${b + 8})`);
         const q = questions.find((x) => x.position === pq.position);
+        // Persist the student's answer + correctness so (a) the post-contest
+        // solutions review can show "your answer vs correct" and (b) the DPP-from-
+        // mistakes query (WHERE is_correct = false) actually finds wrong answers.
+        const submitted = answers[String(pq.position)] ?? null;
         values.push(
           contestId,
           userId,
           pq.position,
           pq.questionId,
           JSON.stringify(q ?? {}),
+          submitted != null ? JSON.stringify(submitted) : null,
+          pq.isCorrect,
           pq.marksAwarded,
         );
       });
       await client.query(
         `INSERT INTO contest.submission_answers
-           (contest_id, user_id, position, question_id, question_snapshot, marks_awarded)
+           (contest_id, user_id, position, question_id, question_snapshot, submitted_answer, is_correct, marks_awarded)
          VALUES ${rows.join(", ")}
          ON CONFLICT (contest_id, user_id, position) DO NOTHING`,
         values,

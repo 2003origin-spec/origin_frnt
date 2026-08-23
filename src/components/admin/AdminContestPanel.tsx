@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Plus, Trophy, Ban, Rocket, Loader2, ChevronDown, Eye, Save, Pencil, Trash2, RefreshCw, Clock, BarChart3 } from 'lucide-react';
+import { Plus, Trophy, Ban, Rocket, Loader2, ChevronDown, Eye, Save, Pencil, Trash2, RefreshCw, Clock, BarChart3, ShieldAlert, Copy, Repeat } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { NeuButton } from '@/components/ui/neu';
@@ -11,6 +11,8 @@ import { apiCall } from '@/lib/api';
 import { formatIST, istLocalToUtcIso, utcIsoToIstLocal } from '@/lib/contest/ist';
 import type { ContestRecord } from '@/server/contest/contest-admin-service';
 import type { ContestAnalytics } from '@/server/contest/contest-analytics-service';
+import type { FlaggedAttempt } from '@/server/contest/contest-review-service';
+import type { ContestSchedule } from '@/server/contest/contest-schedule-service';
 
 /** One resolved question as returned by the /questions/resolve preview. The
  *  snapshot carries the renderable stem/options (+ the answer key, which the
@@ -72,9 +74,19 @@ export function AdminContestPanel({ initial }: { initial: ContestRecord[] }) {
   const [preview, setPreview] = useState<{ count: number; questions: ResolvedQuestion[] } | null>(null);
   const [busy, setBusy] = useState<string | null>(null); // action label while running
   const [rowBusy, setRowBusy] = useState<string | null>(null);
+  const [cadenceDays, setCadenceDays] = useState(7);
+  const [schedules, setSchedules] = useState<ContestSchedule[]>([]);
 
   const set = <K extends keyof BuilderState>(k: K, v: BuilderState[K]) =>
     setB((prev) => ({ ...prev, [k]: v }));
+
+  const loadSchedules = useCallback(async () => {
+    try {
+      const res = (await apiCall('/admin/contest/schedules')) as { schedules: ContestSchedule[] };
+      setSchedules(res.schedules ?? []);
+    } catch { /* non-fatal */ }
+  }, []);
+  useEffect(() => { void loadSchedules(); }, [loadSchedules]);
 
   const refresh = useCallback(async () => {
     const res = (await apiCall('/admin/contest')) as { contests: ContestRecord[] };
@@ -275,6 +287,59 @@ export function AdminContestPanel({ initial }: { initial: ContestRecord[] }) {
     }
   };
 
+  // Turn the current builder config into a RECURRING schedule (auto-publishes
+  // every `cadenceDays`, first occurrence = the builder's start time).
+  const createRecurring = async () => {
+    const basicsErr = validateBasics();
+    if (basicsErr) return toast.error(basicsErr);
+    const firstStart = istLocalToUtcIso(b.startLocal);
+    if (!firstStart) return toast.error('Set a valid first start date & time (IST).');
+    if (new Date(firstStart).getTime() <= Date.now()) return toast.error('First start must be in the future.');
+    if (!Number.isFinite(b.durationMin) || b.durationMin <= 0) return toast.error('Set a valid duration.');
+    setBusy('recurring');
+    try {
+      await apiCall('/admin/contest/schedules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: b.name.trim(),
+          subjects: b.subjects,
+          topics: b.topics,
+          selections: b.subjects.map((s) => ({ subject: s, count: countFor(s), topics: (b.topics[s] ?? []).length ? b.topics[s] : undefined })),
+          durationMinutes: b.durationMin,
+          cadenceDays,
+          firstStartAt: firstStart,
+        }),
+      });
+      toast.success(`Recurring schedule created — a new "${b.name.trim()}" every ${cadenceDays} days.`);
+      await loadSchedules();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not create the schedule.');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const toggleSchedule = async (sc: ContestSchedule) => {
+    setRowBusy(sc.id);
+    try {
+      await apiCall(`/admin/contest/schedules/${sc.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ active: !sc.active }) });
+      await loadSchedules();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed.');
+    } finally { setRowBusy(null); }
+  };
+  const deleteSchedule = async (sc: ContestSchedule) => {
+    if (!window.confirm(`Delete the recurring schedule "${sc.name}"?`)) return;
+    setRowBusy(sc.id);
+    try {
+      await apiCall(`/admin/contest/schedules/${sc.id}`, { method: 'DELETE' });
+      await loadSchedules();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed.');
+    } finally { setRowBusy(null); }
+  };
+
   const editDraft = (c: ContestRecord) => {
     setPreview(null);
     const durationMin = c.startAt && c.endAt
@@ -332,6 +397,57 @@ export function AdminContestPanel({ initial }: { initial: ContestRecord[] }) {
     const now = Date.now();
     return new Date(c.startAt).getTime() <= now && now < new Date(c.endAt).getTime();
   };
+
+  // Anti-cheat review: list flagged attempts + clear/uphold (the API recomputes
+  // ranking/ORBIT on a post-publish decision).
+  const [reviewOpen, setReviewOpen] = useState<string | null>(null);
+  const [flagged, setFlagged] = useState<FlaggedAttempt[] | null>(null);
+  const openReview = async (c: ContestRecord) => {
+    if (reviewOpen === c.id) { setReviewOpen(null); return; }
+    setReviewOpen(c.id);
+    setFlagged(null);
+    try {
+      const res = (await apiCall(`/admin/contest/${c.id}/review`)) as { flagged: FlaggedAttempt[] };
+      setFlagged(res.flagged ?? []);
+    } catch {
+      setFlagged([]);
+      toast.error('Could not load flagged attempts.');
+    }
+  };
+  const resolveFlag = async (contestId: string, userId: string, action: 'clear' | 'uphold') => {
+    setRowBusy(contestId);
+    try {
+      await apiCall(`/admin/contest/${contestId}/review`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, action }),
+      });
+      toast.success(action === 'clear' ? 'Cleared — attempt re-enters ranking.' : 'Upheld — attempt disqualified.');
+      setFlagged((prev) => (prev ? prev.filter((f) => f.userId !== userId) : prev));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Action failed.');
+    } finally {
+      setRowBusy(null);
+    }
+  };
+  // Clone: duplicate a contest's config into a fresh draft (fast weekly re-run).
+  const clone = async (c: ContestRecord) => {
+    setRowBusy(c.id);
+    try {
+      await apiCall(`/admin/contest/${c.id}/clone`, { method: 'POST' });
+      toast.success(`Cloned "${c.name}" — set a new schedule on the draft.`);
+      await refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Clone failed.');
+    } finally {
+      setRowBusy(null);
+    }
+  };
+
+  // Review is meaningful once a contest has run (ended / processing / published).
+  const canReview = (c: ContestRecord) =>
+    c.status === 'result_processing' || c.status === 'result_published' || c.status === 'archived' ||
+    (c.status === 'scheduled' && !!c.endAt && new Date(c.endAt).getTime() <= Date.now());
 
   return (
     <div className="max-w-3xl mx-auto p-4 sm:p-6 space-y-6">
@@ -563,7 +679,56 @@ export function AdminContestPanel({ initial }: { initial: ContestRecord[] }) {
         {!preview && (
           <p className="text-[10px] font-bold text-muted-foreground">Preview the paper to enable publishing.</p>
         )}
+
+        {/* Auto-schedule: turn this config into a recurring contest */}
+        <div className="pt-3 border-t border-border/40 flex flex-wrap items-center gap-2">
+          <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Or automate</span>
+          <label className="text-[11px] font-bold text-muted-foreground">every</label>
+          <input
+            type="number"
+            min={1}
+            max={90}
+            value={cadenceDays}
+            onChange={(e) => setCadenceDays(Math.max(1, Number(e.target.value) || 1))}
+            className="w-16 neu-inset rounded-lg px-2 py-1.5 text-sm font-black text-foreground bg-transparent outline-none text-center tabular-nums"
+          />
+          <label className="text-[11px] font-bold text-muted-foreground">days</label>
+          <NeuButton onClick={createRecurring} disabled={!!busy}>
+            <span className="inline-flex items-center gap-2 text-primary font-black text-[12px] uppercase tracking-wider">
+              {busy === 'recurring' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Repeat className="w-4 h-4" />}
+              Make recurring
+            </span>
+          </NeuButton>
+        </div>
       </div>
+
+      {/* ── Recurring schedules ─────────────────────────────────────────── */}
+      {schedules.length > 0 && (
+        <div className="space-y-3">
+          <div className="text-[10px] font-black uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+            <Repeat className="w-3 h-3" /> Recurring schedules
+          </div>
+          {schedules.map((sc) => (
+            <div key={sc.id} className="neu-raised rounded-2xl p-4 flex items-center gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-black text-foreground truncate">{sc.name}</span>
+                  <span className={cn('px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider', sc.active ? 'bg-emerald-500/10 text-emerald-500' : 'bg-slate-500/10 text-slate-500')}>
+                    {sc.active ? 'active' : 'paused'}
+                  </span>
+                </div>
+                <div className="text-[11px] font-bold text-muted-foreground">
+                  every {sc.cadenceDays}d · {sc.runCount} run{sc.runCount === 1 ? '' : 's'} · next {formatIST(sc.nextStartAt)}
+                </div>
+              </div>
+              <div className="flex gap-2 shrink-0">
+                <IconBtn onClick={() => toggleSchedule(sc)} busy={rowBusy === sc.id} icon={sc.active ? <Ban className="w-3.5 h-3.5" /> : <Rocket className="w-3.5 h-3.5" />} label={sc.active ? 'Pause' : 'Resume'} />
+                <IconBtn onClick={() => deleteSchedule(sc)} busy={rowBusy === sc.id} icon={<Trash2 className="w-3.5 h-3.5" />} label="Delete" />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* ── Existing contests ───────────────────────────────────────────── */}
       <div className="space-y-3">
@@ -596,10 +761,45 @@ export function AdminContestPanel({ initial }: { initial: ContestRecord[] }) {
                     label="Extend"
                   />
                 )}
+                {canReview(c) && (
+                  <IconBtn onClick={() => openReview(c)} busy={false} icon={<ShieldAlert className="w-3.5 h-3.5" />} label="Review" />
+                )}
+                <IconBtn onClick={() => clone(c)} busy={rowBusy === c.id} icon={<Copy className="w-3.5 h-3.5" />} label="Clone" />
                 {(c.status === 'draft' || c.status === 'scheduled') && (
                   <IconBtn onClick={() => cancel(c)} busy={rowBusy === c.id} icon={<Ban className="w-3.5 h-3.5" />} label="Cancel" />
                 )}
               </div>
+
+              {/* Anti-cheat review panel */}
+              {reviewOpen === c.id && (
+                <div className="w-full neu-inset rounded-xl p-3 mt-1">
+                  <div className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mb-2">Flagged attempts</div>
+                  {flagged === null ? (
+                    <div className="flex items-center gap-2 text-muted-foreground text-xs py-1"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading…</div>
+                  ) : flagged.length === 0 ? (
+                    <div className="text-[12px] font-bold text-emerald-600 dark:text-emerald-400">No flags — clean contest ✓</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {flagged.map((f) => (
+                        <div key={f.userId} className="flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="text-[12px] font-bold text-foreground truncate">Player {f.userId.slice(-6)}</div>
+                            <div className="text-[10px] font-bold text-muted-foreground">
+                              {f.violationCount} violations · {f.reviewStatus}{f.score != null ? ` · score ${f.score}` : ''}
+                            </div>
+                          </div>
+                          <div className="flex gap-1.5 shrink-0">
+                            <button type="button" onClick={() => resolveFlag(c.id, f.userId, 'clear')} disabled={rowBusy === c.id}
+                              className="px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 disabled:opacity-50">Clear</button>
+                            <button type="button" onClick={() => resolveFlag(c.id, f.userId, 'uphold')} disabled={rowBusy === c.id}
+                              className="px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase bg-rose-500/10 text-rose-600 dark:text-rose-400 disabled:opacity-50">Uphold</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
               {extendOpen === c.id && isLiveNow(c) && (
                 <div className="flex items-center gap-1.5">
                   <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">+min</span>

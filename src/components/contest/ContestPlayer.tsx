@@ -67,9 +67,17 @@ export function ContestPlayer({ contestId }: { contestId: string }) {
         <Trophy className="w-12 h-12 text-amber-500 mb-4" />
         <h2 className="text-2xl font-black text-foreground mb-2">Submitted!</h2>
         <p className="text-muted-foreground mb-6 text-center max-w-sm">
-          Your attempt is locked. Results and your ORBIT change publish after the contest ends.
+          Your attempt is locked. Results and your ORBIT change publish after the contest ends —
+          we&apos;ll notify you, and you can check the result page anytime.
         </p>
-        <NeuButton onClick={() => router.push('/dashboard')}>Back to dashboard</NeuButton>
+        <div className="flex flex-col sm:flex-row gap-3">
+          <NeuButton onClick={() => router.push(`/contest/${contestId}/result`)}>
+            <span className="text-primary font-black uppercase tracking-wider text-[12px]">View result</span>
+          </NeuButton>
+          <NeuButton onClick={() => router.push('/dashboard')}>
+            <span className="font-black uppercase tracking-wider text-[12px]">Back to dashboard</span>
+          </NeuButton>
+        </div>
       </Centered>
     );
   }

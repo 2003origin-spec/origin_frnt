@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Share2, TrendingUp, TrendingDown, Trophy, Medal, Target } from 'lucide-react';
+import { Share2, TrendingUp, TrendingDown, Trophy, Medal, Target, BookOpen } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { NeuButton } from '@/components/ui/neu';
@@ -167,6 +167,13 @@ export function ContestResult({ contestId }: { contestId: string }) {
             <span className="font-black text-[12px] uppercase tracking-wider">Leaderboard</span>
           </NeuButton>
         </div>
+
+        {/* Review your answers — solutions with your answer vs correct + explanation. */}
+        <NeuButton onClick={() => router.push(`/contest/${contestId}/solutions`)} className="w-full">
+          <span className="inline-flex items-center gap-2 text-primary font-black text-[12px] uppercase tracking-wider">
+            <BookOpen className="w-4 h-4" /> Review solutions
+          </span>
+        </NeuButton>
 
         {/* Practice from mistakes (DPP) — gated server-side; the page shows the
             locked/subscribe state itself for non-premium participants. */}

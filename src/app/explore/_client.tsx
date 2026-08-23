@@ -23,9 +23,11 @@ const ROUTES: Record<string, string> = {
 export default function ExploreClient({
   socialEnabled = false,
   connectEnabled = false,
+  contestEnabled = false,
 }: {
   socialEnabled?: boolean;
   connectEnabled?: boolean;
+  contestEnabled?: boolean;
 }) {
   const router = useRouter();
   const { aiExplainer } = useAiAccess();
@@ -35,6 +37,7 @@ export default function ExploreClient({
       aiExplainer={aiExplainer}
       socialEnabled={socialEnabled}
       connectEnabled={connectEnabled}
+      contestEnabled={contestEnabled}
     />
   );
 }

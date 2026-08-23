@@ -11,10 +11,12 @@ import {
   FileCheck2,
   CreditCard,
   ArrowRight,
+  Trophy,
 } from "lucide-react";
 
 import { getAdminOverviewStats, formatInr } from "@/server/admin/overview-service";
 import { listAuditEventsService } from "@/server/workspaces/admin-service";
+import { isFeatureEnabled } from "@/lib/feature-flags";
 
 function Stat({
   label,
@@ -102,6 +104,25 @@ export default async function AdminDashboard() {
               <ArrowRight className="w-4 h-4 text-amber-500" />
             </Link>
           )}
+        </div>
+      )}
+
+      {/* Manage */}
+      {isFeatureEnabled("contest") && (
+        <div>
+          <h3 className="text-sm font-black uppercase tracking-widest text-foreground mb-4">Manage</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Link href="/admin/contest" className="flex items-center justify-between gap-4 rounded-2xl border border-border bg-card p-5 hover:border-amber-500/40 transition-colors">
+              <div className="flex items-center gap-3">
+                <Trophy className="w-5 h-5 text-amber-500" />
+                <div>
+                  <p className="font-bold text-foreground">Weekly Contests</p>
+                  <p className="text-xs text-muted-foreground">Create, schedule, review &amp; extend ORBIT-rated contests.</p>
+                </div>
+              </div>
+              <ArrowRight className="w-4 h-4 text-muted-foreground" />
+            </Link>
+          </div>
         </div>
       )}
 

@@ -38,6 +38,10 @@
     {
       "path": "/api/internal/contest/retention",
       "schedule": "15 3 * * *"
+    },
+    {
+      "path": "/api/internal/contest/schedule-run",
+      "schedule": "0 * * * *"
     }
   ]
 }

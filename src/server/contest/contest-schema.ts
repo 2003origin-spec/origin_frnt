@@ -291,6 +291,29 @@ CREATE TABLE IF NOT EXISTS contest.share_links (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (contest_id, user_id)
 );
+
+-- Recurring schedules (mirrors 20260823_contest_schedules.sql).
+CREATE TABLE IF NOT EXISTS contest.schedules (
+  id               TEXT PRIMARY KEY,
+  name             TEXT NOT NULL,
+  subjects         JSONB NOT NULL DEFAULT '[]'::jsonb,
+  topics           JSONB NOT NULL DEFAULT '{}'::jsonb,
+  selections       JSONB NOT NULL DEFAULT '[]'::jsonb,
+  duration_minutes INTEGER NOT NULL,
+  reg_lead_days    INTEGER NOT NULL DEFAULT 5,
+  cadence_days     INTEGER NOT NULL DEFAULT 7,
+  scoring_config   JSONB NOT NULL DEFAULT '{}'::jsonb,
+  ogcode_reward    INTEGER NOT NULL DEFAULT 0,
+  display_tz       TEXT NOT NULL DEFAULT 'Asia/Kolkata',
+  next_start_at    TIMESTAMPTZ NOT NULL,
+  run_count        INTEGER NOT NULL DEFAULT 0,
+  active           BOOLEAN NOT NULL DEFAULT true,
+  last_contest_id  TEXT,
+  created_by       TEXT REFERENCES origin_users(id),
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_contest_schedules_due ON contest.schedules(active, next_start_at);
 `;
 
 function pool() {
