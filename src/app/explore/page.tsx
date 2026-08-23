@@ -7,6 +7,7 @@ export default function ExplorePage() {
     <ExploreClient
       socialEnabled={isFeatureEnabled('studentSocial')}
       connectEnabled={isFeatureEnabled('teacherConnect')}
+      contestEnabled={isFeatureEnabled('contest')}
     />
   );
 }

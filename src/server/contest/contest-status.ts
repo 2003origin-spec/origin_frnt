@@ -20,20 +20,22 @@ import { getApproxRegisteredCount } from "./contest-counts";
 import { isRegisteredForContest } from "./contest-registration-service";
 import { ensureContestSchema } from "./contest-schema";
 
+export interface ContestSummary {
+  id: string;
+  name: string;
+  state: ContestState;
+  startAt: string | null;
+  endAt: string | null;
+  regOpen: string | null;
+  regClose: string | null;
+  bannerUrl: string | null;
+  registeredCount: number;
+  isRegistered: boolean;
+}
+
 export interface ContestStatus {
   enabled: boolean;
-  contest: {
-    id: string;
-    name: string;
-    state: ContestState;
-    startAt: string | null;
-    endAt: string | null;
-    regOpen: string | null;
-    regClose: string | null;
-    bannerUrl: string | null;
-    registeredCount: number;
-    isRegistered: boolean;
-  } | null;
+  contest: ContestSummary | null;
 }
 
 const DISABLED: ContestStatus = { enabled: false, contest: null };
@@ -94,4 +96,57 @@ export async function getContestStatus(userId?: string | null): Promise<ContestS
       isRegistered,
     },
   };
+}
+
+/**
+ * ALL currently-available contests (live now or upcoming, not yet ended), newest
+ * window first. Powers the "see all contests" list — so multiple simultaneously
+ * hosted contests are all visible, not just the single nearest one. `userId`
+ * optional (logged-out → isRegistered:false).
+ */
+export async function getOpenContests(userId?: string | null): Promise<ContestSummary[]> {
+  if (!isFeatureEnabled("contest")) return [];
+  if (!isUserPostgresConfigured()) return [];
+  await ensureContestSchema();
+
+  const pool = getUserPostgresReplicaPool();
+  if (!pool) return [];
+
+  const res = await pool.query(
+    `SELECT id, name, status, start_at, end_at, reg_open, reg_close, banner_url
+       FROM contest.contests
+      WHERE status = 'scheduled'
+        AND end_at IS NOT NULL AND NOW() < end_at
+      ORDER BY (start_at <= NOW()) DESC, start_at ASC
+      LIMIT 50`,
+  );
+
+  const now = new Date();
+  return Promise.all(
+    res.rows.map(async (row) => {
+      const window = {
+        status: row.status as "scheduled",
+        regOpen: row.reg_open ? new Date(row.reg_open) : null,
+        regClose: row.reg_close ? new Date(row.reg_close) : null,
+        startAt: row.start_at ? new Date(row.start_at) : null,
+        endAt: row.end_at ? new Date(row.end_at) : null,
+      };
+      const [registeredCount, isRegistered] = await Promise.all([
+        getApproxRegisteredCount(row.id).catch(() => 0),
+        userId ? isRegisteredForContest(row.id, userId).catch(() => false) : Promise.resolve(false),
+      ]);
+      return {
+        id: row.id,
+        name: row.name,
+        state: resolveContestState(window, now),
+        startAt: window.startAt?.toISOString() ?? null,
+        endAt: window.endAt?.toISOString() ?? null,
+        regOpen: window.regOpen?.toISOString() ?? null,
+        regClose: window.regClose?.toISOString() ?? null,
+        bannerUrl: row.banner_url ?? null,
+        registeredCount,
+        isRegistered,
+      };
+    }),
+  );
 }
