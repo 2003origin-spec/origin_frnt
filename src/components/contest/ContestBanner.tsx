@@ -9,10 +9,10 @@ import { NeuButton } from '@/components/ui/neu';
 import { cn } from '@/lib/utils';
 import { track } from '@/lib/analytics';
 import {
-  getContestStatusAction,
+  getOpenContestsAction,
   registerForContestAction,
 } from '@/server/actions/contest-actions';
-import type { ContestStatus } from '@/server/contest/contest-status';
+import type { ContestStatus, ContestSummary } from '@/server/contest/contest-status';
 
 /**
  * Weekly Contest register banner (plan Phase 2). Shown on the dashboard
@@ -55,27 +55,55 @@ function Segment({ value, label }: { value: number; label: string }) {
 
 export function ContestBanner({ initial, userId }: { initial?: ContestStatus | null; userId?: string | null }) {
   const router = useRouter();
-  const [status, setStatus] = useState<ContestStatus | null>(initial ?? null);
+  // ALL open contests (live + upcoming). Seeded from the server single for an
+  // instant first paint, then replaced by the full list so the banner reflects
+  // every hosted contest — and features the RIGHT one for this candidate.
+  const [contests, setContests] = useState<ContestSummary[] | null>(
+    initial?.contest ? [initial.contest] : initial?.enabled === false ? [] : null,
+  );
   const [registering, setRegistering] = useState(false);
   const [dismissed, setDismissed] = useState(true); // hidden until we know it isn't dismissed
 
-  const contest = status?.contest ?? null;
-  const storeKey = contest && userId ? `contest_banner_dismissed_${userId}_${contest.id}` : null;
-
-  // Client-fetch when not server-seeded (landing page).
+  // Fetch the full open-contest list (both dashboard + landing).
   useEffect(() => {
-    if (initial !== undefined && initial !== null) return;
     let cancelled = false;
-    void getContestStatusAction()
-      .then((s) => {
-        if (!cancelled) setStatus(s);
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [initial]);
+    void getOpenContestsAction()
+      .then((list) => { if (!cancelled) setContests(list); })
+      .catch(() => { if (!cancelled) setContests([]); });
+    return () => { cancelled = true; };
+  }, []);
 
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const live = (c: ContestSummary) => {
+    const s = c.startAt ? new Date(c.startAt).getTime() : null;
+    const e = c.endAt ? new Date(c.endAt).getTime() : null;
+    return s != null && e != null && nowMs >= s && nowMs < e;
+  };
+  const ended = (c: ContestSummary) => {
+    const e = c.endAt ? new Date(c.endAt).getTime() : null;
+    return e != null && nowMs >= e;
+  };
+  const startMsOf = (c: ContestSummary) => (c.startAt ? new Date(c.startAt).getTime() : Infinity);
+
+  // Pick the contest to FEATURE for this candidate, by priority:
+  //   1. registered + live      → attend now
+  //   2. not-registered + live  → join now (walk-up)
+  //   3. registered + upcoming  → practice (soonest)
+  //   4. nearest upcoming       → register
+  const open = (contests ?? []).filter((c) => !ended(c));
+  const contest =
+    open.filter((c) => c.isRegistered && live(c)).sort((a, b) => startMsOf(a) - startMsOf(b))[0] ??
+    open.filter((c) => live(c)).sort((a, b) => startMsOf(a) - startMsOf(b))[0] ??
+    open.filter((c) => c.isRegistered).sort((a, b) => startMsOf(a) - startMsOf(b))[0] ??
+    open.sort((a, b) => startMsOf(a) - startMsOf(b))[0] ??
+    null;
+
+  const storeKey = contest && userId ? `contest_banner_dismissed_${userId}_${contest.id}` : null;
   useEffect(() => {
     if (!storeKey) {
       setDismissed(false);
@@ -88,23 +116,12 @@ export function ContestBanner({ initial, userId }: { initial?: ContestStatus | n
     }
   }, [storeKey]);
 
-  // Derive LIVE/ENDED from the clock (not the fetched-once server snapshot), so
-  // the banner FLIPS to "Live now / Enter" the instant the countdown reaches
-  // start_at — instead of getting stuck on "starts in 00:00:00" with a dead
-  // Register button.
-  const [nowMs, setNowMs] = useState(() => Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNowMs(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, []);
-  const startMs = contest?.startAt ? new Date(contest.startAt).getTime() : null;
-  const endMs = contest?.endAt ? new Date(contest.endAt).getTime() : null;
-  const isLive = startMs != null && endMs != null && nowMs >= startMs && nowMs < endMs;
-  const isEnded = endMs != null && nowMs >= endMs;
-  const countdown = useCountdown(isLive ? contest?.endAt ?? null : contest?.startAt ?? null);
+  const isLive = contest ? live(contest) : false;
+  const countdown = useCountdown(contest ? (isLive ? contest.endAt : contest.startAt) : null);
 
-  // Once the contest is over, the banner has nothing to offer — hide it.
-  if (!status?.enabled || !contest || dismissed || isEnded) return null;
+  if (!contest || dismissed) return null;
+
+  const otherCount = open.length - 1; // additional contests beyond the featured one
 
   const dismiss = () => {
     setDismissed(true);
@@ -115,10 +132,12 @@ export function ContestBanner({ initial, userId }: { initial?: ContestStatus | n
     }
   };
 
+  const markRegistered = (id: string) =>
+    setContests((prev) => (prev ? prev.map((c) => (c.id === id ? { ...c, isRegistered: true, registeredCount: c.registeredCount + 1 } : c)) : prev));
+
   const onRegister = async () => {
-    if (registering) return;
-    // Logged-out visitor (landing page): registration needs an account. Route to
-    // sign-in with a return path instead of firing an action that would 401.
+    if (registering || !contest) return;
+    // Logged-out visitor (landing page): route to sign-in instead of a 401.
     if (!userId) {
       const back = typeof window !== 'undefined' ? window.location.pathname + window.location.search : '/';
       router.push(`/auth?next=${encodeURIComponent(back)}`);
@@ -127,12 +146,7 @@ export function ContestBanner({ initial, userId }: { initial?: ContestStatus | n
     setRegistering(true);
     try {
       const res = await registerForContestAction(contest.id);
-      if (!res.alreadyRegistered) track('contest_register', { contest_id: contest.id });
-      setStatus((prev) =>
-        prev?.contest
-          ? { ...prev, contest: { ...prev.contest, isRegistered: true, registeredCount: prev.contest.registeredCount + (res.alreadyRegistered ? 0 : 1) } }
-          : prev,
-      );
+      if (!res.alreadyRegistered) { track('contest_register', { contest_id: contest.id }); markRegistered(contest.id); }
       // Walk-up: registered during a LIVE contest → jump straight into the attempt.
       if (isLive) {
         toast.success("You're in — entering the contest!");
@@ -180,13 +194,15 @@ export function ContestBanner({ initial, userId }: { initial?: ContestStatus | n
               <p className="text-[11px] font-bold text-muted-foreground">
                 {contest.registeredCount.toLocaleString()} registered
               </p>
-              <button
-                type="button"
-                onClick={() => router.push('/contest')}
-                className="text-[11px] font-black uppercase tracking-wider text-primary"
-              >
-                See all
-              </button>
+              {otherCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => router.push('/contest')}
+                  className="text-[11px] font-black uppercase tracking-wider text-primary"
+                >
+                  +{otherCount} more
+                </button>
+              )}
             </div>
           </div>
         </div>
