@@ -176,9 +176,18 @@ export function ContestBanner({ initial, userId }: { initial?: ContestStatus | n
               )}
             </div>
             <h3 className="text-base sm:text-lg font-black text-foreground truncate">{contest.name}</h3>
-            <p className="text-[11px] font-bold text-muted-foreground">
-              {contest.registeredCount.toLocaleString()} registered
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="text-[11px] font-bold text-muted-foreground">
+                {contest.registeredCount.toLocaleString()} registered
+              </p>
+              <button
+                type="button"
+                onClick={() => router.push('/contest')}
+                className="text-[11px] font-black uppercase tracking-wider text-primary"
+              >
+                See all
+              </button>
+            </div>
           </div>
         </div>
 

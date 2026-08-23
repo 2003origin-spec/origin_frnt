@@ -98,6 +98,13 @@ export function ContestExploreSection() {
         <Trophy className="w-5 h-5 text-amber-500" />
         <h2 className="text-lg font-black text-foreground">Weekly Contest</h2>
         <span className="text-[10px] font-black uppercase tracking-widest text-primary bg-primary/10 rounded-full px-2 py-0.5">ORBIT rated</span>
+        <button
+          type="button"
+          onClick={() => router.push('/contest')}
+          className="ml-auto inline-flex items-center gap-1 text-[11px] font-black uppercase tracking-wider text-primary"
+        >
+          See all <ArrowRight className="w-3.5 h-3.5" />
+        </button>
       </div>
 
       {/* Hero — current contest or an explainer when none is live */}

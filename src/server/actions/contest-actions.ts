@@ -1,7 +1,7 @@
 'use server';
 
 import { getServerUser } from '@/lib/auth-server';
-import { getContestStatus, type ContestStatus } from '@/server/contest/contest-status';
+import { getContestStatus, getOpenContests, type ContestStatus, type ContestSummary } from '@/server/contest/contest-status';
 import { registerForContest, type RegistrationResult } from '@/server/contest/contest-registration-service';
 import { requireFeatureEnabled } from '@/lib/feature-flags';
 
@@ -13,6 +13,12 @@ import { requireFeatureEnabled } from '@/lib/feature-flags';
 export async function getContestStatusAction(): Promise<ContestStatus> {
   const user = await getServerUser().catch(() => null);
   return getContestStatus(user?.id ?? null);
+}
+
+/** ALL currently-available contests (live/upcoming) for the "see all" list. */
+export async function getOpenContestsAction(): Promise<ContestSummary[]> {
+  const user = await getServerUser().catch(() => null);
+  return getOpenContests(user?.id ?? null);
 }
 
 /**
