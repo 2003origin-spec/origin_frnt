@@ -4,7 +4,7 @@ import { getServerUser } from '@/lib/auth-server';
 import { getContestStatus, getOpenContests, type ContestStatus, type ContestSummary } from '@/server/contest/contest-status';
 import { registerForContest, type RegistrationResult } from '@/server/contest/contest-registration-service';
 import { getContestProfile, type ContestProfile } from '@/server/contest/contest-profile-service';
-import { requireFeatureEnabled } from '@/lib/feature-flags';
+import { requireFeatureEnabled, isFeatureEnabled } from '@/lib/feature-flags';
 
 /**
  * Contest banner status for the (client-only) landing page + any client surface.
@@ -28,6 +28,17 @@ export async function getContestProfileAction(): Promise<ContestProfile | null> 
   const user = await getServerUser();
   if (!user) return null;
   return getContestProfile(user.id);
+}
+
+/** Lightweight ORBIT summary for the persistent dashboard badge (null = no rating). */
+export async function getMyOrbitAction(): Promise<{ rating: number; tier: string; provisional: boolean; ratingChange: number | null } | null> {
+  if (!isFeatureEnabled('contest')) return null;
+  const user = await getServerUser().catch(() => null);
+  if (!user) return null;
+  const { getOrbitSummary } = await import('@/server/contest/contest-orbit-service');
+  const o = await getOrbitSummary(user.id).catch(() => null);
+  if (!o) return null;
+  return { rating: Math.round(o.rating), tier: o.tier, provisional: o.provisional, ratingChange: o.ratingChange };
 }
 
 /**

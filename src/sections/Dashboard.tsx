@@ -18,6 +18,7 @@ import PointsSummary from '@/components/dashboard/PointsSummary';
 import StudyModeToggle from '@/components/dashboard/StudyModeToggle';
 import { ChampionshipBanner } from '@/components/dashboard/ChampionshipBanner';
 import { ContestBanner } from '@/components/contest/ContestBanner';
+import { ContestOrbitBadge } from '@/components/contest/ContestOrbitBadge';
 import type { ContestStatus } from '@/server/contest/contest-status';
 import StudyModeFirstRunPrompt from '@/components/dashboard/StudyModeFirstRunPrompt';
 import { apiCall } from '@/lib/api';
@@ -350,6 +351,9 @@ export default function Dashboard({
 
         {/* ── Weekly Contest register banner (server-seeded) ── */}
         <ContestBanner initial={initialContest} userId={user?.id} />
+
+        {/* ── Persistent ORBIT rating badge (self-hides for non-participants) ── */}
+        <ContestOrbitBadge />
 
         {/* ── Monthly Championship banner (retention Layer 4) ── */}
         <ChampionshipBanner onPractice={() => onNavigate('ogcode')} />
