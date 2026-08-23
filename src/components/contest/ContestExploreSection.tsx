@@ -170,6 +170,22 @@ export function ContestExploreSection() {
         )}
       </div>
 
+      {/* Global links — always available (not contest-scoped) */}
+      <div className="flex flex-wrap gap-2">
+        <button type="button" onClick={() => router.push('/contest/me')}
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl neu-raised text-[12px] font-black text-foreground hover:text-primary transition-colors">
+          <Award className="w-3.5 h-3.5 text-primary" /> My ORBIT
+        </button>
+        <button type="button" onClick={() => router.push('/contest/rankings')}
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl neu-raised text-[12px] font-black text-foreground hover:text-primary transition-colors">
+          <BarChart3 className="w-3.5 h-3.5 text-primary" /> Rankings
+        </button>
+        <button type="button" onClick={() => router.push('/contest')}
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl neu-raised text-[12px] font-black text-foreground hover:text-primary transition-colors">
+          <Trophy className="w-3.5 h-3.5 text-amber-500" /> All contests
+        </button>
+      </div>
+
       {/* Feature tiles */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {FEATURES.map((f) => {

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Plus, Trophy, Ban, Rocket, Loader2, ChevronDown, Eye, Save, Pencil, Trash2, RefreshCw, Clock, BarChart3 } from 'lucide-react';
+import { Plus, Trophy, Ban, Rocket, Loader2, ChevronDown, Eye, Save, Pencil, Trash2, RefreshCw, Clock, BarChart3, ShieldAlert } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { NeuButton } from '@/components/ui/neu';
@@ -11,6 +11,7 @@ import { apiCall } from '@/lib/api';
 import { formatIST, istLocalToUtcIso, utcIsoToIstLocal } from '@/lib/contest/ist';
 import type { ContestRecord } from '@/server/contest/contest-admin-service';
 import type { ContestAnalytics } from '@/server/contest/contest-analytics-service';
+import type { FlaggedAttempt } from '@/server/contest/contest-review-service';
 
 /** One resolved question as returned by the /questions/resolve preview. The
  *  snapshot carries the renderable stem/options (+ the answer key, which the
@@ -333,6 +334,43 @@ export function AdminContestPanel({ initial }: { initial: ContestRecord[] }) {
     return new Date(c.startAt).getTime() <= now && now < new Date(c.endAt).getTime();
   };
 
+  // Anti-cheat review: list flagged attempts + clear/uphold (the API recomputes
+  // ranking/ORBIT on a post-publish decision).
+  const [reviewOpen, setReviewOpen] = useState<string | null>(null);
+  const [flagged, setFlagged] = useState<FlaggedAttempt[] | null>(null);
+  const openReview = async (c: ContestRecord) => {
+    if (reviewOpen === c.id) { setReviewOpen(null); return; }
+    setReviewOpen(c.id);
+    setFlagged(null);
+    try {
+      const res = (await apiCall(`/admin/contest/${c.id}/review`)) as { flagged: FlaggedAttempt[] };
+      setFlagged(res.flagged ?? []);
+    } catch {
+      setFlagged([]);
+      toast.error('Could not load flagged attempts.');
+    }
+  };
+  const resolveFlag = async (contestId: string, userId: string, action: 'clear' | 'uphold') => {
+    setRowBusy(contestId);
+    try {
+      await apiCall(`/admin/contest/${contestId}/review`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, action }),
+      });
+      toast.success(action === 'clear' ? 'Cleared — attempt re-enters ranking.' : 'Upheld — attempt disqualified.');
+      setFlagged((prev) => (prev ? prev.filter((f) => f.userId !== userId) : prev));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Action failed.');
+    } finally {
+      setRowBusy(null);
+    }
+  };
+  // Review is meaningful once a contest has run (ended / processing / published).
+  const canReview = (c: ContestRecord) =>
+    c.status === 'result_processing' || c.status === 'result_published' || c.status === 'archived' ||
+    (c.status === 'scheduled' && !!c.endAt && new Date(c.endAt).getTime() <= Date.now());
+
   return (
     <div className="max-w-3xl mx-auto p-4 sm:p-6 space-y-6">
       <h1 className="text-2xl font-black text-foreground flex items-center gap-2">
@@ -596,10 +634,44 @@ export function AdminContestPanel({ initial }: { initial: ContestRecord[] }) {
                     label="Extend"
                   />
                 )}
+                {canReview(c) && (
+                  <IconBtn onClick={() => openReview(c)} busy={false} icon={<ShieldAlert className="w-3.5 h-3.5" />} label="Review" />
+                )}
                 {(c.status === 'draft' || c.status === 'scheduled') && (
                   <IconBtn onClick={() => cancel(c)} busy={rowBusy === c.id} icon={<Ban className="w-3.5 h-3.5" />} label="Cancel" />
                 )}
               </div>
+
+              {/* Anti-cheat review panel */}
+              {reviewOpen === c.id && (
+                <div className="w-full neu-inset rounded-xl p-3 mt-1">
+                  <div className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mb-2">Flagged attempts</div>
+                  {flagged === null ? (
+                    <div className="flex items-center gap-2 text-muted-foreground text-xs py-1"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading…</div>
+                  ) : flagged.length === 0 ? (
+                    <div className="text-[12px] font-bold text-emerald-600 dark:text-emerald-400">No flags — clean contest ✓</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {flagged.map((f) => (
+                        <div key={f.userId} className="flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="text-[12px] font-bold text-foreground truncate">Player {f.userId.slice(-6)}</div>
+                            <div className="text-[10px] font-bold text-muted-foreground">
+                              {f.violationCount} violations · {f.reviewStatus}{f.score != null ? ` · score ${f.score}` : ''}
+                            </div>
+                          </div>
+                          <div className="flex gap-1.5 shrink-0">
+                            <button type="button" onClick={() => resolveFlag(c.id, f.userId, 'clear')} disabled={rowBusy === c.id}
+                              className="px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 disabled:opacity-50">Clear</button>
+                            <button type="button" onClick={() => resolveFlag(c.id, f.userId, 'uphold')} disabled={rowBusy === c.id}
+                              className="px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase bg-rose-500/10 text-rose-600 dark:text-rose-400 disabled:opacity-50">Uphold</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
               {extendOpen === c.id && isLiveNow(c) && (
                 <div className="flex items-center gap-1.5">
                   <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">+min</span>

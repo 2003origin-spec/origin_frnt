@@ -3,6 +3,7 @@
 import { getServerUser } from '@/lib/auth-server';
 import { getContestStatus, getOpenContests, type ContestStatus, type ContestSummary } from '@/server/contest/contest-status';
 import { registerForContest, type RegistrationResult } from '@/server/contest/contest-registration-service';
+import { getContestProfile, type ContestProfile } from '@/server/contest/contest-profile-service';
 import { requireFeatureEnabled } from '@/lib/feature-flags';
 
 /**
@@ -19,6 +20,14 @@ export async function getContestStatusAction(): Promise<ContestStatus> {
 export async function getOpenContestsAction(): Promise<ContestSummary[]> {
   const user = await getServerUser().catch(() => null);
   return getOpenContests(user?.id ?? null);
+}
+
+/** The current student's contest profile — ORBIT, history, badges, rewards. */
+export async function getContestProfileAction(): Promise<ContestProfile | null> {
+  requireFeatureEnabled('contest');
+  const user = await getServerUser();
+  if (!user) return null;
+  return getContestProfile(user.id);
 }
 
 /**
