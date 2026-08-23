@@ -109,6 +109,8 @@ const MIGRATIONS = [
   { file: "20260821_contest_partitions.sql", target: "user" },
   // Public sanitized share links for a contest result (Phase 8 growth loop).
   { file: "20260823_contest_share_links.sql", target: "user" },
+  // Recurring contest schedules (auto-scheduling).
+  { file: "20260823_contest_schedules.sql", target: "user" },
 ];
 
 const TARGET_ENV = {

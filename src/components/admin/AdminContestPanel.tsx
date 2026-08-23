@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Plus, Trophy, Ban, Rocket, Loader2, ChevronDown, Eye, Save, Pencil, Trash2, RefreshCw, Clock, BarChart3, ShieldAlert, Copy } from 'lucide-react';
+import { Plus, Trophy, Ban, Rocket, Loader2, ChevronDown, Eye, Save, Pencil, Trash2, RefreshCw, Clock, BarChart3, ShieldAlert, Copy, Repeat } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { NeuButton } from '@/components/ui/neu';
@@ -12,6 +12,7 @@ import { formatIST, istLocalToUtcIso, utcIsoToIstLocal } from '@/lib/contest/ist
 import type { ContestRecord } from '@/server/contest/contest-admin-service';
 import type { ContestAnalytics } from '@/server/contest/contest-analytics-service';
 import type { FlaggedAttempt } from '@/server/contest/contest-review-service';
+import type { ContestSchedule } from '@/server/contest/contest-schedule-service';
 
 /** One resolved question as returned by the /questions/resolve preview. The
  *  snapshot carries the renderable stem/options (+ the answer key, which the
@@ -73,9 +74,19 @@ export function AdminContestPanel({ initial }: { initial: ContestRecord[] }) {
   const [preview, setPreview] = useState<{ count: number; questions: ResolvedQuestion[] } | null>(null);
   const [busy, setBusy] = useState<string | null>(null); // action label while running
   const [rowBusy, setRowBusy] = useState<string | null>(null);
+  const [cadenceDays, setCadenceDays] = useState(7);
+  const [schedules, setSchedules] = useState<ContestSchedule[]>([]);
 
   const set = <K extends keyof BuilderState>(k: K, v: BuilderState[K]) =>
     setB((prev) => ({ ...prev, [k]: v }));
+
+  const loadSchedules = useCallback(async () => {
+    try {
+      const res = (await apiCall('/admin/contest/schedules')) as { schedules: ContestSchedule[] };
+      setSchedules(res.schedules ?? []);
+    } catch { /* non-fatal */ }
+  }, []);
+  useEffect(() => { void loadSchedules(); }, [loadSchedules]);
 
   const refresh = useCallback(async () => {
     const res = (await apiCall('/admin/contest')) as { contests: ContestRecord[] };
@@ -274,6 +285,59 @@ export function AdminContestPanel({ initial }: { initial: ContestRecord[] }) {
     } finally {
       setBusy(null);
     }
+  };
+
+  // Turn the current builder config into a RECURRING schedule (auto-publishes
+  // every `cadenceDays`, first occurrence = the builder's start time).
+  const createRecurring = async () => {
+    const basicsErr = validateBasics();
+    if (basicsErr) return toast.error(basicsErr);
+    const firstStart = istLocalToUtcIso(b.startLocal);
+    if (!firstStart) return toast.error('Set a valid first start date & time (IST).');
+    if (new Date(firstStart).getTime() <= Date.now()) return toast.error('First start must be in the future.');
+    if (!Number.isFinite(b.durationMin) || b.durationMin <= 0) return toast.error('Set a valid duration.');
+    setBusy('recurring');
+    try {
+      await apiCall('/admin/contest/schedules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: b.name.trim(),
+          subjects: b.subjects,
+          topics: b.topics,
+          selections: b.subjects.map((s) => ({ subject: s, count: countFor(s), topics: (b.topics[s] ?? []).length ? b.topics[s] : undefined })),
+          durationMinutes: b.durationMin,
+          cadenceDays,
+          firstStartAt: firstStart,
+        }),
+      });
+      toast.success(`Recurring schedule created — a new "${b.name.trim()}" every ${cadenceDays} days.`);
+      await loadSchedules();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not create the schedule.');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const toggleSchedule = async (sc: ContestSchedule) => {
+    setRowBusy(sc.id);
+    try {
+      await apiCall(`/admin/contest/schedules/${sc.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ active: !sc.active }) });
+      await loadSchedules();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed.');
+    } finally { setRowBusy(null); }
+  };
+  const deleteSchedule = async (sc: ContestSchedule) => {
+    if (!window.confirm(`Delete the recurring schedule "${sc.name}"?`)) return;
+    setRowBusy(sc.id);
+    try {
+      await apiCall(`/admin/contest/schedules/${sc.id}`, { method: 'DELETE' });
+      await loadSchedules();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed.');
+    } finally { setRowBusy(null); }
   };
 
   const editDraft = (c: ContestRecord) => {
@@ -615,7 +679,56 @@ export function AdminContestPanel({ initial }: { initial: ContestRecord[] }) {
         {!preview && (
           <p className="text-[10px] font-bold text-muted-foreground">Preview the paper to enable publishing.</p>
         )}
+
+        {/* Auto-schedule: turn this config into a recurring contest */}
+        <div className="pt-3 border-t border-border/40 flex flex-wrap items-center gap-2">
+          <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Or automate</span>
+          <label className="text-[11px] font-bold text-muted-foreground">every</label>
+          <input
+            type="number"
+            min={1}
+            max={90}
+            value={cadenceDays}
+            onChange={(e) => setCadenceDays(Math.max(1, Number(e.target.value) || 1))}
+            className="w-16 neu-inset rounded-lg px-2 py-1.5 text-sm font-black text-foreground bg-transparent outline-none text-center tabular-nums"
+          />
+          <label className="text-[11px] font-bold text-muted-foreground">days</label>
+          <NeuButton onClick={createRecurring} disabled={!!busy}>
+            <span className="inline-flex items-center gap-2 text-primary font-black text-[12px] uppercase tracking-wider">
+              {busy === 'recurring' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Repeat className="w-4 h-4" />}
+              Make recurring
+            </span>
+          </NeuButton>
+        </div>
       </div>
+
+      {/* ── Recurring schedules ─────────────────────────────────────────── */}
+      {schedules.length > 0 && (
+        <div className="space-y-3">
+          <div className="text-[10px] font-black uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+            <Repeat className="w-3 h-3" /> Recurring schedules
+          </div>
+          {schedules.map((sc) => (
+            <div key={sc.id} className="neu-raised rounded-2xl p-4 flex items-center gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-black text-foreground truncate">{sc.name}</span>
+                  <span className={cn('px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider', sc.active ? 'bg-emerald-500/10 text-emerald-500' : 'bg-slate-500/10 text-slate-500')}>
+                    {sc.active ? 'active' : 'paused'}
+                  </span>
+                </div>
+                <div className="text-[11px] font-bold text-muted-foreground">
+                  every {sc.cadenceDays}d · {sc.runCount} run{sc.runCount === 1 ? '' : 's'} · next {formatIST(sc.nextStartAt)}
+                </div>
+              </div>
+              <div className="flex gap-2 shrink-0">
+                <IconBtn onClick={() => toggleSchedule(sc)} busy={rowBusy === sc.id} icon={sc.active ? <Ban className="w-3.5 h-3.5" /> : <Rocket className="w-3.5 h-3.5" />} label={sc.active ? 'Pause' : 'Resume'} />
+                <IconBtn onClick={() => deleteSchedule(sc)} busy={rowBusy === sc.id} icon={<Trash2 className="w-3.5 h-3.5" />} label="Delete" />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* ── Existing contests ───────────────────────────────────────────── */}
       <div className="space-y-3">
