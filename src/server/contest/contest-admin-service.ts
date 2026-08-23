@@ -137,6 +137,28 @@ export async function createContest(
   return created;
 }
 
+/**
+ * Clone a contest into a fresh DRAFT — copies the config (subjects, topics,
+ * scoring, reward, display tz) so an admin can re-run a proven contest next week
+ * in one click, then just set the new schedule + publish. The pragmatic version
+ * of recurring auto-scheduling. Copies NO schedule, registrations, or frozen
+ * paper — those are per-event.
+ */
+export async function cloneContest(sourceId: string, adminId: string): Promise<ContestRecord> {
+  await ensureContestSchema();
+  const src = await getContest(sourceId);
+  if (!src) throw contestError(404, "Contest to clone not found.");
+  return createContest(adminId, {
+    name: `${src.name} (copy)`.slice(0, 120),
+    subjects: src.subjects,
+    topics: src.topics,
+    scoringConfig: src.scoringConfig,
+    ogcodeReward: src.ogcodeReward,
+    displayTz: src.displayTz,
+    bannerUrl: src.bannerUrl,
+  });
+}
+
 export async function getContest(id: string): Promise<ContestRecord | null> {
   await ensureContestSchema();
   const res = await pool().query(

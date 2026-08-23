@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Plus, Trophy, Ban, Rocket, Loader2, ChevronDown, Eye, Save, Pencil, Trash2, RefreshCw, Clock, BarChart3, ShieldAlert } from 'lucide-react';
+import { Plus, Trophy, Ban, Rocket, Loader2, ChevronDown, Eye, Save, Pencil, Trash2, RefreshCw, Clock, BarChart3, ShieldAlert, Copy } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { NeuButton } from '@/components/ui/neu';
@@ -366,6 +366,20 @@ export function AdminContestPanel({ initial }: { initial: ContestRecord[] }) {
       setRowBusy(null);
     }
   };
+  // Clone: duplicate a contest's config into a fresh draft (fast weekly re-run).
+  const clone = async (c: ContestRecord) => {
+    setRowBusy(c.id);
+    try {
+      await apiCall(`/admin/contest/${c.id}/clone`, { method: 'POST' });
+      toast.success(`Cloned "${c.name}" — set a new schedule on the draft.`);
+      await refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Clone failed.');
+    } finally {
+      setRowBusy(null);
+    }
+  };
+
   // Review is meaningful once a contest has run (ended / processing / published).
   const canReview = (c: ContestRecord) =>
     c.status === 'result_processing' || c.status === 'result_published' || c.status === 'archived' ||
@@ -637,6 +651,7 @@ export function AdminContestPanel({ initial }: { initial: ContestRecord[] }) {
                 {canReview(c) && (
                   <IconBtn onClick={() => openReview(c)} busy={false} icon={<ShieldAlert className="w-3.5 h-3.5" />} label="Review" />
                 )}
+                <IconBtn onClick={() => clone(c)} busy={rowBusy === c.id} icon={<Copy className="w-3.5 h-3.5" />} label="Clone" />
                 {(c.status === 'draft' || c.status === 'scheduled') && (
                   <IconBtn onClick={() => cancel(c)} busy={rowBusy === c.id} icon={<Ban className="w-3.5 h-3.5" />} label="Cancel" />
                 )}
