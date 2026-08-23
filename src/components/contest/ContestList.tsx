@@ -16,7 +16,7 @@ import type { ContestSummary } from '@/server/contest/contest-status';
  * visible" gap — every simultaneously-hosted contest is listed here with its own
  * register/enter CTA. Reached from the banner / Explore "See all contests".
  */
-export function ContestList() {
+export function ContestList({ embedded = false }: { embedded?: boolean } = {}) {
   const router = useRouter();
   const [contests, setContests] = useState<ContestSummary[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -55,9 +55,9 @@ export function ContestList() {
     }
   };
 
-  return (
-    <div className="min-h-dvh neu-surface py-6 px-4">
-      <div className="max-w-2xl mx-auto space-y-5">
+  const body = (
+    <>
+      {!embedded && (
         <div className="flex items-center gap-3">
           <button type="button" onClick={() => router.back()} aria-label="Back" className="p-2 rounded-xl neu-raised text-muted-foreground">
             <ArrowRight className="w-4 h-4 rotate-180" />
@@ -66,8 +66,14 @@ export function ContestList() {
             <Trophy className="w-5 h-5 text-amber-500" /> Weekly Contests
           </h1>
         </div>
+      )}
+      {embedded && (
+        <div className="text-[10px] font-black uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+          <Trophy className="w-3 h-3 text-amber-500" /> All contests
+        </div>
+      )}
 
-        {contests === null ? (
+      {contests === null ? (
           <div className="neu-raised rounded-2xl p-8 flex items-center justify-center gap-2 text-muted-foreground text-xs font-bold uppercase tracking-widest">
             <Loader2 className="w-4 h-4 animate-spin" /> Loading contests…
           </div>
@@ -79,14 +85,20 @@ export function ContestList() {
               A new Origin Weekly drops regularly. Registration opens a few days before each one — check back soon.
             </p>
           </div>
-        ) : (
-          <div className="space-y-3">
-            {contests.map((c) => (
-              <ContestRow key={c.id} contest={c} nowMs={nowMs} busy={busy === c.id} onRegister={() => register(c)} onEnter={() => router.push(`/contest/${c.id}/play`)} onPractice={() => router.push(`/contest/${c.id}/practice`)} />
-            ))}
-          </div>
-        )}
-      </div>
+      ) : (
+        <div className="space-y-3">
+          {contests.map((c) => (
+            <ContestRow key={c.id} contest={c} nowMs={nowMs} busy={busy === c.id} onRegister={() => register(c)} onEnter={() => router.push(`/contest/${c.id}/play`)} onPractice={() => router.push(`/contest/${c.id}/practice`)} />
+          ))}
+        </div>
+      )}
+    </>
+  );
+
+  if (embedded) return <div className="space-y-3">{body}</div>;
+  return (
+    <div className="min-h-dvh neu-surface py-6 px-4">
+      <div className="max-w-2xl mx-auto space-y-5">{body}</div>
     </div>
   );
 }

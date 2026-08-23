@@ -18,7 +18,6 @@ import {
 } from 'lucide-react';
 import type { ComponentType } from 'react';
 import type { ViewState } from '@/types';
-import { ContestExploreSection } from '@/components/contest/ContestExploreSection';
 
 interface ExploreProps {
     onNavigate: (view: ViewState) => void;
@@ -170,9 +169,19 @@ const CONNECT_CARD: ExploreCard = {
     accentBg: 'bg-cyan-500/10 dark:bg-cyan-500/15',
     stat: 'Institute',
 };
+const CONTEST_CARD: ExploreCard = {
+    title: 'Weekly Contest',
+    description: 'Compete in a timed test, climb the leaderboard, and earn an ORBIT rating.',
+    icon: Trophy,
+    view: 'contest' as ViewState,
+    accent: 'text-amber-500',
+    accentBg: 'bg-amber-500/10 dark:bg-amber-500/15',
+    stat: 'ORBIT Rated',
+};
 
 export default function Explore({ onNavigate, aiExplainer = false, socialEnabled = false, connectEnabled = false, contestEnabled = false }: ExploreProps) {
     const cards: ExploreCard[] = [
+        ...(contestEnabled ? [CONTEST_CARD] : []),
         ...CARDS,
         ...(aiExplainer ? [AI_EXPLAINER_CARD] : []),
         ...(socialEnabled ? [SOCIAL_CARD] : []),
@@ -196,9 +205,6 @@ export default function Explore({ onNavigate, aiExplainer = false, socialEnabled
                         Your central command for mastery — practice modules, assessments, and growth tools.
                     </p>
                 </motion.div>
-
-                {/* Dedicated Weekly Contest section (feature-gated) */}
-                {contestEnabled && <ContestExploreSection />}
 
                 {/* Cards grid */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">

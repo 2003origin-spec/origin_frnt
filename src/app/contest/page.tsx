@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 
 import { isFeatureEnabled } from '@/lib/feature-flags';
-import { ContestList } from '@/components/contest/ContestList';
+import { ContestHub } from '@/components/contest/ContestHub';
 
 export const metadata: Metadata = {
   title: 'Weekly Contests — Origin',
@@ -11,5 +11,5 @@ export const metadata: Metadata = {
 
 export default function ContestsPage() {
   if (!isFeatureEnabled('contest')) notFound();
-  return <ContestList />;
+  return <ContestHub />;
 }
