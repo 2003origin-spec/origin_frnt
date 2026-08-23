@@ -18,6 +18,7 @@ const ROUTES: Record<string, string> = {
   'leaderboard': '/leaderboard',
   'dpp': '/dpp',
   'profile': '/profile',
+  'contest': '/contest',
 };
 
 export default function ExploreClient({
