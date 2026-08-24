@@ -23,6 +23,16 @@ import { getOffering } from "@/server/workspaces/marketplace-store";
 import { normalizeSubject, type Subject } from "@/lib/entitlements";
 import type { EnrollmentSubscription, EnrollmentSubscriptionStatus } from "@/server/workspaces/types";
 
+import {
+  deserializeCharge,
+  mirrorSubscriptionEvent,
+  parseSubscriptionEvent,
+  recordSubscriptionCharge,
+  serializeCharge,
+  settleSubscriptionEvent,
+} from "@/server/payments/subscription-ledger";
+import { isLivemode } from "@/server/payments/razorpay-client";
+
 import { assertActiveCollaborator } from "./collaboration-service";
 import { enqueueConnectJob } from "./connect-jobs";
 import {
@@ -31,6 +41,7 @@ import {
   getEnrollmentSubscriptionByRazorpayId,
   linkEnrollmentSubscriptionEnrollment,
   listLapsedEnrollmentSubscriptions,
+  markEnrollmentSubscriptionExpired,
   recordConnectWebhookEvent,
   deleteConnectWebhookEvent,
   setOfferingPlanId,
@@ -188,7 +199,11 @@ function dedupeSubjects(values: string[] | undefined): Subject[] {
 
 type RazorpaySubscriptionEvent = {
   event?: string;
-  payload?: { subscription?: { entity?: { id?: string; current_end?: number | null } } };
+  created_at?: number | null;
+  payload?: {
+    subscription?: { entity?: { id?: string; current_end?: number | null } };
+    payment?: { entity?: Record<string, unknown> };
+  };
 };
 
 function statusForEvent(event: string): EnrollmentSubscriptionStatus | null {
@@ -228,34 +243,77 @@ export async function intakeConnectWebhook(
   body: RazorpaySubscriptionEvent,
 ): Promise<ConnectWebhookIntakeResult> {
   const eventType = body.event ?? null;
+  const parsed = parseSubscriptionEvent(body);
+
+  // Durable raw-event mirror FIRST (plan Phase 6 / G15). Two inserts is still a
+  // fast intake, and it makes every Connect event replayable. If this throws,
+  // nothing was recorded and Razorpay's retry is the correct outcome.
+  const mirrored = await mirrorSubscriptionEvent({
+    eventId,
+    body: body as Record<string, unknown>,
+    parsed,
+    livemode: isLivemode(),
+  });
+
   const isNew = await recordConnectWebhookEvent(eventId, eventType);
-  if (!isNew) return { processed: false, reason: "duplicate" };
+  if (!isNew) {
+    if (mirrored.isNew) {
+      await settleSubscriptionEvent(eventId, "ignored", {
+        error: "Duplicate of an event already processed by the connect ledger.",
+      });
+    }
+    return { processed: false, reason: "duplicate" };
+  }
 
   try {
-    if (!eventType) return { processed: true, enqueued: false };
-    const status = statusForEvent(eventType);
-    const entity = body.payload?.subscription?.entity;
-    const razorpaySubscriptionId = entity?.id;
-    if (!status || !razorpaySubscriptionId) return { processed: true, enqueued: false };
+    const status = eventType ? statusForEvent(eventType) : null;
+    const razorpaySubscriptionId = parsed.razorpaySubscriptionId;
+    if (!eventType || !status || !razorpaySubscriptionId) {
+      await settleSubscriptionEvent(eventId, "ignored");
+      return { processed: true, enqueued: false };
+    }
 
     const currentPeriodEnd =
-      status === "active" && typeof entity?.current_end === "number"
-        ? new Date(entity.current_end * 1000).toISOString()
+      status === "active" && parsed.currentPeriodEnd
+        ? parsed.currentPeriodEnd.toISOString()
         : null;
 
     await enqueueConnectJob({
       kind: "enrollment_subscription_transition",
-      payload: { razorpaySubscriptionId, status, currentPeriodEnd },
+      payload: {
+        razorpaySubscriptionId,
+        status,
+        currentPeriodEnd,
+        eventType,
+        // Ordering fence (plan E27) + the invoice charge, carried to the drain
+        // so the intake stays non-blocking as this rail's design requires.
+        eventAt: parsed.eventAt ? parsed.eventAt.toISOString() : null,
+        charge: parsed.charge ? serializeCharge(parsed.charge) : null,
+      },
     });
+    // The connect job queue owns the retry from here (it has its own attempt
+    // cap and backoff), so the mirrored event is terminal rather than pending —
+    // the Rail-A events drain must never claim a subscription event.
+    await settleSubscriptionEvent(eventId, "processed");
     return { processed: true, enqueued: true };
   } catch (error) {
     // Roll back the ledger row so Razorpay's retry reprocesses instead of skipping.
     await deleteConnectWebhookEvent(eventId).catch(() => undefined);
+    await settleSubscriptionEvent(eventId, "failed", {
+      error: error instanceof Error ? error.message : String(error),
+      retryInSeconds: 60,
+    });
     throw error;
   }
 }
 
 // ─── Job handlers (run in the drain) ────────────────────────────────────────────
+
+function dateFromPayload(value: unknown): Date | null {
+  if (typeof value !== "string" || !value) return null;
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date : null;
+}
 
 export async function handleEnrollmentSubscriptionTransitionJob(
   payload: Record<string, unknown>,
@@ -263,15 +321,57 @@ export async function handleEnrollmentSubscriptionTransitionJob(
   const razorpaySubscriptionId = String(payload.razorpaySubscriptionId ?? "");
   const status = String(payload.status ?? "") as EnrollmentSubscriptionStatus;
   if (!razorpaySubscriptionId || !status) return;
-  const rawEnd = payload.currentPeriodEnd;
-  const currentPeriodEnd = typeof rawEnd === "string" && rawEnd ? new Date(rawEnd) : null;
+  const currentPeriodEnd = dateFromPayload(payload.currentPeriodEnd);
+  const eventAt = dateFromPayload(payload.eventAt);
+  const eventType = typeof payload.eventType === "string" ? payload.eventType : null;
+  const charge = payload.charge ? deserializeCharge(payload.charge) : null;
+  const livemode = isLivemode();
 
-  const sub = await applyEnrollmentSubscriptionTransition({
+  const transition = await applyEnrollmentSubscriptionTransition({
     razorpaySubscriptionId,
     status,
     currentPeriodEnd,
+    eventAt,
   });
-  if (!sub) return; // unknown subscription id — nothing to do
+
+  if (transition.outcome === "unknown") {
+    // Unknown subscription id: still ledger the money unattributed rather than
+    // discarding it — the reconcile pass can attach it to a student later.
+    if (charge) {
+      await recordSubscriptionCharge({
+        rail: "connect",
+        charge,
+        razorpaySubscriptionId,
+        userId: null,
+        livemode,
+        raw: { origin: "connect_job", razorpaySubscriptionId },
+      });
+    }
+    return;
+  }
+
+  const sub = transition.subscription;
+
+  // The invoice was paid even if the transition itself was superseded.
+  if (charge && eventType === "subscription.charged") {
+    await recordSubscriptionCharge({
+      rail: "connect",
+      charge,
+      razorpaySubscriptionId,
+      userId: sub.studentId,
+      livemode,
+      raw: { origin: "connect_job", razorpaySubscriptionId },
+      receipt: {
+        productLabel: "batch tuition",
+        href: "/connect",
+        periodEnd: sub.currentPeriodEnd,
+      },
+    });
+  }
+
+  // A stale (out-of-order / re-delivered) event must not re-enrol a student the
+  // institute has already lapsed — plan E27.
+  if (transition.outcome === "stale") return;
 
   if (status === "active") {
     await activateEnrollmentSubscription(sub);
@@ -322,6 +422,7 @@ export async function reconcileEnrollmentSubscriptions(): Promise<{ tornDown: nu
       });
     }
     await setEnrollmentStatus(sub.workspaceId, sub.studentId, "suspended");
+    await markEnrollmentSubscriptionExpired(sub.id);
     // Subject entitlements (if any add-on lapsed) are mirrored separately.
     await recomputeUserPremiumFlags(sub.studentId);
     tornDown += 1;

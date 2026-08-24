@@ -1,15 +1,24 @@
 /**
- * POST /api/internal/connect-jobs/drain — connect background worker (cron).
+ * GET | POST /api/internal/connect-jobs/drain — connect background worker (cron).
  *
  * Drains queued connect jobs (enrollment-subscription transitions + offering plan
  * creation) and reconciles lapsed recurring subscriptions (grace-to-period-end
- * teardown). Authenticated by INTERNAL_CRON_TOKEN (middleware + handler). No-ops
- * when teacherConnect is off so it is safe to schedule before launch.
+ * teardown). No-ops when teacherConnect is off so it is safe to schedule before
+ * launch.
+ *
+ * Scheduled every two minutes in vercel.json — gap G9 in
+ * V1/RAZORPAY_PAYMENTS_PLAN.md, closed in Phase 9. Adding the schedule alone was
+ * not enough: Vercel Cron issues a **GET** and signs it with `CRON_SECRET`,
+ * while this route exported only POST behind `requireInternal` (which accepts
+ * INTERNAL_CRON_TOKEN and nothing else). A cron entry against the old handler
+ * would have 405'd, or 401'd wherever only CRON_SECRET is set — G9 would have
+ * looked fixed and still never have run. Hence GET + `requireCronCaller`, which
+ * is what every other scheduled drain in this app already uses.
  */
 
 import { NextResponse, type NextRequest } from "next/server";
 
-import { requireInternal } from "@/server/authz";
+import { requireCronCaller } from "@/server/authz";
 import { isFeatureEnabled } from "@/lib/feature-flags";
 import { drainConnectJobs } from "@/server/connect/connect-jobs";
 import { reconcileEnrollmentSubscriptions } from "@/server/connect/enrollment-subscription-service";
@@ -19,9 +28,9 @@ import { dbRevokeDormantSessions } from "@/server/db-users";
 
 import { handleTeacherError } from "@/app/api/teacher/_utils";
 
-export async function POST(request: NextRequest) {
+async function handle(request: NextRequest) {
   try {
-    await requireInternal(request);
+    await requireCronCaller(request);
     // Expire lapsed subject grants (incl. admin_comp auto-revert windows) and fix
     // the is_premium mirror. Flag-independent — mirror correctness must hold even
     // when teacherConnect is off, so this runs before the early-return below.
@@ -57,3 +66,7 @@ export async function POST(request: NextRequest) {
     return handleTeacherError(error);
   }
 }
+
+// Vercel Cron issues GET; manual/QStash triggers use POST. Same handler.
+export const GET = handle;
+export const POST = handle;

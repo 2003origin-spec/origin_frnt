@@ -24,6 +24,7 @@ import {
 } from "@/server/subscriptions/subscriptions-service";
 import { getPublicPricing, getSubjectPriceResolved } from "@/server/pricing/pricing-service";
 import { validateCoupon } from "@/server/pricing/coupons-service";
+import { isSubscriptionsRailEnabled } from "@/server/payments/razorpay-client";
 
 import { handleTeacherError, teacherJson } from "@/app/api/teacher/_utils";
 
@@ -60,7 +61,18 @@ export async function POST(request: NextRequest) {
       return teacherJson(result);
     }
 
-    // Default action: create_subscription.
+    // Default action: create_subscription. Rail B (recurring mandate) is dark
+    // until Razorpay approves e-mandate on the account — plan D1/Q2. Cancel and
+    // list stay open above so anyone who already holds a mandate can manage it.
+    if (!isSubscriptionsRailEnabled()) {
+      return teacherJson(
+        {
+          detail:
+            "Auto-renewing subscriptions are not available yet. Choose a prepaid term instead.",
+        },
+        { status: 409 },
+      );
+    }
     const result = await createSubjectSubscription({ userId: ctx.userId, subject, couponCode: parsed.data.couponCode });
     return teacherJson(result, { status: 201 });
   } catch (error) {
@@ -76,7 +88,8 @@ export async function GET(request: NextRequest) {
       listMySubscriptions(ctx.userId),
       getPublicPricing(),
     ]);
-    return teacherJson({ subscriptions, pricing });
+    // The browser needs to know whether to render a "Subscribe" control at all.
+    return teacherJson({ subscriptions, pricing, subscriptionsEnabled: isSubscriptionsRailEnabled() });
   } catch (error) {
     return handleTeacherError(error);
   }

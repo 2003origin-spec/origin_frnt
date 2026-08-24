@@ -15,10 +15,22 @@ import { ChevronLeft, Atom, FlaskConical, Sigma, Dna, Shield, Check, Package } f
 import { useAuth } from '@/context/AuthContext';
 import { ALL_SUBJECTS, getEntitledSubjects, hasAnyPremium, type Subject } from '@/lib/entitlements';
 import { ActiveBadge, SubjectCheckout } from '@/components/subscriptions/SubjectCheckout';
+import { OrderCheckout } from '@/components/payments/OrderCheckout';
+import { getPublicPaymentPricing } from '@/features/payments/client';
 import { cn } from '@/lib/utils';
 
 interface PremiumProps {
   onBack?: () => void;
+  /** Server-resolved Rail A feature flag. Existing subscriptions remain the fallback. */
+  paymentsEnabled?: boolean;
+  /** Admin coupon kill switch; hides and disables all coupon UI when off. */
+  couponsEnabled?: boolean;
+  /**
+   * Rail B (auto-renewing Razorpay mandate). Dark until e-mandate is approved
+   * on the account — plan D1/Q2. When off, no Subscribe control is rendered;
+   * `Manage / Cancel` stays available for anyone who already holds a mandate.
+   */
+  subscriptionsEnabled?: boolean;
 }
 
 const SUBJECT_META: Record<Subject, { label: string; Icon: typeof Atom; blurb: string }> = {
@@ -30,7 +42,7 @@ const SUBJECT_META: Record<Subject, { label: string; Icon: typeof Atom; blurb: s
 
 const GLOBAL_TOOLS = ['Ori', 'AI Explainer', 'Study Rooms'];
 
-export default function Premium({ onBack }: PremiumProps) {
+export default function Premium({ onBack, paymentsEnabled = false, couponsEnabled = false, subscriptionsEnabled = false }: PremiumProps) {
   const router = useRouter();
   const { user, refreshUser } = useAuth();
 
@@ -41,22 +53,50 @@ export default function Premium({ onBack }: PremiumProps) {
 
   // Live pricing (admin-configurable). Falls back to ₹499 until loaded.
   const [pricing, setPricing] = useState<{
-    subjects: { subject: string; amountMinor: number }[];
-    bundle: { name: string; subjects: string[]; amountMinor: number } | null;
+    subjects: { subject: string; amountMinor: number; listAmountMinor?: number | null }[];
+    bundle: { id?: string; name: string; subjects: string[]; amountMinor: number; listAmountMinor?: number | null } | null;
+    terms: { termMonths: number; label: string; discountPercent: number }[];
   } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/subscriptions', { credentials: 'include' })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (!cancelled && d?.pricing) setPricing(d.pricing); })
+    const request = paymentsEnabled
+      ? getPublicPaymentPricing()
+      : fetch('/api/subscriptions', { credentials: 'include', cache: 'no-store' }).then((r) => (r.ok ? r.json() : null));
+    request
+      .then((d) => {
+        if (cancelled || !d) return;
+        const payload = d as {
+          pricing?: {
+            subjects?: { subject: string; amountMinor: number; listAmountMinor?: number | null }[];
+            bundle?: { id?: string; name: string; subjects: string[]; amountMinor: number; listAmountMinor?: number | null } | null;
+            terms?: { termMonths: number; label: string; discountPercent: number }[];
+          };
+          subjects?: { subject: string; amountMinor: number; listAmountMinor?: number | null }[];
+          bundle?: { id?: string; name: string; subjects: string[]; amountMinor: number; listAmountMinor?: number | null } | null;
+          terms?: { termMonths: number; label: string; discountPercent: number }[];
+        };
+        const snapshot = paymentsEnabled ? payload : payload.pricing;
+        if (!snapshot) return;
+        setPricing({
+          subjects: snapshot.subjects ?? [],
+          bundle: snapshot.bundle ?? null,
+          terms: snapshot.terms ?? [{ termMonths: 1, label: 'Monthly', discountPercent: 0 }],
+        });
+      })
       .catch(() => undefined);
     return () => { cancelled = true; };
-  }, []);
+  }, [paymentsEnabled]);
 
   const priceMinorFor = (subject: Subject): number =>
     pricing?.subjects.find((s) => s.subject === subject)?.amountMinor ?? 49900;
   const rupees = (minor: number) => Math.round(minor / 100).toLocaleString('en-IN');
+  const activeTerms = (pricing?.terms ?? []).filter((term) => term.termMonths > 0);
+  const amountForTerm = (monthlyMinor: number, term: { termMonths: number; discountPercent: number }) => {
+    const gross = monthlyMinor * term.termMonths;
+    const net = gross - Math.round((gross * term.discountPercent) / 100);
+    return Math.max(0, Math.round(net / 100) * 100);
+  };
 
   // Coupon (validated per-subject inside each SubjectCheckout).
   const [couponInput, setCouponInput] = useState('');
@@ -94,31 +134,35 @@ export default function Premium({ onBack }: PremiumProps) {
             tools below unlock instantly. Cancel anytime — access lasts to the end of the period.
           </p>
 
-          {/* Coupon code */}
-          <div className="mt-6 flex items-center justify-center gap-2">
-            <input
-              value={couponInput}
-              onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
-              placeholder="Coupon code"
-              className="neu-inset rounded-xl px-4 py-2 text-sm text-foreground bg-transparent outline-none w-44 text-center tracking-wider"
-            />
-            <button
-              onClick={() => setAppliedCoupon(couponInput.trim() ? couponInput.trim() : undefined)}
-              className="neu-btn px-4 py-2 text-sm font-bold text-primary"
-            >
-              Apply
-            </button>
-            {appliedCoupon && (
-              <button onClick={() => { setAppliedCoupon(undefined); setCouponInput(''); }} className="text-xs text-muted-foreground underline">
-                Clear
-              </button>
-            )}
-          </div>
-          {appliedCoupon && (
-            <p className="mt-2 text-xs text-emerald-600 dark:text-emerald-400">
-              Coupon <strong>{appliedCoupon}</strong> applied — discounted prices show on eligible subjects.
-            </p>
-          )}
+          {couponsEnabled ? (
+            <>
+              {/* Coupon code */}
+              <div className="mt-6 flex items-center justify-center gap-2">
+                <input
+                  value={couponInput}
+                  onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+                  placeholder="Coupon code"
+                  className="neu-inset rounded-xl px-4 py-2 text-sm text-foreground bg-transparent outline-none w-44 text-center tracking-wider"
+                />
+                <button
+                  onClick={() => setAppliedCoupon(couponInput.trim() ? couponInput.trim() : undefined)}
+                  className="neu-btn px-4 py-2 text-sm font-bold text-primary"
+                >
+                  Apply
+                </button>
+                {appliedCoupon && (
+                  <button onClick={() => { setAppliedCoupon(undefined); setCouponInput(''); }} className="text-xs text-muted-foreground underline">
+                    Clear
+                  </button>
+                )}
+              </div>
+              {appliedCoupon && (
+                <p className="mt-2 text-xs text-emerald-600 dark:text-emerald-400">
+                  Coupon <strong>{appliedCoupon}</strong> selected — eligible checkout buttons will preview the discounted amount.
+                </p>
+              )}
+            </>
+          ) : null}
         </div>
 
         {/* Global tools unlock banner */}
@@ -177,8 +221,42 @@ export default function Premium({ onBack }: PremiumProps) {
                     <span className="text-2xl font-black text-primary">₹{rupees(priceMinorFor(subject))}</span>
                     <span className="text-sm text-muted-foreground">/month</span>
                   </div>
+                  {(() => {
+                    const list = pricing?.subjects.find((s) => s.subject === subject)?.listAmountMinor;
+                    return list != null && list > priceMinorFor(subject) ? (
+                      <span className="text-xs text-muted-foreground line-through">MRP ₹{rupees(list)}</span>
+                    ) : null;
+                  })()}
                   <p className="text-sm text-muted-foreground flex-1 mb-5">{meta.blurb}</p>
-                  <SubjectCheckout subject={subject} label={meta.label} owned={isOwned} onChanged={onChanged} priceMinor={priceMinorFor(subject)} couponCode={appliedCoupon} />
+                  {paymentsEnabled ? (
+                    <div className="space-y-2">
+                      {activeTerms.map((term) => (
+                        <OrderCheckout
+                          key={term.termMonths}
+                          kind="subject_term"
+                          subject={subject}
+                          termMonths={term.termMonths}
+                          couponCode={couponsEnabled ? appliedCoupon : undefined}
+                          label={`${meta.label} — ${term.label}`}
+                          amountMinor={amountForTerm(priceMinorFor(subject), term)}
+                          enabled={paymentsEnabled}
+                          onChanged={onChanged}
+                        />
+                      ))}
+                      {isOwned ? (
+                        <SubjectCheckout
+                          subject={subject}
+                          label={meta.label}
+                          owned
+                          onChanged={onChanged}
+                          priceMinor={priceMinorFor(subject)}
+                          subscriptionsEnabled={subscriptionsEnabled}
+                        />
+                      ) : null}
+                    </div>
+                  ) : (
+                    <SubjectCheckout subject={subject} label={meta.label} owned={isOwned} onChanged={onChanged} priceMinor={priceMinorFor(subject)} couponCode={couponsEnabled ? appliedCoupon : undefined} subscriptionsEnabled={subscriptionsEnabled} />
+                  )}
                 </div>
               </div>
             );
@@ -204,6 +282,26 @@ export default function Premium({ onBack }: PremiumProps) {
                 <span className="text-2xl font-black text-primary">₹{rupees(pricing.bundle.amountMinor)}</span>
                 <span className="text-sm text-muted-foreground">/month</span>
               </div>
+              {pricing.bundle.listAmountMinor != null && pricing.bundle.listAmountMinor > pricing.bundle.amountMinor ? (
+                <div className="text-xs text-muted-foreground line-through">MRP ₹{rupees(pricing.bundle.listAmountMinor)}</div>
+              ) : null}
+              {paymentsEnabled && pricing.bundle.id ? (
+                <div className="mt-3 space-y-2">
+                  {activeTerms.map((term) => (
+                    <OrderCheckout
+                      key={term.termMonths}
+                      kind="bundle_term"
+                      bundleId={pricing.bundle?.id}
+                      termMonths={term.termMonths}
+                      couponCode={couponsEnabled ? appliedCoupon : undefined}
+                      label={`${pricing.bundle?.name ?? 'Bundle'} — ${term.label}`}
+                      amountMinor={amountForTerm(pricing.bundle?.amountMinor ?? 0, term)}
+                      enabled={paymentsEnabled}
+                      onChanged={onChanged}
+                    />
+                  ))}
+                </div>
+              ) : null}
             </div>
           </div>
         )}

@@ -67,6 +67,8 @@ test("public API allowlist is limited to health, auth entrypoints, the drain rec
     "/api/internal/observability/drain",
     "/api/mobile/config",
     "/api/mobile/link-out/consume",
+    "/api/payments/webhook",
+    "/api/pricing",
     "/api/public/activity-feed",
     "/api/public/demo-solve",
     "/api/public/live-stats",
@@ -96,6 +98,63 @@ test("mobile shell endpoints: config + handoff consumption are public, everythin
   assert.equal(getApiRoutePolicy("/api/internal/contest/publish-results").kind, "internal");
   // The /contest app pages are authenticated.
   assert.equal(getAppRoutePolicy("/contest/abc/play").kind, "authenticated");
+});
+
+test("Rail-A payment routes expose only the HMAC webhook publicly", () => {
+  assert.equal(getApiRoutePolicy("/api/payments/webhook").kind, "public");
+  assert.equal(getApiRoutePolicy("/api/payments/checkout").kind, "authenticated");
+  assert.equal(getApiRoutePolicy("/api/payments/verify").kind, "authenticated");
+  assert.equal(getApiRoutePolicy("/api/payments/orders").kind, "authenticated");
+  assert.equal(getApiRoutePolicy("/api/payments/coupon/validate").kind, "authenticated");
+  assert.equal(getApiRoutePolicy("/api/payments").kind, "authenticated");
+  assert.deepEqual(getApiRoutePolicy("/api/internal/payments/dispatch"), {
+    kind: "internal",
+    tokenName: "INTERNAL_CRON_TOKEN",
+  });
+  assert.deepEqual(getApiRoutePolicy("/api/internal/payments/drain"), {
+    kind: "internal",
+    tokenName: "INTERNAL_CRON_TOKEN",
+  });
+  assert.deepEqual(getApiRoutePolicy("/api/internal/payments/reconcile"), {
+    kind: "internal",
+    tokenName: "INTERNAL_CRON_TOKEN",
+  });
+  assert.equal(getApiRoutePolicy("/api/admin/payments/refund").kind, "authenticated");
+});
+
+test("the admin money surface is admin-session only — never public, never internal", () => {
+  // Phase 8 added two read endpoints over the money ledger. They ride the
+  // existing /api/admin authenticated prefix and enforce requireRole(["admin"])
+  // in-handler; asserting it here means a future prefix reshuffle that made the
+  // revenue ledger or its CSV export reachable without a session fails loudly.
+  for (const path of [
+    "/api/admin/payments",
+    "/api/admin/payments/summary",
+    "/api/admin/payments/refund",
+  ]) {
+    assert.equal(getApiRoutePolicy(path).kind, "authenticated", path);
+    assert.ok(!(PUBLIC_API_PATHS as readonly string[]).includes(path), path);
+  }
+  const adminRoutes = ["src/app/api/admin/payments/route.ts", "src/app/api/admin/payments/summary/route.ts"];
+  for (const file of adminRoutes) {
+    const source = readFileSync(join(root, file), "utf8");
+    assert.match(source, /requireRole\(request, \["admin"\]\)/, file);
+  }
+});
+
+test("the payments cron endpoints are internal-only and never student-reachable", () => {
+  // Every one of these can grant entitlement or move money as a side effect, so
+  // the bearer-token policy is the whole security boundary.
+  for (const path of [
+    "/api/internal/payments/drain",
+    "/api/internal/payments/dispatch",
+    "/api/internal/payments/reconcile",
+    "/api/internal/payments/health",
+    "/api/internal/connect-jobs/drain",
+  ]) {
+    assert.deepEqual(getApiRoutePolicy(path), { kind: "internal", tokenName: "INTERNAL_CRON_TOKEN" }, path);
+    assert.ok(!(PUBLIC_API_PATHS as readonly string[]).includes(path), path);
+  }
 });
 
 test("auth refresh page route is public for expired access-cookie recovery", () => {

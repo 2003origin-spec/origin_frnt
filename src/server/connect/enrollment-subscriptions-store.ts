@@ -117,27 +117,85 @@ export async function listStudentEnrollmentSubscriptions(
   return res.rows.map(rowToSubscription);
 }
 
+/** Connect rows eligible for the Phase 7 T+0/T+3 mandate-failure notices. */
+export async function listFailedMandateEnrollmentSubscriptions(): Promise<EnrollmentSubscription[]> {
+  await ensureEnrollmentSubscriptionsSchema();
+  const res = await pool().query(
+    `SELECT * FROM commerce.enrollment_subscriptions
+      WHERE status IN ('pending', 'halted')
+      ORDER BY updated_at ASC, id ASC`,
+  );
+  return res.rows.map(rowToSubscription);
+}
+
 /**
  * Applies a status transition keyed on the Razorpay subscription id. Only forward
  * `active` transitions move the billing period (pass null otherwise to keep the
  * existing current_period_end so access persists until it lapses).
  */
+export type EnrollmentTransitionResult =
+  /** No row carries this Razorpay subscription id. */
+  | { outcome: "unknown"; subscription: null }
+  /** A newer event has already been applied; the row is returned untouched. */
+  | { outcome: "stale"; subscription: EnrollmentSubscription }
+  | { outcome: "applied"; subscription: EnrollmentSubscription };
+
+/**
+ * Apply a status transition keyed on the Razorpay subscription id.
+ *
+ * Order-independent (plan E27) — the same fence as the platform rail in
+ * subscriptions-store.ts: the row remembers the Razorpay event time it last
+ * applied and refuses anything older, and `current_period_end` only moves
+ * forward. Without it a redelivered `subscription.charged` could re-enrol a
+ * student the institute has already lapsed. `eventAt` omitted keeps the
+ * pre-Phase-6 last-writer-wins behaviour.
+ */
 export async function applyEnrollmentSubscriptionTransition(input: {
   razorpaySubscriptionId: string;
   status: EnrollmentSubscriptionStatus;
   currentPeriodEnd: Date | null;
-}): Promise<EnrollmentSubscription | null> {
+  eventAt?: Date | null;
+}): Promise<EnrollmentTransitionResult> {
   await ensureEnrollmentSubscriptionsSchema();
-  const res = await pool().query(
-    `UPDATE commerce.enrollment_subscriptions
-        SET status = $2,
-            current_period_end = COALESCE($3, current_period_end),
-            updated_at = NOW()
-      WHERE razorpay_subscription_id = $1
-      RETURNING *`,
-    [input.razorpaySubscriptionId, input.status, input.currentPeriodEnd],
-  );
-  return res.rows[0] ? rowToSubscription(res.rows[0]) : null;
+  const client = await pool().connect();
+  try {
+    await client.query("BEGIN");
+    const locked = await client.query(
+      `SELECT * FROM commerce.enrollment_subscriptions
+        WHERE razorpay_subscription_id = $1
+        FOR UPDATE`,
+      [input.razorpaySubscriptionId],
+    );
+    const current = locked.rows[0];
+    if (!current) {
+      await client.query("COMMIT");
+      return { outcome: "unknown", subscription: null };
+    }
+
+    const lastEventAt = current.last_event_at ? new Date(current.last_event_at as string) : null;
+    if (input.eventAt && lastEventAt && input.eventAt.getTime() < lastEventAt.getTime()) {
+      await client.query("COMMIT");
+      return { outcome: "stale", subscription: rowToSubscription(current) };
+    }
+
+    const res = await client.query(
+      `UPDATE commerce.enrollment_subscriptions
+          SET status = $2,
+              current_period_end = GREATEST($3::timestamptz, current_period_end),
+              last_event_at      = GREATEST($4::timestamptz, last_event_at),
+              updated_at = NOW()
+        WHERE razorpay_subscription_id = $1
+        RETURNING *`,
+      [input.razorpaySubscriptionId, input.status, input.currentPeriodEnd, input.eventAt ?? null],
+    );
+    await client.query("COMMIT");
+    return { outcome: "applied", subscription: rowToSubscription(res.rows[0]) };
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 export async function linkEnrollmentSubscriptionEnrollment(
@@ -160,11 +218,22 @@ export async function listLapsedEnrollmentSubscriptions(): Promise<EnrollmentSub
   await ensureEnrollmentSubscriptionsSchema();
   const res = await pool().query(
     `SELECT * FROM commerce.enrollment_subscriptions
-      WHERE status IN ('halted', 'cancelled', 'completed', 'expired')
+      WHERE status IN ('active', 'pending', 'halted', 'cancelled', 'completed')
         AND current_period_end IS NOT NULL
         AND current_period_end < NOW()`,
   );
   return res.rows.map(rowToSubscription);
+}
+
+/** Mark one fully torn-down enrollment subscription explicitly expired. */
+export async function markEnrollmentSubscriptionExpired(id: string): Promise<void> {
+  await ensureEnrollmentSubscriptionsSchema();
+  await pool().query(
+    `UPDATE commerce.enrollment_subscriptions
+        SET status = 'expired', updated_at = NOW()
+      WHERE id = $1 AND status <> 'expired'`,
+    [id],
+  );
 }
 
 // ─── webhook idempotency ledger ────────────────────────────────────────────────

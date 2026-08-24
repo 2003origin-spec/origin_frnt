@@ -74,6 +74,13 @@ export async function ensureEnrollmentSubscriptionsSchema(): Promise<void> {
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
           );
 
+          -- Phase 6 (plan E27): the Razorpay created_at of the last event we
+          -- APPLIED. Older events are re-deliveries or out-of-order deliveries
+          -- and must not walk the status backwards. NULL always accepts, so a
+          -- pre-migration row behaves exactly as it did before.
+          ALTER TABLE commerce.enrollment_subscriptions
+            ADD COLUMN IF NOT EXISTS last_event_at TIMESTAMPTZ;
+
           CREATE UNIQUE INDEX IF NOT EXISTS uq_enrollment_subscriptions_razorpay_sub
             ON commerce.enrollment_subscriptions(razorpay_subscription_id)
             WHERE razorpay_subscription_id IS NOT NULL;

@@ -10,11 +10,26 @@
 
 import { getRazorpayClient, getRazorpayKeyId } from "@/server/payments/razorpay-client";
 import { SUBJECT_BILLING_CYCLES } from "@/server/payments/subject-plans";
-import { getSubjectPriceResolved, createMonthlyPlan } from "@/server/pricing/pricing-service";
-import { validateCoupon, redeemCoupon } from "@/server/pricing/coupons-service";
+import { getSubjectPriceResolved, getOrCreateMonthlyPlan } from "@/server/pricing/pricing-service";
+import {
+  commitCouponReservation,
+  rebindCouponReservation,
+  releaseCouponReservation,
+  reserveCoupon,
+  validateCoupon,
+} from "@/server/pricing/coupons-service";
 import { recomputeUserPremiumFlags } from "@/server/entitlements";
 import { isFeatureEnabled } from "@/lib/feature-flags";
 import { type Subject } from "@/lib/entitlements";
+import { createPrefixedId } from "@/server/workspaces/ids";
+
+import {
+  mirrorSubscriptionEvent,
+  parseSubscriptionEvent,
+  recordSubscriptionCharge,
+  settleSubscriptionEvent,
+} from "@/server/payments/subscription-ledger";
+import { isLivemode } from "@/server/payments/razorpay-client";
 
 import {
   applyWebhookTransition,
@@ -46,15 +61,26 @@ export async function createSubjectSubscription(input: {
   // Resolve the admin-set price + plan (falls back to the legacy ₹499 + env plan
   // when no override exists — identical to the pre-pricing behaviour).
   const resolved = await getSubjectPriceResolved(subject);
-  if (!resolved.razorpayPlanId) {
-    throw new Error(`No Razorpay plan configured for ${subject}.`);
-  }
-  let planId = resolved.razorpayPlanId;
+  // The stored plan id is a cache, not a prerequisite: an admin may have set the
+  // price while Razorpay was unconfigured (Rail A does not need a plan). Resolve
+  // one lazily here, through the shape cache, so enabling Rail B later works
+  // without re-saving every price.
+  let planId =
+    resolved.razorpayPlanId ??
+    (await getOrCreateMonthlyPlan({
+      kind: "subject",
+      subject,
+      amountMinor: resolved.amountMinor,
+      name: `Origin Premium — ${subject} (₹${(resolved.amountMinor / 100).toFixed(0)}/mo)`,
+      notes: { origin_kind: "subject_price", origin_subject: subject },
+    }));
   let amountMinor = resolved.amountMinor;
-  let appliedCoupon: { code: string; discountMinor: number } | null = null;
+  let couponReservation: { code: string; userId: string } | null = null;
+  let couponIntentId: string | null = null;
 
-  // Coupon (platform subscriptions only). A valid coupon bakes the discount into a
-  // one-off Razorpay plan used for this subscription; redemption is recorded below.
+  // Coupon (platform subscriptions only). A valid coupon resolves to a reusable
+  // plan shape; it never mints a new Razorpay plan per student. Reservation is
+  // committed only after the local subscription row is durable.
   if (input.couponCode && isFeatureEnabled("adminCoupons")) {
     const v = await validateCoupon({
       code: input.couponCode,
@@ -66,43 +92,116 @@ export async function createSubjectSubscription(input: {
       (err as { status?: number }).status = 400;
       throw err;
     }
-    if (v.discountMinor > 0) {
-      planId = await createMonthlyPlan(
-        `Origin Premium — ${subject} (coupon ${v.code})`,
-        v.finalMinor,
-        { origin_kind: "subject_coupon", origin_subject: subject, origin_coupon: v.code },
-      );
-      amountMinor = v.finalMinor;
-      appliedCoupon = { code: v.code, discountMinor: v.discountMinor };
+    if (v.discountMinor > 0 && v.finalMinor <= 0) {
+      const err = new Error("A fully discounted purchase must use prepaid checkout.");
+      (err as { status?: number }).status = 400;
+      throw err;
+    }
+    amountMinor = v.finalMinor;
+    // Reserve before contacting Razorpay. The local intent id satisfies the
+    // redemption unique key; it is rebound to the gateway id after creation.
+    couponIntentId = createPrefixedId("subintent");
+    try {
+      const reservation = await reserveCoupon({
+        code: v.code,
+        userId,
+        subject,
+        targetKind: "subject",
+        subscriptionId: couponIntentId,
+        amountDiscountedMinor: v.discountMinor,
+      });
+      couponReservation = { code: reservation.code, userId: reservation.userId };
+      if (v.discountMinor > 0) {
+        planId = await getOrCreateMonthlyPlan({
+          kind: "subject",
+          subject,
+          amountMinor: v.finalMinor,
+          name: `Origin Premium — ${subject} (discounted)`,
+          notes: { origin_kind: "subject_coupon", origin_subject: subject, origin_coupon: v.code },
+        });
+      }
+    } catch (error) {
+      if (couponReservation) {
+        await releaseCouponReservation({
+          code: couponReservation.code,
+          userId: couponReservation.userId,
+          subscriptionId: couponIntentId,
+        }).catch(() => undefined);
+      }
+      throw error;
     }
   }
 
-  const client = getRazorpayClient();
+  let client: ReturnType<typeof getRazorpayClient>;
+  let subscription: { id: string; short_url?: string | null };
+  try {
+    client = getRazorpayClient();
+    subscription = await client.subscriptions.create({
+      plan_id: planId,
+      total_count: SUBJECT_BILLING_CYCLES,
+      customer_notify: 1,
+      notes: { origin_user_id: userId, origin_subject: subject },
+    });
+  } catch (error) {
+    if (couponReservation && couponIntentId) {
+      await releaseCouponReservation({
+        code: couponReservation.code,
+        userId: couponReservation.userId,
+        subscriptionId: couponIntentId,
+      }).catch(() => undefined);
+    }
+    throw error;
+  }
 
-  const subscription = await client.subscriptions.create({
-    plan_id: planId,
-    total_count: SUBJECT_BILLING_CYCLES,
-    customer_notify: 1,
-    notes: { origin_user_id: userId, origin_subject: subject },
-  });
+  if (couponReservation && couponIntentId) {
+    try {
+      const rebound = await rebindCouponReservation({
+        code: couponReservation.code,
+        userId: couponReservation.userId,
+        fromSubscriptionId: couponIntentId,
+        toSubscriptionId: subscription.id,
+      });
+      if (!rebound) throw new Error("Coupon reservation could not be attached to the subscription");
+    } catch (error) {
+      // Do not leave a live subscription without its coupon reservation. Best
+      // effort cancellation is safer than silently consuming/overselling a code.
+      await client.subscriptions.cancel(subscription.id, true).catch(() => undefined);
+      await releaseCouponReservation({
+        code: couponReservation.code,
+        userId: couponReservation.userId,
+        subscriptionId: couponIntentId,
+      }).catch(() => undefined);
+      throw error;
+    }
+  }
 
-  await upsertCreatedSubscription({
-    userId,
-    subject,
-    razorpayPlanId: planId,
-    razorpaySubscriptionId: subscription.id,
-    shortUrl: subscription.short_url ?? null,
-    amountMinor,
-  });
-
-  if (appliedCoupon) {
-    await redeemCoupon({
-      code: appliedCoupon.code,
+  try {
+    await upsertCreatedSubscription({
       userId,
       subject,
-      subscriptionId: subscription.id,
-      amountDiscountedMinor: appliedCoupon.discountMinor,
-    }).catch((error) => console.error("[createSubjectSubscription] coupon redemption record failed:", error));
+      razorpayPlanId: planId,
+      razorpaySubscriptionId: subscription.id,
+      shortUrl: subscription.short_url ?? null,
+      amountMinor,
+    });
+    if (couponReservation) {
+      const committed = await commitCouponReservation({
+        code: couponReservation.code,
+        userId: couponReservation.userId,
+        subscriptionId: subscription.id,
+      });
+      if (!committed) throw new Error("Coupon reservation could not be committed");
+    }
+  } catch (error) {
+    if (couponReservation) {
+      await releaseCouponReservation({
+        code: couponReservation.code,
+        userId: couponReservation.userId,
+        subscriptionId: subscription.id,
+      }).catch(() => undefined);
+    }
+    await client.subscriptions.cancel(subscription.id, true).catch(() => undefined);
+    throw error;
   }
 
   return {
@@ -181,58 +280,141 @@ function statusForEvent(event: string): SubscriptionStatus | null {
 }
 
 export type WebhookProcessResult =
-  | { processed: false; reason: "duplicate" | "ignored" | "unknown_subscription" }
-  | { processed: true; userId: string; subject: Subject; status: SubscriptionStatus };
+  | { processed: false; reason: "duplicate" | "ignored" | "unknown_subscription" | "stale" }
+  | {
+      processed: true;
+      userId: string;
+      subject: Subject;
+      status: SubscriptionStatus;
+      /** Set when the event was `subscription.charged` and a payment was ledgered. */
+      chargeLedgered?: boolean;
+    };
 
 /**
- * Processes a verified Razorpay subscription webhook. Idempotent via the
- * webhook_events ledger; safe under duplicate delivery and reordering.
+ * Processes a verified Razorpay subscription webhook.
+ *
+ * Phase 6 additions, all additive:
+ *  - the RAW payload is mirrored into `payments.events` before anything else,
+ *    so any event on this rail is replayable (plan G15);
+ *  - `subscription.charged` also writes the invoice charge into
+ *    `payments.payments` and enqueues one receipt (plan Phase 6);
+ *  - the status transition is fenced on the Razorpay event time (plan E27).
+ *
+ * `subscriptions.webhook_events` remains the idempotency authority for this
+ * rail, so an event that is in flight across the deploy behaves exactly as it
+ * did before.
  */
 export async function processSubscriptionWebhook(
   eventId: string,
   body: RazorpayWebhookEvent,
 ): Promise<WebhookProcessResult> {
   const eventType = body.event ?? null;
+  const parsed = parseSubscriptionEvent(body);
+  const livemode = isLivemode();
+
+  // Durable raw-event mirror FIRST. If this throws, nothing has been recorded
+  // anywhere and Razorpay's retry is the correct outcome.
+  const mirrored = await mirrorSubscriptionEvent({
+    eventId,
+    body: body as Record<string, unknown>,
+    parsed,
+    livemode,
+  });
 
   // Idempotency: a re-delivered event id is acknowledged without reprocessing.
   const isNew = await recordWebhookEvent(eventId, eventType);
-  if (!isNew) return { processed: false, reason: "duplicate" };
+  if (!isNew) {
+    if (mirrored.isNew) await settleSubscriptionEvent(eventId, "ignored", { error: "Duplicate of an event already processed by the subscriptions ledger." });
+    return { processed: false, reason: "duplicate" };
+  }
 
   // From here the event is recorded; if anything below throws we must remove the
   // ledger entry so Razorpay's retry reprocesses instead of skipping forever.
   try {
-    if (!eventType) return { processed: false, reason: "ignored" };
-    const status = statusForEvent(eventType);
-    if (!status) return { processed: false, reason: "ignored" };
-
-    const entity = body.payload?.subscription?.entity;
-    const razorpaySubscriptionId = entity?.id;
-    if (!razorpaySubscriptionId) return { processed: false, reason: "ignored" };
+    const status = eventType ? statusForEvent(eventType) : null;
+    const razorpaySubscriptionId = parsed.razorpaySubscriptionId;
+    if (!eventType || !status || !razorpaySubscriptionId) {
+      await settleSubscriptionEvent(eventId, "ignored");
+      return { processed: false, reason: "ignored" };
+    }
 
     // Only "active" transitions move the billing period forward; lapse states
     // keep the current period end so access persists to its natural expiry.
-    const currentPeriodEnd =
-      status === "active" && typeof entity?.current_end === "number"
-        ? new Date(entity.current_end * 1000)
-        : null;
+    const currentPeriodEnd = status === "active" ? parsed.currentPeriodEnd : null;
 
-    const updated = await applyWebhookTransition({
+    const transition = await applyWebhookTransition({
       razorpaySubscriptionId,
       status,
       currentPeriodEnd,
+      eventAt: parsed.eventAt,
     });
-    if (!updated) return { processed: false, reason: "unknown_subscription" };
 
-    await recomputeUserPremiumFlags(updated.userId);
+    if (transition.outcome === "unknown") {
+      // The money still happened even though we cannot attribute it yet — a
+      // checkout that has not committed, or a subscription created elsewhere.
+      // Ledger the charge unattributed rather than discarding it.
+      if (parsed.charge) {
+        await recordSubscriptionCharge({
+          rail: "platform",
+          charge: parsed.charge,
+          razorpaySubscriptionId,
+          userId: null,
+          livemode,
+          raw: body as Record<string, unknown>,
+        });
+      }
+      await settleSubscriptionEvent(eventId, "orphaned", {
+        error: `No local subscription for ${razorpaySubscriptionId}`,
+      });
+      return { processed: false, reason: "unknown_subscription" };
+    }
+
+    const subscription = transition.subscription;
+
+    // A charge is money and is ledgered even when the transition itself was
+    // dropped as stale — the invoice was still paid.
+    let chargeLedgered = false;
+    if (parsed.charge && eventType === "subscription.charged") {
+      await recordSubscriptionCharge({
+        rail: "platform",
+        charge: parsed.charge,
+        razorpaySubscriptionId,
+        userId: subscription.userId,
+        livemode,
+        raw: body as Record<string, unknown>,
+        receipt: {
+          subject: subscription.subject,
+          productLabel: `${subscription.subject} Premium`,
+          href: "/premium",
+          periodEnd: subscription.currentPeriodEnd,
+        },
+      });
+      chargeLedgered = true;
+    }
+
+    if (transition.outcome === "stale") {
+      await settleSubscriptionEvent(eventId, "ignored", {
+        error: "Superseded by a newer subscription event.",
+      });
+      return { processed: false, reason: "stale" };
+    }
+
+    await recomputeUserPremiumFlags(subscription.userId);
+    await settleSubscriptionEvent(eventId, "processed");
 
     return {
       processed: true,
-      userId: updated.userId,
-      subject: updated.subject,
+      userId: subscription.userId,
+      subject: subscription.subject,
       status,
+      chargeLedgered,
     };
   } catch (error) {
     await deleteWebhookEvent(eventId).catch(() => undefined);
+    await settleSubscriptionEvent(eventId, "failed", {
+      error: error instanceof Error ? error.message : String(error),
+      retryInSeconds: 60,
+    });
     throw error;
   }
 }

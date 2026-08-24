@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/card";
 import { CheckoutForm } from "@/components/marketplace/CheckoutForm";
 import { getServerUser } from "@/lib/auth-server";
+import { isFeatureEnabled } from "@/lib/feature-flags";
 import { getOfferingService } from "@/server/workspaces/marketplace-service";
 
 type Props = {
@@ -86,7 +87,13 @@ export default async function CheckoutPage({ params, searchParams }: Props) {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <CheckoutForm workspaceId={workspaceId} offeringId={offeringId} />
+          <CheckoutForm
+            workspaceId={workspaceId}
+            offeringId={offeringId}
+            paymentsEnabled={isFeatureEnabled("payments")}
+            title={offering.title}
+            amountMinor={offering.priceMinor}
+          />
         </CardContent>
       </Card>
     </div>

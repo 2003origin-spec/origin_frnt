@@ -40,6 +40,18 @@
       "schedule": "15 3 * * *"
     },
     {
+      "path": "/api/internal/payments/drain",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/internal/payments/reconcile",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/internal/connect-jobs/drain",
+      "schedule": "*/2 * * * *"
+    },
+    {
       "path": "/api/internal/contest/schedule-run",
       "schedule": "0 * * * *"
     }

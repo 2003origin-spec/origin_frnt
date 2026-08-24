@@ -19,7 +19,7 @@ import { ALL_SUBJECTS, type Subject } from "@/lib/entitlements";
 
 import { ensureSubjectGrantsSchema } from "./subject-grants-schema";
 
-export type GrantSource = "teacher_code" | "admin_comp";
+export type GrantSource = "teacher_code" | "admin_comp" | "paid_order";
 export type GrantStatus = "active" | "revoked" | "expired";
 
 export type SubjectGrant = {
@@ -29,6 +29,8 @@ export type SubjectGrant = {
   source: GrantSource;
   workspaceId: string | null;
   enrollmentId: string | null;
+  /** Backlink for Rail A paid grants; null for teacher/admin grants. */
+  orderId: string | null;
   status: GrantStatus;
   expiresAt: string | null;
   grantedBy: string | null;
@@ -56,6 +58,7 @@ function rowToGrant(row: Record<string, unknown>): SubjectGrant {
     source: row.source as GrantSource,
     workspaceId: (row.workspace_id as string | null) ?? null,
     enrollmentId: (row.enrollment_id as string | null) ?? null,
+    orderId: (row.order_id as string | null) ?? null,
     status: row.status as GrantStatus,
     expiresAt: row.expires_at ? new Date(row.expires_at as string).toISOString() : null,
     grantedBy: (row.granted_by as string | null) ?? null,

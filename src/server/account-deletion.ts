@@ -119,6 +119,24 @@ export async function deleteAccountForUser(userId: string): Promise<AccountDelet
   await cancelActiveSubscriptions(userId, warnings);
 
   if (isUserPostgresConfigured()) {
+    // Razorpay Orders have no cancellation API. Close the local intent and
+    // release any coupon hold, while surfacing an external order id for support
+    // rather than pretending the gateway order disappeared.
+    try {
+      const { closeOpenPaymentOrdersForUser } = await import("@/server/payments/reconciliation");
+      const paymentOrders = await closeOpenPaymentOrdersForUser(userId);
+      if (paymentOrders.externalOrderIds.length > 0) {
+        warnings.push(
+          `Razorpay order(s) ${paymentOrders.externalOrderIds.join(", ")} remain at the gateway and may need support review.`,
+        );
+      }
+    } catch (error) {
+      warnings.push("Could not close local payment orders automatically; support should review open checkout attempts.");
+      console.error(
+        "[account-deletion] payment order cleanup failed",
+        error instanceof Error ? error.message : error,
+      );
+    }
     const user = await dbFindUserById(userId);
     if (user) {
       await dbUpdateUser(userId, anonymizedPatch(userId));

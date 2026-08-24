@@ -46,3 +46,34 @@ export function istEpochDayFromMs(ms: number): number {
 export function istEpochDay(now: Date | number = Date.now()): number {
   return istEpochDayFromMs(typeof now === "number" ? now : now.getTime());
 }
+
+/**
+ * UTC epoch millis of 00:00 IST on the IST calendar day `epochDay`
+ * (the inverse of `istEpochDayFromMs`).
+ *
+ * Reporting windows need the *instant* an IST day opens, not its key: a
+ * revenue query bounded by `[istDayStartMs(day), istDayStartMs(day + 1))`
+ * covers exactly the rows the student-facing day contains, with none of the
+ * 5½-hour drift a UTC-midnight bound would introduce.
+ */
+export function istDayStartMs(epochDay: number): number {
+  return epochDay * 86_400_000 - IST_OFFSET_MS;
+}
+
+/**
+ * UTC epoch millis of 00:00 IST on the IST calendar day `YYYY-MM-DD`.
+ *
+ * Throws on anything that is not a real calendar day. `Date.UTC` happily rolls
+ * `2026-02-31` forward into March, so the parsed value is round-tripped through
+ * `istDateKeyFromMs` and rejected unless it reproduces the input exactly.
+ */
+export function istDayStartMsFromKey(dateKey: string): number {
+  const key = dateKey.trim();
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(key);
+  if (!match) throw new Error(`Not an IST date key: ${dateKey}`);
+  const startMs = Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])) - IST_OFFSET_MS;
+  if (!Number.isFinite(startMs) || istDateKeyFromMs(startMs) !== key) {
+    throw new Error(`Not an IST date key: ${dateKey}`);
+  }
+  return startMs;
+}

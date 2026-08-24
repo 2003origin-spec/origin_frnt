@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { isFeatureEnabled } from '@/lib/feature-flags';
+import { isSubscriptionsRailEnabled } from '@/server/payments/razorpay-client';
 import PremiumClient from './_client';
 
 export const metadata: Metadata = {
@@ -23,5 +24,13 @@ export default function PremiumPage() {
   if (!isFeatureEnabled('premiumSubscriptions')) {
     redirect('/dashboard');
   }
-  return <PremiumClient />;
+  return (
+    <PremiumClient
+      paymentsEnabled={isFeatureEnabled('payments')}
+      couponsEnabled={isFeatureEnabled('adminCoupons')}
+      // Rail B (auto-renewing mandate) is dark until Razorpay approves
+      // e-mandate on the account — plan D1/Q2, Phase 6.
+      subscriptionsEnabled={isSubscriptionsRailEnabled()}
+    />
+  );
 }

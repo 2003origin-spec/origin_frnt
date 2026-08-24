@@ -11,6 +11,7 @@
  */
 
 import type { PoolClient } from "pg";
+import { SCHEMA_DDL_LOCK_ID } from "@/server/schema-lock";
 
 import { getUserPostgresPool, isUserPostgresConfigured } from "@/server/user-postgres";
 import { ensureUserSchema } from "@/server/db-users";
@@ -45,6 +46,23 @@ export async function ensureSubscriptionsSchema(): Promise<void> {
       const client = await pool().connect();
       try {
         await client.query("BEGIN");
+        // See subject-grants-schema.ts: concurrent CREATE TABLE IF NOT EXISTS
+        // races on pg_type, so the DDL is serialised by an advisory lock.
+        await client.query("SELECT pg_advisory_xact_lock($1)", [SCHEMA_DDL_LOCK_ID]);
+
+        // ensureUserSchema() creates the `app` schema but NOT app.migrations —
+        // that table is only created by store-postgres/platform-settings, which
+        // may not have run yet on a fresh database. Without this, the ledger
+        // INSERT below throws and rolls back the entire ensure, leaving the
+        // table it was meant to create absent.
+        await client.query(`
+          CREATE SCHEMA IF NOT EXISTS app;
+          CREATE TABLE IF NOT EXISTS app.migrations (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          );
+        `);
 
         await client.query(`CREATE SCHEMA IF NOT EXISTS subscriptions;`);
 
@@ -70,6 +88,13 @@ export async function ensureSubscriptionsSchema(): Promise<void> {
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
           );
+
+          -- Phase 6 (plan E27): the Razorpay created_at of the last event we
+          -- APPLIED. Older events are re-deliveries or out-of-order deliveries
+          -- and must not walk the status backwards. NULL always accepts, so a
+          -- pre-migration row behaves exactly as it did before.
+          ALTER TABLE subscriptions.user_subscriptions
+            ADD COLUMN IF NOT EXISTS last_event_at TIMESTAMPTZ;
 
           CREATE UNIQUE INDEX IF NOT EXISTS uq_user_subscriptions_user_subject
             ON subscriptions.user_subscriptions(user_id, subject);

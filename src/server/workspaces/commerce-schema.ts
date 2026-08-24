@@ -11,6 +11,7 @@
  */
 
 import type { PoolClient } from "pg";
+import { SCHEMA_DDL_LOCK_ID, SCHEMA_DDL_LOCK_SQL } from "@/server/schema-lock";
 
 import { getUserPostgresPool, isUserPostgresConfigured } from "@/server/user-postgres";
 
@@ -47,6 +48,9 @@ export async function ensureCommerceSchema(): Promise<void> {
       const client = await pool().connect();
       try {
         await client.query("BEGIN");
+        // Shared DDL lock — see src/server/schema-lock.ts. Without it this
+        // ensure races the others on overlapping relations and deadlocks.
+        await client.query(SCHEMA_DDL_LOCK_SQL, [SCHEMA_DDL_LOCK_ID]);
 
         await client.query(`CREATE SCHEMA IF NOT EXISTS commerce;`);
 
