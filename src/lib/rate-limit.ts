@@ -167,6 +167,32 @@ export const cbtExportLimiter = createLimiter(6, "rl:cbt-export", "1 h");
 export const cbtReportUnlockLimiter = createLimiter(60, "rl:cbt-report", "15 m");
 export const cbtReportFailureLimiter = createLimiter(10, "rl:cbt-report-fail", "1 h");
 
+// ── Payments (V1/RAZORPAY_PAYMENTS_PLAN.md E12, E10) ─────────────────────────
+// Applied in-handler on /api/payments/*, keyed per user and per IP.
+//
+// Checkout creates a real Razorpay order on every call, so the per-USER cap is
+// the meaningful one — it bounds how much junk a single account can push into
+// the Razorpay dashboard. The per-IP cap is deliberately looser for the same
+// reason as the CBT limiters above: coaching centres, hostels and CGNAT put
+// whole cohorts behind one address, and a tight IP cap would block the 11th
+// student of the hour from paying. Idempotency (not rate limiting) is what
+// stops a double-tap becoming a double charge.
+export const paymentsCheckoutLimiter = createLimiter(10, "rl:pay-checkout", "60 s");
+export const paymentsCheckoutIpLimiter = createLimiter(60, "rl:pay-checkout-ip", "10 m");
+
+// Coupon validation is a code-guessing surface: a student who can probe it
+// cheaply can enumerate other people's discount codes. Mirrors the CBT
+// join/report split — a generous THROUGHPUT cap so legitimate typing and
+// re-checks never trip, plus a tight FAILURE cap that only counts codes that
+// did not resolve, which is what actually makes enumeration impractical.
+export const paymentsCouponLimiter = createLimiter(30, "rl:pay-coupon", "10 m");
+export const paymentsCouponFailureLimiter = createLimiter(12, "rl:pay-coupon-fail", "1 h");
+
+// Client-side payment verification (the post-checkout fast path). Generous —
+// it is signature-verified and idempotent, and a student legitimately retries
+// it if the first call races the page unload.
+export const paymentsVerifyLimiter = createLimiter(30, "rl:pay-verify", "60 s");
+
 /**
  * Fail-open per-key check for Server Actions, which need a boolean rather than
  * the Response that `checkRateLimit` returns. Never throws: a limiter backend

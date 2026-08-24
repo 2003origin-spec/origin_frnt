@@ -25,6 +25,14 @@ export const PUBLIC_API_PATHS = [
   // Connect (Flow-2 batch tuition) webhook — same Razorpay HMAC model as the
   // subscriptions webhook; public at the edge, verified in the handler.
   "/api/connect/webhook",
+  // Rail-A one-time payment webhook — public at the edge; the handler verifies
+  // the raw-body Razorpay HMAC before recording the durable event ledger.
+  "/api/payments/webhook",
+  // Student-facing pricing is intentionally public so the premium page can
+  // render before a session is established.  Checkout remains authenticated;
+  // this snapshot contains no user-specific data and is rate-limited in the
+  // handler.
+  "/api/pricing",
   // Landing-page public data — no auth required; rate-limited by Upstash in handler.
   "/api/public/live-stats",
   "/api/public/activity-feed",
@@ -53,6 +61,9 @@ export const AUTHENTICATED_API_PREFIXES = [
   "/api/admin",
   "/api/marketplace",
   "/api/subscriptions",
+  // Rail-A checkout, verify, order history and coupon preview are authenticated
+  // in their handlers; the webhook is the exact public exception above.
+  "/api/payments",
   "/api/connect",
   "/api/social",
   // AI Feature Toggle epic — student poll endpoint /api/ai-access/me (JWT only,

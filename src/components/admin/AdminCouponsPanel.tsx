@@ -30,6 +30,11 @@ type Coupon = {
 
 const SUBJECTS = ['physics', 'chemistry', 'mathematics', 'biology'];
 
+function endOfLocalDayIso(dateOnly: string): string {
+  const [year, month, day] = dateOnly.split('-').map(Number);
+  return new Date(year, month - 1, day, 23, 59, 59, 999).toISOString();
+}
+
 export function AdminCouponsPanel({ initial }: { initial: Coupon[] }) {
   const [coupons, setCoupons] = useState<Coupon[]>(initial);
   const [busy, setBusy] = useState(false);
@@ -58,7 +63,9 @@ export function AdminCouponsPanel({ initial }: { initial: Coupon[] }) {
       if (appliesTo === 'subject' && subject) body.subject = subject;
       if (centerId.trim()) body.coachingCenterWorkspaceId = centerId.trim();
       if (maxRedemptions) body.maxRedemptions = Number(maxRedemptions);
-      if (validTo) body.validTo = new Date(validTo).toISOString();
+      // `<input type="date">` represents the whole selected local day. Sending
+      // its midnight instant would expire the coupon before that day starts.
+      if (validTo) body.validTo = endOfLocalDayIso(validTo);
 
       const res = await mutateJson('/api/admin/coupons', {
         method: 'POST',

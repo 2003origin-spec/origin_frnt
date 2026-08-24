@@ -114,6 +114,34 @@ export async function createNotification(
   }
 }
 
+/**
+ * Strict, idempotent notification write for transactional-outbox consumers.
+ *
+ * Most notification callers intentionally use the best-effort helper above:
+ * those notifications are supplementary and must not fail their parent flow.
+ * Payment receipts are different. Their outbox row is only marked done after
+ * both mail and the in-app record have succeeded, so a database error must be
+ * observable and a retry must not create a second notification. A caller
+ * supplies a stable id (normally `payment:<outbox-id>`).
+ */
+export async function createDeterministicNotification(
+  id: string,
+  userId: string,
+  input: { type?: NotificationType; title: string; message?: string; href?: string | null },
+): Promise<void> {
+  if (!id.trim()) throw new Error("notification id is required");
+  if (!isUserPostgresConfigured() || !userId) throw new Error("notification user is not configured");
+  await ensureNotificationsSchema();
+  const pool = getUserPostgresPool();
+  if (!pool) throw new Error("notification database is not configured");
+  await pool.query(
+    `INSERT INTO app.notifications (id, user_id, type, title, message, href)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT (id) DO NOTHING`,
+    [id, userId, input.type ?? "info", input.title, input.message ?? "", input.href ?? null],
+  );
+}
+
 export async function listNotifications(
   userId: string,
   options: { limit?: number } = {},

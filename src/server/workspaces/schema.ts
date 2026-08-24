@@ -6,6 +6,7 @@
  */
 
 import type { PoolClient } from "pg";
+import { SCHEMA_DDL_LOCK_ID } from "@/server/schema-lock";
 
 import { ensureUserSchema } from "@/server/db-users";
 import { getUserPostgresPool, isUserPostgresConfigured } from "@/server/user-postgres";
@@ -39,6 +40,11 @@ export async function ensureWorkspaceSchema(): Promise<void> {
       const client = await pool().connect();
       try {
         await client.query("BEGIN");
+        // Serialise DDL across connections: `CREATE TABLE IF NOT EXISTS` is not
+        // atomic against a concurrent creator, so two cold lambdas hitting an
+        // un-migrated database race and one fails on pg_type's unique index.
+        // Transaction-scoped, so COMMIT/ROLLBACK releases it either way.
+        await client.query("SELECT pg_advisory_xact_lock($1)", [SCHEMA_DDL_LOCK_ID]);
         await client.query(`
           CREATE SCHEMA IF NOT EXISTS app;
 

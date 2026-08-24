@@ -55,7 +55,8 @@ type FlagKey =
   | "cbtParticipationQuota"
   | "fullLengthMocks"
   | "questionClusters"
-  | "contest";
+  | "contest"
+  | "payments";
 
 type FlagSpec = {
   envSuffix: string;
@@ -284,6 +285,12 @@ const FLAG_SPECS: Record<FlagKey, FlagSpec> = {
   // built/tested, OFF in prod until the Phase 9 game-day load test passes, then
   // flipped via TEACHER_LAUNCH_CONTEST=1. Plan: V1/CONTEST_ORBIT_IMPLEMENTATION_PLAN.md
   contest: { envSuffix: "CONTEST", defaultDev: true, defaultProd: false },
+  // Razorpay payments (V1/RAZORPAY_PAYMENTS_PLAN.md). Gates the Rail-A one-time
+  // order surface: /api/payments/*, /api/pricing, the term/bundle buy buttons and
+  // the real /admin/financials. Ships DARK in dev and prod — the existing
+  // premiumSubscriptions surface is unaffected while this is off, so every phase
+  // is revertible with one env var instead of a revert deploy.
+  payments: { envSuffix: "PAYMENTS", defaultDev: false, defaultProd: false },
 };
 
 /** Every feature-flag key, in declaration order (admin System Config view). */

@@ -29,8 +29,11 @@ async function seedStudent(): Promise<string> {
   await ensureSubscriptionsSchema();
   const id = makeId("user_gate");
   await rawPool().query(
-    `INSERT INTO origin_users (id, name, email, role)
-     VALUES ($1, 'Gate Test', $2, 'student') ON CONFLICT (id) DO NOTHING`,
+    // password_hash is NOT NULL (db-users.ts). These fixtures never
+    // authenticate with a password; seed a placeholder so the insert satisfies
+    // the constraint — the same convention tests/integration/_db.ts uses.
+    `INSERT INTO origin_users (id, name, email, role, password_hash)
+     VALUES ($1, 'Gate Test', $2, 'student', 'test-no-login') ON CONFLICT (id) DO NOTHING`,
     [id, `${id}@example.com`],
   );
   return id;

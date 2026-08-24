@@ -56,11 +56,18 @@ export type SubjectCheckoutProps = {
   priceMinor?: number;
   /** Applied coupon code (validated per-subject; discounts this checkout). */
   couponCode?: string;
+  /**
+   * Rail B kill switch (RAZORPAY_SUBSCRIPTIONS_ENABLED, resolved server-side).
+   * Off = no auto-renewing mandate can be created, so the Subscribe control is
+   * replaced by an unavailable notice. Manage / Cancel is account management,
+   * not a purchase, and stays available for an existing mandate.
+   */
+  subscriptionsEnabled?: boolean;
   /** Called after a successful subscribe/cancel so the parent can refreshUser(). */
   onChanged: () => void;
 };
 
-export function SubjectCheckout({ subject, label, owned, priceMinor = 49900, couponCode, onChanged }: SubjectCheckoutProps) {
+export function SubjectCheckout({ subject, label, owned, priceMinor = 49900, couponCode, onChanged, subscriptionsEnabled = false }: SubjectCheckoutProps) {
   const [busy, setBusy] = useState(false);
   const [coupon, setCoupon] = useState<{ code: string; finalMinor: number } | null>(null);
   const native = useIsNativeApp();
@@ -138,6 +145,17 @@ export function SubjectCheckout({ subject, label, owned, priceMinor = 49900, cou
   // that's account management, not a purchase.
   if (native) {
     return <NativePurchaseNotice title={label} />;
+  }
+
+  // Rail B dark (plan D1/Q2): Razorpay has not approved e-mandate on the
+  // account, so creating a mandate would fail at the gateway. Say so instead of
+  // rendering a button that cannot work. The server rejects it too.
+  if (!subscriptionsEnabled) {
+    return (
+      <p className="text-center text-xs text-muted-foreground rounded-full border border-dashed border-muted-foreground/30 py-4 px-3">
+        Auto-renewing plans are coming soon.
+      </p>
+    );
   }
 
   return (

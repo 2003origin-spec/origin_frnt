@@ -38,7 +38,14 @@ type SmtpEnv = {
  */
 type ChannelName = 'ses' | 'smtp';
 
-type SendResult = { success: true; messageId: string } | { success: false; error: unknown };
+export type SendEmailInput = {
+  to: string;
+  subject: string;
+  text: string;
+  html?: string;
+};
+
+export type SendEmailResult = { success: true; messageId: string } | { success: false; error: unknown };
 
 const TRANSIENT_ERROR_CODES = new Set(['ETIMEDOUT', 'ECONNRESET', 'EAI_AGAIN', 'ESOCKET']);
 const TIMEOUT_MS = 10_000;
@@ -150,7 +157,7 @@ async function sendViaChannel(
   name: ChannelName,
   env: SmtpEnv,
   msg: { to: string; subject: string; text: string; html?: string },
-): Promise<SendResult> {
+): Promise<SendEmailResult> {
   const transporter = getTransporter(name, env);
   const options: SendMailOptions = {
     from: env.from,
@@ -179,17 +186,7 @@ async function sendViaChannel(
   }
 }
 
-export const sendEmail = async ({
-  to,
-  subject,
-  text,
-  html,
-}: {
-  to: string;
-  subject: string;
-  text: string;
-  html?: string;
-}): Promise<SendResult> => {
+export const sendEmail = async ({ to, subject, text, html }: SendEmailInput): Promise<SendEmailResult> => {
   const channels = configuredChannels();
 
   if (channels.length === 0) {

@@ -32,6 +32,16 @@ const CSRF_EXEMPT_API_PATHS = new Set([
   "/api/subscriptions/webhook",
   // Connect (Flow-2 batch tuition) webhook: same Razorpay HMAC model.
   "/api/connect/webhook",
+  // Rail-A one-time payments webhook: Razorpay signs the raw body with its
+  // webhook secret, so there is no session CSRF token to compare.
+  "/api/payments/webhook",
+  // Payment outbox delivery is authenticated by the internal bearer token and
+  // (when configured) QStash's signature, not by a browser session.
+  "/api/internal/payments/dispatch",
+  "/api/internal/payments/drain",
+  // The reconciliation cron is likewise bearer/CRON_SECRET authenticated;
+  // POST invocations must not be blocked by the browser CSRF gate.
+  "/api/internal/payments/reconcile",
 ]);
 
 function requestIdFor(request: NextRequest): string {
@@ -117,7 +127,10 @@ function nextWithRequestId(
 }
 
 function isInternalAuthorized(request: NextRequest, policy: Extract<RoutePolicy, { kind: "internal" }>): boolean {
-  return isBearerTokenAuthorized(request, policy.tokenName);
+  // Scheduled Vercel invocations carry CRON_SECRET, while manual/internal
+  // drains carry INTERNAL_CRON_TOKEN. Keep the edge gate aligned with
+  // requireCronCaller(), which accepts either credential.
+  return isBearerTokenAuthorized(request, policy.tokenName) || isBearerTokenAuthorized(request, "CRON_SECRET");
 }
 
 function isRateLimitedMutationPath(pathname: string, method: string): boolean {

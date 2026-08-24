@@ -8,6 +8,7 @@
  */
 
 import { randomUUID } from "node:crypto";
+import { SCHEMA_DDL_LOCK_ID } from "@/server/schema-lock";
 import bcrypt from "bcryptjs";
 import type { Pool } from "pg";
 import { withStoredUserDefaults, type StoredAuthSession, type StoredTask, type StoredUser, type StoredUserWithOptionalDefaults } from "@/server/store";
@@ -67,6 +68,7 @@ export async function ensureUserSchema(): Promise<void> {
     globalThis.__originUserSchemaPromise = (async () => {
       const client = await pool().connect();
       try {
+        await client.query("SELECT pg_advisory_lock($1)", [SCHEMA_DDL_LOCK_ID]);
         await client.query(`
           CREATE TABLE IF NOT EXISTS origin_users (
             id                  TEXT PRIMARY KEY,
@@ -289,6 +291,9 @@ export async function ensureUserSchema(): Promise<void> {
         `);
         globalThis.__originUserSchemaEnsured = true;
       } finally {
+        await client
+          .query("SELECT pg_advisory_unlock($1)", [SCHEMA_DDL_LOCK_ID])
+          .catch(() => undefined);
         client.release();
       }
     })().catch((error) => {

@@ -107,6 +107,33 @@ const MIGRATIONS = [
   { file: "20260819_contest_reminders.sql", target: "user" },
   // Contest per-event partition helpers + retention bookkeeping (Phase 9).
   { file: "20260821_contest_partitions.sql", target: "user" },
+  // Razorpay payments (Phase 1) — the money ledger: payments.orders / payments /
+  // refunds / events (raw payload retained ⇒ replayable) / outbox / idempotency
+  // keys. Purely additive; creates a new `payments` schema and touches nothing
+  // existing. Plan: V1/RAZORPAY_PAYMENTS_PLAN.md §5.1.
+  { file: "20260822_payments_core.sql", target: "user" },
+  // Paid one-time access as an entitlements.subject_grants source ('paid_order')
+  // + an order backlink, so the entitlement READ path is unchanged. GUARDED on
+  // to_regclass: the phase-14 grants table is not in this allowlist, so on a
+  // fresh preview DB this skips and the runtime-ensure creates the widened
+  // shape instead. Plan §5.2.
+  { file: "20260822_payments_grant_source.sql", target: "user" },
+  // Coupon reserve→commit/release lifecycle (fixes coupon oversell + abandoned
+  // checkouts burning per_user_limit), admin-editable term ladder + MRP, and the
+  // Razorpay plan cache keyed on plan shape. Same to_regclass guard as above for
+  // the pricing.* ALTERs. Plan §5.3.
+  { file: "20260822_payments_coupons.sql", target: "user" },
+  // Phase 6: folds Rail B (subject subscriptions) and the Connect batch-tuition
+  // rail onto the unified payments ledger. Adds the `last_event_at` ordering
+  // fence to both subscription tables so a re-delivered or out-of-order webhook
+  // can never walk a subscription's status backwards (plan E27), plus a partial
+  // index for subscription charges that have no local subscription row yet.
+  // Both ALTERs are to_regclass-guarded for the same reason as the two above.
+  { file: "20260823_payments_rail_b_ledger.sql", target: "user" },
+  // Phase 7: refund/dispute metadata, reconciliation indexes, and the
+  // per-order paid-grant ownership invariant.  All statements are guarded so
+  // a fresh preview database can apply the file before optional legacy rails.
+  { file: "20260823_payments_phase7_lifecycle.sql", target: "user" },
   // Public sanitized share links for a contest result (Phase 8 growth loop).
   { file: "20260823_contest_share_links.sql", target: "user" },
   // Recurring contest schedules (auto-scheduling).
