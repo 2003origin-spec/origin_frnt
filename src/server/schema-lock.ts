@@ -22,9 +22,9 @@
  * is memoised per process and only does real work against an un-migrated
  * database, so this serialises a cold start, not the request path.
  *
- * Transaction-scoped variant is preferred (released by COMMIT/ROLLBACK);
- * `ensureUserSchema` runs without an explicit transaction and uses the
- * session-scoped pair instead.
+ * Always transaction-scoped (`pg_advisory_xact_lock` inside BEGIN/COMMIT).
+ * Session-scoped `pg_advisory_lock` is unsafe on Neon PgBouncer transaction
+ * mode: the lock can stick on a pooled connection after the client is released.
  */
 
 /** Shared lock id. Every runtime schema-ensure MUST use this one value. */
@@ -32,7 +32,3 @@ export const SCHEMA_DDL_LOCK_ID = 4242424200;
 
 /** Take the shared DDL lock for the current transaction. */
 export const SCHEMA_DDL_LOCK_SQL = "SELECT pg_advisory_xact_lock($1)";
-
-/** Session-scoped acquire/release, for ensures that run outside a transaction. */
-export const SCHEMA_DDL_SESSION_LOCK_SQL = "SELECT pg_advisory_lock($1)";
-export const SCHEMA_DDL_SESSION_UNLOCK_SQL = "SELECT pg_advisory_unlock($1)";

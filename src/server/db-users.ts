@@ -8,7 +8,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { SCHEMA_DDL_LOCK_ID } from "@/server/schema-lock";
+import { SCHEMA_DDL_LOCK_ID, SCHEMA_DDL_LOCK_SQL } from "@/server/schema-lock";
 import bcrypt from "bcryptjs";
 import type { Pool } from "pg";
 import { withStoredUserDefaults, type StoredAuthSession, type StoredTask, type StoredUser, type StoredUserWithOptionalDefaults } from "@/server/store";
@@ -68,7 +68,10 @@ export async function ensureUserSchema(): Promise<void> {
     globalThis.__originUserSchemaPromise = (async () => {
       const client = await pool().connect();
       try {
-        await client.query("SELECT pg_advisory_lock($1)", [SCHEMA_DDL_LOCK_ID]);
+        await client.query("BEGIN");
+        // Transaction-scoped so COMMIT/ROLLBACK releases it on Neon PgBouncer
+        // (transaction-mode pooler cannot safely hold session advisory locks).
+        await client.query(SCHEMA_DDL_LOCK_SQL, [SCHEMA_DDL_LOCK_ID]);
         await client.query(`
           CREATE TABLE IF NOT EXISTS origin_users (
             id                  TEXT PRIMARY KEY,
@@ -289,11 +292,12 @@ export async function ensureUserSchema(): Promise<void> {
           CREATE INDEX IF NOT EXISTS idx_media_assets_user_purpose_created
             ON origin_media_assets (user_id, purpose, created_at DESC);
         `);
+        await client.query("COMMIT");
         globalThis.__originUserSchemaEnsured = true;
+      } catch (error) {
+        await client.query("ROLLBACK").catch(() => undefined);
+        throw error;
       } finally {
-        await client
-          .query("SELECT pg_advisory_unlock($1)", [SCHEMA_DDL_LOCK_ID])
-          .catch(() => undefined);
         client.release();
       }
     })().catch((error) => {

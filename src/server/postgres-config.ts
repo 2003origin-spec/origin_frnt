@@ -69,8 +69,10 @@ export function createPostgresPoolConfig(connectionString: string, max: number):
     //   • keepAlive — reduce reconnect churn on long-lived instances.
     //   • allowExitOnIdle — don't keep a frozen serverless instance's event loop
     //     alive on idle connections.
-    // The app is transaction-mode safe (no LISTEN/NOTIFY, advisory locks, named
-    // prepared statements or session-scoped SET), so no query changes are needed.
+    // The app is transaction-mode safe (no LISTEN/NOTIFY, session advisory locks,
+    // named prepared statements or session-scoped SET). Schema ensures use
+    // transaction-scoped `pg_advisory_xact_lock`, which PgBouncer releases on
+    // COMMIT/ROLLBACK.
     idleTimeoutMillis: 10_000,
     connectionTimeoutMillis: 10_000,
     keepAlive: true,
