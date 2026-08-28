@@ -437,6 +437,8 @@ export type PopularUserCard = SocialUserCard & {
   followerCount: number;
   /** Derived exam/class tag (JEE Advanced / NEET / Class 12 …). */
   badge: string | null;
+  /** Prestige points — drives the rank tier badge shown on the card. */
+  points: number;
 };
 
 export type PopularStudents = {
@@ -541,6 +543,7 @@ export async function getPopularStudents(
       tests: tests.get(u.id) ?? 0,
       followerCount: followerCount.get(u.id) ?? 0,
       badge: examBadge(u),
+      points: store.userScores.find((s) => s.userId === u.id)?.totalPoints ?? 0,
     };
   };
 
