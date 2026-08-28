@@ -92,6 +92,9 @@ export interface StoredStreakData {
   freezesRemaining?: number;
   /** IST month (YYYY-MM) the freeze allowance was last reset for. */
   freezeMonth?: string;
+  /** IST day (YYYY-MM-DD) the login-streak celebration overlay was last shown.
+   *  Server-authoritative "once per day" guard for the first-login flame. */
+  lastCelebratedDate?: string | null;
 }
 
 export interface StoredDailyActivity {

@@ -56,7 +56,8 @@ type FlagKey =
   | "fullLengthMocks"
   | "questionClusters"
   | "contest"
-  | "payments";
+  | "payments"
+  | "loginStreakCelebration";
 
 type FlagSpec = {
   envSuffix: string;
@@ -291,6 +292,9 @@ const FLAG_SPECS: Record<FlagKey, FlagSpec> = {
   // premiumSubscriptions surface is unaffected while this is off, so every phase
   // is revertible with one env var instead of a revert deploy.
   payments: { envSuffix: "PAYMENTS", defaultDev: false, defaultProd: false },
+  // First-login-of-the-day streak flame celebration on the student dashboard.
+  // Ships dark (off in prod) until the overlay UI is signed off.
+  loginStreakCelebration: { envSuffix: "LOGIN_STREAK", defaultDev: true, defaultProd: false },
 };
 
 /** Every feature-flag key, in declaration order (admin System Config view). */

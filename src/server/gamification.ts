@@ -217,13 +217,38 @@ export function updateWeeklyData(store: AppStore, userId: string): void {
   streak.weeklyData = dateWindow.map((date) => activeDates.has(date));
 }
 
-export function updateUserStreak(store: AppStore, userId: string): number {
+/** How the streak changed when an "active today" was recorded. */
+export type StreakEventKind = "increased" | "reset" | "first" | "same";
+
+/** Result of a login touch — drives the first-login-of-the-day celebration. */
+export interface StreakTouchResult {
+  /** What happened to the number this touch. */
+  event: StreakEventKind;
+  /** Streak value before this touch. */
+  previous: number;
+  /** Streak value after this touch. */
+  current: number;
+  /** Longest streak on record (post-touch). */
+  longest: number;
+  /** Whether the celebration overlay should fire (once per IST day). */
+  celebrate: boolean;
+}
+
+/**
+ * Core streak transition for an "active today" event. Advances the streak,
+ * consuming freezes to bridge gaps, and reports the transition kind. Shared by
+ * the study path (`updateUserStreak`) and the login path (`touchLoginStreak`).
+ * Mutates the streak record + the denormalised `user.streak` mirror. Returns
+ * `null` only when the user row is missing.
+ */
+function advanceStreak(store: AppStore, userId: string): { event: StreakEventKind; previous: number } | null {
   const streak = getOrCreateStreak(store, userId);
   const user = store.users.find((entry) => entry.id === userId);
   if (!user) {
-    return 0;
+    return null;
   }
 
+  const previous = streak.currentStreak;
   const today = todayString();
 
   // Replenish the freeze allowance at the start of each (IST) month. Also
@@ -240,16 +265,19 @@ export function updateUserStreak(store: AppStore, userId: string): number {
   // Same IST day → already counted; nothing to do.
   if (streak.lastStudyDate === today) {
     updateWeeklyData(store, userId);
-    return streak.currentStreak;
+    return { event: "same", previous };
   }
 
+  let event: StreakEventKind;
   if (!streak.lastStudyDate) {
     streak.currentStreak = 1;
+    event = "first";
   } else {
     const gap = daysBetweenStrings(streak.lastStudyDate, today);
     if (gap === 1) {
       // Consecutive day.
       streak.currentStreak += 1;
+      event = "increased";
     } else if (gap > 1) {
       // Missed days. A freeze can cover each missed day (loss aversion — the
       // streak survives) if the student has budget; otherwise it resets.
@@ -257,12 +285,15 @@ export function updateUserStreak(store: AppStore, userId: string): number {
       if ((streak.freezesRemaining ?? 0) >= missed) {
         streak.freezesRemaining = (streak.freezesRemaining ?? 0) - missed;
         streak.currentStreak += 1;
+        event = "increased";
       } else {
         streak.currentStreak = 1;
+        event = "reset";
       }
     } else {
       // gap <= 0 (clock skew / same day already handled) — treat as no change.
       streak.currentStreak = Math.max(1, streak.currentStreak);
+      event = "same";
     }
   }
 
@@ -273,7 +304,47 @@ export function updateUserStreak(store: AppStore, userId: string): number {
 
   updateWeeklyData(store, userId);
   user.streak = streak.currentStreak;
-  return streak.currentStreak;
+  return { event, previous };
+}
+
+export function updateUserStreak(store: AppStore, userId: string): number {
+  const result = advanceStreak(store, userId);
+  if (!result) {
+    return 0;
+  }
+  return getOrCreateStreak(store, userId).currentStreak;
+}
+
+/**
+ * Record a login as "active today" and decide whether to fire the first-login
+ * celebration. Idempotent per IST day: the overlay fires at most once a day,
+ * gated by `lastCelebratedDate` (server-authoritative, survives reloads and is
+ * consistent across devices). Safe to call on every dashboard load.
+ *
+ * `celebrate` is true whenever the overlay hasn't yet shown today and the user
+ * has a live streak — even if the streak was already advanced earlier today by
+ * studying (that case reports `event: "same"` so the UI shows a gentle welcome
+ * rather than a "+1").
+ */
+export function touchLoginStreak(store: AppStore, userId: string): StreakTouchResult | null {
+  const result = advanceStreak(store, userId);
+  if (!result) {
+    return null;
+  }
+  const streak = getOrCreateStreak(store, userId);
+  const today = todayString();
+  const current = streak.currentStreak;
+  const celebrate = streak.lastCelebratedDate !== today && current > 0;
+  if (celebrate) {
+    streak.lastCelebratedDate = today;
+  }
+  return {
+    event: result.event,
+    previous: result.previous,
+    current,
+    longest: streak.longestStreak,
+    celebrate,
+  };
 }
 
 export function awardPoints(

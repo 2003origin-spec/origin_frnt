@@ -8,6 +8,8 @@ import {
 } from '@/server/render-loaders';
 import { getRegistrationStatus } from '@/server/users';
 import { getContestStatus, type ContestStatus } from '@/server/contest/contest-status';
+import { recordDailyLoginStreak, type StreakTouchResult } from '@/server/streak-login';
+import { isFeatureEnabled } from '@/lib/feature-flags';
 import { istDateKey } from '@/lib/ist-day';
 import type { Task } from '@/types';
 
@@ -38,13 +40,21 @@ async function DashboardGate() {
   let initialChallenge: Awaited<ReturnType<typeof getChallengeOfTheDayForRender>> | null = null;
   let initialRegStatus: RegistrationStatus | null = null;
   let initialContest: ContestStatus | null = null;
+  let initialStreakCelebration: StreakTouchResult | null = null;
 
-  const [tasksResult, pointsResult, challengeResult, regResult, contestResult] = await Promise.allSettled([
+  // First login of the (IST) day advances the streak and decides whether the
+  // flame celebration fires — server-authoritative, at most once per day. The
+  // touch mutates the store, so it must run on load (no-ops after the first
+  // load of the day). Gated dark until the overlay UI ships.
+  const streakEnabled = isFeatureEnabled('loginStreakCelebration');
+
+  const [tasksResult, pointsResult, challengeResult, regResult, contestResult, streakResult] = await Promise.allSettled([
     listTasksForRender(user.id),
     getPointsSummaryForRender(user.id),
     getChallengeOfTheDayForRender(istDateKey(), user.id),
     getRegistrationStatus(user.role),
     getContestStatus(user.id),
+    streakEnabled ? recordDailyLoginStreak(user.id) : Promise.resolve(null),
   ]);
 
   if (tasksResult.status === 'fulfilled') {
@@ -62,6 +72,9 @@ async function DashboardGate() {
   if (contestResult.status === 'fulfilled') {
     initialContest = contestResult.value;
   }
+  if (streakResult.status === 'fulfilled') {
+    initialStreakCelebration = streakResult.value;
+  }
 
   return (
     <DashboardClient
@@ -70,6 +83,7 @@ async function DashboardGate() {
       initialTasks={initialTasks}
       initialRegStatus={initialRegStatus}
       initialContest={initialContest}
+      initialStreakCelebration={initialStreakCelebration}
     />
   );
 }
