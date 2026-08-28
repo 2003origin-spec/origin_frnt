@@ -1255,11 +1255,11 @@ export default function OGCodeList({
                     </div>{/* end right-side flex */}
                 </div>
 
-                {/* ── Filters (off-canvas drawer) ── */}
-                {/* Toolbar: a single Filters button + live result count. Every filter
-                    control lives in the slide-in drawer, so the question grid gets the
-                    full width on all screen sizes. */}
-                <div className="flex items-center gap-3">
+                {/* ── Filters ── */}
+                {/* Mobile toolbar: a Filters button + live result count that opens the
+                    off-canvas drawer. Hidden on md+, where the filters render inline
+                    (as before). */}
+                <div className="flex items-center gap-3 md:hidden">
                     <button
                         type="button"
                         onClick={() => setMobileFiltersOpen(true)}
@@ -1290,49 +1290,49 @@ export default function OGCodeList({
                     )}
                 </div>
 
-                {/* Slide-in filter drawer */}
-                <AnimatePresence>
-                    {mobileFiltersOpen && (
-                        <>
-                            <motion.div
-                                key="filter-backdrop"
-                                className="fixed inset-0 z-[300] bg-black/50 backdrop-blur-sm"
-                                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                                transition={{ duration: 0.2 }}
-                                onClick={() => setMobileFiltersOpen(false)}
-                            />
-                            <motion.aside
-                                key="filter-drawer"
-                                id="filter-drawer"
-                                role="dialog"
-                                aria-modal="true"
-                                aria-label="Filters"
-                                className="fixed inset-y-0 right-0 z-[310] w-[min(92vw,420px)] neu-surface border-l border-border/30 shadow-2xl flex flex-col"
-                                initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
-                                transition={{ type: 'spring', stiffness: 320, damping: 34 }}
-                            >
-                                {/* Drawer header */}
-                                <div className="flex items-center justify-between px-5 py-4 border-b border-border/20 shrink-0">
-                                    <h2 className="text-sm font-black uppercase tracking-widest text-foreground flex items-center gap-2">
-                                        <SlidersHorizontal className="w-4 h-4 text-primary" /> Filters
-                                        {activeFilterCount > 0 && (
-                                            <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-primary text-white text-[10px] font-black flex items-center justify-center tabular-nums">
-                                                {activeFilterCount}
-                                            </span>
-                                        )}
-                                    </h2>
-                                    <button
-                                        type="button"
-                                        onClick={() => setMobileFiltersOpen(false)}
-                                        aria-label="Close filters"
-                                        className="neu-raised w-9 h-9 rounded-full flex items-center justify-center text-muted-foreground hover:text-primary transition-colors cursor-pointer"
-                                    >
-                                        <X className="w-4 h-4" />
-                                    </button>
-                                </div>
+                {/* Filter panel — off-canvas drawer on mobile, inline in the page on md+
+                    (exactly as before on tablet/desktop). */}
+                {mobileFiltersOpen && (
+                    <div
+                        className="md:hidden fixed inset-0 z-[390] bg-black/50 backdrop-blur-sm"
+                        onClick={() => setMobileFiltersOpen(false)}
+                        aria-hidden
+                    />
+                )}
+                <aside
+                    id="filter-drawer"
+                    aria-label="Filters"
+                    className={cn(
+                        'flex flex-col transition-transform duration-300 ease-out',
+                        // mobile: fixed off-canvas drawer, above the bottom nav (z-50)
+                        'fixed inset-y-0 right-0 z-[400] w-[min(92vw,420px)] neu-surface border-l border-border/30 shadow-2xl',
+                        mobileFiltersOpen ? 'translate-x-0' : 'translate-x-full',
+                        // md+: inline block in the normal flow, no drawer chrome
+                        'md:static md:z-auto md:w-full md:translate-x-0 md:border-0 md:shadow-none md:bg-transparent md:transition-none',
+                    )}
+                >
+                    {/* Drawer header — mobile only */}
+                    <div className="md:hidden flex items-center justify-between px-5 py-4 border-b border-border/20 shrink-0">
+                        <h2 className="text-sm font-black uppercase tracking-widest text-foreground flex items-center gap-2">
+                            <SlidersHorizontal className="w-4 h-4 text-primary" /> Filters
+                            {activeFilterCount > 0 && (
+                                <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-primary text-white text-[10px] font-black flex items-center justify-center tabular-nums">
+                                    {activeFilterCount}
+                                </span>
+                            )}
+                        </h2>
+                        <button
+                            type="button"
+                            onClick={() => setMobileFiltersOpen(false)}
+                            aria-label="Close filters"
+                            className="neu-raised w-9 h-9 rounded-full flex items-center justify-center text-muted-foreground hover:text-primary transition-colors cursor-pointer"
+                        >
+                            <X className="w-4 h-4" />
+                        </button>
+                    </div>
 
-                                {/* Drawer body — all filter controls live here */}
-                                <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+                    {/* Body — filter controls. Scrolls inside the drawer on mobile; plain inline block on md+. */}
+                    <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 md:flex-none md:overflow-visible md:p-0 md:space-y-3">
 
                     <div id="filter-area" className="neu-inset rounded-2xl p-4 sm:p-5 relative z-[80] space-y-4">
                         <div className="flex items-center justify-between">
@@ -1748,8 +1748,8 @@ export default function OGCodeList({
                         </div>
 
                         {/* PYQs Only + Liked toggles + Apply Filters */}
-                        <div className="flex items-center justify-between pt-2 border-t border-border/20">
-                            <div className="flex items-center gap-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-border/20">
+                            <div className="flex items-center gap-5">
                             <label className="flex items-center gap-2 cursor-pointer select-none group">
                                 <button
                                     type="button"
@@ -1796,12 +1796,14 @@ export default function OGCodeList({
                                 </span>
                             </label>
                             </div>
+                            {/* Inline Apply — desktop/tablet only; on mobile the drawer footer's
+                                "Show results" applies + closes. */}
                             {(hierClasses.length > 0 || hierSubjects.length > 0 || hierChapters.length > 0 || hierConcepts.length > 0) && (
-                                <motion.div initial={{ opacity: 0, x: 4 }} animate={{ opacity: 1, x: 0 }}>
+                                <motion.div initial={{ opacity: 0, x: 4 }} animate={{ opacity: 1, x: 0 }} className="hidden md:block">
                                     <button
                                         type="button"
                                         onClick={handleHierarchySubmit}
-                                        className="neu-btn px-6 py-2.5 text-[11px] font-black uppercase tracking-widest text-primary flex items-center gap-2 group"
+                                        className="neu-btn px-6 py-2.5 text-[11px] font-black uppercase tracking-widest text-primary flex items-center gap-2 group cursor-pointer"
                                     >
                                         Apply Filters
                                         <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
@@ -1937,29 +1939,26 @@ export default function OGCodeList({
                                     </div>
                                 </div>
 
-                                {/* Drawer footer — Clear + Apply (applies staged hierarchy, then closes) */}
-                                <div className="shrink-0 border-t border-border/20 px-5 py-4 flex items-center gap-3">
-                                    <button
-                                        type="button"
-                                        onClick={clearAllFilters}
-                                        disabled={activeFilterCount === 0}
-                                        className="neu-raised px-4 h-11 rounded-xl text-[12px] font-black uppercase tracking-widest text-muted-foreground disabled:opacity-40 hover:text-primary transition-colors cursor-pointer disabled:cursor-not-allowed"
-                                    >
-                                        Clear
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={applyAndCloseFilters}
-                                        className="neu-btn flex-1 h-11 rounded-xl text-[12px] font-black uppercase tracking-widest text-primary inline-flex items-center justify-center gap-2 cursor-pointer"
-                                    >
-                                        Show {filteredQuestions.length} result{filteredQuestions.length === 1 ? '' : 's'}
-                                        <ArrowRight className="w-4 h-4" />
-                                    </button>
-                                </div>
-                            </motion.aside>
-                        </>
-                    )}
-                </AnimatePresence>
+                    {/* Drawer footer — mobile only; padded so the buttons clear the bottom nav */}
+                    <div className="md:hidden shrink-0 border-t border-border/20 neu-surface px-5 pt-4 pb-[calc(4.5rem+env(safe-area-inset-bottom))] flex items-center gap-3">
+                        <button
+                            type="button"
+                            onClick={clearAllFilters}
+                            disabled={activeFilterCount === 0}
+                            className="neu-raised px-4 h-11 rounded-xl text-[12px] font-black uppercase tracking-widest text-muted-foreground disabled:opacity-40 hover:text-primary transition-colors cursor-pointer disabled:cursor-not-allowed"
+                        >
+                            Clear
+                        </button>
+                        <button
+                            type="button"
+                            onClick={applyAndCloseFilters}
+                            className="neu-btn flex-1 h-11 rounded-xl text-[12px] font-black uppercase tracking-widest text-primary inline-flex items-center justify-center gap-2 cursor-pointer"
+                        >
+                            Show {filteredQuestions.length} result{filteredQuestions.length === 1 ? '' : 's'}
+                            <ArrowRight className="w-4 h-4" />
+                        </button>
+                    </div>
+                </aside>
 
                 {/* ── §13 OG Friend Challenge Box ── */}
                 {challengeInbox.length > 0 && (
