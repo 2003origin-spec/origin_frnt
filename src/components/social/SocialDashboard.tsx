@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
+import { getCurrentBadge } from '@/lib/badges';
 import { useRouter } from 'next/navigation';
 import { useTheme } from 'next-themes';
 import {
@@ -104,7 +106,7 @@ export default function SocialDashboard({
         const raw: SocialUserCard[] = Array.isArray(res?.results) ? res.results : [];
         setResults(raw.map((u) => ({
           ...u,
-          streak: 0, accuracy: 0, rank: null, tests: 0, followerCount: 0, badge: null,
+          streak: 0, accuracy: 0, rank: null, tests: 0, followerCount: 0, badge: null, points: 0,
         })));
       } catch {
         setResults([]);
@@ -299,12 +301,28 @@ export default function SocialDashboard({
                 >
                   {/* Identity */}
                   <div className="flex min-w-0 flex-1 items-center gap-3">
-                    <Avatar className="h-12 w-12 shrink-0 ring-2 ring-primary/15">
-                      {c.avatar ? <AvatarImage src={c.avatar} alt={c.name} className="object-cover" /> : null}
-                      <AvatarFallback className="bg-primary/15 font-black text-primary">
-                        {c.name.charAt(0).toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
+                    <div className="relative shrink-0">
+                      <Avatar className="h-12 w-12 ring-2 ring-primary/15">
+                        {c.avatar ? <AvatarImage src={c.avatar} alt={c.name} className="object-cover" /> : null}
+                        <AvatarFallback className="bg-primary/15 font-black text-primary">
+                          {c.name.charAt(0).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      {/* Rank tier badge — derived from prestige points */}
+                      {c.points > 0 && (() => {
+                        const b = getCurrentBadge(c.points);
+                        return (
+                          <Image
+                            src={b.image}
+                            alt={b.name}
+                            title={`${b.name} — rank badge`}
+                            width={22}
+                            height={22}
+                            className="pointer-events-none absolute -bottom-1.5 -right-1.5 h-[22px] w-[22px] drop-shadow-md"
+                          />
+                        );
+                      })()}
+                    </div>
                     <div className="min-w-0">
                       <p className="truncate text-sm font-black group-hover:text-primary transition-colors">{c.name}</p>
                       <p className="truncate text-[11px] text-muted-foreground">@{c.username}</p>
@@ -390,12 +408,28 @@ export default function SocialDashboard({
                     </div>
                   )}
                   <div className="flex flex-col items-center text-center">
-                    <Avatar className="h-24 w-24 ring-4 ring-primary/20">
-                      {selected.avatar ? <AvatarImage src={selected.avatar} alt={selected.name} className="object-cover" /> : null}
-                      <AvatarFallback className="bg-primary/15 text-3xl font-black text-primary">
-                        {selected.name.charAt(0).toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
+                    <div className="relative">
+                      <Avatar className="h-24 w-24 ring-4 ring-primary/20">
+                        {selected.avatar ? <AvatarImage src={selected.avatar} alt={selected.name} className="object-cover" /> : null}
+                        <AvatarFallback className="bg-primary/15 text-3xl font-black text-primary">
+                          {selected.name.charAt(0).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      {/* Rank tier badge */}
+                      {selected.points > 0 && (() => {
+                        const b = getCurrentBadge(selected.points);
+                        return (
+                          <Image
+                            src={b.image}
+                            alt={b.name}
+                            title={`${b.name} — rank badge`}
+                            width={40}
+                            height={40}
+                            className="pointer-events-none absolute bottom-0 right-0 h-10 w-10 drop-shadow-md"
+                          />
+                        );
+                      })()}
+                    </div>
                     <h2 className="mt-3 flex min-w-0 items-center gap-1.5 text-xl font-black">
                       <span className="truncate">{selected.name}</span>
                       <CheckCircle2 className="h-4 w-4 shrink-0 text-primary" />

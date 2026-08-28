@@ -612,6 +612,27 @@ export default function Dashboard({
           </motion.button>
         </div>
 
+        {/* ── Self-study rallying cry ── */}
+        <motion.div
+          initial={{ opacity: 0, y: 22 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: '-40px' }}
+          transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+          className="mt-4 sm:mt-8 mb-1 flex justify-center text-center select-none"
+        >
+          {/* Mobile: large, wraps across 2–3 lines to fill the width. sm+: one line
+              that scales with the viewport. */}
+          <h2 className="text-balance text-center px-4 font-black leading-[1.1] tracking-tight text-[clamp(2rem,9vw,2.75rem)] sm:whitespace-nowrap sm:leading-[1.05] sm:tracking-tighter sm:text-[clamp(1.5rem,5vw,4rem)]">
+            <span className="text-foreground">Let&apos;s Make </span>
+            <span className="bg-gradient-to-r from-primary via-fuchsia-500 to-amber-400 bg-clip-text text-transparent">Self&nbsp;Study</span>
+            <span className="text-foreground"> Great </span>
+            <span className="relative inline-block align-baseline">
+              <span className="bg-gradient-to-r from-amber-400 via-primary to-fuchsia-500 bg-clip-text text-transparent">Again!</span>
+              <span aria-hidden className="absolute -bottom-1 left-0 h-1.5 w-full rounded-full bg-gradient-to-r from-primary to-fuchsia-500 opacity-70" />
+            </span>
+          </h2>
+        </motion.div>
+
       </div>
 
       {/* Progress & Activity left panel */}
