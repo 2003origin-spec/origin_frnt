@@ -9,6 +9,7 @@
 import { getUserPostgresPool } from "@/server/user-postgres";
 import {
   createImportJob,
+  deleteImportJobService,
   getJobQuestions,
   getJobWithProgress,
   listWorkspaceImportJobs,
@@ -185,6 +186,39 @@ export async function getCbtImportJob(
   if (!job) return null;
   const questions = await getJobQuestions(jobId, { status: "all" });
   return { job, questions };
+}
+
+/**
+ * Delete one of this teacher's still-active (queued/processing) import jobs,
+ * along with its pages, extracted questions, and source file in R2.
+ *
+ * The escape hatch for the import queue: the per-workspace concurrency cap is
+ * 5, and a job whose pipeline trigger was lost sits in `queued` forever holding
+ * a slot. Cancelling frees the slot but leaves the row; teachers want the row
+ * gone from "Recent imports" too.
+ *
+ * Isolation is the same as every other read here — the job is addressed
+ * through the teacher's own synthetic workspace, so a jobId belonging to
+ * another teacher simply doesn't resolve.
+ *
+ * Bank questions in `cbt.questions` are intentionally left alone. They only
+ * exist once a job reached `needs_review` and the teacher published them, and
+ * such a job isn't deletable; the `import_job_id` column carries no FK, so even
+ * a stray one degrades to an unnamed cluster rather than breaking a read.
+ */
+export async function deleteCbtImportJob(input: {
+  teacher: CbtTeacher;
+  userId: string;
+  jobId: string;
+  requestId?: string | null;
+}): Promise<void> {
+  if (!input.teacher.importWorkspaceId) throw cbtError(404, "Import job not found.");
+  await deleteImportJobService({
+    workspaceId: input.teacher.importWorkspaceId,
+    jobId: input.jobId,
+    actorUserId: input.userId,
+    requestId: input.requestId ?? null,
+  });
 }
 
 function normalizeImportOptions(options: Record<string, unknown> | null): { text: string }[] {

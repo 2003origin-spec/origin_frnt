@@ -370,3 +370,36 @@ export async function getJobWithProgress(workspaceId: string, jobId: string): Pr
   const progressPercent = job.totalPages ? Math.round((job.processedPages / job.totalPages) * 100) : 0;
   return { ...job, progressPercent, questionsPreview: questions };
 }
+
+/**
+ * Hard-delete an import job and everything hanging off it.
+ *
+ * `import_job_pages` and `import_job_questions` both declare
+ * `job_id ... ON DELETE CASCADE`, so the single DELETE below takes the whole
+ * subtree with it — there is no orphan row left to reclaim later.
+ *
+ * Scoped by workspace_id so a caller can never reach across workspaces, and
+ * optionally narrowed to `allowedStatuses` — the caller passes the non-terminal
+ * set so a finished job carrying reviewed questions can't be removed by a
+ * request aimed at clearing the queue. Returns the deleted row (the caller
+ * needs its R2 coordinates to drop the source file) or null when nothing
+ * matched, which covers both "no such job" and "wrong status".
+ */
+export async function deleteImportJob(
+  jobId: string,
+  workspaceId: string,
+  allowedStatuses?: readonly ImportJobStatus[],
+): Promise<DocumentImportJob | null> {
+  await ensureDocumentImportSchema();
+  const params: unknown[] = [jobId, workspaceId];
+  let where = "id = $1 AND workspace_id = $2";
+  if (allowedStatuses && allowedStatuses.length > 0) {
+    params.push(allowedStatuses);
+    where += ` AND status::text = ANY($${params.length}::text[])`;
+  }
+  const result = await pool().query(
+    `DELETE FROM import.document_import_jobs WHERE ${where} RETURNING *`,
+    params,
+  );
+  return result.rows[0] ? rowToJob(result.rows[0]) : null;
+}

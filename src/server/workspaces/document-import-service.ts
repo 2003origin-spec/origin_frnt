@@ -3,7 +3,7 @@
  */
 
 import { AuthzError } from "@/server/authz";
-import { uploadImportDocumentToR2 } from "@/server/media-storage";
+import { deleteR2Object, uploadImportDocumentToR2 } from "@/server/media-storage";
 
 import { recordAuditEvent } from "./audit";
 import {
@@ -12,6 +12,7 @@ import {
   applySubjectToAllJobQuestions,
   countActiveImportJobs,
   createImportJob as storeCreateImportJob,
+  deleteImportJob as storeDeleteImportJob,
   getImportJob,
   getJobPages as storeGetJobPages,
   getJobQuestions as storeGetJobQuestions,
@@ -28,6 +29,15 @@ import { getActiveMembership } from "./store";
 import { createTeacherTest } from "./tests-service";
 import { createWorkspaceCluster, deleteWorkspaceCluster } from "./clusters-service";
 import type { DocumentImportJob, ImportJobQuestion, ImportJobStatus, ImportJobWithProgress, ImportPageStatus, ImportQuestionStatus, ImportSourceType, ImportTargetSurface, QuestionOption, QuestionType } from "./types";
+
+/**
+ * The statuses that occupy a slot against the concurrency cap — the exact set
+ * `countActiveImportJobs` counts. A job in one of these is what a user means by
+ * "queued" or "ongoing", and these are the only ones deletable through
+ * `deleteImportJobService`: everything else is terminal and may own reviewed or
+ * published questions.
+ */
+export const ACTIVE_IMPORT_JOB_STATUSES: readonly ImportJobStatus[] = ["queued", "processing"];
 
 /** Cap on simultaneously queued+processing jobs per workspace. Phase 13
  * backpressure — protects the document-import worker from being swamped
@@ -46,6 +56,25 @@ export class ImportJobBackpressureError extends Error {
       `Import queue is at capacity (${active}/${cap} active jobs). Wait for in-flight jobs to finish before submitting more.`,
     );
     this.name = "ImportJobBackpressureError";
+  }
+}
+
+/**
+ * Refusals from the delete path that are NOT permission failures.
+ *
+ * Deliberately not an `AuthzError`: `authzErrorResponse` collapses every
+ * non-401 status onto 403, which would surface "this import already finished"
+ * to the client as "forbidden". `handleTeacherError` reads `.status` off a
+ * plain Error, so this reaches the browser with the code it was given.
+ */
+export class ImportJobDeleteError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+    readonly errorCode: string,
+  ) {
+    super(message);
+    this.name = "ImportJobDeleteError";
   }
 }
 
@@ -227,6 +256,77 @@ export async function cancelJob(input: {
     userId: input.actorUserId,
     status: "cancelled",
   });
+}
+
+/**
+ * Permanently delete a still-active import job: the row, its pages, its
+ * extracted questions (both cascade), and the source document in R2.
+ *
+ * This exists because a job can strand in `queued` forever — the pipeline
+ * trigger is fire-and-forget, so a lost trigger (a frozen serverless
+ * invocation, a worker cold-start timeout) leaves a row that no worker will
+ * ever pick up. Those rows still count against the per-workspace concurrency
+ * cap, so a handful of them locks a workspace out of importing entirely.
+ * Cancelling would clear the slot, but leaves the dead row and its R2 blob
+ * behind; the user asked for the trail to go too.
+ *
+ * Restricted to `ACTIVE_IMPORT_JOB_STATUSES`. A terminal job (`needs_review`,
+ * `succeeded`, `failed`, `cancelled`) holds no slot and may own questions a
+ * teacher has already reviewed, so it is refused with 409 rather than
+ * silently destroyed.
+ *
+ * Two deliberate non-guarantees:
+ *  - A `processing` job is not signalled — the worker has no cancel endpoint.
+ *    It keeps running and its next write simply affects zero rows.
+ *  - The R2 delete is best-effort. An orphaned blob is cheap; failing the
+ *    request after the row is already gone would be worse, and the caller
+ *    would have nothing to retry.
+ */
+export async function deleteImportJobService(input: {
+  workspaceId: string; jobId: string; actorUserId: string; requestId?: string | null;
+}): Promise<DocumentImportJob> {
+  const membership = await getActiveMembership(input.workspaceId, input.actorUserId);
+  if (!membership || !["owner", "admin", "teacher"].includes(membership.role)) {
+    throw new AuthzError(403, "Insufficient permissions to delete import jobs.");
+  }
+
+  const notActive = () =>
+    new ImportJobDeleteError(
+      409,
+      "Only queued or processing imports can be deleted. This one has already finished.",
+      "IMPORT_JOB_NOT_ACTIVE",
+    );
+
+  const existing = await getImportJob(input.workspaceId, input.jobId);
+  if (!existing) throw new ImportJobDeleteError(404, "Import job not found.", "IMPORT_JOB_NOT_FOUND");
+  if (!ACTIVE_IMPORT_JOB_STATUSES.includes(existing.status)) throw notActive();
+
+  // The status guard is repeated inside the DELETE so a worker that finishes
+  // the job between the read above and this statement can't have its result
+  // deleted out from under it.
+  const deleted = await storeDeleteImportJob(input.jobId, input.workspaceId, ACTIVE_IMPORT_JOB_STATUSES);
+  if (!deleted) throw notActive();
+
+  if (deleted.sourceR2ObjectKey) {
+    await deleteR2Object({
+      bucket: deleted.sourceR2Bucket || undefined,
+      objectKey: deleted.sourceR2ObjectKey,
+    }).catch((err: unknown) => {
+      console.warn(`[document-import] R2 cleanup failed for deleted job ${deleted.id}:`, err);
+    });
+  }
+
+  await recordAuditEvent({
+    actorUserId: input.actorUserId,
+    workspaceId: input.workspaceId,
+    entityType: "document_import_job",
+    entityId: input.jobId,
+    action: "import_job.deleted",
+    before: deleted,
+    requestId: input.requestId ?? null,
+  });
+
+  return deleted;
 }
 
 /** Accept a single review-required question (or reject it). */
