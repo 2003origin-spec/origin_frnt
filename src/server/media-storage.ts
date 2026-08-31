@@ -423,3 +423,56 @@ export async function uploadImageToR2(input: R2UploadInput): Promise<R2UploadRes
     sizeBytes: input.body.length,
   };
 }
+
+/**
+ * Permanently delete an object from R2 (SigV4 DELETE, empty payload).
+ *
+ * Used when an import job is deleted: the job row goes, so nothing would ever
+ * read the source document again and leaving it behind just accrues storage.
+ * S3/R2 DELETE is idempotent — a missing key still answers 204 — so a retry or
+ * a double-delete is not an error. Callers should treat a throw here as
+ * non-fatal: the DB row is the source of truth, an orphaned blob is not.
+ */
+export async function deleteR2Object(input: { bucket?: string; objectKey: string }): Promise<void> {
+  const bucket = input.bucket?.trim() || importR2BucketName();
+  const accessKeyId = requiredEnv("R2_ACCESS_KEY_ID");
+  const secretAccessKey = requiredEnv("R2_SECRET_ACCESS_KEY");
+  const endpointUrl = new URL(r2Endpoint());
+  const { amzDate, dateStamp } = amzDateParts();
+  const canonicalUri = canonicalObjectPath(bucket, input.objectKey);
+  const requestUrl = new URL(canonicalUri, endpointUrl);
+  const payloadHash = createHash("sha256").update("").digest("hex");
+  const credentialScope = `${dateStamp}/auto/s3/aws4_request`;
+  const signedHeaders = "host;x-amz-content-sha256;x-amz-date";
+  const canonicalHeaders = [
+    `host:${requestUrl.host}`,
+    `x-amz-content-sha256:${payloadHash}`,
+    `x-amz-date:${amzDate}`,
+    "",
+  ].join("\n");
+  const canonicalRequest = ["DELETE", canonicalUri, "", canonicalHeaders, signedHeaders, payloadHash].join("\n");
+  const stringToSign = [
+    "AWS4-HMAC-SHA256",
+    amzDate,
+    credentialScope,
+    createHash("sha256").update(canonicalRequest).digest("hex"),
+  ].join("\n");
+  const signature = createHmac("sha256", signingKey(secretAccessKey, dateStamp))
+    .update(stringToSign, "utf8")
+    .digest("hex");
+
+  const response = await fetch(requestUrl, {
+    method: "DELETE",
+    headers: {
+      Authorization: `AWS4-HMAC-SHA256 Credential=${accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`,
+      "X-Amz-Content-Sha256": payloadHash,
+      "X-Amz-Date": amzDate,
+    },
+  });
+
+  // 404 is a success for our purposes: the object is gone either way.
+  if (!response.ok && response.status !== 404) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(`Cloudflare R2 delete failed (${response.status}).${detail ? ` ${detail.slice(0, 180)}` : ""}`);
+  }
+}
