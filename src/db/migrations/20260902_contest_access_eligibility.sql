@@ -19,3 +19,15 @@ CREATE TABLE IF NOT EXISTS contest.access_codes (
   PRIMARY KEY (contest_id, code)
 );
 CREATE INDEX IF NOT EXISTS idx_access_codes_contest ON contest.access_codes(contest_id);
+
+-- Phase 7: per-question discussion comments.
+CREATE TABLE IF NOT EXISTS contest.question_comments (
+  id          TEXT PRIMARY KEY,
+  contest_id  TEXT NOT NULL REFERENCES contest.contests(id) ON DELETE CASCADE,
+  position    INTEGER NOT NULL,
+  user_id     TEXT NOT NULL REFERENCES origin_users(id) ON DELETE CASCADE,
+  body        TEXT NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_question_comments_q
+  ON contest.question_comments(contest_id, position, created_at);

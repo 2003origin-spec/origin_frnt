@@ -113,6 +113,19 @@ CREATE TABLE IF NOT EXISTS contest.access_codes (
 );
 CREATE INDEX IF NOT EXISTS idx_access_codes_contest ON contest.access_codes(contest_id);
 
+-- Per-question discussion (Phase 7). Post-result comments on a contest question,
+-- so students can debate solutions. Visible once results are published.
+CREATE TABLE IF NOT EXISTS contest.question_comments (
+  id          TEXT PRIMARY KEY,
+  contest_id  TEXT NOT NULL REFERENCES contest.contests(id) ON DELETE CASCADE,
+  position    INTEGER NOT NULL,
+  user_id     TEXT NOT NULL REFERENCES origin_users(id) ON DELETE CASCADE,
+  body        TEXT NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_question_comments_q
+  ON contest.question_comments(contest_id, position, created_at);
+
 CREATE TABLE IF NOT EXISTS contest.attempts (
   contest_id         TEXT NOT NULL REFERENCES contest.contests(id) ON DELETE CASCADE,
   user_id            TEXT NOT NULL REFERENCES origin_users(id) ON DELETE CASCADE,

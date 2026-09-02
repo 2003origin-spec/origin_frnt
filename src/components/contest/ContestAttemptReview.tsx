@@ -7,6 +7,7 @@ import { ArrowLeft, CheckCircle2, XCircle, MinusCircle, Loader2, BookOpen } from
 import { cn } from '@/lib/utils';
 import { NeuButton } from '@/components/ui/neu';
 import { LatexRenderer } from '@/components/ui/LatexRenderer';
+import { ContestDiscussion } from '@/components/contest/ContestDiscussion';
 
 /**
  * Post-contest solutions review of the student's OWN attempt — every question
@@ -185,6 +186,8 @@ export function ContestAttemptReview({ contestId }: { contestId: string }) {
                 <LatexRenderer content={q.explanation} />
               </div>
             )}
+
+            <ContestDiscussion contestId={contestId} position={q.position} />
           </div>
         ))}
 
