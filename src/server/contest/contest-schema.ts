@@ -84,6 +84,35 @@ CREATE TABLE IF NOT EXISTS contest.registrations (
 CREATE INDEX IF NOT EXISTS idx_registrations_user
   ON contest.registrations(user_id, registered_at DESC);
 
+-- Access & eligibility (Phase 5). access_mode gates who may register:
+--   'open'    — anyone (default; unchanged behaviour)
+--   'code'    — a valid, unused access code is required
+--   'premium' — an active premium entitlement is required
+-- registration_cap caps confirmed seats (NULL = unlimited); overflow within the
+-- window goes to the waitlist (registrations.status = 'waitlisted').
+ALTER TABLE contest.contests ADD COLUMN IF NOT EXISTS access_mode TEXT NOT NULL DEFAULT 'open'
+  CHECK (access_mode IN ('open','code','premium'));
+ALTER TABLE contest.contests ADD COLUMN IF NOT EXISTS registration_cap INTEGER;
+
+-- Registration status: confirmed 'registered' or 'waitlisted' (promoted FIFO as
+-- seats free up). Existing rows default to 'registered' (the historical state).
+ALTER TABLE contest.registrations ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'registered'
+  CHECK (status IN ('registered','waitlisted'));
+CREATE INDEX IF NOT EXISTS idx_registrations_waitlist
+  ON contest.registrations(contest_id, status, registered_at);
+
+-- Per-contest access codes (access_mode = 'code'). Single-use: redeemed_by is
+-- stamped on redemption; a code is valid only while unredeemed.
+CREATE TABLE IF NOT EXISTS contest.access_codes (
+  contest_id   TEXT NOT NULL REFERENCES contest.contests(id) ON DELETE CASCADE,
+  code         TEXT NOT NULL,
+  redeemed_by  TEXT REFERENCES origin_users(id) ON DELETE SET NULL,
+  redeemed_at  TIMESTAMPTZ,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (contest_id, code)
+);
+CREATE INDEX IF NOT EXISTS idx_access_codes_contest ON contest.access_codes(contest_id);
+
 CREATE TABLE IF NOT EXISTS contest.attempts (
   contest_id         TEXT NOT NULL REFERENCES contest.contests(id) ON DELETE CASCADE,
   user_id            TEXT NOT NULL REFERENCES origin_users(id) ON DELETE CASCADE,

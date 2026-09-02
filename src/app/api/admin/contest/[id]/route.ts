@@ -33,6 +33,8 @@ const UpdateSchema = z.object({
   regClose: isoOrNull.optional(),
   startAt: isoOrNull.optional(),
   endAt: isoOrNull.optional(),
+  accessMode: z.enum(["open", "code", "premium"]).optional(),
+  registrationCap: z.number().int().min(1).nullable().optional(),
 });
 
 export async function GET(

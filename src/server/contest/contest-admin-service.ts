@@ -55,6 +55,8 @@ export interface ContestRecord {
   createdAt: string;
   updatedAt: string;
   publishedAt: string | null;
+  accessMode: "open" | "code" | "premium";
+  registrationCap: number | null;
 }
 
 export interface ContestQuestionInput {
@@ -88,13 +90,15 @@ function mapRow(row: any): ContestRecord {
     createdAt: new Date(row.created_at).toISOString(),
     updatedAt: new Date(row.updated_at).toISOString(),
     publishedAt: row.published_at ? new Date(row.published_at).toISOString() : null,
+    accessMode: (row.access_mode as "open" | "code" | "premium") ?? "open",
+    registrationCap: row.registration_cap ?? null,
   };
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 const SELECT_COLS = `id, name, subjects, topics, banner_url, reg_open, reg_close,
   start_at, end_at, display_tz, duration_seconds, scoring_config, ogcode_reward,
-  status, created_by, created_at, updated_at, published_at`;
+  status, created_by, created_at, updated_at, published_at, access_mode, registration_cap`;
 
 export interface CreateContestInput {
   name?: string;
@@ -207,6 +211,8 @@ export interface UpdateContestInput {
   regClose?: string | null;
   startAt?: string | null;
   endAt?: string | null;
+  accessMode?: "open" | "code" | "premium";
+  registrationCap?: number | null;
 }
 
 /** Update a DRAFT contest. Once published (status='scheduled'+) the paper and
@@ -248,6 +254,11 @@ export async function updateContest(id: string, patch: UpdateContestInput): Prom
   if (patch.regClose !== undefined) push("reg_close = $$", patch.regClose);
   if (patch.startAt !== undefined) push("start_at = $$", patch.startAt);
   if (patch.endAt !== undefined) push("end_at = $$", patch.endAt);
+  if (patch.accessMode !== undefined) push("access_mode = $$", patch.accessMode);
+  if (patch.registrationCap !== undefined) {
+    const cap = patch.registrationCap == null ? null : Math.max(1, Math.floor(patch.registrationCap));
+    push("registration_cap = $$", cap);
+  }
 
   if (sets.length === 0) return existing;
 
