@@ -56,6 +56,7 @@ type FlagKey =
   | "fullLengthMocks"
   | "questionClusters"
   | "contest"
+  | "contestQuestionTypes"
   | "payments"
   | "loginStreakCelebration";
 
@@ -286,6 +287,10 @@ const FLAG_SPECS: Record<FlagKey, FlagSpec> = {
   // built/tested, OFF in prod until the Phase 9 game-day load test passes, then
   // flipped via TEACHER_LAUNCH_CONTEST=1. Plan: V1/CONTEST_ORBIT_IMPLEMENTATION_PLAN.md
   contest: { envSuffix: "CONTEST", defaultDev: true, defaultProd: false },
+  // Contest multi-type questions (MSQ/numerical/matrix/…) beyond MCQ. Ships DARK
+  // in dev AND prod until the contest player + grading render/grade the extra
+  // types. Plan: V1/CONTEST_PLATFORM_ROADMAP_PLAN.md Phase 1.
+  contestQuestionTypes: { envSuffix: "CONTEST_QUESTION_TYPES", defaultDev: false, defaultProd: false },
   // Razorpay payments (V1/RAZORPAY_PAYMENTS_PLAN.md). Gates the Rail-A one-time
   // order surface: /api/payments/*, /api/pricing, the term/bundle buy buttons and
   // the real /admin/financials. Ships DARK in dev and prod — the existing

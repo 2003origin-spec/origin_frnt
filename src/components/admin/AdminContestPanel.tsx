@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Plus, Trophy, Ban, Rocket, Loader2, ChevronDown, Eye, Save, Pencil, Trash2, RefreshCw, Clock, BarChart3, ShieldAlert, Copy, Repeat } from 'lucide-react';
+import Link from 'next/link';
+import { Plus, Trophy, Ban, Rocket, Loader2, ChevronDown, Eye, Save, Pencil, Trash2, RefreshCw, Clock, BarChart3, ShieldAlert, Copy, Repeat, FileUp } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { NeuButton } from '@/components/ui/neu';
@@ -49,10 +50,18 @@ interface BuilderState {
   subjects: string[];
   topics: Record<string, string[]>;
   counts: Record<string, number>;
+  types: Record<string, string[]>; // per-subject question types (default ['mcq'])
   startLocal: string; // datetime-local, IST wall time
   durationMin: number;
   regOpenLocal: string; // datetime-local, IST wall time
 }
+
+/** Question types a contest paper can draw (gated by contestQuestionTypes). */
+const CONTEST_TYPE_OPTIONS: { value: string; label: string }[] = [
+  { value: 'mcq', label: 'MCQ' },
+  { value: 'msq', label: 'MSQ (multi)' },
+  { value: 'numerical', label: 'Numerical' },
+];
 
 const emptyBuilder = (): BuilderState => ({
   id: null,
@@ -60,12 +69,13 @@ const emptyBuilder = (): BuilderState => ({
   subjects: ['Physics', 'Chemistry', 'Mathematics'],
   topics: {},
   counts: {},
+  types: {},
   startLocal: '',
   durationMin: 60,
   regOpenLocal: '',
 });
 
-export function AdminContestPanel({ initial }: { initial: ContestRecord[] }) {
+export function AdminContestPanel({ initial, questionTypesEnabled = false }: { initial: ContestRecord[]; questionTypesEnabled?: boolean }) {
   const [contests, setContests] = useState<ContestRecord[]>(initial);
   const [b, setB] = useState<BuilderState>(emptyBuilder());
   const [chapters, setChapters] = useState<Record<string, string[]>>({});
@@ -142,6 +152,22 @@ export function AdminContestPanel({ initial }: { initial: ContestRecord[] }) {
   };
 
   const countFor = (s: string) => b.counts[s] ?? 10;
+  // Per-subject question types; default MCQ-only (historical behaviour). Only
+  // surfaced when the contestQuestionTypes flag is on.
+  const typesFor = (s: string): string[] => {
+    const t = b.types[s];
+    return t && t.length ? t : ['mcq'];
+  };
+  const toggleType = (subject: string, type: string) => {
+    setPreview(null);
+    setB((p) => {
+      const cur = new Set(p.types[subject] ?? ['mcq']);
+      if (cur.has(type)) cur.delete(type);
+      else cur.add(type);
+      if (cur.size === 0) cur.add('mcq'); // never empty
+      return { ...p, types: { ...p.types, [subject]: [...cur] } };
+    });
+  };
 
   // Build the schedule ISO windows (UTC) from the IST inputs.
   const buildSchedule = () => {
@@ -216,6 +242,7 @@ export function AdminContestPanel({ initial }: { initial: ContestRecord[] }) {
         subject: s,
         count: countFor(s),
         topics: (b.topics[s] ?? []).length ? b.topics[s] : undefined,
+        types: questionTypesEnabled ? typesFor(s) : undefined,
       }));
       const resolved = (await apiCall(`/admin/contest/${id}/questions/resolve`, {
         method: 'POST',
@@ -287,6 +314,50 @@ export function AdminContestPanel({ initial }: { initial: ContestRecord[] }) {
     }
   };
 
+  // ── Direct-attach: hand-pick imported (file-generated) questions ───────────
+  const [importPickerOpen, setImportPickerOpen] = useState(false);
+  const [importBank, setImportBank] = useState<ResolvedQuestion[] | null>(null);
+  const [importSel, setImportSel] = useState<Set<string>>(() => new Set());
+  const [importLoading, setImportLoading] = useState(false);
+
+  const openImportPicker = async () => {
+    setImportPickerOpen((v) => !v);
+    if (importBank || importLoading) return;
+    setImportLoading(true);
+    try {
+      const data = (await apiCall('/admin/contest/import-questions')) as { questions: ResolvedQuestion[] };
+      setImportBank(data.questions ?? []);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not load imported questions.');
+      setImportBank([]);
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
+  const toggleImportSel = (id: string) =>
+    setImportSel((prev) => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+
+  // Append the chosen imported questions to the preview paper (dedup by id).
+  // Works even before a resolve — the admin can build a paper from imports alone.
+  const addSelectedImports = () => {
+    if (!importBank || importSel.size === 0) return;
+    const chosen = importBank.filter((q) => importSel.has(q.questionId));
+    setPreview((prev) => {
+      const existing = prev?.questions ?? [];
+      const existingIds = new Set(existing.map((q) => q.questionId));
+      const merged = [...existing, ...chosen.filter((q) => !existingIds.has(q.questionId))];
+      return { count: merged.length, questions: merged };
+    });
+    setImportSel(new Set());
+    toast.success(`Added ${chosen.length} imported question(s) to the paper.`);
+  };
+
   // Turn the current builder config into a RECURRING schedule (auto-publishes
   // every `cadenceDays`, first occurrence = the builder's start time).
   const createRecurring = async () => {
@@ -305,7 +376,7 @@ export function AdminContestPanel({ initial }: { initial: ContestRecord[] }) {
           name: b.name.trim(),
           subjects: b.subjects,
           topics: b.topics,
-          selections: b.subjects.map((s) => ({ subject: s, count: countFor(s), topics: (b.topics[s] ?? []).length ? b.topics[s] : undefined })),
+          selections: b.subjects.map((s) => ({ subject: s, count: countFor(s), topics: (b.topics[s] ?? []).length ? b.topics[s] : undefined, types: questionTypesEnabled ? typesFor(s) : undefined })),
           durationMinutes: b.durationMin,
           cadenceDays,
           firstStartAt: firstStart,
@@ -351,6 +422,7 @@ export function AdminContestPanel({ initial }: { initial: ContestRecord[] }) {
       subjects: c.subjects,
       topics: c.topics ?? {},
       counts: {},
+      types: {},
       startLocal: utcIsoToIstLocal(c.startAt),
       durationMin,
       regOpenLocal: utcIsoToIstLocal(c.regOpen),
@@ -451,9 +523,17 @@ export function AdminContestPanel({ initial }: { initial: ContestRecord[] }) {
 
   return (
     <div className="max-w-3xl mx-auto p-4 sm:p-6 space-y-6">
-      <h1 className="text-2xl font-black text-foreground flex items-center gap-2">
-        <Trophy className="w-6 h-6 text-amber-500" /> Weekly Contests
-      </h1>
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="text-2xl font-black text-foreground flex items-center gap-2">
+          <Trophy className="w-6 h-6 text-amber-500" /> Weekly Contests
+        </h1>
+        <Link
+          href="/admin/contest/import"
+          className="inline-flex items-center gap-2 rounded-xl border border-border/50 px-3 py-1.5 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
+        >
+          <FileUp className="w-4 h-4" /> Import questions
+        </Link>
+      </div>
 
       {/* ── Metrics (funnel + retention) ────────────────────────────────── */}
       <ContestMetrics />
@@ -541,6 +621,32 @@ export function AdminContestPanel({ initial }: { initial: ContestRecord[] }) {
                         />
                       </div>
                     </div>
+
+                    {expanded && questionTypesEnabled && (
+                      <div className="mt-3 pt-3 border-t border-border/40">
+                        <div className="text-[10px] font-bold text-muted-foreground mb-2">
+                          Question types (the count is split across the selected types)
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {CONTEST_TYPE_OPTIONS.map((t) => {
+                            const on = typesFor(s).includes(t.value);
+                            return (
+                              <button
+                                key={t.value}
+                                type="button"
+                                onClick={() => toggleType(s, t.value)}
+                                className={cn(
+                                  'px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-colors',
+                                  on ? 'bg-primary text-white' : 'neu-raised text-muted-foreground',
+                                )}
+                              >
+                                {t.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
 
                     {expanded && (
                       <div className="mt-3 pt-3 border-t border-border/40">
@@ -680,6 +786,55 @@ export function AdminContestPanel({ initial }: { initial: ContestRecord[] }) {
           <p className="text-[10px] font-bold text-muted-foreground">Preview the paper to enable publishing.</p>
         )}
 
+        {/* Direct-attach: hand-pick imported (file-generated) questions into the paper */}
+        <div className="pt-3 border-t border-border/40 space-y-2">
+          <button
+            type="button"
+            onClick={openImportPicker}
+            className="inline-flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-muted-foreground hover:text-primary"
+          >
+            <FileUp className="w-4 h-4" /> {importPickerOpen ? 'Hide' : 'Add'} imported questions
+          </button>
+          {importPickerOpen && (
+            <div className="neu-inset rounded-xl p-3 space-y-2">
+              {importLoading ? (
+                <p className="text-[12px] text-muted-foreground">Loading…</p>
+              ) : !importBank || importBank.length === 0 ? (
+                <p className="text-[12px] text-muted-foreground">
+                  No imported questions yet.{' '}
+                  <Link href="/admin/contest/import" className="text-primary underline">Import from a file</Link>.
+                </p>
+              ) : (
+                <>
+                  <div className="max-h-64 overflow-y-auto space-y-1">
+                    {importBank.map((q) => (
+                      <label key={q.questionId} className="flex items-start gap-2 text-[12px] text-foreground">
+                        <input
+                          type="checkbox"
+                          checked={importSel.has(q.questionId)}
+                          onChange={() => toggleImportSel(q.questionId)}
+                          className="mt-0.5"
+                        />
+                        <span className="min-w-0">
+                          <span className="text-muted-foreground">
+                            [{q.subject ?? '—'}{q.snapshot.chapter ? ` · ${q.snapshot.chapter}` : ''}]
+                          </span>{' '}
+                          {(q.snapshot.text ?? '').slice(0, 120) || '(no text)'}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                  <NeuButton onClick={addSelectedImports} disabled={importSel.size === 0}>
+                    <span className="inline-flex items-center gap-2 text-foreground font-black text-[12px] uppercase tracking-wider">
+                      <Plus className="w-4 h-4" /> Add {importSel.size || ''} to paper
+                    </span>
+                  </NeuButton>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+
         {/* Auto-schedule: turn this config into a recurring contest */}
         <div className="pt-3 border-t border-border/40 flex flex-wrap items-center gap-2">
           <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Or automate</span>
@@ -763,6 +918,14 @@ export function AdminContestPanel({ initial }: { initial: ContestRecord[] }) {
                 )}
                 {canReview(c) && (
                   <IconBtn onClick={() => openReview(c)} busy={false} icon={<ShieldAlert className="w-3.5 h-3.5" />} label="Review" />
+                )}
+                {(c.status === 'result_processing' || c.status === 'result_published') && (
+                  <Link
+                    href={`/admin/contest/${c.id}/analytics`}
+                    className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[10px] font-black uppercase tracking-wider neu-raised text-muted-foreground hover:text-primary"
+                  >
+                    <BarChart3 className="w-3.5 h-3.5" /> Analytics
+                  </Link>
                 )}
                 <IconBtn onClick={() => clone(c)} busy={rowBusy === c.id} icon={<Copy className="w-3.5 h-3.5" />} label="Clone" />
                 {(c.status === 'draft' || c.status === 'scheduled') && (

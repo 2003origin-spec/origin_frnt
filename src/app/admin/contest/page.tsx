@@ -16,5 +16,5 @@ export default async function AdminContestPage() {
   } catch (err) {
     console.error('[admin/contest] listContests failed:', err);
   }
-  return <AdminContestPanel initial={contests} />;
+  return <AdminContestPanel initial={contests} questionTypesEnabled={isFeatureEnabled('contestQuestionTypes')} />;
 }

@@ -106,6 +106,8 @@ export async function getContestMistakeDpp(contestId: string, userId: string): P
     chapters: weakChapters,
     excludeIds,
     type: "mcq", // DPP UI renders single-select MCQ (matches contest/practice)
+    // Recommend OGCode questions AND practice-eligible admin-imported questions.
+    contestPracticePool: true,
     limit: 20,
     offset: 0,
   });

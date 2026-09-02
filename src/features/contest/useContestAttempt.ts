@@ -41,8 +41,10 @@ export interface AttemptState {
 
 export type Phase = 'loading' | 'instructions' | 'running' | 'submitting' | 'submitted' | 'error';
 
-/** Client answer per position: a chosen MCQ option index. */
-type AnswerMap = Record<string, { selectedOption?: number }>;
+/** Client answer per position. MCQ = selectedOption; MSQ = selectedOptions;
+ *  numerical = answerText. The server stores answers opaquely and grade.ts reads
+ *  the matching field per questionType, so this is the only place the shape lives. */
+type AnswerMap = Record<string, { selectedOption?: number; selectedOptions?: number[]; answerText?: string }>;
 
 const MAX_VIOLATIONS = 3;
 
@@ -52,15 +54,18 @@ export function useContestAttempt(contestId: string) {
   const [questions, setQuestions] = useState<PaperQuestion[]>([]);
   const [state, setState] = useState<AttemptState | null>(null);
   const [answers, setAnswers] = useState<AnswerMap>({});
+  const [marked, setMarked] = useState<Set<number>>(() => new Set());
   const [violations, setViolations] = useState(0);
   const [now, setNow] = useState(() => Date.now());
 
   const skewRef = useRef(0);
   const revRef = useRef(0);
   const answersRef = useRef<AnswerMap>({});
+  const markedRef = useRef<Set<number>>(new Set());
   const debounceRef = useRef<number | undefined>(undefined);
   const submittingRef = useRef(false);
   answersRef.current = answers;
+  markedRef.current = marked;
 
   // ── server-authoritative remaining seconds (skew-corrected) ────────────────
   const remaining = useMemo(() => {
@@ -119,6 +124,14 @@ export function useContestAttempt(contestId: string) {
             setAnswers(st.savedAnswers);
             answersRef.current = st.savedAnswers;
           }
+          const savedMarked = Array.isArray(st.savedPalette?.marked)
+            ? (st.savedPalette!.marked as unknown[]).filter((n): n is number => typeof n === 'number')
+            : [];
+          if (savedMarked.length) {
+            const set = new Set(savedMarked);
+            setMarked(set);
+            markedRef.current = set;
+          }
           revRef.current = st.savedRev ?? 0;
           setQuestions(qs);
           setPhase('running');
@@ -145,7 +158,7 @@ export function useContestAttempt(contestId: string) {
       await mutateJson('/api/contest/answers', {
         method: 'POST',
         keepalive: true,
-        body: JSON.stringify({ contestId, answers: answersRef.current, rev: revRef.current }),
+        body: JSON.stringify({ contestId, answers: answersRef.current, palette: { marked: [...markedRef.current] }, rev: revRef.current }),
       });
     } catch {
       /* transient — the next save retries */
@@ -164,7 +177,7 @@ export function useContestAttempt(contestId: string) {
         credentials: 'include',
         keepalive: true,
         headers: { 'Content-Type': 'application/json', ...csrfHeaders() },
-        body: JSON.stringify({ contestId, answers: answersRef.current, rev: revRef.current }),
+        body: JSON.stringify({ contestId, answers: answersRef.current, palette: { marked: [...markedRef.current] }, rev: revRef.current }),
       }).catch(() => undefined);
     };
     window.addEventListener('pagehide', onHide);
@@ -174,13 +187,62 @@ export function useContestAttempt(contestId: string) {
     };
   }, [phase, flushSave, contestId]);
 
+  const scheduleSave = useCallback(() => {
+    if (debounceRef.current) window.clearTimeout(debounceRef.current);
+    debounceRef.current = window.setTimeout(() => void flushSave(), 2000);
+  }, [flushSave]);
+
   const setAnswer = useCallback(
     (position: number, selectedOption: number) => {
       setAnswers((prev) => ({ ...prev, [String(position)]: { selectedOption } }));
-      if (debounceRef.current) window.clearTimeout(debounceRef.current);
-      debounceRef.current = window.setTimeout(() => void flushSave(), 2000);
+      scheduleSave();
     },
-    [flushSave],
+    [scheduleSave],
+  );
+
+  /** Toggle "mark for review" on a question (persisted in the palette). */
+  const toggleMarked = useCallback(
+    (position: number) => {
+      setMarked((prev) => {
+        const next = new Set(prev);
+        if (next.has(position)) next.delete(position);
+        else next.add(position);
+        return next;
+      });
+      scheduleSave();
+    },
+    [scheduleSave],
+  );
+
+  /** MSQ: toggle one option in the selected set (empty set clears the answer). */
+  const toggleAnswerOption = useCallback(
+    (position: number, option: number) => {
+      setAnswers((prev) => {
+        const cur = new Set(prev[String(position)]?.selectedOptions ?? []);
+        if (cur.has(option)) cur.delete(option);
+        else cur.add(option);
+        const next = { ...prev };
+        if (cur.size === 0) delete next[String(position)];
+        else next[String(position)] = { selectedOptions: [...cur].sort((a, b) => a - b) };
+        return next;
+      });
+      scheduleSave();
+    },
+    [scheduleSave],
+  );
+
+  /** Numerical: set (or clear) the typed answer text. */
+  const setAnswerText = useCallback(
+    (position: number, answerText: string) => {
+      setAnswers((prev) => {
+        const next = { ...prev };
+        if (!answerText.trim()) delete next[String(position)];
+        else next[String(position)] = { answerText };
+        return next;
+      });
+      scheduleSave();
+    },
+    [scheduleSave],
   );
 
   // ── submit ─────────────────────────────────────────────────────────────────
@@ -278,6 +340,10 @@ export function useContestAttempt(contestId: string) {
     remaining,
     maxViolations: MAX_VIOLATIONS,
     setAnswer,
+    toggleAnswerOption,
+    setAnswerText,
+    marked,
+    toggleMarked,
     begin,
     submit,
   };

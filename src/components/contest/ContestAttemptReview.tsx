@@ -35,6 +35,31 @@ export function ContestAttemptReview({ contestId }: { contestId: string }) {
   const [data, setData] = useState<{ contestName: string; questions: Q[] } | null>(null);
   const [status, setStatus] = useState<'loading' | 'ok' | 'pending' | 'error'>('loading');
   const [filter, setFilter] = useState<'all' | 'wrong'>('all');
+  const [bookmarked, setBookmarked] = useState<Set<number>>(() => new Set());
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/contest/bookmarks?contestId=${encodeURIComponent(contestId)}`, { credentials: 'include' });
+        if (!res.ok || cancelled) return;
+        const body = (await res.json()) as { positions: number[] };
+        if (!cancelled) setBookmarked(new Set(body.positions ?? []));
+      } catch { /* non-blocking */ }
+    })();
+    return () => { cancelled = true; };
+  }, [contestId]);
+
+  const toggleBookmark = async (position: number) => {
+    const wasOn = bookmarked.has(position);
+    setBookmarked((prev) => { const n = new Set(prev); if (wasOn) n.delete(position); else n.add(position); return n; });
+    try {
+      const { mutateJson } = await import('@/lib/csrf');
+      await mutateJson('/api/contest/bookmarks', { method: 'POST', body: JSON.stringify({ contestId, position }) });
+    } catch {
+      setBookmarked((prev) => { const n = new Set(prev); if (wasOn) n.add(position); else n.delete(position); return n; }); // revert
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -96,8 +121,16 @@ export function ContestAttemptReview({ contestId }: { contestId: string }) {
         {shown.map((q) => (
           <div key={q.position} className="neu-raised rounded-2xl p-5">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-[10px] font-black uppercase tracking-widest text-primary">
+              <span className="text-[10px] font-black uppercase tracking-widest text-primary flex items-center gap-2">
                 Q{q.position + 1}{q.subject ? ` · ${q.subject}` : ''}{q.chapter ? ` · ${q.chapter}` : ''}
+                <button
+                  type="button"
+                  onClick={() => void toggleBookmark(q.position)}
+                  aria-label={bookmarked.has(q.position) ? 'Remove bookmark' : 'Bookmark this question'}
+                  className={bookmarked.has(q.position) ? 'text-amber-500' : 'text-muted-foreground hover:text-amber-500'}
+                >
+                  {bookmarked.has(q.position) ? '★' : '☆'}
+                </button>
               </span>
               {q.isCorrect === true ? (
                 <span className="inline-flex items-center gap-1 text-[11px] font-black text-emerald-500"><CheckCircle2 className="w-3.5 h-3.5" /> +{q.marksAwarded}</span>

@@ -32,7 +32,16 @@ export interface SubjectSelection {
   /** OGCode chapters to draw from (empty/omitted = the whole subject). */
   topics?: string[];
   difficulties?: string[];
+  /**
+   * Question types to draw from. Omitted/empty = `["mcq"]` — the historical,
+   * MCQ-only behaviour (unchanged). Additional types (msq/numerical/…) are only
+   * passed when the CONTEST_QUESTION_TYPES surface builds a multi-type paper.
+   */
+  types?: string[];
 }
+
+/** The only type contests have ever drawn; the default when none is specified. */
+const DEFAULT_CONTEST_TYPES = ["mcq"] as const;
 
 export interface ResolveOptions {
   contestId: string;
@@ -48,6 +57,8 @@ function freezeSnapshot(q: {
   correctOptions: number[] | null;
   answerText: string | null;
   tolerance: number | null;
+  answerSpec?: unknown;
+  matrixData?: unknown;
   explanation: string;
   subject: string;
   chapter: string;
@@ -65,6 +76,11 @@ function freezeSnapshot(q: {
     correctOptions: q.correctOptions,
     answerText: q.answerText,
     tolerance: q.tolerance,
+    // Carried so non-MCQ types (numerical-with-units / symbolic / matrix-match)
+    // freeze a self-contained gradeable snapshot. Null for plain MCQ — no change
+    // to existing MCQ papers.
+    answerSpec: q.answerSpec ?? null,
+    matrixData: q.matrixData ?? null,
     explanation: q.explanation,
     subject: q.subject,
     chapter: q.chapter,
@@ -94,25 +110,37 @@ export async function resolveContestQuestions(
     if (!(count > 0)) {
       throw selectionError(400, `Question count for ${sel.subject} must be greater than 0.`);
     }
-    const rows = await sampleOgcodeCatalogQuestionIds({
-      subject: sel.subject,
-      chapters: sel.topics && sel.topics.length ? sel.topics : null,
-      difficulties: sel.difficulties && sel.difficulties.length ? sel.difficulties : null,
-      // Contest player + practice render single-select MCQ only. Restrict the
-      // pool to real (option-bearing) MCQs so numerical/MSQ/subjective questions
-      // — which would be unanswerable in the UI — never enter a contest paper.
-      type: "mcq",
-      seed: `${contestId}:${sel.subject}`,
-      limit: count,
-    });
-    if (rows.length < count) {
-      const scope = sel.topics && sel.topics.length ? ` (topics: ${sel.topics.join(", ")})` : "";
-      throw selectionError(
-        400,
-        `Not enough ${sel.subject} questions${scope}: need ${count}, the bank has ${rows.length}. Widen the topics or lower the count before publishing.`,
-      );
+    // Types to draw from. Default MCQ (historical). When several are chosen, split
+    // the requested count across them (remainder to the earliest types) so the
+    // multiselect is honest — the pool for each type is filtered to that type, so
+    // a question a renderer can't display never enters the paper.
+    const types = sel.types && sel.types.length ? sel.types : [...DEFAULT_CONTEST_TYPES];
+    const base = Math.floor(count / types.length);
+    const remainder = count % types.length;
+    const ids: string[] = [];
+    for (let ti = 0; ti < types.length; ti++) {
+      const typeCount = base + (ti < remainder ? 1 : 0);
+      if (typeCount <= 0) continue;
+      const rows = await sampleOgcodeCatalogQuestionIds({
+        subject: sel.subject,
+        chapters: sel.topics && sel.topics.length ? sel.topics : null,
+        difficulties: sel.difficulties && sel.difficulties.length ? sel.difficulties : null,
+        type: types[ti],
+        includeContestImports: true,
+        seed: `${contestId}:${sel.subject}:${types[ti]}`,
+        limit: typeCount,
+      });
+      if (rows.length < typeCount) {
+        const scope = sel.topics && sel.topics.length ? ` (topics: ${sel.topics.join(", ")})` : "";
+        const typeLabel = types.length > 1 ? ` ${types[ti].toUpperCase()}` : "";
+        throw selectionError(
+          400,
+          `Not enough ${sel.subject}${typeLabel} questions${scope}: need ${typeCount}, the bank has ${rows.length}. Widen the topics/types or lower the count before publishing.`,
+        );
+      }
+      ids.push(...rows.map((r) => r.id));
     }
-    perSubjectIds.push({ selection: sel, ids: rows.map((r) => r.id) });
+    perSubjectIds.push({ selection: sel, ids });
   }
 
   // 2. Fetch full data for every chosen id in one map lookup, then freeze.
@@ -159,6 +187,7 @@ export async function resolveOneReplacement(input: {
     chapters: input.topics && input.topics.length ? input.topics : null,
     difficulties: input.difficulties && input.difficulties.length ? input.difficulties : null,
     type: "mcq",
+    includeContestImports: true,
     excludeIds: input.excludeIds,
     seed: `${input.contestId}:${input.subject}:replace`,
     limit: 1,

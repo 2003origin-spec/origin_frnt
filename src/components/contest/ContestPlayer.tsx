@@ -7,6 +7,7 @@ import { AlertTriangle, ArrowLeft, ArrowRight, Clock, Flag, Trophy } from 'lucid
 import { cn } from '@/lib/utils';
 import { NeuButton } from '@/components/ui/neu';
 import { LatexRenderer } from '@/components/ui/LatexRenderer';
+import { ContestCalculator } from '@/components/contest/ContestCalculator';
 import { useContestAttempt } from '@/features/contest/useContestAttempt';
 
 /**
@@ -27,10 +28,11 @@ function formatClock(totalSeconds: number): string {
 
 export function ContestPlayer({ contestId }: { contestId: string }) {
   const router = useRouter();
-  const { phase, error, questions, answers, violations, remaining, maxViolations, setAnswer, begin, submit } =
+  const { phase, error, questions, answers, violations, remaining, maxViolations, setAnswer, toggleAnswerOption, setAnswerText, marked, toggleMarked, begin, submit } =
     useContestAttempt(contestId);
   const [index, setIndex] = useState(0);
   const [confirmSubmit, setConfirmSubmit] = useState(false);
+  const [calcOpen, setCalcOpen] = useState(false);
 
   const answeredCount = useMemo(() => Object.keys(answers).length, [answers]);
 
@@ -221,8 +223,29 @@ export function ContestPlayer({ contestId }: { contestId: string }) {
       {/* Current question */}
       {current && (
         <div className="flex-1 px-4 py-4 max-w-2xl mx-auto w-full">
-          <div className="text-[10px] font-black uppercase tracking-widest text-primary mb-2">
-            {current.subject ?? 'Question'} · Q{index + 1}
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <div className="text-[10px] font-black uppercase tracking-widest text-primary">
+              {current.subject ?? 'Question'} · Q{index + 1}
+            </div>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setCalcOpen((v) => !v)}
+                className="rounded-lg px-2 py-1 text-[10px] font-black uppercase tracking-wider neu-raised text-muted-foreground hover:text-primary"
+              >
+                Calc
+              </button>
+              <button
+                type="button"
+                onClick={() => toggleMarked(current.position)}
+                className={cn(
+                  'inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-black uppercase tracking-wider transition-colors',
+                  marked.has(current.position) ? 'bg-amber-500 text-white' : 'neu-raised text-muted-foreground hover:text-amber-500',
+                )}
+              >
+                <Flag className="w-3 h-3" /> {marked.has(current.position) ? 'Marked' : 'Mark'}
+              </button>
+            </div>
           </div>
           <div className="text-[15px] font-bold text-foreground leading-relaxed mb-3">
             <LatexRenderer content={String(current.text ?? '')} />
@@ -235,44 +258,82 @@ export function ContestPlayer({ contestId }: { contestId: string }) {
               className="mb-5 max-h-72 w-auto max-w-full rounded-xl object-contain neu-inset p-2"
             />
           )}
-          <div className="space-y-3">
-            {(current.options ?? []).map((opt, oi) => {
-              const selected = answers[String(current.position)]?.selectedOption === oi;
+          {(() => {
+            const qType = String(current.questionType ?? 'mcq').toLowerCase();
+            const cur = answers[String(current.position)];
+            const isNumerical = qType === 'numerical' || qType === 'numerical_with_units';
+            const isMsq = qType === 'msq';
+
+            // Numerical / numerical-with-units: a single typed answer.
+            if (isNumerical) {
               return (
-                <button
-                  key={oi}
-                  type="button"
-                  onClick={() => setAnswer(current.position, oi)}
-                  className={cn(
-                    'w-full text-left px-4 py-3.5 rounded-2xl flex items-center gap-3 transition-all min-h-[52px]',
-                    selected ? 'bg-primary/10 ring-2 ring-primary' : 'neu-raised',
-                  )}
-                >
-                  <span
-                    className={cn(
-                      'w-7 h-7 shrink-0 rounded-lg flex items-center justify-center text-[13px] font-black',
-                      selected ? 'bg-primary text-white' : 'bg-muted text-muted-foreground',
-                    )}
-                  >
-                    {String.fromCharCode(65 + oi)}
-                  </span>
-                  <span className="text-[14px] font-medium text-foreground flex-1 min-w-0">
-                    <LatexRenderer content={String(opt)} />
-                    {current.optionImages?.[oi] && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={current.optionImages[oi] as string}
-                        alt={`Option ${String.fromCharCode(65 + oi)}`}
-                        className="mt-2 max-h-32 w-auto max-w-full rounded-lg object-contain"
-                      />
-                    )}
-                  </span>
-                </button>
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                    Your answer{qType === 'numerical_with_units' ? ' (include units if asked)' : ''}
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={cur?.answerText ?? ''}
+                    onChange={(e) => setAnswerText(current.position, e.target.value)}
+                    placeholder="Type your numerical answer"
+                    className="w-full rounded-2xl neu-inset px-4 py-3.5 text-[15px] font-semibold text-foreground outline-none focus:ring-2 focus:ring-primary"
+                  />
+                </div>
               );
-            })}
-          </div>
+            }
+
+            // MCQ (single-select) and MSQ (multi-select) share the option list;
+            // MSQ toggles a set and shows a checkbox affordance + a hint.
+            return (
+              <div className="space-y-3">
+                {isMsq && (
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Select all that apply</p>
+                )}
+                {(current.options ?? []).map((opt, oi) => {
+                  const selected = isMsq
+                    ? (cur?.selectedOptions ?? []).includes(oi)
+                    : cur?.selectedOption === oi;
+                  return (
+                    <button
+                      key={oi}
+                      type="button"
+                      onClick={() => (isMsq ? toggleAnswerOption(current.position, oi) : setAnswer(current.position, oi))}
+                      className={cn(
+                        'w-full text-left px-4 py-3.5 rounded-2xl flex items-center gap-3 transition-all min-h-[52px]',
+                        selected ? 'bg-primary/10 ring-2 ring-primary' : 'neu-raised',
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          'w-7 h-7 shrink-0 flex items-center justify-center text-[13px] font-black',
+                          isMsq ? 'rounded-md' : 'rounded-lg',
+                          selected ? 'bg-primary text-white' : 'bg-muted text-muted-foreground',
+                        )}
+                      >
+                        {isMsq ? (selected ? '✓' : '') : String.fromCharCode(65 + oi)}
+                      </span>
+                      <span className="text-[14px] font-medium text-foreground flex-1 min-w-0">
+                        <LatexRenderer content={String(opt)} />
+                        {current.optionImages?.[oi] && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={current.optionImages[oi] as string}
+                            alt={`Option ${String.fromCharCode(65 + oi)}`}
+                            className="mt-2 max-h-32 w-auto max-w-full rounded-lg object-contain"
+                          />
+                        )}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
       )}
+
+      {calcOpen && <ContestCalculator onClose={() => setCalcOpen(false)} />}
 
       {/* Prev / Next */}
       <div className="sticky bottom-0 px-4 py-3 flex items-center justify-between gap-3 border-t border-border/20 neu-surface">
