@@ -156,3 +156,58 @@ export async function getPersonalResult(contestId: string, userId: string): Prom
     totalRanked: total.rows[0].n,
   };
 }
+
+/** Top-N scorers of a contest (first name only), for the result "compare" block. */
+export async function getContestToppers(
+  contestId: string,
+  limit = 3,
+): Promise<{ rank: number; name: string; score: number }[]> {
+  await ensureContestSchema();
+  const pool = getUserPostgresReplicaPool();
+  if (!pool) return [];
+  const res = await pool.query<{ rank: number; score: number; name: string | null }>(
+    `SELECT l.rank, l.score, u.name
+       FROM contest.leaderboard_snapshot l
+       JOIN origin_users u ON u.id = l.user_id
+      WHERE l.contest_id = $1
+      ORDER BY l.rank ASC
+      LIMIT $2`,
+    [contestId, Math.max(1, Math.min(10, limit))],
+  );
+  return res.rows.map((r) => ({
+    rank: r.rank,
+    name: (r.name || "Anonymous").trim().split(/\s+/)[0],
+    score: Number(r.score),
+  }));
+}
+
+/**
+ * The contest leaderboard filtered to the people the user follows (plus the user
+ * themselves) — the "friends" leaderboard (Phase 7). Ordered by global rank.
+ */
+export async function getFriendsLeaderboard(
+  contestId: string,
+  userId: string,
+  limit = 100,
+): Promise<{ rank: number; name: string; score: number; isMe: boolean }[]> {
+  await ensureContestSchema();
+  const pool = getUserPostgresReplicaPool();
+  if (!pool) return [];
+  const res = await pool.query<{ rank: number; score: number; name: string | null; user_id: string }>(
+    `SELECT l.rank, l.score, u.name, l.user_id
+       FROM contest.leaderboard_snapshot l
+       JOIN origin_users u ON u.id = l.user_id
+      WHERE l.contest_id = $1
+        AND (l.user_id = $2
+             OR l.user_id IN (SELECT following_id FROM social.follows WHERE follower_id = $2))
+      ORDER BY l.rank ASC
+      LIMIT $3`,
+    [contestId, userId, Math.max(1, Math.min(500, limit))],
+  );
+  return res.rows.map((r) => ({
+    rank: r.rank,
+    name: (r.name || "Anonymous").trim().split(/\s+/)[0],
+    score: Number(r.score),
+    isMe: r.user_id === userId,
+  }));
+}

@@ -27,6 +27,21 @@ export function ContestLeaderboard({ contestId }: { contestId: string }) {
   const [cursor, setCursor] = useState<number | null>(0);
   const [status, setStatus] = useState<'loading' | 'ok' | 'pending' | 'error'>('loading');
   const [loadingMore, setLoadingMore] = useState(false);
+  const [scope, setScope] = useState<'global' | 'friends'>('global');
+  const [friends, setFriends] = useState<{ rank: number; name: string; score: number; isMe: boolean }[] | null>(null);
+
+  useEffect(() => {
+    if (scope !== 'friends' || friends !== null) return;
+    (async () => {
+      try {
+        const res = await fetch(`/api/contest/friends-leaderboard?contestId=${encodeURIComponent(contestId)}`, { credentials: 'include' });
+        const body = (await res.json().catch(() => ({}))) as { rows?: { rank: number; name: string; score: number; isMe: boolean }[] };
+        setFriends(body.rows ?? []);
+      } catch {
+        setFriends([]);
+      }
+    })();
+  }, [scope, friends, contestId]);
 
   const loadPage = useCallback(
     async (from: number) => {
@@ -83,6 +98,44 @@ export function ContestLeaderboard({ contestId }: { contestId: string }) {
           </h1>
         </div>
 
+        {/* Global / Friends scope */}
+        <div className="flex gap-2">
+          {(['global', 'friends'] as const).map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => setScope(s)}
+              className={cn(
+                'px-3.5 py-2 rounded-xl text-[12px] font-black uppercase tracking-wider transition-colors',
+                scope === s ? 'bg-primary text-white' : 'neu-raised text-muted-foreground',
+              )}
+            >
+              {s === 'global' ? 'Global' : 'Friends'}
+            </button>
+          ))}
+        </div>
+
+        {scope === 'friends' ? (
+          <div className="neu-raised rounded-2xl divide-y divide-border/20">
+            {friends === null ? (
+              <div className="px-4 py-6 text-center text-sm text-muted-foreground">Loading…</div>
+            ) : friends.length === 0 ? (
+              <div className="px-4 py-6 text-center text-sm text-muted-foreground">
+                None of the people you follow ranked here. Follow more players to compare.
+              </div>
+            ) : (
+              friends.map((r) => (
+                <div key={r.rank} className={cn('flex items-center justify-between px-4 py-3', r.isMe && 'bg-primary/10')}>
+                  <div className="flex items-center gap-3">
+                    <span className={cn('w-8 text-center text-sm font-black tabular-nums', r.rank <= 3 ? 'text-amber-500' : 'text-muted-foreground')}>{r.rank}</span>
+                    <span className={cn('text-[13px] font-bold', r.isMe ? 'text-primary' : 'text-foreground')}>{r.isMe ? 'You' : r.name}</span>
+                  </div>
+                  <span className="text-sm font-black text-foreground tabular-nums">{r.score}</span>
+                </div>
+              ))
+            )}
+          </div>
+        ) : (
         <div className="neu-raised rounded-2xl divide-y divide-border/20">
           {rows.map((r) => {
             const isMe = user?.id != null && r.userId === user.id;
@@ -112,8 +165,9 @@ export function ContestLeaderboard({ contestId }: { contestId: string }) {
             );
           })}
         </div>
+        )}
 
-        {cursor !== null && (
+        {scope === 'global' && cursor !== null && (
           <NeuButton
             onClick={async () => {
               setLoadingMore(true);

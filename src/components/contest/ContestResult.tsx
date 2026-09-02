@@ -27,6 +27,7 @@ interface SectionScore {
 interface ResultData {
   contestName: string;
   correctMarks: number;
+  toppers?: { rank: number; name: string; score: number }[];
   personal: { rank: number; percentile: number; score: number; totalRanked: number } | null;
   orbit: { rating: number; tier: string; provisional: boolean } | null;
   orbitMovement: { before: number; after: number; change: number } | null;
@@ -140,6 +141,34 @@ export function ContestResult({ contestId }: { contestId: string }) {
           <Tile icon={<Target className="w-5 h-5" />} label="Percentile" value={p ? `${p.percentile}` : '—'} />
           <Tile icon={<Trophy className="w-5 h-5" />} label="Score" value={attempt ? `${attempt.score}` : '—'} />
         </div>
+
+        {/* Compare with toppers */}
+        {data?.toppers && data.toppers.length > 0 && (
+          <div className="neu-raised rounded-2xl p-5 space-y-3">
+            <div className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">How you compare</div>
+            {data.toppers.map((t) => (
+              <div key={t.rank} className="flex items-center justify-between">
+                <span className="text-sm font-bold text-foreground">
+                  <span className="text-amber-500">#{t.rank}</span> {t.name}
+                </span>
+                <span className="text-sm font-black text-primary tabular-nums">{t.score}</span>
+              </div>
+            ))}
+            {p && attempt && (
+              <div className="flex items-center justify-between border-t border-border/40 pt-2">
+                <span className="text-sm font-black text-foreground">You (#{p.rank})</span>
+                <span className="text-sm font-black text-foreground tabular-nums">
+                  {attempt.score}
+                  {data.toppers[0] && attempt.score < data.toppers[0].score && (
+                    <span className="ml-2 text-[11px] font-bold text-muted-foreground">
+                      {data.toppers[0].score - attempt.score} behind #1
+                    </span>
+                  )}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Subject-wise */}
         {subjects.length > 0 && (

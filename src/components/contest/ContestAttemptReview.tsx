@@ -7,6 +7,7 @@ import { ArrowLeft, CheckCircle2, XCircle, MinusCircle, Loader2, BookOpen } from
 import { cn } from '@/lib/utils';
 import { NeuButton } from '@/components/ui/neu';
 import { LatexRenderer } from '@/components/ui/LatexRenderer';
+import { ContestDiscussion } from '@/components/contest/ContestDiscussion';
 
 /**
  * Post-contest solutions review of the student's OWN attempt — every question
@@ -49,6 +50,16 @@ export function ContestAttemptReview({ contestId }: { contestId: string }) {
     })();
     return () => { cancelled = true; };
   }, [contestId]);
+
+  const objectToKey = async (position: number) => {
+    const reason = typeof window !== 'undefined' ? window.prompt('Why do you think this key is wrong? (your objection goes to the admins)') : null;
+    if (!reason || !reason.trim()) return;
+    try {
+      const { mutateJson } = await import('@/lib/csrf');
+      const res = await mutateJson('/api/contest/objection', { method: 'POST', body: JSON.stringify({ contestId, position, reason: reason.trim() }) });
+      if (res.ok) { const { toast } = await import('sonner'); toast.success('Objection submitted — thanks, an admin will review it.'); }
+    } catch { /* non-blocking */ }
+  };
 
   const toggleBookmark = async (position: number) => {
     const wasOn = bookmarked.has(position);
@@ -131,6 +142,14 @@ export function ContestAttemptReview({ contestId }: { contestId: string }) {
                 >
                   {bookmarked.has(q.position) ? '★' : '☆'}
                 </button>
+                <button
+                  type="button"
+                  onClick={() => void objectToKey(q.position)}
+                  className="text-muted-foreground hover:text-rose-500 normal-case"
+                  title="Object to the answer key"
+                >
+                  ⚑
+                </button>
               </span>
               {q.isCorrect === true ? (
                 <span className="inline-flex items-center gap-1 text-[11px] font-black text-emerald-500"><CheckCircle2 className="w-3.5 h-3.5" /> +{q.marksAwarded}</span>
@@ -185,6 +204,8 @@ export function ContestAttemptReview({ contestId }: { contestId: string }) {
                 <LatexRenderer content={q.explanation} />
               </div>
             )}
+
+            <ContestDiscussion contestId={contestId} position={q.position} />
           </div>
         ))}
 

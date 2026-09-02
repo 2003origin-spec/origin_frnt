@@ -10,7 +10,7 @@ import type { NextRequest } from "next/server";
 import { requireFeatureEnabled } from "@/lib/feature-flags";
 import { requireAuth } from "@/server/authz";
 import { getUserPostgresReplicaPool } from "@/server/user-postgres";
-import { getPersonalResult } from "@/server/contest/contest-ranking-service";
+import { getContestToppers, getPersonalResult } from "@/server/contest/contest-ranking-service";
 import { getOrbitSummary } from "@/server/contest/contest-orbit-service";
 import { ensureContestSchema } from "@/server/contest/contest-schema";
 import { normalizeScoringConfig } from "@/lib/contest/contest-config";
@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
       return teacherJson({ detail: "Results are not published yet." }, { status: 403 });
     }
 
-    const [personal, attempt, orbit, orbitDelta] = await Promise.all([
+    const [personal, attempt, orbit, orbitDelta, toppers] = await Promise.all([
       getPersonalResult(contestId, ctx.userId),
       pool.query(
         `SELECT score, correct_count, incorrect_count, unattempted_count, time_taken_seconds, section_scores
@@ -49,10 +49,12 @@ export async function GET(request: NextRequest) {
            FROM contest.orbit_history WHERE contest_id = $1 AND user_id = $2`,
         [contestId, ctx.userId],
       ),
+      getContestToppers(contestId, 3),
     ]);
 
     return teacherJson({
       contestName: contest.rows[0].name,
+      toppers,
       // Marks-per-correct so the client can render the true out-of total instead
       // of assuming a fixed scale.
       correctMarks: normalizeScoringConfig(contest.rows[0].scoring_config).correctMarks,

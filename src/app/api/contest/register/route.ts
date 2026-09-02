@@ -16,7 +16,7 @@ import { registerForContest } from "@/server/contest/contest-registration-servic
 
 import { handleTeacherError, teacherJson } from "@/app/api/teacher/_utils";
 
-const RegisterSchema = z.object({ contestId: z.string().min(1) });
+const RegisterSchema = z.object({ contestId: z.string().min(1), code: z.string().max(64).optional() });
 
 export async function POST(request: NextRequest) {
   try {
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
     const ctx = await requireAuth(request);
     const parsed = RegisterSchema.safeParse(await parseJsonBody(request));
     if (!parsed.success) return teacherJson({ detail: parsed.error.message }, { status: 400 });
-    const result = await registerForContest(parsed.data.contestId, ctx.userId);
+    const result = await registerForContest(parsed.data.contestId, ctx.userId, { code: parsed.data.code });
     return teacherJson(result);
   } catch (error) {
     return handleTeacherError(error);

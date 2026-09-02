@@ -12,6 +12,11 @@ import { getUserPostgresPool } from "@/server/user-postgres";
 
 import { recordRegistration } from "./contest-counts";
 import { ensureContestSchema } from "./contest-schema";
+import {
+  enforceContestEligibility,
+  getContestAccessConfig,
+  seatStatusForNewRegistration,
+} from "./contest-access-service";
 
 const redisUrl = process.env.UPSTASH_REDIS_REST_URL?.trim();
 const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN?.trim();
@@ -54,6 +59,8 @@ export interface RegistrationResult {
   registered: true;
   registeredAt: string;
   alreadyRegistered: boolean;
+  /** Phase 5: true when the cap was full and the user landed on the waitlist. */
+  waitlisted: boolean;
 }
 
 /**
@@ -62,14 +69,34 @@ export interface RegistrationResult {
  * against DB NOW(). Returns success (idempotent) or throws 409 when the window
  * is closed / the contest isn't registrable.
  */
-export async function registerForContest(contestId: string, userId: string): Promise<RegistrationResult> {
+export async function registerForContest(
+  contestId: string,
+  userId: string,
+  opts: { code?: string | null } = {},
+): Promise<RegistrationResult> {
   await ensureContestSchema();
   const p = pool();
 
+  // Access gate (Phase 5): enforce access_mode BEFORE inserting. Legacy contests
+  // default to 'open'/uncapped, so this is a no-op for them. A code, if present,
+  // is redeemed here; ineligibility throws 403.
+  const access = await getContestAccessConfig(contestId);
+  if (!access) throw regError(404, "Contest not found.");
+  // Skip the gate for an already-registered user (idempotent re-register).
+  const priorReg = await p.query(
+    `SELECT status FROM contest.registrations WHERE contest_id = $1 AND user_id = $2`,
+    [contestId, userId],
+  );
+  if (!priorReg.rows[0]) {
+    await enforceContestEligibility({ contestId, userId, accessMode: access.accessMode, code: opts.code });
+  }
+  const seatStatus = priorReg.rows[0]?.status
+    ?? (await seatStatusForNewRegistration(contestId, access.registrationCap));
+
   // Guarded insert: only lands when the contest is currently registrable.
   const inserted = await p.query(
-    `INSERT INTO contest.registrations (contest_id, user_id)
-     SELECT c.id, $2
+    `INSERT INTO contest.registrations (contest_id, user_id, status)
+     SELECT c.id, $2, $3
        FROM contest.contests c
       WHERE c.id = $1
         AND c.status = 'scheduled'
@@ -78,8 +105,8 @@ export async function registerForContest(contestId: string, userId: string): Pro
         -- contest ends, so a user can register during a LIVE contest and start.
         AND NOW() >= c.reg_open AND NOW() < c.end_at
      ON CONFLICT (contest_id, user_id) DO NOTHING
-     RETURNING registered_at`,
-    [contestId, userId],
+     RETURNING registered_at, status`,
+    [contestId, userId, seatStatus],
   );
 
   if (inserted.rows[0]) {
@@ -90,13 +117,14 @@ export async function registerForContest(contestId: string, userId: string): Pro
       registered: true,
       registeredAt: new Date(inserted.rows[0].registered_at).toISOString(),
       alreadyRegistered: false,
+      waitlisted: inserted.rows[0].status === "waitlisted",
     };
   }
 
   // No insert: either already registered (idempotent success) or the window is
   // closed / contest not found. Disambiguate with an exact read.
   const existing = await p.query(
-    `SELECT registered_at FROM contest.registrations WHERE contest_id = $1 AND user_id = $2`,
+    `SELECT registered_at, status FROM contest.registrations WHERE contest_id = $1 AND user_id = $2`,
     [contestId, userId],
   );
   if (existing.rows[0]) {
@@ -104,6 +132,7 @@ export async function registerForContest(contestId: string, userId: string): Pro
       registered: true,
       registeredAt: new Date(existing.rows[0].registered_at).toISOString(),
       alreadyRegistered: true,
+      waitlisted: existing.rows[0].status === "waitlisted",
     };
   }
 

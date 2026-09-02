@@ -421,3 +421,68 @@ export async function listContestImportBankQuestions(userId: string): Promise<St
   if (!workspaceId) return [];
   return listContestImportQuestions(workspaceId);
 }
+
+// ─── Phase 4C: manual question entry ─────────────────────────────────────────
+
+export interface ManualContestQuestionInput {
+  text: string;
+  options: string[];
+  correctOption: number;
+  subject: string;
+  chapter: string;
+  difficulty?: string;
+  explanation?: string;
+  practiceEligible?: boolean;
+}
+
+/**
+ * Author a single MCQ directly into the contest question pool (no file import).
+ * Publishes into the OGCode bank tagged is_contest_import, attributed to the
+ * admin's synthetic workspace — so it's resolvable into a paper immediately.
+ */
+export async function createManualContestQuestion(
+  userId: string,
+  input: ManualContestQuestionInput,
+): Promise<{ catalogId: string }> {
+  const workspaceId = await ensureContestImportWorkspace(userId);
+  const options = input.options.map((o) => String(o ?? "").trim()).filter((o) => o.length > 0);
+  const subject = normalizeSubject(input.subject) ?? "";
+  const chapter = (input.chapter ?? "").trim();
+  const text = (input.text ?? "").trim();
+  if (!text) throw contestImportError(400, "Question text is required.");
+  if (options.length < 2) throw contestImportError(400, "At least two options are required.");
+  if (!Number.isInteger(input.correctOption) || input.correctOption < 0 || input.correctOption >= options.length) {
+    throw contestImportError(400, "A valid correct option is required.");
+  }
+  if (!subject) throw contestImportError(400, "A valid subject is required.");
+  if (!chapter) throw contestImportError(400, "A chapter is required.");
+
+  const id = `contest-manual:${userId}:${Date.now()}`;
+  await upsertContributedCatalogQuestion({
+    id,
+    text,
+    options,
+    image: null,
+    optionImages: null,
+    correctOption: input.correctOption,
+    correctOptions: null,
+    answerText: null,
+    answerSpec: null,
+    tolerance: null,
+    matrixData: null,
+    explanation: (input.explanation ?? "").trim(),
+    hint: null,
+    subject,
+    chapter,
+    concept: "",
+    difficulty: (input.difficulty ?? "medium").toLowerCase(),
+    questionType: "mcq",
+    tags: [],
+    contributorWorkspaceId: workspaceId,
+    attributionName: null,
+    attributionLogoUrl: null,
+    isContestImport: true,
+    contestPracticeEligible: input.practiceEligible ?? false,
+  });
+  return { catalogId: id };
+}

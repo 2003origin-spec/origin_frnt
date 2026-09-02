@@ -31,6 +31,7 @@ export interface ContestSummary {
   bannerUrl: string | null;
   registeredCount: number;
   isRegistered: boolean;
+  accessMode: 'open' | 'code' | 'premium';
 }
 
 export interface ContestStatus {
@@ -57,7 +58,7 @@ export async function getContestStatus(userId?: string | null): Promise<ContestS
   // Candidates: scheduled contests that are live now OR upcoming (not yet ended).
   // Ordered so the nearest-relevant one is first (live, then soonest upcoming).
   const res = await pool.query(
-    `SELECT id, name, status, start_at, end_at, reg_open, reg_close, banner_url
+    `SELECT id, name, status, start_at, end_at, reg_open, reg_close, banner_url, access_mode
        FROM contest.contests
       WHERE status = 'scheduled'
         AND end_at IS NOT NULL AND NOW() < end_at
@@ -94,6 +95,7 @@ export async function getContestStatus(userId?: string | null): Promise<ContestS
       bannerUrl: row.banner_url ?? null,
       registeredCount,
       isRegistered,
+      accessMode: (row.access_mode as 'open' | 'code' | 'premium') ?? 'open',
     },
   };
 }
@@ -113,7 +115,7 @@ export async function getOpenContests(userId?: string | null): Promise<ContestSu
   if (!pool) return [];
 
   const res = await pool.query(
-    `SELECT id, name, status, start_at, end_at, reg_open, reg_close, banner_url
+    `SELECT id, name, status, start_at, end_at, reg_open, reg_close, banner_url, access_mode
        FROM contest.contests
       WHERE status = 'scheduled'
         AND end_at IS NOT NULL AND NOW() < end_at
@@ -146,6 +148,7 @@ export async function getOpenContests(userId?: string | null): Promise<ContestSu
         bannerUrl: row.banner_url ?? null,
         registeredCount,
         isRegistered,
+        accessMode: (row.access_mode as 'open' | 'code' | 'premium') ?? 'open',
       };
     }),
   );
