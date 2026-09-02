@@ -288,6 +288,50 @@ export function AdminContestPanel({ initial }: { initial: ContestRecord[] }) {
     }
   };
 
+  // ── Direct-attach: hand-pick imported (file-generated) questions ───────────
+  const [importPickerOpen, setImportPickerOpen] = useState(false);
+  const [importBank, setImportBank] = useState<ResolvedQuestion[] | null>(null);
+  const [importSel, setImportSel] = useState<Set<string>>(() => new Set());
+  const [importLoading, setImportLoading] = useState(false);
+
+  const openImportPicker = async () => {
+    setImportPickerOpen((v) => !v);
+    if (importBank || importLoading) return;
+    setImportLoading(true);
+    try {
+      const data = (await apiCall('/admin/contest/import-questions')) as { questions: ResolvedQuestion[] };
+      setImportBank(data.questions ?? []);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not load imported questions.');
+      setImportBank([]);
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
+  const toggleImportSel = (id: string) =>
+    setImportSel((prev) => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+
+  // Append the chosen imported questions to the preview paper (dedup by id).
+  // Works even before a resolve — the admin can build a paper from imports alone.
+  const addSelectedImports = () => {
+    if (!importBank || importSel.size === 0) return;
+    const chosen = importBank.filter((q) => importSel.has(q.questionId));
+    setPreview((prev) => {
+      const existing = prev?.questions ?? [];
+      const existingIds = new Set(existing.map((q) => q.questionId));
+      const merged = [...existing, ...chosen.filter((q) => !existingIds.has(q.questionId))];
+      return { count: merged.length, questions: merged };
+    });
+    setImportSel(new Set());
+    toast.success(`Added ${chosen.length} imported question(s) to the paper.`);
+  };
+
   // Turn the current builder config into a RECURRING schedule (auto-publishes
   // every `cadenceDays`, first occurrence = the builder's start time).
   const createRecurring = async () => {
@@ -688,6 +732,55 @@ export function AdminContestPanel({ initial }: { initial: ContestRecord[] }) {
         {!preview && (
           <p className="text-[10px] font-bold text-muted-foreground">Preview the paper to enable publishing.</p>
         )}
+
+        {/* Direct-attach: hand-pick imported (file-generated) questions into the paper */}
+        <div className="pt-3 border-t border-border/40 space-y-2">
+          <button
+            type="button"
+            onClick={openImportPicker}
+            className="inline-flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-muted-foreground hover:text-primary"
+          >
+            <FileUp className="w-4 h-4" /> {importPickerOpen ? 'Hide' : 'Add'} imported questions
+          </button>
+          {importPickerOpen && (
+            <div className="neu-inset rounded-xl p-3 space-y-2">
+              {importLoading ? (
+                <p className="text-[12px] text-muted-foreground">Loading…</p>
+              ) : !importBank || importBank.length === 0 ? (
+                <p className="text-[12px] text-muted-foreground">
+                  No imported questions yet.{' '}
+                  <Link href="/admin/contest/import" className="text-primary underline">Import from a file</Link>.
+                </p>
+              ) : (
+                <>
+                  <div className="max-h-64 overflow-y-auto space-y-1">
+                    {importBank.map((q) => (
+                      <label key={q.questionId} className="flex items-start gap-2 text-[12px] text-foreground">
+                        <input
+                          type="checkbox"
+                          checked={importSel.has(q.questionId)}
+                          onChange={() => toggleImportSel(q.questionId)}
+                          className="mt-0.5"
+                        />
+                        <span className="min-w-0">
+                          <span className="text-muted-foreground">
+                            [{q.subject ?? '—'}{q.snapshot.chapter ? ` · ${q.snapshot.chapter}` : ''}]
+                          </span>{' '}
+                          {(q.snapshot.text ?? '').slice(0, 120) || '(no text)'}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                  <NeuButton onClick={addSelectedImports} disabled={importSel.size === 0}>
+                    <span className="inline-flex items-center gap-2 text-foreground font-black text-[12px] uppercase tracking-wider">
+                      <Plus className="w-4 h-4" /> Add {importSel.size || ''} to paper
+                    </span>
+                  </NeuButton>
+                </>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Auto-schedule: turn this config into a recurring contest */}
         <div className="pt-3 border-t border-border/40 flex flex-wrap items-center gap-2">

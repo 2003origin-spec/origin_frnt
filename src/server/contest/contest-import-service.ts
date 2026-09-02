@@ -22,7 +22,12 @@ import {
 import { getImportJob, updateQuestionStatus } from "@/server/workspaces/document-import-store";
 import { createWorkspaceWithOwner, getWorkspaceById } from "@/server/workspaces/store";
 import { dbFindUserById } from "@/server/db-users";
-import { upsertContributedCatalogQuestion, type ContributedCatalogInput } from "@/server/ogcode-catalog";
+import {
+  listContestImportQuestions,
+  upsertContributedCatalogQuestion,
+  type ContributedCatalogInput,
+} from "@/server/ogcode-catalog";
+import type { StoredQuestion } from "@/legacy/store";
 import { normalizeSubject } from "@/lib/entitlements";
 import type {
   DocumentImportJob,
@@ -406,4 +411,13 @@ export async function commitContestImportJob(input: {
     }
   }
   return { published, skipped, failed };
+}
+
+// ─── Phase E: direct-attach — list the admin's published contest imports ──────
+
+/** The admin's published contest-import questions (for the builder's attach picker). */
+export async function listContestImportBankQuestions(userId: string): Promise<StoredQuestion[]> {
+  const workspaceId = await getContestImportWorkspaceId(userId);
+  if (!workspaceId) return [];
+  return listContestImportQuestions(workspaceId);
 }

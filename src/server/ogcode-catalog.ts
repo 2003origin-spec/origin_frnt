@@ -969,6 +969,26 @@ export async function filterExistingOgcodeQuestionIds(questionIds: string[]): Pr
   return new Set(result.rows.map((row) => row.id));
 }
 
+/**
+ * The published contest-import questions contributed by one admin's synthetic
+ * workspace, newest first. Powers the Contest builder's "direct-attach" picker
+ * (hand-pick imported questions into a paper). Bypasses the visibility filter by
+ * design — this is the admin's own imported pool.
+ */
+export async function listContestImportQuestions(contributorWorkspaceId: string): Promise<StoredQuestion[]> {
+  const pool = getOgcodePostgresPool();
+  if (!pool || !contributorWorkspaceId) return [];
+  await ensureCatalogSchema();
+  const result = await pool.query<CatalogRow>(
+    `SELECT ${CATALOG_COLUMNS} FROM ogcode_questions
+       WHERE is_contest_import = TRUE AND contributor_workspace_id = $1
+       ORDER BY updated_at DESC
+       LIMIT 500`,
+    [contributorWorkspaceId],
+  );
+  return result.rows.map(mapCatalogRow);
+}
+
 export async function getOgcodeCatalogQuestionMap(questionIds: string[]): Promise<Map<string, StoredQuestion>> {
   const pool = getOgcodePostgresPool();
   if (!pool || !questionIds.length) {
