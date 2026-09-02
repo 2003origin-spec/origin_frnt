@@ -17,6 +17,7 @@
 import { createNotification } from "@/server/notifications";
 import { sendPushToUser } from "@/server/push/fcm";
 import { sendEmail } from "@/server/email";
+import { sendWhatsapp } from "@/server/notifications/whatsapp";
 import { getUserPostgresPool } from "@/server/user-postgres";
 
 import { type ReminderKind, reminderCopy } from "@/lib/contest/reminders";
@@ -33,6 +34,7 @@ function pool() {
 interface Recipient {
   userId: string;
   email: string | null;
+  mobile?: string | null;
 }
 
 /**
@@ -51,7 +53,7 @@ export async function sendContestReminder(
   // Claim a batch: users registered for this contest with no reminders_sent row
   // for this kind. INSERT the claim rows first (idempotent), and only act on the
   // ones THIS call actually inserted (RETURNING) — that is the send-once lock.
-  const claimed = await p.query<{ user_id: string; email: string | null }>(
+  const claimed = await p.query<{ user_id: string; email: string | null; mobile: string | null }>(
     `WITH pending AS (
         SELECT r.user_id
           FROM contest.registrations r
@@ -65,12 +67,12 @@ export async function sendContestReminder(
         ON CONFLICT (contest_id, user_id, reminder_kind) DO NOTHING
         RETURNING user_id
       )
-      SELECT ins.user_id, u.email
+      SELECT ins.user_id, u.email, u.mobile
         FROM ins JOIN origin_users u ON u.id = ins.user_id`,
     [contestId, kind, limit],
   );
 
-  const recipients: Recipient[] = claimed.rows.map((r) => ({ userId: r.user_id, email: r.email }));
+  const recipients: Recipient[] = claimed.rows.map((r) => ({ userId: r.user_id, email: r.email, mobile: r.mobile }));
   if (recipients.length === 0) return 0;
 
   const copy = reminderCopy(kind, contestName);
@@ -92,6 +94,10 @@ export async function sendContestReminder(
       );
       if (rec.email) {
         await sendEmail({ to: rec.email, subject: copy.title, text: copy.body }).catch(() => undefined);
+      }
+      if (rec.mobile) {
+        // WhatsApp channel — no-ops until WHATSAPP_API_* is configured (ships dark).
+        await sendWhatsapp({ to: rec.mobile, body: `${copy.title}\n\n${copy.body}` }).catch(() => undefined);
       }
     }),
   );
