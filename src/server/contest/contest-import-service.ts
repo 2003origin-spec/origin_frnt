@@ -19,8 +19,11 @@ import {
   getJobWithProgress,
   listWorkspaceImportJobs,
 } from "@/server/workspaces/document-import-service";
+import { getImportJob, updateQuestionStatus } from "@/server/workspaces/document-import-store";
 import { createWorkspaceWithOwner, getWorkspaceById } from "@/server/workspaces/store";
 import { dbFindUserById } from "@/server/db-users";
+import { upsertContributedCatalogQuestion, type ContributedCatalogInput } from "@/server/ogcode-catalog";
+import { normalizeSubject } from "@/lib/entitlements";
 import type {
   DocumentImportJob,
   ImportJobQuestion,
@@ -161,4 +164,246 @@ export async function deleteContestImportJob(input: {
     actorUserId: input.userId,
     requestId: input.requestId ?? null,
   });
+}
+
+// ─── Phase B: map + publish extracted questions into the OGCode bank ──────────
+//
+// Contest questions live in the shared OGCode bank (ogcode_questions) — that's
+// the only source the contest resolver, pre-contest practice, and DPP-from-
+// mistakes read. So an accepted import is published there via
+// upsertContributedCatalogQuestion, tagged is_contest_import (hidden from general
+// OGCode surfaces) and optionally contest_practice_eligible. To be usable in a
+// paper/practice/DPP the question MUST be an MCQ with ≥2 options, a correct
+// option, a canonical subject, and a chapter — enforced at publish so nothing
+// that would fail the `type:"mcq"` pool filter ever lands.
+
+/** Coerce the worker's loose options blob into a bank-shaped string[]. */
+function optionTexts(options: Record<string, unknown> | null): string[] {
+  if (!options) return [];
+  const arr = Array.isArray(options) ? options : Object.values(options);
+  return arr
+    .map((o) =>
+      typeof o === "string"
+        ? o
+        : String((o as { text?: unknown; label?: unknown })?.text ?? (o as { label?: unknown })?.label ?? o ?? ""),
+    )
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+}
+
+/** R2 diagram URL stashed by the worker under import question metadata.imageUrl. */
+function importImageUrl(iq: ImportJobQuestion): string | null {
+  const url = iq.metadata?.imageUrl;
+  if (typeof url !== "string") return null;
+  const trimmed = url.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+/** Admin-edited fields sent from the review UI before publishing a question. */
+export type ContestImportOverride = {
+  text?: string;
+  options?: string[];
+  correctOption?: number;
+  subject?: string;
+  chapter?: string;
+  concept?: string;
+  difficulty?: string;
+  explanation?: string;
+  hint?: string | null;
+  image?: string | null;
+  optionImages?: (string | null)[] | null;
+};
+
+/** Default MCQ mapping of a worker-extracted question, for the review UI. */
+export type ContestQuestionDraft = {
+  text: string;
+  options: string[];
+  correctOption: number;
+  subject: string | null;
+  chapter: string | null;
+  concept: string;
+  difficulty: string;
+  explanation: string;
+  hint: string | null;
+  image: string | null;
+  optionImages: (string | null)[] | null;
+  /** True when the extracted question already satisfies the contest MCQ invariant. */
+  mcqEligible: boolean;
+};
+
+export function importQuestionToContestInput(iq: ImportJobQuestion): ContestQuestionDraft {
+  const options = optionTexts(iq.options);
+  const correctOption = typeof iq.correctOption === "number" && iq.correctOption >= 0 ? iq.correctOption : 0;
+  const t = (iq.questionType ?? "").toLowerCase();
+  const looksMcq = t.includes("mcq") || t.includes("single") || (iq.correctOption != null && !iq.correctOptions);
+  const subject = iq.subject ? normalizeSubject(iq.subject) : null;
+  return {
+    text: iq.questionText ?? "",
+    options,
+    correctOption: correctOption < options.length ? correctOption : 0,
+    subject,
+    chapter: iq.chapter,
+    concept: iq.concept ?? "",
+    difficulty: (iq.difficulty ?? "medium").toLowerCase(),
+    explanation: iq.explanation ?? "",
+    hint: iq.hint,
+    image: importImageUrl(iq),
+    optionImages: iq.optionImages ?? null,
+    mcqEligible: (looksMcq || options.length >= 2) && options.length >= 2,
+  };
+}
+
+/** Stable catalog id per import question, so re-publishing upserts in place. */
+function contestCatalogId(jobId: string, questionId: string): string {
+  return `contest-imp:${jobId}:${questionId}`;
+}
+
+/** Build + validate the OGCode-bank row for a contest import question. Throws 400 on invalid. */
+function buildContestCatalogInput(args: {
+  jobId: string;
+  questionId: string;
+  draft: ContestQuestionDraft;
+  override?: ContestImportOverride;
+  practiceEligible: boolean;
+  contributorWorkspaceId: string;
+}): ContributedCatalogInput {
+  const { jobId, questionId, draft, override, practiceEligible, contributorWorkspaceId } = args;
+  const text = (override?.text ?? draft.text ?? "").trim();
+  const options = (override?.options ?? draft.options ?? []).map((o) => String(o ?? "").trim()).filter((o) => o.length > 0);
+  const correctOption = override?.correctOption ?? draft.correctOption ?? 0;
+  const rawSubject = override?.subject ?? draft.subject ?? "";
+  const subject = normalizeSubject(rawSubject) ?? "";
+  const chapter = (override?.chapter ?? draft.chapter ?? "").trim();
+
+  if (!text) throw contestImportError(400, "Question text is required.");
+  if (options.length < 2) throw contestImportError(400, "A contest question must be an MCQ with at least two options.");
+  if (!Number.isInteger(correctOption) || correctOption < 0 || correctOption >= options.length) {
+    throw contestImportError(400, "A valid correct option must be selected.");
+  }
+  if (!subject) throw contestImportError(400, "A valid subject is required for a contest question.");
+  if (!chapter) throw contestImportError(400, "A chapter is required so the question is practice/DPP-eligible.");
+
+  return {
+    id: contestCatalogId(jobId, questionId),
+    text,
+    options,
+    image: override?.image ?? draft.image ?? null,
+    optionImages: override?.optionImages ?? draft.optionImages ?? null,
+    correctOption,
+    correctOptions: null,
+    answerText: null,
+    answerSpec: null,
+    tolerance: null,
+    matrixData: null,
+    explanation: (override?.explanation ?? draft.explanation ?? "").trim(),
+    hint: override?.hint ?? draft.hint ?? null,
+    subject,
+    chapter,
+    concept: (override?.concept ?? draft.concept ?? "").trim(),
+    difficulty: (override?.difficulty ?? draft.difficulty ?? "medium").toLowerCase(),
+    questionType: "mcq",
+    tags: [],
+    contributorWorkspaceId,
+    attributionName: null,
+    attributionLogoUrl: null,
+    isContestImport: true,
+    contestPracticeEligible: practiceEligible,
+  };
+}
+
+/**
+ * Publish one accepted/reviewed import question into the OGCode bank as a
+ * contest import. `override` carries the admin's inline edits (incl. the chosen
+ * chapter/subject); `practiceEligible` is the per-question "send to practice"
+ * flag. Idempotent — the stable id upserts in place. Returns the catalog id.
+ */
+export async function publishContestImportQuestion(input: {
+  userId: string;
+  jobId: string;
+  questionId: string;
+  override?: ContestImportOverride;
+  practiceEligible?: boolean;
+}): Promise<{ catalogId: string }> {
+  const workspaceId = await getContestImportWorkspaceId(input.userId);
+  if (!workspaceId) throw contestImportError(404, "Import job not found.");
+  const job = await getImportJob(workspaceId, input.jobId);
+  if (!job) throw contestImportError(404, "Import job not found.");
+
+  const questions = await getJobQuestions(input.jobId, { status: "all" });
+  const iq = questions.find((q) => q.id === input.questionId);
+  if (!iq) throw contestImportError(404, "Import question not found.");
+
+  const draft = importQuestionToContestInput(iq);
+  const catalogInput = buildContestCatalogInput({
+    jobId: input.jobId,
+    questionId: input.questionId,
+    draft,
+    override: input.override,
+    practiceEligible: input.practiceEligible ?? false,
+    contributorWorkspaceId: workspaceId,
+  });
+
+  await upsertContributedCatalogQuestion(catalogInput);
+  await updateQuestionStatus(input.jobId, input.questionId, "published", {
+    questionBagQuestionId: catalogInput.id,
+  });
+  return { catalogId: catalogInput.id };
+}
+
+/** Reject one import question (ownership-checked via the admin's workspace). */
+export async function rejectContestImportQuestion(input: {
+  userId: string;
+  jobId: string;
+  questionId: string;
+  reason?: string | null;
+}): Promise<void> {
+  const workspaceId = await getContestImportWorkspaceId(input.userId);
+  if (!workspaceId) throw contestImportError(404, "Import job not found.");
+  const job = await getImportJob(workspaceId, input.jobId);
+  if (!job) throw contestImportError(404, "Import job not found.");
+  await updateQuestionStatus(input.jobId, input.questionId, "rejected", {
+    rejectionReason: input.reason ?? null,
+  });
+}
+
+/**
+ * Bulk-publish every already-`accepted` import question that satisfies the
+ * contest MCQ invariant. Non-MCQ / invalid rows are skipped (left for the admin
+ * to fix or delete), never silently dropped into a broken state. `practiceEligible`
+ * applies to all committed rows (the review UI's Select-all → commit path).
+ * Idempotent: `published` rows aren't returned by the `accepted` filter.
+ */
+export async function commitContestImportJob(input: {
+  userId: string;
+  jobId: string;
+  practiceEligible?: boolean;
+}): Promise<{ published: number; skipped: number; failed: number }> {
+  const workspaceId = await getContestImportWorkspaceId(input.userId);
+  if (!workspaceId) throw contestImportError(404, "Import job not found.");
+  const job = await getImportJob(workspaceId, input.jobId);
+  if (!job) throw contestImportError(404, "Import job not found.");
+
+  const accepted = await getJobQuestions(input.jobId, { status: "accepted" });
+  let published = 0;
+  let skipped = 0;
+  let failed = 0;
+  for (const iq of accepted) {
+    try {
+      await publishContestImportQuestion({
+        userId: input.userId,
+        jobId: input.jobId,
+        questionId: iq.id,
+        practiceEligible: input.practiceEligible ?? false,
+      });
+      published += 1;
+    } catch (error) {
+      // A 400 = not contest-eligible (non-MCQ / missing chapter) → skip, not fail.
+      if ((error as { status?: number })?.status === 400) skipped += 1;
+      else {
+        failed += 1;
+        console.error("[contest-import] commit publish failed", { jobId: input.jobId, questionId: iq.id, error });
+      }
+    }
+  }
+  return { published, skipped, failed };
 }

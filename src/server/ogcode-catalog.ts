@@ -116,6 +116,13 @@ const CREATE_TABLE_SQL = `
   ALTER TABLE ogcode_questions ADD COLUMN IF NOT EXISTS attribution_logo_url TEXT;
   ALTER TABLE ogcode_questions ADD COLUMN IF NOT EXISTS is_contributed BOOLEAN NOT NULL DEFAULT FALSE;
   CREATE INDEX IF NOT EXISTS ogcode_questions_contributed_idx ON ogcode_questions (is_contributed);
+  -- Contest document-import flags. A contest-imported question is tagged so it can
+  -- be hidden from general OGCode student surfaces (default-excluded in
+  -- buildFilterClause) while remaining available to the contest paper/resolver and,
+  -- when contest_practice_eligible, to the contest practice + DPP recommendation pools.
+  ALTER TABLE ogcode_questions ADD COLUMN IF NOT EXISTS is_contest_import BOOLEAN NOT NULL DEFAULT FALSE;
+  ALTER TABLE ogcode_questions ADD COLUMN IF NOT EXISTS contest_practice_eligible BOOLEAN NOT NULL DEFAULT FALSE;
+  CREATE INDEX IF NOT EXISTS ogcode_questions_contest_import_idx ON ogcode_questions (is_contest_import);
 
   -- Exam provenance fields (added later; idempotent ALTER TABLE guards backcompat).
   ALTER TABLE ogcode_questions ADD COLUMN IF NOT EXISTS occurrence TEXT;
@@ -1292,6 +1299,10 @@ export type ContributedCatalogInput = {
   occurrence?: string | null;
   classLevel?: number | null;
   previousYearQuestion?: string | null;
+  /** Tags this row as a contest document-import (hidden from general OGCode surfaces). */
+  isContestImport?: boolean;
+  /** When a contest import, whether it may be suggested in the contest practice/DPP pools. */
+  contestPracticeEligible?: boolean;
 };
 
 /**
@@ -1313,12 +1324,14 @@ export async function upsertContributedCatalogQuestion(input: ContributedCatalog
         answer_text, answer_spec, tolerance, matrix_data, explanation, hint,
         subject, chapter, concept, difficulty, tags, question_type,
         contributor_workspace_id, attribution_name, attribution_logo_url,
-        image, option_images, is_contributed
+        image, option_images, is_contributed,
+        is_contest_import, contest_practice_eligible
       ) VALUES (
         $1,
         (SELECT COALESCE(MAX(source_index), 0) + 1 FROM ogcode_questions),
         $2, $3::jsonb, $4, $5::jsonb, $6, $7::jsonb, $8, $9::jsonb, $10, $11,
-        $12, $13, $14, $15, $16::jsonb, $17, $18, $19, $20, $21, $22::jsonb, TRUE
+        $12, $13, $14, $15, $16::jsonb, $17, $18, $19, $20, $21, $22::jsonb, TRUE,
+        $23, $24
       )
       ON CONFLICT (id) DO UPDATE SET
         text = EXCLUDED.text,
@@ -1343,6 +1356,8 @@ export async function upsertContributedCatalogQuestion(input: ContributedCatalog
         attribution_name = EXCLUDED.attribution_name,
         attribution_logo_url = EXCLUDED.attribution_logo_url,
         is_contributed = TRUE,
+        is_contest_import = EXCLUDED.is_contest_import,
+        contest_practice_eligible = EXCLUDED.contest_practice_eligible,
         updated_at = NOW()
     `,
     [
@@ -1368,6 +1383,8 @@ export async function upsertContributedCatalogQuestion(input: ContributedCatalog
       input.attributionLogoUrl,
       input.image ?? null,
       JSON.stringify(input.optionImages ?? null),
+      input.isContestImport ?? false,
+      input.contestPracticeEligible ?? false,
     ],
   );
   // Bust the catalog cache so the question appears promptly. Never let a
