@@ -6,6 +6,7 @@ import { isFeatureEnabled } from '@/lib/feature-flags';
 import { getServerUser } from '@/lib/auth-server';
 import { listContestImportJobs } from '@/server/contest/contest-import-service';
 import { ContestImportUpload } from '@/components/admin/ContestImportUpload';
+import { ContestManualQuestion } from '@/components/admin/ContestManualQuestion';
 
 export default async function ContestImportPage() {
   if (!isFeatureEnabled('contest')) notFound();
@@ -22,6 +23,9 @@ export default async function ContestImportPage() {
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
       <ContestImportUpload initialJobs={jobs} />
+      <div className="mt-6">
+        <ContestManualQuestion />
+      </div>
     </div>
   );
 }

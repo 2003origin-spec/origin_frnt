@@ -794,6 +794,18 @@ export function AdminContestPanel({ initial, questionTypesEnabled = false }: { i
               Resolved <span className="text-primary font-black">{preview.count}</span> questions across{' '}
               {b.subjects.join(' · ')}. Review below — publishing freezes this paper.
             </div>
+            {(() => {
+              // Dup detection: warn if the same question id (or identical stem) appears twice.
+              const ids = preview.questions.map((q) => q.questionId);
+              const texts = preview.questions.map((q) => (q.snapshot.text ?? '').trim().toLowerCase());
+              const dupIds = ids.length !== new Set(ids).size;
+              const dupText = texts.filter((t) => t).length !== new Set(texts.filter((t) => t)).size;
+              return (dupIds || dupText) ? (
+                <div className="rounded-xl bg-amber-500/10 border border-amber-500/30 p-2.5 text-[11px] font-bold text-amber-600 dark:text-amber-400">
+                  ⚠ Duplicate questions detected in this paper — remove or replace them before publishing.
+                </div>
+              ) : null;
+            })()}
             <div className="max-h-[32rem] overflow-y-auto space-y-3 pr-1">
               {preview.questions.map((q, qi) => (
                 <QuestionPreview
