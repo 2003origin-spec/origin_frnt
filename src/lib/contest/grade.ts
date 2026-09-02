@@ -21,6 +21,8 @@ export interface GradableQuestion {
   correctOptions: number[] | null;
   answerText: string | null;
   tolerance: number | null;
+  /** Correct matrix pairs for matrix_match (array of [row, col] index pairs). */
+  matrixData?: number[][] | null;
   /** Per-question marks override; null ⇒ use the scoring config. */
   marks: number | null;
   negativeMarks: number | null;
@@ -31,6 +33,7 @@ export interface SubmittedAnswer {
   selectedOption?: number | null;
   selectedOptions?: number[] | null;
   answerText?: string | null;
+  matrixPairs?: number[][] | null;
 }
 
 export interface QuestionResult {
@@ -55,6 +58,7 @@ function isAnswered(a: SubmittedAnswer | undefined): boolean {
   if (typeof a.selectedOption === "number") return true;
   if (Array.isArray(a.selectedOptions) && a.selectedOptions.length > 0) return true;
   if (typeof a.answerText === "string" && a.answerText.trim() !== "") return true;
+  if (Array.isArray(a.matrixPairs) && a.matrixPairs.length > 0) return true;
   return false;
 }
 
@@ -84,8 +88,18 @@ function gradeOne(q: GradableQuestion, a: SubmittedAnswer | undefined): { correc
         answered,
       };
     }
+    case "matrix_match": {
+      // Order-independent set comparison of [row, col] pairs.
+      const norm = (pairs: number[][] | null | undefined) =>
+        JSON.stringify([...(pairs ?? [])].map((p) => [Number(p[0]), Number(p[1])]).sort((a, b) => a[0] - b[0] || a[1] - b[1]));
+      const expected = norm(q.matrixData);
+      const submitted = norm(a?.matrixPairs);
+      return { correct: (q.matrixData?.length ?? 0) > 0 && expected === submitted, answered };
+    }
     default:
-      // Unknown/subjective types: treat as ungraded (not correct); still counted.
+      // Unknown/symbolic/subjective types: treat as ungraded (not correct); still
+      // counted. (Symbolic needs the async grader-service, kept out of the
+      // game-day-safe local finalize path; not offered in the contest builder.)
       return { correct: false, answered };
   }
 }

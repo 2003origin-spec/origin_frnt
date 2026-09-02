@@ -60,6 +60,7 @@ async function loadFrozenPaper(contestId: string): Promise<GradableQuestion[]> {
       correctOptions: Array.isArray(s.correctOptions) ? (s.correctOptions as number[]) : null,
       answerText: typeof s.answerText === "string" ? s.answerText : null,
       tolerance: typeof s.tolerance === "number" ? s.tolerance : null,
+      matrixData: Array.isArray(s.matrixData) ? (s.matrixData as number[][]) : null,
       marks: row.marks,
       negativeMarks: row.negative_marks,
     };
