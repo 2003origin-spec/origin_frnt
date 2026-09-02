@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Plus, Trophy, Ban, Rocket, Loader2, ChevronDown, Eye, Save, Pencil, Trash2, RefreshCw, Clock, BarChart3, ShieldAlert, Copy, Repeat } from 'lucide-react';
+import Link from 'next/link';
+import { Plus, Trophy, Ban, Rocket, Loader2, ChevronDown, Eye, Save, Pencil, Trash2, RefreshCw, Clock, BarChart3, ShieldAlert, Copy, Repeat, FileUp } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { NeuButton } from '@/components/ui/neu';
@@ -451,9 +452,17 @@ export function AdminContestPanel({ initial }: { initial: ContestRecord[] }) {
 
   return (
     <div className="max-w-3xl mx-auto p-4 sm:p-6 space-y-6">
-      <h1 className="text-2xl font-black text-foreground flex items-center gap-2">
-        <Trophy className="w-6 h-6 text-amber-500" /> Weekly Contests
-      </h1>
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="text-2xl font-black text-foreground flex items-center gap-2">
+          <Trophy className="w-6 h-6 text-amber-500" /> Weekly Contests
+        </h1>
+        <Link
+          href="/admin/contest/import"
+          className="inline-flex items-center gap-2 rounded-xl border border-border/50 px-3 py-1.5 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
+        >
+          <FileUp className="w-4 h-4" /> Import questions
+        </Link>
+      </div>
 
       {/* ── Metrics (funnel + retention) ────────────────────────────────── */}
       <ContestMetrics />
