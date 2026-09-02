@@ -30,6 +30,7 @@ const ResolveSchema = z.object({
         count: z.number().int().min(1).max(500),
         topics: z.array(z.string()).optional(),
         difficulties: z.array(z.string()).optional(),
+        types: z.array(z.string()).optional(),
       }),
     )
     .min(1),

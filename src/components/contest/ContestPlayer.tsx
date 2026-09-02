@@ -27,7 +27,7 @@ function formatClock(totalSeconds: number): string {
 
 export function ContestPlayer({ contestId }: { contestId: string }) {
   const router = useRouter();
-  const { phase, error, questions, answers, violations, remaining, maxViolations, setAnswer, begin, submit } =
+  const { phase, error, questions, answers, violations, remaining, maxViolations, setAnswer, toggleAnswerOption, setAnswerText, begin, submit } =
     useContestAttempt(contestId);
   const [index, setIndex] = useState(0);
   const [confirmSubmit, setConfirmSubmit] = useState(false);
@@ -235,42 +235,78 @@ export function ContestPlayer({ contestId }: { contestId: string }) {
               className="mb-5 max-h-72 w-auto max-w-full rounded-xl object-contain neu-inset p-2"
             />
           )}
-          <div className="space-y-3">
-            {(current.options ?? []).map((opt, oi) => {
-              const selected = answers[String(current.position)]?.selectedOption === oi;
+          {(() => {
+            const qType = String(current.questionType ?? 'mcq').toLowerCase();
+            const cur = answers[String(current.position)];
+            const isNumerical = qType === 'numerical' || qType === 'numerical_with_units';
+            const isMsq = qType === 'msq';
+
+            // Numerical / numerical-with-units: a single typed answer.
+            if (isNumerical) {
               return (
-                <button
-                  key={oi}
-                  type="button"
-                  onClick={() => setAnswer(current.position, oi)}
-                  className={cn(
-                    'w-full text-left px-4 py-3.5 rounded-2xl flex items-center gap-3 transition-all min-h-[52px]',
-                    selected ? 'bg-primary/10 ring-2 ring-primary' : 'neu-raised',
-                  )}
-                >
-                  <span
-                    className={cn(
-                      'w-7 h-7 shrink-0 rounded-lg flex items-center justify-center text-[13px] font-black',
-                      selected ? 'bg-primary text-white' : 'bg-muted text-muted-foreground',
-                    )}
-                  >
-                    {String.fromCharCode(65 + oi)}
-                  </span>
-                  <span className="text-[14px] font-medium text-foreground flex-1 min-w-0">
-                    <LatexRenderer content={String(opt)} />
-                    {current.optionImages?.[oi] && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={current.optionImages[oi] as string}
-                        alt={`Option ${String.fromCharCode(65 + oi)}`}
-                        className="mt-2 max-h-32 w-auto max-w-full rounded-lg object-contain"
-                      />
-                    )}
-                  </span>
-                </button>
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                    Your answer{qType === 'numerical_with_units' ? ' (include units if asked)' : ''}
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={cur?.answerText ?? ''}
+                    onChange={(e) => setAnswerText(current.position, e.target.value)}
+                    placeholder="Type your numerical answer"
+                    className="w-full rounded-2xl neu-inset px-4 py-3.5 text-[15px] font-semibold text-foreground outline-none focus:ring-2 focus:ring-primary"
+                  />
+                </div>
               );
-            })}
-          </div>
+            }
+
+            // MCQ (single-select) and MSQ (multi-select) share the option list;
+            // MSQ toggles a set and shows a checkbox affordance + a hint.
+            return (
+              <div className="space-y-3">
+                {isMsq && (
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Select all that apply</p>
+                )}
+                {(current.options ?? []).map((opt, oi) => {
+                  const selected = isMsq
+                    ? (cur?.selectedOptions ?? []).includes(oi)
+                    : cur?.selectedOption === oi;
+                  return (
+                    <button
+                      key={oi}
+                      type="button"
+                      onClick={() => (isMsq ? toggleAnswerOption(current.position, oi) : setAnswer(current.position, oi))}
+                      className={cn(
+                        'w-full text-left px-4 py-3.5 rounded-2xl flex items-center gap-3 transition-all min-h-[52px]',
+                        selected ? 'bg-primary/10 ring-2 ring-primary' : 'neu-raised',
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          'w-7 h-7 shrink-0 flex items-center justify-center text-[13px] font-black',
+                          isMsq ? 'rounded-md' : 'rounded-lg',
+                          selected ? 'bg-primary text-white' : 'bg-muted text-muted-foreground',
+                        )}
+                      >
+                        {isMsq ? (selected ? '✓' : '') : String.fromCharCode(65 + oi)}
+                      </span>
+                      <span className="text-[14px] font-medium text-foreground flex-1 min-w-0">
+                        <LatexRenderer content={String(opt)} />
+                        {current.optionImages?.[oi] && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={current.optionImages[oi] as string}
+                            alt={`Option ${String.fromCharCode(65 + oi)}`}
+                            className="mt-2 max-h-32 w-auto max-w-full rounded-lg object-contain"
+                          />
+                        )}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
       )}
 

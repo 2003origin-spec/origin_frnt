@@ -41,8 +41,10 @@ export interface AttemptState {
 
 export type Phase = 'loading' | 'instructions' | 'running' | 'submitting' | 'submitted' | 'error';
 
-/** Client answer per position: a chosen MCQ option index. */
-type AnswerMap = Record<string, { selectedOption?: number }>;
+/** Client answer per position. MCQ = selectedOption; MSQ = selectedOptions;
+ *  numerical = answerText. The server stores answers opaquely and grade.ts reads
+ *  the matching field per questionType, so this is the only place the shape lives. */
+type AnswerMap = Record<string, { selectedOption?: number; selectedOptions?: number[]; answerText?: string }>;
 
 const MAX_VIOLATIONS = 3;
 
@@ -174,13 +176,48 @@ export function useContestAttempt(contestId: string) {
     };
   }, [phase, flushSave, contestId]);
 
+  const scheduleSave = useCallback(() => {
+    if (debounceRef.current) window.clearTimeout(debounceRef.current);
+    debounceRef.current = window.setTimeout(() => void flushSave(), 2000);
+  }, [flushSave]);
+
   const setAnswer = useCallback(
     (position: number, selectedOption: number) => {
       setAnswers((prev) => ({ ...prev, [String(position)]: { selectedOption } }));
-      if (debounceRef.current) window.clearTimeout(debounceRef.current);
-      debounceRef.current = window.setTimeout(() => void flushSave(), 2000);
+      scheduleSave();
     },
-    [flushSave],
+    [scheduleSave],
+  );
+
+  /** MSQ: toggle one option in the selected set (empty set clears the answer). */
+  const toggleAnswerOption = useCallback(
+    (position: number, option: number) => {
+      setAnswers((prev) => {
+        const cur = new Set(prev[String(position)]?.selectedOptions ?? []);
+        if (cur.has(option)) cur.delete(option);
+        else cur.add(option);
+        const next = { ...prev };
+        if (cur.size === 0) delete next[String(position)];
+        else next[String(position)] = { selectedOptions: [...cur].sort((a, b) => a - b) };
+        return next;
+      });
+      scheduleSave();
+    },
+    [scheduleSave],
+  );
+
+  /** Numerical: set (or clear) the typed answer text. */
+  const setAnswerText = useCallback(
+    (position: number, answerText: string) => {
+      setAnswers((prev) => {
+        const next = { ...prev };
+        if (!answerText.trim()) delete next[String(position)];
+        else next[String(position)] = { answerText };
+        return next;
+      });
+      scheduleSave();
+    },
+    [scheduleSave],
   );
 
   // ── submit ─────────────────────────────────────────────────────────────────
@@ -278,6 +315,8 @@ export function useContestAttempt(contestId: string) {
     remaining,
     maxViolations: MAX_VIOLATIONS,
     setAnswer,
+    toggleAnswerOption,
+    setAnswerText,
     begin,
     submit,
   };

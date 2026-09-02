@@ -110,31 +110,37 @@ export async function resolveContestQuestions(
     if (!(count > 0)) {
       throw selectionError(400, `Question count for ${sel.subject} must be greater than 0.`);
     }
-    // Effective type: default MCQ (historical behaviour). Multi-type papers pass
-    // a single type per selection today; a future slice adds true type-mixing
-    // with a per-type count distribution (CONTEST_QUESTION_TYPES).
-    const effectiveType = sel.types && sel.types.length ? sel.types[0] : DEFAULT_CONTEST_TYPES[0];
-    const rows = await sampleOgcodeCatalogQuestionIds({
-      subject: sel.subject,
-      chapters: sel.topics && sel.topics.length ? sel.topics : null,
-      difficulties: sel.difficulties && sel.difficulties.length ? sel.difficulties : null,
-      // Restrict the pool to the selection's type. MCQ by default so a question a
-      // renderer can't display never enters a paper; multi-type surfaces widen
-      // this deliberately once the contest player renders the extra types.
-      type: effectiveType,
-      // Contest paper may draw from admin-imported (file-generated) questions too.
-      includeContestImports: true,
-      seed: `${contestId}:${sel.subject}`,
-      limit: count,
-    });
-    if (rows.length < count) {
-      const scope = sel.topics && sel.topics.length ? ` (topics: ${sel.topics.join(", ")})` : "";
-      throw selectionError(
-        400,
-        `Not enough ${sel.subject} questions${scope}: need ${count}, the bank has ${rows.length}. Widen the topics or lower the count before publishing.`,
-      );
+    // Types to draw from. Default MCQ (historical). When several are chosen, split
+    // the requested count across them (remainder to the earliest types) so the
+    // multiselect is honest — the pool for each type is filtered to that type, so
+    // a question a renderer can't display never enters the paper.
+    const types = sel.types && sel.types.length ? sel.types : [...DEFAULT_CONTEST_TYPES];
+    const base = Math.floor(count / types.length);
+    const remainder = count % types.length;
+    const ids: string[] = [];
+    for (let ti = 0; ti < types.length; ti++) {
+      const typeCount = base + (ti < remainder ? 1 : 0);
+      if (typeCount <= 0) continue;
+      const rows = await sampleOgcodeCatalogQuestionIds({
+        subject: sel.subject,
+        chapters: sel.topics && sel.topics.length ? sel.topics : null,
+        difficulties: sel.difficulties && sel.difficulties.length ? sel.difficulties : null,
+        type: types[ti],
+        includeContestImports: true,
+        seed: `${contestId}:${sel.subject}:${types[ti]}`,
+        limit: typeCount,
+      });
+      if (rows.length < typeCount) {
+        const scope = sel.topics && sel.topics.length ? ` (topics: ${sel.topics.join(", ")})` : "";
+        const typeLabel = types.length > 1 ? ` ${types[ti].toUpperCase()}` : "";
+        throw selectionError(
+          400,
+          `Not enough ${sel.subject}${typeLabel} questions${scope}: need ${typeCount}, the bank has ${rows.length}. Widen the topics/types or lower the count before publishing.`,
+        );
+      }
+      ids.push(...rows.map((r) => r.id));
     }
-    perSubjectIds.push({ selection: sel, ids: rows.map((r) => r.id) });
+    perSubjectIds.push({ selection: sel, ids });
   }
 
   // 2. Fetch full data for every chosen id in one map lookup, then freeze.
