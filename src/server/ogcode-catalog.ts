@@ -28,6 +28,18 @@ type CatalogFilters = {
   pyqOnly?: boolean;
   /** Institute-hallmark filter — only questions contributed by a coaching centre. */
   contributedOnly?: boolean;
+  /**
+   * Contest document-import visibility. By DEFAULT contest-import questions are
+   * excluded (hidden from general OGCode student surfaces).
+   * - `includeContestImports`: include ALL contest imports (contest paper resolver
+   *   + direct-attach picker).
+   * - `contestPracticePool`: include contest imports that are practice-eligible
+   *   (contest pre-contest practice + DPP-from-mistakes recommendation), so OGCode
+   *   questions and practice-flagged imports are suggested together.
+   * `includeContestImports` wins if both are set.
+   */
+  includeContestImports?: boolean;
+  contestPracticePool?: boolean;
 };
 
 type CatalogPageFilters = CatalogFilters & {
@@ -466,6 +478,17 @@ function buildFilterClause(filters: CatalogFilters) {
 
   if (filters.contributedOnly) {
     clauses.push(`is_contributed = TRUE`);
+  }
+
+  // Contest document-import visibility. Default: hide contest imports from
+  // general OGCode surfaces. Contest paths opt in explicitly.
+  if (filters.includeContestImports) {
+    // Contest paper resolver / direct-attach: see every contest import (no clause).
+  } else if (filters.contestPracticePool) {
+    // Contest practice + DPP: OGCode questions AND practice-eligible imports.
+    clauses.push(`(is_contest_import = FALSE OR contest_practice_eligible = TRUE)`);
+  } else {
+    clauses.push(`is_contest_import = FALSE`);
   }
 
   const search = String(filters.search ?? "").trim();

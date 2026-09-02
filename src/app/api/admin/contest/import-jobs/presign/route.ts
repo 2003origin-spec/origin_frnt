@@ -7,6 +7,7 @@
  * objectKey to register the job. Admin-only + `contest` flag.
  */
 
+// audit-skip: returns a short-lived presigned R2 upload URL; creates no state (the job-create POST is audited).
 import type { NextRequest } from "next/server";
 
 import { handleTeacherError, teacherJson } from "@/app/api/teacher/_utils";

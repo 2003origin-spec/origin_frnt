@@ -102,6 +102,8 @@ export async function resolveContestQuestions(
       // pool to real (option-bearing) MCQs so numerical/MSQ/subjective questions
       // — which would be unanswerable in the UI — never enter a contest paper.
       type: "mcq",
+      // Contest paper may draw from admin-imported (file-generated) questions too.
+      includeContestImports: true,
       seed: `${contestId}:${sel.subject}`,
       limit: count,
     });
@@ -159,6 +161,7 @@ export async function resolveOneReplacement(input: {
     chapters: input.topics && input.topics.length ? input.topics : null,
     difficulties: input.difficulties && input.difficulties.length ? input.difficulties : null,
     type: "mcq",
+    includeContestImports: true,
     excludeIds: input.excludeIds,
     seed: `${input.contestId}:${input.subject}:replace`,
     limit: 1,

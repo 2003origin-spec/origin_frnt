@@ -75,6 +75,8 @@ export async function getPracticeQuestions(
     chapters: chapters.length ? chapters : null,
     // Practice renders single-select MCQ only — match the contest paper.
     type: "mcq",
+    // Suggest OGCode questions AND practice-eligible admin-imported questions.
+    contestPracticePool: true,
     limit: Math.min(50, Math.max(1, opts.limit ?? 20)),
     offset: Math.max(0, opts.offset ?? 0),
   });
