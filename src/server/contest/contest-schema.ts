@@ -152,6 +152,28 @@ CREATE TABLE IF NOT EXISTS contest.proctor_snapshots (
 );
 CREATE INDEX IF NOT EXISTS idx_proctor_snapshots ON contest.proctor_snapshots(contest_id, user_id, captured_at);
 
+-- Team contests (Phase 5 remainder). Members attempt individually; a team's score
+-- is the sum of its members' leaderboard scores. Join via the team's short code.
+CREATE TABLE IF NOT EXISTS contest.teams (
+  id          TEXT PRIMARY KEY,
+  contest_id  TEXT NOT NULL REFERENCES contest.contests(id) ON DELETE CASCADE,
+  name        TEXT NOT NULL,
+  join_code   TEXT NOT NULL,
+  captain_id  TEXT NOT NULL REFERENCES origin_users(id) ON DELETE CASCADE,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (contest_id, join_code)
+);
+CREATE TABLE IF NOT EXISTS contest.team_members (
+  team_id     TEXT NOT NULL REFERENCES contest.teams(id) ON DELETE CASCADE,
+  contest_id  TEXT NOT NULL,
+  user_id     TEXT NOT NULL REFERENCES origin_users(id) ON DELETE CASCADE,
+  joined_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (team_id, user_id),
+  -- one team per user per contest
+  UNIQUE (contest_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_team_members_contest ON contest.team_members(contest_id);
+
 CREATE TABLE IF NOT EXISTS contest.attempts (
   contest_id         TEXT NOT NULL REFERENCES contest.contests(id) ON DELETE CASCADE,
   user_id            TEXT NOT NULL REFERENCES origin_users(id) ON DELETE CASCADE,
