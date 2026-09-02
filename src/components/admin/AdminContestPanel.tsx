@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import Link from 'next/link';
-import { Plus, Trophy, Ban, Rocket, Loader2, ChevronDown, Eye, Save, Pencil, Trash2, RefreshCw, Clock, BarChart3, ShieldAlert, Copy, Repeat, FileUp, AlertTriangle, LayoutDashboard, ListChecks, KeyRound, CalendarClock, Sparkles, Type } from 'lucide-react';
+import { Plus, Trophy, Ban, Rocket, Loader2, ChevronDown, Eye, Save, Pencil, Trash2, RefreshCw, Clock, BarChart3, ShieldAlert, Copy, Repeat, FileUp, AlertTriangle, LayoutDashboard, ListChecks, KeyRound, CalendarClock, Sparkles, Type, Users } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -1038,6 +1038,14 @@ export function AdminContestPanel({ initial, questionTypesEnabled = false }: { i
                 )}
                 {canReview(c) && (
                   <IconBtn onClick={() => openReview(c)} busy={false} icon={<ShieldAlert className="w-3.5 h-3.5" />} label="Review" />
+                )}
+                {c.status !== 'draft' && (
+                  <Link
+                    href={`/admin/contest/${c.id}/participants`}
+                    className="inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[10px] font-black uppercase tracking-wider neu-raised text-muted-foreground transition-colors duration-200 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  >
+                    <Users className="w-3.5 h-3.5" aria-hidden="true" /> Participants
+                  </Link>
                 )}
                 {(c.status === 'result_processing' || c.status === 'result_published') && (
                   <Link
