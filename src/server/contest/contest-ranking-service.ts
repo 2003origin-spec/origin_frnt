@@ -156,3 +156,27 @@ export async function getPersonalResult(contestId: string, userId: string): Prom
     totalRanked: total.rows[0].n,
   };
 }
+
+/** Top-N scorers of a contest (first name only), for the result "compare" block. */
+export async function getContestToppers(
+  contestId: string,
+  limit = 3,
+): Promise<{ rank: number; name: string; score: number }[]> {
+  await ensureContestSchema();
+  const pool = getUserPostgresReplicaPool();
+  if (!pool) return [];
+  const res = await pool.query<{ rank: number; score: number; name: string | null }>(
+    `SELECT l.rank, l.score, u.name
+       FROM contest.leaderboard_snapshot l
+       JOIN origin_users u ON u.id = l.user_id
+      WHERE l.contest_id = $1
+      ORDER BY l.rank ASC
+      LIMIT $2`,
+    [contestId, Math.max(1, Math.min(10, limit))],
+  );
+  return res.rows.map((r) => ({
+    rank: r.rank,
+    name: (r.name || "Anonymous").trim().split(/\s+/)[0],
+    score: Number(r.score),
+  }));
+}
