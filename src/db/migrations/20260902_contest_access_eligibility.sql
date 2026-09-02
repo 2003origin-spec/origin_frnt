@@ -31,3 +31,17 @@ CREATE TABLE IF NOT EXISTS contest.question_comments (
 );
 CREATE INDEX IF NOT EXISTS idx_question_comments_q
   ON contest.question_comments(contest_id, position, created_at);
+
+-- Phase 2A: answer-key objections.
+CREATE TABLE IF NOT EXISTS contest.key_objections (
+  id           TEXT PRIMARY KEY,
+  contest_id   TEXT NOT NULL REFERENCES contest.contests(id) ON DELETE CASCADE,
+  position     INTEGER NOT NULL,
+  user_id      TEXT NOT NULL REFERENCES origin_users(id) ON DELETE CASCADE,
+  reason       TEXT NOT NULL,
+  status       TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','accepted','rejected')),
+  resolved_by  TEXT REFERENCES origin_users(id) ON DELETE SET NULL,
+  resolved_at  TIMESTAMPTZ,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_key_objections_contest ON contest.key_objections(contest_id, status);

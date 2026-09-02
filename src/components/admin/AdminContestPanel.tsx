@@ -980,6 +980,14 @@ export function AdminContestPanel({ initial, questionTypesEnabled = false }: { i
                     <BarChart3 className="w-3.5 h-3.5" /> Analytics
                   </Link>
                 )}
+                {c.status === 'result_published' && (
+                  <Link
+                    href={`/admin/contest/${c.id}/objections`}
+                    className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[10px] font-black uppercase tracking-wider neu-raised text-muted-foreground hover:text-primary"
+                  >
+                    <ShieldAlert className="w-3.5 h-3.5" /> Objections
+                  </Link>
+                )}
                 <IconBtn onClick={() => clone(c)} busy={rowBusy === c.id} icon={<Copy className="w-3.5 h-3.5" />} label="Clone" />
                 {(c.status === 'draft' || c.status === 'scheduled') && (
                   <IconBtn onClick={() => cancel(c)} busy={rowBusy === c.id} icon={<Ban className="w-3.5 h-3.5" />} label="Cancel" />

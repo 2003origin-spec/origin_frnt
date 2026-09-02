@@ -51,6 +51,16 @@ export function ContestAttemptReview({ contestId }: { contestId: string }) {
     return () => { cancelled = true; };
   }, [contestId]);
 
+  const objectToKey = async (position: number) => {
+    const reason = typeof window !== 'undefined' ? window.prompt('Why do you think this key is wrong? (your objection goes to the admins)') : null;
+    if (!reason || !reason.trim()) return;
+    try {
+      const { mutateJson } = await import('@/lib/csrf');
+      const res = await mutateJson('/api/contest/objection', { method: 'POST', body: JSON.stringify({ contestId, position, reason: reason.trim() }) });
+      if (res.ok) { const { toast } = await import('sonner'); toast.success('Objection submitted — thanks, an admin will review it.'); }
+    } catch { /* non-blocking */ }
+  };
+
   const toggleBookmark = async (position: number) => {
     const wasOn = bookmarked.has(position);
     setBookmarked((prev) => { const n = new Set(prev); if (wasOn) n.delete(position); else n.add(position); return n; });
@@ -131,6 +141,14 @@ export function ContestAttemptReview({ contestId }: { contestId: string }) {
                   className={bookmarked.has(q.position) ? 'text-amber-500' : 'text-muted-foreground hover:text-amber-500'}
                 >
                   {bookmarked.has(q.position) ? '★' : '☆'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void objectToKey(q.position)}
+                  className="text-muted-foreground hover:text-rose-500 normal-case"
+                  title="Object to the answer key"
+                >
+                  ⚑
                 </button>
               </span>
               {q.isCorrect === true ? (
