@@ -143,10 +143,21 @@ export function ContestBanner({ initial, userId }: { initial?: ContestStatus | n
       router.push(`/auth?next=${encodeURIComponent(back)}`);
       return;
     }
+    // Code-gated contest: ask for the access code before registering.
+    let code: string | undefined;
+    if (contest.accessMode === 'code') {
+      const entered = typeof window !== 'undefined' ? window.prompt('Enter your access code for this contest:') : null;
+      if (!entered) return; // cancelled
+      code = entered.trim();
+    }
     setRegistering(true);
     try {
-      const res = await registerForContestAction(contest.id);
+      const res = await registerForContestAction(contest.id, code);
       if (!res.alreadyRegistered) { track('contest_register', { contest_id: contest.id }); markRegistered(contest.id); }
+      if (res.waitlisted) {
+        toast.success("You're on the waitlist — we'll promote you if a seat frees up.");
+        return;
+      }
       // Walk-up: registered during a LIVE contest → jump straight into the attempt.
       if (isLive) {
         toast.success("You're in — entering the contest!");

@@ -51,6 +51,8 @@ interface BuilderState {
   topics: Record<string, string[]>;
   counts: Record<string, number>;
   types: Record<string, string[]>; // per-subject question types (default ['mcq'])
+  accessMode: 'open' | 'code' | 'premium';
+  registrationCap: number | null;
   startLocal: string; // datetime-local, IST wall time
   durationMin: number;
   regOpenLocal: string; // datetime-local, IST wall time
@@ -70,6 +72,8 @@ const emptyBuilder = (): BuilderState => ({
   topics: {},
   counts: {},
   types: {},
+  accessMode: 'open',
+  registrationCap: null,
   startLocal: '',
   durationMin: 60,
   regOpenLocal: '',
@@ -218,7 +222,11 @@ export function AdminContestPanel({ initial, questionTypesEnabled = false }: { i
       await apiCall(`/admin/contest/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: b.name.trim(), subjects: b.subjects, topics: b.topics, ...sched }),
+        body: JSON.stringify({
+          name: b.name.trim(), subjects: b.subjects, topics: b.topics, ...sched,
+          accessMode: b.accessMode,
+          registrationCap: b.registrationCap && b.registrationCap > 0 ? b.registrationCap : null,
+        }),
       });
       set('id', id);
       toast.success('Draft saved.');
@@ -423,6 +431,8 @@ export function AdminContestPanel({ initial, questionTypesEnabled = false }: { i
       topics: c.topics ?? {},
       counts: {},
       types: {},
+      accessMode: c.accessMode ?? 'open',
+      registrationCap: c.registrationCap ?? null,
       startLocal: utcIsoToIstLocal(c.startAt),
       durationMin,
       regOpenLocal: utcIsoToIstLocal(c.regOpen),
@@ -584,6 +594,49 @@ export function AdminContestPanel({ initial, questionTypesEnabled = false }: { i
                 </button>
               );
             })}
+          </div>
+        </Field>
+
+        {/* Access & eligibility */}
+        <Field label="Access & registration">
+          <div className="space-y-3">
+            <div className="flex flex-wrap gap-2">
+              {([
+                { v: 'open', l: 'Open to all' },
+                { v: 'code', l: 'Access code' },
+                { v: 'premium', l: 'Premium only' },
+              ] as const).map((m) => (
+                <button
+                  key={m.v}
+                  type="button"
+                  onClick={() => set('accessMode', m.v)}
+                  className={cn(
+                    'px-3 py-2 rounded-xl text-[12px] font-black uppercase tracking-wider transition-colors min-h-[40px]',
+                    b.accessMode === m.v ? 'bg-primary text-white' : 'neu-raised text-muted-foreground',
+                  )}
+                >
+                  {m.l}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-[11px] font-bold text-muted-foreground">Seat cap (blank = unlimited)</label>
+              <input
+                type="number"
+                min={1}
+                value={b.registrationCap ?? ''}
+                onChange={(e) => set('registrationCap', e.target.value ? Math.max(1, Number(e.target.value)) : null)}
+                placeholder="∞"
+                className="w-24 neu-raised rounded-lg px-2 py-1.5 text-sm font-black text-foreground bg-transparent outline-none text-center tabular-nums"
+              />
+              <span className="text-[10px] text-muted-foreground">overflow → waitlist</span>
+            </div>
+            {b.accessMode === 'code' && b.id && (
+              <AccessCodesManager contestId={b.id} />
+            )}
+            {b.accessMode === 'code' && !b.id && (
+              <p className="text-[11px] text-muted-foreground">Save the draft first, then generate access codes here.</p>
+            )}
           </div>
         </Field>
 
@@ -1175,6 +1228,71 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     <div className="space-y-1.5">
       <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">{label}</label>
       {children}
+    </div>
+  );
+}
+
+/** Generate + list single-use access codes for a code-gated contest draft. */
+function AccessCodesManager({ contestId }: { contestId: string }) {
+  const [codes, setCodes] = useState<{ code: string; redeemedBy: string | null }[]>([]);
+  const [count, setCount] = useState(10);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const res = (await apiCall(`/admin/contest/${contestId}/access-codes`)) as { codes: { code: string; redeemedBy: string | null }[] };
+      setCodes(res.codes ?? []);
+    } catch { /* non-fatal */ }
+  }, [contestId]);
+  useEffect(() => { void load(); }, [load]);
+
+  const generate = async () => {
+    setBusy(true);
+    try {
+      await apiCall(`/admin/contest/${contestId}/access-codes`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ count }),
+      });
+      await load();
+      toast.success(`Generated ${count} codes.`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not generate codes.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const unused = codes.filter((c) => !c.redeemedBy);
+  return (
+    <div className="neu-inset rounded-xl p-3 space-y-2">
+      <div className="flex items-center gap-2">
+        <input
+          type="number" min={1} max={500} value={count}
+          onChange={(e) => setCount(Math.max(1, Math.min(500, Number(e.target.value) || 1)))}
+          className="w-20 neu-raised rounded-lg px-2 py-1.5 text-sm font-black text-foreground bg-transparent outline-none text-center tabular-nums"
+        />
+        <NeuButton onClick={generate} disabled={busy}>
+          <span className="text-foreground font-black text-[11px] uppercase tracking-wider">{busy ? 'Generating…' : 'Generate codes'}</span>
+        </NeuButton>
+        <span className="text-[10px] text-muted-foreground">{codes.length} total · {unused.length} unused</span>
+        {codes.length > 0 && (
+          <button
+            type="button"
+            onClick={() => navigator.clipboard?.writeText(unused.map((c) => c.code).join('\n'))}
+            className="text-[10px] font-bold text-primary hover:underline"
+          >
+            Copy unused
+          </button>
+        )}
+      </div>
+      {codes.length > 0 && (
+        <div className="flex flex-wrap gap-1 max-h-28 overflow-y-auto">
+          {codes.map((c) => (
+            <span key={c.code} className={cn('rounded px-1.5 py-0.5 text-[11px] font-mono', c.redeemedBy ? 'bg-muted text-muted-foreground line-through' : 'bg-primary/10 text-foreground')}>
+              {c.code}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

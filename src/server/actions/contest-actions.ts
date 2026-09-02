@@ -45,11 +45,11 @@ export async function getMyOrbitAction(): Promise<{ rating: number; tier: string
  * Register the current user for a contest from a client surface (the banner CTA).
  * Requires auth; window-checked + idempotent server-side.
  */
-export async function registerForContestAction(contestId: string): Promise<RegistrationResult> {
+export async function registerForContestAction(contestId: string, code?: string): Promise<RegistrationResult> {
   requireFeatureEnabled('contest');
   const user = await getServerUser();
   if (!user) throw new Error('Please sign in to register.');
-  const result = await registerForContest(contestId, user.id);
+  const result = await registerForContest(contestId, user.id, { code });
   // Fire the registration-confirmation notification for a NEW registration
   // (best-effort; idempotent via the reminders ledger).
   if (!result.alreadyRegistered) {
