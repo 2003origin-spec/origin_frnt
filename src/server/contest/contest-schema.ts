@@ -314,6 +314,20 @@ CREATE TABLE IF NOT EXISTS contest.schedules (
   updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_contest_schedules_due ON contest.schedules(active, next_start_at);
+
+-- Per-admin synthetic workspace bridge for Contest document-import. Mirrors the
+-- CBT import-workspace trick: the shared import.document_import_jobs table FKs
+-- workspace_id into app.teacher_workspaces, so an admin importing questions for
+-- a contest needs a workspace they own. We create one hidden personal workspace
+-- per admin ([CONTEST] <email>) and cache its id here. Per-admin (not a
+-- singleton) because createImportJob requires the acting admin to hold an
+-- owner membership on the workspace.
+CREATE TABLE IF NOT EXISTS contest.admin_import_workspaces (
+  user_id      TEXT PRIMARY KEY REFERENCES origin_users(id) ON DELETE CASCADE,
+  workspace_id TEXT NOT NULL,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 `;
 
 function pool() {
