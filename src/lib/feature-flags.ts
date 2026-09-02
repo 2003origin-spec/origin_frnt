@@ -57,6 +57,7 @@ type FlagKey =
   | "questionClusters"
   | "contest"
   | "contestQuestionTypes"
+  | "contestProctoring"
   | "payments"
   | "loginStreakCelebration";
 
@@ -291,6 +292,9 @@ const FLAG_SPECS: Record<FlagKey, FlagSpec> = {
   // in dev AND prod until the contest player + grading render/grade the extra
   // types. Plan: V1/CONTEST_PLATFORM_ROADMAP_PLAN.md Phase 1.
   contestQuestionTypes: { envSuffix: "CONTEST_QUESTION_TYPES", defaultDev: false, defaultProd: false },
+  // Webcam-snapshot proctoring (self-hosted; periodic frames → R2). Dark by
+  // default — requires camera consent. Plan: CONTEST_PLATFORM_ROADMAP_PLAN.md 3B.
+  contestProctoring: { envSuffix: "CONTEST_PROCTORING", defaultDev: false, defaultProd: false },
   // Razorpay payments (V1/RAZORPAY_PAYMENTS_PLAN.md). Gates the Rail-A one-time
   // order surface: /api/payments/*, /api/pricing, the term/bundle buy buttons and
   // the real /admin/financials. Ships DARK in dev and prod — the existing

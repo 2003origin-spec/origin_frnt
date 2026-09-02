@@ -9,6 +9,7 @@ import { NeuButton } from '@/components/ui/neu';
 import { LatexRenderer } from '@/components/ui/LatexRenderer';
 import { ContestCalculator } from '@/components/contest/ContestCalculator';
 import { useContestAttempt } from '@/features/contest/useContestAttempt';
+import { useContestProctoring } from '@/features/contest/useContestProctoring';
 
 /**
  * Contest attempt player (plan Phase 3 UI) — a sporty, mobile-first shell over
@@ -26,10 +27,12 @@ function formatClock(totalSeconds: number): string {
   return h > 0 ? `${pad(h)}:${pad(m)}:${pad(sec)}` : `${pad(m)}:${pad(sec)}`;
 }
 
-export function ContestPlayer({ contestId }: { contestId: string }) {
+export function ContestPlayer({ contestId, proctoringEnabled = false }: { contestId: string; proctoringEnabled?: boolean }) {
   const router = useRouter();
   const { phase, error, questions, answers, violations, remaining, maxViolations, setAnswer, toggleAnswerOption, setAnswerText, marked, toggleMarked, begin, submit } =
     useContestAttempt(contestId);
+  // Self-hosted webcam-snapshot proctoring — only runs while the attempt is live.
+  const { consent: proctorConsent } = useContestProctoring(contestId, proctoringEnabled && phase === 'running');
   const [index, setIndex] = useState(0);
   const [confirmSubmit, setConfirmSubmit] = useState(false);
   const [calcOpen, setCalcOpen] = useState(false);
@@ -334,6 +337,16 @@ export function ContestPlayer({ contestId }: { contestId: string }) {
       )}
 
       {calcOpen && <ContestCalculator onClose={() => setCalcOpen(false)} />}
+
+      {proctoringEnabled && (
+        <div className="px-4 pb-2">
+          <p className={cn('text-[10px] font-bold', proctorConsent === 'granted' ? 'text-emerald-500' : proctorConsent === 'denied' ? 'text-rose-500' : 'text-muted-foreground')}>
+            {proctorConsent === 'granted' ? '● Proctoring active — camera recording periodic snapshots'
+              : proctorConsent === 'denied' ? 'Camera access denied — this attempt may be flagged'
+              : 'Requesting camera for proctoring…'}
+          </p>
+        </div>
+      )}
 
       {/* Prev / Next */}
       <div className="sticky bottom-0 px-4 py-3 flex items-center justify-between gap-3 border-t border-border/20 neu-surface">

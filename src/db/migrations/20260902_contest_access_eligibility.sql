@@ -45,3 +45,13 @@ CREATE TABLE IF NOT EXISTS contest.key_objections (
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_key_objections_contest ON contest.key_objections(contest_id, status);
+
+-- Phase 3B: webcam-snapshot proctoring refs.
+CREATE TABLE IF NOT EXISTS contest.proctor_snapshots (
+  id          TEXT PRIMARY KEY,
+  contest_id  TEXT NOT NULL REFERENCES contest.contests(id) ON DELETE CASCADE,
+  user_id     TEXT NOT NULL REFERENCES origin_users(id) ON DELETE CASCADE,
+  r2_key      TEXT NOT NULL,
+  captured_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_proctor_snapshots ON contest.proctor_snapshots(contest_id, user_id, captured_at);

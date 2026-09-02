@@ -12,5 +12,5 @@ export const metadata: Metadata = {
 export default async function ContestPlayPage({ params }: { params: Promise<{ id: string }> }) {
   if (!isFeatureEnabled('contest')) notFound();
   const { id } = await params;
-  return <ContestPlayer contestId={id} />;
+  return <ContestPlayer contestId={id} proctoringEnabled={isFeatureEnabled('contestProctoring')} />;
 }
