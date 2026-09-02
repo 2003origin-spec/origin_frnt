@@ -7,6 +7,7 @@ import { AlertTriangle, ArrowLeft, ArrowRight, Clock, Flag, Trophy } from 'lucid
 import { cn } from '@/lib/utils';
 import { NeuButton } from '@/components/ui/neu';
 import { LatexRenderer } from '@/components/ui/LatexRenderer';
+import { ContestCalculator } from '@/components/contest/ContestCalculator';
 import { useContestAttempt } from '@/features/contest/useContestAttempt';
 
 /**
@@ -27,10 +28,11 @@ function formatClock(totalSeconds: number): string {
 
 export function ContestPlayer({ contestId }: { contestId: string }) {
   const router = useRouter();
-  const { phase, error, questions, answers, violations, remaining, maxViolations, setAnswer, toggleAnswerOption, setAnswerText, begin, submit } =
+  const { phase, error, questions, answers, violations, remaining, maxViolations, setAnswer, toggleAnswerOption, setAnswerText, marked, toggleMarked, begin, submit } =
     useContestAttempt(contestId);
   const [index, setIndex] = useState(0);
   const [confirmSubmit, setConfirmSubmit] = useState(false);
+  const [calcOpen, setCalcOpen] = useState(false);
 
   const answeredCount = useMemo(() => Object.keys(answers).length, [answers]);
 
@@ -221,8 +223,29 @@ export function ContestPlayer({ contestId }: { contestId: string }) {
       {/* Current question */}
       {current && (
         <div className="flex-1 px-4 py-4 max-w-2xl mx-auto w-full">
-          <div className="text-[10px] font-black uppercase tracking-widest text-primary mb-2">
-            {current.subject ?? 'Question'} · Q{index + 1}
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <div className="text-[10px] font-black uppercase tracking-widest text-primary">
+              {current.subject ?? 'Question'} · Q{index + 1}
+            </div>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setCalcOpen((v) => !v)}
+                className="rounded-lg px-2 py-1 text-[10px] font-black uppercase tracking-wider neu-raised text-muted-foreground hover:text-primary"
+              >
+                Calc
+              </button>
+              <button
+                type="button"
+                onClick={() => toggleMarked(current.position)}
+                className={cn(
+                  'inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-black uppercase tracking-wider transition-colors',
+                  marked.has(current.position) ? 'bg-amber-500 text-white' : 'neu-raised text-muted-foreground hover:text-amber-500',
+                )}
+              >
+                <Flag className="w-3 h-3" /> {marked.has(current.position) ? 'Marked' : 'Mark'}
+              </button>
+            </div>
           </div>
           <div className="text-[15px] font-bold text-foreground leading-relaxed mb-3">
             <LatexRenderer content={String(current.text ?? '')} />
@@ -309,6 +332,8 @@ export function ContestPlayer({ contestId }: { contestId: string }) {
           })()}
         </div>
       )}
+
+      {calcOpen && <ContestCalculator onClose={() => setCalcOpen(false)} />}
 
       {/* Prev / Next */}
       <div className="sticky bottom-0 px-4 py-3 flex items-center justify-between gap-3 border-t border-border/20 neu-surface">

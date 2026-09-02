@@ -54,15 +54,18 @@ export function useContestAttempt(contestId: string) {
   const [questions, setQuestions] = useState<PaperQuestion[]>([]);
   const [state, setState] = useState<AttemptState | null>(null);
   const [answers, setAnswers] = useState<AnswerMap>({});
+  const [marked, setMarked] = useState<Set<number>>(() => new Set());
   const [violations, setViolations] = useState(0);
   const [now, setNow] = useState(() => Date.now());
 
   const skewRef = useRef(0);
   const revRef = useRef(0);
   const answersRef = useRef<AnswerMap>({});
+  const markedRef = useRef<Set<number>>(new Set());
   const debounceRef = useRef<number | undefined>(undefined);
   const submittingRef = useRef(false);
   answersRef.current = answers;
+  markedRef.current = marked;
 
   // ── server-authoritative remaining seconds (skew-corrected) ────────────────
   const remaining = useMemo(() => {
@@ -121,6 +124,14 @@ export function useContestAttempt(contestId: string) {
             setAnswers(st.savedAnswers);
             answersRef.current = st.savedAnswers;
           }
+          const savedMarked = Array.isArray(st.savedPalette?.marked)
+            ? (st.savedPalette!.marked as unknown[]).filter((n): n is number => typeof n === 'number')
+            : [];
+          if (savedMarked.length) {
+            const set = new Set(savedMarked);
+            setMarked(set);
+            markedRef.current = set;
+          }
           revRef.current = st.savedRev ?? 0;
           setQuestions(qs);
           setPhase('running');
@@ -147,7 +158,7 @@ export function useContestAttempt(contestId: string) {
       await mutateJson('/api/contest/answers', {
         method: 'POST',
         keepalive: true,
-        body: JSON.stringify({ contestId, answers: answersRef.current, rev: revRef.current }),
+        body: JSON.stringify({ contestId, answers: answersRef.current, palette: { marked: [...markedRef.current] }, rev: revRef.current }),
       });
     } catch {
       /* transient — the next save retries */
@@ -166,7 +177,7 @@ export function useContestAttempt(contestId: string) {
         credentials: 'include',
         keepalive: true,
         headers: { 'Content-Type': 'application/json', ...csrfHeaders() },
-        body: JSON.stringify({ contestId, answers: answersRef.current, rev: revRef.current }),
+        body: JSON.stringify({ contestId, answers: answersRef.current, palette: { marked: [...markedRef.current] }, rev: revRef.current }),
       }).catch(() => undefined);
     };
     window.addEventListener('pagehide', onHide);
@@ -184,6 +195,20 @@ export function useContestAttempt(contestId: string) {
   const setAnswer = useCallback(
     (position: number, selectedOption: number) => {
       setAnswers((prev) => ({ ...prev, [String(position)]: { selectedOption } }));
+      scheduleSave();
+    },
+    [scheduleSave],
+  );
+
+  /** Toggle "mark for review" on a question (persisted in the palette). */
+  const toggleMarked = useCallback(
+    (position: number) => {
+      setMarked((prev) => {
+        const next = new Set(prev);
+        if (next.has(position)) next.delete(position);
+        else next.add(position);
+        return next;
+      });
       scheduleSave();
     },
     [scheduleSave],
@@ -317,6 +342,8 @@ export function useContestAttempt(contestId: string) {
     setAnswer,
     toggleAnswerOption,
     setAnswerText,
+    marked,
+    toggleMarked,
     begin,
     submit,
   };
