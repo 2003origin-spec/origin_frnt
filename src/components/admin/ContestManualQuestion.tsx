@@ -50,7 +50,7 @@ export function ContestManualQuestion() {
 
   if (!open) {
     return (
-      <button type="button" onClick={() => setOpen(true)} className="text-sm font-bold text-primary hover:underline">
+      <button type="button" onClick={() => setOpen(true)} className="text-sm font-bold text-primary hover:underline cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
         + Add a question manually
       </button>
     );
@@ -60,7 +60,7 @@ export function ContestManualQuestion() {
     <div className="rounded-2xl border border-border/50 p-4 space-y-3">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-bold text-foreground">Add a question manually</h3>
-        <button type="button" onClick={() => setOpen(false)} className="text-xs text-muted-foreground hover:text-foreground">Close</button>
+        <button type="button" onClick={() => setOpen(false)} className="text-xs text-muted-foreground hover:text-foreground cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">Close</button>
       </div>
       <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="Question text (LaTeX ok)" rows={2} className="w-full rounded-lg neu-inset px-3 py-2 text-sm text-foreground outline-none" />
       {options.map((o, i) => (
@@ -85,7 +85,7 @@ export function ContestManualQuestion() {
           <input type="checkbox" checked={practice} onChange={(e) => setPractice(e.target.checked)} /> Send to practice
         </label>
       </div>
-      <button type="button" onClick={submit} disabled={busy} className="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-white disabled:opacity-50">
+      <button type="button" onClick={submit} disabled={busy} className="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-white disabled:opacity-50 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
         {busy ? 'Saving…' : 'Add to pool'}
       </button>
     </div>

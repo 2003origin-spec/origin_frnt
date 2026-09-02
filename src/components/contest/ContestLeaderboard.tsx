@@ -89,7 +89,7 @@ export function ContestLeaderboard({ contestId }: { contestId: string }) {
             type="button"
             onClick={() => router.back()}
             aria-label="Back"
-            className="p-2 rounded-xl neu-raised text-muted-foreground"
+            className="p-2 rounded-xl neu-raised text-muted-foreground min-h-11 min-w-11 inline-flex items-center justify-center transition-colors duration-200 hover:text-foreground cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           >
             <ArrowLeft className="w-4 h-4" />
           </button>

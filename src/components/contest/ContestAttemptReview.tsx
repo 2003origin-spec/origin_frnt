@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, CheckCircle2, XCircle, MinusCircle, Loader2, BookOpen } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, XCircle, MinusCircle, Loader2, BookOpen, Star, Flag } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { NeuButton } from '@/components/ui/neu';
@@ -138,17 +138,21 @@ export function ContestAttemptReview({ contestId }: { contestId: string }) {
                   type="button"
                   onClick={() => void toggleBookmark(q.position)}
                   aria-label={bookmarked.has(q.position) ? 'Remove bookmark' : 'Bookmark this question'}
-                  className={bookmarked.has(q.position) ? 'text-amber-500' : 'text-muted-foreground hover:text-amber-500'}
+                  aria-pressed={bookmarked.has(q.position)}
+                  className={cn(
+                    'inline-flex min-h-11 min-w-11 cursor-pointer items-center justify-center rounded-lg transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
+                    bookmarked.has(q.position) ? 'text-amber-500' : 'text-muted-foreground hover:text-amber-500',
+                  )}
                 >
-                  {bookmarked.has(q.position) ? '★' : '☆'}
+                  <Star className="w-4 h-4" aria-hidden="true" fill={bookmarked.has(q.position) ? 'currentColor' : 'none'} />
                 </button>
                 <button
                   type="button"
                   onClick={() => void objectToKey(q.position)}
-                  className="text-muted-foreground hover:text-rose-500 normal-case"
-                  title="Object to the answer key"
+                  aria-label="Object to the answer key"
+                  className="inline-flex min-h-11 min-w-11 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-colors duration-200 hover:text-rose-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                 >
-                  ⚑
+                  <Flag className="w-4 h-4" aria-hidden="true" />
                 </button>
               </span>
               {q.isCorrect === true ? (

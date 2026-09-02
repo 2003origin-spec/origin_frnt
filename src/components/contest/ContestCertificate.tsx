@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { ArrowLeft } from 'lucide-react';
 
 import type { ContestCertificate as Cert } from '@/server/contest/contest-certificate-service';
 
@@ -17,16 +18,20 @@ export function ContestCertificate({ cert }: { cert: Cert }) {
     <div className="min-h-screen bg-background py-8 px-4">
       <div className="mx-auto max-w-3xl space-y-4">
         <div className="flex items-center justify-between gap-3 print:hidden">
-          <Link href={`/contest/${cert.contestId}/result`} className="text-sm text-muted-foreground hover:text-primary">← Result</Link>
+          <Link href={`/contest/${cert.contestId}/result`} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors duration-200 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"><ArrowLeft className="w-3.5 h-3.5" aria-hidden="true" /> Result</Link>
           <button
             type="button"
             onClick={() => window.print()}
-            className="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-white"
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-primary-foreground transition-opacity duration-200 hover:opacity-90 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           >
             Print / Save as PDF
           </button>
         </div>
 
+        {/* The certificate itself deliberately uses FIXED light colours (not theme
+            tokens): it is a print artifact that must render identically on paper
+            and when screenshotted, in either theme. The surrounding page chrome
+            uses tokens. */}
         <div className="rounded-3xl border-4 border-primary/30 bg-white p-8 sm:p-12 text-center shadow-xl print:shadow-none print:border-primary/40">
           <div className="text-[11px] font-black uppercase tracking-[0.4em] text-primary">O3 Origin · Weekly Contest</div>
           <div className="mt-6 text-2xl font-serif text-gray-500">Certificate of Achievement</div>

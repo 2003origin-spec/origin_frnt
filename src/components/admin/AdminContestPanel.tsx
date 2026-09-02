@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import Link from 'next/link';
-import { Plus, Trophy, Ban, Rocket, Loader2, ChevronDown, Eye, Save, Pencil, Trash2, RefreshCw, Clock, BarChart3, ShieldAlert, Copy, Repeat, FileUp } from 'lucide-react';
+import { Plus, Trophy, Ban, Rocket, Loader2, ChevronDown, Eye, Save, Pencil, Trash2, RefreshCw, Clock, BarChart3, ShieldAlert, Copy, Repeat, FileUp, AlertTriangle, LayoutDashboard, ListChecks, KeyRound, CalendarClock, Sparkles, Type } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { NeuButton } from '@/components/ui/neu';
 import { LatexRenderer } from '@/components/ui/LatexRenderer';
 import { apiCall } from '@/lib/api';
@@ -90,6 +91,9 @@ export function AdminContestPanel({ initial, questionTypesEnabled = false }: { i
   const [rowBusy, setRowBusy] = useState<string | null>(null);
   const [cadenceDays, setCadenceDays] = useState(7);
   const [schedules, setSchedules] = useState<ContestSchedule[]>([]);
+  // Top-level sectioning: the panel used to be one long scroll of every control.
+  // Tabs give the admin a clear mental model (see, build, manage, automate).
+  const [tab, setTab] = useState<'overview' | 'create' | 'contests' | 'automation'>('create');
 
   const set = <K extends keyof BuilderState>(k: K, v: BuilderState[K]) =>
     setB((prev) => ({ ...prev, [k]: v }));
@@ -545,12 +549,35 @@ export function AdminContestPanel({ initial, questionTypesEnabled = false }: { i
         </Link>
       </div>
 
-      {/* ── Metrics (funnel + retention) ────────────────────────────────── */}
-      <ContestMetrics />
+      {/* ── Sections ────────────────────────────────────────────────────── */}
+      <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
+        <TabsList className="w-full flex-wrap justify-start gap-1">
+          <TabsTrigger value="overview" className="cursor-pointer gap-1.5">
+            <LayoutDashboard className="w-3.5 h-3.5" aria-hidden="true" /> Overview
+          </TabsTrigger>
+          <TabsTrigger value="create" className="cursor-pointer gap-1.5">
+            <Plus className="w-3.5 h-3.5" aria-hidden="true" /> {b.id ? 'Edit draft' : 'Create'}
+          </TabsTrigger>
+          <TabsTrigger value="contests" className="cursor-pointer gap-1.5">
+            <Trophy className="w-3.5 h-3.5" aria-hidden="true" /> Contests
+            <span className="ml-1 rounded-full bg-muted px-1.5 text-[10px] font-black tabular-nums">{contests.length}</span>
+          </TabsTrigger>
+          <TabsTrigger value="automation" className="cursor-pointer gap-1.5">
+            <Repeat className="w-3.5 h-3.5" aria-hidden="true" /> Automation
+            {schedules.length > 0 && (
+              <span className="ml-1 rounded-full bg-muted px-1.5 text-[10px] font-black tabular-nums">{schedules.length}</span>
+            )}
+          </TabsTrigger>
+        </TabsList>
 
-      {/* ── Builder ─────────────────────────────────────────────────────── */}
-      <div className="neu-raised rounded-2xl p-5 space-y-5">
-        <div className="flex items-center justify-between">
+        {/* ── Overview: funnel + retention ──────────────────────────────── */}
+        <TabsContent value="overview" className="mt-4">
+          <ContestMetrics />
+        </TabsContent>
+
+        {/* ── Create: the builder, grouped into steps ───────────────────── */}
+        <TabsContent value="create" className="mt-4 space-y-4">
+        <div className="flex items-center justify-between px-1">
           <div className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
             {b.id ? 'Editing draft' : 'New contest'}
           </div>
@@ -558,13 +585,14 @@ export function AdminContestPanel({ initial, questionTypesEnabled = false }: { i
             <button
               type="button"
               onClick={() => { setB(emptyBuilder()); setPreview(null); }}
-              className="text-[11px] font-black uppercase tracking-wider text-primary"
+              className="cursor-pointer rounded-lg px-2 py-1 text-[11px] font-black uppercase tracking-wider text-primary transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             >
               Start fresh
             </button>
           )}
         </div>
 
+        <SectionCard title="Basics" icon={<Type className="w-4 h-4" />} hint="Name the contest and pick which subjects it covers.">
         {/* Name */}
         <Field label="Contest name">
           <input
@@ -597,8 +625,11 @@ export function AdminContestPanel({ initial, questionTypesEnabled = false }: { i
           </div>
         </Field>
 
+        </SectionCard>
+
         {/* Access & eligibility */}
-        <Field label="Access & registration">
+        <SectionCard title="Access & registration" icon={<KeyRound className="w-4 h-4" />} hint="Who may register, and how many seats.">
+        <Field label="Access mode">
           <div className="space-y-3">
             <div className="flex flex-wrap gap-2">
               {([
@@ -640,8 +671,11 @@ export function AdminContestPanel({ initial, questionTypesEnabled = false }: { i
           </div>
         </Field>
 
+        </SectionCard>
+
         {/* Per-subject topics + counts */}
         {b.subjects.length > 0 && (
+          <SectionCard title="Questions" icon={<ListChecks className="w-4 h-4" />} hint="Per subject: topics, how many questions, and (when enabled) which types.">
           <Field label="Topics & question count (per subject)">
             <div className="space-y-2">
               {b.subjects.map((s) => {
@@ -741,8 +775,10 @@ export function AdminContestPanel({ initial, questionTypesEnabled = false }: { i
               })}
             </div>
           </Field>
+          </SectionCard>
         )}
 
+        <SectionCard title="Schedule" icon={<CalendarClock className="w-4 h-4" />} hint="All times are entered and shown in IST.">
         {/* Schedule (IST) */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <Field label="Starts at (IST)">
@@ -787,6 +823,9 @@ export function AdminContestPanel({ initial, questionTypesEnabled = false }: { i
           </div>
         )}
 
+        </SectionCard>
+
+        <SectionCard title="Review & publish" icon={<Eye className="w-4 h-4" />} hint="Resolve the paper, curate it, then freeze it by publishing.">
         {/* Preview result — the actual resolved questions, reviewable before publish */}
         {preview && (
           <div className="space-y-3">
@@ -801,8 +840,12 @@ export function AdminContestPanel({ initial, questionTypesEnabled = false }: { i
               const dupIds = ids.length !== new Set(ids).size;
               const dupText = texts.filter((t) => t).length !== new Set(texts.filter((t) => t)).size;
               return (dupIds || dupText) ? (
-                <div className="rounded-xl bg-amber-500/10 border border-amber-500/30 p-2.5 text-[11px] font-bold text-amber-600 dark:text-amber-400">
-                  ⚠ Duplicate questions detected in this paper — remove or replace them before publishing.
+                <div
+                  role="alert"
+                  className="flex items-start gap-2 rounded-xl bg-amber-500/10 border border-amber-500/30 p-2.5 text-[11px] font-bold text-amber-700 dark:text-amber-400"
+                >
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px" aria-hidden="true" />
+                  <span>Duplicate questions detected in this paper — remove or replace them before publishing.</span>
                 </div>
               ) : null;
             })()}
@@ -900,9 +943,11 @@ export function AdminContestPanel({ initial, questionTypesEnabled = false }: { i
           )}
         </div>
 
+        </SectionCard>
+
         {/* Auto-schedule: turn this config into a recurring contest */}
-        <div className="pt-3 border-t border-border/40 flex flex-wrap items-center gap-2">
-          <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Or automate</span>
+        <SectionCard title="Automate" icon={<Sparkles className="w-4 h-4" />} hint="Turn this exact config into a contest that republishes on a cadence.">
+        <div className="flex flex-wrap items-center gap-2">
           <label className="text-[11px] font-bold text-muted-foreground">every</label>
           <input
             type="number"
@@ -920,13 +965,19 @@ export function AdminContestPanel({ initial, questionTypesEnabled = false }: { i
             </span>
           </NeuButton>
         </div>
-      </div>
+        </SectionCard>
+        </TabsContent>
 
-      {/* ── Recurring schedules ─────────────────────────────────────────── */}
-      {schedules.length > 0 && (
+        {/* ── Automation: recurring schedules ───────────────────────────── */}
+        <TabsContent value="automation" className="mt-4">
+      {schedules.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          No recurring schedules yet. Configure a contest in <strong>Create</strong>, then use <strong>Automate</strong> to repeat it.
+        </p>
+      ) : (
         <div className="space-y-3">
           <div className="text-[10px] font-black uppercase tracking-widest text-muted-foreground flex items-center gap-2">
-            <Repeat className="w-3 h-3" /> Recurring schedules
+            <Repeat className="w-3 h-3" aria-hidden="true" /> Recurring schedules
           </div>
           {schedules.map((sc) => (
             <div key={sc.id} className="neu-raised rounded-2xl p-4 flex items-center gap-3">
@@ -950,12 +1001,16 @@ export function AdminContestPanel({ initial, questionTypesEnabled = false }: { i
         </div>
       )}
 
-      {/* ── Existing contests ───────────────────────────────────────────── */}
+        </TabsContent>
+
+        {/* ── Contests: everything created so far ───────────────────────── */}
+        <TabsContent value="contests" className="mt-4">
       <div className="space-y-3">
-        <div className="text-[10px] font-black uppercase tracking-widest text-muted-foreground flex items-center gap-2">
-          <Plus className="w-3 h-3" /> All contests
-        </div>
-        {contests.length === 0 && <div className="text-sm text-muted-foreground">No contests yet.</div>}
+        {contests.length === 0 && (
+          <p className="text-sm text-muted-foreground">
+            No contests yet. Head to <strong>Create</strong> to build your first one.
+          </p>
+        )}
         {contests.map((c) => (
           <div key={c.id} className="neu-raised rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center gap-3">
             <div className="min-w-0 flex-1">
@@ -1056,6 +1111,8 @@ export function AdminContestPanel({ initial, questionTypesEnabled = false }: { i
           </div>
         ))}
       </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
@@ -1240,6 +1297,36 @@ function QuestionPreview({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * One labelled group inside the builder. Splits what used to be a single
+ * 350-line form into scannable steps (progressive disclosure) while reusing the
+ * existing `neu-raised` card language so nothing looks bolted on.
+ */
+function SectionCard({
+  title,
+  icon,
+  hint,
+  children,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="neu-raised rounded-2xl p-5 space-y-4">
+      <header className="flex items-start gap-2.5">
+        <span className="mt-0.5 text-primary" aria-hidden="true">{icon}</span>
+        <div className="min-w-0">
+          <h3 className="text-[11px] font-black uppercase tracking-widest text-foreground">{title}</h3>
+          {hint && <p className="text-[11px] font-medium text-muted-foreground mt-0.5">{hint}</p>}
+        </div>
+      </header>
+      {children}
+    </section>
   );
 }
 

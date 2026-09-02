@@ -44,7 +44,7 @@ export function ContestCalculator({ onClose }: { onClose: () => void }) {
     <div className="fixed bottom-24 right-4 z-40 w-60 rounded-2xl neu-raised p-3 bg-background/95 backdrop-blur">
       <div className="flex items-center justify-between mb-2">
         <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Calculator</span>
-        <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="w-4 h-4" /></button>
+        <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><X className="w-4 h-4" /></button>
       </div>
       <div className="rounded-lg neu-inset px-2 py-1.5 mb-2 text-right">
         <div className="text-[11px] text-muted-foreground truncate">{expr || '0'}</div>
@@ -52,11 +52,11 @@ export function ContestCalculator({ onClose }: { onClose: () => void }) {
       </div>
       <div className="grid grid-cols-5 gap-1">
         {KEYS.flat().map((k) => (
-          <button key={k} type="button" onClick={() => press(k)} className="rounded-lg neu-raised py-2 text-sm font-bold text-foreground hover:text-primary">{k}</button>
+          <button key={k} type="button" onClick={() => press(k)} className="rounded-lg neu-raised py-2 text-sm font-bold text-foreground hover:text-primary cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{k}</button>
         ))}
-        <button type="button" onClick={() => { setExpr(''); setResult(''); }} className="col-span-2 rounded-lg neu-raised py-2 text-sm font-bold text-rose-500">C</button>
-        <button type="button" onClick={() => setExpr((e) => e.slice(0, -1))} className="rounded-lg neu-raised py-2 text-sm font-bold text-foreground">⌫</button>
-        <button type="button" onClick={() => press('=')} className="col-span-2 rounded-lg bg-primary py-2 text-sm font-black text-white">=</button>
+        <button type="button" onClick={() => { setExpr(''); setResult(''); }} className="col-span-2 rounded-lg neu-raised py-2 text-sm font-bold text-rose-500 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">C</button>
+        <button type="button" onClick={() => setExpr((e) => e.slice(0, -1))} className="rounded-lg neu-raised py-2 text-sm font-bold text-foreground cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">⌫</button>
+        <button type="button" onClick={() => press('=')} className="col-span-2 rounded-lg bg-primary py-2 text-sm font-black text-white cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">=</button>
       </div>
     </div>
   );

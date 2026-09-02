@@ -43,7 +43,7 @@ export function ContestDiscussion({ contestId, position }: { contestId: string; 
 
   return (
     <div className="mt-3 border-t border-border/30 pt-2">
-      <button type="button" onClick={() => setOpen((v) => !v)} className="text-[11px] font-black uppercase tracking-wider text-muted-foreground hover:text-primary">
+      <button type="button" onClick={() => setOpen((v) => !v)} className="text-[11px] font-black uppercase tracking-wider text-muted-foreground hover:text-primary cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
         {open ? 'Hide discussion' : `Discuss${comments ? ` (${comments.length})` : ''}`}
       </button>
       {open && (
@@ -69,7 +69,7 @@ export function ContestDiscussion({ contestId, position }: { contestId: string; 
               maxLength={1000}
               className="flex-1 rounded-lg neu-inset px-3 py-1.5 text-sm text-foreground outline-none"
             />
-            <button type="button" onClick={() => void post()} disabled={busy || !draft.trim()} className="rounded-lg bg-primary px-3 py-1.5 text-sm font-bold text-white disabled:opacity-50">
+            <button type="button" onClick={() => void post()} disabled={busy || !draft.trim()} className="rounded-lg bg-primary px-3 py-1.5 text-sm font-bold text-white disabled:opacity-50 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
               Post
             </button>
           </div>

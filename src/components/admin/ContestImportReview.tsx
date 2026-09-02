@@ -221,10 +221,10 @@ export function ContestImportReview({
       {questions.length > 0 ? (
         <div className="flex items-center gap-3 text-sm">
           <span className="text-muted-foreground">Send to practice:</span>
-          <button type="button" onClick={() => setAllPractice(true)} className="rounded-full border border-border/50 px-3 py-1 hover:bg-muted">
+          <button type="button" onClick={() => setAllPractice(true)} className="rounded-full border border-border/50 px-3 py-1 hover:bg-muted cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
             Select all
           </button>
-          <button type="button" onClick={() => setAllPractice(false)} className="rounded-full border border-border/50 px-3 py-1 hover:bg-muted">
+          <button type="button" onClick={() => setAllPractice(false)} className="rounded-full border border-border/50 px-3 py-1 hover:bg-muted cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
             Deselect all
           </button>
         </div>

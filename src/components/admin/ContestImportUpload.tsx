@@ -147,7 +147,7 @@ export function ContestImportUpload({ initialJobs }: { initialJobs: DocumentImpo
                           type="button"
                           disabled={deleting}
                           onClick={() => (confirming ? deleteJob(job.id) : setConfirmingId(job.id))}
-                          className="rounded-full px-2 py-0.5 text-xs font-medium text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50"
+                          className="rounded-full px-2 py-0.5 text-xs font-medium text-destructive transition-colors duration-200 hover:bg-destructive/10 disabled:opacity-50 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                         >
                           {deleting ? "Deleting…" : confirming ? "Confirm delete?" : "Delete"}
                         </button>
@@ -155,7 +155,7 @@ export function ContestImportUpload({ initialJobs }: { initialJobs: DocumentImpo
                           <button
                             type="button"
                             onClick={() => setConfirmingId(null)}
-                            className="rounded-full px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted"
+                            className="rounded-full px-2 py-0.5 text-xs text-muted-foreground transition-colors duration-200 hover:bg-muted cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                           >
                             Cancel
                           </button>
