@@ -32,7 +32,16 @@ export interface SubjectSelection {
   /** OGCode chapters to draw from (empty/omitted = the whole subject). */
   topics?: string[];
   difficulties?: string[];
+  /**
+   * Question types to draw from. Omitted/empty = `["mcq"]` — the historical,
+   * MCQ-only behaviour (unchanged). Additional types (msq/numerical/…) are only
+   * passed when the CONTEST_QUESTION_TYPES surface builds a multi-type paper.
+   */
+  types?: string[];
 }
+
+/** The only type contests have ever drawn; the default when none is specified. */
+const DEFAULT_CONTEST_TYPES = ["mcq"] as const;
 
 export interface ResolveOptions {
   contestId: string;
@@ -48,6 +57,8 @@ function freezeSnapshot(q: {
   correctOptions: number[] | null;
   answerText: string | null;
   tolerance: number | null;
+  answerSpec?: unknown;
+  matrixData?: unknown;
   explanation: string;
   subject: string;
   chapter: string;
@@ -65,6 +76,11 @@ function freezeSnapshot(q: {
     correctOptions: q.correctOptions,
     answerText: q.answerText,
     tolerance: q.tolerance,
+    // Carried so non-MCQ types (numerical-with-units / symbolic / matrix-match)
+    // freeze a self-contained gradeable snapshot. Null for plain MCQ — no change
+    // to existing MCQ papers.
+    answerSpec: q.answerSpec ?? null,
+    matrixData: q.matrixData ?? null,
     explanation: q.explanation,
     subject: q.subject,
     chapter: q.chapter,
@@ -94,14 +110,18 @@ export async function resolveContestQuestions(
     if (!(count > 0)) {
       throw selectionError(400, `Question count for ${sel.subject} must be greater than 0.`);
     }
+    // Effective type: default MCQ (historical behaviour). Multi-type papers pass
+    // a single type per selection today; a future slice adds true type-mixing
+    // with a per-type count distribution (CONTEST_QUESTION_TYPES).
+    const effectiveType = sel.types && sel.types.length ? sel.types[0] : DEFAULT_CONTEST_TYPES[0];
     const rows = await sampleOgcodeCatalogQuestionIds({
       subject: sel.subject,
       chapters: sel.topics && sel.topics.length ? sel.topics : null,
       difficulties: sel.difficulties && sel.difficulties.length ? sel.difficulties : null,
-      // Contest player + practice render single-select MCQ only. Restrict the
-      // pool to real (option-bearing) MCQs so numerical/MSQ/subjective questions
-      // — which would be unanswerable in the UI — never enter a contest paper.
-      type: "mcq",
+      // Restrict the pool to the selection's type. MCQ by default so a question a
+      // renderer can't display never enters a paper; multi-type surfaces widen
+      // this deliberately once the contest player renders the extra types.
+      type: effectiveType,
       // Contest paper may draw from admin-imported (file-generated) questions too.
       includeContestImports: true,
       seed: `${contestId}:${sel.subject}`,
