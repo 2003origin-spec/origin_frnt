@@ -919,6 +919,14 @@ export function AdminContestPanel({ initial, questionTypesEnabled = false }: { i
                 {canReview(c) && (
                   <IconBtn onClick={() => openReview(c)} busy={false} icon={<ShieldAlert className="w-3.5 h-3.5" />} label="Review" />
                 )}
+                {(c.status === 'result_processing' || c.status === 'result_published') && (
+                  <Link
+                    href={`/admin/contest/${c.id}/analytics`}
+                    className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[10px] font-black uppercase tracking-wider neu-raised text-muted-foreground hover:text-primary"
+                  >
+                    <BarChart3 className="w-3.5 h-3.5" /> Analytics
+                  </Link>
+                )}
                 <IconBtn onClick={() => clone(c)} busy={rowBusy === c.id} icon={<Copy className="w-3.5 h-3.5" />} label="Clone" />
                 {(c.status === 'draft' || c.status === 'scheduled') && (
                   <IconBtn onClick={() => cancel(c)} busy={rowBusy === c.id} icon={<Ban className="w-3.5 h-3.5" />} label="Cancel" />
