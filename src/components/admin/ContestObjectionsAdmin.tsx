@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { ArrowLeft } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
@@ -41,7 +42,7 @@ export function ContestObjectionsAdmin({ contestId, initial }: { contestId: stri
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold text-foreground">Answer-key objections</h1>
-        <Link href="/admin/contest" className="text-sm text-muted-foreground hover:text-primary">← Contests</Link>
+        <Link href="/admin/contest" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors duration-200 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"><ArrowLeft className="w-3.5 h-3.5" aria-hidden="true" /> Contests</Link>
       </div>
       {objections.length === 0 ? (
         <p className="text-sm text-muted-foreground">No objections filed.</p>
@@ -56,8 +57,8 @@ export function ContestObjectionsAdmin({ contestId, initial }: { contestId: stri
               <p className="text-sm text-foreground mb-2">{o.reason}</p>
               {o.status === 'open' && (
                 <div className="flex gap-2">
-                  <button type="button" disabled={busy === o.id} onClick={() => resolve(o, 'accept')} className="rounded-lg bg-emerald-500/10 px-3 py-1.5 text-xs font-black uppercase text-emerald-600 dark:text-emerald-400 disabled:opacity-50">Accept & re-grade</button>
-                  <button type="button" disabled={busy === o.id} onClick={() => resolve(o, 'reject')} className="rounded-lg px-3 py-1.5 text-xs font-black uppercase text-muted-foreground hover:bg-muted disabled:opacity-50">Reject</button>
+                  <button type="button" disabled={busy === o.id} onClick={() => resolve(o, 'accept')} className="rounded-lg bg-emerald-500/10 px-3 py-1.5 text-xs font-black uppercase text-emerald-600 dark:text-emerald-400 disabled:opacity-50 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">Accept & re-grade</button>
+                  <button type="button" disabled={busy === o.id} onClick={() => resolve(o, 'reject')} className="rounded-lg px-3 py-1.5 text-xs font-black uppercase text-muted-foreground hover:bg-muted disabled:opacity-50 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">Reject</button>
                 </div>
               )}
             </li>

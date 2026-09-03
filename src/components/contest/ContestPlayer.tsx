@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { AlertTriangle, ArrowLeft, ArrowRight, Clock, Flag, Trophy } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ArrowRight, Check, Clock, Flag, Trophy } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { NeuButton } from '@/components/ui/neu';
@@ -314,7 +314,9 @@ export function ContestPlayer({ contestId, proctoringEnabled = false }: { contes
                           selected ? 'bg-primary text-white' : 'bg-muted text-muted-foreground',
                         )}
                       >
-                        {isMsq ? (selected ? '✓' : '') : String.fromCharCode(65 + oi)}
+                        {isMsq
+                          ? (selected ? <Check className="w-4 h-4" aria-hidden="true" /> : null)
+                          : String.fromCharCode(65 + oi)}
                       </span>
                       <span className="text-[14px] font-medium text-foreground flex-1 min-w-0">
                         <LatexRenderer content={String(opt)} />
@@ -340,8 +342,23 @@ export function ContestPlayer({ contestId, proctoringEnabled = false }: { contes
 
       {proctoringEnabled && (
         <div className="px-4 pb-2">
-          <p className={cn('text-[10px] font-bold', proctorConsent === 'granted' ? 'text-emerald-500' : proctorConsent === 'denied' ? 'text-rose-500' : 'text-muted-foreground')}>
-            {proctorConsent === 'granted' ? '● Proctoring active — camera recording periodic snapshots'
+          <p
+            className={cn(
+              'inline-flex items-center gap-1.5 text-[10px] font-bold',
+              proctorConsent === 'granted' ? 'text-emerald-600 dark:text-emerald-400'
+                : proctorConsent === 'denied' ? 'text-rose-600 dark:text-rose-400'
+                : 'text-muted-foreground',
+            )}
+          >
+            {/* Status dot: shape + text, never colour alone (color-not-only). */}
+            <span
+              aria-hidden="true"
+              className={cn(
+                'h-1.5 w-1.5 shrink-0 rounded-full',
+                proctorConsent === 'granted' ? 'bg-emerald-500' : proctorConsent === 'denied' ? 'bg-rose-500' : 'bg-muted-foreground',
+              )}
+            />
+            {proctorConsent === 'granted' ? 'Proctoring active — camera recording periodic snapshots'
               : proctorConsent === 'denied' ? 'Camera access denied — this attempt may be flagged'
               : 'Requesting camera for proctoring…'}
           </p>

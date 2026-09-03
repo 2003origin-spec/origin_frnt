@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { ArrowLeft } from 'lucide-react';
 
 import type { QuestionAnalyticsRow } from '@/server/contest/contest-analytics-service';
 
@@ -27,11 +28,11 @@ export function ContestQuestionAnalytics({ contestId, rows }: { contestId: strin
         <div className="flex items-center gap-3">
           <a
             href={`/api/admin/contest/${contestId}/analytics?format=csv`}
-            className="rounded-lg border border-border/50 px-3 py-1.5 text-sm font-semibold text-foreground hover:bg-muted"
+            className="rounded-lg border border-border/50 px-3 py-1.5 text-sm font-semibold text-foreground transition-colors duration-200 hover:bg-muted cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           >
             Export CSV
           </a>
-          <Link href="/admin/contest" className="text-sm text-muted-foreground hover:text-primary">← Contests</Link>
+          <Link href="/admin/contest" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors duration-200 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"><ArrowLeft className="w-3.5 h-3.5" aria-hidden="true" /> Contests</Link>
         </div>
       </header>
 

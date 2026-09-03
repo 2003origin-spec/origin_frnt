@@ -56,11 +56,11 @@ export function ContestTeams({ contestId }: { contestId: string }) {
           <div className="neu-raised rounded-2xl p-4 space-y-3">
             <div className="flex gap-2">
               <input value={name} onChange={(e) => setName(e.target.value)} placeholder="New team name" className="flex-1 rounded-lg neu-inset px-3 py-2 text-sm text-foreground outline-none" />
-              <button type="button" disabled={busy || !name.trim()} onClick={() => act({ action: 'create', name })} className="rounded-lg bg-primary px-3 py-2 text-sm font-bold text-white disabled:opacity-50">Create</button>
+              <button type="button" disabled={busy || !name.trim()} onClick={() => act({ action: 'create', name })} className="rounded-lg bg-primary px-3 py-2 text-sm font-bold text-white disabled:opacity-50 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">Create</button>
             </div>
             <div className="flex gap-2">
               <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="Join code" className="flex-1 rounded-lg neu-inset px-3 py-2 text-sm text-foreground outline-none font-mono" />
-              <button type="button" disabled={busy || !code.trim()} onClick={() => act({ action: 'join', joinCode: code })} className="rounded-lg neu-raised px-3 py-2 text-sm font-bold text-foreground disabled:opacity-50">Join</button>
+              <button type="button" disabled={busy || !code.trim()} onClick={() => act({ action: 'join', joinCode: code })} className="rounded-lg neu-raised px-3 py-2 text-sm font-bold text-foreground disabled:opacity-50 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">Join</button>
             </div>
           </div>
         )}
