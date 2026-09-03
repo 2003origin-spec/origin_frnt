@@ -4,9 +4,12 @@ import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import {
   ArrowLeft, Download, Search, Eye, EyeOff, Loader2, ShieldAlert, ChevronLeft, ChevronRight, X,
+  UserPlus, UserMinus, Ban, RotateCcw, RefreshCw,
 } from 'lucide-react';
+import { toast } from 'sonner';
 
 import { cn } from '@/lib/utils';
+import { mutateJson } from '@/lib/csrf';
 import type {
   AttemptState, ParticipantAnswer, ParticipantRow, ParticipantsSummary,
 } from '@/server/contest/contest-participants-service';
@@ -53,10 +56,16 @@ export function ContestParticipants({ contestId, contestName }: { contestId: str
   const [sort, setSort] = useState('rank');
   const [reveal, setReveal] = useState(false);
 
+  // bulk selection + row actions
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [acting, setActing] = useState(false);
+  // Live refresh while a contest is running (in-progress rows change).
+  const [live, setLive] = useState(false);
+
   // detail drawer
   const [detail, setDetail] = useState<ParticipantRow | null>(null);
   const [answers, setAnswers] = useState<ParticipantAnswer[] | null>(null);
-  const [snapshots, setSnapshots] = useState<{ r2Key: string; capturedAt: string }[]>([]);
+  const [snapshots, setSnapshots] = useState<{ r2Key: string; capturedAt: string; url?: string | null }[]>([]);
 
   const query = useCallback((extra: Record<string, string> = {}) => {
     const p = new URLSearchParams({
@@ -88,13 +97,53 @@ export function ContestParticipants({ contestId, contestName }: { contestId: str
     setDetail(r); setAnswers(null); setSnapshots([]);
     try {
       const res = await fetch(`/api/admin/contest/${contestId}/participants?userId=${encodeURIComponent(r.userId)}`, { credentials: 'include' });
-      const body = (await res.json().catch(() => ({}))) as { answers?: ParticipantAnswer[]; snapshots?: { r2Key: string; capturedAt: string }[] };
+      const body = (await res.json().catch(() => ({}))) as { answers?: ParticipantAnswer[]; snapshots?: { r2Key: string; capturedAt: string; url?: string | null }[] };
       setAnswers(body.answers ?? []);
       setSnapshots(body.snapshots ?? []);
     } catch {
       setAnswers([]);
     }
   };
+
+  // Poll while "live" is on so in-progress attempts update without a manual reload.
+  useEffect(() => {
+    if (!live) return;
+    const t = window.setInterval(() => void load(), 15_000);
+    return () => window.clearInterval(t);
+  }, [live, load]);
+
+  const runAction = async (action: string, userIds: string[], confirmMsg?: string) => {
+    if (userIds.length === 0) return;
+    if (confirmMsg && !window.confirm(`${confirmMsg} (${userIds.length} participant${userIds.length === 1 ? '' : 's'})`)) return;
+    setActing(true);
+    try {
+      const res = await mutateJson(`/api/admin/contest/${contestId}/participants`, {
+        method: 'POST',
+        body: JSON.stringify(userIds.length === 1 ? { action, userId: userIds[0] } : { action, userIds }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { detail?: string; affected?: number; promoted?: number };
+      if (!res.ok) { toast.error(data.detail ?? 'Action failed.'); return; }
+      toast.success(
+        action === 'promote' ? `Promoted ${data.promoted ?? 0} from the waitlist.`
+          : `Updated ${data.affected ?? userIds.length} participant(s).`,
+      );
+      setSelected(new Set());
+      await load();
+    } finally {
+      setActing(false);
+    }
+  };
+
+  const toggleSelect = (userId: string) =>
+    setSelected((prev) => { const n = new Set(prev); if (n.has(userId)) n.delete(userId); else n.add(userId); return n; });
+  const allOnPageSelected = rows.length > 0 && rows.every((r) => selected.has(r.userId));
+  const toggleSelectAll = () =>
+    setSelected((prev) => {
+      const n = new Set(prev);
+      if (allOnPageSelected) rows.forEach((r) => n.delete(r.userId));
+      else rows.forEach((r) => n.add(r.userId));
+      return n;
+    });
 
   const page = Math.floor(offset / PAGE) + 1;
   const pages = Math.max(1, Math.ceil(total / PAGE));
@@ -107,6 +156,26 @@ export function ContestParticipants({ contestId, contestName }: { contestId: str
           <p className="text-sm text-muted-foreground truncate">{contestName}</p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setLive((v) => !v)}
+            aria-pressed={live}
+            title="Auto-refresh every 15s while a contest is running"
+            className={cn(
+              'inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-lg px-3 text-sm font-semibold transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
+              live ? 'bg-sky-500 text-white' : 'border border-border/50 text-foreground hover:bg-muted',
+            )}
+          >
+            <RefreshCw className={cn('w-4 h-4', live && 'animate-spin')} aria-hidden="true" /> {live ? 'Live' : 'Live off'}
+          </button>
+          <button
+            type="button"
+            onClick={() => void runAction('promote', [], 'Auto-promote waitlisted participants into free seats?')}
+            disabled={acting || !summary?.waitlisted}
+            className="inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-lg border border-border/50 px-3 text-sm font-semibold text-foreground transition-colors duration-200 hover:bg-muted disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            <UserPlus className="w-4 h-4" aria-hidden="true" /> Promote waitlist
+          </button>
           <button
             type="button"
             onClick={() => setReveal((v) => !v)}
@@ -188,23 +257,54 @@ export function ContestParticipants({ contestId, contestName }: { contestId: str
         </span>
       </div>
 
+      {/* ── Bulk actions ───────────────────────────────────────────────── */}
+      {selected.size > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-3 py-2">
+          <span className="text-sm font-bold text-foreground tabular-nums">{selected.size} selected</span>
+          <BulkBtn onClick={() => void runAction('promote', [...selected], 'Promote from waitlist?')} disabled={acting} icon={<UserPlus className="w-3.5 h-3.5" />} label="Promote" />
+          <BulkBtn onClick={() => void runAction('disqualify', [...selected], 'Disqualify (marks the attempt ineligible and re-ranks if published)?')} disabled={acting} icon={<Ban className="w-3.5 h-3.5" />} label="Disqualify" tone="danger" />
+          <BulkBtn onClick={() => void runAction('reinstate', [...selected], 'Reinstate as eligible?')} disabled={acting} icon={<RotateCcw className="w-3.5 h-3.5" />} label="Reinstate" />
+          <BulkBtn onClick={() => void runAction('unregister', [...selected], 'Unregister? (only works if they have not started)')} disabled={acting} icon={<UserMinus className="w-3.5 h-3.5" />} label="Unregister" tone="danger" />
+          <button type="button" onClick={() => setSelected(new Set())} className="ml-auto cursor-pointer rounded-lg px-2 py-1 text-xs font-bold text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">Clear</button>
+          {acting && <Loader2 className="w-4 h-4 animate-spin text-primary" aria-hidden="true" />}
+        </div>
+      )}
+
       {/* ── Table ──────────────────────────────────────────────────────── */}
       <div className="overflow-x-auto rounded-xl border border-border/40">
         <table className="w-full text-sm">
           <thead className="bg-muted/50 text-[11px] uppercase tracking-wider text-muted-foreground">
             <tr>
+              <th scope="col" className="px-3 py-2">
+                <input
+                  type="checkbox"
+                  checked={allOnPageSelected}
+                  onChange={toggleSelectAll}
+                  aria-label="Select all participants on this page"
+                  className="cursor-pointer"
+                />
+              </th>
               <Th>#</Th><Th>Participant</Th><Th>Registered</Th><Th>Attempt</Th>
               <Th align="right">Score</Th><Th align="right">Acc.</Th><Th align="right">Time</Th>
-              <Th align="right">%ile</Th><Th align="right">Viol.</Th><Th>ORBIT</Th><Th>Detail</Th>
+              <Th align="right">%ile</Th><Th align="right">Viol.</Th><Th>ORBIT</Th><Th>Actions</Th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 && !loading ? (
-              <tr><td colSpan={11} className="px-3 py-8 text-center text-muted-foreground">
+              <tr><td colSpan={12} className="px-3 py-8 text-center text-muted-foreground">
                 No participants match this filter.
               </td></tr>
             ) : rows.map((r) => (
               <tr key={r.userId} className={cn('border-t border-border/30 align-top', !r.eligible && 'opacity-60')}>
+                <td className="px-3 py-2">
+                  <input
+                    type="checkbox"
+                    checked={selected.has(r.userId)}
+                    onChange={() => toggleSelect(r.userId)}
+                    aria-label={`Select ${r.name ?? r.userId}`}
+                    className="cursor-pointer"
+                  />
+                </td>
                 <td className="px-3 py-2 font-mono text-muted-foreground tabular-nums">{r.rank ?? '—'}</td>
                 <td className="px-3 py-2">
                   <div className="font-medium text-foreground flex items-center gap-1.5">
@@ -244,13 +344,35 @@ export function ContestParticipants({ contestId, contestName }: { contestId: str
                   )}
                 </td>
                 <td className="px-3 py-2">
-                  <button
-                    type="button"
-                    onClick={() => void openDetail(r)}
-                    className="cursor-pointer rounded-lg px-2 py-1 text-[11px] font-bold text-primary transition-colors duration-200 hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                  >
-                    View
-                  </button>
+                  <div className="flex flex-wrap gap-1">
+                    <button
+                      type="button"
+                      onClick={() => void openDetail(r)}
+                      className="cursor-pointer rounded-lg px-2 py-1 text-[11px] font-bold text-primary transition-colors duration-200 hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    >
+                      View
+                    </button>
+                    {r.registrationStatus === 'waitlisted' && (
+                      <button type="button" disabled={acting}
+                        onClick={() => void runAction('promote', [r.userId])}
+                        className="cursor-pointer rounded-lg px-2 py-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 transition-colors duration-200 hover:bg-emerald-500/10 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                        Promote
+                      </button>
+                    )}
+                    {r.eligible ? (
+                      <button type="button" disabled={acting}
+                        onClick={() => void runAction('disqualify', [r.userId], 'Disqualify this participant?')}
+                        className="cursor-pointer rounded-lg px-2 py-1 text-[11px] font-bold text-rose-500 transition-colors duration-200 hover:bg-rose-500/10 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                        Disqualify
+                      </button>
+                    ) : (
+                      <button type="button" disabled={acting}
+                        onClick={() => void runAction('reinstate', [r.userId], 'Reinstate this participant?')}
+                        className="cursor-pointer rounded-lg px-2 py-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 transition-colors duration-200 hover:bg-emerald-500/10 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                        Reinstate
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
@@ -282,6 +404,12 @@ export function ContestParticipants({ contestId, contestName }: { contestId: str
                 <h2 className="text-lg font-bold text-foreground">{detail.name ?? 'Unnamed'}</h2>
                 <p className="text-sm text-muted-foreground break-all">{detail.email}</p>
               </div>
+              <a
+                href={`/api/admin/contest/${contestId}/participants?format=csv&search=${encodeURIComponent(detail.email ?? detail.userId)}`}
+                className="inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-lg border border-border/50 px-3 text-sm font-semibold text-foreground transition-colors duration-200 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              >
+                <Download className="w-4 h-4" aria-hidden="true" /> CSV
+              </a>
               <button type="button" onClick={() => setDetail(null)} aria-label="Close"
                 className="inline-flex min-h-11 min-w-11 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-colors duration-200 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
                 <X className="w-5 h-5" aria-hidden="true" />
@@ -311,10 +439,33 @@ export function ContestParticipants({ contestId, contestName }: { contestId: str
                 <h3 className="mb-2 text-[11px] font-black uppercase tracking-widest text-muted-foreground">
                   Proctoring snapshots ({snapshots.length})
                 </h3>
-                <p className="text-[11px] text-muted-foreground">
-                  Captured frames are stored in R2. Keys: {snapshots.slice(0, 3).map((s) => s.r2Key.split('/').pop()).join(', ')}
-                  {snapshots.length > 3 ? ` +${snapshots.length - 3} more` : ''}
-                </p>
+                <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                  {snapshots.slice(0, 12).map((snap) => (
+                    <figure key={snap.r2Key} className="overflow-hidden rounded-lg border border-border/40">
+                      {snap.url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={snap.url}
+                          alt={`Proctoring frame captured ${when(snap.capturedAt)}`}
+                          loading="lazy"
+                          width={160}
+                          height={120}
+                          className="aspect-[4/3] w-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex aspect-[4/3] items-center justify-center bg-muted text-[10px] text-muted-foreground">
+                          unavailable
+                        </div>
+                      )}
+                      <figcaption className="px-1 py-0.5 text-[9px] text-muted-foreground tabular-nums">
+                        {when(snap.capturedAt)}
+                      </figcaption>
+                    </figure>
+                  ))}
+                </div>
+                {snapshots.length > 12 && (
+                  <p className="mt-1 text-[11px] text-muted-foreground">+{snapshots.length - 12} more frames</p>
+                )}
               </div>
             )}
 
@@ -351,6 +502,26 @@ export function ContestParticipants({ contestId, contestName }: { contestId: str
         </div>
       )}
     </div>
+  );
+}
+
+function BulkBtn({ onClick, disabled, icon, label, tone }: {
+  onClick: () => void; disabled?: boolean; icon: React.ReactNode; label: string; tone?: 'danger';
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={cn(
+        'inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 text-xs font-bold transition-colors duration-200 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
+        tone === 'danger'
+          ? 'text-rose-600 dark:text-rose-400 hover:bg-rose-500/10'
+          : 'text-foreground hover:bg-muted',
+      )}
+    >
+      {icon} {label}
+    </button>
   );
 }
 

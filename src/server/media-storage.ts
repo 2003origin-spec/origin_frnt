@@ -230,6 +230,9 @@ export function createPresignedR2PutUrl(input: {
   objectKey: string;
   bucket?: string;
   expiresSeconds?: number;
+  /** HTTP verb the URL is signed for. PUT (upload) by default; GET reads an
+   *  object back (used for admin proctor-snapshot viewing). */
+  method?: "PUT" | "GET";
 }): { url: string; bucket: string; objectKey: string } {
   const bucket = input.bucket ?? importR2BucketName();
   const accessKeyId = requiredEnv("R2_ACCESS_KEY_ID");
@@ -252,7 +255,7 @@ export function createPresignedR2PutUrl(input: {
     .map((k) => `${sigv4Encode(k)}=${sigv4Encode(params[k])}`)
     .join("&");
   const canonicalHeaders = `host:${endpointUrl.host}\n`;
-  const canonicalRequest = ["PUT", canonicalUri, canonicalQueryString, canonicalHeaders, "host", "UNSIGNED-PAYLOAD"].join("\n");
+  const canonicalRequest = [input.method ?? "PUT", canonicalUri, canonicalQueryString, canonicalHeaders, "host", "UNSIGNED-PAYLOAD"].join("\n");
   const stringToSign = [
     "AWS4-HMAC-SHA256",
     amzDate,

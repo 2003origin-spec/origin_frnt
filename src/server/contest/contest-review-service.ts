@@ -55,7 +55,7 @@ export async function listFlaggedAttempts(contestId: string): Promise<FlaggedAtt
  * Deterministic + idempotent: clears this contest's orbit_history so rateContest
  * runs fresh, then re-ranks and re-rates the (updated) eligible field.
  */
-async function recomputeContest(contestId: string): Promise<void> {
+export async function recomputeContest(contestId: string): Promise<void> {
   await pool().query(`DELETE FROM contest.orbit_history WHERE contest_id = $1`, [contestId]);
   await rankContest(contestId);
   await rateContest(contestId);

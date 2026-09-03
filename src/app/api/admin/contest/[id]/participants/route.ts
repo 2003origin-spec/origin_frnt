@@ -22,6 +22,13 @@ import {
   listContestParticipants,
   type AttemptState,
 } from "@/server/contest/contest-participants-service";
+import {
+  promoteParticipant,
+  setParticipantEligibility,
+  unregisterParticipant,
+} from "@/server/contest/contest-participant-actions-service";
+import { clearFlaggedAttempt, upholdFlaggedAttempt } from "@/server/contest/contest-review-service";
+import { createPresignedR2PutUrl } from "@/server/media-storage";
 import { recordAuditEvent } from "@/server/workspaces/audit";
 
 import { handleTeacherError, teacherJson } from "@/app/api/teacher/_utils";
@@ -41,10 +48,20 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // ── Single-participant drill-down ────────────────────────────────────
     const userId = q.get("userId");
     if (userId) {
-      const [answers, snapshots] = await Promise.all([
+      const [answers, rawSnapshots] = await Promise.all([
         getParticipantAnswers(id, userId),
         getParticipantSnapshots(id, userId),
       ]);
+      // Sign short-lived GET URLs so the admin can actually view the frames.
+      // Best-effort: if R2 isn't configured we still return the metadata.
+      const snapshots = rawSnapshots.map((s) => {
+        try {
+          const signed = createPresignedR2PutUrl({ objectKey: s.r2Key, expiresSeconds: 900, method: "GET" });
+          return { ...s, url: signed.url };
+        } catch {
+          return { ...s, url: null as string | null };
+        }
+      });
       await recordAuditEvent({
         actorUserId: ctx.userId,
         workspaceId: null,
@@ -113,6 +130,62 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     return teacherJson({ summary, rows: page.rows, total: page.total });
+  } catch (error) {
+    return handleTeacherError(error);
+  }
+}
+
+/**
+ * POST /api/admin/contest/[id]/participants
+ *   { action: 'promote' | 'unregister' | 'disqualify' | 'reinstate' | 'clear_flag' | 'uphold_flag',
+ *     userId?, userIds?: string[] }
+ *
+ * Admin participant actions. `userIds` runs the action over a bulk selection;
+ * `promote` with neither runs the FIFO waitlist auto-promotion. Every call is
+ * audited. Actions that change eligibility recompute a published leaderboard.
+ */
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    requireFeatureEnabled("contest");
+    const ctx = await requireRole(request, ["admin"]);
+    const { id } = await params;
+    const body = (await request.json().catch(() => ({}))) as {
+      action?: string; userId?: string; userIds?: string[];
+    };
+    const action = body.action ?? "";
+    const targets = body.userIds?.length ? body.userIds.slice(0, 200) : body.userId ? [body.userId] : [];
+
+    let affected = 0;
+    let promoted = 0;
+
+    if (action === "promote" && targets.length === 0) {
+      promoted = (await promoteParticipant(id, null)).promoted;
+    } else {
+      if (targets.length === 0) return teacherJson({ detail: "A userId (or userIds) is required." }, { status: 400 });
+      for (const uid of targets) {
+        switch (action) {
+          case "promote": promoted += (await promoteParticipant(id, uid)).promoted; break;
+          case "unregister": promoted += (await unregisterParticipant(id, uid)).promoted; break;
+          case "disqualify": await setParticipantEligibility(id, uid, false); break;
+          case "reinstate": await setParticipantEligibility(id, uid, true); break;
+          case "clear_flag": await clearFlaggedAttempt(id, uid); break;
+          case "uphold_flag": await upholdFlaggedAttempt(id, uid); break;
+          default: return teacherJson({ detail: `Unknown action '${action}'.` }, { status: 400 });
+        }
+        affected += 1;
+      }
+    }
+
+    await recordAuditEvent({
+      actorUserId: ctx.userId,
+      workspaceId: null,
+      entityType: "contest",
+      entityId: id,
+      action: `contest.participant_${action}`,
+      after: { affected, promoted, targets: targets.length },
+    }).catch(() => undefined);
+
+    return teacherJson({ ok: true, affected, promoted });
   } catch (error) {
     return handleTeacherError(error);
   }
