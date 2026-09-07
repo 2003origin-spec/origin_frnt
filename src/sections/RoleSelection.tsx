@@ -32,7 +32,7 @@ export default function RoleSelection({ onSelectRole, onBack }: RoleSelectionPro
     const [selected, setSelected] = useState<'student' | 'teacher' | null>(null);
 
     return (
-        <div className="min-h-screen neu-surface flex flex-col items-center justify-center p-6 text-foreground">
+        <div className="min-h-dvh neu-surface flex flex-col items-center justify-center gap-2 p-6 pt-safe-lg pb-safe-lg text-foreground">
             {/* Back */}
             <div className="w-full max-w-2xl mb-8">
                 <button

@@ -208,7 +208,7 @@ export default function NCERTReader({ book, onBack, initialNotes = [], activeCha
     };
 
     return (
-        <div className={`flex flex-col h-screen bg-background text-foreground font-sans transition-all duration-300 relative ${isFullscreen ? 'fixed inset-0 z-50' : ''}`}>
+        <div className={`flex flex-col h-dvh bg-background text-foreground font-sans transition-all duration-300 relative ${isFullscreen ? 'fixed inset-0 z-50' : ''}`}>
 
             <header className="h-16 flex items-center justify-between px-4 sm:px-6 bg-background border-b border-border z-20 shrink-0">
                 <div className="flex items-center gap-4">

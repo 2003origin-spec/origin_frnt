@@ -29,7 +29,7 @@ export default async function MarketplacePage({ searchParams }: Props) {
   });
 
   return (
-    <div className="min-h-screen neu-surface text-foreground">
+    <div className="min-h-dvh neu-surface text-foreground">
       <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 py-10 space-y-8">
         <div>
           <p className="text-xs font-black uppercase tracking-[0.24em] text-primary mb-1">Browse</p>

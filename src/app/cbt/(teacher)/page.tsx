@@ -6,7 +6,7 @@
  */
 export default function CbtHomePage() {
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-3 p-8 text-center">
+    <main className="flex min-h-dvh flex-col items-center justify-center gap-3 p-8 text-center">
       <div className="neu-raised rounded-3xl p-8">
         <h1 className="text-2xl font-black text-foreground">CBT</h1>
         <p className="mt-1 text-sm text-muted-foreground">

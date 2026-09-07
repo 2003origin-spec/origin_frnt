@@ -273,7 +273,7 @@ export default function TeacherOnboardingPage({ onComplete }: TeacherOnboardingP
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center p-3 sm:p-6 neu-surface text-foreground transition-colors duration-300">
+        <div className="min-h-dvh flex items-center justify-center px-3 sm:px-6 pt-safe-lg pb-safe-lg neu-surface text-foreground transition-colors duration-300">
             <Card className="w-full max-w-lg neu-raised border-0 shadow-none">
                 <CardContent className="p-5 sm:p-8">
                     {/* Progress */}

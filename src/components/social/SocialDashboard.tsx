@@ -194,7 +194,7 @@ export default function SocialDashboard({
   };
 
   return (
-    <div className={cn('min-h-screen text-foreground', isDark ? 'social-nebula' : 'neu-surface')}>
+    <div className={cn('min-h-dvh text-foreground', isDark ? 'social-nebula' : 'neu-surface')}>
       <style>{`
         .social-nebula {
           background-color: #060B19;

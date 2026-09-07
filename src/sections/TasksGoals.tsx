@@ -117,7 +117,7 @@ export default function TasksGoals({ tasks, onAddTask, onEditTask, onToggleTask,
   };
 
   return (
-    <div id="tutorial-goals-hub" className="min-h-screen neu-surface text-foreground p-3 sm:p-4 md:p-8 pb-24 md:pb-10 relative overflow-x-hidden">
+    <div id="tutorial-goals-hub" className="min-h-dvh neu-surface text-foreground p-3 sm:p-4 md:p-8 pb-24 md:pb-10 relative overflow-x-hidden">
       <div className="max-w-6xl mx-auto space-y-6 sm:space-y-8 relative z-10">
 
         {/* Header */}

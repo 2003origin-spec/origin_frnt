@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Suspense } from "react";
 import { GoogleAnalytics } from "@next/third-parties/google";
 import { Darker_Grotesque } from "next/font/google";
@@ -93,6 +93,22 @@ export const metadata: Metadata = {
   },
 };
 
+// Mobile viewport (Phase 0, MOBILE_UI_REDESIGN_PLAN.md). Without this export the
+// app shipped no `viewport-fit=cover`, so every `env(safe-area-inset-*)` rule in
+// the app resolved to 0 and the Android WebView / notched devices had content
+// sliding under the status and gesture bars. `interactiveWidget: resizes-content`
+// makes the on-screen keyboard shrink the layout viewport instead of covering inputs.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  interactiveWidget: "resizes-content",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#eef1f6" },
+    { media: "(prefers-color-scheme: dark)", color: "#0b1220" },
+  ],
+};
+
 export default async function RootLayout({
   children,
 }: Readonly<{
@@ -124,7 +140,7 @@ export default async function RootLayout({
           enableSystem={false}
           disableTransitionOnChange
         >
-          <Suspense fallback={<div className="min-h-screen bg-background" />}>
+          <Suspense fallback={<div className="min-h-dvh bg-background" />}>
             <AuthProvider initialUser={initialUser}>
               <NotificationProvider>
                 <QuotaProvider>

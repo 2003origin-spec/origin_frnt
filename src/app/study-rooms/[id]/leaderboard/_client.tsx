@@ -109,7 +109,7 @@ export default function RoomLeaderboardClient({
   };
 
   return (
-    <main className="min-h-screen neu-surface px-4 py-8 text-foreground">
+    <main className="min-h-dvh neu-surface px-4 py-8 text-foreground">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
         <header className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
           <div>

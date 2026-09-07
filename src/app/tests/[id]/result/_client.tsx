@@ -92,7 +92,7 @@ export default function ResultClient({ testId, initialHistory, requestedResultId
 
   if (!testResult) {
     return (
-      <div className="flex h-screen items-center justify-center text-slate-400">
+      <div className="flex h-dvh items-center justify-center text-slate-400">
         Analyzing Results...
       </div>
     );

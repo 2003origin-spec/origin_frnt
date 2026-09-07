@@ -444,7 +444,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
   };
 
   return (
-    <div id="tutorial-test-hub" className="min-h-screen neu-surface text-foreground transition-colors duration-300">
+    <div id="tutorial-test-hub" className="min-h-dvh neu-surface text-foreground transition-colors duration-300">
       {/* Header */}
       <header className="sticky top-0 z-40 glass border-b border-border">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

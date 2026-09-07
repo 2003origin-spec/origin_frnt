@@ -991,7 +991,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
     }, [result]);
 
     if (isLoading) return (
-        <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="min-h-dvh bg-background flex items-center justify-center">
             <Loader2 className="w-8 h-8 text-primary animate-spin" />
         </div>
     );
@@ -1044,7 +1044,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
     const optionDistribution = result?.optionDistribution ?? result?.option_distribution ?? null;
 
     return (
-        <div className="min-h-screen neu-surface text-foreground flex flex-col font-sans transition-colors duration-300">
+        <div className="min-h-dvh neu-surface text-foreground flex flex-col font-sans transition-colors duration-300">
             {/* Header */}
             <div className="relative h-14 sm:h-12 border-b border-border/40 flex items-center gap-2 px-3 sm:px-4 bg-[hsl(var(--neu-bg)/0.85)] backdrop-blur-xl sticky top-0 z-50">
                 <button onClick={onBack} className="shrink-0 p-2 neu-raised rounded-lg transition-all hover:-translate-y-0.5" aria-label="Back to questions">

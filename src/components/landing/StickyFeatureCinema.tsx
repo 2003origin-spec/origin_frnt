@@ -121,7 +121,7 @@ export default function StickyFeatureCinema() {
 
         {/* Desktop — sticky scroll, text centred full-width */}
         <div ref={containerRef} className="hidden lg:block relative" style={{ height: `${FEATURES.length * 100}vh` }}>
-          <div className="sticky top-0 h-screen flex items-center justify-center">
+          <div className="sticky top-0 h-dvh flex items-center justify-center">
             <div className="relative w-full max-w-2xl h-[460px] overflow-hidden mx-auto">
               {FEATURES.map((feat, i) => (
                 <TextSlide key={i} feature={feat} index={i} total={FEATURES.length} scrollYProgress={scrollYProgress} prefersReduced={!!prefersReduced} />

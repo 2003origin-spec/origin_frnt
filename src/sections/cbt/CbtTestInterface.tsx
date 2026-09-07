@@ -734,7 +734,7 @@ export function CbtTestInterface() {
   if (phase === "ready" && payload) {
     const durationMin = Math.round(payload.durationSeconds / 60);
     return (
-      <main className="flex min-h-screen flex-col items-center justify-start overflow-y-auto neu-surface p-4 text-foreground sm:p-6">
+      <main className="flex min-h-dvh flex-col items-center justify-start overflow-y-auto neu-surface p-4 text-foreground sm:p-6">
         <div className="my-auto w-full max-w-3xl">
           <div className="neu-raised overflow-hidden rounded-3xl">
             {/* Header */}
@@ -1158,7 +1158,7 @@ function LegendRow({ className, label }: { className: string; label: string }) {
 
 function CenteredMessage({ children, wide = false }: { children: React.ReactNode; wide?: boolean }) {
   return (
-    <main className="flex min-h-screen flex-col items-center justify-start overflow-y-auto neu-surface p-6 text-center text-foreground sm:justify-center">
+    <main className="flex min-h-dvh flex-col items-center justify-start overflow-y-auto neu-surface p-6 text-center text-foreground sm:justify-center">
       <div className={`neu-raised my-auto w-full rounded-3xl p-6 sm:p-8 ${wide ? "max-w-md" : "max-w-sm"}`}>{children}</div>
     </main>
   );

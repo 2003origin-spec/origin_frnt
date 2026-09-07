@@ -34,7 +34,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
     if (isLoading || !user || user.role !== 'admin') {
         return (
-            <div className="min-h-screen bg-background flex items-center justify-center">
+            <div className="min-h-dvh bg-background flex items-center justify-center">
                 <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin" />
             </div>
         );
@@ -44,7 +44,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     const pageTitle = pathname.split('/').pop()?.replace(/-/g, ' ') || 'Mission Control';
 
     return (
-        <div className="min-h-screen bg-background text-foreground font-sans selection:bg-emerald-500/30 selection:text-emerald-200 antialiased overflow-x-hidden scroll-smooth transition-colors duration-300">
+        <div className="min-h-dvh bg-background text-foreground font-sans selection:bg-emerald-500/30 selection:text-emerald-200 antialiased overflow-x-hidden scroll-smooth transition-colors duration-300">
             {/* Sidebar */}
             <AdminSidebar 
                 isCollapsed={isCollapsed} 
@@ -60,7 +60,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 }}
                 initial={{ opacity: 0 }}
                 transition={{ duration: 0.3 }}
-                className="flex flex-col min-h-screen"
+                className="flex flex-col min-h-dvh"
             >
                 {/* Top Navigation Bar */}
                 <header className="sticky top-0 z-50 h-[80px] bg-background/80 backdrop-blur-xl border-b border-border px-8 flex items-center justify-between">

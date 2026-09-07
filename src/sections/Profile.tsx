@@ -249,7 +249,7 @@ export default function Profile({
 
   return (
     <>
-    <div className="min-h-screen neu-surface font-sans">
+    <div className="min-h-dvh neu-surface font-sans">
       <div className="max-w-[1400px] mx-auto px-3 sm:px-6 lg:px-8 pb-20">
 
         {/* ── Top nav ──────────────────────────────────────────── */}

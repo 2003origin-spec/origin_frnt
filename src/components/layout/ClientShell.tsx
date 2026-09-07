@@ -314,18 +314,44 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnab
               isFullViewportApp ? "overflow-hidden" : "overflow-y-auto",
               "transition-all duration-300 min-w-[320px]",
               mounted && showNavbar
-                ? (navExpanded ? 'md:pl-[150px]' : 'md:pl-[72px]') + ' pt-14 md:pt-0 ' +
-                  // Scrollable pages get generous bottom clearance so the last
-                  // element scrolls clear of the fixed mobile tab bar. Full-viewport
-                  // apps (chat/test) keep a tight clearance so their bottom controls
-                  // sit just above the bar without an awkward gap.
-                  (isFullViewportApp ? 'pb-nav-tight' : 'pb-mobile-nav')
-                : ''
+                ? (navExpanded ? 'md:pl-[150px]' : 'md:pl-[72px]') + ' pt-topbar md:pt-0 ' +
+                  // Full-viewport apps (chat/test) don't scroll here, so their tight
+                  // clearance can stay on <main> and behaves normally.
+                  //
+                  // Scrollable pages CANNOT put it here: <main> is the scroll
+                  // container AND display:flex, and Chromium omits a flex scroll
+                  // container's end padding from its scrollable overflow area — the
+                  // padding renders but you can't scroll to it, so the last element
+                  // stays trapped under the fixed mobile tab bar. Measured on a
+                  // 411x914 viewport: 112px of padding-bottom produced 0px of
+                  // clearance. It moves to the inner wrapper below, which is a
+                  // normal flex ITEM whose own padding does join the scroll area.
+                  (isFullViewportApp ? 'pb-nav-tight' : '')
+                // Pages WITHOUT the app-shell mobile top bar (auth/onboarding/
+                // role-selection, full-viewport test & ogcode-workspace, teacher &
+                // admin) still need the status-bar inset now that viewport-fit=cover
+                // is on, or their own headers slide under the status bar. The
+                // landing ('/') self-handles via its own fixed header + full-bleed
+                // hero, so it's excluded. (MOBILE_UI_REDESIGN_PLAN Phase 0)
+                : (pathname === '/' ? '' : 'safe-top')
             )}
           >
             <div className={cn(
-              "flex-1 flex flex-col relative w-full max-w-full min-h-0",
-              isFullViewportApp ? "h-full" : "h-auto"
+              "flex-1 flex flex-col relative w-full max-w-full",
+              // `min-h-0` only for full-viewport apps (chat/test), which need the
+              // wrapper clamped to <main> so their own inner panes scroll.
+              // Scrollable pages must NOT have it: `flex-1 min-h-0` lets this item
+              // be SHORTER than its content, so the page overflows past the
+              // wrapper and any padding-bottom (here or on <main>) ends up above
+              // the overflow and never joins the scroll extent — the last element
+              // stays stuck under the fixed mobile tab bar. Without min-h-0 the
+              // item's automatic minimum size is its content, so it grows and the
+              // clearance below actually becomes scrollable.
+              isFullViewportApp ? "h-full min-h-0" : "h-auto",
+              // Bottom clearance for the fixed mobile tab bar lives here, not on
+              // <main> — see the note above. Collapses to 0 at >=768px, where the
+              // tab bar is replaced by the desktop sidebar rail.
+              mounted && showNavbar && !isFullViewportApp && "pb-mobile-nav"
             )}>
               {children}
             </div>

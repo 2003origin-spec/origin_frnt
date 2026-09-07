@@ -1061,7 +1061,7 @@ export default function OGCodeList({
     };
 
     return (
-        <div className="min-h-screen neu-surface text-foreground font-sans selection:bg-primary/30 pb-20 md:pb-16">
+        <div className="min-h-dvh neu-surface text-foreground font-sans selection:bg-primary/30 pb-20 md:pb-16">
             <div className="max-w-[1400px] mx-auto px-3 sm:px-6 lg:px-8 pt-6 space-y-5">
 
                 {/* ── Header ── */}

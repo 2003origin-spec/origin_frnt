@@ -48,7 +48,7 @@ export default function FollowListView({
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-dvh bg-background">
       <div className="max-w-2xl mx-auto px-4 py-6 sm:py-8 space-y-5">
         <Link
           href={`/u/${username}`}

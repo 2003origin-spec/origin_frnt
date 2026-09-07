@@ -37,6 +37,7 @@ import { NotificationBell } from './NotificationBell';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { User, ViewState } from '@/types';
 import GlobalSearch from './GlobalSearch';
+import { getEntitledSubjects } from '@/lib/entitlements';
 
 interface NavbarProps {
     user: User;
@@ -64,6 +65,12 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
     // AI Feature Toggle epic — hide the AI Explainer nav entry when the Explainer
     // is disabled for this student (or for non-students). doc 06 §3.
     const { aiExplainer } = useAiAccess();
+
+    // P2-13: the PRO badge (and the upgrade CTA) must follow the DERIVED
+    // entitlement union, not the denormalised `is_premium` mirror. Reading the
+    // mirror let the UI show "PRO" while every subject was still locked —
+    // confirmed reproducible (see MOBILE_UI_REDESIGN_PLAN.md P2-13).
+    const hasActiveSubjects = getEntitledSubjects(user).length > 0;
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -140,7 +147,11 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                 id="tutorial-nav"
                 style={leftOffset > 0 ? { left: leftOffset } : undefined}
                 className={cn(
-                    'fixed left-0 top-0 h-dvh z-50 hidden md:flex flex-col transition-[width] duration-300',
+                    // safe-top: under viewport-fit=cover the sidebar starts at top:0, so its
+                    // first item (logo) rendered under the status bar — visible in landscape
+                    // and on tablets/foldables where this desktop rail is used on a device
+                    // with a cutout. (MOBILE_UI_REDESIGN_PLAN Phase 0, found via rotation QA)
+                    'fixed left-0 top-0 h-dvh z-50 hidden md:flex flex-col transition-[width] duration-300 safe-top',
                     expanded ? 'w-[150px]' : 'w-[72px]',
                     sidebarBg
                 )}
@@ -443,13 +454,13 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                                         <p className="text-xs text-slate-500 dark:text-zinc-500 truncate max-w-[120px]">{user.email}</p>
                                         {premiumEnabled && (
                                             <Badge className="text-[10px] h-5 px-1.5 bg-rose-600 text-white dark:bg-rose-500/20 dark:text-rose-400 border-none font-bold">
-                                                {user.isPremium ? 'PRO' : 'FREE'}
+                                                {hasActiveSubjects ? 'PRO' : 'FREE'}
                                             </Badge>
                                         )}
                                     </div>
                                 </div>
 
-                                {premiumEnabled && !user.isPremium && (
+                                {premiumEnabled && !hasActiveSubjects && (
                                     <div className="px-3 mb-2">
                                         <button
                                             onClick={() => {
@@ -509,7 +520,7 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
 
             {/* ── MOBILE COMPACT TOP BAR ──────────────────────────────────── */}
             <div className={cn(
-                'fixed top-0 left-0 right-0 h-14 z-50 md:hidden flex items-center justify-between px-3',
+                'fixed top-0 left-0 right-0 h-topbar z-50 md:hidden flex items-center justify-between px-3',
                 'bg-[hsl(var(--neu-bg))] border-b border-primary/10',
                 'shadow-[0_4px_14px_hsl(var(--neu-shadow)/35%),0_-1px_0_hsl(var(--neu-light)/25%)_inset]'
             )}>
@@ -531,9 +542,10 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                         whileTap={{ scale: 0.9 }}
                         onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
                         className={cn(
-                            'p-2 rounded-full transition-colors',
+                            'h-11 w-11 inline-flex items-center justify-center rounded-full transition-colors',
                             theme === 'light' ? 'text-primary bg-primary/10' : 'text-slate-400 bg-white/5'
                         )}
+                        aria-label="Toggle theme"
                     >
                         {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
                     </motion.button>
@@ -541,7 +553,8 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                     <motion.button
                         whileTap={{ scale: 0.9 }}
                         onClick={() => setIsSearchOpen(true)}
-                        className="p-2 text-slate-500 dark:text-slate-400 hover:text-primary bg-primary/5 rounded-full transition-colors"
+                        className="h-11 w-11 inline-flex items-center justify-center text-slate-500 dark:text-slate-400 hover:text-primary bg-primary/5 rounded-full transition-colors"
+                        aria-label="Search"
                     >
                         <Search className="w-4 h-4" />
                     </motion.button>
@@ -550,7 +563,7 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
 
                     <button
                         onClick={() => setShowMobileMenu(true)}
-                        className="ml-1 p-1"
+                        className="ml-1 h-11 w-11 inline-flex items-center justify-center"
                         aria-label="Open menu"
                     >
                         <Avatar className="w-7 h-7 border border-primary/20">
@@ -612,7 +625,7 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                                 </div>
                                 {premiumEnabled && (
                                     <Badge className="text-[10px] h-5 px-1.5 bg-rose-600 text-white border-none font-bold shrink-0">
-                                        {user.isPremium ? 'PRO' : 'FREE'}
+                                        {hasActiveSubjects ? 'PRO' : 'FREE'}
                                     </Badge>
                                 )}
                             </div>

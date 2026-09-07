@@ -103,7 +103,7 @@ export default function Premium({ onBack, paymentsEnabled = false, couponsEnable
   const [appliedCoupon, setAppliedCoupon] = useState<string | undefined>(undefined);
 
   return (
-    <div className="min-h-screen neu-surface text-foreground transition-colors duration-300">
+    <div className="min-h-dvh neu-surface text-foreground transition-colors duration-300">
       <header className="sticky top-0 z-40 bg-[hsl(var(--neu-bg))] border-b border-border/40 shadow-[0_2px_8px_hsl(var(--neu-shadow)/30%)]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
