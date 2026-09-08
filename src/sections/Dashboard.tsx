@@ -71,7 +71,7 @@ function EventsCarousel() {
       <button
         onClick={prev}
         aria-label="Previous slide"
-        className="absolute left-3 top-1/2 -translate-y-1/2 z-20 neu-btn p-1.5 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity duration-200"
+        className="absolute left-3 top-1/2 -translate-y-1/2 z-20 neu-btn h-11 w-11 inline-flex items-center justify-center sm:opacity-0 sm:group-hover:opacity-100 transition-opacity duration-200"
       >
         <ChevronLeft className="w-4 h-4 text-foreground" />
       </button>
@@ -80,7 +80,7 @@ function EventsCarousel() {
       <button
         onClick={next}
         aria-label="Next slide"
-        className="absolute right-3 top-1/2 -translate-y-1/2 z-20 neu-btn p-1.5 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity duration-200"
+        className="absolute right-3 top-1/2 -translate-y-1/2 z-20 neu-btn h-11 w-11 inline-flex items-center justify-center sm:opacity-0 sm:group-hover:opacity-100 transition-opacity duration-200"
       >
         <ChevronRight className="w-4 h-4 text-foreground" />
       </button>
@@ -125,6 +125,7 @@ interface DashboardProps {
 import { useNotifications } from '@/context/NotificationContext';
 import { TIER_THRESHOLDS, getUserTitle } from '@/lib/achievements';
 import { useRef } from 'react';
+import { useTutorial } from '@/features/tutorial/TutorialProvider';
 
 const stagger = (i: number) => ({ initial: { opacity: 0, y: 14 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.35, delay: 0.06 * i } });
 
@@ -141,6 +142,11 @@ export default function Dashboard({
   initialContest = null,
 }: DashboardProps) {
   const { addNotification } = useNotifications();
+  // P2-12 first-run sequencing: the 12-step tour, the championship banner and the
+  // seats banner all appeared at once on first launch, competing for attention.
+  // Promo banners stay hidden while the tour is running and appear once it's
+  // completed/skipped, so the overlays sequence instead of stacking.
+  const { isActive: tourActive } = useTutorial();
   const [pointsData, setPointsData] = useState<{
     totalPoints: number;
     currentTier: string;
@@ -340,7 +346,7 @@ export default function Dashboard({
   // stagger is defined at module scope — see below the component
 
   return (
-    <div className="min-h-screen neu-surface font-sans selection:bg-primary/20 selection:text-primary">
+    <div className="min-h-dvh neu-surface font-sans selection:bg-primary/20 selection:text-primary">
       <div className="max-w-[1400px] mx-auto px-3 sm:px-6 lg:px-8 py-6 flex flex-col gap-4">
 
         {/* ── Study Mode: first-run picker, then the persistent toggle ── */}
@@ -355,11 +361,12 @@ export default function Dashboard({
         {/* ── Persistent ORBIT rating badge (self-hides for non-participants) ── */}
         <ContestOrbitBadge />
 
-        {/* ── Monthly Championship banner (retention Layer 4) ── */}
-        <ChampionshipBanner onPractice={() => onNavigate('ogcode')} />
+        {/* ── Monthly Championship banner (retention Layer 4) ──
+             Hidden while the onboarding tour is running (P2-12 sequencing). */}
+        {!tourActive && <ChampionshipBanner onPractice={() => onNavigate('ogcode')} />}
 
         {/* ── Seats banner ──────────────────────────────────────── */}
-        {regStatus && regStatus.seatsLeft > 0 && regStatus.seatsLeft <= 50 && (
+        {!tourActive && regStatus && regStatus.seatsLeft > 0 && regStatus.seatsLeft <= 50 && (
           <motion.div {...stagger(0)} className="neu-raised px-4 py-3 flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center gap-2.5 min-w-0">
               <Zap className="w-4 h-4 text-primary shrink-0" />
@@ -389,6 +396,12 @@ export default function Dashboard({
               <span className="text-[11px] font-black text-foreground uppercase tracking-wider hidden sm:inline">Origin Quest</span>
             </button>
 
+            {/* Panel is `right-0` against THIS pill, which on mobile sits ~88px in
+                from the viewport's right edge (page padding + card `right-4` +
+                the sibling Tasks pill + gap). So the width must subtract that
+                inset plus a margin — the intuitive `calc(100vw-2rem)` assumes
+                the panel's right edge is at the viewport edge and clips the
+                panel's left side off-screen (measured -37px at 411px wide). */}
             <AnimatePresence>
               {questOpen && (
                 <>
@@ -398,7 +411,7 @@ export default function Dashboard({
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: -8, scale: 0.97 }}
                     transition={{ duration: 0.16, ease: 'easeOut' }}
-                    className="absolute right-0 mt-2 w-[min(360px,calc(100vw-2rem))] neu-raised rounded-2xl z-[310] overflow-hidden"
+                    className="absolute right-0 mt-2 w-[min(360px,calc(100vw-7rem))] neu-raised rounded-2xl z-[310] overflow-hidden"
                   >
                     <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
                       <Target className="w-4 h-4 text-primary" />
@@ -439,7 +452,7 @@ export default function Dashboard({
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: -8, scale: 0.97 }}
                     transition={{ duration: 0.16, ease: 'easeOut' }}
-                    className="absolute right-0 mt-2 w-[min(360px,calc(100vw-2rem))] neu-raised rounded-2xl z-[310] overflow-hidden"
+                    className="absolute right-0 mt-2 w-[min(360px,calc(100vw-7rem))] neu-raised rounded-2xl z-[310] overflow-hidden"
                   >
                     <div className="flex items-center justify-between px-4 py-3 border-b border-border">
                       <div className="flex items-center gap-2">

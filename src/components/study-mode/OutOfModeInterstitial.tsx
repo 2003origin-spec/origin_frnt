@@ -54,7 +54,7 @@ export default function OutOfModeInterstitial({
   };
 
   return (
-    <div className="min-h-screen neu-surface flex items-center justify-center px-4 py-10">
+    <div className="min-h-dvh neu-surface flex items-center justify-center px-4 py-10">
       <div className="neu-raised max-w-md w-full p-6 text-center">
         <div className="w-12 h-12 mx-auto rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
           <Compass className="w-6 h-6 text-primary" />

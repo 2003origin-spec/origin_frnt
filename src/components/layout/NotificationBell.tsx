@@ -56,11 +56,14 @@ export const NotificationBell: React.FC = () => {
         whileHover={{ scale: 1.1 }}
         whileTap={{ scale: 0.9 }}
         onClick={handleToggle}
-        className="p-2 text-muted-foreground hover:text-primary transition-colors relative bg-primary/10 rounded-full"
+        aria-label="Notifications"
+        className="h-11 w-11 inline-flex items-center justify-center text-muted-foreground hover:text-primary transition-colors relative bg-primary/10 rounded-full"
       >
         <Bell className="w-4 h-4" />
         {unreadCount > 0 && (
-          <span className="absolute top-2 right-2.5 w-1.5 h-1.5 bg-primary rounded-full ring-2 ring-[hsl(var(--neu-bg))] motion-safe:animate-pulse" />
+          /* dot sits at the bell icon's top-right; offsets follow the 44px
+             touch target (P2-11) rather than the old 32px button */
+          <span className="absolute top-3 right-3 w-1.5 h-1.5 bg-primary rounded-full ring-2 ring-[hsl(var(--neu-bg))] motion-safe:animate-pulse" />
         )}
       </motion.button>
 

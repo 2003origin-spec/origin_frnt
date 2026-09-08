@@ -359,8 +359,12 @@ export default function StudyCorner({ catalog }: StudyCornerProps) {
                     alt={book.title}
                     className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-110"
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-slate-900/90 via-slate-900/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-between p-4 z-10">
-                    <div className="flex justify-end transform -translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300 delay-75">
+                {/* The book Card has no onClick, so this overlay holds the ONLY controls
+                    (Like / Read / Add to library). It was hover-only, which made book cards
+                    completely non-interactive on touch. Now always shown on mobile;
+                    hover-reveal from sm+. (MOBILE_UI_REDESIGN Phase 4) */}
+                <div className="absolute inset-0 bg-gradient-to-t from-slate-900/90 via-slate-900/40 to-transparent opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-between p-4 z-10">
+                    <div className="flex justify-end transform translate-y-0 opacity-100 sm:-translate-y-4 sm:opacity-0 sm:group-hover:translate-y-0 sm:group-hover:opacity-100 transition-all duration-300 delay-75">
                         <button
                             onClick={(e) => { e.stopPropagation(); toggleLike(book.id); }}
                             className="p-2.5 rounded-full bg-primary/10 backdrop-blur-md hover:bg-primary/20 transition-colors shadow-sm"
@@ -368,7 +372,7 @@ export default function StudyCorner({ catalog }: StudyCornerProps) {
                             <Heart className={`w-5 h-5 transition-transform active:scale-75 ${likedBooks.has(book.id) ? 'fill-primary text-primary' : 'text-white'}`} />
                         </button>
                     </div>
-                    <div className="flex gap-2 transform translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300 delay-100">
+                    <div className="flex gap-2 transform translate-y-0 opacity-100 sm:translate-y-4 sm:opacity-0 sm:group-hover:translate-y-0 sm:group-hover:opacity-100 transition-all duration-300 delay-100">
                         {inLibrary ? (
                             <Button
                                 className="flex-1 bg-primary text-white font-bold h-11 rounded-xl shadow-lg shadow-primary/20"
@@ -458,7 +462,7 @@ export default function StudyCorner({ catalog }: StudyCornerProps) {
     }
 
     return (
-        <div className="min-h-screen neu-surface font-sans text-foreground transition-colors duration-500 overflow-x-hidden relative">
+        <div className="min-h-dvh neu-surface font-sans text-foreground transition-colors duration-500 overflow-x-hidden relative">
             {/* Ambient Background Elements */}
             <div className="fixed inset-0 z-0 pointer-events-none">
                 <div className="absolute top-[20%] right-[-10%] w-[50%] h-[50%] bg-primary/5 rounded-full blur-[120px]" />

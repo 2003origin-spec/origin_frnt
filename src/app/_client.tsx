@@ -27,7 +27,7 @@ export default function HomeClient() {
 
   // No intro video / splash gate — render the landing content immediately.
   return (
-    <main className="relative min-h-screen bg-background text-foreground">
+    <main className="relative min-h-dvh bg-background text-foreground">
       <LandingPage onGetStarted={handleGetStarted} />
     </main>
   );

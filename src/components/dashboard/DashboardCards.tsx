@@ -134,13 +134,16 @@ export function ChallengeCard({ user, onStartChallenge, initialChallenge, varian
                     </h3>
                 </div>
                 <div className="flex items-center gap-1.5 bg-muted/50 rounded-lg p-0.5 border border-border/50">
-                    <button onClick={prevMonth} className="p-1 hover:bg-background rounded-md text-muted-foreground transition-colors">
+                    {/* 36px (h-9) not 44px: these live inside a compact inline pill next to
+                        the month label — 44 would blow out the card header. 36 clears the
+                        24px WCAG 2.5.8 minimum (was 22px). */}
+                    <button onClick={prevMonth} aria-label="Previous month" className="h-9 w-9 inline-flex items-center justify-center hover:bg-background rounded-md text-muted-foreground transition-colors">
                         <ChevronLeft className="w-3.5 h-3.5" />
                     </button>
                     <span className="text-[10px] font-bold uppercase tracking-widest text-foreground w-12 text-center">
                         {currentMonth.toLocaleDateString(undefined, { month: 'short' })}
                     </span>
-                    <button onClick={nextMonth} className="p-1 hover:bg-background rounded-md text-muted-foreground transition-colors">
+                    <button onClick={nextMonth} aria-label="Next month" className="h-9 w-9 inline-flex items-center justify-center hover:bg-background rounded-md text-muted-foreground transition-colors">
                         <ChevronRight className="w-3.5 h-3.5" />
                     </button>
                 </div>
@@ -482,7 +485,13 @@ export function TodoListCard({ tasks, onAddTask, onEditTask, onToggleTask, onRem
                                 </div>
                                 <button
                                     onClick={() => onRemoveTask(todo.id)}
-                                    className="opacity-0 group-hover:opacity-100 p-1.5 text-slate-400 hover:text-primary transition-all"
+                                    aria-label="Remove task"
+                                    /* Was `opacity-0 group-hover:opacity-100` with no sm: prefix —
+                                       touch devices have no hover, so this delete control was
+                                       permanently invisible and tasks could not be removed on
+                                       mobile. Now always visible on touch, hover-reveal on sm+
+                                       (same pattern the carousel arrows use). 44px target. */
+                                    className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 h-11 w-11 inline-flex items-center justify-center text-slate-400 hover:text-primary transition-all"
                                 >
                                     <Trash2 className="w-4 h-4" />
                                 </button>

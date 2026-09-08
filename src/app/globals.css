@@ -54,7 +54,9 @@
   --secondary: 220 16% 85%;
   --secondary-foreground: 220 8.9% 36%;
   --muted: 220 16% 85%;
-  --muted-foreground: 220 8.9% 46%;
+  /* Darkened from 46% -> 38% L: 46% failed WCAG AA (~3.9:1) on the 91% neu
+     surface (grey-on-grey). 38% ≈ slate-600, ~5.3:1. (MOBILE_UI_REDESIGN P2-10) */
+  --muted-foreground: 220 10% 38%;
   --accent: 220 16% 85%;
   --accent-foreground: 222.2 84% 4.9%;
   --destructive: 0 84.2% 60.2%;
@@ -71,6 +73,24 @@
   --neu-dist: 6px;
   --neu-blur: 14px;
   --neu-radius: 20px;
+
+  /* ── z-index scale (as-built, audited 2026-09-07) ─────────────────────────
+     WHY the big in-page values are safe: `main` in ClientShell carries
+     `relative z-10`, which creates a STACKING CONTEXT. Every z-index used
+     inside a page — including the large ones (z-[200] OGCode sticky header,
+     z-[200..310] TestInterface/Dashboard overlays) — is scoped to that context
+     and can never paint above app chrome rendered outside main (nav z-50,
+     drawer z-[60], bottom sheet z-[70]). Verified on device: the nav drawer
+     correctly covers OGCode's z-[200] sticky header.
+     Use these tokens for NEW layers. Do NOT retrofit existing values —
+     the stacking contexts already make them safe, so a sweep is pure risk. */
+  --z-content: 10;
+  --z-sticky: 20;
+  --z-nav: 50;
+  --z-drawer: 60;
+  --z-sheet: 70;
+  --z-modal: 100;
+  --z-toast: 9999;
 }
 
 .dark {
@@ -246,6 +266,48 @@
   :root, .dark {
     --neu-dist: 4px;
     --neu-blur: 10px;
+    /* crisper corners than the 20px desktop panels */
+    --neu-radius: 16px;
+  }
+
+  /* ── Phase 3 "flatter & cleaner" (MOBILE_UI_REDESIGN_PLAN, user direction) ──
+     On phones, replace the dual embossed neumorphic shadows with a single soft
+     drop shadow + a hairline ring. Neumorphism's light/dark shadow pair eats
+     contrast and vertical space on a small screen and reads dated; this keeps
+     the brand surface colour and depth cue but flattens the look.
+     Desktop/tablet (>640px) keeps the existing neumorphic identity.
+     Implementation note: the hairline is a `box-shadow` ring, NOT a border, so
+     there is ZERO layout shift — no element changes size. */
+  .neu-raised {
+    box-shadow:
+      0 0 0 1px hsl(var(--neu-shadow) / 32%),
+      0 1px 2px hsl(var(--neu-shadow) / 30%),
+      0 6px 16px -6px hsl(var(--neu-shadow) / 34%) !important;
+  }
+  .neu-inset {
+    box-shadow:
+      inset 0 0 0 1px hsl(var(--neu-shadow) / 26%),
+      inset 0 2px 4px hsl(var(--neu-shadow) / 26%) !important;
+  }
+  .neu-btn {
+    border-radius: 12px;
+    box-shadow:
+      0 0 0 1px hsl(var(--neu-shadow) / 32%),
+      0 1px 2px hsl(var(--neu-shadow) / 28%);
+  }
+  .neu-btn:hover {
+    box-shadow:
+      0 0 0 1px hsl(var(--neu-shadow) / 40%),
+      0 2px 6px -1px hsl(var(--neu-shadow) / 32%);
+  }
+  .neu-btn:active, .neu-btn[data-pressed="true"] {
+    box-shadow: inset 0 1px 3px hsl(var(--neu-shadow) / 45%);
+    transform: translateY(1px);
+  }
+  .neu-field {
+    box-shadow:
+      inset 0 0 0 1px hsl(var(--neu-shadow) / 30%),
+      inset 0 1px 3px hsl(var(--neu-shadow) / 24%);
   }
   .text-outline {
     -webkit-text-stroke: 1px #000;
@@ -467,6 +529,43 @@
      only, so bottom controls sit just above it with no extra gap. */
   .pb-nav-tight {
     padding-bottom: calc(3.5rem + env(safe-area-inset-bottom));
+  }
+  /* Mobile top bar clearance (Phase 0, MOBILE_UI_REDESIGN_PLAN.md). The bar's
+     own height = content row (3.5rem) + status-bar safe area, and padding-top
+     pushes its contents below the cutout; page content uses .pt-topbar to clear
+     it. On non-notched viewports env() is 0, so both collapse to the old 3.5rem
+     — no visual change off-device. */
+  .h-topbar {
+    height: calc(3.5rem + env(safe-area-inset-top));
+    padding-top: env(safe-area-inset-top);
+  }
+  .pt-topbar {
+    padding-top: calc(3.5rem + env(safe-area-inset-top));
+  }
+  /* Status-bar inset for standalone top bars/headers that are NOT covered by the
+     app shell's mobile top bar (landing nav, auth, full-viewport test/ogcode
+     headers, teacher/admin). Collapses to 0 off notched devices. */
+  .safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+  /* Full-screen standalone pages (role-selection, onboarding) that top-align
+     their own content: status-bar inset PLUS breathing room, so the first line
+     always clears the cutout even when content overflows and can't center. */
+  .pt-safe-lg {
+    padding-top: calc(env(safe-area-inset-top) + 1.5rem);
+  }
+  .pb-safe-lg {
+    padding-bottom: calc(env(safe-area-inset-bottom) + 1.5rem);
+  }
+  /* Sonner toasts: a top-positioned toast rendered under the status bar / notch
+     on mobile (viewport-fit=cover). Push it below the safe-area inset.
+     (MOBILE_UI_REDESIGN_PLAN Phase 0) */
+  [data-sonner-toaster][data-y-position='top'] {
+    top: calc(env(safe-area-inset-top) + 1rem) !important;
+  }
+  .safe-x {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
   }
   @media (min-width: 768px) {
     .pb-mobile-nav,

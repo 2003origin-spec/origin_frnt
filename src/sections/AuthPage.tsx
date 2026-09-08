@@ -247,7 +247,7 @@ export default function AuthPage({
 
   return (
     <div
-      className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden"
+      className="min-h-dvh flex items-center justify-center px-4 pt-safe-lg pb-safe-lg relative overflow-hidden"
       style={{ background: '#0f0f0f' }}
     >
       {/* subtle radial glow */}

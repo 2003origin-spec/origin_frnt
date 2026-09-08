@@ -998,7 +998,10 @@ export default function DoubtSolver({ onBack, user }: DoubtSolverProps) {
                                   e.stopPropagation();
                                   void handleDeleteSession(s);
                                 }}
-                                className="p-1 rounded-md text-muted-foreground/50 hover:text-red-400 hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100"
+                                /* Touch has no hover: this delete control was permanently
+                                   invisible on mobile, so sessions could not be deleted.
+                                   Visible on touch, hover-reveal on sm+. 36px target. */
+                                className="h-9 w-9 inline-flex items-center justify-center rounded-md text-muted-foreground/50 hover:text-red-400 hover:bg-red-500/10 transition-colors opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
                                 title={`Delete ${s.title}`}
                                 aria-label={`Delete ${s.title}`}
                               >
@@ -1484,7 +1487,9 @@ function SelectionView({ onCreate, onUpload, sessions, onSelectSession, lastSess
                               <p className="truncate text-sm font-bold text-foreground/80 transition-colors group-hover:text-foreground">{s.title}</p>
                               <span
                                 onClick={(e) => handleStartEdit(e, s)}
-                                className="cursor-pointer rounded p-1 opacity-0 transition-all hover:bg-muted group-hover:opacity-100"
+                                /* Same touch/hover issue as the delete control above — rename
+                                   was unreachable on mobile. Visible on touch, hover-reveal on sm+. */
+                                className="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded opacity-100 transition-all hover:bg-muted sm:opacity-0 sm:group-hover:opacity-100"
                               >
                                 <Pencil className="h-3 w-3 text-primary" />
                               </span>

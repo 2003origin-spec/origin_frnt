@@ -298,7 +298,7 @@ export default function TestResultView({
   }, [result, user?.name]);
 
   return (
-    <div className="min-h-screen neu-surface text-foreground font-sans selection:bg-primary/30">
+    <div className="min-h-dvh neu-surface text-foreground font-sans selection:bg-primary/30">
       {/* Header */}
       <header className="sticky top-0 z-50 bg-[hsl(var(--neu-bg)/0.9)] backdrop-blur-xl border-b border-border/40">
         <div className="max-w-6xl mx-auto px-4">

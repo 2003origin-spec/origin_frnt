@@ -57,7 +57,7 @@ export function CbtShell({
   }
 
   return (
-    <div className="min-h-screen neu-surface">
+    <div className="min-h-dvh neu-surface">
       <header className="neu-surface relative z-10 border-b border-border/30 shadow-sm">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3">
           <div className="flex items-center gap-6">

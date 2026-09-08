@@ -29,7 +29,7 @@ export default async function CbtStudentRoomPage({
 
   if (room.status === 'closed') {
     return (
-      <main className="flex min-h-screen flex-col items-center justify-center gap-2 bg-background p-8 text-center">
+      <main className="flex min-h-dvh flex-col items-center justify-center gap-2 bg-background p-8 text-center">
         <h1 className="text-2xl font-semibold text-foreground">Room closed</h1>
         <p className="text-sm text-muted-foreground">This session has ended.</p>
       </main>

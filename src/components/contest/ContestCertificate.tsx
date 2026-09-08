@@ -15,7 +15,7 @@ export function ContestCertificate({ cert }: { cert: Cert }) {
   const pctText = cert.percentile != null ? `Top ${Math.max(1, Math.round(100 - cert.percentile))}%` : null;
 
   return (
-    <div className="min-h-screen bg-background py-8 px-4">
+    <div className="min-h-dvh bg-background py-8 px-4">
       <div className="mx-auto max-w-3xl space-y-4">
         <div className="flex items-center justify-between gap-3 print:hidden">
           <Link href={`/contest/${cert.contestId}/result`} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors duration-200 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded"><ArrowLeft className="w-3.5 h-3.5" aria-hidden="true" /> Result</Link>

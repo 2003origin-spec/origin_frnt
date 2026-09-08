@@ -225,7 +225,7 @@ export default function Leaderboard({ currentUser, initialLeaderboard, initialMy
   );
 
   return (
-    <div className="relative min-h-screen neu-surface text-foreground transition-colors duration-500 overflow-x-hidden">
+    <div className="relative min-h-dvh neu-surface text-foreground transition-colors duration-500 overflow-x-hidden">
       <main className="max-w-4xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8 pb-24 md:pb-10 relative z-10">
         {/* Hero card — gradient accent, kept intentionally */}
         <div className="bg-gradient-to-br from-primary via-primary/90 to-primary/80 text-primary-foreground mb-8 overflow-hidden relative rounded-3xl sm:rounded-[2.5rem] shadow-[8px_8px_24px_hsl(var(--neu-shadow)),_-4px_-4px_16px_hsl(var(--neu-light))]">

@@ -71,7 +71,7 @@ export default function ShippingPolicyPage() {
   };
 
   return (
-    <div className="min-h-screen neu-surface text-foreground font-sans relative overflow-x-hidden">
+    <div className="min-h-dvh neu-surface text-foreground font-sans relative overflow-x-hidden">
       {/* Background Glows */}
       <div className="absolute inset-0 z-0 pointer-events-none opacity-30 dark:opacity-20">
         <div className="absolute top-[-10%] left-[-20%] w-[60%] h-[60%] bg-primary/10 rounded-full blur-[150px]" />

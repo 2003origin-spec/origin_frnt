@@ -87,7 +87,7 @@ export default function PDFReader({ url, name, subject, classNum, onBack }: PDFR
     };
 
     return (
-        <div className={`flex flex-col bg-background text-slate-900 dark:text-slate-200 font-sans transition-all duration-300 ${isFullscreen ? 'fixed inset-0 z-50' : 'h-screen'}`}>
+        <div className={`flex flex-col bg-background text-slate-900 dark:text-slate-200 font-sans transition-all duration-300 ${isFullscreen ? 'fixed inset-0 z-50' : 'h-dvh'}`}>
 
             {/* Header */}
             <header className="h-14 flex items-center justify-between px-4 sm:px-6 bg-card dark:bg-[#030712]/60 backdrop-blur-xl border-b border-rose-200 dark:border-indigo-500/10 shadow-sm z-20 shrink-0 gap-4">

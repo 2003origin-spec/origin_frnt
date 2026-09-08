@@ -188,7 +188,7 @@ export default function Explore({ onNavigate, aiExplainer = false, socialEnabled
         ...(connectEnabled ? [CONNECT_CARD] : []),
     ];
     return (
-        <div className="min-h-screen neu-surface font-sans">
+        <div className="min-h-dvh neu-surface font-sans">
             <main className="max-w-[1400px] mx-auto px-3 sm:px-6 lg:px-8 py-6 space-y-6">
 
                 {/* Page header */}

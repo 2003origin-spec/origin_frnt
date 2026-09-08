@@ -547,7 +547,10 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
             {ORI_FLOATS.map(({ src, pos, size, rotate, delay, opacity: op }) => (
               <div
                 key={src}
-                className={`absolute ${pos}`}
+                /* Phase 2: hide the scattered decorative Ori PNGs on phones — on a
+                   narrow viewport the 10 floats crowd/overlap the wordmark & stats.
+                   Shown from sm+ where there's room. */
+                className={`absolute ${pos} hidden sm:block`}
                 style={{ width: size, height: size, transform: `rotate(${rotate}deg)` }}
               >
                 <div className="mascot-float-anim w-full h-full" style={{ animationDelay: delay }}>
@@ -605,7 +608,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
         )}
 
         {/* Fixed Navbar – outside the hero motion.div so CSS fixed works across all sections */}
-        <div className="fixed top-0 left-0 right-0 z-50 pointer-events-none">
+        <div className="fixed top-0 left-0 right-0 z-50 pointer-events-none safe-top">
           <nav className="pointer-events-auto relative flex flex-row justify-between items-center px-4 py-2.5 sm:px-6 md:px-8 md:py-4 max-w-7xl mx-auto w-[calc(100%-1rem)] sm:w-[calc(100%-2rem)] mt-3 sm:mt-6 rounded-full border border-white/5 dark:border-black/10 glass">
             <div className="flex items-center gap-1.5 sm:gap-3">
               <img src="/origin-new.jpg" alt="ORIGIN" className="h-7 w-auto sm:h-9 rounded-lg object-contain" />

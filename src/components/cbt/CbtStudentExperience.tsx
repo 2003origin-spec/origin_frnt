@@ -35,7 +35,7 @@ function Inner({ quotaBlocked }: { quotaBlocked: boolean }) {
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center neu-surface p-6">
+    <main className="flex min-h-dvh flex-col items-center justify-center neu-surface p-6">
       <PhaseCard quotaBlocked={quotaBlocked} />
     </main>
   );
@@ -150,7 +150,7 @@ function ThankYouScreen() {
   }, []);
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center overflow-y-auto neu-surface p-6 text-center">
+    <main className="flex min-h-dvh flex-col items-center justify-center overflow-y-auto neu-surface p-6 text-center">
       <div className="neu-raised w-full max-w-md space-y-6 rounded-3xl p-8">
         {/* Institute (logo + name) × Origin (logo + o3origin.com) */}
         <div className="flex items-start justify-center gap-4">

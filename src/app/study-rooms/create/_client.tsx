@@ -30,7 +30,7 @@ export default function CreateStudyRoomClient() {
   };
 
   return (
-    <main className="min-h-screen neu-surface flex items-center justify-center px-4 py-8 text-foreground font-sans">
+    <main className="min-h-dvh neu-surface flex items-center justify-center px-4 py-8 text-foreground font-sans">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}

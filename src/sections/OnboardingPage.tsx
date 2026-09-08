@@ -407,7 +407,7 @@ export default function OnboardingPage({ user, onComplete }: OnboardingPageProps
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-3 sm:p-6 neu-surface text-foreground transition-colors duration-300">
+    <div className="min-h-dvh flex items-center justify-center px-3 sm:px-6 pt-safe-lg pb-safe-lg neu-surface text-foreground transition-colors duration-300">
       {/* Background decoration */}
       <div className="absolute inset-0 -z-10 overflow-hidden pointer-events-none">
         <div className="absolute top-20 left-10 w-72 h-72 bg-primary/5 dark:bg-primary/10 rounded-full blur-3xl" />

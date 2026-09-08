@@ -7,6 +7,7 @@ import dynamic from 'next/dynamic';
 
 import { useHighlightedSelection, snapshotHighlightedText } from '@/features/origin-ai/highlight-capture';
 import OriMascotStatic from '@/features/mascot/OriMascotStatic';
+import { useLiteMode } from '@/native/use-lite-mode';
 import { setOriHidden, readOriPos, setOriPos, type OriPos } from '@/lib/ori-visibility';
 import { toast } from 'sonner';
 
@@ -33,6 +34,10 @@ interface FloatingChatProps {
 }
 
 export default function FloatingChat({ onOpen, hideMainButton, userName }: FloatingChatProps) {
+  // Lite mode (app / low-end / reduced-motion): the always-on floating launcher
+  // renders on every screen, so its 3D WebGL mascot was continuous Three.js
+  // overhead. Swap it for the static PNG there. (MOBILE_UI_REDESIGN_PLAN Phase 2)
+  const lite = useLiteMode();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const highlightedSelection = useHighlightedSelection();
   const [hovered, setHovered] = useState(false);
@@ -50,17 +55,19 @@ export default function FloatingChat({ onOpen, hideMainButton, userName }: Float
     dismissTimerRef.current = setTimeout(() => setBubbleVisible(false), 5000);
   };
 
-  // Auto-show once after 2 s on mount
+  // Auto-show once after 2 s on mount. Suppressed in lite mode (app / low-end):
+  // there's no hover on touch, so an auto-popup only covers content — the launcher
+  // is self-explanatory and a tap opens the chat anyway. (MOBILE_UI_REDESIGN Phase 2)
   useEffect(() => {
-    if (hideMainButton) return;
+    if (hideMainButton || lite) return;
     const t = setTimeout(() => showBubble(), 2000);
     return () => clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hideMainButton]);
 
-  // Random re-show every 25–45 s while mascot is visible
+  // Random re-show every 25–45 s while mascot is visible (not in lite mode).
   useEffect(() => {
-    if (hideMainButton) return;
+    if (hideMainButton || lite) return;
     const schedule = () => {
       const delay = 25000 + Math.floor(Math.random() * 20000);
       return setTimeout(() => {
@@ -350,8 +357,12 @@ export default function FloatingChat({ onOpen, hideMainButton, userName }: Float
               <div className="absolute inset-0 z-0 flex items-center justify-center text-blue-100">
                 <Sparkles className="h-4 w-4 lg:h-5 lg:w-5" />
               </div>
-              <div className="relative z-10 block h-24 w-24 drop-shadow-2xl lg:h-28 lg:w-28">
-                <OriMascot state="idle" title="Ori" preload={false} />
+              <div className="relative z-10 block h-16 w-16 drop-shadow-2xl sm:h-20 sm:w-20 lg:h-24 lg:w-24">
+                {lite ? (
+                  <OriMascotStatic className="h-full w-full" />
+                ) : (
+                  <OriMascot state="idle" title="Ori" preload={false} />
+                )}
               </div>
               <div className="absolute right-1.5 top-1.5 z-20 h-3 w-3 rounded-full border-2 border-white bg-primary shadow-md dark:border-slate-900 lg:right-2 lg:top-2 lg:h-3.5 lg:w-3.5" />
               {dragMode && (

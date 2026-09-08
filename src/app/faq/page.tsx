@@ -164,7 +164,7 @@ export default function FAQPage() {
   };
 
   return (
-    <div className="min-h-screen neu-surface text-foreground font-sans relative overflow-x-hidden selection:bg-primary/20 selection:text-primary">
+    <div className="min-h-dvh neu-surface text-foreground font-sans relative overflow-x-hidden selection:bg-primary/20 selection:text-primary">
       {/* FAQ rich-results structured data (built from the same FAQS source). */}
       <JsonLd
         data={{

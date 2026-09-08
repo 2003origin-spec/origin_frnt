@@ -91,7 +91,7 @@ function LobbyContent({ currentUserId }: { currentUserId: string }) {
       `}</style>
 
       <main className={cn(
-        'min-h-screen w-full px-3 sm:px-5 py-4 sm:py-6 text-foreground',
+        'min-h-dvh w-full px-3 sm:px-5 py-4 sm:py-6 text-foreground',
         isDark ? 'scanline-bg' : 'bg-background',
       )}>
         <div className={cn(

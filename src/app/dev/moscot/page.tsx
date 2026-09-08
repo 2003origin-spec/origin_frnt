@@ -28,7 +28,7 @@ export default function MascotSandboxPage() {
   }, []);
 
   return (
-    <main className="min-h-screen bg-[#05080f] text-slate-100">
+    <main className="min-h-dvh bg-[#05080f] text-slate-100">
       <div className="mx-auto max-w-4xl px-6 py-12">
         <header className="mb-8">
           <h1 className="text-2xl font-semibold">Ori · mascot sandbox</h1>

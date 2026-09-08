@@ -153,7 +153,7 @@ export default function TeacherProfile({ user, onBack, onLogout }: TeacherProfil
     }
 
     return (
-        <div className="bg-background text-foreground min-h-screen">
+        <div className="bg-background text-foreground min-h-dvh">
             <header className="bg-background/80 sticky top-0 z-40 border-b backdrop-blur">
                 <div className="mx-auto flex h-16 max-w-4xl items-center justify-between px-4 sm:px-6">
                     <div className="flex items-center gap-3">

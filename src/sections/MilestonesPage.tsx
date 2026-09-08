@@ -55,7 +55,7 @@ export default function MilestonesPage({ onBack, userPoints }: MilestonesPagePro
   const unlockedCount = BADGE_TIERS.filter(b => totalPoints >= b.points).length;
 
   return (
-    <div className="min-h-screen neu-surface text-foreground relative overflow-x-hidden">
+    <div className="min-h-dvh neu-surface text-foreground relative overflow-x-hidden">
       {/* Background accents */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-primary/5 blur-[120px]" />
