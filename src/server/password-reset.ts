@@ -15,6 +15,7 @@ import bcrypt from "bcryptjs";
 
 import { getUserPostgresPool } from "@/server/user-postgres";
 import { sendEmail } from "@/server/email";
+import { renderOtpEmail } from "@/server/email/templates/otp";
 import {
   dbFindUserByEmail,
   dbIncrementAuthTokenVersionAndRevokeSessions,
@@ -126,19 +127,7 @@ export async function requestPasswordReset(
     [to, role, hashCode(code), expiresAt],
   );
 
-  const result = await sendEmail({
-    to,
-    subject: "Reset your Origin password",
-    text: `Your Origin password reset code is ${code}. It expires in 15 minutes. If you did not request this, you can safely ignore this email.`,
-    html: `
-      <div style="font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
-        <h2 style="color: #1d4ed8;">Reset your password</h2>
-        <p>Use this code to reset the password for your Origin account:</p>
-        <div style="background: #f3f4f6; padding: 15px; border-radius: 8px; text-align: center; font-size: 24px; font-weight: bold; letter-spacing: 5px; color: #111;">${code}</div>
-        <p style="color: #666; font-size: 14px; margin-top: 20px;">This code expires in 15 minutes. If you did not request a password reset, please ignore this email — your password will not change.</p>
-      </div>
-    `,
-  });
+  const result = await sendEmail({ to, ...renderOtpEmail("reset", code) });
   return { sent: result.success, devCode: devSurface ? code : undefined };
 }
 

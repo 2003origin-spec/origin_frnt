@@ -9,8 +9,8 @@
  */
 
 import { sendEmail as defaultSendEmail, type SendEmailInput, type SendEmailResult } from "@/server/email";
-
-const DEFAULT_SITE_URL = "https://www.o3origin.com";
+import { absoluteHref } from "@/server/email/assets";
+import { detailsCard, infoStrip, paragraph, renderEmail, type DetailRow } from "@/server/email/layout";
 
 /** Fields shared by all payment side-effect payloads. */
 export type PaymentEmailBase = {
@@ -84,26 +84,6 @@ function text(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value.trim() : fallback;
 }
 
-function escapeHtml(value: unknown): string {
-  return text(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
-
-function siteUrl(): string {
-  const configured = text(process.env.NEXT_PUBLIC_SITE_URL);
-  return (configured || DEFAULT_SITE_URL).replace(/\/$/u, "");
-}
-
-function absoluteHref(value: string | null | undefined, fallback = "/premium"): string {
-  const candidate = text(value, fallback);
-  if (/^https?:\/\//iu.test(candidate)) return candidate;
-  return `${siteUrl()}${candidate.startsWith("/") ? candidate : `/${candidate}`}`;
-}
-
 function recipient(payload: PaymentEmailBase): string | null {
   const value = text(payload.to ?? payload.email);
   return value || null;
@@ -157,13 +137,6 @@ function termLabel(payload: PaymentEmailBase): string {
   return `${months} month${months === 1 ? "" : "s"}`;
 }
 
-function shell(title: string, body: string, cta?: { label: string; href: string }): string {
-  const action = cta
-    ? `<p style="margin:24px 0"><a href="${escapeHtml(cta.href)}" style="background:#4f46e5;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none;display:inline-block">${escapeHtml(cta.label)}</a></p>`
-    : "";
-  return `<div style="font-family:Arial,sans-serif;line-height:1.55;max-width:600px;margin:0 auto;padding:24px;color:#171717"><h2 style="color:#3730a3">${escapeHtml(title)}</h2>${body}${action}<p style="font-size:12px;color:#737373;margin-top:32px">Origin · www.o3origin.com</p></div>`;
-}
-
 export function renderReceiptEmail(payload: PaymentReceiptPayload): RenderedPaymentEmail {
   const item = productLabel(payload);
   const amount = formatPaymentAmount(payload.amountMinor, currencyCode(payload));
@@ -185,13 +158,39 @@ export function renderReceiptEmail(payload: PaymentReceiptPayload): RenderedPaym
     "",
     "Thank you for learning with Origin.",
   ].filter(Boolean).join("\n");
-  const htmlBody = [
-    `<p>Hi ${escapeHtml(name)},</p>`,
-    `<p>We received your payment of <strong>${escapeHtml(amount)}</strong> for <strong>${escapeHtml(item)}</strong> (${escapeHtml(termLabel(payload))}).</p>`,
-    `<p>${expiry ? `Your access is active until <strong>${escapeHtml(expiry)}</strong>.` : "Your access is now active."}</p>`,
-    payload.orderId ? `<p style="font-size:13px;color:#525252">Order: ${escapeHtml(payload.orderId)}${payload.paymentId ? ` · Payment: ${escapeHtml(payload.paymentId)}` : ""}</p>` : "",
-  ].filter(Boolean).join("");
-  return { to: recipient(payload) ?? "", subject, text: textBody, html: shell(subject, htmlBody, { label: "Open Premium", href }) };
+  const rows: DetailRow[] = [
+    { label: "Item", value: `${item} (${termLabel(payload)})` },
+    { label: "Amount", value: amount },
+    { label: "Order ID", value: text(payload.orderId) },
+    { label: "Payment ID", value: text(payload.paymentId) },
+    { label: "Paid on", value: paidAt },
+    { label: "Status", value: "Success", pill: "success" },
+  ];
+  return {
+    to: recipient(payload) ?? "",
+    subject,
+    text: textBody,
+    html: renderEmail({
+      preheader: `We received your payment of ${amount} for ${item}.`,
+      documentTitle: "Origin - Payment Successful",
+      mascot: "happy",
+      title: "Payment",
+      titleAccent: "Successful!",
+      accent: "green",
+      intro: [`Hi ${name}, your payment has been processed successfully.`, "Thank you for your trust in Origin."],
+      blocks: [
+        detailsCard("Payment Details", rows),
+        infoStrip(
+          expiry ? `Your access is active until ${expiry}.` : "Your access is now active.",
+          "You're all set — let's build your future together.",
+          "success",
+          "thumbsup",
+        ),
+      ],
+      cta: { label: "Open Premium", href },
+      footerNote: "If you didn't make this payment, please contact our support team immediately.",
+    }),
+  };
 }
 
 export function renderPaymentFailedEmail(payload: PaymentFailedPayload): RenderedPaymentEmail {
@@ -209,8 +208,38 @@ export function renderPaymentFailedEmail(payload: PaymentFailedPayload): Rendere
     "No access was charged for this failed attempt. You can start a new checkout whenever you're ready.",
     `Try again: ${href}`,
   ].filter(Boolean).join("\n");
-  const htmlBody = `<p>Hi ${escapeHtml(name)},</p><p>We couldn't complete your payment for <strong>${escapeHtml(item)}</strong>.</p><p style="color:#991b1b">${escapeHtml(reason)}</p><p>No access was charged for this failed attempt.</p>`;
-  return { to: recipient(payload) ?? "", subject, text: textBody, html: shell(subject, htmlBody, { label: "Try again", href }) };
+  const rows: DetailRow[] = [
+    { label: "Item", value: item },
+    { label: "Amount", value: formatPaymentAmount(payload.amountMinor, currencyCode(payload)) },
+    { label: "Order ID", value: text(payload.orderId) },
+    { label: "Status", value: "Failed", pill: "danger" },
+    { label: "Reason", value: reason },
+  ];
+  return {
+    to: recipient(payload) ?? "",
+    subject,
+    text: textBody,
+    html: renderEmail({
+      preheader: `We couldn't complete your payment for ${item}.`,
+      documentTitle: "Origin - Payment Failed",
+      mascot: "failed",
+      title: "Payment",
+      titleAccent: "Failed",
+      accent: "red",
+      intro: [`Hi ${name}, we couldn't process your payment.`, "Please try again or use a different method."],
+      blocks: [
+        detailsCard("Payment Details", rows),
+        infoStrip(
+          "Don't worry, it happens!",
+          "No access was charged for this failed attempt — try again whenever you're ready.",
+          "danger",
+          "failed",
+        ),
+      ],
+      cta: { label: "Try again", href, accent: "red" },
+      footerNote: "If you didn't attempt this payment, please contact our support team immediately.",
+    }),
+  };
 }
 
 export function renderRefundEmail(payload: PaymentRefundPayload): RenderedPaymentEmail {
@@ -231,8 +260,39 @@ export function renderRefundEmail(payload: PaymentRefundPayload): RenderedPaymen
     payload.refundReason ? `Reason: ${payload.refundReason}` : "",
     `Visit Origin Premium: ${absoluteHref(payload.href)}`,
   ].filter(Boolean).join("\n");
-  const htmlBody = `<p>Hi ${escapeHtml(name)},</p><p>A refund of <strong>${escapeHtml(refundAmount)}</strong> was processed for <strong>${escapeHtml(item)}</strong>.</p><p>${escapeHtml(accessLine)}</p>${payload.refundReason ? `<p>Reason: ${escapeHtml(payload.refundReason)}</p>` : ""}`;
-  return { to: recipient(payload) ?? "", subject, text: textBody, html: shell(subject, htmlBody, { label: "Open Premium", href: absoluteHref(payload.href) }) };
+  const rows: DetailRow[] = [
+    { label: "Item", value: item },
+    { label: "Refund amount", value: refundAmount },
+    { label: "Refund ID", value: text(payload.refundId) },
+    { label: "Order ID", value: text(payload.orderId) },
+    { label: "Reason", value: text(payload.refundReason) },
+    { label: "Status", value: full ? "Refunded" : "Partially refunded", pill: "info" },
+  ];
+  return {
+    to: recipient(payload) ?? "",
+    subject,
+    text: textBody,
+    html: renderEmail({
+      preheader: `A refund of ${refundAmount} was processed for ${item}.`,
+      documentTitle: "Origin - Payment Refunded",
+      mascot: "thumbsup",
+      title: "Payment",
+      titleAccent: full ? "Refunded" : "Partially Refunded",
+      intro: [`Hi ${name}, your refund has been processed.`, "It will reach your original payment method shortly."],
+      blocks: [
+        detailsCard("Refund Details", rows),
+        infoStrip(
+          "Refunds typically take 5–7 working days",
+          "to appear in your bank or UPI account.",
+          "info",
+          "thumbsup",
+        ),
+        paragraph(accessLine, { muted: true, size: 14, align: "center" }),
+      ],
+      cta: { label: "Open Premium", href: absoluteHref(payload.href) },
+      footerNote: "If you did not request this refund, please contact our support team immediately.",
+    }),
+  };
 }
 
 export function renderDunningEmail(payload: PaymentDunningPayload): RenderedPaymentEmail {
@@ -256,10 +316,48 @@ export function renderDunningEmail(payload: PaymentDunningPayload): RenderedPaym
       : "Choose another term to keep studying without an interruption.",
     `Continue: ${href}`,
   ].filter(Boolean).join("\n");
-  const htmlBody = mandateFailed
-    ? `<p>Hi ${escapeHtml(name)},</p><p>We could not collect the latest payment for your <strong>${escapeHtml(item)}</strong>.</p><p>Update or retry your payment mandate to keep access active.</p>`
-    : `<p>Hi ${escapeHtml(name)},</p><p>Your <strong>${escapeHtml(item)}</strong> access is scheduled to end ${escapeHtml(timing)}.</p><p>Choose another term to keep studying without an interruption.</p>`;
-  return { to: recipient(payload) ?? "", subject, text: textBody, html: shell(subject, htmlBody, { label: "Choose a term", href }) };
+  const rows: DetailRow[] = [
+    { label: "Item", value: item },
+    { label: "Amount", value: formatPaymentAmount(payload.amountMinor, currencyCode(payload)) },
+    { label: "Order ID", value: text(payload.orderId) },
+    { label: mandateFailed ? "Current expiry" : "Access ends", value: expiry },
+    {
+      label: "Status",
+      value: mandateFailed ? "Action needed" : "Ending soon",
+      pill: mandateFailed ? "danger" : "warning",
+    },
+  ];
+  return {
+    to: recipient(payload) ?? "",
+    subject,
+    text: textBody,
+    html: renderEmail({
+      preheader: mandateFailed
+        ? `We could not collect the latest payment for your ${item}.`
+        : `Your ${item} access is scheduled to end ${timing}.`,
+      documentTitle: mandateFailed ? "Origin - Action Needed" : "Origin - Payment Reminder",
+      mascot: mandateFailed ? "failed" : "curious",
+      title: mandateFailed ? "Action" : "Payment",
+      titleAccent: mandateFailed ? "Needed" : "Reminder",
+      accent: mandateFailed ? "red" : "amber",
+      intro: mandateFailed
+        ? [`Hi ${name}, we could not collect the latest payment for your ${item}.`, "Update or retry your mandate to keep access active."]
+        : [`Hi ${name}, your ${item} access is scheduled to end ${timing}.`, "Complete a new term to keep learning without an interruption."],
+      blocks: [
+        detailsCard(mandateFailed ? "Payment Details" : "Pending Payment Details", rows),
+        infoStrip(
+          mandateFailed ? "Update your payment method" : "Renew now to keep your streak alive",
+          mandateFailed
+            ? "Access stays active as soon as the payment goes through."
+            : "Premium access, doubt solving and full analytics stay unlocked.",
+          mandateFailed ? "danger" : "warning",
+          mandateFailed ? "failed" : "curious",
+        ),
+      ],
+      cta: { label: "Choose a term", href, accent: mandateFailed ? "red" : "amber" },
+      footerNote: "If you have any questions, feel free to reach out to our support team.",
+    }),
+  };
 }
 
 function deliveryError(result: SendEmailResult): PaymentEmailError {
