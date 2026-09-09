@@ -10,6 +10,7 @@
  * unsubscribe link is added — but the footer says why they are receiving it.
  */
 
+import { absoluteHref } from "../assets";
 import { infoStrip, renderEmail } from "../layout";
 import { type ReminderKind, reminderCopy } from "@/lib/contest/reminders";
 import type { RenderedEmail } from "./otp";
@@ -68,7 +69,7 @@ export function renderContestReminderEmail(
   const style = STYLES[kind];
   return {
     subject: copy.title,
-    text: `${copy.body}\n\nOpen Origin: ${href}`,
+    text: `${copy.body}\n\nOpen Origin: ${absoluteHref(href)}`,
     html: renderEmail({
       preheader: copy.body,
       documentTitle: `Origin - ${copy.title}`,
