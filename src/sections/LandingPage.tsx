@@ -1056,7 +1056,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
               <span className="text-[10px] font-black text-muted-foreground/60 uppercase tracking-[0.4em]">Connect With Us</span>
               <div className="flex gap-4 sm:gap-5 items-center">
                 <a href="https://chat.whatsapp.com/BBwpKNeiCypGzeVMwsw9ns?mode=gi_t" target="_blank" rel="noopener noreferrer" className="hover:scale-110 transition-transform"><img src="/images/SocialMedia/Whatsapp-Logo.png" alt="WhatsApp" className="h-8 sm:h-10 w-auto" /></a>
-                <a href="https://www.linkedin.com/in/o3-origin-ba73233a8/" target="_blank" rel="noopener noreferrer" className="hover:scale-110 transition-transform"><img src="/images/SocialMedia/LinkedIn.png" alt="LinkedIn" className="h-8 sm:h-10 w-auto" /></a>
+                <a href="https://www.linkedin.com/company/o3-origin/" target="_blank" rel="noopener noreferrer" className="hover:scale-110 transition-transform"><img src="/images/SocialMedia/LinkedIn.png" alt="LinkedIn" className="h-8 sm:h-10 w-auto" /></a>
                 <a href="https://x.com/O3_origin" target="_blank" rel="noopener noreferrer" className="hover:scale-110 transition-transform"><img src="/images/SocialMedia/X.jpg" alt="X" className="h-8 sm:h-10 w-auto rounded-md" /></a>
                 <a href="https://www.instagram.com/o3.origin/?hl=en" target="_blank" rel="noopener noreferrer" className="hover:scale-110 transition-transform"><img src="/images/SocialMedia/Instagram.png" alt="Instagram" className="h-8 sm:h-10 w-auto" /></a>
               </div>

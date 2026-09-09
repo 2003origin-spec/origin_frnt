@@ -48,7 +48,7 @@ const organizationJsonLd = {
   foundingLocation: { "@type": "Place", name: "Agartala, Tripura, India" },
   sameAs: [
     "https://www.instagram.com/o3.origin/",
-    "https://www.linkedin.com/in/o3-origin-ba73233a8/",
+    "https://www.linkedin.com/company/o3-origin/",
   ],
 };
 const websiteJsonLd = {

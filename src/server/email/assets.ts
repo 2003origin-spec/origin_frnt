@@ -49,9 +49,8 @@ export function supportHref(): string {
 
 /**
  * Social links for the footer, matching the "Connect With Us" row in
- * `src/sections/LandingPage.tsx` (WhatsApp first). NOTE: LinkedIn here is the
- * company page; LandingPage.tsx and the JSON-LD `sameAs` in `src/app/layout.tsx`
- * still point at an older personal profile and should be updated to match.
+ * `src/sections/LandingPage.tsx` (WhatsApp first) and the JSON-LD `sameAs` in
+ * `src/app/layout.tsx`, both of which use the same LinkedIn company page.
  * There is no YouTube or Facebook account — do not add
  * placeholders here; a dead social link in a transactional email is worse than
  * one fewer icon.
