@@ -160,7 +160,13 @@ export default function StudyRoomsClient({
 
       {/* ── Root ──────────────────────────────────────────────────────────── */}
       <div className={cn(
-        'fixed left-0 right-0 top-14 bottom-[calc(3.5rem+env(safe-area-inset-bottom))] md:inset-y-0 md:left-[72px] md:right-0 md:bottom-0 z-40 flex overflow-hidden p-0 sm:p-3',
+        // top must match the mobile top bar's REAL height, which is
+        // `h-topbar` = 3.5rem + the status-bar safe-area inset. Plain `top-14`
+        // (3.5rem) ignored the inset, so this fixed panel started underneath the
+        // top bar and — being overflow-hidden — got its bottom clipped, which is
+        // what pushed the room-code input and JOIN button out of place on mobile.
+        // The bottom edge already accounted for its inset; the top did not.
+        'fixed left-0 right-0 top-[calc(3.5rem+env(safe-area-inset-top))] bottom-[calc(3.5rem+env(safe-area-inset-bottom))] md:inset-y-0 md:left-[72px] md:right-0 md:bottom-0 z-40 flex overflow-hidden p-0 sm:p-3',
         isDark ? 'scanline-bg' : 'bg-background',
       )}>
         <div className={cn(

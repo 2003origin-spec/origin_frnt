@@ -75,7 +75,13 @@ export const NotificationBell: React.FC = () => {
             exit={{ opacity: 0, y: 10, scale: 0.95 }}
             transition={{ duration: 0.2, ease: "easeOut" }}
             className={cn(
-              "absolute w-80 sm:w-96 bg-[hsl(var(--neu-bg))] border border-border/50 rounded-2xl shadow-2xl overflow-hidden z-[100]",
+              // The panel is `right-0` against this bell, which on the mobile top bar
+              // sits ~69px in from the viewport edge (bar padding + the avatar +
+              // gap). A fixed 20rem panel therefore starts off-screen on narrow
+              // phones — measured -29px at 360px wide, which clipped "Noti" off
+              // "Notifications". Cap it against the viewport so the left edge always
+              // lands on screen; >=640px keeps the fixed sm:w-96.
+              "absolute w-[min(20rem,calc(100vw-6rem))] sm:w-96 bg-[hsl(var(--neu-bg))] border border-border/50 rounded-2xl shadow-2xl overflow-hidden z-[100]",
               dropdownPos === 'right'
                 ? "left-full ml-2 top-0"
                 : "right-0 mt-2"
@@ -83,26 +89,34 @@ export const NotificationBell: React.FC = () => {
           >
             {/* Header */}
             <div className="px-4 py-3 border-b border-border/40 flex items-center justify-between bg-primary/5">
-              <h3 className="font-black text-foreground flex items-center gap-2">
-                Notifications
+              {/* min-w-0 lets the title shrink instead of shoving the actions
+                  off the panel; the badge and actions never compress. */}
+              <h3 className="font-black text-foreground flex items-center gap-2 min-w-0">
+                <span className="truncate">Notifications</span>
                 {unreadCount > 0 && (
-                  <span className="px-1.5 py-0.5 bg-primary/10 text-primary text-[10px] font-bold rounded-full uppercase tracking-wider">
+                  <span className="shrink-0 whitespace-nowrap px-1.5 py-0.5 bg-primary/10 text-primary text-[10px] font-bold rounded-full uppercase tracking-wider">
                     {unreadCount} New
                   </span>
                 )}
               </h3>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 shrink-0">
                 {notifications.length > 0 && (
                   <button
                     onClick={markAllAsRead}
-                    className="text-xs text-muted-foreground hover:text-primary transition-colors flex items-center gap-1"
+                    aria-label="Mark all read"
+                    title="Mark all read"
+                    className="text-xs text-muted-foreground hover:text-primary transition-colors flex items-center justify-center gap-1 shrink-0 whitespace-nowrap h-8 min-w-8 px-1 rounded-lg hover:bg-primary/10"
                   >
-                    <Check className="w-3 h-3" /> Mark all read
+                    {/* Label only where it fits — on a ~264px panel the words
+                        wrapped to two lines. aria-label/title keep it named. */}
+                    <Check className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Mark all read</span>
                   </button>
                 )}
                 <button
                   onClick={() => setIsOpen(false)}
-                  className="p-1 hover:bg-primary/10 rounded-lg transition-colors"
+                  aria-label="Close notifications"
+                  className="h-8 w-8 inline-flex items-center justify-center shrink-0 hover:bg-primary/10 rounded-lg transition-colors"
                 >
                   <X className="w-4 h-4 text-muted-foreground" />
                 </button>

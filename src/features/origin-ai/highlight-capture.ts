@@ -281,6 +281,21 @@ function handleTouchEnd() {
   setTimeout(finaliseSelection, 50);
 }
 
+/**
+ * Android long-press text selection never delivered a `touchend`.
+ *
+ * When the WebView takes a touch sequence over for its own gesture — which is
+ * exactly what a long-press-to-select is — it dispatches **touchcancel** to the
+ * page instead of touchend. With no listener for it, `isMouseDown` (set on
+ * touchstart) stayed true forever, so `handleSelectionChange` early-returned on
+ * every later selection and NOTHING was ever captured on touch. The Ask-Ori
+ * pill therefore never appeared on mobile, and the flag stayed stuck for the
+ * rest of the page's life.
+ */
+function handleTouchCancel() {
+  setTimeout(finaliseSelection, 50);
+}
+
 // ─── Click handler — clear only on genuine "blank area" clicks ───────────────
 
 /**
@@ -346,6 +361,7 @@ export function startHighlightCapture(): void {
   window.addEventListener('mouseup', handleMouseUp);
   window.addEventListener('touchstart', handleTouchStart, { passive: true });
   window.addEventListener('touchend', handleTouchEnd, { passive: true });
+  window.addEventListener('touchcancel', handleTouchCancel, { passive: true });
   window.addEventListener('click', handleGlobalClick);
 }
 
@@ -357,6 +373,7 @@ export function stopHighlightCapture(): void {
   window.removeEventListener('mouseup', handleMouseUp);
   window.removeEventListener('touchstart', handleTouchStart);
   window.removeEventListener('touchend', handleTouchEnd);
+  window.removeEventListener('touchcancel', handleTouchCancel);
   window.removeEventListener('click', handleGlobalClick);
   clearHighlightedText();
 }
