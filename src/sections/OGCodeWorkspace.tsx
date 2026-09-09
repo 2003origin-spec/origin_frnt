@@ -1043,8 +1043,14 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
     // Only present on terminal MCQ/MSQ outcomes.
     const optionDistribution = result?.optionDistribution ?? result?.option_distribution ?? null;
 
+    // `/ogcode/[id]` is a full-viewport route, so ClientShell gives <main>
+    // overflow-hidden plus a bottom inset for the mobile tab bar. A `min-h-dvh`
+    // root is therefore TALLER than its container and its overflow is clipped
+    // with no way to scroll to it — which pushed the "Submit Answer" button
+    // below the visible area / behind the tab bar. `h-full` makes the inner
+    // overflow-y-auto region the real scroller.
     return (
-        <div className="min-h-dvh neu-surface text-foreground flex flex-col font-sans transition-colors duration-300">
+            <div className="h-full min-h-0 neu-surface text-foreground flex flex-col font-sans transition-colors duration-300">
             {/* Header */}
             <div className="relative h-14 sm:h-12 border-b border-border/40 flex items-center gap-2 px-3 sm:px-4 bg-[hsl(var(--neu-bg)/0.85)] backdrop-blur-xl sticky top-0 z-50">
                 <button onClick={onBack} className="shrink-0 p-2 neu-raised rounded-lg transition-all hover:-translate-y-0.5" aria-label="Back to questions">

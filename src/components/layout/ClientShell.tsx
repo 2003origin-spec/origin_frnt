@@ -84,8 +84,12 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnab
   const isTestsPath = pathname === '/tests' || pathname.startsWith('/tests/');
   const isStudyRoomTestPath = /^\/study-rooms\/[^/]+\/test/.test(pathname);
   // The join screen is a single-action code entry; on mobile the floating Origin
-  // AI launcher overlaps the Join button, so hide it there.
-  const isStudyRoomJoinPath = pathname === '/study-rooms/join';
+  // AI launcher overlaps the Join button, so hide it there. The study-rooms
+  // LOBBY carries the same room-code + JOIN row at the bottom of the panel and
+  // was not covered by this rule — on a 360px viewport the mascot sat directly
+  // on the button, hiding "IN" and, because the launcher is itself a button,
+  // swallowing taps meant for JOIN.
+  const isStudyRoomJoinPath = pathname === '/study-rooms/join' || pathname === '/study-rooms';
   // The CBT exam surface (student player + login/join links) must never show the
   // floating Ori AI — a logged-in student who opens a CBT link would otherwise
   // get an AI helper mid-exam. CBT is its own proctored test app; suppress Ori

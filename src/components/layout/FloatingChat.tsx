@@ -87,12 +87,30 @@ export default function FloatingChat({ onOpen, hideMainButton, userName }: Float
     }
 
     const viewportWidth = window.innerWidth;
-    const top = Math.max(16, rect.top - 18);
+    const viewportHeight = window.innerHeight;
     const left = Math.max(72, Math.min(viewportWidth - 72, rect.left + rect.width / 2));
 
+    // On touch devices the OS draws its OWN selection toolbar (Cut / Copy /
+    // Share) immediately ABOVE the selection — exactly where this pill used to
+    // sit, which left it covered and untappable. Put the pill BELOW the
+    // selection there instead. That also keeps it clear of the fixed mobile top
+    // bar for selections near the top of the page, with no magic offsets.
+    const coarsePointer = window.matchMedia?.('(pointer: coarse)').matches ?? false;
+    if (coarsePointer) {
+      const below = rect.top + rect.height + 12;
+      // …unless below would land under the fixed bottom tab bar, in which case
+      // flip back above the selection.
+      const bottomLimit = viewportHeight - 96;
+      if (below <= bottomLimit) {
+        return { top: below, left, placement: 'below' as const };
+      }
+      return { top: Math.max(16, rect.top - 18), left, placement: 'above' as const };
+    }
+
     return {
-      top,
+      top: Math.max(16, rect.top - 18),
       left,
+      placement: 'above' as const,
     };
   }, [highlightedSelection.rect]);
 
@@ -217,8 +235,13 @@ export default function FloatingChat({ onOpen, hideMainButton, userName }: Float
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.92, y: 8 }}
             transition={{ duration: 0.16 }}
-            onMouseDown={() => {
-              // Snapshot BEFORE the browser clears the selection (mousedown is the first event)
+            onPointerDown={() => {
+              // Snapshot BEFORE the browser clears the selection. This was
+              // `onMouseDown`, whose comment claimed "mousedown is the first
+              // event" — true for a mouse, but on TOUCH the first event is
+              // touchstart and the synthesised mousedown arrives after the
+              // selection has already been cleared, so the pill opened Ori with
+              // no captured text. `pointerdown` fires first for both inputs.
               snapshotHighlightedText();
             }}
             onClick={() => onOpen({ autoAskSelection: true })}
@@ -226,7 +249,10 @@ export default function FloatingChat({ onOpen, hideMainButton, userName }: Float
             style={{
               top: `${selectionActionStyle.top}px`,
               left: `${selectionActionStyle.left}px`,
-              transform: 'translate(-50%, -100%)',
+              transform:
+                selectionActionStyle.placement === 'below'
+                  ? 'translate(-50%, 0)'
+                  : 'translate(-50%, -100%)',
             }}
             aria-label="Ask Ori about the selected text"
           >
