@@ -16,10 +16,21 @@ function trimmed(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-/** The public site origin, without a trailing slash. */
+/**
+ * The public site origin, without a trailing slash.
+ *
+ * NEXT_PUBLIC_SITE_URL is only set for the Production environment, so preview
+ * deployments would otherwise fall through to the production origin and load
+ * their images from a deployment that does not have them yet — making a
+ * perfectly good template look broken in a preview test. Email is rendered
+ * server-side, so VERCEL_URL is available to anchor a preview to itself.
+ */
 export function siteUrl(): string {
   const configured = trimmed(process.env.NEXT_PUBLIC_SITE_URL);
-  return (configured || DEFAULT_SITE_URL).replace(/\/$/u, "");
+  if (configured) return configured.replace(/\/$/u, "");
+  const vercel = trimmed(process.env.VERCEL_URL);
+  if (vercel) return `https://${vercel.replace(/^https?:\/\//iu, "").replace(/\/$/u, "")}`;
+  return DEFAULT_SITE_URL;
 }
 
 /**
