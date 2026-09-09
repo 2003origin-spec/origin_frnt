@@ -20,7 +20,7 @@
  */
 
 import { ACCENTS, COLORS, CONTENT_WIDTH, FONT_STACK, MASCOT_ALT, MONO_STACK, type AccentName, type MascotName } from "./theme";
-import { absoluteHref, assetUrl, siteUrl, socialLinks, supportHref } from "./assets";
+import { absoluteHref, assetUrl, footerLinks, siteUrl, socialLinks, supportHref } from "./assets";
 
 /** HTML-escape untrusted text. Applied to every interpolated value. */
 export function esc(value: unknown): string {
@@ -179,6 +179,12 @@ function header(): string {
 }
 
 function footer(note: string, unsubscribeHref?: string): string {
+  const utility = footerLinks()
+    .map(
+      (l) =>
+        `<a href="${esc(l.href)}" style="color:${COLORS.mutedOnNavy};text-decoration:none;font-family:${FONT_STACK};font-size:12px;padding:0 7px;">${esc(l.label)}</a>`,
+    )
+    .join(`<span style="color:#334155;">&middot;</span>`);
   const social = socialLinks()
     .map(
       (s) =>
@@ -190,7 +196,8 @@ function footer(note: string, unsubscribeHref?: string): string {
     : "";
   return `<tr><td align="center" bgcolor="${COLORS.navy}" style="background:${COLORS.navy};padding:28px 24px 30px 24px;">
 <img src="${assetUrl("logo-wordmark.png")}" width="150" alt="Origin" style="display:block;border:0;outline:none;text-decoration:none;width:150px;height:auto;margin:0 auto 14px auto;">
-<div style="padding:0 0 14px 0;">${social}</div>
+<div style="padding:0 0 10px 0;">${social}</div>
+<div style="padding:0 0 14px 0;">${utility}</div>
 <p style="margin:0;font-family:${FONT_STACK};font-size:12px;line-height:1.6;color:${COLORS.mutedOnNavy};text-align:center;">
 &copy; ${new Date().getFullYear()} Origin. All rights reserved.${note ? `<br>${esc(note)}` : ""}
 </p>${unsubscribe}

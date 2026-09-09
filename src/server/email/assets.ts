@@ -28,7 +28,7 @@ export function siteUrl(): string {
  */
 export function absoluteHref(value: string | null | undefined, fallback = "/premium"): string {
   const candidate = trimmed(value) || fallback;
-  if (/^https?:\/\//iu.test(candidate)) return candidate;
+  if (/^(?:https?:\/\/|mailto:|tel:)/iu.test(candidate)) return candidate;
   return `${siteUrl()}${candidate.startsWith("/") ? candidate : `/${candidate}`}`;
 }
 
@@ -37,19 +37,45 @@ export function assetUrl(file: string): string {
   return `${siteUrl()}/email/${file.replace(/^\/+/u, "")}`;
 }
 
-/** Where "Contact our support team" points. */
+/**
+ * Where "Contact our support team" points. There is no /support route, so the
+ * default is a mailto to the address the app already sends from — a real,
+ * working destination rather than a 404. Override with EMAIL_SUPPORT_URL.
+ */
 export function supportHref(): string {
   const configured = trimmed(process.env.EMAIL_SUPPORT_URL);
-  return configured || `${siteUrl()}/support`;
+  return configured || "mailto:adminoffice@o3origin.com";
 }
 
-/** Social links rendered in the footer. Any left unset is simply omitted. */
+/**
+ * Social links for the footer, matching the "Connect With Us" row in
+ * `src/sections/LandingPage.tsx` (WhatsApp first). NOTE: LinkedIn here is the
+ * company page; LandingPage.tsx and the JSON-LD `sameAs` in `src/app/layout.tsx`
+ * still point at an older personal profile and should be updated to match.
+ * There is no YouTube or Facebook account — do not add
+ * placeholders here; a dead social link in a transactional email is worse than
+ * one fewer icon.
+ */
 export function socialLinks(): { label: string; href: string }[] {
   const entries: { label: string; env: string; fallback: string }[] = [
-    { label: "Instagram", env: "EMAIL_SOCIAL_INSTAGRAM", fallback: "https://www.instagram.com/o3origin" },
-    { label: "X", env: "EMAIL_SOCIAL_X", fallback: "https://x.com/o3origin" },
-    { label: "LinkedIn", env: "EMAIL_SOCIAL_LINKEDIN", fallback: "https://www.linkedin.com/company/o3origin" },
-    { label: "YouTube", env: "EMAIL_SOCIAL_YOUTUBE", fallback: "https://www.youtube.com/@o3origin" },
+    { label: "WhatsApp", env: "EMAIL_SOCIAL_WHATSAPP", fallback: "https://chat.whatsapp.com/BBwpKNeiCypGzeVMwsw9ns?mode=gi_t" },
+    { label: "LinkedIn", env: "EMAIL_SOCIAL_LINKEDIN", fallback: "https://www.linkedin.com/company/o3-origin/" },
+    { label: "X", env: "EMAIL_SOCIAL_X", fallback: "https://x.com/O3_origin" },
+    { label: "Instagram", env: "EMAIL_SOCIAL_INSTAGRAM", fallback: "https://www.instagram.com/o3.origin/?hl=en" },
   ];
   return entries.map((e) => ({ label: e.label, href: trimmed(process.env[e.env]) || e.fallback }));
+}
+
+/**
+ * Utility links above the social row: the site itself plus the pages a
+ * recipient of a payment mail may actually need. Every path is a real route
+ * under `src/app/`.
+ */
+export function footerLinks(): { label: string; href: string }[] {
+  return [
+    { label: "Website", href: siteUrl() },
+    { label: "FAQ", href: `${siteUrl()}/faq` },
+    { label: "Refund Policy", href: `${siteUrl()}/refund-policy` },
+    { label: "Terms", href: `${siteUrl()}/terms-and-conditions` },
+  ];
 }

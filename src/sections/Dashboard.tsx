@@ -374,7 +374,7 @@ export default function Dashboard({
                 Only <span className="text-primary font-black">{regStatus.seatsLeft}</span> of {regStatus.limit} seats left.
               </p>
             </div>
-            <NeuButton accent onClick={() => window.open('https://chat.whatsapp.com/L7X7N7P7N7P7N7P7N7P7N7', '_blank')} className="text-xs font-black uppercase tracking-tighter shrink-0">
+            <NeuButton accent onClick={() => window.open('https://chat.whatsapp.com/BBwpKNeiCypGzeVMwsw9ns?mode=gi_t', '_blank')} className="text-xs font-black uppercase tracking-tighter shrink-0">
               Invite
             </NeuButton>
           </motion.div>
