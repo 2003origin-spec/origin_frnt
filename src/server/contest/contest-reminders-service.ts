@@ -17,6 +17,7 @@
 import { createNotification } from "@/server/notifications";
 import { sendPushToUser } from "@/server/push/fcm";
 import { sendEmail } from "@/server/email";
+import { renderContestReminderEmail } from "@/server/email/templates/contest";
 import { sendWhatsapp } from "@/server/notifications/whatsapp";
 import { getUserPostgresPool } from "@/server/user-postgres";
 
@@ -93,7 +94,9 @@ export async function sendContestReminder(
         () => undefined,
       );
       if (rec.email) {
-        await sendEmail({ to: rec.email, subject: copy.title, text: copy.body }).catch(() => undefined);
+        await sendEmail({ to: rec.email, ...renderContestReminderEmail(kind, contestName, href) }).catch(
+          () => undefined,
+        );
       }
       if (rec.mobile) {
         // WhatsApp channel — no-ops until WHATSAPP_API_* is configured (ships dark).
