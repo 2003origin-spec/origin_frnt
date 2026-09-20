@@ -2060,7 +2060,7 @@ export default function OGCodeList({
                                                     disabled={likePendingIds.has(q.id)}
                                                     aria-pressed={Boolean(q.likedByMe)}
                                                     title={q.likedByMe ? 'Unlike' : 'Like this question'}
-                                                    className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black border transition-colors flex-shrink-0', q.likedByMe ? 'text-rose-600 dark:text-rose-400 bg-rose-500/10 border-rose-500/25' : 'text-muted-foreground bg-white/[0.03] border-white/10 hover:border-rose-500/30')}
+                                                    className={cn('inline-flex min-h-11 items-center gap-1 px-3 rounded-full text-xs font-semibold border transition-colors flex-shrink-0', q.likedByMe ? 'text-rose-600 dark:text-rose-400 bg-rose-500/10 border-rose-500/25' : 'text-muted-foreground bg-white/[0.03] border-white/10 hover:border-rose-500/30')}
                                                 >
                                                     <Heart className={cn('w-3 h-3', q.likedByMe ? 'fill-current' : '')} />
                                                     {q.likeCount ?? 0}
@@ -2095,7 +2095,7 @@ export default function OGCodeList({
                                                 <p className="text-[11px] font-black text-foreground/80 truncate">{q.chapter || 'Foundations'}</p>
                                                 <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider truncate">{q.concept || 'JEE Advanced'}</p>
                                             </div>
-                                            <button className="flex-shrink-0 inline-flex items-center gap-1 neu-btn px-3 py-1.5 text-[10px] font-black text-primary uppercase tracking-wider whitespace-nowrap">
+                                            <button className="flex-shrink-0 inline-flex min-h-11 items-center gap-1 neu-btn px-4 text-sm font-semibold text-primary whitespace-nowrap">
                                                 Attempt <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
                                             </button>
                                         </div>
