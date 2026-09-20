@@ -11,7 +11,6 @@ import {
     Crown,
     LogOut,
     Settings,
-    Bell,
     Search,
     Sun,
     Moon,
@@ -27,7 +26,6 @@ import {
     FileText,
     Sparkles,
     Target,
-    UsersRound,
     ChevronRight,
     ChevronLeft,
     Trophy,
@@ -107,6 +105,10 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
     }, []);
 
     const isTeacher = user.role?.toLowerCase() === 'teacher';
+
+    // Views that already have their own tab in the bottom bar, so the More
+    // sheet does not list them twice.
+    const MOBILE_TAB_VIEWS = new Set<string>(['dashboard', 'test-list', 'ogcode']);
 
     const navItems = isTeacher ? [] : [
         { label: 'Home', icon: Home, view: 'dashboard' as ViewState },
@@ -537,6 +539,159 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
 
                 ClientShell drops `pt-topbar` on mobile to reclaim the space;
                 leaving it would have swapped a visible bar for 56px of nothing. */}
+
+
+            {/* ── MOBILE "MORE" SHEET ──────────────────────────────────────
+                Everything the removed top bar held (theme, search, notifications,
+                identity) plus every destination that is NOT one of the four tabs.
+                The More tab sets `showMobileMenu`; before this existed the button
+                set state nothing rendered, so it did nothing at all (reported
+                on-device 2026-09-20). */}
+            <AnimatePresence>
+                {showMobileMenu && (
+                    <>
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            onClick={() => setShowMobileMenu(false)}
+                            className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm md:hidden"
+                        />
+
+                        <motion.div
+                            role="dialog"
+                            aria-label="More"
+                            initial={{ y: '100%' }}
+                            animate={{ y: 0 }}
+                            exit={{ y: '100%' }}
+                            transition={{ type: 'spring', damping: 32, stiffness: 320 }}
+                            className="fixed bottom-0 left-0 right-0 z-[70] md:hidden max-h-[85dvh] overflow-y-auto overscroll-contain bg-background rounded-t-3xl border-t border-border"
+                        >
+                            <div className="sticky top-0 z-10 bg-background pt-3 pb-2 rounded-t-3xl">
+                                <div className="mx-auto h-1 w-10 rounded-full bg-border" />
+                                <div className="mt-3 flex items-center justify-between px-5">
+                                    <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">More</p>
+                                    <button
+                                        onClick={() => setShowMobileMenu(false)}
+                                        aria-label="Close"
+                                        className="flex h-11 w-11 items-center justify-center rounded-xl text-muted-foreground hover:text-foreground transition-colors"
+                                    >
+                                        <X className="w-5 h-5" />
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Identity */}
+                            <button
+                                onClick={() => { onNavigate('profile'); setShowMobileMenu(false); }}
+                                onTouchStart={() => onPrefetch?.('profile')}
+                                className="mx-4 mb-3 flex w-[calc(100%-2rem)] items-center gap-3 rounded-2xl border border-border bg-surface-2 px-4 py-3 text-left"
+                            >
+                                <Avatar className="h-10 w-10 shrink-0">
+                                    <AvatarFallback className="bg-primary text-primary-foreground text-sm font-bold">
+                                        {user.name.charAt(0).toUpperCase()}
+                                    </AvatarFallback>
+                                </Avatar>
+                                <div className="min-w-0 flex-1">
+                                    <p className="truncate text-sm font-black text-foreground">{user.name}</p>
+                                    <p className="truncate text-[11px] text-muted-foreground">{user.email}</p>
+                                </div>
+                                {premiumEnabled && (
+                                    <Badge className="h-5 shrink-0 border-none bg-rose-600 px-1.5 text-[10px] font-bold text-white">
+                                        {hasActiveSubjects ? 'PRO' : 'FREE'}
+                                    </Badge>
+                                )}
+                                <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                            </button>
+
+                            {/* The three top-bar controls that had nowhere else to go */}
+                            <div className="mb-3 flex items-center gap-2 px-4">
+                                <button
+                                    onClick={() => { setShowMobileMenu(false); setIsSearchOpen(true); }}
+                                    className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-border bg-surface-2 px-3 text-sm font-bold text-foreground"
+                                >
+                                    <Search className="h-4 w-4" /> Search
+                                </button>
+                                <div className="flex min-h-11 items-center justify-center rounded-xl border border-border bg-surface-2 px-2">
+                                    <NotificationBell />
+                                </div>
+                                <button
+                                    onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                                    aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+                                    className="flex h-11 w-11 items-center justify-center rounded-xl border border-border bg-surface-2 text-foreground"
+                                >
+                                    {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+                                </button>
+                            </div>
+
+                            {/* Destinations that are not one of the four tabs */}
+                            <div className="grid grid-cols-2 gap-2 px-4 pb-3">
+                                {navItems
+                                    .filter((item) => !MOBILE_TAB_VIEWS.has(String(item.view)))
+                                    .map((item) => {
+                                        const Icon = item.icon as React.ComponentType<{ className?: string }>;
+                                        const active = isActive(item);
+                                        return (
+                                            <button
+                                                key={item.label}
+                                                onClick={() => { onNavigate(item.view); setShowMobileMenu(false); }}
+                                                onTouchStart={() => onPrefetch?.(item.view)}
+                                                className={cn(
+                                                    'flex min-h-14 items-center gap-3 rounded-2xl border p-3 text-left transition-colors',
+                                                    active
+                                                        ? 'border-primary/40 bg-primary/10 text-primary'
+                                                        : 'border-border bg-surface-2 text-foreground',
+                                                )}
+                                            >
+                                                <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-xl', active ? 'bg-primary/20' : 'bg-surface-3')}>
+                                                    <Icon className="h-5 w-5" />
+                                                </span>
+                                                <span className="min-w-0 truncate text-sm font-bold">{item.label}</span>
+                                            </button>
+                                        );
+                                    })}
+                            </div>
+
+                            {premiumEnabled && !hasActiveSubjects && (
+                                <div className="px-4 pb-3">
+                                    <button
+                                        onClick={() => { onNavigate('premium'); setShowMobileMenu(false); }}
+                                        onTouchStart={() => onPrefetch?.('premium')}
+                                        className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-600 px-4 text-sm font-bold text-white"
+                                    >
+                                        <Crown className="h-4 w-4" /> Upgrade to Pro
+                                    </button>
+                                </div>
+                            )}
+
+                            <div className="flex flex-col gap-2 border-t border-border px-4 pb-8 pt-3">
+                                <button
+                                    onClick={() => { onNavigate('profile'); setShowMobileMenu(false); }}
+                                    onTouchStart={() => onPrefetch?.('profile')}
+                                    className="flex min-h-12 items-center gap-3 rounded-2xl px-3 text-sm font-bold text-foreground"
+                                >
+                                    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-surface-3"><Settings className="h-5 w-5" /></span>
+                                    Settings &amp; Profile
+                                </button>
+                                <button
+                                    onClick={() => { onLogout(); setShowMobileMenu(false); }}
+                                    className="flex min-h-12 items-center gap-3 rounded-2xl px-3 text-sm font-bold text-destructive"
+                                >
+                                    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-destructive/10"><LogOut className="h-5 w-5" /></span>
+                                    Logout
+                                </button>
+                            </div>
+                        </motion.div>
+                    </>
+                )}
+            </AnimatePresence>
+
+            <GlobalSearch
+                isOpen={isSearchOpen}
+                onClose={() => setIsSearchOpen(false)}
+                currentView={currentView}
+                onNavigate={onNavigate}
+            />
 
             {/* ── MOBILE BOTTOM TAB BAR (student only) ────────────────────── */}
             {!isTeacher && (
