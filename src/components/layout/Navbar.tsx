@@ -701,16 +701,26 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
             {!isTeacher && (
                 <nav className={cn(
                     'fixed bottom-0 left-0 right-0 z-50 md:hidden',
-                    'bg-[hsl(var(--neu-bg))] border-t border-border/40',
-                    'shadow-[0_-4px_14px_hsl(var(--neu-shadow)/40%),0_-1px_0_hsl(var(--neu-light)/60%)]',
+                    'bg-background border-t border-border',
+                    // Elevation is tonal, not a shadow (V1/DESIGN_LANGUAGE.md §2).
+                    // The dual-shadow that was here read as a smudge on true black.
                     'safe-area-pb pb-safe'
                 )}>
                     {(() => {
                       const mobileTabs = ([
+                            // Plain English, not internal names (audit X-6). "OGCode" and
+                            // "DPP" are product vocabulary a new student cannot decode;
+                            // the destinations are unchanged.
+                            //
+                            // NOTE: six items still exceeds the five-item guidance, and
+                            // /tests — the core-loop screen — is reachable only through
+                            // "More". Which item to cut is an information-architecture
+                            // decision that belongs to the A4 card-sort in
+                            // MOBILE_UX_RESEARCH_FINDINGS.md §3, not to a rename pass.
                             { label: 'Home', icon: LayoutGrid, view: 'dashboard' as ViewState },
                             { label: 'Rooms', icon: UsersRound, view: 'study-rooms' as ViewState },
-                            { label: 'OGCode', icon: Code, view: 'ogcode' as ViewState },
-                            { label: 'DPP', icon: Target, view: 'dpp' as ViewState },
+                            { label: 'Practice', icon: Code, view: 'ogcode' as ViewState },
+                            { label: 'Daily', icon: Target, view: 'dpp' as ViewState },
                             { label: 'Social', icon: UserPlus, view: 'social' as ViewState },
                             { label: 'More', icon: Menu, view: null },
                         ] as { label: string; icon: typeof LayoutGrid; view: ViewState | null; iconSrc?: string }[])
@@ -743,7 +753,7 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                                     ) : (
                                         <Icon className="w-5 h-5" />
                                     )}
-                                    <span className="text-[9px] font-bold leading-none">{item.label}</span>
+                                    <span className="text-[10px] font-medium leading-none">{item.label}</span>
                                 </button>
                             );
                         })}

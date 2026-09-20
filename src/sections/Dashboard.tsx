@@ -503,12 +503,17 @@ export default function Dashboard({
 
           </div>{/* end top-right pills */}
 
-          <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
+          {/* Phone: two columns — the greeting needs the width. The old
+              [1fr_auto_1fr] left it ~100px next to the badge, which clipped
+              "N pts away from <tier>" mid-sentence (audit, Dashboard §2).
+              The third column (a second Ori) is hidden below sm: the hero
+              already has one, and X-2 is about exactly this pile-up. */}
+          <div className="grid grid-cols-[1fr_auto] sm:grid-cols-[1fr_auto_1fr] items-center gap-4">
             {/* Left — greeting */}
             <div className="min-w-0 space-y-1">
               <div className="flex items-center gap-2">
-                <h1 className="text-2xl sm:text-3xl font-black text-foreground tracking-tight leading-tight break-words">
-                  {greeting},<br className="sm:hidden" /> {displayName}!
+                <h1 className="font-display text-2xl sm:text-3xl font-bold text-foreground tracking-tight leading-tight text-balance">
+                  {greeting}, {displayName}
                 </h1>
                 <Image src="/ori2d/ori-winking.png" alt="Ori" width={48} height={48} style={{ width: 'auto', height: 48 }} className="object-contain drop-shadow-md hidden sm:block" />
               </div>
@@ -544,8 +549,8 @@ export default function Dashboard({
               </motion.div>
             </button>
 
-            {/* Right — Ori mascot */}
-            <div className="h-16 w-16 sm:h-24 sm:w-24 shrink-0 justify-self-end">
+            {/* Right — Ori mascot. Desktop only: see the note above. */}
+            <div className="hidden sm:block h-16 w-16 sm:h-24 sm:w-24 shrink-0 justify-self-end">
               <OriMascot expression="reading" title="Ori" />
             </div>
           </div>
@@ -592,25 +597,20 @@ export default function Dashboard({
             const solved = userStats?.solvedCount ?? totalSolved;
             const streak = userStats?.streak ?? user.streak ?? 0;
             return [
-              { icon: BookOpen,   color: 'text-emerald-500', label: 'Solved',     value: solved.toLocaleString(),                          ori: '/ori2d/ori-thubmsup.png' },
-              { icon: Flame,      color: 'text-orange-500',  label: 'Day Streak', value: streak > 0 ? String(streak) : '—',                ori: '/ori2d/ori-exited.png' },
-              { icon: Award,      color: 'text-violet-500',  label: 'Rank',       value: pointsData?.currentTier ?? '—',                   ori: '/ori2d/ori-proud.png' },
-              { icon: TrendingUp, color: 'text-cyan-500',    label: 'Today',      value: todayStudyMins > 0 ? `${todayStudyMins}m` : '—',  ori: '/ori2d/ori-determined.png' },
+              // The per-tile Ori images are gone (audit X-2). Five Ori instances
+              // rendered in one viewport — hero plus all four tiles — and the tile
+              // ones carried no information while sitting on top of the values.
+              // Ori stays in the hero, where it is the subject rather than decoration.
+              { icon: BookOpen,   color: 'text-emerald-500', label: 'Questions solved', value: solved.toLocaleString() },
+              { icon: Flame,      color: 'text-orange-500',  label: 'Day streak',       value: streak > 0 ? String(streak) : '—' },
+              { icon: Award,      color: 'text-violet-500',  label: 'Current rank',     value: pointsData?.currentTier ?? '—' },
+              { icon: TrendingUp, color: 'text-cyan-500',    label: 'Studied today',    value: todayStudyMins > 0 ? `${todayStudyMins}m` : '—' },
             ];
           })().map((s, i) => (
-            <motion.div key={s.label} {...stagger(i + 3)} className="neu-raised p-4 flex flex-col gap-1.5 min-w-0 relative overflow-hidden">
+            <motion.div key={s.label} {...stagger(i + 3)} className="neu-raised p-4 flex flex-col gap-1.5 min-w-0">
               <s.icon className={`w-4 h-4 ${s.color}`} />
-              <p className="text-xl font-black text-foreground leading-none truncate">{s.value}</p>
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{s.label}</p>
-              <Image
-                src={s.ori}
-                alt=""
-                aria-hidden
-                width={52}
-                height={52}
-                style={{ width: 'auto', height: 52 }}
-                className="object-contain drop-shadow absolute -right-1 -bottom-1 opacity-90 pointer-events-none select-none"
-              />
+              <p className="font-display text-2xl font-bold text-foreground leading-none tabular-nums truncate">{s.value}</p>
+              <p className="text-xs text-muted-foreground">{s.label}</p>
             </motion.div>
           ))}
           {/* Progress panel trigger — simple tile beside stats */}
@@ -620,8 +620,8 @@ export default function Dashboard({
             className="neu-raised p-4 flex flex-col gap-1.5 min-w-0 group hover:bg-primary/5 transition-colors col-span-2 sm:col-span-1"
           >
             <BarChart3 className="w-4 h-4 text-primary" />
-            <p className="text-xl font-black text-primary leading-none">→</p>
-            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Progress</p>
+            <p className="font-display text-2xl font-bold text-primary leading-none">→</p>
+            <p className="text-xs text-muted-foreground">Progress</p>
           </motion.button>
         </div>
 
