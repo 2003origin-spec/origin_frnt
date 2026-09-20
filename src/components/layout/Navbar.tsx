@@ -24,6 +24,7 @@ import {
     BookOpen,
     Building2,
     FileText,
+    Sparkles,
     Target,
     UsersRound,
     ChevronRight,
@@ -53,9 +54,12 @@ interface NavbarProps {
     leftOffset?: number;
     expanded?: boolean;
     onToggleExpanded?: () => void;
+    /** Opens the Ori assistant. Undefined when Ori is unavailable or hidden. */
+    onOpenOri?: () => void;
+    oriActive?: boolean;
 }
 
-export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLogout, theme, setTheme, connectEnabled, premiumEnabled, socialEnabled, leftOffset = 0, expanded = false, onToggleExpanded }: NavbarProps) {
+export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLogout, theme, setTheme, connectEnabled, premiumEnabled, socialEnabled, leftOffset = 0, expanded = false, onToggleExpanded, onOpenOri, oriActive }: NavbarProps) {
     const [showProfileMenu, setShowProfileMenu] = useState(false);
     const [showExploreMenu, setShowExploreMenu] = useState(false);
     const [showMobileMenu, setShowMobileMenu] = useState(false);
@@ -725,20 +729,35 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                       const mobileTabs = ([
                             { label: 'Home',  icon: LayoutGrid, view: 'dashboard' as ViewState },
                             { label: 'Test',  icon: FileText,   view: 'test-list' as ViewState },
-                            { label: 'Drill', icon: Code,       view: 'ogcode' as ViewState, center: true },
-                            { label: 'Rooms', icon: UsersRound, view: 'study-rooms' as ViewState },
+                            // Ori takes the centre. SINGLE TAP, not a long-press:
+                            // a hold is invisible to a new student, is not exposed
+                            // by TalkBack, and would put two unrelated actions on
+                            // one control. If Ori is worth the most prominent slot
+                            // in the app it is worth one tap.
+                            { label: 'Ori',   icon: Sparkles,   view: null, center: true, ori: true },
+                            { label: 'Drill', icon: Code,       view: 'ogcode' as ViewState },
                             { label: 'More',  icon: Menu,       view: null },
-                        ] as { label: string; icon: typeof LayoutGrid; view: ViewState | null; iconSrc?: string; center?: boolean }[]);
+                        ] as { label: string; icon: typeof LayoutGrid; view: ViewState | null; iconSrc?: string; center?: boolean; ori?: boolean }[])
+                          // Rooms moved into More: 45 users vs Drill's 71, and it is a
+                          // deliberate-visit feature rather than a daily one.
+                          .filter((item) => !item.ori || Boolean(onOpenOri));
                       return (
                     <div className="grid h-14" style={{ gridTemplateColumns: `repeat(${mobileTabs.length}, minmax(0, 1fr))` }}>
                         {mobileTabs
                           .map((item) => {
-                            const active = item.view ? isActive({ label: item.label, view: item.view }) : false;
+                            const active = item.ori
+                                ? Boolean(oriActive)
+                                : item.view ? isActive({ label: item.label, view: item.view }) : false;
                             const Icon = item.icon;
                             return (
                                 <button
                                     key={item.label}
-                                    onClick={() => item.view ? onNavigate(item.view) : setShowMobileMenu(true)}
+                                    onClick={() => {
+                                        if (item.ori) { onOpenOri?.(); return; }
+                                        if (item.view) { onNavigate(item.view); return; }
+                                        setShowMobileMenu(true);
+                                    }}
+                                    aria-label={item.ori ? 'Ask Ori' : undefined}
                                     aria-current={active ? 'page' : undefined}
                                     className={cn(
                                         'relative flex min-h-14 flex-col items-center justify-center gap-0.5 px-1 py-2 transition-colors',

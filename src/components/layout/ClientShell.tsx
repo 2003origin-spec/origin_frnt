@@ -18,6 +18,7 @@ import { markAppNavigation } from '@/hooks/useAppBack';
 import AiSidebar from './AiSidebar';
 import LaunchCover from '@/components/launch/LaunchCover';
 import { MotionConfig } from 'framer-motion';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { LayoutProvider, useLayout } from '@/context/LayoutContext';
 import { TimeTrackerProvider } from '@/context/TimeTrackerContext';
 import { startHighlightCapture, stopHighlightCapture } from '@/features/origin-ai/highlight-capture';
@@ -179,6 +180,8 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnab
   // Student preference: the floating Ori can be hidden (long-press → Hide Ori,
   // or the Profile toggle). Only hides the mascot button; AI itself is untouched.
   const oriHidden = useOriHidden();
+  // 768px — the same breakpoint the bottom nav uses (md:hidden).
+  const isMobile = useIsMobile();
 
   // Sync state with context
   React.useEffect(() => {
@@ -307,6 +310,8 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnab
               connectEnabled={connectEnabled}
               premiumEnabled={premiumEnabled}
               socialEnabled={socialEnabled}
+              onOpenOri={shouldShowFloatingOriginAi && !oriHidden ? () => toggleAi() : undefined}
+              oriActive={isAiOpen}
               leftOffset={aiSide === 'left' && isAiOpen ? aiWidth : 0}
               expanded={navExpanded}
               onToggleExpanded={toggleNavExpanded}
@@ -381,7 +386,11 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnab
           <FloatingChat
             onOpen={toggleAi}
             autoAskSelectionNonce={globalAskNonce}
-            hideMainButton={isAiOpen || oriHidden}
+            // On mobile Ori now lives in the bottom nav, so the floating
+            // launcher is redundant AND is the overlay that kept covering
+            // content (audit X-2 — captured sitting on top of "View
+            // milestones"). Desktop has no bottom nav, so it stays there.
+            hideMainButton={isAiOpen || oriHidden || isMobile}
             userName={user?.name}
           />
         )}
