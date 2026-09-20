@@ -545,7 +545,7 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                     <div className="flex h-14 items-center justify-between pl-3 pr-1">
                         <button
                             onClick={() => onNavigate('dashboard')}
-                            className="flex items-center gap-2 rounded-xl px-1 py-1"
+                            className="flex min-h-11 items-center gap-2 rounded-xl px-1 py-1"
                             aria-label="Origin home"
                         >
                             {/* Same asset the desktop rail uses — /logo/ holds only a favicon. */}
