@@ -384,6 +384,33 @@
     outline-color: hsl(var(--ring));
   }
 
+  /* ── Icon-only buttons: 44px on touch ─────────────────────────────────
+     The runtime scan found the same shape repeated across dozens of files —
+     a button whose only child is an icon, sized by padding alone (p-1.5, p-2,
+     h-9 w-9). Individually they are 30-38px; collectively they were the single
+     largest defect class in the app.
+
+     `:has(> svg:only-child)` targets exactly that shape and nothing else: a
+     button with an icon and no label. Buttons with visible text are untouched,
+     so nothing reflows. Scoped to coarse pointers, so desktop density is
+     unaffected, and it degrades to no-op on engines without :has().
+
+     This is a floor, not a style — a component that needs a bigger target can
+     still set one. */
+  @media (pointer: coarse) {
+    button:has(> svg:only-child),
+    a:has(> svg:only-child),
+    [role="button"]:has(> svg:only-child) {
+      min-height: 44px;
+      /* NO min-width. The first attempt set it and measured a regression:
+         /explore went 0 -> 103 defects and every route began scrolling
+         horizontally, because rows of icon buttons in a constrained flex
+         container were forced past the viewport. Height is the dimension that
+         matters for a thumb in a vertical list and cannot overflow sideways;
+         width is handled per-component where there is room for it. */
+    }
+  }
+
   /* Skip link — the first tab stop on every page. */
   .skip-to-content {
     position: absolute;
