@@ -389,7 +389,7 @@ export default function Dashboard({
           <div className="relative">
             <button
               onClick={() => { setTasksOpen(false); setQuestOpen(o => !o); }}
-              className="neu-raised relative flex items-center gap-2 px-3 py-1.5 rounded-xl group hover:bg-primary/5 transition-colors"
+              className="neu-raised relative flex min-h-11 min-w-11 items-center gap-2 px-3 py-2 rounded-xl group hover:bg-primary/5 transition-colors"
               aria-label="Origin Quest"
             >
               <Target className="w-4 h-4 text-primary" />
@@ -577,9 +577,9 @@ export default function Dashboard({
               <div className="flex items-center justify-end">
                 <button
                   onClick={() => onNavigate('prestige-milestones')}
-                  className="text-[10px] font-black text-primary/60 hover:text-primary uppercase tracking-widest transition-colors"
+                  className="inline-flex min-h-11 items-center text-sm font-medium text-primary transition-colors hover:underline"
                 >
-                  View Milestones →
+                  View milestones →
                 </button>
               </div>
             </div>

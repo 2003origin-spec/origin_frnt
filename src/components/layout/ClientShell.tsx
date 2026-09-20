@@ -17,6 +17,7 @@ import { useResizable } from '@/hooks/use-resizable';
 import { markAppNavigation } from '@/hooks/useAppBack';
 import AiSidebar from './AiSidebar';
 import LaunchCover from '@/components/launch/LaunchCover';
+import { MotionConfig } from 'framer-motion';
 import { LayoutProvider, useLayout } from '@/context/LayoutContext';
 import { TimeTrackerProvider } from '@/context/TimeTrackerContext';
 import { startHighlightCapture, stopHighlightCapture } from '@/features/origin-ai/highlight-capture';
@@ -405,10 +406,17 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnab
 
 export default function ClientShell({ children, connectEnabled, premiumEnabled, socialEnabled, coverActive, launchAt }: { children: React.ReactNode; connectEnabled?: boolean; premiumEnabled?: boolean; socialEnabled?: boolean; coverActive?: boolean; launchAt?: string | null }) {
   return (
-    <LayoutProvider>
-      <TimeTrackerProvider>
-        <ClientShellInner connectEnabled={connectEnabled} premiumEnabled={premiumEnabled} socialEnabled={socialEnabled} coverActive={coverActive} launchAt={launchAt}>{children}</ClientShellInner>
-      </TimeTrackerProvider>
-    </LayoutProvider>
+    // reducedMotion="user" makes EVERY framer-motion animation in the app honour
+    // the OS "reduce motion" setting. 56 files import framer-motion and almost
+    // none called useReducedMotion, so until now that preference was ignored
+    // app-wide — the CSS @media blocks only ever covered CSS transitions.
+    // Phase 4 item 14 of MOBILE_UI_REDESIGN_PLAN, never started until now.
+    <MotionConfig reducedMotion="user">
+      <LayoutProvider>
+        <TimeTrackerProvider>
+          <ClientShellInner connectEnabled={connectEnabled} premiumEnabled={premiumEnabled} socialEnabled={socialEnabled} coverActive={coverActive} launchAt={launchAt}>{children}</ClientShellInner>
+        </TimeTrackerProvider>
+      </LayoutProvider>
+    </MotionConfig>
   );
 }

@@ -350,6 +350,46 @@
      what lets true black stay true black on OLED.
      Retire a name only when its wave rewrites the screen. */
 
+  /* ── Keyboard focus baseline ──────────────────────────────────────────
+     There was NO :focus-visible rule anywhere in this file. shadcn primitives
+     carry their own rings, but the ~878 .neu-* buttons, the bottom tab bar and
+     every hand-rolled control had no visible focus at all — unusable by
+     keyboard, and by the switch-access and external-keyboard users who reach
+     Android through the same path. Phase 4 item 14, never started until now.
+
+     :focus-visible (not :focus) so a mouse or touch press does not draw a ring.
+     Applied broadly and deliberately: anything focusable should show it, and a
+     component that wants a different treatment can still override. */
+  :where(a, button, input, select, textarea, summary, [tabindex]:not([tabindex="-1"]), [role="button"], [role="tab"], [role="link"], [role="menuitem"], [role="option"], [role="switch"], [role="checkbox"], [role="radio"]):focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+    border-radius: var(--radius-xs);
+  }
+
+  /* The ring must read on a true-black ground as well as on white; on dark the
+     accent cyan is the higher-contrast choice against both surface-1 and 2. */
+  .dark :where(a, button, input, select, textarea, summary, [tabindex]:not([tabindex="-1"]), [role="button"], [role="tab"], [role="link"], [role="menuitem"], [role="option"], [role="switch"], [role="checkbox"], [role="radio"]):focus-visible {
+    outline-color: hsl(var(--ring));
+  }
+
+  /* Skip link — the first tab stop on every page. */
+  .skip-to-content {
+    position: absolute;
+    left: -9999px;
+    top: 0;
+    z-index: var(--z-toast);
+  }
+  .skip-to-content:focus {
+    left: 50%;
+    transform: translateX(-50%);
+    top: calc(env(safe-area-inset-top, 0px) + 8px);
+    padding: 10px 16px;
+    border-radius: var(--radius-full);
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+    font: 600 14px/1 var(--font-ui);
+  }
+
   .neu-surface {
     background-color: hsl(var(--surface-1)) !important;
   }
