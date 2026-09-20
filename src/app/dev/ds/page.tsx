@@ -27,6 +27,9 @@ import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  EmptyState, EntityCard, ErrorState, FilterBar, LoadingState, StatGrid,
+} from '@/components/layout/shells';
 
 function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
   return (
@@ -62,6 +65,7 @@ export default function DesignSystemGallery() {
   // rendered until mount or SSR and client disagree. Same guard as
   // components/ui/ThemeToggle.tsx.
   const [mounted, setMounted] = useState(false);
+  const [filter, setFilter] = useState('all');
   useEffect(() => setMounted(true), []);
 
   return (
@@ -226,16 +230,58 @@ export default function DesignSystemGallery() {
         </Card>
       </Section>
 
-      <Section title="Empty state" hint="Audit rule 7 — every empty state carries the action that resolves it. A dead end is a bug.">
-        <Card className="w-full">
-          <CardContent className="flex flex-col items-center gap-3 py-8 text-center">
-            <CardTitle className="font-display text-xl">No practice sets yet</CardTitle>
-            <CardDescription className="max-w-[34ch]">
-              Finish a test and we&apos;ll build practice sets from the questions you got wrong.
-            </CardDescription>
-            <Button>Take a test</Button>
-          </CardContent>
-        </Card>
+      <Section title="Shell · FilterBar" hint="One scrolling row, never a wrapping tab bar — a wrapped second row hides the fact that it exists.">
+        <FilterBar
+          className="w-full"
+          value={filter}
+          onChange={setFilter}
+          options={[
+            { value: 'all', label: 'All', count: 42 },
+            { value: 'daily', label: 'Daily', count: 7 },
+            { value: 'mock', label: 'Mock', count: 12 },
+            { value: 'pyq', label: 'Previous years', count: 18 },
+            { value: 'mine', label: 'Mine', count: 5 },
+          ]}
+        />
+      </Section>
+
+      <Section title="Shell · StatGrid" hint="No slot for decoration — the audit found Ori rendered inside all four dashboard tiles at once, covering the values.">
+        <StatGrid
+          className="w-full"
+          stats={[
+            { value: 0, label: 'Questions solved' },
+            { value: 1, label: 'Day streak' },
+            { value: 'Novice', label: 'Current rank' },
+            { value: '7m', label: 'Studied today' },
+          ]}
+        />
+      </Section>
+
+      <Section title="Shell · EntityCard" hint="Extracted from the JEE Main card — the best-designed element already in the app. One unambiguous action, by design.">
+        <EntityCard
+          className="w-full"
+          title="JEE Main"
+          description="Full paper across Physics, Chemistry and Mathematics."
+          chips={<><Badge variant="secondary">Free</Badge><Badge variant="outline">6 sections</Badge></>}
+          stats={[
+            { value: 75, label: 'questions' },
+            { value: 300, label: 'marks' },
+            { value: 180, label: 'minutes' },
+          ]}
+          action={{ label: 'Start mock' }}
+        />
+      </Section>
+
+      <Section title="Shell · States" hint="`action` is REQUIRED on empty and error — the type system refuses a dead end.">
+        <div className="flex w-full flex-col gap-3">
+          <EmptyState
+            title="No practice sets yet"
+            description="Finish a test and we'll build practice sets from the questions you got wrong."
+            action={{ label: 'Take a test' }}
+          />
+          <ErrorState action={{ label: 'Try again', onClick: () => {} }} />
+          <LoadingState rows={1} />
+        </div>
       </Section>
     </main>
   );
