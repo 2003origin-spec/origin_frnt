@@ -38,42 +38,63 @@
 }
 
 :root {
-  /* Origin typeface — Darker Grotesque only; weights encode hierarchy */
-  --font-grotesque: 'Darker Grotesque', system-ui, sans-serif;
-  --font-display: var(--font-grotesque);
-  --font-heading: var(--font-grotesque);
-  --font-body: var(--font-grotesque);
-  --background: 220 16% 91%;
-  --foreground: 222.2 84% 4.9%;
-  --card: 220 16% 91%;
-  --card-foreground: 222.2 84% 4.9%;
-  --popover: 220 16% 91%;
-  --popover-foreground: 222.2 84% 4.9%;
-  --primary: 199 94% 60%;
-  --primary-foreground: 0 0% 0%;
-  --secondary: 220 16% 85%;
-  --secondary-foreground: 220 8.9% 36%;
-  --muted: 220 16% 85%;
-  /* Darkened from 46% -> 38% L: 46% failed WCAG AA (~3.9:1) on the 91% neu
-     surface (grey-on-grey). 38% ≈ slate-600, ~5.3:1. (MOBILE_UI_REDESIGN P2-10) */
-  --muted-foreground: 220 10% 38%;
-  --accent: 220 16% 85%;
-  --accent-foreground: 222.2 84% 4.9%;
-  --destructive: 0 84.2% 60.2%;
-  --destructive-foreground: 210 40% 98%;
-  --border: 220 20% 78%;
-  --input: 220 20% 78%;
-  --ring: 199 94% 60%;
+  /* ═══ GENERATED from design/tokens/origin.tokens.json — do not hand-edit ═══
+     Direction: OLED Material (chosen 2026-09-20). Regenerate with
+     `node design/tokens/build.mjs`, which REFUSES to emit a palette that
+     fails WCAG 2.2 AA. See V1/DESIGN_LANGUAGE.md. */
+  --background: 0 0% 100%;
+  --foreground: 216 20% 4.9%;
+  --card: 210 33.3% 97.6%;
+  --card-foreground: 216 20% 4.9%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 216 20% 4.9%;
+  --primary: 200 100% 32.9%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 210 28.6% 94.5%;
+  --secondary-foreground: 212 14.9% 19.8%;
+  --muted: 210 28.6% 94.5%;
+  --muted-foreground: 210 9.4% 37.6%;
+  --accent: 210 33.3% 91.8%;
+  --accent-foreground: 216 20% 4.9%;
+  --destructive: 3.2 71.3% 41%;
+  --destructive-foreground: 0 0% 100%;
+  --success: 151.3 75.4% 23.9%;
+  --warning: 36.4 100% 23.9%;
+  --border: 211.6 20.4% 81.8%;
+  --input: 211.6 20.4% 81.8%;
+  --ring: 200 100% 32.9%;
+  --surface-1: 210 33.3% 97.6%;
+  --surface-2: 210 33.3% 95.3%;
+  --surface-3: 210 31.6% 92.5%;
+  --outline: 211.6 20.4% 81.8%;
+  --outline-variant: 210 25.9% 89.4%;
 
-  /* Neumorphism token layer (Soft UI, light). Mid-tone surface so dual shadows read;
-     same hue, only lightness differs. See Neumorphism.md. */
-  --neu-bg: 220 16% 91%;
-  --neu-light: 0 0% 100%;
-  --neu-shadow: 218 22% 74%;
-  --neu-dist: 6px;
-  --neu-blur: 14px;
-  --neu-radius: 20px;
-
+  --radius-xs: 8px;
+  --radius-sm: 12px;
+  --radius-md: 18px;
+  --radius-lg: 26px;
+  --radius-full: 999px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --text-display-lg: 34px;
+  --text-display: 27px;
+  --text-title: 21px;
+  --text-subtitle: 17px;
+  --text-body: 14px;
+  --text-body-sm: 13px;
+  --text-label: 12px;
+  --text-caption: 11px;
+  --topbar-h: 56px;
+  --nav-h: 64px;
+  --touch-min: 48px;
+  --gutter: 16px;
+  --measure-max: 68ch;
   /* ── z-index scale (as-built, audited 2026-09-07) ─────────────────────────
      WHY the big in-page values are safe: `main` in ClientShell carries
      `relative z-10`, which creates a STACKING CONTEXT. Every z-index used
@@ -91,34 +112,52 @@
   --z-sheet: 70;
   --z-modal: 100;
   --z-toast: 9999;
+  --font-display: 'Darker Grotesque', system-ui, sans-serif;
+  --font-ui: Inter, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+  /* Legacy --neu-* names, re-pointed at flat tonal surfaces. The names survive
+     because 878 call sites across 120 files still use them; the neumorphism
+     does not. Waves in Stage 6 retire the names screen by screen. */
+  --neu-bg: var(--surface-1);
+  --neu-light: var(--surface-2);
+  --neu-shadow: var(--border);
+  --neu-dist: 0px;
+  --neu-blur: 0px;
+  --neu-radius: var(--radius-md);
 }
 
 .dark {
-  --background: 222 16% 13%;
+  --background: 0 0% 0%;
   --foreground: 0 0% 100%;
-  --muted-foreground: 240 4% 66%;
-  --primary: 199 94% 60%;
-  --primary-foreground: 0 0% 0%;
-  --secondary: 222 16% 19%;
-  --secondary-foreground: 0 0% 92%;
-  --muted: 222 16% 19%;
-  --accent: 222 16% 19%;
-  --accent-foreground: 0 0% 98%;
-  --border: 222 16% 28%;
-  --input: 222 16% 28%;
-  --ring: 199 94% 60%;
-  --card: 222 16% 13%;
+  --card: 210 11.8% 6.7%;
   --card-foreground: 0 0% 100%;
-  --popover: 222 16% 13%;
+  --popover: 216 9.8% 10%;
   --popover-foreground: 0 0% 100%;
-  --destructive: 0 62.8% 30.6%;
-  --destructive-foreground: 210 40% 98%;
+  --primary: 198.6 91.3% 63.9%;
+  --primary-foreground: 200.7 100% 5.7%;
+  --secondary: 216 9.8% 10%;
+  --secondary-foreground: 213.3 22% 92%;
+  --muted: 216 9.8% 10%;
+  --muted-foreground: 211.8 10.8% 69.2%;
+  --accent: 217.5 11.8% 13.3%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 4.8 100% 68.4%;
+  --destructive-foreground: 4.7 82.6% 9%;
+  --success: 146.3 75.1% 63.7%;
+  --warning: 39.4 100% 65.1%;
+  --border: 216 10.6% 18.4%;
+  --input: 216 10.6% 18.4%;
+  --ring: 198.6 91.3% 63.9%;
+  --surface-1: 210 11.8% 6.7%;
+  --surface-2: 216 9.8% 10%;
+  --surface-3: 217.5 11.8% 13.3%;
+  --outline: 216 10.6% 18.4%;
+  --outline-variant: 214.3 11.9% 11.6%;
 
-  /* Neumorphism token layer (Soft UI, dark). Hand-tuned: a raised charcoal surface, a
-     subtle top-left highlight, and a near-black bottom-right shadow. */
-  --neu-bg: 222 16% 13%;
-  --neu-light: 222 14% 19%;
-  --neu-shadow: 0 0% 4%;
+  --neu-bg: var(--surface-1);
+  --neu-light: var(--surface-2);
+  --neu-shadow: var(--border);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -333,133 +372,118 @@
      :active. Consumes the --neu-* tokens (light + dark). See Neumorphism.md. */
   /* !important so these full-surface restyles win over shadcn Card base
      (bg-card / shadow-sm / rounded-xl) without per-component class wars. */
+  /* ═══ OLED Material surfaces (was: neumorphism) ═══════════════════════
+     The class NAMES are legacy — 878 call sites across 120 .tsx files still
+     use them, so renaming is a Stage-6-per-wave job, not a Stage-4 one.
+     The IMPLEMENTATION is the new language: tonal elevation + hairline
+     borders, zero box-shadow. Depth comes from surface-1 → 2 → 3, which is
+     what lets true black stay true black on OLED.
+     Retire a name only when its wave rewrites the screen. */
+
   .neu-surface {
-    background-color: hsl(var(--neu-bg)) !important;
+    background-color: hsl(var(--surface-1)) !important;
   }
   .neu-raised {
-    background-color: hsl(var(--neu-bg)) !important;
-    border-radius: var(--neu-radius) !important;
-    box-shadow:
-      var(--neu-dist) var(--neu-dist) var(--neu-blur) hsl(var(--neu-shadow)),
-      calc(var(--neu-dist) * -1) calc(var(--neu-dist) * -1) var(--neu-blur) hsl(var(--neu-light)) !important;
-    will-change: transform;
+    background-color: hsl(var(--surface-2)) !important;
+    border: 1px solid hsl(var(--border)) !important;
+    border-radius: var(--radius-md) !important;
+    box-shadow: none !important;
   }
   .neu-inset {
-    background-color: hsl(var(--neu-bg)) !important;
-    border-radius: var(--neu-radius) !important;
-    box-shadow:
-      inset var(--neu-dist) var(--neu-dist) var(--neu-blur) hsl(var(--neu-shadow)),
-      inset calc(var(--neu-dist) * -1) calc(var(--neu-dist) * -1) var(--neu-blur) hsl(var(--neu-light)) !important;
-    will-change: transform;
+    background-color: hsl(var(--surface-1)) !important;
+    border: 1px solid hsl(var(--border)) !important;
+    border-radius: var(--radius-md) !important;
+    box-shadow: none !important;
   }
+  /* M3 state layer: a tinted overlay, not a moving shadow. */
   .neu-pressable {
-    transition: box-shadow 0.2s ease, transform 0.1s ease;
+    transition: background-color .15s ease;
     cursor: pointer;
   }
-  .neu-pressable:active {
-    box-shadow:
-      inset var(--neu-dist) var(--neu-dist) var(--neu-blur) hsl(var(--neu-shadow)),
-      inset calc(var(--neu-dist) * -1) calc(var(--neu-dist) * -1) var(--neu-blur) hsl(var(--neu-light));
-    transform: translateY(1px);
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .neu-pressable { transition: none; }
-    .neu-pressable:active { transform: none; }
-  }
+  .neu-pressable:hover  { background-color: hsl(var(--surface-3)) !important; }
+  .neu-pressable:active { background-color: hsl(var(--accent)) !important; }
+  @media (prefers-reduced-motion: reduce) { .neu-pressable { transition: none; } }
 
-  /* ── Universal button press (inset shadow on every click) ────────────
-     Applies to ALL <button> and [role="button"] elements throughout the app.
-     !important overrides the .neu-raised static box-shadow when a raised
-     surface is also a button so the inset always wins on :active. */
+  /* Universal press feedback. Previously an inset dual-shadow on every button
+     in the app; now a state layer, so it costs no repaint of a shadow and
+     survives on a true-black ground. */
   button:not(:disabled),
   [role="button"]:not([aria-disabled="true"]) {
-    transition: box-shadow 0.15s ease, transform 0.12s ease, opacity 0.15s ease;
+    transition: background-color .15s ease, opacity .15s ease;
   }
   button:active:not(:disabled),
   [role="button"]:active:not([aria-disabled="true"]) {
-    box-shadow:
-      inset 4px 4px 12px hsl(var(--neu-shadow)),
-      inset -4px -4px 12px hsl(var(--neu-light)) !important;
-    transform: translateY(1px);
-  }
-  @media (prefers-reduced-motion: reduce) {
-    button:active, [role="button"]:active { transform: none; }
+    opacity: .82;
   }
 
-  /* ── Component-scale neumorphism (buttons, fields, toggles, knobs) ──────
-     Smaller radius/depth than the card panels; used on plain elements. */
   .neu-btn {
-    background-color: hsl(var(--neu-bg));
-    border-radius: 12px;
-    box-shadow: 4px 4px 10px hsl(var(--neu-shadow)), -4px -4px 10px hsl(var(--neu-light));
-    transition: box-shadow 0.2s ease, transform 0.1s ease;
+    background-color: hsl(var(--surface-2));
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius-sm);
+    transition: background-color .15s ease;
   }
-  .neu-btn:hover { box-shadow: 3px 3px 8px hsl(var(--neu-shadow)), -3px -3px 8px hsl(var(--neu-light)); }
-  .neu-btn:active, .neu-btn[data-pressed="true"] {
-    box-shadow: inset 4px 4px 8px hsl(var(--neu-shadow)), inset -4px -4px 8px hsl(var(--neu-light));
-    transform: translateY(1px);
-  }
+  .neu-btn:hover { background-color: hsl(var(--surface-3)); }
+  .neu-btn:active, .neu-btn[data-pressed="true"] { background-color: hsl(var(--accent)); }
+
   .neu-field {
-    background-color: hsl(var(--neu-bg));
-    border-radius: 12px;
-    box-shadow: inset 3px 3px 7px hsl(var(--neu-shadow)), inset -3px -3px 7px hsl(var(--neu-light));
+    background-color: hsl(var(--surface-1));
+    border: 1px solid hsl(var(--input));
+    border-radius: var(--radius-sm);
+  }
+  .neu-field:focus-within {
+    border-color: hsl(var(--ring));
+    outline: 2px solid hsl(var(--ring) / .35);
+    outline-offset: 1px;
   }
   .neu-track {
-    background-color: hsl(var(--neu-bg));
-    border-radius: 999px;
-    box-shadow: inset 3px 3px 6px hsl(var(--neu-shadow)), inset -3px -3px 6px hsl(var(--neu-light));
+    background-color: hsl(var(--surface-3));
+    border-radius: var(--radius-full);
   }
   .neu-knob {
-    background-color: hsl(var(--neu-bg));
-    border-radius: 999px;
-    box-shadow: 3px 3px 6px hsl(var(--neu-shadow)), -3px -3px 6px hsl(var(--neu-light));
+    background-color: hsl(var(--primary));
+    border-radius: var(--radius-full);
   }
 
-  /* ── Extended Soft UI primitives (pill button, icon button, chip, segmented
-     control). Imported from the neumorphism component kits and adapted to the
-     --neu-* tokens so they work in light AND dark. Raised at rest, inset on
-     press. See .github/skills/neumorphism-guidelines.md. */
+  /* M3 Expressive: primary actions are pill-shaped. */
   .neu-pill {
-    background-color: hsl(var(--neu-bg));
-    border-radius: 999px;
-    box-shadow: 4px 4px 10px hsl(var(--neu-shadow)), -4px -4px 10px hsl(var(--neu-light));
-    transition: box-shadow 0.2s ease, transform 0.1s ease, color 0.2s ease;
+    background-color: hsl(var(--surface-2));
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius-full);
+    transition: background-color .15s ease, color .15s ease;
   }
-  .neu-pill:hover { box-shadow: 3px 3px 8px hsl(var(--neu-shadow)), -3px -3px 8px hsl(var(--neu-light)); }
-  .neu-pill:active {
-    box-shadow: inset 4px 4px 8px hsl(var(--neu-shadow)), inset -4px -4px 8px hsl(var(--neu-light));
-    transform: translateY(1px);
-  }
+  .neu-pill:hover  { background-color: hsl(var(--surface-3)); }
+  .neu-pill:active { background-color: hsl(var(--accent)); }
+
   .neu-icon-btn {
-    background-color: hsl(var(--neu-bg));
-    border-radius: 14px;
-    box-shadow: 4px 4px 10px hsl(var(--neu-shadow)), -4px -4px 10px hsl(var(--neu-light));
-    transition: box-shadow 0.2s ease, transform 0.1s ease, color 0.2s ease;
+    background-color: hsl(var(--surface-2));
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius-full);
+    transition: background-color .15s ease, color .15s ease;
   }
-  .neu-icon-btn:hover { box-shadow: 3px 3px 8px hsl(var(--neu-shadow)), -3px -3px 8px hsl(var(--neu-light)); }
-  .neu-icon-btn:active {
-    box-shadow: inset 3px 3px 7px hsl(var(--neu-shadow)), inset -3px -3px 7px hsl(var(--neu-light));
-    transform: translateY(1px);
-  }
+  .neu-icon-btn:hover  { background-color: hsl(var(--surface-3)); }
+  .neu-icon-btn:active { background-color: hsl(var(--accent)); }
+
   .neu-chip {
-    background-color: hsl(var(--neu-bg));
-    border-radius: 14px;
-    box-shadow: 4px 4px 10px hsl(var(--neu-shadow)), -4px -4px 10px hsl(var(--neu-light));
+    background-color: hsl(var(--surface-2));
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius-sm);
   }
-  /* Segmented control: concave rail; the active item lifts (raised) + accent. */
+
   .neu-segmented {
-    background-color: hsl(var(--neu-bg));
-    border-radius: 14px;
-    box-shadow: inset 3px 3px 7px hsl(var(--neu-shadow)), inset -3px -3px 7px hsl(var(--neu-light));
+    background-color: hsl(var(--surface-2));
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius-full);
   }
   .neu-segmented__item {
     color: hsl(var(--muted-foreground));
-    transition: box-shadow 0.3s ease, color 0.3s ease;
+    border-radius: var(--radius-full);
+    transition: background-color .15s ease, color .15s ease;
   }
   .neu-segmented__item[data-active="true"] {
-    box-shadow: 3px 3px 6px hsl(var(--neu-shadow)), -3px -3px 6px hsl(var(--neu-light));
-    color: hsl(var(--primary));
+    background-color: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
   }
+
   @media (prefers-reduced-motion: reduce) {
     .neu-btn { transition: none; }
     .neu-btn:active { transform: none; }
@@ -467,12 +491,14 @@
     .neu-pill:active, .neu-icon-btn:active { transform: none; }
   }
 
+  /* Sticky chrome over scrolling content. Kept as a blur (it reads as depth
+     without a shadow), but the inset highlight is gone — a light top edge on a
+     true-black ground looks like a rendering artefact, not a material. */
   .glass {
-    background-color: hsl(var(--neu-bg) / 0.92);
+    background-color: hsl(var(--background) / 0.86);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
-    border-color: hsl(var(--border) / 0.4);
-    box-shadow: 0 2px 8px hsl(var(--neu-shadow) / 0.25), 0 -1px 0 hsl(var(--neu-light) / 0.5) inset;
+    border-color: hsl(var(--border));
   }
 
   .premium-shadow {
