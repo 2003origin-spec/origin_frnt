@@ -324,7 +324,10 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnab
               isFullViewportApp ? "overflow-hidden" : "overflow-y-auto",
               "transition-all duration-300 min-w-[320px]",
               mounted && showNavbar
-                ? (navExpanded ? 'md:pl-[150px]' : 'md:pl-[72px]') + ' pt-topbar md:pt-0 ' +
+                // `pt-topbar` is gone: the mobile top bar was removed, so reserving
+                // 56px for it would swap a visible bar for 56px of nothing. Content
+                // still clears the status bar via safe-top.
+                ? (navExpanded ? 'md:pl-[150px]' : 'md:pl-[72px]') + ' safe-top md:pt-0 ' +
                   // Full-viewport apps (chat/test) don't scroll here, so their tight
                   // clearance can stay on <main> and behaves normally.
                   //

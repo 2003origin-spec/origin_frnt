@@ -3,6 +3,7 @@ import { useState, useRef, useEffect } from 'react';
 import Image from 'next/image';
 import { useLayout } from '@/context/LayoutContext';
 import { useAiAccess } from '@/context/AiAccessContext';
+import { useNotifications } from '@/context/NotificationContext';
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -60,6 +61,7 @@ interface NavbarProps {
 }
 
 export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLogout, theme, setTheme, connectEnabled, premiumEnabled, socialEnabled, leftOffset = 0, expanded = false, onToggleExpanded, onOpenOri, oriActive }: NavbarProps) {
+    const { unreadCount } = useNotifications();
     const [showProfileMenu, setShowProfileMenu] = useState(false);
     const [showExploreMenu, setShowExploreMenu] = useState(false);
     const [showMobileMenu, setShowMobileMenu] = useState(false);
@@ -522,189 +524,19 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                 </div>
             </nav>
 
-            {/* ── MOBILE COMPACT TOP BAR ──────────────────────────────────── */}
-            <div className={cn(
-                'fixed top-0 left-0 right-0 h-topbar z-50 md:hidden flex items-center justify-between px-3',
-                'bg-[hsl(var(--neu-bg))] border-b border-primary/10',
-                'shadow-[0_4px_14px_hsl(var(--neu-shadow)/35%),0_-1px_0_hsl(var(--neu-light)/25%)_inset]'
-            )}>
-                {/* Logo */}
-                {/* 34x34 and unnamed — the only sub-44px control present on EVERY
-                    screen (chrome.touch-min). The sibling icon buttons beside it
-                    are already h-11 w-11. */}
-                <button
-                    onClick={() => onNavigate('dashboard')}
-                    onMouseEnter={() => onPrefetch?.('dashboard')}
-                    aria-label="Go to home"
-                    className="inline-flex h-11 min-w-11 items-center justify-center rounded-lg -ml-1"
-                >
-                    <img
-                        src={user.role?.toLowerCase() === 'student' ? '/origin-new.jpg' : '/O3-Origin-Logo.png'}
-                        alt="ORIGIN"
-                        className="h-8 w-auto rounded-lg"
-                    />
-                </button>
+            {/* ── MOBILE TOP BAR — REMOVED 2026-09-20 ──────────────────────────
+                It held: logo, theme toggle, search, notifications, avatar. All five
+                now live in the More sheet, which frees 56px of vertical space on a
+                844px screen — 6.6% more content on every single page.
 
-                {/* Right actions */}
-                <div className="flex items-center gap-1">
-                    <motion.button
-                        whileTap={{ scale: 0.9 }}
-                        onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-                        className={cn(
-                            'h-11 w-11 inline-flex items-center justify-center rounded-full transition-colors',
-                            theme === 'light' ? 'text-primary bg-primary/10' : 'text-slate-400 bg-white/5'
-                        )}
-                        aria-label="Toggle theme"
-                    >
-                        {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-                    </motion.button>
+                The one thing that could NOT simply move is notifications: a bell
+                with an unread badge is a signal students must SEE, and burying it
+                in a sheet means they stop noticing it. So the unread count is
+                surfaced as a dot on the More tab instead — the signal survives,
+                the chrome does not.
 
-                    <motion.button
-                        whileTap={{ scale: 0.9 }}
-                        onClick={() => setIsSearchOpen(true)}
-                        className="h-11 w-11 inline-flex items-center justify-center text-slate-500 dark:text-slate-400 hover:text-primary bg-primary/5 rounded-full transition-colors"
-                        aria-label="Search"
-                    >
-                        <Search className="w-4 h-4" />
-                    </motion.button>
-
-                    <NotificationBell />
-
-                    <button
-                        onClick={() => setShowMobileMenu(true)}
-                        className="ml-1 h-11 w-11 inline-flex items-center justify-center"
-                        aria-label="Open menu"
-                    >
-                        <Avatar className="w-7 h-7 border border-primary/20">
-                            <AvatarFallback className="bg-primary text-white text-[10px] font-bold">
-                                {user.name.charAt(0).toUpperCase()}
-                            </AvatarFallback>
-                        </Avatar>
-                    </button>
-                </div>
-            </div>
-
-            {/* ── MOBILE BOTTOM-SHEET DRAWER ──────────────────────────────── */}
-            <AnimatePresence>
-                {showMobileMenu && (
-                    <>
-                        {/* Backdrop */}
-                        <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            onClick={() => setShowMobileMenu(false)}
-                            className="fixed inset-0 z-[60] bg-black/40 backdrop-blur-sm md:hidden"
-                        />
-
-                        {/* Sheet */}
-                        <motion.div
-                            initial={{ y: '100%' }}
-                            animate={{ y: 0 }}
-                            exit={{ y: '100%' }}
-                            transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-                            className="fixed bottom-0 left-0 right-0 z-[70] md:hidden bg-[hsl(var(--neu-bg))] backdrop-blur-2xl rounded-t-3xl border-t border-primary/10 shadow-[0_-8px_32px_hsl(var(--neu-shadow)/40%)]"
-                        >
-                            {/* Handle */}
-                            <div className="flex justify-center pt-3 pb-2">
-                                <div className="w-10 h-1 bg-slate-300 dark:bg-slate-700 rounded-full" />
-                            </div>
-
-                            {/* Close button */}
-                            <div className="flex items-center justify-between px-5 pb-3">
-                                <p className="text-xs font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest">Navigation</p>
-                                <button
-                                    onClick={() => setShowMobileMenu(false)}
-                                    className="p-1.5 rounded-xl bg-primary/5 text-slate-500 hover:text-primary transition-colors"
-                                >
-                                    <X className="w-4 h-4" />
-                                </button>
-                            </div>
-
-                            {/* User identity strip */}
-                            <div className="mx-4 mb-3 flex items-center gap-3 px-4 py-3 rounded-2xl bg-primary/5 border border-primary/10">
-                                <Avatar className="w-9 h-9 border border-primary/20 flex-shrink-0">
-                                    <AvatarFallback className="bg-primary text-white text-sm font-bold">
-                                        {user.name.charAt(0).toUpperCase()}
-                                    </AvatarFallback>
-                                </Avatar>
-                                <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-black text-foreground truncate">{user.name}</p>
-                                    <p className="text-[11px] text-muted-foreground truncate">{user.email}</p>
-                                </div>
-                                {premiumEnabled && (
-                                    <Badge className="text-[10px] h-5 px-1.5 bg-rose-600 text-white border-none font-bold shrink-0">
-                                        {hasActiveSubjects ? 'PRO' : 'FREE'}
-                                    </Badge>
-                                )}
-                            </div>
-
-                            {/* Nav items — 2-column grid */}
-                            <div className="grid grid-cols-2 gap-2 px-4 pb-3">
-                                {navItems.map((item) => {
-                                    const Icon = item.icon as React.ComponentType<{ className?: string }>;
-                                    const active = isActive(item);
-                                    return (
-                                        <button
-                                            key={item.label}
-                                            id={`tutorial-nav-${item.view}`}
-                                            onClick={() => {
-                                                onNavigate(item.view);
-                                                setShowMobileMenu(false);
-                                            }}
-                                            onTouchStart={() => onPrefetch?.(item.view)}
-                                            className={cn(
-                                                'flex items-center gap-3 p-4 rounded-2xl transition-all text-left',
-                                                active
-                                                    ? 'bg-primary/10 text-primary'
-                                                    : 'hover:bg-slate-50 dark:hover:bg-slate-900 text-slate-700 dark:text-slate-300'
-                                            )}
-                                        >
-                                            <div className={cn('p-2 rounded-xl flex-shrink-0', active ? 'bg-primary/20' : 'bg-slate-100 dark:bg-slate-800')}>
-                                                {typeof item.icon === 'function' && item.icon.toString().includes('img')
-                                                    ? <Icon />
-                                                    : <Icon className="w-5 h-5" />
-                                                }
-                                            </div>
-                                            <span className="font-bold text-sm">{item.label}</span>
-                                        </button>
-                                    );
-                                })}
-                            </div>
-
-                            {/* Bottom actions */}
-                            <div className="px-4 pb-8 pt-1 flex flex-col gap-2 border-t border-border/40 mt-1">
-                                <button
-                                    onClick={() => { onNavigate('profile'); setShowMobileMenu(false); }}
-                                    onTouchStart={() => onPrefetch?.('profile')}
-                                    className="flex items-center gap-3 px-4 py-3 rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-900 transition-colors text-slate-700 dark:text-slate-300"
-                                >
-                                    <div className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800">
-                                        <Settings className="w-5 h-5" />
-                                    </div>
-                                    <span className="font-bold text-sm">Settings &amp; Profile</span>
-                                </button>
-                                <button
-                                    onClick={() => { onLogout(); setShowMobileMenu(false); }}
-                                    className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-rose-50 dark:bg-rose-900/20 hover:bg-rose-100 dark:hover:bg-rose-900/30 transition-colors text-rose-600 dark:text-rose-400"
-                                >
-                                    <div className="p-2 rounded-xl bg-rose-100 dark:bg-rose-900/40">
-                                        <LogOut className="w-5 h-5" />
-                                    </div>
-                                    <span className="font-bold text-sm">Logout</span>
-                                </button>
-                            </div>
-                        </motion.div>
-                    </>
-                )}
-            </AnimatePresence>
-
-            <GlobalSearch
-                isOpen={isSearchOpen}
-                onClose={() => setIsSearchOpen(false)}
-                currentView={currentView}
-                onNavigate={onNavigate}
-            />
+                ClientShell drops `pt-topbar` on mobile to reclaim the space;
+                leaving it would have swapped a visible bar for 56px of nothing. */}
 
             {/* ── MOBILE BOTTOM TAB BAR (student only) ────────────────────── */}
             {!isTeacher && (
@@ -761,13 +593,21 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                                     aria-current={active ? 'page' : undefined}
                                     className={cn(
                                         'relative flex min-h-14 flex-col items-center justify-center gap-0.5 px-1 py-2 transition-colors',
-                                        item.center && '-mt-5',
+                                        item.center && '-mt-6',
                                         active && !item.center ? 'text-primary' : 'text-muted-foreground hover:text-primary',
                                         item.center && active && 'text-primary font-medium'
                                     )}
                                 >
                                     {active && !item.center && (
                                         <span className="absolute top-0 w-8 h-0.5 bg-primary rounded-full" />
+                                    )}
+                                    {item.view === null && !item.center && unreadCount > 0 && (
+                                        <span
+                                            className="absolute right-[22%] top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold tabular-nums text-destructive-foreground"
+                                            aria-label={`${unreadCount} unread notifications`}
+                                        >
+                                            {unreadCount > 9 ? '9+' : unreadCount}
+                                        </span>
                                     )}
                                     {item.iconSrc ? (
                                         <img
@@ -777,14 +617,27 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                                             className={cn('w-5 h-5 object-contain transition-opacity', active ? 'opacity-100' : 'opacity-70')}
                                         />
                                     ) : item.center ? (
+                                        // Ori himself, not a glyph. 144px source cropped to the
+                                        // head — the full character's face reads ~20px at this
+                                        // size and the outstretched arms are lost. 6.5KB webp,
+                                        // down from the 232KB full-body png.
+                                        // The circle stays tonal rather than accent-filled: Ori is
+                                        // blue, and blue-on-cyan has almost no separation.
                                         <span
-                                            // Always accent-filled, not only when active. In every
-                                            // reference app the raised centre reads as THE primary
-                                            // verb, present whatever screen you are on; filling it
-                                            // only on the active tab loses that.
-                                            className="flex h-12 w-12 items-center justify-center rounded-full border-4 border-background bg-primary text-primary-foreground transition-colors"
+                                            className={cn(
+                                                'flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border-4 border-background bg-surface-2 transition-colors',
+                                                active ? 'ring-2 ring-primary' : 'ring-1 ring-border',
+                                            )}
                                         >
-                                            <Icon className="w-6 h-6" />
+                                            <img
+                                                src="/ori2d/ori-nav.webp"
+                                                alt=""
+                                                aria-hidden
+                                                width={56}
+                                                height={56}
+                                                className="h-full w-full object-contain"
+                                                draggable={false}
+                                            />
                                         </span>
                                     ) : (
                                         <Icon className="w-5 h-5" />
