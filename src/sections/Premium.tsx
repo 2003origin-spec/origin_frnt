@@ -159,36 +159,6 @@ export default function Premium({ onBack, paymentsEnabled = false, couponsEnable
 
         {/* Coupon — after the plans. You cannot judge a discount before you have
             seen a price (audit, Premium §2). */}
-        {couponsEnabled ? (
-            <>
-              {/* Coupon code */}
-              <div className="mb-8 flex items-center justify-center gap-2">
-                <input
-                  value={couponInput}
-                  onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
-                  placeholder="Coupon code"
-                  className="neu-inset rounded-xl px-4 py-2 text-sm text-foreground bg-transparent outline-none w-44 text-center tracking-wider"
-                />
-                <button
-                  onClick={() => setAppliedCoupon(couponInput.trim() ? couponInput.trim() : undefined)}
-                  className="neu-btn px-4 py-2 text-sm font-bold text-primary"
-                >
-                  Apply
-                </button>
-                {appliedCoupon && (
-                  <button onClick={() => { setAppliedCoupon(undefined); setCouponInput(''); }} className="text-xs text-muted-foreground underline">
-                    Clear
-                  </button>
-                )}
-              </div>
-              {appliedCoupon && (
-                <p className="mt-2 text-xs text-emerald-600 dark:text-emerald-400">
-                  Coupon <strong>{appliedCoupon}</strong> selected — eligible checkout buttons will preview the discounted amount.
-                </p>
-              )}
-            </>
-          ) : null}
-
         {/* Global tools unlock banner */}
         <div className="neu-raised rounded-2xl p-6 flex flex-col sm:flex-row sm:items-center gap-4 justify-between mb-8 sm:mb-10">
           <div>
@@ -207,9 +177,6 @@ export default function Premium({ onBack, paymentsEnabled = false, couponsEnable
             </div>
           </div>
           <div className="flex flex-col items-center gap-1">
-            {anyPremium && (
-              <img src="/ori2d/ori-proud.png" alt="Ori" className="w-28 h-28 object-contain mx-auto mb-3 drop-shadow-xl" />
-            )}
             <span className={cn(
               'text-sm font-bold',
               anyPremium ? 'text-emerald-500' : 'text-muted-foreground'
@@ -329,6 +296,36 @@ export default function Premium({ onBack, paymentsEnabled = false, couponsEnable
             </div>
           </div>
         )}
+
+        {couponsEnabled ? (
+            <>
+              {/* Coupon code */}
+              <div className="mb-8 flex items-center justify-center gap-2">
+                <input
+                  value={couponInput}
+                  onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+                  placeholder="Coupon code"
+                  className="neu-inset rounded-xl px-4 py-2 text-sm text-foreground bg-transparent outline-none w-44 text-center tracking-wider"
+                />
+                <button
+                  onClick={() => setAppliedCoupon(couponInput.trim() ? couponInput.trim() : undefined)}
+                  className="neu-btn px-4 py-2 text-sm font-bold text-primary"
+                >
+                  Apply
+                </button>
+                {appliedCoupon && (
+                  <button onClick={() => { setAppliedCoupon(undefined); setCouponInput(''); }} className="text-xs text-muted-foreground underline">
+                    Clear
+                  </button>
+                )}
+              </div>
+              {appliedCoupon && (
+                <p className="mt-2 text-xs text-emerald-600 dark:text-emerald-400">
+                  Coupon <strong>{appliedCoupon}</strong> selected — eligible checkout buttons will preview the discounted amount.
+                </p>
+              )}
+            </>
+          ) : null}
 
         <div className="flex flex-wrap justify-center gap-6 text-muted-foreground">
           <div className="flex items-center gap-2">
