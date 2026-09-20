@@ -221,7 +221,7 @@ export const TutorialOverlay: React.FC = () => {
               </div>
               <button
                 onClick={skipTutorial}
-                className="shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-full text-muted-foreground hover:text-foreground hover:bg-black/5 transition-all text-[10px] font-black uppercase tracking-widest"
+                className="shrink-0 inline-flex min-h-11 items-center gap-1 px-3 rounded-full text-muted-foreground hover:text-foreground hover:bg-black/5 transition-all text-[10px] font-black uppercase tracking-widest"
               >
                 Skip <X className="w-3 h-3" />
               </button>
@@ -263,7 +263,7 @@ export const TutorialOverlay: React.FC = () => {
                 )}
                 <button
                   onClick={nextStep}
-                  className="flex items-center gap-1.5 px-5 py-2 rounded-full text-white text-[11px] font-black uppercase tracking-[0.15em] transition-all hover:opacity-90 active:scale-95"
+                  className="inline-flex min-h-11 items-center gap-1.5 px-5 rounded-full text-white text-[11px] font-black uppercase tracking-[0.15em] transition-all hover:opacity-90 active:scale-95"
                   style={{
                     background: 'var(--color-primary, #0066ff)',
                     boxShadow: '0 4px 14px rgba(0,102,255,0.30)',

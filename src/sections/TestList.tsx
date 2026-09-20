@@ -986,6 +986,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                                                     type="number"
                                                     min={MIN_QUESTIONS_PER_SUBJECT}
                                                     max={MAX_QUESTIONS_PER_SUBJECT}
+                                                    aria-label="Number of questions"
                                                     value={customTestConfig.baseCount}
                                                     onChange={(e) => setCustomTestConfig((prev) => ({ ...prev, baseCount: clampCount(Number(e.target.value)) }))}
                                                     className={cn('h-12 rounded-xl bg-white dark:bg-white/5 border border-border/40 pl-4 pr-24 text-sm font-black', NO_SPINNER)}
@@ -1032,6 +1033,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                                                             type="number"
                                                             min={MIN_QUESTIONS_PER_SUBJECT}
                                                             max={MAX_QUESTIONS_PER_SUBJECT}
+                                                            aria-label={`${canonical} questions`}
                                                             value={val}
                                                             onChange={(e) => setVal(Number(e.target.value))}
                                                             className={cn('h-11 w-20 rounded-xl bg-white dark:bg-white/5 border border-border/40 px-3 text-sm font-black text-center', NO_SPINNER)}
@@ -1097,6 +1099,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                                                     min={MIN_SECONDS_PER_QUESTION}
                                                     max={MAX_SECONDS_PER_QUESTION}
                                                     step={1}
+                                                    aria-label="Seconds per question"
                                                     value={customTestConfig.secondsPerQuestion}
                                                     // Allow free typing (any value up to the max) so intermediate
                                                     // entries like "3" on the way to "34" aren't snapped to the min;
@@ -1138,6 +1141,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                                                             type="number"
                                                             min={0}
                                                             max={seg === 'h' ? 6 : 59}
+                                                            aria-label={seg === 'h' ? 'Hours' : seg === 'm' ? 'Minutes' : 'Seconds'}
                                                             value={customTestConfig.totalTime[seg]}
                                                             onChange={(e) => setCustomTestConfig((prev) => ({
                                                                 ...prev,

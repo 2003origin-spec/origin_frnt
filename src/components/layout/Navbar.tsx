@@ -525,9 +525,14 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                 'shadow-[0_4px_14px_hsl(var(--neu-shadow)/35%),0_-1px_0_hsl(var(--neu-light)/25%)_inset]'
             )}>
                 {/* Logo */}
+                {/* 34x34 and unnamed — the only sub-44px control present on EVERY
+                    screen (chrome.touch-min). The sibling icon buttons beside it
+                    are already h-11 w-11. */}
                 <button
                     onClick={() => onNavigate('dashboard')}
                     onMouseEnter={() => onPrefetch?.('dashboard')}
+                    aria-label="Go to home"
+                    className="inline-flex h-11 min-w-11 items-center justify-center rounded-lg -ml-1"
                 >
                     <img
                         src={user.role?.toLowerCase() === 'student' ? '/origin-new.jpg' : '/O3-Origin-Logo.png'}
