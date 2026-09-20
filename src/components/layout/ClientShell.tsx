@@ -298,6 +298,13 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnab
             <div className="absolute bottom-[-20%] left-[-10%] w-[60%] h-[60%] bg-primary/10 rounded-full blur-[100px]" />
           </div>
 
+          {/* Paints the status-bar strip so page content cannot be seen scrolling
+              under it. See `.status-bar-cover` in globals.css — it is 0px tall,
+              and so has no effect, anywhere the safe-area inset is 0. Below the
+              z-[300] modal layer on purpose: a full-screen dialog owns the whole
+              screen including this strip. */}
+          <div aria-hidden className="status-bar-cover z-[60]" />
+
           {mounted && showNavbar && (
             <Navbar
               user={user}

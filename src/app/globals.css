@@ -620,6 +620,22 @@
   /* Status-bar inset for standalone top bars/headers that are NOT covered by the
      app shell's mobile top bar (landing nav, auth, full-viewport test/ogcode
      headers, teacher/admin). Collapses to 0 off notched devices. */
+  /* Opaque cover for the status-bar strip.
+     `main` is the scroll container and carries `safe-top`, so scrolled content
+     travels THROUGH that padding region and stays visible — invisible in a
+     browser, where the strip is 0px, but under a transparent Android status bar
+     (viewport-fit=cover) the page was seen sliding above every sticky header.
+     Zero height, and therefore invisible, wherever the inset is 0. */
+  .status-bar-cover {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: env(safe-area-inset-top, 0px);
+    background: hsl(var(--background));
+    pointer-events: none;
+  }
+
   .safe-top {
     padding-top: env(safe-area-inset-top);
   }

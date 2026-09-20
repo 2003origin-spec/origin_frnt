@@ -6,6 +6,7 @@ import { apiCall } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { NeuButton } from '@/components/ui/neu';
 import { cn } from '@/lib/utils';
+import { formatPoints } from '@/lib/format-points';
 
 // Prize photo + label are set by an admin at /admin/championship (stored in
 // platform settings, delivered in the snapshot). A trophy shows until then.
@@ -162,7 +163,7 @@ export function ChampionshipBanner({ onPractice }: { onPractice: () => void }) {
                 <span key={e.userId} className={cn('inline-flex items-center gap-1 text-[11px] font-bold', e.userId === user?.id ? 'text-primary' : 'text-muted-foreground')}>
                   <span>{MEDALS[i]}</span>
                   <span className="max-w-[7rem] truncate">{e.name}</span>
-                  <span className="tabular-nums opacity-70">{e.points.toLocaleString('en-IN')}</span>
+                  <span className="tabular-nums opacity-70">{formatPoints(e.points)}</span>
                 </span>
               ))}
             </div>

@@ -66,23 +66,27 @@ export function NativePurchaseNotice({ title }: { title?: string }) {
     }
   };
 
+  // Left-aligned with the lock inline, not a centred stack. Centred short
+  // lines inside a narrow card wrapped to four ragged rows and made the
+  // notice taller than the plan it belonged to (Android shell, 2026-09-21).
   return (
-    <div className="w-full rounded-xl border border-border bg-muted/40 p-4 text-center space-y-2">
-      <div className="mx-auto flex h-9 w-9 items-center justify-center rounded-full bg-muted">
-        <Lock className="h-4 w-4 text-muted-foreground" />
+    <div className="w-full rounded-xl border border-border bg-muted/40 p-3 space-y-1.5">
+      <div className="flex items-center gap-2">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted">
+          <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+        </span>
+        <p className="text-sm font-medium leading-snug">
+          {title ? `${title} — not available in the app` : "Purchases aren't available in the app"}
+        </p>
       </div>
-      <p className="text-sm font-medium">
-        {title ? `${title} — purchases aren't available in the app` : "Purchases aren't available in the app"}
-      </p>
-      <p className="text-xs text-muted-foreground">
-        Premium is managed on the o3origin.com website. Anything you own there unlocks here
-        automatically.
+      <p className="text-xs leading-snug text-muted-foreground">
+        Premium is managed on o3origin.com. Anything you own there unlocks here automatically.
       </p>
       {linkOutReady ? (
         <Button
           type="button"
           size="sm"
-          className="rounded-full"
+          className="w-full rounded-full"
           onClick={() => void handleLinkOut()}
           disabled={busy}
         >

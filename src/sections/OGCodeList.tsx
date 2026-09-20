@@ -19,6 +19,7 @@ import { saveOgcodeNavQueue } from '@/features/ogcode/nav-queue';
 import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext';
 import { isSubjectInMode, studyModeSubjects } from '@/lib/study-mode';
+import { formatPoints } from '@/lib/format-points';
 
 // Characters that imply Markdown / LaTeX. If a string has none of them it is
 // plain text and we can skip the (heavy) ReactMarkdown + KaTeX pipeline entirely
@@ -1109,7 +1110,7 @@ export default function OGCodeList({
                     {/* OG Points chip */}
                     <div className="flex flex-1 md:flex-none items-center justify-center md:justify-start gap-1.5 px-3 py-1.5 sm:py-2 rounded-xl neu-raised border border-amber-500/15 bg-amber-500/5">
                         <Trophy className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                        <span className="text-sm font-black text-amber-500 font-mono">{user.points || 0}</span>
+                        <span className="text-sm font-black text-amber-500 font-mono">{formatPoints(user.points)}</span>
                         <span className="text-[9px] font-black text-amber-500/60 uppercase tracking-widest">PTS</span>
                     </div>
 
@@ -1154,7 +1155,7 @@ export default function OGCodeList({
                                                 { label: 'Current Streak', val: `${streak}d`, icon: Flame, color: 'text-orange-500', bg: 'bg-orange-500/10', ori: '/ori2d/ori-exited.png' },
                                                 { label: 'Solved Questions', val: solvedCount, icon: CheckCircle2, color: 'text-primary', bg: 'bg-primary/10', ori: '/ori2d/ori-thubmsup.png' },
                                                 { label: 'Accuracy Rate', val: `${accuracy}%`, icon: Target, color: 'text-emerald-500', bg: 'bg-emerald-500/10', ori: '/ori2d/ori-proud.png' },
-                                                { label: 'Prestige Points', val: user.points || 0, icon: Zap, color: 'text-indigo-500', bg: 'bg-indigo-500/10', ori: '/ori2d/ori-cheerful.png' },
+                                                { label: 'Prestige Points', val: formatPoints(user.points), icon: Zap, color: 'text-indigo-500', bg: 'bg-indigo-500/10', ori: '/ori2d/ori-cheerful.png' },
                                             ].map((stat) => (
                                                 <div key={stat.label} className="flex items-center justify-between">
                                                     <div className="flex items-center gap-2.5">
