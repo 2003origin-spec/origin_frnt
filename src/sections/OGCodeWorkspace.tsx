@@ -23,6 +23,7 @@ import { playAnswerSound as playAnswerSoundManager, resetAnswerStreak } from '@/
 import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext';
 import { isSubjectInMode } from '@/lib/study-mode';
+import { formatPoints, formatPointsDelta } from '@/lib/format-points';
 
 const SUBJECT_META: Record<string, { label: string; emoji: string; param: string }> = {
     phy:  { label: 'Physics',     emoji: '⚛️', param: 'subject=phy'  },
@@ -1070,7 +1071,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                         transition={{ duration: 0.5 }}
                     >
                         <Trophy className="w-3.5 h-3.5" />
-                        {localPoints !== null ? localPoints : (user?.points || 0)} <span className="hidden sm:inline">PTS</span>
+                        {formatPoints(localPoints !== null ? localPoints : user?.points)} <span className="hidden sm:inline">PTS</span>
                     </motion.div>
                     <div className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground font-mono neu-inset px-2.5 py-1 rounded-md tabular-nums">
                         <Clock className="w-3.5 h-3.5" /> {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')}
@@ -2059,7 +2060,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                             animate={{ y: [0, -4, 0] }}
                             transition={{ repeat: Infinity, duration: 0.7, ease: 'easeInOut' }}
                         >
-                            +{oriAnim.points} PTS
+                            {formatPointsDelta(oriAnim.points)} PTS
                         </motion.div>
                     </motion.div>
                 )}

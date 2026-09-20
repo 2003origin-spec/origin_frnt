@@ -187,7 +187,12 @@ export default function Premium({ onBack, paymentsEnabled = false, couponsEnable
         </div>
 
         {/* Subject cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6 mb-10 sm:mb-12">
+        {/* One column on a phone. Two 180px columns could not hold a title, a
+            price, a blurb AND the in-app purchase notice: every string wrapped
+            to four lines and the grid's equal-height stretch left a dead gap
+            above the CTA on any card whose notice was shorter (reported from
+            the Android shell 2026-09-21). */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6 mb-10 sm:mb-12">
           {ALL_SUBJECTS.map((subject) => {
             const meta = SUBJECT_META[subject];
             const isOwned = owned.has(subject);
@@ -200,17 +205,22 @@ export default function Premium({ onBack, paymentsEnabled = false, couponsEnable
                   isOwned ? 'ring-2 ring-emerald-500/40' : ''
                 )}
               >
-                <div className="p-6 flex flex-col h-full">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="w-12 h-12 rounded-xl bg-primary/10 neu-inset flex items-center justify-center">
+                <div className="p-4 sm:p-6 flex flex-col h-full">
+                  {/* The icon sits beside the name and price rather than on its
+                      own row — one layout at every width, and it is what stops
+                      the card running tall on a phone. */}
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-11 h-11 shrink-0 rounded-xl bg-primary/10 neu-inset flex items-center justify-center">
                       <Icon className="w-6 h-6 text-primary" />
                     </div>
-                    {isOwned ? <ActiveBadge /> : null}
-                  </div>
-                  <h3 className="text-lg font-bold text-foreground">{meta.label}</h3>
-                  <div className="flex items-baseline gap-1 mt-1 mb-3">
-                    <span className="text-2xl font-black text-primary">₹{rupees(priceMinorFor(subject))}</span>
-                    <span className="text-sm text-muted-foreground">/month</span>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="text-lg font-bold text-foreground truncate">{meta.label}</h3>
+                      <div className="flex items-baseline gap-1">
+                        <span className="text-2xl font-black text-primary">₹{rupees(priceMinorFor(subject))}</span>
+                        <span className="text-sm text-muted-foreground">/month</span>
+                      </div>
+                    </div>
+                    {isOwned ? <div className="shrink-0"><ActiveBadge /></div> : null}
                   </div>
                   {(() => {
                     const list = pricing?.subjects.find((s) => s.subject === subject)?.listAmountMinor;
@@ -218,7 +228,7 @@ export default function Premium({ onBack, paymentsEnabled = false, couponsEnable
                       <span className="text-xs text-muted-foreground line-through">MRP ₹{rupees(list)}</span>
                     ) : null;
                   })()}
-                  <p className="text-sm text-muted-foreground flex-1 mb-5">{meta.blurb}</p>
+                  <p className="text-sm text-muted-foreground flex-1 mb-4 sm:mb-5">{meta.blurb}</p>
                   {paymentsEnabled ? (
                     <div className="space-y-2">
                       {activeTerms.map((term) => (

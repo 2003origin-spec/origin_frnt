@@ -144,6 +144,7 @@ import { useNotifications } from '@/context/NotificationContext';
 import { TIER_THRESHOLDS, getUserTitle } from '@/lib/achievements';
 import { useRef } from 'react';
 import { useTutorial } from '@/features/tutorial/TutorialProvider';
+import { formatPoints } from '@/lib/format-points';
 
 const stagger = (i: number) => ({ initial: { opacity: 0, y: 14 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.35, delay: 0.06 * i } });
 
@@ -542,7 +543,7 @@ export default function Dashboard({
               </div>
               {pointsData && pointsData.pointsToNext > 0 && (
                 <p className="text-sm sm:text-base text-muted-foreground mt-1">
-                  <span className="font-black text-foreground">{pointsData.pointsToNext.toLocaleString()}</span> pts away from{' '}
+                  <span className="font-black text-foreground">{formatPoints(pointsData.pointsToNext)}</span> pts away from{' '}
                   <span className="font-black text-primary">{pointsData.nextTier}</span>
                 </p>
               )}
@@ -583,10 +584,10 @@ export default function Dashboard({
             <div className="mt-4 space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium text-muted-foreground">
-                  {pointsData.totalPoints.toLocaleString()} pts · {pointsData.currentTier}
+                  {formatPoints(pointsData.totalPoints)} pts · {pointsData.currentTier}
                 </span>
                 <span className="text-xs font-black text-primary">
-                  {pointsData.pointsToNext > 0 ? `+${pointsData.pointsToNext.toLocaleString()} → ${pointsData.nextTier}` : '✦ Max rank'}
+                  {pointsData.pointsToNext > 0 ? `+${formatPoints(pointsData.pointsToNext)} → ${pointsData.nextTier}` : '✦ Max rank'}
                 </span>
               </div>
               <div className="h-2 rounded-full overflow-hidden neu-inset">

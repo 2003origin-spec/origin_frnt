@@ -54,6 +54,7 @@ import ShareableProfileCard from '@/components/profile/ShareableProfileCard';
 import { totalQuestionsSolved } from '@/lib/milestone-badges';
 import { STUDY_MODE_LABELS } from '@/lib/study-mode';
 import Image from 'next/image';
+import { formatPoints } from '@/lib/format-points';
 
 
 interface ProfileProps {
@@ -472,7 +473,7 @@ export default function Profile({
                     <p className="text-[10px] text-muted-foreground mt-0.5">{unlockedCount} / {BADGE_TIERS.length} badges</p>
                     {nextBadge && (
                       <p className="text-[9px] font-bold text-primary/70 mt-1 truncate">
-                        +{(nextBadge.points - userPts).toLocaleString()} pts → {nextBadge.name}
+                        +{formatPoints(nextBadge.points - userPts)} pts → {nextBadge.name}
                       </p>
                     )}
                   </div>

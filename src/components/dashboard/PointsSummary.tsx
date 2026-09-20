@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { Trophy, Star, TrendingUp, Info, ChevronRight, X, Zap, Target, BookOpen, MessageCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { formatPoints, formatPointsDelta } from '@/lib/format-points';
 
 interface PointsSummaryProps {
     data: {
@@ -100,7 +101,7 @@ export default function PointsSummary({ data, onNextSteps }: PointsSummaryProps)
                                 <Info className="w-3.5 h-3.5" />
                             </button>
                         </div>
-                        <p className="text-3xl font-black bg-gradient-to-r from-primary to-indigo-500 bg-clip-text text-transparent mt-0.5 truncate">{data.totalPoints.toLocaleString()}</p>
+                        <p className="text-3xl font-black bg-gradient-to-r from-primary to-indigo-500 bg-clip-text text-transparent mt-0.5 truncate">{formatPoints(data.totalPoints)}</p>
                     </div>
                 </div>
                 <div className={`px-3 py-1 rounded-full border text-[10px] font-black uppercase tracking-tighter shadow-sm flex-shrink-0 self-start sm:self-center ${tierStyle}`}>
@@ -176,7 +177,7 @@ export default function PointsSummary({ data, onNextSteps }: PointsSummaryProps)
                                             <p className="text-[10px] text-slate-400">{formatLogTime(log.timestamp)}</p>
                                         </div>
                                         <span className={`text-xs font-black shrink-0 ${log.points >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                                            {log.points >= 0 ? '+' : ''}{log.points}
+                                            {formatPointsDelta(log.points)}
                                         </span>
                                     </div>
                                 ))
