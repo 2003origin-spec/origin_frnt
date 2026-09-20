@@ -885,16 +885,26 @@ export default function DPPView({ onBack, initialDpps, user }: DPPViewProps) {
               <img src="/ori2d/ori-cheerful.png" alt="Ori" className="w-28 h-28 object-contain mx-auto mb-3 drop-shadow-md" />
               {hasAnyPremium(user) ? (
                 <>
-                  <h2 className="text-2xl font-bold text-slate-900 dark:text-white">No DPPs generated yet</h2>
-                  <p className="text-slate-500 dark:text-slate-400">
-                    Submit a custom or regular test first so the analytics pipeline can generate targeted DPPs.
+                  {/* Audit X-6 + rule 7: this said "so the analytics pipeline can
+                      generate targeted DPPs" — system vocabulary aimed at a
+                      17-year-old — and offered no way out. An empty state the
+                      student cannot leave is a dead end. */}
+                  <h2 className="font-display text-2xl font-bold text-foreground">No practice sets yet</h2>
+                  <p className="mx-auto max-w-[36ch] text-muted-foreground">
+                    Finish a test and we&apos;ll build practice sets from the questions you got wrong.
                   </p>
+                  <button
+                    onClick={onBack}
+                    className="neu-btn mx-auto mt-1 flex min-h-12 items-center justify-center rounded-full px-6 font-semibold text-primary-foreground bg-primary"
+                  >
+                    Take a test
+                  </button>
                 </>
               ) : (
                 <>
-                  <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Daily Practice is a premium feature</h2>
-                  <p className="text-slate-500 dark:text-slate-400">
-                    Unlock a subject to get analytics-backed DPPs generated from your weak topics after every test.
+                  <h2 className="font-display text-2xl font-bold text-foreground">Daily practice is a premium feature</h2>
+                  <p className="mx-auto max-w-[36ch] text-muted-foreground">
+                    Unlock any subject and we&apos;ll build practice sets from your weak topics after every test.
                   </p>
                   <button
                     onClick={onBack}

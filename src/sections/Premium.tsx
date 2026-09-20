@@ -122,22 +122,47 @@ export default function Premium({ onBack, paymentsEnabled = false, couponsEnable
       </header>
 
       <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="text-center mb-10">
-          <div className="mb-4 flex justify-center">
-            <img src="/ori2d/ori-thubmsup.png" alt="Ori" className="w-36 h-36 sm:w-48 sm:h-48 object-contain drop-shadow-2xl mx-auto mb-4" />
+        {/* Audit, Premium §2: the first viewport carried a 144px mascot, a centred
+            five-line paragraph and a coupon field — and NO price. A paywall that
+            asks for a discount code before showing what is being discounted has
+            the order backwards. Price leads now; Ori is smaller and beside the
+            copy rather than above it; the coupon moved below the plans. */}
+        <div className="mb-8 sm:text-center">
+          <div className="flex items-start gap-3 sm:flex-col sm:items-center">
+            <img
+              src="/ori2d/ori-thubmsup.png"
+              alt=""
+              aria-hidden
+              className="w-16 h-16 sm:w-28 sm:h-28 shrink-0 object-contain"
+            />
+            <div className="min-w-0">
+              <h2 className="font-display text-3xl sm:text-4xl font-bold text-foreground">
+                Subscribe by subject
+              </h2>
+              <p className="mt-1 text-base text-muted-foreground sm:mx-auto sm:max-w-[52ch]">
+                Pick one subject. Every shared tool unlocks with it. Cancel anytime — access runs
+                to the end of the period.
+              </p>
+            </div>
           </div>
-          <h2 className="text-3xl sm:text-4xl font-bold text-foreground mb-4">
-            Subscribe by subject
-          </h2>
-          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-            Per-subject monthly subscription. Subscribe to any one subject and the global
-            tools below unlock instantly. Cancel anytime — access lasts to the end of the period.
+
+          {/* The number a student came for, above the fold. */}
+          <p className="mt-4 text-sm text-muted-foreground sm:text-center">
+            From{' '}
+            <span className="font-display text-3xl font-bold align-middle tabular-nums text-foreground">
+              ₹{rupees(Math.min(...ALL_SUBJECTS.map(priceMinorFor)))}
+            </span>{' '}
+            per subject, per month
           </p>
 
-          {couponsEnabled ? (
+        </div>
+
+        {/* Coupon — after the plans. You cannot judge a discount before you have
+            seen a price (audit, Premium §2). */}
+        {couponsEnabled ? (
             <>
               {/* Coupon code */}
-              <div className="mt-6 flex items-center justify-center gap-2">
+              <div className="mb-8 flex items-center justify-center gap-2">
                 <input
                   value={couponInput}
                   onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
@@ -163,7 +188,6 @@ export default function Premium({ onBack, paymentsEnabled = false, couponsEnable
               )}
             </>
           ) : null}
-        </div>
 
         {/* Global tools unlock banner */}
         <div className="neu-raised rounded-2xl p-6 flex flex-col sm:flex-row sm:items-center gap-4 justify-between mb-8 sm:mb-10">

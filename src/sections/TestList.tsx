@@ -484,28 +484,39 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
             {/* Tabs */}
             <Tabs defaultValue="build" className="mb-12">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 mb-8 border-b border-border/40 pb-6">
-                <TabsList className="bg-transparent p-0 flex flex-wrap gap-1 sm:gap-2 h-auto justify-start">
+                {/* Audit, Tests §2: seven tabs on flex-wrap became two rows on a
+                    phone, and a wrapped tab bar hides the fact that a second row
+                    exists. One scrolling row makes the overflow visible and
+                    thumb-reachable. Sentence case per X-4. */}
+                <TabsList className="-mx-4 w-[calc(100%+2rem)] bg-transparent p-0 px-4 flex flex-nowrap gap-2 h-auto justify-start overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mx-0 sm:w-auto sm:px-0 sm:flex-wrap">
                   {(['all', 'recommended', 'attempted', 'gallery', 'build', 'pyq', 'search'] as const).map((tab) => (
                     <TabsTrigger
                       key={tab}
                       value={tab}
-                      className="h-auto flex-none px-3 sm:px-6 py-2 sm:py-2.5 rounded-lg sm:rounded-xl text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-primary/20 text-muted-foreground hover:text-foreground"
+                      className="h-auto min-h-11 flex-none whitespace-nowrap rounded-full border border-border px-4 py-2 text-sm font-medium transition-colors data-[state=active]:border-transparent data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-muted-foreground hover:text-foreground"
                     >
                       {tab === 'all' ? 'Institute' : 
                        tab === 'recommended' ? 'Daily' : 
-                       tab === 'pyq' ? 'PYQ Tests' :
+                       tab === 'pyq' ? 'Previous years' :
                        tab === 'attempted' ? 'Performance' : 
-                       tab === 'gallery' ? 'My Tests' : 
+                       tab === 'gallery' ? 'My tests' : 
                        tab === 'build' ? 'Build' : 'Search'}
                     </TabsTrigger>
                   ))}
                 </TabsList>
 
-                <div className="flex items-center gap-3">
-                  <Badge variant="outline" className="px-3 py-1 rounded-full border-primary/20 bg-primary/5 text-primary font-bold text-[10px] uppercase tracking-widest">
-                    {tests.length} Total Tests
-                  </Badge>
-                </div>
+                {/* This counts INSTITUTE tests only, but read "0 Total Tests"
+                    directly above a visible JEE Main mock from another source —
+                    the count and the content contradicted each other (audit,
+                    Tests §2). Named for what it counts, and hidden at zero
+                    rather than asserting a falsehood. */}
+                {tests.length > 0 ? (
+                  <div className="flex items-center gap-3">
+                    <Badge variant="outline" className="rounded-full px-3 py-1 text-xs font-medium tabular-nums">
+                      {tests.length} institute {tests.length === 1 ? 'test' : 'tests'}
+                    </Badge>
+                  </div>
+                ) : null}
               </div>
 
               {/* All Tests (Standard Only) */}
