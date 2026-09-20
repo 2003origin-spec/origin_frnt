@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 
+import { EmptyState } from '@/components/layout/shells';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -880,32 +881,26 @@ export default function DPPView({ onBack, initialDpps, user }: DPPViewProps) {
             <CardContent className="p-8 text-center text-red-500">{error}</CardContent>
           </Card>
         ) : dpps.length === 0 ? (
-          <Card className="neu-raised border-0 shadow-none">
-            <CardContent className="p-8 text-center space-y-3">
-              <img src="/ori2d/ori-cheerful.png" alt="Ori" className="w-28 h-28 object-contain mx-auto mb-3 drop-shadow-md" />
-              {hasAnyPremium(user) ? (
-                <>
-                  <h2 className="text-2xl font-bold text-slate-900 dark:text-white">No DPPs generated yet</h2>
-                  <p className="text-slate-500 dark:text-slate-400">
-                    Submit a custom or regular test first so the analytics pipeline can generate targeted DPPs.
-                  </p>
-                </>
-              ) : (
-                <>
-                  <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Daily Practice is a premium feature</h2>
-                  <p className="text-slate-500 dark:text-slate-400">
-                    Unlock a subject to get analytics-backed DPPs generated from your weak topics after every test.
-                  </p>
-                  <button
-                    onClick={onBack}
-                    className="mt-2 inline-flex items-center justify-center rounded-xl bg-primary px-5 py-2.5 text-sm font-black uppercase tracking-widest text-primary-foreground shadow-lg shadow-primary/20 transition hover:opacity-90"
-                  >
-                    Explore premium
-                  </button>
-                </>
-              )}
-            </CardContent>
-          </Card>
+          /* Migrated onto the EmptyState shell (Stage 5). Its `action` prop is
+             REQUIRED, so the dead-end this screen used to be — "submit a test
+             first so the analytics pipeline can generate targeted DPPs", with no
+             way to do it (audit X-6) — is now a compile error, not a review
+             catch. */
+          hasAnyPremium(user) ? (
+            <EmptyState
+              title="No practice sets yet"
+              description="Finish a test and we'll build practice sets from the questions you got wrong."
+              action={{ label: 'Take a test', onClick: onBack }}
+              fill
+            />
+          ) : (
+            <EmptyState
+              title="Daily practice is a premium feature"
+              description="Unlock any subject and we'll build practice sets from your weak topics after every test."
+              action={{ label: 'See plans', onClick: onBack }}
+              fill
+            />
+          )
         ) : !selectedDppId ? (
           <DppSelectionGrid dpps={dpps} onSelect={setSelectedDppId} />
         ) : !currentDpp ? (

@@ -386,6 +386,7 @@ export default function Grapher() {
                     </div>
                     <input
                       type="range"
+                      aria-label={`Parameter ${name}`}
                       min={-10}
                       max={10}
                       step={0.1}
@@ -430,6 +431,7 @@ export default function Grapher() {
                         <tr key={i}>
                           <td className="py-1 pr-3">
                             <input
+                              aria-label={`x value ${i + 1}`}
                               value={xs}
                               onChange={(e) => setTableXs((arr) => arr.map((v, j) => (j === i ? e.target.value : v)))}
                               className={cn('w-16 rounded bg-transparent px-1.5 py-1 text-sm outline-none', isDark ? 'border border-[#1a2333]' : 'neu-inset')}

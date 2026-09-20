@@ -17,6 +17,8 @@ import { useResizable } from '@/hooks/use-resizable';
 import { markAppNavigation } from '@/hooks/useAppBack';
 import AiSidebar from './AiSidebar';
 import LaunchCover from '@/components/launch/LaunchCover';
+import { MotionConfig } from 'framer-motion';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { LayoutProvider, useLayout } from '@/context/LayoutContext';
 import { TimeTrackerProvider } from '@/context/TimeTrackerContext';
 import { startHighlightCapture, stopHighlightCapture } from '@/features/origin-ai/highlight-capture';
@@ -178,6 +180,8 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnab
   // Student preference: the floating Ori can be hidden (long-press → Hide Ori,
   // or the Profile toggle). Only hides the mascot button; AI itself is untouched.
   const oriHidden = useOriHidden();
+  // 768px — the same breakpoint the bottom nav uses (md:hidden).
+  const isMobile = useIsMobile();
 
   // Sync state with context
   React.useEffect(() => {
@@ -306,6 +310,8 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnab
               connectEnabled={connectEnabled}
               premiumEnabled={premiumEnabled}
               socialEnabled={socialEnabled}
+              onOpenOri={shouldShowFloatingOriginAi && !oriHidden ? () => toggleAi() : undefined}
+              oriActive={isAiOpen}
               leftOffset={aiSide === 'left' && isAiOpen ? aiWidth : 0}
               expanded={navExpanded}
               onToggleExpanded={toggleNavExpanded}
@@ -318,7 +324,10 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnab
               isFullViewportApp ? "overflow-hidden" : "overflow-y-auto",
               "transition-all duration-300 min-w-[320px]",
               mounted && showNavbar
-                ? (navExpanded ? 'md:pl-[150px]' : 'md:pl-[72px]') + ' pt-topbar md:pt-0 ' +
+                // `pt-topbar` is gone: the mobile top bar was removed, so reserving
+                // 56px for it would swap a visible bar for 56px of nothing. Content
+                // still clears the status bar via safe-top.
+                ? (navExpanded ? 'md:pl-[150px]' : 'md:pl-[72px]') + ' safe-top md:pt-0 ' +
                   // Full-viewport apps (chat/test) don't scroll here, so their tight
                   // clearance can stay on <main> and behaves normally.
                   //
@@ -380,7 +389,11 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnab
           <FloatingChat
             onOpen={toggleAi}
             autoAskSelectionNonce={globalAskNonce}
-            hideMainButton={isAiOpen || oriHidden}
+            // On mobile Ori now lives in the bottom nav, so the floating
+            // launcher is redundant AND is the overlay that kept covering
+            // content (audit X-2 — captured sitting on top of "View
+            // milestones"). Desktop has no bottom nav, so it stays there.
+            hideMainButton={isAiOpen || oriHidden || isMobile}
             userName={user?.name}
           />
         )}
@@ -405,10 +418,17 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnab
 
 export default function ClientShell({ children, connectEnabled, premiumEnabled, socialEnabled, coverActive, launchAt }: { children: React.ReactNode; connectEnabled?: boolean; premiumEnabled?: boolean; socialEnabled?: boolean; coverActive?: boolean; launchAt?: string | null }) {
   return (
-    <LayoutProvider>
-      <TimeTrackerProvider>
-        <ClientShellInner connectEnabled={connectEnabled} premiumEnabled={premiumEnabled} socialEnabled={socialEnabled} coverActive={coverActive} launchAt={launchAt}>{children}</ClientShellInner>
-      </TimeTrackerProvider>
-    </LayoutProvider>
+    // reducedMotion="user" makes EVERY framer-motion animation in the app honour
+    // the OS "reduce motion" setting. 56 files import framer-motion and almost
+    // none called useReducedMotion, so until now that preference was ignored
+    // app-wide — the CSS @media blocks only ever covered CSS transitions.
+    // Phase 4 item 14 of MOBILE_UI_REDESIGN_PLAN, never started until now.
+    <MotionConfig reducedMotion="user">
+      <LayoutProvider>
+        <TimeTrackerProvider>
+          <ClientShellInner connectEnabled={connectEnabled} premiumEnabled={premiumEnabled} socialEnabled={socialEnabled} coverActive={coverActive} launchAt={launchAt}>{children}</ClientShellInner>
+        </TimeTrackerProvider>
+      </LayoutProvider>
+    </MotionConfig>
   );
 }

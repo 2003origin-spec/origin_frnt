@@ -3,6 +3,7 @@ import { useState, useRef, useEffect } from 'react';
 import Image from 'next/image';
 import { useLayout } from '@/context/LayoutContext';
 import { useAiAccess } from '@/context/AiAccessContext';
+import { useNotifications } from '@/context/NotificationContext';
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -10,7 +11,6 @@ import {
     Crown,
     LogOut,
     Settings,
-    Bell,
     Search,
     Sun,
     Moon,
@@ -24,8 +24,8 @@ import {
     BookOpen,
     Building2,
     FileText,
+    Sparkles,
     Target,
-    UsersRound,
     ChevronRight,
     ChevronLeft,
     Trophy,
@@ -53,9 +53,13 @@ interface NavbarProps {
     leftOffset?: number;
     expanded?: boolean;
     onToggleExpanded?: () => void;
+    /** Opens the Ori assistant. Undefined when Ori is unavailable or hidden. */
+    onOpenOri?: () => void;
+    oriActive?: boolean;
 }
 
-export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLogout, theme, setTheme, connectEnabled, premiumEnabled, socialEnabled, leftOffset = 0, expanded = false, onToggleExpanded }: NavbarProps) {
+export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLogout, theme, setTheme, connectEnabled, premiumEnabled, socialEnabled, leftOffset = 0, expanded = false, onToggleExpanded, onOpenOri, oriActive }: NavbarProps) {
+    const { unreadCount } = useNotifications();
     const [showProfileMenu, setShowProfileMenu] = useState(false);
     const [showExploreMenu, setShowExploreMenu] = useState(false);
     const [showMobileMenu, setShowMobileMenu] = useState(false);
@@ -101,6 +105,10 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
     }, []);
 
     const isTeacher = user.role?.toLowerCase() === 'teacher';
+
+    // Views that already have their own tab in the bottom bar, so the More
+    // sheet does not list them twice.
+    const MOBILE_TAB_VIEWS = new Set<string>(['dashboard', 'test-list', 'ogcode']);
 
     const navItems = isTeacher ? [] : [
         { label: 'Home', icon: Home, view: 'dashboard' as ViewState },
@@ -518,171 +526,159 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                 </div>
             </nav>
 
-            {/* ── MOBILE COMPACT TOP BAR ──────────────────────────────────── */}
-            <div className={cn(
-                'fixed top-0 left-0 right-0 h-topbar z-50 md:hidden flex items-center justify-between px-3',
-                'bg-[hsl(var(--neu-bg))] border-b border-primary/10',
-                'shadow-[0_4px_14px_hsl(var(--neu-shadow)/35%),0_-1px_0_hsl(var(--neu-light)/25%)_inset]'
-            )}>
-                {/* Logo */}
-                <button
-                    onClick={() => onNavigate('dashboard')}
-                    onMouseEnter={() => onPrefetch?.('dashboard')}
-                >
-                    <img
-                        src={user.role?.toLowerCase() === 'student' ? '/origin-new.jpg' : '/O3-Origin-Logo.png'}
-                        alt="ORIGIN"
-                        className="h-8 w-auto rounded-lg"
-                    />
-                </button>
+            {/* ── MOBILE TOP BAR — REMOVED 2026-09-20 ──────────────────────────
+                It held: logo, theme toggle, search, notifications, avatar. All five
+                now live in the More sheet, which frees 56px of vertical space on a
+                844px screen — 6.6% more content on every single page.
 
-                {/* Right actions */}
-                <div className="flex items-center gap-1">
-                    <motion.button
-                        whileTap={{ scale: 0.9 }}
-                        onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-                        className={cn(
-                            'h-11 w-11 inline-flex items-center justify-center rounded-full transition-colors',
-                            theme === 'light' ? 'text-primary bg-primary/10' : 'text-slate-400 bg-white/5'
-                        )}
-                        aria-label="Toggle theme"
-                    >
-                        {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-                    </motion.button>
+                The one thing that could NOT simply move is notifications: a bell
+                with an unread badge is a signal students must SEE, and burying it
+                in a sheet means they stop noticing it. So the unread count is
+                surfaced as a dot on the More tab instead — the signal survives,
+                the chrome does not.
 
-                    <motion.button
-                        whileTap={{ scale: 0.9 }}
-                        onClick={() => setIsSearchOpen(true)}
-                        className="h-11 w-11 inline-flex items-center justify-center text-slate-500 dark:text-slate-400 hover:text-primary bg-primary/5 rounded-full transition-colors"
-                        aria-label="Search"
-                    >
-                        <Search className="w-4 h-4" />
-                    </motion.button>
+                ClientShell drops `pt-topbar` on mobile to reclaim the space;
+                leaving it would have swapped a visible bar for 56px of nothing. */}
 
-                    <NotificationBell />
 
-                    <button
-                        onClick={() => setShowMobileMenu(true)}
-                        className="ml-1 h-11 w-11 inline-flex items-center justify-center"
-                        aria-label="Open menu"
-                    >
-                        <Avatar className="w-7 h-7 border border-primary/20">
-                            <AvatarFallback className="bg-primary text-white text-[10px] font-bold">
-                                {user.name.charAt(0).toUpperCase()}
-                            </AvatarFallback>
-                        </Avatar>
-                    </button>
-                </div>
-            </div>
-
-            {/* ── MOBILE BOTTOM-SHEET DRAWER ──────────────────────────────── */}
+            {/* ── MOBILE "MORE" SHEET ──────────────────────────────────────
+                Everything the removed top bar held (theme, search, notifications,
+                identity) plus every destination that is NOT one of the four tabs.
+                The More tab sets `showMobileMenu`; before this existed the button
+                set state nothing rendered, so it did nothing at all (reported
+                on-device 2026-09-20). */}
             <AnimatePresence>
                 {showMobileMenu && (
                     <>
-                        {/* Backdrop */}
                         <motion.div
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
                             exit={{ opacity: 0 }}
                             onClick={() => setShowMobileMenu(false)}
-                            className="fixed inset-0 z-[60] bg-black/40 backdrop-blur-sm md:hidden"
+                            className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm md:hidden"
                         />
 
-                        {/* Sheet */}
                         <motion.div
+                            role="dialog"
+                            aria-label="More"
                             initial={{ y: '100%' }}
                             animate={{ y: 0 }}
                             exit={{ y: '100%' }}
-                            transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-                            className="fixed bottom-0 left-0 right-0 z-[70] md:hidden bg-[hsl(var(--neu-bg))] backdrop-blur-2xl rounded-t-3xl border-t border-primary/10 shadow-[0_-8px_32px_hsl(var(--neu-shadow)/40%)]"
+                            transition={{ type: 'spring', damping: 32, stiffness: 320 }}
+                            className="fixed bottom-0 left-0 right-0 z-[70] md:hidden max-h-[85dvh] overflow-y-auto overscroll-contain bg-background rounded-t-3xl border-t border-border"
                         >
-                            {/* Handle */}
-                            <div className="flex justify-center pt-3 pb-2">
-                                <div className="w-10 h-1 bg-slate-300 dark:bg-slate-700 rounded-full" />
+                            <div className="sticky top-0 z-10 bg-background pt-3 pb-2 rounded-t-3xl">
+                                <div className="mx-auto h-1 w-10 rounded-full bg-border" />
+                                <div className="mt-3 flex items-center justify-between px-5">
+                                    <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">More</p>
+                                    <button
+                                        onClick={() => setShowMobileMenu(false)}
+                                        aria-label="Close"
+                                        className="flex h-11 w-11 items-center justify-center rounded-xl text-muted-foreground hover:text-foreground transition-colors"
+                                    >
+                                        <X className="w-5 h-5" />
+                                    </button>
+                                </div>
                             </div>
 
-                            {/* Close button */}
-                            <div className="flex items-center justify-between px-5 pb-3">
-                                <p className="text-xs font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest">Navigation</p>
-                                <button
-                                    onClick={() => setShowMobileMenu(false)}
-                                    className="p-1.5 rounded-xl bg-primary/5 text-slate-500 hover:text-primary transition-colors"
-                                >
-                                    <X className="w-4 h-4" />
-                                </button>
-                            </div>
-
-                            {/* User identity strip */}
-                            <div className="mx-4 mb-3 flex items-center gap-3 px-4 py-3 rounded-2xl bg-primary/5 border border-primary/10">
-                                <Avatar className="w-9 h-9 border border-primary/20 flex-shrink-0">
-                                    <AvatarFallback className="bg-primary text-white text-sm font-bold">
+                            {/* Identity */}
+                            <button
+                                onClick={() => { onNavigate('profile'); setShowMobileMenu(false); }}
+                                onTouchStart={() => onPrefetch?.('profile')}
+                                className="mx-4 mb-3 flex w-[calc(100%-2rem)] items-center gap-3 rounded-2xl border border-border bg-surface-2 px-4 py-3 text-left"
+                            >
+                                <Avatar className="h-10 w-10 shrink-0">
+                                    <AvatarFallback className="bg-primary text-primary-foreground text-sm font-bold">
                                         {user.name.charAt(0).toUpperCase()}
                                     </AvatarFallback>
                                 </Avatar>
-                                <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-black text-foreground truncate">{user.name}</p>
-                                    <p className="text-[11px] text-muted-foreground truncate">{user.email}</p>
+                                <div className="min-w-0 flex-1">
+                                    <p className="truncate text-sm font-black text-foreground">{user.name}</p>
+                                    <p className="truncate text-[11px] text-muted-foreground">{user.email}</p>
                                 </div>
                                 {premiumEnabled && (
-                                    <Badge className="text-[10px] h-5 px-1.5 bg-rose-600 text-white border-none font-bold shrink-0">
+                                    <Badge className="h-5 shrink-0 border-none bg-rose-600 px-1.5 text-[10px] font-bold text-white">
                                         {hasActiveSubjects ? 'PRO' : 'FREE'}
                                     </Badge>
                                 )}
+                                <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                            </button>
+
+                            {/* The three top-bar controls that had nowhere else to go */}
+                            <div className="mb-3 flex items-center gap-2 px-4">
+                                <button
+                                    onClick={() => { setShowMobileMenu(false); setIsSearchOpen(true); }}
+                                    className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-border bg-surface-2 px-3 text-sm font-bold text-foreground"
+                                >
+                                    <Search className="h-4 w-4" /> Search
+                                </button>
+                                <div className="flex min-h-11 items-center justify-center rounded-xl border border-border bg-surface-2 px-2">
+                                    <NotificationBell />
+                                </div>
+                                <button
+                                    onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                                    aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+                                    className="flex h-11 w-11 items-center justify-center rounded-xl border border-border bg-surface-2 text-foreground"
+                                >
+                                    {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+                                </button>
                             </div>
 
-                            {/* Nav items — 2-column grid */}
+                            {/* Destinations that are not one of the four tabs */}
                             <div className="grid grid-cols-2 gap-2 px-4 pb-3">
-                                {navItems.map((item) => {
-                                    const Icon = item.icon as React.ComponentType<{ className?: string }>;
-                                    const active = isActive(item);
-                                    return (
-                                        <button
-                                            key={item.label}
-                                            id={`tutorial-nav-${item.view}`}
-                                            onClick={() => {
-                                                onNavigate(item.view);
-                                                setShowMobileMenu(false);
-                                            }}
-                                            onTouchStart={() => onPrefetch?.(item.view)}
-                                            className={cn(
-                                                'flex items-center gap-3 p-4 rounded-2xl transition-all text-left',
-                                                active
-                                                    ? 'bg-primary/10 text-primary'
-                                                    : 'hover:bg-slate-50 dark:hover:bg-slate-900 text-slate-700 dark:text-slate-300'
-                                            )}
-                                        >
-                                            <div className={cn('p-2 rounded-xl flex-shrink-0', active ? 'bg-primary/20' : 'bg-slate-100 dark:bg-slate-800')}>
-                                                {typeof item.icon === 'function' && item.icon.toString().includes('img')
-                                                    ? <Icon />
-                                                    : <Icon className="w-5 h-5" />
-                                                }
-                                            </div>
-                                            <span className="font-bold text-sm">{item.label}</span>
-                                        </button>
-                                    );
-                                })}
+                                {navItems
+                                    .filter((item) => !MOBILE_TAB_VIEWS.has(String(item.view)))
+                                    .map((item) => {
+                                        const Icon = item.icon as React.ComponentType<{ className?: string }>;
+                                        const active = isActive(item);
+                                        return (
+                                            <button
+                                                key={item.label}
+                                                onClick={() => { onNavigate(item.view); setShowMobileMenu(false); }}
+                                                onTouchStart={() => onPrefetch?.(item.view)}
+                                                className={cn(
+                                                    'flex min-h-14 items-center gap-3 rounded-2xl border p-3 text-left transition-colors',
+                                                    active
+                                                        ? 'border-primary/40 bg-primary/10 text-primary'
+                                                        : 'border-border bg-surface-2 text-foreground',
+                                                )}
+                                            >
+                                                <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-xl', active ? 'bg-primary/20' : 'bg-surface-3')}>
+                                                    <Icon className="h-5 w-5" />
+                                                </span>
+                                                <span className="min-w-0 truncate text-sm font-bold">{item.label}</span>
+                                            </button>
+                                        );
+                                    })}
                             </div>
 
-                            {/* Bottom actions */}
-                            <div className="px-4 pb-8 pt-1 flex flex-col gap-2 border-t border-border/40 mt-1">
+                            {premiumEnabled && !hasActiveSubjects && (
+                                <div className="px-4 pb-3">
+                                    <button
+                                        onClick={() => { onNavigate('premium'); setShowMobileMenu(false); }}
+                                        onTouchStart={() => onPrefetch?.('premium')}
+                                        className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-600 px-4 text-sm font-bold text-white"
+                                    >
+                                        <Crown className="h-4 w-4" /> Upgrade to Pro
+                                    </button>
+                                </div>
+                            )}
+
+                            <div className="flex flex-col gap-2 border-t border-border px-4 pb-8 pt-3">
                                 <button
                                     onClick={() => { onNavigate('profile'); setShowMobileMenu(false); }}
                                     onTouchStart={() => onPrefetch?.('profile')}
-                                    className="flex items-center gap-3 px-4 py-3 rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-900 transition-colors text-slate-700 dark:text-slate-300"
+                                    className="flex min-h-12 items-center gap-3 rounded-2xl px-3 text-sm font-bold text-foreground"
                                 >
-                                    <div className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800">
-                                        <Settings className="w-5 h-5" />
-                                    </div>
-                                    <span className="font-bold text-sm">Settings &amp; Profile</span>
+                                    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-surface-3"><Settings className="h-5 w-5" /></span>
+                                    Settings &amp; Profile
                                 </button>
                                 <button
                                     onClick={() => { onLogout(); setShowMobileMenu(false); }}
-                                    className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-rose-50 dark:bg-rose-900/20 hover:bg-rose-100 dark:hover:bg-rose-900/30 transition-colors text-rose-600 dark:text-rose-400"
+                                    className="flex min-h-12 items-center gap-3 rounded-2xl px-3 text-sm font-bold text-destructive"
                                 >
-                                    <div className="p-2 rounded-xl bg-rose-100 dark:bg-rose-900/40">
-                                        <LogOut className="w-5 h-5" />
-                                    </div>
-                                    <span className="font-bold text-sm">Logout</span>
+                                    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-destructive/10"><LogOut className="h-5 w-5" /></span>
+                                    Logout
                                 </button>
                             </div>
                         </motion.div>
@@ -701,37 +697,74 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
             {!isTeacher && (
                 <nav className={cn(
                     'fixed bottom-0 left-0 right-0 z-50 md:hidden',
-                    'bg-[hsl(var(--neu-bg))] border-t border-border/40',
-                    'shadow-[0_-4px_14px_hsl(var(--neu-shadow)/40%),0_-1px_0_hsl(var(--neu-light)/60%)]',
+                    'bg-background border-t border-border',
+                    // Elevation is tonal, not a shadow (V1/DESIGN_LANGUAGE.md §2).
+                    // The dual-shadow that was here read as a smudge on true black.
                     'safe-area-pb pb-safe'
                 )}>
                     {(() => {
+                      // Five items, per the user's own IA sketch (2026-09-20):
+                      //   Home · Test · Ori (raised centre) · OGC · More
+                      // Answers the open question from MOBILE_UX_RESEARCH_FINDINGS X-5.
+                      //
+                      // Two changes it makes: /tests is PROMOTED into the bar — GA4 puts
+                      // it 12th by users precisely because it was buried behind "More" —
+                      // and Practice becomes "OGC", named after the OGCode workspace
+                      // every comparable Indian exam-prep app uses for its primary verb.
+                      // Social and Daily/DPP move into More alongside AI Explainer, Goals,
+                      // Focus time, Leaderboard, Contest, Study, Graphs, Profile, Connect.
                       const mobileTabs = ([
-                            { label: 'Home', icon: LayoutGrid, view: 'dashboard' as ViewState },
-                            { label: 'Rooms', icon: UsersRound, view: 'study-rooms' as ViewState },
-                            { label: 'OGCode', icon: Code, view: 'ogcode' as ViewState },
-                            { label: 'DPP', icon: Target, view: 'dpp' as ViewState },
-                            { label: 'Social', icon: UserPlus, view: 'social' as ViewState },
-                            { label: 'More', icon: Menu, view: null },
-                        ] as { label: string; icon: typeof LayoutGrid; view: ViewState | null; iconSrc?: string }[])
-                          .filter((item) => socialEnabled || item.view !== 'social');
+                            { label: 'Home',  icon: LayoutGrid, view: 'dashboard' as ViewState },
+                            { label: 'Test',  icon: FileText,   view: 'test-list' as ViewState },
+                            // Ori takes the centre. SINGLE TAP, not a long-press:
+                            // a hold is invisible to a new student, is not exposed
+                            // by TalkBack, and would put two unrelated actions on
+                            // one control. If Ori is worth the most prominent slot
+                            // in the app it is worth one tap.
+                            { label: 'Ori',   icon: Sparkles,   view: null, center: true, ori: true },
+                            // "OGC" not "Drill": the destination is the OGCode
+                            // workspace and students already call it that.
+                            { label: 'OGC',   icon: Code,       view: 'ogcode' as ViewState },
+                            { label: 'More',  icon: Menu,       view: null },
+                        ] as { label: string; icon: typeof LayoutGrid; view: ViewState | null; iconSrc?: string; center?: boolean; ori?: boolean }[])
+                          // Rooms moved into More: 45 users vs OGCode's 71, and it is a
+                          // deliberate-visit feature rather than a daily one.
+                          .filter((item) => !item.ori || Boolean(onOpenOri));
                       return (
                     <div className="grid h-14" style={{ gridTemplateColumns: `repeat(${mobileTabs.length}, minmax(0, 1fr))` }}>
                         {mobileTabs
                           .map((item) => {
-                            const active = item.view ? isActive({ label: item.label, view: item.view }) : false;
+                            const active = item.ori
+                                ? Boolean(oriActive)
+                                : item.view ? isActive({ label: item.label, view: item.view }) : false;
                             const Icon = item.icon;
                             return (
                                 <button
                                     key={item.label}
-                                    onClick={() => item.view ? onNavigate(item.view) : setShowMobileMenu(true)}
+                                    onClick={() => {
+                                        if (item.ori) { onOpenOri?.(); return; }
+                                        if (item.view) { onNavigate(item.view); return; }
+                                        setShowMobileMenu(true);
+                                    }}
+                                    aria-label={item.ori ? 'Ask Ori' : undefined}
+                                    aria-current={active ? 'page' : undefined}
                                     className={cn(
-                                        'flex flex-col items-center justify-center gap-0.5 py-2 px-1 transition-all active:scale-95',
-                                        active ? 'text-primary' : 'text-muted-foreground hover:text-primary'
+                                        'relative flex min-h-14 flex-col items-center justify-center gap-0.5 px-1 py-2 transition-colors',
+                                        item.center && '-mt-6',
+                                        active && !item.center ? 'text-primary' : 'text-muted-foreground hover:text-primary',
+                                        item.center && active && 'text-primary font-medium'
                                     )}
                                 >
-                                    {active && (
+                                    {active && !item.center && (
                                         <span className="absolute top-0 w-8 h-0.5 bg-primary rounded-full" />
+                                    )}
+                                    {item.view === null && !item.center && unreadCount > 0 && (
+                                        <span
+                                            className="absolute right-[22%] top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold tabular-nums text-destructive-foreground"
+                                            aria-label={`${unreadCount} unread notifications`}
+                                        >
+                                            {unreadCount > 9 ? '9+' : unreadCount}
+                                        </span>
                                     )}
                                     {item.iconSrc ? (
                                         <img
@@ -740,10 +773,33 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                                             draggable={false}
                                             className={cn('w-5 h-5 object-contain transition-opacity', active ? 'opacity-100' : 'opacity-70')}
                                         />
+                                    ) : item.center ? (
+                                        // Ori himself, not a glyph. 144px source cropped to the
+                                        // head — the full character's face reads ~20px at this
+                                        // size and the outstretched arms are lost. 6.5KB webp,
+                                        // down from the 232KB full-body png.
+                                        // The circle stays tonal rather than accent-filled: Ori is
+                                        // blue, and blue-on-cyan has almost no separation.
+                                        <span
+                                            className={cn(
+                                                'flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border-4 border-background bg-surface-2 transition-colors',
+                                                active ? 'ring-2 ring-primary' : 'ring-1 ring-border',
+                                            )}
+                                        >
+                                            <img
+                                                src="/ori2d/ori-nav.webp"
+                                                alt=""
+                                                aria-hidden
+                                                width={56}
+                                                height={56}
+                                                className="h-full w-full object-contain"
+                                                draggable={false}
+                                            />
+                                        </span>
                                     ) : (
                                         <Icon className="w-5 h-5" />
                                     )}
-                                    <span className="text-[9px] font-bold leading-none">{item.label}</span>
+                                    <span className="text-[10px] font-medium leading-none">{item.label}</span>
                                 </button>
                             );
                         })}

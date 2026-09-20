@@ -109,7 +109,7 @@ function ChipMultiSelect<T extends string | number>({
             key={String(opt.value)}
             type="button"
             onClick={() => onToggle(opt.value)}
-            className={`h-11 px-4 rounded-xl font-black text-xs uppercase tracking-widest transition-all border ${
+            className={`h-11 px-4 rounded-xl font-semibold text-sm transition-all border ${
               active
                 ? 'bg-primary text-white border-primary shadow-lg shadow-primary/20'
                 : 'bg-background border-border/40 text-foreground hover:border-primary/40'
@@ -452,7 +452,8 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
             <div className="flex items-center gap-4">
               <button
                 onClick={onBack}
-                className="p-2 rounded-lg hover:bg-muted transition-colors"
+                aria-label="Go back"
+                className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg hover:bg-muted transition-colors"
               >
                 <ChevronLeft className="w-5 h-5 text-muted-foreground" />
               </button>
@@ -484,28 +485,39 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
             {/* Tabs */}
             <Tabs defaultValue="build" className="mb-12">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 mb-8 border-b border-border/40 pb-6">
-                <TabsList className="bg-transparent p-0 flex flex-wrap gap-1 sm:gap-2 h-auto justify-start">
+                {/* Audit, Tests §2: seven tabs on flex-wrap became two rows on a
+                    phone, and a wrapped tab bar hides the fact that a second row
+                    exists. One scrolling row makes the overflow visible and
+                    thumb-reachable. Sentence case per X-4. */}
+                <TabsList className="-mx-4 w-[calc(100%+2rem)] bg-transparent p-0 px-4 flex flex-nowrap gap-2 h-auto justify-start overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mx-0 sm:w-auto sm:px-0 sm:flex-wrap">
                   {(['all', 'recommended', 'attempted', 'gallery', 'build', 'pyq', 'search'] as const).map((tab) => (
                     <TabsTrigger
                       key={tab}
                       value={tab}
-                      className="h-auto flex-none px-3 sm:px-6 py-2 sm:py-2.5 rounded-lg sm:rounded-xl text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-primary/20 text-muted-foreground hover:text-foreground"
+                      className="h-auto min-h-11 flex-none whitespace-nowrap rounded-full border border-border px-4 py-2 text-sm font-medium transition-colors data-[state=active]:border-transparent data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-muted-foreground hover:text-foreground"
                     >
                       {tab === 'all' ? 'Institute' : 
                        tab === 'recommended' ? 'Daily' : 
-                       tab === 'pyq' ? 'PYQ Tests' :
+                       tab === 'pyq' ? 'Previous years' :
                        tab === 'attempted' ? 'Performance' : 
-                       tab === 'gallery' ? 'My Tests' : 
+                       tab === 'gallery' ? 'My tests' : 
                        tab === 'build' ? 'Build' : 'Search'}
                     </TabsTrigger>
                   ))}
                 </TabsList>
 
-                <div className="flex items-center gap-3">
-                  <Badge variant="outline" className="px-3 py-1 rounded-full border-primary/20 bg-primary/5 text-primary font-bold text-[10px] uppercase tracking-widest">
-                    {tests.length} Total Tests
-                  </Badge>
-                </div>
+                {/* This counts INSTITUTE tests only, but read "0 Total Tests"
+                    directly above a visible JEE Main mock from another source —
+                    the count and the content contradicted each other (audit,
+                    Tests §2). Named for what it counts, and hidden at zero
+                    rather than asserting a falsehood. */}
+                {tests.length > 0 ? (
+                  <div className="flex items-center gap-3">
+                    <Badge variant="outline" className="rounded-full px-3 py-1 text-xs font-medium tabular-nums">
+                      {tests.length} institute {tests.length === 1 ? 'test' : 'tests'}
+                    </Badge>
+                  </div>
+                ) : null}
               </div>
 
               {/* All Tests (Standard Only) */}
@@ -540,8 +552,8 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                 <div className="mb-8 p-6 rounded-[32px] bg-primary text-white relative overflow-hidden shadow-xl shadow-primary/20">
                   <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
                     <div>
-                      <h2 className="text-xl sm:text-2xl font-black uppercase tracking-tighter mb-1">Personalized Intelligence</h2>
-                      <p className="text-xs font-bold opacity-80 uppercase tracking-widest flex items-center gap-2">
+                      <h2 className="text-xl sm:text-2xl font-black tracking-tighter mb-1">Personalized Intelligence</h2>
+                      <p className="flex items-center gap-2 text-sm opacity-80">
                         <Sparkles className="w-4 h-4" />
                         Tests curated for your primary subjects
                       </p>
@@ -618,7 +630,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                             <div className="col-span-full py-20 text-center border-2 border-dashed border-border/40 rounded-[40px] bg-muted/30">
                               <img src="/ori2d/ori-curious.png" alt="Ori" className="w-28 h-28 object-contain mx-auto mb-3 drop-shadow-md" />
                               <BookOpen className="w-12 h-12 text-muted-foreground/40 mx-auto mb-4 opacity-50" />
-                              <p className="text-sm font-bold text-muted-foreground uppercase tracking-widest">No PYQ tests available for this category</p>
+                              <p className="text-sm text-muted-foreground">No previous-year tests in this category yet</p>
                             </div>
                           )}
                         </div>
@@ -677,7 +689,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                       <div className="w-20 h-20 rounded-3xl bg-primary/10 text-primary flex items-center justify-center mb-6">
                         <Plus className="w-10 h-10" />
                       </div>
-                      <h3 className="text-2xl font-black text-foreground mb-2 uppercase tracking-tighter">Generator Empty</h3>
+                      <h3 className="text-2xl font-black text-foreground mb-2 tracking-tighter">Generator Empty</h3>
                       <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-8">No custom tests found in your gallery.</p>
                     </Card>
                   )}
@@ -694,8 +706,8 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                         <div className="p-6 sm:p-10 border-b border-border/40 bg-primary text-white relative">
                             <div className="relative z-10 flex items-start justify-between gap-3">
                                 <div>
-                                    <h2 className="text-xl sm:text-3xl font-black uppercase tracking-tighter mb-2">Custom Test Builder</h2>
-                                    <p className="text-[10px] sm:text-xs font-bold opacity-80 uppercase tracking-widest">Build your own practice set</p>
+                                    <h2 className="text-xl sm:text-3xl font-black tracking-tighter mb-2">Custom Test Builder</h2>
+                                    <p className="text-xs sm:text-sm opacity-80">Build your own practice set</p>
                                 </div>
                                 {/* How-it-works explainer. */}
                                 <button
@@ -703,7 +715,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                                     onClick={() => setInfoOpen(true)}
                                     aria-label="How the Custom Test Builder works"
                                     title="How it works"
-                                    className="shrink-0 w-9 h-9 rounded-full bg-white/15 hover:bg-white/25 border border-white/20 flex items-center justify-center transition-colors"
+                                    className="shrink-0 h-11 w-11 rounded-full bg-white/15 hover:bg-white/25 border border-white/20 flex items-center justify-center transition-colors"
                                 >
                                     <Info className="w-5 h-5" />
                                 </button>
@@ -750,7 +762,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                                         );
                                     })}
                                     <span className="self-center text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                                        {customTestConfig.exam ? 'Presets subjects & ratio · editable below' : 'Optional — or configure manually'}
+                                        {customTestConfig.exam ? 'Presets subjects & ratio · editable below' : 'Optional — or set it up yourself'}
                                     </span>
                                 </div>
                             </div>
@@ -813,7 +825,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                                                         // Changing subjects invalidates the chapter selection.
                                                         chapters: [],
                                                     }))}
-                                                    className={`h-11 px-4 rounded-xl font-black text-xs uppercase tracking-widest transition-all border ${
+                                                    className={`h-11 px-4 rounded-xl font-semibold text-sm transition-all border ${
                                                         active
                                                             ? 'bg-primary text-white border-primary shadow-lg shadow-primary/20'
                                                             : 'bg-background border-border/40 text-foreground hover:border-primary/40'
@@ -824,7 +836,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                                             );
                                         })}
                                         {customTestConfig.subjects.length === 0 && (
-                                            <span className="self-center text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Pick one or more subjects</span>
+                                            <span className="self-center text-xs text-muted-foreground">Pick one or more subjects</span>
                                         )}
                                     </div>
                                 </div>
@@ -931,7 +943,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                                     <button
                                         type="button"
                                         onClick={() => setCustomTestConfig((prev) => ({ ...prev, sameForAll: !prev.sameForAll }))}
-                                        className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-foreground/80"
+                                        className="inline-flex min-h-11 items-center gap-2 text-sm"
                                     >
                                         <span className={cn('w-4 h-4 rounded border flex items-center justify-center shrink-0', customTestConfig.sameForAll ? 'bg-primary border-primary' : 'border-muted-foreground/40')}>
                                             {customTestConfig.sameForAll && <Check className="w-3 h-3 text-white" />}
@@ -975,6 +987,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                                                     type="number"
                                                     min={MIN_QUESTIONS_PER_SUBJECT}
                                                     max={MAX_QUESTIONS_PER_SUBJECT}
+                                                    aria-label="Number of questions"
                                                     value={customTestConfig.baseCount}
                                                     onChange={(e) => setCustomTestConfig((prev) => ({ ...prev, baseCount: clampCount(Number(e.target.value)) }))}
                                                     className={cn('h-12 rounded-xl bg-white dark:bg-white/5 border border-border/40 pl-4 pr-24 text-sm font-black', NO_SPINNER)}
@@ -1021,6 +1034,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                                                             type="number"
                                                             min={MIN_QUESTIONS_PER_SUBJECT}
                                                             max={MAX_QUESTIONS_PER_SUBJECT}
+                                                            aria-label={`${canonical} questions`}
                                                             value={val}
                                                             onChange={(e) => setVal(Number(e.target.value))}
                                                             className={cn('h-11 w-20 rounded-xl bg-white dark:bg-white/5 border border-border/40 px-3 text-sm font-black text-center', NO_SPINNER)}
@@ -1045,7 +1059,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                                                 key={mode}
                                                 type="button"
                                                 onClick={() => setCustomTestConfig((prev) => ({ ...prev, timeMode: mode }))}
-                                                className={`h-9 px-3 rounded-lg font-black text-[10px] uppercase tracking-widest transition-all ${
+                                                className={`min-h-11 px-4 rounded-lg font-semibold text-sm transition-all ${
                                                     customTestConfig.timeMode === mode ? 'bg-primary text-white' : 'text-muted-foreground hover:text-foreground'
                                                 }`}
                                             >
@@ -1086,6 +1100,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                                                     min={MIN_SECONDS_PER_QUESTION}
                                                     max={MAX_SECONDS_PER_QUESTION}
                                                     step={1}
+                                                    aria-label="Seconds per question"
                                                     value={customTestConfig.secondsPerQuestion}
                                                     // Allow free typing (any value up to the max) so intermediate
                                                     // entries like "3" on the way to "34" aren't snapped to the min;
@@ -1127,6 +1142,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                                                             type="number"
                                                             min={0}
                                                             max={seg === 'h' ? 6 : 59}
+                                                            aria-label={seg === 'h' ? 'Hours' : seg === 'm' ? 'Minutes' : 'Seconds'}
                                                             value={customTestConfig.totalTime[seg]}
                                                             onChange={(e) => setCustomTestConfig((prev) => ({
                                                                 ...prev,
@@ -1180,7 +1196,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                             <Button
                                 onClick={handleCreateCustomTest}
                                 disabled={creatingTest || activeSubjects.length === 0 || totalQ <= 0}
-                                className="w-full h-16 rounded-3xl bg-primary text-white font-black text-lg uppercase tracking-tighter transition-all shadow-xl shadow-primary/20 disabled:opacity-50"
+                                className="w-full h-16 rounded-3xl bg-primary text-white font-black text-lg tracking-tighter transition-all shadow-xl shadow-primary/20 disabled:opacity-50"
                             >
                                 {creatingTest ? (
                                     <div className="flex items-center gap-3">
@@ -1203,7 +1219,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                     <Dialog open={infoOpen} onOpenChange={setInfoOpen}>
                         <DialogContent className="max-w-lg rounded-3xl">
                             <DialogHeader>
-                                <DialogTitle className="flex items-center gap-2 text-lg font-black uppercase tracking-tight">
+                                <DialogTitle className="flex items-center gap-2 text-lg font-black tracking-tight">
                                     <Sparkles className="w-5 h-5 text-primary" />
                                     How your custom test is built
                                 </DialogTitle>

@@ -476,7 +476,7 @@ export default function StudyCorner({ catalog }: StudyCornerProps) {
                     <div className="relative space-y-12 animate-in fade-in slide-in-from-bottom-10 duration-700 min-h-[800px]">
                         
                         <header className="flex flex-col sm:flex-row items-center justify-between gap-6">
-                            <h2 className="text-3xl sm:text-7xl lg:text-8xl font-black tracking-tighter text-foreground drop-shadow-2xl uppercase">
+                            <h2 className="text-3xl sm:text-7xl lg:text-8xl font-black tracking-tighter text-foreground drop-shadow-2xl">
                                 Study <span className="text-gradient">Hub.</span>
                             </h2>
                             <div className="glass px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl border-border/50 flex items-center gap-2 sm:gap-4 w-full sm:w-auto">
@@ -590,7 +590,7 @@ export default function StudyCorner({ catalog }: StudyCornerProps) {
                                             <div className="w-24 h-24 bg-primary/5 rounded-[2rem] flex items-center justify-center mb-8 border border-primary/10 shadow-2xl animate-pulse">
                                                 <LucideFolder className="w-10 h-10 text-primary/50" />
                                             </div>
-                                            <h4 className="text-xl font-black text-foreground mb-2 uppercase tracking-tighter">
+                                            <h4 className="text-xl font-black text-foreground mb-2 tracking-tighter">
                                                 {!selectedPath ? 'Select a Folder' : 'No Files Found'}
                                             </h4>
                                             <p className="text-muted-foreground text-sm font-bold uppercase tracking-widest max-w-[200px] mx-auto leading-relaxed">
@@ -782,7 +782,7 @@ export default function StudyCorner({ catalog }: StudyCornerProps) {
                             <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-primary/5 pointer-events-none"></div>
                             <div className="relative z-10 w-full flex flex-col md:flex-row items-center justify-between gap-10">
                                 <div className="text-center md:text-left">
-                                    <h2 className="text-3xl sm:text-5xl font-black text-foreground mb-3 sm:mb-4 tracking-tighter drop-shadow-2xl uppercase">
+                                    <h2 className="text-3xl sm:text-5xl font-black text-foreground mb-3 sm:mb-4 tracking-tighter drop-shadow-2xl">
                                         Personal <span className="text-primary">Study Hub.</span>
                                     </h2>
                                     <p className="text-muted-foreground text-sm sm:text-lg max-w-xl font-medium leading-relaxed">

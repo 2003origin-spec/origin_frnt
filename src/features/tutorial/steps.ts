@@ -1,4 +1,3 @@
-import { ReactNode } from 'react';
 
 export interface TutorialStep {
   targetId: string;
@@ -9,79 +8,28 @@ export interface TutorialStep {
 }
 
 export const PAGES_STEPS: Record<string, TutorialStep[]> = {
+  // Trimmed 12 -> 1 (V1/DESIGN_LANGUAGE.md rule 1).
+  //
+  // The original twelve steps pointed at targetIds that mostly do not exist on
+  // the dashboard — tutorial-nav-ogcode has no element anywhere, and
+  // tutorial-test-hub / -dpp-hub / -goals-hub / -mentor live on TestList,
+  // DPPView, TasksGoals and OriginAiMentor respectively. With no target to
+  // anchor to they all fell back to a centred modal, so the "tour" was twelve
+  // full-screen cards narrating UI the student could already see, while
+  // covering the greeting and stat cards it was describing.
+  //
+  // Only tutorial-welcome is genuinely on this screen, so the dashboard gets
+  // one short welcome. The real per-feature tips already exist below, anchored
+  // to real elements on their own pages — which, with the per-page seen flag in
+  // TutorialProvider, is the "one tip on first USE of a feature" the design
+  // language asks for.
   dashboard: [
     {
       targetId: 'tutorial-welcome',
-      title: 'Welcome to ORIGIN!',
-      description: 'We\'ve engineered this platform to help you master your goals. Let us show you around.',
+      title: 'Welcome to Origin',
+      description: 'Have a look around. We\'ll point things out as you go, once each.',
       placement: 'center'
     },
-    {
-      targetId: 'tutorial-nav-ogcode',
-      title: 'Explore OGCode',
-      description: 'Our proprietary problem-solving suite. Practice with thousands of high-yield questions.',
-      placement: 'bottom'
-    },
-    {
-        targetId: 'tutorial-nav-doubt-solver',
-        title: 'AI Explainer',
-        description: 'Stuck? Our AI Bot is integrated everywhere to explain concepts and solve doubts instantly.',
-        placement: 'bottom'
-    },
-    {
-        targetId: 'tutorial-nav-tests',
-        title: 'Scientific Testing',
-        description: 'Simulate real exam environments with national-level test series and real-time performance analytics.',
-        placement: 'bottom'
-    },
-    {
-        targetId: 'tutorial-nav-dpp',
-        title: 'Daily Practice',
-        description: 'Personalized Daily Practice Problems (DPP) tailored to your learning velocity.',
-        placement: 'bottom'
-    },
-    {
-      targetId: 'tutorial-events',
-      title: 'Global Events',
-      description: 'Stay updated with national competitions, workshops, and exclusive mentorship sessions.',
-      placement: 'bottom'
-    },
-    {
-      targetId: 'tutorial-tracker',
-      title: 'Live Focus Tracker',
-      description: 'Monitor your study velocity in real-time. Use the Pomodoro timer to maintain maximum cognitive intensity.',
-      placement: 'bottom'
-    },
-    {
-      targetId: 'tutorial-challenge',
-      title: 'Daily AI Challenge',
-      description: 'Every day, our AI generates a targeted challenge to push your boundaries.',
-      placement: 'left'
-    },
-    {
-      targetId: 'tutorial-points',
-      title: 'Prestige & Rewards',
-      description: 'Earn points for consistency and level up from Novice to Master.',
-      placement: 'left'
-    },
-    {
-      targetId: 'tutorial-todo',
-      title: 'Strategic Goals',
-      description: 'Break down your goals into daily tasks and conquer them one by one.',
-      placement: 'top'
-    },
-    {
-      targetId: 'tutorial-mentor-trigger',
-      title: 'Your AI Mentor',
-      description: 'Your constant academic companion. Click my face anytime for guidance.',
-      placement: 'top'
-    },
-    {
-      targetId: 'tutorial-mentor',
-      title: 'Contextual Intelligence',
-      description: 'I see exactly what you see. You can even highlight any text on the screen to ask me about it instantly!',
-      placement: 'top'
-    }
   ],
   'ogcode-workspace': [
     {

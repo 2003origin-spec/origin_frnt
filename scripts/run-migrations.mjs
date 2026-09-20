@@ -154,6 +154,11 @@ const LEDGER_SQL = `
 
 const isProduction = process.env.VERCEL_ENV === "production" || process.env.NODE_ENV === "production";
 
+/** Targets whose migrations were skipped for a missing URL. A run that skipped
+ *  everything must not sign off as "up to date" — that message is exactly what
+ *  hid a completely un-migrated local database for months. */
+const skippedTargets = [];
+
 function log(message) {
   console.log(`[migrations] ${message}`);
 }
@@ -180,7 +185,8 @@ async function applyForTarget(target, migrations) {
           `Vercel (Project → Settings → Environment Variables → check "Build"), then redeploy.`,
       );
     }
-    log(`${envName} not set — skipping ${migrations.length} "${target}" migration(s).`);
+    skippedTargets.push({ target, envName, count: migrations.length });
+    log(`${envName} not set — SKIPPED ${migrations.length} "${target}" migration(s). NOT applied.`);
     return;
   }
 
@@ -232,6 +238,22 @@ async function main() {
 
   for (const [target, migrations] of byTarget) {
     await applyForTarget(target, migrations);
+  }
+
+  if (skippedTargets.length) {
+    const total = skippedTargets.reduce((n, s) => n + s.count, 0);
+    log("");
+    log(`⚠  NOTHING WAS APPLIED for ${skippedTargets.length} target(s) — ${total} migration(s) skipped:`);
+    for (const s of skippedTargets) log(`     ${s.envName} not set → "${s.target}" (${s.count})`);
+    log("");
+    log("   This is NOT success. Locally, run with the env file:");
+    log("     node --env-file=.env.local scripts/run-migrations.mjs");
+    log("   A fresh local database also needs the pre-allowlist migrations first:");
+    log("     npm run db:bootstrap");
+    // Outside production a missing URL is legitimate (previews with no DB
+    // attached), so this stays non-fatal — but it must be loud, and it must not
+    // print "up to date".
+    return;
   }
   log("up to date.");
 }

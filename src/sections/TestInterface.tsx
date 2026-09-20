@@ -694,7 +694,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
                   <div className="w-9 h-9 sm:w-10 sm:h-10 shrink-0 bg-white rounded-lg flex items-center justify-center p-1.5 shadow-md">
                     <img src="/origin-logo.png" alt="O3" className="w-full h-full object-contain" onError={(e) => { e.currentTarget.src = 'https://api.dicebear.com/7.x/initials/svg?seed=O3'; }} />
                   </div>
-                  <h2 className="text-white font-black text-sm sm:text-lg uppercase tracking-tight truncate">General Instructions</h2>
+                  <h2 className="text-white font-black text-sm sm:text-lg tracking-tight truncate">General Instructions</h2>
                 </div>
                 <div className="flex items-center gap-2 sm:gap-4 shrink-0">
                   <div className="text-white/70 text-[10px] sm:text-xs font-bold uppercase tracking-widest bg-white/10 px-2.5 py-1 sm:px-3 rounded-full whitespace-nowrap">
@@ -908,7 +908,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
               {/* Content Side */}
               <div className="flex flex-col gap-8">
                 <div>
-                  <h2 className="text-2xl sm:text-3xl font-black text-white mb-2 uppercase tracking-tight">Identity Verification</h2>
+                  <h2 className="text-2xl sm:text-3xl font-black text-white mb-2 tracking-tight">Identity Verification</h2>
                   <p className="text-slate-400 text-sm font-medium leading-relaxed">
                     To ensure exam integrity, please allow camera access and stay within the frame throughout the duration of the test.
                   </p>
@@ -1463,7 +1463,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
               <AlertTriangle className="w-8 h-8" />
             </div>
             <div>
-              <p className="text-xl font-black uppercase tracking-tighter">Mobile Device Detected!</p>
+              <p className="text-xl font-black tracking-tighter">Mobile Device Detected!</p>
               <p className="text-sm font-medium opacity-90">Avoid using mobile phones. This incident is being recorded.</p>
             </div>
           </div>
@@ -1477,7 +1477,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
               <div className="w-16 h-16 sm:w-20 sm:h-20 bg-yellow-500 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6 shadow-lg shadow-yellow-500/40">
                 <AlertTriangle className="w-8 h-8 sm:w-10 sm:h-10 text-white animate-pulse" />
               </div>
-              <h2 className="text-2xl sm:text-3xl font-black text-gray-900 mb-2 uppercase tracking-tighter">Warning: Security Alert</h2>
+              <h2 className="text-2xl sm:text-3xl font-black text-gray-900 mb-2 tracking-tighter">Warning: Security Alert</h2>
               <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-red-600 text-white text-xs font-black rounded-full uppercase tracking-widest mb-4">
                 Violation {violations} of 3
               </div>
@@ -1501,7 +1501,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
 
               <button
                 onClick={() => setShowMalpracticeWarning(false)}
-                className="w-full bg-slate-900 hover:bg-black text-white font-black py-4 rounded-2xl transition-all shadow-xl active:scale-95 text-lg uppercase tracking-tight"
+                className="w-full bg-slate-900 hover:bg-black text-white font-black py-4 rounded-2xl transition-all shadow-xl active:scale-95 text-lg tracking-tight"
               >
                 Return to Examination
               </button>
@@ -1516,7 +1516,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
             <div className="w-20 h-20 sm:w-24 sm:h-24 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6 sm:mb-8 animate-pulse">
               <ShieldCheck className="w-10 h-10 sm:w-12 sm:h-12 text-red-600" />
             </div>
-            <h2 className="text-2xl sm:text-3xl font-black text-red-600 mb-4 uppercase tracking-tighter">Test Terminated</h2>
+            <h2 className="text-2xl sm:text-3xl font-black text-red-600 mb-4 tracking-tighter">Test Terminated</h2>
             <p className="text-xl font-bold text-gray-900 mb-2">MALPRACTICE DETECTED</p>
             <p className="text-gray-600 mb-6 sm:mb-10 leading-relaxed font-semibold">
               You have exceeded the maximum number of warnings for leaving the test screen.
@@ -1557,7 +1557,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
       {isSubmitting && !isMalpracticeTerminated && (
         <div className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-white/90 backdrop-blur-sm p-4 animate-in fade-in duration-300">
           <Loader2 className="w-16 h-16 text-primary animate-spin mb-6" />
-          <h2 className="text-3xl font-black text-gray-900 uppercase tracking-tighter mb-2">Submitting Exam...</h2>
+          <h2 className="text-3xl font-black text-gray-900 tracking-tighter mb-2">Submitting Exam...</h2>
           <p className="text-gray-600 font-medium text-center max-w-md">
             Please wait while we securely submit your answers and generate AI insights.
           </p>
@@ -1569,7 +1569,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
             <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-6">
               <AlertTriangle className="w-8 h-8 text-orange-600" />
             </div>
-            <h2 className="text-2xl font-black text-gray-900 mb-2 uppercase tracking-tight">Reload Detected</h2>
+            <h2 className="text-2xl font-black text-gray-900 mb-2 tracking-tight">Reload Detected</h2>
             <p className="text-gray-600 mb-8 font-medium">
               Refreshing the page will cause your exam to be <span className="text-red-600 font-bold">AUTOMATICALLY SUBMITTED</span>. 
               Do you want to submit and reload?

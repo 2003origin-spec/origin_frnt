@@ -114,7 +114,9 @@ export default function StudyModeToggle({ className }: { className?: string }) {
               onClick={() => select(mode)}
               onKeyDown={(event) => onKeyDown(event, index)}
               className={cn(
-                'flex items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-xs font-black tracking-tight transition-all',
+                // 44px minimum (chrome.touch-min). This is the primary subject
+                // control and measured 107x30 on a phone.
+                'flex min-h-11 items-center justify-center gap-1 rounded-lg px-3 py-2 text-sm font-semibold tracking-tight transition-all',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
                 selected
                   ? 'bg-primary text-primary-foreground shadow'

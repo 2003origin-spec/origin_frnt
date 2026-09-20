@@ -192,7 +192,7 @@ export default function TeacherProfile({ user, onBack, onLogout }: TeacherProfil
                 <Card>
                     <CardContent className="flex flex-col gap-6 p-6 sm:flex-row sm:items-start">
                         <Avatar className="h-20 w-20 border">
-                            <AvatarFallback className="bg-primary/10 text-primary text-xl font-semibold uppercase">
+                            <AvatarFallback className="bg-primary/10 text-primary text-xl font-semibold">
                                 {initials}
                             </AvatarFallback>
                         </Avatar>

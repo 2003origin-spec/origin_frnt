@@ -109,7 +109,7 @@ function DarkBtn({
       type={type}
       onClick={onClick}
       disabled={disabled}
-      className={cn('rounded-[5px] font-semibold text-sm transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed', className)}
+      className={cn('inline-flex min-h-11 items-center justify-center rounded-[5px] font-semibold text-sm transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed', className)}
       style={{
         background: accent ? 'hsl(var(--primary))' : D.btn,
         color: D.text,
@@ -266,7 +266,7 @@ export default function AuthPage({
           {/* Back */}
           <button
             onClick={onBack}
-            className="mb-5 flex items-center gap-1.5 text-sm transition-colors duration-200"
+            className="mb-5 inline-flex min-h-11 items-center gap-1.5 text-sm transition-colors duration-200"
             style={{ color: D.muted }}
             onMouseEnter={e => (e.currentTarget.style.color = D.text)}
             onMouseLeave={e => (e.currentTarget.style.color = D.muted)}
@@ -346,7 +346,7 @@ export default function AuthPage({
                       key={label}
                       type="button"
                       onClick={() => { setIsLogin(label === 'Login'); setStep('form'); setOtp(''); }}
-                      className="flex-1 py-2 text-xs font-black uppercase tracking-wider rounded-[10px] transition-all duration-300"
+                      className="flex-1 min-h-11 text-sm font-semibold rounded-[10px] transition-all duration-300"
                       style={{
                         background: active ? D.btn : 'transparent',
                         color: active ? D.text : D.muted,
@@ -601,7 +601,9 @@ export default function AuthPage({
                       <button
                         type="button"
                         onClick={() => setShowPassword(v => !v)}
-                        className="shrink-0 transition-colors"
+                        aria-label={showPassword ? 'Hide password' : 'Show password'}
+                        aria-pressed={showPassword}
+                        className="shrink-0 inline-flex h-11 w-11 items-center justify-center transition-colors"
                         style={{ color: '#666' }}
                         onMouseEnter={e => (e.currentTarget.style.color = D.text)}
                         onMouseLeave={e => (e.currentTarget.style.color = '#666')}
@@ -614,7 +616,7 @@ export default function AuthPage({
                   {/* Forgot password */}
                   {isLogin && userRole !== 'admin' && (
                     <div className="flex justify-end">
-                      <button type="button" onClick={() => setForgotOpen(true)} className="text-xs font-bold" style={{ color: 'hsl(var(--primary))' }}>
+                      <button type="button" onClick={() => setForgotOpen(true)} className="inline-flex min-h-11 items-center text-sm font-medium" style={{ color: 'hsl(var(--primary))' }}>
                         Forgot password?
                       </button>
                     </div>
@@ -696,9 +698,9 @@ export default function AuthPage({
             {/* Legal */}
             <p className="mt-5 text-center text-[10px] leading-relaxed" style={{ color: '#444' }}>
               By continuing you agree to our{' '}
-              <a href="/terms-and-conditions" className="underline hover:text-[#888] transition-colors">Terms</a>,{' '}
-              <a href="/privacy-policy" className="underline hover:text-[#888] transition-colors">Privacy Policy</a> &amp;{' '}
-              <a href="/childrens-policy" className="underline hover:text-[#888] transition-colors">Children's Policy</a>.
+              <a href="/terms-and-conditions" className="inline-flex min-h-11 items-center underline hover:text-[#888] transition-colors">Terms</a>,{' '}
+              <a href="/privacy-policy" className="inline-flex min-h-11 items-center underline hover:text-[#888] transition-colors">Privacy Policy</a> &amp;{' '}
+              <a href="/childrens-policy" className="inline-flex min-h-11 items-center underline hover:text-[#888] transition-colors">Children's Policy</a>.
             </p>
           </div>
         </motion.div>

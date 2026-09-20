@@ -834,6 +834,7 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
             <div className="flex items-center gap-4">
               <button
                 onClick={handleBack}
+                aria-label="Go back"
                 className="p-2 rounded-xl hover:bg-white/50 dark:hover:bg-white/5 transition-colors"
               >
                 <ChevronLeft className="w-5 h-5 text-slate-600 dark:text-slate-400" />
@@ -843,7 +844,7 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
                   <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
                 </div>
                 <div className="hidden xs:block">
-                  <h1 className="text-sm sm:text-lg font-black text-slate-900 dark:text-white uppercase tracking-tighter">Focus Lab</h1>
+                  <h1 className="text-sm sm:text-lg font-black text-slate-900 dark:text-white tracking-tighter">Focus Lab</h1>
                 </div>
               </div>
             </div>
@@ -870,12 +871,14 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
               </label>
               <button
                 onClick={() => setShowHistory(true)}
+                aria-label="Session history"
                 className="p-2 sm:p-2.5 rounded-xl hover:bg-white/50 dark:hover:bg-white/5 text-slate-600 dark:text-slate-400"
               >
                 <History className="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
               <button
                 onClick={() => setShowSettings(true)}
+                aria-label="Timer settings"
                 className="p-2 sm:p-2.5 rounded-xl hover:bg-white/50 dark:hover:bg-white/5"
               >
                 <Settings className="w-4 h-4 sm:w-5 sm:h-5 text-slate-600 dark:text-slate-400" />
@@ -908,7 +911,7 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
             <div className="flex gap-4">
               <div className="flex items-center gap-3 px-4 py-2 bg-primary/5 border border-primary/20 rounded-2xl">
                 <Flame className="w-4 h-4 text-primary" />
-                <span className="text-xs font-black text-primary uppercase tracking-widest leading-none">
+                <span className="text-sm font-semibold text-primary leading-none">
                   {user.streak} Day Study Streak
                 </span>
               </div>
@@ -930,7 +933,7 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
                       className="absolute top-8 flex items-center gap-3 p-3 px-6 rounded-full bg-primary/10 border border-primary/20 backdrop-blur-md z-20"
                     >
                       <ShieldAlert className="w-4 h-4 text-primary" />
-                      <p className="text-[10px] font-black text-primary uppercase tracking-widest">Interrupted {interruptionCount}x</p>
+                      <p className="text-xs font-medium text-primary">Interrupted {interruptionCount}×</p>
                     </motion.div>
                   )}
 
@@ -951,7 +954,7 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
                     {isAlarmRinging ? (
                        <div className="w-72 h-72 sm:w-[400px] sm:h-[400px] flex items-center justify-center relative z-10">
                         <div className="neu-raised rounded-[64px] p-8 w-full text-center">
-                          <h2 className="text-2xl font-black text-slate-900 dark:text-white mb-4 tracking-tighter uppercase">
+                          <h2 className="text-2xl font-black text-slate-900 dark:text-white mb-4 tracking-tighter">
                             Phase Concluded
                           </h2>
                           <Button
@@ -1017,6 +1020,7 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
                   <div className="flex items-center gap-4 sm:gap-6 mt-12 sm:mt-16">
                     <button
                       onClick={toggleTimer}
+                      aria-label={isRunning ? 'Pause timer' : 'Start timer'}
                       disabled={isAlarmRinging}
                       className={`w-16 h-16 sm:w-20 sm:h-20 rounded-full flex items-center justify-center transition-all active:scale-95 shadow-2xl ${
                         isRunning 
@@ -1088,7 +1092,7 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
                       </SelectContent>
                     </Select>
                   ) : (
-                    <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest text-center py-4">Select a task from your dashboard</p>
+                    <p className="py-4 text-center text-sm text-muted-foreground">Select a task from your dashboard</p>
                   )}
                 </CardContent>
               </Card>
@@ -1128,7 +1132,7 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
                   ].map((tip, i) => (
                     <li key={i} className="flex items-center gap-3 group">
                        <div className="w-6 h-6 rounded-lg bg-primary/10 flex items-center justify-center text-[10px] font-black group-hover:bg-primary group-hover:text-white transition-all italic">{i+1}</div>
-                       <p className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-tight">{tip}</p>
+                       <p className="text-sm text-muted-foreground">{tip}</p>
                     </li>
                   ))}
                 </ul>
@@ -1141,8 +1145,8 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
                   <Coffee className="w-5 h-5" />
                   Recovery Engine
                 </h3>
-                <p className="text-xs font-bold text-slate-600 dark:text-slate-400 leading-relaxed uppercase tracking-tight">
-                  Your brain requires oscillation between focus and deep-rest. Every 4 sessions, enter a Long Break phase.
+                <p className="text-sm leading-relaxed text-muted-foreground">
+                  Your brain needs to alternate between focus and rest. After 4 sessions, take a long break.
                 </p>
               </CardContent>
             </Card>
@@ -1159,7 +1163,7 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
             <CardContent className="p-10">
               <div className="flex items-center justify-between mb-10">
                 <div>
-                  <h3 className="text-2xl font-black text-foreground uppercase tracking-tighter">Laboratory Settings</h3>
+                  <h3 className="text-2xl font-black text-foreground tracking-tighter">Laboratory Settings</h3>
                 </div>
                 <button onClick={() => setShowSettings(false)} className="p-3 rounded-full neu-raised hover:-translate-y-0.5 transition-all text-muted-foreground">
                   <X className="w-6 h-6" />
@@ -1197,7 +1201,7 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
       <Sheet open={showHistory} onOpenChange={setShowHistory}>
         <SheetContent side="right" className="w-full sm:max-w-md bg-[hsl(var(--neu-bg))] backdrop-blur-2xl border-l border-border/40 p-0 overflow-hidden flex flex-col">
           <SheetHeader className="p-8 border-b border-border/40">
-            <h3 className="text-2xl font-black tracking-tighter dark:text-white uppercase">Focus Log</h3>
+            <h3 className="text-2xl font-black tracking-tighter dark:text-white">Focus Log</h3>
           </SheetHeader>
 
           <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
@@ -1232,7 +1236,7 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-md p-4 animate-in fade-in duration-300">
           <Card className="w-full max-w-lg border-0 neu-raised rounded-3xl overflow-hidden transform animate-in zoom-in-95">
             <CardContent className="p-10 text-center">
-              <h3 className="text-2xl font-black text-foreground uppercase tracking-tighter mb-8">Rest Intel</h3>
+              <h3 className="text-2xl font-black text-foreground tracking-tighter mb-8">Rest Intel</h3>
               <div className="space-y-6">
                 <Select value={selectedReason} onValueChange={setSelectedReason}>
                     <SelectTrigger className="h-14 rounded-2xl neu-inset border-0">

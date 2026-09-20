@@ -120,7 +120,7 @@ export default function RankPredictor() {
         >
           <div className="inline-flex items-center gap-2 neu-inset px-4 py-2 rounded-full mb-5">
             <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-            <span className="text-[10px] font-black text-primary tracking-[0.4em] uppercase">Rank Predictor</span>
+            <span className="text-sm font-semibold text-primary">Rank Predictor</span>
           </div>
           <h2 className="text-3xl xs:text-4xl sm:text-6xl lg:text-7xl font-black tracking-tighter leading-[0.95] mb-4">
             <span className="text-outline">Where will you</span><br />
@@ -243,7 +243,7 @@ function SliderField({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 text-white/50">
           {icon}
-          <span className="text-[11px] font-semibold uppercase tracking-wider">{label}</span>
+          <span className="text-sm font-medium">{label}</span>
         </div>
         <span className="text-sm font-black text-white tabular-nums">{format(value)}</span>
       </div>

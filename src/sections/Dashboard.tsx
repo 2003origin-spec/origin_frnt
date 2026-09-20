@@ -24,6 +24,7 @@ import StudyModeFirstRunPrompt from '@/components/dashboard/StudyModeFirstRunPro
 import { apiCall } from '@/lib/api';
 import { useLayout } from '@/context/LayoutContext';
 import { cn } from '@/lib/utils';
+import { StatGrid } from '@/components/layout/shells';
 import { NeuButton } from '@/components/ui/neu';
 import type { TimeType } from '@/hooks/useTimeTracker';
 import { getRegistrationStatusAction } from '@/server/actions/system-actions';
@@ -71,7 +72,7 @@ function EventsCarousel() {
       <button
         onClick={prev}
         aria-label="Previous slide"
-        className="absolute left-3 top-1/2 -translate-y-1/2 z-20 neu-btn h-11 w-11 inline-flex items-center justify-center sm:opacity-0 sm:group-hover:opacity-100 transition-opacity duration-200"
+        className="absolute left-3 top-1/2 -translate-y-1/2 z-20 hidden h-11 w-11 sm:inline-flex items-center justify-center rounded-full bg-background/70 backdrop-blur-sm sm:opacity-0 sm:group-hover:opacity-100 transition-opacity duration-200"
       >
         <ChevronLeft className="w-4 h-4 text-foreground" />
       </button>
@@ -80,19 +81,36 @@ function EventsCarousel() {
       <button
         onClick={next}
         aria-label="Next slide"
-        className="absolute right-3 top-1/2 -translate-y-1/2 z-20 neu-btn h-11 w-11 inline-flex items-center justify-center sm:opacity-0 sm:group-hover:opacity-100 transition-opacity duration-200"
+        className="absolute right-3 top-1/2 -translate-y-1/2 z-20 hidden h-11 w-11 sm:inline-flex items-center justify-center rounded-full bg-background/70 backdrop-blur-sm sm:opacity-0 sm:group-hover:opacity-100 transition-opacity duration-200"
       >
         <ChevronRight className="w-4 h-4 text-foreground" />
       </button>
 
-      {/* dot indicators */}
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex gap-2 neu-inset px-3 py-2 rounded-full">
-        {SLIDES.map((_, idx) => (
+      {/* Dot indicators. Measured as five 9x9 buttons with NO accessible name —
+          a screen reader announced five identical "button"s, and each was a
+          fifth of the 44px minimum. The dot stays 8px visually; the BUTTON is
+          44px tall with the dot centred inside, so the hit area is honest
+          without changing the look. */}
+      <div
+        className="absolute inset-x-0 bottom-0 z-20 flex items-center justify-center gap-1"
+        role="tablist"
+        aria-label="Highlights"
+      >
+        {SLIDES.map((slide, idx) => (
           <button
             key={idx}
+            type="button"
+            role="tab"
             onClick={() => setCurrent(idx)}
-            className={`h-2 rounded-full transition-all ${idx === current ? 'w-6 bg-primary' : 'w-2 bg-muted-foreground/40 hover:bg-muted-foreground/60'}`}
-          />
+            aria-label={`${slide.title} — ${idx + 1} of ${SLIDES.length}`}
+            aria-selected={idx === current}
+            className="flex h-11 min-w-11 items-center justify-center"
+          >
+            <span
+              aria-hidden
+              className={`block h-2 rounded-full shadow-[0_0_0_1px_rgba(0,0,0,.25)] transition-all ${idx === current ? 'w-6 bg-primary' : 'w-2 bg-white/70'}`}
+            />
+          </button>
         ))}
       </div>
     </div>
@@ -382,14 +400,19 @@ export default function Dashboard({
 
         {/* ── HERO ──────────────────────────────────────────────── */}
         <motion.div {...stagger(1)} id="tutorial-welcome" className="neu-raised p-5 sm:p-6 relative">
-          {/* Origin Quest + Live tasks — top-right of hero */}
-          <div className="absolute top-4 right-4 z-[60] flex items-center gap-2">
+          {/* Origin Quest + Live tasks.
+              Phone: an ordinary right-aligned row ABOVE the greeting. They used
+              to be absolutely positioned here too, and once the pills grew to
+              the 44px touch floor they sat straight on top of the rank badge
+              (reported on-device 2026-09-20). Absolute only from sm:, where the
+              badge is the centre grid column and there is room. */}
+          <div className="relative z-[60] mb-3 flex items-center justify-end gap-2 sm:absolute sm:top-4 sm:right-4 sm:mb-0">
 
           {/* Origin Quest pill */}
           <div className="relative">
             <button
               onClick={() => { setTasksOpen(false); setQuestOpen(o => !o); }}
-              className="neu-raised relative flex items-center gap-2 px-3 py-1.5 rounded-xl group hover:bg-primary/5 transition-colors"
+              className="neu-raised relative flex min-h-11 min-w-11 items-center gap-2 px-3 py-2 rounded-xl group hover:bg-primary/5 transition-colors"
               aria-label="Origin Quest"
             >
               <Target className="w-4 h-4 text-primary" />
@@ -430,7 +453,7 @@ export default function Dashboard({
           <div className="relative">
             <button
               onClick={() => { setQuestOpen(false); setTasksOpen(o => !o); }}
-              className="neu-raised relative flex items-center gap-2 px-3 py-1.5 rounded-xl group hover:bg-primary/5 transition-colors"
+              className="neu-raised relative flex min-h-11 min-w-11 items-center gap-2 px-3 py-2 rounded-xl group hover:bg-primary/5 transition-colors"
               aria-label="Live tasks"
             >
               <ListTodo className="w-4 h-4 text-primary" />
@@ -503,12 +526,17 @@ export default function Dashboard({
 
           </div>{/* end top-right pills */}
 
-          <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
+          {/* Phone: two columns — the greeting needs the width. The old
+              [1fr_auto_1fr] left it ~100px next to the badge, which clipped
+              "N pts away from <tier>" mid-sentence (audit, Dashboard §2).
+              The third column (a second Ori) is hidden below sm: the hero
+              already has one, and X-2 is about exactly this pile-up. */}
+          <div className="grid grid-cols-[1fr_auto] sm:grid-cols-[1fr_auto_1fr] items-center gap-4">
             {/* Left — greeting */}
             <div className="min-w-0 space-y-1">
               <div className="flex items-center gap-2">
-                <h1 className="text-2xl sm:text-3xl font-black text-foreground tracking-tight leading-tight break-words">
-                  {greeting},<br className="sm:hidden" /> {displayName}!
+                <h1 className="font-display text-2xl sm:text-3xl font-bold text-foreground tracking-tight leading-tight text-balance">
+                  {greeting}, {displayName}
                 </h1>
                 <Image src="/ori2d/ori-winking.png" alt="Ori" width={48} height={48} style={{ width: 'auto', height: 48 }} className="object-contain drop-shadow-md hidden sm:block" />
               </div>
@@ -544,8 +572,8 @@ export default function Dashboard({
               </motion.div>
             </button>
 
-            {/* Right — Ori mascot */}
-            <div className="h-16 w-16 sm:h-24 sm:w-24 shrink-0 justify-self-end">
+            {/* Right — Ori mascot. Desktop only: see the note above. */}
+            <div className="hidden sm:block h-16 w-16 sm:h-24 sm:w-24 shrink-0 justify-self-end">
               <OriMascot expression="reading" title="Ori" />
             </div>
           </div>
@@ -554,7 +582,7 @@ export default function Dashboard({
           {pointsData && (
             <div className="mt-4 space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-black text-muted-foreground uppercase tracking-widest">
+                <span className="text-sm font-medium text-muted-foreground">
                   {pointsData.totalPoints.toLocaleString()} pts · {pointsData.currentTier}
                 </span>
                 <span className="text-xs font-black text-primary">
@@ -572,9 +600,9 @@ export default function Dashboard({
               <div className="flex items-center justify-end">
                 <button
                   onClick={() => onNavigate('prestige-milestones')}
-                  className="text-[10px] font-black text-primary/60 hover:text-primary uppercase tracking-widest transition-colors"
+                  className="inline-flex min-h-11 items-center text-sm font-medium text-primary transition-colors hover:underline"
                 >
-                  View Milestones →
+                  View milestones →
                 </button>
               </div>
             </div>
@@ -587,42 +615,32 @@ export default function Dashboard({
         </motion.div>
 
         {/* ── QUICK STATS STRIP + progress trigger ──────────────── */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-          {(() => {
-            const solved = userStats?.solvedCount ?? totalSolved;
-            const streak = userStats?.streak ?? user.streak ?? 0;
-            return [
-              { icon: BookOpen,   color: 'text-emerald-500', label: 'Solved',     value: solved.toLocaleString(),                          ori: '/ori2d/ori-thubmsup.png' },
-              { icon: Flame,      color: 'text-orange-500',  label: 'Day Streak', value: streak > 0 ? String(streak) : '—',                ori: '/ori2d/ori-exited.png' },
-              { icon: Award,      color: 'text-violet-500',  label: 'Rank',       value: pointsData?.currentTier ?? '—',                   ori: '/ori2d/ori-proud.png' },
-              { icon: TrendingUp, color: 'text-cyan-500',    label: 'Today',      value: todayStudyMins > 0 ? `${todayStudyMins}m` : '—',  ori: '/ori2d/ori-determined.png' },
-            ];
-          })().map((s, i) => (
-            <motion.div key={s.label} {...stagger(i + 3)} className="neu-raised p-4 flex flex-col gap-1.5 min-w-0 relative overflow-hidden">
-              <s.icon className={`w-4 h-4 ${s.color}`} />
-              <p className="text-xl font-black text-foreground leading-none truncate">{s.value}</p>
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{s.label}</p>
-              <Image
-                src={s.ori}
-                alt=""
-                aria-hidden
-                width={52}
-                height={52}
-                style={{ width: 'auto', height: 52 }}
-                className="object-contain drop-shadow absolute -right-1 -bottom-1 opacity-90 pointer-events-none select-none"
-              />
-            </motion.div>
-          ))}
-          {/* Progress panel trigger — simple tile beside stats */}
-          <motion.button
-            {...stagger(7)}
+        {/* Migrated onto the StatGrid shell (Stage 5). The tiles are no longer
+            hand-rolled here, so the mascot-in-every-tile regression (X-2) cannot
+            come back: StatGrid takes an icon, not children. */}
+        <div className="flex flex-col gap-3">
+          <StatGrid
+            stats={(() => {
+              const solved = userStats?.solvedCount ?? totalSolved;
+              const streak = userStats?.streak ?? user.streak ?? 0;
+              return [
+                { icon: <BookOpen className="text-emerald-500" />,   label: 'Questions solved', value: solved.toLocaleString() },
+                { icon: <Flame className="text-orange-500" />,       label: 'Day streak',       value: streak > 0 ? String(streak) : '—' },
+                { icon: <Award className="text-violet-500" />,       label: 'Current rank',     value: pointsData?.currentTier ?? '—' },
+                { icon: <TrendingUp className="text-cyan-500" />,    label: 'Studied today',    value: todayStudyMins > 0 ? `${todayStudyMins}m` : '—' },
+              ];
+            })()}
+          />
+          <button
             onClick={() => setPanelOpen(true)}
-            className="neu-raised p-4 flex flex-col gap-1.5 min-w-0 group hover:bg-primary/5 transition-colors col-span-2 sm:col-span-1"
+            className="flex min-h-11 w-full items-center justify-between rounded-xl border border-border bg-card px-4 py-3 text-left transition-colors hover:bg-accent"
           >
-            <BarChart3 className="w-4 h-4 text-primary" />
-            <p className="text-xl font-black text-primary leading-none">→</p>
-            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Progress</p>
-          </motion.button>
+            <span className="flex items-center gap-2">
+              <BarChart3 className="size-4 text-primary" />
+              <span className="text-sm font-medium text-foreground">Progress</span>
+            </span>
+            <span aria-hidden className="font-display text-xl font-bold text-primary">→</span>
+          </button>
         </div>
 
         {/* ── Self-study rallying cry ── */}

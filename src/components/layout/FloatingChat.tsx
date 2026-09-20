@@ -55,19 +55,42 @@ export default function FloatingChat({ onOpen, hideMainButton, userName }: Float
     dismissTimerRef.current = setTimeout(() => setBubbleVisible(false), 5000);
   };
 
-  // Auto-show once after 2 s on mount. Suppressed in lite mode (app / low-end):
-  // there's no hover on touch, so an auto-popup only covers content — the launcher
-  // is self-explanatory and a tap opens the chat anyway. (MOBILE_UI_REDESIGN Phase 2)
+  // Touch devices cannot hover, so the pointer never "asks" for the bubble —
+  // it simply appears over whatever the student was reading. Captured on the
+  // dashboard covering two stat tiles, and on the design-system gallery
+  // covering the empty-state card (audit X-2).
+  //
+  // Phase 2 already suppressed this for lite mode with exactly this reasoning
+  // ("there's no hover on touch, so an auto-popup only covers content"), but
+  // useLiteMode() is only true in the native app / on low-end devices, so an
+  // ordinary phone browser still got it. Extended to every coarse-pointer
+  // device, which is what that rationale actually describes.
+  // Defaults to FALSE deliberately: assume touch until a fine pointer is
+  // confirmed. Defaulting to true left a window — one render, and longer when
+  // this component mounts late behind dashboard data — where the guard passed
+  // and a timer was scheduled before the media query had been read.
+  const [canHover, setCanHover] = useState(false);
   useEffect(() => {
-    if (hideMainButton || lite) return;
+    const mq = window.matchMedia('(hover: hover) and (pointer: fine)');
+    setCanHover(mq.matches);
+    const onChange = (e: MediaQueryListEvent) => setCanHover(e.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+
+  // Auto-show once after 2 s on mount. Never on touch, never in lite mode.
+  // The launcher is self-explanatory and a tap opens the chat anyway.
+  useEffect(() => {
+    if (hideMainButton || lite || !canHover) return;
     const t = setTimeout(() => showBubble(), 2000);
     return () => clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hideMainButton]);
+  }, [hideMainButton, canHover]);
 
-  // Random re-show every 25–45 s while mascot is visible (not in lite mode).
+  // Random re-show every 25-45 s. Hover-capable pointers only — on a phone this
+  // was a bubble covering content every half-minute, unprompted.
   useEffect(() => {
-    if (hideMainButton || lite) return;
+    if (hideMainButton || lite || !canHover) return;
     const schedule = () => {
       const delay = 25000 + Math.floor(Math.random() * 20000);
       return setTimeout(() => {
@@ -78,7 +101,7 @@ export default function FloatingChat({ onOpen, hideMainButton, userName }: Float
     const timerRef = { current: schedule() };
     return () => clearTimeout(timerRef.current);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hideMainButton]);
+  }, [hideMainButton, canHover]);
 
   const selectionActionStyle = useMemo(() => {
     const rect = highlightedSelection.rect;
