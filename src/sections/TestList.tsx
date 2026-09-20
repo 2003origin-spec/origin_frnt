@@ -109,7 +109,7 @@ function ChipMultiSelect<T extends string | number>({
             key={String(opt.value)}
             type="button"
             onClick={() => onToggle(opt.value)}
-            className={`h-11 px-4 rounded-xl font-black text-xs uppercase tracking-widest transition-all border ${
+            className={`h-11 px-4 rounded-xl font-semibold text-sm transition-all border ${
               active
                 ? 'bg-primary text-white border-primary shadow-lg shadow-primary/20'
                 : 'bg-background border-border/40 text-foreground hover:border-primary/40'
@@ -452,7 +452,8 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
             <div className="flex items-center gap-4">
               <button
                 onClick={onBack}
-                className="p-2 rounded-lg hover:bg-muted transition-colors"
+                aria-label="Go back"
+                className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg hover:bg-muted transition-colors"
               >
                 <ChevronLeft className="w-5 h-5 text-muted-foreground" />
               </button>
@@ -552,7 +553,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                   <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
                     <div>
                       <h2 className="text-xl sm:text-2xl font-black tracking-tighter mb-1">Personalized Intelligence</h2>
-                      <p className="text-xs font-bold opacity-80 uppercase tracking-widest flex items-center gap-2">
+                      <p className="flex items-center gap-2 text-sm opacity-80">
                         <Sparkles className="w-4 h-4" />
                         Tests curated for your primary subjects
                       </p>
@@ -629,7 +630,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                             <div className="col-span-full py-20 text-center border-2 border-dashed border-border/40 rounded-[40px] bg-muted/30">
                               <img src="/ori2d/ori-curious.png" alt="Ori" className="w-28 h-28 object-contain mx-auto mb-3 drop-shadow-md" />
                               <BookOpen className="w-12 h-12 text-muted-foreground/40 mx-auto mb-4 opacity-50" />
-                              <p className="text-sm font-bold text-muted-foreground uppercase tracking-widest">No PYQ tests available for this category</p>
+                              <p className="text-sm text-muted-foreground">No previous-year tests in this category yet</p>
                             </div>
                           )}
                         </div>
@@ -714,7 +715,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                                     onClick={() => setInfoOpen(true)}
                                     aria-label="How the Custom Test Builder works"
                                     title="How it works"
-                                    className="shrink-0 w-9 h-9 rounded-full bg-white/15 hover:bg-white/25 border border-white/20 flex items-center justify-center transition-colors"
+                                    className="shrink-0 h-11 w-11 rounded-full bg-white/15 hover:bg-white/25 border border-white/20 flex items-center justify-center transition-colors"
                                 >
                                     <Info className="w-5 h-5" />
                                 </button>
@@ -761,7 +762,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                                         );
                                     })}
                                     <span className="self-center text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                                        {customTestConfig.exam ? 'Presets subjects & ratio · editable below' : 'Optional — or configure manually'}
+                                        {customTestConfig.exam ? 'Presets subjects & ratio · editable below' : 'Optional — or set it up yourself'}
                                     </span>
                                 </div>
                             </div>
@@ -824,7 +825,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                                                         // Changing subjects invalidates the chapter selection.
                                                         chapters: [],
                                                     }))}
-                                                    className={`h-11 px-4 rounded-xl font-black text-xs uppercase tracking-widest transition-all border ${
+                                                    className={`h-11 px-4 rounded-xl font-semibold text-sm transition-all border ${
                                                         active
                                                             ? 'bg-primary text-white border-primary shadow-lg shadow-primary/20'
                                                             : 'bg-background border-border/40 text-foreground hover:border-primary/40'
@@ -942,7 +943,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                                     <button
                                         type="button"
                                         onClick={() => setCustomTestConfig((prev) => ({ ...prev, sameForAll: !prev.sameForAll }))}
-                                        className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-foreground/80"
+                                        className="inline-flex min-h-11 items-center gap-2 text-sm"
                                     >
                                         <span className={cn('w-4 h-4 rounded border flex items-center justify-center shrink-0', customTestConfig.sameForAll ? 'bg-primary border-primary' : 'border-muted-foreground/40')}>
                                             {customTestConfig.sameForAll && <Check className="w-3 h-3 text-white" />}
@@ -1058,7 +1059,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                                                 key={mode}
                                                 type="button"
                                                 onClick={() => setCustomTestConfig((prev) => ({ ...prev, timeMode: mode }))}
-                                                className={`h-9 px-3 rounded-lg font-black text-[10px] uppercase tracking-widest transition-all ${
+                                                className={`min-h-11 px-4 rounded-lg font-semibold text-sm transition-all ${
                                                     customTestConfig.timeMode === mode ? 'bg-primary text-white' : 'text-muted-foreground hover:text-foreground'
                                                 }`}
                                             >

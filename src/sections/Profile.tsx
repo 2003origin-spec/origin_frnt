@@ -255,7 +255,7 @@ export default function Profile({
         {/* ── Top nav ──────────────────────────────────────────── */}
         <div className="sticky top-0 z-40 py-3">
           <div className="neu-raised flex items-center justify-between px-4 h-12 rounded-2xl">
-            <button onClick={onBack} className="p-1.5 rounded-xl text-muted-foreground hover:text-primary transition-colors">
+            <button onClick={onBack} aria-label="Go back" className="p-1.5 rounded-xl text-muted-foreground hover:text-primary transition-colors">
               <ChevronLeft className="w-5 h-5" />
             </button>
             <span className="text-[10px] font-black tracking-[0.2em] uppercase text-muted-foreground">Profile</span>
@@ -499,7 +499,7 @@ export default function Profile({
 
             {/* Footer links */}
             <div className="pt-2 text-center text-[9px] text-muted-foreground/50 space-y-1.5">
-              <p className="font-black uppercase tracking-[0.2em]">© 2026 SUPERGOAT TECHNOLOGIES PVT. LTD.</p>
+              <p className="text-xs">© 2026 Supergoat Technologies Pvt. Ltd.</p>
               <div className="flex justify-center gap-3 flex-wrap">
                 {[
                   { href: '/terms-and-conditions', label: 'Terms' },

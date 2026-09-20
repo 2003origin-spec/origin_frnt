@@ -150,7 +150,7 @@ export default function ExamPresetCards({
                   type="button"
                   onClick={() => setExpanded(isOpen ? null : preset.preset)}
                   aria-expanded={isOpen}
-                  className="mt-4 flex w-full items-center justify-between rounded-xl border border-border/40 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+                  className="mt-4 flex min-h-11 w-full items-center justify-between rounded-xl border border-border/40 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
                 >
                   <span className="flex items-center gap-1.5">
                     <Target className="h-3.5 w-3.5" />

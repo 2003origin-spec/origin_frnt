@@ -75,7 +75,7 @@ export default function MilestonesPage({ onBack, userPoints }: MilestonesPagePro
             <img src="/ori2d/ori-proud.png" alt="Ori" className="w-16 h-16 object-contain drop-shadow-md" />
             <div>
               <h1 className="text-xl font-black text-foreground">Prestige Journey</h1>
-              <p className="text-[10px] text-primary/80 font-bold uppercase tracking-widest">Your path to greatness</p>
+              <p className="text-sm text-primary/80">Your path to greatness</p>
             </div>
           </div>
         </div>
@@ -135,7 +135,7 @@ export default function MilestonesPage({ onBack, userPoints }: MilestonesPagePro
 
           {currentTier.next !== Infinity && (
             <div className="space-y-2">
-              <div className="flex justify-between text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+              <div className="flex justify-between text-xs text-muted-foreground tabular-nums">
                 <span>{totalPoints.toLocaleString()} pts</span>
                 <span>{(currentTier.next - totalPoints).toLocaleString()} pts to next rank</span>
               </div>
@@ -165,7 +165,7 @@ export default function MilestonesPage({ onBack, userPoints }: MilestonesPagePro
               key={tab}
               onClick={() => setActiveTab(tab)}
               className={cn(
-                'flex-1 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all',
+                'flex-1 min-h-11 rounded-xl text-sm font-semibold transition-all',
                 activeTab === tab
                   ? 'bg-primary text-primary-foreground shadow-[2px_2px_6px_hsl(var(--neu-shadow))]'
                   : 'text-muted-foreground hover:text-foreground'

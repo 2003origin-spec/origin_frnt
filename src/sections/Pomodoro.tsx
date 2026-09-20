@@ -834,6 +834,7 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
             <div className="flex items-center gap-4">
               <button
                 onClick={handleBack}
+                aria-label="Go back"
                 className="p-2 rounded-xl hover:bg-white/50 dark:hover:bg-white/5 transition-colors"
               >
                 <ChevronLeft className="w-5 h-5 text-slate-600 dark:text-slate-400" />
@@ -870,12 +871,14 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
               </label>
               <button
                 onClick={() => setShowHistory(true)}
+                aria-label="Session history"
                 className="p-2 sm:p-2.5 rounded-xl hover:bg-white/50 dark:hover:bg-white/5 text-slate-600 dark:text-slate-400"
               >
                 <History className="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
               <button
                 onClick={() => setShowSettings(true)}
+                aria-label="Timer settings"
                 className="p-2 sm:p-2.5 rounded-xl hover:bg-white/50 dark:hover:bg-white/5"
               >
                 <Settings className="w-4 h-4 sm:w-5 sm:h-5 text-slate-600 dark:text-slate-400" />
@@ -1017,6 +1020,7 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
                   <div className="flex items-center gap-4 sm:gap-6 mt-12 sm:mt-16">
                     <button
                       onClick={toggleTimer}
+                      aria-label={isRunning ? 'Pause timer' : 'Start timer'}
                       disabled={isAlarmRinging}
                       className={`w-16 h-16 sm:w-20 sm:h-20 rounded-full flex items-center justify-center transition-all active:scale-95 shadow-2xl ${
                         isRunning 
