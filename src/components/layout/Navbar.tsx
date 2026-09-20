@@ -704,12 +704,12 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                 )}>
                     {(() => {
                       // Five items, per the user's own IA sketch (2026-09-20):
-                      //   Home · Test · Ori (raised centre) · OGC · More
+                      //   Home · Test · Ori (raised centre) · OG Code · More
                       // Answers the open question from MOBILE_UX_RESEARCH_FINDINGS X-5.
                       //
                       // Two changes it makes: /tests is PROMOTED into the bar — GA4 puts
                       // it 12th by users precisely because it was buried behind "More" —
-                      // and Practice becomes "OGC", named after the OGCode workspace
+                      // and Practice becomes "OG Code", named after the OGCode workspace
                       // every comparable Indian exam-prep app uses for its primary verb.
                       // Social and Daily/DPP move into More alongside AI Explainer, Goals,
                       // Focus time, Leaderboard, Contest, Study, Graphs, Profile, Connect.
@@ -722,9 +722,9 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                             // one control. If Ori is worth the most prominent slot
                             // in the app it is worth one tap.
                             { label: 'Ori',   icon: Sparkles,   view: null, center: true, ori: true },
-                            // "OGC" not "Drill": the destination is the OGCode
+                            // "OG Code", not "Drill": the destination is the OGCode
                             // workspace and students already call it that.
-                            { label: 'OGC',   icon: Code,       view: 'ogcode' as ViewState },
+                            { label: 'OG Code', icon: Code,     view: 'ogcode' as ViewState },
                             { label: 'More',  icon: Menu,       view: null },
                         ] as { label: string; icon: typeof LayoutGrid; view: ViewState | null; iconSrc?: string; center?: boolean; ori?: boolean }[])
                           // Rooms moved into More: 45 users vs OGCode's 71, and it is a

@@ -18,6 +18,7 @@ import { MilestoneCabinet } from '@/components/badges/MilestoneCabinet';
 import { totalQuestionsSolved } from '@/lib/milestone-badges';
 import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
+import { formatPoints } from '@/lib/format-points';
 
 const HOW_EARNED = [
   {
@@ -83,7 +84,7 @@ export default function MilestonesPage({ onBack, userPoints }: MilestonesPagePro
         {/* Points badge */}
         <div className="flex items-center gap-2 px-4 py-2 neu-raised rounded-2xl">
           <Trophy className="w-4 h-4 text-primary" />
-          <span className="text-sm font-black text-primary">{totalPoints.toLocaleString()} pts</span>
+          <span className="text-sm font-black text-primary">{formatPoints(totalPoints)} pts</span>
         </div>
       </header>
 
@@ -136,8 +137,8 @@ export default function MilestonesPage({ onBack, userPoints }: MilestonesPagePro
           {currentTier.next !== Infinity && (
             <div className="space-y-2">
               <div className="flex justify-between text-xs text-muted-foreground tabular-nums">
-                <span>{totalPoints.toLocaleString()} pts</span>
-                <span>{(currentTier.next - totalPoints).toLocaleString()} pts to next rank</span>
+                <span>{formatPoints(totalPoints)} pts</span>
+                <span>{formatPoints(currentTier.next - totalPoints)} pts to next rank</span>
               </div>
               <div className="w-full h-3 neu-inset rounded-full overflow-hidden">
                 <motion.div

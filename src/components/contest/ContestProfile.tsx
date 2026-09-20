@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import { NeuButton } from '@/components/ui/neu';
 import { getContestProfileAction } from '@/server/actions/contest-actions';
 import type { ContestProfile as Profile } from '@/server/contest/contest-profile-service';
+import { formatPoints } from '@/lib/format-points';
 
 /**
  * The student's contest profile — ORBIT rating + tier + best, streak, badges,
@@ -97,7 +98,7 @@ export function ContestProfile() {
         {/* Stat strip: streak · rewards · best rank */}
         <div className="grid grid-cols-3 gap-3">
           <Stat icon={<Flame className="w-4 h-4 text-orange-500" />} label="Streak" value={`${p.streak.current}`} sub={p.streak.longest ? `best ${p.streak.longest}` : ''} />
-          <Stat icon={<Coins className="w-4 h-4 text-amber-500" />} label="OGCode earned" value={p.totalRewardPoints.toLocaleString()} />
+          <Stat icon={<Coins className="w-4 h-4 text-amber-500" />} label="OGCode earned" value={formatPoints(p.totalRewardPoints)} />
           <Stat icon={<Medal className="w-4 h-4 text-primary" />} label="Best rank" value={p.personalBest?.bestRank ? `#${p.personalBest.bestRank}` : '—'} sub={p.personalBest?.bestPercentile != null ? `${Math.round(p.personalBest.bestPercentile)}%ile` : ''} />
         </div>
 
