@@ -66,34 +66,57 @@ export function NativePurchaseNotice({ title }: { title?: string }) {
     }
   };
 
-  // Left-aligned with the lock inline, not a centred stack. Centred short
-  // lines inside a narrow card wrapped to four ragged rows and made the
-  // notice taller than the plan it belonged to (Android shell, 2026-09-21).
-  return (
-    <div className="w-full rounded-xl border border-border bg-muted/40 p-3 space-y-1.5">
-      <div className="flex items-center gap-2">
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted">
-          <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-        </span>
-        <p className="text-sm font-medium leading-snug">
-          {title ? `${title} — not available in the app` : "Purchases aren't available in the app"}
-        </p>
-      </div>
-      <p className="text-xs leading-snug text-muted-foreground">
-        Premium is managed on o3origin.com. Anything you own there unlocks here automatically.
-      </p>
-      {linkOutReady ? (
+  // Shaped like the CTA it stands in for.
+  //
+  // On the web an unowned subject card ends in a "Subscribe · ₹1/mo" pill and an
+  // owned one in "Manage / Cancel". In the app this notice replaced that pill
+  // with a bordered paragraph block, so the four cards no longer lined up and
+  // the locked ones read as broken rather than as deliberate (reported from the
+  // Android shell, 2026-09-21).
+  //
+  // It is now the same full-width rounded-full pill, measured to 52px against
+  // SubjectCheckout's own 53px "Manage / Cancel" and 51px "Subscribe", with the
+  // explanation demoted to a single caption line beneath. What it
+  // is NOT is a purchase control: Play forbids selling digital goods outside
+  // Play Billing, so this stays a `role="note"` — announced as a note, not
+  // focusable, nothing to tap — unless `linkOutEnabled` is on, in which case it
+  // becomes a real button that hands off to the site (§10.2; OFF for India).
+  if (linkOutReady) {
+    return (
+      <div className="w-full space-y-1.5">
         <Button
           type="button"
-          size="sm"
-          className="w-full rounded-full"
+          className="w-full rounded-full py-6"
           onClick={() => void handleLinkOut()}
           disabled={busy}
         >
-          {busy ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Globe className="mr-2 h-3.5 w-3.5" />}
+          {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Globe className="mr-2 h-4 w-4" />}
           Get Premium on the web
         </Button>
-      ) : null}
+        <p className="text-center text-[11px] leading-snug text-muted-foreground">
+          Opens o3origin.com — you stay signed in.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full space-y-1.5">
+      <div
+        role="note"
+        aria-label={
+          title
+            ? `${title} cannot be purchased in the app. Manage Premium on o3origin.com.`
+            : 'Purchases are not available in the app. Manage Premium on o3origin.com.'
+        }
+        className="flex h-[52px] w-full items-center justify-center gap-2 rounded-full border border-border bg-muted/40 px-4 text-sm font-medium text-muted-foreground"
+      >
+        <Lock className="h-4 w-4 shrink-0" aria-hidden />
+        <span className="truncate">Manage on o3origin.com</span>
+      </div>
+      <p className="text-center text-[11px] leading-snug text-muted-foreground">
+        Purchases aren&apos;t available in the app.
+      </p>
     </div>
   );
 }
