@@ -24,6 +24,18 @@
   --color-input: hsl(var(--input));
   --color-ring: hsl(var(--ring));
 
+  /* Tonal elevation + semantic status, from design/tokens/origin.tokens.json.
+     These existed as CSS variables but were never mapped into @theme, so
+     `bg-surface-3` and friends silently did nothing — a class that compiles,
+     typechecks and lints clean while having no effect. */
+  --color-surface-1: hsl(var(--surface-1));
+  --color-surface-2: hsl(var(--surface-2));
+  --color-surface-3: hsl(var(--surface-3));
+  --color-outline: hsl(var(--outline));
+  --color-outline-variant: hsl(var(--outline-variant));
+  --color-success: hsl(var(--success));
+  --color-warning: hsl(var(--warning));
+
   --radius: 0.75rem;
 
   /* Single typeface: Darker Grotesque — weights carry the hierarchy, not different families */

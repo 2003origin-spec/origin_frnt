@@ -103,7 +103,7 @@ function EventsCarousel() {
             onClick={() => setCurrent(idx)}
             aria-label={`${slide.title} — ${idx + 1} of ${SLIDES.length}`}
             aria-selected={idx === current}
-            className="flex h-11 min-w-8 items-center justify-center px-1"
+            className="flex h-11 min-w-11 items-center justify-center"
           >
             <span
               aria-hidden
@@ -447,7 +447,7 @@ export default function Dashboard({
           <div className="relative">
             <button
               onClick={() => { setQuestOpen(false); setTasksOpen(o => !o); }}
-              className="neu-raised relative flex items-center gap-2 px-3 py-1.5 rounded-xl group hover:bg-primary/5 transition-colors"
+              className="neu-raised relative flex min-h-11 min-w-11 items-center gap-2 px-3 py-2 rounded-xl group hover:bg-primary/5 transition-colors"
               aria-label="Live tasks"
             >
               <ListTodo className="w-4 h-4 text-primary" />
@@ -576,7 +576,7 @@ export default function Dashboard({
           {pointsData && (
             <div className="mt-4 space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-black text-muted-foreground uppercase tracking-widest">
+                <span className="text-sm font-medium text-muted-foreground">
                   {pointsData.totalPoints.toLocaleString()} pts · {pointsData.currentTier}
                 </span>
                 <span className="text-xs font-black text-primary">

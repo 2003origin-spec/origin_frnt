@@ -712,24 +712,23 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                     'safe-area-pb pb-safe'
                 )}>
                     {(() => {
+                      // Five items, per the user's own IA sketch (2026-09-20):
+                      //   Home · Test · Drill (raised centre) · Rooms · More
+                      // Answers the open question from MOBILE_UX_RESEARCH_FINDINGS X-5.
+                      //
+                      // Two changes it makes: /tests is PROMOTED into the bar — GA4 puts
+                      // it 12th by users precisely because it was buried behind "More" —
+                      // and Practice becomes "Drill", a raised centre action, the pattern
+                      // every comparable Indian exam-prep app uses for its primary verb.
+                      // Social and Daily/DPP move into More alongside AI Explainer, Goals,
+                      // Focus time, Leaderboard, Contest, Study, Graphs, Profile, Connect.
                       const mobileTabs = ([
-                            // Plain English, not internal names (audit X-6). "OGCode" and
-                            // "DPP" are product vocabulary a new student cannot decode;
-                            // the destinations are unchanged.
-                            //
-                            // NOTE: six items still exceeds the five-item guidance, and
-                            // /tests — the core-loop screen — is reachable only through
-                            // "More". Which item to cut is an information-architecture
-                            // decision that belongs to the A4 card-sort in
-                            // MOBILE_UX_RESEARCH_FINDINGS.md §3, not to a rename pass.
-                            { label: 'Home', icon: LayoutGrid, view: 'dashboard' as ViewState },
+                            { label: 'Home',  icon: LayoutGrid, view: 'dashboard' as ViewState },
+                            { label: 'Test',  icon: FileText,   view: 'test-list' as ViewState },
+                            { label: 'Drill', icon: Code,       view: 'ogcode' as ViewState, center: true },
                             { label: 'Rooms', icon: UsersRound, view: 'study-rooms' as ViewState },
-                            { label: 'Practice', icon: Code, view: 'ogcode' as ViewState },
-                            { label: 'Daily', icon: Target, view: 'dpp' as ViewState },
-                            { label: 'Social', icon: UserPlus, view: 'social' as ViewState },
-                            { label: 'More', icon: Menu, view: null },
-                        ] as { label: string; icon: typeof LayoutGrid; view: ViewState | null; iconSrc?: string }[])
-                          .filter((item) => socialEnabled || item.view !== 'social');
+                            { label: 'More',  icon: Menu,       view: null },
+                        ] as { label: string; icon: typeof LayoutGrid; view: ViewState | null; iconSrc?: string; center?: boolean }[]);
                       return (
                     <div className="grid h-14" style={{ gridTemplateColumns: `repeat(${mobileTabs.length}, minmax(0, 1fr))` }}>
                         {mobileTabs
@@ -740,12 +739,15 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                                 <button
                                     key={item.label}
                                     onClick={() => item.view ? onNavigate(item.view) : setShowMobileMenu(true)}
+                                    aria-current={active ? 'page' : undefined}
                                     className={cn(
-                                        'flex flex-col items-center justify-center gap-0.5 py-2 px-1 transition-all active:scale-95',
-                                        active ? 'text-primary' : 'text-muted-foreground hover:text-primary'
+                                        'relative flex min-h-14 flex-col items-center justify-center gap-0.5 px-1 py-2 transition-colors',
+                                        item.center && '-mt-5',
+                                        active && !item.center ? 'text-primary' : 'text-muted-foreground hover:text-primary',
+                                        item.center && active && 'text-primary font-medium'
                                     )}
                                 >
-                                    {active && (
+                                    {active && !item.center && (
                                         <span className="absolute top-0 w-8 h-0.5 bg-primary rounded-full" />
                                     )}
                                     {item.iconSrc ? (
@@ -755,6 +757,16 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                                             draggable={false}
                                             className={cn('w-5 h-5 object-contain transition-opacity', active ? 'opacity-100' : 'opacity-70')}
                                         />
+                                    ) : item.center ? (
+                                        <span
+                                            // Always accent-filled, not only when active. In every
+                                            // reference app the raised centre reads as THE primary
+                                            // verb, present whatever screen you are on; filling it
+                                            // only on the active tab loses that.
+                                            className="flex h-12 w-12 items-center justify-center rounded-full border-4 border-background bg-primary text-primary-foreground transition-colors"
+                                        >
+                                            <Icon className="w-6 h-6" />
+                                        </span>
                                     ) : (
                                         <Icon className="w-5 h-5" />
                                     )}

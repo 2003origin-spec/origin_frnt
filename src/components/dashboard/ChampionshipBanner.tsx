@@ -166,7 +166,7 @@ export function ChampionshipBanner({ onPractice }: { onPractice: () => void }) {
                 </span>
               ))}
             </div>
-            <NeuButton accent onClick={onPractice} className="ml-auto h-8 gap-1.5 px-4 text-xs">
+            <NeuButton accent onClick={onPractice} className="ml-auto h-11 gap-1.5 px-4 text-sm">
               <ChevronsUp className="h-3.5 w-3.5" />
               Solve to climb
             </NeuButton>
