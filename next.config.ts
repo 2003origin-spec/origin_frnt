@@ -3,6 +3,18 @@ import type { NextConfig } from "next";
 const r2PublicHostname = process.env.NEXT_PUBLIC_R2_PUBLIC_HOSTNAME?.trim();
 
 const nextConfig: NextConfig = {
+  // DEV ONLY, no production effect. Next 16 blocks /_next/* requests from any
+  // origin other than localhost, so opening the dev server from a phone on the
+  // LAN loads the SSR shell and then refuses every client chunk — the page
+  // header paints and nothing below it hydrates. Testing on real hardware is
+  // worth more than the risk here; the dev server is not exposed beyond the LAN.
+  allowedDevOrigins: ['10.21.227.65', '*.local'],
+
+  // DEV ONLY. The Next dev indicator is a fixed bottom-left button; on a phone
+  // it sits on top of the "Home" tab of the bottom nav and eats the tap. Compile
+  // status is already in the terminal.
+  devIndicators: false,
+
   outputFileTracingRoot: process.cwd(),
   poweredByHeader: false,
   compress: true,

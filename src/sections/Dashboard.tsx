@@ -72,7 +72,7 @@ function EventsCarousel() {
       <button
         onClick={prev}
         aria-label="Previous slide"
-        className="absolute left-3 top-1/2 -translate-y-1/2 z-20 neu-btn h-11 w-11 inline-flex items-center justify-center sm:opacity-0 sm:group-hover:opacity-100 transition-opacity duration-200"
+        className="absolute left-3 top-1/2 -translate-y-1/2 z-20 hidden h-11 w-11 sm:inline-flex items-center justify-center rounded-full bg-background/70 backdrop-blur-sm sm:opacity-0 sm:group-hover:opacity-100 transition-opacity duration-200"
       >
         <ChevronLeft className="w-4 h-4 text-foreground" />
       </button>
@@ -81,7 +81,7 @@ function EventsCarousel() {
       <button
         onClick={next}
         aria-label="Next slide"
-        className="absolute right-3 top-1/2 -translate-y-1/2 z-20 neu-btn h-11 w-11 inline-flex items-center justify-center sm:opacity-0 sm:group-hover:opacity-100 transition-opacity duration-200"
+        className="absolute right-3 top-1/2 -translate-y-1/2 z-20 hidden h-11 w-11 sm:inline-flex items-center justify-center rounded-full bg-background/70 backdrop-blur-sm sm:opacity-0 sm:group-hover:opacity-100 transition-opacity duration-200"
       >
         <ChevronRight className="w-4 h-4 text-foreground" />
       </button>
@@ -92,7 +92,7 @@ function EventsCarousel() {
           44px tall with the dot centred inside, so the hit area is honest
           without changing the look. */}
       <div
-        className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1 neu-inset px-2 rounded-full"
+        className="absolute inset-x-0 bottom-0 z-20 flex items-center justify-center gap-1"
         role="tablist"
         aria-label="Highlights"
       >
@@ -108,7 +108,7 @@ function EventsCarousel() {
           >
             <span
               aria-hidden
-              className={`block h-2 rounded-full transition-all ${idx === current ? 'w-6 bg-primary' : 'w-2 bg-muted-foreground/40'}`}
+              className={`block h-2 rounded-full shadow-[0_0_0_1px_rgba(0,0,0,.25)] transition-all ${idx === current ? 'w-6 bg-primary' : 'w-2 bg-white/70'}`}
             />
           </button>
         ))}
@@ -400,8 +400,13 @@ export default function Dashboard({
 
         {/* ── HERO ──────────────────────────────────────────────── */}
         <motion.div {...stagger(1)} id="tutorial-welcome" className="neu-raised p-5 sm:p-6 relative">
-          {/* Origin Quest + Live tasks — top-right of hero */}
-          <div className="absolute top-4 right-4 z-[60] flex items-center gap-2">
+          {/* Origin Quest + Live tasks.
+              Phone: an ordinary right-aligned row ABOVE the greeting. They used
+              to be absolutely positioned here too, and once the pills grew to
+              the 44px touch floor they sat straight on top of the rank badge
+              (reported on-device 2026-09-20). Absolute only from sm:, where the
+              badge is the centre grid column and there is room. */}
+          <div className="relative z-[60] mb-3 flex items-center justify-end gap-2 sm:absolute sm:top-4 sm:right-4 sm:mb-0">
 
           {/* Origin Quest pill */}
           <div className="relative">
