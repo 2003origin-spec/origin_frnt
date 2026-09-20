@@ -302,52 +302,22 @@
 
 /* Mobile refinements — tighter shadows and thinner strokes on small screens */
 @media (max-width: 640px) {
-  :root, .dark {
-    --neu-dist: 4px;
-    --neu-blur: 10px;
-    /* crisper corners than the 20px desktop panels */
-    --neu-radius: 16px;
-  }
+  /* ── SUPERSEDED by the OLED Material token layer (V1/DESIGN_LANGUAGE.md) ──
+     This block used to carry the Phase 3 "flatter & cleaner" mobile override
+     from MOBILE_UI_REDESIGN_PLAN: a single soft drop shadow plus a hairline
+     ring, applied with !important, on phones only.
 
-  /* ── Phase 3 "flatter & cleaner" (MOBILE_UI_REDESIGN_PLAN, user direction) ──
-     On phones, replace the dual embossed neumorphic shadows with a single soft
-     drop shadow + a hairline ring. Neumorphism's light/dark shadow pair eats
-     contrast and vertical space on a small screen and reads dated; this keeps
-     the brand surface colour and depth cue but flattens the look.
-     Desktop/tablet (>640px) keeps the existing neumorphic identity.
-     Implementation note: the hairline is a `box-shadow` ring, NOT a border, so
-     there is ZERO layout shift — no element changes size. */
-  .neu-raised {
-    box-shadow:
-      0 0 0 1px hsl(var(--neu-shadow) / 32%),
-      0 1px 2px hsl(var(--neu-shadow) / 30%),
-      0 6px 16px -6px hsl(var(--neu-shadow) / 34%) !important;
-  }
-  .neu-inset {
-    box-shadow:
-      inset 0 0 0 1px hsl(var(--neu-shadow) / 26%),
-      inset 0 2px 4px hsl(var(--neu-shadow) / 26%) !important;
-  }
-  .neu-btn {
-    border-radius: 12px;
-    box-shadow:
-      0 0 0 1px hsl(var(--neu-shadow) / 32%),
-      0 1px 2px hsl(var(--neu-shadow) / 28%);
-  }
-  .neu-btn:hover {
-    box-shadow:
-      0 0 0 1px hsl(var(--neu-shadow) / 40%),
-      0 2px 6px -1px hsl(var(--neu-shadow) / 32%);
-  }
-  .neu-btn:active, .neu-btn[data-pressed="true"] {
-    box-shadow: inset 0 1px 3px hsl(var(--neu-shadow) / 45%);
-    transform: translateY(1px);
-  }
-  .neu-field {
-    box-shadow:
-      inset 0 0 0 1px hsl(var(--neu-shadow) / 30%),
-      inset 0 1px 3px hsl(var(--neu-shadow) / 24%);
-  }
+     Its GOAL is now the default at every breakpoint — .neu-raised / .neu-inset
+     / .neu-btn / .neu-field are tonal surfaces with real hairline borders, in
+     both themes, on every screen size. Keeping the override would have
+     re-introduced shadows on exactly the phones this redesign targets, and its
+     !important would have beaten the new definitions.
+
+     --neu-dist / --neu-blur are now 0 and --neu-radius resolves to
+     var(--radius-md), so the mobile-only retune has nothing left to tune.
+     Per AGENTS.md "Single source of truth — plan vs code": the newer
+     deliberate design doc wins, and this is the note recording it. */
+
   .text-outline {
     -webkit-text-stroke: 1px #000;
     text-shadow:
