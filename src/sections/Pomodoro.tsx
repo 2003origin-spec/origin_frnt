@@ -908,7 +908,7 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
             <div className="flex gap-4">
               <div className="flex items-center gap-3 px-4 py-2 bg-primary/5 border border-primary/20 rounded-2xl">
                 <Flame className="w-4 h-4 text-primary" />
-                <span className="text-xs font-black text-primary uppercase tracking-widest leading-none">
+                <span className="text-sm font-semibold text-primary leading-none">
                   {user.streak} Day Study Streak
                 </span>
               </div>
@@ -930,7 +930,7 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
                       className="absolute top-8 flex items-center gap-3 p-3 px-6 rounded-full bg-primary/10 border border-primary/20 backdrop-blur-md z-20"
                     >
                       <ShieldAlert className="w-4 h-4 text-primary" />
-                      <p className="text-[10px] font-black text-primary uppercase tracking-widest">Interrupted {interruptionCount}x</p>
+                      <p className="text-xs font-medium text-primary">Interrupted {interruptionCount}×</p>
                     </motion.div>
                   )}
 
@@ -1088,7 +1088,7 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
                       </SelectContent>
                     </Select>
                   ) : (
-                    <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest text-center py-4">Select a task from your dashboard</p>
+                    <p className="py-4 text-center text-sm text-muted-foreground">Select a task from your dashboard</p>
                   )}
                 </CardContent>
               </Card>
@@ -1128,7 +1128,7 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
                   ].map((tip, i) => (
                     <li key={i} className="flex items-center gap-3 group">
                        <div className="w-6 h-6 rounded-lg bg-primary/10 flex items-center justify-center text-[10px] font-black group-hover:bg-primary group-hover:text-white transition-all italic">{i+1}</div>
-                       <p className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-tight">{tip}</p>
+                       <p className="text-sm text-muted-foreground">{tip}</p>
                     </li>
                   ))}
                 </ul>
@@ -1141,8 +1141,8 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
                   <Coffee className="w-5 h-5" />
                   Recovery Engine
                 </h3>
-                <p className="text-xs font-bold text-slate-600 dark:text-slate-400 leading-relaxed uppercase tracking-tight">
-                  Your brain requires oscillation between focus and deep-rest. Every 4 sessions, enter a Long Break phase.
+                <p className="text-sm leading-relaxed text-muted-foreground">
+                  Your brain needs to alternate between focus and rest. After 4 sessions, take a long break.
                 </p>
               </CardContent>
             </Card>

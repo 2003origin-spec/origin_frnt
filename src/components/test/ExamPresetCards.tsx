@@ -81,10 +81,10 @@ export default function ExamPresetCards({
   return (
     <section className="mb-10">
       <div className="mb-6">
-        <h2 className="text-lg sm:text-2xl font-black uppercase tracking-tighter text-foreground">
+        <h2 className="font-display text-xl sm:text-2xl font-bold tracking-tight text-foreground">
           Full-Length Mock Tests
         </h2>
-        <p className="mt-1 text-[10px] sm:text-xs font-bold uppercase tracking-widest text-muted-foreground">
+        <p className="mt-1 text-xs sm:text-sm text-muted-foreground">
           Real exam pattern · real marking · sectional paper
         </p>
       </div>

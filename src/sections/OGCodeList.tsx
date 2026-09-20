@@ -2093,7 +2093,7 @@ export default function OGCodeList({
                                         <div className="flex items-end justify-between gap-2">
                                             <div className="min-w-0">
                                                 <p className="text-[11px] font-black text-foreground/80 truncate">{q.chapter || 'Foundations'}</p>
-                                                <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider truncate">{q.concept || 'JEE Advanced'}</p>
+                                                <p className="truncate text-xs text-muted-foreground">{q.concept || 'JEE Advanced'}</p>
                                             </div>
                                             <button className="flex-shrink-0 inline-flex min-h-11 items-center gap-1 neu-btn px-4 text-sm font-semibold text-primary whitespace-nowrap">
                                                 Attempt <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />

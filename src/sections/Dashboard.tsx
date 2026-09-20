@@ -85,14 +85,31 @@ function EventsCarousel() {
         <ChevronRight className="w-4 h-4 text-foreground" />
       </button>
 
-      {/* dot indicators */}
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex gap-2 neu-inset px-3 py-2 rounded-full">
-        {SLIDES.map((_, idx) => (
+      {/* Dot indicators. Measured as five 9x9 buttons with NO accessible name —
+          a screen reader announced five identical "button"s, and each was a
+          fifth of the 44px minimum. The dot stays 8px visually; the BUTTON is
+          44px tall with the dot centred inside, so the hit area is honest
+          without changing the look. */}
+      <div
+        className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1 neu-inset px-2 rounded-full"
+        role="tablist"
+        aria-label="Highlights"
+      >
+        {SLIDES.map((slide, idx) => (
           <button
             key={idx}
+            type="button"
+            role="tab"
             onClick={() => setCurrent(idx)}
-            className={`h-2 rounded-full transition-all ${idx === current ? 'w-6 bg-primary' : 'w-2 bg-muted-foreground/40 hover:bg-muted-foreground/60'}`}
-          />
+            aria-label={`${slide.title} — ${idx + 1} of ${SLIDES.length}`}
+            aria-selected={idx === current}
+            className="flex h-11 min-w-8 items-center justify-center px-1"
+          >
+            <span
+              aria-hidden
+              className={`block h-2 rounded-full transition-all ${idx === current ? 'w-6 bg-primary' : 'w-2 bg-muted-foreground/40'}`}
+            />
+          </button>
         ))}
       </div>
     </div>

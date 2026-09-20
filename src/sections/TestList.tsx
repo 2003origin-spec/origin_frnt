@@ -706,7 +706,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                             <div className="relative z-10 flex items-start justify-between gap-3">
                                 <div>
                                     <h2 className="text-xl sm:text-3xl font-black tracking-tighter mb-2">Custom Test Builder</h2>
-                                    <p className="text-[10px] sm:text-xs font-bold opacity-80 uppercase tracking-widest">Build your own practice set</p>
+                                    <p className="text-xs sm:text-sm opacity-80">Build your own practice set</p>
                                 </div>
                                 {/* How-it-works explainer. */}
                                 <button
@@ -835,7 +835,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                                             );
                                         })}
                                         {customTestConfig.subjects.length === 0 && (
-                                            <span className="self-center text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Pick one or more subjects</span>
+                                            <span className="self-center text-xs text-muted-foreground">Pick one or more subjects</span>
                                         )}
                                     </div>
                                 </div>

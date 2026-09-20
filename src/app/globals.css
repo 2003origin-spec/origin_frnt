@@ -1239,11 +1239,14 @@ main {
 .landing-cta-btn--sm .cta-icon    { height: 16px; width: 16px; }
 
 .landing-cta-btn--xs {
-  height: 34px;
-  min-width: 96px;
-  padding: 0 14px;
-  font-size: 9px;
-  letter-spacing: 0.14em;
+  /* Was 34px tall / 9px text — the PRIMARY conversion button on the app's
+     most-visited screen (448 users, 81.6% of all), below the 44px minimum and
+     at a font size nothing else in the app uses. */
+  height: 44px;
+  min-width: 112px;
+  padding: 0 18px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
   border-radius: 10px;
   box-shadow: 0 0.5px 0.5px 1px rgba(255,255,255,0.18), 0 6px 14px rgba(0,0,0,0.22), 0 2px 4px 0 rgba(0,0,0,0.06);
 }

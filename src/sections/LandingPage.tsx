@@ -646,7 +646,8 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
             <div className="flex items-center gap-2 sm:gap-4">
               <button
                 onClick={() => setTheme(actualTheme === 'dark' ? 'light' : 'dark')}
-                className="neu-btn rounded-full w-9 h-9 flex items-center justify-center border-0 text-foreground transition-all duration-300 hover:scale-105 active:scale-95"
+                aria-label="Toggle dark mode"
+                className="neu-btn rounded-full w-11 h-11 flex items-center justify-center border-0 text-foreground transition-all duration-300 hover:scale-105 active:scale-95"
               >
                 {mounted && (actualTheme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-primary" />)}
               </button>
@@ -657,7 +658,12 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
                 variant="xs"
               />
 
-              <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="md:hidden p-2 text-foreground">
+              <button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
+                aria-expanded={mobileMenuOpen}
+                className="md:hidden inline-flex h-11 w-11 items-center justify-center text-foreground"
+              >
                 {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
               </button>
             </div>
@@ -918,7 +924,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
             </p>
 
             {/* Built from the minds of — institution logos (IIT · NIT · IIIT) */}
-            <p className="text-[10px] sm:text-xs font-heading font-black uppercase tracking-[0.3em] text-muted-foreground mb-5">
+            <p className="mb-5 text-sm text-muted-foreground">
               Built from the minds of
             </p>
             <div className="flex items-center justify-center gap-4 sm:gap-6 flex-wrap mb-8">
@@ -1034,21 +1040,21 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
         <footer className="py-10 relative z-10 border-t border-border/20 neu-surface">
           <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row items-center md:items-end justify-between gap-8">
             <div className="flex flex-col items-center md:items-start gap-2">
-              <span className="text-[10px] font-black text-muted-foreground/60 uppercase tracking-[0.4em]">© 2026 SUPERGOAT TECHNOLOGIES PRIVATE LIMITED</span>
+              <span className="text-[10px] font-black text-muted-foreground/60 tracking-[0.4em]">© 2026 SUPERGOAT TECHNOLOGIES PRIVATE LIMITED</span>
               <div className="flex flex-wrap gap-2 sm:gap-4 text-xs text-muted-foreground mt-2">
-                <a href="/terms-and-conditions" className="hover:text-primary transition-colors font-medium">Terms & Conditions</a>
+                <a href="/terms-and-conditions" className="inline-flex min-h-11 items-center hover:text-primary transition-colors font-medium">Terms & Conditions</a>
                 <span className="hidden sm:inline text-border">•</span>
-                <a href="/privacy-policy" className="hover:text-primary transition-colors font-medium">Privacy Policy</a>
+                <a href="/privacy-policy" className="inline-flex min-h-11 items-center hover:text-primary transition-colors font-medium">Privacy Policy</a>
                 <span className="hidden sm:inline text-border">•</span>
-                <a href="/childrens-policy" className="hover:text-primary transition-colors font-medium">Children's Safety Policy</a>
+                <a href="/childrens-policy" className="inline-flex min-h-11 items-center hover:text-primary transition-colors font-medium">Children's Safety Policy</a>
                 <span className="hidden sm:inline text-border">•</span>
-                <a href="/refund-policy" className="hover:text-primary transition-colors font-medium">Refund Policy</a>
+                <a href="/refund-policy" className="inline-flex min-h-11 items-center hover:text-primary transition-colors font-medium">Refund Policy</a>
                 <span className="hidden sm:inline text-border">•</span>
-                <a href="/return-policy" className="hover:text-primary transition-colors font-medium">Return Policy</a>
+                <a href="/return-policy" className="inline-flex min-h-11 items-center hover:text-primary transition-colors font-medium">Return Policy</a>
                 <span className="hidden sm:inline text-border">•</span>
-                <a href="/shipping-policy" className="hover:text-primary transition-colors font-medium">Shipping Policy</a>
+                <a href="/shipping-policy" className="inline-flex min-h-11 items-center hover:text-primary transition-colors font-medium">Shipping Policy</a>
                 <span className="hidden sm:inline text-border">•</span>
-                <a href="/faq" className="hover:text-primary transition-colors font-medium">FAQ</a>
+                <a href="/faq" className="inline-flex min-h-11 items-center hover:text-primary transition-colors font-medium">FAQ</a>
               </div>
               <img src="/origin-new.jpg" alt="ORIGIN" className="h-12 w-auto dark:brightness-110 mt-3" />
             </div>

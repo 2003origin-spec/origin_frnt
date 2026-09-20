@@ -187,7 +187,7 @@ export default function TeacherFlipCard() {
           viewport={{ once: true, margin: '-80px' }}
           className="text-center mb-10"
         >
-          <span className="text-[10px] font-black text-primary tracking-[0.4em] uppercase block mb-4">
+          <span className="block mb-4 text-sm font-semibold text-primary">
             Two Audiences, One Platform
           </span>
           <h2 className="text-3xl xs:text-4xl sm:text-6xl lg:text-7xl font-black tracking-tighter leading-[0.95] mb-6">
