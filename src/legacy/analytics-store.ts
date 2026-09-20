@@ -157,11 +157,12 @@ CREATE INDEX IF NOT EXISTS idx_analytics_dpp_plans_teacher_share
 ALTER TABLE analytics.dpp_plans ADD COLUMN IF NOT EXISTS batch_id TEXT;
 CREATE INDEX IF NOT EXISTS idx_analytics_dpp_plans_batch
   ON analytics.dpp_plans (workspace_id, batch_id, origin);
-ALTER TABLE analytics.dpp_attempts ADD COLUMN IF NOT EXISTS score DOUBLE PRECISION;
-ALTER TABLE analytics.dpp_attempts ADD COLUMN IF NOT EXISTS total_marks DOUBLE PRECISION;
-ALTER TABLE analytics.dpp_attempts ADD COLUMN IF NOT EXISTS percentage DOUBLE PRECISION;
-CREATE INDEX IF NOT EXISTS idx_analytics_dpp_attempts_plan_created
-  ON analytics.dpp_attempts (dpp_id, created_at DESC);
+-- NOTE: the ALTERs and index for analytics.dpp_attempts used to sit HERE, above
+-- the CREATE TABLE for that very table. Postgres runs this whole literal as one
+-- implicit transaction, so on a database that had never had dpp_attempts the
+-- first ALTER aborted everything and the CREATE never ran — meaning this
+-- "self-healing" block could never heal a fresh machine. Invisible in
+-- production, where the table predates the bug. Moved below the CREATE.
 
 -- Per-question DPP results. A DPP has no submit button — the student checks one
 -- answer at a time — so scoring hung off submit recorded nothing for a student
@@ -212,6 +213,12 @@ CREATE TABLE IF NOT EXISTS analytics.dpp_attempts (
   answers JSONB NOT NULL DEFAULT '[]'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+ALTER TABLE analytics.dpp_attempts ADD COLUMN IF NOT EXISTS score DOUBLE PRECISION;
+ALTER TABLE analytics.dpp_attempts ADD COLUMN IF NOT EXISTS total_marks DOUBLE PRECISION;
+ALTER TABLE analytics.dpp_attempts ADD COLUMN IF NOT EXISTS percentage DOUBLE PRECISION;
+CREATE INDEX IF NOT EXISTS idx_analytics_dpp_attempts_plan_created
+  ON analytics.dpp_attempts (dpp_id, created_at DESC);
+
 
 CREATE TABLE IF NOT EXISTS analytics.dpp_topic_progress (
   id BIGSERIAL PRIMARY KEY,
