@@ -551,7 +551,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                 <div className="mb-8 p-6 rounded-[32px] bg-primary text-white relative overflow-hidden shadow-xl shadow-primary/20">
                   <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
                     <div>
-                      <h2 className="text-xl sm:text-2xl font-black uppercase tracking-tighter mb-1">Personalized Intelligence</h2>
+                      <h2 className="text-xl sm:text-2xl font-black tracking-tighter mb-1">Personalized Intelligence</h2>
                       <p className="text-xs font-bold opacity-80 uppercase tracking-widest flex items-center gap-2">
                         <Sparkles className="w-4 h-4" />
                         Tests curated for your primary subjects
@@ -688,7 +688,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                       <div className="w-20 h-20 rounded-3xl bg-primary/10 text-primary flex items-center justify-center mb-6">
                         <Plus className="w-10 h-10" />
                       </div>
-                      <h3 className="text-2xl font-black text-foreground mb-2 uppercase tracking-tighter">Generator Empty</h3>
+                      <h3 className="text-2xl font-black text-foreground mb-2 tracking-tighter">Generator Empty</h3>
                       <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-8">No custom tests found in your gallery.</p>
                     </Card>
                   )}
@@ -705,7 +705,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                         <div className="p-6 sm:p-10 border-b border-border/40 bg-primary text-white relative">
                             <div className="relative z-10 flex items-start justify-between gap-3">
                                 <div>
-                                    <h2 className="text-xl sm:text-3xl font-black uppercase tracking-tighter mb-2">Custom Test Builder</h2>
+                                    <h2 className="text-xl sm:text-3xl font-black tracking-tighter mb-2">Custom Test Builder</h2>
                                     <p className="text-[10px] sm:text-xs font-bold opacity-80 uppercase tracking-widest">Build your own practice set</p>
                                 </div>
                                 {/* How-it-works explainer. */}
@@ -1195,7 +1195,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                             <Button
                                 onClick={handleCreateCustomTest}
                                 disabled={creatingTest || activeSubjects.length === 0 || totalQ <= 0}
-                                className="w-full h-16 rounded-3xl bg-primary text-white font-black text-lg uppercase tracking-tighter transition-all shadow-xl shadow-primary/20 disabled:opacity-50"
+                                className="w-full h-16 rounded-3xl bg-primary text-white font-black text-lg tracking-tighter transition-all shadow-xl shadow-primary/20 disabled:opacity-50"
                             >
                                 {creatingTest ? (
                                     <div className="flex items-center gap-3">
@@ -1218,7 +1218,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                     <Dialog open={infoOpen} onOpenChange={setInfoOpen}>
                         <DialogContent className="max-w-lg rounded-3xl">
                             <DialogHeader>
-                                <DialogTitle className="flex items-center gap-2 text-lg font-black uppercase tracking-tight">
+                                <DialogTitle className="flex items-center gap-2 text-lg font-black tracking-tight">
                                     <Sparkles className="w-5 h-5 text-primary" />
                                     How your custom test is built
                                 </DialogTitle>

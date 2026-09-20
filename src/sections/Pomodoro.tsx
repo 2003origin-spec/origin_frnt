@@ -843,7 +843,7 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
                   <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
                 </div>
                 <div className="hidden xs:block">
-                  <h1 className="text-sm sm:text-lg font-black text-slate-900 dark:text-white uppercase tracking-tighter">Focus Lab</h1>
+                  <h1 className="text-sm sm:text-lg font-black text-slate-900 dark:text-white tracking-tighter">Focus Lab</h1>
                 </div>
               </div>
             </div>
@@ -951,7 +951,7 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
                     {isAlarmRinging ? (
                        <div className="w-72 h-72 sm:w-[400px] sm:h-[400px] flex items-center justify-center relative z-10">
                         <div className="neu-raised rounded-[64px] p-8 w-full text-center">
-                          <h2 className="text-2xl font-black text-slate-900 dark:text-white mb-4 tracking-tighter uppercase">
+                          <h2 className="text-2xl font-black text-slate-900 dark:text-white mb-4 tracking-tighter">
                             Phase Concluded
                           </h2>
                           <Button
@@ -1159,7 +1159,7 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
             <CardContent className="p-10">
               <div className="flex items-center justify-between mb-10">
                 <div>
-                  <h3 className="text-2xl font-black text-foreground uppercase tracking-tighter">Laboratory Settings</h3>
+                  <h3 className="text-2xl font-black text-foreground tracking-tighter">Laboratory Settings</h3>
                 </div>
                 <button onClick={() => setShowSettings(false)} className="p-3 rounded-full neu-raised hover:-translate-y-0.5 transition-all text-muted-foreground">
                   <X className="w-6 h-6" />
@@ -1197,7 +1197,7 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
       <Sheet open={showHistory} onOpenChange={setShowHistory}>
         <SheetContent side="right" className="w-full sm:max-w-md bg-[hsl(var(--neu-bg))] backdrop-blur-2xl border-l border-border/40 p-0 overflow-hidden flex flex-col">
           <SheetHeader className="p-8 border-b border-border/40">
-            <h3 className="text-2xl font-black tracking-tighter dark:text-white uppercase">Focus Log</h3>
+            <h3 className="text-2xl font-black tracking-tighter dark:text-white">Focus Log</h3>
           </SheetHeader>
 
           <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
@@ -1232,7 +1232,7 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-md p-4 animate-in fade-in duration-300">
           <Card className="w-full max-w-lg border-0 neu-raised rounded-3xl overflow-hidden transform animate-in zoom-in-95">
             <CardContent className="p-10 text-center">
-              <h3 className="text-2xl font-black text-foreground uppercase tracking-tighter mb-8">Rest Intel</h3>
+              <h3 className="text-2xl font-black text-foreground tracking-tighter mb-8">Rest Intel</h3>
               <div className="space-y-6">
                 <Select value={selectedReason} onValueChange={setSelectedReason}>
                     <SelectTrigger className="h-14 rounded-2xl neu-inset border-0">

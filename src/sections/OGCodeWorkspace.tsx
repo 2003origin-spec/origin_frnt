@@ -1846,7 +1846,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                     </div>
                                     <div className="col-span-2 sm:col-span-1 neu-inset rounded-xl px-3 py-2 min-h-[3.5rem]">
                                         <p className="text-[9px] sm:text-[10px] uppercase tracking-widest text-slate-500">Speed Rating</p>
-                                        <p className="text-base sm:text-lg font-black text-slate-900 dark:text-slate-100 uppercase tracking-tighter">
+                                        <p className="text-base sm:text-lg font-black text-slate-900 dark:text-slate-100 tracking-tighter">
                                             {result.speedBand ? SPEED_BAND_LABELS[result.speedBand] : 'Recorded'}
                                         </p>
                                         {typeof result.targetTimeSeconds === 'number' && (
