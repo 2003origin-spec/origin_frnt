@@ -24,6 +24,7 @@ import StudyModeFirstRunPrompt from '@/components/dashboard/StudyModeFirstRunPro
 import { apiCall } from '@/lib/api';
 import { useLayout } from '@/context/LayoutContext';
 import { cn } from '@/lib/utils';
+import { StatGrid } from '@/components/layout/shells';
 import { NeuButton } from '@/components/ui/neu';
 import type { TimeType } from '@/hooks/useTimeTracker';
 import { getRegistrationStatusAction } from '@/server/actions/system-actions';
@@ -609,37 +610,32 @@ export default function Dashboard({
         </motion.div>
 
         {/* ── QUICK STATS STRIP + progress trigger ──────────────── */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-          {(() => {
-            const solved = userStats?.solvedCount ?? totalSolved;
-            const streak = userStats?.streak ?? user.streak ?? 0;
-            return [
-              // The per-tile Ori images are gone (audit X-2). Five Ori instances
-              // rendered in one viewport — hero plus all four tiles — and the tile
-              // ones carried no information while sitting on top of the values.
-              // Ori stays in the hero, where it is the subject rather than decoration.
-              { icon: BookOpen,   color: 'text-emerald-500', label: 'Questions solved', value: solved.toLocaleString() },
-              { icon: Flame,      color: 'text-orange-500',  label: 'Day streak',       value: streak > 0 ? String(streak) : '—' },
-              { icon: Award,      color: 'text-violet-500',  label: 'Current rank',     value: pointsData?.currentTier ?? '—' },
-              { icon: TrendingUp, color: 'text-cyan-500',    label: 'Studied today',    value: todayStudyMins > 0 ? `${todayStudyMins}m` : '—' },
-            ];
-          })().map((s, i) => (
-            <motion.div key={s.label} {...stagger(i + 3)} className="neu-raised p-4 flex flex-col gap-1.5 min-w-0">
-              <s.icon className={`w-4 h-4 ${s.color}`} />
-              <p className="font-display text-2xl font-bold text-foreground leading-none tabular-nums truncate">{s.value}</p>
-              <p className="text-xs text-muted-foreground">{s.label}</p>
-            </motion.div>
-          ))}
-          {/* Progress panel trigger — simple tile beside stats */}
-          <motion.button
-            {...stagger(7)}
+        {/* Migrated onto the StatGrid shell (Stage 5). The tiles are no longer
+            hand-rolled here, so the mascot-in-every-tile regression (X-2) cannot
+            come back: StatGrid takes an icon, not children. */}
+        <div className="flex flex-col gap-3">
+          <StatGrid
+            stats={(() => {
+              const solved = userStats?.solvedCount ?? totalSolved;
+              const streak = userStats?.streak ?? user.streak ?? 0;
+              return [
+                { icon: <BookOpen className="text-emerald-500" />,   label: 'Questions solved', value: solved.toLocaleString() },
+                { icon: <Flame className="text-orange-500" />,       label: 'Day streak',       value: streak > 0 ? String(streak) : '—' },
+                { icon: <Award className="text-violet-500" />,       label: 'Current rank',     value: pointsData?.currentTier ?? '—' },
+                { icon: <TrendingUp className="text-cyan-500" />,    label: 'Studied today',    value: todayStudyMins > 0 ? `${todayStudyMins}m` : '—' },
+              ];
+            })()}
+          />
+          <button
             onClick={() => setPanelOpen(true)}
-            className="neu-raised p-4 flex flex-col gap-1.5 min-w-0 group hover:bg-primary/5 transition-colors col-span-2 sm:col-span-1"
+            className="flex min-h-11 w-full items-center justify-between rounded-xl border border-border bg-card px-4 py-3 text-left transition-colors hover:bg-accent"
           >
-            <BarChart3 className="w-4 h-4 text-primary" />
-            <p className="font-display text-2xl font-bold text-primary leading-none">→</p>
-            <p className="text-xs text-muted-foreground">Progress</p>
-          </motion.button>
+            <span className="flex items-center gap-2">
+              <BarChart3 className="size-4 text-primary" />
+              <span className="text-sm font-medium text-foreground">Progress</span>
+            </span>
+            <span aria-hidden className="font-display text-xl font-bold text-primary">→</span>
+          </button>
         </div>
 
         {/* ── Self-study rallying cry ── */}

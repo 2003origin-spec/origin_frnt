@@ -12,4 +12,4 @@ export { PageHeader } from './PageHeader';
 export { FilterBar, type FilterOption } from './FilterBar';
 export { EmptyState, ErrorState, LoadingState } from './StateBlock';
 export { EntityCard, type Stat } from './EntityCard';
-export { StatGrid } from './StatGrid';
+export { StatGrid, type StatTile } from './StatGrid';

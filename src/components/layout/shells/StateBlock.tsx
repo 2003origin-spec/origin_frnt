@@ -19,8 +19,16 @@ export function EmptyState({
   description,
   action,
   className,
-}: Common & { action: { label: string; onClick?: () => void; href?: string } }) {
+  /** Centre vertically in the remaining space. Use when this is the only thing
+   *  on the screen — otherwise the card pins to the top and leaves ~1000px of
+   *  dead space beneath it (audit X-7, measured on /dpp). */
+  fill = false,
+}: Common & {
+  action: { label: string; onClick?: () => void; href?: string };
+  fill?: boolean;
+}) {
   return (
+    <div className={cn(fill && 'flex min-h-[60dvh] flex-col justify-center')}>
     <div className={cn('flex flex-col items-center gap-3 rounded-xl border border-border bg-card px-6 py-10 text-center', className)}>
       <h2 className="font-display text-xl font-bold text-foreground">{title}</h2>
       {description ? <p className="max-w-[36ch] text-sm leading-relaxed text-muted-foreground">{description}</p> : null}
@@ -29,6 +37,7 @@ export function EmptyState({
       ) : (
         <Button onClick={action.onClick}>{action.label}</Button>
       )}
+    </div>
     </div>
   );
 }

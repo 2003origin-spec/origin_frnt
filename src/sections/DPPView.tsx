@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 
+import { EmptyState } from '@/components/layout/shells';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -880,42 +881,26 @@ export default function DPPView({ onBack, initialDpps, user }: DPPViewProps) {
             <CardContent className="p-8 text-center text-red-500">{error}</CardContent>
           </Card>
         ) : dpps.length === 0 ? (
-          <Card className="neu-raised border-0 shadow-none">
-            <CardContent className="p-8 text-center space-y-3">
-              <img src="/ori2d/ori-cheerful.png" alt="Ori" className="w-28 h-28 object-contain mx-auto mb-3 drop-shadow-md" />
-              {hasAnyPremium(user) ? (
-                <>
-                  {/* Audit X-6 + rule 7: this said "so the analytics pipeline can
-                      generate targeted DPPs" — system vocabulary aimed at a
-                      17-year-old — and offered no way out. An empty state the
-                      student cannot leave is a dead end. */}
-                  <h2 className="font-display text-2xl font-bold text-foreground">No practice sets yet</h2>
-                  <p className="mx-auto max-w-[36ch] text-muted-foreground">
-                    Finish a test and we&apos;ll build practice sets from the questions you got wrong.
-                  </p>
-                  <button
-                    onClick={onBack}
-                    className="neu-btn mx-auto mt-1 flex min-h-12 items-center justify-center rounded-full px-6 font-semibold text-primary-foreground bg-primary"
-                  >
-                    Take a test
-                  </button>
-                </>
-              ) : (
-                <>
-                  <h2 className="font-display text-2xl font-bold text-foreground">Daily practice is a premium feature</h2>
-                  <p className="mx-auto max-w-[36ch] text-muted-foreground">
-                    Unlock any subject and we&apos;ll build practice sets from your weak topics after every test.
-                  </p>
-                  <button
-                    onClick={onBack}
-                    className="mt-2 inline-flex items-center justify-center rounded-xl bg-primary px-5 py-2.5 text-sm font-black uppercase tracking-widest text-primary-foreground shadow-lg shadow-primary/20 transition hover:opacity-90"
-                  >
-                    Explore premium
-                  </button>
-                </>
-              )}
-            </CardContent>
-          </Card>
+          /* Migrated onto the EmptyState shell (Stage 5). Its `action` prop is
+             REQUIRED, so the dead-end this screen used to be — "submit a test
+             first so the analytics pipeline can generate targeted DPPs", with no
+             way to do it (audit X-6) — is now a compile error, not a review
+             catch. */
+          hasAnyPremium(user) ? (
+            <EmptyState
+              title="No practice sets yet"
+              description="Finish a test and we'll build practice sets from the questions you got wrong."
+              action={{ label: 'Take a test', onClick: onBack }}
+              fill
+            />
+          ) : (
+            <EmptyState
+              title="Daily practice is a premium feature"
+              description="Unlock any subject and we'll build practice sets from your weak topics after every test."
+              action={{ label: 'See plans', onClick: onBack }}
+              fill
+            />
+          )
         ) : !selectedDppId ? (
           <DppSelectionGrid dpps={dpps} onSelect={setSelectedDppId} />
         ) : !currentDpp ? (
