@@ -20,6 +20,8 @@ import {
     Code,
     Home,
     BarChart3,
+    Camera,
+    Share2,
     LayoutGrid,
     ListTodo,
     BookOpen,
@@ -112,6 +114,20 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
     // Views that already have their own tab in the bottom bar, so the More
     // sheet does not list them twice.
     const MOBILE_TAB_VIEWS = new Set<string>(['dashboard', 'test-list', 'ogcode']);
+
+    // Destinations the mockup's nav carried as tabs. The restored bar has no
+    // room for them, so they live in the More sheet — they are NOT in `navItems`
+    // (the desktop rail reaches Leaderboard and Contest elsewhere), so they are
+    // listed here rather than filtered out of it.
+    //
+    // Orbit is the contest surface and ships dark in production, so it points at
+    // its Coming Soon screen until the flag is on rather than dead-ending.
+    const moreExtras = isTeacher ? [] : [
+        { label: 'Snap & Solve', icon: Camera, view: 'snap-solve' as ViewState },
+        { label: 'Orbit', icon: Trophy, view: (contestEnabled ? 'contest' : 'snap-solve') as ViewState },
+        { label: 'Leaderboard', icon: BarChart3, view: 'leaderboard' as ViewState },
+        { label: 'Mindmaps', icon: Share2, view: 'mindmaps' as ViewState },
+    ];
 
     const navItems = isTeacher ? [] : [
         { label: 'Home', icon: Home, view: 'dashboard' as ViewState },
@@ -529,66 +545,17 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                 </div>
             </nav>
 
-            {/* ── MOBILE TOP BAR ───────────────────────────────────────────
-                Removed on 2026-09-20 to reclaim 56px, restored on 2026-09-21
-                because the home mockup calls for it and the user confirmed the
-                trade with the cost stated (HOME_REDESIGN_PLAN.md D1). The five
-                controls are the same ones the More sheet holds — this is a
-                second entry point, not a second implementation.
+            {/* ── MOBILE TOP BAR — REMOVED AGAIN 2026-09-21 ────────────────────
+                Deleted on 2026-09-20 to reclaim 56px, restored the next day for
+                the home mockup (D1), then removed again the same day at the
+                user's request after seeing it on device. The five controls —
+                logo, notifications, theme, search, avatar — live in the More
+                sheet, which the More tab opens.
 
-                `h-topbar` = 3.5rem + the status-bar inset, and its padding-top
-                pushes the row below the cutout. Page content clears it with
-                `pt-topbar` in ClientShell. Both collapse to 3.5rem where the
-                inset is 0. */}
-            {!isTeacher && (
-                <header className="fixed inset-x-0 top-0 z-[55] md:hidden h-topbar bg-background border-b border-border">
-                    <div className="flex h-14 items-center justify-between pl-3 pr-1">
-                        <button
-                            onClick={() => onNavigate('dashboard')}
-                            className="flex min-h-11 items-center gap-2 rounded-xl px-1 py-1"
-                            aria-label="Origin home"
-                        >
-                            {/* Same asset the desktop rail uses — /logo/ holds only a favicon. */}
-                            <img
-                                src={user.role?.toLowerCase() === 'student' ? '/origin-new.jpg' : '/O3-Origin-Logo.png'}
-                                alt=""
-                                aria-hidden
-                                className="h-8 w-8 rounded-lg object-cover"
-                            />
-                            <span className="font-display text-lg font-bold tracking-tight text-primary">Origin</span>
-                        </button>
-
-                        <div className="flex items-center">
-                            <div className="flex h-11 w-11 items-center justify-center"><NotificationBell /></div>
-                            <button
-                                onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-                                aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
-                                className="flex h-11 w-11 items-center justify-center rounded-xl text-muted-foreground"
-                            >
-                                {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-                            </button>
-                            <button
-                                onClick={() => setIsSearchOpen(true)}
-                                aria-label="Search"
-                                className="flex h-11 w-11 items-center justify-center rounded-xl text-muted-foreground"
-                            >
-                                <Search className="h-5 w-5" />
-                            </button>
-                            <button
-                                onClick={() => setShowMobileMenu(true)}
-                                aria-label="Account and more"
-                                className="flex h-11 w-11 items-center justify-center"
-                            >
-                                <Avatar className="h-8 w-8 border border-border">
-                                    <AvatarFallback className="bg-surface-3 text-xs font-bold text-foreground">
-                                        {user.name.charAt(0).toUpperCase()}
-                                    </AvatarFallback>
-                                </Avatar>
-                            </button>
-                        </div>
-                    </div>
-                </header>
-            )}
+                `h-topbar` / `pt-topbar` stay in globals.css. They have now been
+                needed twice; leaving them costs nothing and re-deriving them
+                cost a bug last time (ClientShell double-counted the status-bar
+                inset against `safe-top`). */}
 
             {/* ── MOBILE "MORE" SHEET ──────────────────────────────────────
                 Everything the removed top bar held (theme, search, notifications,
@@ -675,7 +642,7 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
 
                             {/* Destinations that are not one of the four tabs */}
                             <div className="grid grid-cols-2 gap-2 px-4 pb-3">
-                                {navItems
+                                {[...navItems, ...moreExtras]
                                     .filter((item) => !MOBILE_TAB_VIEWS.has(String(item.view)))
                                     .map((item) => {
                                         const Icon = item.icon as React.ComponentType<{ className?: string }>;
@@ -752,103 +719,88 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                     'safe-area-pb pb-safe'
                 )}>
                     {(() => {
-                      // Five tabs, exactly as the 2026-09-21 mockup draws them
-                      // (HOME_REDESIGN_PLAN.md D2): Home · Orbit · Snap & Solve ·
-                      // Leaderboard · Settings. This REPLACES the Home · Test ·
-                      // Ori · OG Code · More set from the hand-drawn IA; Test and
-                      // OG Code move to the dashboard's action grid, and the More
-                      // sheet is now reached from the top bar's avatar.
+                      // Home · Test · Ori · OG Code · More — the user's own IA
+                      // sketch, restored 2026-09-21 after a day on the mockup's
+                      // Home · Orbit · Snap&Solve · Leaderboard · Settings set.
+                      // They saw both on device and chose this one back.
                       //
-                      // Ori is not a tab any more, so the AI chip inside the
-                      // centre pill carries it — losing the one-tap route to Ori
-                      // while the floating launcher is also hidden on mobile
-                      // would leave no way in at all.
+                      // The trade they accepted: Orbit, Leaderboard, Settings and
+                      // Snap & Solve all move into the More sheet, and Ori keeps
+                      // the raised centre slot on a SINGLE TAP (a hold is invisible
+                      // to a new student and is not exposed by TalkBack).
                       const mobileTabs = ([
-                            { label: 'Home',        icon: Home,         view: 'dashboard' as ViewState },
-                            // Orbit is the contest rating surface and ships dark in
-                            // production; when the flag is off it routes to its
-                            // Coming Soon screen instead of a dead end (§5).
-                            { label: 'Orbit',       icon: Trophy,       view: (contestEnabled ? 'contest' : 'snap-solve') as ViewState, orbit: true },
-                            { label: 'Snap & Solve', icon: Sparkles,    view: 'snap-solve' as ViewState, center: true },
-                            { label: 'Leaderboard', icon: BarChart3,    view: 'leaderboard' as ViewState },
-                            { label: 'Settings',    icon: Settings,     view: 'profile' as ViewState },
-                        ] as { label: string; icon: typeof LayoutGrid; view: ViewState | null; iconSrc?: string; center?: boolean; ori?: boolean; orbit?: boolean }[]);
+                            { label: 'Home',    icon: LayoutGrid, view: 'dashboard' as ViewState },
+                            { label: 'Test',    icon: FileText,   view: 'test-list' as ViewState },
+                            { label: 'Ori',     icon: Sparkles,   view: null, center: true, ori: true },
+                            { label: 'OG Code', icon: Code,       view: 'ogcode' as ViewState },
+                            { label: 'More',    icon: Menu,       view: null },
+                        ] as { label: string; icon: typeof LayoutGrid; view: ViewState | null; iconSrc?: string; center?: boolean; ori?: boolean; orbit?: boolean }[])
+                          .filter((item) => !item.ori || Boolean(onOpenOri));
                       return (
-                    <div className="relative">
-                      <div className="grid h-14" style={{ gridTemplateColumns: `repeat(${mobileTabs.length}, minmax(0, 1fr))` }}>
+                    <div className="grid h-14" style={{ gridTemplateColumns: `repeat(${mobileTabs.length}, minmax(0, 1fr))` }}>
                         {mobileTabs.map((item) => {
-                            // The centre cell is a SPACER. Its pill is rendered outside
-                            // the grid and absolutely centred on the bar, because the
-                            // mockup's pill is far wider than a fifth of the bar and a
-                            // grid cell would either clip it or stretch its neighbours.
-                            if (item.center) return <div key={item.label} aria-hidden />;
-                            const active = item.view ? isActive({ label: item.label, view: item.view }) : false;
+                            const active = item.ori
+                                ? Boolean(oriActive)
+                                : item.view ? isActive({ label: item.label, view: item.view }) : false;
                             const Icon = item.icon;
                             return (
                                 <button
                                     key={item.label}
-                                    onClick={() => { if (item.view) onNavigate(item.view); }}
+                                    onClick={() => {
+                                        if (item.ori) { onOpenOri?.(); return; }
+                                        if (item.view) { onNavigate(item.view); return; }
+                                        setShowMobileMenu(true);
+                                    }}
                                     onTouchStart={() => { if (item.view) onPrefetch?.(item.view); }}
+                                    aria-label={item.ori ? 'Ask Ori' : undefined}
                                     aria-current={active ? 'page' : undefined}
                                     className={cn(
                                         'relative flex min-h-14 flex-col items-center justify-center gap-0.5 px-1 py-2 transition-colors',
-                                        active ? 'text-primary' : 'text-muted-foreground hover:text-primary',
+                                        item.center && '-mt-6',
+                                        active && !item.center ? 'text-primary' : 'text-muted-foreground hover:text-primary',
+                                        item.center && active && 'text-primary font-medium'
                                     )}
                                 >
-                                    {active && <span className="absolute top-0 w-8 h-0.5 bg-primary rounded-full" />}
-                                    {/* Unread rides Orbit now that More is gone from the bar —
-                                        the mockup draws the dot there too. */}
-                                    {item.orbit && unreadCount > 0 && (
-                                        <span
-                                            className="absolute right-[24%] top-1.5 h-2 w-2 rounded-full bg-destructive"
-                                            aria-label={`${unreadCount} unread notifications`}
-                                        />
+                                    {active && !item.center && (
+                                        <span className="absolute top-0 w-8 h-0.5 bg-primary rounded-full" />
                                     )}
-                                    <Icon className="w-5 h-5" />
+                                    {/* Unread rides More again: it is the tab that opens the
+                                        sheet holding notifications. */}
+                                    {item.view === null && !item.center && unreadCount > 0 && (
+                                        <span
+                                            className="absolute right-[22%] top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold tabular-nums text-destructive-foreground"
+                                            aria-label={`${unreadCount} unread notifications`}
+                                        >
+                                            {unreadCount > 9 ? '9+' : unreadCount}
+                                        </span>
+                                    )}
+                                    {item.center ? (
+                                        // Ori himself, not a glyph. 144px source cropped to the
+                                        // head — the full character's face reads ~20px at this
+                                        // size. 6.5KB webp, down from a 232KB full-body png.
+                                        <span
+                                            className={cn(
+                                                'flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border-4 border-background bg-surface-2 transition-colors',
+                                                active ? 'ring-2 ring-primary' : 'ring-1 ring-border',
+                                            )}
+                                        >
+                                            <img
+                                                src="/ori2d/ori-nav.webp"
+                                                alt=""
+                                                aria-hidden
+                                                width={56}
+                                                height={56}
+                                                className="h-full w-full object-contain"
+                                                draggable={false}
+                                            />
+                                        </span>
+                                    ) : (
+                                        <Icon className="w-5 h-5" />
+                                    )}
                                     <span className="text-[10px] font-medium leading-none">{item.label}</span>
                                 </button>
                             );
                         })}
-                      </div>
-
-                      {/* ── Centre pill: SNAP & SOLVE + the AI chip ──────────────
-                          Two targets, deliberately. The body opens Snap & Solve;
-                          the chip opens Ori. Ori lost its own tab in this IA and
-                          the floating launcher is hidden on mobile, so without
-                          the chip there would be no one-tap route to him at all.
-                          Both halves clear 44px. */}
-                      <div className="pointer-events-none absolute inset-x-0 -top-5 flex justify-center">
-                        <div className="pointer-events-auto flex h-[52px] items-center gap-1 rounded-full border border-border bg-background p-1 pl-4 shadow-[0_4px_16px_hsl(var(--neu-shadow)/35%)]">
-                          <button
-                            onClick={() => onNavigate('snap-solve')}
-                            onTouchStart={() => onPrefetch?.('snap-solve')}
-                            className="flex min-h-11 items-center pr-2 text-[11px] font-black uppercase tracking-widest text-foreground"
-                          >
-                            Snap &amp; Solve
-                          </button>
-                          {onOpenOri ? (
-                            <button
-                              onClick={() => onOpenOri()}
-                              aria-label="Ask Ori"
-                              className={cn(
-                                'flex h-11 min-w-[44px] items-center gap-1 rounded-full px-3 text-[11px] font-black transition-colors',
-                                oriActive ? 'bg-primary text-primary-foreground' : 'bg-primary/10 text-primary',
-                              )}
-                            >
-                              AI
-                              <img
-                                src="/ori2d/ori-nav.webp"
-                                alt=""
-                                aria-hidden
-                                width={22}
-                                height={22}
-                                className="h-[22px] w-[22px] object-contain"
-                                draggable={false}
-                              />
-                            </button>
-                          ) : null}
-                        </div>
-                      </div>
                     </div>
                       );
                     })()}
