@@ -257,3 +257,80 @@ export async function recordOgcodeTerminal(
   );
   return mapRow(result.rows[0]);
 }
+
+/* ── Continue Learning ────────────────────────────────────────────────────── */
+
+export type ResumeChapter = {
+  subject: string;
+  chapter: string;
+  /** Questions in the chapter this student has finished at least once. */
+  solved: number;
+  /** Questions in the chapter, total. */
+  total: number;
+  /** solved/total as a 0-100 integer. */
+  percent: number;
+};
+
+/**
+ * The chapter to offer as "Continue Learning" on the dashboard: the one holding
+ * the question this student touched most recently, with their progress through
+ * it.
+ *
+ * Derived rather than stored. A `progress.topic_progress` table would be the
+ * correct model, but it needs a migration plus a write on every attempt, and
+ * this answers the same question from rows we already keep
+ * (V1/HOME_REDESIGN_PLAN.md §3). Both tables live in the OGCode pool, so the
+ * join is safe.
+ *
+ * Returns null for a student with nothing attempted — the card hides rather
+ * than rendering 0%.
+ */
+export async function getResumeChapter(userId: string): Promise<ResumeChapter | null> {
+  if (!isOgcodeProgressAvailable()) return null;
+  await ensureProgressSchema();
+
+  const pool = getOgcodePostgresPool();
+  if (!pool) return null;
+  const { rows } = await pool.query<{
+    subject: string;
+    chapter: string;
+    solved: string;
+    total: string;
+  }>(
+    `WITH last_touched AS (
+       SELECT q.subject, q.chapter
+         FROM ogcode_question_progress p
+         JOIN ogcode_questions q ON q.id = p.question_id
+        WHERE p.user_id = $1
+          AND p.attempted = TRUE
+        ORDER BY p.updated_at DESC
+        LIMIT 1
+     )
+     SELECT l.subject,
+            l.chapter,
+            COUNT(*) FILTER (WHERE p.first_terminal_at IS NOT NULL) AS solved,
+            COUNT(q.id) AS total
+       FROM last_touched l
+       JOIN ogcode_questions q
+         ON q.subject = l.subject AND q.chapter = l.chapter
+       LEFT JOIN ogcode_question_progress p
+         ON p.question_id = q.id AND p.user_id = $1
+      GROUP BY l.subject, l.chapter`,
+    [userId],
+  );
+
+  const row = rows[0];
+  if (!row) return null;
+
+  const solved = Number(row.solved) || 0;
+  const total = Number(row.total) || 0;
+  if (total === 0) return null;
+
+  return {
+    subject: row.subject,
+    chapter: row.chapter,
+    solved,
+    total,
+    percent: Math.min(100, Math.round((solved / total) * 100)),
+  };
+}

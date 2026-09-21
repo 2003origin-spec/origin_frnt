@@ -22,6 +22,7 @@ import {
   ChevronRight,
   Code,
   FileText,
+  Play,
   Share2,
   Sparkles,
   Target,
@@ -192,6 +193,65 @@ export function ActionGrid({ onNavigate, onPrefetch }: { onNavigate: Navigate; o
         </button>
       ))}
     </div>
+  );
+}
+
+/* ── Continue Learning ───────────────────────────────────────────────────── */
+
+export interface ResumeChapter {
+  subject: string;
+  chapter: string;
+  solved: number;
+  total: number;
+  percent: number;
+}
+
+/**
+ * Renders nothing when the student has attempted nothing. A resume card at 0%
+ * for someone who has never started is worse than no card: it implies progress
+ * that does not exist and takes the slot of something actionable.
+ */
+export function ContinueLearning({
+  resume,
+  onResume,
+}: {
+  resume?: ResumeChapter | null;
+  onResume: () => void;
+}) {
+  if (!resume) return null;
+
+  return (
+    <section className="flex flex-col gap-3">
+      <SectionHeading title="Continue Learning" onSeeAll={onResume} />
+      <button
+        onClick={onResume}
+        className="flex w-full items-center gap-3 rounded-2xl border border-border bg-surface-2 p-3 text-left transition-colors hover:bg-surface-3"
+      >
+        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+          <Code className="h-6 w-6" aria-hidden />
+        </span>
+
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-bold text-foreground">{resume.chapter}</span>
+          <span className="block truncate text-xs text-muted-foreground">{resume.subject}</span>
+          <span className="mt-1.5 flex items-center gap-2">
+            <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+              <span
+                className="block h-full rounded-full bg-primary"
+                style={{ width: `${resume.percent}%` }}
+              />
+            </span>
+            <span className="shrink-0 text-xs font-bold tabular-nums text-muted-foreground">
+              {resume.solved}/{resume.total}
+            </span>
+          </span>
+        </span>
+
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+          <Play className="h-5 w-5" aria-hidden />
+        </span>
+      </button>
+    </section>
   );
 }
 

@@ -11,6 +11,7 @@ import { useTimeTracker } from '@/hooks/useTimeTracker';
 import type { Task } from '@/types';
 import type { ContestStatus } from '@/server/contest/contest-status';
 import type { StreakTouchResult } from '@/server/streak-login';
+import type { ResumeChapter } from '@/components/dashboard/HomeSections';
 
 interface DashboardClientProps {
   initialTasks: Task[];
@@ -28,6 +29,7 @@ interface DashboardClientProps {
   /** First-login-of-the-day streak celebration signal (null when the flag is
    *  off or the overlay already fired today). Consumed by the Phase-4 overlay. */
   initialStreakCelebration: StreakTouchResult | null;
+  initialResume: ResumeChapter | null;
 }
 
 export default function DashboardClient({
@@ -37,6 +39,7 @@ export default function DashboardClient({
   initialRegStatus,
   initialContest,
   initialStreakCelebration,
+  initialResume,
 }: DashboardClientProps) {
   const { user, tasks, addTask, editTask, toggleTask, removeTask, primeTasks } = useAuth();
   const router = useRouter();
@@ -101,6 +104,7 @@ export default function DashboardClient({
         initialChallenge={initialChallenge}
         initialRegStatus={initialRegStatus}
         initialContest={initialContest}
+        initialResume={initialResume}
       />
       <AnimatePresence>
         {streak && (

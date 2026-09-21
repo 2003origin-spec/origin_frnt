@@ -35,7 +35,9 @@ import {
   ActionGrid,
   PopularTools,
   ImportantDates,
+  ContinueLearning,
 } from '@/components/dashboard/HomeSections';
+import type { ResumeChapter } from '@/components/dashboard/HomeSections';
 
 const SLIDES = [
   { id: 1, title: 'Welcome',             image: '/carousel/Welcome.png'             },
@@ -145,6 +147,7 @@ interface DashboardProps {
   initialChallenge?: DashboardChallengePreview | null;
   initialRegStatus?: { count: number; limit: number; seatsLeft: number } | null;
   initialContest?: ContestStatus | null;
+  initialResume?: ResumeChapter | null;
 }
 
 import { useNotifications } from '@/context/NotificationContext';
@@ -166,6 +169,7 @@ export default function Dashboard({
   initialChallenge = null,
   initialRegStatus = null,
   initialContest = null,
+  initialResume = null,
 }: DashboardProps) {
   const { addNotification } = useNotifications();
   // P2-12 first-run sequencing: the 12-step tour, the championship banner and the
@@ -668,6 +672,8 @@ export default function Dashboard({
             <span aria-hidden className="font-display text-xl font-bold text-primary">→</span>
           </button>
         </div>
+
+        <ContinueLearning resume={initialResume} onResume={() => onNavigate('ogcode')} />
 
         <PopularTools onNavigate={onNavigate} />
 

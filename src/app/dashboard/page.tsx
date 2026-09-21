@@ -10,6 +10,7 @@ import { getRegistrationStatus } from '@/server/users';
 import { getContestStatus, type ContestStatus } from '@/server/contest/contest-status';
 import { recordDailyLoginStreak, type StreakTouchResult } from '@/server/streak-login';
 import { isFeatureEnabled } from '@/lib/feature-flags';
+import { getResumeChapter } from '@/server/ogcode-progress';
 import { istDateKey } from '@/lib/ist-day';
 import type { Task } from '@/types';
 
@@ -41,6 +42,7 @@ async function DashboardGate() {
   let initialRegStatus: RegistrationStatus | null = null;
   let initialContest: ContestStatus | null = null;
   let initialStreakCelebration: StreakTouchResult | null = null;
+  let initialResume: Awaited<ReturnType<typeof getResumeChapter>> = null;
 
   // First login of the (IST) day advances the streak and decides whether the
   // flame celebration fires — server-authoritative, at most once per day. The
@@ -48,13 +50,16 @@ async function DashboardGate() {
   // load of the day). Gated dark until the overlay UI ships.
   const streakEnabled = isFeatureEnabled('loginStreakCelebration');
 
-  const [tasksResult, pointsResult, challengeResult, regResult, contestResult, streakResult] = await Promise.allSettled([
+  const [tasksResult, pointsResult, challengeResult, regResult, contestResult, streakResult, resumeResult] = await Promise.allSettled([
     listTasksForRender(user.id),
     getPointsSummaryForRender(user.id),
     getChallengeOfTheDayForRender(istDateKey(), user.id),
     getRegistrationStatus(user.role),
     getContestStatus(user.id),
     streakEnabled ? recordDailyLoginStreak(user.id) : Promise.resolve(null),
+    // Continue Learning. allSettled, like its neighbours: a dashboard must not
+    // fail to render because one derived card could not be computed.
+    getResumeChapter(user.id),
   ]);
 
   if (tasksResult.status === 'fulfilled') {
@@ -75,6 +80,9 @@ async function DashboardGate() {
   if (streakResult.status === 'fulfilled') {
     initialStreakCelebration = streakResult.value;
   }
+  if (resumeResult.status === 'fulfilled') {
+    initialResume = resumeResult.value;
+  }
 
   return (
     <DashboardClient
@@ -84,6 +92,7 @@ async function DashboardGate() {
       initialRegStatus={initialRegStatus}
       initialContest={initialContest}
       initialStreakCelebration={initialStreakCelebration}
+      initialResume={initialResume}
     />
   );
 }
