@@ -168,21 +168,32 @@ interface ActionTile {
   view: ViewState;
 }
 
-const ACTIONS: ActionTile[] = [
+// `view: null` means "not a route" — Analyze Progress opens the dashboard's own
+// Progress panel (Activity · Time · Sessions). It used to point at `/graphs`,
+// which is the formula grapher, not performance analysis (reported 2026-09-21).
+const ACTIONS: (Omit<ActionTile, 'view'> & { view: ViewState | null })[] = [
   { icon: Code, title: 'Practise Questions', blurb: 'Sharpen your concepts with OG Code.', view: 'ogcode' },
   { icon: FileText, title: 'Take a Test', blurb: 'Attempt chapter-wise and full tests.', view: 'test-list' },
   { icon: Target, title: 'Auto-generate DPPs', blurb: 'Personalised practice sets, just for you.', view: 'dpp' },
-  { icon: BarChart3, title: 'Analyze Progress', blurb: 'Track your performance and weak topics.', view: 'graphs' },
+  { icon: BarChart3, title: 'Analyze Progress', blurb: 'Track your performance and weak topics.', view: null },
 ];
 
-export function ActionGrid({ onNavigate, onPrefetch }: { onNavigate: Navigate; onPrefetch?: Navigate }) {
+export function ActionGrid({
+  onNavigate,
+  onPrefetch,
+  onAnalyze,
+}: {
+  onNavigate: Navigate;
+  onPrefetch?: Navigate;
+  onAnalyze: () => void;
+}) {
   return (
     <div className="grid grid-cols-2 gap-3">
       {ACTIONS.map(({ icon: Icon, title, blurb, view }) => (
         <button
           key={title}
-          onClick={() => onNavigate(view)}
-          onTouchStart={() => onPrefetch?.(view)}
+          onClick={() => (view ? onNavigate(view) : onAnalyze())}
+          onTouchStart={() => { if (view) onPrefetch?.(view); }}
           className="flex min-h-[7.5rem] flex-col items-start gap-2 rounded-2xl border border-border bg-surface-2 p-3 text-left transition-colors hover:bg-surface-3"
         >
           <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">

@@ -2061,10 +2061,16 @@ export default function OGCodeList({
                                                     disabled={likePendingIds.has(q.id)}
                                                     aria-pressed={Boolean(q.likedByMe)}
                                                     title={q.likedByMe ? 'Unlike' : 'Like this question'}
-                                                    className={cn('inline-flex min-h-11 items-center gap-1 px-3 rounded-full text-xs font-semibold border transition-colors flex-shrink-0', q.likedByMe ? 'text-rose-600 dark:text-rose-400 bg-rose-500/10 border-rose-500/25' : 'text-muted-foreground bg-white/[0.03] border-white/10 hover:border-rose-500/30')}
+                                                    // No pill: bordered and filled, it read as a third
+                                                    // badge next to Hard and JEE (2019) and ate the row
+                                                    // (reported on-device 2026-09-21). Just the heart and
+                                                    // its count now. The 44px target is kept as an
+                                                    // invisible inset box so the hit area does not shrink
+                                                    // with the visible chrome.
+                                                    className={cn('group relative inline-flex min-h-11 items-center gap-1 pl-1 pr-2 text-xs font-semibold transition-colors flex-shrink-0', q.likedByMe ? 'text-rose-600 dark:text-rose-400' : 'text-muted-foreground hover:text-rose-500')}
                                                 >
-                                                    <Heart className={cn('w-3 h-3', q.likedByMe ? 'fill-current' : '')} />
-                                                    {q.likeCount ?? 0}
+                                                    <Heart className={cn('w-4 h-4', q.likedByMe ? 'fill-current' : '')} />
+                                                    <span className="tabular-nums">{q.likeCount ?? 0}</span>
                                                 </button>
                                             </div>
                                             <div className="flex items-center gap-2 flex-shrink-0">

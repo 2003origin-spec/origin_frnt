@@ -763,8 +763,13 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
   const currentMode = modes[mode];
   const progress = ((currentMode.defaultTime - timeRemaining) / currentMode.defaultTime) * 100;
 
+  // No `overflow-y-auto` on this root and none on the <main> below. ClientShell's
+  // <main> is already the page's scroll container; a nested scroller pinned to
+  // `min-h-dvh` is exactly viewport-tall, so the shell had nothing to scroll
+  // while the inner one's last 56px sat under the fixed tab bar. The screen
+  // simply would not move (reported on-device 2026-09-21).
   return (
-    <div ref={containerRef} className="min-h-dvh neu-surface text-foreground transition-colors duration-500 relative overflow-x-hidden overflow-y-auto flex flex-col">
+    <div ref={containerRef} className="min-h-dvh neu-surface text-foreground transition-colors duration-500 relative overflow-x-hidden flex flex-col">
       
       {/* ── ATMOSPHERE BACKGROUND ── */}
       <AnimatePresence>
@@ -888,7 +893,7 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
         </div>
       </header>
 
-      <main className="flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8 py-8 z-10 custom-scrollbar">
+      <main className="flex-1 px-4 sm:px-6 lg:px-8 py-8 z-10">
         <div className="max-w-6xl mx-auto flex flex-col gap-8 w-full">
           
           {/* Top Selection Bar */}

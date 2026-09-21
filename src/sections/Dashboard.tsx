@@ -636,7 +636,7 @@ export default function Dashboard({
             }}
           />
           <ChatWithOriCard onOpen={() => onNavigate('doubt-solver')} />
-          <ActionGrid onNavigate={onNavigate} />
+          <ActionGrid onNavigate={onNavigate} onAnalyze={() => setPanelOpen(true)} />
         </motion.div>
 
         {/* ── CAROUSEL ──────────────────────────────────────────── */}
@@ -717,7 +717,14 @@ export default function Dashboard({
             />
             <motion.div
               key="progress-panel"
-              className="fixed left-0 md:left-[72px] top-14 md:top-0 bottom-14 md:bottom-0 z-[500] w-full md:w-[480px] neu-surface border-r border-border/40 shadow-2xl flex flex-col"
+              // `top-14 bottom-14` hard-coded a 56px top bar and a 56px tab bar
+              // and ignored the safe-area insets entirely, so on a phone the
+              // panel's last rows sat under the nav and could not be reached —
+              // it read as "not scrollable" (reported on-device 2026-09-21).
+              // The panel outranks the nav (z-500) and has its own close
+              // control, so it simply takes the full height and pads for the
+              // insets instead.
+              className="fixed left-0 md:left-[72px] inset-y-0 z-[500] w-full md:w-[480px] neu-surface border-r border-border/40 shadow-2xl flex flex-col safe-top md:pt-0"
               initial={{ x: '-100%' }}
               animate={{ x: 0 }}
               exit={{ x: '-100%' }}
@@ -741,7 +748,7 @@ export default function Dashboard({
                   <X className="w-4 h-4" />
                 </button>
               </div>
-              <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-3" id="tutorial-challenge">
+              <div className="flex-1 overflow-y-auto overscroll-contain custom-scrollbar p-4 pb-safe-lg space-y-3" id="tutorial-challenge">
                 <ChallengeCard user={user} initialChallenge={initialChallenge} onStartChallenge={onStartChallenge} />
                 <DailyTracker user={user} />
                 <PastWeekProgress user={user} />
