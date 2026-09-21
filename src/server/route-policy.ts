@@ -160,6 +160,12 @@ export const AUTHENTICATED_APP_PREFIXES = [
   "/connect",
   "/u",
   "/social",
+  // Coming-Soon destinations for features the 2026-09-21 home mockup puts in
+  // the chrome before they exist. Authenticated like every other app page:
+  // without an entry here they fall through to `unconfigured` and bounce the
+  // student to /auth. See V1/HOME_REDESIGN_PLAN.md §4.
+  "/snap-solve",
+  "/mindmaps",
 ] as const;
 
 export const ROLE_APP_PREFIXES = [

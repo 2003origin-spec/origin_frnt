@@ -52,6 +52,9 @@ const ROUTES: Record<string, string> = {
   'study-corner': '/study-corner',
   'pomodoro': '/pomodoro',
   'leaderboard': '/leaderboard',
+  'snap-solve': '/snap-solve',
+  'contest': '/contest',
+  'mindmaps': '/mindmaps',
   'milestones': '/milestones',
   'prestige-milestones': '/milestones',
 };
@@ -60,7 +63,7 @@ function resolveRoute(view: string) {
   return ROUTES[view] || `/${view}`;
 }
 
-function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnabled, coverActive, launchAt }: { children: React.ReactNode; connectEnabled?: boolean; premiumEnabled?: boolean; socialEnabled?: boolean; coverActive?: boolean; launchAt?: string | null }) {
+function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnabled, contestEnabled, coverActive, launchAt }: { children: React.ReactNode; connectEnabled?: boolean; premiumEnabled?: boolean; socialEnabled?: boolean; contestEnabled?: boolean; coverActive?: boolean; launchAt?: string | null }) {
   const { user, logout, isNavigationLocked, refreshUser } = useAuth();
   // Register this screen in the global "active screens" presence set while
   // signed in — feeds the landing "solving right now" counter.
@@ -317,6 +320,7 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnab
               connectEnabled={connectEnabled}
               premiumEnabled={premiumEnabled}
               socialEnabled={socialEnabled}
+              contestEnabled={contestEnabled}
               onOpenOri={shouldShowFloatingOriginAi && !oriHidden ? () => toggleAi() : undefined}
               oriActive={isAiOpen}
               leftOffset={aiSide === 'left' && isAiOpen ? aiWidth : 0}
@@ -334,7 +338,11 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnab
                 // `pt-topbar` is gone: the mobile top bar was removed, so reserving
                 // 56px for it would swap a visible bar for 56px of nothing. Content
                 // still clears the status bar via safe-top.
-                ? (navExpanded ? 'md:pl-[150px]' : 'md:pl-[72px]') + ' safe-top md:pt-0 ' +
+                // `pt-topbar` is back: the mobile top bar was restored on
+                // 2026-09-21 (HOME_REDESIGN_PLAN.md D1), so content must clear
+                // its 3.5rem + status-bar inset again. It already carries the
+                // inset, so `safe-top` would double-count and is dropped.
+                ? (navExpanded ? 'md:pl-[150px]' : 'md:pl-[72px]') + ' pt-topbar md:pt-0 ' +
                   // Full-viewport apps (chat/test) don't scroll here, so their tight
                   // clearance can stay on <main> and behaves normally.
                   //
@@ -423,7 +431,7 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnab
   );
 }
 
-export default function ClientShell({ children, connectEnabled, premiumEnabled, socialEnabled, coverActive, launchAt }: { children: React.ReactNode; connectEnabled?: boolean; premiumEnabled?: boolean; socialEnabled?: boolean; coverActive?: boolean; launchAt?: string | null }) {
+export default function ClientShell({ children, connectEnabled, premiumEnabled, socialEnabled, contestEnabled, coverActive, launchAt }: { children: React.ReactNode; connectEnabled?: boolean; premiumEnabled?: boolean; socialEnabled?: boolean; contestEnabled?: boolean; coverActive?: boolean; launchAt?: string | null }) {
   return (
     // reducedMotion="user" makes EVERY framer-motion animation in the app honour
     // the OS "reduce motion" setting. 56 files import framer-motion and almost
@@ -433,7 +441,7 @@ export default function ClientShell({ children, connectEnabled, premiumEnabled, 
     <MotionConfig reducedMotion="user">
       <LayoutProvider>
         <TimeTrackerProvider>
-          <ClientShellInner connectEnabled={connectEnabled} premiumEnabled={premiumEnabled} socialEnabled={socialEnabled} coverActive={coverActive} launchAt={launchAt}>{children}</ClientShellInner>
+          <ClientShellInner connectEnabled={connectEnabled} premiumEnabled={premiumEnabled} socialEnabled={socialEnabled} contestEnabled={contestEnabled} coverActive={coverActive} launchAt={launchAt}>{children}</ClientShellInner>
         </TimeTrackerProvider>
       </LayoutProvider>
     </MotionConfig>

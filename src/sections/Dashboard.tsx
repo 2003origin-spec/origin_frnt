@@ -29,6 +29,15 @@ import { NeuButton } from '@/components/ui/neu';
 import type { TimeType } from '@/hooks/useTimeTracker';
 import { getRegistrationStatusAction } from '@/server/actions/system-actions';
 import { BADGE_TIERS } from '@/lib/badges';
+import {
+  QuestionOfTheDayCard,
+  ChatWithOriCard,
+  ActionGrid,
+  PopularTools,
+  ImportantDates,
+  ContinueLearning,
+} from '@/components/dashboard/HomeSections';
+import type { ResumeChapter } from '@/components/dashboard/HomeSections';
 
 const SLIDES = [
   { id: 1, title: 'Welcome',             image: '/carousel/Welcome.png'             },
@@ -138,6 +147,7 @@ interface DashboardProps {
   initialChallenge?: DashboardChallengePreview | null;
   initialRegStatus?: { count: number; limit: number; seatsLeft: number } | null;
   initialContest?: ContestStatus | null;
+  initialResume?: ResumeChapter | null;
 }
 
 import { useNotifications } from '@/context/NotificationContext';
@@ -159,6 +169,7 @@ export default function Dashboard({
   initialChallenge = null,
   initialRegStatus = null,
   initialContest = null,
+  initialResume = null,
 }: DashboardProps) {
   const { addNotification } = useNotifications();
   // P2-12 first-run sequencing: the 12-step tour, the championship banner and the
@@ -610,6 +621,24 @@ export default function Dashboard({
           )}
         </motion.div>
 
+        {/* ── Question of the day · Chat with Ori · primary actions ──
+            The 2026-09-21 mockup's first screen. Order matters: the daily
+            challenge is the one thing that expires, so it leads; Ori is the
+            product's differentiator and sits second; the four routes a student
+            actually came for follow. HOME_REDESIGN_PLAN.md P3. */}
+        <motion.div {...stagger(2)} className="flex flex-col gap-3">
+          <QuestionOfTheDayCard
+            onOpen={() => {
+              // Straight into today's challenge when the server seeded one;
+              // otherwise the workspace, which is where it would have come from.
+              if (initialChallenge?.id) onStartChallenge(String(initialChallenge.id));
+              else onNavigate('ogcode');
+            }}
+          />
+          <ChatWithOriCard onOpen={() => onNavigate('doubt-solver')} />
+          <ActionGrid onNavigate={onNavigate} />
+        </motion.div>
+
         {/* ── CAROUSEL ──────────────────────────────────────────── */}
         <motion.div {...stagger(2)} id="tutorial-events">
           <EventsCarousel />
@@ -643,6 +672,12 @@ export default function Dashboard({
             <span aria-hidden className="font-display text-xl font-bold text-primary">→</span>
           </button>
         </div>
+
+        <ContinueLearning resume={initialResume} onResume={() => onNavigate('ogcode')} />
+
+        <PopularTools onNavigate={onNavigate} />
+
+        <ImportantDates onNavigate={onNavigate} />
 
         {/* ── Self-study rallying cry ── */}
         <motion.div

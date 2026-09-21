@@ -247,7 +247,9 @@ export function ContestBanner({ initial, userId }: { initial?: ContestStatus | n
               <span className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400">
                 <CheckCircle2 className="w-3.5 h-3.5" /> Registered
               </span>
-              <NeuButton onClick={() => router.push(`/contest/${contest.id}/practice`)} className="w-full sm:w-auto">
+              {/* min-h-11: NeuButton's own padding lands this at 40px, under the
+                  touch floor (measured on the dashboard, 2026-09-21). */}
+              <NeuButton onClick={() => router.push(`/contest/${contest.id}/practice`)} className="w-full min-h-11 sm:w-auto">
                 <span className="inline-flex items-center gap-2 text-primary font-black uppercase tracking-wider text-[12px]">
                   <Dumbbell className="w-3.5 h-3.5" /> Practice now
                 </span>

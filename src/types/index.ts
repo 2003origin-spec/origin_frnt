@@ -500,7 +500,11 @@ export type ViewState =
   | 'social'
   | 'tasks-goals'
   | 'graphs'
-  | 'prestige-milestones';
+  | 'prestige-milestones'
+  // Coming-Soon destinations — see V1/HOME_REDESIGN_PLAN.md §4/§5.
+  | 'snap-solve'
+  | 'contest'
+  | 'mindmaps';
 
 export type OriginAiPageKind =
   | 'dashboard'
