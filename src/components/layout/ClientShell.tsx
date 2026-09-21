@@ -338,11 +338,11 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnab
                 // `pt-topbar` is gone: the mobile top bar was removed, so reserving
                 // 56px for it would swap a visible bar for 56px of nothing. Content
                 // still clears the status bar via safe-top.
-                // `pt-topbar` is back: the mobile top bar was restored on
-                // 2026-09-21 (HOME_REDESIGN_PLAN.md D1), so content must clear
-                // its 3.5rem + status-bar inset again. It already carries the
-                // inset, so `safe-top` would double-count and is dropped.
-                ? (navExpanded ? 'md:pl-[150px]' : 'md:pl-[72px]') + ' pt-topbar md:pt-0 ' +
+                // `safe-top`, not `pt-topbar`: the mobile top bar is gone again
+                // (2026-09-21, second removal — see Navbar). Reserving 3.5rem for
+                // a bar that does not exist would swap a visible bar for 56px of
+                // nothing, which is the whole reason it was removed.
+                ? (navExpanded ? 'md:pl-[150px]' : 'md:pl-[72px]') + ' safe-top md:pt-0 ' +
                   // Full-viewport apps (chat/test) don't scroll here, so their tight
                   // clearance can stay on <main> and behaves normally.
                   //
