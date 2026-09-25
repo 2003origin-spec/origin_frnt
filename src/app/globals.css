@@ -444,6 +444,17 @@
     border-radius: var(--radius-md) !important;
     box-shadow: none !important;
   }
+  /* Floating layer — menus and dropdown panels that open ON TOP of cards.
+     `surface-2` is only 8 levels above `surface-1` in dark, so a panel opening
+     over a card had almost no edge and read as transparent. Elevation here is
+     tonal, per DESIGN_LANGUAGE: this is the `surface-3` "highest elevation"
+     step, NOT a shadow. */
+  .neu-overlay {
+    background-color: hsl(var(--surface-3)) !important;
+    border: 1px solid hsl(var(--border)) !important;
+    border-radius: var(--radius-md) !important;
+    box-shadow: none !important;
+  }
   /* M3 state layer: a tinted overlay, not a moving shadow. */
   .neu-pressable {
     transition: background-color .15s ease;

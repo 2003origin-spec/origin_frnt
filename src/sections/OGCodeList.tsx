@@ -1404,7 +1404,7 @@ export default function OGCodeList({
                                 {openDropdown === 'class' && (
                                     <motion.div
                                         initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-                                        className="absolute left-0 right-0 mt-2 min-w-[200px] max-h-96 overflow-y-auto neu-raised rounded-xl z-50 p-2 space-y-1 bg-background/95 backdrop-blur-md"
+                                        className="absolute left-0 right-0 mt-2 min-w-[200px] max-h-96 overflow-y-auto neu-overlay rounded-xl z-50 p-2 space-y-1"
                                         data-filter-dropdown
                                     onClick={e => e.stopPropagation()}
                                     >
@@ -1474,7 +1474,7 @@ export default function OGCodeList({
                                 {openDropdown === 'occurrence' && (
                                     <motion.div
                                         initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-                                        className="absolute left-0 right-0 mt-2 min-w-[200px] max-h-96 overflow-y-auto neu-raised rounded-xl z-50 p-2 space-y-1 bg-background/95 backdrop-blur-md"
+                                        className="absolute left-0 right-0 mt-2 min-w-[200px] max-h-96 overflow-y-auto neu-overlay rounded-xl z-50 p-2 space-y-1"
                                         data-filter-dropdown
                                     onClick={e => e.stopPropagation()}
                                     >
@@ -1538,7 +1538,7 @@ export default function OGCodeList({
                                 {openDropdown === 'hier-subject' && (
                                     <motion.div
                                         initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-                                        className="absolute left-0 right-0 mt-2 min-w-[200px] max-h-96 overflow-y-auto neu-raised rounded-xl z-50 p-2 space-y-1 bg-background/95 backdrop-blur-md"
+                                        className="absolute left-0 right-0 mt-2 min-w-[200px] max-h-96 overflow-y-auto neu-overlay rounded-xl z-50 p-2 space-y-1"
                                         data-filter-dropdown
                                     onClick={e => e.stopPropagation()}
                                     >
@@ -1614,7 +1614,7 @@ export default function OGCodeList({
                                 {openDropdown === 'hier-chapter' && (
                                     <motion.div
                                         initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-                                        className="absolute left-0 right-0 mt-2 min-w-[240px] max-h-[450px] flex flex-col neu-raised rounded-xl z-50 bg-background/95 backdrop-blur-md overflow-hidden"
+                                        className="absolute left-0 right-0 mt-2 min-w-[240px] max-h-[450px] flex flex-col neu-overlay rounded-xl z-50 overflow-hidden"
                                         data-filter-dropdown
                                     onClick={e => e.stopPropagation()}
                                     >
@@ -1710,7 +1710,7 @@ export default function OGCodeList({
                                 {openDropdown === 'hier-concept' && (
                                     <motion.div
                                         initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-                                        className="absolute left-0 right-0 mt-2 min-w-[240px] max-h-[450px] flex flex-col neu-raised rounded-xl z-50 bg-background/95 backdrop-blur-md overflow-hidden"
+                                        className="absolute left-0 right-0 mt-2 min-w-[240px] max-h-[450px] flex flex-col neu-overlay rounded-xl z-50 overflow-hidden"
                                         data-filter-dropdown
                                     onClick={e => e.stopPropagation()}
                                     >
@@ -1884,7 +1884,7 @@ export default function OGCodeList({
                             {openDropdown === 'difficulty' && (
                                 <motion.div
                                     initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-                                    className="absolute top-full mt-2 left-0 w-40 neu-raised rounded-xl z-50 overflow-hidden"
+                                    className="absolute top-full mt-2 left-0 w-40 neu-overlay rounded-xl z-50 overflow-hidden"
                                     data-filter-dropdown
                                     onClick={e => e.stopPropagation()}
                                 >
@@ -1913,7 +1913,7 @@ export default function OGCodeList({
                             {openDropdown === 'type' && (
                                 <motion.div
                                     initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-                                    className="absolute top-full mt-2 left-0 w-44 neu-raised rounded-xl z-50 overflow-hidden"
+                                    className="absolute top-full mt-2 left-0 w-44 neu-overlay rounded-xl z-50 overflow-hidden"
                                     data-filter-dropdown
                                     onClick={e => e.stopPropagation()}
                                 >
@@ -1942,7 +1942,7 @@ export default function OGCodeList({
                             {openDropdown === 'status' && (
                                 <motion.div
                                     initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-                                    className="absolute top-full mt-2 left-0 w-40 neu-raised rounded-xl z-50 overflow-hidden"
+                                    className="absolute top-full mt-2 left-0 w-40 neu-overlay rounded-xl z-50 overflow-hidden"
                                     data-filter-dropdown
                                     onClick={e => e.stopPropagation()}
                                 >

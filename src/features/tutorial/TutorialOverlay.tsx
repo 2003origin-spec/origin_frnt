@@ -150,7 +150,7 @@ export const TutorialOverlay: React.FC = () => {
           className="pointer-events-none fixed inset-0 z-[10000]"
         >
           <div
-            className="pointer-events-auto absolute neu-raised"
+            className="pointer-events-auto absolute neu-overlay"
             style={{
               ...pos,
               width: 'min(360px, calc(100vw - 32px))',

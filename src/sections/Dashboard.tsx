@@ -446,7 +446,7 @@ export default function Dashboard({
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: -8, scale: 0.97 }}
                     transition={{ duration: 0.16, ease: 'easeOut' }}
-                    className="absolute right-0 mt-2 w-[min(360px,calc(100vw-7rem))] neu-raised rounded-2xl z-[310] overflow-hidden"
+                    className="absolute right-0 mt-2 w-[min(360px,calc(100vw-7rem))] neu-overlay rounded-2xl z-[310] overflow-hidden"
                   >
                     <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
                       <Target className="w-4 h-4 text-primary" />
@@ -487,7 +487,7 @@ export default function Dashboard({
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: -8, scale: 0.97 }}
                     transition={{ duration: 0.16, ease: 'easeOut' }}
-                    className="absolute right-0 mt-2 w-[min(360px,calc(100vw-7rem))] neu-raised rounded-2xl z-[310] overflow-hidden"
+                    className="absolute right-0 mt-2 w-[min(360px,calc(100vw-7rem))] neu-overlay rounded-2xl z-[310] overflow-hidden"
                   >
                     <div className="flex items-center justify-between px-4 py-3 border-b border-border">
                       <div className="flex items-center gap-2">
