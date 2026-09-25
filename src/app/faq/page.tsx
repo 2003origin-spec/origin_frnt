@@ -35,7 +35,7 @@ const FAQS = [
   {
     category: 'general',
     question: 'Is O3 Origin only for JEE and NEET?',
-    answer: 'We are currently focused on JEE Main, JEE Advanced, and NEET preparation. We plan to expand to other competitive examinations including UPSC, state board exams, and Class 9-10 foundation courses in future updates.'
+    answer: 'No. Alongside JEE Main, JEE Advanced, and NEET preparation, we now cover Class 9-10 foundation courses. We plan to expand to other competitive examinations including UPSC and state board exams in future updates.'
   },
   // For Students
   {
