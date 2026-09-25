@@ -20,6 +20,7 @@ import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext';
 import { isSubjectInMode, studyModeSubjects } from '@/lib/study-mode';
 import { formatPoints } from '@/lib/format-points';
+import { isJuniorOnlyClassSelection } from '@/lib/subject-test-plan';
 
 // Characters that imply Markdown / LaTeX. If a string has none of them it is
 // plain text and we can skip the (heavy) ReactMarkdown + KaTeX pipeline entirely
@@ -350,6 +351,9 @@ export default function OGCodeList({
     // Hierarchical cascade filter state
     const [hierClasses, setHierClasses] = useState<string[]>(urlClasses);
     const [hierOccurrences, setHierOccurrences] = useState<string[]>(urlOccurrences);
+    // The exam filter (JEE/NEET/AIPMT) is meaningless for Foundation (class 9/10)
+    // content, so it's hidden whenever the class selection is 9/10-only.
+    const examFilterHidden = isJuniorOnlyClassSelection(hierClasses);
     const [hierSubjects, setHierSubjects] = useState<string[]>(urlSubjects);
     const [hierChapters, setHierChapters] = useState<string[]>(urlHierChapters);
     const [hierConcepts, setHierConcepts] = useState<string[]>(urlConcepts);
@@ -625,6 +629,21 @@ export default function OGCodeList({
         });
         void fetchFacets('occurrence', {}).then(setFacetOccurrences);
     }, [fetchFacets]);
+
+    // The Exam dropdown is hidden once the class selection collapses to
+    // 9/10-only (see examFilterHidden above). It's still wired into the query
+    // string regardless of visibility, so a stale JEE/NEET pick made before
+    // narrowing to Foundation classes must be cleared here — otherwise it would
+    // silently keep constraining (and likely zeroing) the hidden results.
+    // `hierOccurrences` is a dependency, not just the hidden flag: a back/forward
+    // or external link can restore `occurrences` from the URL while the filter is
+    // ALREADY hidden, which no flag transition would catch. Clearing is
+    // idempotent, so re-running on the new empty array settles immediately.
+    useEffect(() => {
+        if (!examFilterHidden) return;
+        if (hierOccurrences.length > 0) setHierOccurrences([]);
+        if (openDropdown === 'occurrence') setOpenDropdown(null);
+    }, [examFilterHidden, hierOccurrences, openDropdown]);
 
     // Cascade effects: each fetches the narrowed OPTION list for its level and
     // prunes its own SELECTION to that list (dropping orphans so a stale pick
@@ -1037,7 +1056,7 @@ export default function OGCodeList({
     const streak = userStats?.streak ?? user.streak ?? 0;
     const showQuestionsSpinner = questionsLoading && questions.length === 0;
     const questionSummaryLabel = totalQuestions > 0
-        ? `Showing ${Math.min(filteredQuestions.length, totalQuestions)} of ${totalQuestions} questions`
+        ? `Loaded ${Math.min(filteredQuestions.length, totalQuestions)} of ${totalQuestions} matching your filters`
         : 'No questions available yet.';
 
     // Total active filters across every axis — drives the drawer's count badge.
@@ -1278,7 +1297,20 @@ export default function OGCodeList({
                         )}
                     </button>
                     <span className="text-[12px] font-bold text-muted-foreground">
-                        <span className="text-foreground font-black tabular-nums">{filteredQuestions.length}</span> question{filteredQuestions.length === 1 ? '' : 's'}
+                        {/* Same guard as questionSummaryLabel: totalQuestions is 0 until the
+                            first page lands (and any URL filter discards the prefetch), so
+                            without this the toolbar reads "0 of 0" over a filling list. */}
+                        {totalQuestions > 0 ? (
+                            <>
+                                <span className="text-foreground font-black tabular-nums">{filteredQuestions.length}</span>
+                                {' of '}
+                                <span className="text-foreground font-black tabular-nums">{totalQuestions}</span> loaded
+                            </>
+                        ) : (
+                            <>
+                                <span className="text-foreground font-black tabular-nums">{filteredQuestions.length}</span> question{filteredQuestions.length === 1 ? '' : 's'}
+                            </>
+                        )}
                     </span>
                     {activeFilterCount > 0 && (
                         <button
@@ -1419,7 +1451,8 @@ export default function OGCodeList({
                                 )}
                             </div>
 
-                            {/* Exam/Occurrence Dropdown */}
+                            {/* Exam/Occurrence Dropdown — hidden for Foundation (class 9/10-only) selections */}
+                            {!examFilterHidden && (
                             <div className="space-y-2 relative">
                                 <div className="text-[9px] font-black uppercase tracking-wider text-muted-foreground flex items-center gap-1">
                                     <span>Exam</span>
@@ -1481,6 +1514,7 @@ export default function OGCodeList({
                                     </motion.div>
                                 )}
                             </div>
+                            )}
 
                             {/* Subject Dropdown */}
                             <div className="space-y-2 relative">

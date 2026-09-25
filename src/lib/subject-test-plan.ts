@@ -103,6 +103,19 @@ export function examUnlocked(exam: BuilderExam, owned: ReadonlySet<string> | rea
   return EXAM_SUBJECTS[exam].every((s) => set.has(s));
 }
 
+/**
+ * True when every selected class is 9 or 10 — the exam-type filter (JEE/NEET)
+ * is meaningless for junior/Foundation classes and should be hidden. An empty
+ * selection ("any/all classes") is NOT junior-only.
+ */
+export function isJuniorOnlyClassSelection(classes: ReadonlyArray<number | string>): boolean {
+  if (classes.length === 0) return false;
+  return classes.every((c) => {
+    const n = Number(c);
+    return n === 9 || n === 10;
+  });
+}
+
 // ─── Scoring ─────────────────────────────────────────────────────────────────
 
 /**

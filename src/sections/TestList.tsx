@@ -47,6 +47,7 @@ import {
   biologyIsDoubled,
   examMode,
   examUnlocked,
+  isJuniorOnlyClassSelection,
   hmsToMinutes,
   clampHms,
   formatHms,
@@ -63,7 +64,7 @@ import {
   type Hms,
 } from '@/lib/subject-test-plan';
 
-const CLASS_OPTIONS = [11, 12] as const;
+const CLASS_OPTIONS = [9, 10, 11, 12] as const;
 /** All four subjects; the builder shows every one and locks the non-owned. */
 const SUBJECT_OPTIONS = [
   { value: 'physics', label: 'Physics' },
@@ -207,6 +208,16 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
   const [customTestError, setCustomTestError] = useState('');
   // "How it works" explainer dialog for the Custom Test Builder.
   const [infoOpen, setInfoOpen] = useState(false);
+
+  // The exam preset chip (JEE/NEET) is meaningless for Foundation (class 9/10)
+  // content, so it's hidden whenever the class selection is 9/10-only.
+  const examSelectorHidden = isJuniorOnlyClassSelection(customTestConfig.classLevels);
+  useEffect(() => {
+    if (examSelectorHidden && customTestConfig.exam) {
+      setCustomTestConfig((prev) => ({ ...prev, exam: null }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [examSelectorHidden]);
 
   // Only selected subjects the student actually owns count toward the test — a
   // locked subject can't be selected, but guard here too (source of truth).
@@ -724,7 +735,10 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                         </div>
                         <div className="p-6 sm:p-8 lg:p-10">
                             {/* Exam quick-preset: sets the subjects + ratio for JEE/NEET.
-                                Locked unless the student owns all that exam's subjects. */}
+                                Locked unless the student owns all that exam's subjects.
+                                Hidden entirely for Foundation (class 9/10-only) selections,
+                                where a JEE/NEET preset is meaningless. */}
+                            {!examSelectorHidden && (
                             <div className="space-y-4">
                                 <Label className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">Exam</Label>
                                 <div className="flex flex-wrap gap-2">
@@ -766,6 +780,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
                                     </span>
                                 </div>
                             </div>
+                            )}
 
                             {/* Two-panel layout: left = what to practise, right = load,
                                 timing & action. Stacks to one column on mobile/tablet. */}
