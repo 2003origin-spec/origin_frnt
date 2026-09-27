@@ -42,6 +42,7 @@ import {
   computeMaxScore,
   totalQuestions,
   examMode,
+  isJuniorOnlyClassSelection,
   hmsToMinutes,
   clampHms,
   formatHms,
@@ -58,7 +59,7 @@ import {
   type Hms,
 } from "@/lib/subject-test-plan";
 
-const CLASS_OPTIONS = [11, 12] as const;
+const CLASS_OPTIONS = [9, 10, 11, 12] as const;
 const SUBJECT_OPTIONS = [
   { value: "physics", label: "Physics" },
   { value: "chemistry", label: "Chemistry" },
@@ -119,6 +120,16 @@ export function RoomTestBuilderDrawer({ workspaceId, room, bagQuestions, ogcodeE
   // Chapter picking only makes sense for a single subject; with a multi-subject
   // mix we skip it (the selection tops up across chapters per subject anyway).
   const singleSubject = autoConfig.subjects.length === 1 ? autoConfig.subjects[0] : null;
+
+  // The exam preset chip (JEE/NEET) is meaningless for Foundation (class 9/10)
+  // content, so it's hidden whenever class 9 or 10 is selected.
+  const examSelectorHidden = isJuniorOnlyClassSelection(autoConfig.classLevel ? [autoConfig.classLevel] : []);
+  useEffect(() => {
+    if (examSelectorHidden && autoConfig.exam) {
+      setAutoConfig((prev) => ({ ...prev, exam: null }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [examSelectorHidden]);
 
   useEffect(() => {
     if (mode !== "auto") return;
@@ -361,7 +372,9 @@ export function RoomTestBuilderDrawer({ workspaceId, room, bagQuestions, ogcodeE
 
           {mode === "auto" && ogcodeEnabled ? (
             <div className="space-y-4 rounded-xl border p-4">
-              {/* Exam preset — presets subjects + ratio (JEE 1:1:1, NEET Bio 2×). */}
+              {/* Exam preset — presets subjects + ratio (JEE 1:1:1, NEET Bio 2×).
+                  Hidden for Foundation (class 9/10) content, where it's meaningless. */}
+              {!examSelectorHidden && (
               <div className="space-y-1.5">
                 <Label>Exam preset</Label>
                 <div className="flex flex-wrap gap-2">
@@ -380,6 +393,7 @@ export function RoomTestBuilderDrawer({ workspaceId, room, bagQuestions, ogcodeE
                   <span className="self-center text-xs text-muted-foreground">Optional — presets subjects &amp; ratio</span>
                 </div>
               </div>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label>Class</Label>

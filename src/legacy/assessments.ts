@@ -4068,6 +4068,9 @@ export async function submitTest(
     title,
     subject,
     chapter,
+    // See analytics-client.ts: proxy for the test's exam shape when none was
+    // explicitly tagged at creation time.
+    exam: user.studyMode ?? null,
     difficulty,
     question_count: questionCount,
     time_taken_seconds: timeTakenSeconds,

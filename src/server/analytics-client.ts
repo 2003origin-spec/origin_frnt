@@ -115,6 +115,11 @@ export interface AnalyticsTestAnalysisRequest {
   title: string;
   subject: string;
   chapter?: string | null;
+  // Exam family for the double-Biology DPP rule. A per-test exam tag isn't
+  // persisted on stored tests today, so this carries the student's current
+  // study mode ("jee"/"neet"/"pcmb") as the best available proxy — see
+  // analytics-service `_should_double_biology`.
+  exam?: string | null;
   difficulty: AnalyticsDifficulty;
   question_count: number;
   time_taken_seconds: number;

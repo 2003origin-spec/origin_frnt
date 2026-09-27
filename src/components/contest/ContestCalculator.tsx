@@ -41,7 +41,7 @@ export function ContestCalculator({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="fixed bottom-24 right-4 z-40 w-60 rounded-2xl neu-raised p-3 bg-background/95 backdrop-blur">
+    <div className="fixed bottom-24 right-4 z-40 w-60 rounded-2xl neu-overlay p-3">
       <div className="flex items-center justify-between mb-2">
         <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Calculator</span>
         <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><X className="w-4 h-4" /></button>

@@ -8,7 +8,7 @@ import { apiCall } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { studyModeSubjects } from '@/lib/study-mode';
 
-const CLASS_OPTIONS = [11, 12] as const;
+const CLASS_OPTIONS = [9, 10, 11, 12] as const;
 // The exam picker was removed from the student builder and the study-room test
 // config: Study Mode already expresses which exam the student is preparing for,
 // so asking a second time was redundant and could directly contradict it.
