@@ -941,3 +941,73 @@ export async function goOffline(helperUserId: string): Promise<void> {
   const helper = await requireHelper(helperUserId);
   await clearPresence(helper.id);
 }
+
+// ---------------------------------------------------------------------------
+// The "Need human help" button: everything it shows before the student taps.
+
+export type LiveHelpQuote = {
+  available: boolean;
+  /** Why the button is not offered (null when it is). */
+  blockedReason: string | null;
+  priceCoins: number | null;
+  botPriceCoins: number | null;
+  minutes: number | null;
+  balance: number;
+  canAfford: boolean;
+  /** Within human hours with at least one solver for the subject online. */
+  humansLikely: boolean;
+  botOn: boolean;
+  attempted: boolean;
+  openRequestId: string | null;
+};
+
+export async function quoteLiveHelp(studentId: string, questionId: string, now: Date = new Date()): Promise<LiveHelpQuote> {
+  const access = await getNowAccess(studentId, now);
+  const empty: LiveHelpQuote = {
+    available: false,
+    blockedReason: access.blockedReason,
+    priceCoins: null,
+    botPriceCoins: null,
+    minutes: null,
+    balance: 0,
+    canAfford: false,
+    humansLikely: false,
+    botOn: false,
+    attempted: false,
+    openRequestId: null,
+  };
+  if (!access.inCohort) return empty;
+  const question = await getOgcodeCatalogQuestionById(questionId);
+  const subject = String(question?.subject ?? "").trim().toLowerCase();
+  const difficulty = normalizeDifficulty(question?.difficulty);
+  if (!question || !isNowSubject(subject) || !difficulty) return { ...empty, blockedReason: "question_not_supported" };
+  if (access.canRequest) await ensureWelcomeGrant(studentId);
+  const [settings, { rows: prices }, balance, progress, openRequestId, online] = await Promise.all([
+    getNowSettings(),
+    loadPriceTable(),
+    getWalletBalance(studentId, now),
+    isOgcodeProgressAvailable() ? getOgcodeQuestionProgress(studentId, questionId) : Promise.resolve(null),
+    getOpenRequestId(studentId),
+    listOnlineHelpers(subject, now.getTime()).catch(() => new Map<string, number>()),
+  ]);
+  const human = lookupPrice(prices, difficulty, "human");
+  const bot = lookupPrice(prices, difficulty, "bot");
+  const botOn = botRuleForSubject(settings.bot, subject).enabled;
+  const attempted = Boolean(progress && (progress.attempted || progress.totalAttempts > 0 || progress.answerRevealed));
+  const humansLikely = isWithinOpenHours(settings.openHours, now) && online.size > 0;
+  // The student pays the bot price when the bot is the likely solver.
+  const price = humansLikely || !botOn ? human : (bot ?? human);
+  return {
+    available: access.canRequest && Boolean(human) && attempted,
+    blockedReason: access.canRequest ? (attempted ? null : "attempt_first") : access.blockedReason,
+    priceCoins: price?.priceCoins ?? null,
+    botPriceCoins: bot?.priceCoins ?? null,
+    minutes: price?.minutes ?? null,
+    balance: balance.available,
+    canAfford: Boolean(human) && balance.available >= (human?.priceCoins ?? Infinity),
+    humansLikely,
+    botOn,
+    attempted,
+    openRequestId,
+  };
+}

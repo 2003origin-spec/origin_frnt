@@ -369,7 +369,11 @@ export default function NowLiveRoom({ requestId }: { requestId: string }) {
             {waitingForSolver
               ? 'Finding a solver…'
               : ended
-                ? 'Session ended'
+                ? view.status === 'cancelled'
+                  ? 'Request cancelled'
+                  : view.status === 'no_helper' || view.status === 'no_show'
+                    ? 'No session this time'
+                    : 'Session ended'
                 : view.status === 'live'
                   ? `Live with ${peerName}`
                   : `Joining ${peerName}`}
@@ -456,8 +460,15 @@ export default function NowLiveRoom({ requestId }: { requestId: string }) {
 
       {waitingForSolver && (
         <Card>
-          <CardContent className="py-6 text-sm text-muted-foreground">
-            We are asking solvers who teach this chapter. This page updates by itself.
+          <CardContent className="flex flex-col gap-3 py-6 text-sm">
+            <p className="flex items-center gap-2 text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+              {view.status === 'offered' ? `Asking a ${view.subject} teacher…` : `Looking for a ${view.subject} solver…`}
+            </p>
+            <p className="text-muted-foreground">
+              Your {view.priceCoins} coins are held, not spent. If no teacher is free, Origin&apos;s AI solver can take it. This page updates by itself.
+            </p>
+            {!isSolver && <CancelRequest requestId={view.id} onDone={refresh} />}
           </CardContent>
         </Card>
       )}
@@ -474,10 +485,13 @@ export default function NowLiveRoom({ requestId }: { requestId: string }) {
               The call is audio only{isSolver ? '; you can share your screen from a computer' : ''}.
               {view.recorded ? ' Calls are recorded for safety and deleted after 30 days.' : ''}
             </p>
-            <Button onClick={joinCall} disabled={busy === 'join'} className="self-start">
-              {busy === 'join' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Mic className="mr-2 h-4 w-4" />}
-              {view.status === 'live' ? 'Rejoin the call' : 'Join the call'}
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button onClick={joinCall} disabled={busy === 'join'}>
+                {busy === 'join' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Mic className="mr-2 h-4 w-4" />}
+                {view.status === 'live' ? 'Rejoin the call' : 'Join the call'}
+              </Button>
+              {!isSolver && view.status === 'accepted' && <CancelRequest requestId={view.id} onDone={refresh} />}
+            </div>
           </CardContent>
         </Card>
       )}
@@ -568,6 +582,41 @@ export default function NowLiveRoom({ requestId }: { requestId: string }) {
       {ended && session?.endedAt && session.startedAt && ['ended', 'rated', 'unrated'].includes(view.status) && (
         <NowAfterCall sessionId={session.id} botSession={session.solverKind === 'bot'} />
       )}
+    </div>
+  );
+}
+
+/** Cancel before the call starts: the hold is released in full (server: requested/offered/accepted only). */
+function CancelRequest({ requestId, onDone }: { requestId: string; onDone: () => Promise<void> | void }) {
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const cancel = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await apiCall(`/now/requests/${requestId}`, { method: 'DELETE' });
+      await onDone();
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(false);
+      setConfirming(false);
+    }
+  };
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {confirming ? (
+        <>
+          <Button variant="destructive" size="sm" onClick={cancel} disabled={busy}>
+            {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}Yes, cancel and get my coins back
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setConfirming(false)} disabled={busy}>Keep waiting</Button>
+        </>
+      ) : (
+        <Button variant="outline" size="sm" onClick={() => setConfirming(true)}>Cancel request</Button>
+      )}
+      {error && <span className="text-sm text-red-600" role="alert">{error}</span>}
     </div>
   );
 }

@@ -42,12 +42,18 @@ export function NowDashboardCard() {
       <p className="text-sm text-muted-foreground">
         {me.access.blockedReason === 'suspended'
           ? 'Live help is paused on this account after a report review.'
-          : 'Stuck after trying a question? Ask a teacher live from the question page.'}
+          : me.access.blockedReason === 'needs_guardian_consent'
+            ? 'A parent or guardian needs to approve live help first.'
+            : 'Stuck after trying a question? Ask a teacher live from the question page.'}
       </p>
+      {me.access.blockedReason === 'needs_guardian_consent' && (
+        <Link href="/now/start" className="self-start rounded-md bg-primary px-3 py-1 text-sm text-primary-foreground">Ask a parent to approve</Link>
+      )}
       <div className="flex flex-wrap gap-2 text-sm">
         {me.access.inCohort && (
           <Link href="/now/doubts" className="rounded-md border px-3 py-1 hover:bg-muted">My doubts</Link>
         )}
+        <Link href="/now/wallet" className="rounded-md border px-3 py-1 hover:bg-muted">Wallet</Link>
         <Link href="/now/store" className="rounded-md border px-3 py-1 hover:bg-muted">Store</Link>
         {me.access.helper && (
           <Link href="/now/solver" className="rounded-md border px-3 py-1 hover:bg-muted">Solver dashboard</Link>

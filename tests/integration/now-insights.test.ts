@@ -74,8 +74,11 @@ test("monitor, sessions, review, metrics, people and both dashboards read what t
   assert.equal(m.concentrationFlag, true, "all of this month's coins came from one student");
   assert.ok(metrics.fallbackByDifficulty.easy.sessions >= 2);
 
-  const people = await searchPeople("meera");
-  assert.ok(people.some((p) => p.id === student && p.inCohort));
+  // Earlier suites create many "Meera" students, so look this one up by id (exact id sorts first).
+  const people = await searchPeople(student);
+  assert.equal(people[0]?.id, student);
+  assert.equal(people[0]?.inCohort, true);
+  assert.ok((await searchPeople("meera")).length > 0, "name search works too");
   assert.deepEqual(await searchPeople("me"), [], "too short to search");
 
   // Student dashboard + favourites.

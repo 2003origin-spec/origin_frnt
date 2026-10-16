@@ -9,6 +9,7 @@ import { getSlugSegments, parseJsonBody } from "@/server/http";
 import { createCheckoutOrder } from "@/server/payments/orders-service";
 import { confirmConsent, getConsentStatus, previewConsent, startGuardianConsent } from "@/server/now/consent-service";
 import { getNowAccess } from "@/server/now/now-access";
+import { getNowSettings } from "@/server/now/now-settings";
 import { handleNowError, NowError, nowJson } from "@/server/now/now-http";
 import {
   acceptAgreement,
@@ -28,6 +29,7 @@ import {
   getHelperByUserId,
   getOpenRequestId,
   getRequestView,
+  quoteLiveHelp,
   goOffline,
   heartbeatHelper,
   respondToOffer,
@@ -76,6 +78,7 @@ import { DECLINE_REASONS, OUTCOMES, ROOT_CAUSES } from "@/server/now/types";
  *   POST .../agreement, .../submit              POST /api/now/solver/quiz, /solver/quiz/:id/submit
  *
  * Requests and sessions (build step 5):
+ *   GET  /api/now/quote?questionId=        → what the "Need human help" button shows (price, balance, state)
  *   POST /api/now/requests                 → ask for live help (holds the coins, starts dispatch)
  *   GET  /api/now/requests/open            → the student's open request, if any
  *   GET|DELETE /api/now/requests/:id       → view / cancel (cancel releases the hold)
@@ -244,7 +247,11 @@ const StartQuizSchema = z.object({ subject: z.string().max(20) });
 const SubmitQuizSchema = z.object({ answers: z.record(z.string(), z.number().int().min(0).max(20).nullable()) });
 
 const solverHandlers = {
-  get: async (_r: NextRequest, userId: string) => nowJson({ application: await getMyApplication(userId) }),
+  get: async (_r: NextRequest, userId: string) => {
+    // The application screen needs the agreement version to accept and the quiz rules to show.
+    const [application, settings] = await Promise.all([getMyApplication(userId), getNowSettings()]);
+    return nowJson({ application, agreementVersion: settings.agreementVersion, quiz: settings.quiz });
+  },
   save: async (r: NextRequest, userId: string) =>
     nowJson({ application: await saveApplication(userId, ApplicationPatchSchema.parse(await parseJsonBody(r))) }),
   upload: async (r: NextRequest, userId: string) =>
@@ -302,6 +309,11 @@ const liveHandlers = {
     const limited = await limitMutation(`now-request:${userId}`);
     if (limited) return limited;
     return nowJson({ request: await createRequest(userId, body) }, { status: 201 });
+  },
+  quote: async (r: NextRequest, userId: string) => {
+    const questionId = r.nextUrl.searchParams.get("questionId")?.trim() ?? "";
+    if (!questionId || questionId.length > 120) throw new NowError(400, "invalid", "questionId is required.");
+    return nowJson({ quote: await quoteLiveHelp(userId, questionId) }, { headers: { "Cache-Control": "no-store" } });
   },
   open: async (_r: NextRequest, userId: string) => {
     const id = await getOpenRequestId(userId);
@@ -433,6 +445,7 @@ const ROUTES: { method: Method; pattern: string[]; handler: Handler; public?: bo
   { method: "POST", pattern: ["solver", "application", "submit"], handler: solverHandlers.submit },
   { method: "POST", pattern: ["solver", "quiz"], handler: solverHandlers.startQuiz },
   { method: "POST", pattern: ["solver", "quiz", ":id", "submit"], handler: solverHandlers.submitQuiz },
+  { method: "GET", pattern: ["quote"], handler: liveHandlers.quote },
   { method: "POST", pattern: ["requests"], handler: liveHandlers.create },
   { method: "GET", pattern: ["requests", "open"], handler: liveHandlers.open },
   { method: "GET", pattern: ["requests", ":id"], handler: liveHandlers.view },
