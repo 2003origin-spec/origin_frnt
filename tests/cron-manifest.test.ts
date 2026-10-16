@@ -56,6 +56,8 @@ const NOT_SCHEDULED: Record<string, string> = {
     "Receiver, not a worker: authenticated by an HMAC body signature and called by the client SDK.",
   "/api/internal/analysis-worker":
     "Invoked by the analytics service after it enqueues, not on a clock.",
+  "/api/internal/now/timer":
+    "QStash-delayed per Origin NOW timer; the 1-minute now/sweep is its cron backstop.",
   "/api/internal/refresh-catalog":
     "Manual/ops cache refresh, run after a catalog import.",
   // Honest status, not an endorsement: this one's own docstring says "Schedule

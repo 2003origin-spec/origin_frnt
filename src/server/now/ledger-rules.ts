@@ -304,12 +304,14 @@ export function computeWalletBalance(legs: readonly LedgerLeg[], now: Date): Wal
   let pending = 0;
   legs.forEach((leg, index) => {
     if (leg.direction === "credit") {
-      const availableAt = leg.availableAt ? leg.availableAt.getTime() : leg.createdAt.getTime();
-      if (availableAt > nowMs) {
+      // Only an explicit available_at (solver earnings) makes a credit pending.
+      // A plain credit is spendable once committed, even if its timestamp is a
+      // few ms after the caller's `now` (a welcome grant posted mid-request).
+      if (leg.availableAt && leg.availableAt.getTime() > nowMs) {
         pending += leg.amount;
         return;
       }
-      events.push({ at: availableAt, order: index, leg });
+      events.push({ at: leg.availableAt ? leg.availableAt.getTime() : leg.createdAt.getTime(), order: index, leg });
     } else {
       events.push({ at: leg.createdAt.getTime(), order: index, leg });
     }

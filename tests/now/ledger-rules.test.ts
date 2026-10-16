@@ -134,3 +134,11 @@ test("the nightly zero-sum check finds unbalanced transfers", () => {
   ];
   assert.deepEqual(findUnbalancedTransfers(legs), ["b"]);
 });
+
+test("a plain credit committed a moment after the caller's clock is still spendable", () => {
+  // Regression: a welcome grant posted inside createRequest, after its `now` was taken.
+  const now = new Date("2026-10-17T13:00:00.000Z");
+  const balance = computeWalletBalance([credit(200, new Date(now.getTime() + 5))], now);
+  assert.equal(balance.available, 200);
+  assert.equal(balance.pending, 0);
+});

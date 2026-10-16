@@ -21,6 +21,27 @@ import {
   submitQuiz,
 } from "@/server/now/solver-service";
 import { getWalletSummary, listCoinPacks } from "@/server/now/wallet-service";
+import {
+  cancelRequest,
+  createRequest,
+  getCurrentOffer,
+  getHelperByUserId,
+  getOpenRequestId,
+  getRequestView,
+  goOffline,
+  heartbeatHelper,
+  respondToOffer,
+} from "@/server/now/dispatch-service";
+import { helperStreamId, requestStreamId } from "@/server/now/now-realtime";
+import { nowEventStream } from "@/server/now/now-sse";
+import {
+  confirmExtension,
+  endSession,
+  joinSession,
+  recordOutcome,
+  requestExtension,
+} from "@/server/now/session-service";
+import { DECLINE_REASONS, OUTCOMES, ROOT_CAUSES } from "@/server/now/types";
 
 /**
  * Origin NOW student + helper API (plan: V1/ORIGIN_NOW_PLAN.md).
@@ -42,7 +63,21 @@ import { getWalletSummary, listCoinPacks } from "@/server/now/wallet-service";
  *   GET  /api/now/consent/preview?token= (public)   POST /api/now/consent/confirm (public)
  *   GET|PUT /api/now/solver/application         POST .../documents, .../documents/confirm,
  *   POST .../agreement, .../submit              POST /api/now/solver/quiz, /solver/quiz/:id/submit
+ *
+ * Requests and sessions (build step 5):
+ *   POST /api/now/requests                 → ask for live help (holds the coins, starts dispatch)
+ *   GET  /api/now/requests/open            → the student's open request, if any
+ *   GET|DELETE /api/now/requests/:id       → view / cancel (cancel releases the hold)
+ *   GET  /api/now/requests/:id/stream      → SSE for the student and the assigned solver
+ *   POST|DELETE /api/now/helper/presence   → solver shift heartbeat / go offline
+ *   GET  /api/now/helper/stream            → SSE: offers for this solver
+ *   GET  /api/now/helper/offers/current    → open offer (push tap, reconnect)
+ *   POST /api/now/offers/:id               → { action: accept | decline }
+ *   POST /api/now/sessions/:id/join | /end | /outcome | /extend | /extend/confirm
  */
+
+// SSE connections hold the function open; each closes itself after ~50 s.
+export const maxDuration = 60;
 
 type RouteContext = { params: Promise<{ slug?: string[] }> };
 type Method = "GET" | "POST" | "PUT" | "DELETE";
@@ -194,6 +229,102 @@ const solverHandlers = {
     nowJson(await submitQuiz(userId, attemptId, SubmitQuizSchema.parse(await parseJsonBody(r)).answers)),
 };
 
+// ---------------------------------------------------------------------------
+// Requests, offers and sessions (build step 5).
+
+const CreateRequestSchema = z.object({
+  questionId: z.string().trim().min(1).max(120),
+  language: z.string().max(30).nullable().optional(),
+  aiExplained: z.boolean().optional(),
+  originAiSessionId: z.string().max(120).nullable().optional(),
+});
+const PresenceSchema = z.object({ subjects: z.array(z.string().max(20)).max(4).nullable().optional() });
+const OfferResponseSchema = z.object({
+  action: z.enum(["accept", "decline"]),
+  reason: z.enum(DECLINE_REASONS).nullable().optional(),
+});
+const EndSchema = z.object({
+  outcome: z.enum(OUTCOMES).nullable().optional(),
+  rootCause: z.enum(ROOT_CAUSES).nullable().optional(),
+});
+const OutcomeSchema = z.object({ outcome: z.enum(OUTCOMES), rootCause: z.enum(ROOT_CAUSES).nullable().optional() });
+
+async function limitMutation(key: string): Promise<Response | null> {
+  return checkRateLimit(mutationLimiter, key);
+}
+
+const liveHandlers = {
+  create: async (r: NextRequest, userId: string) => {
+    const body = CreateRequestSchema.parse(await parseJsonBody(r));
+    const limited = await limitMutation(`now-request:${userId}`);
+    if (limited) return limited;
+    return nowJson({ request: await createRequest(userId, body) }, { status: 201 });
+  },
+  open: async (_r: NextRequest, userId: string) => {
+    const id = await getOpenRequestId(userId);
+    return nowJson({ request: id ? await getRequestView(id, { viewerUserId: userId }) : null });
+  },
+  view: async (_r: NextRequest, userId: string, [id]: string[]) =>
+    nowJson({ request: await getRequestView(id, { viewerUserId: userId }) }),
+  cancel: async (_r: NextRequest, userId: string, [id]: string[]) =>
+    nowJson({ request: await cancelRequest(userId, id) }),
+  requestStream: async (r: NextRequest, userId: string, [id]: string[]) => {
+    await getRequestView(id, { viewerUserId: userId }); // 404 unless student or assigned solver
+    return nowEventStream(r, {
+      streamId: requestStreamId(id),
+      snapshot: async () => ({ type: "snapshot", request: await getRequestView(id, { viewerUserId: userId }) }),
+      stillAllowed: async () => {
+        try {
+          await getRequestView(id, { viewerUserId: userId });
+          return true;
+        } catch {
+          return false;
+        }
+      },
+      closeOn: ["closed", "settled"],
+    });
+  },
+  presence: async (r: NextRequest, userId: string) => {
+    const body = PresenceSchema.parse(await parseJsonBody(r));
+    const shift = await heartbeatHelper(userId, body.subjects ?? null);
+    return nowJson({ ...shift, offer: await getCurrentOffer(userId) });
+  },
+  offline: async (_r: NextRequest, userId: string) => {
+    await goOffline(userId);
+    return nowJson({ ok: true });
+  },
+  helperStream: async (r: NextRequest, userId: string) => {
+    const helper = await getHelperByUserId(userId);
+    if (!helper) throw new NowError(403, "not_a_solver", "Only approved solvers can do this.");
+    return nowEventStream(r, {
+      streamId: helperStreamId(helper.id),
+      snapshot: async () => ({ type: "snapshot", offer: await getCurrentOffer(userId) }),
+      stillAllowed: async () => (await getHelperByUserId(userId))?.verification_status === "verified",
+    });
+  },
+  currentOffer: async (_r: NextRequest, userId: string) => nowJson({ offer: await getCurrentOffer(userId) }),
+  respond: async (r: NextRequest, userId: string, [offerId]: string[]) => {
+    const body = OfferResponseSchema.parse(await parseJsonBody(r));
+    return nowJson(await respondToOffer(userId, offerId, body.action, body.reason ?? null));
+  },
+  join: async (_r: NextRequest, userId: string, [id]: string[]) => nowJson(await joinSession(userId, id)),
+  end: async (r: NextRequest, userId: string, [id]: string[]) => {
+    const body = EndSchema.parse(await parseJsonBody(r));
+    return nowJson(await endSession({ userId }, id, { outcome: body.outcome ?? null, rootCause: body.rootCause ?? null }));
+  },
+  outcome: async (r: NextRequest, userId: string, [id]: string[]) => {
+    const body = OutcomeSchema.parse(await parseJsonBody(r));
+    return nowJson(await recordOutcome(userId, id, body.outcome, body.rootCause ?? null));
+  },
+  extend: async (_r: NextRequest, userId: string, [id]: string[]) => {
+    const limited = await limitMutation(`now-extend:${userId}`);
+    if (limited) return limited;
+    return nowJson(await requestExtension(userId, id));
+  },
+  confirmExtend: async (_r: NextRequest, userId: string, [id]: string[]) =>
+    nowJson(await confirmExtension({ helperUserId: userId }, id)),
+};
+
 /** Routes keyed by method + path; ":id" segments are passed through as params. */
 const ROUTES: { method: Method; pattern: string[]; handler: Handler; public?: boolean }[] = [
   { method: "GET", pattern: ["me"], handler: handleMe },
@@ -212,6 +343,21 @@ const ROUTES: { method: Method; pattern: string[]; handler: Handler; public?: bo
   { method: "POST", pattern: ["solver", "application", "submit"], handler: solverHandlers.submit },
   { method: "POST", pattern: ["solver", "quiz"], handler: solverHandlers.startQuiz },
   { method: "POST", pattern: ["solver", "quiz", ":id", "submit"], handler: solverHandlers.submitQuiz },
+  { method: "POST", pattern: ["requests"], handler: liveHandlers.create },
+  { method: "GET", pattern: ["requests", "open"], handler: liveHandlers.open },
+  { method: "GET", pattern: ["requests", ":id"], handler: liveHandlers.view },
+  { method: "DELETE", pattern: ["requests", ":id"], handler: liveHandlers.cancel },
+  { method: "GET", pattern: ["requests", ":id", "stream"], handler: liveHandlers.requestStream },
+  { method: "POST", pattern: ["helper", "presence"], handler: liveHandlers.presence },
+  { method: "DELETE", pattern: ["helper", "presence"], handler: liveHandlers.offline },
+  { method: "GET", pattern: ["helper", "stream"], handler: liveHandlers.helperStream },
+  { method: "GET", pattern: ["helper", "offers", "current"], handler: liveHandlers.currentOffer },
+  { method: "POST", pattern: ["offers", ":id"], handler: liveHandlers.respond },
+  { method: "POST", pattern: ["sessions", ":id", "join"], handler: liveHandlers.join },
+  { method: "POST", pattern: ["sessions", ":id", "end"], handler: liveHandlers.end },
+  { method: "POST", pattern: ["sessions", ":id", "outcome"], handler: liveHandlers.outcome },
+  { method: "POST", pattern: ["sessions", ":id", "extend"], handler: liveHandlers.extend },
+  { method: "POST", pattern: ["sessions", ":id", "extend", "confirm"], handler: liveHandlers.confirmExtend },
 ];
 
 function match(

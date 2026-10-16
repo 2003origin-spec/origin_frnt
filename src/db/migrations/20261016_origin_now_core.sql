@@ -229,6 +229,7 @@ CREATE TABLE IF NOT EXISTS now.sessions (
   ended_at TIMESTAMPTZ,
   ended_by TEXT CHECK (ended_by IN ('student', 'helper', 'timer', 'admin', 'no_show')),
   extensions_used INTEGER NOT NULL DEFAULT 0,
+  extension_requested_at TIMESTAMPTZ,
   outcome TEXT CHECK (outcome IN ('resolved', 'partial', 'unresolved')),
   root_cause TEXT CHECK (root_cause IN (
     'conceptual_gap', 'calculation_error', 'misread', 'careless_error', 'time_pressure', 'other'
