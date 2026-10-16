@@ -18,6 +18,7 @@ import {
   getReportForAdmin,
   liftSuspension,
   listReportsForAdmin,
+  listSuspensionsForUser,
   listRestrictedHelpers,
   reinstateHelper,
   resolveReport,
@@ -55,7 +56,7 @@ import { recordAuditEvent } from "@/server/workspaces/audit";
  *   GET  /api/admin/now/reports?status=open      GET  /api/admin/now/reports/:id (first response time)
  *   POST /api/admin/now/reports/:id/resolve      { outcome: upheld | dismissed, note }
  *   GET  /api/admin/now/helpers/restricted       POST /api/admin/now/helpers/:id/reinstate { note }
- *   POST /api/admin/now/suspensions/:id/lift
+ *   GET  /api/admin/now/suspensions?userId=      POST /api/admin/now/suspensions/:id/lift
  *   GET|POST /api/admin/now/store/items          PUT  /api/admin/now/store/items/:id
  *   POST /api/admin/now/store/items/:id/file     POST /api/admin/now/store/items/:id/file/confirm
  *   GET  /api/admin/now/store/orders
@@ -346,6 +347,11 @@ const ROUTES: { method: Method; pattern: string[]; handler: Handler }[] = [
     },
   },
   { method: "GET", pattern: ["store", "orders"], handler: async () => nowJson({ orders: await listStoreOrdersForAdmin() }) },
+  {
+    method: "GET",
+    pattern: ["suspensions"],
+    handler: async (request) => nowJson({ suspensions: await listSuspensionsForUser(request.nextUrl.searchParams.get("userId") ?? "") }),
+  },
   {
     method: "POST",
     pattern: ["suspensions", ":id", "lift"],

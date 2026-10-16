@@ -648,6 +648,23 @@ export async function reinstateHelper(adminId: string, helperId: string, note: s
   return { reinstated: true };
 }
 
+export async function listSuspensionsForUser(userId: string) {
+  const pool = await db();
+  const res = await pool.query(
+    `SELECT id, scope, reason, starts_at, ends_at, lifted_at FROM now.suspensions WHERE user_id = $1 ORDER BY created_at DESC LIMIT 20`,
+    [userId],
+  );
+  return res.rows.map((r) => ({
+    id: r.id,
+    scope: r.scope,
+    reason: r.reason,
+    startsAt: r.starts_at.toISOString(),
+    endsAt: r.ends_at ? r.ends_at.toISOString() : null,
+    liftedAt: r.lifted_at ? r.lifted_at.toISOString() : null,
+    active: !r.lifted_at && (!r.ends_at || r.ends_at.getTime() > Date.now()),
+  }));
+}
+
 export async function listRestrictedHelpers() {
   const pool = await db();
   const res = await pool.query(

@@ -19,6 +19,39 @@ type Dashboards = {
 };
 type Member = { userId: string; name: string | null; email: string | null; invitedAt: string; removedAt: string | null };
 
+type Suspension = { id: string; scope: string; reason: string; startsAt: string; endsAt: string | null; liftedAt: string | null; active: boolean };
+
+function Pauses({ userId }: { userId: string }) {
+  const { data, reload } = useAdminData<{ suspensions: Suspension[] }>(`/suspensions?userId=${encodeURIComponent(userId)}`);
+  const list = data?.suspensions ?? [];
+  if (list.length === 0) return null;
+  const lift = async (id: string) => {
+    try {
+      await adminSend(`/suspensions/${id}/lift`, 'POST');
+      toast.success('Pause lifted.');
+      await reload();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed.');
+    }
+  };
+  return (
+    <>
+      <h3 className="mb-1 mt-4 text-sm font-semibold">Pauses</h3>
+      <Table head={['Who', 'Why', 'From', 'Until', '']}>
+        {list.map((s) => (
+          <tr key={s.id}>
+            <Td>{s.scope}</Td>
+            <Td>{s.reason}</Td>
+            <Td>{fmtDate(s.startsAt)}</Td>
+            <Td>{s.liftedAt ? `lifted ${fmtDate(s.liftedAt)}` : s.endsAt ? fmtDate(s.endsAt) : 'until reviewed'}</Td>
+            <Td>{s.active && <button className={ghostButtonClass} onClick={() => lift(s.id)}>Lift</button>}</Td>
+          </tr>
+        ))}
+      </Table>
+    </>
+  );
+}
+
 function PersonView({ person, onChanged }: { person: Person; onChanged: () => void }) {
   const wallet = useAdminData<Wallet>(`/wallets/${person.id}`);
   const dashboards = useAdminData<Dashboards>(`/dashboards/${person.id}`);
@@ -66,6 +99,7 @@ function PersonView({ person, onChanged }: { person: Person; onChanged: () => vo
         {d?.solver && <Stat label="Solved (all time)" value={d.solver.summary.solvedAllTime ?? 0} hint={`accept ${pct(d.solver.summary.acceptRate as number | null)}`} />}
       </div>
       {d?.solver?.standing.warnings.map((w, i) => <p key={i} className="mt-2 text-sm text-amber-700">{w.detail}</p>)}
+      <Pauses userId={person.id} />
       <h3 className="mb-1 mt-4 text-sm font-semibold">Credit coins (always a credit from Origin; logged with the reason)</h3>
       <div className="flex flex-wrap items-center gap-2">
         <input type="number" className={`${inputClass} w-28`} value={coins} onChange={(e) => setCoins(Math.max(0, Math.floor(Number(e.target.value))))} />
