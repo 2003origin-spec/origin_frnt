@@ -24,6 +24,7 @@ import { loadPriceTable } from "./admin-store";
 import { PLATFORM_ACCOUNTS, sessionHold, sessionRelease, userAccount, type Transfer } from "./ledger-rules";
 import { getWalletBalance, InsufficientCoinsError, postTransfers, withNowTransaction } from "./ledger-store";
 import {
+  botRuleForSubject,
   decideDispatch,
   istDayKey,
   rankCandidates,
@@ -390,7 +391,7 @@ export async function dispatchRequest(requestId: string, now: Date = new Date())
   const snapshot = peek.rows[0];
   if (!snapshot || snapshot.status !== "requested") return null;
   const online = await listOnlineHelpers(snapshot.subject, now.getTime());
-  if (settings.bot.enabled) await ensureBotHelper();
+  if (botRuleForSubject(settings.bot, snapshot.subject).enabled) await ensureBotHelper();
 
   try {
     await withNowTransaction(async (client) => {
@@ -413,7 +414,7 @@ export async function dispatchRequest(requestId: string, now: Date = new Date())
           waitedMs: now.getTime() - request.created_at.getTime(),
           callbackOffered: request.callback_offered,
         },
-        settings.bot,
+        botRuleForSubject(settings.bot, request.subject),
       );
 
       switch (decision.action) {
@@ -512,6 +513,11 @@ export async function dispatchRequest(requestId: string, now: Date = new Date())
               }),
             async () => {
               await scheduleNowTimer({ kind: "no_show", sessionId: session.id }, NO_SHOW_WINDOW_MS / 1000 + 5);
+            },
+            async () => {
+              // Imported lazily: bot-service builds on this module.
+              const { dispatchBotToSession } = await import("./bot-service");
+              await dispatchBotToSession(session.id);
             },
           );
           return;

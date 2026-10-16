@@ -5,6 +5,7 @@ import { jwtVerify } from "jose";
 import {
   __setLiveKitFetchForTests,
   audioEgressRequest,
+  createAgentDispatch,
   deleteRoom,
   getLiveKitConfig,
   mintParticipantToken,
@@ -87,6 +88,24 @@ test("server calls: DeleteRoom (404 is fine) and an audio-only OGG egress to R2"
 
     status = 404;
     await deleteRoom(config, "now-gone"); // already gone: not an error
+  } finally {
+    __setLiveKitFetchForTests(null);
+  }
+});
+
+test("agent dispatch sends the job metadata to the agent with a room-admin server token", async () => {
+  const calls: { url: string; body: Record<string, unknown>; auth: string }[] = [];
+  __setLiveKitFetchForTests(async (url, init) => {
+    calls.push({ url, body: JSON.parse(String(init.body)), auth: String((init.headers as Record<string, string>).Authorization) });
+    return new Response(JSON.stringify({ id: "AD_1" }), { status: 200 });
+  });
+  try {
+    const id = await createAgentDispatch(config, { room: "now-nses_1", agentName: "origin-voice-agent", metadata: "{\"mode\":\"now_solver\"}" });
+    assert.equal(id, "AD_1");
+    assert.equal(calls[0].url, "https://example.livekit.cloud/twirp/livekit.AgentDispatchService/CreateDispatch");
+    assert.deepEqual(calls[0].body, { agent_name: "origin-voice-agent", room: "now-nses_1", metadata: '{"mode":"now_solver"}' });
+    const { payload } = await jwtVerify(calls[0].auth.replace("Bearer ", ""), new TextEncoder().encode(config.apiSecret));
+    assert.deepEqual(payload.video, { roomAdmin: true, room: "now-nses_1" });
   } finally {
     __setLiveKitFetchForTests(null);
   }

@@ -140,6 +140,11 @@ export function parseBotRule(raw: string | null): BotRule {
     whenNoneOnline: typeof parsed.whenNoneOnline === "boolean" ? parsed.whenNoneOnline : DEFAULT_BOT_RULE.whenNoneOnline,
     afterFailedOffers: nullableCount(parsed.afterFailedOffers, DEFAULT_BOT_RULE.afterFailedOffers),
     afterMs: nullableCount(parsed.afterMs, DEFAULT_BOT_RULE.afterMs),
+    disabledSubjects: Array.isArray(parsed.disabledSubjects)
+      ? [...new Set(parsed.disabledSubjects.map((s) => String(s).trim().toLowerCase()))].filter((s) =>
+          ["physics", "chemistry", "mathematics", "biology"].includes(s),
+        )
+      : [],
   };
 }
 

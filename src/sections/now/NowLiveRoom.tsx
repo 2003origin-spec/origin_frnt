@@ -18,6 +18,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
+  ParticipantKind,
   Room,
   RoomEvent,
   Track,
@@ -85,8 +86,12 @@ function errorMessage(error: unknown): string {
 }
 
 function roleOf(participant: Participant | undefined): string | null {
+  if (!participant) return null;
+  // The Origin bot is a LiveKit agent; it also sets `role` in its attributes.
+  if (participant.attributes?.role) return participant.attributes.role;
+  if (participant.kind === ParticipantKind.AGENT) return 'solver';
   try {
-    return participant?.metadata ? (JSON.parse(participant.metadata).role ?? null) : null;
+    return participant.metadata ? (JSON.parse(participant.metadata).role ?? null) : null;
   } catch {
     return null;
   }

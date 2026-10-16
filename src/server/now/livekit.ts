@@ -122,6 +122,29 @@ async function twirp<T>(config: LiveKitConfig, service: string, method: string, 
   return (text ? JSON.parse(text) : {}) as T;
 }
 
+/** Agent name the Origin Voice worker registers with (origin-ai/app/voice_agent/worker.py). */
+export function botAgentName(): string {
+  return env("NOW_BOT_AGENT_NAME") ?? "origin-voice-agent";
+}
+
+/**
+ * Asks LiveKit to send the Origin Voice agent into a room with this job
+ * metadata (it is given to the agent only, never to room participants).
+ */
+export async function createAgentDispatch(
+  config: LiveKitConfig,
+  input: { room: string; agentName: string; metadata: string },
+): Promise<string | null> {
+  const res = await twirp<{ id?: string }>(
+    config,
+    "AgentDispatchService",
+    "CreateDispatch",
+    { agent_name: input.agentName, room: input.room, metadata: input.metadata },
+    { roomAdmin: true, room: input.room },
+  );
+  return res.id ?? null;
+}
+
 /** Disconnects everyone and closes the room. A room that is already gone is fine. */
 export async function deleteRoom(config: LiveKitConfig, room: string): Promise<void> {
   try {

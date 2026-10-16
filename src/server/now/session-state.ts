@@ -24,6 +24,7 @@ export type RequestEvent =
   | "offer_expired"
   | "offer_accepted"
   | "bot_assigned"
+  | "bot_unavailable"
   | "both_joined"
   | "helper_no_show"
   | "student_no_show"
@@ -39,6 +40,8 @@ const TRANSITIONS: Record<RequestEvent, Partial<Record<RequestStatus, RequestSta
   offer_expired: { offered: "requested" },
   offer_accepted: { offered: "accepted" },
   bot_assigned: { requested: "accepted", offered: "accepted" },
+  // The bot was assigned but LiveKit could not dispatch it: close and refund.
+  bot_unavailable: { accepted: "no_helper" },
   both_joined: { accepted: "live" },
   helper_no_show: { accepted: "requested" },
   student_no_show: { accepted: "no_show" },

@@ -150,6 +150,8 @@ export type BotRule = {
   afterFailedOffers: number | null;
   /** Hand to the bot after this long waiting (null = never by time). */
   afterMs: number | null;
+  /** Subjects the bot is switched off for (plan doc: "bot on or off per subject"). */
+  disabledSubjects: string[];
 };
 
 export const DEFAULT_BOT_RULE: BotRule = {
@@ -157,7 +159,14 @@ export const DEFAULT_BOT_RULE: BotRule = {
   whenNoneOnline: true,
   afterFailedOffers: 3,
   afterMs: 2 * 60_000,
+  disabledSubjects: [],
 };
+
+/** The rule as it applies to one subject: off when switched off globally or for the subject. */
+export function botRuleForSubject(rule: BotRule, subject: string): BotRule {
+  const off = (rule.disabledSubjects ?? []).includes(subject.trim().toLowerCase());
+  return off ? { ...rule, enabled: false } : rule;
+}
 
 export type DispatchState = {
   /** Within human open hours. */
