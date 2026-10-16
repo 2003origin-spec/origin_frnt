@@ -23,6 +23,8 @@ import {
   resolveReport,
 } from "@/server/now/after-call-service";
 import { getRecordingLinkForAdmin } from "@/server/now/room-service";
+import { getLiveMonitor, getNowMetrics, getSessionReview, listSessionsForAdmin, searchPeople } from "@/server/now/admin-insights-service";
+import { getSolverDashboard, getStudentDashboard } from "@/server/now/dashboard-service";
 import {
   confirmPaperUpload,
   createPaperUpload,
@@ -57,6 +59,9 @@ import { recordAuditEvent } from "@/server/workspaces/audit";
  *   GET|POST /api/admin/now/store/items          PUT  /api/admin/now/store/items/:id
  *   POST /api/admin/now/store/items/:id/file     POST /api/admin/now/store/items/:id/file/confirm
  *   GET  /api/admin/now/store/orders
+ *   GET  /api/admin/now/monitor                  GET  /api/admin/now/metrics
+ *   GET  /api/admin/now/sessions?status=&kind=   GET  /api/admin/now/sessions/:id
+ *   GET  /api/admin/now/people?q=                GET  /api/admin/now/dashboards/:userId (read-only)
  */
 
 type RouteContext = { params: Promise<{ slug?: string[] }> };
@@ -266,6 +271,45 @@ const ROUTES: { method: Method; pattern: string[]; handler: Handler }[] = [
       const result = await reinstateHelper(adminId, id, note);
       await audit(adminId, "now.helper.reinstate", { helperId: id, note });
       return nowJson(result);
+    },
+  },
+  { method: "GET", pattern: ["monitor"], handler: async () => nowJson(await getLiveMonitor()) },
+  { method: "GET", pattern: ["metrics"], handler: async () => nowJson(await getNowMetrics()) },
+  {
+    method: "GET",
+    pattern: ["sessions"],
+    handler: async (request) =>
+      nowJson({
+        sessions: await listSessionsForAdmin({
+          status: request.nextUrl.searchParams.get("status"),
+          solverKind: request.nextUrl.searchParams.get("kind"),
+        }),
+      }),
+  },
+  {
+    method: "GET",
+    pattern: ["sessions", ":id"],
+    handler: async (_r, _adminId, [id]) => {
+      const review = await getSessionReview(id);
+      if (!review) throw new NowError(404, "not_found", "Session not found.");
+      return nowJson({ session: review });
+    },
+  },
+  {
+    method: "GET",
+    pattern: ["people"],
+    handler: async (request) => nowJson({ people: await searchPeople(request.nextUrl.searchParams.get("q") ?? "") }),
+  },
+  {
+    method: "GET",
+    pattern: ["dashboards", ":id"],
+    handler: async (_r, adminId, [userId]) => {
+      const [student, solver] = await Promise.all([
+        getStudentDashboard(userId).catch(() => null),
+        getSolverDashboard(userId).catch(() => null),
+      ]);
+      await audit(adminId, "now.dashboard.view", { userId });
+      return nowJson({ student, solver });
     },
   },
   { method: "GET", pattern: ["store", "items"], handler: async () => nowJson({ items: await listStoreItemsForAdmin() }) },

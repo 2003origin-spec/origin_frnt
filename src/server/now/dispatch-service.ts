@@ -918,6 +918,10 @@ export async function heartbeatHelper(
   const subjects = requestedSubjects === null ? allowed : allowed.filter((s) => requestedSubjects.includes(s));
   await heartbeatPresence(helper.id, subjects, now.getTime());
   if (subjects.length > 0) {
+    await pool.query(
+      `INSERT INTO now.presence_minutes (helper_id, minute) VALUES ($1, date_trunc('minute', $2::timestamptz)) ON CONFLICT DO NOTHING`,
+      [helper.id, now],
+    );
     const waiting = await pool.query<{ id: string }>(
       `SELECT id FROM now.requests WHERE status = 'requested' AND subject = ANY($1::text[]) ORDER BY created_at LIMIT 5`,
       [subjects],

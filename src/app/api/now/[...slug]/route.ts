@@ -51,6 +51,7 @@ import {
 } from "@/server/now/after-call-service";
 import { issueRoomTicket } from "@/server/now/room-service";
 import { buyStoreItem, getPaperDownload, listMyOrders, listStoreItems } from "@/server/now/store-service";
+import { getSolverDashboard, getStudentDashboard, setFavourite } from "@/server/now/dashboard-service";
 import { DECLINE_REASONS, OUTCOMES, ROOT_CAUSES } from "@/server/now/types";
 
 /**
@@ -99,6 +100,11 @@ import { DECLINE_REASONS, OUTCOMES, ROOT_CAUSES } from "@/server/now/types";
  *   POST /api/now/store/items/:id/buy      → Idempotency-Key header; refused inside the Android app
  *   GET  /api/now/store/orders             → my orders
  *   POST /api/now/store/orders/:id/download → 10-minute link to a bought paper (logged)
+ *
+ * Dashboards (build step 10):
+ *   GET  /api/now/me/dashboard?page=       → the student's doubts dashboard
+ *   POST|DELETE /api/now/favourites/:helperId
+ *   GET  /api/now/solver/dashboard         → the solver dashboard
  */
 
 // SSE connections hold the function open; each closes itself after ~50 s.
@@ -376,6 +382,15 @@ const liveHandlers = {
   block: async (_r: NextRequest, userId: string, [id]: string[]) => nowJson(await blockFromSession(userId, id)),
   practice: async (r: NextRequest, userId: string, [id]: string[]) =>
     nowJson(await recordPracticeAttempt(userId, id, PracticeSchema.parse(await parseJsonBody(r)).questionId)),
+  studentDashboard: async (r: NextRequest, userId: string) => {
+    const access = await getNowAccess(userId);
+    if (!access.inCohort) throw new NowError(403, access.blockedReason ?? "not_invited", "Origin NOW is not open for this account yet.");
+    const page = Number(r.nextUrl.searchParams.get("page") ?? "0");
+    return nowJson({ dashboard: await getStudentDashboard(userId, { page: Number.isFinite(page) ? page : 0 }) });
+  },
+  favourite: async (_r: NextRequest, userId: string, [helperId]: string[]) => nowJson(await setFavourite(userId, helperId, true)),
+  unfavourite: async (_r: NextRequest, userId: string, [helperId]: string[]) => nowJson(await setFavourite(userId, helperId, false)),
+  solverDashboard: async (_r: NextRequest, userId: string) => nowJson({ dashboard: await getSolverDashboard(userId) }),
   storeItems: async (_r: NextRequest, userId: string) => nowJson(await listStoreItems(userId)),
   storeBuy: async (r: NextRequest, userId: string, [id]: string[]) => {
     // Play billing policy: digital goods paid with coins bought outside Play stay web-only, like coin packs.
@@ -435,6 +450,10 @@ const ROUTES: { method: Method; pattern: string[]; handler: Handler; public?: bo
   { method: "POST", pattern: ["sessions", ":id", "extend", "confirm"], handler: liveHandlers.confirmExtend },
   { method: "POST", pattern: ["sessions", ":id", "token"], handler: liveHandlers.roomTicket },
   { method: "GET", pattern: ["sessions", ":id", "after"], handler: liveHandlers.afterCall },
+  { method: "GET", pattern: ["me", "dashboard"], handler: liveHandlers.studentDashboard },
+  { method: "POST", pattern: ["favourites", ":id"], handler: liveHandlers.favourite },
+  { method: "DELETE", pattern: ["favourites", ":id"], handler: liveHandlers.unfavourite },
+  { method: "GET", pattern: ["solver", "dashboard"], handler: liveHandlers.solverDashboard },
   { method: "GET", pattern: ["store", "items"], handler: liveHandlers.storeItems },
   { method: "POST", pattern: ["store", "items", ":id", "buy"], handler: liveHandlers.storeBuy },
   { method: "GET", pattern: ["store", "orders"], handler: liveHandlers.storeOrders },

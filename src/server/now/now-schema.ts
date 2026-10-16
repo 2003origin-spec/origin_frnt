@@ -182,6 +182,14 @@ CREATE INDEX IF NOT EXISTS idx_helper_expertise_subject ON now.helper_expertise(
   PRIMARY KEY (student_id, helper_id)
 );`,
 
+  // One row per solver per online minute (from the shift heartbeat), for
+  // "hours online" on the solver dashboard; pruned after 90 days.
+  `CREATE TABLE IF NOT EXISTS now.presence_minutes (
+  helper_id TEXT NOT NULL REFERENCES now.helpers(id) ON DELETE CASCADE,
+  minute TIMESTAMPTZ NOT NULL,
+  PRIMARY KEY (helper_id, minute)
+);`,
+
   `CREATE TABLE IF NOT EXISTS now.blocks (
   blocker_id TEXT NOT NULL REFERENCES origin_users(id) ON DELETE CASCADE,
   blocked_id TEXT NOT NULL REFERENCES origin_users(id) ON DELETE CASCADE,

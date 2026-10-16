@@ -155,6 +155,7 @@ import { TIER_THRESHOLDS, getUserTitle } from '@/lib/achievements';
 import { useRef } from 'react';
 import { useTutorial } from '@/features/tutorial/TutorialProvider';
 import { formatPoints } from '@/lib/format-points';
+import { NowDashboardCard } from '@/components/now/NowDashboardCard';
 
 const stagger = (i: number) => ({ initial: { opacity: 0, y: 14 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.35, delay: 0.06 * i } });
 
@@ -636,6 +637,8 @@ export default function Dashboard({
             }}
           />
           <ChatWithOriCard onOpen={() => onNavigate('doubt-solver')} />
+          {/* Origin NOW pilot entry: renders nothing outside the invited cohort. */}
+          <NowDashboardCard />
           <ActionGrid onNavigate={onNavigate} onAnalyze={() => setPanelOpen(true)} />
         </motion.div>
 

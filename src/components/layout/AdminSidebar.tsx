@@ -27,6 +27,7 @@ import {
     Rocket,
     KeyRound,
     Trophy,
+    Headphones,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { usePathname, useRouter } from 'next/navigation';
@@ -59,6 +60,8 @@ const navItems = [
     { id: 'financials', label: 'Financials', icon: CreditCard, path: '/admin/financials' },
     { id: 'pricing', label: 'Pricing', icon: IndianRupee, path: '/admin/pricing' },
     { id: 'coupons', label: 'Coupons', icon: Ticket, path: '/admin/coupons' },
+    // Origin NOW pilot: live monitor, reports, applications, solvers, store, settings.
+    { id: 'now', label: 'Origin NOW', icon: Headphones, path: '/admin/now' },
     // CBT teacher allowlist (404s when cbtModule is off).
     { id: 'cbt', label: 'CBT', icon: ClipboardCheck, path: '/admin/cbt' },
     { id: 'analytics', label: 'Global Analytics', icon: BarChart3, path: '/admin/analytics' },

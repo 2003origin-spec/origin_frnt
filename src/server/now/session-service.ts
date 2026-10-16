@@ -613,6 +613,7 @@ export async function runNowNightly(now: Date = new Date()) {
       JSON.stringify({ count: unbalanced.length, sample: unbalanced.slice(0, 20) }),
     ]);
   }
+  await pool.query(`DELETE FROM now.presence_minutes WHERE minute < $1`, [new Date(now.getTime() - 90 * 24 * 60 * 60_000)]);
   const recordings = await purgeExpiredRecordings(now);
   return { ratingWindowsClosed, unbalancedTransfers: unbalanced.length, recordingsDeleted: recordings.deleted, recordingDeletesFailed: recordings.failed };
 }

@@ -366,7 +366,13 @@ export default function NowLiveRoom({ requestId }: { requestId: string }) {
             {view.chapter ? ` · ${view.chapter}` : ''} · {view.difficulty}
           </p>
           <h1 className="text-lg font-semibold">
-            {waitingForSolver ? 'Finding a solver…' : ended ? 'Session ended' : `Live with ${peerName}`}
+            {waitingForSolver
+              ? 'Finding a solver…'
+              : ended
+                ? 'Session ended'
+                : view.status === 'live'
+                  ? `Live with ${peerName}`
+                  : `Joining ${peerName}`}
           </h1>
         </div>
         <div className="flex items-center gap-3">
@@ -552,9 +558,8 @@ export default function NowLiveRoom({ requestId }: { requestId: string }) {
                     ? 'No solver was free this time. Your coins are back in your wallet.'
                     : 'The call has ended.'}
             </p>
-            {/* The solver shift screen (/now/solver) lands with the other screens; until then, the dashboard. */}
-            <Link href={isSolver ? '/dashboard' : '/ogcode'} className="text-primary underline-offset-4 hover:underline">
-              {isSolver ? 'Back to the dashboard' : 'Back to practice'}
+            <Link href={isSolver ? '/now/solver' : '/ogcode'} className="text-primary underline-offset-4 hover:underline">
+              {isSolver ? 'Back to your shift' : 'Back to practice'}
             </Link>
           </CardContent>
         </Card>

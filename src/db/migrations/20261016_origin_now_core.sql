@@ -153,6 +153,12 @@ CREATE TABLE IF NOT EXISTS now.favourites (
   PRIMARY KEY (student_id, helper_id)
 );
 
+CREATE TABLE IF NOT EXISTS now.presence_minutes (
+  helper_id TEXT NOT NULL REFERENCES now.helpers(id) ON DELETE CASCADE,
+  minute TIMESTAMPTZ NOT NULL,
+  PRIMARY KEY (helper_id, minute)
+);
+
 CREATE TABLE IF NOT EXISTS now.blocks (
   blocker_id TEXT NOT NULL REFERENCES origin_users(id) ON DELETE CASCADE,
   blocked_id TEXT NOT NULL REFERENCES origin_users(id) ON DELETE CASCADE,
