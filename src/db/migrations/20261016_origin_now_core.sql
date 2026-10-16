@@ -433,9 +433,15 @@ CREATE TABLE IF NOT EXISTS store.orders (
   paise_paid INTEGER NOT NULL DEFAULT 0 CHECK (paise_paid >= 0),
   razorpay_order_id TEXT,
   status TEXT NOT NULL DEFAULT 'placed' CHECK (status IN ('placed', 'paid', 'fulfilled', 'cancelled')),
+  idempotency_key TEXT,
+  grant_id TEXT,
+  premium_expires_at TIMESTAMPTZ,
+  downloads INTEGER NOT NULL DEFAULT 0,
   fulfilled_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_store_orders_user ON store.orders(user_id, created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_store_orders_idempotency ON store.orders(user_id, idempotency_key)
+  WHERE idempotency_key IS NOT NULL;
 
 INSERT INTO app.migrations (id, name) VALUES ('20261016_origin_now_core', 'origin now core (now.*, store.*, guardian consents, date_of_birth)') ON CONFLICT (id) DO NOTHING;

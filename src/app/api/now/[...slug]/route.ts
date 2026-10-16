@@ -50,6 +50,7 @@ import {
   reportSession,
 } from "@/server/now/after-call-service";
 import { issueRoomTicket } from "@/server/now/room-service";
+import { buyStoreItem, getPaperDownload, listMyOrders, listStoreItems } from "@/server/now/store-service";
 import { DECLINE_REASONS, OUTCOMES, ROOT_CAUSES } from "@/server/now/types";
 
 /**
@@ -92,6 +93,12 @@ import { DECLINE_REASONS, OUTCOMES, ROOT_CAUSES } from "@/server/now/types";
  *   POST /api/now/sessions/:id/report      → { reason, details?, block } (either side, live or after)
  *   POST /api/now/sessions/:id/block       → block the other side from future matches
  *   POST /api/now/sessions/:id/practice    → { questionId } the student opened a practice question
+ *
+ * Origin Store pilot (build step 9; coins only):
+ *   GET  /api/now/store/items              → items + this user's balance, ownership, coin premium
+ *   POST /api/now/store/items/:id/buy      → Idempotency-Key header; refused inside the Android app
+ *   GET  /api/now/store/orders             → my orders
+ *   POST /api/now/store/orders/:id/download → 10-minute link to a bought paper (logged)
  */
 
 // SSE connections hold the function open; each closes itself after ~50 s.
@@ -369,6 +376,23 @@ const liveHandlers = {
   block: async (_r: NextRequest, userId: string, [id]: string[]) => nowJson(await blockFromSession(userId, id)),
   practice: async (r: NextRequest, userId: string, [id]: string[]) =>
     nowJson(await recordPracticeAttempt(userId, id, PracticeSchema.parse(await parseJsonBody(r)).questionId)),
+  storeItems: async (_r: NextRequest, userId: string) => nowJson(await listStoreItems(userId)),
+  storeBuy: async (r: NextRequest, userId: string, [id]: string[]) => {
+    // Play billing policy: digital goods paid with coins bought outside Play stay web-only, like coin packs.
+    if (parseAppVersionFromUserAgent(r.headers.get("user-agent")) !== null) {
+      throw new NowError(403, "in_app_purchase_blocked", "Store purchases are made on o3origin.com, not inside the app.");
+    }
+    const idempotencyKey = r.headers.get("idempotency-key")?.trim();
+    if (!idempotencyKey || idempotencyKey.length > 120) {
+      throw new NowError(400, "idempotency_key_required", "An Idempotency-Key header is required.");
+    }
+    const limited = await limitMutation(`now-store:${userId}`);
+    if (limited) return limited;
+    return nowJson(await buyStoreItem(userId, id, idempotencyKey), { status: 201 });
+  },
+  storeOrders: async (_r: NextRequest, userId: string) => nowJson({ orders: await listMyOrders(userId) }),
+  storeDownload: async (_r: NextRequest, userId: string, [id]: string[]) =>
+    nowJson(await getPaperDownload(userId, id), { headers: { "Cache-Control": "no-store" } }),
   roomTicket: async (_r: NextRequest, userId: string, [id]: string[]) => {
     const limited = await limitMutation(`now-room-token:${userId}`);
     if (limited) return limited;
@@ -411,6 +435,10 @@ const ROUTES: { method: Method; pattern: string[]; handler: Handler; public?: bo
   { method: "POST", pattern: ["sessions", ":id", "extend", "confirm"], handler: liveHandlers.confirmExtend },
   { method: "POST", pattern: ["sessions", ":id", "token"], handler: liveHandlers.roomTicket },
   { method: "GET", pattern: ["sessions", ":id", "after"], handler: liveHandlers.afterCall },
+  { method: "GET", pattern: ["store", "items"], handler: liveHandlers.storeItems },
+  { method: "POST", pattern: ["store", "items", ":id", "buy"], handler: liveHandlers.storeBuy },
+  { method: "GET", pattern: ["store", "orders"], handler: liveHandlers.storeOrders },
+  { method: "POST", pattern: ["store", "orders", ":id", "download"], handler: liveHandlers.storeDownload },
   { method: "POST", pattern: ["sessions", ":id", "rate"], handler: liveHandlers.rate },
   { method: "POST", pattern: ["sessions", ":id", "report"], handler: liveHandlers.report },
   { method: "POST", pattern: ["sessions", ":id", "block"], handler: liveHandlers.block },

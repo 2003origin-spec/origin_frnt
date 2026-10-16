@@ -23,6 +23,13 @@ import {
   resolveReport,
 } from "@/server/now/after-call-service";
 import { getRecordingLinkForAdmin } from "@/server/now/room-service";
+import {
+  confirmPaperUpload,
+  createPaperUpload,
+  listStoreItemsForAdmin,
+  listStoreOrdersForAdmin,
+  upsertStoreItem,
+} from "@/server/now/store-service";
 import { APPLICATION_STATUSES, DIFFICULTIES, SOLVER_KINDS } from "@/server/now/types";
 import { adminAdjustWallet, listCoinPacks, upsertCoinPack } from "@/server/now/wallet-service";
 import { recordAuditEvent } from "@/server/workspaces/audit";
@@ -47,6 +54,9 @@ import { recordAuditEvent } from "@/server/workspaces/audit";
  *   POST /api/admin/now/reports/:id/resolve      { outcome: upheld | dismissed, note }
  *   GET  /api/admin/now/helpers/restricted       POST /api/admin/now/helpers/:id/reinstate { note }
  *   POST /api/admin/now/suspensions/:id/lift
+ *   GET|POST /api/admin/now/store/items          PUT  /api/admin/now/store/items/:id
+ *   POST /api/admin/now/store/items/:id/file     POST /api/admin/now/store/items/:id/file/confirm
+ *   GET  /api/admin/now/store/orders
  */
 
 type RouteContext = { params: Promise<{ slug?: string[] }> };
@@ -81,6 +91,19 @@ const RecordingAccessSchema = z.object({ reason: z.string().trim().min(5).max(30
 const ReportStatusSchema = z.enum(["open", "upheld", "dismissed"]);
 const ResolveSchema = z.object({ outcome: z.enum(["upheld", "dismissed"]), note: z.string().trim().min(5).max(1000) });
 const NoteSchema = z.object({ note: z.string().trim().min(5).max(500) });
+const StoreItemSchema = z.object({
+  kind: z.enum(["premium", "digital"]),
+  title: z.string().max(120),
+  description: z.string().max(2000).nullable().optional(),
+  priceCoins: z.number().int(),
+  stock: z.number().int().nullable().optional(),
+  premiumSubject: z.string().nullable().optional(),
+  premiumDays: z.number().int().nullable().optional(),
+  featured: z.boolean().optional(),
+  active: z.boolean().optional(),
+});
+const PaperUploadSchema = z.object({ mimeType: z.string().max(100), sizeBytes: z.number().int() });
+const PaperConfirmSchema = z.object({ objectKey: z.string().max(300) });
 
 async function audit(adminId: string, action: string, metadata: Record<string, unknown>): Promise<void> {
   await recordAuditEvent({
@@ -245,6 +268,40 @@ const ROUTES: { method: Method; pattern: string[]; handler: Handler }[] = [
       return nowJson(result);
     },
   },
+  { method: "GET", pattern: ["store", "items"], handler: async () => nowJson({ items: await listStoreItemsForAdmin() }) },
+  {
+    method: "POST",
+    pattern: ["store", "items"],
+    handler: async (request, adminId) => {
+      const item = await upsertStoreItem(StoreItemSchema.parse(await parseJsonBody(request)));
+      await audit(adminId, "now.store.item.create", { itemId: item.id, kind: item.kind, priceCoins: item.price_coins });
+      return nowJson({ item }, { status: 201 });
+    },
+  },
+  {
+    method: "PUT",
+    pattern: ["store", "items", ":id"],
+    handler: async (request, adminId, [id]) => {
+      const item = await upsertStoreItem({ ...StoreItemSchema.parse(await parseJsonBody(request)), id });
+      await audit(adminId, "now.store.item.update", { itemId: id, priceCoins: item.price_coins, active: item.active });
+      return nowJson({ item });
+    },
+  },
+  {
+    method: "POST",
+    pattern: ["store", "items", ":id", "file"],
+    handler: async (request, _adminId, [id]) => nowJson(await createPaperUpload(id, PaperUploadSchema.parse(await parseJsonBody(request)))),
+  },
+  {
+    method: "POST",
+    pattern: ["store", "items", ":id", "file", "confirm"],
+    handler: async (request, adminId, [id]) => {
+      const item = await confirmPaperUpload(id, PaperConfirmSchema.parse(await parseJsonBody(request)).objectKey);
+      await audit(adminId, "now.store.item.file", { itemId: id });
+      return nowJson({ item });
+    },
+  },
+  { method: "GET", pattern: ["store", "orders"], handler: async () => nowJson({ orders: await listStoreOrdersForAdmin() }) },
   {
     method: "POST",
     pattern: ["suspensions", ":id", "lift"],
