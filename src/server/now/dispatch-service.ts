@@ -45,6 +45,8 @@ import {
   scheduleNowTimer,
 } from "./now-realtime";
 import { getNowSettings, isWithinOpenHours } from "./now-settings";
+import { getLiveKitConfig, getRecordingStorage } from "./livekit";
+import { closeRoom } from "./room-service";
 import { holdAdjustmentForFallback, lookupPrice } from "./pricing";
 import { isNowSubject } from "./solver-rules";
 import { BOT_HELPER_ID, ensureBotHelper } from "./solver-service";
@@ -735,11 +737,12 @@ export async function cancelRequest(studentId: string, requestId: string, now: D
         [request.current_offer_id, now],
       );
     }
-    await client.query(
+    const closedSessions = await client.query<{ id: string }>(
       `UPDATE now.sessions SET ended_at = $2, ended_by = 'student', payable = FALSE, settled_at = $2
-        WHERE request_id = $1 AND ended_at IS NULL`,
+        WHERE request_id = $1 AND ended_at IS NULL RETURNING id`,
       [request.id, now],
     );
+    for (const { id } of closedSessions.rows) effects.push(() => closeRoom(id));
     await applyTransition(client, request, "student_cancelled", {
       closed_reason: "cancelled",
       closed_at: now,
@@ -781,6 +784,8 @@ export type RequestView = {
     extensionsUsed: number;
     extensionRequestedAt: string | null;
   } | null;
+  /** True when calls are recorded (LiveKit + recording storage configured); the room says so. */
+  recorded: boolean;
   /** Only for the assigned solver: the question and the AI context. */
   question: { text: string; options: string[]; image: string | null } | null;
   studentFirstName: string | null;
@@ -848,6 +853,7 @@ export async function getRequestView(requestId: string, viewer: { viewerUserId: 
           extensionRequestedAt: row.extension_requested_at ? row.extension_requested_at.toISOString() : null,
         }
       : null,
+    recorded: getLiveKitConfig() !== null && getRecordingStorage() !== null,
     question: isSolver || isStudent ? question : null,
     studentFirstName: isSolver ? (row.student_name ?? "").trim().split(/\s+/)[0] || "Student" : null,
   };

@@ -13,8 +13,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { findUnbalancedTransfers, PLATFORM_ACCOUNTS } from "@/server/now/ledger-rules";
-import { getWalletBalance, loadAllLegsForAudit } from "@/server/now/ledger-store";
 import {
   cancelRequest,
   createRequest,
@@ -25,8 +23,6 @@ import {
   goOffline,
   respondToOffer,
 } from "@/server/now/dispatch-service";
-import { clearPresence } from "@/server/now/now-realtime";
-import { ensureNowSchema } from "@/server/now/now-schema";
 import {
   confirmExtension,
   endSession,
@@ -37,109 +33,34 @@ import {
   runNowNightly,
   runNowSweep,
 } from "@/server/now/session-service";
-import { NO_SHOW_WINDOW_MS, OFFER_WINDOW_MS } from "@/server/now/types";
+import { PLATFORM_ACCOUNTS } from "@/server/now/ledger-rules";
+import { getWalletBalance } from "@/server/now/ledger-store";
 import { getOgcodeCatalogCounts } from "@/server/ogcode-catalog";
-import { getOgcodeQuestionProgress } from "@/server/ogcode-progress";
-import { setSetting } from "@/server/platform-settings";
+import { NO_SHOW_WINDOW_MS, OFFER_WINDOW_MS } from "@/server/now/types";
 
-import { closePool, dbConfigured, makeId, rawPool } from "./_db";
+import { closePool, makeId, rawPool } from "./_db";
+import {
+  EASY_EXTENSION,
+  EASY_HUMAN,
+  NOW_SKIP,
+  WELCOME,
+  accountBalance,
+  assertLedgerBalanced,
+  cleanupNowFixtures,
+  questionsMade,
+  seedAttemptedQuestion,
+  seedHelper,
+  seedStudent,
+  seedUser,
+  sessionOf,
+  setup,
+  status,
+} from "./_now";
 
-const SKIP = !dbConfigured() || !process.env.OGCODE_DATABASE_URL;
-const WELCOME = 200;
-const EASY_HUMAN = 40; // DEFAULT_PRICE_TABLE placeholders
-const EASY_EXTENSION = 20;
-
-const helpersMade: string[] = [];
-const questionsMade: string[] = [];
-
-async function setup(): Promise<void> {
-  await ensureNowSchema();
-  await setSetting("now_welcome_coins", String(WELCOME), null);
-  await setSetting("now_commission_bps", "0", null);
-  await setSetting("now_open_hours", JSON.stringify({ from: "00:00", to: "23:59", days: [0, 1, 2, 3, 4, 5, 6] }), null);
-  await setSetting(
-    "now_bot_rule",
-    JSON.stringify({ enabled: true, whenNoneOnline: true, afterFailedOffers: 3, afterMs: 120_000 }),
-    null,
-  );
-  await rawPool().query(`DELETE FROM now.prices`);
-}
-
-async function seedUser(name: string): Promise<string> {
-  const id = makeId("now_user");
-  await rawPool().query(
-    `INSERT INTO origin_users (id, name, email, role, password_hash, date_of_birth) VALUES ($1, $2, $3, 'student', 'x', '1995-01-01')`,
-    [id, name, `${id}@example.com`],
-  );
-  return id;
-}
-
-async function seedStudent(): Promise<string> {
-  const id = await seedUser("Meera Iyer");
-  await rawPool().query(`INSERT INTO now.pilot_cohort (user_id, invited_by) VALUES ($1, NULL)`, [id]);
-  return id;
-}
-
-async function seedHelper(subject: string): Promise<{ userId: string; helperId: string }> {
-  const userId = await seedUser("Ravi Teacher");
-  const helperId = makeId("helper");
-  await rawPool().query(
-    `INSERT INTO now.helpers (id, user_id, kind, role, display_name, verification_status, languages, agreement_version, agreement_accepted_at)
-     VALUES ($1, $2, 'human', 'teacher', 'Ravi', 'verified', '{english}', '2026-10-draft', NOW())`,
-    [helperId, userId],
-  );
-  await rawPool().query(`INSERT INTO now.helper_expertise (helper_id, subject, chapter) VALUES ($1, $2, '')`, [helperId, subject]);
-  helpersMade.push(helperId);
-  return { userId, helperId };
-}
-
-async function seedAttemptedQuestion(studentId: string, subject: string): Promise<string> {
-  await getOgcodeCatalogCounts(); // creates ogcode_questions on a fresh database
-  await getOgcodeQuestionProgress(studentId, "warmup"); // creates ogcode_question_progress
-  const id = makeId("q");
-  questionsMade.push(id);
-  await rawPool().query(
-    `INSERT INTO ogcode_questions (id, source_index, text, options, correct_option, explanation, subject, chapter, concept, difficulty, question_type)
-     VALUES ($1, $2, 'A ball is thrown up at 10 m/s. Max height?', $3::jsonb, 1, 'v^2/2g', $4, 'Kinematics', 'Projectile', 'Easy', 'mcq')`,
-    [id, 800_000 + Math.floor(Math.random() * 90_000), JSON.stringify(["2 m", "5 m", "10 m", "20 m"]), subject],
-  );
-  await rawPool().query(
-    `INSERT INTO ogcode_question_progress (user_id, question_id, total_attempts, attempted) VALUES ($1, $2, 1, TRUE)`,
-    [studentId, id],
-  );
-  return id;
-}
-
-async function status(requestId: string): Promise<string> {
-  const res = await rawPool().query<{ status: string }>(`SELECT status FROM now.requests WHERE id = $1`, [requestId]);
-  return res.rows[0].status;
-}
-
-async function sessionOf(requestId: string) {
-  const res = await rawPool().query(`SELECT * FROM now.sessions WHERE request_id = $1 ORDER BY accepted_at DESC LIMIT 1`, [requestId]);
-  return res.rows[0];
-}
-
-async function accountBalance(account: string): Promise<number> {
-  const res = await rawPool().query<{ n: number }>(
-    `SELECT COALESCE(sum(CASE WHEN direction = 'credit' THEN amount ELSE -amount END), 0)::int AS n
-       FROM now.ledger_entries WHERE account_id = $1`,
-    [account],
-  );
-  return res.rows[0].n;
-}
-
-async function assertLedgerBalanced(): Promise<void> {
-  assert.deepEqual(findUnbalancedTransfers(await loadAllLegsForAudit()), []);
-}
+const SKIP = NOW_SKIP;
 
 test.after(async () => {
-  for (const id of helpersMade) await clearPresence(id);
-  // Other suites sample the question bank (the solver quiz); leave it as found.
-  if (dbConfigured() && questionsMade.length) {
-    await rawPool().query(`DELETE FROM ogcode_question_progress WHERE question_id = ANY($1::text[])`, [questionsMade]);
-    await rawPool().query(`DELETE FROM ogcode_questions WHERE id = ANY($1::text[])`, [questionsMade]);
-  }
+  await cleanupNowFixtures();
   await closePool();
 });
 

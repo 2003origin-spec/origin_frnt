@@ -14,6 +14,7 @@ import {
   listApplicationsForAdmin,
   rejectApplication,
 } from "@/server/now/solver-service";
+import { getRecordingLinkForAdmin } from "@/server/now/room-service";
 import { APPLICATION_STATUSES, DIFFICULTIES, SOLVER_KINDS } from "@/server/now/types";
 import { adminAdjustWallet, listCoinPacks, upsertCoinPack } from "@/server/now/wallet-service";
 import { recordAuditEvent } from "@/server/workspaces/audit";
@@ -33,6 +34,7 @@ import { recordAuditEvent } from "@/server/workspaces/audit";
  *   GET  /api/admin/now/applications?status=     GET  /api/admin/now/applications/:id
  *   POST /api/admin/now/applications/:id/approve POST /api/admin/now/applications/:id/reject
  *   POST /api/admin/now/bot                      (creates the Origin bot's helper row, idempotent)
+ *   POST /api/admin/now/sessions/:id/recording   { reason } → 10-minute link, logged `recording.accessed`
  */
 
 type RouteContext = { params: Promise<{ slug?: string[] }> };
@@ -63,6 +65,7 @@ const ApplicationStatusSchema = z.enum(APPLICATION_STATUSES);
 const ApproveSchema = z.object({ demoPassed: z.boolean(), level: z.enum(["trainee", "verified", "expert"]).optional() });
 const RejectSchema = z.object({ reason: z.string().min(5).max(500) });
 const AdjustSchema = z.object({ coins: z.number().int().positive(), reason: z.string().min(5).max(500) });
+const RecordingAccessSchema = z.object({ reason: z.string().trim().min(5).max(300) });
 
 async function audit(adminId: string, action: string, metadata: Record<string, unknown>): Promise<void> {
   await recordAuditEvent({
@@ -186,6 +189,17 @@ const ROUTES: { method: Method; pattern: string[]; handler: Handler }[] = [
       await adminAdjustWallet({ userId, coins, reason, adminId });
       await audit(adminId, "now.wallet.adjust", { userId, coins, reason });
       return nowJson({ balance: await getWalletBalance(userId) });
+    },
+  },
+  {
+    // POST, not GET: opening a recording is an audited action with a stated reason.
+    method: "POST",
+    pattern: ["sessions", ":id", "recording"],
+    handler: async (request, adminId, [sessionId]) => {
+      const { reason } = RecordingAccessSchema.parse(await parseJsonBody(request));
+      const link = await getRecordingLinkForAdmin(adminId, sessionId, reason);
+      await audit(adminId, "now.recording.access", { sessionId, reason });
+      return nowJson(link, { headers: { "Cache-Control": "no-store" } });
     },
   },
 ];

@@ -28,6 +28,7 @@ import { NowError } from "./now-http";
 import { ensureNowSchema } from "./now-schema";
 import { helperStreamId, publishNowEvent, requestStreamId, scheduleNowTimer, type NowTimer } from "./now-realtime";
 import { getNowSettings } from "./now-settings";
+import { closeRoom, purgeExpiredRecordings, startSessionRecording } from "./room-service";
 import { checkExtension, lookupPrice, sessionLengthMinutes } from "./pricing";
 import {
   OVERRUN_GRACE_MS,
@@ -153,8 +154,11 @@ export async function joinSession(userId: string, sessionId: string, now: Date =
         payload: { endsAt: endsAt.toISOString(), waitMs: now.getTime() - request.created_at.getTime() },
       });
       live = true;
-      effects.push(() =>
-        publishNowEvent(requestStreamId(request.id), { type: "live", sessionId: session.id, endsAt: endsAt.toISOString() }),
+      effects.push(
+        () => publishNowEvent(requestStreamId(request.id), { type: "live", sessionId: session.id, endsAt: endsAt.toISOString() }),
+        async () => {
+          await startSessionRecording(session.id, request.id);
+        },
       );
       scheduleSessionTimers(effects, session.id, endsAt, now);
     } else {
@@ -211,12 +215,16 @@ export async function handleNoShow(sessionId: string, now: Date = new Date()): P
       effects.push(
         () => publishNowEvent(requestStreamId(request.id), { type: "status", status: "requested", note: "solver_no_show" }),
         () => publishNowEvent(helperStreamId(helperId), { type: "session_lost", sessionId: session.id }),
+        () => closeRoom(session.id),
       );
     } else {
       await applyTransition(client, request, "student_no_show", { closed_reason: "no_show", closed_at: now });
       await releaseHold(client, request);
       await logEvent(client, { type: "session.student_no_show", requestId: request.id, sessionId: session.id, actor: "system" });
-      effects.push(() => publishNowEvent(requestStreamId(request.id), { type: "closed", reason: "no_show" }));
+      effects.push(
+        () => publishNowEvent(requestStreamId(request.id), { type: "closed", reason: "no_show" }),
+        () => closeRoom(session.id),
+      );
     }
   });
   await runEffects(effects);
@@ -271,7 +279,11 @@ export async function endSession(
     }
     // Bots never report an outcome; a human session settles once the solver has.
     if (session.solver_kind === "bot" || session.outcome) await settleLocked(client, session, request, now, effects);
-    effects.push(() => publishNowEvent(requestStreamId(request.id), { type: "ended", sessionId: session.id, endedBy }));
+    // The server ends the call: deleting the room disconnects both people (a token's expiry would not).
+    effects.push(
+      () => publishNowEvent(requestStreamId(request.id), { type: "ended", sessionId: session.id, endedBy }),
+      () => closeRoom(session.id),
+    );
     if (session.solver_kind === "human") {
       effects.push(() => publishNowEvent(helperStreamId(session.helper_id), { type: "ended", sessionId: session.id, endedBy }));
     }
@@ -403,6 +415,15 @@ export async function requestExtension(studentId: string, sessionId: string, now
     });
     autoConfirm = session.solver_kind === "bot";
     if (!autoConfirm) {
+      // The room listens on the request stream; the solver's shift screen on its own.
+      effects.push(() =>
+        publishNowEvent(requestStreamId(request.id), {
+          type: "extension_requested",
+          sessionId: session.id,
+          minutes: check.minutes,
+          coins: check.coins,
+        }),
+      );
       effects.push(() =>
         publishNowEvent(helperStreamId(session.helper_id), {
           type: "extension_requested",
@@ -565,7 +586,7 @@ export async function settleSession(sessionId: string, now: Date = new Date()): 
   return done;
 }
 
-/** Daily: closes rating windows and audits the ledger. */
+/** Daily: closes rating windows, audits the ledger, purges old recordings. */
 export async function runNowNightly(now: Date = new Date()) {
   const pool = await db();
   const due = await pool.query<{ id: string }>(
@@ -592,5 +613,6 @@ export async function runNowNightly(now: Date = new Date()) {
       JSON.stringify({ count: unbalanced.length, sample: unbalanced.slice(0, 20) }),
     ]);
   }
-  return { ratingWindowsClosed, unbalancedTransfers: unbalanced.length };
+  const recordings = await purgeExpiredRecordings(now);
+  return { ratingWindowsClosed, unbalancedTransfers: unbalanced.length, recordingsDeleted: recordings.deleted, recordingDeletesFailed: recordings.failed };
 }

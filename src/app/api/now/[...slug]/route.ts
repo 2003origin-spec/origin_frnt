@@ -41,6 +41,7 @@ import {
   recordOutcome,
   requestExtension,
 } from "@/server/now/session-service";
+import { issueRoomTicket } from "@/server/now/room-service";
 import { DECLINE_REASONS, OUTCOMES, ROOT_CAUSES } from "@/server/now/types";
 
 /**
@@ -74,6 +75,8 @@ import { DECLINE_REASONS, OUTCOMES, ROOT_CAUSES } from "@/server/now/types";
  *   GET  /api/now/helper/offers/current    → open offer (push tap, reconnect)
  *   POST /api/now/offers/:id               → { action: accept | decline }
  *   POST /api/now/sessions/:id/join | /end | /outcome | /extend | /extend/confirm
+ *   POST /api/now/sessions/:id/token       → LiveKit ticket for the room (build step 6; POST so the
+ *                                             edge kill switch covers it)
  */
 
 // SSE connections hold the function open; each closes itself after ~50 s.
@@ -323,6 +326,11 @@ const liveHandlers = {
   },
   confirmExtend: async (_r: NextRequest, userId: string, [id]: string[]) =>
     nowJson(await confirmExtension({ helperUserId: userId }, id)),
+  roomTicket: async (_r: NextRequest, userId: string, [id]: string[]) => {
+    const limited = await limitMutation(`now-room-token:${userId}`);
+    if (limited) return limited;
+    return nowJson({ ticket: await issueRoomTicket(userId, id) }, { headers: { "Cache-Control": "no-store" } });
+  },
 };
 
 /** Routes keyed by method + path; ":id" segments are passed through as params. */
@@ -358,6 +366,7 @@ const ROUTES: { method: Method; pattern: string[]; handler: Handler; public?: bo
   { method: "POST", pattern: ["sessions", ":id", "outcome"], handler: liveHandlers.outcome },
   { method: "POST", pattern: ["sessions", ":id", "extend"], handler: liveHandlers.extend },
   { method: "POST", pattern: ["sessions", ":id", "extend", "confirm"], handler: liveHandlers.confirmExtend },
+  { method: "POST", pattern: ["sessions", ":id", "token"], handler: liveHandlers.roomTicket },
 ];
 
 function match(

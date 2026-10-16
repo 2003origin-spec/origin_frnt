@@ -236,7 +236,10 @@ CREATE TABLE IF NOT EXISTS now.sessions (
   )),
   payable BOOLEAN,
   settled_at TIMESTAMPTZ,
-  recording_key TEXT
+  recording_key TEXT,
+  recording_egress_id TEXT,
+  recording_started_at TIMESTAMPTZ,
+  recording_deleted_at TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_request ON now.sessions(request_id);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_sessions_one_live_per_human_helper

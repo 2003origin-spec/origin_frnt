@@ -1,6 +1,7 @@
 /**
  * GET | POST /api/internal/now/nightly — Origin NOW daily jobs: closes 24 h
- * rating windows and audits the coin ledger (every transfer must balance).
+ * rating windows, audits the coin ledger (every transfer must balance) and
+ * deletes call recordings past retention (unless a report is still open).
  * Idempotent. No-op while `originNow` is off.
  *
  * GET because Vercel Cron issues GET (POST kept for manual trigger).

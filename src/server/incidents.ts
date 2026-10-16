@@ -251,9 +251,9 @@ export const FLAG_KILL_PREFIXES: Partial<Record<FlagKey, FlagKillMatcher>> = {
   // Killing `originNow` refuses every student/helper Origin NOW mutation
   // (requests, offers, joins, ratings, wallet, store). It deliberately leaves
   // /api/internal/now/* running so timers still end live sessions and release
-  // coin holds, and /api/admin/now/* alive so an admin can still act. GET
-  // routes are not covered by the edge switch, so the LiveKit token route
-  // checks getFlagOverride("originNow") itself.
+  // coin holds, and /api/admin/now/* alive so an admin can still act. The
+  // LiveKit token route is a POST (/api/now/sessions/:id/token) precisely so
+  // this edge switch covers it; calls already live are ended by the timers.
   originNow: ["/api/now"],
 };
 
