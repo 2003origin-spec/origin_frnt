@@ -10,6 +10,7 @@ import { ErrorLine, Section, Stat, Table, Td, buttonClass, ghostButtonClass, inp
 
 type Person = { id: string; name: string | null; email: string | null; role: string; hasDateOfBirth: boolean; inCohort: boolean; helperId: string | null; helperStatus: string | null };
 type Wallet = {
+  frozen: boolean;
   balance: { available: number; pending: number };
   movements: { transferId: string; kind: string; direction: string; amount: number; createdAt: string; availableAt: string | null }[];
 };
@@ -44,7 +45,10 @@ function Pauses({ userId }: { userId: string }) {
             <Td>{s.reason}</Td>
             <Td>{fmtDate(s.startsAt)}</Td>
             <Td>{s.liftedAt ? `lifted ${fmtDate(s.liftedAt)}` : s.endsAt ? fmtDate(s.endsAt) : 'until reviewed'}</Td>
-            <Td>{s.active && <button className={ghostButtonClass} onClick={() => lift(s.id)}>Lift</button>}</Td>
+            <Td>
+              {s.active && s.scope === 'student' && <button className={ghostButtonClass} onClick={() => lift(s.id)}>Lift</button>}
+              {s.active && s.scope === 'solver' && <span className="text-xs text-muted-foreground">Reinstate under Solvers</span>}
+            </Td>
           </tr>
         ))}
       </Table>
@@ -63,6 +67,17 @@ function PersonView({ person, onChanged }: { person: Person; onChanged: () => vo
       toast.success(`Credited ${coins} coins.`);
       setCoins(0);
       setReason('');
+      await wallet.reload();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed.');
+    }
+  };
+  const [freezeReason, setFreezeReason] = useState('');
+  const freeze = async (frozen: boolean) => {
+    try {
+      await adminSend(`/wallets/${person.id}/freeze`, 'POST', { frozen, reason: freezeReason.trim() });
+      toast.success(frozen ? 'Wallet frozen.' : 'Wallet unfrozen.');
+      setFreezeReason('');
       await wallet.reload();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed.');
@@ -100,6 +115,17 @@ function PersonView({ person, onChanged }: { person: Person; onChanged: () => vo
       </div>
       {d?.solver?.standing.warnings.map((w, i) => <p key={i} className="mt-2 text-sm text-amber-700">{w.detail}</p>)}
       <Pauses userId={person.id} />
+      {wallet.data && (
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+          <span className={wallet.data.frozen ? 'font-semibold text-red-700' : 'text-muted-foreground'}>
+            Wallet {wallet.data.frozen ? 'FROZEN (cannot spend)' : 'active'}
+          </span>
+          <input className={`${inputClass} min-w-56 flex-1`} placeholder="Reason to freeze / unfreeze (logged)" value={freezeReason} onChange={(e) => setFreezeReason(e.target.value)} />
+          <button className={ghostButtonClass} disabled={freezeReason.trim().length < 5} onClick={() => freeze(!wallet.data!.frozen)}>
+            {wallet.data.frozen ? 'Unfreeze' : 'Freeze'}
+          </button>
+        </div>
+      )}
       <h3 className="mb-1 mt-4 text-sm font-semibold">Credit coins (always a credit from Origin; logged with the reason)</h3>
       <div className="flex flex-wrap items-center gap-2">
         <input type="number" className={`${inputClass} w-28`} value={coins} onChange={(e) => setCoins(Math.max(0, Math.floor(Number(e.target.value))))} />

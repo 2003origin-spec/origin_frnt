@@ -198,7 +198,7 @@ export async function createRequest(studentId: string, input: CreateRequestInput
   }
 
   const today = await (await db()).query<{ n: number }>(
-    `SELECT count(*)::int AS n FROM now.requests WHERE student_id = $1 AND created_at >= $2`,
+    `SELECT count(*)::int AS n FROM now.requests WHERE student_id = $1 AND created_at >= $2 AND status <> 'no_helper'`,
     [studentId, istDayStart(now)],
   );
   if ((today.rows[0]?.n ?? 0) >= STUDENT_DAILY_REQUEST_CAP) {
@@ -250,8 +250,19 @@ export async function createRequest(studentId: string, input: CreateRequestInput
     }
     throw error;
   }
-  await dispatchRequest(requestId, now);
+  // The request and its hold are committed: a dispatch hiccup (Redis, LiveKit)
+  // must not turn into an error for the student. The sweep retries within a minute.
+  await dispatchSafely(requestId, now, "create");
   return getRequestView(requestId, { viewerUserId: studentId });
+}
+
+/** Dispatch after a committed change; failures are logged and left to the sweep. */
+export async function dispatchSafely(requestId: string, now: Date, why: string): Promise<void> {
+  try {
+    await dispatchRequest(requestId, now);
+  } catch (error) {
+    console.error(`[origin-now] dispatch after ${why} failed`, requestId, error instanceof Error ? error.message : error);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -291,7 +302,9 @@ async function loadCandidates(
             EXISTS (SELECT 1 FROM now.helper_expertise e
                      WHERE e.helper_id = h.id AND e.subject = $2
                        AND (e.chapter = '' OR lower(e.chapter) = lower(COALESCE($3, '')))) AS covers_chapter,
-            EXISTS (SELECT 1 FROM now.sessions s WHERE s.helper_id = h.id AND s.ended_at IS NULL) AS in_live,
+            (EXISTS (SELECT 1 FROM now.sessions s WHERE s.helper_id = h.id AND s.ended_at IS NULL)
+              OR EXISTS (SELECT 1 FROM now.offers o2 WHERE o2.helper_id = h.id AND o2.response IS NULL
+                          AND o2.expires_at > $7 AND o2.request_id <> $5)) AS in_live,
             EXISTS (SELECT 1 FROM now.blocks b
                      WHERE (b.blocker_id = $4 AND b.blocked_id = h.user_id)
                         OR (b.blocker_id = h.user_id AND b.blocked_id = $4)) AS blocked,
@@ -316,7 +329,7 @@ async function loadCandidates(
        FROM now.helpers h
       WHERE h.id = ANY($1::text[]) AND h.kind = 'human'
         AND EXISTS (SELECT 1 FROM now.helper_expertise e WHERE e.helper_id = h.id AND e.subject = $2)`,
-    [onlineIds, request.subject, request.chapter, request.student_id, request.id, dayStart],
+    [onlineIds, request.subject, request.chapter, request.student_id, request.id, dayStart, now],
   );
   const lastSeen = await listOnlineHelpers(request.subject, now.getTime());
   // "Online" for the bot rule means someone who could ever take THIS request:
@@ -370,7 +383,8 @@ export async function openSession(
   await client.query(
     `INSERT INTO now.sessions (id, request_id, helper_id, student_id, solver_kind, livekit_room, accepted_at, helper_joined_at)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-    [sessionId, request.id, helperId, request.student_id, solverKind, room, now, solverKind === "bot" ? now : null],
+    // Nobody counts as joined yet, the bot included: joinSession checks LiveKit for its agent.
+    [sessionId, request.id, helperId, request.student_id, solverKind, room, now, null],
   );
   return { id: sessionId, livekit_room: room };
 }
@@ -453,6 +467,12 @@ export async function dispatchRequest(requestId: string, now: Date = new Date())
           return;
         }
         case "assign_bot": {
+          if (request.excluded_helper_ids.includes(BOT_HELPER_ID)) {
+            // The bot already failed to arrive for this request: close and refund, never loop.
+            decision = { action: "close_no_helper", detail: "none_online" };
+            await closeNoHelper(client, request, "none_online", effects);
+            return;
+          }
           const botPrice = lookupPrice(prices, request.difficulty, "bot");
           if (!botPrice) throw new NowError(503, "no_price", "Bot price is not configured.");
           const delta = holdAdjustmentForFallback(request.held_coins, botPrice.priceCoins);
@@ -684,6 +704,11 @@ export async function respondToOffer(
       [request.id, helper.id, offer.id],
     );
     if (won.rowCount !== 1) throw new NowError(409, "already_taken", "This doubt was already taken.");
+    const busy = await client.query(`SELECT 1 FROM now.sessions WHERE helper_id = $1 AND ended_at IS NULL LIMIT 1`, [helper.id]);
+    if ((busy.rowCount ?? 0) > 0) {
+      // Rolls the whole accept back: the offer stays open for its window and then moves on.
+      throw new NowError(409, "already_in_session", "Finish your current session before accepting another doubt.");
+    }
     request.status = "accepted";
     await client.query(`UPDATE now.offers SET response = 'accepted', responded_at = $2 WHERE id = $1`, [offer.id, now]);
     const session = await openSession(client, request, helper.id, "human", now);
@@ -711,7 +736,7 @@ export async function respondToOffer(
   });
 
   await runEffects(effects);
-  if (redispatch) await dispatchRequest(redispatch, now);
+  if (redispatch) await dispatchSafely(redispatch, now, "decline");
   return outcome;
 }
 
@@ -740,7 +765,7 @@ export async function expireOffer(offerId: string, now: Date = new Date()): Prom
     }
   });
   if (helperId) await publishNowEvent(helperStreamId(helperId), { type: "offer_closed", offerId, accepted: false });
-  if (requestId) await dispatchRequest(requestId, now);
+  if (requestId) await dispatchSafely(requestId, now, "offer expiry");
   return requestId !== null;
 }
 
@@ -757,10 +782,14 @@ export async function cancelRequest(studentId: string, requestId: string, now: D
       throw new NowError(409, "cannot_cancel", "This request can no longer be cancelled; end the session instead.");
     }
     if (request.current_offer_id) {
-      await client.query(
-        `UPDATE now.offers SET response = 'expired', responded_at = $2 WHERE id = $1 AND response IS NULL`,
+      const closed = await client.query<{ helper_id: string }>(
+        `UPDATE now.offers SET response = 'expired', responded_at = $2 WHERE id = $1 AND response IS NULL RETURNING helper_id`,
         [request.current_offer_id, now],
       );
+      const offerId = request.current_offer_id;
+      for (const { helper_id } of closed.rows) {
+        effects.push(() => publishNowEvent(helperStreamId(helper_id), { type: "offer_closed", offerId, accepted: false }));
+      }
     }
     const closedSessions = await client.query<{ id: string }>(
       `UPDATE now.sessions SET ended_at = $2, ended_by = 'student', payable = FALSE, settled_at = $2
@@ -864,7 +893,8 @@ export async function getRequestView(requestId: string, viewer: { viewerUserId: 
     closedReason: row.closed_reason,
     closedDetail: row.closed_detail,
     callbackOffered: row.callback_offered,
-    session: row.session_id
+    // Back in the queue (a solver no-show): the old, ended session is history, not this request's session.
+    session: row.session_id && row.status !== "requested" && row.status !== "offered"
       ? {
           id: row.session_id,
           solverKind: row.session_solver_kind ?? "human",

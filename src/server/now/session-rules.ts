@@ -22,7 +22,8 @@ export type PayableInput = {
   outcome: Outcome | null;
   /** The student is the helper's own or an admin-linked account. */
   ownOrLinkedAccount: boolean;
-  openReport: boolean;
+  /** A report by the student about this session was upheld. */
+  reportUpheld: boolean;
 };
 
 /**
@@ -31,9 +32,24 @@ export type PayableInput = {
  */
 export function decidePayable(input: PayableInput): boolean {
   if (!input.studentJoined || !input.helperJoined) return false;
-  if (input.ownOrLinkedAccount || input.openReport) return false;
+  if (input.ownOrLinkedAccount || input.reportUpheld) return false;
   if (input.solverKind === "bot") return true;
   return input.outcome !== null;
+}
+
+/**
+ * What the reports on a session mean for its money. Only reports BY THE
+ * STUDENT (about the solver) count: a solver who reports an abusive student
+ * must not lose their pay for it. An open one defers settlement until the
+ * case closes; an upheld one makes the session unpayable.
+ */
+export function settlementReportState(
+  reports: readonly { reporterRole: string | null; status: string }[],
+): "clear" | "defer" | "upheld" {
+  const fromStudent = reports.filter((r) => r.reporterRole === "student");
+  if (fromStudent.some((r) => r.status === "open")) return "defer";
+  if (fromStudent.some((r) => r.status === "upheld")) return "upheld";
+  return "clear";
 }
 
 /** Who failed to show up once the join window has passed, if anyone. */
@@ -42,12 +58,14 @@ export function noShowSide(input: {
   studentJoinedAt: Date | null;
   helperJoinedAt: Date | null;
   now: Date;
-}): "helper" | "student" | "none" | "not_yet" {
+}): "helper" | "student" | "both" | "none" | "not_yet" {
   if (input.studentJoinedAt && input.helperJoinedAt) return "none";
   if (input.now.getTime() - input.acceptedAt.getTime() < NO_SHOW_WINDOW_MS) return "not_yet";
-  // A helper who accepted and vanished is the case the plan protects the
-  // student from: the request goes back to the queue. Only when the helper is
-  // there and the student is not does the request close as no_show.
+  // A helper who accepted and vanished while the student waited is the case
+  // the plan protects the student from: the request goes back to the queue.
+  // If the student never came either, nobody is waiting: close it (no charge)
+  // rather than ring another solver for an empty room.
+  if (!input.helperJoinedAt && !input.studentJoinedAt) return "both";
   if (!input.helperJoinedAt) return "helper";
   return "student";
 }

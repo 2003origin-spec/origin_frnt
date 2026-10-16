@@ -39,7 +39,7 @@ import { NowError } from "./now-http";
 import { clearPresence, helperStreamId, publishNowEvent, requestStreamId } from "./now-realtime";
 import { ensureNowSchema } from "./now-schema";
 import { getNowSettings } from "./now-settings";
-import { endSession } from "./session-service";
+import { endSession, settleSession } from "./session-service";
 import { firstNameOnly } from "./session-rules";
 import { RATING_WINDOW_MS, type FeedbackTag } from "./types";
 
@@ -518,6 +518,7 @@ export async function resolveReport(
 ) {
   const effects: Effect[] = [];
   let helperToReview: string | null = null;
+  let sessionToSettle: string | null = null;
   await withNowTransaction(async (client) => {
     const res = await client.query(`SELECT * FROM now.reports WHERE id = $1 FOR UPDATE`, [reportId]);
     const report = res.rows[0];
@@ -529,6 +530,7 @@ export async function resolveReport(
         WHERE id = $1`,
       [reportId, outcome, adminId, now, note.trim().slice(0, 1000)],
     );
+    if (report.session_id && report.reporter_role === "student") sessionToSettle = report.session_id;
     // The reported side's rating on this session stops waiting.
     if (report.reporter_role === "solver" && report.session_id && report.reported_user_id) {
       const after = ratingAfterCase(outcome);
@@ -597,6 +599,12 @@ export async function resolveReport(
   });
   await runEffects(effects);
   if (helperToReview) await runAutomaticReview(helperToReview, null, now);
+  // A case closing can release a session whose coins waited for it.
+  if (sessionToSettle) {
+    await settleSession(sessionToSettle, now).catch((error) =>
+      console.error("[origin-now] settle after case failed", sessionToSettle, error instanceof Error ? error.message : error),
+    );
+  }
   return { reportId, status: outcome };
 }
 
@@ -611,8 +619,31 @@ async function unfreezeIfClear(client: Pick<PoolClient, "query">, helperUserId: 
     [helperId, helperUserId],
   );
   if ((blockers.rowCount ?? 0) > 0) return false;
+  // A wallet frozen because a refunded coin pack had already been spent stays
+  // frozen until an admin unfreezes it on purpose (People → wallet).
+  const shortfall = await client.query(
+    `SELECT 1 FROM now.events e
+      WHERE e.type = 'wallet.refund_shortfall' AND e.payload->>'userId' = $1
+        AND NOT EXISTS (SELECT 1 FROM now.events u WHERE u.type = 'wallet.unfrozen' AND u.payload->>'userId' = $1 AND u.id > e.id)
+      LIMIT 1`,
+    [helperUserId],
+  );
+  if ((shortfall.rowCount ?? 0) > 0) return false;
   await setFrozen(client, helperUserId, false);
   return true;
+}
+
+/** Admin: freeze or unfreeze a wallet by hand, with a reason (logged). */
+export async function setWalletFrozenByAdmin(adminId: string, userId: string, frozen: boolean, reason: string) {
+  await withNowTransaction(async (client) => {
+    await setFrozen(client, userId, frozen);
+    await logEvent(client, {
+      type: frozen ? "wallet.frozen" : "wallet.unfrozen",
+      actor: adminId,
+      payload: { userId, reason: reason.slice(0, 300) },
+    });
+  });
+  return { userId, frozen };
 }
 
 export async function liftSuspension(adminId: string, suspensionId: string) {
@@ -623,6 +654,10 @@ export async function liftSuspension(adminId: string, suspensionId: string) {
     );
     const row = res.rows[0];
     if (!row) throw new NowError(404, "not_found", "No active suspension with that id.");
+    if (row.scope === "solver") {
+      // Rolls back: a solver comes back through Reinstate, which also checks reports and the wallet.
+      throw new NowError(409, "use_reinstate", "Reinstate the solver from Solvers & metrics instead.");
+    }
     await logEvent(client, { type: "suspension.lifted", actor: adminId, payload: { suspensionId, userId: row.user_id, scope: row.scope } });
   });
   return { lifted: true };

@@ -210,7 +210,7 @@ test("bot fallback: nobody online → Origin bot at the bot price; bot sessions 
   const created = await createRequest(student, { questionId: await seedAttemptedQuestion(student, "chemistry") });
   assert.equal(created.status, "accepted");
   assert.equal(created.session?.solverKind, "bot");
-  assert.equal(created.session?.solverJoined, true);
+  assert.equal(created.session?.solverJoined, false, "the bot counts as joined only once seen in the room");
   const botBefore = await accountBalance(PLATFORM_ACCOUNTS.botRevenue);
 
   const sessionId = created.session!.id;

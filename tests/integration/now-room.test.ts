@@ -85,7 +85,7 @@ test("tickets: student talks, solver may share; strangers and ended sessions are
   assert.equal(studentTicket.recorded, true);
   assert.equal(studentTicket.peerName, "Ravi");
   const { payload } = await jwtVerify(studentTicket.token, new TextEncoder().encode(SECRET));
-  assert.equal(payload.sub, student);
+  assert.equal(payload.sub, `student-${sessionId}`, "a per-role identity, never the user id");
   assert.deepEqual((payload.video as { canPublishSources: string[] }).canPublishSources, ["microphone"]);
   assert.equal((payload.video as { room: string }).room, `now-${sessionId}`);
 

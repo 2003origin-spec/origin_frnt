@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   EXTENSION_REQUEST_TTL_MS,
+  settlementReportState,
   decidePayable,
   firstNameOnly,
   isExtensionRequestOpen,
@@ -18,7 +19,7 @@ const base = {
   helperJoined: true,
   outcome: "resolved" as const,
   ownOrLinkedAccount: false,
-  openReport: false,
+  reportUpheld: false,
 };
 
 test("a human session pays only with both joined, an outcome, no report, not own account", () => {
@@ -28,12 +29,12 @@ test("a human session pays only with both joined, an outcome, no report, not own
   assert.equal(decidePayable({ ...base, studentJoined: false }), false);
   assert.equal(decidePayable({ ...base, helperJoined: false }), false);
   assert.equal(decidePayable({ ...base, ownOrLinkedAccount: true }), false);
-  assert.equal(decidePayable({ ...base, openReport: true }), false);
+  assert.equal(decidePayable({ ...base, reportUpheld: true }), false);
 });
 
 test("a bot session pays without an outcome but never on an open report", () => {
   assert.equal(decidePayable({ ...base, solverKind: "bot", outcome: null }), true);
-  assert.equal(decidePayable({ ...base, solverKind: "bot", outcome: null, openReport: true }), false);
+  assert.equal(decidePayable({ ...base, solverKind: "bot", outcome: null, reportUpheld: true }), false);
 });
 
 test("no-show: nobody is blamed before the window; a missing solver is blamed first", () => {
@@ -41,7 +42,7 @@ test("no-show: nobody is blamed before the window; a missing solver is blamed fi
   const early = new Date(acceptedAt.getTime() + NO_SHOW_WINDOW_MS - 1);
   const late = new Date(acceptedAt.getTime() + NO_SHOW_WINDOW_MS);
   assert.equal(noShowSide({ acceptedAt, studentJoinedAt: null, helperJoinedAt: null, now: early }), "not_yet");
-  assert.equal(noShowSide({ acceptedAt, studentJoinedAt: null, helperJoinedAt: null, now: late }), "helper");
+  assert.equal(noShowSide({ acceptedAt, studentJoinedAt: null, helperJoinedAt: null, now: late }), "both", "nobody waiting: close, don't requeue");
   assert.equal(noShowSide({ acceptedAt, studentJoinedAt: acceptedAt, helperJoinedAt: null, now: late }), "helper");
   assert.equal(noShowSide({ acceptedAt, studentJoinedAt: null, helperJoinedAt: acceptedAt, now: late }), "student");
   assert.equal(noShowSide({ acceptedAt, studentJoinedAt: acceptedAt, helperJoinedAt: acceptedAt, now: late }), "none");
@@ -62,4 +63,17 @@ test("a solver only ever sees the student's first name", () => {
   assert.equal(firstNameOnly("  Meera   Iyer "), "Meera");
   assert.equal(firstNameOnly(""), "Student");
   assert.equal(firstNameOnly(null), "Student");
+});
+
+test("only the student's reports touch the solver's pay: open defers, upheld blocks", () => {
+  assert.equal(settlementReportState([]), "clear");
+  assert.equal(settlementReportState([{ reporterRole: "solver", status: "open" }]), "clear", "a solver reporting a student keeps their pay");
+  assert.equal(settlementReportState([{ reporterRole: "student", status: "open" }]), "defer");
+  assert.equal(settlementReportState([{ reporterRole: "student", status: "dismissed" }]), "clear");
+  assert.equal(settlementReportState([{ reporterRole: "student", status: "upheld" }]), "upheld");
+  assert.equal(
+    settlementReportState([{ reporterRole: "student", status: "upheld" }, { reporterRole: "student", status: "open" }]),
+    "defer",
+    "wait for every open case",
+  );
 });

@@ -312,6 +312,17 @@ export async function buyStoreItem(
       actor: userId,
       payload: { orderId, itemId, kind: item.kind, coins: item.price_coins, premiumSubject: item.premium_subject, premiumEnd },
     });
+  }).catch(async (error) => {
+    // Two taps with the same key at once: the second loses the unique index and
+    // gets the first one's order instead of an error (nothing is charged twice).
+    if ((error as { code?: string }).code !== "23505") throw error;
+    const winner = await (await db()).query<{ id: string }>(
+      `SELECT id FROM store.orders WHERE user_id = $1 AND idempotency_key = $2`,
+      [userId, idempotencyKey],
+    );
+    if (!winner.rows[0]) throw error;
+    orderId = winner.rows[0].id;
+    premiumGranted = false;
   });
 
   // The denormalised is_premium / premium_expiry mirror follows the grants.

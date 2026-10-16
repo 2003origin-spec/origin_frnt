@@ -231,7 +231,14 @@ export default function NowLiveRoom({ requestId }: { requestId: string }) {
           // Ignore anything that is not a pointer message.
         }
       });
-      room.on(RoomEvent.ParticipantConnected, updatePeer);
+      room.on(RoomEvent.ParticipantConnected, (participant: RemoteParticipant) => {
+        updatePeer();
+        // The bot counts as joined only once the server sees its agent in the
+        // room, so tell the server again when the solver arrives (idempotent).
+        if (roleOf(participant) === 'solver' && issued.role === 'student') {
+          void apiCall(`/now/sessions/${session.id}/join`, { method: 'POST' }).then(refresh).catch(() => undefined);
+        }
+      });
       room.on(RoomEvent.ParticipantDisconnected, () => {
         updatePeer();
         setPointer(null);

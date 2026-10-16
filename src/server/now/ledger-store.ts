@@ -235,6 +235,12 @@ export async function listWalletMovements(userId: string, limit = 50): Promise<W
   }));
 }
 
+export async function isWalletFrozen(userId: string): Promise<boolean> {
+  await ensureNowSchema();
+  const res = await pool().query<{ frozen: boolean }>(`SELECT frozen FROM now.accounts WHERE id = $1`, [userAccount(userId)]);
+  return Boolean(res.rows[0]?.frozen);
+}
+
 export async function setAccountFrozen(userId: string, frozen: boolean): Promise<void> {
   await withNowTransaction(async (client) => {
     await ensureAccounts(client, [userAccount(userId)]);

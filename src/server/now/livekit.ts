@@ -145,6 +145,24 @@ export async function createAgentDispatch(
   return res.id ?? null;
 }
 
+type ParticipantInfo = { identity?: string; kind?: string | number };
+
+/** The participants LiveKit has in a room right now (empty if the room does not exist). */
+export async function listRoomParticipants(config: LiveKitConfig, room: string): Promise<ParticipantInfo[]> {
+  try {
+    const res = await twirp<{ participants?: ParticipantInfo[] }>(config, "RoomService", "ListParticipants", { room }, { roomAdmin: true, room });
+    return res.participants ?? [];
+  } catch (error) {
+    if ((error as { status?: number }).status === 404) return [];
+    throw error;
+  }
+}
+
+/** Pure: an agent participant (LiveKit kind AGENT = 4), never the recorder (EGRESS). */
+export function isAgentParticipant(p: ParticipantInfo): boolean {
+  return p.kind === "AGENT" || p.kind === 4;
+}
+
 /** Disconnects everyone and closes the room. A room that is already gone is fine. */
 export async function deleteRoom(config: LiveKitConfig, room: string): Promise<void> {
   try {

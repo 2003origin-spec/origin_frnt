@@ -4,7 +4,7 @@ import { z } from "zod";
 import { requireAdmin } from "@/server/authz";
 import { getSlugSegments, parseJsonBody } from "@/server/http";
 import { inviteToCohort, listCohort, loadPriceTable, removeFromCohort, savePriceTable } from "@/server/now/admin-store";
-import { getWalletBalance, listWalletMovements } from "@/server/now/ledger-store";
+import { getWalletBalance, isWalletFrozen, listWalletMovements } from "@/server/now/ledger-store";
 import { handleNowError, NowError, nowJson } from "@/server/now/now-http";
 import { getNowSettings, prepareSettingsUpdate, saveNowSettings, type NowSettings } from "@/server/now/now-settings";
 import {
@@ -19,6 +19,7 @@ import {
   liftSuspension,
   listReportsForAdmin,
   listSuspensionsForUser,
+  setWalletFrozenByAdmin,
   listRestrictedHelpers,
   reinstateHelper,
   resolveReport,
@@ -48,7 +49,7 @@ import { recordAuditEvent } from "@/server/workspaces/audit";
  *   GET  /api/admin/now/prices                   PUT  /api/admin/now/prices
  *   GET  /api/admin/now/packs                    POST /api/admin/now/packs
  *   GET  /api/admin/now/cohort                   POST /api/admin/now/cohort    DELETE /api/admin/now/cohort/:userId
- *   GET  /api/admin/now/wallets/:userId          POST /api/admin/now/wallets/:userId/adjust
+ *   GET  /api/admin/now/wallets/:userId          POST /api/admin/now/wallets/:userId/adjust | /freeze
  *   GET  /api/admin/now/applications?status=     GET  /api/admin/now/applications/:id
  *   POST /api/admin/now/applications/:id/approve POST /api/admin/now/applications/:id/reject
  *   POST /api/admin/now/bot                      (creates the Origin bot's helper row, idempotent)
@@ -97,6 +98,7 @@ const RecordingAccessSchema = z.object({ reason: z.string().trim().min(5).max(30
 const ReportStatusSchema = z.enum(["open", "upheld", "dismissed"]);
 const ResolveSchema = z.object({ outcome: z.enum(["upheld", "dismissed"]), note: z.string().trim().min(5).max(1000) });
 const NoteSchema = z.object({ note: z.string().trim().min(5).max(500) });
+const FreezeSchema = z.object({ frozen: z.boolean(), reason: z.string().trim().min(5).max(300) });
 const StoreItemSchema = z.object({
   kind: z.enum(["premium", "digital"]),
   title: z.string().max(120),
@@ -223,7 +225,11 @@ const ROUTES: { method: Method; pattern: string[]; handler: Handler }[] = [
     method: "GET",
     pattern: ["wallets", ":id"],
     handler: async (_request, _adminId, [userId]) =>
-      nowJson({ balance: await getWalletBalance(userId), movements: await listWalletMovements(userId, 200) }),
+      nowJson({
+        balance: await getWalletBalance(userId),
+        movements: await listWalletMovements(userId, 200),
+        frozen: await isWalletFrozen(userId),
+      }),
   },
   {
     method: "POST",
@@ -347,6 +353,16 @@ const ROUTES: { method: Method; pattern: string[]; handler: Handler }[] = [
     },
   },
   { method: "GET", pattern: ["store", "orders"], handler: async () => nowJson({ orders: await listStoreOrdersForAdmin() }) },
+  {
+    method: "POST",
+    pattern: ["wallets", ":id", "freeze"],
+    handler: async (request, adminId, [userId]) => {
+      const { frozen, reason } = FreezeSchema.parse(await parseJsonBody(request));
+      const result = await setWalletFrozenByAdmin(adminId, userId, frozen, reason);
+      await audit(adminId, frozen ? "now.wallet.freeze" : "now.wallet.unfreeze", { userId, reason });
+      return nowJson(result);
+    },
+  },
   {
     method: "GET",
     pattern: ["suspensions"],

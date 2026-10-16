@@ -11,6 +11,8 @@ import {
   deleteRoom,
   getLiveKitConfig,
   getRecordingStorage,
+  isAgentParticipant,
+  listRoomParticipants,
   mintParticipantToken,
   PARTICIPANT_TOKEN_TTL_SECONDS,
   recordingObjectKey,
@@ -89,9 +91,11 @@ export async function issueRoomTicket(userId: string, sessionId: string, now: Da
   const config = getLiveKitConfig();
   if (!config) throw new NowError(503, "live_unavailable", "Live calls are not available right now.");
   const room = roomNameFor(sessionId);
+  // Per-role identity, never the user id: neither side learns the other's account id.
+  const identity = `${role}-${sessionId}`;
   const token = await mintParticipantToken(config, {
     room,
-    identity: userId,
+    identity,
     name: role === "student" ? firstNameOnly(row.student_name) : (row.helper_name ?? "Solver"),
     role,
   });
@@ -99,13 +103,28 @@ export async function issueRoomTicket(userId: string, sessionId: string, now: Da
     url: config.wsUrl,
     token,
     room,
-    identity: userId,
+    identity,
     role,
     expiresAt: new Date(now.getTime() + PARTICIPANT_TOKEN_TTL_SECONDS * 1000).toISOString(),
     recorded: getRecordingStorage() !== null,
     peerName: role === "student" ? (row.solver_kind === "bot" ? "Origin" : (row.helper_name ?? "Solver")) : firstNameOnly(row.student_name),
     canScreenShare: role === "solver",
   };
+}
+
+/**
+ * Is the Origin bot's agent in this session's room? Without LiveKit (local
+ * development) there is no room to check, so the bot counts as present.
+ */
+export async function botIsInRoom(sessionId: string): Promise<boolean> {
+  const config = getLiveKitConfig();
+  if (!config) return true;
+  try {
+    return (await listRoomParticipants(config, roomNameFor(sessionId))).some(isAgentParticipant);
+  } catch (error) {
+    console.warn("[origin-now] could not list room participants", sessionId, error instanceof Error ? error.message : error);
+    return false;
+  }
 }
 
 /** Post-commit effect for every server-side end: disconnects both people. */

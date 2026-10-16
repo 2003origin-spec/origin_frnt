@@ -15,6 +15,7 @@ import { loadPriceTable } from "./admin-store";
 import {
   applyTransition,
   dispatchRequest,
+  dispatchSafely,
   expireOffer,
   getHelperByUserId,
   lockRequest,
@@ -28,11 +29,12 @@ import { NowError } from "./now-http";
 import { ensureNowSchema } from "./now-schema";
 import { helperStreamId, publishNowEvent, requestStreamId, scheduleNowTimer, type NowTimer } from "./now-realtime";
 import { getNowSettings } from "./now-settings";
-import { closeRoom, purgeExpiredRecordings, startSessionRecording } from "./room-service";
+import { botIsInRoom, closeRoom, purgeExpiredRecordings, startSessionRecording } from "./room-service";
 import { checkExtension, lookupPrice, sessionLengthMinutes } from "./pricing";
 import {
   OVERRUN_GRACE_MS,
   decidePayable,
+  settlementReportState,
   isExtensionRequestOpen,
   isShortSession,
   noShowSide,
@@ -126,6 +128,12 @@ function scheduleSessionTimers(effects: Effect[], sessionId: string, endsAt: Dat
 export async function joinSession(userId: string, sessionId: string, now: Date = new Date()) {
   const effects: Effect[] = [];
   let live = false;
+  // Ask LiveKit before taking any row lock (a network call must not hold one).
+  const head = await (await db()).query<{ solver_kind: SolverKind; helper_joined_at: Date | null }>(
+    `SELECT solver_kind, helper_joined_at FROM now.sessions WHERE id = $1`,
+    [sessionId],
+  );
+  const botPresent = head.rows[0]?.solver_kind === "bot" && !head.rows[0].helper_joined_at ? await botIsInRoom(sessionId) : false;
   await withNowTransaction(async (client) => {
     const locked = await lockSession(client, sessionId);
     if (!locked) throw new NowError(404, "not_found", "Session not found.");
@@ -140,6 +148,14 @@ export async function joinSession(userId: string, sessionId: string, now: Date =
       await client.query(`UPDATE now.sessions SET ${column} = $2 WHERE id = $1`, [session.id, now]);
       session[column] = now;
       await logEvent(client, { type: `session.${role}_joined`, requestId: request.id, sessionId: session.id, actor: userId });
+    }
+    // The bot counts as joined only once LiveKit shows its agent in the room, so
+    // a student is never charged for a bot that never arrived (the student's
+    // client calls join again when the agent appears).
+    if (session.solver_kind === "bot" && !session.helper_joined_at && botPresent) {
+      await client.query(`UPDATE now.sessions SET helper_joined_at = $2 WHERE id = $1`, [session.id, now]);
+      session.helper_joined_at = now;
+      await logEvent(client, { type: "session.bot_joined", requestId: request.id, sessionId: session.id, actor: "system" });
     }
     if (request.status === "accepted" && session.student_joined_at && session.helper_joined_at) {
       const price = await priceRowFor(request, session.solver_kind);
@@ -173,9 +189,9 @@ export async function joinSession(userId: string, sessionId: string, now: Date =
 // No-show.
 
 /** Runs from the no-show timer and the sweep. Idempotent. */
-export async function handleNoShow(sessionId: string, now: Date = new Date()): Promise<"helper" | "student" | null> {
+export async function handleNoShow(sessionId: string, now: Date = new Date()): Promise<"helper" | "student" | "both" | null> {
   const effects: Effect[] = [];
-  let side: "helper" | "student" | null = null;
+  let side: "helper" | "student" | "both" | null = null;
   let requeue: string | null = null;
   await withNowTransaction(async (client) => {
     const locked = await lockSession(client, sessionId);
@@ -188,7 +204,7 @@ export async function handleNoShow(sessionId: string, now: Date = new Date()): P
       helperJoinedAt: session.helper_joined_at,
       now,
     });
-    if (verdict !== "helper" && verdict !== "student") return;
+    if (verdict !== "helper" && verdict !== "student" && verdict !== "both") return;
     side = verdict;
     await client.query(
       `UPDATE now.sessions SET ended_at = $2, ended_by = 'no_show', payable = FALSE, settled_at = $2 WHERE id = $1`,
@@ -220,7 +236,12 @@ export async function handleNoShow(sessionId: string, now: Date = new Date()): P
     } else {
       await applyTransition(client, request, "student_no_show", { closed_reason: "no_show", closed_at: now });
       await releaseHold(client, request);
-      await logEvent(client, { type: "session.student_no_show", requestId: request.id, sessionId: session.id, actor: "system" });
+      await logEvent(client, {
+        type: verdict === "both" ? "session.nobody_joined" : "session.student_no_show",
+        requestId: request.id,
+        sessionId: session.id,
+        actor: "system",
+      });
       effects.push(
         () => publishNowEvent(requestStreamId(request.id), { type: "closed", reason: "no_show" }),
         () => closeRoom(session.id),
@@ -228,7 +249,7 @@ export async function handleNoShow(sessionId: string, now: Date = new Date()): P
     }
   });
   await runEffects(effects);
-  if (requeue) await dispatchRequest(requeue, now);
+  if (requeue) await dispatchSafely(requeue, now, "solver no-show");
   return side;
 }
 
@@ -334,14 +355,22 @@ async function settleLocked(
   request: RequestRow,
   now: Date,
   effects: Effect[],
-): Promise<void> {
-  if (session.settled_at) return;
-  const facts = await client.query<{ user_id: string | null; linked_user_ids: string[]; open_report: boolean }>(
-    `SELECT h.user_id, h.linked_user_ids,
-            EXISTS (SELECT 1 FROM now.reports r WHERE r.session_id = $2 AND r.status = 'open') AS open_report
-       FROM now.helpers h WHERE h.id = $1`,
-    [session.helper_id, session.id],
+): Promise<"settled" | "deferred" | "already"> {
+  if (session.settled_at) return "already";
+  const facts = await client.query<{ user_id: string | null; linked_user_ids: string[] }>(
+    `SELECT h.user_id, h.linked_user_ids FROM now.helpers h WHERE h.id = $1`,
+    [session.helper_id],
   );
+  const reports = await client.query<{ reporter_role: string | null; status: string }>(
+    `SELECT reporter_role, status FROM now.reports WHERE session_id = $1`,
+    [session.id],
+  );
+  const reportState = settlementReportState(reports.rows.map((r) => ({ reporterRole: r.reporter_role, status: r.status })));
+  if (reportState === "defer") {
+    // The student reported the solver: the coins stay held until the case closes
+    // (resolveReport settles it then), so a dismissed report costs the solver nothing.
+    return "deferred";
+  }
   const helper = facts.rows[0];
   const ownOrLinked =
     Boolean(helper?.user_id) &&
@@ -352,7 +381,7 @@ async function settleLocked(
     helperJoined: Boolean(session.helper_joined_at),
     outcome: session.outcome,
     ownOrLinkedAccount: ownOrLinked,
-    openReport: Boolean(helper?.open_report),
+    reportUpheld: reportState === "upheld",
   });
   const held = request.held_coins;
   if (payable && held > 0) {
@@ -381,9 +410,10 @@ async function settleLocked(
     requestId: request.id,
     sessionId: session.id,
     actor: "system",
-    payload: { payable, coins: held, ownOrLinked, openReport: Boolean(helper?.open_report) },
+    payload: { payable, coins: held, ownOrLinked, reportUpheld: reportState === "upheld" },
   });
   effects.push(() => publishNowEvent(requestStreamId(request.id), { type: "settled", sessionId: session.id, payable }));
+  return "settled";
 }
 
 // ---------------------------------------------------------------------------
@@ -527,6 +557,19 @@ export async function handleNowTimer(timer: NowTimer, now: Date = new Date()): P
 
 const SWEEP_BATCH = 50;
 
+/**
+ * One failing item must not stop the sweep: rows are ordered oldest first, so
+ * a request that always throws would otherwise block everything behind it.
+ */
+async function safely<T>(what: string, id: string, work: () => Promise<T>): Promise<T | null> {
+  try {
+    return await work();
+  } catch (error) {
+    console.error(`[origin-now] sweep ${what} failed`, id, error instanceof Error ? error.message : error);
+    return null;
+  }
+}
+
 /** Every minute: re-does anything a missed or late QStash timer left behind. */
 export async function runNowSweep(now: Date = new Date()) {
   const pool = await db();
@@ -536,28 +579,27 @@ export async function runNowSweep(now: Date = new Date()) {
     `SELECT id FROM now.offers WHERE response IS NULL AND expires_at <= $1 ORDER BY expires_at LIMIT ${SWEEP_BATCH}`,
     [now],
   );
-  for (const { id } of offers.rows) if (await expireOffer(id, now)) counts.offersExpired += 1;
+  for (const { id } of offers.rows) if (await safely("expire offer", id, () => expireOffer(id, now))) counts.offersExpired += 1;
 
   const waiting = await pool.query<{ id: string }>(
     `SELECT id FROM now.requests WHERE status = 'requested' AND updated_at <= $1 ORDER BY created_at LIMIT ${SWEEP_BATCH}`,
     [new Date(now.getTime() - 15_000)],
   );
-  for (const { id } of waiting.rows) if (await dispatchRequest(id, now)) counts.dispatched += 1;
+  for (const { id } of waiting.rows) if (await safely("dispatch", id, () => dispatchRequest(id, now))) counts.dispatched += 1;
 
   const unjoined = await pool.query<{ id: string }>(
     `SELECT s.id FROM now.sessions s JOIN now.requests r ON r.id = s.request_id
       WHERE s.ended_at IS NULL AND r.status = 'accepted' AND s.accepted_at <= $1 LIMIT ${SWEEP_BATCH}`,
     [new Date(now.getTime() - NO_SHOW_WINDOW_MS)],
   );
-  for (const { id } of unjoined.rows) if (await handleNoShow(id, now)) counts.noShows += 1;
+  for (const { id } of unjoined.rows) if (await safely("no-show", id, () => handleNoShow(id, now))) counts.noShows += 1;
 
   const overrun = await pool.query<{ id: string }>(
     `SELECT id FROM now.sessions WHERE ended_at IS NULL AND ends_at IS NOT NULL AND ends_at <= $1 LIMIT ${SWEEP_BATCH}`,
     [new Date(now.getTime() - OVERRUN_GRACE_MS)],
   );
   for (const { id } of overrun.rows) {
-    await endSession({ system: "timer" }, id, {}, now);
-    counts.ended += 1;
+    if (await safely("end", id, () => endSession({ system: "timer" }, id, {}, now).then(() => true))) counts.ended += 1;
   }
 
   // Ended sessions still waiting to settle: bots immediately, humans once the
@@ -568,7 +610,7 @@ export async function runNowSweep(now: Date = new Date()) {
       LIMIT ${SWEEP_BATCH}`,
     [new Date(now.getTime() - RATING_WINDOW_MS)],
   );
-  for (const { id } of unsettled.rows) if (await settleSession(id, now)) counts.settled += 1;
+  for (const { id } of unsettled.rows) if (await safely("settle", id, () => settleSession(id, now))) counts.settled += 1;
 
   return counts;
 }
@@ -579,8 +621,12 @@ export async function settleSession(sessionId: string, now: Date = new Date()): 
   await withNowTransaction(async (client) => {
     const locked = await lockSession(client, sessionId);
     if (!locked || !locked.session.ended_at || locked.session.settled_at) return;
-    await settleLocked(client, locked.session, locked.request, now, effects);
-    done = true;
+    // Same readiness as the sweep: a human session waits for the solver's
+    // outcome until the window passes (a dismissed report must not cut that short).
+    const s = locked.session;
+    const ready = s.solver_kind === "bot" || s.outcome !== null || s.ended_at!.getTime() <= now.getTime() - RATING_WINDOW_MS;
+    if (!ready) return;
+    done = (await settleLocked(client, locked.session, locked.request, now, effects)) === "settled";
   });
   await runEffects(effects);
   return done;
@@ -590,19 +636,24 @@ export async function settleSession(sessionId: string, now: Date = new Date()): 
 export async function runNowNightly(now: Date = new Date()) {
   const pool = await db();
   const due = await pool.query<{ id: string }>(
-    `SELECT r.id FROM now.requests r JOIN now.sessions s ON s.request_id = r.id
-      WHERE r.status = 'ended' AND s.ended_at <= $1`,
+    // The LAST session's end: a request requeued after a solver no-show also
+    // has an older, ended session that must not close the window early.
+    `SELECT r.id FROM now.requests r
+      WHERE r.status = 'ended'
+        AND (SELECT max(s.ended_at) FROM now.sessions s WHERE s.request_id = r.id) <= $1`,
     [new Date(now.getTime() - RATING_WINDOW_MS)],
   );
   let ratingWindowsClosed = 0;
   for (const { id } of due.rows) {
-    await withNowTransaction(async (client) => {
-      const request = await lockRequest(client, id);
-      if (!request || request.status !== "ended") return;
-      await applyTransition(client, request, "rating_window_closed");
-      await logEvent(client, { type: "request.unrated", requestId: id, actor: "system" });
-      ratingWindowsClosed += 1;
-    });
+    await safely("close rating window", id, () =>
+      withNowTransaction(async (client) => {
+        const request = await lockRequest(client, id);
+        if (!request || request.status !== "ended") return;
+        await applyTransition(client, request, "rating_window_closed");
+        await logEvent(client, { type: "request.unrated", requestId: id, actor: "system" });
+        ratingWindowsClosed += 1;
+      }),
+    );
   }
 
   const legs = await loadAllLegsForAudit();
