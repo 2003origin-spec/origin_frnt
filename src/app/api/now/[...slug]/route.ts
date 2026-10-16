@@ -7,8 +7,19 @@ import { parseAppVersionFromUserAgent } from "@/native/is-native-app";
 import { requireAuth } from "@/server/authz";
 import { getSlugSegments, parseJsonBody } from "@/server/http";
 import { createCheckoutOrder } from "@/server/payments/orders-service";
+import { confirmConsent, getConsentStatus, previewConsent, startGuardianConsent } from "@/server/now/consent-service";
 import { getNowAccess } from "@/server/now/now-access";
 import { handleNowError, NowError, nowJson } from "@/server/now/now-http";
+import {
+  acceptAgreement,
+  confirmDocumentUpload,
+  createDocumentUpload,
+  getMyApplication,
+  saveApplication,
+  startQuiz,
+  submitApplication,
+  submitQuiz,
+} from "@/server/now/solver-service";
 import { getWalletSummary, listCoinPacks } from "@/server/now/wallet-service";
 
 /**
@@ -27,6 +38,10 @@ import { getWalletSummary, listCoinPacks } from "@/server/now/wallet-service";
  *   GET  /api/now/wallet          → balance, recent movements, coin packs
  *   GET  /api/now/wallet/packs    → active coin packs
  *   POST /api/now/wallet/packs    → start a Razorpay order for a pack (web only)
+ *   GET  /api/now/consent                       POST /api/now/consent/start
+ *   GET  /api/now/consent/preview?token= (public)   POST /api/now/consent/confirm (public)
+ *   GET|PUT /api/now/solver/application         POST .../documents, .../documents/confirm,
+ *   POST .../agreement, .../submit              POST /api/now/solver/quiz, /solver/quiz/:id/submit
  */
 
 type RouteContext = { params: Promise<{ slug?: string[] }> };
@@ -94,15 +109,115 @@ async function handleBuyPack(request: NextRequest, userId: string): Promise<Resp
   });
 }
 
-/** Routes keyed "METHOD path"; ":id" segments are passed through as params. */
-const ROUTES: { method: Method; pattern: string[]; handler: Handler }[] = [
+// ---------------------------------------------------------------------------
+// Guardian consent (build step 4).
+
+const StartConsentSchema = z.object({
+  purpose: z.enum(["student", "solver"]),
+  dateOfBirth: z.string().nullable().optional(),
+  guardianName: z.string().max(80).default(""),
+  guardianEmail: z.string().max(200).default(""),
+  guardianPhone: z.string().max(20).nullable().optional(),
+  relationship: z.string().max(40).default(""),
+});
+
+const ConfirmConsentSchema = z.object({ token: z.string().min(20).max(200), acceptedPolicy: z.boolean() });
+
+async function handleConsentStatus(_request: NextRequest, userId: string): Promise<Response> {
+  return nowJson(await getConsentStatus(userId));
+}
+
+async function handleConsentStart(request: NextRequest, userId: string): Promise<Response> {
+  const body = StartConsentSchema.parse(await parseJsonBody(request));
+  const limited = await checkRateLimit(mutationLimiter, `now-consent:${userId}`);
+  if (limited) return limited;
+  const result = await startGuardianConsent({
+    userId,
+    purpose: body.purpose,
+    dateOfBirth: body.dateOfBirth ?? null,
+    guardianName: body.guardianName,
+    guardianEmail: body.guardianEmail,
+    guardianPhone: body.guardianPhone ?? null,
+    relationship: body.relationship,
+  });
+  return nowJson({ ...result, status: await getConsentStatus(userId) });
+}
+
+/** Public: the guardian has no Origin account. The token is the credential. */
+async function handleConsentPreview(request: NextRequest): Promise<Response> {
+  const token = request.nextUrl.searchParams.get("token") ?? "";
+  if (token.length < 20) throw new NowError(404, "invalid_link", "This consent link is not valid.");
+  return nowJson(await previewConsent(token));
+}
+
+async function handleConsentConfirm(request: NextRequest): Promise<Response> {
+  if (!request.headers.get("content-type")?.includes("application/json")) {
+    throw new NowError(415, "json_required", "Send JSON.");
+  }
+  const limited = await checkRateLimit(mutationLimiter, `now-consent-confirm:${request.headers.get("x-forwarded-for") ?? "anon"}`);
+  if (limited) return limited;
+  const { token, acceptedPolicy } = ConfirmConsentSchema.parse(await parseJsonBody(request));
+  return nowJson(await confirmConsent({ token, acceptedPolicy }));
+}
+
+// ---------------------------------------------------------------------------
+// Solver registration (build step 4).
+
+const ApplicationPatchSchema = z.object({
+  role: z.string().optional(),
+  displayName: z.string().max(60).optional(),
+  subjects: z.array(z.string()).max(4).optional(),
+  chapters: z.record(z.string(), z.array(z.string()).max(60)).optional(),
+  languages: z.array(z.string()).max(8).optional(),
+  pan: z.string().max(20).optional(),
+});
+const UploadSchema = z.object({ kind: z.string(), mimeType: z.string(), sizeBytes: z.number().int() });
+const ConfirmUploadSchema = z.object({ kind: z.string(), objectKey: z.string().max(300) });
+const AgreementSchema = z.object({ version: z.string().max(40) });
+const StartQuizSchema = z.object({ subject: z.string().max(20) });
+const SubmitQuizSchema = z.object({ answers: z.record(z.string(), z.number().int().min(0).max(20).nullable()) });
+
+const solverHandlers = {
+  get: async (_r: NextRequest, userId: string) => nowJson({ application: await getMyApplication(userId) }),
+  save: async (r: NextRequest, userId: string) =>
+    nowJson({ application: await saveApplication(userId, ApplicationPatchSchema.parse(await parseJsonBody(r))) }),
+  upload: async (r: NextRequest, userId: string) =>
+    nowJson(await createDocumentUpload(userId, UploadSchema.parse(await parseJsonBody(r)))),
+  confirmUpload: async (r: NextRequest, userId: string) =>
+    nowJson({ application: await confirmDocumentUpload(userId, ConfirmUploadSchema.parse(await parseJsonBody(r))) }),
+  agreement: async (r: NextRequest, userId: string) =>
+    nowJson({ application: await acceptAgreement(userId, AgreementSchema.parse(await parseJsonBody(r)).version) }),
+  submit: async (_r: NextRequest, userId: string) => nowJson({ application: await submitApplication(userId) }),
+  startQuiz: async (r: NextRequest, userId: string) =>
+    nowJson({ quiz: await startQuiz(userId, StartQuizSchema.parse(await parseJsonBody(r)).subject) }),
+  submitQuiz: async (r: NextRequest, userId: string, [attemptId]: string[]) =>
+    nowJson(await submitQuiz(userId, attemptId, SubmitQuizSchema.parse(await parseJsonBody(r)).answers)),
+};
+
+/** Routes keyed by method + path; ":id" segments are passed through as params. */
+const ROUTES: { method: Method; pattern: string[]; handler: Handler; public?: boolean }[] = [
   { method: "GET", pattern: ["me"], handler: handleMe },
   { method: "GET", pattern: ["wallet"], handler: handleWallet },
   { method: "GET", pattern: ["wallet", "packs"], handler: handlePacks },
   { method: "POST", pattern: ["wallet", "packs"], handler: handleBuyPack },
+  { method: "GET", pattern: ["consent"], handler: handleConsentStatus },
+  { method: "POST", pattern: ["consent", "start"], handler: handleConsentStart },
+  { method: "GET", pattern: ["consent", "preview"], handler: handleConsentPreview, public: true },
+  { method: "POST", pattern: ["consent", "confirm"], handler: handleConsentConfirm, public: true },
+  { method: "GET", pattern: ["solver", "application"], handler: solverHandlers.get },
+  { method: "PUT", pattern: ["solver", "application"], handler: solverHandlers.save },
+  { method: "POST", pattern: ["solver", "application", "documents"], handler: solverHandlers.upload },
+  { method: "POST", pattern: ["solver", "application", "documents", "confirm"], handler: solverHandlers.confirmUpload },
+  { method: "POST", pattern: ["solver", "application", "agreement"], handler: solverHandlers.agreement },
+  { method: "POST", pattern: ["solver", "application", "submit"], handler: solverHandlers.submit },
+  { method: "POST", pattern: ["solver", "quiz"], handler: solverHandlers.startQuiz },
+  { method: "POST", pattern: ["solver", "quiz", ":id", "submit"], handler: solverHandlers.submitQuiz },
 ];
 
-function match(method: Method, segments: string[]): { handler: Handler; params: string[] } | null {
+function match(
+  method: Method,
+  segments: string[],
+): { handler: Handler; params: string[]; isPublic: boolean } | null {
   for (const route of ROUTES) {
     if (route.method !== method || route.pattern.length !== segments.length) continue;
     const params: string[] = [];
@@ -113,7 +228,7 @@ function match(method: Method, segments: string[]): { handler: Handler; params: 
       }
       return part === segments[i];
     });
-    if (ok) return { handler: route.handler, params };
+    if (ok) return { handler: route.handler, params, isPublic: Boolean(route.public) };
   }
   return null;
 }
@@ -124,6 +239,7 @@ async function dispatch(method: Method, request: NextRequest, context: RouteCont
     const segments = getSlugSegments(await context.params);
     const found = match(method, segments);
     if (!found) throw new NowError(404, "not_found", "Not found.");
+    if (found.isPublic) return await found.handler(request, "", found.params);
     const auth = await requireAuth(request);
     return await found.handler(request, auth.userId, found.params);
   } catch (error) {

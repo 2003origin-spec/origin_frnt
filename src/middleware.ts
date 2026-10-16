@@ -23,6 +23,10 @@ const APEX_HOST = "o3origin.com";
 const PRODUCTION_VERCEL_HOST = "origin-frnt.vercel.app";
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 const CSRF_EXEMPT_API_PATHS = new Set([
+  // Origin NOW guardian consent: the guardian has no Origin session; the
+  // single-use token in the JSON body is the credential (hash-checked,
+  // expiring) and the handler requires application/json.
+  "/api/now/consent/confirm",
   "/api/users/login",
   "/api/users/register",
   "/api/users/google-login",

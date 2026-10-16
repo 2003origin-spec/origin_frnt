@@ -7,7 +7,14 @@ import { inviteToCohort, listCohort, loadPriceTable, removeFromCohort, savePrice
 import { getWalletBalance, listWalletMovements } from "@/server/now/ledger-store";
 import { handleNowError, NowError, nowJson } from "@/server/now/now-http";
 import { getNowSettings, prepareSettingsUpdate, saveNowSettings, type NowSettings } from "@/server/now/now-settings";
-import { DIFFICULTIES, SOLVER_KINDS } from "@/server/now/types";
+import {
+  approveApplication,
+  ensureBotHelper,
+  getApplicationForAdmin,
+  listApplicationsForAdmin,
+  rejectApplication,
+} from "@/server/now/solver-service";
+import { APPLICATION_STATUSES, DIFFICULTIES, SOLVER_KINDS } from "@/server/now/types";
 import { adminAdjustWallet, listCoinPacks, upsertCoinPack } from "@/server/now/wallet-service";
 import { recordAuditEvent } from "@/server/workspaces/audit";
 
@@ -23,6 +30,9 @@ import { recordAuditEvent } from "@/server/workspaces/audit";
  *   GET  /api/admin/now/packs                    POST /api/admin/now/packs
  *   GET  /api/admin/now/cohort                   POST /api/admin/now/cohort    DELETE /api/admin/now/cohort/:userId
  *   GET  /api/admin/now/wallets/:userId          POST /api/admin/now/wallets/:userId/adjust
+ *   GET  /api/admin/now/applications?status=     GET  /api/admin/now/applications/:id
+ *   POST /api/admin/now/applications/:id/approve POST /api/admin/now/applications/:id/reject
+ *   POST /api/admin/now/bot                      (creates the Origin bot's helper row, idempotent)
  */
 
 type RouteContext = { params: Promise<{ slug?: string[] }> };
@@ -49,6 +59,9 @@ const PackSchema = z.object({
 });
 
 const CohortSchema = z.object({ identifiers: z.array(z.string()).min(1).max(1000) });
+const ApplicationStatusSchema = z.enum(APPLICATION_STATUSES);
+const ApproveSchema = z.object({ demoPassed: z.boolean(), level: z.enum(["trainee", "verified", "expert"]).optional() });
+const RejectSchema = z.object({ reason: z.string().min(5).max(500) });
 const AdjustSchema = z.object({ coins: z.number().int().positive(), reason: z.string().min(5).max(500) });
 
 async function audit(adminId: string, action: string, metadata: Record<string, unknown>): Promise<void> {
@@ -95,6 +108,48 @@ const ROUTES: { method: Method; pattern: string[]; handler: Handler }[] = [
       const pack = await upsertCoinPack(PackSchema.parse(await parseJsonBody(request)));
       await audit(adminId, "now.packs.upsert", { packId: pack.id, coins: pack.coins, pricePaise: pack.pricePaise });
       return nowJson({ pack });
+    },
+  },
+  {
+    method: "GET",
+    pattern: ["applications"],
+    handler: async (request) => {
+      const status = ApplicationStatusSchema.parse(request.nextUrl.searchParams.get("status") ?? "submitted");
+      return nowJson({ applications: await listApplicationsForAdmin(status) });
+    },
+  },
+  {
+    method: "GET",
+    pattern: ["applications", ":id"],
+    handler: async (_request, _adminId, [id]) => nowJson({ application: await getApplicationForAdmin(id) }),
+  },
+  {
+    method: "POST",
+    pattern: ["applications", ":id", "approve"],
+    handler: async (request, adminId, [id]) => {
+      const body = ApproveSchema.parse(await parseJsonBody(request));
+      const result = await approveApplication({ applicationId: id, adminId, demoPassed: body.demoPassed, level: body.level });
+      await audit(adminId, "now.application.approve", { applicationId: id, helperId: result.helperId });
+      return nowJson(result);
+    },
+  },
+  {
+    method: "POST",
+    pattern: ["applications", ":id", "reject"],
+    handler: async (request, adminId, [id]) => {
+      const { reason } = RejectSchema.parse(await parseJsonBody(request));
+      await rejectApplication({ applicationId: id, adminId, reason });
+      await audit(adminId, "now.application.reject", { applicationId: id });
+      return nowJson({ ok: true });
+    },
+  },
+  {
+    method: "POST",
+    pattern: ["bot"],
+    handler: async (_request, adminId) => {
+      const helperId = await ensureBotHelper();
+      await audit(adminId, "now.bot.ensure", { helperId });
+      return nowJson({ helperId });
     },
   },
   { method: "GET", pattern: ["cohort"], handler: async () => nowJson({ members: await listCohort() }) },

@@ -32,6 +32,23 @@ CREATE TABLE IF NOT EXISTS app.guardian_consents (
 );
 CREATE INDEX IF NOT EXISTS idx_guardian_consents_user ON app.guardian_consents(user_id, purpose);
 
+CREATE TABLE IF NOT EXISTS now.consent_requests (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES origin_users(id) ON DELETE CASCADE,
+  purpose TEXT NOT NULL CHECK (purpose IN ('student', 'solver')),
+  guardian_name TEXT NOT NULL,
+  guardian_email TEXT NOT NULL,
+  guardian_phone TEXT,
+  relationship TEXT NOT NULL,
+  token_hash TEXT NOT NULL UNIQUE,
+  policy_version TEXT NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  confirmed_at TIMESTAMPTZ,
+  consent_id TEXT REFERENCES app.guardian_consents(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_consent_requests_user ON now.consent_requests(user_id, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS now.pilot_cohort (
   user_id TEXT PRIMARY KEY REFERENCES origin_users(id) ON DELETE CASCADE,
   invited_by TEXT REFERENCES origin_users(id),
@@ -62,12 +79,15 @@ CREATE TABLE IF NOT EXISTS now.helper_applications (
   chapters JSONB NOT NULL DEFAULT '{}'::jsonb,
   languages TEXT[] NOT NULL DEFAULT '{}',
   aadhaar_ref TEXT,
-  aadhaar_masked_key TEXT,
+  documents JSONB NOT NULL DEFAULT '{}'::jsonb,
   pan_encrypted TEXT,
-  proof_keys TEXT[] NOT NULL DEFAULT '{}',
+  pan_last4 TEXT,
   guardian_consent_id TEXT REFERENCES app.guardian_consents(id),
   quiz_scores JSONB NOT NULL DEFAULT '{}'::jsonb,
   demo_recording_key TEXT,
+  demo_passed BOOLEAN,
+  agreement_version TEXT,
+  agreement_accepted_at TIMESTAMPTZ,
   status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'submitted', 'approved', 'rejected')),
   reviewed_by TEXT REFERENCES origin_users(id),
   reviewed_at TIMESTAMPTZ,
