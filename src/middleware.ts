@@ -12,6 +12,9 @@ const RATE_LIMITED_MUTATION_PREFIXES = [
   "/api/admin/",
   "/api/enrollments/",
   "/api/cbt/",
+  // Origin NOW: needed so the /admin/incidents kill switch reaches these routes
+  // (it is only consulted for paths in this list). Plan: V1/ORIGIN_NOW_PLAN.md.
+  "/api/now/",
 ];
 
 const REQUEST_ID_HEADER = "X-Request-Id";

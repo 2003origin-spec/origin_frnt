@@ -59,7 +59,8 @@ type FlagKey =
   | "contestQuestionTypes"
   | "contestProctoring"
   | "payments"
-  | "loginStreakCelebration";
+  | "loginStreakCelebration"
+  | "originNow";
 
 type FlagSpec = {
   envSuffix: string;
@@ -304,6 +305,11 @@ const FLAG_SPECS: Record<FlagKey, FlagSpec> = {
   // First-login-of-the-day streak flame celebration on the student dashboard.
   // Ships dark (off in prod) until the overlay UI is signed off.
   loginStreakCelebration: { envSuffix: "LOGIN_STREAK", defaultDev: true, defaultProd: false },
+  // Origin NOW — live human/bot doubt solving paid in Ori Coins. Ships DARK in
+  // dev AND prod: the pilot is invite-only and gated by legal sign-off, so
+  // nothing should appear until TEACHER_LAUNCH_ORIGIN_NOW=1 is set on purpose.
+  // Plan: V1/ORIGIN_NOW_PLAN.md
+  originNow: { envSuffix: "ORIGIN_NOW", defaultDev: false, defaultProd: false },
 };
 
 /** Every feature-flag key, in declaration order (admin System Config view). */

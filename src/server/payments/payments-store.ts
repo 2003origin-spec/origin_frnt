@@ -23,7 +23,10 @@ export type OrderKind =
   | "bundle_term"
   | "institute_offering"
   | "subject_subscription"
-  | "batch_subscription";
+  | "batch_subscription"
+  // Origin NOW Ori Coins pack (V1/ORIGIN_NOW_PLAN.md). Added to the DB enum
+  // by ensureCoinPackOrderKind() before the first coin-pack checkout.
+  | "coin_pack";
 
 export type OrderStatus =
   | "created"

@@ -248,6 +248,13 @@ export const FLAG_KILL_PREFIXES: Partial<Record<FlagKey, FlagKillMatcher>> = {
   // Redis. It also leaves `/api/admin/contest/*` alive so an admin can still
   // cancel/reschedule the live contest to stop the bleeding.
   contest: ["/api/contest"],
+  // Killing `originNow` refuses every student/helper Origin NOW mutation
+  // (requests, offers, joins, ratings, wallet, store). It deliberately leaves
+  // /api/internal/now/* running so timers still end live sessions and release
+  // coin holds, and /api/admin/now/* alive so an admin can still act. GET
+  // routes are not covered by the edge switch, so the LiveKit token route
+  // checks getFlagOverride("originNow") itself.
+  originNow: ["/api/now"],
 };
 
 function matchKillSwitch(matcher: FlagKillMatcher, pathname: string): boolean {

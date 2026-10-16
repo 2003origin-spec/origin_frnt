@@ -21,6 +21,14 @@ import {
 import { ensurePricingSchema } from "@/server/pricing/pricing-schema";
 import { getUserPostgresPool, isUserPostgresConfigured } from "@/server/user-postgres";
 import { recomputeUserPremiumFlags } from "@/server/entitlements";
+import {
+  coinPackNotes,
+  creditCoinPackOrder,
+  ensureCoinPackOrderKind,
+  resolveCoinPack,
+  type ResolvedCoinPack,
+} from "@/server/now/coin-pack-payments";
+import { ensureNowSchema } from "@/server/now/now-schema";
 
 import {
   attachRazorpayOrderId,
@@ -110,11 +118,13 @@ export class PaymentGatewayError extends Error {
 /** Every product Rail A can price. `institute_offering` landed with plan G16. */
 export type RailAOrderKind = Extract<
   OrderKind,
-  "subject_term" | "bundle_term" | "institute_offering"
+  "subject_term" | "bundle_term" | "institute_offering" | "coin_pack"
 >;
 
 export type ResolveOrderAmountInput = {
   kind?: RailAOrderKind;
+  /** coin_pack only (Origin NOW). */
+  packId?: string | null;
   subject?: Subject | string | null;
   bundleId?: string | null;
   /** institute_offering only. */
@@ -144,6 +154,8 @@ export type ResolvedOrderAmount = {
   /** Monthly source amount before the term ladder is applied. */
   monthlyMinor: number;
   term: TermOption;
+  /** coin_pack only: the frozen pack + bonus written into the order notes. */
+  coinPack?: ResolvedCoinPack | null;
 };
 
 export type CreateCheckoutOrderInput = {
@@ -155,6 +167,8 @@ export type CreateCheckoutOrderInput = {
   workspaceId?: string | null;
   /** institute_offering only. */
   offeringId?: string | null;
+  /** coin_pack only (Origin NOW). */
+  packId?: string | null;
   kind?: RailAOrderKind;
   couponCode?: string | null;
   idempotencyKey?: string | null;
@@ -285,6 +299,35 @@ export async function resolveOrderAmount(input: ResolveOrderAmountInput): Promis
     // still resolved from the bundle and never from that subject's amount.
   }
 
+  // An Ori Coins pack (Origin NOW) is priced from now.coin_packs; no term
+  // ladder, no coupons. The coins and any promotion bonus are frozen here and
+  // carried in the order notes, so a later price or promotion change never
+  // alters what an already-created order pays out.
+  if (kind === "coin_pack") {
+    if (!input.packId) throw new Error("packId is required for a coin pack");
+    if (!input.userId) throw new Error("userId is required for a coin pack");
+    if (input.couponCode?.trim()) throw new Error("Coupons do not apply to coin packs");
+    const pack = await resolveCoinPack({ packId: input.packId, userId: input.userId, now: new Date() });
+    return {
+      kind,
+      subject: null,
+      bundleId: null,
+      bundleSubjects: [],
+      workspaceId: null,
+      offeringId: null,
+      offeringTitle: pack.packName,
+      termMonths: 1,
+      baseMinor: pack.amountMinor,
+      discountMinor: 0,
+      amountMinor: pack.amountMinor,
+      currency: CURRENCY,
+      couponCode: null,
+      monthlyMinor: pack.amountMinor,
+      term: { termMonths: 1, label: "One-time", discountPercent: 0 },
+      coinPack: pack,
+    };
+  }
+
   // An institute offering is a one-time enrolment fee set by the institute, not
   // a platform subscription: the term ladder and platform coupons do not apply
   // to it, and its price comes from commerce.workspace_offerings (plan G16).
@@ -410,10 +453,12 @@ export async function createCheckoutOrder(input: CreateCheckoutOrderInput): Prom
     bundleId: input.bundleId,
     workspaceId: input.workspaceId,
     offeringId: input.offeringId,
+    packId: input.packId,
     termMonths: input.termMonths,
     couponCode: input.couponCode,
     userId: input.userId,
   });
+  if (resolved.kind === "coin_pack") await ensureCoinPackOrderKind();
 
   // The DB unique index remains the final arbiter under a race. This lookup
   // gives direct callers the same replay semantics as the route idempotency
@@ -483,6 +528,7 @@ export async function createCheckoutOrder(input: CreateCheckoutOrderInput): Prom
       bundle_subjects: resolved.bundleSubjects,
       ...(enrollmentOrderId ? { enrollment_order_id: enrollmentOrderId } : {}),
       ...(resolved.offeringTitle ? { offering_title: resolved.offeringTitle } : {}),
+      ...(resolved.coinPack ? coinPackNotes(resolved.coinPack) : {}),
     },
     expiresAt: new Date(now.getTime() + DEFAULT_ORDER_EXPIRY_MS),
   });
@@ -636,10 +682,14 @@ export async function applyPaymentSuccess(input: PaymentSuccessInput): Promise<P
   if (
     orderBefore.kind !== "subject_term" &&
     orderBefore.kind !== "bundle_term" &&
-    orderBefore.kind !== "institute_offering"
+    orderBefore.kind !== "institute_offering" &&
+    orderBefore.kind !== "coin_pack"
   ) {
     throw new Error("Payment order is not a Rail A order");
   }
+  // Coin credits are written in this function's transaction; make sure the
+  // now.* tables exist before it opens (DDL must not run inside it).
+  if (orderBefore.kind === "coin_pack") await ensureNowSchema();
 
   const client = await dbPool().connect();
   let result: PaymentSuccessResult;
@@ -754,10 +804,15 @@ export async function applyPaymentSuccess(input: PaymentSuccessInput): Promise<P
       );
 
       const grants: PaidTermGrant[] = [];
-      // An institute offering buys enrolment in someone else's batch, not a
-      // platform subject entitlement, so it grants nothing here — the commerce
-      // side effect is enqueued below and runs after commit (plan G16).
-      if (order.kind !== "institute_offering") {
+      // Only subject and bundle terms grant platform subject entitlements. An
+      // institute offering buys enrolment in someone else's batch (enqueued
+      // below, plan G16) and a coin pack buys Ori Coins — neither grants a
+      // subject. This is an allow-list on purpose: a new kind must never fall
+      // through to the bundle default of ALL_SUBJECTS.
+      if (order.kind === "coin_pack") {
+        await creditCoinPackOrder(client, { id: order.id, userId: order.userId, notes: order.notes });
+      }
+      if (order.kind === "subject_term" || order.kind === "bundle_term") {
         const subjects = order.kind === "subject_term"
           ? [order.subject as Subject]
           : (Array.isArray(order.notes.bundle_subjects)
@@ -837,13 +892,22 @@ export async function applyPaymentSuccess(input: PaymentSuccessInput): Promise<P
             termMonths: order.termMonths,
             paidAt: updated.paidAt,
             expiresAt: latestGrantExpiry(grants),
-            href: order.kind === "institute_offering" ? "/connect" : "/premium",
+            href:
+              order.kind === "institute_offering" ? "/connect" : order.kind === "coin_pack" ? "/now/wallet" : "/premium",
             ...(order.kind === "institute_offering"
               ? {
                   notificationTitle: "Payment received",
                   notificationMessage: `Your payment for ${
                     typeof order.notes.offering_title === "string" ? order.notes.offering_title : "your enrolment"
                   } was received. Your enrolment is being set up.`,
+                }
+              : {}),
+            ...(order.kind === "coin_pack"
+              ? {
+                  notificationTitle: "Coins added",
+                  notificationMessage: `${
+                    Number(order.notes.pack_coins ?? 0) + Number(order.notes.bonus_coins ?? 0)
+                  } Ori Coins were added to your wallet.`,
                 }
               : {}),
           },
@@ -854,7 +918,7 @@ export async function applyPaymentSuccess(input: PaymentSuccessInput): Promise<P
       // Recompute after commit: the entitlement union uses a separate pool
       // connection and must never observe an uncommitted grant. An institute
       // order grants no subject entitlement, so there is nothing to recompute.
-      if (order.kind !== "institute_offering") await recomputeUserPremiumFlags(order.userId);
+      if (order.kind === "subject_term" || order.kind === "bundle_term") await recomputeUserPremiumFlags(order.userId);
       if (order.kind === "institute_offering") {
         await publishOutbox(`institute_enrollment_${input.razorpayPaymentId}`).catch(() => undefined);
       }

@@ -125,6 +125,7 @@ function formatDate(value: string | null | undefined): string {
 }
 
 function productLabel(payload: PaymentEmailBase): string {
+  if (payload.kind === "coin_pack") return "Ori Coins pack";
   const subject = text(payload.subject);
   if (subject) return `${subject[0].toUpperCase()}${subject.slice(1)} Premium`;
   if (payload.kind === "bundle_term" || text(payload.kind).includes("bundle")) return "All-subjects bundle";
