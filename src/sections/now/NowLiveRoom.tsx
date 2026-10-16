@@ -26,12 +26,14 @@ import {
   type RemoteTrackPublication,
   type RemoteParticipant,
 } from 'livekit-client';
-import { Circle, Clock, Loader2, Mic, MicOff, MonitorUp, MonitorX, PhoneOff, Plus } from 'lucide-react';
+import { Circle, Clock, Flag, Loader2, Mic, MicOff, MonitorUp, MonitorX, PhoneOff, Plus } from 'lucide-react';
 
 import { FormattedMessage } from '@/components/origin-ai/FormattedMessage';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { apiCall } from '@/lib/api';
+
+import NowAfterCall, { ReportForm } from './NowAfterCall';
 
 type RequestView = {
   id: string;
@@ -118,6 +120,7 @@ export default function NowLiveRoom({ requestId }: { requestId: string }) {
   const [remoteScreen, setRemoteScreen] = useState<RemoteTrack | null>(null);
   const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
   const [ending, setEnding] = useState(false);
+  const [reportingLive, setReportingLive] = useState(false);
   const [note, setNote] = useState<string | null>(null);
 
   const roomRef = useRef<Room | null>(null);
@@ -158,7 +161,7 @@ export default function NowLiveRoom({ requestId }: { requestId: string }) {
         void refresh();
       }
     };
-    const types = ['snapshot', 'status', 'accepted', 'joined', 'live', 'extended', 'extension_requested', 'ending_soon', 'ended', 'closed', 'settled'];
+    const types = ['snapshot', 'status', 'accepted', 'joined', 'live', 'extended', 'extension_requested', 'ending_soon', 'ended', 'closed', 'settled', 'reported'];
     for (const type of types) source.addEventListener(type, onEvent as EventListener);
     return () => source.close();
   }, [refresh, requestId]);
@@ -494,6 +497,9 @@ export default function NowLiveRoom({ requestId }: { requestId: string }) {
               <Plus className="mr-2 h-4 w-4" /> {peerName} wants more time — agree
             </Button>
           )}
+          <Button variant="outline" onClick={() => setReportingLive(true)} aria-label="Report">
+            <Flag className="mr-2 h-4 w-4" /> Report
+          </Button>
           {isSolver ? (
             <Button variant="destructive" onClick={() => setEnding(true)} disabled={view.status !== 'live'}>
               <PhoneOff className="mr-2 h-4 w-4" /> End
@@ -506,14 +512,26 @@ export default function NowLiveRoom({ requestId }: { requestId: string }) {
         </div>
       )}
 
-      {isSolver && (ending || (ended && session?.endedAt && view.status === 'ended')) && (
+      {reportingLive && session && !ended && (
+        <ReportForm
+          sessionId={session.id}
+          peerName={peerName}
+          canBlock={isSolver || session.solverKind === 'human'}
+          onCancel={() => setReportingLive(false)}
+          onDone={() => {
+            setReportingLive(false);
+            setNote('Report sent. Our team will look at it.');
+            void refresh();
+          }}
+        />
+      )}
+
+      {isSolver && ending && !ended && (
         <OutcomePicker
           busy={busy === 'outcome'}
-          title={ended ? 'How did it go? (needed to get paid)' : 'End the call: how did it go?'}
-          onPick={(outcome) =>
-            ended ? act('outcome', 'outcome', { outcome }) : act('outcome', 'end', { outcome }).then(() => setEnding(false))
-          }
-          onCancel={ended ? undefined : () => setEnding(false)}
+          title="End the call: how did it go?"
+          onPick={(outcome) => act('outcome', 'end', { outcome }).then(() => setEnding(false))}
+          onCancel={() => setEnding(false)}
         />
       )}
 
@@ -535,6 +553,10 @@ export default function NowLiveRoom({ requestId }: { requestId: string }) {
             </Link>
           </CardContent>
         </Card>
+      )}
+
+      {ended && session?.endedAt && session.startedAt && ['ended', 'rated', 'unrated'].includes(view.status) && (
+        <NowAfterCall sessionId={session.id} botSession={session.solverKind === 'bot'} />
       )}
     </div>
   );

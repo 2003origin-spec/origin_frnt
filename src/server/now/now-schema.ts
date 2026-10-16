@@ -299,6 +299,7 @@ CREATE INDEX IF NOT EXISTS idx_events_type_time ON now.events(type, at);`,
   comment TEXT,
   counted BOOLEAN NOT NULL DEFAULT TRUE,
   held_until_case_closes BOOLEAN NOT NULL DEFAULT FALSE,
+  tip_coins INTEGER NOT NULL DEFAULT 0 CHECK (tip_coins >= 0),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (session_id, rater_id)
 );
@@ -309,16 +310,38 @@ CREATE INDEX IF NOT EXISTS idx_ratings_helper_time ON now.ratings(helper_id, cre
   session_id TEXT REFERENCES now.sessions(id) ON DELETE SET NULL,
   reporter_id TEXT NOT NULL REFERENCES origin_users(id) ON DELETE CASCADE,
   reported_user_id TEXT REFERENCES origin_users(id) ON DELETE SET NULL,
+  reported_helper_id TEXT REFERENCES now.helpers(id) ON DELETE SET NULL,
+  reporter_role TEXT CHECK (reporter_role IN ('student', 'solver')),
   reason TEXT NOT NULL CHECK (reason IN ('child_safety', 'abuse', 'contact_sharing', 'wrong_content', 'no_show', 'other')),
   details TEXT,
   status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'upheld', 'dismissed')),
   reviewed_by TEXT REFERENCES origin_users(id),
   reviewed_at TIMESTAMPTZ,
+  resolution_note TEXT,
   first_response_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_reports_status ON now.reports(status, created_at);
-CREATE INDEX IF NOT EXISTS idx_reports_reported ON now.reports(reported_user_id, created_at DESC);`,
+CREATE INDEX IF NOT EXISTS idx_reports_reported ON now.reports(reported_user_id, created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_reports_one_open_per_reporter_session
+  ON now.reports(session_id, reporter_id) WHERE status = 'open';`,
+
+  // Strikes: a suspension stops a student asking (or a solver being offered)
+  // until it ends or an admin lifts it. ends_at NULL = until reviewed.
+  `CREATE TABLE IF NOT EXISTS now.suspensions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES origin_users(id) ON DELETE CASCADE,
+  scope TEXT NOT NULL CHECK (scope IN ('student', 'solver')),
+  reason TEXT NOT NULL,
+  report_id TEXT REFERENCES now.reports(id) ON DELETE SET NULL,
+  starts_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  ends_at TIMESTAMPTZ,
+  lifted_at TIMESTAMPTZ,
+  lifted_by TEXT REFERENCES origin_users(id),
+  created_by TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_suspensions_user ON now.suspensions(user_id, scope) WHERE lifted_at IS NULL;`,
 
   // Ori Coins ledger. Accounts are 'user:<id>' or 'platform:<name>'.
   `CREATE TABLE IF NOT EXISTS now.accounts (

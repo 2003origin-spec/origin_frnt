@@ -41,6 +41,14 @@ import {
   recordOutcome,
   requestExtension,
 } from "@/server/now/session-service";
+import { REPORT_REASONS } from "@/server/now/after-call-rules";
+import {
+  blockFromSession,
+  getAfterCall,
+  rateSession,
+  recordPracticeAttempt,
+  reportSession,
+} from "@/server/now/after-call-service";
 import { issueRoomTicket } from "@/server/now/room-service";
 import { DECLINE_REASONS, OUTCOMES, ROOT_CAUSES } from "@/server/now/types";
 
@@ -77,6 +85,13 @@ import { DECLINE_REASONS, OUTCOMES, ROOT_CAUSES } from "@/server/now/types";
  *   POST /api/now/sessions/:id/join | /end | /outcome | /extend | /extend/confirm
  *   POST /api/now/sessions/:id/token       → LiveKit ticket for the room (build step 6; POST so the
  *                                             edge kill switch covers it)
+ *
+ * After the call (build step 7):
+ *   GET  /api/now/sessions/:id/after       → rating state, practice questions, report state
+ *   POST /api/now/sessions/:id/rate        → { stars, tags, comment?, tipCoins }
+ *   POST /api/now/sessions/:id/report      → { reason, details?, block } (either side, live or after)
+ *   POST /api/now/sessions/:id/block       → block the other side from future matches
+ *   POST /api/now/sessions/:id/practice    → { questionId } the student opened a practice question
  */
 
 // SSE connections hold the function open; each closes itself after ~50 s.
@@ -250,6 +265,18 @@ const EndSchema = z.object({
   outcome: z.enum(OUTCOMES).nullable().optional(),
   rootCause: z.enum(ROOT_CAUSES).nullable().optional(),
 });
+const RateSchema = z.object({
+  stars: z.number().int().min(1).max(5),
+  tags: z.array(z.string().max(40)).max(5).default([]),
+  comment: z.string().max(500).nullable().optional(),
+  tipCoins: z.number().int().min(0).max(100_000).default(0),
+});
+const ReportSchema = z.object({
+  reason: z.enum(REPORT_REASONS),
+  details: z.string().max(2000).nullable().optional(),
+  block: z.boolean().default(false),
+});
+const PracticeSchema = z.object({ questionId: z.string().trim().min(1).max(120) });
 const OutcomeSchema = z.object({ outcome: z.enum(OUTCOMES), rootCause: z.enum(ROOT_CAUSES).nullable().optional() });
 
 async function limitMutation(key: string): Promise<Response | null> {
@@ -326,6 +353,22 @@ const liveHandlers = {
   },
   confirmExtend: async (_r: NextRequest, userId: string, [id]: string[]) =>
     nowJson(await confirmExtension({ helperUserId: userId }, id)),
+  afterCall: async (_r: NextRequest, userId: string, [id]: string[]) => nowJson({ after: await getAfterCall(userId, id) }),
+  rate: async (r: NextRequest, userId: string, [id]: string[]) => {
+    const body = RateSchema.parse(await parseJsonBody(r));
+    const limited = await limitMutation(`now-rate:${userId}`);
+    if (limited) return limited;
+    return nowJson({ after: await rateSession(userId, id, { ...body, comment: body.comment ?? null }) });
+  },
+  report: async (r: NextRequest, userId: string, [id]: string[]) => {
+    const body = ReportSchema.parse(await parseJsonBody(r));
+    const limited = await limitMutation(`now-report:${userId}`);
+    if (limited) return limited;
+    return nowJson(await reportSession(userId, id, { reason: body.reason, details: body.details ?? null, block: body.block }), { status: 201 });
+  },
+  block: async (_r: NextRequest, userId: string, [id]: string[]) => nowJson(await blockFromSession(userId, id)),
+  practice: async (r: NextRequest, userId: string, [id]: string[]) =>
+    nowJson(await recordPracticeAttempt(userId, id, PracticeSchema.parse(await parseJsonBody(r)).questionId)),
   roomTicket: async (_r: NextRequest, userId: string, [id]: string[]) => {
     const limited = await limitMutation(`now-room-token:${userId}`);
     if (limited) return limited;
@@ -367,6 +410,11 @@ const ROUTES: { method: Method; pattern: string[]; handler: Handler; public?: bo
   { method: "POST", pattern: ["sessions", ":id", "extend"], handler: liveHandlers.extend },
   { method: "POST", pattern: ["sessions", ":id", "extend", "confirm"], handler: liveHandlers.confirmExtend },
   { method: "POST", pattern: ["sessions", ":id", "token"], handler: liveHandlers.roomTicket },
+  { method: "GET", pattern: ["sessions", ":id", "after"], handler: liveHandlers.afterCall },
+  { method: "POST", pattern: ["sessions", ":id", "rate"], handler: liveHandlers.rate },
+  { method: "POST", pattern: ["sessions", ":id", "report"], handler: liveHandlers.report },
+  { method: "POST", pattern: ["sessions", ":id", "block"], handler: liveHandlers.block },
+  { method: "POST", pattern: ["sessions", ":id", "practice"], handler: liveHandlers.practice },
 ];
 
 function match(

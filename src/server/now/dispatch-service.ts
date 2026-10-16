@@ -172,7 +172,13 @@ function istDayStart(now: Date): Date {
 export async function createRequest(studentId: string, input: CreateRequestInput, now: Date = new Date()): Promise<RequestView> {
   const access = await getNowAccess(studentId, now);
   if (!access.canRequest) {
-    throw new NowError(403, access.blockedReason ?? "not_invited", "Origin NOW is not open for this account yet.");
+    throw new NowError(
+      403,
+      access.blockedReason ?? "not_invited",
+      access.blockedReason === "suspended"
+        ? "Live help is paused on this account after a report review."
+        : "Origin NOW is not open for this account yet.",
+    );
   }
   await ensureWelcomeGrant(studentId);
 
@@ -285,7 +291,9 @@ async function loadCandidates(
                      WHERE e.helper_id = h.id AND e.subject = $2
                        AND (e.chapter = '' OR lower(e.chapter) = lower(COALESCE($3, '')))) AS covers_chapter,
             EXISTS (SELECT 1 FROM now.sessions s WHERE s.helper_id = h.id AND s.ended_at IS NULL) AS in_live,
-            EXISTS (SELECT 1 FROM now.blocks b WHERE b.blocker_id = $4 AND b.blocked_id = h.user_id) AS blocked,
+            EXISTS (SELECT 1 FROM now.blocks b
+                     WHERE (b.blocker_id = $4 AND b.blocked_id = h.user_id)
+                        OR (b.blocker_id = h.user_id AND b.blocked_id = $4)) AS blocked,
             EXISTS (SELECT 1 FROM now.offers o WHERE o.request_id = $5 AND o.helper_id = h.id) AS already_offered,
             (SELECT count(*)::int FROM now.sessions s
               WHERE s.helper_id = h.id AND s.student_id = $4 AND s.started_at IS NOT NULL AND s.accepted_at >= $6) AS with_student_today,
@@ -310,7 +318,18 @@ async function loadCandidates(
     [onlineIds, request.subject, request.chapter, request.student_id, request.id, dayStart],
   );
   const lastSeen = await listOnlineHelpers(request.subject, now.getTime());
-  const humansOnline = res.rows.filter((r) => r.verified && r.agreement_ok).length;
+  // "Online" for the bot rule means someone who could ever take THIS request:
+  // a blocked, excluded (no-show) or own/linked solver never will, so they must
+  // not make the student wait for a human (busy ones might free up, so they count).
+  const humansOnline = res.rows.filter(
+    (r) =>
+      r.verified &&
+      r.agreement_ok &&
+      !r.blocked &&
+      !request.excluded_helper_ids.includes(r.id) &&
+      r.user_id !== request.student_id &&
+      !r.linked_user_ids.includes(request.student_id),
+  ).length;
   const candidates = res.rows.map<Candidate>((r) => ({
     helperId: r.id,
     userId: r.user_id,

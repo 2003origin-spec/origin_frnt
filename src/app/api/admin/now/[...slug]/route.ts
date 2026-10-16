@@ -14,6 +14,14 @@ import {
   listApplicationsForAdmin,
   rejectApplication,
 } from "@/server/now/solver-service";
+import {
+  getReportForAdmin,
+  liftSuspension,
+  listReportsForAdmin,
+  listRestrictedHelpers,
+  reinstateHelper,
+  resolveReport,
+} from "@/server/now/after-call-service";
 import { getRecordingLinkForAdmin } from "@/server/now/room-service";
 import { APPLICATION_STATUSES, DIFFICULTIES, SOLVER_KINDS } from "@/server/now/types";
 import { adminAdjustWallet, listCoinPacks, upsertCoinPack } from "@/server/now/wallet-service";
@@ -35,6 +43,10 @@ import { recordAuditEvent } from "@/server/workspaces/audit";
  *   POST /api/admin/now/applications/:id/approve POST /api/admin/now/applications/:id/reject
  *   POST /api/admin/now/bot                      (creates the Origin bot's helper row, idempotent)
  *   POST /api/admin/now/sessions/:id/recording   { reason } → 10-minute link, logged `recording.accessed`
+ *   GET  /api/admin/now/reports?status=open      GET  /api/admin/now/reports/:id (first response time)
+ *   POST /api/admin/now/reports/:id/resolve      { outcome: upheld | dismissed, note }
+ *   GET  /api/admin/now/helpers/restricted       POST /api/admin/now/helpers/:id/reinstate { note }
+ *   POST /api/admin/now/suspensions/:id/lift
  */
 
 type RouteContext = { params: Promise<{ slug?: string[] }> };
@@ -66,6 +78,9 @@ const ApproveSchema = z.object({ demoPassed: z.boolean(), level: z.enum(["traine
 const RejectSchema = z.object({ reason: z.string().min(5).max(500) });
 const AdjustSchema = z.object({ coins: z.number().int().positive(), reason: z.string().min(5).max(500) });
 const RecordingAccessSchema = z.object({ reason: z.string().trim().min(5).max(300) });
+const ReportStatusSchema = z.enum(["open", "upheld", "dismissed"]);
+const ResolveSchema = z.object({ outcome: z.enum(["upheld", "dismissed"]), note: z.string().trim().min(5).max(1000) });
+const NoteSchema = z.object({ note: z.string().trim().min(5).max(500) });
 
 async function audit(adminId: string, action: string, metadata: Record<string, unknown>): Promise<void> {
   await recordAuditEvent({
@@ -200,6 +215,43 @@ const ROUTES: { method: Method; pattern: string[]; handler: Handler }[] = [
       const link = await getRecordingLinkForAdmin(adminId, sessionId, reason);
       await audit(adminId, "now.recording.access", { sessionId, reason });
       return nowJson(link, { headers: { "Cache-Control": "no-store" } });
+    },
+  },
+  {
+    method: "GET",
+    pattern: ["reports"],
+    handler: async (request) =>
+      nowJson({ reports: await listReportsForAdmin(ReportStatusSchema.parse(request.nextUrl.searchParams.get("status") ?? "open")) }),
+  },
+  { method: "GET", pattern: ["reports", ":id"], handler: async (_r, adminId, [id]) => nowJson(await getReportForAdmin(adminId, id)) },
+  {
+    method: "POST",
+    pattern: ["reports", ":id", "resolve"],
+    handler: async (request, adminId, [id]) => {
+      const { outcome, note } = ResolveSchema.parse(await parseJsonBody(request));
+      const result = await resolveReport(adminId, id, outcome, note);
+      await audit(adminId, "now.report.resolve", { reportId: id, outcome, note });
+      return nowJson(result);
+    },
+  },
+  { method: "GET", pattern: ["helpers", "restricted"], handler: async () => nowJson({ helpers: await listRestrictedHelpers() }) },
+  {
+    method: "POST",
+    pattern: ["helpers", ":id", "reinstate"],
+    handler: async (request, adminId, [id]) => {
+      const { note } = NoteSchema.parse(await parseJsonBody(request));
+      const result = await reinstateHelper(adminId, id, note);
+      await audit(adminId, "now.helper.reinstate", { helperId: id, note });
+      return nowJson(result);
+    },
+  },
+  {
+    method: "POST",
+    pattern: ["suspensions", ":id", "lift"],
+    handler: async (_request, adminId, [id]) => {
+      const result = await liftSuspension(adminId, id);
+      await audit(adminId, "now.suspension.lift", { suspensionId: id });
+      return nowJson(result);
     },
   },
 ];

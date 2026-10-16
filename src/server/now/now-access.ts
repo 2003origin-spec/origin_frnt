@@ -20,7 +20,9 @@ export type NowAccess = {
   /** Can raise a Need Human Help request. */
   canRequest: boolean;
   /** Why canRequest is false, for the UI. */
-  blockedReason: "flag_off" | "not_invited" | "needs_guardian_consent" | null;
+  blockedReason: "flag_off" | "not_invited" | "needs_guardian_consent" | "suspended" | null;
+  /** Set while a student suspension is active (strike rules, build step 7). */
+  suspendedUntil?: string | null;
   helper: { id: string; verificationStatus: string; isMinor: boolean } | null;
 };
 
@@ -45,9 +47,11 @@ export function decideAccess(input: {
   inCohort: boolean;
   isMinor: boolean;
   hasStudentConsent: boolean;
+  suspended?: boolean;
 }): Pick<NowAccess, "canRequest" | "blockedReason"> {
   if (!input.enabled) return { canRequest: false, blockedReason: "flag_off" };
   if (!input.inCohort) return { canRequest: false, blockedReason: "not_invited" };
+  if (input.suspended) return { canRequest: false, blockedReason: "suspended" };
   if (input.isMinor && !input.hasStudentConsent) return { canRequest: false, blockedReason: "needs_guardian_consent" };
   return { canRequest: true, blockedReason: null };
 }
@@ -74,16 +78,21 @@ export async function getNowAccess(userId: string, now: Date = new Date()): Prom
     helper_id: string | null;
     verification_status: string | null;
     helper_minor: boolean | null;
+    suspended_until: string | null;
   }>(
     `SELECT u.date_of_birth,
             EXISTS (SELECT 1 FROM now.pilot_cohort c WHERE c.user_id = u.id AND c.removed_at IS NULL) AS in_cohort,
             EXISTS (SELECT 1 FROM app.guardian_consents g
                      WHERE g.user_id = u.id AND g.purpose = 'student' AND g.withdrawn_at IS NULL) AS has_consent,
-            h.id AS helper_id, h.verification_status, h.is_minor AS helper_minor
+            h.id AS helper_id, h.verification_status, h.is_minor AS helper_minor,
+            (SELECT CASE WHEN bool_or(sp.ends_at IS NULL) THEN 'infinity' ELSE max(sp.ends_at)::text END
+               FROM now.suspensions sp
+              WHERE sp.user_id = u.id AND sp.scope = 'student' AND sp.lifted_at IS NULL
+                AND (sp.ends_at IS NULL OR sp.ends_at > $2)) AS suspended_until
        FROM origin_users u
        LEFT JOIN now.helpers h ON h.user_id = u.id
       WHERE u.id = $1`,
-    [userId],
+    [userId, now],
   );
   const row = res.rows[0];
   const inCohort = Boolean(row?.in_cohort);
@@ -94,7 +103,8 @@ export async function getNowAccess(userId: string, now: Date = new Date()): Prom
     inCohort,
     isMinor,
     hasStudentConsent,
-    ...decideAccess({ enabled, inCohort, isMinor, hasStudentConsent }),
+    ...decideAccess({ enabled, inCohort, isMinor, hasStudentConsent, suspended: Boolean(row?.suspended_until) }),
+    suspendedUntil: row?.suspended_until && row.suspended_until !== "infinity" ? new Date(row.suspended_until).toISOString() : row?.suspended_until ? "until_review" : null,
     helper: row?.helper_id
       ? { id: row.helper_id, verificationStatus: row.verification_status ?? "verified", isMinor: Boolean(row.helper_minor) }
       : null,
