@@ -35,6 +35,17 @@ export async function setup(): Promise<void> {
     null,
   );
   await rawPool().query(`DELETE FROM now.prices`);
+  // A request an earlier test left waiting would be offered to this test's
+  // fresh solver on its first heartbeat (correct behaviour, wrong test), so
+  // every test starts with nothing waiting.
+  await rawPool().query(
+    `UPDATE now.offers SET response = 'expired', responded_at = NOW()
+      WHERE response IS NULL AND request_id IN (SELECT id FROM now.requests WHERE status IN ('requested', 'offered'))`,
+  );
+  await rawPool().query(
+    `UPDATE now.requests SET status = 'cancelled', closed_reason = 'cancelled', closed_at = NOW(), current_offer_id = NULL
+      WHERE status IN ('requested', 'offered')`,
+  );
 }
 
 export async function seedUser(name: string): Promise<string> {

@@ -34,6 +34,18 @@ import { closePool, dbConfigured, makeId, rawPool } from "./_db";
 
 const SKIP = !dbConfigured();
 
+// Seeded quiz questions must not outlive this file: left behind, the next run's
+// quiz samples them and the "answer every question right" check fails.
+const quizQuestionsMade: string[] = [];
+
+test.after(async () => {
+  if (!SKIP && quizQuestionsMade.length) {
+    await rawPool().query(`DELETE FROM ogcode_question_progress WHERE question_id = ANY($1::text[])`, [quizQuestionsMade]);
+    await rawPool().query(`DELETE FROM ogcode_questions WHERE id = ANY($1::text[])`, [quizQuestionsMade]);
+  }
+  await closePool();
+});
+
 async function seedUser(dob: string | null): Promise<string> {
   const id = makeId("now_solver");
   await rawPool().query(
@@ -67,6 +79,7 @@ async function seedQuizQuestions(subject: string, count: number): Promise<Map<st
   const base = 900_000 + Math.floor(Math.random() * 50_000);
   for (let i = 0; i < count; i++) {
     const id = makeId("q");
+    quizQuestionsMade.push(id);
     const correct = i % 4;
     answers.set(id, correct);
     await rawPool().query(
@@ -206,5 +219,4 @@ test("the Origin bot helper row is created once", { skip: SKIP }, async () => {
   assert.equal(bots.rows[0].n, 1);
   const subjects = await rawPool().query(`SELECT count(*)::int AS n FROM now.helper_expertise WHERE helper_id = $1`, [BOT_HELPER_ID]);
   assert.equal(subjects.rows[0].n, 4);
-  await closePool();
 });
