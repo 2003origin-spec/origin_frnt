@@ -42,7 +42,9 @@ export type SubmitCheck = { ready: boolean; missing: string[] };
 
 /**
  * Everything an application needs before it can be submitted for review.
- * Minors give no PAN but need a guardian consent row for purpose 'solver'.
+ * PAN is optional for everyone (decision B77: most solvers are adult teachers,
+ * and PAN is not needed while solvers are paid only in coins). Minors need a
+ * guardian consent row for purpose 'solver'.
  */
 export function checkReadyToSubmit(
   draft: ApplicationDraft,
@@ -59,11 +61,7 @@ export function checkReadyToSubmit(
   if (!draft.documents.marksheet && !draft.documents.degree && !draft.documents.teaching_certificate) {
     missing.push("Upload a marksheet, degree or teaching certificate.");
   }
-  if (draft.isMinor) {
-    if (!draft.hasSolverConsent) missing.push("A parent or guardian must give consent.");
-  } else if (!draft.panProvided) {
-    missing.push("Enter your PAN.");
-  }
+  if (draft.isMinor && !draft.hasSolverConsent) missing.push("A parent or guardian must give consent.");
   for (const subject of subjects) {
     const score = draft.quizPercent[subject];
     if (score === undefined) missing.push(`Take the ${subject} quiz.`);

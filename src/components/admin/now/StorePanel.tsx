@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 
 import { adminSend, fmtDate, useAdminData } from './admin-now-api';
-import { ErrorLine, Section, Table, Td, buttonClass, ghostButtonClass, inputClass } from './ui';
+import { ErrorLine, LegalNote, Section, Table, Td, buttonClass, ghostButtonClass, inputClass } from './ui';
 
 type Item = {
   id: string;
@@ -76,6 +76,12 @@ export function StorePanel() {
   return (
     <div className="flex flex-col gap-4">
       <Section title="Add an item">
+        <div className="mb-3">
+          <LegalNote>
+            store purchases are final and coins never turn into money. Put items on sale only after the legal team
+            confirms these terms; PDF papers need the right to sell them.
+          </LegalNote>
+        </div>
         <div className="flex flex-wrap items-end gap-2 text-sm">
           <select className={inputClass} value={kind} onChange={(e) => setKind(e.target.value as 'premium' | 'digital')}>
             <option value="premium">Premium time</option>

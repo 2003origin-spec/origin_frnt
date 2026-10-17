@@ -58,6 +58,16 @@ export function ErrorLine({ error }: { error: string | null }) {
   ) : null;
 }
 
+/** A reminder of something the legal team owns (decision B78); shown where an admin configures it. */
+export function LegalNote({ children }: { children: ReactNode }) {
+  return (
+    <p className="rounded-md border border-amber-400/60 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-200">
+      <span className="font-semibold">Legal team: </span>
+      {children}
+    </p>
+  );
+}
+
 export const inputClass = 'rounded-md border bg-background px-2 py-1 text-sm';
 export const buttonClass =
   'rounded-md bg-primary px-3 py-1 text-sm font-medium text-primary-foreground disabled:opacity-50';

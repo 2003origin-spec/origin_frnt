@@ -5,7 +5,7 @@
 import Link from 'next/link';
 
 import { fmtDate, pct, useAdminData } from './admin-now-api';
-import { ErrorLine, Section, Stat, Table, Td } from './ui';
+import { ErrorLine, LegalNote, Section, Stat, Table, Td } from './ui';
 
 type Monitor = {
   at: string;
@@ -38,6 +38,10 @@ export function OverviewPanel() {
           {data.queues.child_safety} open child-safety report{data.queues.child_safety > 1 ? 's' : ''}: first response is due within one working day.
         </Link>
       )}
+      <LegalNote>
+        the sign-off list (Helper Agreement, guardian consent, POCSO procedure, recording, KYC, coin terms) is under{' '}
+        <Link className="underline" href="/admin/now?tab=settings">Settings &amp; prices</Link>. Confirm it before inviting the pilot.
+      </LegalNote>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat label="Requests today" value={t.requests} />
         <Stat label="Human connect ≤ 10 min" value={pct(t.humanConnectWithin10)} hint="Never counts the bot" />

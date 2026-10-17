@@ -288,9 +288,9 @@ export default function NowSolverApplication() {
           </div>
           {!app?.isMinor && (
             <div className="flex flex-col gap-1">
-              <Label htmlFor="now-pan">PAN {app?.panMasked ? `(saved: ${app.panMasked})` : ''}</Label>
+              <Label htmlFor="now-pan">PAN (optional) {app?.panMasked ? `(saved: ${app.panMasked})` : ''}</Label>
               <Input id="now-pan" disabled={locked} className="w-48 uppercase" value={pan} maxLength={10} onChange={(e) => setPan(e.target.value)} placeholder="ABCDE1234F" />
-              <p className="text-xs text-muted-foreground">Stored encrypted; only the last 4 characters are ever shown.</p>
+              <p className="text-xs text-muted-foreground">Not required to apply. If you add it, it is stored encrypted and only the last 4 characters are ever shown.</p>
             </div>
           )}
           {!locked && (

@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 
 import { adminSend, fmtDate, useAdminData } from './admin-now-api';
-import { ErrorLine, Section, Table, Td, buttonClass, ghostButtonClass, inputClass } from './ui';
+import { ErrorLine, LegalNote, Section, Table, Td, buttonClass, ghostButtonClass, inputClass } from './ui';
 
 type Summary = { id: string; name: string | null; email: string | null; role: string; displayName: string; subjects: string[]; submittedAt: string | null; isMinor: boolean };
 type Detail = {
@@ -55,10 +55,16 @@ function ApplicationDetail({ id, onDone }: { id: string; onDone: () => void }) {
         <div><dt className="text-muted-foreground">Subjects</dt><dd className="capitalize">{app.subjects.join(', ')}</dd></div>
         <div><dt className="text-muted-foreground">Languages</dt><dd>{app.languages.join(', ') || '—'}</dd></div>
         <div><dt className="text-muted-foreground">Quiz</dt><dd>{Object.entries(app.quizScores).map(([s, v]) => `${s} ${v}%`).join(', ') || 'Not taken'}</dd></div>
-        <div><dt className="text-muted-foreground">PAN</dt><dd>{app.panMasked ?? (app.isMinor ? 'Not needed (minor)' : 'Missing')}</dd></div>
+        <div><dt className="text-muted-foreground">PAN</dt><dd>{app.panMasked ?? 'Not given (optional)'}</dd></div>
         <div><dt className="text-muted-foreground">Agreement</dt><dd>{app.agreementVersion ?? 'Not accepted'}</dd></div>
         <div><dt className="text-muted-foreground">Minor</dt><dd>{app.isMinor ? `Yes — guardian consent ${app.hasSolverConsent ? 'given' : 'MISSING'}` : 'No'}</dd></div>
       </dl>
+      <div className="mt-3">
+        <LegalNote>
+          view KYC documents only to verify this applicant; do not download, forward or screenshot them. Rejected
+          applications have their files deleted. Retention follows the policy the legal team approved.
+        </LegalNote>
+      </div>
       <h3 className="mb-1 mt-3 text-sm font-semibold">Documents (links last 10 minutes)</h3>
       <ul className="text-sm">
         {app.documents.map((d) => (

@@ -10,7 +10,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 
 import { adminSend, fmtDate, useAdminData } from './admin-now-api';
-import { ErrorLine, Section, Table, Td, buttonClass, ghostButtonClass, inputClass } from './ui';
+import { ErrorLine, LegalNote, Section, Table, Td, buttonClass, ghostButtonClass, inputClass } from './ui';
 
 type Case = {
   id: string;
@@ -49,6 +49,11 @@ function CaseDetail({ id, onDone }: { id: string; onDone: () => void }) {
         <p className="mb-3 rounded-md border border-red-500 bg-red-500/10 p-2 text-sm text-red-700">
           Child safety. If it points to a sexual offence against a child, POCSO section 19 requires a police report the same day — do that before any internal inquiry.
         </p>
+      )}
+      {(r.reason === 'child_safety' || r.reason === 'abuse') && (
+        <div className="mb-3">
+          <LegalNote>follow the written reporting procedure the legal team approved, and tell the Grievance Officer before you resolve this case.</LegalNote>
+        </div>
       )}
       <dl className="grid gap-2 text-sm md:grid-cols-2">
         <div><dt className="text-muted-foreground">Reported by</dt><dd>{r.reporterRole === 'solver' ? 'the solver (about the student)' : 'the student (about the solver)'}</dd></div>

@@ -47,8 +47,8 @@ test("a complete adult application is ready", () => {
   assert.deepEqual(checkReadyToSubmit(draft(), options), { ready: true, missing: [] });
 });
 
-test("adults need a PAN; minors need guardian consent instead", () => {
-  assert.ok(checkReadyToSubmit(draft({ panProvided: false }), options).missing.some((m) => m.includes("PAN")));
+test("PAN is optional (B77); minors need guardian consent", () => {
+  assert.deepEqual(checkReadyToSubmit(draft({ panProvided: false }), options), { ready: true, missing: [] });
   const minor = draft({ isMinor: true, panProvided: false, role: "school_student" });
   assert.ok(checkReadyToSubmit(minor, options).missing.some((m) => m.includes("guardian")));
   assert.equal(checkReadyToSubmit({ ...minor, hasSolverConsent: true }, options).ready, true);

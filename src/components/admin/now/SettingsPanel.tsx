@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
 import { adminSend, useAdminData } from './admin-now-api';
-import { ErrorLine, Section, Table, Td, buttonClass, ghostButtonClass, inputClass } from './ui';
+import { ErrorLine, LegalNote, Section, Table, Td, buttonClass, ghostButtonClass, inputClass } from './ui';
 
 type Settings = {
   welcomeCoins: number;
@@ -39,6 +39,32 @@ function NumberField({ label, value, onChange, step = 1 }: { label: string; valu
       {label}
       <input type="number" step={step} className={inputClass} value={value} onChange={(e) => onChange(Number(e.target.value))} />
     </label>
+  );
+}
+
+/** What the legal team signs off before the flag goes on (decision B78). Engineering does not decide these. */
+const LEGAL_SIGN_OFFS = [
+  'Helper Agreement: the approved text replaces the summary in the solver application (step 5), then raise the version below.',
+  'Guardian consent: the wording of the consent email and the /now/consent page.',
+  "Children's safety: the reports procedure, including the same-day POCSO police report, and who the Grievance Officer is.",
+  'Call recording: the notice shown to both sides and how long recordings are kept.',
+  'Solver KYC: what is collected (masked Aadhaar, selfie, qualification; PAN optional) and how long it is kept.',
+  'Ori Coins: purchased coins not refundable, no cash-out, store purchases final, coin transfers between users kept off.',
+  'Solver earnings in coins and store items: tax treatment (with the CA).',
+];
+
+function LegalChecklist() {
+  return (
+    <Section title="Before the pilot: legal team sign-off">
+      <p className="mb-2 text-sm text-muted-foreground">
+        The legal team owns these. Configure the matching settings here only after they confirm each one.
+      </p>
+      <ul className="list-disc space-y-1 pl-5 text-sm">
+        {LEGAL_SIGN_OFFS.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+    </Section>
   );
 }
 
@@ -76,6 +102,13 @@ function SettingsForm() {
           Helper Agreement version
           <input className={inputClass} value={draft.agreementVersion} onChange={(e) => set('agreementVersion', e.target.value)} />
         </label>
+      </div>
+      <div className="mt-3 flex flex-col gap-2">
+        <LegalNote>
+          change the Helper Agreement version only when the legal team approves new text. New applicants must accept the
+          current version; solvers already approved keep the version they accepted.
+        </LegalNote>
+        <LegalNote>the recording period must match the recording notice the legal team approved (30 days by default).</LegalNote>
       </div>
       <h3 className="mb-2 mt-4 text-sm font-semibold">Human open hours (IST)</h3>
       <div className="flex flex-wrap items-end gap-3 text-sm">
@@ -139,7 +172,7 @@ function SettingsForm() {
         <NumberField label="Pass mark (%)" value={draft.quiz.passPercent} onChange={(v) => set('quiz', { ...draft.quiz, passPercent: v })} />
       </div>
       <p className="mt-4 text-xs text-muted-foreground">
-        Coin transfers between users stay off in the pilot (legal review pending); they are not editable here.
+        Coin transfers between users stay off in the pilot (legal team decision pending); they are not editable here.
       </p>
     </Section>
   );
@@ -207,6 +240,12 @@ function CoinPacks() {
   };
   return (
     <Section title="Coin packs">
+      <div className="mb-3">
+        <LegalNote>
+          pack names and prices go on sale only after the legal team confirms the coin terms shown to buyers (purchased
+          coins are not refundable, coins never turn back into money).
+        </LegalNote>
+      </div>
       <ErrorLine error={error} />
       <Table head={['Pack', 'Coins', 'Price', 'On sale', '']} empty={(data?.packs.length ?? 0) === 0}>
         {(data?.packs ?? []).map((p) => (
@@ -241,6 +280,7 @@ function CoinPacks() {
 export function SettingsPanel() {
   return (
     <div className="flex flex-col gap-4">
+      <LegalChecklist />
       <SettingsForm />
       <PriceTable />
       <CoinPacks />
