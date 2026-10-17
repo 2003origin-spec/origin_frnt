@@ -18,6 +18,7 @@ import { createRedisStreamNamespace } from "@/server/redis-streams";
 import { sendPushToUser } from "@/server/push/fcm";
 
 import { PRESENCE_WINDOW_MS } from "./types";
+import { sendWebPushToUser } from "./web-push";
 
 // ---------------------------------------------------------------------------
 // Event streams.
@@ -76,14 +77,28 @@ function localPresence(): Map<string, Map<string, number>> {
   return globalThis.__originNowLocalPresence;
 }
 
+/**
+ * Extra time a background heartbeat counts for (decision B85): browsers slow
+ * hidden-tab timers to about one a minute, so a solver with offer alerts on
+ * stays online for 90 s after each one instead of 60 s.
+ */
+export const BACKGROUND_PRESENCE_GRACE_MS = 30_000;
+
 /** Marks a helper online for exactly these subjects (and offline for the rest). */
-export async function heartbeatPresence(helperId: string, subjects: readonly string[], nowMs = Date.now()): Promise<void> {
+export async function heartbeatPresence(
+  helperId: string,
+  subjects: readonly string[],
+  nowMs = Date.now(),
+  options: { background?: boolean } = {},
+): Promise<void> {
   const online = new Set(subjects);
+  // The stored "last seen" runs ahead by the grace, so the usual 60 s window keeps it online longer.
+  const score = nowMs + (options.background ? BACKGROUND_PRESENCE_GRACE_MS : 0);
   if (!redis) {
     const store = localPresence();
     for (const subject of SUBJECTS) {
       const set = store.get(subject) ?? new Map<string, number>();
-      if (online.has(subject)) set.set(helperId, nowMs);
+      if (online.has(subject)) set.set(helperId, score);
       else set.delete(helperId);
       store.set(subject, set);
     }
@@ -93,7 +108,7 @@ export async function heartbeatPresence(helperId: string, subjects: readonly str
     SUBJECTS.map(async (subject) => {
       const key = presenceKey(subject);
       if (online.has(subject)) {
-        await redis.zadd(key, { score: nowMs, member: helperId });
+        await redis.zadd(key, { score, member: helperId });
         await redis.expire(key, PRESENCE_KEY_TTL_SECONDS);
       } else {
         await redis.zrem(key, helperId);
@@ -196,14 +211,17 @@ export async function scheduleNowTimer(timer: NowTimer, delaySeconds: number): P
 // Push (only reaches helpers once the native push release ships; gap 9).
 
 export async function pushOfferToHelper(userId: string, input: { offerId: string; expiresAt: string; subject: string }): Promise<void> {
-  try {
-    await sendPushToUser(userId, {
+  // Push is best effort; the shift screen's stream is the pilot channel.
+  const ttlSeconds = Math.max(0, Math.round((Date.parse(input.expiresAt) - Date.now()) / 1000));
+  await Promise.allSettled([
+    // Native app (FCM), once the Android shell has push tokens.
+    sendPushToUser(userId, {
       title: "New doubt waiting",
       body: `A ${input.subject} doubt is waiting for you. Tap to accept.`,
       route: "/now/solver",
       data: { kind: "now_offer", offerId: input.offerId, expiresAt: input.expiresAt },
-    });
-  } catch {
-    // Push is best effort; the shift screen's stream is the pilot channel.
-  }
+    }),
+    // Browsers that turned on offer alerts (decision B85); useless once the offer has lapsed.
+    sendWebPushToUser(userId, { ttlSeconds, urgency: "high" }),
+  ]);
 }

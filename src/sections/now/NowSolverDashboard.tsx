@@ -20,6 +20,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { apiCall } from '@/lib/api';
 import { dayKeyToDMY } from '@/lib/format-time';
 
+import { NowOfferAlerts } from './NowOfferAlerts';
 import { NowRosterCard } from './NowRosterCard';
 
 type Dashboard = {
@@ -150,11 +151,17 @@ function ShiftPanel({ dashboard, onChanged }: { dashboard: Dashboard; onChanged:
   const timerRef = useRef<number | null>(null);
   const chosenRef = useRef(chosen);
   chosenRef.current = chosen;
+  // With offer alerts on, the shift keeps running from a background tab (decision B85).
+  const [alertsOn, setAlertsOn] = useState(false);
+  const alertsRef = useRef(false);
+  alertsRef.current = alertsOn;
 
   const heartbeat = useCallback(async () => {
-    if (document.hidden) return; // pilot rule: online only while this screen is in front
+    const background = document.hidden;
+    // Pilot rule: without offer alerts, online only while this screen is in front.
+    if (background && !alertsRef.current) return;
     try {
-      const res = await apiCall('/now/helper/presence', { method: 'POST', body: JSON.stringify({ subjects: chosenRef.current }) });
+      const res = await apiCall('/now/helper/presence', { method: 'POST', body: JSON.stringify({ subjects: chosenRef.current, background }) });
       if (res.offer) setOffer(res.offer as Offer);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'Could not stay online.');
@@ -245,8 +252,15 @@ function ShiftPanel({ dashboard, onChanged }: { dashboard: Dashboard; onChanged:
           <div>
             <p className="font-semibold">{online ? 'You are online' : 'You are offline'}</p>
             <p className="text-xs text-muted-foreground">
-              {online ? 'Keep this screen open and in front; offers arrive here with a sound.' : 'Go online to receive doubts in your subjects.'}
+              {online
+                ? alertsOn
+                  ? 'Offers arrive here with a sound, and as an alert while this tab is in the background.'
+                  : 'Keep this screen open and in front; offers arrive here with a sound.'
+                : 'Go online to receive doubts in your subjects.'}
             </p>
+            <div className="mt-2">
+              <NowOfferAlerts onChange={setAlertsOn} />
+            </div>
           </div>
           <div className="flex flex-wrap items-center gap-3 text-sm">
             {subjects.map((s) => (

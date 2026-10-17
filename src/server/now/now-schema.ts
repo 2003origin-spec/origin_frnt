@@ -521,6 +521,26 @@ END $$;`,
 CREATE INDEX IF NOT EXISTS idx_roster_day ON now.roster(day, subject);`,
     ],
   },
+  {
+    // Web push for solver offers (decision B85): one row per browser that turned alerts on.
+    id: "20261019_origin_now_web_push",
+    name: "origin now: browser push subscriptions for solver offers",
+    ddl: [
+      `CREATE TABLE IF NOT EXISTS now.push_subscriptions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES origin_users(id) ON DELETE CASCADE,
+  endpoint TEXT NOT NULL UNIQUE,
+  p256dh TEXT,
+  auth TEXT,
+  user_agent TEXT,
+  failures INTEGER NOT NULL DEFAULT 0,
+  last_success_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user ON now.push_subscriptions(user_id);`,
+    ],
+  },
 ];
 
 function pool() {

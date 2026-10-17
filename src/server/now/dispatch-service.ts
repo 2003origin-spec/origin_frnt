@@ -64,6 +64,7 @@ import {
   type SolverKind,
 } from "./types";
 import { ensureWelcomeGrant } from "./wallet-service";
+import { hasWebPushSubscription } from "./web-push";
 
 type Effect = () => Promise<void>;
 
@@ -1005,9 +1006,14 @@ export async function heartbeatHelper(
   helperUserId: string,
   requestedSubjects: string[] | null,
   now: Date = new Date(),
+  options: { background?: boolean } = {},
 ): Promise<{ helperId: string; subjects: string[] }> {
   const helper = await requireHelper(helperUserId);
   if (helper.verification_status !== "verified") throw new NowError(403, "restricted", "Your solver account is on hold.");
+  // Staying online from a background tab is only fair when an alert can reach the solver (decision B85).
+  if (options.background && !(await hasWebPushSubscription(helperUserId))) {
+    throw new NowError(409, "alerts_off", "Turn on offer alerts to stay online while this tab is in the background.");
+  }
   const pool = await db();
   const expertise = await pool.query<{ subject: string }>(
     `SELECT DISTINCT subject FROM now.helper_expertise WHERE helper_id = $1`,
@@ -1015,7 +1021,7 @@ export async function heartbeatHelper(
   );
   const allowed = expertise.rows.map((r) => r.subject);
   const subjects = requestedSubjects === null ? allowed : allowed.filter((s) => requestedSubjects.includes(s));
-  await heartbeatPresence(helper.id, subjects, now.getTime());
+  await heartbeatPresence(helper.id, subjects, now.getTime(), { background: options.background });
   if (subjects.length > 0) {
     await pool.query(
       `INSERT INTO now.presence_minutes (helper_id, minute) VALUES ($1, date_trunc('minute', $2::timestamptz)) ON CONFLICT DO NOTHING`,

@@ -55,6 +55,12 @@ import { issueRoomTicket } from "@/server/now/room-service";
 import { buyStoreItem, getPaperDownload, listMyOrders, listStoreItems } from "@/server/now/store-service";
 import { getSolverDashboard, getStudentDashboard, setFavourite } from "@/server/now/dashboard-service";
 import { getMyRoster, setRosterSlot } from "@/server/now/roster-service";
+import {
+  deleteWebPushSubscription,
+  hasWebPushSubscription,
+  saveWebPushSubscription,
+  webPushPublicKey,
+} from "@/server/now/web-push";
 import { DECLINE_REASONS, OUTCOMES, ROOT_CAUSES } from "@/server/now/types";
 
 /**
@@ -84,7 +90,9 @@ import { DECLINE_REASONS, OUTCOMES, ROOT_CAUSES } from "@/server/now/types";
  *   GET  /api/now/requests/open            → the student's open request, if any
  *   GET|DELETE /api/now/requests/:id       → view / cancel (cancel releases the hold)
  *   GET  /api/now/requests/:id/stream      → SSE for the student and the assigned solver
- *   POST|DELETE /api/now/helper/presence   → solver shift heartbeat / go offline
+ *   POST|DELETE /api/now/helper/presence   → solver shift heartbeat ({ subjects, background }) / go offline
+ *   GET  /api/now/push/config              → { publicKey } for offer alerts (null = not available)
+ *   PUT|DELETE /api/now/push/subscription  → turn this browser's offer alerts on / off
  *   GET  /api/now/helper/stream            → SSE: offers for this solver
  *   GET  /api/now/helper/offers/current    → open offer (push tap, reconnect)
  *   POST /api/now/offers/:id               → { action: accept | decline }
@@ -283,7 +291,16 @@ const CreateRequestSchema = z.object({
   /** "Ask again": one of the student's own solvers to ask first. */
   preferredHelperId: z.string().trim().min(1).max(120).nullable().optional(),
 });
-const PresenceSchema = z.object({ subjects: z.array(z.string().max(20)).max(4).nullable().optional() });
+const PresenceSchema = z.object({
+  subjects: z.array(z.string().max(20)).max(4).nullable().optional(),
+  /** Sent from a hidden tab by a solver with offer alerts on (decision B85). */
+  background: z.boolean().optional(),
+});
+const PushSubscriptionSchema = z.object({
+  endpoint: z.string().max(1000),
+  keys: z.object({ p256dh: z.string().max(200).nullable().optional(), auth: z.string().max(100).nullable().optional() }).nullable().optional(),
+});
+const PushEndpointSchema = z.object({ endpoint: z.string().max(1000) });
 const OfferResponseSchema = z.object({
   action: z.enum(["accept", "decline"]),
   reason: z.enum(DECLINE_REASONS).nullable().optional(),
@@ -353,7 +370,7 @@ const liveHandlers = {
   },
   presence: async (r: NextRequest, userId: string) => {
     const body = PresenceSchema.parse(await parseJsonBody(r));
-    const shift = await heartbeatHelper(userId, body.subjects ?? null);
+    const shift = await heartbeatHelper(userId, body.subjects ?? null, new Date(), { background: body.background === true });
     return nowJson({ ...shift, offer: await getCurrentOffer(userId) });
   },
   offline: async (_r: NextRequest, userId: string) => {
@@ -416,6 +433,18 @@ const liveHandlers = {
   unfavourite: async (_r: NextRequest, userId: string, [helperId]: string[]) => nowJson(await setFavourite(userId, helperId, false)),
   solverDashboard: async (_r: NextRequest, userId: string) => nowJson({ dashboard: await getSolverDashboard(userId) }),
   roster: async (_r: NextRequest, userId: string) => nowJson({ roster: await getMyRoster(userId) }),
+  pushConfig: async (_r: NextRequest, userId: string) =>
+    nowJson({ publicKey: webPushPublicKey(), subscribed: await hasWebPushSubscription(userId) }),
+  pushSubscribe: async (r: NextRequest, userId: string) => {
+    const body = PushSubscriptionSchema.parse(await parseJsonBody(r));
+    await saveWebPushSubscription(userId, body, r.headers.get("user-agent"));
+    return nowJson({ subscribed: true });
+  },
+  pushUnsubscribe: async (r: NextRequest, userId: string) => {
+    const body = PushEndpointSchema.parse(await parseJsonBody(r));
+    await deleteWebPushSubscription(userId, body.endpoint);
+    return nowJson({ subscribed: await hasWebPushSubscription(userId) });
+  },
   setRoster: async (r: NextRequest, userId: string) => {
     const body = RosterSlotSchema.parse(await parseJsonBody(r));
     return nowJson({ roster: await setRosterSlot(userId, body) });
@@ -470,6 +499,9 @@ const ROUTES: { method: Method; pattern: string[]; handler: Handler; public?: bo
   { method: "GET", pattern: ["requests", ":id", "stream"], handler: liveHandlers.requestStream },
   { method: "POST", pattern: ["helper", "presence"], handler: liveHandlers.presence },
   { method: "DELETE", pattern: ["helper", "presence"], handler: liveHandlers.offline },
+  { method: "GET", pattern: ["push", "config"], handler: liveHandlers.pushConfig },
+  { method: "PUT", pattern: ["push", "subscription"], handler: liveHandlers.pushSubscribe },
+  { method: "DELETE", pattern: ["push", "subscription"], handler: liveHandlers.pushUnsubscribe },
   { method: "GET", pattern: ["helper", "stream"], handler: liveHandlers.helperStream },
   { method: "GET", pattern: ["helper", "offers", "current"], handler: liveHandlers.currentOffer },
   { method: "POST", pattern: ["offers", ":id"], handler: liveHandlers.respond },
