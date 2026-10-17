@@ -1,7 +1,9 @@
 export const dynamic = "force-dynamic";
 
 import { TeacherHeader } from "@/components/teacher/TeacherHeader";
+import { getServerUser } from "@/lib/auth-server";
 import { isFeatureEnabled, type FlagKey } from "@/lib/feature-flags";
+import { isNowSolver } from "@/server/now/teacher-entry";
 import {
   loadWorkspaceLayoutData,
 } from "@/server/workspaces/server-loader";
@@ -41,6 +43,10 @@ export default async function WorkspaceLayout({ children, params }: Props) {
   const visibleNavItems = NAV_ITEMS.filter(
     (item) => !item.flag || isFeatureEnabled(item.flag),
   );
+  // Origin NOW (decision B83): only for teachers who are approved solvers.
+  if (await isNowSolver((await getServerUser())?.id)) {
+    visibleNavItems.splice(visibleNavItems.length - 1, 0, { href: "/now", label: "Origin NOW" });
+  }
 
   return (
     <div className="flex min-h-dvh flex-col">

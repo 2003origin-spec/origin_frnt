@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { getServerUser } from "@/lib/auth-server";
+import { isNowSolver } from "@/server/now/teacher-entry";
 import { loadAccessibleWorkspaces } from "@/server/workspaces/server-loader";
 import { TeacherLogoutButton } from "@/components/teacher/TeacherLogoutButton";
 
@@ -11,6 +13,8 @@ export default async function TeacherHomePage() {
   if (workspaces.length === 1) {
     redirect(`/teacher/workspaces/${workspaces[0].id}`);
   }
+  // Origin NOW (decision B83): solvers without a single workspace reach their shift from here.
+  const nowSolver = await isNowSolver((await getServerUser())?.id);
 
   return (
     <div className="mx-auto max-w-[1400px] px-4 py-12">
@@ -25,6 +29,20 @@ export default async function TeacherHomePage() {
           <Link href="/teacher/onboarding">New workspace</Link>
         </Button>
       </div>
+
+      {nowSolver && (
+        <Card className="mb-6 border-primary/40">
+          <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
+            <div>
+              <CardTitle>Origin NOW</CardTitle>
+              <CardDescription>Your solver shift, your evenings and how your live sessions are going.</CardDescription>
+            </div>
+            <Button asChild>
+              <Link href="/now/solver">Open my shift</Link>
+            </Button>
+          </CardHeader>
+        </Card>
+      )}
 
       {workspaces.length === 0 ? (
         <Card>
