@@ -485,6 +485,29 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_store_orders_idempotency ON store.orders(us
   WHERE idempotency_key IS NOT NULL;`,
 ];
 
+/**
+ * Add-on migrations after the core one (which shipped for review unchanged).
+ * Each is guarded like the core DDL and mirrored verbatim by its own file in
+ * src/db/migrations (tests/now/now-schema.test.ts checks both).
+ */
+export const NOW_ADDON_MIGRATIONS: readonly { id: string; name: string; ddl: readonly string[] }[] = [
+  {
+    // "Ask again" (pilot readiness item 2): the solver a student asked for first.
+    id: "20261018_origin_now_preferred_solver",
+    name: "origin now: ask a chosen solver first",
+    ddl: [
+      `DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_schema = 'now' AND table_name = 'requests' AND column_name = 'preferred_helper_id'
+  ) THEN
+    ALTER TABLE now.requests ADD COLUMN preferred_helper_id TEXT REFERENCES now.helpers(id) ON DELETE SET NULL;
+  END IF;
+END $$;`,
+    ],
+  },
+];
+
 function pool() {
   const p = getUserPostgresPool();
   if (!p) throw new Error("USER_DATABASE_URL is not configured");
@@ -521,6 +544,10 @@ export async function ensureNowSchema(): Promise<void> {
           await client.query(statement);
         }
         await recordMigration(client);
+        for (const addon of NOW_ADDON_MIGRATIONS) {
+          for (const statement of addon.ddl) await client.query(statement);
+          await client.query("INSERT INTO app.migrations (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING", [addon.id, addon.name]);
+        }
         await client.query("COMMIT");
         globalThis.__originNowSchemaEnsured = true;
       } catch (error) {

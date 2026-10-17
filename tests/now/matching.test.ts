@@ -217,3 +217,29 @@ test("IST day keys roll over at IST midnight, not UTC midnight", () => {
   assert.equal(istDayKey(Date.parse("2026-10-16T18:29:00Z")), "2026-10-16");
   assert.equal(istDayKey(Date.parse("2026-10-16T18:31:00Z")), "2026-10-17");
 });
+
+test("Ask again: the solver the student asked for is offered first, ahead of a favourite", () => {
+  const ranked = rankCandidates(
+    [
+      candidate("fav", { isFavourite: true, ratingAvg: 5 }),
+      candidate("chosen", { isPreferred: true, ratingAvg: 3.6 }),
+      candidate("other"),
+    ],
+    ctx,
+  );
+  assert.deepEqual(ranked.map((c) => c.helperId), ["chosen", "fav", "other"]);
+});
+
+test("Ask again: the chapter filter does not apply to the chosen solver, every other rule does", () => {
+  assert.equal(exclusionReason(candidate("c", { isPreferred: true, coversChapter: false }), ctx), null);
+  assert.equal(exclusionReason(candidate("c", { coversChapter: false }), ctx), "chapter");
+  for (const [overrides, reason] of [
+    [{ inLiveSession: true }, "busy"],
+    [{ lastSeenMs: now - 61_000 }, "offline"],
+    [{ blockedByStudent: true }, "blocked"],
+    [{ alreadyOffered: true }, "already_offered"],
+    [{ sessionsWithStudentToday: 3 }, "pair_cap"],
+  ] as [Partial<Candidate>, string][]) {
+    assert.equal(exclusionReason(candidate("c", { isPreferred: true, ...overrides }), ctx), reason);
+  }
+});

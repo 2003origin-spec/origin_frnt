@@ -39,6 +39,8 @@ export type Candidate = {
   medianAcceptMs: number | null;
   sessionsToday: number;
   isFavourite: boolean;
+  /** The student asked for this solver first ("Ask again"). */
+  isPreferred?: boolean;
   /** Last completed session with this student, ms epoch; null if never. */
   lastUsedByStudentAt: number | null;
 };
@@ -78,7 +80,8 @@ export function exclusionReason(c: Candidate, ctx: MatchContext): ExclusionReaso
   if (c.alreadyOffered) return "already_offered";
   if (c.userId === ctx.studentId || c.linkedUserIds.includes(ctx.studentId)) return "own_account";
   if (c.sessionsWithStudentToday >= PAIR_DAILY_SESSION_CAP) return "pair_cap";
-  if (!ctx.widened && !c.coversChapter) return "chapter";
+  // The student picked this solver for the subject, so their chapter list does not apply.
+  if (!ctx.widened && !c.coversChapter && !c.isPreferred) return "chapter";
   return null;
 }
 
@@ -103,7 +106,7 @@ function compareNullableAsc(a: number | null, b: number | null): number {
 }
 
 /**
- * Step 3 ranking: favourite → recently used → exact chapter → language →
+ * Step 3 ranking: the solver the student asked for first → favourite → recently used → exact chapter → language →
  * rating → accept rate → median accept time → fewest sessions today → id.
  * Unrated newcomers sort after rated helpers inside the same tier but are
  * never excluded, so new solvers still get offers.
@@ -117,6 +120,7 @@ export function rankCandidates(candidates: readonly Candidate[], ctx: MatchConte
     .filter((c) => exclusionReason(c, ctx) === null)
     .slice()
     .sort((a, b) => {
+      if (Boolean(a.isPreferred) !== Boolean(b.isPreferred)) return a.isPreferred ? -1 : 1;
       if (a.isFavourite !== b.isFavourite) return a.isFavourite ? -1 : 1;
       const ra = isRecent(a);
       const rb = isRecent(b);

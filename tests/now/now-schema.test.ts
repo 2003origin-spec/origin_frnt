@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { NOW_MIGRATION_ID, NOW_SCHEMA_DDL } from "@/server/now/now-schema";
+import { NOW_ADDON_MIGRATIONS, NOW_MIGRATION_ID, NOW_SCHEMA_DDL } from "@/server/now/now-schema";
 
 const root = new URL("../..", import.meta.url).pathname;
 const migration = readFileSync(join(root, "src/db/migrations", `${NOW_MIGRATION_ID}.sql`), "utf8");
@@ -46,4 +46,18 @@ test("the database itself enforces one open request per student and one live ses
   assert.match(ddl, /uq_sessions_one_live_per_human_helper[\s\S]*WHERE ended_at IS NULL AND solver_kind = 'human'/);
   assert.match(ddl, /uq_offers_one_open_per_request[\s\S]*WHERE response IS NULL/);
   assert.match(ddl, /idempotency_key TEXT NOT NULL UNIQUE/);
+});
+
+test("each add-on migration file mirrors its runtime DDL and is not auto-applied", () => {
+  for (const addon of NOW_ADDON_MIGRATIONS) {
+    const file = readFileSync(join(root, "src/db/migrations", `${addon.id}.sql`), "utf8");
+    const back = readFileSync(join(root, "src/db/migrations", `${addon.id}.rollback.sql`), "utf8");
+    for (const statement of addon.ddl) {
+      assert.ok(file.includes(statement), `${addon.id} is missing:\n${statement.slice(0, 120)}`);
+      assert.doesNotMatch(statement, /\bDROP\b/);
+    }
+    assert.match(file, new RegExp(`INSERT INTO app.migrations[\\s\\S]*'${addon.id}'`));
+    assert.match(back, new RegExp(`DELETE FROM app.migrations WHERE id = '${addon.id}'`));
+    assert.doesNotMatch(runner, new RegExp(addon.id));
+  }
 });

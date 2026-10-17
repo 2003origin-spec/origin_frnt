@@ -45,6 +45,8 @@ type RequestView = {
   priceCoins: number;
   closedReason: string | null;
   recorded: boolean;
+  /** The student's chosen solver while they are being asked first. */
+  askingFirst?: string | null;
   session: {
     id: string;
     solverKind: 'human' | 'bot';
@@ -470,7 +472,11 @@ export default function NowLiveRoom({ requestId }: { requestId: string }) {
           <CardContent className="flex flex-col gap-3 py-6 text-sm">
             <p className="flex items-center gap-2 text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-              {view.status === 'offered' ? `Asking a ${view.subject} teacher…` : `Looking for a ${view.subject} solver…`}
+              {view.status === 'offered'
+                ? view.askingFirst
+                  ? `Asking ${view.askingFirst} first…`
+                  : `Asking a ${view.subject} teacher…`
+                : `Looking for a ${view.subject} solver…`}
             </p>
             <p className="text-muted-foreground">
               Your {view.priceCoins} coins are held, not spent. If no teacher is free, Origin&apos;s AI solver can take it. This page updates by itself.

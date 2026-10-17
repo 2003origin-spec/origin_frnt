@@ -275,6 +275,8 @@ const CreateRequestSchema = z.object({
   language: z.string().max(30).nullable().optional(),
   aiExplained: z.boolean().optional(),
   originAiSessionId: z.string().max(120).nullable().optional(),
+  /** "Ask again": one of the student's own solvers to ask first. */
+  preferredHelperId: z.string().trim().min(1).max(120).nullable().optional(),
 });
 const PresenceSchema = z.object({ subjects: z.array(z.string().max(20)).max(4).nullable().optional() });
 const OfferResponseSchema = z.object({

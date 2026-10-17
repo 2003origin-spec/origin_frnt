@@ -6,6 +6,9 @@
  * pilot cohort. After an attempt it shows the price and the balance; with too
  * few coins it becomes "Buy coins"; tapping it holds the coins, starts the
  * request and opens the room (which shows "Finding a solver…" with Cancel).
+ * "Ask first" (pilot readiness item 2) lets the student pick one of their own
+ * solvers who is online; if that solver is busy or lets the offer lapse, the
+ * usual matching carries on.
  */
 
 import { useCallback, useEffect, useState } from 'react';
@@ -25,6 +28,7 @@ type Quote = {
   humansLikely: boolean;
   botOn: boolean;
   attempted: boolean;
+  mySolvers: { helperId: string; name: string; favourite: boolean; online: boolean }[];
   openRequestId: string | null;
 };
 
@@ -39,6 +43,7 @@ export function NowAskButton({ questionId, attempted }: { questionId: string; at
   const [quote, setQuote] = useState<Quote | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [preferred, setPreferred] = useState('');
 
   const load = useCallback(async () => {
     try {
@@ -70,7 +75,10 @@ export function NowAskButton({ questionId, attempted }: { questionId: string; at
     setBusy(true);
     setError(null);
     try {
-      const res = await apiCall('/now/requests', { method: 'POST', body: JSON.stringify({ questionId }) });
+      const res = await apiCall('/now/requests', {
+        method: 'POST',
+        body: JSON.stringify({ questionId, ...(preferred ? { preferredHelperId: preferred } : {}) }),
+      });
       router.push(`/now/room?request=${encodeURIComponent(res.request.id as string)}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not start live help.');
@@ -117,6 +125,31 @@ export function NowAskButton({ questionId, attempted }: { questionId: string; at
           <button onClick={() => router.push('/now/start')} className="rounded-lg border border-primary px-4 py-2 text-sm font-semibold text-primary">Ask a parent</button>
         )}
       </div>
+      {!blockedText && !quote.openRequestId && quote.canAfford && (quote.mySolvers ?? []).length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <label htmlFor={`now-ask-first-${questionId}`} className="text-muted-foreground">Ask first</label>
+          <select
+            id={`now-ask-first-${questionId}`}
+            value={preferred}
+            onChange={(e) => setPreferred(e.target.value)}
+            className="rounded-md border bg-background px-2 py-1 text-sm"
+          >
+            <option value="">Anyone available</option>
+            {quote.mySolvers.map((m) => (
+              <option key={m.helperId} value={m.helperId} disabled={!m.online}>
+                {m.favourite ? '★ ' : ''}
+                {m.name} · {m.online ? 'online' : 'away'}
+              </option>
+            ))}
+          </select>
+          {preferred && (
+            <span className="text-xs text-muted-foreground">
+              {quote.mySolvers.find((m) => m.helperId === preferred)?.name} is asked first. If they are busy or do not answer in 25 seconds,
+              we ask the next teacher.
+            </span>
+          )}
+        </div>
+      )}
       {!blockedText && !quote.openRequestId && (
         <p className="text-xs text-muted-foreground">
           You have {quote.balance} coins.{quote.botOn && quote.botPriceCoins !== null && quote.botPriceCoins !== quote.priceCoins

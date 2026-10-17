@@ -152,6 +152,11 @@ export default function NowDoubtsDashboard() {
       <Card>
         <CardHeader className="pb-2"><CardTitle className="text-base">My solvers</CardTitle></CardHeader>
         <CardContent>
+          {data.mySolvers.length > 0 && (
+            <p className="mb-2 text-xs text-muted-foreground">
+              To ask one of them again, open a question and pick them under &ldquo;Ask first&rdquo; on the Solve live card while they are online.
+            </p>
+          )}
           {data.mySolvers.length === 0 ? (
             <p className="text-sm text-muted-foreground">Solvers you have worked with show up here. Favourites are asked first when they are online.</p>
           ) : (

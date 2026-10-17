@@ -102,6 +102,8 @@ export type RequestRow = {
   failed_offers: number;
   excluded_helper_ids: string[];
   callback_offered: boolean;
+  /** "Ask again": the solver the student asked for first (null = anyone). */
+  preferred_helper_id: string | null;
   origin_ai_session_id: string | null;
   ai_explained: boolean;
   context_json: Record<string, unknown>;
@@ -164,7 +166,47 @@ export type CreateRequestInput = {
   language?: string | null;
   aiExplained?: boolean;
   originAiSessionId?: string | null;
+  /** "Ask again": one of the student's own solvers to offer first. */
+  preferredHelperId?: string | null;
 };
+
+export type MySolver = { helperId: string; name: string; favourite: boolean; online: boolean; lastSessionAt: string | null };
+
+/**
+ * "Ask again" (pilot readiness item 2): the solvers a student may ask for
+ * first in a subject — verified humans covering the subject whom the student
+ * favourited or had a call with, never blocked either way, never their own or
+ * a linked account. Favourites first, then most recent; at most 5.
+ */
+export async function listMySolvers(studentId: string, subject: string, now: Date = new Date()): Promise<MySolver[]> {
+  const res = await (await db()).query<{ id: string; display_name: string; favourite: boolean; last_session_at: Date | null }>(
+    `SELECT h.id, h.display_name,
+            EXISTS (SELECT 1 FROM now.favourites f WHERE f.student_id = $1 AND f.helper_id = h.id) AS favourite,
+            (SELECT max(s.ended_at) FROM now.sessions s
+              WHERE s.helper_id = h.id AND s.student_id = $1 AND s.started_at IS NOT NULL) AS last_session_at
+       FROM now.helpers h
+      WHERE h.kind = 'human' AND h.verification_status = 'verified'
+        AND h.agreement_version IS NOT NULL AND h.agreement_accepted_at IS NOT NULL
+        AND h.user_id <> $1 AND NOT ($1 = ANY(h.linked_user_ids))
+        AND EXISTS (SELECT 1 FROM now.helper_expertise e WHERE e.helper_id = h.id AND e.subject = $2)
+        AND NOT EXISTS (SELECT 1 FROM now.blocks b
+                         WHERE (b.blocker_id = $1 AND b.blocked_id = h.user_id)
+                            OR (b.blocker_id = h.user_id AND b.blocked_id = $1))
+        AND (EXISTS (SELECT 1 FROM now.favourites f WHERE f.student_id = $1 AND f.helper_id = h.id)
+             OR EXISTS (SELECT 1 FROM now.sessions s WHERE s.helper_id = h.id AND s.student_id = $1 AND s.started_at IS NOT NULL))
+      ORDER BY favourite DESC, last_session_at DESC NULLS LAST, h.display_name
+      LIMIT 5`,
+    [studentId, subject],
+  );
+  const online = await listOnlineHelpers(subject, now.getTime()).catch(() => new Map<string, number>());
+  return res.rows.map((r) => ({
+    helperId: r.id,
+    name: r.display_name,
+    favourite: r.favourite,
+    online: online.has(r.id),
+    lastSessionAt: r.last_session_at ? r.last_session_at.toISOString() : null,
+  }));
+}
 
 function istDayStart(now: Date): Date {
   return new Date(`${istDayKey(now.getTime())}T00:00:00+05:30`);
@@ -209,6 +251,11 @@ export async function createRequest(studentId: string, input: CreateRequestInput
   const price = lookupPrice(prices, difficulty, "human");
   if (!price) throw new NowError(503, "no_price", "Live help is not priced yet.");
 
+  const preferredHelperId = input.preferredHelperId?.trim() || null;
+  if (preferredHelperId && !(await listMySolvers(studentId, subject, now)).some((m) => m.helperId === preferredHelperId)) {
+    throw new NowError(400, "preferred_not_available", "That solver cannot be asked for this subject. Choose another or ask anyone.");
+  }
+
   const requestId = createPrefixedId("nreq");
   const language = input.language?.trim().toLowerCase().slice(0, 30) || null;
   try {
@@ -216,8 +263,8 @@ export async function createRequest(studentId: string, input: CreateRequestInput
       await client.query(
         `INSERT INTO now.requests
            (id, student_id, question_id, subject, chapter, concept, difficulty, language, price_coins, held_coins,
-            origin_ai_session_id, ai_explained, context_json, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9, $10, $11, $12::jsonb, $13, $13)`,
+            origin_ai_session_id, ai_explained, context_json, created_at, updated_at, preferred_helper_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9, $10, $11, $12::jsonb, $13, $13, $14)`,
         [
           requestId,
           studentId,
@@ -234,6 +281,7 @@ export async function createRequest(studentId: string, input: CreateRequestInput
             question: { text: question.text, options: question.options ?? [], image: question.image ?? null },
           }),
           now,
+          preferredHelperId,
         ],
       );
       await postTransfers([sessionHold(studentId, requestId, price.priceCoins)], { client, now });
@@ -241,7 +289,7 @@ export async function createRequest(studentId: string, input: CreateRequestInput
         type: "request.created",
         requestId,
         actor: studentId,
-        payload: { subject, chapter: question.chapter, difficulty, priceCoins: price.priceCoins, language },
+        payload: { subject, chapter: question.chapter, difficulty, priceCoins: price.priceCoins, language, preferredHelperId },
       });
     });
   } catch (error) {
@@ -363,6 +411,7 @@ async function loadCandidates(
     medianAcceptMs: r.median_accept_ms === null ? null : Number(r.median_accept_ms),
     sessionsToday: r.sessions_today,
     isFavourite: r.is_favourite,
+    isPreferred: r.id === request.preferred_helper_id,
     lastUsedByStudentAt: r.last_used_at ? r.last_used_at.getTime() : null,
   }));
   return { candidates, humansOnline };
@@ -826,6 +875,8 @@ export type RequestView = {
   closedReason: string | null;
   closedDetail: string | null;
   callbackOffered: boolean;
+  /** For the student while their chosen solver ("Ask again") is being asked: that solver's name. */
+  askingFirst: string | null;
   session: {
     id: string;
     solverKind: SolverKind;
@@ -864,14 +915,19 @@ export async function getRequestView(requestId: string, viewer: { viewerUserId: 
       ended_at: Date | null;
       extensions_used: number | null;
       extension_requested_at: Date | null;
+      preferred_name: string | null;
+      current_offer_helper_id: string | null;
     }
   >(
     `SELECT r.*, u.name AS student_name, h.user_id AS helper_user_id, h.display_name AS helper_name,
+            ph.display_name AS preferred_name, co.helper_id AS current_offer_helper_id,
             s.id AS session_id, s.solver_kind AS session_solver_kind, s.student_joined_at, s.helper_joined_at,
             s.started_at, s.ends_at, s.ended_at, s.extensions_used, s.extension_requested_at
        FROM now.requests r
        JOIN origin_users u ON u.id = r.student_id
        LEFT JOIN now.helpers h ON h.id = r.helper_id
+       LEFT JOIN now.helpers ph ON ph.id = r.preferred_helper_id
+       LEFT JOIN now.offers co ON co.id = r.current_offer_id
        LEFT JOIN LATERAL (SELECT * FROM now.sessions s WHERE s.request_id = r.id ORDER BY s.accepted_at DESC LIMIT 1) s ON TRUE
       WHERE r.id = $1`,
     [requestId],
@@ -893,6 +949,10 @@ export async function getRequestView(requestId: string, viewer: { viewerUserId: 
     closedReason: row.closed_reason,
     closedDetail: row.closed_detail,
     callbackOffered: row.callback_offered,
+    askingFirst:
+      isStudent && row.status === "offered" && row.preferred_helper_id && row.current_offer_helper_id === row.preferred_helper_id
+        ? row.preferred_name
+        : null,
     // Back in the queue (a solver no-show): the old, ended session is history, not this request's session.
     session: row.session_id && row.status !== "requested" && row.status !== "offered"
       ? {
@@ -988,6 +1048,8 @@ export type LiveHelpQuote = {
   humansLikely: boolean;
   botOn: boolean;
   attempted: boolean;
+  /** "Ask again": solvers this student may ask for first in this subject. */
+  mySolvers: MySolver[];
   openRequestId: string | null;
 };
 
@@ -1004,6 +1066,7 @@ export async function quoteLiveHelp(studentId: string, questionId: string, now: 
     humansLikely: false,
     botOn: false,
     attempted: false,
+    mySolvers: [],
     openRequestId: null,
   };
   if (!access.inCohort) return empty;
@@ -1012,13 +1075,14 @@ export async function quoteLiveHelp(studentId: string, questionId: string, now: 
   const difficulty = normalizeDifficulty(question?.difficulty);
   if (!question || !isNowSubject(subject) || !difficulty) return { ...empty, blockedReason: "question_not_supported" };
   if (access.canRequest) await ensureWelcomeGrant(studentId);
-  const [settings, { rows: prices }, balance, progress, openRequestId, online] = await Promise.all([
+  const [settings, { rows: prices }, balance, progress, openRequestId, online, mySolvers] = await Promise.all([
     getNowSettings(),
     loadPriceTable(),
     getWalletBalance(studentId, now),
     isOgcodeProgressAvailable() ? getOgcodeQuestionProgress(studentId, questionId) : Promise.resolve(null),
     getOpenRequestId(studentId),
     listOnlineHelpers(subject, now.getTime()).catch(() => new Map<string, number>()),
+    listMySolvers(studentId, subject, now),
   ]);
   const human = lookupPrice(prices, difficulty, "human");
   const bot = lookupPrice(prices, difficulty, "bot");
@@ -1038,6 +1102,7 @@ export async function quoteLiveHelp(studentId: string, questionId: string, now: 
     humansLikely,
     botOn,
     attempted,
+    mySolvers,
     openRequestId,
   };
 }
