@@ -18,6 +18,7 @@ import { FormattedMessage } from '@/components/origin-ai/FormattedMessage';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { apiCall } from '@/lib/api';
+import { dayKeyToDMY } from '@/lib/format-time';
 
 type Dashboard = {
   profile: { helperId: string; name: string; status: string; restrictedReason: string | null; online: boolean };
@@ -338,9 +339,9 @@ export default function NowSolverDashboard() {
             <div className="h-48 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={data.earnings.daily}>
-                  <XAxis dataKey="day" tickFormatter={(d: string) => d.slice(5)} fontSize={11} />
+                  <XAxis dataKey="day" tickFormatter={(d: string) => dayKeyToDMY(d).slice(0, 5)} fontSize={11} />
                   <YAxis fontSize={11} width={36} />
-                  <Tooltip />
+                  <Tooltip labelFormatter={(d) => dayKeyToDMY(String(d))} />
                   <Bar dataKey="sessions" stackId="a" name="Sessions" fill="hsl(var(--primary))" />
                   <Bar dataKey="tips" stackId="a" name="Tips" fill="#f59e0b" />
                 </BarChart>
@@ -404,7 +405,7 @@ export default function NowSolverDashboard() {
               <thead><tr className="text-left text-xs text-muted-foreground"><th className="py-1">Day</th><th>Hours online</th><th>Sessions</th></tr></thead>
               <tbody>
                 {data.activity.map((a) => (
-                  <tr key={a.day} className="border-t"><td className="py-1">{a.day}</td><td>{a.hoursOnline}</td><td>{a.sessions}</td></tr>
+                  <tr key={a.day} className="border-t"><td className="py-1">{dayKeyToDMY(a.day)}</td><td>{a.hoursOnline}</td><td>{a.sessions}</td></tr>
                 ))}
               </tbody>
             </table>

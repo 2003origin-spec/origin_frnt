@@ -14,6 +14,7 @@
 
 import type { PoolClient } from "pg";
 
+import { formatISTDayDMY } from "@/lib/format-time";
 import { sendEmail } from "@/server/email";
 import { absoluteHref } from "@/server/email/assets";
 import { detailsCard, paragraph, renderEmail } from "@/server/email/layout";
@@ -726,7 +727,7 @@ async function notifyGuardianOfSuspension(studentId: string, until: Date | null,
     return;
   }
   const child = firstNameOnly(guardian.child_name);
-  const when = until ? `until ${until.toISOString().slice(0, 10)}` : "until our team has reviewed it";
+  const when = until ? `until ${formatISTDayDMY(until)}` : "until our team has reviewed it";
   const subject = `Origin NOW: ${child}'s live help is paused`;
   const text = [
     `Dear ${guardian.guardian_name},`,

@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { getRazorpay, loadRazorpayScript, verifyPayment } from '@/features/payments/client';
 import { apiCall } from '@/lib/api';
+import { formatISTDateTimeDMY, formatISTDayDMY } from '@/lib/format-time';
 
 type Wallet = {
   balance: { available: number; pending: number };
@@ -180,9 +181,9 @@ export default function NowWallet() {
                   <span>
                     {KIND_LABEL[m.kind] ?? m.kind}
                     <span className="block text-xs text-muted-foreground">
-                      {new Date(m.createdAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                      {m.availableAt && new Date(m.availableAt).getTime() > Date.now() ? ` · spendable from ${new Date(m.availableAt).toLocaleDateString('en-IN')}` : ''}
-                      {m.expiresAt ? ` · expires ${new Date(m.expiresAt).toLocaleDateString('en-IN')}` : ''}
+                      {formatISTDateTimeDMY(m.createdAt)}
+                      {m.availableAt && new Date(m.availableAt).getTime() > Date.now() ? ` · spendable from ${formatISTDateTimeDMY(m.availableAt)}` : ''}
+                      {m.expiresAt ? ` · expires ${formatISTDayDMY(m.expiresAt)}` : ''}
                     </span>
                   </span>
                   <span className={`font-semibold tabular-nums ${m.direction === 'credit' ? 'text-emerald-700' : ''}`}>

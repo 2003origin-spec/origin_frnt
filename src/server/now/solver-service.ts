@@ -13,6 +13,7 @@
 
 import { randomUUID } from "node:crypto";
 
+import { formatISTDateTimeDMY } from "@/lib/format-time";
 import { getOgcodeCatalogQuestionMap, sampleOgcodeCatalogQuestionIds } from "@/server/ogcode-catalog";
 import { createPresignedR2PutUrl, deleteR2Object } from "@/server/media-storage";
 import { createPrefixedId } from "@/server/workspaces/ids";
@@ -337,7 +338,7 @@ export async function startQuiz(userId: string, subject: string, now: Date = new
   );
   const allowedAt = nextQuizAllowedAt(last.rows[0]?.started_at ?? null);
   if (allowedAt && allowedAt.getTime() > now.getTime()) {
-    throw new NowError(429, "quiz_cooldown", `You can retake the ${wanted} quiz after ${allowedAt.toISOString()}.`);
+    throw new NowError(429, "quiz_cooldown", `You can retake the ${wanted} quiz after ${formatISTDateTimeDMY(allowedAt)}.`);
   }
   const { quiz } = await getNowSettings();
   const sampled = await sampleOgcodeCatalogQuestionIds({

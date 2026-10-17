@@ -12,6 +12,7 @@ import { Heart, Loader2 } from 'lucide-react';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { apiCall } from '@/lib/api';
+import { formatISTDayDMY } from '@/lib/format-time';
 
 type Dashboard = {
   summary: { asked: number; resolved: number; partial: number; unresolved: number; minutes: number; coinsSpentThisMonth: number; balance: number };
@@ -227,7 +228,7 @@ export default function NowDoubtsDashboard() {
                   <span className="min-w-0 flex-1">
                     <span className="line-clamp-1">{h.question || 'Question'}</span>
                     <span className="block text-xs capitalize text-muted-foreground">
-                      {h.subject} · {h.difficulty} · {h.createdAt ? new Date(h.createdAt).toLocaleDateString('en-IN') : ''}
+                      {h.subject} · {h.difficulty} · {h.createdAt ? formatISTDayDMY(h.createdAt) : ''}
                       {h.solverName ? ` · ${h.solverName}` : ''}
                       {h.minutes ? ` · ${h.minutes} min` : ''} · {h.coinsSpent} coins
                       {h.outcome ? ` · ${h.outcome}` : ''}{h.stars ? ` · ${h.stars}★` : ''}

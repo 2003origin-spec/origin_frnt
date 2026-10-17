@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import { mutateJson } from '@/lib/csrf';
+import { formatISTDateTimeDMY } from '@/lib/format-time';
 
 export const ADMIN_NOW_API = '/api/admin/now';
 
@@ -57,9 +58,9 @@ export function useAdminData<T>(path: string | null, refreshMs?: number) {
   return { data, error, loading, reload, setData };
 }
 
+/** "17/10/2026, 4:30 pm IST" — every admin date reads dd/mm/yyyy, every time IST. */
 export function fmtDate(iso: string | null | undefined): string {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  return iso ? formatISTDateTimeDMY(iso) : '—';
 }
 
 export function pct(value: number | null | undefined): string {

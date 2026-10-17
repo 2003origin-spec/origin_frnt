@@ -15,6 +15,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { apiCall } from '@/lib/api';
 
+import { DateInputDMY } from './DateInputDMY';
+
 export type ConsentStatus = {
   dateOfBirth: string | null;
   isMinor: boolean;
@@ -113,7 +115,7 @@ export function GuardianConsentForm({ purpose, onReady }: { purpose: 'student' |
       {needsDob && (
         <div className="flex flex-col gap-1">
           <Label htmlFor="now-dob">Your date of birth</Label>
-          <Input id="now-dob" type="date" required value={dob} max={new Date().toISOString().slice(0, 10)} onChange={(e) => setDob(e.target.value)} className="w-48" />
+          <DateInputDMY id="now-dob" required value={dob} onChange={setDob} className="w-48" />
           <p className="text-xs text-muted-foreground">Under 18? A parent or guardian approves first. Adults can skip the rest.</p>
         </div>
       )}

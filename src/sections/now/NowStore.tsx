@@ -13,6 +13,7 @@ import { NativePurchaseNotice, useIsNativeApp } from '@/components/native/Native
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { apiCall } from '@/lib/api';
+import { formatISTDayDMY } from '@/lib/format-time';
 
 type Item = {
   id: string;
@@ -48,7 +49,7 @@ const SUBJECT_LABEL: Record<string, string> = {
 };
 
 function dateLabel(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+  return formatISTDayDMY(iso);
 }
 
 function errorMessage(error: unknown): string {
