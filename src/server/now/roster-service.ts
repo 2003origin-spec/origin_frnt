@@ -36,13 +36,15 @@ export type MyRoster = {
   subjects: string[];
   openHours: { from: string; to: string };
   canEdit: boolean;
+  /** The pilot evening bonus when it is on (decision B84), else null. */
+  eveningBonus: { coins: number; minOnlinePercent: number; requireRoster: boolean } | null;
   days: { day: string; weekday: number; open: boolean; editable: boolean; subjects: string[] }[];
 };
 
 /** The solver's next 14 evenings with the subjects they marked for each. */
 export async function getMyRoster(userId: string, now: Date = new Date()): Promise<MyRoster> {
   const solver = await loadSolver(userId);
-  const { openHours } = await getNowSettings();
+  const { openHours, eveningBonus } = await getNowSettings();
   const days = rosterDays(now, openHours);
   const res = await (await db()).query<{ day: string; subject: string }>(
     `SELECT to_char(day, 'YYYY-MM-DD') AS day, subject FROM now.roster WHERE helper_id = $1 AND day BETWEEN $2 AND $3`,
@@ -52,6 +54,9 @@ export async function getMyRoster(userId: string, now: Date = new Date()): Promi
     subjects: solver.subjects,
     openHours: { from: openHours.from, to: openHours.to },
     canEdit: solver.verified,
+    eveningBonus: eveningBonus.enabled
+      ? { coins: eveningBonus.coins, minOnlinePercent: eveningBonus.minOnlinePercent, requireRoster: eveningBonus.requireRoster }
+      : null,
     days: days.map((d) => ({
       ...d,
       editable: d.editable && solver.verified,

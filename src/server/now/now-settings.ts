@@ -33,6 +33,20 @@ export type QuizConfig = {
   passPercent: number;
 };
 
+/**
+ * Pilot evening bonus (pilot readiness item 5, decision B84): coins for a
+ * solver online for (nearly) a whole human shift. Off until the founders set
+ * an amount; paid by the nightly job, once per solver per evening.
+ */
+export type EveningBonusConfig = {
+  enabled: boolean;
+  coins: number;
+  /** Share of the shift's minutes the solver must be online, 1–100. */
+  minOnlinePercent: number;
+  /** Only evenings the solver put on the weekly roster count. */
+  requireRoster: boolean;
+};
+
 export type NowSettings = {
   welcomeCoins: number;
   commissionBps: number;
@@ -43,6 +57,7 @@ export type NowSettings = {
   quiz: QuizConfig;
   agreementVersion: string;
   recordingRetentionDays: number;
+  eveningBonus: EveningBonusConfig;
 };
 
 export const DEFAULT_NOW_SETTINGS: NowSettings = {
@@ -55,6 +70,7 @@ export const DEFAULT_NOW_SETTINGS: NowSettings = {
   quiz: { questions: 10, minutes: 15, passPercent: 70 },
   agreementVersion: "2026-10-draft",
   recordingRetentionDays: 30,
+  eveningBonus: { enabled: false, coins: 0, minOnlinePercent: 90, requireRoster: true },
 };
 
 const KEYS = {
@@ -67,6 +83,7 @@ const KEYS = {
   quiz: "now_quiz",
   agreementVersion: "now_agreement_version",
   recordingRetentionDays: "now_recording_retention_days",
+  eveningBonus: "now_evening_bonus",
 } as const satisfies Record<keyof NowSettings, string>;
 
 function parseInteger(raw: string | null, fallback: number, min: number, max: number): number {
@@ -176,8 +193,26 @@ export function parseQuiz(raw: string | null): QuizConfig {
   };
 }
 
+export function parseEveningBonus(raw: string | null): EveningBonusConfig {
+  const parsed = parseJson<EveningBonusConfig>(raw);
+  const d = DEFAULT_NOW_SETTINGS.eveningBonus;
+  if (!parsed) return d;
+  const coins = Number.isInteger(parsed.coins) && (parsed.coins as number) >= 0 && (parsed.coins as number) <= 100_000 ? (parsed.coins as number) : d.coins;
+  const share =
+    Number.isInteger(parsed.minOnlinePercent) && (parsed.minOnlinePercent as number) >= 1 && (parsed.minOnlinePercent as number) <= 100
+      ? (parsed.minOnlinePercent as number)
+      : d.minOnlinePercent;
+  return {
+    // Never "on" with nothing to pay.
+    enabled: parsed.enabled === true && coins > 0,
+    coins,
+    minOnlinePercent: share,
+    requireRoster: typeof parsed.requireRoster === "boolean" ? parsed.requireRoster : d.requireRoster,
+  };
+}
+
 export async function getNowSettings(): Promise<NowSettings> {
-  const [welcome, commission, tipCap, openHours, bot, transfers, quiz, agreement, retention] = await Promise.all([
+  const [welcome, commission, tipCap, openHours, bot, transfers, quiz, agreement, retention, eveningBonus] = await Promise.all([
     getSetting(KEYS.welcomeCoins),
     getSetting(KEYS.commissionBps),
     getSetting(KEYS.tipCap),
@@ -187,6 +222,7 @@ export async function getNowSettings(): Promise<NowSettings> {
     getSetting(KEYS.quiz),
     getSetting(KEYS.agreementVersion),
     getSetting(KEYS.recordingRetentionDays),
+    getSetting(KEYS.eveningBonus),
   ]);
   const d = DEFAULT_NOW_SETTINGS;
   return {
@@ -199,6 +235,7 @@ export async function getNowSettings(): Promise<NowSettings> {
     quiz: parseQuiz(quiz),
     agreementVersion: agreement?.trim() || d.agreementVersion,
     recordingRetentionDays: parseInteger(retention, d.recordingRetentionDays, 1, 3650),
+    eveningBonus: parseEveningBonus(eveningBonus),
   };
 }
 
@@ -226,6 +263,11 @@ export function prepareSettingsUpdate(
   if (patch.bot) pairs.push([KEYS.bot, JSON.stringify(parseBotRule(JSON.stringify(patch.bot)))]);
   if (patch.transfers) pairs.push([KEYS.transfers, JSON.stringify(parseTransfers(JSON.stringify(patch.transfers)))]);
   if (patch.quiz) pairs.push([KEYS.quiz, JSON.stringify(parseQuiz(JSON.stringify(patch.quiz)))]);
+  if (patch.eveningBonus) {
+    const b = patch.eveningBonus;
+    if (b.enabled && !(Number.isInteger(b.coins) && b.coins > 0)) errors.push("Set the evening bonus coins above 0 before switching it on.");
+    else pairs.push([KEYS.eveningBonus, JSON.stringify(parseEveningBonus(JSON.stringify(b)))]);
+  }
   if (patch.agreementVersion !== undefined) {
     const v = String(patch.agreementVersion).trim();
     if (!v || v.length > 40) errors.push("agreementVersion must be 1 to 40 characters.");

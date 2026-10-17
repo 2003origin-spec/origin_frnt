@@ -1,7 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { addDays, coverLevel, istDay, rosterDays, rosterEditBlock, weekdayOf } from "../../src/server/now/roster-rules";
+import {
+  addDays,
+  coverLevel,
+  earnsEveningBonus,
+  istDay,
+  rosterDays,
+  rosterEditBlock,
+  shiftEnd,
+  shiftMinutes,
+  weekdayOf,
+} from "../../src/server/now/roster-rules";
 
 // Monday to Saturday, 6–10 pm IST; Sunday closed.
 const hours = { from: "18:00", to: "22:00", days: [1, 2, 3, 4, 5, 6] };
@@ -44,4 +54,21 @@ test("cover: none, thin under two, ok from two", () => {
   assert.equal(coverLevel(0), "none");
   assert.equal(coverLevel(1), "thin");
   assert.equal(coverLevel(2), "ok");
+});
+
+test("shift length and end, including a window past midnight", () => {
+  assert.equal(shiftMinutes(hours), 240);
+  assert.equal(shiftMinutes({ from: "22:00", to: "02:00", days: [] }), 240);
+  assert.equal(shiftMinutes({ from: "18:00", to: "18:00", days: [] }), 0);
+  assert.equal(shiftEnd("2026-10-17", hours).toISOString(), "2026-10-17T16:30:00.000Z", "10 pm IST");
+  assert.equal(shiftEnd("2026-10-17", { from: "22:00", to: "02:00", days: [] }).toISOString(), "2026-10-17T20:30:00.000Z", "2 am IST next day");
+});
+
+test("evening bonus: enough of the shift online, and rostered unless that rule is off", () => {
+  const base = { shiftMinutes: 240, rostered: true, minOnlinePercent: 90, requireRoster: true };
+  assert.equal(earnsEveningBonus({ ...base, onlineMinutes: 216 }), true, "exactly 90%");
+  assert.equal(earnsEveningBonus({ ...base, onlineMinutes: 215 }), false);
+  assert.equal(earnsEveningBonus({ ...base, onlineMinutes: 240, rostered: false }), false, "not on the roster");
+  assert.equal(earnsEveningBonus({ ...base, onlineMinutes: 240, rostered: false, requireRoster: false }), true);
+  assert.equal(earnsEveningBonus({ ...base, onlineMinutes: 0, shiftMinutes: 0 }), false, "no shift, no bonus");
 });

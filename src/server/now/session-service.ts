@@ -40,6 +40,7 @@ import {
   noShowSide,
   sessionEndsAt,
 } from "./session-rules";
+import { payEveningBonuses, type EveningBonusRun } from "./evening-bonus-service";
 import { NO_SHOW_WINDOW_MS, RATING_WINDOW_MS, type Outcome, type RootCause, type SolverKind } from "./types";
 
 type Effect = () => Promise<void>;
@@ -656,6 +657,14 @@ export async function runNowNightly(now: Date = new Date()) {
     );
   }
 
+  // Pilot evening bonus (B84): before the audit, so its transfers are checked too.
+  let eveningBonus: EveningBonusRun | null = null;
+  try {
+    eveningBonus = await payEveningBonuses(now);
+  } catch (error) {
+    console.error("[origin-now] evening bonus failed", error instanceof Error ? error.message : error);
+  }
+
   const legs = await loadAllLegsForAudit();
   const unbalanced = findUnbalancedTransfers(legs);
   if (unbalanced.length > 0) {
@@ -666,5 +675,11 @@ export async function runNowNightly(now: Date = new Date()) {
   }
   await pool.query(`DELETE FROM now.presence_minutes WHERE minute < $1`, [new Date(now.getTime() - 90 * 24 * 60 * 60_000)]);
   const recordings = await purgeExpiredRecordings(now);
-  return { ratingWindowsClosed, unbalancedTransfers: unbalanced.length, recordingsDeleted: recordings.deleted, recordingDeletesFailed: recordings.failed };
+  return {
+    ratingWindowsClosed,
+    unbalancedTransfers: unbalanced.length,
+    recordingsDeleted: recordings.deleted,
+    recordingDeletesFailed: recordings.failed,
+    eveningBonus,
+  };
 }

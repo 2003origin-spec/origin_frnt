@@ -17,6 +17,7 @@ type Roster = {
   subjects: string[];
   openHours: { from: string; to: string };
   canEdit: boolean;
+  eveningBonus: { coins: number; minOnlinePercent: number; requireRoster: boolean } | null;
   days: { day: string; weekday: number; open: boolean; editable: boolean; subjects: string[] }[];
 };
 
@@ -73,6 +74,13 @@ export function NowRosterCard() {
               Tick the evenings you will be online ({clock(roster.openHours.from)}–{clock(roster.openHours.to)} IST). The team plans cover
               from this, so untick if your plans change. A day locks once its shift starts.
             </p>
+            {roster.eveningBonus && (
+              <p className="rounded-md border border-amber-400/60 bg-amber-500/10 px-3 py-2 text-amber-900 dark:text-amber-200">
+                Pilot evening bonus: {roster.eveningBonus.coins} coins for each evening you are online for at least{' '}
+                {roster.eveningBonus.minOnlinePercent}% of the shift{roster.eveningBonus.requireRoster ? ' (ticked evenings only)' : ''}. Paid
+                overnight.
+              </p>
+            )}
             {!roster.canEdit && <p className="text-amber-700">Your solver account is on hold, so you cannot change your evenings.</p>}
             {error && <p className="text-red-600" role="alert">{error}</p>}
             <div className="overflow-x-auto">

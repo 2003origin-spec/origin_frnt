@@ -73,3 +73,36 @@ export function coverLevel(solvers: number): CoverLevel {
   if (solvers <= 0) return "none";
   return solvers < MIN_COVER ? "thin" : "ok";
 }
+
+/** Length of the human shift in minutes (a window past midnight wraps; equal times = closed). */
+export function shiftMinutes(hours: OpenHours): number {
+  const toMinutes = (hhmm: string) => {
+    const [h, m] = hhmm.split(":").map(Number);
+    return h * 60 + m;
+  };
+  const from = toMinutes(hours.from);
+  const to = toMinutes(hours.to);
+  if (from === to) return 0;
+  return from < to ? to - from : 24 * 60 - from + to;
+}
+
+/** When the human shift that opened on that IST day ends. */
+export function shiftEnd(dayKey: string, hours: OpenHours): Date {
+  return new Date(shiftStart(dayKey, hours).getTime() + shiftMinutes(hours) * 60_000);
+}
+
+/**
+ * Pilot evening bonus (decision B84): online for at least the set share of
+ * the shift, and — unless switched off — on the roster for that evening.
+ */
+export function earnsEveningBonus(input: {
+  onlineMinutes: number;
+  shiftMinutes: number;
+  rostered: boolean;
+  minOnlinePercent: number;
+  requireRoster: boolean;
+}): boolean {
+  if (input.shiftMinutes <= 0) return false;
+  if (input.requireRoster && !input.rostered) return false;
+  return input.onlineMinutes * 100 >= input.minOnlinePercent * input.shiftMinutes;
+}

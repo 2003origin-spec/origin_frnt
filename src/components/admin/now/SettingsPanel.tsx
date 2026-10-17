@@ -18,6 +18,7 @@ type Settings = {
   quiz: { questions: number; minutes: number; passPercent: number };
   agreementVersion: string;
   recordingRetentionDays: number;
+  eveningBonus: { enabled: boolean; coins: number; minOnlinePercent: number; requireRoster: boolean };
 };
 type PriceRow = {
   difficulty: string;
@@ -171,6 +172,35 @@ function SettingsForm() {
         <NumberField label="Minutes" value={draft.quiz.minutes} onChange={(v) => set('quiz', { ...draft.quiz, minutes: v })} />
         <NumberField label="Pass mark (%)" value={draft.quiz.passPercent} onChange={(v) => set('quiz', { ...draft.quiz, passPercent: v })} />
       </div>
+      <h3 className="mb-2 mt-4 text-sm font-semibold">Pilot evening bonus</h3>
+      <div className="flex flex-wrap items-end gap-4 text-sm">
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={draft.eveningBonus.enabled}
+            onChange={(e) => set('eveningBonus', { ...draft.eveningBonus, enabled: e.target.checked })}
+          />{' '}
+          Bonus on
+        </label>
+        <NumberField label="Coins per evening" value={draft.eveningBonus.coins} onChange={(v) => set('eveningBonus', { ...draft.eveningBonus, coins: v })} />
+        <NumberField
+          label="Online for at least (% of the shift)"
+          value={draft.eveningBonus.minOnlinePercent}
+          onChange={(v) => set('eveningBonus', { ...draft.eveningBonus, minOnlinePercent: v })}
+        />
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={draft.eveningBonus.requireRoster}
+            onChange={(e) => set('eveningBonus', { ...draft.eveningBonus, requireRoster: e.target.checked })}
+          />{' '}
+          Only evenings on the solver&apos;s roster
+        </label>
+      </div>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Paid by the nightly job (2:00 am IST) for the evenings just ended, once per solver per evening, as spendable bonus coins.
+        Off until the founders set an amount.
+      </p>
       <p className="mt-4 text-xs text-muted-foreground">
         Coin transfers between users stay off in the pilot (legal team decision pending); they are not editable here.
       </p>
