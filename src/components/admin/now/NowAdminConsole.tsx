@@ -12,6 +12,7 @@ import { useSearchParams } from 'next/navigation';
 import { ApplicationsPanel } from './ApplicationsPanel';
 import { OverviewPanel } from './OverviewPanel';
 import { PeoplePanel } from './PeoplePanel';
+import { ReadinessPanel } from './ReadinessPanel';
 import { ReportsPanel } from './ReportsPanel';
 import { RosterPanel } from './RosterPanel';
 import { ScorecardPanel } from './ScorecardPanel';
@@ -22,6 +23,7 @@ import { StorePanel } from './StorePanel';
 
 const TABS = [
   { id: 'overview', label: 'Live monitor' },
+  { id: 'readiness', label: 'Launch check' },
   { id: 'reports', label: 'Reports' },
   { id: 'applications', label: 'Applications' },
   { id: 'sessions', label: 'Sessions' },
@@ -58,6 +60,7 @@ export function NowAdminConsole() {
         ))}
       </nav>
       {tab === 'overview' && <OverviewPanel />}
+      {tab === 'readiness' && <ReadinessPanel />}
       {tab === 'reports' && <ReportsPanel />}
       {tab === 'applications' && <ApplicationsPanel />}
       {tab === 'sessions' && <SessionsPanel sessionId={params.get('id')} />}

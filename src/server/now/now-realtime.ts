@@ -61,6 +61,11 @@ const redisUrl = process.env.UPSTASH_REDIS_REST_URL?.trim();
 const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN?.trim();
 const redis: Redis | null = redisUrl && redisToken ? new Redis({ url: redisUrl, token: redisToken }) : null;
 
+/** Upstash Redis is set (required in production for presence and live updates). */
+export function isPresenceStoreConfigured(): boolean {
+  return redis !== null;
+}
+
 const PRESENCE_KEY_TTL_SECONDS = 600;
 const SUBJECTS = ["physics", "chemistry", "mathematics", "biology"] as const;
 const presenceKey = (subject: string) => `now:online:${subject}`;

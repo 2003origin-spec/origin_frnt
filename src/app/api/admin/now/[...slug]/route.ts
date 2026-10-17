@@ -35,6 +35,7 @@ import {
   searchPeople,
 } from "@/server/now/admin-insights-service";
 import { parseScorecardPeriod } from "@/server/now/pilot-scorecard-rules";
+import { getLaunchReadiness } from "@/server/now/launch-check-service";
 import { getRosterForAdmin } from "@/server/now/roster-service";
 import { getSolverDashboard, getStudentDashboard } from "@/server/now/dashboard-service";
 import {
@@ -72,6 +73,7 @@ import { recordAuditEvent } from "@/server/workspaces/audit";
  *   POST /api/admin/now/store/items/:id/file     POST /api/admin/now/store/items/:id/file/confirm
  *   GET  /api/admin/now/store/orders
  *   GET  /api/admin/now/monitor                  GET  /api/admin/now/metrics
+ *   GET  /api/admin/now/readiness                (launch check: read-only, env vars only as set / not set)
  *   GET  /api/admin/now/roster                   (last 7 + next 14 evenings: cover per subject, minutes online)
  *   GET  /api/admin/now/scorecard?from=YYYY-MM-DD&to=YYYY-MM-DD (IST days, inclusive; default: pilot start → now)
  *   GET  /api/admin/now/sessions?status=&kind=   GET  /api/admin/now/sessions/:id
@@ -295,6 +297,7 @@ const ROUTES: { method: Method; pattern: string[]; handler: Handler }[] = [
   { method: "GET", pattern: ["monitor"], handler: async () => nowJson(await getLiveMonitor()) },
   { method: "GET", pattern: ["metrics"], handler: async () => nowJson(await getNowMetrics()) },
   { method: "GET", pattern: ["roster"], handler: async () => nowJson(await getRosterForAdmin()) },
+  { method: "GET", pattern: ["readiness"], handler: async () => nowJson(await getLaunchReadiness()) },
   {
     method: "GET",
     pattern: ["scorecard"],
