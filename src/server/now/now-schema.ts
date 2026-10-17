@@ -506,6 +506,21 @@ export const NOW_ADDON_MIGRATIONS: readonly { id: string; name: string; ddl: rea
 END $$;`,
     ],
   },
+  {
+    // Weekly roster (pilot readiness item 3): the evenings a solver will cover.
+    id: "20261018_origin_now_roster",
+    name: "origin now: weekly solver roster",
+    ddl: [
+      `CREATE TABLE IF NOT EXISTS now.roster (
+  helper_id TEXT NOT NULL REFERENCES now.helpers(id) ON DELETE CASCADE,
+  day DATE NOT NULL,
+  subject TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (helper_id, day, subject)
+);
+CREATE INDEX IF NOT EXISTS idx_roster_day ON now.roster(day, subject);`,
+    ],
+  },
 ];
 
 function pool() {

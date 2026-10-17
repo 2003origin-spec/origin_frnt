@@ -20,6 +20,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { apiCall } from '@/lib/api';
 import { dayKeyToDMY } from '@/lib/format-time';
 
+import { NowRosterCard } from './NowRosterCard';
+
 type Dashboard = {
   profile: { helperId: string; name: string; status: string; restrictedReason: string | null; online: boolean };
   summary: {
@@ -312,6 +314,8 @@ export default function NowSolverDashboard() {
       </header>
 
       <ShiftPanel dashboard={data} onChanged={load} />
+
+      <NowRosterCard />
 
       {data.standing.warnings.map((w) => (
         <p key={w.limit} className="flex items-center gap-2 rounded-md border border-amber-500 bg-amber-500/10 p-2 text-sm text-amber-800">

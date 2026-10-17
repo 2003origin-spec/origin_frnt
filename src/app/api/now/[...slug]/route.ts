@@ -54,6 +54,7 @@ import {
 import { issueRoomTicket } from "@/server/now/room-service";
 import { buyStoreItem, getPaperDownload, listMyOrders, listStoreItems } from "@/server/now/store-service";
 import { getSolverDashboard, getStudentDashboard, setFavourite } from "@/server/now/dashboard-service";
+import { getMyRoster, setRosterSlot } from "@/server/now/roster-service";
 import { DECLINE_REASONS, OUTCOMES, ROOT_CAUSES } from "@/server/now/types";
 
 /**
@@ -108,6 +109,10 @@ import { DECLINE_REASONS, OUTCOMES, ROOT_CAUSES } from "@/server/now/types";
  *   GET  /api/now/me/dashboard?page=       → the student's doubts dashboard
  *   POST|DELETE /api/now/favourites/:helperId
  *   GET  /api/now/solver/dashboard         → the solver dashboard
+ *
+ * Weekly roster (pilot readiness item 3):
+ *   GET  /api/now/solver/roster            → the next 14 evenings and the subjects marked
+ *   PUT  /api/now/solver/roster            { day: YYYY-MM-DD, subject, on }
  */
 
 // SSE connections hold the function open; each closes itself after ~50 s.
@@ -299,6 +304,11 @@ const ReportSchema = z.object({
   block: z.boolean().default(false),
 });
 const PracticeSchema = z.object({ questionId: z.string().trim().min(1).max(120) });
+const RosterSlotSchema = z.object({
+  day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  subject: z.string().trim().toLowerCase().max(40),
+  on: z.boolean(),
+});
 const OutcomeSchema = z.object({ outcome: z.enum(OUTCOMES), rootCause: z.enum(ROOT_CAUSES).nullable().optional() });
 
 async function limitMutation(key: string): Promise<Response | null> {
@@ -405,6 +415,11 @@ const liveHandlers = {
   favourite: async (_r: NextRequest, userId: string, [helperId]: string[]) => nowJson(await setFavourite(userId, helperId, true)),
   unfavourite: async (_r: NextRequest, userId: string, [helperId]: string[]) => nowJson(await setFavourite(userId, helperId, false)),
   solverDashboard: async (_r: NextRequest, userId: string) => nowJson({ dashboard: await getSolverDashboard(userId) }),
+  roster: async (_r: NextRequest, userId: string) => nowJson({ roster: await getMyRoster(userId) }),
+  setRoster: async (r: NextRequest, userId: string) => {
+    const body = RosterSlotSchema.parse(await parseJsonBody(r));
+    return nowJson({ roster: await setRosterSlot(userId, body) });
+  },
   storeItems: async (_r: NextRequest, userId: string) => nowJson(await listStoreItems(userId)),
   storeBuy: async (r: NextRequest, userId: string, [id]: string[]) => {
     // Play billing policy: digital goods paid with coins bought outside Play stay web-only, like coin packs.
@@ -469,6 +484,8 @@ const ROUTES: { method: Method; pattern: string[]; handler: Handler; public?: bo
   { method: "POST", pattern: ["favourites", ":id"], handler: liveHandlers.favourite },
   { method: "DELETE", pattern: ["favourites", ":id"], handler: liveHandlers.unfavourite },
   { method: "GET", pattern: ["solver", "dashboard"], handler: liveHandlers.solverDashboard },
+  { method: "GET", pattern: ["solver", "roster"], handler: liveHandlers.roster },
+  { method: "PUT", pattern: ["solver", "roster"], handler: liveHandlers.setRoster },
   { method: "GET", pattern: ["store", "items"], handler: liveHandlers.storeItems },
   { method: "POST", pattern: ["store", "items", ":id", "buy"], handler: liveHandlers.storeBuy },
   { method: "GET", pattern: ["store", "orders"], handler: liveHandlers.storeOrders },
