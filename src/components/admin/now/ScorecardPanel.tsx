@@ -9,7 +9,7 @@
 import { useState } from 'react';
 
 import { DateInputDMY } from '@/components/now/DateInputDMY';
-import { dayKeyToDMY } from '@/lib/format-time';
+import { formatISTDayDMY } from '@/lib/format-time';
 
 import { useAdminData } from './admin-now-api';
 import { ErrorLine, Section, Table, Td, buttonClass, ghostButtonClass, inputClass } from './ui';
@@ -30,10 +30,6 @@ const STATUS: Record<Row['status'], { label: string; className: string }> = {
   info: { label: 'Input', className: 'bg-sky-500/15 text-sky-800 dark:text-sky-300' },
 };
 
-/** IST calendar day of an instant, as YYYY-MM-DD. */
-function istDay(iso: string): string {
-  return new Date(new Date(iso).getTime() + 5.5 * 60 * 60_000).toISOString().slice(0, 10);
-}
 
 export function ScorecardPanel() {
   const [range, setRange] = useState<{ from: string; to: string } | null>(null);
@@ -43,8 +39,8 @@ export function ScorecardPanel() {
   const { data, error, loading, reload } = useAdminData<Scorecard>(path);
 
   // The period actually shown: the inclusive end is the day before `to`.
-  const shownFrom = data ? dayKeyToDMY(istDay(data.from)) : '';
-  const shownTo = data ? dayKeyToDMY(istDay(new Date(new Date(data.to).getTime() - 1).toISOString())) : '';
+  const shownFrom = data ? formatISTDayDMY(data.from) : '';
+  const shownTo = data ? formatISTDayDMY(new Date(data.to).getTime() - 1) : '';
 
   return (
     <div className="flex flex-col gap-4">

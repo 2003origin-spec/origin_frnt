@@ -100,3 +100,24 @@ test("a solver the student never worked with cannot be chosen", { skip: NOW_SKIP
   const open = await rawPool().query(`SELECT count(*)::int AS n FROM now.requests WHERE student_id = $1`, [student]);
   assert.equal(open.rows[0].n, 0, "nothing was created and no coins were held");
 });
+
+test("any of the student's solvers can be asked first, not only the five on the card (review fix)", { skip: NOW_SKIP }, async () => {
+  await setup();
+  for (const id of helpersMade) await clearPresence(id);
+  const student = await seedStudent();
+  const solvers = [];
+  for (let i = 0; i < 6; i += 1) {
+    const s = await seedHelper("physics");
+    await rawPool().query(`UPDATE now.helpers SET display_name = $2 WHERE id = $1`, [s.helperId, `Solver ${i}`]);
+    await pastSession(student, s.helperId);
+    solvers.push(s);
+  }
+  const questionId = await seedAttemptedQuestion(student, "physics");
+  const card = (await quoteLiveHelp(student, questionId)).mySolvers.map((m) => m.helperId);
+  assert.equal(card.length, 5, "the card shows five");
+  const sixth = solvers.find((s) => !card.includes(s.helperId))!;
+  await heartbeatHelper(sixth.userId, null);
+  const request = await createRequest(student, { questionId, preferredHelperId: sixth.helperId });
+  assert.ok(await getCurrentOffer(sixth.userId), "the sixth solver is still asked first");
+  await cancelRequest(student, request.id);
+});

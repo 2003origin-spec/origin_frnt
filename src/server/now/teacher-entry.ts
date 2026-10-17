@@ -7,11 +7,14 @@
  * production yet). Any error hides the item instead of breaking the page.
  */
 
+import { cache } from "react";
+
 import { isFeatureEnabled } from "@/lib/feature-flags";
 
 import { getHelperByUserId } from "./dispatch-service";
 
-export async function isNowSolver(userId: string | null | undefined): Promise<boolean> {
+/** Cached per request: the workspace layout and the Origin NOW page share one lookup. */
+export const isNowSolver = cache(async function isNowSolver(userId: string | null | undefined): Promise<boolean> {
   if (!userId || !isFeatureEnabled("originNow")) return false;
   try {
     const helper = await getHelperByUserId(userId);
@@ -20,4 +23,4 @@ export async function isNowSolver(userId: string | null | undefined): Promise<bo
     console.warn("[origin-now] teacher menu check failed", error instanceof Error ? error.message : error);
     return false;
   }
-}
+});

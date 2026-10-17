@@ -72,3 +72,10 @@ test("evening bonus: enough of the shift online, and rostered unless that rule i
   assert.equal(earnsEveningBonus({ ...base, onlineMinutes: 240, rostered: false, requireRoster: false }), true);
   assert.equal(earnsEveningBonus({ ...base, onlineMinutes: 0, shiftMinutes: 0 }), false, "no shift, no bonus");
 });
+
+test("impossible days are refused, not rolled into the next month (review fix)", () => {
+  const feb = at("2027-02-20T10:00:00+05:30");
+  assert.match(rosterEditBlock("2027-02-30", feb, hours)!, /valid/);
+  assert.match(rosterEditBlock("2027-02-31", feb, hours)!, /valid/);
+  assert.equal(rosterEditBlock("2027-02-22", feb, hours), null);
+});

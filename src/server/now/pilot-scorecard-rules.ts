@@ -7,6 +7,8 @@
  * sessions over at least 10 evenings (plan doc "Pilot", decision B79).
  */
 
+import { isDayKey } from "@/lib/format-time";
+
 export const SAMPLE_MIN_SESSIONS = 300;
 export const SAMPLE_MIN_EVENINGS = 10;
 
@@ -252,6 +254,7 @@ export function parseScorecardPeriod(
   if (!fromKey || !toKey || !DAY_KEY.test(fromKey) || !DAY_KEY.test(toKey)) {
     return { error: "Give both dates as YYYY-MM-DD." };
   }
+  if (!isDayKey(fromKey) || !isDayKey(toKey)) return { error: "Those dates are not valid." };
   const from = new Date(`${fromKey}T00:00:00+05:30`);
   const to = new Date(new Date(`${toKey}T00:00:00+05:30`).getTime() + 24 * 60 * 60_000);
   if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return { error: "Those dates are not valid." };

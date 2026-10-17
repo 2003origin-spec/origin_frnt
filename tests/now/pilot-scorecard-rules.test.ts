@@ -129,3 +129,8 @@ test("the period is IST calendar days with an inclusive end", () => {
     assert.ok(result && "error" in result, `${a} → ${b} is refused`);
   }
 });
+
+test("an impossible scorecard date is refused (review fix)", () => {
+  const result = parseScorecardPeriod("2026-11-31", "2026-12-31");
+  assert.ok(result && "error" in result);
+});

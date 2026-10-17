@@ -7,7 +7,7 @@
  * evenings, how long each rostered solver was actually online in human hours.
  */
 
-import { dayKeyToDMY } from '@/lib/format-time';
+import { WEEKDAY_SHORT, dayKeyToDMY, formatClock12 } from '@/lib/format-time';
 
 import { useAdminData } from './admin-now-api';
 import { ErrorLine, Section, Table, Td, ghostButtonClass } from './ui';
@@ -22,7 +22,6 @@ type Day = {
 };
 type Roster = { openHours: { from: string; to: string }; days: Day[] };
 
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const SUBJECTS = ['physics', 'chemistry', 'mathematics', 'biology'];
 
 const COVER: Record<Day['subjects'][string]['cover'], string> = {
@@ -31,15 +30,8 @@ const COVER: Record<Day['subjects'][string]['cover'], string> = {
   none: 'bg-red-500/15 text-red-800 dark:text-red-300',
 };
 
-/** "18:00" → "6:00 pm". */
-function clock(hhmm: string | undefined): string {
-  if (!hhmm) return '';
-  const [h, m] = hhmm.split(':').map(Number);
-  return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'am' : 'pm'}`;
-}
-
 function dayLabel(d: Day) {
-  return `${WEEKDAYS[d.weekday]} ${dayKeyToDMY(d.day)}`;
+  return `${WEEKDAY_SHORT[d.weekday]} ${dayKeyToDMY(d.day)}`;
 }
 
 export function RosterPanel() {
@@ -97,7 +89,7 @@ export function RosterPanel() {
       <Section title="Did they come online? Today and the last 7 evenings">
         {data && (
           <p className="mb-2 text-sm text-muted-foreground">
-            Minutes each rostered solver was online during human hours ({clock(data?.openHours.from)}–{clock(data?.openHours.to)} IST). Today counts so far.
+            Minutes each rostered solver was online during human hours ({formatClock12(data?.openHours.from)}–{formatClock12(data?.openHours.to)} IST). Today counts so far.
           </p>
         )}
         <Table head={['Evening', ...SUBJECTS]} empty={data !== null && behind.length === 0}>

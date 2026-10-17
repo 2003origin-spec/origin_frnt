@@ -4,7 +4,10 @@
  * database work. All days are IST calendar days ("YYYY-MM-DD" keys).
  */
 
-import type { OpenHours } from "./now-settings";
+import { isDayKey } from "@/lib/format-time";
+
+import { istDayKey } from "./matching";
+import { minutesOf, type OpenHours } from "./now-settings";
 
 /** Solvers plan this many evenings ahead, today included. */
 export const ROSTER_DAYS_AHEAD = 14;
@@ -16,10 +19,8 @@ export const MIN_COVER = 2;
 const DAY_MS = 24 * 60 * 60_000;
 const IST_OFFSET_MS = 5.5 * 60 * 60_000;
 
-/** IST calendar day of an instant. */
-export function istDay(ms: number): string {
-  return new Date(ms + IST_OFFSET_MS).toISOString().slice(0, 10);
-}
+/** IST calendar day of an instant (the same day key the matching rules use). */
+export const istDay = istDayKey;
 
 export function addDays(dayKey: string, days: number): string {
   return new Date(Date.parse(`${dayKey}T00:00:00Z`) + days * DAY_MS).toISOString().slice(0, 10);
@@ -57,7 +58,7 @@ export function rosterDays(now: Date, hours: OpenHours, count: number = ROSTER_D
 
 /** Why a slot cannot be changed, or null when it can. */
 export function rosterEditBlock(dayKey: string, now: Date, hours: OpenHours): string | null {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dayKey) || Number.isNaN(Date.parse(`${dayKey}T00:00:00Z`))) return "That is not a valid day.";
+  if (!isDayKey(dayKey)) return "That is not a valid day.";
   const today = istDay(now.getTime());
   if (dayKey < today) return "That evening has passed.";
   if (dayKey > addDays(today, ROSTER_DAYS_AHEAD - 1)) return `You can plan up to ${ROSTER_DAYS_AHEAD} days ahead.`;
@@ -76,12 +77,8 @@ export function coverLevel(solvers: number): CoverLevel {
 
 /** Length of the human shift in minutes (a window past midnight wraps; equal times = closed). */
 export function shiftMinutes(hours: OpenHours): number {
-  const toMinutes = (hhmm: string) => {
-    const [h, m] = hhmm.split(":").map(Number);
-    return h * 60 + m;
-  };
-  const from = toMinutes(hours.from);
-  const to = toMinutes(hours.to);
+  const from = minutesOf(hours.from);
+  const to = minutesOf(hours.to);
   if (from === to) return 0;
   return from < to ? to - from : 24 * 60 - from + to;
 }

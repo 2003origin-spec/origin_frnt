@@ -91,3 +91,21 @@ test("solvers tick evenings; the admin sees cover and who came online", { skip: 
     await setup();
   }
 });
+
+test("a shift past midnight counts its minutes on the evening it opened, like the bonus (review fix)", { skip: NOW_SKIP }, async () => {
+  await setup();
+  await setSetting("now_open_hours", JSON.stringify({ from: "22:00", to: "02:00", days: [0, 1, 2, 3, 4, 5, 6] }), null);
+  try {
+    const owl = await seedHelper("physics");
+    await rawPool().query(`INSERT INTO now.roster (helper_id, day, subject) VALUES ($1, '2030-02-04', 'physics')`, [owl.helperId]);
+    // 22:00 on the 4th to 01:59 on the 5th: the whole 4-hour shift.
+    for (let m = 0; m < 240; m += 1) {
+      await rawPool().query(`INSERT INTO now.presence_minutes (helper_id, minute) VALUES ($1, $2)`, [owl.helperId, new Date(ist("2030-02-04", "22:00").getTime() + m * 60_000)]);
+    }
+    const admin = await getRosterForAdmin(ist("2030-02-05", "09:00"));
+    const fourth = admin.days.find((d) => d.day === "2030-02-04")!.subjects.physics.solvers;
+    assert.deepEqual(fourth.map((s) => s.onlineMinutes), [240], "all 240 minutes belong to the evening of the 4th");
+  } finally {
+    await setup();
+  }
+});

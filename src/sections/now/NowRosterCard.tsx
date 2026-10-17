@@ -11,7 +11,7 @@ import { CalendarDays, Loader2 } from 'lucide-react';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { apiCall } from '@/lib/api';
-import { dayKeyToDMY } from '@/lib/format-time';
+import { WEEKDAY_SHORT, dayKeyToDMY, formatClock12 } from '@/lib/format-time';
 
 type Roster = {
   subjects: string[];
@@ -21,13 +21,6 @@ type Roster = {
   days: { day: string; weekday: number; open: boolean; editable: boolean; subjects: string[] }[];
 };
 
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-/** "18:00" → "6:00 pm". */
-function clock(hhmm: string): string {
-  const [h, m] = hhmm.split(':').map(Number);
-  return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'am' : 'pm'}`;
-}
 
 export function NowRosterCard() {
   const [roster, setRoster] = useState<Roster | null>(null);
@@ -71,7 +64,7 @@ export function NowRosterCard() {
         ) : (
           <>
             <p className="text-muted-foreground">
-              Tick the evenings you will be online ({clock(roster.openHours.from)}–{clock(roster.openHours.to)} IST). The team plans cover
+              Tick the evenings you will be online ({formatClock12(roster.openHours.from)}–{formatClock12(roster.openHours.to)} IST). The team plans cover
               from this, so untick if your plans change. A day locks once its shift starts.
             </p>
             {roster.eveningBonus && (
@@ -97,7 +90,7 @@ export function NowRosterCard() {
                   {roster.days.map((d) => (
                     <tr key={d.day} className={`border-b ${d.open ? '' : 'text-muted-foreground'}`}>
                       <td className="whitespace-nowrap py-1 pr-3">
-                        {WEEKDAYS[d.weekday]} {dayKeyToDMY(d.day)}
+                        {WEEKDAY_SHORT[d.weekday]} {dayKeyToDMY(d.day)}
                         {!d.open && <span className="ml-2 text-xs">closed</span>}
                       </td>
                       {roster.subjects.map((s) => {

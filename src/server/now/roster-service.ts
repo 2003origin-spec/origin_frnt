@@ -9,7 +9,18 @@ import { getUserPostgresPool } from "@/server/user-postgres";
 import { NowError } from "./now-http";
 import { ensureNowSchema } from "./now-schema";
 import { getNowSettings } from "./now-settings";
-import { ROSTER_DAYS_AHEAD, ROSTER_DAYS_BACK, addDays, coverLevel, istDay, rosterDays, rosterEditBlock, type CoverLevel } from "./roster-rules";
+import {
+  ROSTER_DAYS_AHEAD,
+  ROSTER_DAYS_BACK,
+  addDays,
+  coverLevel,
+  istDay,
+  rosterDays,
+  rosterEditBlock,
+  shiftEnd,
+  shiftStart,
+  type CoverLevel,
+} from "./roster-rules";
 import { NOW_SUBJECTS } from "./solver-rules";
 
 async function db() {
@@ -115,6 +126,7 @@ export async function getRosterForAdmin(now: Date = new Date()): Promise<{ openH
   const first = addDays(today, -ROSTER_DAYS_BACK);
   const last = addDays(today, ROSTER_DAYS_AHEAD - 1);
   const pool = await db();
+  const pastDays = Array.from({ length: ROSTER_DAYS_BACK + 1 }, (_, i) => addDays(first, i));
   const [slots, online] = await Promise.all([
     pool.query<{ day: string; subject: string; helper_id: string; display_name: string; verification_status: string }>(
       `SELECT to_char(r.day, 'YYYY-MM-DD') AS day, r.subject, r.helper_id, h.display_name, h.verification_status
@@ -122,18 +134,19 @@ export async function getRosterForAdmin(now: Date = new Date()): Promise<{ openH
         WHERE r.day BETWEEN $1 AND $2 ORDER BY h.display_name`,
       [first, last],
     ),
-    // Minutes online inside the shift window, per helper per IST day. A window
-    // crossing midnight counts its after-midnight minutes on the next day.
+    // Minutes online inside each evening's exact shift window (shiftStart →
+    // shiftEnd of the day it opened, past midnight included), the same window
+    // the evening bonus pays on.
     pool.query<{ day: string; helper_id: string; minutes: number }>(
-      `SELECT to_char((p.minute AT TIME ZONE 'Asia/Kolkata')::date, 'YYYY-MM-DD') AS day, p.helper_id, count(*)::int AS minutes
-         FROM now.presence_minutes p
-        WHERE p.minute >= $1::date::timestamp AT TIME ZONE 'Asia/Kolkata'
-          AND p.minute < ($2::date + 1)::timestamp AT TIME ZONE 'Asia/Kolkata'
-          AND CASE WHEN $3::time < $4::time
-                   THEN (p.minute AT TIME ZONE 'Asia/Kolkata')::time >= $3::time AND (p.minute AT TIME ZONE 'Asia/Kolkata')::time < $4::time
-                   ELSE (p.minute AT TIME ZONE 'Asia/Kolkata')::time >= $3::time OR (p.minute AT TIME ZONE 'Asia/Kolkata')::time < $4::time END
+      `SELECT to_char(w.day, 'YYYY-MM-DD') AS day, p.helper_id, count(*)::int AS minutes
+         FROM unnest($1::date[], $2::timestamptz[], $3::timestamptz[]) AS w(day, starts, ends)
+         JOIN now.presence_minutes p ON p.minute >= w.starts AND p.minute < w.ends
         GROUP BY 1, 2`,
-      [first, today, openHours.from, openHours.to],
+      [
+        pastDays,
+        pastDays.map((d) => shiftStart(d, openHours)),
+        pastDays.map((d) => shiftEnd(d, openHours)),
+      ],
     ),
   ]);
   const minutesOf = new Map(online.rows.map((r) => [`${r.day}|${r.helper_id}`, r.minutes]));

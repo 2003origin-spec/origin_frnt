@@ -125,7 +125,8 @@ export function parseOpenHours(raw: string | null): OpenHours {
   return validateOpenHours(candidate).length === 0 ? candidate : DEFAULT_NOW_SETTINGS.openHours;
 }
 
-function minutesOf(hhmm: string): number {
+/** "18:30" → 1110 minutes after midnight. */
+export function minutesOf(hhmm: string): number {
   const [h, m] = hhmm.split(":").map(Number);
   return h * 60 + m;
 }
@@ -265,7 +266,13 @@ export function prepareSettingsUpdate(
   if (patch.quiz) pairs.push([KEYS.quiz, JSON.stringify(parseQuiz(JSON.stringify(patch.quiz)))]);
   if (patch.eveningBonus) {
     const b = patch.eveningBonus;
-    if (b.enabled && !(Number.isInteger(b.coins) && b.coins > 0)) errors.push("Set the evening bonus coins above 0 before switching it on.");
+    const bad: string[] = [];
+    if (!Number.isInteger(b.coins) || b.coins < 0 || b.coins > 100_000) bad.push("Evening bonus coins must be a whole number from 0 to 100000.");
+    else if (b.enabled && b.coins === 0) bad.push("Set the evening bonus coins above 0 before switching it on.");
+    if (!Number.isInteger(b.minOnlinePercent) || b.minOnlinePercent < 1 || b.minOnlinePercent > 100) {
+      bad.push("The evening bonus online share must be a whole number from 1 to 100.");
+    }
+    if (bad.length) errors.push(...bad);
     else pairs.push([KEYS.eveningBonus, JSON.stringify(parseEveningBonus(JSON.stringify(b)))]);
   }
   if (patch.agreementVersion !== undefined) {

@@ -126,7 +126,7 @@ function SessionReview({ id }: { id: string }) {
         <ul className="text-xs">
           {s.events.map((e, i) => (
             <li key={i} className="flex gap-3 border-b py-1">
-              <span className="w-32 shrink-0 text-muted-foreground">{fmtDate(e.at)}</span>
+              <span className="w-48 shrink-0 whitespace-nowrap text-muted-foreground">{fmtDate(e.at)}</span>
               <span className="font-mono">{e.type}</span>
               <span className="truncate text-muted-foreground">{JSON.stringify(e.payload)}</span>
             </li>

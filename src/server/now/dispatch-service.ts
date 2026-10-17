@@ -176,9 +176,18 @@ export type MySolver = { helperId: string; name: string; favourite: boolean; onl
  * "Ask again" (pilot readiness item 2): the solvers a student may ask for
  * first in a subject — verified humans covering the subject whom the student
  * favourited or had a call with, never blocked either way, never their own or
- * a linked account. Favourites first, then most recent; at most 5.
+ * a linked account. Favourites first, then most recent; at most `limit`
+ * (5 for the Solve live card; null when checking a choice, so every one of
+ * the student's solvers can be asked). `online` reuses a presence map the
+ * caller already loaded.
  */
-export async function listMySolvers(studentId: string, subject: string, now: Date = new Date()): Promise<MySolver[]> {
+export async function listMySolvers(
+  studentId: string,
+  subject: string,
+  now: Date = new Date(),
+  options: { limit?: number | null; online?: Map<string, number> } = {},
+): Promise<MySolver[]> {
+  const limit = options.limit === undefined ? 5 : options.limit;
   const res = await (await db()).query<{ id: string; display_name: string; favourite: boolean; last_session_at: Date | null }>(
     `SELECT h.id, h.display_name,
             EXISTS (SELECT 1 FROM now.favourites f WHERE f.student_id = $1 AND f.helper_id = h.id) AS favourite,
@@ -195,10 +204,10 @@ export async function listMySolvers(studentId: string, subject: string, now: Dat
         AND (EXISTS (SELECT 1 FROM now.favourites f WHERE f.student_id = $1 AND f.helper_id = h.id)
              OR EXISTS (SELECT 1 FROM now.sessions s WHERE s.helper_id = h.id AND s.student_id = $1 AND s.started_at IS NOT NULL))
       ORDER BY favourite DESC, last_session_at DESC NULLS LAST, h.display_name
-      LIMIT 5`,
-    [studentId, subject],
+      LIMIT $3`,
+    [studentId, subject, limit],
   );
-  const online = await listOnlineHelpers(subject, now.getTime()).catch(() => new Map<string, number>());
+  const online = options.online ?? (await listOnlineHelpers(subject, now.getTime()).catch(() => new Map<string, number>()));
   return res.rows.map((r) => ({
     helperId: r.id,
     name: r.display_name,
@@ -252,7 +261,7 @@ export async function createRequest(studentId: string, input: CreateRequestInput
   if (!price) throw new NowError(503, "no_price", "Live help is not priced yet.");
 
   const preferredHelperId = input.preferredHelperId?.trim() || null;
-  if (preferredHelperId && !(await listMySolvers(studentId, subject, now)).some((m) => m.helperId === preferredHelperId)) {
+  if (preferredHelperId && !(await listMySolvers(studentId, subject, now, { limit: null })).some((m) => m.helperId === preferredHelperId)) {
     throw new NowError(400, "preferred_not_available", "That solver cannot be asked for this subject. Choose another or ask anyone.");
   }
 
@@ -1075,15 +1084,15 @@ export async function quoteLiveHelp(studentId: string, questionId: string, now: 
   const difficulty = normalizeDifficulty(question?.difficulty);
   if (!question || !isNowSubject(subject) || !difficulty) return { ...empty, blockedReason: "question_not_supported" };
   if (access.canRequest) await ensureWelcomeGrant(studentId);
-  const [settings, { rows: prices }, balance, progress, openRequestId, online, mySolvers] = await Promise.all([
+  const [settings, { rows: prices }, balance, progress, openRequestId, online] = await Promise.all([
     getNowSettings(),
     loadPriceTable(),
     getWalletBalance(studentId, now),
     isOgcodeProgressAvailable() ? getOgcodeQuestionProgress(studentId, questionId) : Promise.resolve(null),
     getOpenRequestId(studentId),
     listOnlineHelpers(subject, now.getTime()).catch(() => new Map<string, number>()),
-    listMySolvers(studentId, subject, now),
   ]);
+  const mySolvers = await listMySolvers(studentId, subject, now, { online });
   const human = lookupPrice(prices, difficulty, "human");
   const bot = lookupPrice(prices, difficulty, "bot");
   const botOn = botRuleForSubject(settings.bot, subject).enabled;
