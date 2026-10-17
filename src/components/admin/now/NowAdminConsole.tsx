@@ -13,6 +13,7 @@ import { ApplicationsPanel } from './ApplicationsPanel';
 import { OverviewPanel } from './OverviewPanel';
 import { PeoplePanel } from './PeoplePanel';
 import { ReportsPanel } from './ReportsPanel';
+import { ScorecardPanel } from './ScorecardPanel';
 import { SessionsPanel } from './SessionsPanel';
 import { SettingsPanel } from './SettingsPanel';
 import { SolversPanel } from './SolversPanel';
@@ -24,6 +25,7 @@ const TABS = [
   { id: 'applications', label: 'Applications' },
   { id: 'sessions', label: 'Sessions' },
   { id: 'solvers', label: 'Solvers & metrics' },
+  { id: 'scorecard', label: 'Pilot scorecard' },
   { id: 'people', label: 'People, cohort & wallets' },
   { id: 'store', label: 'Store' },
   { id: 'settings', label: 'Settings & prices' },
@@ -58,6 +60,7 @@ export function NowAdminConsole() {
       {tab === 'applications' && <ApplicationsPanel />}
       {tab === 'sessions' && <SessionsPanel sessionId={params.get('id')} />}
       {tab === 'solvers' && <SolversPanel />}
+      {tab === 'scorecard' && <ScorecardPanel />}
       {tab === 'people' && <PeoplePanel />}
       {tab === 'store' && <StorePanel />}
       {tab === 'settings' && <SettingsPanel />}

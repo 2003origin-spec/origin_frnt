@@ -25,7 +25,16 @@ import {
   resolveReport,
 } from "@/server/now/after-call-service";
 import { getRecordingLinkForAdmin } from "@/server/now/room-service";
-import { getLiveMonitor, getNowMetrics, getSessionReview, listSessionsForAdmin, searchPeople } from "@/server/now/admin-insights-service";
+import {
+  defaultScorecardPeriod,
+  getLiveMonitor,
+  getNowMetrics,
+  getPilotScorecard,
+  getSessionReview,
+  listSessionsForAdmin,
+  searchPeople,
+} from "@/server/now/admin-insights-service";
+import { parseScorecardPeriod } from "@/server/now/pilot-scorecard-rules";
 import { getSolverDashboard, getStudentDashboard } from "@/server/now/dashboard-service";
 import {
   confirmPaperUpload,
@@ -62,6 +71,7 @@ import { recordAuditEvent } from "@/server/workspaces/audit";
  *   POST /api/admin/now/store/items/:id/file     POST /api/admin/now/store/items/:id/file/confirm
  *   GET  /api/admin/now/store/orders
  *   GET  /api/admin/now/monitor                  GET  /api/admin/now/metrics
+ *   GET  /api/admin/now/scorecard?from=YYYY-MM-DD&to=YYYY-MM-DD (IST days, inclusive; default: pilot start → now)
  *   GET  /api/admin/now/sessions?status=&kind=   GET  /api/admin/now/sessions/:id
  *   GET  /api/admin/now/people?q=                GET  /api/admin/now/dashboards/:userId (read-only)
  */
@@ -282,6 +292,16 @@ const ROUTES: { method: Method; pattern: string[]; handler: Handler }[] = [
   },
   { method: "GET", pattern: ["monitor"], handler: async () => nowJson(await getLiveMonitor()) },
   { method: "GET", pattern: ["metrics"], handler: async () => nowJson(await getNowMetrics()) },
+  {
+    method: "GET",
+    pattern: ["scorecard"],
+    handler: async (request) => {
+      const params = request.nextUrl.searchParams;
+      const period = parseScorecardPeriod(params.get("from"), params.get("to"));
+      if (period && "error" in period) throw new NowError(400, "invalid_period", period.error);
+      return nowJson(await getPilotScorecard(period ?? (await defaultScorecardPeriod())));
+    },
+  },
   {
     method: "GET",
     pattern: ["sessions"],

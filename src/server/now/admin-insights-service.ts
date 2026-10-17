@@ -12,6 +12,8 @@ import { getUserPostgresPool } from "@/server/user-postgres";
 import { isLowAcceptRate, istDayKey } from "./matching";
 import { listOnlineHelpers } from "./now-realtime";
 import { ensureNowSchema } from "./now-schema";
+import { getNowSettings, isWithinOpenHours } from "./now-settings";
+import { evaluateScorecard, repeatUse, type Scorecard } from "./pilot-scorecard-rules";
 import { NOW_SUBJECTS } from "./solver-rules";
 import { DIFFICULTIES } from "./types";
 
@@ -387,4 +389,118 @@ export async function searchPeople(query: string) {
     helperId: r.helper_id,
     helperStatus: r.verification_status,
   }));
+}
+
+// ---------------------------------------------------------------------------
+// Pilot scorecard (pilot readiness item 1): the pass-or-fail table for a period.
+
+export type ScorecardPeriod = { from: Date; to: Date };
+
+/** Default period: from the first request ever (the pilot start) to now. */
+export async function defaultScorecardPeriod(now: Date = new Date()): Promise<ScorecardPeriod> {
+  const res = await (await db()).query<{ first: Date | null }>(`SELECT min(created_at) AS first FROM now.requests`);
+  return { from: res.rows[0]?.first ?? istDayStart(now), to: now };
+}
+
+export async function getPilotScorecard(period: ScorecardPeriod): Promise<Scorecard & { from: string; to: string }> {
+  const pool = await db();
+  const { from, to } = period;
+  const { openHours } = await getNowSettings();
+  const [requests, offers, human, bot, online, ratings, reports] = await Promise.all([
+    pool.query<{ student_id: string; created_at: Date; human_started: Date | null }>(
+      `SELECT r.student_id, r.created_at,
+              (SELECT min(s.started_at) FROM now.sessions s
+                WHERE s.request_id = r.id AND s.solver_kind = 'human' AND s.started_at IS NOT NULL) AS human_started
+         FROM now.requests r WHERE r.created_at >= $1 AND r.created_at < $2`,
+      [from, to],
+    ),
+    pool.query<{ closed: number; accepted: number }>(
+      `SELECT count(*)::int AS closed, count(*) FILTER (WHERE response = 'accepted')::int AS accepted
+         FROM now.offers WHERE response IS NOT NULL AND offered_at >= $1 AND offered_at < $2`,
+      [from, to],
+    ),
+    pool.query<{
+      accepted: number;
+      no_shows: number;
+      call_minutes: number;
+      resolved: number;
+      partial: number;
+      unresolved: number;
+      live: number;
+      evenings: number;
+    }>(
+      `SELECT count(*)::int AS accepted,
+              count(*) FILTER (WHERE ended_by = 'no_show' AND helper_joined_at IS NULL)::int AS no_shows,
+              COALESCE(sum(extract(epoch FROM (ended_at - started_at))) FILTER (WHERE started_at IS NOT NULL AND ended_at IS NOT NULL), 0)::float / 60 AS call_minutes,
+              count(*) FILTER (WHERE outcome = 'resolved')::int AS resolved,
+              count(*) FILTER (WHERE outcome = 'partial')::int AS partial,
+              count(*) FILTER (WHERE outcome = 'unresolved')::int AS unresolved,
+              count(*) FILTER (WHERE started_at IS NOT NULL)::int AS live,
+              count(DISTINCT (started_at AT TIME ZONE 'Asia/Kolkata')::date) FILTER (WHERE started_at IS NOT NULL)::int AS evenings
+         FROM now.sessions WHERE solver_kind = 'human' AND accepted_at >= $1 AND accepted_at < $2`,
+      [from, to],
+    ),
+    pool.query<{ live: number; call_minutes: number; resolved: number }>(
+      `SELECT count(*) FILTER (WHERE started_at IS NOT NULL)::int AS live,
+              COALESCE(sum(extract(epoch FROM (ended_at - started_at))) FILTER (WHERE started_at IS NOT NULL AND ended_at IS NOT NULL), 0)::float / 60 AS call_minutes,
+              count(*) FILTER (WHERE outcome = 'resolved')::int AS resolved
+         FROM now.sessions WHERE solver_kind = 'bot' AND accepted_at >= $1 AND accepted_at < $2`,
+      [from, to],
+    ),
+    pool.query<{ minutes: number }>(
+      `SELECT count(*)::int AS minutes FROM now.presence_minutes p JOIN now.helpers h ON h.id = p.helper_id
+        WHERE h.kind = 'human' AND p.minute >= $1 AND p.minute < $2`,
+      [from, to],
+    ),
+    pool.query<{ ratings: number; stars: number; not_solved: number }>(
+      `SELECT count(*)::int AS ratings, COALESCE(sum(rt.stars), 0)::int AS stars,
+              count(*) FILTER (WHERE 'not_resolved' = ANY(rt.tags))::int AS not_solved
+         FROM now.ratings rt JOIN now.helpers h ON h.id = rt.helper_id
+        WHERE h.kind = 'human' AND rt.counted AND NOT rt.held_until_case_closes
+          AND rt.created_at >= $1 AND rt.created_at < $2`,
+      [from, to],
+    ),
+    pool.query<{ child_safety: number; abuse: number }>(
+      `SELECT count(*) FILTER (WHERE reason = 'child_safety')::int AS child_safety,
+              count(*) FILTER (WHERE reason = 'abuse')::int AS abuse
+         FROM now.reports WHERE status = 'upheld' AND created_at >= $1 AND created_at < $2`,
+      [from, to],
+    ),
+  ]);
+
+  const inHours = requests.rows.filter((r) => isWithinOpenHours(openHours, r.created_at));
+  const connectTimesMs = inHours
+    .filter((r) => r.human_started)
+    .map((r) => r.human_started!.getTime() - r.created_at.getTime());
+  const repeat = repeatUse(
+    requests.rows.map((r) => ({ studentId: r.student_id, createdAtMs: r.created_at.getTime() })),
+    from.getTime(),
+    to.getTime(),
+  );
+  const h = human.rows[0];
+  const b = bot.rows[0];
+  const card = evaluateScorecard({
+    inHoursRequests: inHours.length,
+    inHoursHumanWithin10: connectTimesMs.filter((ms) => ms <= 10 * 60_000).length,
+    connectTimesMs,
+    offersClosed: offers.rows[0].closed,
+    offersAccepted: offers.rows[0].accepted,
+    humanCallMinutes: Number(h.call_minutes),
+    onlineMinutes: online.rows[0].minutes,
+    humanAccepted: h.accepted,
+    helperNoShows: h.no_shows,
+    outcomes: { resolved: h.resolved, partial: h.partial, unresolved: h.unresolved },
+    ratings: ratings.rows[0].ratings,
+    starsTotal: ratings.rows[0].stars,
+    notSolvedTags: ratings.rows[0].not_solved,
+    firstHalfStudents: repeat.students,
+    firstHalfReturned: repeat.returned,
+    resolvedDoubts: h.resolved + b.resolved,
+    botCallMinutes: Number(b.call_minutes),
+    upheldChildSafety: reports.rows[0].child_safety,
+    upheldAbuse: reports.rows[0].abuse,
+    liveSessions: h.live + b.live,
+    evenings: h.evenings,
+  });
+  return { ...card, from: from.toISOString(), to: to.toISOString() };
 }
