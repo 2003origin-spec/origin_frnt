@@ -9,7 +9,18 @@ function ready(overrides: Partial<LaunchFacts> = {}): LaunchFacts {
     coinPackOrderKind: true,
     coinRedemptionGrantSource: true,
     addonMigrations: [{ id: "20261018_origin_now_roster", applied: true }],
-    env: { redis: true, livekit: true, recording: true, email: true, cronSecret: true, qstash: true, razorpay: true, kycKey: true, webPush: true },
+    env: {
+      redis: true,
+      livekit: true,
+      recording: true,
+      recordingBucket: "ok",
+      email: true,
+      cronSecret: true,
+      qstash: true,
+      razorpay: true,
+      kycKey: true,
+      webPush: true,
+    },
     pricesSaved: true,
     packsOnSale: 2,
     welcomeCoinsSet: true,
@@ -48,6 +59,26 @@ test("required services are missing when unset, optional ones only need checking
     const f = ready({ env: { ...ready().env, [key]: false } });
     const v = launchVerdict(launchChecklist(f));
     assert.deepEqual([v.ready, v.warnings], [true, 1], key);
+  }
+});
+
+test("a recording bucket that is missing or the public image bucket blocks launch (B87)", () => {
+  const withBucket = (recordingBucket: LaunchFacts["env"]["recordingBucket"]) => ready({ env: { ...ready().env, recordingBucket } });
+
+  assert.equal(item(withBucket("ok"), "env_recording_bucket").status, "ok");
+
+  const unset = item(withBucket("not_set"), "env_recording_bucket");
+  assert.equal(unset.status, "missing");
+  assert.match(unset.detail, /not recorded/);
+  assert.match(unset.fix!, /NOW_RECORDING_R2_BUCKET/);
+
+  const exposed = item(withBucket("public"), "env_recording_bucket");
+  assert.equal(exposed.status, "missing");
+  assert.match(exposed.detail, /public image bucket \(R2_BUCKET_NAME\)/);
+  assert.match(exposed.fix!, /never R2_BUCKET_NAME/);
+
+  for (const problem of ["not_set", "public"] as const) {
+    assert.deepEqual(launchVerdict(launchChecklist(withBucket(problem))), { ready: false, missing: 1, warnings: 0 }, problem);
   }
 });
 

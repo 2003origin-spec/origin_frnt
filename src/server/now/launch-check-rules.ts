@@ -25,7 +25,10 @@ export type LaunchFacts = {
   env: {
     redis: boolean;
     livekit: boolean;
+    /** The dedicated recording key and secret (and an R2 endpoint). */
     recording: boolean;
+    /** "public" = it names the public image bucket, which the app refuses (B87). */
+    recordingBucket: "ok" | "not_set" | "public";
     email: boolean;
     cronSecret: boolean;
     qstash: boolean;
@@ -103,6 +106,19 @@ export function launchChecklist(f: LaunchFacts): CheckItem[] {
   service("env_redis", "Solver presence (Upstash Redis)", f.env.redis, true, "Set.", "Not set: nobody can go online, so no human gets offers.", "Set UPSTASH_REDIS_REST_URL and _TOKEN (runbook 1.1).");
   service("env_livekit", "Live calls (LiveKit)", f.env.livekit, true, "Set.", "Not set: calls and the bot cannot start.", "Set LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET (runbook 1.1).");
   service("env_recording", "Call recording storage", f.env.recording, true, "Set.", "Not set: calls are not recorded. Do not run the pilot with minors like this.", "Set NOW_RECORDING_R2_ACCESS_KEY_ID and _SECRET_ACCESS_KEY (runbook 1.1).");
+  add({
+    key: "env_recording_bucket",
+    group: "Services",
+    label: "Recording bucket (private)",
+    status: f.env.recordingBucket === "ok" ? "ok" : "missing",
+    detail:
+      f.env.recordingBucket === "ok"
+        ? "Set, and not the public image bucket. Keep public access off for it in Cloudflare."
+        : f.env.recordingBucket === "public"
+          ? "It is the public image bucket (R2_BUCKET_NAME), where anyone with a file's address can open it, so calls are not recorded."
+          : "No private bucket set: calls are not recorded. Do not run the pilot with minors like this.",
+    fix: "Set NOW_RECORDING_R2_BUCKET (or R2_PRIVATE_BUCKET) to a bucket with public access off, never R2_BUCKET_NAME (runbook 1.1, 1.2).",
+  });
   service("env_email", "Email (guardian consent)", f.env.email, true, "Set.", "Not set: guardian consent emails cannot be sent.", "Configure SES or SMTP and EMAIL_FROM (runbook 1.1).");
   service("env_cron", "Background jobs (Vercel cron)", f.env.cronSecret, true, "CRON_SECRET set.", "CRON_SECRET not set: the sweep and the nightly job are refused, so stuck offers and settlements never clear.", "Set CRON_SECRET in Vercel (runbook 1.1).");
   service("env_qstash", "Exact-time timers (QStash)", f.env.qstash, false, "Set.", "Not set: the one-minute sweep does the same work, up to a minute late.", "Optional: set QSTASH_TOKEN and signing keys (runbook 1.1).");

@@ -49,6 +49,31 @@ test("the check reads the real database state and shows env vars only as set / n
   }
 });
 
+test("the recording bucket item reads the real settings: the public image bucket is red (B87)", { skip: NOW_SKIP }, async () => {
+  const keys = ["R2_BUCKET_NAME", "NOW_RECORDING_R2_BUCKET", "R2_PRIVATE_BUCKET"] as const;
+  const saved = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
+  const bucketItem = async () => (await getLaunchReadiness()).items.find((i) => i.key === "env_recording_bucket")!;
+  try {
+    process.env.R2_BUCKET_NAME = "origin-public-test";
+    delete process.env.R2_PRIVATE_BUCKET;
+    process.env.NOW_RECORDING_R2_BUCKET = "origin-public-test";
+    const exposed = await bucketItem();
+    assert.deepEqual([exposed.status, /public image bucket/.test(exposed.detail)], ["missing", true]);
+
+    delete process.env.NOW_RECORDING_R2_BUCKET;
+    const unset = await bucketItem();
+    assert.deepEqual([unset.status, /No private bucket/.test(unset.detail)], ["missing", true]);
+
+    process.env.NOW_RECORDING_R2_BUCKET = "origin-recordings-test";
+    assert.equal((await bucketItem()).status, "ok");
+  } finally {
+    for (const k of keys) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+  }
+});
+
 function launchReadyFromItems(items: { status: string }[]): boolean {
   return !items.some((i) => i.status === "missing");
 }

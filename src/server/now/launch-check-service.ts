@@ -15,7 +15,7 @@ import { getUserPostgresPool } from "@/server/user-postgres";
 
 import { isKycEncryptionConfigured } from "./kyc-crypto";
 import { launchChecklist, launchVerdict, type LaunchFacts } from "./launch-check-rules";
-import { getLiveKitConfig, getRecordingStorage } from "./livekit";
+import { getLiveKitConfig, getRecordingBucket, hasRecordingCredentials } from "./livekit";
 import { isPresenceStoreConfigured } from "./now-realtime";
 import { NOW_ADDON_MIGRATIONS } from "./now-schema";
 import { DEFAULT_NOW_SETTINGS, getNowSettings } from "./now-settings";
@@ -68,7 +68,8 @@ export async function getLaunchReadiness() {
     env: {
       redis: isPresenceStoreConfigured(),
       livekit: getLiveKitConfig() !== null,
-      recording: getRecordingStorage() !== null,
+      recording: hasRecordingCredentials(),
+      recordingBucket: getRecordingBucket().problem ?? "ok",
       email: isEmailConfigured(),
       cronSecret: Boolean(process.env.CRON_SECRET?.trim()),
       qstash: isQStashConfigured(),

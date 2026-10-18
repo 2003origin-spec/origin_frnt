@@ -181,12 +181,25 @@ export type RecordingStorage = {
   region: string;
 };
 
+export type RecordingBucket = { name: string | null; problem: "not_set" | "public" | null };
+
 /**
- * Where recordings go. A dedicated R2 token (write-only on the recordings
- * prefix is the intended scope) because these credentials are handed to
- * LiveKit's Egress service; the app's own R2 key never leaves the server.
+ * The bucket recordings live in: `NOW_RECORDING_R2_BUCKET`, else the shared
+ * private bucket `R2_PRIVATE_BUCKET`. Never the public image bucket
+ * (`R2_BUCKET_NAME`, "origin" when unset), whose r2.dev address serves any
+ * object to whoever has its key: naming it counts as not set, so calls go
+ * unrecorded and the launch check is red (decision B87). Admin playback and
+ * the retention purge read this same setting.
  */
-export function getRecordingStorage(): RecordingStorage | null {
+export function getRecordingBucket(): RecordingBucket {
+  const name = env("NOW_RECORDING_R2_BUCKET") ?? env("R2_PRIVATE_BUCKET");
+  if (!name) return { name: null, problem: "not_set" };
+  const publicBucket = env("R2_BUCKET_NAME") ?? "origin";
+  if (name.toLowerCase() === publicBucket.toLowerCase()) return { name: null, problem: "public" };
+  return { name, problem: null };
+}
+
+function recordingCredentials(): { accessKey: string; secret: string; endpoint: string } | null {
   const accessKey = env("NOW_RECORDING_R2_ACCESS_KEY_ID");
   const secret = env("NOW_RECORDING_R2_SECRET_ACCESS_KEY");
   const endpoint =
@@ -194,9 +207,26 @@ export function getRecordingStorage(): RecordingStorage | null {
     env("R2_ENDPOINT") ??
     env("R2_ENDPOINT_URL") ??
     (env("R2_ACCOUNT_ID") ? `https://${env("R2_ACCOUNT_ID")}.r2.cloudflarestorage.com` : null);
-  const bucket = env("NOW_RECORDING_R2_BUCKET") ?? env("R2_BUCKET_NAME") ?? "origin";
   if (!accessKey || !secret || !endpoint) return null;
-  return { accessKey, secret, endpoint: endpoint.replace(/\/+$/u, ""), bucket, region: "auto" };
+  return { accessKey, secret, endpoint: endpoint.replace(/\/+$/u, "") };
+}
+
+/** The dedicated recording key, its secret and an R2 endpoint are set (the bucket is checked separately). */
+export function hasRecordingCredentials(): boolean {
+  return recordingCredentials() !== null;
+}
+
+/**
+ * Where recordings go, or null (calls go unrecorded). A dedicated R2 token
+ * (write-only on the recordings prefix is the intended scope) because these
+ * credentials are handed to LiveKit's Egress service; the app's own R2 key
+ * never leaves the server.
+ */
+export function getRecordingStorage(): RecordingStorage | null {
+  const credentials = recordingCredentials();
+  const bucket = getRecordingBucket().name;
+  if (!credentials || !bucket) return null;
+  return { ...credentials, bucket, region: "auto" };
 }
 
 export function recordingObjectKey(sessionId: string): string {
