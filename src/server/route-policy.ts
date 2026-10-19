@@ -33,6 +33,10 @@ export const PUBLIC_API_PATHS = [
   // this snapshot contains no user-specific data and is rate-limited in the
   // handler.
   "/api/pricing",
+  // Origin NOW guardian consent — the guardian opening the emailed link has no
+  // Origin account; the single-use token is the credential (V1/ORIGIN_NOW_PLAN.md).
+  "/api/now/consent/preview",
+  "/api/now/consent/confirm",
   // Landing-page public data — no auth required; rate-limited by Upstash in handler.
   "/api/public/live-stats",
   "/api/public/activity-feed",
@@ -77,6 +81,12 @@ export const AUTHENTICATED_API_PREFIXES = [
   // registration/eligibility. /api/admin/contest/* is already covered by
   // "/api/admin". Plan: V1/CONTEST_ORBIT_IMPLEMENTATION_PLAN.md.
   "/api/contest",
+  // Origin NOW — live doubt solving + Ori Coins wallet + solver registration.
+  // Authenticated JWT users; the `originNow` flag, the pilot cohort and the
+  // helper row are all checked in-handler (being a helper is a row, not a
+  // login role). /api/admin/now/* is covered by "/api/admin" and QStash/cron
+  // callbacks live under /api/internal/now/*. Plan: V1/ORIGIN_NOW_PLAN.md.
+  "/api/now",
 ] as const;
 
 export const MEMBERSHIP_API_PREFIXES = ["/api/study-rooms/[id]"] as const;
@@ -96,6 +106,8 @@ export const ROLE_API_PREFIXES = [
 
 export const PUBLIC_APP_PATHS = [
   "/",
+  // Origin NOW guardian consent landing page (link from the consent email).
+  "/now/consent",
   "/auth",
   "/auth/refresh",
   "/role-selection",
@@ -166,6 +178,9 @@ export const AUTHENTICATED_APP_PREFIXES = [
   // student to /auth. See V1/HOME_REDESIGN_PLAN.md §4.
   "/snap-solve",
   "/mindmaps",
+  // Origin NOW pages (wallet, store, solver shift screen + dashboard, live
+  // room). Plan: V1/ORIGIN_NOW_PLAN.md.
+  "/now",
 ] as const;
 
 export const ROLE_APP_PREFIXES = [

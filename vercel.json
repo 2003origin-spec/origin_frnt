@@ -54,6 +54,14 @@
     {
       "path": "/api/internal/contest/schedule-run",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/internal/now/sweep",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/internal/now/nightly",
+      "schedule": "30 20 * * *"
     }
   ]
 }

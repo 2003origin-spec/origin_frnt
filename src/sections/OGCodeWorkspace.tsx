@@ -17,6 +17,7 @@ import {
     hasMathMarkup as sharedHasMathMarkup,
 } from '@/lib/math-text';
 import { FormattedMessage } from '@/components/origin-ai/FormattedMessage';
+import { NowAskButton } from '@/components/now/NowAskButton';
 import type { PracticeQuestion, User } from '@/types';
 import { submitOgcodeAnswerAction, revealOgcodeQuestionAction, toggleOgcodeQuestionLikeAction, reportOgcodeQuestionAction, ogcodePresenceHeartbeatAction, listOgcodeChallengeMutualsAction, sendOgcodeChallengeAction } from '@/server/actions/ogcode-actions';
 import { playAnswerSound as playAnswerSoundManager, resetAnswerStreak } from '@/lib/sound-manager';
@@ -2005,6 +2006,12 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                                     </button>
                                 </div>
                             </div>
+                        )}
+
+                        {/* Origin NOW "Need human help": only after an attempt, only for the pilot cohort (renders nothing otherwise). */}
+                        {/* v2 retries: a wrong attempt with retries left sets no `result`, so count attempts too (the server re-checks). */}
+                        {(originAiPageContext.questionAttempted || v2AttemptsUsed > 0 || Boolean(v2AnswerTaken)) && typeof questionId === 'string' && (
+                            <NowAskButton questionId={questionId} attempted={originAiPageContext.questionAttempted || v2AttemptsUsed > 0 || Boolean(v2AnswerTaken)} />
                         )}
                     </div>
                 </div>

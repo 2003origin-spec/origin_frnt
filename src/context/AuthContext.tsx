@@ -98,7 +98,9 @@ const EMPTY_STREAK: StreakData = {
 };
 
 const GUEST_ONLY_PATHS = ['/', '/auth', '/role-selection'];
-const SHARED_PUBLIC_PATHS = ['/terms-and-conditions', '/privacy-policy', '/childrens-policy', '/refund-policy', '/return-policy', '/shipping-policy', '/faq', '/founders'];
+// '/now/consent' is the Origin NOW guardian-consent landing page: a guardian
+// opens it from an email, logged in to Origin or not (V1/ORIGIN_NOW_PLAN.md).
+const SHARED_PUBLIC_PATHS = ['/terms-and-conditions', '/privacy-policy', '/childrens-policy', '/refund-policy', '/return-policy', '/shipping-policy', '/faq', '/founders', '/now/consent'];
 
 function normalizeRole(role: User['role'] | undefined): 'student' | 'teacher' | 'admin' | null {
   return role === 'student' || role === 'teacher' || role === 'admin' ? role : null;

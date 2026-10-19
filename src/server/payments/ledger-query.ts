@@ -40,6 +40,7 @@ export const LEDGER_KINDS: OrderKind[] = [
   "institute_offering",
   "subject_subscription",
   "batch_subscription",
+  "coin_pack",
 ];
 
 export type LedgerFilters = {

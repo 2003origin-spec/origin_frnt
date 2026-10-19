@@ -12,6 +12,9 @@ const RATE_LIMITED_MUTATION_PREFIXES = [
   "/api/admin/",
   "/api/enrollments/",
   "/api/cbt/",
+  // Origin NOW: needed so the /admin/incidents kill switch reaches these routes
+  // (it is only consulted for paths in this list). Plan: V1/ORIGIN_NOW_PLAN.md.
+  "/api/now/",
 ];
 
 const REQUEST_ID_HEADER = "X-Request-Id";
@@ -20,6 +23,10 @@ const APEX_HOST = "o3origin.com";
 const PRODUCTION_VERCEL_HOST = "origin-frnt.vercel.app";
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 const CSRF_EXEMPT_API_PATHS = new Set([
+  // Origin NOW guardian consent: the guardian has no Origin session; the
+  // single-use token in the JSON body is the credential (hash-checked,
+  // expiring) and the handler requires application/json.
+  "/api/now/consent/confirm",
   "/api/users/login",
   "/api/users/register",
   "/api/users/google-login",

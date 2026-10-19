@@ -4,6 +4,7 @@ import type { PoolClient } from "pg";
 
 import { metric } from "@/lib/metrics";
 import { recomputeUserPremiumFlags } from "@/server/entitlements";
+import { reverseCoinPackOnRefund } from "@/server/now/coin-pack-payments";
 import { getUserPostgresPool } from "@/server/user-postgres";
 
 import { rebasePaidGrantExpiriesForSubject } from "./grants";
@@ -262,6 +263,16 @@ async function applyRefundInTransaction(
     const orderStatus = isFull ? "refunded" : "partially_refunded";
     await setOrderStatus(orderId, orderStatus, undefined, client);
     if (isFull) {
+      // Origin NOW coin packs: take back the coins still spendable; a spent
+      // shortfall freezes the wallet for review instead of failing the refund.
+      const orderRow = await client.query(`SELECT kind::text AS kind, notes FROM payments.orders WHERE id = $1`, [orderId]);
+      if (orderRow.rows[0]?.kind === "coin_pack" && userId) {
+        await reverseCoinPackOnRefund(client, {
+          id: orderId,
+          userId,
+          notes: (orderRow.rows[0].notes as Record<string, unknown>) ?? {},
+        });
+      }
       const revoked = await client.query(
         `UPDATE entitlements.subject_grants
             SET status = 'revoked', updated_at = NOW()

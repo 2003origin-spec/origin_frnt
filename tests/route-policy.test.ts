@@ -60,13 +60,17 @@ test("future API routes are denied by default", () => {
   assert.equal(getAppRoutePolicy("/new-feature").kind, "unconfigured");
 });
 
-test("public API allowlist is limited to health, auth entrypoints, the drain receiver, the payment webhooks, landing-page public data, and the mobile shell endpoints", () => {
+test("public API allowlist is limited to health, auth entrypoints, the drain receiver, the payment webhooks, landing-page public data, the mobile shell endpoints, and the Origin NOW guardian-consent link", () => {
   assert.deepEqual([...PUBLIC_API_PATHS].sort(), [
     "/api/connect/webhook",
     "/api/health",
     "/api/internal/observability/drain",
     "/api/mobile/config",
     "/api/mobile/link-out/consume",
+    // Guardian opening the consent email has no Origin session; the single-use
+    // token is the credential (V1/ORIGIN_NOW_PLAN.md, build step 4).
+    "/api/now/consent/confirm",
+    "/api/now/consent/preview",
     "/api/payments/webhook",
     "/api/pricing",
     "/api/public/activity-feed",
