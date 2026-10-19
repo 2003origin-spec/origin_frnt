@@ -16,6 +16,7 @@ import { useRouter } from 'next/navigation';
 import { Coins, Headphones, Loader2 } from 'lucide-react';
 
 import { apiCall } from '@/lib/api';
+import { acceptTimeText } from '@/lib/now-format';
 
 type Quote = {
   available: boolean;
@@ -28,7 +29,7 @@ type Quote = {
   humansLikely: boolean;
   botOn: boolean;
   attempted: boolean;
-  mySolvers: { helperId: string; name: string; favourite: boolean; online: boolean }[];
+  mySolvers: { helperId: string; name: string; favourite: boolean; online: boolean; medianAcceptSeconds?: number | null }[];
   openRequestId: string | null;
 };
 
@@ -139,6 +140,7 @@ export function NowAskButton({ questionId, attempted }: { questionId: string; at
               <option key={m.helperId} value={m.helperId} disabled={!m.online}>
                 {m.favourite ? '★ ' : ''}
                 {m.name} · {m.online ? 'online' : 'away'}
+                {m.online && acceptTimeText(m.medianAcceptSeconds) ? ` · ${acceptTimeText(m.medianAcceptSeconds)}` : ''}
               </option>
             ))}
           </select>
