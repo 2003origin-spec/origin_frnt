@@ -75,6 +75,13 @@ test("post, claim, answer, accept with a tip", { skip: NOW_SKIP }, async () => {
   assert.equal(posted.status, "open");
   assert.equal(posted.photos.length, 1);
   assert.equal((await postAskLater(a.id, { questionId: a.question }, key)).id, posted.id, "the same key posts once");
+  const raceKey = makeId("k");
+  const [r1, r2] = await Promise.all([
+    postAskLater(a.id, { questionId: a.question }, raceKey),
+    postAskLater(a.id, { questionId: a.question }, raceKey),
+  ]);
+  assert.equal(r1.id, r2.id, "two taps at once with the same key: one doubt, no error");
+  await cancelAskLater(a.id, r1.id);
   assert.equal((await getWalletBalance(a.id)).available, WELCOME - PRICE);
 
   const solver = await seedHelper("physics");

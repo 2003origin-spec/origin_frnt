@@ -252,7 +252,7 @@ export async function postAskLater(
   const price = askLaterPrice(live.priceCoins, config.pricePercent);
 
   const id = createPrefixedId("nlat");
-  await withNowTransaction(async (client) => {
+  const posted = await withNowTransaction(async (client) => {
     await client.query(
       `INSERT INTO now.later_requests (id, student_id, question_id, subject, chapter, difficulty, context_json, note, photo_keys,
                                        price_coins, expires_at, idempotency_key, created_at, updated_at)
@@ -276,8 +276,19 @@ export async function postAskLater(
     // Throws InsufficientCoinsError and rolls the doubt back.
     await postTransfers([sessionHold(studentId, id, price)], { client, now });
     await logEvent(client, { type: "later.posted", requestId: id, actor: studentId, payload: { subject, difficulty, price } });
+  }).catch(async (error) => {
+    // Two taps with the same key at once: the second loses the unique index and gets the
+    // first one's doubt instead of an error (the coins are held once).
+    if ((error as { code?: string }).code !== "23505") throw error;
+    const winner = await (await db()).query<{ id: string }>(
+      `SELECT id FROM now.later_requests WHERE student_id = $1 AND idempotency_key = $2`,
+      [studentId, idempotencyKey],
+    );
+    if (!winner.rows[0]) throw error;
+    return winner.rows[0].id;
   });
-  return getLaterForStudent(studentId, id);
+  const winnerId = typeof posted === "string" ? posted : id;
+  return getLaterForStudent(studentId, winnerId);
 }
 
 async function loadRow(id: string): Promise<Row | null> {
