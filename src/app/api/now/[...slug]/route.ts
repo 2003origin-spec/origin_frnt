@@ -56,6 +56,21 @@ import {
   reportSession,
 } from "@/server/now/after-call-service";
 import { issueRoomTicket } from "@/server/now/room-service";
+import {
+  acceptLaterAnswer,
+  answerLater,
+  cancelAskLater,
+  claimLater,
+  createLaterPhotoUpload,
+  getLaterForSolver,
+  getLaterForStudent,
+  listLaterQueue,
+  listMyLater,
+  postAskLater,
+  quoteAskLater,
+  releaseLaterClaim,
+  reportLaterAnswer,
+} from "@/server/now/ask-later-service";
 import { getGiftOptions, sendCoinGift } from "@/server/now/gift-service";
 import { cancelMyMerchOrder, getLastDeliveryAddress } from "@/server/now/merch-service";
 import { getStoreCheckoutOrder, startStoreCheckout } from "@/server/now/store-checkout";
@@ -120,6 +135,9 @@ import { DECLINE_REASONS, OUTCOMES, ROOT_CAUSES } from "@/server/now/types";
  *   POST /api/now/store/items/:id/buy      → Idempotency-Key header; refused inside the Android app
  *   GET  /api/now/store/orders             → my orders
  *   POST /api/now/store/orders/:id/download → 10-minute link to a bought paper (logged)
+ *   GET  /api/now/later/quote?question=    GET|POST /api/now/later   POST /api/now/later/uploads    (ask later, B94)
+ *   GET  /api/now/later/:id                POST /api/now/later/:id/cancel | /accept { stars, tipCoins } | /report { reason, details }
+ *   GET  /api/now/helper/later             GET  /api/now/helper/later/:id   POST /api/now/helper/later/:id/claim | /release | /answer
  *   GET|POST /api/now/wallet/gifts         → coin gift limits / send coins to an @username (B93; Idempotency-Key)
  *   POST /api/now/store/items/:id/checkout → items with a rupee price: coins taken, Razorpay order opened (B92; never in the app)
  *   GET  /api/now/store/orders/:id         → one order (after Razorpay closes)
@@ -314,6 +332,15 @@ const PushSubscriptionSchema = z.object({
   keys: z.object({ p256dh: z.string().max(200).nullable().optional(), auth: z.string().max(100).nullable().optional() }).nullable().optional(),
 });
 const PushEndpointSchema = z.object({ endpoint: z.string().max(1000) });
+const LaterUploadSchema = z.object({ mimeType: z.string().max(100), sizeBytes: z.number().int(), laterId: z.string().max(80).nullable().optional() });
+const LaterPostSchema = z.object({
+  questionId: z.string().min(1).max(200),
+  note: z.string().max(1200).nullable().optional(),
+  photoKeys: z.array(z.string().max(300)).max(5).optional(),
+});
+const LaterAcceptSchema = z.object({ stars: z.number().int(), tipCoins: z.number().int().optional() });
+const LaterReportSchema = z.object({ reason: z.enum(REPORT_REASONS), details: z.string().max(1000).nullable().optional() });
+const LaterAnswerSchema = z.object({ text: z.string().max(5000), photoKeys: z.array(z.string().max(300)).max(5).optional() });
 const GiftSchema = z.object({ toUsername: z.string().trim().min(3).max(31), amount: z.number().int() });
 const StoreBuySchema = z.object({ size: z.string().max(20).nullable().optional(), delivery: z.unknown().optional() });
 const OfferResponseSchema = z.object({
@@ -487,6 +514,44 @@ const liveHandlers = {
       status: 201,
     });
   },
+  // Ask later (B94).
+  laterQuote: async (r: NextRequest, userId: string) =>
+    nowJson({ quote: await quoteAskLater(userId, r.nextUrl.searchParams.get("question") ?? "") }, { headers: { "Cache-Control": "no-store" } }),
+  laterMine: async (_r: NextRequest, userId: string) => nowJson({ items: await listMyLater(userId) }, { headers: { "Cache-Control": "no-store" } }),
+  laterUpload: async (r: NextRequest, userId: string) => {
+    const limited = await limitMutation(`now-later-upload:${userId}`);
+    if (limited) return limited;
+    return nowJson(await createLaterPhotoUpload(userId, LaterUploadSchema.parse(await parseJsonBody(r))));
+  },
+  laterPost: async (r: NextRequest, userId: string) => {
+    const idempotencyKey = r.headers.get("idempotency-key")?.trim();
+    if (!idempotencyKey || idempotencyKey.length > 120) {
+      throw new NowError(400, "idempotency_key_required", "An Idempotency-Key header is required.");
+    }
+    const limited = await limitMutation(`now-later:${userId}`);
+    if (limited) return limited;
+    return nowJson({ item: await postAskLater(userId, LaterPostSchema.parse(await parseJsonBody(r)), idempotencyKey) }, { status: 201 });
+  },
+  laterGet: async (_r: NextRequest, userId: string, [id]: string[]) =>
+    nowJson({ item: await getLaterForStudent(userId, id) }, { headers: { "Cache-Control": "no-store" } }),
+  laterCancel: async (_r: NextRequest, userId: string, [id]: string[]) => nowJson({ item: await cancelAskLater(userId, id) }),
+  laterAccept: async (r: NextRequest, userId: string, [id]: string[]) =>
+    nowJson({ item: await acceptLaterAnswer(userId, id, LaterAcceptSchema.parse(await parseJsonBody(r))) }),
+  laterReport: async (r: NextRequest, userId: string, [id]: string[]) =>
+    nowJson({ item: await reportLaterAnswer(userId, id, LaterReportSchema.parse(await parseJsonBody(r))) }),
+  laterQueue: async (_r: NextRequest, userId: string) => nowJson({ queue: await listLaterQueue(userId) }, { headers: { "Cache-Control": "no-store" } }),
+  laterClaim: async (_r: NextRequest, userId: string, [id]: string[]) => nowJson({ item: await claimLater(userId, id) }),
+  laterRelease: async (_r: NextRequest, userId: string, [id]: string[]) => {
+    await releaseLaterClaim(userId, id);
+    return nowJson({ released: true });
+  },
+  laterSolverGet: async (_r: NextRequest, userId: string, [id]: string[]) =>
+    nowJson({ item: await getLaterForSolver(userId, id) }, { headers: { "Cache-Control": "no-store" } }),
+  laterAnswer: async (r: NextRequest, userId: string, [id]: string[]) => {
+    const limited = await limitMutation(`now-later-answer:${userId}`);
+    if (limited) return limited;
+    return nowJson({ item: await answerLater(userId, id, LaterAnswerSchema.parse(await parseJsonBody(r))) });
+  },
   giftOptions: async (_r: NextRequest, userId: string) =>
     nowJson({ gifts: await getGiftOptions(userId) }, { headers: { "Cache-Control": "no-store" } }),
   sendGift: async (r: NextRequest, userId: string) => {
@@ -592,6 +657,19 @@ const ROUTES: { method: Method; pattern: string[]; handler: Handler; public?: bo
   { method: "POST", pattern: ["store", "orders", ":id", "download"], handler: liveHandlers.storeDownload },
   { method: "POST", pattern: ["store", "orders", ":id", "cancel"], handler: liveHandlers.storeCancel },
   { method: "GET", pattern: ["wallet", "gifts"], handler: liveHandlers.giftOptions },
+  { method: "GET", pattern: ["later", "quote"], handler: liveHandlers.laterQuote },
+  { method: "POST", pattern: ["later", "uploads"], handler: liveHandlers.laterUpload },
+  { method: "GET", pattern: ["later"], handler: liveHandlers.laterMine },
+  { method: "POST", pattern: ["later"], handler: liveHandlers.laterPost },
+  { method: "GET", pattern: ["later", ":id"], handler: liveHandlers.laterGet },
+  { method: "POST", pattern: ["later", ":id", "cancel"], handler: liveHandlers.laterCancel },
+  { method: "POST", pattern: ["later", ":id", "accept"], handler: liveHandlers.laterAccept },
+  { method: "POST", pattern: ["later", ":id", "report"], handler: liveHandlers.laterReport },
+  { method: "GET", pattern: ["helper", "later"], handler: liveHandlers.laterQueue },
+  { method: "GET", pattern: ["helper", "later", ":id"], handler: liveHandlers.laterSolverGet },
+  { method: "POST", pattern: ["helper", "later", ":id", "claim"], handler: liveHandlers.laterClaim },
+  { method: "POST", pattern: ["helper", "later", ":id", "release"], handler: liveHandlers.laterRelease },
+  { method: "POST", pattern: ["helper", "later", ":id", "answer"], handler: liveHandlers.laterAnswer },
   { method: "POST", pattern: ["wallet", "gifts"], handler: liveHandlers.sendGift },
   { method: "POST", pattern: ["store", "items", ":id", "checkout"], handler: liveHandlers.storeCheckout },
   { method: "GET", pattern: ["store", "orders", ":id"], handler: liveHandlers.storeOrder },

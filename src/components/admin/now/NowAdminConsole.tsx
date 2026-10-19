@@ -10,6 +10,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 
 import { ApplicationsPanel } from './ApplicationsPanel';
+import { LaterPanel } from './LaterPanel';
 import { OverviewPanel } from './OverviewPanel';
 import { PeoplePanel } from './PeoplePanel';
 import { ReadinessPanel } from './ReadinessPanel';
@@ -27,6 +28,7 @@ const TABS = [
   { id: 'reports', label: 'Reports' },
   { id: 'applications', label: 'Applications' },
   { id: 'sessions', label: 'Sessions' },
+  { id: 'later', label: 'Ask later' },
   { id: 'roster', label: 'Roster' },
   { id: 'solvers', label: 'Solvers & metrics' },
   { id: 'scorecard', label: 'Pilot scorecard' },
@@ -64,6 +66,7 @@ export function NowAdminConsole() {
       {tab === 'reports' && <ReportsPanel />}
       {tab === 'applications' && <ApplicationsPanel />}
       {tab === 'sessions' && <SessionsPanel sessionId={params.get('id')} />}
+      {tab === 'later' && <LaterPanel />}
       {tab === 'roster' && <RosterPanel />}
       {tab === 'solvers' && <SolversPanel />}
       {tab === 'scorecard' && <ScorecardPanel />}

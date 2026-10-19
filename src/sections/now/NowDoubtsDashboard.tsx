@@ -127,9 +127,12 @@ export default function NowDoubtsDashboard() {
   const s = data.summary;
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-5 px-4 py-6">
-      <header>
-        <h1 className="text-xl font-semibold">My doubts</h1>
-        <p className="text-sm text-muted-foreground">Your live help sessions, what they covered and what to practise next.</p>
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold">My doubts</h1>
+          <p className="text-sm text-muted-foreground">Your live help sessions, what they covered and what to practise next.</p>
+        </div>
+        <Link href="/now/later" className="rounded-md border px-3 py-1 text-sm hover:bg-muted">Asked for later</Link>
       </header>
       {error && <p className="text-sm text-red-600" role="alert">{error}</p>}
 

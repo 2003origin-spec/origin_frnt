@@ -21,6 +21,7 @@ import { apiCall } from '@/lib/api';
 import { dayKeyToDMY, formatISTDayDMY } from '@/lib/format-time';
 import { acceptTimeText } from '@/lib/now-format';
 
+import { NowLaterQueue } from './NowLaterQueue';
 import { NowOfferAlerts } from './NowOfferAlerts';
 import { NowRosterCard } from './NowRosterCard';
 
@@ -395,6 +396,7 @@ export default function NowSolverDashboard() {
       <ShiftPanel dashboard={data} onChanged={load} />
 
       <NowRosterCard />
+      <NowLaterQueue />
 
       {data.standing.warnings.map((w) => (
         <p key={w.limit} className="flex items-center gap-2 rounded-md border border-amber-500 bg-amber-500/10 p-2 text-sm text-amber-800">

@@ -25,6 +25,7 @@ import {
 } from "./dispatch-service";
 import { findUnbalancedTransfers, sessionCapture, sessionHold } from "./ledger-rules";
 import { getWalletBalance, loadAllLegsForAudit, postTransfers, withNowTransaction } from "./ledger-store";
+import { runAskLaterSweep } from "./ask-later-service";
 import { purgeOldDeliveryAddresses } from "./merch-service";
 import { releaseUnpaidStoreOrders } from "./store-checkout";
 import { NowError } from "./now-http";
@@ -576,7 +577,7 @@ async function safely<T>(what: string, id: string, work: () => Promise<T>): Prom
 /** Every minute: re-does anything a missed or late QStash timer left behind. */
 export async function runNowSweep(now: Date = new Date()) {
   const pool = await db();
-  const counts = { offersExpired: 0, dispatched: 0, noShows: 0, ended: 0, settled: 0, storeCheckoutsReleased: 0 };
+  const counts = { offersExpired: 0, dispatched: 0, noShows: 0, ended: 0, settled: 0, storeCheckoutsReleased: 0, askLater: { claimsReleased: 0, expired: 0, autoAccepted: 0 } };
 
   const offers = await pool.query<{ id: string }>(
     `SELECT id FROM now.offers WHERE response IS NULL AND expires_at <= $1 ORDER BY expires_at LIMIT ${SWEEP_BATCH}`,
@@ -619,6 +620,12 @@ export async function runNowSweep(now: Date = new Date()) {
   counts.storeCheckoutsReleased = await releaseUnpaidStoreOrders(now).catch((error) => {
     console.error("[origin-now] store checkout release failed", error instanceof Error ? error.message : error);
     return 0;
+  });
+
+  // Ask later (B94): expired claims, unanswered doubts, answers left without a response.
+  counts.askLater = await runAskLaterSweep(now).catch((error) => {
+    console.error("[origin-now] ask-later sweep failed", error instanceof Error ? error.message : error);
+    return counts.askLater;
   });
 
   return counts;

@@ -20,6 +20,7 @@ type Settings = {
   recordingRetentionDays: number;
   eveningBonus: { enabled: boolean; coins: number; minOnlinePercent: number; requireRoster: boolean };
   features: Features;
+  askLater: { answerHours: number; claimMinutes: number; pricePercent: number; autoAcceptHours: number; maxOpenPerStudent: number };
 };
 type Features = { board: boolean; askLater: boolean; groups: boolean; merch: boolean; rupeePrices: boolean };
 
@@ -254,6 +255,23 @@ function SettingsForm() {
       </p>
       <h3 className="mb-2 mt-4 text-sm font-semibold">Extra parts (off until switched on)</h3>
       <FeatureSwitches value={draft.features} onChange={(v) => set('features', v)} />
+      {draft.features.askLater && (
+        <div className="mt-3 grid gap-4 md:grid-cols-5">
+          <NumberField label="Ask later: answer within (hours)" value={draft.askLater.answerHours} onChange={(v) => set('askLater', { ...draft.askLater, answerHours: v })} />
+          <NumberField label="Claim lasts (minutes)" value={draft.askLater.claimMinutes} onChange={(v) => set('askLater', { ...draft.askLater, claimMinutes: v })} />
+          <NumberField label="Price (% of the live price)" value={draft.askLater.pricePercent} onChange={(v) => set('askLater', { ...draft.askLater, pricePercent: v })} />
+          <NumberField
+            label="Accepted if no response (hours)"
+            value={draft.askLater.autoAcceptHours}
+            onChange={(v) => set('askLater', { ...draft.askLater, autoAcceptHours: v })}
+          />
+          <NumberField
+            label="Waiting doubts per student"
+            value={draft.askLater.maxOpenPerStudent}
+            onChange={(v) => set('askLater', { ...draft.askLater, maxOpenPerStudent: v })}
+          />
+        </div>
+      )}
       <h3 className="mb-2 mt-4 text-sm font-semibold">Coin gifts between people</h3>
       <div className="flex flex-wrap items-end gap-4 text-sm">
         <label className="flex items-center gap-2">

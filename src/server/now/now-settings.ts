@@ -10,6 +10,7 @@
 
 import { getSetting, setSetting } from "@/server/platform-settings";
 
+import { DEFAULT_ASK_LATER, parseAskLaterConfig, validateAskLaterConfig, type AskLaterConfig } from "./ask-later-rules";
 import { DEFAULT_BOT_RULE, type BotRule } from "./matching";
 
 export type OpenHours = {
@@ -77,6 +78,8 @@ export type NowSettings = {
   recordingRetentionDays: number;
   eveningBonus: EveningBonusConfig;
   features: FeaturesConfig;
+  /** Ask later (B94): answer time, claim time, price share. */
+  askLater: AskLaterConfig;
 };
 
 export const DEFAULT_NOW_SETTINGS: NowSettings = {
@@ -91,6 +94,7 @@ export const DEFAULT_NOW_SETTINGS: NowSettings = {
   recordingRetentionDays: 30,
   eveningBonus: { enabled: false, coins: 0, minOnlinePercent: 90, requireRoster: true },
   features: { board: false, askLater: false, groups: false, merch: false, rupeePrices: false },
+  askLater: DEFAULT_ASK_LATER,
 };
 
 const KEYS = {
@@ -105,6 +109,7 @@ const KEYS = {
   recordingRetentionDays: "now_recording_retention_days",
   eveningBonus: "now_evening_bonus",
   features: "now_features",
+  askLater: "now_ask_later",
 } as const satisfies Record<keyof NowSettings, string>;
 
 function parseInteger(raw: string | null, fallback: number, min: number, max: number): number {
@@ -241,7 +246,7 @@ export function parseFeatures(raw: string | null): FeaturesConfig {
 }
 
 export async function getNowSettings(): Promise<NowSettings> {
-  const [welcome, commission, tipCap, openHours, bot, transfers, quiz, agreement, retention, eveningBonus, features] = await Promise.all([
+  const [welcome, commission, tipCap, openHours, bot, transfers, quiz, agreement, retention, eveningBonus, features, askLater] = await Promise.all([
     getSetting(KEYS.welcomeCoins),
     getSetting(KEYS.commissionBps),
     getSetting(KEYS.tipCap),
@@ -253,6 +258,7 @@ export async function getNowSettings(): Promise<NowSettings> {
     getSetting(KEYS.recordingRetentionDays),
     getSetting(KEYS.eveningBonus),
     getSetting(KEYS.features),
+    getSetting(KEYS.askLater),
   ]);
   const d = DEFAULT_NOW_SETTINGS;
   return {
@@ -267,6 +273,7 @@ export async function getNowSettings(): Promise<NowSettings> {
     recordingRetentionDays: parseInteger(retention, d.recordingRetentionDays, 1, 3650),
     eveningBonus: parseEveningBonus(eveningBonus),
     features: parseFeatures(features),
+    askLater: parseAskLaterConfig(askLater),
   };
 }
 
@@ -295,6 +302,11 @@ export function prepareSettingsUpdate(
   if (patch.transfers) pairs.push([KEYS.transfers, JSON.stringify(parseTransfers(JSON.stringify(patch.transfers)))]);
   if (patch.quiz) pairs.push([KEYS.quiz, JSON.stringify(parseQuiz(JSON.stringify(patch.quiz)))]);
   if (patch.features) pairs.push([KEYS.features, JSON.stringify(parseFeatures(JSON.stringify(patch.features)))]);
+  if (patch.askLater) {
+    const bad = validateAskLaterConfig(patch.askLater);
+    if (bad.length) errors.push(...bad);
+    else pairs.push([KEYS.askLater, JSON.stringify(parseAskLaterConfig(JSON.stringify(patch.askLater)))]);
+  }
   if (patch.eveningBonus) {
     const b = patch.eveningBonus;
     const bad: string[] = [];

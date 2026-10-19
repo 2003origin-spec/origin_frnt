@@ -47,9 +47,12 @@ import {
 } from "@/server/now/store-service";
 import { confirmMerchImage, createMerchImageUpload, listMerchOrdersForAdmin, updateMerchShipment } from "@/server/now/merch-service";
 import { SHIP_STATUSES } from "@/server/now/store-rules";
+import { listLaterForAdmin } from "@/server/now/ask-later-service";
 import { APPLICATION_STATUSES, DIFFICULTIES, SOLVER_KINDS } from "@/server/now/types";
 import { adminAdjustWallet, listCoinPacks, upsertCoinPack } from "@/server/now/wallet-service";
 import { recordAuditEvent } from "@/server/workspaces/audit";
+
+const LATER_STATUSES = ["open", "claimed", "answered", "accepted", "disputed", "expired", "cancelled"] as const;
 
 /**
  * Origin NOW admin API (plan: V1/ORIGIN_NOW_PLAN.md, "Admin controls").
@@ -74,6 +77,7 @@ import { recordAuditEvent } from "@/server/workspaces/audit";
  *   GET|POST /api/admin/now/store/items          PUT  /api/admin/now/store/items/:id
  *   POST /api/admin/now/store/items/:id/file     POST /api/admin/now/store/items/:id/file/confirm
  *   GET  /api/admin/now/store/orders
+ *   GET  /api/admin/now/later?status=        ask-later doubts (B94; reports about answers go to the reports queue)
  *   GET  /api/admin/now/store/merch-orders?status=   POST /api/admin/now/store/orders/:id/shipment { action, courier, trackingNo, reason }
  *   POST /api/admin/now/store/items/:id/image        POST /api/admin/now/store/items/:id/image/confirm   (merch photos, B91)
  *   GET  /api/admin/now/monitor                  GET  /api/admin/now/metrics
@@ -391,6 +395,15 @@ const ROUTES: { method: Method; pattern: string[]; handler: Handler }[] = [
     },
   },
   { method: "GET", pattern: ["store", "orders"], handler: async () => nowJson({ orders: await listStoreOrdersForAdmin() }) },
+  {
+    method: "GET",
+    pattern: ["later"],
+    handler: async (request) => {
+      const status = request.nextUrl.searchParams.get("status");
+      const valid = LATER_STATUSES.find((s) => s === status) ?? null;
+      return nowJson({ items: await listLaterForAdmin(valid) }, { headers: { "Cache-Control": "no-store" } });
+    },
+  },
   {
     method: "GET",
     pattern: ["store", "merch-orders"],

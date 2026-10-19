@@ -18,6 +18,8 @@ import { Coins, Headphones, Loader2 } from 'lucide-react';
 import { apiCall } from '@/lib/api';
 import { acceptTimeText } from '@/lib/now-format';
 
+import { NowAskLaterForm } from './NowAskLaterForm';
+
 type Quote = {
   available: boolean;
   blockedReason: string | null;
@@ -160,6 +162,7 @@ export function NowAskButton({ questionId, attempted }: { questionId: string; at
         </p>
       )}
       {error && <p className="text-sm text-red-600" role="alert">{error}</p>}
+      {!blockedText && !quote.openRequestId && quote.attempted && <NowAskLaterForm questionId={questionId} />}
     </div>
   );
 }
