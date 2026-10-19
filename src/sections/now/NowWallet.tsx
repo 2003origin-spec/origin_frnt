@@ -37,8 +37,9 @@ const KIND_LABEL: Record<string, string> = {
   store_spend: 'Store',
   admin_adjustment: 'From Origin',
   pack_refund: 'Pack refund',
+  store_refund: 'Store order cancelled',
   expiry: 'Bonus coins expired',
-  transfer: 'Transfer',
+  transfer: 'Coin gift',
 };
 
 function errorMessage(error: unknown): string {

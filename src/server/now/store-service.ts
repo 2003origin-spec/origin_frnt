@@ -9,16 +9,19 @@
  *   the public image bucket, B96), downloaded through a 10-minute signed
  *   link by whoever bought it.
  *
- * Coins only (rupee and mixed prices come after the pilot). A purchase is one
- * transaction: order row, coin debit (`store_spend` → platform:store), stock,
- * and the grant. Purchased items are not refundable in coins.
+ * - merch (B91, once switched on): sized stock and a delivery address; the
+ *   team packs and ships by hand (src/server/now/merch-service.ts), and an
+ *   order cancelled before it ships gives the coins back.
+ *
+ * A purchase is one transaction: order row, coin debit (`store_spend` →
+ * platform:store), stock, and the grant. Premium and papers are final.
  */
 
 import { randomBytes } from "node:crypto";
 
 import { recomputeUserPremiumFlags } from "@/server/entitlements";
 import { ensureSubjectGrantsSchema } from "@/server/connect/subject-grants-schema";
-import { createPresignedR2PutUrl } from "@/server/media-storage";
+import { buildR2PublicUrl, createPresignedR2PutUrl } from "@/server/media-storage";
 import { SCHEMA_DDL_LOCK_ID } from "@/server/schema-lock";
 import { createPrefixedId, createSubjectGrantId } from "@/server/workspaces/ids";
 import { getUserPostgresPool } from "@/server/user-postgres";
@@ -29,14 +32,22 @@ import { getWalletBalance, postTransfers, withNowTransaction } from "./ledger-st
 import { getNowAccess } from "./now-access";
 import { NowError } from "./now-http";
 import { ensureNowSchema } from "./now-schema";
+import { getNowSettings } from "./now-settings";
 import { requirePrivateFilesBucket } from "./private-files";
 import { ensureWelcomeGrant } from "./wallet-service";
 import {
   DOWNLOAD_LINK_SECONDS,
+  addressSummary,
+  allowedItemKinds,
   isPaperUpload,
   paperObjectKey,
+  parseSizeStock,
   premiumWindow,
+  sortSizes,
+  validateDeliveryAddress,
   validateStoreItem,
+  type DeliveryAddress,
+  type ShipStatus,
   type StoreItemInput,
 } from "./store-rules";
 
@@ -88,7 +99,7 @@ export async function ensureCoinRedemptionGrantSource(): Promise<void> {
   }
 }
 
-type ItemRow = {
+export type ItemRow = {
   id: string;
   kind: string;
   title: string;
@@ -99,15 +110,28 @@ type ItemRow = {
   premium_subject: string | null;
   premium_days: number | null;
   file_key: string | null;
+  image_key: string | null;
+  size_stock: Record<string, number> | null;
   featured: boolean;
   active: boolean;
   created_at: Date;
   updated_at: Date;
 };
 
+/** Public URL of a merch photo (product photos live in the public image bucket on purpose). */
+export function storeImageUrl(imageKey: string | null): string | null {
+  const base = process.env.R2_PUBLIC_BASE_URL?.trim();
+  return imageKey && base ? buildR2PublicUrl(base, imageKey) : null;
+}
+
+function hasStock(item: Pick<ItemRow, "stock" | "size_stock">): boolean {
+  if (item.size_stock) return Object.values(item.size_stock).some((n) => n > 0);
+  return item.stock === null || item.stock > 0;
+}
+
 export type StoreItemView = {
   id: string;
-  kind: "premium" | "digital";
+  kind: "premium" | "digital" | "merch";
   title: string;
   description: string | null;
   priceCoins: number;
@@ -119,6 +143,9 @@ export type StoreItemView = {
   owned: boolean;
   /** Premium: this user's coin premium for the subject currently runs until this time. */
   coinPremiumUntil: string | null;
+  /** Merch with sizes: each size and whether it is in stock (B91). */
+  sizes: { size: string; inStock: boolean }[] | null;
+  imageUrl: string | null;
 };
 
 async function assertStoreAccess(userId: string) {
@@ -146,10 +173,12 @@ export async function listStoreItems(userId: string): Promise<{ items: StoreItem
   // Same rule as the wallet screen: a pilot student's first visit grants the welcome coins.
   if (access.canRequest) await ensureWelcomeGrant(userId);
   const pool = await db();
+  const { features } = await getNowSettings();
   const [items, owned, premium, balance] = await Promise.all([
     pool.query<ItemRow>(
-      `SELECT * FROM store.items WHERE active AND kind IN ('premium', 'digital') AND price_paise = 0
+      `SELECT * FROM store.items WHERE active AND kind = ANY($1::text[]) AND price_paise = 0
         ORDER BY featured DESC, kind, price_coins, title`,
+      [allowedItemKinds(features)],
     ),
     pool.query<{ item_id: string }>(
       `SELECT DISTINCT o.item_id FROM store.orders o JOIN store.items i ON i.id = o.item_id
@@ -164,16 +193,18 @@ export async function listStoreItems(userId: string): Promise<{ items: StoreItem
     balance: balance.available,
     items: items.rows.map((r) => ({
       id: r.id,
-      kind: r.kind as "premium" | "digital",
+      kind: r.kind as StoreItemView["kind"],
       title: r.title,
       description: r.description,
       priceCoins: r.price_coins,
-      inStock: r.stock === null || r.stock > 0,
+      inStock: hasStock(r),
       premiumSubject: r.premium_subject,
       premiumDays: r.premium_days,
       featured: r.featured,
       owned: ownedIds.has(r.id),
       coinPremiumUntil: r.premium_subject ? (premium.get(r.premium_subject)?.toISOString() ?? null) : null,
+      sizes: r.size_stock ? sortSizes(Object.keys(r.size_stock)).map((size) => ({ size, inStock: r.size_stock![size] > 0 })) : null,
+      imageUrl: storeImageUrl(r.image_key),
     })),
   };
 }
@@ -189,6 +220,17 @@ export type StoreOrderView = {
   premiumExpiresAt: string | null;
   canDownload: boolean;
   createdAt: string;
+  /** Merch (B91). */
+  size: string | null;
+  shipStatus: ShipStatus | null;
+  courier: string | null;
+  trackingNo: string | null;
+  shippedAt: string | null;
+  deliveredAt: string | null;
+  /** City, state and PIN only; null once the address is wiped. */
+  deliverTo: string | null;
+  /** The buyer may still cancel (nothing packed yet). */
+  canCancel: boolean;
 };
 
 type OrderJoinRow = {
@@ -202,6 +244,13 @@ type OrderJoinRow = {
   premium_expires_at: Date | null;
   file_key: string | null;
   created_at: Date;
+  size: string | null;
+  ship_status: ShipStatus | null;
+  courier: string | null;
+  tracking_no: string | null;
+  shipped_at: Date | null;
+  delivered_at: Date | null;
+  delivery: DeliveryAddress | null;
 };
 
 function orderView(r: OrderJoinRow): StoreOrderView {
@@ -216,11 +265,20 @@ function orderView(r: OrderJoinRow): StoreOrderView {
     premiumExpiresAt: r.premium_expires_at ? r.premium_expires_at.toISOString() : null,
     canDownload: r.kind === "digital" && r.status === "fulfilled" && Boolean(r.file_key),
     createdAt: r.created_at.toISOString(),
+    size: r.size,
+    shipStatus: r.ship_status,
+    courier: r.courier,
+    trackingNo: r.tracking_no,
+    shippedAt: r.shipped_at ? r.shipped_at.toISOString() : null,
+    deliveredAt: r.delivered_at ? r.delivered_at.toISOString() : null,
+    deliverTo: addressSummary(r.delivery),
+    canCancel: r.ship_status === "to_pack",
   };
 }
 
 const ORDER_SELECT = `SELECT o.id, o.item_id, i.title, i.kind, o.coins_spent, o.status, i.premium_subject,
-                             o.premium_expires_at, i.file_key, o.created_at
+                             o.premium_expires_at, i.file_key, o.created_at, o.size, o.ship_status, o.courier,
+                             o.tracking_no, o.shipped_at, o.delivered_at, o.delivery
                         FROM store.orders o JOIN store.items i ON i.id = o.item_id`;
 
 export async function listMyOrders(userId: string): Promise<StoreOrderView[]> {
@@ -228,20 +286,26 @@ export async function listMyOrders(userId: string): Promise<StoreOrderView[]> {
   return res.rows.map(orderView);
 }
 
-async function getOrder(orderId: string): Promise<StoreOrderView | null> {
+export async function getOrder(orderId: string): Promise<StoreOrderView | null> {
   const res = await (await db()).query<OrderJoinRow>(`${ORDER_SELECT} WHERE o.id = $1`, [orderId]);
   return res.rows[0] ? orderView(res.rows[0]) : null;
 }
 
-/** Buys one item with coins. Safe to retry with the same Idempotency-Key. */
+/**
+ * Buys one item with coins. Safe to retry with the same Idempotency-Key.
+ * Merch also needs the size (when it has sizes) and a delivery address.
+ */
 export async function buyStoreItem(
   userId: string,
   itemId: string,
   idempotencyKey: string,
   now: Date = new Date(),
+  merch: { size?: string | null; delivery?: unknown } = {},
 ): Promise<{ order: StoreOrderView; alreadyOwned: boolean }> {
   await assertStoreAccess(userId);
   await ensureCoinRedemptionGrantSource();
+  const { features } = await getNowSettings();
+  const kinds = allowedItemKinds(features);
   let orderId = "";
   let alreadyOwned = false;
   let premiumGranted = false;
@@ -257,8 +321,20 @@ export async function buyStoreItem(
     }
     const itemRes = await client.query<ItemRow>(`SELECT * FROM store.items WHERE id = $1 FOR UPDATE`, [itemId]);
     const item = itemRes.rows[0];
-    if (!item || !item.active || !["premium", "digital"].includes(item.kind) || item.price_paise !== 0) {
+    if (!item || !item.active || !kinds.includes(item.kind) || item.price_paise !== 0) {
       throw new NowError(404, "not_on_sale", "That item is not on sale.");
+    }
+    let delivery: DeliveryAddress | null = null;
+    let size: string | null = null;
+    if (item.kind === "merch") {
+      const checked = validateDeliveryAddress(merch.delivery);
+      if (!checked.ok) throw new NowError(400, "invalid_address", checked.errors.join(" "));
+      delivery = checked.address;
+      if (item.size_stock) {
+        size = typeof merch.size === "string" ? merch.size.trim() : "";
+        if (!(size in item.size_stock)) throw new NowError(400, "pick_size", "Pick a size.");
+        if (item.size_stock[size] <= 0) throw new NowError(409, "sold_out", `Size ${size} is sold out.`);
+      }
     }
     if (item.kind === "digital") {
       if (!item.file_key) throw new NowError(409, "not_ready", "That paper is not ready yet.");
@@ -277,13 +353,30 @@ export async function buyStoreItem(
 
     orderId = createPrefixedId("sord");
     await client.query(
-      `INSERT INTO store.orders (id, user_id, item_id, coins_spent, paise_paid, status, idempotency_key, created_at)
-       VALUES ($1, $2, $3, $4, 0, 'placed', $5, $6)`,
-      [orderId, userId, itemId, item.price_coins, idempotencyKey, now],
+      `INSERT INTO store.orders (id, user_id, item_id, coins_spent, paise_paid, status, idempotency_key, created_at, size, delivery, ship_status)
+       VALUES ($1, $2, $3, $4, 0, 'placed', $5, $6, $7, $8::jsonb, $9)`,
+      [orderId, userId, itemId, item.price_coins, idempotencyKey, now, size, delivery ? JSON.stringify(delivery) : null, item.kind === "merch" ? "to_pack" : null],
     );
     // Throws InsufficientCoinsError / FrozenAccountError and rolls everything back.
     await postTransfers([storeSpend(userId, item.price_coins, orderId)], { client, now });
-    if (item.stock !== null) await client.query(`UPDATE store.items SET stock = stock - 1, updated_at = NOW() WHERE id = $1`, [itemId]);
+    if (size !== null) {
+      await client.query(
+        `UPDATE store.items SET size_stock = jsonb_set(size_stock, ARRAY[$2], to_jsonb((size_stock->>$2)::int - 1)), updated_at = NOW() WHERE id = $1`,
+        [itemId, size],
+      );
+    } else if (item.stock !== null) {
+      await client.query(`UPDATE store.items SET stock = stock - 1, updated_at = NOW() WHERE id = $1`, [itemId]);
+    }
+    if (item.kind === "merch") {
+      // Paid with coins; fulfilled when the team marks it delivered.
+      await client.query(`UPDATE store.orders SET status = 'paid' WHERE id = $1`, [orderId]);
+      await logEvent(client, {
+        type: "store.purchased",
+        actor: userId,
+        payload: { orderId, itemId, kind: item.kind, coins: item.price_coins, size },
+      });
+      return;
+    }
 
     let grantId: string | null = null;
     let premiumEnd: Date | null = null;
@@ -369,6 +462,7 @@ export async function listStoreItemsForAdmin(): Promise<AdminStoreItem[]> {
 
 export async function upsertStoreItem(input: StoreItemInput & { id?: string }): Promise<ItemRow> {
   const pool = await db();
+  const { features } = await getNowSettings();
   const current = input.id
     ? (await pool.query<ItemRow>(`SELECT * FROM store.items WHERE id = $1`, [input.id])).rows[0]
     : undefined;
@@ -376,15 +470,17 @@ export async function upsertStoreItem(input: StoreItemInput & { id?: string }): 
   if (current && current.kind !== input.kind) throw new NowError(400, "kind_locked", "An item's kind cannot change; make a new item.");
   // A new paper has no file yet, so it is saved switched off; switching it on is checked once it exists.
   const startsOff = input.kind === "digital" && !current;
-  const errors = validateStoreItem({ ...input, active: startsOff ? false : input.active, hasFile: Boolean(current?.file_key) });
+  const errors = validateStoreItem({ ...input, active: startsOff ? false : input.active, hasFile: Boolean(current?.file_key) }, features);
   if (errors.length) throw new NowError(400, "invalid_item", errors.join(" "));
+  const sizeStock = input.kind === "merch" ? (parseSizeStock(input.sizeStock) as Record<string, number> | null) : null;
   const id = input.id ?? createPrefixedId("sitem");
   const res = await pool.query<ItemRow>(
-    `INSERT INTO store.items (id, kind, title, description, price_coins, price_paise, stock, premium_subject, premium_days, featured, active)
-     VALUES ($1, $2, $3, $4, $5, 0, $6, $7, $8, $9, $10)
+    `INSERT INTO store.items (id, kind, title, description, price_coins, price_paise, stock, premium_subject, premium_days, featured, active, size_stock)
+     VALUES ($1, $2, $3, $4, $5, 0, $6, $7, $8, $9, $10, $11::jsonb)
      ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, description = EXCLUDED.description,
        price_coins = EXCLUDED.price_coins, stock = EXCLUDED.stock, premium_subject = EXCLUDED.premium_subject,
-       premium_days = EXCLUDED.premium_days, featured = EXCLUDED.featured, active = EXCLUDED.active, updated_at = NOW()
+       premium_days = EXCLUDED.premium_days, featured = EXCLUDED.featured, active = EXCLUDED.active,
+       size_stock = EXCLUDED.size_stock, updated_at = NOW()
      RETURNING *`,
     [
       id,
@@ -398,6 +494,7 @@ export async function upsertStoreItem(input: StoreItemInput & { id?: string }): 
       Boolean(input.featured),
       // A new digital item starts switched off until its file is uploaded.
       input.kind === "digital" && !current?.file_key ? false : input.active !== false,
+      sizeStock ? JSON.stringify(sizeStock) : null,
     ],
   );
   return res.rows[0];

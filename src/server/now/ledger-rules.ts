@@ -60,7 +60,8 @@ export type TransferKind =
   | "store_spend"
   | "expiry"
   | "admin_adjustment"
-  | "pack_refund";
+  | "pack_refund"
+  | "store_refund";
 
 /** One movement of coins from `from` to `to`. */
 export type Transfer = {
@@ -221,6 +222,18 @@ export function storeSpend(userId: string, coins: number, orderId: string): Tran
     amount: coins,
     orderRef: orderId,
     idempotencyKey: `store:${orderId}`,
+  };
+}
+
+/** Gives the coins back for a store order that was cancelled before it shipped (merch, B91). */
+export function storeRefund(userId: string, coins: number, orderId: string): Transfer {
+  return {
+    kind: "store_refund",
+    from: PLATFORM_ACCOUNTS.store,
+    to: userAccount(userId),
+    amount: coins,
+    orderRef: orderId,
+    idempotencyKey: `store-refund:${orderId}`,
   };
 }
 

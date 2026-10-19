@@ -123,7 +123,7 @@ test("the store is for pilot members; admins cannot list merch or rupee prices y
   await setup();
   const outsider = await seedUser("Not Invited");
   await assert.rejects(listStoreItems(outsider), /pilot members/);
-  await assert.rejects(upsertStoreItem({ kind: "merch", title: "Hoodie", priceCoins: 900 }), /premium time and digital papers only/);
+  await assert.rejects(upsertStoreItem({ kind: "merch", title: "Hoodie", priceCoins: 900 }), /Switch on "Merch in the store"/);
   await assert.rejects(
     upsertStoreItem({ kind: "premium", title: "Mixed", priceCoins: 10, pricePaise: 100, premiumSubject: "physics", premiumDays: 7 }),
     /after the pilot/,

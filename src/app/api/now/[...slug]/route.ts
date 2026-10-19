@@ -56,6 +56,7 @@ import {
   reportSession,
 } from "@/server/now/after-call-service";
 import { issueRoomTicket } from "@/server/now/room-service";
+import { cancelMyMerchOrder, getLastDeliveryAddress } from "@/server/now/merch-service";
 import { buyStoreItem, getPaperDownload, listMyOrders, listStoreItems } from "@/server/now/store-service";
 import { getSolverDashboard, getStudentDashboard, setFavourite } from "@/server/now/dashboard-service";
 import { getMyRoster, setRosterSlot } from "@/server/now/roster-service";
@@ -117,6 +118,8 @@ import { DECLINE_REASONS, OUTCOMES, ROOT_CAUSES } from "@/server/now/types";
  *   POST /api/now/store/items/:id/buy      → Idempotency-Key header; refused inside the Android app
  *   GET  /api/now/store/orders             → my orders
  *   POST /api/now/store/orders/:id/download → 10-minute link to a bought paper (logged)
+ *   POST /api/now/store/orders/:id/cancel  → cancel a merch order before packing (coins back; B91)
+ *   GET  /api/now/store/address            → the last delivery address given, to fill the form in again
  *
  * Dashboards (build step 10):
  *   GET  /api/now/me/dashboard?page=       → the student's doubts dashboard
@@ -306,6 +309,7 @@ const PushSubscriptionSchema = z.object({
   keys: z.object({ p256dh: z.string().max(200).nullable().optional(), auth: z.string().max(100).nullable().optional() }).nullable().optional(),
 });
 const PushEndpointSchema = z.object({ endpoint: z.string().max(1000) });
+const StoreBuySchema = z.object({ size: z.string().max(20).nullable().optional(), delivery: z.unknown().optional() });
 const OfferResponseSchema = z.object({
   action: z.enum(["accept", "decline"]),
   reason: z.enum(DECLINE_REASONS).nullable().optional(),
@@ -471,8 +475,15 @@ const liveHandlers = {
     }
     const limited = await limitMutation(`now-store:${userId}`);
     if (limited) return limited;
-    return nowJson(await buyStoreItem(userId, id, idempotencyKey), { status: 201 });
+    // Merch (B91): the size and the delivery address come in the body; other items send none.
+    const body = StoreBuySchema.parse(await parseJsonBody(r));
+    return nowJson(await buyStoreItem(userId, id, idempotencyKey, new Date(), { size: body.size ?? null, delivery: body.delivery }), {
+      status: 201,
+    });
   },
+  storeCancel: async (_r: NextRequest, userId: string, [id]: string[]) => nowJson({ order: await cancelMyMerchOrder(userId, id) }),
+  storeLastAddress: async (_r: NextRequest, userId: string) =>
+    nowJson({ address: await getLastDeliveryAddress(userId) }, { headers: { "Cache-Control": "no-store" } }),
   storeOrders: async (_r: NextRequest, userId: string) => nowJson({ orders: await listMyOrders(userId) }),
   storeDownload: async (_r: NextRequest, userId: string, [id]: string[]) =>
     nowJson(await getPaperDownload(userId, id), { headers: { "Cache-Control": "no-store" } }),
@@ -544,6 +555,8 @@ const ROUTES: { method: Method; pattern: string[]; handler: Handler; public?: bo
   { method: "POST", pattern: ["store", "items", ":id", "buy"], handler: liveHandlers.storeBuy },
   { method: "GET", pattern: ["store", "orders"], handler: liveHandlers.storeOrders },
   { method: "POST", pattern: ["store", "orders", ":id", "download"], handler: liveHandlers.storeDownload },
+  { method: "POST", pattern: ["store", "orders", ":id", "cancel"], handler: liveHandlers.storeCancel },
+  { method: "GET", pattern: ["store", "address"], handler: liveHandlers.storeLastAddress },
   { method: "POST", pattern: ["sessions", ":id", "rate"], handler: liveHandlers.rate },
   { method: "POST", pattern: ["sessions", ":id", "report"], handler: liveHandlers.report },
   { method: "POST", pattern: ["sessions", ":id", "block"], handler: liveHandlers.block },

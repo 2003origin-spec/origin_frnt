@@ -25,6 +25,7 @@ import {
 } from "./dispatch-service";
 import { findUnbalancedTransfers, sessionCapture, sessionHold } from "./ledger-rules";
 import { getWalletBalance, loadAllLegsForAudit, postTransfers, withNowTransaction } from "./ledger-store";
+import { purgeOldDeliveryAddresses } from "./merch-service";
 import { NowError } from "./now-http";
 import { ensureNowSchema } from "./now-schema";
 import { helperStreamId, publishNowEvent, requestStreamId, scheduleNowTimer, type NowTimer } from "./now-realtime";
@@ -675,11 +676,17 @@ export async function runNowNightly(now: Date = new Date()) {
   }
   await pool.query(`DELETE FROM now.presence_minutes WHERE minute < $1`, [new Date(now.getTime() - 90 * 24 * 60 * 60_000)]);
   const recordings = await purgeExpiredRecordings(now);
+  // Merch delivery addresses, 90 days after delivery or cancellation (B91).
+  const addressesWiped = await purgeOldDeliveryAddresses(now).catch((error) => {
+    console.error("[origin-now] address purge failed", error instanceof Error ? error.message : error);
+    return 0;
+  });
   return {
     ratingWindowsClosed,
     unbalancedTransfers: unbalanced.length,
     recordingsDeleted: recordings.deleted,
     recordingDeletesFailed: recordings.failed,
+    addressesWiped,
     eveningBonus,
   };
 }
