@@ -72,6 +72,20 @@ import {
   reportLaterAnswer,
 } from "@/server/now/ask-later-service";
 import { getGiftOptions, sendCoinGift } from "@/server/now/gift-service";
+import {
+  bookSeat,
+  cancelGroupByHost,
+  cancelSeat,
+  endGroup,
+  getGroup,
+  issueGroupTicket,
+  listMyHostedGroups,
+  listUpcomingGroups,
+  rateGroup,
+  reportGroup,
+  scheduleGroup,
+  setGroupMic,
+} from "@/server/now/group-service";
 import { cancelMyMerchOrder, getLastDeliveryAddress } from "@/server/now/merch-service";
 import { getStoreCheckoutOrder, startStoreCheckout } from "@/server/now/store-checkout";
 import { buyStoreItem, getPaperDownload, listMyOrders, listStoreItems } from "@/server/now/store-service";
@@ -135,6 +149,8 @@ import { DECLINE_REASONS, OUTCOMES, ROOT_CAUSES } from "@/server/now/types";
  *   POST /api/now/store/items/:id/buy      → Idempotency-Key header; refused inside the Android app
  *   GET  /api/now/store/orders             → my orders
  *   POST /api/now/store/orders/:id/download → 10-minute link to a bought paper (logged)
+ *   GET|POST /api/now/groups               GET /api/now/groups/hosted   GET /api/now/groups/:id   (group sessions, B95)
+ *   POST /api/now/groups/:id/book | /cancel-seat | /rate | /report | /token | /mic { seatId } | /end | /cancel { reason }
  *   GET  /api/now/later/quote?question=    GET|POST /api/now/later   POST /api/now/later/uploads    (ask later, B94)
  *   GET  /api/now/later/:id                POST /api/now/later/:id/cancel | /accept { stars, tipCoins } | /report { reason, details }
  *   GET  /api/now/helper/later             GET  /api/now/helper/later/:id   POST /api/now/helper/later/:id/claim | /release | /answer
@@ -164,7 +180,9 @@ type Handler = (request: NextRequest, userId: string, params: string[]) => Promi
 async function handleMe(_request: NextRequest, userId: string): Promise<Response> {
   const access = await getNowAccess(userId);
   const wallet = access.canRequest || access.helper ? await getWalletSummary(userId, { grantWelcome: access.canRequest }) : null;
-  return nowJson({ access, wallet });
+  // Which extra parts are switched on (B89–B95), so screens show only those.
+  const features = access.canRequest || access.helper ? (await getNowSettings()).features : null;
+  return nowJson({ access, wallet, features });
 }
 
 async function handleWallet(_request: NextRequest, userId: string): Promise<Response> {
@@ -341,6 +359,16 @@ const LaterPostSchema = z.object({
 const LaterAcceptSchema = z.object({ stars: z.number().int(), tipCoins: z.number().int().optional() });
 const LaterReportSchema = z.object({ reason: z.enum(REPORT_REASONS), details: z.string().max(1000).nullable().optional() });
 const LaterAnswerSchema = z.object({ text: z.string().max(5000), photoKeys: z.array(z.string().max(300)).max(5).optional() });
+const GroupScheduleSchema = z.object({
+  subject: z.string().max(30),
+  chapter: z.string().max(100),
+  title: z.string().max(100),
+  description: z.string().max(600).nullable().optional(),
+  startsAt: z.string().max(40),
+  minutes: z.number().int(),
+  seats: z.number().int(),
+  priceCoins: z.number().int(),
+});
 const GiftSchema = z.object({ toUsername: z.string().trim().min(3).max(31), amount: z.number().int() });
 const StoreBuySchema = z.object({ size: z.string().max(20).nullable().optional(), delivery: z.unknown().optional() });
 const OfferResponseSchema = z.object({
@@ -552,6 +580,39 @@ const liveHandlers = {
     if (limited) return limited;
     return nowJson({ item: await answerLater(userId, id, LaterAnswerSchema.parse(await parseJsonBody(r))) });
   },
+  // Group sessions (B95).
+  groupsUpcoming: async (_r: NextRequest, userId: string) =>
+    nowJson({ groups: await listUpcomingGroups(userId) }, { headers: { "Cache-Control": "no-store" } }),
+  groupGet: async (_r: NextRequest, userId: string, [id]: string[]) => {
+    const group = await getGroup(id, userId);
+    if (!group) throw new NowError(404, "not_found", "Not found.");
+    return nowJson({ group }, { headers: { "Cache-Control": "no-store" } });
+  },
+  groupBook: async (_r: NextRequest, userId: string, [id]: string[]) => {
+    const limited = await limitMutation(`now-group:${userId}`);
+    if (limited) return limited;
+    return nowJson({ group: await bookSeat(userId, id) }, { status: 201 });
+  },
+  groupCancelSeat: async (_r: NextRequest, userId: string, [id]: string[]) => nowJson({ group: await cancelSeat(userId, id) }),
+  groupRate: async (r: NextRequest, userId: string, [id]: string[]) =>
+    nowJson({ group: await rateGroup(userId, id, z.object({ stars: z.number().int() }).parse(await parseJsonBody(r)).stars) }),
+  groupReport: async (r: NextRequest, userId: string, [id]: string[]) => nowJson(await reportGroup(userId, id, LaterReportSchema.parse(await parseJsonBody(r)))),
+  groupTicket: async (_r: NextRequest, userId: string, [id]: string[]) => {
+    const limited = await limitMutation(`now-room-token:${userId}`);
+    if (limited) return limited;
+    return nowJson({ ticket: await issueGroupTicket(userId, id) }, { headers: { "Cache-Control": "no-store" } });
+  },
+  groupsHosted: async (_r: NextRequest, userId: string) =>
+    nowJson({ groups: await listMyHostedGroups(userId) }, { headers: { "Cache-Control": "no-store" } }),
+  groupSchedule: async (r: NextRequest, userId: string) => {
+    const body = GroupScheduleSchema.parse(await parseJsonBody(r));
+    return nowJson({ group: await scheduleGroup(userId, { ...body, startsAt: new Date(body.startsAt) }) }, { status: 201 });
+  },
+  groupMic: async (r: NextRequest, userId: string, [id]: string[]) =>
+    nowJson(await setGroupMic(userId, id, z.object({ seatId: z.string().max(80).nullable() }).parse(await parseJsonBody(r)).seatId)),
+  groupEnd: async (_r: NextRequest, userId: string, [id]: string[]) => nowJson({ group: await endGroup({ userId }, id) }),
+  groupCancel: async (r: NextRequest, userId: string, [id]: string[]) =>
+    nowJson({ group: await cancelGroupByHost(userId, id, z.object({ reason: z.string().max(300) }).parse(await parseJsonBody(r)).reason) }),
   giftOptions: async (_r: NextRequest, userId: string) =>
     nowJson({ gifts: await getGiftOptions(userId) }, { headers: { "Cache-Control": "no-store" } }),
   sendGift: async (r: NextRequest, userId: string) => {
@@ -657,6 +718,18 @@ const ROUTES: { method: Method; pattern: string[]; handler: Handler; public?: bo
   { method: "POST", pattern: ["store", "orders", ":id", "download"], handler: liveHandlers.storeDownload },
   { method: "POST", pattern: ["store", "orders", ":id", "cancel"], handler: liveHandlers.storeCancel },
   { method: "GET", pattern: ["wallet", "gifts"], handler: liveHandlers.giftOptions },
+  { method: "GET", pattern: ["groups"], handler: liveHandlers.groupsUpcoming },
+  { method: "GET", pattern: ["groups", "hosted"], handler: liveHandlers.groupsHosted },
+  { method: "POST", pattern: ["groups"], handler: liveHandlers.groupSchedule },
+  { method: "GET", pattern: ["groups", ":id"], handler: liveHandlers.groupGet },
+  { method: "POST", pattern: ["groups", ":id", "book"], handler: liveHandlers.groupBook },
+  { method: "POST", pattern: ["groups", ":id", "cancel-seat"], handler: liveHandlers.groupCancelSeat },
+  { method: "POST", pattern: ["groups", ":id", "rate"], handler: liveHandlers.groupRate },
+  { method: "POST", pattern: ["groups", ":id", "report"], handler: liveHandlers.groupReport },
+  { method: "POST", pattern: ["groups", ":id", "token"], handler: liveHandlers.groupTicket },
+  { method: "POST", pattern: ["groups", ":id", "mic"], handler: liveHandlers.groupMic },
+  { method: "POST", pattern: ["groups", ":id", "end"], handler: liveHandlers.groupEnd },
+  { method: "POST", pattern: ["groups", ":id", "cancel"], handler: liveHandlers.groupCancel },
   { method: "GET", pattern: ["later", "quote"], handler: liveHandlers.laterQuote },
   { method: "POST", pattern: ["later", "uploads"], handler: liveHandlers.laterUpload },
   { method: "GET", pattern: ["later"], handler: liveHandlers.laterMine },

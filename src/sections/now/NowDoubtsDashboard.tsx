@@ -13,6 +13,8 @@ import { Heart, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { apiCall } from '@/lib/api';
 import { acceptTimeText } from '@/lib/now-format';
+
+import { NowExtraLinks } from './NowExtraLinks';
 import { formatISTDayDMY } from '@/lib/format-time';
 
 type Dashboard = {
@@ -132,7 +134,7 @@ export default function NowDoubtsDashboard() {
           <h1 className="text-xl font-semibold">My doubts</h1>
           <p className="text-sm text-muted-foreground">Your live help sessions, what they covered and what to practise next.</p>
         </div>
-        <Link href="/now/later" className="rounded-md border px-3 py-1 text-sm hover:bg-muted">Asked for later</Link>
+        <NowExtraLinks />
       </header>
       {error && <p className="text-sm text-red-600" role="alert">{error}</p>}
 

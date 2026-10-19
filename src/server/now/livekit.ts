@@ -66,6 +66,56 @@ export function participantGrant(role: RoomRole, room: string): VideoGrant {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Group sessions (decision B95).
+
+export type GroupRole = "host" | "listener";
+
+export function groupRoomName(groupId: string): string {
+  return `now-group-${groupId}`;
+}
+
+/**
+ * Pure: the host (solver) speaks and shares a screen; listeners (students)
+ * hear and may only send data (a raised hand). The host hands one listener
+ * the mic at a time through updateParticipantMic.
+ */
+export function groupParticipantGrant(role: GroupRole, room: string): VideoGrant {
+  return {
+    room,
+    roomJoin: true,
+    canSubscribe: true,
+    canPublish: role === "host",
+    canPublishData: true,
+    canUpdateOwnMetadata: false,
+    canPublishSources: role === "host" ? ["microphone", "screen_share", "screen_share_audio"] : [],
+  };
+}
+
+/** Pure: the RoomService.UpdateParticipant body that gives or takes a listener's mic. */
+export function micPermissionRequest(room: string, identity: string, on: boolean) {
+  return {
+    room,
+    identity,
+    permission: {
+      can_subscribe: true,
+      can_publish: on,
+      can_publish_data: true,
+      can_publish_sources: on ? ["MICROPHONE"] : [],
+    },
+  };
+}
+
+export async function updateParticipantMic(config: LiveKitConfig, room: string, identity: string, on: boolean): Promise<void> {
+  try {
+    await twirp(config, "RoomService", "UpdateParticipant", micPermissionRequest(room, identity, on), { roomAdmin: true, room });
+  } catch (error) {
+    // Not in the room (left already): nothing to change.
+    if ((error as { status?: number }).status === 404) return;
+    throw error;
+  }
+}
+
 async function sign(config: LiveKitConfig, claims: Record<string, unknown>, ttlSeconds: number, subject?: string) {
   const key = new TextEncoder().encode(config.apiSecret);
   let jwt = new SignJWT(claims)
@@ -79,13 +129,15 @@ async function sign(config: LiveKitConfig, claims: Record<string, unknown>, ttlS
 
 export async function mintParticipantToken(
   config: LiveKitConfig,
-  input: { room: string; identity: string; name: string; role: RoomRole; ttlSeconds?: number },
+  input: { room: string; identity: string; name: string; role: RoomRole | GroupRole; ttlSeconds?: number },
 ): Promise<string> {
+  const grant =
+    input.role === "host" || input.role === "listener" ? groupParticipantGrant(input.role, input.room) : participantGrant(input.role, input.room);
   return sign(
     config,
     {
       name: input.name,
-      video: participantGrant(input.role, input.room),
+      video: grant,
       metadata: JSON.stringify({ role: input.role }),
     },
     input.ttlSeconds ?? PARTICIPANT_TOKEN_TTL_SECONDS,

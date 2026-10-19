@@ -21,6 +21,7 @@ import { apiCall } from '@/lib/api';
 import { dayKeyToDMY, formatISTDayDMY } from '@/lib/format-time';
 import { acceptTimeText } from '@/lib/now-format';
 
+import { NowGroupHost } from './NowGroupHost';
 import { NowLaterQueue } from './NowLaterQueue';
 import { NowOfferAlerts } from './NowOfferAlerts';
 import { NowRosterCard } from './NowRosterCard';
@@ -397,6 +398,7 @@ export default function NowSolverDashboard() {
 
       <NowRosterCard />
       <NowLaterQueue />
+      <NowGroupHost subjects={data.publicCard.subjects} />
 
       {data.standing.warnings.map((w) => (
         <p key={w.limit} className="flex items-center gap-2 rounded-md border border-amber-500 bg-amber-500/10 p-2 text-sm text-amber-800">

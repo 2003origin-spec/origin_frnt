@@ -48,6 +48,7 @@ import {
 import { confirmMerchImage, createMerchImageUpload, listMerchOrdersForAdmin, updateMerchShipment } from "@/server/now/merch-service";
 import { SHIP_STATUSES } from "@/server/now/store-rules";
 import { listLaterForAdmin } from "@/server/now/ask-later-service";
+import { endGroup, listGroupsForAdmin } from "@/server/now/group-service";
 import { APPLICATION_STATUSES, DIFFICULTIES, SOLVER_KINDS } from "@/server/now/types";
 import { adminAdjustWallet, listCoinPacks, upsertCoinPack } from "@/server/now/wallet-service";
 import { recordAuditEvent } from "@/server/workspaces/audit";
@@ -77,6 +78,7 @@ const LATER_STATUSES = ["open", "claimed", "answered", "accepted", "disputed", "
  *   GET|POST /api/admin/now/store/items          PUT  /api/admin/now/store/items/:id
  *   POST /api/admin/now/store/items/:id/file     POST /api/admin/now/store/items/:id/file/confirm
  *   GET  /api/admin/now/store/orders
+ *   GET  /api/admin/now/groups               POST /api/admin/now/groups/:id/cancel { reason }   (group sessions, B95; seats refunded)
  *   GET  /api/admin/now/later?status=        ask-later doubts (B94; reports about answers go to the reports queue)
  *   GET  /api/admin/now/store/merch-orders?status=   POST /api/admin/now/store/orders/:id/shipment { action, courier, trackingNo, reason }
  *   POST /api/admin/now/store/items/:id/image        POST /api/admin/now/store/items/:id/image/confirm   (merch photos, B91)
@@ -395,6 +397,17 @@ const ROUTES: { method: Method; pattern: string[]; handler: Handler }[] = [
     },
   },
   { method: "GET", pattern: ["store", "orders"], handler: async () => nowJson({ orders: await listStoreOrdersForAdmin() }) },
+  { method: "GET", pattern: ["groups"], handler: async () => nowJson({ groups: await listGroupsForAdmin() }, { headers: { "Cache-Control": "no-store" } }) },
+  {
+    method: "POST",
+    pattern: ["groups", ":id", "cancel"],
+    handler: async (request, adminId, [id]) => {
+      const { reason } = z.object({ reason: z.string().trim().min(5).max(300) }).parse(await parseJsonBody(request));
+      const group = await endGroup({ system: "admin" }, id, new Date(), `Cancelled by Origin: ${reason}`);
+      await audit(adminId, "now.group.cancel", { groupId: id });
+      return nowJson({ group });
+    },
+  },
   {
     method: "GET",
     pattern: ["later"],
