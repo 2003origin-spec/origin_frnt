@@ -254,9 +254,33 @@ function SettingsForm() {
       </p>
       <h3 className="mb-2 mt-4 text-sm font-semibold">Extra parts (off until switched on)</h3>
       <FeatureSwitches value={draft.features} onChange={(v) => set('features', v)} />
-      <p className="mt-4 text-xs text-muted-foreground">
-        Coin transfers between users stay off in the pilot (legal team decision pending); they are not editable here.
+      <h3 className="mb-2 mt-4 text-sm font-semibold">Coin gifts between people</h3>
+      <div className="flex flex-wrap items-end gap-4 text-sm">
+        <label className="flex items-center gap-2">
+          <input type="checkbox" checked={draft.transfers.enabled} onChange={(e) => set('transfers', { ...draft.transfers, enabled: e.target.checked })} />
+          Gifts on
+        </label>
+        <NumberField label="Most coins a person can gift per day" value={draft.transfers.dailyCap} onChange={(v) => set('transfers', { ...draft.transfers, dailyCap: v })} />
+        <NumberField
+          label="Account at least (days old)"
+          value={draft.transfers.minAccountAgeDays}
+          onChange={(v) => set('transfers', { ...draft.transfers, minAccountAgeDays: v })}
+        />
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={draft.transfers.kycRequired}
+            onChange={(e) => set('transfers', { ...draft.transfers, kycRequired: e.target.checked })}
+          />
+          Only verified solvers can send
+        </label>
+      </div>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Sent by @username. Only coins a person bought or earned can be gifted (never welcome or bonus coins), never by anyone under 18.
       </p>
+      <div className="mt-2">
+        <LegalNote>coin transfers between users stay off until the legal team clears them (stored value rules); switch them on only after that.</LegalNote>
+      </div>
     </Section>
   );
 }

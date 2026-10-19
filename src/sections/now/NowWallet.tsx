@@ -18,6 +18,8 @@ import { getRazorpay, loadRazorpayScript, verifyPayment } from '@/features/payme
 import { apiCall } from '@/lib/api';
 import { formatISTDateTimeDMY, formatISTDayDMY } from '@/lib/format-time';
 
+import { NowSendCoins } from './NowSendCoins';
+
 type Wallet = {
   balance: { available: number; pending: number };
   movements: { transferId: string; kind: string; direction: 'debit' | 'credit'; amount: number; createdAt: string; availableAt: string | null; expiresAt: string | null }[];
@@ -169,6 +171,8 @@ export default function NowWallet() {
           <p className="mt-3 text-xs text-muted-foreground">Bought coins are not refundable once added, except for a failed or duplicate payment.</p>
         </CardContent>
       </Card>
+
+      <NowSendCoins onSent={() => void load()} />
 
       <Card>
         <CardHeader className="pb-2"><CardTitle className="text-base">History</CardTitle></CardHeader>
