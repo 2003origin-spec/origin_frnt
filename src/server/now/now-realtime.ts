@@ -213,18 +213,22 @@ export async function scheduleNowTimer(timer: NowTimer, delaySeconds: number): P
 }
 
 // ---------------------------------------------------------------------------
-// Push (only reaches helpers once the native push release ships; gap 9).
+// Push: the Android app (FCM, B88) and browsers with offer alerts (B85).
+
+/** The Android shell's high-importance channel for offers (NotificationChannels.java). */
+export const NOW_OFFER_CHANNEL_ID = "now_offers";
 
 export async function pushOfferToHelper(userId: string, input: { offerId: string; expiresAt: string; subject: string }): Promise<void> {
-  // Push is best effort; the shift screen's stream is the pilot channel.
+  // Push is best effort; the shift screen's stream is the main channel.
   const ttlSeconds = Math.max(0, Math.round((Date.parse(input.expiresAt) - Date.now()) / 1000));
   await Promise.allSettled([
-    // Native app (FCM), once the Android shell has push tokens.
+    // Android app: high priority so it pierces Doze, dropped once the offer has lapsed.
     sendPushToUser(userId, {
       title: "New doubt waiting",
       body: `A ${input.subject} doubt is waiting for you. Tap to accept.`,
       route: "/now/solver",
       data: { kind: "now_offer", offerId: input.offerId, expiresAt: input.expiresAt },
+      android: { channelId: NOW_OFFER_CHANNEL_ID, urgent: true, ttlSeconds },
     }),
     // Browsers that turned on offer alerts (decision B85); useless once the offer has lapsed.
     sendWebPushToUser(userId, { ttlSeconds, urgency: "high" }),

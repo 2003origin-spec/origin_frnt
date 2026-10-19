@@ -20,6 +20,7 @@ function ready(overrides: Partial<LaunchFacts> = {}): LaunchFacts {
       razorpay: true,
       kycKey: true,
       webPush: true,
+      fcm: true,
     },
     pricesSaved: true,
     packsOnSale: 2,
@@ -55,7 +56,7 @@ test("required services are missing when unset, optional ones only need checking
     const f = ready({ env: { ...ready().env, [key]: false } });
     assert.equal(launchVerdict(launchChecklist(f)).ready, false, key);
   }
-  for (const key of ["qstash", "razorpay", "kycKey", "webPush"] as const) {
+  for (const key of ["qstash", "razorpay", "kycKey", "webPush", "fcm"] as const) {
     const f = ready({ env: { ...ready().env, [key]: false } });
     const v = launchVerdict(launchChecklist(f));
     assert.deepEqual([v.ready, v.warnings], [true, 1], key);

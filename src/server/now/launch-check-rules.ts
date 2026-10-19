@@ -35,6 +35,8 @@ export type LaunchFacts = {
     razorpay: boolean;
     kycKey: boolean;
     webPush: boolean;
+    /** FCM service account for the Android app's offer alerts (B88). */
+    fcm: boolean;
   };
   pricesSaved: boolean;
   packsOnSale: number;
@@ -125,6 +127,7 @@ export function launchChecklist(f: LaunchFacts): CheckItem[] {
   service("env_razorpay", "Coin pack payments (Razorpay)", f.env.razorpay, false, "Set.", "Not set: coin packs cannot be bought.", "Set the Razorpay keys (already used by premium payments).");
   service("env_kyc", "PAN encryption key", f.env.kycKey, false, "Set.", "Not set: solvers cannot add a PAN (it is optional).", "Optional: set NOW_KYC_ENCRYPTION_KEY (runbook 1.1).");
   service("env_web_push", "Offer alerts (web push)", f.env.webPush, false, "Set.", "Not set: solvers must keep the shift screen in front.", "Optional: generate and set the NOW_WEB_PUSH_* keys (runbook 1.1).");
+  service("env_fcm", "Offer alerts in the Android app (FCM)", f.env.fcm, false, "Set.", "Not set: solvers in the Android app must keep the shift screen open.", "Optional: set FCM_PROJECT_ID, FCM_CLIENT_EMAIL, FCM_PRIVATE_KEY, and ship the app with google-services.json (runbook 1.1).");
 
   // Setup done in /admin/now.
   add({

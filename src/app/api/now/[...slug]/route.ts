@@ -7,6 +7,8 @@ import { parseAppVersionFromUserAgent } from "@/native/is-native-app";
 import { requireAuth } from "@/server/authz";
 import { getSlugSegments, parseJsonBody } from "@/server/http";
 import { createCheckoutOrder } from "@/server/payments/orders-service";
+import { hasActiveDeviceToken } from "@/server/push/device-tokens";
+import { isPushConfigured } from "@/server/push/fcm";
 import { confirmConsent, getConsentStatus, previewConsent, startGuardianConsent } from "@/server/now/consent-service";
 import { getNowAccess } from "@/server/now/now-access";
 import { getNowSettings } from "@/server/now/now-settings";
@@ -91,7 +93,7 @@ import { DECLINE_REASONS, OUTCOMES, ROOT_CAUSES } from "@/server/now/types";
  *   GET|DELETE /api/now/requests/:id       → view / cancel (cancel releases the hold)
  *   GET  /api/now/requests/:id/stream      → SSE for the student and the assigned solver
  *   POST|DELETE /api/now/helper/presence   → solver shift heartbeat ({ subjects, background }) / go offline
- *   GET  /api/now/push/config              → { publicKey } for offer alerts (null = not available)
+ *   GET  /api/now/push/config              → { publicKey, subscribed, native } for offer alerts (browser / Android app)
  *   PUT|DELETE /api/now/push/subscription  → turn this browser's offer alerts on / off
  *   GET  /api/now/helper/stream            → SSE: offers for this solver
  *   GET  /api/now/helper/offers/current    → open offer (push tap, reconnect)
@@ -434,7 +436,12 @@ const liveHandlers = {
   solverDashboard: async (_r: NextRequest, userId: string) => nowJson({ dashboard: await getSolverDashboard(userId) }),
   roster: async (_r: NextRequest, userId: string) => nowJson({ roster: await getMyRoster(userId) }),
   pushConfig: async (_r: NextRequest, userId: string) =>
-    nowJson({ publicKey: webPushPublicKey(), subscribed: await hasWebPushSubscription(userId) }),
+    nowJson({
+      publicKey: webPushPublicKey(),
+      subscribed: await hasWebPushSubscription(userId),
+      // The Android app (B88): FCM set up on the server, and this user has a device registered.
+      native: { configured: isPushConfigured(), subscribed: isPushConfigured() && (await hasActiveDeviceToken(userId)) },
+    }),
   pushSubscribe: async (r: NextRequest, userId: string) => {
     const body = PushSubscriptionSchema.parse(await parseJsonBody(r));
     await saveWebPushSubscription(userId, body, r.headers.get("user-agent"));

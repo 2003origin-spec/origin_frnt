@@ -128,6 +128,11 @@ export async function listActiveDeviceTokens(userId: string): Promise<string[]> 
   return result.rows.map((row) => row.token);
 }
 
+/** True when the user has at least one device registered for push. */
+export async function hasActiveDeviceToken(userId: string): Promise<boolean> {
+  return (await listActiveDeviceTokens(userId)).length > 0;
+}
+
 /** Hard-delete a token FCM reported as UNREGISTERED/invalid. */
 export async function pruneDeviceToken(token: string): Promise<void> {
   if (!isUserPostgresConfigured()) return;

@@ -1,19 +1,23 @@
 'use client';
 
 /**
- * "Offer alerts" on the solver shift card (decision B85): turns on browser
- * push for this browser so an offer reaches the solver while the shift tab
- * is in the background. Needs the site's service worker (registered in
- * production builds) and the server's VAPID key; otherwise it explains why
- * alerts are unavailable and the foreground-only rule stays.
+ * "Offer alerts" on the solver shift card. In a browser (decision B85) it
+ * turns on Web Push for this browser so an offer reaches the solver while
+ * the shift tab is in the background; it needs the site's service worker
+ * (registered in production builds) and the server's VAPID key. Inside the
+ * Android app (B88) it registers the app's FCM token instead. Otherwise it
+ * explains why alerts are unavailable and the foreground-only rule stays.
  */
 
 import { useCallback, useEffect, useState } from 'react';
 import { Bell, BellOff, Loader2 } from 'lucide-react';
 
 import { apiCall } from '@/lib/api';
+import { canUseNativePush, disableNativePush, enableNativePush } from '@/native/push';
 
 type State = 'loading' | 'unavailable' | 'blocked' | 'off' | 'on';
+
+type PushConfig = { publicKey: string | null; subscribed: boolean; native?: { configured: boolean; subscribed: boolean } };
 
 function keyBytes(base64url: string): Uint8Array<ArrayBuffer> {
   const padded = base64url.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (base64url.length % 4)) % 4);
@@ -32,6 +36,8 @@ export function NowOfferAlerts({ onChange }: { onChange: (on: boolean) => void }
   const [why, setWhy] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [publicKey, setPublicKey] = useState<string | null>(null);
+  // Inside the Android app with push support: FCM instead of Web Push.
+  const [inApp, setInApp] = useState(false);
 
   const settle = useCallback(
     (next: State, reason: string | null = null) => {
@@ -46,8 +52,14 @@ export function NowOfferAlerts({ onChange }: { onChange: (on: boolean) => void }
     let cancelled = false;
     (async () => {
       try {
-        const config = (await apiCall('/now/push/config')) as { publicKey: string | null; subscribed: boolean };
+        const config = (await apiCall('/now/push/config')) as PushConfig;
         if (cancelled) return;
+        if (await canUseNativePush()) {
+          if (cancelled) return;
+          setInApp(true);
+          if (!config.native?.configured) return settle('unavailable', 'Offer alerts are not switched on for the app yet.');
+          return settle(config.native.subscribed ? 'on' : 'off');
+        }
         if (!config.publicKey) return settle('unavailable', 'Offer alerts are not switched on for Origin yet.');
         if (!browserSupportsPush()) return settle('unavailable', 'This browser cannot show offer alerts.');
         const registration = await navigator.serviceWorker.getRegistration();
@@ -67,6 +79,20 @@ export function NowOfferAlerts({ onChange }: { onChange: (on: boolean) => void }
   }, [settle]);
 
   const turnOn = async () => {
+    if (inApp) {
+      setBusy(true);
+      try {
+        const result = await enableNativePush();
+        if (result.state === 'on') settle('on');
+        else if (result.state === 'blocked') settle('blocked');
+        else settle('unavailable', 'This version of the app cannot show offer alerts. Update it from the Play Store.');
+      } catch (err) {
+        settle('off', err instanceof Error ? err.message : 'Could not turn on offer alerts.');
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
     if (!publicKey) return;
     setBusy(true);
     try {
@@ -88,6 +114,15 @@ export function NowOfferAlerts({ onChange }: { onChange: (on: boolean) => void }
 
   const turnOff = async () => {
     setBusy(true);
+    if (inApp) {
+      try {
+        await disableNativePush();
+        settle('off');
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
     try {
       const registration = await navigator.serviceWorker.getRegistration();
       const subscription = await registration?.pushManager.getSubscription();
@@ -108,9 +143,15 @@ export function NowOfferAlerts({ onChange }: { onChange: (on: boolean) => void }
     <div className="flex flex-wrap items-center gap-2 text-xs" data-testid="now-offer-alerts">
       {state === 'on' ? <Bell className="h-4 w-4 text-primary" aria-hidden /> : <BellOff className="h-4 w-4 text-muted-foreground" aria-hidden />}
       <span className="text-muted-foreground">
-        {state === 'on' && 'Offer alerts on: you stay online with this tab in the background and get an alert for each offer.'}
+        {state === 'on' &&
+          (inApp
+            ? 'Offer alerts on: you stay online with the app in the background and get an alert for each offer.'
+            : 'Offer alerts on: you stay online with this tab in the background and get an alert for each offer.')}
         {state === 'off' && 'Offer alerts off: keep this screen in front to stay online.'}
-        {state === 'blocked' && 'Alerts are blocked for this site in your browser settings. Allow notifications to turn them on.'}
+        {state === 'blocked' &&
+          (inApp
+            ? 'Notifications are off for ORIGIN in your phone settings. Allow them to turn on offer alerts.'
+            : 'Alerts are blocked for this site in your browser settings. Allow notifications to turn them on.')}
         {state === 'unavailable' && (why ?? 'Offer alerts are not available here.')}
       </span>
       {state === 'off' && (

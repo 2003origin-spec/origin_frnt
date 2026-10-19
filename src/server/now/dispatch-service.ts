@@ -17,6 +17,8 @@ import type { PoolClient } from "pg";
 
 import { getOgcodeCatalogQuestionById } from "@/server/ogcode-catalog";
 import { getOgcodeQuestionProgress, isOgcodeProgressAvailable } from "@/server/ogcode-progress";
+import { hasActiveDeviceToken } from "@/server/push/device-tokens";
+import { isPushConfigured } from "@/server/push/fcm";
 import { createPrefixedId } from "@/server/workspaces/ids";
 import { getUserPostgresPool } from "@/server/user-postgres";
 
@@ -997,6 +999,12 @@ export async function getOpenRequestId(studentId: string): Promise<string | null
 // ---------------------------------------------------------------------------
 // Solver shift: presence heartbeat.
 
+/** A browser with offer alerts on (B85), or the Android app with push set up (B88). */
+export async function canAlertInBackground(userId: string): Promise<boolean> {
+  if (await hasWebPushSubscription(userId)) return true;
+  return isPushConfigured() && (await hasActiveDeviceToken(userId));
+}
+
 /**
  * Marks a verified solver online for the subjects they asked for (limited to
  * their approved expertise), then nudges waiting requests in those subjects so
@@ -1010,8 +1018,9 @@ export async function heartbeatHelper(
 ): Promise<{ helperId: string; subjects: string[] }> {
   const helper = await requireHelper(helperUserId);
   if (helper.verification_status !== "verified") throw new NowError(403, "restricted", "Your solver account is on hold.");
-  // Staying online from a background tab is only fair when an alert can reach the solver (decision B85).
-  if (options.background && !(await hasWebPushSubscription(helperUserId))) {
+  // Staying online from the background is only fair when an alert can reach the solver:
+  // a browser with offer alerts (B85) or the Android app with push (B88).
+  if (options.background && !(await canAlertInBackground(helperUserId))) {
     throw new NowError(409, "alerts_off", "Turn on offer alerts to stay online while this tab is in the background.");
   }
   const pool = await db();

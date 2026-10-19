@@ -10,6 +10,7 @@ import { isFeatureEnabled } from "@/lib/feature-flags";
 import { isEmailConfigured } from "@/server/email";
 import { isQStashConfigured } from "@/server/payments/qstash";
 import { isRazorpayConfigured } from "@/server/payments/razorpay-client";
+import { isPushConfigured } from "@/server/push/fcm";
 import { getSetting } from "@/server/platform-settings";
 import { getUserPostgresPool } from "@/server/user-postgres";
 
@@ -76,6 +77,7 @@ export async function getLaunchReadiness() {
       razorpay: isRazorpayConfigured(),
       kycKey: isKycEncryptionConfigured(),
       webPush: getWebPushConfig() !== null,
+      fcm: isPushConfigured(),
     },
     pricesSaved: false,
     packsOnSale: 0,
