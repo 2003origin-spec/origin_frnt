@@ -10,6 +10,7 @@
  *   - joins the LiveKit room with a server-minted ticket (audio; the solver can
  *     also share a desktop screen), then tells the API it joined,
  *   - sends / draws the pointer over the data channel (coordinates only),
+ *   - shows the shared board under the question when it is on for the call (B89),
  *   - asks for / confirms extra time, ends the call, and lets the solver record
  *     the outcome when the timer ended it.
  * The server ends calls by deleting the room, so a disconnect means "ended".
@@ -30,6 +31,7 @@ import {
 import { Circle, Clock, Flag, Loader2, Mic, MicOff, MonitorUp, MonitorX, PhoneOff, Plus } from 'lucide-react';
 
 import { FormattedMessage } from '@/components/origin-ai/FormattedMessage';
+import { NowRoomBoard } from '@/components/now/NowBoard';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { apiCall } from '@/lib/api';
@@ -70,6 +72,8 @@ type Ticket = {
   recorded: boolean;
   peerName: string;
   canScreenShare: boolean;
+  /** Shared board on for this call (B89). */
+  board?: boolean;
 };
 
 type Outcome = 'resolved' | 'partial' | 'unresolved';
@@ -131,6 +135,8 @@ export default function NowLiveRoom({ requestId }: { requestId: string }) {
   const [note, setNote] = useState<string | null>(null);
 
   const roomRef = useRef<Room | null>(null);
+  // The same room as state, for children that subscribe to its events (the board).
+  const [liveRoom, setLiveRoom] = useState<Room | null>(null);
   const audioRef = useRef<HTMLDivElement | null>(null);
   const screenRef = useRef<HTMLVideoElement | null>(null);
   const lastPointerSent = useRef(0);
@@ -176,6 +182,7 @@ export default function NowLiveRoom({ requestId }: { requestId: string }) {
   const leaveRoom = useCallback(async () => {
     const room = roomRef.current;
     roomRef.current = null;
+    setLiveRoom(null);
     if (room) await room.disconnect().catch(() => undefined);
     audioRef.current?.replaceChildren();
     setConnected(false);
@@ -255,6 +262,7 @@ export default function NowLiveRoom({ requestId }: { requestId: string }) {
 
       await room.connect(issued.url, issued.token);
       roomRef.current = room;
+      setLiveRoom(room);
       await room.localParticipant.setMicrophoneEnabled(true);
       await room.startAudio().catch(() => undefined);
       setTicket(issued);
@@ -446,6 +454,23 @@ export default function NowLiveRoom({ requestId }: { requestId: string }) {
                 />
               )}
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {ticket?.board && session && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Board</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <NowRoomBoard
+              room={connected ? liveRoom : null}
+              role={ticket.role}
+              sessionId={session.id}
+              figureUrl={view.question?.image ?? null}
+              roleOf={roleOf}
+            />
           </CardContent>
         </Card>
       )}

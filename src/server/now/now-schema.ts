@@ -541,6 +541,19 @@ CREATE INDEX IF NOT EXISTS idx_roster_day ON now.roster(day, subject);`,
 CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user ON now.push_subscriptions(user_id);`,
     ],
   },
+  {
+    // Shared board in human calls (decision B89): the latest board the solver's screen saved.
+    id: "20261020_origin_now_session_boards",
+    name: "origin now: shared board of a call",
+    ddl: [
+      `CREATE TABLE IF NOT EXISTS now.session_boards (
+  session_id TEXT PRIMARY KEY REFERENCES now.sessions(id) ON DELETE CASCADE,
+  board JSONB NOT NULL,
+  bytes INTEGER NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);`,
+    ],
+  },
 ];
 
 function pool() {

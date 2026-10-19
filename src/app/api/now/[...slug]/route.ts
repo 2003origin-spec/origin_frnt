@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { z } from "zod";
 
 import { requireFeatureEnabled } from "@/lib/feature-flags";
+import { BOARD_MAX_BYTES } from "@/lib/now-board";
 import { checkRateLimit, mutationLimiter } from "@/lib/rate-limit";
 import { parseAppVersionFromUserAgent } from "@/native/is-native-app";
 import { requireAuth } from "@/server/authz";
@@ -10,6 +11,7 @@ import { createCheckoutOrder } from "@/server/payments/orders-service";
 import { hasActiveDeviceToken } from "@/server/push/device-tokens";
 import { isPushConfigured } from "@/server/push/fcm";
 import { confirmConsent, getConsentStatus, previewConsent, startGuardianConsent } from "@/server/now/consent-service";
+import { getSessionBoard, saveSessionBoard } from "@/server/now/board-service";
 import { getNowAccess } from "@/server/now/now-access";
 import { getNowSettings } from "@/server/now/now-settings";
 import { handleNowError, NowError, nowJson } from "@/server/now/now-http";
@@ -99,6 +101,7 @@ import { DECLINE_REASONS, OUTCOMES, ROOT_CAUSES } from "@/server/now/types";
  *   GET  /api/now/helper/offers/current    → open offer (push tap, reconnect)
  *   POST /api/now/offers/:id               → { action: accept | decline }
  *   POST /api/now/sessions/:id/join | /end | /outcome | /extend | /extend/confirm
+ *   GET|PUT /api/now/sessions/:id/board    → the call's shared board (B89; PUT = the solver's screen saving it)
  *   POST /api/now/sessions/:id/token       → LiveKit ticket for the room (build step 6; POST so the
  *                                             edge kill switch covers it)
  *
@@ -478,6 +481,16 @@ const liveHandlers = {
     if (limited) return limited;
     return nowJson({ ticket: await issueRoomTicket(userId, id) }, { headers: { "Cache-Control": "no-store" } });
   },
+  board: async (_r: NextRequest, userId: string, [id]: string[]) =>
+    nowJson({ board: await getSessionBoard(userId, id) }, { headers: { "Cache-Control": "no-store" } }),
+  saveBoard: async (r: NextRequest, userId: string, [id]: string[]) => {
+    // Refuse oversized bodies before reading them (the service checks the exact size too).
+    if (Number(r.headers.get("content-length") ?? 0) > BOARD_MAX_BYTES * 2) {
+      throw new NowError(413, "board_too_large", "The board is full. Clear a page to keep writing.");
+    }
+    const body = (await parseJsonBody(r)) as { board?: unknown };
+    return nowJson(await saveSessionBoard(userId, id, body.board));
+  },
 };
 
 /** Routes keyed by method + path; ":id" segments are passed through as params. */
@@ -518,6 +531,8 @@ const ROUTES: { method: Method; pattern: string[]; handler: Handler; public?: bo
   { method: "POST", pattern: ["sessions", ":id", "extend"], handler: liveHandlers.extend },
   { method: "POST", pattern: ["sessions", ":id", "extend", "confirm"], handler: liveHandlers.confirmExtend },
   { method: "POST", pattern: ["sessions", ":id", "token"], handler: liveHandlers.roomTicket },
+  { method: "GET", pattern: ["sessions", ":id", "board"], handler: liveHandlers.board },
+  { method: "PUT", pattern: ["sessions", ":id", "board"], handler: liveHandlers.saveBoard },
   { method: "GET", pattern: ["sessions", ":id", "after"], handler: liveHandlers.afterCall },
   { method: "GET", pattern: ["me", "dashboard"], handler: liveHandlers.studentDashboard },
   { method: "POST", pattern: ["favourites", ":id"], handler: liveHandlers.favourite },

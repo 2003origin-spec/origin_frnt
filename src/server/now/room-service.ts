@@ -51,6 +51,8 @@ export type RoomTicket = {
   recorded: boolean;
   peerName: string;
   canScreenShare: boolean;
+  /** The shared board is on for this call (human solver, Settings → Extra parts; B89). */
+  board: boolean;
 };
 
 /**
@@ -110,6 +112,7 @@ export async function issueRoomTicket(userId: string, sessionId: string, now: Da
     recorded: getRecordingStorage() !== null,
     peerName: role === "student" ? (row.solver_kind === "bot" ? "Origin" : (row.helper_name ?? "Solver")) : firstNameOnly(row.student_name),
     canScreenShare: role === "solver",
+    board: row.solver_kind === "human" && (await getNowSettings()).features.board,
   };
 }
 

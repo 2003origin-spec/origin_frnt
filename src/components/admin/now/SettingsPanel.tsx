@@ -19,7 +19,58 @@ type Settings = {
   agreementVersion: string;
   recordingRetentionDays: number;
   eveningBonus: { enabled: boolean; coins: number; minOnlinePercent: number; requireRoster: boolean };
+  features: Features;
 };
+type Features = { board: boolean; askLater: boolean; groups: boolean; merch: boolean; rupeePrices: boolean };
+
+/** The parts added after the pilot scope (B89–B95); each stays off until switched on here. */
+const FEATURE_SWITCHES: { key: keyof Features; label: string; detail: string; legal?: string }[] = [
+  { key: 'board', label: 'Shared board in calls', detail: 'Human solvers can write and draw on a board the student sees live; the board is kept with the session.' },
+  {
+    key: 'askLater',
+    label: 'Ask later',
+    detail: 'Students can post a doubt to be answered in writing within 12 hours when nobody is free or they prefer it.',
+  },
+  {
+    key: 'groups',
+    label: 'Group sessions',
+    detail: 'Solvers can schedule a session on a chapter and students book seats with coins.',
+    legal: 'group calls with several minors need the same recording notice and safety procedure the legal team approved for 1:1 calls.',
+  },
+  {
+    key: 'merch',
+    label: 'Merch in the store',
+    detail: 'Admins can list merch with stock; buyers give a delivery address and the team ships by hand.',
+    legal: 'confirm the store terms for physical goods (delivery, damaged items, returns) with the legal team first.',
+  },
+  {
+    key: 'rupeePrices',
+    label: 'Rupee prices in the store',
+    detail: 'Store items can cost coins plus rupees (or rupees only), paid through Razorpay. Never offered inside the Android app.',
+    legal: 'rupee checkout makes the store a seller of goods: invoices and GST with the CA before switching on.',
+  },
+];
+
+function FeatureSwitches({ value, onChange }: { value: Features; onChange: (next: Features) => void }) {
+  return (
+    <div className="flex flex-col gap-3">
+      {FEATURE_SWITCHES.map((f) => (
+        <div key={f.key} className="flex flex-col gap-1 text-sm">
+          <label className="flex items-center gap-2 font-medium">
+            <input type="checkbox" checked={value[f.key]} onChange={(e) => onChange({ ...value, [f.key]: e.target.checked })} />
+            {f.label}
+          </label>
+          <p className="pl-6 text-xs text-muted-foreground">{f.detail}</p>
+          {f.legal && (
+            <div className="pl-6">
+              <LegalNote>{f.legal}</LegalNote>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
 type PriceRow = {
   difficulty: string;
   solverKind: string;
@@ -201,6 +252,8 @@ function SettingsForm() {
         Paid by the nightly job (2:00 am IST) for the evenings just ended, once per solver per evening, as spendable bonus coins.
         Off until the founders set an amount.
       </p>
+      <h3 className="mb-2 mt-4 text-sm font-semibold">Extra parts (off until switched on)</h3>
+      <FeatureSwitches value={draft.features} onChange={(v) => set('features', v)} />
       <p className="mt-4 text-xs text-muted-foreground">
         Coin transfers between users stay off in the pilot (legal team decision pending); they are not editable here.
       </p>
