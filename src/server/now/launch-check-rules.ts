@@ -29,6 +29,8 @@ export type LaunchFacts = {
     recording: boolean;
     /** "public" = it names the public image bucket, which the app refuses (B87). */
     recordingBucket: "ok" | "not_set" | "public";
+    /** R2_PRIVATE_BUCKET for KYC documents, papers and ask-later photos (B96). */
+    privateFiles: "ok" | "not_set" | "public";
     email: boolean;
     cronSecret: boolean;
     qstash: boolean;
@@ -120,6 +122,19 @@ export function launchChecklist(f: LaunchFacts): CheckItem[] {
           ? "It is the public image bucket (R2_BUCKET_NAME), where anyone with a file's address can open it, so calls are not recorded."
           : "No private bucket set: calls are not recorded. Do not run the pilot with minors like this.",
     fix: "Set NOW_RECORDING_R2_BUCKET (or R2_PRIVATE_BUCKET) to a bucket with public access off, never R2_BUCKET_NAME (runbook 1.1, 1.2).",
+  });
+  add({
+    key: "env_private_files",
+    group: "Services",
+    label: "Private file bucket (KYC documents, papers)",
+    status: f.env.privateFiles === "ok" ? "ok" : "missing",
+    detail:
+      f.env.privateFiles === "ok"
+        ? "Set, and not the public image bucket. Keep public access off for it in Cloudflare."
+        : f.env.privateFiles === "public"
+          ? "R2_PRIVATE_BUCKET names the public image bucket, so solver documents and paid papers are refused."
+          : "R2_PRIVATE_BUCKET is not set: solvers cannot upload documents and papers cannot be uploaded or downloaded.",
+    fix: "Set R2_PRIVATE_BUCKET to a bucket with public access off that the app's R2 key can write and read (runbook 1.1).",
   });
   service("env_email", "Email (guardian consent)", f.env.email, true, "Set.", "Not set: guardian consent emails cannot be sent.", "Configure SES or SMTP and EMAIL_FROM (runbook 1.1).");
   service("env_cron", "Background jobs (Vercel cron)", f.env.cronSecret, true, "CRON_SECRET set.", "CRON_SECRET not set: the sweep and the nightly job are refused, so stuck offers and settlements never clear.", "Set CRON_SECRET in Vercel (runbook 1.1).");

@@ -20,6 +20,7 @@ import { getLiveKitConfig, getRecordingBucket, hasRecordingCredentials } from ".
 import { isPresenceStoreConfigured } from "./now-realtime";
 import { NOW_ADDON_MIGRATIONS } from "./now-schema";
 import { DEFAULT_NOW_SETTINGS, getNowSettings } from "./now-settings";
+import { getPrivateFilesBucket } from "./private-files";
 import { NOW_SUBJECTS } from "./solver-rules";
 import { BOT_HELPER_ID } from "./solver-service";
 import { getWebPushConfig } from "./web-push";
@@ -71,6 +72,7 @@ export async function getLaunchReadiness() {
       livekit: getLiveKitConfig() !== null,
       recording: hasRecordingCredentials(),
       recordingBucket: getRecordingBucket().problem ?? "ok",
+      privateFiles: getPrivateFilesBucket().problem ?? "ok",
       email: isEmailConfigured(),
       cronSecret: Boolean(process.env.CRON_SECRET?.trim()),
       qstash: isQStashConfigured(),

@@ -14,6 +14,7 @@ function ready(overrides: Partial<LaunchFacts> = {}): LaunchFacts {
       livekit: true,
       recording: true,
       recordingBucket: "ok",
+      privateFiles: "ok",
       email: true,
       cronSecret: true,
       qstash: true,
@@ -93,4 +94,14 @@ test("pilot subjects need two verified solvers; the kill switch blocks launch", 
 
 test("an unreadable kill switch is flagged for checking, not assumed off", () => {
   assert.equal(item(ready({ killSwitchOn: null }), "switch_kill").status, "warn");
+});
+
+test("the private file bucket is required and never the public one (B96)", () => {
+  const withFiles = (privateFiles: LaunchFacts["env"]["privateFiles"]) => ready({ env: { ...ready().env, privateFiles } });
+  assert.equal(item(withFiles("ok"), "env_private_files").status, "ok");
+  assert.equal(item(withFiles("not_set"), "env_private_files").status, "missing");
+  const exposed = item(withFiles("public"), "env_private_files");
+  assert.equal(exposed.status, "missing");
+  assert.match(exposed.detail, /public image bucket/);
+  assert.equal(launchVerdict(launchChecklist(withFiles("not_set"))).ready, false);
 });

@@ -15,7 +15,7 @@ import { randomUUID } from "node:crypto";
 
 import { formatISTDateTimeDMY } from "@/lib/format-time";
 import { getOgcodeCatalogQuestionMap, sampleOgcodeCatalogQuestionIds } from "@/server/ogcode-catalog";
-import { createPresignedR2PutUrl, deleteR2Object } from "@/server/media-storage";
+import { createPresignedR2PutUrl } from "@/server/media-storage";
 import { createPrefixedId } from "@/server/workspaces/ids";
 import { getUserPostgresPool } from "@/server/user-postgres";
 
@@ -24,6 +24,7 @@ import { isMinorOn } from "./now-access";
 import { NowError } from "./now-http";
 import { ensureNowSchema } from "./now-schema";
 import { getNowSettings } from "./now-settings";
+import { deletePrivateFile, getPrivateFilesBucket, requirePrivateFilesBucket } from "./private-files";
 import {
   ALLOWED_DOCUMENT_MIME_TYPES,
   DOCUMENT_KINDS,
@@ -277,8 +278,10 @@ export async function createDocumentUpload(
     throw new NowError(400, "file_too_large", "Each file must be 5 MB or smaller.");
   }
   const objectKey = `${KYC_PREFIX}/${userId}/${input.kind}-${randomUUID()}.${EXTENSIONS[input.mimeType]}`;
+  // KYC documents never go to the public image bucket (B96).
+  const bucket = requirePrivateFilesBucket();
   try {
-    const signed = createPresignedR2PutUrl({ objectKey, expiresSeconds: 600, method: "PUT" });
+    const signed = createPresignedR2PutUrl({ objectKey, bucket, expiresSeconds: 600, method: "PUT" });
     return { uploadUrl: signed.url, objectKey, expiresInSeconds: 600 };
   } catch {
     throw new NowError(503, "storage_unavailable", "Uploads are not available right now. Please try later.");
@@ -300,7 +303,7 @@ export async function confirmDocumentUpload(userId: string, input: { kind: strin
       WHERE id = $1 AND status = 'draft' RETURNING *`,
     [row.id, input.kind, input.objectKey],
   );
-  if (previous && previous !== input.objectKey) await deleteR2Object({ objectKey: previous }).catch(() => undefined);
+  if (previous && previous !== input.objectKey) await deletePrivateFile(previous);
   return toView(updated.rows[0]);
 }
 
@@ -479,9 +482,16 @@ export async function getApplicationForAdmin(applicationId: string): Promise<
   const row = res.rows[0];
   if (!row) throw new NowError(404, "not_found", "Application not found.");
   const documentLinks: Partial<Record<DocumentKind, string>> = {};
+  const privateBucket = getPrivateFilesBucket().name;
   for (const [kind, key] of Object.entries(row.documents)) {
+    if (!privateBucket) break; // No private bucket: listed without links.
     try {
-      documentLinks[kind as DocumentKind] = createPresignedR2PutUrl({ objectKey: key as string, method: "GET", expiresSeconds: 600 }).url;
+      documentLinks[kind as DocumentKind] = createPresignedR2PutUrl({
+        objectKey: key as string,
+        bucket: privateBucket,
+        method: "GET",
+        expiresSeconds: 600,
+      }).url;
     } catch {
       // Storage not configured (local dev): the admin sees the document listed without a link.
     }
@@ -587,7 +597,7 @@ export async function rejectApplication(input: { applicationId: string; adminId:
   const row = res.rows[0];
   if (!row) throw new NowError(409, "not_submitted", "Only a submitted application can be rejected.");
   // Plan doc, "Aadhaar handling": documents are deleted when an application is rejected.
-  for (const key of Object.values(row.documents)) await deleteR2Object({ objectKey: key }).catch(() => undefined);
+  for (const key of Object.values(row.documents)) await deletePrivateFile(key);
   await pool().query(`UPDATE now.helper_applications SET documents = '{}'::jsonb WHERE id = $1`, [input.applicationId]);
   await pool().query(`INSERT INTO now.events (type, actor, payload) VALUES ('application.rejected', $1, $2::jsonb)`, [
     input.adminId,

@@ -5,8 +5,9 @@
  * - premium: N days of a subject's premium, granted as an
  *   `entitlements.subject_grants` row with source `coin_redemption` and an
  *   expiry. The entitlement read path already counts every active grant.
- * - digital: a PDF paper in the private bucket, downloaded through a
- *   10-minute signed link by whoever bought it.
+ * - digital: a PDF paper in the private bucket (`R2_PRIVATE_BUCKET`, never
+ *   the public image bucket, B96), downloaded through a 10-minute signed
+ *   link by whoever bought it.
  *
  * Coins only (rupee and mixed prices come after the pilot). A purchase is one
  * transaction: order row, coin debit (`store_spend` → platform:store), stock,
@@ -28,6 +29,7 @@ import { getWalletBalance, postTransfers, withNowTransaction } from "./ledger-st
 import { getNowAccess } from "./now-access";
 import { NowError } from "./now-http";
 import { ensureNowSchema } from "./now-schema";
+import { requirePrivateFilesBucket } from "./private-files";
 import { ensureWelcomeGrant } from "./wallet-service";
 import {
   DOWNLOAD_LINK_SECONDS,
@@ -341,7 +343,12 @@ export async function getPaperDownload(userId: string, orderId: string) {
   if (row.kind !== "digital" || row.status !== "fulfilled" || !row.file_key) {
     throw new NowError(409, "no_download", "There is nothing to download for this order.");
   }
-  const signed = createPresignedR2PutUrl({ objectKey: row.file_key, method: "GET", expiresSeconds: DOWNLOAD_LINK_SECONDS });
+  const signed = createPresignedR2PutUrl({
+    objectKey: row.file_key,
+    bucket: requirePrivateFilesBucket(),
+    method: "GET",
+    expiresSeconds: DOWNLOAD_LINK_SECONDS,
+  });
   await pool.query(`UPDATE store.orders SET downloads = downloads + 1 WHERE id = $1`, [orderId]);
   await logEvent(pool, { type: "store.download", actor: userId, payload: { orderId, itemId: row.item_id } });
   return { url: signed.url, expiresInSeconds: DOWNLOAD_LINK_SECONDS };
@@ -402,7 +409,7 @@ export async function createPaperUpload(itemId: string, input: { mimeType: strin
   if (!item || item.kind !== "digital") throw new NowError(404, "not_found", "Digital item not found.");
   if (!isPaperUpload(input.mimeType, input.sizeBytes)) throw new NowError(400, "invalid_file", "Upload a PDF of 50 MB or less.");
   const objectKey = paperObjectKey(itemId, randomBytes(8).toString("hex"));
-  const signed = createPresignedR2PutUrl({ objectKey, method: "PUT", expiresSeconds: 900 });
+  const signed = createPresignedR2PutUrl({ objectKey, bucket: requirePrivateFilesBucket(), method: "PUT", expiresSeconds: 900 });
   return { uploadUrl: signed.url, objectKey, method: "PUT", contentType: "application/pdf" };
 }
 
