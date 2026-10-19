@@ -22,6 +22,7 @@ import { ensureNowSchema } from "./now-schema";
 import { getNowSettings } from "./now-settings";
 import { CHECKOUT_RELEASE_MS, allowedItemKinds } from "./store-rules";
 import { ensureStoreItemOrderKind } from "./store-payments";
+import { ensureStoreRefundLedgerKind } from "./store-refund-kind";
 import {
   assertStoreAccess,
   ensureCoinRedemptionGrantSource,
@@ -150,6 +151,7 @@ export async function startStoreCheckout(
 
 /** Releases one unpaid store order: cancelled, coins back, stock back. False if it was no longer waiting. */
 export async function releaseStoreOrder(storeOrderId: string, reason: string, now: Date = new Date()): Promise<boolean> {
+  await ensureStoreRefundLedgerKind();
   let released = false;
   await withNowTransaction(async (client) => {
     const res = await client.query<{ id: string; user_id: string; item_id: string; coins_spent: number; size: string | null; status: string }>(

@@ -23,6 +23,7 @@ import { postTransfers, withNowTransaction } from "./ledger-store";
 import { NowError } from "./now-http";
 import { ensureNowSchema } from "./now-schema";
 import { firstNameOnly } from "./session-rules";
+import { ensureStoreRefundLedgerKind } from "./store-refund-kind";
 import { getOrder, returnStoreStockLocked, storeImageUrl, type StoreOrderView } from "./store-service";
 import {
   ADDRESS_KEEP_DAYS,
@@ -73,6 +74,7 @@ async function cancelLocked(client: PoolClient, order: LockedOrder, actor: strin
 
 /** The buyer cancels before the team starts packing. */
 export async function cancelMyMerchOrder(userId: string, orderId: string, now: Date = new Date()): Promise<StoreOrderView> {
+  await ensureStoreRefundLedgerKind();
   await withNowTransaction(async (client) => {
     const order = await lockMerchOrder(client, orderId);
     if (!order || order.user_id !== userId) throw new NowError(404, "not_found", "Order not found.");
@@ -173,6 +175,7 @@ export async function updateMerchShipment(
 ): Promise<StoreOrderView> {
   let buyerId = "";
   let coins = 0;
+  if (action === "cancel") await ensureStoreRefundLedgerKind();
   await withNowTransaction(async (client) => {
     const order = await lockMerchOrder(client, orderId);
     if (!order || !order.ship_status) throw new NowError(404, "not_found", "Merch order not found.");

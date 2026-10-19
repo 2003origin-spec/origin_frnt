@@ -20,6 +20,8 @@ export type CheckItem = {
 export type LaunchFacts = {
   tablesPresent: boolean;
   coinPackOrderKind: boolean;
+  /** now.ledger_transfers allows store_refund (migration 13, B91/B92). */
+  storeRefundKind: boolean;
   /** payments.order_kind has store_item (migration 10, B92). */
   storeItemOrderKind: boolean;
   /** The extra parts switched on in Settings (B89–B95), by key. */
@@ -130,6 +132,20 @@ export function launchChecklist(f: LaunchFacts): CheckItem[] {
         ? "payments.order_kind has store_item."
         : "payments.order_kind has no store_item; the first rupee checkout adds it, but run the migration to be sure.",
     fix: "Run migration 10, 20261020_origin_now_store_item_order_kind.sql, on its own (runbook 1.3).",
+  });
+
+  const storeRefunds = f.featuresOn.includes("merch") || rupees;
+  add({
+    key: "db_store_refund",
+    group: "Database",
+    label: "Store refunds in the coin ledger",
+    status: !storeRefunds ? "info" : f.storeRefundKind ? "ok" : "warn",
+    detail: f.storeRefundKind
+      ? "now.ledger_transfers accepts store_refund."
+      : storeRefunds
+        ? "Not yet allowed; the first cancelled store order adds it, but run the migration to be sure."
+        : "Only needed once merch or rupee prices are switched on.",
+    fix: "Run migration 13, 20261020_origin_now_store_refund_kind.sql (runbook 1.3).",
   });
 
   // Services (environment variables, never their values).

@@ -555,7 +555,7 @@ CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user ON now.push_subscriptions
     ],
   },
   {
-    // Merch with delivery (decision B91): sizes, delivery address, shipping states, store_refund.
+    // Merch with delivery (decision B91): sizes, delivery address, shipping states.
     id: "20261020_origin_now_store_merch",
     name: "origin now: merch with delivery in the store",
     ddl: [
@@ -571,22 +571,7 @@ ALTER TABLE store.orders ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMPTZ;
 ALTER TABLE store.orders ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ;
 ALTER TABLE store.orders ADD COLUMN IF NOT EXISTS cancel_reason TEXT;
 ALTER TABLE store.orders ADD COLUMN IF NOT EXISTS address_purged_at TIMESTAMPTZ;
-CREATE INDEX IF NOT EXISTS idx_store_orders_ship ON store.orders(ship_status, created_at) WHERE ship_status IS NOT NULL;
-DO $$
-DECLARE constraint_def TEXT;
-BEGIN
-  SELECT pg_get_constraintdef(oid) INTO constraint_def
-    FROM pg_constraint
-   WHERE conrelid = 'now.ledger_transfers'::regclass AND conname = 'ledger_transfers_kind_check';
-  IF constraint_def IS NULL OR position('store_refund' IN constraint_def) = 0 THEN
-    ALTER TABLE now.ledger_transfers DROP CONSTRAINT IF EXISTS ledger_transfers_kind_check;
-    ALTER TABLE now.ledger_transfers ADD CONSTRAINT ledger_transfers_kind_check CHECK (kind IN (
-      'welcome_grant', 'pack_purchase', 'promo_bonus', 'session_hold', 'session_capture',
-      'session_release', 'extension', 'tip', 'commission', 'transfer', 'store_spend',
-      'expiry', 'admin_adjustment', 'pack_refund', 'store_refund'
-    ));
-  END IF;
-END $$;`,
+CREATE INDEX IF NOT EXISTS idx_store_orders_ship ON store.orders(ship_status, created_at) WHERE ship_status IS NOT NULL;`,
     ],
   },
   {

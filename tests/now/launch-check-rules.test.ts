@@ -8,6 +8,7 @@ function ready(overrides: Partial<LaunchFacts> = {}): LaunchFacts {
     tablesPresent: true,
     coinPackOrderKind: true,
     storeItemOrderKind: false,
+    storeRefundKind: false,
     featuresOn: [],
     coinRedemptionGrantSource: true,
     addonMigrations: [{ id: "20261018_origin_now_roster", applied: true }],
@@ -116,4 +117,10 @@ test("the store payment type matters only once rupee prices are on; the switched
   assert.equal(item({ ...on, storeItemOrderKind: true }, "db_store_item").status, "ok");
   assert.match(item(on, "switch_features").detail, /rupee prices, merch/);
   assert.match(item(ready(), "switch_features").detail, /None switched on/);
+});
+
+test("store refunds in the ledger matter once merch or rupee prices are on", () => {
+  assert.equal(item(ready(), "db_store_refund").status, "info");
+  assert.equal(item(ready({ featuresOn: ["merch"] }), "db_store_refund").status, "warn");
+  assert.equal(item(ready({ featuresOn: ["merch"], storeRefundKind: true }), "db_store_refund").status, "ok");
 });
