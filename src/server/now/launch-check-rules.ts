@@ -20,6 +20,10 @@ export type CheckItem = {
 export type LaunchFacts = {
   tablesPresent: boolean;
   coinPackOrderKind: boolean;
+  /** payments.order_kind has store_item (migration 10, B92). */
+  storeItemOrderKind: boolean;
+  /** The extra parts switched on in Settings (B89–B95), by key. */
+  featuresOn: string[];
   coinRedemptionGrantSource: boolean;
   addonMigrations: { id: string; applied: boolean }[];
   env: {
@@ -52,6 +56,14 @@ export type LaunchFacts = {
   flagOn: boolean;
   /** null when the kill-switch state could not be read. */
   killSwitchOn: boolean | null;
+};
+
+const FEATURE_NAMES: Record<string, string> = {
+  board: "shared board",
+  askLater: "ask later",
+  groups: "group sessions",
+  merch: "merch",
+  rupeePrices: "rupee prices",
 };
 
 /** Pilot subjects: the evening checklist wants at least this many solvers each. */
@@ -103,6 +115,22 @@ export function launchChecklist(f: LaunchFacts): CheckItem[] {
       fix: "Apply it from src/db/migrations (runbook 1.3).",
     });
   }
+
+  const rupees = f.featuresOn.includes("rupeePrices");
+  add({
+    key: "db_store_item",
+    group: "Database",
+    label: "Store payment type (rupee prices)",
+    status: !rupees ? "info" : f.storeItemOrderKind ? "ok" : "missing",
+    detail: !rupees
+      ? f.storeItemOrderKind
+        ? "Present (rupee prices are switched off)."
+        : "Only needed once rupee prices are switched on."
+      : f.storeItemOrderKind
+        ? "payments.order_kind has store_item."
+        : "payments.order_kind has no store_item; the first rupee checkout adds it, but run the migration to be sure.",
+    fix: "Run migration 10, 20261020_origin_now_store_item_order_kind.sql, on its own (runbook 1.3).",
+  });
 
   // Services (environment variables, never their values).
   const service = (key: string, label: string, ok: boolean, required: boolean, okText: string, badText: string, fix: string) =>
@@ -215,6 +243,16 @@ export function launchChecklist(f: LaunchFacts): CheckItem[] {
   });
 
   // Switches.
+  add({
+    key: "switch_features",
+    group: "Switches",
+    label: "Extra parts",
+    status: "info",
+    detail: f.featuresOn.length
+      ? `Switched on: ${f.featuresOn.map((k) => FEATURE_NAMES[k] ?? k).join(", ")}.`
+      : "None switched on: the pilot runs exactly as planned.",
+    fix: "Settings & prices → Extra parts. Run the matching rows of section F of the internal test for each one switched on.",
+  });
   add({
     key: "switch_flag",
     group: "Switches",

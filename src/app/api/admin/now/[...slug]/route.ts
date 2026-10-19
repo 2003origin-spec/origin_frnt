@@ -122,6 +122,7 @@ const StoreItemSchema = z.object({
   title: z.string().max(120),
   description: z.string().max(2000).nullable().optional(),
   priceCoins: z.number().int(),
+  pricePaise: z.number().int().optional(),
   stock: z.number().int().nullable().optional(),
   premiumSubject: z.string().nullable().optional(),
   premiumDays: z.number().int().nullable().optional(),

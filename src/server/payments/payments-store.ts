@@ -26,7 +26,10 @@ export type OrderKind =
   | "batch_subscription"
   // Origin NOW Ori Coins pack (V1/ORIGIN_NOW_PLAN.md). Added to the DB enum
   // by ensureCoinPackOrderKind() before the first coin-pack checkout.
-  | "coin_pack";
+  | "coin_pack"
+  // Origin Store item with a rupee price (ORIGIN_NOW_PLAN.md B92). Added by
+  // ensureStoreItemOrderKind() before the first such checkout.
+  | "store_item";
 
 export type OrderStatus =
   | "created"

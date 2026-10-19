@@ -18,6 +18,7 @@
  */
 
 import { randomBytes } from "node:crypto";
+import type { PoolClient } from "pg";
 
 import { recomputeUserPremiumFlags } from "@/server/entitlements";
 import { ensureSubjectGrantsSchema } from "@/server/connect/subject-grants-schema";
@@ -135,6 +136,8 @@ export type StoreItemView = {
   title: string;
   description: string | null;
   priceCoins: number;
+  /** Rupee part of the price (B92); 0 for coins-only items. */
+  pricePaise: number;
   inStock: boolean;
   premiumSubject: string | null;
   premiumDays: number | null;
@@ -148,7 +151,7 @@ export type StoreItemView = {
   imageUrl: string | null;
 };
 
-async function assertStoreAccess(userId: string) {
+export async function assertStoreAccess(userId: string) {
   const access = await getNowAccess(userId);
   if (!access.enabled) throw new NowError(404, "not_found", "Not found.");
   if (!access.inCohort && !access.helper) {
@@ -176,9 +179,9 @@ export async function listStoreItems(userId: string): Promise<{ items: StoreItem
   const { features } = await getNowSettings();
   const [items, owned, premium, balance] = await Promise.all([
     pool.query<ItemRow>(
-      `SELECT * FROM store.items WHERE active AND kind = ANY($1::text[]) AND price_paise = 0
+      `SELECT * FROM store.items WHERE active AND kind = ANY($1::text[]) AND ($2 OR price_paise = 0)
         ORDER BY featured DESC, kind, price_coins, title`,
-      [allowedItemKinds(features)],
+      [allowedItemKinds(features), features.rupeePrices],
     ),
     pool.query<{ item_id: string }>(
       `SELECT DISTINCT o.item_id FROM store.orders o JOIN store.items i ON i.id = o.item_id
@@ -197,6 +200,7 @@ export async function listStoreItems(userId: string): Promise<{ items: StoreItem
       title: r.title,
       description: r.description,
       priceCoins: r.price_coins,
+      pricePaise: r.price_paise,
       inStock: hasStock(r),
       premiumSubject: r.premium_subject,
       premiumDays: r.premium_days,
@@ -291,16 +295,144 @@ export async function getOrder(orderId: string): Promise<StoreOrderView | null> 
   return res.rows[0] ? orderView(res.rows[0]) : null;
 }
 
+export type MerchChoice = { size?: string | null; delivery?: unknown };
+
 /**
- * Buys one item with coins. Safe to retry with the same Idempotency-Key.
+ * Inside the caller's transaction, with the item locked: checks the item can
+ * be bought, inserts the order as `placed`, takes its coins and reserves the
+ * stock. A paper the user already owns returns that order instead.
+ */
+export async function placeStoreOrderLocked(
+  client: PoolClient,
+  input: { userId: string; item: ItemRow; idempotencyKey: string; now: Date; merch: MerchChoice },
+): Promise<{ orderId: string; alreadyOwned: boolean }> {
+  const { userId, item, now } = input;
+  let delivery: DeliveryAddress | null = null;
+  let size: string | null = null;
+  if (item.kind === "merch") {
+    const checked = validateDeliveryAddress(input.merch.delivery);
+    if (!checked.ok) throw new NowError(400, "invalid_address", checked.errors.join(" "));
+    delivery = checked.address;
+    if (item.size_stock) {
+      size = typeof input.merch.size === "string" ? input.merch.size.trim() : "";
+      if (!(size in item.size_stock)) throw new NowError(400, "pick_size", "Pick a size.");
+      if (item.size_stock[size] <= 0) throw new NowError(409, "sold_out", `Size ${size} is sold out.`);
+    }
+  }
+  if (item.kind === "digital") {
+    if (!item.file_key) throw new NowError(409, "not_ready", "That paper is not ready yet.");
+    const owned = await client.query<{ id: string }>(
+      `SELECT id FROM store.orders WHERE user_id = $1 AND item_id = $2 AND status = 'fulfilled' LIMIT 1`,
+      [userId, item.id],
+    );
+    if (owned.rows[0]) return { orderId: owned.rows[0].id, alreadyOwned: true };
+  }
+  // After the ownership check: an owner tapping Buy again hears "you own it", not "sold out".
+  if (item.stock !== null && item.stock <= 0) throw new NowError(409, "sold_out", "That item is sold out.");
+
+  const orderId = createPrefixedId("sord");
+  await client.query(
+    // paise_paid holds the order's rupee price, frozen here; it is paid once the status leaves `placed`.
+    `INSERT INTO store.orders (id, user_id, item_id, coins_spent, paise_paid, status, idempotency_key, created_at, size, delivery)
+     VALUES ($1, $2, $3, $4, $9, 'placed', $5, $6, $7, $8::jsonb)`,
+    [orderId, userId, item.id, item.price_coins, input.idempotencyKey, now, size, delivery ? JSON.stringify(delivery) : null, item.price_paise],
+  );
+  // Throws InsufficientCoinsError / FrozenAccountError and rolls everything back.
+  if (item.price_coins > 0) await postTransfers([storeSpend(userId, item.price_coins, orderId)], { client, now });
+  if (size !== null) {
+    await client.query(
+      `UPDATE store.items SET size_stock = jsonb_set(size_stock, ARRAY[$2], to_jsonb((size_stock->>$2)::int - 1)), updated_at = NOW() WHERE id = $1`,
+      [item.id, size],
+    );
+  } else if (item.stock !== null) {
+    await client.query(`UPDATE store.items SET stock = stock - 1, updated_at = NOW() WHERE id = $1`, [item.id]);
+  }
+  return { orderId, alreadyOwned: false };
+}
+
+/**
+ * Inside the caller's transaction: hands over a placed order whose payment is
+ * complete — premium granted, a paper ready to download, merch into the
+ * packing queue (fulfilled later, when delivered). Returns whether premium
+ * was granted (the caller then recomputes the premium flags after commit).
+ */
+export async function fulfilStoreOrderLocked(
+  client: PoolClient,
+  input: { orderId: string; userId: string; item: ItemRow; now: Date; paisePaid?: number; paymentOrderId?: string | null },
+): Promise<{ premiumGranted: boolean }> {
+  const { orderId, userId, item, now } = input;
+  const paid = { paise: input.paisePaid ?? null, paymentOrderId: input.paymentOrderId ?? null };
+  if (item.kind === "merch") {
+    await client.query(
+      `UPDATE store.orders SET status = 'paid', ship_status = 'to_pack', paise_paid = COALESCE($2, paise_paid),
+              payment_order_id = COALESCE($3, payment_order_id)
+        WHERE id = $1`,
+      [orderId, paid.paise, paid.paymentOrderId],
+    );
+    await logEvent(client, {
+      type: "store.purchased",
+      actor: userId,
+      payload: { orderId, itemId: item.id, kind: item.kind, coins: item.price_coins, paise: paid.paise },
+    });
+    return { premiumGranted: false };
+  }
+  let grantId: string | null = null;
+  let premiumEnd: Date | null = null;
+  if (item.kind === "premium") {
+    // Same per-user lock the paid-grant writer uses, so stacking cannot race.
+    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [userId]);
+    const latest = await client.query<{ until: Date | null }>(
+      `SELECT max(expires_at) AS until FROM entitlements.subject_grants
+        WHERE user_id = $1 AND subject = $2 AND source = 'coin_redemption' AND status = 'active'`,
+      [userId, item.premium_subject],
+    );
+    const window = premiumWindow(latest.rows[0]?.until ?? null, item.premium_days ?? 0, now);
+    grantId = createSubjectGrantId();
+    premiumEnd = window.end;
+    await client.query(
+      `INSERT INTO entitlements.subject_grants (id, user_id, subject, source, status, expires_at, created_at, updated_at)
+       VALUES ($1, $2, $3, 'coin_redemption', 'active', $4, $5, $5)`,
+      [grantId, userId, item.premium_subject, window.end, now],
+    );
+  }
+  await client.query(
+    `UPDATE store.orders SET status = 'fulfilled', fulfilled_at = $2, grant_id = $3, premium_expires_at = $4,
+            paise_paid = COALESCE($5, paise_paid), payment_order_id = COALESCE($6, payment_order_id)
+      WHERE id = $1`,
+    [orderId, now, grantId, premiumEnd, paid.paise, paid.paymentOrderId],
+  );
+  await logEvent(client, {
+    type: "store.purchased",
+    actor: userId,
+    payload: { orderId, itemId: item.id, kind: item.kind, coins: item.price_coins, paise: paid.paise, premiumSubject: item.premium_subject, premiumEnd },
+  });
+  return { premiumGranted: item.kind === "premium" };
+}
+
+/** Puts one unit back: the order's size, or the item's stock when it counts stock. */
+export async function returnStoreStockLocked(client: PoolClient, itemId: string, size: string | null): Promise<void> {
+  if (size !== null) {
+    await client.query(
+      `UPDATE store.items SET size_stock = jsonb_set(size_stock, ARRAY[$2], to_jsonb(COALESCE((size_stock->>$2)::int, 0) + 1)), updated_at = NOW()
+        WHERE id = $1 AND size_stock IS NOT NULL`,
+      [itemId, size],
+    );
+  } else {
+    await client.query(`UPDATE store.items SET stock = stock + 1, updated_at = NOW() WHERE id = $1 AND stock IS NOT NULL`, [itemId]);
+  }
+}
+
+/**
+ * Buys one coins-only item. Safe to retry with the same Idempotency-Key.
  * Merch also needs the size (when it has sizes) and a delivery address.
+ * Items with a rupee price go through startStoreCheckout (B92).
  */
 export async function buyStoreItem(
   userId: string,
   itemId: string,
   idempotencyKey: string,
   now: Date = new Date(),
-  merch: { size?: string | null; delivery?: unknown } = {},
+  merch: MerchChoice = {},
 ): Promise<{ order: StoreOrderView; alreadyOwned: boolean }> {
   await assertStoreAccess(userId);
   await ensureCoinRedemptionGrantSource();
@@ -321,92 +453,16 @@ export async function buyStoreItem(
     }
     const itemRes = await client.query<ItemRow>(`SELECT * FROM store.items WHERE id = $1 FOR UPDATE`, [itemId]);
     const item = itemRes.rows[0];
-    if (!item || !item.active || !kinds.includes(item.kind) || item.price_paise !== 0) {
-      throw new NowError(404, "not_on_sale", "That item is not on sale.");
+    if (!item || !item.active || !kinds.includes(item.kind)) throw new NowError(404, "not_on_sale", "That item is not on sale.");
+    if (item.price_paise !== 0) {
+      if (!features.rupeePrices) throw new NowError(404, "not_on_sale", "That item is not on sale.");
+      throw new NowError(409, "pay_online", "This item is paid partly in rupees. Use Pay to check out.");
     }
-    let delivery: DeliveryAddress | null = null;
-    let size: string | null = null;
-    if (item.kind === "merch") {
-      const checked = validateDeliveryAddress(merch.delivery);
-      if (!checked.ok) throw new NowError(400, "invalid_address", checked.errors.join(" "));
-      delivery = checked.address;
-      if (item.size_stock) {
-        size = typeof merch.size === "string" ? merch.size.trim() : "";
-        if (!(size in item.size_stock)) throw new NowError(400, "pick_size", "Pick a size.");
-        if (item.size_stock[size] <= 0) throw new NowError(409, "sold_out", `Size ${size} is sold out.`);
-      }
-    }
-    if (item.kind === "digital") {
-      if (!item.file_key) throw new NowError(409, "not_ready", "That paper is not ready yet.");
-      const owned = await client.query<{ id: string }>(
-        `SELECT id FROM store.orders WHERE user_id = $1 AND item_id = $2 AND status = 'fulfilled' LIMIT 1`,
-        [userId, itemId],
-      );
-      if (owned.rows[0]) {
-        orderId = owned.rows[0].id;
-        alreadyOwned = true;
-        return;
-      }
-    }
-    // After the ownership check: an owner tapping Buy again hears "you own it", not "sold out".
-    if (item.stock !== null && item.stock <= 0) throw new NowError(409, "sold_out", "That item is sold out.");
-
-    orderId = createPrefixedId("sord");
-    await client.query(
-      `INSERT INTO store.orders (id, user_id, item_id, coins_spent, paise_paid, status, idempotency_key, created_at, size, delivery, ship_status)
-       VALUES ($1, $2, $3, $4, 0, 'placed', $5, $6, $7, $8::jsonb, $9)`,
-      [orderId, userId, itemId, item.price_coins, idempotencyKey, now, size, delivery ? JSON.stringify(delivery) : null, item.kind === "merch" ? "to_pack" : null],
-    );
-    // Throws InsufficientCoinsError / FrozenAccountError and rolls everything back.
-    await postTransfers([storeSpend(userId, item.price_coins, orderId)], { client, now });
-    if (size !== null) {
-      await client.query(
-        `UPDATE store.items SET size_stock = jsonb_set(size_stock, ARRAY[$2], to_jsonb((size_stock->>$2)::int - 1)), updated_at = NOW() WHERE id = $1`,
-        [itemId, size],
-      );
-    } else if (item.stock !== null) {
-      await client.query(`UPDATE store.items SET stock = stock - 1, updated_at = NOW() WHERE id = $1`, [itemId]);
-    }
-    if (item.kind === "merch") {
-      // Paid with coins; fulfilled when the team marks it delivered.
-      await client.query(`UPDATE store.orders SET status = 'paid' WHERE id = $1`, [orderId]);
-      await logEvent(client, {
-        type: "store.purchased",
-        actor: userId,
-        payload: { orderId, itemId, kind: item.kind, coins: item.price_coins, size },
-      });
-      return;
-    }
-
-    let grantId: string | null = null;
-    let premiumEnd: Date | null = null;
-    if (item.kind === "premium") {
-      // Same per-user lock the paid-grant writer uses, so stacking cannot race.
-      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [userId]);
-      const latest = await client.query<{ until: Date | null }>(
-        `SELECT max(expires_at) AS until FROM entitlements.subject_grants
-          WHERE user_id = $1 AND subject = $2 AND source = 'coin_redemption' AND status = 'active'`,
-        [userId, item.premium_subject],
-      );
-      const window = premiumWindow(latest.rows[0]?.until ?? null, item.premium_days ?? 0, now);
-      grantId = createSubjectGrantId();
-      premiumEnd = window.end;
-      await client.query(
-        `INSERT INTO entitlements.subject_grants (id, user_id, subject, source, status, expires_at, created_at, updated_at)
-         VALUES ($1, $2, $3, 'coin_redemption', 'active', $4, $5, $5)`,
-        [grantId, userId, item.premium_subject, window.end, now],
-      );
-      premiumGranted = true;
-    }
-    await client.query(
-      `UPDATE store.orders SET status = 'fulfilled', fulfilled_at = $2, grant_id = $3, premium_expires_at = $4 WHERE id = $1`,
-      [orderId, now, grantId, premiumEnd],
-    );
-    await logEvent(client, {
-      type: "store.purchased",
-      actor: userId,
-      payload: { orderId, itemId, kind: item.kind, coins: item.price_coins, premiumSubject: item.premium_subject, premiumEnd },
-    });
+    const placed = await placeStoreOrderLocked(client, { userId, item, idempotencyKey, now, merch });
+    orderId = placed.orderId;
+    alreadyOwned = placed.alreadyOwned;
+    if (alreadyOwned) return;
+    premiumGranted = (await fulfilStoreOrderLocked(client, { orderId, userId, item, now })).premiumGranted;
   }).catch(async (error) => {
     // Two taps with the same key at once: the second loses the unique index and
     // gets the first one's order instead of an error (nothing is charged twice).
@@ -476,9 +532,9 @@ export async function upsertStoreItem(input: StoreItemInput & { id?: string }): 
   const id = input.id ?? createPrefixedId("sitem");
   const res = await pool.query<ItemRow>(
     `INSERT INTO store.items (id, kind, title, description, price_coins, price_paise, stock, premium_subject, premium_days, featured, active, size_stock)
-     VALUES ($1, $2, $3, $4, $5, 0, $6, $7, $8, $9, $10, $11::jsonb)
+     VALUES ($1, $2, $3, $4, $5, $12, $6, $7, $8, $9, $10, $11::jsonb)
      ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, description = EXCLUDED.description,
-       price_coins = EXCLUDED.price_coins, stock = EXCLUDED.stock, premium_subject = EXCLUDED.premium_subject,
+       price_coins = EXCLUDED.price_coins, price_paise = EXCLUDED.price_paise, stock = EXCLUDED.stock, premium_subject = EXCLUDED.premium_subject,
        premium_days = EXCLUDED.premium_days, featured = EXCLUDED.featured, active = EXCLUDED.active,
        size_stock = EXCLUDED.size_stock, updated_at = NOW()
      RETURNING *`,
@@ -495,6 +551,7 @@ export async function upsertStoreItem(input: StoreItemInput & { id?: string }): 
       // A new digital item starts switched off until its file is uploaded.
       input.kind === "digital" && !current?.file_key ? false : input.active !== false,
       sizeStock ? JSON.stringify(sizeStock) : null,
+      input.pricePaise ?? 0,
     ],
   );
   return res.rows[0];

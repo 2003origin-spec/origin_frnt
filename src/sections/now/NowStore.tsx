@@ -13,6 +13,7 @@ import { Coins, Download, FileText, Loader2, Package, Shirt, Sparkles, Truck } f
 import { NativePurchaseNotice, useIsNativeApp } from '@/components/native/NativePurchaseNotice';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { getRazorpay, loadRazorpayScript, verifyPayment } from '@/features/payments/client';
 import { apiCall } from '@/lib/api';
 import { formatISTDayDMY } from '@/lib/format-time';
 
@@ -24,6 +25,8 @@ type Item = {
   title: string;
   description: string | null;
   priceCoins: number;
+  /** Rupee part (B92); 0 for coins-only items. */
+  pricePaise: number;
   inStock: boolean;
   premiumSubject: string | null;
   premiumDays: number | null;
@@ -66,6 +69,21 @@ const SUBJECT_LABEL: Record<string, string> = {
   mathematics: 'Mathematics',
   biology: 'Biology',
 };
+
+function rupees(paise: number): string {
+  const r = paise / 100;
+  return `₹${r.toLocaleString('en-IN', { minimumFractionDigits: Number.isInteger(r) ? 0 : 2, maximumFractionDigits: 2 })}`;
+}
+
+function priceLabel(item: { priceCoins: number; pricePaise: number }): string {
+  if (item.pricePaise > 0 && item.priceCoins > 0) return `${rupees(item.pricePaise)} + ${item.priceCoins.toLocaleString('en-IN')} coins`;
+  if (item.pricePaise > 0) return rupees(item.pricePaise);
+  return item.priceCoins.toLocaleString('en-IN');
+}
+
+type Checkout =
+  | { state: 'pay'; storeOrderId: string; razorpayOrderId: string | null; amountMinor: number; currency: string; keyId: string | null; title: string }
+  | { state: 'done'; order: Order; alreadyOwned: boolean };
 
 function dateLabel(iso: string): string {
   return formatISTDayDMY(iso);
@@ -116,10 +134,68 @@ export default function NowStore() {
     setAddressLoaded(true);
   };
 
+  /** Items with a rupee price (B92): coins are taken here, the rupees through Razorpay. */
+  const payOnline = async (item: Item) => {
+    const checkout = (await apiCall(`/now/store/items/${item.id}/checkout`, {
+      method: 'POST',
+      headers: { 'Idempotency-Key': `${item.id}:${crypto.randomUUID()}` },
+      body: JSON.stringify(item.kind === 'merch' ? { size: sizes[item.id] ?? null, delivery: address } : {}),
+    })) as Checkout;
+    if (checkout.state === 'done') return checkout.order;
+    const ready = await loadRazorpayScript();
+    const Razorpay = getRazorpay();
+    if (!ready || !Razorpay || !checkout.keyId || !checkout.razorpayOrderId) {
+      throw new Error('Payments are not available right now. Your coins come back within an hour.');
+    }
+    await new Promise<void>((resolve, reject) => {
+      const rzp = new Razorpay({
+        key: checkout.keyId!,
+        amount: checkout.amountMinor,
+        currency: checkout.currency,
+        order_id: checkout.razorpayOrderId!,
+        name: 'Origin',
+        description: checkout.title,
+        handler: async (response) => {
+          try {
+            await verifyPayment({
+              razorpayOrderId: response.razorpay_order_id ?? '',
+              razorpayPaymentId: response.razorpay_payment_id ?? '',
+              razorpaySignature: response.razorpay_signature ?? '',
+            });
+            resolve();
+          } catch (err) {
+            reject(err);
+          }
+        },
+        modal: {
+          ondismiss: () =>
+            reject(new Error('Payment not finished. The coins for this order come back within an hour if you do not pay.')),
+        },
+      });
+      rzp.open();
+    });
+    return ((await apiCall(`/now/store/orders/${checkout.storeOrderId}`)) as { order: Order }).order;
+  };
+
   const buy = async (item: Item) => {
     setBusy(item.id);
     setError(null);
     try {
+      if (item.pricePaise > 0) {
+        const order = await payOnline(item);
+        setNotice(
+          order.premiumExpiresAt
+            ? `${SUBJECT_LABEL[order.premiumSubject ?? ''] ?? 'Premium'} premium is on until ${dateLabel(order.premiumExpiresAt)}.`
+            : order.shipStatus
+              ? `Paid. Order placed for "${item.title}"; we will email you when it ships.`
+              : order.canDownload
+                ? `"${item.title}" is yours. Download it from My orders.`
+                : 'Payment received. Your order will show in My orders shortly.',
+        );
+        setConfirming(null);
+        await load();
+        return;
+      }
       const result = await apiCall(`/now/store/items/${item.id}/buy`, {
         method: 'POST',
         headers: { 'Idempotency-Key': `${item.id}:${crypto.randomUUID()}` },
@@ -262,7 +338,7 @@ export default function NowStore() {
                   )}
                   <div className="flex items-center justify-between gap-2">
                     <span className="flex items-center gap-1 font-semibold">
-                      <Coins className="h-4 w-4 text-amber-600" aria-hidden /> {item.priceCoins.toLocaleString('en-IN')}
+                      {item.priceCoins > 0 && <Coins className="h-4 w-4 text-amber-600" aria-hidden />} {priceLabel(item)}
                     </span>
                     {item.owned ? (
                       <span className="text-xs text-muted-foreground">Owned — see My orders</span>
@@ -272,7 +348,11 @@ export default function NowStore() {
                       <div className="flex gap-2">
                         <Button size="sm" onClick={() => buy(item)} disabled={busy === item.id || needsSize}>
                           {busy === item.id ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
-                          {needsSize ? 'Pick a size' : `Pay ${item.priceCoins} coins`}
+                          {needsSize
+                            ? 'Pick a size'
+                            : item.pricePaise > 0
+                              ? `Pay ${priceLabel(item)}`
+                              : `Pay ${item.priceCoins} coins`}
                         </Button>
                         <Button size="sm" variant="ghost" onClick={() => setConfirming(null)} disabled={busy === item.id}>
                           Cancel

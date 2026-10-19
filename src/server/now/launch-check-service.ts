@@ -44,13 +44,15 @@ export async function getLaunchReadiness() {
   if (!pool) throw new Error("USER_DATABASE_URL is not configured");
   const one = async <T>(sql: string, params: unknown[] = []) => (await pool.query(sql, params)).rows[0] as T;
 
-  const db = await one<{ tables: boolean; migrations: boolean; coin_pack: boolean; redemption: boolean }>(
+  const db = await one<{ tables: boolean; migrations: boolean; coin_pack: boolean; store_item: boolean; redemption: boolean }>(
     `SELECT
        (to_regclass('now.requests') IS NOT NULL AND to_regclass('now.ledger_entries') IS NOT NULL
          AND to_regclass('store.items') IS NOT NULL) AS tables,
        to_regclass('app.migrations') IS NOT NULL AS migrations,
        EXISTS (SELECT 1 FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid JOIN pg_namespace n ON n.oid = t.typnamespace
                 WHERE n.nspname = 'payments' AND t.typname = 'order_kind' AND e.enumlabel = 'coin_pack') AS coin_pack,
+       EXISTS (SELECT 1 FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid JOIN pg_namespace n ON n.oid = t.typnamespace
+                WHERE n.nspname = 'payments' AND t.typname = 'order_kind' AND e.enumlabel = 'store_item') AS store_item,
        COALESCE((SELECT position('coin_redemption' IN pg_get_constraintdef(c.oid)) > 0 FROM pg_constraint c
                   WHERE c.conrelid = to_regclass('entitlements.subject_grants') AND c.conname = 'subject_grants_source_check'), FALSE) AS redemption`,
   );
@@ -65,6 +67,8 @@ export async function getLaunchReadiness() {
   const facts: LaunchFacts = {
     tablesPresent: db.tables,
     coinPackOrderKind: db.coin_pack,
+    storeItemOrderKind: db.store_item,
+    featuresOn: [],
     coinRedemptionGrantSource: db.redemption,
     addonMigrations: NOW_ADDON_MIGRATIONS.map((m) => ({ id: m.id, applied: applied.has(m.id) })),
     env: {
@@ -121,6 +125,9 @@ export async function getLaunchReadiness() {
     facts.botRow = counts.bot;
     facts.cohort = counts.cohort;
     facts.storeItemsOnSale = counts.items;
+    facts.featuresOn = Object.entries(settings.features)
+      .filter(([, on]) => on)
+      .map(([key]) => key);
     for (const row of solvers.rows) if (row.subject in facts.solvers) facts.solvers[row.subject] = row.n;
   }
 

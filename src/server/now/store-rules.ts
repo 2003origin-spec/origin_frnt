@@ -30,6 +30,18 @@ export type StoreItemInput = {
 };
 
 export type StoreFeatures = { merch: boolean; rupeePrices: boolean };
+
+/** Rupee prices (B92): ₹1 to ₹1,00,000, in paise. */
+export const MIN_PRICE_PAISE = 100;
+export const MAX_PRICE_PAISE = 10_000_000;
+/** An unpaid rupee checkout gives its coins and stock back after this long (the payment order lives 30 minutes). */
+export const CHECKOUT_RELEASE_MS = 45 * 60_000;
+
+/** "₹499" / "₹49.50" from paise. */
+export function rupeesText(paise: number): string {
+  const rupees = paise / 100;
+  return `₹${rupees.toLocaleString("en-IN", { minimumFractionDigits: Number.isInteger(rupees) ? 0 : 2, maximumFractionDigits: 2 })}`;
+}
 const PILOT_ONLY: StoreFeatures = { merch: false, rupeePrices: false };
 
 /** What an admin may list, given the switches in Settings → Extra parts. */
@@ -44,8 +56,16 @@ export function validateStoreItem(input: StoreItemInput, features: StoreFeatures
   }
   if (!input.title?.trim() || input.title.trim().length > 120) errors.push("Title is required (120 characters at most).");
   if ((input.description ?? "").length > 2000) errors.push("Description is too long.");
-  if (!Number.isInteger(input.priceCoins) || input.priceCoins <= 0) errors.push("Price must be a whole number of coins above 0.");
-  if ((input.pricePaise ?? 0) !== 0) errors.push("Rupee and mixed prices come after the pilot; set the rupee price to 0.");
+  const paise = input.pricePaise ?? 0;
+  if (!Number.isInteger(input.priceCoins) || input.priceCoins < 0) errors.push("Coins must be a whole number, 0 or more.");
+  if (!Number.isInteger(paise) || paise < 0 || paise > MAX_PRICE_PAISE) {
+    errors.push("The rupee price must be from ₹0 to ₹1,00,000.");
+  } else if (paise > 0 && !features.rupeePrices) {
+    errors.push("Switch on \"Rupee prices in the store\" in Settings → Extra parts before adding a rupee price.");
+  } else if (paise > 0 && paise < MIN_PRICE_PAISE) {
+    errors.push("A rupee price must be at least ₹1.");
+  }
+  if (input.priceCoins === 0 && paise === 0) errors.push("Price must be a whole number of coins above 0, or a rupee price.");
   if (input.stock !== null && input.stock !== undefined && (!Number.isInteger(input.stock) || input.stock < 0)) {
     errors.push("Stock must be empty (unlimited) or a whole number.");
   }

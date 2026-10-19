@@ -7,6 +7,8 @@ function ready(overrides: Partial<LaunchFacts> = {}): LaunchFacts {
   return {
     tablesPresent: true,
     coinPackOrderKind: true,
+    storeItemOrderKind: false,
+    featuresOn: [],
     coinRedemptionGrantSource: true,
     addonMigrations: [{ id: "20261018_origin_now_roster", applied: true }],
     env: {
@@ -104,4 +106,14 @@ test("the private file bucket is required and never the public one (B96)", () =>
   assert.equal(exposed.status, "missing");
   assert.match(exposed.detail, /public image bucket/);
   assert.equal(launchVerdict(launchChecklist(withFiles("not_set"))).ready, false);
+});
+
+test("the store payment type matters only once rupee prices are on; the switched-on parts are listed (B92)", () => {
+  assert.equal(item(ready(), "db_store_item").status, "info");
+  const on = ready({ featuresOn: ["rupeePrices", "merch"] });
+  assert.equal(item(on, "db_store_item").status, "missing");
+  assert.equal(launchVerdict(launchChecklist(on)).ready, false);
+  assert.equal(item({ ...on, storeItemOrderKind: true }, "db_store_item").status, "ok");
+  assert.match(item(on, "switch_features").detail, /rupee prices, merch/);
+  assert.match(item(ready(), "switch_features").detail, /None switched on/);
 });

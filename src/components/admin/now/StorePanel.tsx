@@ -18,6 +18,7 @@ type Item = {
   title: string;
   description: string | null;
   price_coins: number;
+  price_paise: number;
   stock: number | null;
   premium_subject: string | null;
   premium_days: number | null;
@@ -85,6 +86,7 @@ export function StorePanel() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState(100);
+  const [rupees, setRupees] = useState('');
   const [subject, setSubject] = useState('physics');
   const [days, setDays] = useState(30);
   const [stock, setStock] = useState('');
@@ -107,6 +109,7 @@ export function StorePanel() {
     title: i.title,
     description: i.description,
     priceCoins: i.price_coins,
+    pricePaise: i.price_paise,
     stock: i.stock,
     premiumSubject: i.premium_subject,
     premiumDays: i.premium_days,
@@ -134,6 +137,16 @@ export function StorePanel() {
           <input className={`${inputClass} min-w-56`} placeholder="Title" value={title} onChange={(e) => setTitle(e.target.value)} />
           <input className={`${inputClass} min-w-56 flex-1`} placeholder="Description (optional)" value={description} onChange={(e) => setDescription(e.target.value)} />
           <label className="flex flex-col">Coins<input type="number" className={`${inputClass} w-24`} value={price} onChange={(e) => setPrice(Number(e.target.value))} /></label>
+          <label className="flex flex-col">
+            Plus ₹ (optional)
+            <input
+              inputMode="decimal"
+              className={`${inputClass} w-24`}
+              placeholder="0"
+              value={rupees}
+              onChange={(e) => setRupees(e.target.value.replace(/[^0-9.]/g, ''))}
+            />
+          </label>
           {kind === 'premium' ? (
             <>
               <select className={inputClass} value={subject} onChange={(e) => setSubject(e.target.value)}>
@@ -159,6 +172,7 @@ export function StorePanel() {
                 title: title.trim(),
                 description: description.trim() || null,
                 priceCoins: price,
+                pricePaise: rupees ? Math.round(Number(rupees) * 100) : 0,
                 premiumSubject: kind === 'premium' ? subject : null,
                 premiumDays: kind === 'premium' ? days : null,
                 stock: kind === 'merch' && parseSizes(sizes) ? null : stock ? Number(stock) : null,
@@ -167,6 +181,7 @@ export function StorePanel() {
               }).then(() => {
                 setTitle('');
                 setSizes('');
+                setRupees('');
               })
             }
           >
@@ -175,7 +190,8 @@ export function StorePanel() {
         </div>
         <p className="mt-2 text-xs text-muted-foreground">
           A paper stays off sale until its PDF is uploaded. Merch needs &ldquo;Merch in the store&rdquo; switched on in Settings → Extra parts;
-          add a photo after saving it.
+          add a photo after saving it. A rupee price needs &ldquo;Rupee prices in the store&rdquo; switched on; it is paid through Razorpay
+          on the website only, never inside the Android app.
         </p>
         <div className="mt-2">
           <LegalNote>merch is physical goods: delivery times, damaged items and returns need store terms from the legal team before anything goes on sale.</LegalNote>
@@ -187,7 +203,11 @@ export function StorePanel() {
           {(items.data?.items ?? []).map((i) => (
             <tr key={i.id}>
               <Td>{i.title}{i.featured ? ' ★' : ''}</Td>
-              <Td>{i.price_coins} coins</Td>
+              <Td className="whitespace-nowrap">
+                {i.price_coins > 0 ? `${i.price_coins} coins` : ''}
+                {i.price_coins > 0 && i.price_paise > 0 ? ' + ' : ''}
+                {i.price_paise > 0 ? `₹${(i.price_paise / 100).toLocaleString('en-IN')}` : ''}
+              </Td>
               <Td className="capitalize">
                 {i.kind === 'premium'
                   ? `${i.premium_subject} · ${i.premium_days} days`

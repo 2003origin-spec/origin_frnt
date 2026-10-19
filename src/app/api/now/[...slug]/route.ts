@@ -57,6 +57,7 @@ import {
 } from "@/server/now/after-call-service";
 import { issueRoomTicket } from "@/server/now/room-service";
 import { cancelMyMerchOrder, getLastDeliveryAddress } from "@/server/now/merch-service";
+import { getStoreCheckoutOrder, startStoreCheckout } from "@/server/now/store-checkout";
 import { buyStoreItem, getPaperDownload, listMyOrders, listStoreItems } from "@/server/now/store-service";
 import { getSolverDashboard, getStudentDashboard, setFavourite } from "@/server/now/dashboard-service";
 import { getMyRoster, setRosterSlot } from "@/server/now/roster-service";
@@ -118,6 +119,8 @@ import { DECLINE_REASONS, OUTCOMES, ROOT_CAUSES } from "@/server/now/types";
  *   POST /api/now/store/items/:id/buy      → Idempotency-Key header; refused inside the Android app
  *   GET  /api/now/store/orders             → my orders
  *   POST /api/now/store/orders/:id/download → 10-minute link to a bought paper (logged)
+ *   POST /api/now/store/items/:id/checkout → items with a rupee price: coins taken, Razorpay order opened (B92; never in the app)
+ *   GET  /api/now/store/orders/:id         → one order (after Razorpay closes)
  *   POST /api/now/store/orders/:id/cancel  → cancel a merch order before packing (coins back; B91)
  *   GET  /api/now/store/address            → the last delivery address given, to fill the form in again
  *
@@ -482,6 +485,23 @@ const liveHandlers = {
     });
   },
   storeCancel: async (_r: NextRequest, userId: string, [id]: string[]) => nowJson({ order: await cancelMyMerchOrder(userId, id) }),
+  storeCheckout: async (r: NextRequest, userId: string, [id]: string[]) => {
+    // Rupee prices (B92) ride Razorpay, which is never offered inside the Android app.
+    requireFeatureEnabled("payments");
+    if (parseAppVersionFromUserAgent(r.headers.get("user-agent")) !== null) {
+      throw new NowError(403, "in_app_purchase_blocked", "Store purchases are made on o3origin.com, not inside the app.");
+    }
+    const idempotencyKey = r.headers.get("idempotency-key")?.trim();
+    if (!idempotencyKey || idempotencyKey.length > 120) {
+      throw new NowError(400, "idempotency_key_required", "An Idempotency-Key header is required.");
+    }
+    const limited = await limitMutation(`now-store:${userId}`);
+    if (limited) return limited;
+    const body = StoreBuySchema.parse(await parseJsonBody(r));
+    return nowJson(await startStoreCheckout(userId, id, idempotencyKey, { size: body.size ?? null, delivery: body.delivery }), { status: 201 });
+  },
+  storeOrder: async (_r: NextRequest, userId: string, [id]: string[]) =>
+    nowJson({ order: await getStoreCheckoutOrder(userId, id) }, { headers: { "Cache-Control": "no-store" } }),
   storeLastAddress: async (_r: NextRequest, userId: string) =>
     nowJson({ address: await getLastDeliveryAddress(userId) }, { headers: { "Cache-Control": "no-store" } }),
   storeOrders: async (_r: NextRequest, userId: string) => nowJson({ orders: await listMyOrders(userId) }),
@@ -556,6 +576,8 @@ const ROUTES: { method: Method; pattern: string[]; handler: Handler; public?: bo
   { method: "GET", pattern: ["store", "orders"], handler: liveHandlers.storeOrders },
   { method: "POST", pattern: ["store", "orders", ":id", "download"], handler: liveHandlers.storeDownload },
   { method: "POST", pattern: ["store", "orders", ":id", "cancel"], handler: liveHandlers.storeCancel },
+  { method: "POST", pattern: ["store", "items", ":id", "checkout"], handler: liveHandlers.storeCheckout },
+  { method: "GET", pattern: ["store", "orders", ":id"], handler: liveHandlers.storeOrder },
   { method: "GET", pattern: ["store", "address"], handler: liveHandlers.storeLastAddress },
   { method: "POST", pattern: ["sessions", ":id", "rate"], handler: liveHandlers.rate },
   { method: "POST", pattern: ["sessions", ":id", "report"], handler: liveHandlers.report },

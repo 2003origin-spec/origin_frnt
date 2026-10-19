@@ -23,7 +23,7 @@ import { postTransfers, withNowTransaction } from "./ledger-store";
 import { NowError } from "./now-http";
 import { ensureNowSchema } from "./now-schema";
 import { firstNameOnly } from "./session-rules";
-import { getOrder, storeImageUrl, type StoreOrderView } from "./store-service";
+import { getOrder, returnStoreStockLocked, storeImageUrl, type StoreOrderView } from "./store-service";
 import {
   ADDRESS_KEEP_DAYS,
   MERCH_IMAGE_MAX_BYTES,
@@ -66,15 +66,8 @@ async function cancelLocked(client: PoolClient, order: LockedOrder, actor: strin
     [order.id, now, reason],
   );
   if (order.coins_spent > 0) await postTransfers([storeRefund(order.user_id, order.coins_spent, order.id)], { client, now });
-  if (order.size !== null) {
-    await client.query(
-      `UPDATE store.items SET size_stock = jsonb_set(size_stock, ARRAY[$2], to_jsonb(COALESCE((size_stock->>$2)::int, 0) + 1)), updated_at = NOW()
-        WHERE id = $1 AND size_stock IS NOT NULL`,
-      [order.item_id, order.size],
-    );
-  } else {
-    await client.query(`UPDATE store.items SET stock = stock + 1, updated_at = NOW() WHERE id = $1 AND stock IS NOT NULL`, [order.item_id]);
-  }
+  // The rupee part of a paid order is refunded by hand in Razorpay (B92); it is in the event for the admin.
+  await returnStoreStockLocked(client, order.item_id, order.size);
   await logEvent(client, { type: "store.cancelled", actor, payload: { orderId: order.id, coins: order.coins_spent, reason } });
 }
 

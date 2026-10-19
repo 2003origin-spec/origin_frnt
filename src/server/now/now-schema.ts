@@ -589,6 +589,16 @@ BEGIN
 END $$;`,
     ],
   },
+  {
+    // Rupee prices in the store (decision B92): the payment order behind a store order.
+    id: "20261020_origin_now_store_rupee",
+    name: "origin now: store orders paid partly in rupees",
+    ddl: [
+      `ALTER TABLE store.orders ADD COLUMN IF NOT EXISTS payment_order_id TEXT;
+CREATE INDEX IF NOT EXISTS idx_store_orders_payment ON store.orders(payment_order_id) WHERE payment_order_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_store_orders_placed ON store.orders(created_at) WHERE status = 'placed';`,
+    ],
+  },
 ];
 
 function pool() {

@@ -119,14 +119,14 @@ test("papers: off until uploaded, bought once, downloaded only by the owner; sto
   await assertLedgerBalanced();
 });
 
-test("the store is for pilot members; admins cannot list merch or rupee prices yet", { skip: NOW_SKIP }, async () => {
+test("the store is for pilot members; merch and rupee prices need their switches", { skip: NOW_SKIP }, async () => {
   await setup();
   const outsider = await seedUser("Not Invited");
   await assert.rejects(listStoreItems(outsider), /pilot members/);
   await assert.rejects(upsertStoreItem({ kind: "merch", title: "Hoodie", priceCoins: 900 }), /Switch on "Merch in the store"/);
   await assert.rejects(
     upsertStoreItem({ kind: "premium", title: "Mixed", priceCoins: 10, pricePaise: 100, premiumSubject: "physics", premiumDays: 7 }),
-    /after the pilot/,
+    /Rupee prices in the store/,
   );
 });
 

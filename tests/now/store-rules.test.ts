@@ -11,6 +11,7 @@ import {
   paperObjectKey,
   parseSizeStock,
   premiumWindow,
+  rupeesText,
   sortSizes,
   validateDeliveryAddress,
   validateShipment,
@@ -22,7 +23,7 @@ const premium = { kind: "premium", title: "Physics premium, 30 days", priceCoins
 test("pilot items: premium time and digital papers, coins only", () => {
   assert.deepEqual(validateStoreItem(premium), []);
   assert.match(validateStoreItem({ ...premium, kind: "merch" })[0], /Switch on "Merch in the store"/);
-  assert.match(validateStoreItem({ ...premium, pricePaise: 4900 })[0], /after the pilot/);
+  assert.match(validateStoreItem({ ...premium, pricePaise: 4900 })[0], /Rupee prices in the store/);
   assert.match(validateStoreItem({ ...premium, priceCoins: 0 })[0], /above 0/);
   assert.match(validateStoreItem({ ...premium, premiumSubject: "history" })[0], /subject/);
   assert.match(validateStoreItem({ ...premium, premiumDays: 0 })[0], /1 to 366/);
@@ -94,4 +95,16 @@ test("shipping moves forward only, and cannot be cancelled once it left", () => 
   assert.equal(nextShipStatus("to_pack", "deliver"), null);
   assert.deepEqual(validateShipment("Delhivery", "DLV-123456"), []);
   assert.equal(validateShipment("", "x").length, 2);
+});
+
+test("rupee prices only once switched on: ₹1 to ₹1,00,000, coins optional (B92)", () => {
+  const on = { merch: false, rupeePrices: true };
+  assert.deepEqual(validateStoreItem({ ...premium, pricePaise: 49_900 }, on), [], "coins + rupees");
+  assert.deepEqual(validateStoreItem({ ...premium, priceCoins: 0, pricePaise: 49_900 }, on), [], "rupees only");
+  assert.match(validateStoreItem({ ...premium, pricePaise: 50 }, on)[0], /at least ₹1/);
+  assert.match(validateStoreItem({ ...premium, pricePaise: 10_000_001 }, on)[0], /₹1,00,000/);
+  assert.match(validateStoreItem({ ...premium, priceCoins: 0, pricePaise: 0 }, on)[0], /above 0/);
+  assert.equal(rupeesText(49_900), "₹499");
+  assert.equal(rupeesText(4_950), "₹49.50");
+  assert.equal(rupeesText(10_000_000), "₹1,00,000");
 });
