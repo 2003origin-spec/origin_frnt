@@ -147,7 +147,7 @@ export function PdfViewer({
       try {
         const [pdfjs, url] = await Promise.all([loadPdfJs(), resolveRef.current()]);
         if (cancelled) return;
-        const task = pdfjs.getDocument({ url, isEvalSupported: false, enableXfa: false });
+        const task = pdfjs.getDocument({ url, enableXfa: false });
         destroy = () => void task.destroy();
         const loaded = await task.promise;
         if (cancelled) return;

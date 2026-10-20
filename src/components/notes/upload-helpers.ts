@@ -35,9 +35,10 @@ export async function pdfPageCount(file: Blob): Promise<number | null> {
   try {
     const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
     pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/legacy/build/pdf.worker.min.mjs', import.meta.url).toString();
-    const doc = await pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()), isEvalSupported: false }).promise;
-    const pages = doc.numPages;
-    void doc.destroy();
+    // pdf.js 6: destroy() lives on the loading task, and eval is gone (no isEvalSupported).
+    const task = pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) });
+    const pages = (await task.promise).numPages;
+    void task.destroy();
     return pages;
   } catch {
     return null;
