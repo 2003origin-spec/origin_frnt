@@ -120,6 +120,7 @@ export default async function RootLayout({
   // Drives whether the Orbit tab goes to /contest or to its Coming Soon screen
   // (HOME_REDESIGN_PLAN.md §5) — contest ships dark in production.
   const contestEnabled = isFeatureEnabled("contest");
+  const notesEnabled = isFeatureEnabled("notes");
   // Pre-launch cover: server-computed so there is no flash of the real site.
   const launch = await getLaunchSettings().catch(() => null);
   const coverActive = launch ? isCoverActive(launch) : false;
@@ -148,7 +149,7 @@ export default async function RootLayout({
               <NotificationProvider>
                 <QuotaProvider>
                   <AiAccessProvider initial={{ originAi: initialAiAccess.originAi, aiExplainer: initialAiAccess.aiExplainer }}>
-                    <ClientShell connectEnabled={connectEnabled} premiumEnabled={premiumEnabled} socialEnabled={socialEnabled} contestEnabled={contestEnabled} coverActive={coverActive} launchAt={launchAt}>{children}</ClientShell>
+                    <ClientShell connectEnabled={connectEnabled} premiumEnabled={premiumEnabled} socialEnabled={socialEnabled} contestEnabled={contestEnabled} notesEnabled={notesEnabled} coverActive={coverActive} launchAt={launchAt}>{children}</ClientShell>
                   </AiAccessProvider>
                 </QuotaProvider>
               </NotificationProvider>

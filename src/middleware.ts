@@ -12,6 +12,8 @@ const RATE_LIMITED_MUTATION_PREFIXES = [
   "/api/admin/",
   "/api/enrollments/",
   "/api/cbt/",
+  // Origin Notes student writes (stars, mistake reports). V1/NOTES_PLAN.md §10.
+  "/api/notes/",
   // Origin NOW: needed so the /admin/incidents kill switch reaches these routes
   // (it is only consulted for paths in this list). Plan: V1/ORIGIN_NOW_PLAN.md.
   "/api/now/",
