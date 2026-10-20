@@ -2,10 +2,11 @@
 
 /** Group sessions (decision B95): every session with its seats and outcome; cancel one (every seat refunded). */
 
+import { useState } from 'react';
 import { toast } from 'sonner';
 
 import { adminSend, fmtDate, useAdminData } from './admin-now-api';
-import { ErrorLine, LegalNote, Section, Table, Td, ghostButtonClass } from './ui';
+import { ErrorLine, LegalNote, Section, Table, Td, buttonClass, ghostButtonClass, inputClass } from './ui';
 
 type Group = {
   id: string;
@@ -25,11 +26,11 @@ type Group = {
 
 export function GroupsPanel() {
   const data = useAdminData<{ groups: Group[] }>('/groups');
-  const cancel = async (g: Group) => {
-    const reason = window.prompt('Why is Origin cancelling this session? Every seat is refunded and students see the reason.');
-    if (!reason) return;
+  const [cancelling, setCancelling] = useState<{ id: string; reason: string } | null>(null);
+  const cancel = async (g: Group, reason: string) => {
     try {
       await adminSend(`/groups/${g.id}/cancel`, 'POST', { reason });
+      setCancelling(null);
       toast.success('Cancelled; seats refunded.');
       await data.reload();
     } catch (err) {
@@ -48,7 +49,7 @@ export function GroupsPanel() {
             <Td className="whitespace-nowrap">{fmtDate(g.startsAt)}</Td>
             <Td>
               {g.title}
-              <span className="block text-xs capitalize text-muted-foreground">{g.subject} · {g.chapter} · {g.minutes} min · {g.priceCoins} coins</span>
+              <span className="block text-xs text-muted-foreground"><span className="capitalize">{g.subject}</span> · {g.chapter} · {g.minutes} min · {g.priceCoins} coins</span>
             </Td>
             <Td>{g.solverName}</Td>
             <Td>{g.seatsTaken}/{g.seats}</Td>
@@ -57,7 +58,28 @@ export function GroupsPanel() {
               {g.settleOutcome ? ` · ${g.settleOutcome}` : ''}
               {g.cancelReason ? <span className="block text-xs text-muted-foreground">{g.cancelReason}</span> : null}
             </Td>
-            <Td>{g.status === 'scheduled' && <button className={ghostButtonClass} onClick={() => cancel(g)}>Cancel</button>}</Td>
+            <Td>
+              {g.status === 'scheduled' &&
+                (cancelling?.id === g.id ? (
+                  <div className="flex flex-col gap-1">
+                    <input
+                      className={inputClass}
+                      aria-label="Why Origin is cancelling (students see this)"
+                      placeholder="Why? Students see this"
+                      value={cancelling.reason}
+                      onChange={(e) => setCancelling({ id: g.id, reason: e.target.value })}
+                    />
+                    <span className="flex gap-1">
+                      <button className={buttonClass} disabled={cancelling.reason.trim().length < 5} onClick={() => cancel(g, cancelling.reason.trim())}>
+                        Cancel and refund
+                      </button>
+                      <button className={ghostButtonClass} onClick={() => setCancelling(null)}>Keep</button>
+                    </span>
+                  </div>
+                ) : (
+                  <button className={ghostButtonClass} onClick={() => setCancelling({ id: g.id, reason: '' })}>Cancel</button>
+                ))}
+            </Td>
           </tr>
         ))}
       </Table>

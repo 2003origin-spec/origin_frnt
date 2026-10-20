@@ -279,7 +279,8 @@ export function NowRoomBoard({
   };
 
   const page = board.pages[board.page];
-  const toolButton = 'inline-flex h-8 items-center gap-1 rounded-md border px-2 text-xs disabled:opacity-50';
+  // 48px tall: the repo's minimum touch target (DESIGN_LANGUAGE rule 8); solvers often draw on a phone.
+  const toolButton = 'inline-flex h-[48px] items-center gap-1 rounded-full border px-3 text-xs disabled:cursor-not-allowed disabled:opacity-50';
 
   return (
     <div className="flex flex-col gap-2" data-testid="now-board">
@@ -292,9 +293,10 @@ export function NowRoomBoard({
               aria-label={`${COLOR_NAMES[i]} pen`}
               aria-pressed={color === i}
               onClick={() => setColor(i)}
-              className={`h-7 w-7 rounded-full border-2 ${color === i ? 'border-primary ring-2 ring-primary/30' : 'border-transparent'}`}
-              style={{ backgroundColor: c }}
-            />
+              className={`flex h-[48px] w-[48px] cursor-pointer items-center justify-center rounded-full border-2 ${color === i ? 'border-primary' : 'border-transparent'}`}
+            >
+              <span className="h-7 w-7 rounded-full" style={{ backgroundColor: c }} aria-hidden />
+            </button>
           ))}
           <span className="mx-1 h-6 w-px bg-border" aria-hidden />
           {BOARD_WIDTHS.map((w, i) => (
@@ -303,29 +305,29 @@ export function NowRoomBoard({
               type="button"
               aria-pressed={width === i}
               onClick={() => setWidth(i)}
-              className={`${toolButton} ${width === i ? 'border-primary text-primary' : ''}`}
+              className={`cursor-pointer ${toolButton} ${width === i ? 'border-primary text-primary' : ''}`}
             >
               {WIDTH_NAMES[i]}
             </button>
           ))}
           <span className="mx-1 h-6 w-px bg-border" aria-hidden />
-          <button type="button" className={toolButton} onClick={() => act({ t: 'u', p: board.page })} disabled={page.strokes.length === 0}>
+          <button type="button" className={`cursor-pointer ${toolButton}`} onClick={() => act({ t: 'u', p: board.page })} disabled={page.strokes.length === 0}>
             <Undo2 className="h-3.5 w-3.5" aria-hidden /> Undo
           </button>
-          <button type="button" className={toolButton} onClick={() => act({ t: 'x', p: board.page })} disabled={page.strokes.length === 0}>
+          <button type="button" className={`cursor-pointer ${toolButton}`} onClick={() => act({ t: 'x', p: board.page })} disabled={page.strokes.length === 0}>
             <Eraser className="h-3.5 w-3.5" aria-hidden /> Clear page
           </button>
           {figureUrl && (
             <button
               type="button"
-              className={`${toolButton} ${page.figure ? 'border-primary text-primary' : ''}`}
+              className={`cursor-pointer ${toolButton} ${page.figure ? 'border-primary text-primary' : ''}`}
               aria-pressed={page.figure}
               onClick={() => act({ t: 'f', p: board.page, on: !page.figure })}
             >
               <ImageIcon className="h-3.5 w-3.5" aria-hidden /> Question figure
             </button>
           )}
-          <button type="button" className={toolButton} onClick={() => act({ t: 'n' })} disabled={board.pages.length >= BOARD_MAX_PAGES}>
+          <button type="button" className={`cursor-pointer ${toolButton}`} onClick={() => act({ t: 'n' })} disabled={board.pages.length >= BOARD_MAX_PAGES}>
             <FilePlus className="h-3.5 w-3.5" aria-hidden /> New page
           </button>
         </div>
@@ -348,7 +350,7 @@ export function NowRoomBoard({
               disabled={!isSolver}
               aria-current={board.page === i ? 'page' : undefined}
               onClick={() => act({ t: 'g', p: i })}
-              className={`h-7 min-w-7 rounded-md border px-2 ${board.page === i ? 'border-primary font-semibold text-primary' : ''}`}
+              className={`cursor-pointer h-12 min-w-[48px] rounded-full border px-3 ${board.page === i ? 'border-primary font-semibold text-primary' : ''}`}
             >
               {i + 1}
             </button>
@@ -360,7 +362,7 @@ export function NowRoomBoard({
               ? 'Your solver can write on this board during the call.'
               : 'Your solver’s board. It stays with this session.'}
         </span>
-        {saveError && <span className="text-red-600">{saveError}</span>}
+        {saveError && <span className="text-destructive">{saveError}</span>}
       </div>
     </div>
   );

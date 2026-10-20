@@ -39,7 +39,7 @@ export function NowAskLaterForm({ questionId }: { questionId: string }) {
   if (!quote?.enabled || quote.priceCoins === null) return null;
   if (posted) {
     return (
-      <p className="text-sm text-emerald-700" role="status">
+      <p className="text-sm text-success" role="status">
         Posted. A solver will answer within {quote.answerHours} hours; we will email you. <Link className="underline" href="/now/later">See my doubts</Link>
       </p>
     );
@@ -81,7 +81,7 @@ export function NowAskLaterForm({ questionId }: { questionId: string }) {
   return (
     <div className="flex flex-col gap-2 border-t pt-3 text-sm" data-testid="now-ask-later">
       {!open ? (
-        <button type="button" className="flex items-center gap-2 self-start text-primary underline-offset-4 hover:underline" onClick={() => setOpen(true)}>
+        <button type="button" className="cursor-pointer flex min-h-[48px] items-center gap-2 self-start text-primary underline-offset-4 hover:underline" onClick={() => setOpen(true)}>
           <PenLine className="h-4 w-4" aria-hidden /> Or ask later: a written answer within {quote.answerHours} hours for {quote.priceCoins} coins
         </button>
       ) : (
@@ -91,7 +91,7 @@ export function NowAskLaterForm({ questionId }: { questionId: string }) {
           </label>
           <textarea
             id={`now-later-note-${questionId}`}
-            className="min-h-20 rounded-md border bg-background p-2 text-sm"
+            className="min-h-24 rounded-md border bg-background p-3 text-base sm:text-sm"
             maxLength={1000}
             value={note}
             onChange={(e) => setNote(e.target.value)}
@@ -99,15 +99,15 @@ export function NowAskLaterForm({ questionId }: { questionId: string }) {
           />
           <div className="flex flex-wrap items-center gap-2">
             {photos.map((p) => (
-              <span key={p.key} className="flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs">
+              <span key={p.key} className="flex min-h-[48px] items-center gap-1 rounded-full border pl-3 text-xs">
                 {p.name.slice(0, 24)}
-                <button type="button" aria-label={`Remove ${p.name}`} onClick={() => setPhotos((all) => all.filter((x) => x.key !== p.key))}>
+                <button className="inline-flex h-[48px] w-[48px] cursor-pointer items-center justify-center rounded-full" type="button" aria-label={`Remove ${p.name}`} onClick={() => setPhotos((all) => all.filter((x) => x.key !== p.key))}>
                   <X className="h-3 w-3" />
                 </button>
               </span>
             ))}
             {photos.length < LATER_MAX_PHOTOS && (
-              <label className="flex cursor-pointer items-center gap-1 rounded-md border px-2 py-1 text-xs">
+              <label className="flex min-h-[48px] cursor-pointer items-center gap-2 rounded-full border px-4 text-xs">
                 {busy === 'photo' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" aria-hidden />}
                 Add a photo of your working
                 <input type="file" accept={LATER_PHOTO_ACCEPT} className="hidden" onChange={(e) => void addPhoto(e.target.files?.[0])} />
@@ -119,12 +119,12 @@ export function NowAskLaterForm({ questionId }: { questionId: string }) {
               type="button"
               onClick={post}
               disabled={busy !== null || short || full}
-              className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-60"
+              className="cursor-pointer rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-60"
             >
               {busy === 'post' ? <Loader2 className="mr-1 inline h-4 w-4 animate-spin" /> : null}
               {short ? `Need ${quote.priceCoins - quote.balance} more coins` : full ? 'Too many doubts waiting' : `Post for ${quote.priceCoins} coins`}
             </button>
-            <button type="button" className="text-xs text-muted-foreground underline" onClick={() => setOpen(false)}>
+            <button type="button" className="min-h-[48px] cursor-pointer px-2 text-xs text-muted-foreground underline" onClick={() => setOpen(false)}>
               Not now
             </button>
           </div>
@@ -133,7 +133,7 @@ export function NowAskLaterForm({ questionId }: { questionId: string }) {
           </p>
         </>
       )}
-      {error && <p className="text-sm text-red-600" role="alert">{error}</p>}
+      {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
     </div>
   );
 }

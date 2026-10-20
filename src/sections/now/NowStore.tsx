@@ -265,14 +265,14 @@ export default function NowStore() {
             Spend your Ori Coins on premium time and papers{items.some((i) => i.kind === 'merch') ? ', and Origin merch delivered to your door' : ''}.
           </p>
         </div>
-        <span className="flex items-center gap-2 rounded-full bg-amber-500/10 px-3 py-1 text-sm font-medium text-amber-700">
+        <span className="flex items-center gap-2 rounded-full bg-warning/10 px-3 py-1 text-sm font-medium text-warning">
           <Coins className="h-4 w-4" aria-hidden /> {balance.toLocaleString('en-IN')} coins
         </span>
       </header>
 
       {isNative && <NativePurchaseNotice title="Store purchases are made on the website" />}
-      {notice && <p className="text-sm text-emerald-700" role="status">{notice}</p>}
-      {error && <p className="text-sm text-red-600" role="alert">{error}</p>}
+      {notice && <p className="text-sm text-success" role="status">{notice}</p>}
+      {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
 
       {items.length === 0 ? (
         <p className="text-sm text-muted-foreground">Nothing in the store yet. Check back soon.</p>
@@ -319,7 +319,7 @@ export default function NowStore() {
                           disabled={!s.inStock}
                           aria-pressed={chosenSize === s.size}
                           onClick={() => setSizes({ ...sizes, [item.id]: s.size })}
-                          className={`min-w-10 rounded-md border px-2 py-1 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-40 disabled:line-through ${
+                          className={`cursor-pointer min-h-[48px] min-w-[48px] rounded-full border px-3 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-40 disabled:line-through ${
                             chosenSize === s.size ? 'border-primary bg-primary/10 text-primary' : ''
                           }`}
                         >
@@ -338,7 +338,7 @@ export default function NowStore() {
                   )}
                   <div className="flex items-center justify-between gap-2">
                     <span className="flex items-center gap-1 font-semibold">
-                      {item.priceCoins > 0 && <Coins className="h-4 w-4 text-amber-600" aria-hidden />} {priceLabel(item)}
+                      {item.priceCoins > 0 && <Coins className="h-4 w-4 text-warning" aria-hidden />} {priceLabel(item)}
                     </span>
                     {item.owned ? (
                       <span className="text-xs text-muted-foreground">Owned — see My orders</span>
@@ -346,7 +346,7 @@ export default function NowStore() {
                       <span className="text-xs text-muted-foreground">Sold out</span>
                     ) : isNative ? null : confirming === item.id ? (
                       <div className="flex gap-2">
-                        <Button size="sm" onClick={() => buy(item)} disabled={busy === item.id || needsSize}>
+                        <Button className="h-[48px]" size="sm" onClick={() => buy(item)} disabled={busy === item.id || needsSize}>
                           {busy === item.id ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
                           {needsSize
                             ? 'Pick a size'
@@ -354,12 +354,12 @@ export default function NowStore() {
                               ? `Pay ${priceLabel(item)}`
                               : `Pay ${item.priceCoins} coins`}
                         </Button>
-                        <Button size="sm" variant="ghost" onClick={() => setConfirming(null)} disabled={busy === item.id}>
+                        <Button className="h-[48px]" size="sm" variant="ghost" onClick={() => setConfirming(null)} disabled={busy === item.id}>
                           Cancel
                         </Button>
                       </div>
                     ) : (
-                      <Button
+                      <Button className="h-[48px]"
                         size="sm"
                         variant={short ? 'outline' : 'default'}
                         disabled={short}
@@ -411,12 +411,12 @@ export default function NowStore() {
                   )}
                 </div>
                 {order.canCancel && (
-                  <Button size="sm" variant="ghost" onClick={() => cancelOrder(order)} disabled={busy === order.id}>
+                  <Button className="h-[48px]" size="sm" variant="ghost" onClick={() => cancelOrder(order)} disabled={busy === order.id}>
                     Cancel order
                   </Button>
                 )}
                 {order.canDownload && (
-                  <Button size="sm" variant="outline" onClick={() => download(order)} disabled={busy === order.id}>
+                  <Button className="h-[48px]" size="sm" variant="outline" onClick={() => download(order)} disabled={busy === order.id}>
                     <Download className="mr-1 h-4 w-4" /> Download
                   </Button>
                 )}

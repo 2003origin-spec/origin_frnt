@@ -19,7 +19,7 @@ import { formatISTDateTimeDMY } from '@/lib/format-time';
 
 import type { Group } from './NowGroups';
 
-const input = 'rounded-md border bg-background px-2 py-1.5 text-sm';
+const input = 'rounded-md border bg-background min-h-[48px] px-3 text-base sm:text-sm';
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Something went wrong. Please try again.';
@@ -31,6 +31,8 @@ export function NowGroupHost({ subjects }: { subjects: string[] }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Cancelling asks for a reason inline (no browser pop-up: it is clumsy on phones).
+  const [cancelling, setCancelling] = useState<{ id: string; reason: string } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -81,13 +83,12 @@ export function NowGroupHost({ subjects }: { subjects: string[] }) {
     }
   };
 
-  const cancel = async (g: Group) => {
-    const reason = window.prompt('Tell the students why you are cancelling. Every seat is refunded.');
-    if (!reason) return;
+  const cancel = async (g: Group, reason: string) => {
     setBusy(g.id);
     setError(null);
     try {
       await apiCall(`/now/groups/${g.id}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) });
+      setCancelling(null);
       await load();
     } catch (err) {
       setError(errorMessage(err));
@@ -132,14 +133,45 @@ export function NowGroupHost({ subjects }: { subjects: string[] }) {
                 </span>
                 <span className="flex gap-2">
                   {g.canJoin && (
-                    <Link href={`/now/groups/room?id=${encodeURIComponent(g.id)}`} className="rounded-md bg-primary px-3 py-1 text-xs font-medium text-primary-foreground">
+                    <Link
+                      href={`/now/groups/room?id=${encodeURIComponent(g.id)}`}
+                      className="inline-flex min-h-[48px] items-center rounded-full bg-primary px-5 text-sm font-medium text-primary-foreground"
+                    >
                       Open the room
                     </Link>
                   )}
-                  {g.status === 'scheduled' && (
-                    <Button size="sm" variant="ghost" disabled={busy === g.id} onClick={() => cancel(g)}>Cancel</Button>
+                  {g.status === 'scheduled' && cancelling?.id !== g.id && (
+                    <Button className="h-[48px]" size="sm" variant="ghost" disabled={busy === g.id} onClick={() => setCancelling({ id: g.id, reason: '' })}>
+                      Cancel
+                    </Button>
                   )}
                 </span>
+                {cancelling?.id === g.id && (
+                  <div className="flex w-full flex-wrap items-end gap-2">
+                    <label htmlFor={`group-cancel-${g.id}`} className="flex flex-1 flex-col gap-1 text-xs">
+                      <span className="text-muted-foreground">Why are you cancelling? The students see this, and every seat is refunded.</span>
+                      <input
+                        id={`group-cancel-${g.id}`}
+                        className={input}
+                        maxLength={200}
+                        value={cancelling.reason}
+                        onChange={(e) => setCancelling({ id: g.id, reason: e.target.value })}
+                      />
+                    </label>
+                    <Button
+                      className="h-[48px]"
+                      size="sm"
+                      variant="destructive"
+                      disabled={busy === g.id || cancelling.reason.trim().length < 5}
+                      onClick={() => cancel(g, cancelling.reason.trim())}
+                    >
+                      Cancel the session
+                    </Button>
+                    <Button className="h-[48px]" size="sm" variant="ghost" onClick={() => setCancelling(null)}>
+                      Keep it
+                    </Button>
+                  </div>
+                )}
               </li>
             ))}
           </ul>
@@ -180,10 +212,10 @@ export function NowGroupHost({ subjects }: { subjects: string[] }) {
               {num('priceCoins', 'Coins a seat', 1, 1000)}
             </div>
             <div className="flex gap-2">
-              <Button size="sm" disabled={busy === 'schedule' || !form.day || !form.title.trim() || !form.chapter.trim()} onClick={schedule}>
+              <Button className="h-[48px]" size="sm" disabled={busy === 'schedule' || !form.day || !form.title.trim() || !form.chapter.trim()} onClick={schedule}>
                 {busy === 'schedule' ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null} Schedule
               </Button>
-              <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>Close</Button>
+              <Button className="h-[48px]" size="sm" variant="ghost" onClick={() => setOpen(false)}>Close</Button>
             </div>
             <p className="text-xs text-muted-foreground">
               At least 2 hours ahead, at most 14 days. Join on time: if you are 10 minutes late, every seat is refunded. You are paid per seat
@@ -191,9 +223,9 @@ export function NowGroupHost({ subjects }: { subjects: string[] }) {
             </p>
           </div>
         ) : (
-          <Button size="sm" variant="outline" className="self-start" onClick={() => setOpen(true)}>Schedule a group session</Button>
+          <Button size="sm" variant="outline" className="h-[48px] self-start" onClick={() => setOpen(true)}>Schedule a group session</Button>
         )}
-        {error && <p className="text-sm text-red-600" role="alert">{error}</p>}
+        {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
       </CardContent>
     </Card>
   );

@@ -78,7 +78,7 @@ export function NowSendCoins({ onSent }: { onSent: () => void }) {
                 <span className="text-muted-foreground">To (@username)</span>
                 <input
                   id="now-gift-to"
-                  className="w-48 rounded-md border bg-background px-2 py-1.5 text-sm"
+                  className="w-48 min-h-[48px] rounded-md border bg-background px-3 text-base sm:text-sm"
                   placeholder="@asha_k"
                   autoComplete="off"
                   value={username}
@@ -93,7 +93,7 @@ export function NowSendCoins({ onSent }: { onSent: () => void }) {
                 <input
                   id="now-gift-amount"
                   inputMode="numeric"
-                  className="w-24 rounded-md border bg-background px-2 py-1.5 text-sm"
+                  className="w-24 min-h-[48px] rounded-md border bg-background px-3 text-base sm:text-sm"
                   value={amount}
                   onChange={(e) => {
                     setAmount(e.target.value.replace(/\D/g, ''));
@@ -103,16 +103,16 @@ export function NowSendCoins({ onSent }: { onSent: () => void }) {
               </label>
               {confirming ? (
                 <div className="flex gap-2">
-                  <Button size="sm" onClick={send} disabled={busy}>
+                  <Button className="h-[48px]" size="sm" onClick={send} disabled={busy}>
                     {busy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
                     Send {coins} coins to {username.trim().startsWith('@') ? username.trim() : `@${username.trim()}`}
                   </Button>
-                  <Button size="sm" variant="ghost" onClick={() => setConfirming(false)} disabled={busy}>
+                  <Button className="h-[48px]" size="sm" variant="ghost" onClick={() => setConfirming(false)} disabled={busy}>
                     Cancel
                   </Button>
                 </div>
               ) : (
-                <Button size="sm" disabled={!valid} onClick={() => setConfirming(true)}>
+                <Button className="h-[48px]" size="sm" disabled={!valid} onClick={() => setConfirming(true)}>
                   Send
                 </Button>
               )}
@@ -123,7 +123,7 @@ export function NowSendCoins({ onSent }: { onSent: () => void }) {
           </>
         )}
         {message && (
-          <p className={message.ok ? 'text-emerald-700' : 'text-red-600'} role={message.ok ? 'status' : 'alert'}>
+          <p className={message.ok ? 'text-success' : 'text-destructive'} role={message.ok ? 'status' : 'alert'}>
             {message.text}
           </p>
         )}

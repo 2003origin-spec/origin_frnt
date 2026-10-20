@@ -82,6 +82,8 @@ export function StorePanel() {
   const items = useAdminData<{ items: Item[] }>('/store/items');
   const orders = useAdminData<{ orders: Order[] }>('/store/orders');
   const [kind, setKind] = useState<Kind>('premium');
+  // Inline stock editor for merch sizes (no browser pop-up).
+  const [stockEdit, setStockEdit] = useState<{ id: string; text: string } | null>(null);
   const [sizes, setSizes] = useState('');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -229,18 +231,31 @@ export function StorePanel() {
                 </button>
                 {i.kind === 'merch' && (
                   <>
-                    <button
-                      className={ghostButtonClass}
-                      disabled={busy}
-                      onClick={() => {
-                        const next = window.prompt('Sizes and stock, like S:10, M:20 (blank = one size)', sizesText(i.size_stock));
-                        if (next === null) return;
-                        const parsed = parseSizes(next);
-                        void save(toBody(i, { sizeStock: parsed, stock: parsed ? null : i.stock }), i.id);
-                      }}
-                    >
-                      Stock
-                    </button>
+                    {stockEdit?.id === i.id ? (
+                      <span className="flex items-center gap-1">
+                        <input
+                          className={`${inputClass} w-40`}
+                          aria-label="Sizes and stock, like S:10, M:20 (blank = one size)"
+                          value={stockEdit.text}
+                          onChange={(e) => setStockEdit({ id: i.id, text: e.target.value })}
+                        />
+                        <button
+                          className={ghostButtonClass}
+                          disabled={busy}
+                          onClick={() => {
+                            const parsed = parseSizes(stockEdit.text);
+                            setStockEdit(null);
+                            void save(toBody(i, { sizeStock: parsed, stock: parsed ? null : i.stock }), i.id);
+                          }}
+                        >
+                          Save
+                        </button>
+                      </span>
+                    ) : (
+                      <button className={ghostButtonClass} disabled={busy} onClick={() => setStockEdit({ id: i.id, text: sizesText(i.size_stock) })}>
+                        Stock
+                      </button>
+                    )}
                     <label className={`${ghostButtonClass} cursor-pointer`}>
                       {i.image_key ? 'Replace photo' : 'Add photo'}
                       <input
@@ -343,13 +358,17 @@ function MerchOrders() {
   const orders = useAdminData<{ orders: MerchOrder[] }>(`/store/merch-orders?status=${status}`);
   const [shipping, setShipping] = useState<Record<string, { courier: string; trackingNo: string }>>({});
   const [busy, setBusy] = useState<string | null>(null);
+  const [cancelReason, setCancelReason] = useState<Record<string, string>>({});
 
   const act = async (order: MerchOrder, action: 'pack' | 'ship' | 'deliver' | 'cancel') => {
     let body: Record<string, unknown> = { action };
     if (action === 'ship') body = { action, ...(shipping[order.id] ?? { courier: '', trackingNo: '' }) };
     if (action === 'cancel') {
-      const reason = window.prompt('Why is this order cancelled? The buyer gets the coins back and an email.');
-      if (!reason) return;
+      const reason = (cancelReason[order.id] ?? '').trim();
+      if (reason.length < 5) {
+        toast.error('Write why it is cancelled (the buyer gets the coins back and an email).');
+        return;
+      }
       body = { action, reason };
     }
     setBusy(order.id);
@@ -429,6 +448,13 @@ function MerchOrders() {
                       onChange={(e) => setShipping({ ...shipping, [o.id]: { courier: shipping[o.id]?.courier ?? '', trackingNo: e.target.value } })}
                     />
                     <button className={buttonClass} disabled={busy === o.id} onClick={() => act(o, 'ship')}>Shipped</button>
+                    <input
+                      className={`${inputClass} w-44`}
+                      placeholder="Cancel reason"
+                      aria-label="Why the order is cancelled"
+                      value={cancelReason[o.id] ?? ''}
+                      onChange={(e) => setCancelReason({ ...cancelReason, [o.id]: e.target.value })}
+                    />
                     <button className={ghostButtonClass} disabled={busy === o.id} onClick={() => act(o, 'cancel')}>Cancel</button>
                   </>
                 )}

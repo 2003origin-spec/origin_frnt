@@ -96,22 +96,22 @@ function AnswerForm({ item, onDone }: { item: Item; onDone: () => void }) {
       <label htmlFor={`later-answer-${item.id}`} className="text-xs text-muted-foreground">Your answer (step by step; LaTeX like $v^2 = u^2 + 2as$ works)</label>
       <textarea
         id={`later-answer-${item.id}`}
-        className="min-h-40 rounded-md border bg-background p-2 text-sm"
+        className="min-h-40 rounded-md border bg-background p-3 text-base sm:text-sm"
         maxLength={4000}
         value={text}
         onChange={(e) => setText(e.target.value)}
       />
       <div className="flex flex-wrap items-center gap-2">
         {photos.map((p) => (
-          <span key={p.key} className="flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs">
+          <span key={p.key} className="flex min-h-[48px] items-center gap-1 rounded-full border pl-3 text-xs">
             {p.name.slice(0, 24)}
-            <button type="button" aria-label={`Remove ${p.name}`} onClick={() => setPhotos((all) => all.filter((x) => x.key !== p.key))}>
+            <button className="inline-flex h-[48px] w-[48px] cursor-pointer items-center justify-center rounded-full" type="button" aria-label={`Remove ${p.name}`} onClick={() => setPhotos((all) => all.filter((x) => x.key !== p.key))}>
               <X className="h-3 w-3" />
             </button>
           </span>
         ))}
         {photos.length < LATER_MAX_PHOTOS && (
-          <label className="flex cursor-pointer items-center gap-1 rounded-md border px-2 py-1 text-xs">
+          <label className="flex min-h-[48px] cursor-pointer items-center gap-2 rounded-full border px-4 text-xs">
             {busy === 'photo' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" aria-hidden />}
             Add a photo of your working
             <input type="file" accept={LATER_PHOTO_ACCEPT} className="hidden" onChange={(e) => void addPhoto(e.target.files?.[0])} />
@@ -119,10 +119,10 @@ function AnswerForm({ item, onDone }: { item: Item; onDone: () => void }) {
         )}
       </div>
       <div className="flex flex-wrap gap-2">
-        <Button size="sm" disabled={text.trim().length < 20 || busy !== null} onClick={() => call('answer', { text, photoKeys: photos.map((p) => p.key) })}>
+        <Button className="h-[48px]" size="sm" disabled={text.trim().length < 20 || busy !== null} onClick={() => call('answer', { text, photoKeys: photos.map((p) => p.key) })}>
           {busy === 'send' ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null} Send answer
         </Button>
-        <Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => call('release')}>
+        <Button className="h-[48px]" size="sm" variant="ghost" disabled={busy !== null} onClick={() => call('release')}>
           Give it back to the queue
         </Button>
       </div>
@@ -131,7 +131,7 @@ function AnswerForm({ item, onDone }: { item: Item; onDone: () => void }) {
           <Clock className="h-3.5 w-3.5" aria-hidden /> Yours until {formatISTDateTimeDMY(item.claimExpiresAt)}. Never share phone numbers, emails or links.
         </p>
       )}
-      {error && <p className="text-sm text-red-600" role="alert">{error}</p>}
+      {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
     </div>
   );
 }
@@ -194,13 +194,13 @@ export function NowLaterQueue() {
             {queue.open.map((item) => (
               <li key={item.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
                 <span>
-                  <span className="capitalize">{item.subject} · {item.chapter ?? '—'} · {item.difficulty}</span>
+                  <span><span className="capitalize">{item.subject}</span> · {item.chapter ?? '—'} · <span className="capitalize">{item.difficulty}</span></span>
                   <span className="block text-xs text-muted-foreground">
                     {item.priceCoins} coins · due {formatISTDateTimeDMY(item.expiresAt)}
                     {item.note ? ' · has a note' : ''}
                   </span>
                 </span>
-                <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => claim(item)}>
+                <Button className="h-[48px]" size="sm" variant="outline" disabled={busy !== null} onClick={() => claim(item)}>
                   {busy === item.id ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null} Answer this
                 </Button>
               </li>
@@ -219,7 +219,7 @@ export function NowLaterQueue() {
             ))}
           </div>
         )}
-        {error && <p className="text-sm text-red-600" role="alert">{error}</p>}
+        {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
         <p className="text-xs text-muted-foreground">Coins for an accepted answer wait 24 hours, like a call. Students can report an answer; our team checks every report.</p>
       </CardContent>
     </Card>

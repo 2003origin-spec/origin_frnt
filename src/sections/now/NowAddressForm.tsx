@@ -16,7 +16,7 @@ const STATES = [
 export type AddressDraft = { name: string; phone: string; line1: string; line2: string; city: string; state: string; pincode: string };
 export const emptyAddress: AddressDraft = { name: '', phone: '', line1: '', line2: '', city: '', state: '', pincode: '' };
 
-const input = 'w-full rounded-md border bg-background px-2 py-1.5 text-sm';
+const input = 'w-full rounded-md border bg-background min-h-[48px] px-3 text-base sm:text-sm';
 
 export function NowAddressForm({ idPrefix, value, onChange }: { idPrefix: string; value: AddressDraft; onChange: (next: AddressDraft) => void }) {
   const field = (key: keyof AddressDraft, label: string, extra: React.InputHTMLAttributes<HTMLInputElement> = {}) => (

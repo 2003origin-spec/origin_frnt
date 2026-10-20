@@ -50,7 +50,7 @@ export function LaterPanel() {
         {(data.data?.items ?? []).map((i) => (
           <tr key={i.id}>
             <Td className="whitespace-nowrap">{fmtDate(i.createdAt)}</Td>
-            <Td className="capitalize">{i.subject} · {i.chapter ?? '—'} · {i.difficulty}</Td>
+            <Td><span className="capitalize">{i.subject}</span> · {i.chapter ?? '—'} · <span className="capitalize">{i.difficulty}</span></Td>
             <Td>{i.studentName} → {i.solverName ?? '—'}</Td>
             <Td>{i.priceCoins}{i.tipCoins ? ` + tip ${i.tipCoins}` : ''}</Td>
             <Td>

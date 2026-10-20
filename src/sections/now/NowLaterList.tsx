@@ -96,9 +96,9 @@ function Respond({ item, onDone }: { item: Item; onDone: () => void }) {
 
   if (reporting) {
     return (
-      <div className="flex flex-col gap-2 rounded-md border border-red-500/40 p-3">
+      <div className="flex flex-col gap-2 rounded-md border border-destructive/40 p-3">
         <label htmlFor={`later-reason-${item.id}`} className="text-xs text-muted-foreground">What went wrong?</label>
-        <select id={`later-reason-${item.id}`} className="rounded-md border bg-background px-2 py-1 text-sm" value={reason} onChange={(e) => setReason(e.target.value)}>
+        <select id={`later-reason-${item.id}`} className="min-h-[48px] rounded-md border bg-background px-3 text-base sm:text-sm" value={reason} onChange={(e) => setReason(e.target.value)}>
           <option value="">Pick a reason</option>
           {REASONS.map((r) => (
             <option key={r.id} value={r.id}>{r.label}</option>
@@ -106,7 +106,7 @@ function Respond({ item, onDone }: { item: Item; onDone: () => void }) {
         </select>
         <textarea
           aria-label="More detail (optional)"
-          className="min-h-16 rounded-md border bg-background p-2 text-sm"
+          className="min-h-24 rounded-md border bg-background p-3 text-base sm:text-sm"
           maxLength={1000}
           value={details}
           onChange={(e) => setDetails(e.target.value)}
@@ -114,12 +114,12 @@ function Respond({ item, onDone }: { item: Item; onDone: () => void }) {
         />
         <p className="text-xs text-muted-foreground">Your coins wait while our team checks. If they agree, the coins come back to you.</p>
         <div className="flex gap-2">
-          <Button size="sm" variant="destructive" disabled={!reason || busy} onClick={() => send('report', { reason, details: details.trim() || null })}>
+          <Button className="h-[48px]" size="sm" variant="destructive" disabled={!reason || busy} onClick={() => send('report', { reason, details: details.trim() || null })}>
             {busy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Flag className="mr-1 h-4 w-4" />} Send report
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => setReporting(false)} disabled={busy}>Back</Button>
+          <Button className="h-[48px]" size="sm" variant="ghost" onClick={() => setReporting(false)} disabled={busy}>Back</Button>
         </div>
-        {error && <p className="text-sm text-red-600" role="alert">{error}</p>}
+        {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
       </div>
     );
   }
@@ -127,8 +127,8 @@ function Respond({ item, onDone }: { item: Item; onDone: () => void }) {
     <div className="flex flex-col gap-2 rounded-md border p-3">
       <div className="flex items-center gap-1" role="radiogroup" aria-label="Rate the answer">
         {[1, 2, 3, 4, 5].map((n) => (
-          <button key={n} type="button" role="radio" aria-checked={stars === n} aria-label={`${n} star${n > 1 ? 's' : ''}`} onClick={() => setStars(n)}>
-            <Star className={`h-6 w-6 ${n <= stars ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground'}`} />
+          <button className="cursor-pointer rounded-full p-[12px]" key={n} type="button" role="radio" aria-checked={stars === n} aria-label={`${n} star${n > 1 ? 's' : ''}`} onClick={() => setStars(n)}>
+            <Star className={`h-[24px] w-[24px] ${n <= stars ? 'fill-warning text-warning' : 'text-muted-foreground'}`} />
           </button>
         ))}
       </div>
@@ -137,21 +137,21 @@ function Respond({ item, onDone }: { item: Item; onDone: () => void }) {
         <input
           id={`later-tip-${item.id}`}
           inputMode="numeric"
-          className="w-20 rounded-md border bg-background px-2 py-1 text-sm"
+          className="min-h-[48px] w-24 rounded-md border bg-background px-3 text-base sm:text-sm"
           value={tip}
           onChange={(e) => setTip(e.target.value.replace(/\D/g, ''))}
         />
       </label>
       <div className="flex flex-wrap gap-2">
-        <Button size="sm" disabled={!stars || busy} onClick={() => send('accept', { stars, tipCoins: tip ? Number(tip) : 0 })}>
+        <Button className="h-[48px]" size="sm" disabled={!stars || busy} onClick={() => send('accept', { stars, tipCoins: tip ? Number(tip) : 0 })}>
           {busy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null} Done, it helped
         </Button>
-        <Button size="sm" variant="ghost" onClick={() => setReporting(true)} disabled={busy}>
+        <Button className="h-[48px]" size="sm" variant="ghost" onClick={() => setReporting(true)} disabled={busy}>
           <Flag className="mr-1 h-4 w-4" /> Report a problem
         </Button>
       </div>
       <p className="text-xs text-muted-foreground">If you do neither within 48 hours, the answer counts as accepted.</p>
-      {error && <p className="text-sm text-red-600" role="alert">{error}</p>}
+      {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
     </div>
   );
 }
@@ -206,9 +206,9 @@ export default function NowLaterList() {
           <h1 className="text-xl font-semibold">Asked for later</h1>
           <p className="text-sm text-muted-foreground">Doubts answered in writing by a verified solver, without a live call.</p>
         </div>
-        <Link href="/now/doubts" className="rounded-md border px-3 py-1 text-sm hover:bg-muted">My doubts</Link>
+        <Link href="/now/doubts" className="inline-flex min-h-[48px] items-center rounded-full border px-4 text-sm hover:bg-muted">My doubts</Link>
       </header>
-      {error && <p className="text-sm text-red-600" role="alert">{error}</p>}
+      {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
       {items.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           Nothing yet. On any question you have tried, choose &ldquo;Or ask later&rdquo; under Solve live.
@@ -218,7 +218,7 @@ export default function NowLaterList() {
           <Card key={item.id}>
             <CardHeader className="pb-2">
               <CardTitle className="flex flex-wrap items-center justify-between gap-2 text-base">
-                <span className="capitalize">{item.subject} · {item.chapter ?? '—'} · {item.difficulty}</span>
+                <span><span className="capitalize">{item.subject}</span> · {item.chapter ?? '—'} · <span className="capitalize">{item.difficulty}</span></span>
                 <span className="text-xs font-normal text-muted-foreground">{STATUS[item.status]}</span>
               </CardTitle>
             </CardHeader>
@@ -245,7 +245,7 @@ export default function NowLaterList() {
                 <p className="text-xs text-muted-foreground">You rated it {item.stars}★{item.tipCoins ? ` and tipped ${item.tipCoins} coins` : ''}.</p>
               )}
               {item.canCancel && (
-                <Button size="sm" variant="ghost" className="self-start" onClick={() => cancel(item)} disabled={busy === item.id}>
+                <Button size="sm" variant="ghost" className="h-[48px] self-start" onClick={() => cancel(item)} disabled={busy === item.id}>
                   Cancel and get {item.priceCoins} coins back
                 </Button>
               )}

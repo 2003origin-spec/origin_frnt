@@ -24,10 +24,10 @@ export function NowExtraLinks() {
   return (
     <nav className="flex flex-wrap gap-2" aria-label="More help">
       {features.askLater && (
-        <Link href="/now/later" className="rounded-md border px-3 py-1 text-sm hover:bg-muted">Asked for later</Link>
+        <Link href="/now/later" className="inline-flex min-h-[48px] items-center rounded-full border px-4 text-sm hover:bg-muted">Asked for later</Link>
       )}
       {features.groups && (
-        <Link href="/now/groups" className="rounded-md border px-3 py-1 text-sm hover:bg-muted">Group sessions</Link>
+        <Link href="/now/groups" className="inline-flex min-h-[48px] items-center rounded-full border px-4 text-sm hover:bg-muted">Group sessions</Link>
       )}
     </nav>
   );

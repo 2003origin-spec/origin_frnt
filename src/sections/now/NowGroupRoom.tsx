@@ -252,25 +252,25 @@ export default function NowGroupRoom({ groupId }: { groupId: string }) {
     <div className="mx-auto flex max-w-3xl flex-col gap-4 px-4 py-6">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="text-xs uppercase tracking-wide text-muted-foreground">Group session · <span className="capitalize">{group.subject}</span> · {group.chapter}</p>
+          <p className="text-xs text-muted-foreground">Group session · <span className="capitalize">{group.subject}</span> · {group.chapter}</p>
           <h1 className="text-lg font-semibold">{group.title}</h1>
           <p className="text-xs text-muted-foreground">with {group.solverName}</p>
         </div>
         <div className="flex items-center gap-3">
           {ticket?.recorded && connected && (
-            <span className="flex items-center gap-1 rounded-full bg-red-500/10 px-2 py-1 text-xs font-medium text-red-600">
+            <span className="flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-1 text-xs font-medium text-destructive">
               <Circle className="h-2.5 w-2.5 fill-current" aria-hidden /> Recording
             </span>
           )}
           {remaining !== null && (
-            <span className={`flex items-center gap-1 rounded-full px-2 py-1 font-mono text-sm ${remaining <= 60_000 ? 'bg-amber-500/15 text-amber-700' : 'bg-muted'}`} aria-label="Time left">
+            <span className={`flex items-center gap-1 rounded-full px-2 py-1 font-mono text-sm ${remaining <= 60_000 ? 'bg-warning/15 text-warning' : 'bg-muted'}`} aria-label="Time left">
               <Clock className="h-4 w-4" aria-hidden /> {clock(remaining)}
             </span>
           )}
         </div>
       </header>
 
-      {error && <p className="text-sm text-red-600" role="alert">{error}</p>}
+      {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
 
       {ended ? (
         <Card>
@@ -288,7 +288,7 @@ export default function NowGroupRoom({ groupId }: { groupId: string }) {
               Audio only; students listen and raise a hand to speak. The session is recorded for safety
               {group.canJoin ? '.' : '. The room opens 10 minutes before the start.'}
             </p>
-            <Button onClick={join} disabled={busy === 'join' || !group.canJoin}>
+            <Button className="h-[48px]" onClick={join} disabled={busy === 'join' || !group.canJoin}>
               {busy === 'join' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Join the session
             </Button>
           </CardContent>
@@ -304,27 +304,27 @@ export default function NowGroupRoom({ groupId }: { groupId: string }) {
           )}
           <div className="flex flex-wrap items-center gap-2">
             {(isHost || canSpeak) && (
-              <Button variant="outline" onClick={toggleMute}>
+              <Button className="h-[48px]" variant="outline" onClick={toggleMute}>
                 {muted ? <MicOff className="mr-2 h-4 w-4" /> : <Mic className="mr-2 h-4 w-4" />} {muted ? 'Unmute' : 'Mute'}
               </Button>
             )}
             {isHost && canShare && (
-              <Button variant="outline" onClick={toggleShare}>
+              <Button className="h-[48px]" variant="outline" onClick={toggleShare}>
                 {sharing ? <MonitorX className="mr-2 h-4 w-4" /> : <MonitorUp className="mr-2 h-4 w-4" />} {sharing ? 'Stop sharing' : 'Share screen'}
               </Button>
             )}
             {!isHost && !canSpeak && (
-              <Button variant={handUp ? 'default' : 'outline'} onClick={() => raiseHand(!handUp)}>
+              <Button className="h-[48px]" variant={handUp ? 'default' : 'outline'} onClick={() => raiseHand(!handUp)}>
                 <Hand className="mr-2 h-4 w-4" /> {handUp ? 'Lower hand' : 'Raise hand'}
               </Button>
             )}
-            {!isHost && canSpeak && <span className="text-sm text-emerald-700">You have the mic.</span>}
+            {!isHost && canSpeak && <span className="text-sm text-success">You have the mic.</span>}
             {isHost ? (
-              <Button variant="destructive" onClick={end} disabled={busy === 'end'}>
+              <Button className="h-[48px]" variant="destructive" onClick={end} disabled={busy === 'end'}>
                 <PhoneOff className="mr-2 h-4 w-4" /> End for everyone
               </Button>
             ) : (
-              <Button variant="ghost" onClick={() => void leave().then(() => setEnded(true))}>
+              <Button className="h-[48px]" variant="ghost" onClick={() => void leave().then(() => setEnded(true))}>
                 <PhoneOff className="mr-2 h-4 w-4" /> Leave
               </Button>
             )}
@@ -339,14 +339,14 @@ export default function NowGroupRoom({ groupId }: { groupId: string }) {
                   hands.map((h) => (
                     <div key={h.seatId} className="flex items-center justify-between gap-2">
                       <span>{h.name}</span>
-                      <Button size="sm" variant="outline" disabled={busy === 'mic'} onClick={() => giveMic(h.seatId)}>Give the mic</Button>
+                      <Button className="h-[48px]" size="sm" variant="outline" disabled={busy === 'mic'} onClick={() => giveMic(h.seatId)}>Give the mic</Button>
                     </div>
                   ))
                 )}
                 {micSeat && (
                   <div className="flex items-center justify-between gap-2 border-t pt-2">
                     <span>{listeners.find((l) => l.seatId === micSeat)?.name ?? 'A student'} has the mic</span>
-                    <Button size="sm" variant="ghost" disabled={busy === 'mic'} onClick={() => giveMic(null)}>Take it back</Button>
+                    <Button className="h-[48px]" size="sm" variant="ghost" disabled={busy === 'mic'} onClick={() => giveMic(null)}>Take it back</Button>
                   </div>
                 )}
                 <p className="text-xs text-muted-foreground">{listeners.length} student{listeners.length === 1 ? '' : 's'} listening. One student speaks at a time.</p>

@@ -94,9 +94,14 @@ export default function NowGroups() {
           Sessions are audio only and recorded for safety.
         </p>
       </header>
-      {error && <p className="text-sm text-red-600" role="alert">{error}</p>}
+      {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
       {groups.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No group sessions coming up. Check back soon.</p>
+        <div className="flex flex-col items-start gap-3 rounded-xl border p-4 text-sm">
+          <p className="text-muted-foreground">No group sessions are coming up right now. Solvers add new ones every week.</p>
+          <Link href="/ogcode" className="inline-flex min-h-[48px] items-center rounded-full border px-5 font-medium">
+            Practise a question meanwhile
+          </Link>
+        </div>
       ) : (
         groups.map((g) => {
           const full = g.seatsTaken >= g.seats;
@@ -106,7 +111,7 @@ export default function NowGroups() {
               <CardHeader className="pb-2">
                 <CardTitle className="flex flex-wrap items-center justify-between gap-2 text-base">
                   <span>{g.title}</span>
-                  <span className="text-xs font-normal capitalize text-muted-foreground">{g.subject} · {g.chapter}</span>
+                  <span className="text-xs font-normal text-muted-foreground"><span className="capitalize">{g.subject}</span> · {g.chapter}</span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="flex flex-col gap-2 text-sm">
@@ -114,10 +119,10 @@ export default function NowGroups() {
                 <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                   <span className="flex items-center gap-1"><CalendarClock className="h-3.5 w-3.5" aria-hidden /> {formatISTDateTimeDMY(g.startsAt)} · {g.minutes} min</span>
                   <span className="flex items-center gap-1"><Users className="h-3.5 w-3.5" aria-hidden /> {g.seatsTaken}/{g.seats} seats</span>
-                  <span className="flex items-center gap-1"><Coins className="h-3.5 w-3.5 text-amber-600" aria-hidden /> {g.priceCoins} coins</span>
+                  <span className="flex items-center gap-1"><Coins className="h-3.5 w-3.5 text-warning" aria-hidden /> {g.priceCoins} coins</span>
                   <span>with {g.solverName}</span>
                 </p>
-                {g.status === 'cancelled' && <p className="text-xs text-red-600">Cancelled{g.cancelReason ? `: ${g.cancelReason}` : ''}. Your coins are back.</p>}
+                {g.status === 'cancelled' && <p className="text-xs text-destructive">Cancelled{g.cancelReason ? `: ${g.cancelReason}` : ''}. Your coins are back.</p>}
                 {g.status === 'ended' && g.mySeat && (
                   <p className="text-xs text-muted-foreground">
                     {g.settleOutcome === 'refunded' ? 'It did not run as planned; your coins are back.' : 'Ended.'}
@@ -125,34 +130,37 @@ export default function NowGroups() {
                 )}
                 <div className="flex flex-wrap items-center gap-2">
                   {booked && g.canJoin && (
-                    <Link href={`/now/groups/room?id=${encodeURIComponent(g.id)}`} className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground">
+                    <Link
+                      href={`/now/groups/room?id=${encodeURIComponent(g.id)}`}
+                      className="inline-flex min-h-[48px] items-center rounded-full bg-primary px-5 text-sm font-medium text-primary-foreground"
+                    >
                       Join now
                     </Link>
                   )}
-                  {booked && !g.canJoin && g.status === 'scheduled' && <span className="text-xs text-emerald-700">You have a seat. The room opens 10 minutes before.</span>}
+                  {booked && !g.canJoin && g.status === 'scheduled' && <span className="text-xs text-success">You have a seat. The room opens 10 minutes before.</span>}
                   {g.canCancelSeat && (
-                    <Button size="sm" variant="ghost" disabled={busy === g.id} onClick={() => act(g, 'cancel-seat')}>
+                    <Button className="h-[48px]" size="sm" variant="ghost" disabled={busy === g.id} onClick={() => act(g, 'cancel-seat')}>
                       Cancel my seat (coins back)
                     </Button>
                   )}
                   {!g.mySeat && g.status === 'scheduled' && !full &&
                     (confirming === g.id ? (
                       <>
-                        <Button size="sm" disabled={busy === g.id} onClick={() => act(g, 'book')}>
+                        <Button className="h-[48px]" size="sm" disabled={busy === g.id} onClick={() => act(g, 'book')}>
                           {busy === g.id ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null} Book for {g.priceCoins} coins
                         </Button>
-                        <Button size="sm" variant="ghost" onClick={() => setConfirming(null)}>Not now</Button>
+                        <Button className="h-[48px]" size="sm" variant="ghost" onClick={() => setConfirming(null)}>Not now</Button>
                       </>
                     ) : (
-                      <Button size="sm" variant="outline" onClick={() => setConfirming(g.id)}>Book a seat</Button>
+                      <Button className="h-[48px]" size="sm" variant="outline" onClick={() => setConfirming(g.id)}>Book a seat</Button>
                     ))}
                   {!g.mySeat && full && g.status === 'scheduled' && <span className="text-xs text-muted-foreground">Full</span>}
                   {g.status === 'ended' && g.mySeat && !g.mySeat.stars && g.mySeat.status !== 'cancelled' && (
                     <span className="flex items-center gap-1 text-xs">
                       Rate it:
                       {[1, 2, 3, 4, 5].map((n) => (
-                        <button key={n} type="button" aria-label={`${n} star${n > 1 ? 's' : ''}`} onClick={() => act(g, 'rate', { stars: n })}>
-                          <Star className="h-4 w-4 text-amber-400" />
+                        <button className="cursor-pointer rounded-full p-[12px]" key={n} type="button" aria-label={`${n} star${n > 1 ? 's' : ''}`} onClick={() => act(g, 'rate', { stars: n })}>
+                          <Star className="h-[24px] w-[24px] text-warning" />
                         </button>
                       ))}
                     </span>
