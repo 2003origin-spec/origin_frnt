@@ -1,32 +1,40 @@
 'use client';
 
 /**
- * Origin Store (build step 9; plan doc screen "Store"): pilot items are
- * premium subject time and digital papers, paid in Ori Coins only. Inside the
- * Android app the store is browse-only (Play billing policy), like coin packs.
+ * Origin Store (build step 9; plan doc screen "Store"): premium subject time
+ * and digital papers, and merch with delivery once switched on (B91), paid in
+ * Ori Coins. Inside the Android app the store is browse-only (Play billing
+ * policy), like coin packs.
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { Coins, Download, FileText, Loader2, Sparkles } from 'lucide-react';
+import { Coins, Download, FileText, Loader2, Package, Shirt, Sparkles, Truck } from 'lucide-react';
 
 import { NativePurchaseNotice, useIsNativeApp } from '@/components/native/NativePurchaseNotice';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { getRazorpay, loadRazorpayScript, verifyPayment } from '@/features/payments/client';
 import { apiCall } from '@/lib/api';
 import { formatISTDayDMY } from '@/lib/format-time';
 
+import { NowAddressForm, emptyAddress, type AddressDraft } from './NowAddressForm';
+
 type Item = {
   id: string;
-  kind: 'premium' | 'digital';
+  kind: 'premium' | 'digital' | 'merch';
   title: string;
   description: string | null;
   priceCoins: number;
+  /** Rupee part (B92); 0 for coins-only items. */
+  pricePaise: number;
   inStock: boolean;
   premiumSubject: string | null;
   premiumDays: number | null;
   featured: boolean;
   owned: boolean;
   coinPremiumUntil: string | null;
+  sizes: { size: string; inStock: boolean }[] | null;
+  imageUrl: string | null;
 };
 
 type Order = {
@@ -39,6 +47,20 @@ type Order = {
   premiumExpiresAt: string | null;
   canDownload: boolean;
   createdAt: string;
+  size: string | null;
+  shipStatus: 'to_pack' | 'packed' | 'shipped' | 'delivered' | 'cancelled' | null;
+  courier: string | null;
+  trackingNo: string | null;
+  deliverTo: string | null;
+  canCancel: boolean;
+};
+
+const SHIP_LABEL: Record<NonNullable<Order['shipStatus']>, string> = {
+  to_pack: 'Order placed',
+  packed: 'Packed',
+  shipped: 'Shipped',
+  delivered: 'Delivered',
+  cancelled: 'Cancelled, coins returned',
 };
 
 const SUBJECT_LABEL: Record<string, string> = {
@@ -47,6 +69,21 @@ const SUBJECT_LABEL: Record<string, string> = {
   mathematics: 'Mathematics',
   biology: 'Biology',
 };
+
+function rupees(paise: number): string {
+  const r = paise / 100;
+  return `₹${r.toLocaleString('en-IN', { minimumFractionDigits: Number.isInteger(r) ? 0 : 2, maximumFractionDigits: 2 })}`;
+}
+
+function priceLabel(item: { priceCoins: number; pricePaise: number }): string {
+  if (item.pricePaise > 0 && item.priceCoins > 0) return `${rupees(item.pricePaise)} + ${item.priceCoins.toLocaleString('en-IN')} coins`;
+  if (item.pricePaise > 0) return rupees(item.pricePaise);
+  return item.priceCoins.toLocaleString('en-IN');
+}
+
+type Checkout =
+  | { state: 'pay'; storeOrderId: string; razorpayOrderId: string | null; amountMinor: number; currency: string; keyId: string | null; title: string }
+  | { state: 'done'; order: Order; alreadyOwned: boolean };
 
 function dateLabel(iso: string): string {
   return formatISTDayDMY(iso);
@@ -65,6 +102,10 @@ export default function NowStore() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // Merch checkout (B91): the chosen size per item and the delivery address.
+  const [sizes, setSizes] = useState<Record<string, string>>({});
+  const [address, setAddress] = useState<AddressDraft>(emptyAddress);
+  const [addressLoaded, setAddressLoaded] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -81,13 +122,84 @@ export default function NowStore() {
     void load();
   }, [load]);
 
+  const startMerch = async (item: Item) => {
+    setConfirming(item.id);
+    if (addressLoaded) return;
+    try {
+      const last = (await apiCall('/now/store/address')) as { address: AddressDraft | null };
+      if (last.address) setAddress({ ...emptyAddress, ...last.address, line2: last.address.line2 ?? '' });
+    } catch {
+      // No saved address: the form starts empty.
+    }
+    setAddressLoaded(true);
+  };
+
+  /** Items with a rupee price (B92): coins are taken here, the rupees through Razorpay. */
+  const payOnline = async (item: Item) => {
+    const checkout = (await apiCall(`/now/store/items/${item.id}/checkout`, {
+      method: 'POST',
+      headers: { 'Idempotency-Key': `${item.id}:${crypto.randomUUID()}` },
+      body: JSON.stringify(item.kind === 'merch' ? { size: sizes[item.id] ?? null, delivery: address } : {}),
+    })) as Checkout;
+    if (checkout.state === 'done') return checkout.order;
+    const ready = await loadRazorpayScript();
+    const Razorpay = getRazorpay();
+    if (!ready || !Razorpay || !checkout.keyId || !checkout.razorpayOrderId) {
+      throw new Error('Payments are not available right now. Your coins come back within an hour.');
+    }
+    await new Promise<void>((resolve, reject) => {
+      const rzp = new Razorpay({
+        key: checkout.keyId!,
+        amount: checkout.amountMinor,
+        currency: checkout.currency,
+        order_id: checkout.razorpayOrderId!,
+        name: 'Origin',
+        description: checkout.title,
+        handler: async (response) => {
+          try {
+            await verifyPayment({
+              razorpayOrderId: response.razorpay_order_id ?? '',
+              razorpayPaymentId: response.razorpay_payment_id ?? '',
+              razorpaySignature: response.razorpay_signature ?? '',
+            });
+            resolve();
+          } catch (err) {
+            reject(err);
+          }
+        },
+        modal: {
+          ondismiss: () =>
+            reject(new Error('Payment not finished. The coins for this order come back within an hour if you do not pay.')),
+        },
+      });
+      rzp.open();
+    });
+    return ((await apiCall(`/now/store/orders/${checkout.storeOrderId}`)) as { order: Order }).order;
+  };
+
   const buy = async (item: Item) => {
     setBusy(item.id);
     setError(null);
     try {
+      if (item.pricePaise > 0) {
+        const order = await payOnline(item);
+        setNotice(
+          order.premiumExpiresAt
+            ? `${SUBJECT_LABEL[order.premiumSubject ?? ''] ?? 'Premium'} premium is on until ${dateLabel(order.premiumExpiresAt)}.`
+            : order.shipStatus
+              ? `Paid. Order placed for "${item.title}"; we will email you when it ships.`
+              : order.canDownload
+                ? `"${item.title}" is yours. Download it from My orders.`
+                : 'Payment received. Your order will show in My orders shortly.',
+        );
+        setConfirming(null);
+        await load();
+        return;
+      }
       const result = await apiCall(`/now/store/items/${item.id}/buy`, {
         method: 'POST',
         headers: { 'Idempotency-Key': `${item.id}:${crypto.randomUUID()}` },
+        body: JSON.stringify(item.kind === 'merch' ? { size: sizes[item.id] ?? null, delivery: address } : {}),
       });
       const order = result.order as Order;
       setNotice(
@@ -95,9 +207,25 @@ export default function NowStore() {
           ? `You already own "${item.title}". It is in My orders.`
           : order.premiumExpiresAt
             ? `${SUBJECT_LABEL[order.premiumSubject ?? ''] ?? 'Premium'} premium is on until ${dateLabel(order.premiumExpiresAt)}.`
-            : `"${item.title}" is yours. Download it from My orders.`,
+            : item.kind === 'merch'
+              ? `Order placed for "${item.title}". We will email you when it ships.`
+              : `"${item.title}" is yours. Download it from My orders.`,
       );
       setConfirming(null);
+      await load();
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const cancelOrder = async (order: Order) => {
+    setBusy(order.id);
+    setError(null);
+    try {
+      await apiCall(`/now/store/orders/${order.id}/cancel`, { method: 'POST' });
+      setNotice(`Order cancelled; ${order.coinsSpent} coins are back in your wallet.`);
       await load();
     } catch (err) {
       setError(errorMessage(err));
@@ -133,16 +261,18 @@ export default function NowStore() {
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">Origin Store</h1>
-          <p className="text-sm text-muted-foreground">Spend your Ori Coins on premium time and papers.</p>
+          <p className="text-sm text-muted-foreground">
+            Spend your Ori Coins on premium time and papers{items.some((i) => i.kind === 'merch') ? ', and Origin merch delivered to your door' : ''}.
+          </p>
         </div>
-        <span className="flex items-center gap-2 rounded-full bg-amber-500/10 px-3 py-1 text-sm font-medium text-amber-700">
+        <span className="flex items-center gap-2 rounded-full bg-warning/10 px-3 py-1 text-sm font-medium text-warning">
           <Coins className="h-4 w-4" aria-hidden /> {balance.toLocaleString('en-IN')} coins
         </span>
       </header>
 
       {isNative && <NativePurchaseNotice title="Store purchases are made on the website" />}
-      {notice && <p className="text-sm text-emerald-700" role="status">{notice}</p>}
-      {error && <p className="text-sm text-red-600" role="alert">{error}</p>}
+      {notice && <p className="text-sm text-success" role="status">{notice}</p>}
+      {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
 
       {items.length === 0 ? (
         <p className="text-sm text-muted-foreground">Nothing in the store yet. Check back soon.</p>
@@ -150,21 +280,57 @@ export default function NowStore() {
         <div className="grid gap-4 sm:grid-cols-2">
           {items.map((item) => {
             const short = balance < item.priceCoins;
+            const isMerch = item.kind === 'merch';
+            const chosenSize = sizes[item.id];
+            const needsSize = isMerch && item.sizes !== null && !chosenSize;
             return (
               <Card key={item.id} className={item.featured ? 'border-primary/40' : undefined}>
+                {item.imageUrl && (
+                  // eslint-disable-next-line @next/next/no-img-element -- product photos come from the public media bucket
+                  <img src={item.imageUrl} alt={item.title} className="aspect-[4/3] w-full rounded-t-xl object-cover" loading="lazy" />
+                )}
                 <CardHeader className="pb-2">
                   <CardTitle className="flex items-center gap-2 text-base">
-                    {item.kind === 'premium' ? <Sparkles className="h-4 w-4 text-primary" aria-hidden /> : <FileText className="h-4 w-4 text-primary" aria-hidden />}
+                    {item.kind === 'premium' ? (
+                      <Sparkles className="h-4 w-4 text-primary" aria-hidden />
+                    ) : isMerch ? (
+                      <Shirt className="h-4 w-4 text-primary" aria-hidden />
+                    ) : (
+                      <FileText className="h-4 w-4 text-primary" aria-hidden />
+                    )}
                     {item.title}
                   </CardTitle>
                   <CardDescription>
                     {item.kind === 'premium'
                       ? `${SUBJECT_LABEL[item.premiumSubject ?? ''] ?? ''} premium for ${item.premiumDays} days`
-                      : 'PDF paper, yours to download'}
+                      : isMerch
+                        ? 'Delivered to your address in India'
+                        : 'PDF paper, yours to download'}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="flex flex-col gap-3 text-sm">
                   {item.description && <p className="text-muted-foreground">{item.description}</p>}
+                  {isMerch && item.sizes && (
+                    <div className="flex flex-wrap gap-2" role="group" aria-label="Size">
+                      {item.sizes.map((s) => (
+                        <button
+                          key={s.size}
+                          type="button"
+                          disabled={!s.inStock}
+                          aria-pressed={chosenSize === s.size}
+                          onClick={() => setSizes({ ...sizes, [item.id]: s.size })}
+                          className={`cursor-pointer min-h-[48px] min-w-[48px] rounded-full border px-3 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-40 disabled:line-through ${
+                            chosenSize === s.size ? 'border-primary bg-primary/10 text-primary' : ''
+                          }`}
+                        >
+                          {s.size}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {isMerch && confirming === item.id && !isNative && (
+                    <NowAddressForm idPrefix={`now-addr-${item.id}`} value={address} onChange={setAddress} />
+                  )}
                   {item.coinPremiumUntil && (
                     <p className="text-xs text-muted-foreground">
                       Your coin premium runs until {dateLabel(item.coinPremiumUntil)}; buying again adds {item.premiumDays} days after that.
@@ -172,7 +338,7 @@ export default function NowStore() {
                   )}
                   <div className="flex items-center justify-between gap-2">
                     <span className="flex items-center gap-1 font-semibold">
-                      <Coins className="h-4 w-4 text-amber-600" aria-hidden /> {item.priceCoins.toLocaleString('en-IN')}
+                      {item.priceCoins > 0 && <Coins className="h-4 w-4 text-warning" aria-hidden />} {priceLabel(item)}
                     </span>
                     {item.owned ? (
                       <span className="text-xs text-muted-foreground">Owned — see My orders</span>
@@ -180,16 +346,25 @@ export default function NowStore() {
                       <span className="text-xs text-muted-foreground">Sold out</span>
                     ) : isNative ? null : confirming === item.id ? (
                       <div className="flex gap-2">
-                        <Button size="sm" onClick={() => buy(item)} disabled={busy === item.id}>
+                        <Button className="h-[48px]" size="sm" onClick={() => buy(item)} disabled={busy === item.id || needsSize}>
                           {busy === item.id ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
-                          Pay {item.priceCoins} coins
+                          {needsSize
+                            ? 'Pick a size'
+                            : item.pricePaise > 0
+                              ? `Pay ${priceLabel(item)}`
+                              : `Pay ${item.priceCoins} coins`}
                         </Button>
-                        <Button size="sm" variant="ghost" onClick={() => setConfirming(null)} disabled={busy === item.id}>
+                        <Button className="h-[48px]" size="sm" variant="ghost" onClick={() => setConfirming(null)} disabled={busy === item.id}>
                           Cancel
                         </Button>
                       </div>
                     ) : (
-                      <Button size="sm" variant={short ? 'outline' : 'default'} disabled={short} onClick={() => setConfirming(item.id)}>
+                      <Button className="h-[48px]"
+                        size="sm"
+                        variant={short ? 'outline' : 'default'}
+                        disabled={short}
+                        onClick={() => (isMerch ? void startMerch(item) : setConfirming(item.id))}
+                      >
                         {short ? `Need ${item.priceCoins - balance} more` : 'Buy'}
                       </Button>
                     )}
@@ -210,14 +385,38 @@ export default function NowStore() {
             {orders.map((order) => (
               <li key={order.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm">
                 <div>
-                  <p className="font-medium">{order.title}</p>
+                  <p className="font-medium">
+                    {order.title}
+                    {order.size ? ` · size ${order.size}` : ''}
+                  </p>
                   <p className="text-xs text-muted-foreground">
                     {dateLabel(order.createdAt)} · {order.coinsSpent} coins
                     {order.premiumExpiresAt ? ` · premium until ${dateLabel(order.premiumExpiresAt)}` : ''}
                   </p>
+                  {order.shipStatus && (
+                    <p className="mt-1 flex flex-wrap items-center gap-1 text-xs">
+                      {order.shipStatus === 'shipped' || order.shipStatus === 'delivered' ? (
+                        <Truck className="h-3.5 w-3.5 text-primary" aria-hidden />
+                      ) : (
+                        <Package className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
+                      )}
+                      <span className="font-medium">{SHIP_LABEL[order.shipStatus]}</span>
+                      {order.courier && order.trackingNo && (
+                        <span className="text-muted-foreground">
+                          · {order.courier}, tracking <span className="font-mono">{order.trackingNo}</span>
+                        </span>
+                      )}
+                      {order.deliverTo && <span className="text-muted-foreground">· to {order.deliverTo}</span>}
+                    </p>
+                  )}
                 </div>
+                {order.canCancel && (
+                  <Button className="h-[48px]" size="sm" variant="ghost" onClick={() => cancelOrder(order)} disabled={busy === order.id}>
+                    Cancel order
+                  </Button>
+                )}
                 {order.canDownload && (
-                  <Button size="sm" variant="outline" onClick={() => download(order)} disabled={busy === order.id}>
+                  <Button className="h-[48px]" size="sm" variant="outline" onClick={() => download(order)} disabled={busy === order.id}>
                     <Download className="mr-1 h-4 w-4" /> Download
                   </Button>
                 )}
@@ -225,7 +424,10 @@ export default function NowStore() {
             ))}
           </ul>
         )}
-        <p className="text-xs text-muted-foreground">Store purchases are final; coins are not refunded for items you have bought.</p>
+        <p className="text-xs text-muted-foreground">
+          Premium time and papers are final; coins are not refunded for them. A merch order can be cancelled for its coins
+          until we start packing it.
+        </p>
       </section>
     </div>
   );

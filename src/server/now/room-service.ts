@@ -10,6 +10,7 @@ import { getUserPostgresPool } from "@/server/user-postgres";
 import {
   deleteRoom,
   getLiveKitConfig,
+  getRecordingBucket,
   getRecordingStorage,
   isAgentParticipant,
   listRoomParticipants,
@@ -50,6 +51,8 @@ export type RoomTicket = {
   recorded: boolean;
   peerName: string;
   canScreenShare: boolean;
+  /** The shared board is on for this call (human solver, Settings → Extra parts; B89). */
+  board: boolean;
 };
 
 /**
@@ -109,6 +112,7 @@ export async function issueRoomTicket(userId: string, sessionId: string, now: Da
     recorded: getRecordingStorage() !== null,
     peerName: role === "student" ? (row.solver_kind === "bot" ? "Origin" : (row.helper_name ?? "Solver")) : firstNameOnly(row.student_name),
     canScreenShare: role === "solver",
+    board: row.solver_kind === "human" && (await getNowSettings()).features.board,
   };
 }
 
@@ -149,7 +153,11 @@ export async function startSessionRecording(sessionId: string, requestId: string
   const storage = getRecordingStorage();
   if (!config || !storage) {
     await logEvent("recording.unavailable", sessionId, requestId, "system", {
-      reason: !config ? "livekit_not_configured" : "storage_not_configured",
+      reason: !config
+        ? "livekit_not_configured"
+        : getRecordingBucket().problem === "public"
+          ? "bucket_is_public"
+          : "storage_not_configured",
     });
     return false;
   }
@@ -183,7 +191,17 @@ export async function purgeExpiredRecordings(now: Date = new Date()): Promise<{ 
       ORDER BY s.ended_at LIMIT 200`,
     [cutoff],
   );
-  const bucket = getRecordingStorage()?.bucket;
+  // Without the recordings bucket there is nowhere safe to delete from: the
+  // default is the public image bucket, where deleting a key that is not
+  // there still succeeds and would mark a recording deleted that still
+  // exists. Keep the rows (counted as failed) until the bucket is set again.
+  const bucket = getRecordingBucket().name;
+  if (!bucket) {
+    if (due.rows.length > 0) {
+      console.warn("[origin-now] recordings past retention not deleted: no private recording bucket is set", due.rows.length);
+    }
+    return { deleted: 0, failed: due.rows.length };
+  }
   let deleted = 0;
   let failed = 0;
   for (const row of due.rows) {
@@ -202,6 +220,11 @@ export async function purgeExpiredRecordings(now: Date = new Date()): Promise<{ 
 
 /** Admin: a 10-minute link to one recording; every open is logged as `recording.accessed`. */
 export async function getRecordingLinkForAdmin(adminId: string, sessionId: string, reason: string) {
+  // Never sign a link into the default (public) bucket.
+  const bucket = getRecordingBucket().name;
+  if (!bucket) {
+    throw new NowError(503, "recording_unavailable", "Recording storage is not set up (no private bucket), so recordings cannot be opened.");
+  }
   const res = await (await db()).query<{ request_id: string; recording_key: string | null; recording_deleted_at: Date | null }>(
     `SELECT request_id, recording_key, recording_deleted_at FROM now.sessions WHERE id = $1`,
     [sessionId],
@@ -213,7 +236,7 @@ export async function getRecordingLinkForAdmin(adminId: string, sessionId: strin
   }
   const signed = createPresignedR2PutUrl({
     objectKey: row.recording_key,
-    bucket: getRecordingStorage()?.bucket,
+    bucket,
     method: "GET",
     expiresSeconds: 600,
   });

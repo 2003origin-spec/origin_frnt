@@ -92,6 +92,11 @@ function readSmtpEnv(): SmtpEnv | null {
 }
 
 /** The configured channels, in delivery-priority order (SES first). */
+/** True when at least one mail channel (SES or SMTP) is configured. */
+export function isEmailConfigured(): boolean {
+  return configuredChannels().length > 0;
+}
+
 function configuredChannels(): { name: ChannelName; env: SmtpEnv }[] {
   const out: { name: ChannelName; env: SmtpEnv }[] = [];
   const ses = readSesEnv();

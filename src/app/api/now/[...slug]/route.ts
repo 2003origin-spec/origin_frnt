@@ -2,12 +2,16 @@ import type { NextRequest } from "next/server";
 import { z } from "zod";
 
 import { requireFeatureEnabled } from "@/lib/feature-flags";
+import { BOARD_MAX_BYTES } from "@/lib/now-board";
 import { checkRateLimit, mutationLimiter } from "@/lib/rate-limit";
 import { parseAppVersionFromUserAgent } from "@/native/is-native-app";
 import { requireAuth } from "@/server/authz";
 import { getSlugSegments, parseJsonBody } from "@/server/http";
 import { createCheckoutOrder } from "@/server/payments/orders-service";
+import { hasActiveDeviceToken } from "@/server/push/device-tokens";
+import { isPushConfigured } from "@/server/push/fcm";
 import { confirmConsent, getConsentStatus, previewConsent, startGuardianConsent } from "@/server/now/consent-service";
+import { getSessionBoard, saveSessionBoard } from "@/server/now/board-service";
 import { getNowAccess } from "@/server/now/now-access";
 import { getNowSettings } from "@/server/now/now-settings";
 import { handleNowError, NowError, nowJson } from "@/server/now/now-http";
@@ -52,9 +56,47 @@ import {
   reportSession,
 } from "@/server/now/after-call-service";
 import { issueRoomTicket } from "@/server/now/room-service";
+import {
+  acceptLaterAnswer,
+  answerLater,
+  cancelAskLater,
+  claimLater,
+  createLaterPhotoUpload,
+  getLaterForSolver,
+  getLaterForStudent,
+  listLaterQueue,
+  listMyLater,
+  postAskLater,
+  quoteAskLater,
+  releaseLaterClaim,
+  reportLaterAnswer,
+} from "@/server/now/ask-later-service";
+import { getGiftOptions, sendCoinGift } from "@/server/now/gift-service";
+import {
+  bookSeat,
+  cancelGroupByHost,
+  cancelSeat,
+  endGroup,
+  getGroup,
+  issueGroupTicket,
+  listMyHostedGroups,
+  listUpcomingGroups,
+  rateGroup,
+  reportGroup,
+  scheduleGroup,
+  setGroupMic,
+} from "@/server/now/group-service";
+import { cancelMyMerchOrder, getLastDeliveryAddress } from "@/server/now/merch-service";
+import { getStoreCheckoutOrder, startStoreCheckout } from "@/server/now/store-checkout";
 import { buyStoreItem, getPaperDownload, listMyOrders, listStoreItems } from "@/server/now/store-service";
 import { getSolverDashboard, getStudentDashboard, setFavourite } from "@/server/now/dashboard-service";
 import { getMyRoster, setRosterSlot } from "@/server/now/roster-service";
+import {
+  deleteWebPushSubscription,
+  hasWebPushSubscription,
+  saveWebPushSubscription,
+  webPushPublicKey,
+} from "@/server/now/web-push";
 import { DECLINE_REASONS, OUTCOMES, ROOT_CAUSES } from "@/server/now/types";
 
 /**
@@ -84,11 +126,14 @@ import { DECLINE_REASONS, OUTCOMES, ROOT_CAUSES } from "@/server/now/types";
  *   GET  /api/now/requests/open            → the student's open request, if any
  *   GET|DELETE /api/now/requests/:id       → view / cancel (cancel releases the hold)
  *   GET  /api/now/requests/:id/stream      → SSE for the student and the assigned solver
- *   POST|DELETE /api/now/helper/presence   → solver shift heartbeat / go offline
+ *   POST|DELETE /api/now/helper/presence   → solver shift heartbeat ({ subjects, background }) / go offline
+ *   GET  /api/now/push/config              → { publicKey, subscribed, native } for offer alerts (browser / Android app)
+ *   PUT|DELETE /api/now/push/subscription  → turn this browser's offer alerts on / off
  *   GET  /api/now/helper/stream            → SSE: offers for this solver
  *   GET  /api/now/helper/offers/current    → open offer (push tap, reconnect)
  *   POST /api/now/offers/:id               → { action: accept | decline }
  *   POST /api/now/sessions/:id/join | /end | /outcome | /extend | /extend/confirm
+ *   GET|PUT /api/now/sessions/:id/board    → the call's shared board (B89; PUT = the solver's screen saving it)
  *   POST /api/now/sessions/:id/token       → LiveKit ticket for the room (build step 6; POST so the
  *                                             edge kill switch covers it)
  *
@@ -104,6 +149,16 @@ import { DECLINE_REASONS, OUTCOMES, ROOT_CAUSES } from "@/server/now/types";
  *   POST /api/now/store/items/:id/buy      → Idempotency-Key header; refused inside the Android app
  *   GET  /api/now/store/orders             → my orders
  *   POST /api/now/store/orders/:id/download → 10-minute link to a bought paper (logged)
+ *   GET|POST /api/now/groups               GET /api/now/groups/hosted   GET /api/now/groups/:id   (group sessions, B95)
+ *   POST /api/now/groups/:id/book | /cancel-seat | /rate | /report | /token | /mic { seatId } | /end | /cancel { reason }
+ *   GET  /api/now/later/quote?question=    GET|POST /api/now/later   POST /api/now/later/uploads    (ask later, B94)
+ *   GET  /api/now/later/:id                POST /api/now/later/:id/cancel | /accept { stars, tipCoins } | /report { reason, details }
+ *   GET  /api/now/helper/later             GET  /api/now/helper/later/:id   POST /api/now/helper/later/:id/claim | /release | /answer
+ *   GET|POST /api/now/wallet/gifts         → coin gift limits / send coins to an @username (B93; Idempotency-Key)
+ *   POST /api/now/store/items/:id/checkout → items with a rupee price: coins taken, Razorpay order opened (B92; never in the app)
+ *   GET  /api/now/store/orders/:id         → one order (after Razorpay closes)
+ *   POST /api/now/store/orders/:id/cancel  → cancel a merch order before packing (coins back; B91)
+ *   GET  /api/now/store/address            → the last delivery address given, to fill the form in again
  *
  * Dashboards (build step 10):
  *   GET  /api/now/me/dashboard?page=       → the student's doubts dashboard
@@ -125,7 +180,9 @@ type Handler = (request: NextRequest, userId: string, params: string[]) => Promi
 async function handleMe(_request: NextRequest, userId: string): Promise<Response> {
   const access = await getNowAccess(userId);
   const wallet = access.canRequest || access.helper ? await getWalletSummary(userId, { grantWelcome: access.canRequest }) : null;
-  return nowJson({ access, wallet });
+  // Which extra parts are switched on (B89–B95), so screens show only those.
+  const features = access.canRequest || access.helper ? (await getNowSettings()).features : null;
+  return nowJson({ access, wallet, features });
 }
 
 async function handleWallet(_request: NextRequest, userId: string): Promise<Response> {
@@ -283,7 +340,37 @@ const CreateRequestSchema = z.object({
   /** "Ask again": one of the student's own solvers to ask first. */
   preferredHelperId: z.string().trim().min(1).max(120).nullable().optional(),
 });
-const PresenceSchema = z.object({ subjects: z.array(z.string().max(20)).max(4).nullable().optional() });
+const PresenceSchema = z.object({
+  subjects: z.array(z.string().max(20)).max(4).nullable().optional(),
+  /** Sent from a hidden tab by a solver with offer alerts on (decision B85). */
+  background: z.boolean().optional(),
+});
+const PushSubscriptionSchema = z.object({
+  endpoint: z.string().max(1000),
+  keys: z.object({ p256dh: z.string().max(200).nullable().optional(), auth: z.string().max(100).nullable().optional() }).nullable().optional(),
+});
+const PushEndpointSchema = z.object({ endpoint: z.string().max(1000) });
+const LaterUploadSchema = z.object({ mimeType: z.string().max(100), sizeBytes: z.number().int(), laterId: z.string().max(80).nullable().optional() });
+const LaterPostSchema = z.object({
+  questionId: z.string().min(1).max(200),
+  note: z.string().max(1200).nullable().optional(),
+  photoKeys: z.array(z.string().max(300)).max(5).optional(),
+});
+const LaterAcceptSchema = z.object({ stars: z.number().int(), tipCoins: z.number().int().optional() });
+const LaterReportSchema = z.object({ reason: z.enum(REPORT_REASONS), details: z.string().max(1000).nullable().optional() });
+const LaterAnswerSchema = z.object({ text: z.string().max(5000), photoKeys: z.array(z.string().max(300)).max(5).optional() });
+const GroupScheduleSchema = z.object({
+  subject: z.string().max(30),
+  chapter: z.string().max(100),
+  title: z.string().max(100),
+  description: z.string().max(600).nullable().optional(),
+  startsAt: z.string().max(40),
+  minutes: z.number().int(),
+  seats: z.number().int(),
+  priceCoins: z.number().int(),
+});
+const GiftSchema = z.object({ toUsername: z.string().trim().min(3).max(31), amount: z.number().int() });
+const StoreBuySchema = z.object({ size: z.string().max(20).nullable().optional(), delivery: z.unknown().optional() });
 const OfferResponseSchema = z.object({
   action: z.enum(["accept", "decline"]),
   reason: z.enum(DECLINE_REASONS).nullable().optional(),
@@ -353,7 +440,7 @@ const liveHandlers = {
   },
   presence: async (r: NextRequest, userId: string) => {
     const body = PresenceSchema.parse(await parseJsonBody(r));
-    const shift = await heartbeatHelper(userId, body.subjects ?? null);
+    const shift = await heartbeatHelper(userId, body.subjects ?? null, new Date(), { background: body.background === true });
     return nowJson({ ...shift, offer: await getCurrentOffer(userId) });
   },
   offline: async (_r: NextRequest, userId: string) => {
@@ -416,6 +503,23 @@ const liveHandlers = {
   unfavourite: async (_r: NextRequest, userId: string, [helperId]: string[]) => nowJson(await setFavourite(userId, helperId, false)),
   solverDashboard: async (_r: NextRequest, userId: string) => nowJson({ dashboard: await getSolverDashboard(userId) }),
   roster: async (_r: NextRequest, userId: string) => nowJson({ roster: await getMyRoster(userId) }),
+  pushConfig: async (_r: NextRequest, userId: string) =>
+    nowJson({
+      publicKey: webPushPublicKey(),
+      subscribed: await hasWebPushSubscription(userId),
+      // The Android app (B88): FCM set up on the server, and this user has a device registered.
+      native: { configured: isPushConfigured(), subscribed: isPushConfigured() && (await hasActiveDeviceToken(userId)) },
+    }),
+  pushSubscribe: async (r: NextRequest, userId: string) => {
+    const body = PushSubscriptionSchema.parse(await parseJsonBody(r));
+    await saveWebPushSubscription(userId, body, r.headers.get("user-agent"));
+    return nowJson({ subscribed: true });
+  },
+  pushUnsubscribe: async (r: NextRequest, userId: string) => {
+    const body = PushEndpointSchema.parse(await parseJsonBody(r));
+    await deleteWebPushSubscription(userId, body.endpoint);
+    return nowJson({ subscribed: await hasWebPushSubscription(userId) });
+  },
   setRoster: async (r: NextRequest, userId: string) => {
     const body = RosterSlotSchema.parse(await parseJsonBody(r));
     return nowJson({ roster: await setRosterSlot(userId, body) });
@@ -432,8 +536,115 @@ const liveHandlers = {
     }
     const limited = await limitMutation(`now-store:${userId}`);
     if (limited) return limited;
-    return nowJson(await buyStoreItem(userId, id, idempotencyKey), { status: 201 });
+    // Merch (B91): the size and the delivery address come in the body; other items send none.
+    const body = StoreBuySchema.parse(await parseJsonBody(r));
+    return nowJson(await buyStoreItem(userId, id, idempotencyKey, new Date(), { size: body.size ?? null, delivery: body.delivery }), {
+      status: 201,
+    });
   },
+  // Ask later (B94).
+  laterQuote: async (r: NextRequest, userId: string) =>
+    nowJson({ quote: await quoteAskLater(userId, r.nextUrl.searchParams.get("question") ?? "") }, { headers: { "Cache-Control": "no-store" } }),
+  laterMine: async (_r: NextRequest, userId: string) => nowJson({ items: await listMyLater(userId) }, { headers: { "Cache-Control": "no-store" } }),
+  laterUpload: async (r: NextRequest, userId: string) => {
+    const limited = await limitMutation(`now-later-upload:${userId}`);
+    if (limited) return limited;
+    return nowJson(await createLaterPhotoUpload(userId, LaterUploadSchema.parse(await parseJsonBody(r))));
+  },
+  laterPost: async (r: NextRequest, userId: string) => {
+    const idempotencyKey = r.headers.get("idempotency-key")?.trim();
+    if (!idempotencyKey || idempotencyKey.length > 120) {
+      throw new NowError(400, "idempotency_key_required", "An Idempotency-Key header is required.");
+    }
+    const limited = await limitMutation(`now-later:${userId}`);
+    if (limited) return limited;
+    return nowJson({ item: await postAskLater(userId, LaterPostSchema.parse(await parseJsonBody(r)), idempotencyKey) }, { status: 201 });
+  },
+  laterGet: async (_r: NextRequest, userId: string, [id]: string[]) =>
+    nowJson({ item: await getLaterForStudent(userId, id) }, { headers: { "Cache-Control": "no-store" } }),
+  laterCancel: async (_r: NextRequest, userId: string, [id]: string[]) => nowJson({ item: await cancelAskLater(userId, id) }),
+  laterAccept: async (r: NextRequest, userId: string, [id]: string[]) =>
+    nowJson({ item: await acceptLaterAnswer(userId, id, LaterAcceptSchema.parse(await parseJsonBody(r))) }),
+  laterReport: async (r: NextRequest, userId: string, [id]: string[]) =>
+    nowJson({ item: await reportLaterAnswer(userId, id, LaterReportSchema.parse(await parseJsonBody(r))) }),
+  laterQueue: async (_r: NextRequest, userId: string) => nowJson({ queue: await listLaterQueue(userId) }, { headers: { "Cache-Control": "no-store" } }),
+  laterClaim: async (_r: NextRequest, userId: string, [id]: string[]) => nowJson({ item: await claimLater(userId, id) }),
+  laterRelease: async (_r: NextRequest, userId: string, [id]: string[]) => {
+    await releaseLaterClaim(userId, id);
+    return nowJson({ released: true });
+  },
+  laterSolverGet: async (_r: NextRequest, userId: string, [id]: string[]) =>
+    nowJson({ item: await getLaterForSolver(userId, id) }, { headers: { "Cache-Control": "no-store" } }),
+  laterAnswer: async (r: NextRequest, userId: string, [id]: string[]) => {
+    const limited = await limitMutation(`now-later-answer:${userId}`);
+    if (limited) return limited;
+    return nowJson({ item: await answerLater(userId, id, LaterAnswerSchema.parse(await parseJsonBody(r))) });
+  },
+  // Group sessions (B95).
+  groupsUpcoming: async (_r: NextRequest, userId: string) =>
+    nowJson({ groups: await listUpcomingGroups(userId) }, { headers: { "Cache-Control": "no-store" } }),
+  groupGet: async (_r: NextRequest, userId: string, [id]: string[]) => {
+    const group = await getGroup(id, userId);
+    if (!group) throw new NowError(404, "not_found", "Not found.");
+    return nowJson({ group }, { headers: { "Cache-Control": "no-store" } });
+  },
+  groupBook: async (_r: NextRequest, userId: string, [id]: string[]) => {
+    const limited = await limitMutation(`now-group:${userId}`);
+    if (limited) return limited;
+    return nowJson({ group: await bookSeat(userId, id) }, { status: 201 });
+  },
+  groupCancelSeat: async (_r: NextRequest, userId: string, [id]: string[]) => nowJson({ group: await cancelSeat(userId, id) }),
+  groupRate: async (r: NextRequest, userId: string, [id]: string[]) =>
+    nowJson({ group: await rateGroup(userId, id, z.object({ stars: z.number().int() }).parse(await parseJsonBody(r)).stars) }),
+  groupReport: async (r: NextRequest, userId: string, [id]: string[]) => nowJson(await reportGroup(userId, id, LaterReportSchema.parse(await parseJsonBody(r)))),
+  groupTicket: async (_r: NextRequest, userId: string, [id]: string[]) => {
+    const limited = await limitMutation(`now-room-token:${userId}`);
+    if (limited) return limited;
+    return nowJson({ ticket: await issueGroupTicket(userId, id) }, { headers: { "Cache-Control": "no-store" } });
+  },
+  groupsHosted: async (_r: NextRequest, userId: string) =>
+    nowJson({ groups: await listMyHostedGroups(userId) }, { headers: { "Cache-Control": "no-store" } }),
+  groupSchedule: async (r: NextRequest, userId: string) => {
+    const body = GroupScheduleSchema.parse(await parseJsonBody(r));
+    return nowJson({ group: await scheduleGroup(userId, { ...body, startsAt: new Date(body.startsAt) }) }, { status: 201 });
+  },
+  groupMic: async (r: NextRequest, userId: string, [id]: string[]) =>
+    nowJson(await setGroupMic(userId, id, z.object({ seatId: z.string().max(80).nullable() }).parse(await parseJsonBody(r)).seatId)),
+  groupEnd: async (_r: NextRequest, userId: string, [id]: string[]) => nowJson({ group: await endGroup({ userId }, id) }),
+  groupCancel: async (r: NextRequest, userId: string, [id]: string[]) =>
+    nowJson({ group: await cancelGroupByHost(userId, id, z.object({ reason: z.string().max(300) }).parse(await parseJsonBody(r)).reason) }),
+  giftOptions: async (_r: NextRequest, userId: string) =>
+    nowJson({ gifts: await getGiftOptions(userId) }, { headers: { "Cache-Control": "no-store" } }),
+  sendGift: async (r: NextRequest, userId: string) => {
+    const idempotencyKey = r.headers.get("idempotency-key")?.trim();
+    if (!idempotencyKey || idempotencyKey.length > 120) {
+      throw new NowError(400, "idempotency_key_required", "An Idempotency-Key header is required.");
+    }
+    const limited = await limitMutation(`now-gift:${userId}`);
+    if (limited) return limited;
+    const body = GiftSchema.parse(await parseJsonBody(r));
+    return nowJson(await sendCoinGift(userId, body, idempotencyKey), { status: 201 });
+  },
+  storeCancel: async (_r: NextRequest, userId: string, [id]: string[]) => nowJson({ order: await cancelMyMerchOrder(userId, id) }),
+  storeCheckout: async (r: NextRequest, userId: string, [id]: string[]) => {
+    // Rupee prices (B92) ride Razorpay, which is never offered inside the Android app.
+    requireFeatureEnabled("payments");
+    if (parseAppVersionFromUserAgent(r.headers.get("user-agent")) !== null) {
+      throw new NowError(403, "in_app_purchase_blocked", "Store purchases are made on o3origin.com, not inside the app.");
+    }
+    const idempotencyKey = r.headers.get("idempotency-key")?.trim();
+    if (!idempotencyKey || idempotencyKey.length > 120) {
+      throw new NowError(400, "idempotency_key_required", "An Idempotency-Key header is required.");
+    }
+    const limited = await limitMutation(`now-store:${userId}`);
+    if (limited) return limited;
+    const body = StoreBuySchema.parse(await parseJsonBody(r));
+    return nowJson(await startStoreCheckout(userId, id, idempotencyKey, { size: body.size ?? null, delivery: body.delivery }), { status: 201 });
+  },
+  storeOrder: async (_r: NextRequest, userId: string, [id]: string[]) =>
+    nowJson({ order: await getStoreCheckoutOrder(userId, id) }, { headers: { "Cache-Control": "no-store" } }),
+  storeLastAddress: async (_r: NextRequest, userId: string) =>
+    nowJson({ address: await getLastDeliveryAddress(userId) }, { headers: { "Cache-Control": "no-store" } }),
   storeOrders: async (_r: NextRequest, userId: string) => nowJson({ orders: await listMyOrders(userId) }),
   storeDownload: async (_r: NextRequest, userId: string, [id]: string[]) =>
     nowJson(await getPaperDownload(userId, id), { headers: { "Cache-Control": "no-store" } }),
@@ -441,6 +652,16 @@ const liveHandlers = {
     const limited = await limitMutation(`now-room-token:${userId}`);
     if (limited) return limited;
     return nowJson({ ticket: await issueRoomTicket(userId, id) }, { headers: { "Cache-Control": "no-store" } });
+  },
+  board: async (_r: NextRequest, userId: string, [id]: string[]) =>
+    nowJson({ board: await getSessionBoard(userId, id) }, { headers: { "Cache-Control": "no-store" } }),
+  saveBoard: async (r: NextRequest, userId: string, [id]: string[]) => {
+    // Refuse oversized bodies before reading them (the service checks the exact size too).
+    if (Number(r.headers.get("content-length") ?? 0) > BOARD_MAX_BYTES * 2) {
+      throw new NowError(413, "board_too_large", "The board is full. Clear a page to keep writing.");
+    }
+    const body = (await parseJsonBody(r)) as { board?: unknown };
+    return nowJson(await saveSessionBoard(userId, id, body.board));
   },
 };
 
@@ -470,6 +691,9 @@ const ROUTES: { method: Method; pattern: string[]; handler: Handler; public?: bo
   { method: "GET", pattern: ["requests", ":id", "stream"], handler: liveHandlers.requestStream },
   { method: "POST", pattern: ["helper", "presence"], handler: liveHandlers.presence },
   { method: "DELETE", pattern: ["helper", "presence"], handler: liveHandlers.offline },
+  { method: "GET", pattern: ["push", "config"], handler: liveHandlers.pushConfig },
+  { method: "PUT", pattern: ["push", "subscription"], handler: liveHandlers.pushSubscribe },
+  { method: "DELETE", pattern: ["push", "subscription"], handler: liveHandlers.pushUnsubscribe },
   { method: "GET", pattern: ["helper", "stream"], handler: liveHandlers.helperStream },
   { method: "GET", pattern: ["helper", "offers", "current"], handler: liveHandlers.currentOffer },
   { method: "POST", pattern: ["offers", ":id"], handler: liveHandlers.respond },
@@ -479,6 +703,8 @@ const ROUTES: { method: Method; pattern: string[]; handler: Handler; public?: bo
   { method: "POST", pattern: ["sessions", ":id", "extend"], handler: liveHandlers.extend },
   { method: "POST", pattern: ["sessions", ":id", "extend", "confirm"], handler: liveHandlers.confirmExtend },
   { method: "POST", pattern: ["sessions", ":id", "token"], handler: liveHandlers.roomTicket },
+  { method: "GET", pattern: ["sessions", ":id", "board"], handler: liveHandlers.board },
+  { method: "PUT", pattern: ["sessions", ":id", "board"], handler: liveHandlers.saveBoard },
   { method: "GET", pattern: ["sessions", ":id", "after"], handler: liveHandlers.afterCall },
   { method: "GET", pattern: ["me", "dashboard"], handler: liveHandlers.studentDashboard },
   { method: "POST", pattern: ["favourites", ":id"], handler: liveHandlers.favourite },
@@ -490,6 +716,37 @@ const ROUTES: { method: Method; pattern: string[]; handler: Handler; public?: bo
   { method: "POST", pattern: ["store", "items", ":id", "buy"], handler: liveHandlers.storeBuy },
   { method: "GET", pattern: ["store", "orders"], handler: liveHandlers.storeOrders },
   { method: "POST", pattern: ["store", "orders", ":id", "download"], handler: liveHandlers.storeDownload },
+  { method: "POST", pattern: ["store", "orders", ":id", "cancel"], handler: liveHandlers.storeCancel },
+  { method: "GET", pattern: ["wallet", "gifts"], handler: liveHandlers.giftOptions },
+  { method: "GET", pattern: ["groups"], handler: liveHandlers.groupsUpcoming },
+  { method: "GET", pattern: ["groups", "hosted"], handler: liveHandlers.groupsHosted },
+  { method: "POST", pattern: ["groups"], handler: liveHandlers.groupSchedule },
+  { method: "GET", pattern: ["groups", ":id"], handler: liveHandlers.groupGet },
+  { method: "POST", pattern: ["groups", ":id", "book"], handler: liveHandlers.groupBook },
+  { method: "POST", pattern: ["groups", ":id", "cancel-seat"], handler: liveHandlers.groupCancelSeat },
+  { method: "POST", pattern: ["groups", ":id", "rate"], handler: liveHandlers.groupRate },
+  { method: "POST", pattern: ["groups", ":id", "report"], handler: liveHandlers.groupReport },
+  { method: "POST", pattern: ["groups", ":id", "token"], handler: liveHandlers.groupTicket },
+  { method: "POST", pattern: ["groups", ":id", "mic"], handler: liveHandlers.groupMic },
+  { method: "POST", pattern: ["groups", ":id", "end"], handler: liveHandlers.groupEnd },
+  { method: "POST", pattern: ["groups", ":id", "cancel"], handler: liveHandlers.groupCancel },
+  { method: "GET", pattern: ["later", "quote"], handler: liveHandlers.laterQuote },
+  { method: "POST", pattern: ["later", "uploads"], handler: liveHandlers.laterUpload },
+  { method: "GET", pattern: ["later"], handler: liveHandlers.laterMine },
+  { method: "POST", pattern: ["later"], handler: liveHandlers.laterPost },
+  { method: "GET", pattern: ["later", ":id"], handler: liveHandlers.laterGet },
+  { method: "POST", pattern: ["later", ":id", "cancel"], handler: liveHandlers.laterCancel },
+  { method: "POST", pattern: ["later", ":id", "accept"], handler: liveHandlers.laterAccept },
+  { method: "POST", pattern: ["later", ":id", "report"], handler: liveHandlers.laterReport },
+  { method: "GET", pattern: ["helper", "later"], handler: liveHandlers.laterQueue },
+  { method: "GET", pattern: ["helper", "later", ":id"], handler: liveHandlers.laterSolverGet },
+  { method: "POST", pattern: ["helper", "later", ":id", "claim"], handler: liveHandlers.laterClaim },
+  { method: "POST", pattern: ["helper", "later", ":id", "release"], handler: liveHandlers.laterRelease },
+  { method: "POST", pattern: ["helper", "later", ":id", "answer"], handler: liveHandlers.laterAnswer },
+  { method: "POST", pattern: ["wallet", "gifts"], handler: liveHandlers.sendGift },
+  { method: "POST", pattern: ["store", "items", ":id", "checkout"], handler: liveHandlers.storeCheckout },
+  { method: "GET", pattern: ["store", "orders", ":id"], handler: liveHandlers.storeOrder },
+  { method: "GET", pattern: ["store", "address"], handler: liveHandlers.storeLastAddress },
   { method: "POST", pattern: ["sessions", ":id", "rate"], handler: liveHandlers.rate },
   { method: "POST", pattern: ["sessions", ":id", "report"], handler: liveHandlers.report },
   { method: "POST", pattern: ["sessions", ":id", "block"], handler: liveHandlers.block },

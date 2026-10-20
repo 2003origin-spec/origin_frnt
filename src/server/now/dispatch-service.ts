@@ -15,8 +15,11 @@
 
 import type { PoolClient } from "pg";
 
+import { ACCEPT_TIME_WINDOW_DAYS } from "@/lib/now-format";
 import { getOgcodeCatalogQuestionById } from "@/server/ogcode-catalog";
 import { getOgcodeQuestionProgress, isOgcodeProgressAvailable } from "@/server/ogcode-progress";
+import { hasActiveDeviceToken } from "@/server/push/device-tokens";
+import { isPushConfigured } from "@/server/push/fcm";
 import { createPrefixedId } from "@/server/workspaces/ids";
 import { getUserPostgresPool } from "@/server/user-postgres";
 
@@ -64,6 +67,7 @@ import {
   type SolverKind,
 } from "./types";
 import { ensureWelcomeGrant } from "./wallet-service";
+import { hasWebPushSubscription } from "./web-push";
 
 type Effect = () => Promise<void>;
 
@@ -170,7 +174,15 @@ export type CreateRequestInput = {
   preferredHelperId?: string | null;
 };
 
-export type MySolver = { helperId: string; name: string; favourite: boolean; online: boolean; lastSessionAt: string | null };
+export type MySolver = {
+  helperId: string;
+  name: string;
+  favourite: boolean;
+  online: boolean;
+  lastSessionAt: string | null;
+  /** Median time to accept over the last 90 days (B90); null without history. */
+  medianAcceptSeconds: number | null;
+};
 
 /**
  * "Ask again" (pilot readiness item 2): the solvers a student may ask for
@@ -188,8 +200,10 @@ export async function listMySolvers(
   options: { limit?: number | null; online?: Map<string, number> } = {},
 ): Promise<MySolver[]> {
   const limit = options.limit === undefined ? 5 : options.limit;
-  const res = await (await db()).query<{ id: string; display_name: string; favourite: boolean; last_session_at: Date | null }>(
+  const res = await (await db()).query<{ id: string; display_name: string; favourite: boolean; last_session_at: Date | null; median_accept_s: number | null }>(
     `SELECT h.id, h.display_name,
+            (SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM (o.responded_at - o.offered_at)))
+                 FROM now.offers o WHERE o.helper_id = h.id AND o.response = 'accepted' AND o.offered_at >= $4)::float AS median_accept_s,
             EXISTS (SELECT 1 FROM now.favourites f WHERE f.student_id = $1 AND f.helper_id = h.id) AS favourite,
             (SELECT max(s.ended_at) FROM now.sessions s
               WHERE s.helper_id = h.id AND s.student_id = $1 AND s.started_at IS NOT NULL) AS last_session_at
@@ -205,7 +219,7 @@ export async function listMySolvers(
              OR EXISTS (SELECT 1 FROM now.sessions s WHERE s.helper_id = h.id AND s.student_id = $1 AND s.started_at IS NOT NULL))
       ORDER BY favourite DESC, last_session_at DESC NULLS LAST, h.display_name
       LIMIT $3`,
-    [studentId, subject, limit],
+    [studentId, subject, limit, new Date(now.getTime() - ACCEPT_TIME_WINDOW_DAYS * 24 * 60 * 60_000)],
   );
   const online = options.online ?? (await listOnlineHelpers(subject, now.getTime()).catch(() => new Map<string, number>()));
   return res.rows.map((r) => ({
@@ -214,6 +228,7 @@ export async function listMySolvers(
     favourite: r.favourite,
     online: online.has(r.id),
     lastSessionAt: r.last_session_at ? r.last_session_at.toISOString() : null,
+    medianAcceptSeconds: r.median_accept_s === null ? null : Math.round(Number(r.median_accept_s)),
   }));
 }
 
@@ -996,6 +1011,12 @@ export async function getOpenRequestId(studentId: string): Promise<string | null
 // ---------------------------------------------------------------------------
 // Solver shift: presence heartbeat.
 
+/** A browser with offer alerts on (B85), or the Android app with push set up (B88). */
+export async function canAlertInBackground(userId: string): Promise<boolean> {
+  if (await hasWebPushSubscription(userId)) return true;
+  return isPushConfigured() && (await hasActiveDeviceToken(userId));
+}
+
 /**
  * Marks a verified solver online for the subjects they asked for (limited to
  * their approved expertise), then nudges waiting requests in those subjects so
@@ -1005,9 +1026,15 @@ export async function heartbeatHelper(
   helperUserId: string,
   requestedSubjects: string[] | null,
   now: Date = new Date(),
+  options: { background?: boolean } = {},
 ): Promise<{ helperId: string; subjects: string[] }> {
   const helper = await requireHelper(helperUserId);
   if (helper.verification_status !== "verified") throw new NowError(403, "restricted", "Your solver account is on hold.");
+  // Staying online from the background is only fair when an alert can reach the solver:
+  // a browser with offer alerts (B85) or the Android app with push (B88).
+  if (options.background && !(await canAlertInBackground(helperUserId))) {
+    throw new NowError(409, "alerts_off", "Turn on offer alerts to stay online while this tab is in the background.");
+  }
   const pool = await db();
   const expertise = await pool.query<{ subject: string }>(
     `SELECT DISTINCT subject FROM now.helper_expertise WHERE helper_id = $1`,
@@ -1015,7 +1042,7 @@ export async function heartbeatHelper(
   );
   const allowed = expertise.rows.map((r) => r.subject);
   const subjects = requestedSubjects === null ? allowed : allowed.filter((s) => requestedSubjects.includes(s));
-  await heartbeatPresence(helper.id, subjects, now.getTime());
+  await heartbeatPresence(helper.id, subjects, now.getTime(), { background: options.background });
   if (subjects.length > 0) {
     await pool.query(
       `INSERT INTO now.presence_minutes (helper_id, minute) VALUES ($1, date_trunc('minute', $2::timestamptz)) ON CONFLICT DO NOTHING`,

@@ -43,7 +43,9 @@ export type OriginNativePlugin = {
   /** Credential Manager sign-in; resolves with a Google ID token whose `aud`
    * is NEXT_PUBLIC_GOOGLE_CLIENT_ID (the shell passes it as serverClientId). */
   googleSignIn(): Promise<{ idToken: string | null }>;
-  getPushToken(): Promise<{ token: string | null }>;
+  /** FCM token (null without Firebase); asks for the notification permission
+   * on Android 13+ first, and says what the user chose. */
+  getPushToken(): Promise<{ token: string | null; notifications?: "granted" | "denied" }>;
   onLogout(): Promise<void>;
   /** Web → shell: whether the service worker is active with the offline
    * shell precached; feeds the shell's cold-start offline gate (§8.1). */

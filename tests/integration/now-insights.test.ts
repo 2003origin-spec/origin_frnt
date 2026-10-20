@@ -111,5 +111,19 @@ test("monitor, sessions, review, metrics, people and both dashboards read what t
   assert.ok(solverDash.activity.length >= 1 && solverDash.activity[0].hoursOnline >= 0);
   assert.equal(solverDash.byDifficulty.find((d) => d.difficulty === "easy")?.solved, 1);
   assert.equal(JSON.stringify(solverDash).includes("Iyer"), false, "no student surname anywhere");
+
+  // Earnings history and accept time (B90).
+  const paid = solverDash.earnings.recentSessions;
+  assert.deepEqual(
+    paid.map((p) => [p.sessionId, p.subject, p.coins, p.tip, p.pending]),
+    [[sessionId, "physics", EASY_HUMAN, 10, true]],
+    "the bot call pays no solver; this one is still in its 24-hour window",
+  );
+  const weeks = solverDash.earnings.weekly;
+  assert.equal(weeks.reduce((n, w) => n + w.sessions, 0), EASY_HUMAN);
+  assert.equal(weeks.reduce((n, w) => n + w.tips, 0), 10);
+  assert.match(weeks[0].week, /^\d{4}-\d{2}-\d{2}$/);
+  assert.equal(typeof solverDash.publicCard.medianAcceptSeconds, "number", "accepted one offer in the last 90 days");
+  assert.equal(sd.mySolvers[0].medianAcceptSeconds, solverDash.publicCard.medianAcceptSeconds, "students see the same number");
   await assert.rejects(getSolverDashboard(student), /not an Origin NOW solver/);
 });
