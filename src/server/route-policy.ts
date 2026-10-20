@@ -81,6 +81,10 @@ export const AUTHENTICATED_API_PREFIXES = [
   // registration/eligibility. /api/admin/contest/* is already covered by
   // "/api/admin". Plan: V1/CONTEST_ORBIT_IMPLEMENTATION_PLAN.md.
   "/api/contest",
+  // Origin Notes — student library reads, stars, reports (single catch-all,
+  // student-only + `notes` flag enforced in the handler). The admin side,
+  // /api/admin/notes/*, is covered by "/api/admin". Plan: V1/NOTES_PLAN.md.
+  "/api/notes",
   // Origin NOW — live doubt solving + Ori Coins wallet + solver registration.
   // Authenticated JWT users; the `originNow` flag, the pilot cohort and the
   // helper row are all checked in-handler (being a helper is a row, not a
@@ -178,6 +182,9 @@ export const AUTHENTICATED_APP_PREFIXES = [
   // student to /auth. See V1/HOME_REDESIGN_PLAN.md §4.
   "/snap-solve",
   "/mindmaps",
+  // Origin Notes student page (V1/NOTES_PLAN.md). The page itself 404s while
+  // the `notes` flag is off.
+  "/notes",
   // Origin NOW pages (wallet, store, solver shift screen + dashboard, live
   // room). Plan: V1/ORIGIN_NOW_PLAN.md.
   "/now",

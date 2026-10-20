@@ -56,6 +56,10 @@
       "schedule": "0 * * * *"
     },
     {
+      "path": "/api/internal/notes/cleanup",
+      "schedule": "30 21 * * *"
+    },
+    {
       "path": "/api/internal/now/sweep",
       "schedule": "* * * * *"
     },

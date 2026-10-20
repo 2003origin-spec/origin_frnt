@@ -504,7 +504,9 @@ export type ViewState =
   // Coming-Soon destinations — see V1/HOME_REDESIGN_PLAN.md §4/§5.
   | 'snap-solve'
   | 'contest'
-  | 'mindmaps';
+  | 'mindmaps'
+  // Origin Notes — V1/NOTES_PLAN.md.
+  | 'notes';
 
 export type OriginAiPageKind =
   | 'dashboard'
