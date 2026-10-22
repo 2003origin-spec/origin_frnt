@@ -1,5 +1,5 @@
 import { requireUserFromRequest } from "@/server/auth";
-import { awardPoints } from "@/server/gamification";
+import { awardPointsOnce } from "@/server/point-awards";
 import { badRequest, created, noContent, notFound, ok, unauthorized } from "@/server/http";
 import type { AppStore, StoredBookmark, StoredBook, StoredNote } from "@/server/store";
 import { createId, withStoreAsync } from "@/server/store";
@@ -132,7 +132,8 @@ async function handleToggleSave(request: Request, bookId: string) {
       bookId: book.id,
       createdAt: new Date().toISOString(),
     });
-    awardPoints(store, user.id, 10, "study_corner", `Saved book to library: ${book.title}`, book.id);
+    // Once per book (bug N4): save → unsave → save must not pay out again.
+    await awardPointsOnce(store, user.id, 10, "study_corner", `Saved book to library: ${book.title}`, book.id);
     return created({ status: "saved" });
   });
 }

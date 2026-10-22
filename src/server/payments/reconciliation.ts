@@ -33,6 +33,7 @@ import {
   deterministicDunningOutboxId,
   expiryWarningDays,
   failedMandateDunningDays,
+  STALE_COUPON_HOLD_WHERE_SQL,
 } from "./reconciliation-policy";
 
 export {
@@ -290,11 +291,7 @@ async function releaseStaleReservations(now: Date, limit: number): Promise<numbe
     `SELECT r.code, r.user_id, r.order_id, r.subscription_id
        FROM pricing.coupon_redemptions r
        LEFT JOIN payments.orders o ON o.id = r.order_id
-      WHERE r.state = 'reserved'
-        AND (
-          r.expires_at <= $1
-          OR (r.redeemed_at <= $1 - INTERVAL '30 minutes' AND (o.status IS NULL OR o.status IN ('failed', 'expired')))
-        )
+      WHERE ${STALE_COUPON_HOLD_WHERE_SQL}
       ORDER BY r.redeemed_at ASC, r.id ASC
       LIMIT $2`,
     [now, Math.min(Math.max(limit, 1), 500)],

@@ -38,6 +38,14 @@ import {
   upsertCachedChapters,
 } from "@/server/catalog-cache";
 import { getRequestId, REQUEST_ID_HEADER } from "@/lib/request-id";
+import {
+  classifyProxyError,
+  createUsageRecordingTransform,
+  dailyBudgetRefusalResponse,
+  isUpstreamDailyBudgetRefusal,
+  proxyFailureResponse,
+  proxyTimeoutResponse,
+} from "@/server/origin-ai-proxy-utils";
 
 /** The mode to advertise to the Python service. Constant when the flag is off. */
 async function studyModeForUser(user: StoredUser) {
@@ -346,50 +354,49 @@ async function proxyToMicroservice(
       }
     }
 
+    // The Python service enforces its own daily token budget (HTTP 429);
+    // surface it in the same shape as the in-app quota check so the client
+    // shows the same message.
+    if (isUpstreamDailyBudgetRefusal(resp.status, data)) {
+      return dailyBudgetRefusalResponse();
+    }
+
     return new Response(JSON.stringify(data ?? {}), {
       status: resp.status,
       headers: { "Content-Type": "application/json" },
     });
   } catch (err) {
-    if (err instanceof Error && err.name === 'AbortError') {
+    // A timeout is NOT "service down": the Python side has usually already
+    // generated, billed and persisted the answer. Returning null here used to
+    // route the turn to the legacy in-app path, which stored a different
+    // reply and never charged the tokens. Only a connection-level failure
+    // (nothing listening / DNS) falls back.
+    const kind = classifyProxyError(err);
+    if (kind === "timeout") {
       console.error("[origin-ai proxy] microservice call timed out", {
         requestId,
         timeoutMs,
         path,
       });
-    } else {
-      console.error("[origin-ai proxy] microservice call failed, falling back:", {
+      return proxyTimeoutResponse(requestId);
+    }
+    if (kind === "connection") {
+      console.error("[origin-ai proxy] microservice unreachable, falling back:", {
         requestId,
         error: err instanceof Error ? err.message : String(err),
         path,
       });
+      return null; // fallback to in-app implementation
     }
-    return null; // fallback to in-app implementation
+    console.error("[origin-ai proxy] microservice call failed:", {
+      requestId,
+      error: err instanceof Error ? err.message : String(err),
+      path,
+    });
+    return proxyFailureResponse(requestId);
   } finally {
     clearTimeout(timeoutId);
   }
-}
-
-function extractSseFinalPayload(buffer: string): unknown | null {
-  const events = buffer.split("\n\n");
-  for (let index = events.length - 1; index >= 0; index -= 1) {
-    const event = events[index]?.trim();
-    if (!event) continue;
-    for (const line of event.split("\n")) {
-      if (!line.startsWith("data:")) continue;
-      const raw = line.slice(5).trim();
-      if (!raw) continue;
-      try {
-        const parsed = JSON.parse(raw) as { type?: string };
-        if (parsed?.type === "final") {
-          return parsed;
-        }
-      } catch {
-        // Ignore malformed intermediate frames; usage is best-effort.
-      }
-    }
-  }
-  return null;
 }
 
 async function proxyToMicroserviceStream(
@@ -447,34 +454,26 @@ async function proxyToMicroserviceStream(
           data = { error: text.trim() || `Ori service error (${resp.status})` };
         }
       }
+      if (isUpstreamDailyBudgetRefusal(resp.status, data)) {
+        return dailyBudgetRefusalResponse();
+      }
       return new Response(JSON.stringify(data ?? { error: `Ori service error (${resp.status})` }), {
         status: resp.status,
         headers: { "Content-Type": "application/json" },
       });
     }
 
-    const decoder = new TextDecoder();
-    let sseBuffer = "";
-    let recordedUsage = false;
-
+    // Usage is debited from the `final` frame on flush() AND cancel(): a
+    // client that disconnects after the last text delta has still consumed
+    // the full (already billed, already persisted) generation.
     const responseStream = resp.body.pipeThrough(
-      new TransformStream<Uint8Array, Uint8Array>({
-        transform(chunk, streamController) {
-          sseBuffer += decoder.decode(chunk, { stream: true });
-          streamController.enqueue(chunk);
-        },
-        async flush() {
-          clearTimeout(timeoutId);
-          sseBuffer += decoder.decode();
-          if (recordedUsage) return;
-          const finalPayload = extractSseFinalPayload(sseBuffer);
-          if (finalPayload) {
-            recordedUsage = true;
-            await recordOriginAiProxyUsage(user.id, finalPayload, {
-              voiceText: usageOptions.voiceText ?? extractVoiceText(finalPayload),
-              voiceMinutes: usageOptions.voiceMinutes,
-            });
-          }
+      createUsageRecordingTransform({
+        onSettle: () => clearTimeout(timeoutId),
+        onFinal: async (finalPayload) => {
+          await recordOriginAiProxyUsage(user.id, finalPayload, {
+            voiceText: usageOptions.voiceText ?? extractVoiceText(finalPayload),
+            voiceMinutes: usageOptions.voiceMinutes,
+          });
         },
       }),
     );
@@ -491,20 +490,29 @@ async function proxyToMicroserviceStream(
     });
   } catch (err) {
     clearTimeout(timeoutId);
-    if (err instanceof Error && err.name === "AbortError") {
+    const kind = classifyProxyError(err);
+    if (kind === "timeout") {
       console.error("[origin-ai proxy] microservice stream timed out", {
         requestId,
         timeoutMs: PROXY_STREAM_TIMEOUT_MS,
         path,
       });
-    } else {
-      console.error("[origin-ai proxy] microservice stream failed:", {
+      return proxyTimeoutResponse(requestId);
+    }
+    if (kind === "connection") {
+      console.error("[origin-ai proxy] microservice stream unreachable:", {
         requestId,
         error: err instanceof Error ? err.message : String(err),
         path,
       });
+      return null;
     }
-    return null;
+    console.error("[origin-ai proxy] microservice stream failed:", {
+      requestId,
+      error: err instanceof Error ? err.message : String(err),
+      path,
+    });
+    return proxyFailureResponse(requestId);
   }
 }
 
@@ -760,7 +768,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     }
     const proxyResp = await proxyToMicroservice(
       "GET",
-      `/api/v1/chat/session?browserSessionId=${request.headers.get("X-Origin-AI-Session-Id") || ""}&pageKind=${parsedQuery.data.pageKind || "unknown"}${parsedQuery.data.questionId ? `&questionId=${encodeURIComponent(parsedQuery.data.questionId)}` : ""}${parsedQuery.data.questionAttempted ? `&questionAttempted=${parsedQuery.data.questionAttempted}` : ""}${parsedQuery.data.questionSolved ? `&questionSolved=${parsedQuery.data.questionSolved}` : ""}`,
+      `/api/v1/chat/session?browserSessionId=${encodeURIComponent(request.headers.get("X-Origin-AI-Session-Id") || "")}&pageKind=${encodeURIComponent(parsedQuery.data.pageKind || "unknown")}${parsedQuery.data.questionId ? `&questionId=${encodeURIComponent(parsedQuery.data.questionId)}` : ""}${parsedQuery.data.questionAttempted ? `&questionAttempted=${parsedQuery.data.questionAttempted}` : ""}${parsedQuery.data.questionSolved ? `&questionSolved=${parsedQuery.data.questionSolved}` : ""}`,
       null,
       request,
       proxyUser,

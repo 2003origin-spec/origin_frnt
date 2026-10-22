@@ -5,7 +5,7 @@
 
 import type { NextRequest } from "next/server";
 
-import { requireFeatureEnabled } from "@/lib/feature-flags";
+import { requireFeatureEnabledRuntime } from "@/server/feature-flags-runtime";
 import { requireAuth } from "@/server/authz";
 import { getOrbitLeaderboard } from "@/server/contest/contest-profile-service";
 
@@ -13,7 +13,7 @@ import { handleTeacherError, teacherJson } from "@/app/api/teacher/_utils";
 
 export async function GET(request: NextRequest) {
   try {
-    requireFeatureEnabled("contest");
+    await requireFeatureEnabledRuntime("contest");
     await requireAuth(request);
     const cursorRaw = new URL(request.url).searchParams.get("cursor");
     const cursor = cursorRaw != null ? Number(cursorRaw) : null;

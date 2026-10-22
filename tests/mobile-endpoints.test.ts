@@ -36,12 +36,12 @@ test("mobile config reads env overrides", () => {
   }
 });
 
-test("handoff tokens are single-use and purpose-bound", async () => {
-  const token = await issueHandoffToken("user-123", "premium");
+test("handoff tokens are single-use, purpose-bound and carry the token version", async () => {
+  const token = await issueHandoffToken("user-123", "premium", 3);
   assert.ok(token.length >= 32);
 
   const first = await consumeHandoffToken(token);
-  assert.deepEqual(first, { userId: "user-123", purpose: "premium" });
+  assert.deepEqual(first, { userId: "user-123", purpose: "premium", tokenVersion: 3 });
 
   // Replay must fail — the token is consumed atomically.
   const second = await consumeHandoffToken(token);

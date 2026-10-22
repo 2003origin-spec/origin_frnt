@@ -7,13 +7,17 @@ import { findKillSwitchForPath } from "@/server/incidents";
 import { getApiRoutePolicy, getAppRoutePolicy, loginPathForTarget, normalizePathname, type RoutePolicy } from "@/server/route-policy";
 import { isBearerTokenAuthorized } from "@/server/service-auth";
 
+/** Authenticated surfaces whose mutations ride the shared mutation limiter
+ * (and the incident rate-limit mode). The /admin/incidents kill-switch is NOT
+ * tied to this list any more: `findKillSwitchForPath` runs for every API
+ * request, every method, before the policy branches below. */
 const RATE_LIMITED_MUTATION_PREFIXES = [
   "/api/teacher/",
   "/api/admin/",
   "/api/enrollments/",
   "/api/cbt/",
-  // Origin NOW: needed so the /admin/incidents kill switch reaches these routes
-  // (it is only consulted for paths in this list). Plan: V1/ORIGIN_NOW_PLAN.md.
+  "/api/contest/",
+  // Origin NOW. Plan: V1/ORIGIN_NOW_PLAN.md.
   "/api/now/",
 ];
 
@@ -80,6 +84,19 @@ function withNoIndex(response: NextResponse, policy: RoutePolicy): NextResponse 
 
 function jsonAuthFailure(status: 401 | 403, detail: string, requestId: string): NextResponse {
   return withRequestId(NextResponse.json({ detail, requestId }, { status }), requestId);
+}
+
+function killSwitchResponse(killedFlag: string, requestId: string): NextResponse {
+  return withRequestId(
+    NextResponse.json(
+      { detail: `This surface is temporarily disabled by an active incident.`, killedFlag },
+      {
+        status: 503,
+        headers: { "Retry-After": "60" },
+      },
+    ),
+    requestId,
+  );
 }
 
 /** Where an authenticated user belongs by role. /dashboard is the student
@@ -177,6 +194,15 @@ export async function middleware(request: NextRequest) {
     !CSRF_EXEMPT_API_PATHS.has(pathname) &&
     // /api/public/* routes are unauthenticated; they have no session cookie so CSRF is meaningless
     !pathname.startsWith('/api/public/') &&
+    // /api/internal/* is bearer-authenticated (INTERNAL_CRON_TOKEN / CRON_SECRET,
+    // enforced by the `internal` policy branch below AND re-checked in every
+    // handler). Callers are QStash, Vercel Cron and ops scripts: none carries a
+    // session cookie, so the double-submit check could only ever 403 them —
+    // which is exactly what happened to POST /api/internal/now/timer and
+    // /api/internal/rooms/drain. The policy table pins every /api/internal/*
+    // path to `internal` (tests/route-policy.test.ts), so this exemption can
+    // never widen to a session-authenticated route.
+    !pathname.startsWith('/api/internal/') &&
     // /api/cbt-student/* is the anonymous student surface: no Origin session
     // cookie, protected instead by the participant token + SameSite=Lax +
     // JSON content-type requirement enforced in-handler.
@@ -186,6 +212,20 @@ export async function middleware(request: NextRequest) {
     const csrfHeader = request.headers.get("x-csrf-token");
     if (!csrfCookie || !csrfHeader || csrfCookie !== csrfHeader) {
       return jsonAuthFailure(403, "Invalid CSRF token.", requestId);
+    }
+  }
+
+  // Incident kill-switch (/admin/incidents). Evaluated for EVERY API request —
+  // reads included, public/anonymous surfaces included — before any policy
+  // branch can short-circuit. It used to live inside the authenticated
+  // mutation-limiter block, which meant `contest` (not in the prefix list) and
+  // `cbtModule` on the public /api/cbt-student surface could never fire, and
+  // no GET was ever refused. FLAG_KILL_PREFIXES deliberately leaves
+  // /api/internal/* and the admin management surfaces out of each matcher.
+  if (isApi) {
+    const killed = await findKillSwitchForPath(pathname);
+    if (killed) {
+      return killSwitchResponse(killed, requestId);
     }
   }
 
@@ -260,19 +300,6 @@ export async function middleware(request: NextRequest) {
   }
 
   if (isApi && isRateLimitedMutationPath(pathname, request.method)) {
-    const killed = await findKillSwitchForPath(pathname);
-    if (killed) {
-      return withRequestId(
-        NextResponse.json(
-          { detail: `This surface is temporarily disabled by an active incident.`, killedFlag: killed },
-          {
-            status: 503,
-            headers: { "Retry-After": "60" },
-          },
-        ),
-        requestId,
-      );
-    }
     const limited = await checkRateLimit(mutationLimiter, clientIdentifierFor(request, claims));
     if (limited) {
       return withRequestId(limited as unknown as NextResponse, requestId);

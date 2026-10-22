@@ -7,7 +7,7 @@
 import type { NextRequest } from "next/server";
 import { z } from "zod";
 
-import { requireFeatureEnabled } from "@/lib/feature-flags";
+import { requireFeatureEnabledRuntime } from "@/server/feature-flags-runtime";
 import { requireAuth } from "@/server/authz";
 import { parseJsonBody } from "@/server/http";
 import { gradeContestDppAnswer } from "@/server/contest/contest-dpp-service";
@@ -22,7 +22,7 @@ const AnswerSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    requireFeatureEnabled("contest");
+    await requireFeatureEnabledRuntime("contest");
     const ctx = await requireAuth(request);
     const parsed = AnswerSchema.safeParse(await parseJsonBody(request));
     if (!parsed.success) return teacherJson({ detail: parsed.error.message }, { status: 400 });

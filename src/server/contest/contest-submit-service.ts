@@ -15,6 +15,7 @@ import { getUserPostgresPool } from "@/server/user-postgres";
 
 import {
   gradeContest,
+  snapshotMatrixPairs,
   type GradableQuestion,
   type SubmittedAnswer,
 } from "@/lib/contest/grade";
@@ -38,6 +39,44 @@ export interface SubmitResult {
   unattempted: number;
 }
 
+/** Only the answer-spec field grading reads (G1: teacher tolerance, 0 ⇒ exact). */
+function snapshotAnswerSpec(raw: unknown): GradableQuestion["answerSpec"] {
+  if (!raw || typeof raw !== "object") return null;
+  const tolerance = (raw as Record<string, unknown>).tolerance;
+  return { tolerance: typeof tolerance === "number" && Number.isFinite(tolerance) ? tolerance : null };
+}
+
+/** One contest.contest_questions row as read for grading. */
+export interface FrozenQuestionRow {
+  position: number;
+  question_id: string;
+  subject: string | null;
+  snapshot: unknown;
+  marks: number | null;
+  negative_marks: number | null;
+}
+
+/** Map one frozen paper row to the gradable shape (pure; unit-tested). */
+export function gradableFromFrozenRow(row: FrozenQuestionRow): GradableQuestion {
+  const s = (row.snapshot ?? {}) as Record<string, unknown>;
+  return {
+    position: row.position,
+    questionId: row.question_id,
+    subject: row.subject,
+    questionType: String(s.questionType ?? "mcq"),
+    correctOption: typeof s.correctOption === "number" ? s.correctOption : null,
+    correctOptions: Array.isArray(s.correctOptions) ? (s.correctOptions as number[]) : null,
+    answerText: typeof s.answerText === "string" ? s.answerText : null,
+    tolerance: typeof s.tolerance === "number" ? s.tolerance : null,
+    answerSpec: snapshotAnswerSpec(s.answerSpec),
+    // The frozen matrixData is the OGCode `{ column_a, column_b, correct_pairs }`
+    // object, not a pairs array — read the pairs out of it.
+    matrixData: snapshotMatrixPairs(s.matrixData),
+    marks: row.marks,
+    negativeMarks: row.negative_marks,
+  };
+}
+
 /**
  * Build the gradable question list from the frozen paper snapshot. Reads the
  * answer key straight from contest_questions.snapshot (immutable), so a later
@@ -49,22 +88,7 @@ async function loadFrozenPaper(contestId: string): Promise<GradableQuestion[]> {
        FROM contest.contest_questions WHERE contest_id = $1 ORDER BY position ASC`,
     [contestId],
   );
-  return res.rows.map((row) => {
-    const s = (row.snapshot ?? {}) as Record<string, unknown>;
-    return {
-      position: row.position,
-      questionId: row.question_id,
-      subject: row.subject,
-      questionType: String(s.questionType ?? "mcq"),
-      correctOption: typeof s.correctOption === "number" ? s.correctOption : null,
-      correctOptions: Array.isArray(s.correctOptions) ? (s.correctOptions as number[]) : null,
-      answerText: typeof s.answerText === "string" ? s.answerText : null,
-      tolerance: typeof s.tolerance === "number" ? s.tolerance : null,
-      matrixData: Array.isArray(s.matrixData) ? (s.matrixData as number[][]) : null,
-      marks: row.marks,
-      negativeMarks: row.negative_marks,
-    };
-  });
+  return res.rows.map((row) => gradableFromFrozenRow(row as FrozenQuestionRow));
 }
 
 /**

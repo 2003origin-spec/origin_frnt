@@ -8,6 +8,7 @@
 import { getUserPostgresPool } from "@/server/user-postgres";
 import { toAbsoluteMediaUrl } from "@/lib/media-url";
 import { normalizeCbtOptions } from "@/lib/cbt/options";
+import { parseNumericAnswer } from "@/lib/cbt/answer-format";
 import {
   CBT_QUESTION_TYPES,
   type CbtQuestion,
@@ -86,10 +87,25 @@ function toFiniteNumber(value: unknown): number | null {
 }
 
 /**
- * Validates + normalizes a question by type. Throws a 400 error on invalid
- * input. Returns the persisted-shape options + answer.
+ * A numerical answer key, read with the same strict parser as the import mapper
+ * and the grader: "3/4", "1.5×10^-3", "1,000" and unicode minus are one number;
+ * "2 3" / "2 or 3" are not. Returns the canonical decimal string the import
+ * path stores ("3/4" -> "0.75"), or `null` when the key is not exactly one
+ * number. A unit tail ("3F", "5 m") is rejected here: the unit belongs in the
+ * Units field, so the caller can say so instead of silently dropping it.
  */
-function validateQuestion(input: CbtQuestionInput): {
+function toAnswerKeyNumber(value: unknown): { number: string } | { error: "missing" | "unit" } {
+  if (typeof value === "number") return Number.isFinite(value) ? { number: String(value) } : { error: "missing" };
+  const parsed = parseNumericAnswer(typeof value === "string" ? value : null);
+  if (parsed.kind === "number") return { number: parsed.number };
+  return { error: parsed.kind === "number_unit" ? "unit" : "missing" };
+}
+
+/**
+ * Validates + normalizes a question by type. Throws a 400 error on invalid
+ * input. Returns the persisted-shape options + answer. Exported for tests.
+ */
+export function validateQuestion(input: CbtQuestionInput): {
   questionType: CbtQuestionType;
   options: CbtQuestionOption[];
   answer: CbtQuestionAnswer;
@@ -126,19 +142,31 @@ function validateQuestion(input: CbtQuestionInput): {
       break;
     }
     case "numerical": {
-      const val = toFiniteNumber(rawAnswer.answerText);
-      if (val === null) throw cbtError(400, "A numerical answer is required.");
-      answer.answerText = String(val);
+      const key = toAnswerKeyNumber(rawAnswer.answerText);
+      if ("error" in key) {
+        throw cbtError(
+          400,
+          key.error === "unit"
+            ? "This answer has a unit. Use the \"Numerical with units\" type and put the unit in the Units field."
+            : "A numerical answer is required.",
+        );
+      }
+      answer.answerText = key.number;
       const tol = toFiniteNumber(rawAnswer.tolerance);
       answer.tolerance = tol !== null && tol >= 0 ? tol : 0;
       break;
     }
     case "numerical_with_units": {
-      const val = toFiniteNumber(rawAnswer.answerText);
-      if (val === null) throw cbtError(400, "A numerical answer is required.");
+      const key = toAnswerKeyNumber(rawAnswer.answerText);
+      if ("error" in key) {
+        throw cbtError(
+          400,
+          key.error === "unit" ? "Enter only the number in the answer and put the unit in the Units field." : "A numerical answer is required.",
+        );
+      }
       const units = (rawAnswer.units ?? "").toString().trim();
       if (!units) throw cbtError(400, "Units are required for this question type.");
-      answer.answerText = String(val);
+      answer.answerText = key.number;
       answer.units = units;
       const tol = toFiniteNumber(rawAnswer.tolerance);
       answer.tolerance = tol !== null && tol >= 0 ? tol : 0;

@@ -1,17 +1,20 @@
 /**
- * POST /api/internal/rooms/drain — Teacher Live Rooms auto-stop sweep (cron).
+ * GET | POST /api/internal/rooms/drain — Teacher Live Rooms auto-stop sweep (cron).
  *
  * Finalizes any room still in `in_test` past its deadline (start + duration +
  * 10s grace) that no client has read since, then broadcasts `test_ended` to any
  * still-connected clients. The common case is already handled lazily on read by
- * getRoomState; this is the safety net for fully-disconnected rooms. Schedule it
- * like the other internal drains. Authenticated by INTERNAL_CRON_TOKEN
- * (/api/internal/* is internal in the route policy + verified in-handler).
+ * getRoomState; this is the safety net for fully-disconnected rooms.
+ *
+ * Scheduled every 5 minutes in vercel.json. GET exists because Vercel Cron
+ * issues GET (same lesson as cbt/drain); POST is kept for manual triggering.
+ * Auth: INTERNAL_CRON_TOKEN or Vercel's own CRON_SECRET (/api/internal/* is
+ * internal in the route policy + verified in-handler).
  */
 
 import { NextResponse, type NextRequest } from "next/server";
 
-import { requireInternal } from "@/server/authz";
+import { requireCronCaller } from "@/server/authz";
 import { publishRoomEvent } from "@/server/rooms-pubsub";
 import { sweepExpiredRooms } from "@/server/study-rooms";
 import { isFeatureEnabled } from "@/lib/feature-flags";
@@ -19,9 +22,9 @@ import { sweepExpiredCbtRooms } from "@/server/cbt/cbt-attempts-service";
 
 import { handleTeacherError } from "@/app/api/teacher/_utils";
 
-export async function POST(request: NextRequest) {
+async function drain(request: NextRequest) {
   try {
-    await requireInternal(request);
+    await requireCronCaller(request);
     const url = new URL(request.url);
     const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 100, 1), 500);
     const finalized = await sweepExpiredRooms(limit);
@@ -46,4 +49,12 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     return handleTeacherError(error);
   }
+}
+
+export async function GET(request: NextRequest) {
+  return drain(request);
+}
+
+export async function POST(request: NextRequest) {
+  return drain(request);
 }

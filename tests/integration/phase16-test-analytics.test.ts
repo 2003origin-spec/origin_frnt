@@ -21,6 +21,7 @@ if (process.env.USER_DATABASE_URL) {
 import { ensureAnalyticsTables } from "@/server/analytics-store";
 import {
   getTestAttemptCohort,
+  getTestLeaderboardFromResults,
   getTestTopicWeakness,
   getCohortResultOwner,
 } from "@/server/workspaces/test-cohort-store";
@@ -120,6 +121,17 @@ it("phase 16: attempt cohort lists submissions ranked by percentage; topic weakn
     assert.equal(attempts[1].percentage, 40);
     assert.ok(attempts[0].displayName, "display name resolved from origin_users");
     assert.equal(attempts[0].resultId, r2);
+
+    // Test leaderboard ("all sessions"): ONE row per student — their best
+    // submission — with a resolved name and a real total, never a blank row.
+    const board = await getTestLeaderboardFromResults(fx.workspaceId, testId, 50);
+    assert.equal(board.length, 1, "a student with two submissions appears once");
+    assert.equal(board[0].studentId, fx.studentId);
+    assert.equal(board[0].scorePercentage, 75, "the best submission is shown");
+    assert.equal(board[0].score, 30);
+    assert.equal(board[0].totalScore, 40);
+    assert.equal(board[0].attemptCount, 2);
+    assert.ok(board[0].studentName && board[0].studentName !== "", "name resolved");
 
     // Topic weakness — Kinematics mean (40+60)/2 = 50; Thermodynamics 80; weakest first.
     const weak = await getTestTopicWeakness(fx.workspaceId, testId);

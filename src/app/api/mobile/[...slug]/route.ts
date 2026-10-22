@@ -9,9 +9,12 @@ import {
   isHandoffPurpose,
   issueHandoffToken,
   type HandoffPurpose,
+  type HandoffRecord,
 } from "@/server/mobile/handoff";
 import { registerDeviceToken, revokeDeviceToken } from "@/server/push/device-tokens";
 import { createAuthSessionAsync } from "@/server/auth";
+import { isAccountBlockedError } from "@/server/auth-errors";
+import { authzErrorResponse, requireAuth } from "@/server/authz";
 import {
   ACCESS_COOKIE_NAME,
   ACCESS_FINGERPRINT_COOKIE_NAME,
@@ -74,8 +77,16 @@ function handleConfig(): NextResponse {
 }
 
 async function handleLinkOutIssue(request: NextRequest): Promise<Response> {
-  const userId = requesterUserId(request);
-  if (!userId) return unauthorized();
+  // Re-verify the JWT here rather than trusting the middleware header alone:
+  // the handoff must carry the token version it was issued under, so the
+  // consumer can refuse to mint a browser session for a since-revoked user.
+  let auth: Awaited<ReturnType<typeof requireAuth>>;
+  try {
+    auth = await requireAuth(request);
+  } catch (error) {
+    return authzErrorResponse(error);
+  }
+  const userId = auth.userId;
 
   const limited = await checkRateLimit(mutationLimiter, `linkout:${userId}`);
   if (limited) return limited;
@@ -91,7 +102,7 @@ async function handleLinkOutIssue(request: NextRequest): Promise<Response> {
   const purpose: HandoffPurpose = rawPurpose;
 
   try {
-    const token = await issueHandoffToken(userId, purpose);
+    const token = await issueHandoffToken(userId, purpose, auth.tokenVersion);
     const url = new URL("/api/mobile/link-out/consume", getCanonicalSiteUrl());
     url.searchParams.set("token", token);
     return ok({ url: url.toString(), expiresInSeconds: 60 });
@@ -123,15 +134,30 @@ function toSessionTokens(session: {
  * one. The consuming request's User-Agent is the browser's anyway; pinning the
  * value here keeps that from being an accident of UA sniffing.
  */
-async function createSessionForUser(userId: string): Promise<AuthSessionTokens | null> {
+async function createSessionForUser(record: HandoffRecord): Promise<AuthSessionTokens | null> {
+  // The handoff token only proves "this user asked 60 s ago". Before minting a
+  // brand-new browser session, re-check the user row: a revoke/delete flips
+  // account_status and bumps auth_token_version, and either must refuse here
+  // even though the app's JWT that issued the handoff was still valid.
+  const isCurrent = (user: { accountStatus?: string; authTokenVersion?: number }) =>
+    (user.accountStatus ?? "active") === "active" &&
+    (user.authTokenVersion ?? 0) === record.tokenVersion;
+
   if (isUserPostgresConfigured()) {
-    const user = await dbFindUserById(userId);
-    if (!user) return null;
-    return toSessionTokens(await dbCreateAuthSession(user.id, "web"));
+    const user = await dbFindUserById(record.userId);
+    if (!user || !isCurrent(user)) return null;
+    try {
+      return toSessionTokens(
+        await dbCreateAuthSession(user.id, "web", { expectedTokenVersion: record.tokenVersion }),
+      );
+    } catch (error) {
+      if (isAccountBlockedError(error)) return null;
+      throw error;
+    }
   }
   return withStoreAsync(async (store) => {
-    const user = store.users.find((entry) => entry.id === userId);
-    if (!user) return null;
+    const user = store.users.find((entry) => entry.id === record.userId);
+    if (!user || !isCurrent(user)) return null;
     return toSessionTokens(await createAuthSessionAsync(store, user.id, "web"));
   });
 }
@@ -151,7 +177,7 @@ async function handleLinkOutConsume(request: NextRequest): Promise<Response> {
 
   let session: AuthSessionTokens | null = null;
   try {
-    session = await createSessionForUser(record.userId);
+    session = await createSessionForUser(record);
   } catch (error) {
     console.error("[mobile] handoff session bootstrap failed", error instanceof Error ? error.message : error);
   }
@@ -214,7 +240,8 @@ async function handlePushTokenRevoke(request: NextRequest): Promise<Response> {
   if (!token) return badRequest("Missing FCM token.");
 
   try {
-    await revokeDeviceToken(token);
+    // Scoped to the caller: you can only unregister your own device token.
+    await revokeDeviceToken(token, userId);
     return ok({ revoked: true });
   } catch (error) {
     console.error("[mobile] push token revoke failed", error instanceof Error ? error.message : error);

@@ -25,6 +25,12 @@ export type AppRateLimiter = {
    * blip never logs real users out or blocks reads.
    */
   failClosed: boolean;
+  /**
+   * The window's budget (hits allowed), when the limiter knows it. With
+   * `remaining()` it tells "no hit yet in this window" (remaining === max)
+   * apart from "some hits" — the join-code IP gate's "has this user missed?".
+   */
+  max?: number;
 };
 
 type SlidingWindowDuration = Parameters<typeof Ratelimit.slidingWindow>[1];
@@ -91,6 +97,7 @@ export function createMemoryLimiter(
   };
   return {
     failClosed: Boolean(options.failClosed),
+    max: limit,
     async limit(identifier) {
       const arr = live(identifier);
       const success = arr.length < limit;
@@ -131,6 +138,7 @@ function createLimiter(
   });
   return {
     failClosed: Boolean(options.failClosed),
+    max: limit,
     limit: (identifier) => upstash.limit(identifier),
     remaining: async (identifier) => (await upstash.getRemaining(identifier)).remaining,
     // NOT upstash.resetUsedTokens: in @upstash/ratelimit 2.0.8 that runs a Lua
@@ -287,6 +295,27 @@ export const paymentsCheckoutIpLimiter = createLimiter(60, "rl:pay-checkout-ip",
 export const paymentsCouponLimiter = createLimiter(30, "rl:pay-coupon", "10 m");
 export const paymentsCouponFailureLimiter = createLimiter(12, "rl:pay-coupon-fail", "1 h", { failClosed: true });
 
+// Student join codes (Phase 3 join, Phase 14 Flow-1 redeem) are the ONLY
+// credential for a free Flow-1 subject, and older default codes carry just a
+// 4-character random suffix after the institute's public name. These FAILURE
+// budgets count only codes that did not resolve (and, on the teacher code-
+// availability check, only "available" answers — each one is a wasted guess).
+// Shared by every join-code surface so an attacker cannot round-robin
+// endpoints. The PER-USER budget is the guessing guard: checked fail-CLOSED
+// before the lookup (see checkFailureBudget). The PER-IP budget is only a
+// loose backstop, charged on a miss and enforced only against further misses:
+// a correct code is never refused because of it. A coaching centre, hostel or
+// carrier CGNAT puts a whole cohort behind one IP, and the old 30/h pre-check
+// let one student's (or a class's) typos block every join on that IP, on
+// every institute, with the right code. Flagged failClosed like every other
+// credential-guessing limiter above.
+export const joinCodeFailureLimiter = createLimiter(10, "rl:join-code-fail", "1 h", { failClosed: true }); // per user
+export const joinCodeFailureIpLimiter = createLimiter(300, "rl:join-code-fail-ip", "1 h", { failClosed: true }); // per IP (classroom NAT)
+// The teacher onboarding form checks availability as the teacher types (500 ms
+// debounce), so its miss budget is looser; it is teacher/admin-only anyway.
+export const codeCheckFailureLimiter = createLimiter(60, "rl:code-check-fail", "1 h", { failClosed: true }); // per user
+export const codeCheckFailureIpLimiter = createLimiter(200, "rl:code-check-fail-ip", "1 h", { failClosed: true }); // per IP
+
 // Client-side payment verification (the post-checkout fast path). Generous —
 // it is signature-verified and idempotent, and a student legitimately retries
 // it if the first call races the page unload.
@@ -419,4 +448,65 @@ export async function checkRateLimit(
     );
   }
   return null;
+}
+
+/** One budget to check / charge: a failure limiter plus the key it is charged under. */
+export type FailureBudgetKey = { limiter: AppRateLimiter; identifier: string };
+
+function tooManyFailures(reset: number): Response {
+  return new Response(
+    JSON.stringify({ error: "Too many incorrect attempts. Please try again later." }),
+    {
+      status: 429,
+      headers: {
+        "Content-Type": "application/json",
+        "Retry-After": String(Math.max(1, Math.ceil((reset - Date.now()) / 1000))),
+      },
+    },
+  );
+}
+
+/**
+ * FAIL-CLOSED pre-check for failure budgets, run BEFORE the guess is evaluated
+ * (so an exhausted key cannot keep guessing and simply stop being charged once
+ * it hits). Reads the budget without consuming it (`AppRateLimiter.remaining`).
+ * Returns a 429 when any key is exhausted — and ALSO when the limiter backend
+ * errors: unlike `isLockedOut` (a read that fails open, paired with a
+ * fail-closed gate), a guessing surface must not open up during a Redis blip.
+ * With no Redis configured the per-instance memory limiter counts misses too.
+ */
+export async function checkFailureBudget(keys: FailureBudgetKey[]): Promise<Response | null> {
+  for (const { limiter, identifier } of keys) {
+    try {
+      // `remaining()` carries no reset time; a minute is a safe Retry-After
+      // (an exhausted key just gets the same 429 again until its window slides).
+      if ((await limiter.remaining(identifier)) <= 0) return tooManyFailures(Date.now() + 60_000);
+    } catch (error) {
+      console.error("[rate-limit] failure-budget backend failed; blocking (fail-closed)", error);
+      metric("origin.rate_limit.degraded", { reason: "failure_budget_backend_error" });
+      return tooManyFailures(Date.now() + 60_000);
+    }
+  }
+  return null;
+}
+
+/**
+ * Charges one failure (a miss) to every key. Best-effort: a backend error is
+ * logged, never thrown — the caller is already answering "not found".
+ * Returns a 429 when this miss went past any key's budget (callers that only
+ * want the charge can ignore it), so a charge-only key can refuse further
+ * WRONG guesses without ever refusing a correct one.
+ */
+export async function recordFailure(keys: FailureBudgetKey[]): Promise<Response | null> {
+  let overReset: number | null = null;
+  for (const { limiter, identifier } of keys) {
+    try {
+      const { success, reset } = await limiter.limit(identifier);
+      if (!success) overReset = Math.max(overReset ?? 0, reset);
+    } catch (error) {
+      console.error("[rate-limit] failure-budget charge failed", error);
+      metric("origin.rate_limit.degraded", { reason: "failure_budget_backend_error" });
+    }
+  }
+  return overReset === null ? null : tooManyFailures(overReset);
 }

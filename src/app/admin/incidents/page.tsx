@@ -43,6 +43,9 @@ const FLAG_DESCRIPTIONS: Record<string, string> = {
   documentImport: "Document import worker surfaces.",
   adminControlCenter: "Admin tooling itself — be careful.",
   paidEnrollment: "Marketplace payments + paid enrollments.",
+  cbtModule: "CBT teacher + anonymous student surfaces (/api/cbt, /api/cbt-student, /api/admin/cbt).",
+  contest: "Student contest surfaces (/api/contest/*). Internal crons and /api/admin/contest stay up — see V1/CONTEST_INCIDENT_RUNBOOK.md.",
+  originNow: "Origin NOW student/helper surfaces (/api/now/*). Internal timers and /api/admin/now stay up.",
 };
 
 export default async function AdminIncidentsPage() {

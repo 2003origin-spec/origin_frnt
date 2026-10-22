@@ -55,6 +55,35 @@ test("contest share is public (page + sanitized read); attempt surfaces stay aut
   assert.equal(getApiRoutePolicy("/api/contest/submit").kind, "authenticated");
 });
 
+test("N21: every /api/internal/* route is bearer-gated (`internal`), which is what makes the middleware CSRF exemption safe", () => {
+  // middleware.ts skips the CSRF double-submit check for /api/internal/*
+  // because those callers (QStash, Vercel Cron, ops scripts) have no session
+  // cookie and are authenticated by INTERNAL_CRON_TOKEN / CRON_SECRET instead.
+  // That is only sound while nothing under /api/internal/ is reachable with a
+  // session. The one non-`internal` path is the observability drain receiver,
+  // which is `public` and verifies Vercel's HMAC body signature in-handler.
+  const internalRoutes = walkFiles(join(root, "src/app/api/internal"), (file) => file.endsWith("/route.ts")).map(
+    (file) => file.slice(join(root, "src/app").length).replace(/\/route\.ts$/, ""),
+  );
+  assert.ok(internalRoutes.length > 0);
+  for (const path of internalRoutes) {
+    const policy = getApiRoutePolicy(path);
+    if (path === "/api/internal/observability/drain") {
+      assert.equal(policy.kind, "public", path);
+      continue;
+    }
+    assert.deepEqual(policy, { kind: "internal", tokenName: "INTERNAL_CRON_TOKEN" }, path);
+  }
+  // The two routes the CSRF gate was blocking (POST-only, bearer-authenticated).
+  assert.equal(getApiRoutePolicy("/api/internal/now/timer").kind, "internal");
+  assert.equal(getApiRoutePolicy("/api/internal/rooms/drain").kind, "internal");
+  // Nothing session-authenticated may ever sit under the exempted prefix.
+  for (const path of internalRoutes) {
+    assert.notEqual(getApiRoutePolicy(path).kind, "authenticated", path);
+    assert.notEqual(getApiRoutePolicy(path).kind, "role", path);
+  }
+});
+
 test("future API routes are denied by default", () => {
   assert.equal(getApiRoutePolicy("/api/new-feature").kind, "unconfigured");
   assert.equal(getAppRoutePolicy("/new-feature").kind, "unconfigured");

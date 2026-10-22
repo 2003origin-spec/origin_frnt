@@ -31,7 +31,23 @@ export type WizardInitial = {
   shuffle: boolean;
   autoSubmit: boolean;
   hideLeaderboard: boolean;
+  /**
+   * The test's current batch assignment, so Deliver opens pre-filled. Re-saving
+   * it unchanged creates nothing (the server never duplicates an overlapping
+   * assignment); editing the window replaces THAT assignment explicitly, even
+   * to dates that do not overlap the old ones. Null = none yet.
+   */
+  delivery?: { assignmentId: string; batchId: string; startsAt: string | null; endsAt: string | null } | null;
 };
+
+/** An ISO instant as a `datetime-local` value on this device's clock ("" for none). */
+function toDatetimeLocal(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 type Props = {
   workspaceId: string;
@@ -113,11 +129,17 @@ export function TestCreatorWizard({ workspaceId, questions, batches, ogcodeEnabl
     });
   };
 
-  // Step 3: Deliver (drafts have no assignment yet — teacher picks here)
+  // Step 3: Deliver (drafts have no assignment yet — teacher picks here; an
+  // assigned test opens with its current batch + window). Deliver is not
+  // rendered on the server, so formatting on this device's clock is safe.
   const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>("test");
-  const [selectedBatchId, setSelectedBatchId] = useState("");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
+  const [initialWindow] = useState(() => ({
+    start: toDatetimeLocal(initial?.delivery?.startsAt),
+    end: toDatetimeLocal(initial?.delivery?.endsAt),
+  }));
+  const [selectedBatchId, setSelectedBatchId] = useState(initial?.delivery?.batchId ?? "");
+  const [startDate, setStartDate] = useState(initialWindow.start);
+  const [endDate, setEndDate] = useState(initialWindow.end);
   // DPP delivery targets every selected batch at once — unlike the scheduled
   // test, which the existing flow assigns to exactly one.
   const [dppBatchIds, setDppBatchIds] = useState<string[]>([]);
@@ -233,6 +255,12 @@ export function TestCreatorWizard({ workspaceId, questions, batches, ogcodeEnabl
       }
 
       const assignUrl = `/api/teacher/workspaces/${workspaceId}/tests/${resolvedTestId}/assign`;
+      // The teacher edited the pre-filled window of the SAME batch: that is a
+      // reschedule of its assignment. A different batch is a new delivery.
+      const replacesWindow =
+        isEdit &&
+        selectedBatchId === initial?.delivery?.batchId &&
+        (startDate !== initialWindow.start || endDate !== initialWindow.end);
 
       // 3. Assign to the batch with the scheduled window (batchIds is an array).
       //    Skipped entirely in DPP-only mode — no assignment row is what keeps
@@ -244,6 +272,13 @@ export function TestCreatorWizard({ workspaceId, questions, batches, ogcodeEnabl
             batchIds: [selectedBatchId],
             scheduledStartAt: new Date(startDate).toISOString(),
             scheduledEndAt: new Date(endDate).toISOString(),
+            // Idempotent on the server: an overlapping assignment for this batch
+            // is reused, and its window replaced only if the teacher edited the
+            // pre-filled one (same batch) — the server then updates that row
+            // rather than adding a second window beside it.
+            ...(replacesWindow && initial?.delivery
+              ? { replaceWindow: true, assignmentId: initial.delivery.assignmentId }
+              : {}),
           },
         });
 
@@ -282,7 +317,9 @@ export function TestCreatorWizard({ workspaceId, questions, batches, ogcodeEnabl
           ? "Published — assigned as a scheduled test and shared as a DPP."
           : sendsDpp
             ? "Shared as a DPP — it is in your students' DPP section for 30 days."
-            : "Test published and assigned — your students can see it now.",
+            : isEdit
+              ? "Test saved."
+              : "Test published and assigned — your students can see it now.",
       );
       onSuccess();
       router.refresh();

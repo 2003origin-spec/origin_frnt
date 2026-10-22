@@ -3,7 +3,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { Camera, AlertTriangle, ShieldCheck, CheckCircle2, Loader2, Play, Info, X, ZoomIn } from 'lucide-react';
 import type { Test, TestResult, UserAnswer } from '@/types';
 import { FormattedMessage } from '@/components/origin-ai/FormattedMessage';
-import { submitTestAction } from '@/server/actions/test-actions';
+import { beginTestSittingAction, startTestAttemptAction, submitTestAction } from '@/server/actions/test-actions';
 import { playCategory } from '@/lib/sound-manager';
 import type { TestSubmissionPayload } from '@/server/assessments';
 import { useServerAnchoredTimer, type ServerAnchoredTimerSource } from '@/hooks/useServerAnchoredTimer';
@@ -12,6 +12,8 @@ import { useAuth } from '@/context/AuthContext';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { shouldSubmitTestAnswer } from '@/lib/tests/time-stats';
+import { cappedSittingSeconds, earliestDeadline, windowDeadlineOnClientClock } from '@/lib/assessments/test-window';
+import { formatISTTime } from '@/lib/format-time';
 
 const renderQuestionText = (text: string, idPrefix: string) => {
     return <FormattedMessage content={text} isAssistant={true} className="text-slate-900 !prose-slate" />;
@@ -44,6 +46,24 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
   const [answers, setAnswers] = useState<UserAnswer[]>([]);
   const durationSeconds = timerSource?.durationSeconds ?? test.duration * 60;
   const [timeRemaining, setTimeRemaining] = useState(durationSeconds);
+  // Teacher-assigned test: the server refuses submits past the window end (+60 s
+  // grace), so the sitting is capped at min(duration, time left in the window)
+  // and auto-submits there. The window end is moved onto this device's clock
+  // using the DB clock the page was rendered with. Null = no window end.
+  // Also capped at the server's own end for this sitting (`attemptEndsAt`) once
+  // known: on a reload after Start, or from the Start call (R4-1). A ref, so the
+  // running timer sees an update from Start without restarting.
+  const [initialDeadlineMs] = useState(() => {
+    if (timerSource) return null;
+    const clientNow = Date.now();
+    return earliestDeadline(
+      windowDeadlineOnClientClock({ windowEndsAt: test.windowEndsAt, serverNow: test.serverNow, clientNow }),
+      windowDeadlineOnClientClock({ windowEndsAt: test.attemptEndsAt, serverNow: test.serverNow, clientNow }),
+    );
+  });
+  const deadlineMsRef = useRef<number | null>(initialDeadlineMs);
+  // The seconds this sitting was actually given (≤ duration), for timeTaken.
+  const sittingSecondsRef = useRef(durationSeconds);
   const [showSubmitModal, setShowSubmitModal] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const previewVideoRef = useRef<HTMLVideoElement>(null);
@@ -353,18 +373,53 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
     if (!isExamStarted) return;
     const timer = setInterval(() => {
       setTimeRemaining((prev) => {
-        if (prev <= 1) {
+        // Re-read the window each tick, so a throttled background tab still
+        // stops at the window end rather than at its own drifted count.
+        const deadlineMs = deadlineMsRef.current;
+        const next = deadlineMs === null
+          ? prev - 1
+          : cappedSittingSeconds({ durationSeconds: prev - 1, deadlineMs, nowMs: Date.now() });
+        if (next <= 0) {
           clearInterval(timer);
           // Schedule outside the state updater so it never fires twice in Strict Mode
           // and always uses the latest finalSubmit (via ref) with current answers
           setTimeout(() => finalSubmitRef.current?.(), 0);
           return 0;
         }
-        return prev - 1;
+        return next;
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, [isExamStarted, timerSource]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isExamStarted, timerSource]);
+
+  const startExam = () => {
+    if (!timerSource && deadlineMsRef.current !== null) {
+      const capped = cappedSittingSeconds({ durationSeconds, deadlineMs: deadlineMsRef.current, nowMs: Date.now() });
+      sittingSecondsRef.current = capped;
+      setTimeRemaining(capped);
+    }
+    if (!timerSource && !submitHandler && test.serverNow) {
+      // Teacher-assigned test: tell the server the sitting has started and
+      // adopt the end it returns (Start re-anchors the clock within the reading
+      // allowance and the window end caps it, so the timer stops
+      // before the server's deadline). Best-effort — the submit gate does not
+      // depend on it.
+      void beginTestSittingAction(test.id)
+        .then((sitting) => {
+          if (!sitting?.attemptEndsAt) return;
+          const serverEnd = windowDeadlineOnClientClock({
+            windowEndsAt: sitting.attemptEndsAt,
+            serverNow: sitting.serverNow,
+            clientNow: Date.now(),
+          });
+          deadlineMsRef.current = earliestDeadline(deadlineMsRef.current, serverEnd);
+        })
+        .catch(() => undefined);
+    }
+    setIsExamStarted(true);
+    questionStartedAtRef.current = Date.now();
+    enterFullscreen();
+  };
 
   const formatTime = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
@@ -471,6 +526,19 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
   }, [sectionModel.keys]);
   const currentLocalNumber = sectionLocalNumbers[currentQuestionIndex] ?? currentQuestionIndex + 1;
   const currentSectionTotal = sectionModel.keys.filter((key) => key === activeSection).length;
+
+  // G7: tell the server the attempt has started so it times the submission
+  // itself rather than trusting the client clock. Rooms (submitHandler) carry
+  // their own server-side start. Best-effort: an old/failed start falls back to
+  // the clamped client value on submit.
+  const attemptStartSentRef = useRef(false);
+  useEffect(() => {
+    if (!isExamStarted || submitHandler || attemptStartSentRef.current) return;
+    attemptStartSentRef.current = true;
+    startTestAttemptAction(test.id).catch((error) => {
+      console.warn('Could not record the test start:', error);
+    });
+  }, [isExamStarted, submitHandler, test.id]);
 
   // Reset image view state when moving to a new question
   useEffect(() => {
@@ -637,13 +705,24 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
 
       const payload = {
         answers: formattedAnswers,
-        timeTaken: Math.max(0, durationSeconds - effectiveTimeRemaining),
+        timeTaken: Math.max(0, (timerSource ? durationSeconds : sittingSecondsRef.current) - effectiveTimeRemaining),
         isMalpractice: isMalpractice
       };
 
       const result = submitHandler
         ? await submitHandler(payload)
         : await submitTestAction(test.id, payload);
+
+      if (result && typeof result === 'object' && 'testWindowError' in result) {
+        // A teacher test whose window has closed (or not opened): the server
+        // refused the submit, so retrying cannot help — say why instead.
+        const refusal = (result as { testWindowError: { detail?: string } }).testWindowError;
+        isSubmittingRef.current = false;
+        setIsSubmitting(false);
+        toast.dismiss(submissionToastId);
+        toast.error(refusal?.detail || 'This test is no longer accepting submissions.');
+        return;
+      }
 
       allowSubmittedNavigationRef.current = true;
       toast.dismiss(submissionToastId);
@@ -717,6 +796,12 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
                     <ul className="space-y-3 list-disc pl-5 font-medium">
                       <li>The total duration of the examination is <span className="font-bold text-primary">{test.duration} minutes</span>.</li>
+                      {test.windowEndsAt ? (
+                        <li>
+                          This test closes at <span className="font-bold text-red-600">{formatISTTime(test.windowEndsAt)} IST</span>. If you start late, your timer
+                          stops at the closing time and your answers are submitted automatically.
+                        </li>
+                      ) : null}
                       <li>The clock will be set at the server. The countdown timer at the top right corner of the screen will display the remaining time available for you to complete the examination.</li>
                       <li>The Question Palette displayed on the right side of the screen will show the status of each question using one of the following symbols:</li>
                     </ul>
@@ -826,9 +911,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
                         if (cameraEnabled) {
                           setVerificationStep('proctoring');
                         } else {
-                          setIsExamStarted(true);
-                          questionStartedAtRef.current = Date.now();
-                          enterFullscreen();
+                          startExam();
                         }
                       }}
                       className={`flex items-center gap-2 px-10 py-3 rounded-xl font-black uppercase tracking-tight transition-all
@@ -940,11 +1023,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
                 <div className="mt-auto pt-4 flex flex-col gap-4">
                   <button
                     disabled={!isCameraActive || !isFaceDetected}
-                    onClick={() => {
-                      setIsExamStarted(true);
-                      questionStartedAtRef.current = Date.now();
-                      enterFullscreen();
-                    }}
+                    onClick={startExam}
                     className={`w-full group relative flex items-center justify-center gap-3 py-4 rounded-2xl font-black text-lg transition-all
                       ${(isCameraActive && isFaceDetected) 
                         ? 'bg-primary hover:bg-rose-500 text-white shadow-[0_0_30px_rgba(225,29,72,0.4)] hover:scale-[1.02] active:scale-95' 

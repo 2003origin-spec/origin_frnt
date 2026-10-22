@@ -320,12 +320,33 @@ export async function getInstitutePublicProfile(workspaceId: string): Promise<In
   };
 }
 
+export type PublicInstituteFilter = {
+  subject?: string;
+  city?: string;
+  limit?: number;
+  offset?: number;
+  /**
+   * Only admin-approved partners (an `active` app.origin_collaborations row).
+   * Filtered in SQL so LIMIT/OFFSET page over collaborators — post-filtering
+   * the newest N institutes of any status made older approved partners vanish
+   * from Browse once more than N institutes existed. The caller must have run
+   * ensureCollaborationSchema().
+   */
+  activeCollaboratorsOnly?: boolean;
+};
+
 export async function listPublicInstitutes(
-  filter?: { subject?: string; city?: string; limit?: number },
+  filter?: PublicInstituteFilter,
 ): Promise<InstitutePublicProfile[]> {
   await ensureWorkspaceSchema();
   const params: unknown[] = [];
   const conditions = ["w.workspace_type = 'institute'", "w.status = 'active'"];
+  if (filter?.activeCollaboratorsOnly) {
+    conditions.push(
+      `EXISTS (SELECT 1 FROM app.origin_collaborations c
+                WHERE c.workspace_id = w.id AND c.status = 'active')`,
+    );
+  }
   if (filter?.subject) {
     params.push(filter.subject);
     conditions.push(`$${params.length} = ANY(w.subjects)`);
@@ -337,6 +358,9 @@ export async function listPublicInstitutes(
   const where = `WHERE ${conditions.join(" AND ")}`;
   const limit = filter?.limit ?? 20;
   params.push(limit);
+  const limitParam = params.length;
+  params.push(Math.max(0, Math.trunc(filter?.offset ?? 0)));
+  const offsetParam = params.length;
   const result = await pool().query(
     `SELECT w.id, w.display_name, w.legal_name, w.city, w.state, w.country,
             w.subjects, w.courses, w.verification_status,
@@ -346,8 +370,8 @@ export async function listPublicInstitutes(
                WHERE workspace_id = w.id AND status IN ('active', 'draft')) AS batch_count
      FROM app.teacher_workspaces w
      ${where}
-     ORDER BY w.verification_status DESC, w.created_at DESC
-     LIMIT $${params.length}`,
+     ORDER BY w.verification_status DESC, w.created_at DESC, w.id
+     LIMIT $${limitParam} OFFSET $${offsetParam}`,
     params,
   );
   return result.rows.map((row) => ({
