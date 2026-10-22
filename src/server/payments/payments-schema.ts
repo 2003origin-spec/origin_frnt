@@ -155,6 +155,29 @@ CREATE TABLE IF NOT EXISTS payments.refunds (
 CREATE INDEX IF NOT EXISTS idx_payments_refunds_payment
   ON payments.refunds(razorpay_payment_id);
 
+-- One in-flight admin refund initiation per payment (initiateRefund records it
+-- before the Razorpay call so no lock is held across the HTTP request).
+-- Canonical SQL: src/db/migrations/20261022_payments_refund_intents.sql
+CREATE TABLE IF NOT EXISTS payments.refund_intents (
+  razorpay_payment_id TEXT PRIMARY KEY
+                        REFERENCES payments.payments(razorpay_payment_id) ON DELETE CASCADE,
+  intent_id           TEXT NOT NULL,
+  amount_minor        INTEGER NOT NULL CHECK (amount_minor > 0),
+  initiated_by        TEXT,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  -- 'sending' while the Razorpay call is in flight; 'unknown' after an
+  -- ambiguous answer (resolved against Razorpay before another refund).
+  state               TEXT NOT NULL DEFAULT 'sending' CHECK (state IN ('sending', 'unknown')),
+  -- Set when an admin abandons an unknown intent that Razorpay still shows no
+  -- refund for after the settle window; the row is kept and stops blocking.
+  abandoned_at        TIMESTAMPTZ,
+  abandoned_by        TEXT
+);
+ALTER TABLE payments.refund_intents
+  ADD COLUMN IF NOT EXISTS state TEXT NOT NULL DEFAULT 'sending' CHECK (state IN ('sending', 'unknown'));
+ALTER TABLE payments.refund_intents ADD COLUMN IF NOT EXISTS abandoned_at TIMESTAMPTZ;
+ALTER TABLE payments.refund_intents ADD COLUMN IF NOT EXISTS abandoned_by TEXT;
+
 CREATE TABLE IF NOT EXISTS payments.events (
   event_id        TEXT PRIMARY KEY,
   event_type      TEXT,

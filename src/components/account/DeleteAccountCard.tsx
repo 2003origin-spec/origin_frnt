@@ -17,6 +17,7 @@ import { Input } from '@/components/ui/input';
 import { useAuth } from '@/context/AuthContext';
 import { mutateJson } from '@/lib/csrf';
 import { notifyNativeLogout } from '@/native/bridge';
+import { purgeUserCachesForLogout } from '@/sw/client';
 
 export function DeleteAccountCard() {
   const { user } = useAuth();
@@ -56,6 +57,8 @@ export function DeleteAccountCard() {
       for (const warning of body.warnings ?? []) toast.warning(warning);
       toast.success('Your account has been deleted.');
       await notifyNativeLogout();
+      // The deleted account's cached pages must not stay readable offline.
+      await purgeUserCachesForLogout();
       window.location.href = '/';
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not delete the account.');

@@ -49,7 +49,7 @@ export async function buildResultsWorkbook(
   // Exporting a room whose time is up finalizes it first. This is the guarantee
   // that a student whose browser died mid-test is scored from the answers the
   // server already holds instead of being exported as "absent" with no marks.
-  await finalizeIfExpired({ id: roomId, status: room.status as CbtRoomStatus });
+  await finalizeIfExpired({ id: roomId, status: room.status as CbtRoomStatus }, { regrade: true });
 
   const parts = await pool().query(
     `SELECT id, display_name, student_code, score, max_score, rank, time_taken_seconds,

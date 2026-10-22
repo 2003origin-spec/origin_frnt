@@ -15,6 +15,7 @@ import { getUserPostgresPool, isUserPostgresConfigured } from "@/server/user-pos
 
 import { ensureAnalyticsSchema } from "./analytics-schema";
 import { ensureContentSchema } from "./content-schema";
+import { lockSchemaDdl } from "@/server/schema-lock";
 
 declare global {
   var __originOgcodePublishingSchemaEnsured: boolean | undefined;
@@ -49,6 +50,7 @@ export async function ensureOgcodePublishingSchema(): Promise<void> {
       const client = await pool().connect();
       try {
         await client.query("BEGIN");
+        await lockSchemaDdl(client);
 
         await client.query(`CREATE SCHEMA IF NOT EXISTS content;`);
 

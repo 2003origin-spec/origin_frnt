@@ -14,23 +14,25 @@ import { getUserPostgresPool } from "@/server/user-postgres";
 import { loadPriceTable } from "./admin-store";
 import {
   applyTransition,
+  closeNoHelper,
   dispatchRequest,
   dispatchSafely,
   expireOffer,
   getHelperByUserId,
   lockRequest,
   logEvent,
+  releaseHeldCoins,
   releaseHold,
   type RequestRow,
 } from "./dispatch-service";
-import { findUnbalancedTransfers, sessionCapture, sessionHold } from "./ledger-rules";
-import { getWalletBalance, loadAllLegsForAudit, postTransfers, withNowTransaction } from "./ledger-store";
+import { PLATFORM_ACCOUNTS, findUnbalancedTransfers, sessionCapture, sessionHold, userAccount } from "./ledger-rules";
+import { getWalletBalance, loadAllLegsForAudit, lockWalletForSpend, postTransfers, withNowTransaction } from "./ledger-store";
 import { NowError } from "./now-http";
 import { ensureNowSchema } from "./now-schema";
 import { helperStreamId, publishNowEvent, requestStreamId, scheduleNowTimer, type NowTimer } from "./now-realtime";
 import { getNowSettings } from "./now-settings";
 import { botIsInRoom, closeRoom, purgeExpiredRecordings, startSessionRecording } from "./room-service";
-import { checkExtension, lookupPrice, sessionLengthMinutes } from "./pricing";
+import { checkExtension, lookupPrice, repriceForRequeue, sessionLengthMinutes } from "./pricing";
 import {
   OVERRUN_GRACE_MS,
   decidePayable,
@@ -39,6 +41,7 @@ import {
   isShortSession,
   noShowSide,
   sessionEndsAt,
+  unsettledSessionsSql,
 } from "./session-rules";
 import { payEveningBonuses, type EveningBonusRun } from "./evening-bonus-service";
 import { NO_SHOW_WINDOW_MS, RATING_WINDOW_MS, type Outcome, type RootCause, type SolverKind } from "./types";
@@ -212,28 +215,79 @@ export async function handleNoShow(sessionId: string, now: Date = new Date()): P
       [session.id, now],
     );
     if (verdict === "helper") {
-      // The solver accepted and vanished: back to the queue without them; the hold stays.
+      // The solver accepted and vanished: back to the human queue without them.
+      // The hold stays, re-priced to the human price when the bot was the one
+      // that failed to show (the request still carried the bot price).
+      const { rows: prices } = await loadPriceTable();
+      const humanPrice = lookupPrice(prices, request.difficulty, "human");
+      const reprice = humanPrice ? repriceForRequeue(request.held_coins, session.solver_kind, humanPrice.priceCoins) : null;
+      let canRequeue = true;
+      if (reprice && reprice.holdDelta > 0) {
+        // Read under the wallet lock on this transaction: a spend committed in
+        // between cannot make the hold below throw and abort the no-show.
+        const wallet = await lockWalletForSpend(client, request.student_id, now);
+        canRequeue = wallet.balance.available >= reprice.holdDelta && !wallet.frozen;
+      }
+      const repriceFields: Record<string, unknown> = {};
+      if (reprice && canRequeue) {
+        const holdKey = `requeue:${session.id}`;
+        if (reprice.holdDelta > 0) {
+          await postTransfers(
+            [
+              {
+                kind: "session_hold",
+                from: userAccount(request.student_id),
+                to: PLATFORM_ACCOUNTS.escrow,
+                amount: reprice.holdDelta,
+                requestId: request.id,
+                idempotencyKey: `hold:${request.id}:${holdKey}`,
+              },
+            ],
+            { client, now },
+          );
+        } else if (reprice.holdDelta < 0) {
+          await releaseHeldCoins(client, request, -reprice.holdDelta, { keySuffix: holdKey, now });
+        }
+        repriceFields.price_coins = reprice.priceCoins;
+        repriceFields.held_coins = request.held_coins + reprice.holdDelta;
+      }
       await applyTransition(client, request, "helper_no_show", {
         helper_id: null,
         solver_kind: null,
         current_offer_id: null,
         excluded_helper_ids: [...new Set([...request.excluded_helper_ids, session.helper_id])],
         failed_offers: request.failed_offers + 1,
+        ...repriceFields,
       });
+      if (reprice && canRequeue) {
+        request.price_coins = reprice.priceCoins;
+        request.held_coins += reprice.holdDelta;
+      }
       await logEvent(client, {
         type: "session.helper_no_show",
         requestId: request.id,
         sessionId: session.id,
         actor: "system",
-        payload: { helperId: session.helper_id },
+        payload: {
+          helperId: session.helper_id,
+          ...(reprice && canRequeue ? { repricedTo: reprice.priceCoins, holdDelta: reprice.holdDelta } : {}),
+        },
       });
-      requeue = request.id;
       const helperId = session.helper_id;
       effects.push(
-        () => publishNowEvent(requestStreamId(request.id), { type: "status", status: "requested", note: "solver_no_show" }),
         () => publishNowEvent(helperStreamId(helperId), { type: "session_lost", sessionId: session.id }),
         () => closeRoom(session.id),
       );
+      if (canRequeue) {
+        requeue = request.id;
+        effects.unshift(() =>
+          publishNowEvent(requestStreamId(request.id), { type: "status", status: "requested", note: "solver_no_show" }),
+        );
+      } else {
+        // The student cannot cover the human price after the bot failed (and the
+        // bot is now excluded): close and give the hold back rather than loop.
+        await closeNoHelper(client, request, "none_online", effects);
+      }
     } else {
       await applyTransition(client, request, "student_no_show", { closed_reason: "no_show", closed_at: now });
       await releaseHold(client, request);
@@ -605,12 +659,9 @@ export async function runNowSweep(now: Date = new Date()) {
 
   // Ended sessions still waiting to settle: bots immediately, humans once the
   // outcome window has passed without an outcome (then the coins go back).
-  const unsettled = await pool.query<{ id: string }>(
-    `SELECT id FROM now.sessions
-      WHERE ended_at IS NOT NULL AND settled_at IS NULL AND (solver_kind = 'bot' OR outcome IS NOT NULL OR ended_at <= $1)
-      LIMIT ${SWEEP_BATCH}`,
-    [new Date(now.getTime() - RATING_WINDOW_MS)],
-  );
+  const unsettled = await pool.query<{ id: string }>(unsettledSessionsSql(SWEEP_BATCH), [
+    new Date(now.getTime() - RATING_WINDOW_MS),
+  ]);
   for (const { id } of unsettled.rows) if (await safely("settle", id, () => settleSession(id, now))) counts.settled += 1;
 
   return counts;

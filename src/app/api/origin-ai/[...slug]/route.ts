@@ -16,6 +16,7 @@ import {
   deleteThread,
   getThreadById,
   listThreads,
+  planOriginAiRuntimeWrite,
   updateThread,
   type OriginAiPageContextInput,
 } from "@/server/origin-ai";
@@ -30,7 +31,7 @@ import {
   parseJsonBody,
   unauthorized,
 } from "@/server/http";
-import { withStoreAsync, type StoredUser } from "@/server/store";
+import { ScopedWritePlan, withStoreAsyncScoped, type StoredUser } from "@/server/store";
 import { dbUpdateUsageMetrics } from "@/server/db-users";
 import {
   getCachedChapters,
@@ -516,8 +517,13 @@ async function proxyToMicroserviceStream(
   }
 }
 
+// Store access in this route is SCOPED (bug-hunt 10 / N3): the old
+// withStoreAsync re-wrote every app.* table from one instance's snapshot on
+// EVERY Ori request (resolveProxyUser runs on all of them), erasing concurrent
+// writes made by other instances. Reads pass `null` (fresh snapshot, nothing
+// persisted); writes name only the acting user's Ori collections.
 async function resolveProxyUser(request: NextRequest): Promise<StoredUser | null> {
-  return withStoreAsync(async (store) => requireUserFromRequest(store, request));
+  return withStoreAsyncScoped(async (store) => requireUserFromRequest(store, request), null);
 }
 
 /**
@@ -702,11 +708,11 @@ export async function GET(request: NextRequest, context: RouteContext) {
       if (proxyResp) return proxyResp;
     }
 
-    const result = await withStoreAsync(async (store) => {
+    const result = await withStoreAsyncScoped(async (store) => {
       const user = await requireUserFromRequest(store, request);
       if (!user) return { status: "unauthorized" as const };
       return { status: "ok" as const, threads: listThreads(store, user.id).map(serializeThread) };
-    });
+    }, null);
 
     if (result.status === "unauthorized") return unauthorized();
     return ok({ threads: result.threads });
@@ -730,12 +736,16 @@ export async function GET(request: NextRequest, context: RouteContext) {
       if (proxyResp) return proxyResp;
     }
 
-    const result = await withStoreAsync(async (store) => {
+    // getOriginAiSnapshot prepares the Ori runtime, which mutates this user's
+    // profile memory, session and reminder set.
+    const plan = new ScopedWritePlan();
+    const result = await withStoreAsyncScoped(async (store) => {
       const user = await requireUserFromRequest(store, request);
       if (!user) return { status: "unauthorized" as const };
       const snapshot = await getOriginAiSnapshot(store, user, request, toPageContext({}), slug[1]);
+      planOriginAiRuntimeWrite(plan, user.id);
       return { status: "ok" as const, snapshot };
-    });
+    }, plan.toPersist);
 
     if (result.status === "unauthorized") return unauthorized();
     return ok(result.snapshot);
@@ -777,7 +787,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
   }
 
   // Fallback to in-app implementation
-  const result = await withStoreAsync(async (store) => {
+  const sessionPlan = new ScopedWritePlan();
+  const result = await withStoreAsyncScoped(async (store) => {
     const user = await requireUserFromRequest(store, request);
     if (!user) {
       return { status: "unauthorized" as const };
@@ -792,8 +803,9 @@ export async function GET(request: NextRequest, context: RouteContext) {
         questionSolved: toBooleanFlag(parsedQuery.data.questionSolved),
       }),
     );
+    planOriginAiRuntimeWrite(sessionPlan, user.id);
     return { status: "ok" as const, snapshot };
-  });
+  }, sessionPlan.toPersist);
 
   if (result.status === "unauthorized") {
     return unauthorized();
@@ -874,7 +886,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
       }
     }
 
-    const result = await withStoreAsync(async (store) => {
+    const plan = new ScopedWritePlan();
+    const result = await withStoreAsyncScoped(async (store) => {
       const user = await requireUserFromRequest(store, request);
       if (!user) return { status: "unauthorized" as const };
       const browserSessionId = request.headers.get("X-Origin-AI-Session-Id") ?? `legacy-origin-ai-session-${user.id}`;
@@ -882,8 +895,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
         title: parsed.data.title,
         subject: parsed.data.subject ?? null,
       });
+      plan.forUser(user.id).touch("originAiSessions");
       return { status: "created" as const, thread: serializeThread(session) };
-    });
+    }, plan.toPersist);
     if (result.status === "unauthorized") return unauthorized();
     return created({ thread: result.thread });
   }
@@ -962,10 +976,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
       let threadSubject: string | null = null;
       if (parsedBody.data.threadId) {
-        threadSubject = await withStoreAsync(async (store) => {
+        threadSubject = await withStoreAsyncScoped(async (store) => {
           const thread = getThreadById(store, proxyUser.id, parsedBody.data.threadId!);
           return thread?.subject ?? null;
-        });
+        }, null);
       }
       const enrichedPayload = {
         ...parsedBody.data,
@@ -1014,10 +1028,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
       let threadSubject: string | null = null;
       if (parsedBody.data.threadId) {
-        threadSubject = await withStoreAsync(async (store) => {
+        threadSubject = await withStoreAsyncScoped(async (store) => {
           const thread = getThreadById(store, proxyUser.id, parsedBody.data.threadId!);
           return thread?.subject ?? null;
-        });
+        }, null);
       }
       const enrichedPayload = {
         ...parsedBody.data,
@@ -1068,10 +1082,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
         // mapping, so we read it here before forwarding.
         let threadSubject: string | null = null;
         if (parsedBody.data.threadId) {
-          threadSubject = await withStoreAsync(async (store) => {
+          threadSubject = await withStoreAsyncScoped(async (store) => {
             const thread = getThreadById(store, proxyUser.id, parsedBody.data.threadId!);
             return thread?.subject ?? null;
-          });
+          }, null);
         }
         const enrichedPayload = {
           ...parsedBody.data,
@@ -1100,7 +1114,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
       if (process.env.NODE_ENV !== "production") {
         console.warn("[origin-ai proxy] microservice unavailable; using in-app fallback");
       }
-      const result = await withStoreAsync(async (store) => {
+      // An error reply (empty message, daily limit) returns before the runtime is
+      // touched, so only a delivered reply persists — runtime + check-in points.
+      const plan = new ScopedWritePlan();
+      const result = await withStoreAsyncScoped(async (store) => {
         const user = await requireUserFromRequest(store, request);
         if (!user) {
           return { status: "unauthorized" as const };
@@ -1128,8 +1145,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
           return { status: "error" as const, error: reply.error };
         }
 
+        planOriginAiRuntimeWrite(plan, user.id, { awardsPoints: true });
         return { status: "created" as const, reply };
-      });
+      }, plan.toPersist);
 
       if (result.status === "unauthorized") {
         return unauthorized();
@@ -1163,8 +1181,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
         if (proxyResp) return proxyResp;
       }
 
-      // Fallback
-      const result = await withStoreAsync(async (store) => {
+      // Fallback. The runtime is prepared (and mutated) before the live
+      // bootstrap can fail, so it is persisted either way — as before.
+      const plan = new ScopedWritePlan();
+      const result = await withStoreAsyncScoped(async (store) => {
         const user = await requireUserFromRequest(store, request);
         if (!user) {
           return { status: "unauthorized" as const };
@@ -1176,13 +1196,14 @@ export async function POST(request: NextRequest, context: RouteContext) {
           request,
           toPageContext(parsedBody.data.pageContext),
         );
+        planOriginAiRuntimeWrite(plan, user.id);
 
         if ("error" in bootstrap) {
           return { status: "error" as const, error: bootstrap.error };
         }
 
         return { status: "ok" as const, bootstrap };
-      });
+      }, plan.toPersist);
 
       if (result.status === "unauthorized") {
         return unauthorized();
@@ -1228,8 +1249,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
         }
       }
 
-      // Fallback
-      const result = await withStoreAsync(async (store) => {
+      // Fallback. Transcript errors return before the runtime is touched.
+      const plan = new ScopedWritePlan();
+      const result = await withStoreAsyncScoped(async (store) => {
         const user = await requireUserFromRequest(store, request);
         if (!user) {
           return { status: "unauthorized" as const };
@@ -1260,8 +1282,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
           return { status: "error" as const, error: reply.error };
         }
 
+        planOriginAiRuntimeWrite(plan, user.id, { awardsPoints: true });
         return { status: "created" as const, reply };
-      });
+      }, plan.toPersist);
 
       if (result.status === "unauthorized") {
         return unauthorized();
@@ -1342,8 +1365,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
         }
       }
 
-      // Fallback
-      const result = await withStoreAsync(async (store) => {
+      // Fallback. Transcription / limit errors return before the runtime is
+      // touched; a delivered reply persists the runtime + check-in points.
+      const plan = new ScopedWritePlan();
+      const result = await withStoreAsyncScoped(async (store) => {
         const user = await requireUserFromRequest(store, request);
         if (!user) {
           return { status: "unauthorized" as const };
@@ -1371,8 +1396,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
           return { status: "error" as const, error: reply.error };
         }
 
+        planOriginAiRuntimeWrite(plan, user.id, { awardsPoints: true });
         return { status: "created" as const, reply };
-      });
+      }, plan.toPersist);
 
       if (result.status === "unauthorized") {
         return unauthorized();
@@ -1419,8 +1445,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
         }
       }
 
-      // Fallback
-      const result = await withStoreAsync(async (store) => {
+      // Fallback. No store mutation (usage goes through dbUpdateUsageMetrics).
+      const result = await withStoreAsyncScoped(async (store) => {
         const user = await requireUserFromRequest(store, request);
         if (!user) {
           return { status: "unauthorized" as const };
@@ -1438,7 +1464,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         }
 
         return { status: "ok" as const, reply };
-      });
+      }, null);
 
       if (result.status === "unauthorized") {
         return unauthorized();
@@ -1598,7 +1624,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     }
   }
 
-  const result = await withStoreAsync(async (store) => {
+  const plan = new ScopedWritePlan();
+  const result = await withStoreAsyncScoped(async (store) => {
     const user = await requireUserFromRequest(store, request);
     if (!user) return { status: "unauthorized" as const };
     const session = updateThread(store, user.id, slug[1], {
@@ -1606,8 +1633,9 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       subject: parsed.data.subject ?? undefined,
     });
     if (!session) return { status: "not_found" as const };
+    plan.forUser(user.id).touch("originAiSessions");
     return { status: "ok" as const, thread: serializeThread(session) };
-  });
+  }, plan.toPersist);
 
   if (result.status === "unauthorized") return unauthorized();
   if (result.status === "not_found") return notFound("Thread not found.");
@@ -1640,12 +1668,22 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     if (proxyResp) return proxyResp;
   }
 
-  const result = await withStoreAsync(async (store) => {
+  const plan = new ScopedWritePlan();
+  const result = await withStoreAsyncScoped(async (store) => {
     const user = await requireUserFromRequest(store, request);
     if (!user) return { status: "unauthorized" as const };
+    // deleteThread drops every session row of this user carrying the thread id;
+    // remove exactly those rows (by session id) with targeted user-scoped deletes.
+    const removedIds = store.originAiSessions
+      .filter((entry) => entry.userId === user.id && entry.threadId === slug[1])
+      .map((entry) => entry.id);
     const removed = deleteThread(store, user.id, slug[1]);
+    if (removed) {
+      plan.forUser(user.id);
+      for (const id of removedIds) plan.remove("originAiSessions", id);
+    }
     return { status: removed ? ("ok" as const) : ("not_found" as const) };
-  });
+  }, plan.toPersist);
 
   if (result.status === "unauthorized") return unauthorized();
   if (result.status === "not_found") return notFound("Thread not found.");

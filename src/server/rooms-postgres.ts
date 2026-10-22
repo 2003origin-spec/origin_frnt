@@ -2,6 +2,7 @@ import type { Pool, PoolClient } from "pg";
 
 import { ensureAnalyticsSchema } from "@/server/analytics-store";
 import { getOgcodePostgresPool } from "@/server/postgres";
+import { withSchemaLock } from "@/server/schema-lock";
 
 declare global {
   var __originRoomsSchemaReady: Promise<void> | undefined;
@@ -142,7 +143,7 @@ export async function ensureRoomsSchema(client?: PoolClient): Promise<void> {
     globalThis.__originRoomsSchemaReady = (async () => {
       const pool = getRoomsPostgresPoolOrThrow();
       await ensureAnalyticsSchema();
-      await pool.query(ROOMS_SCHEMA_SQL);
+      await withSchemaLock(pool, (c) => c.query(ROOMS_SCHEMA_SQL));
     })().catch((error) => {
       globalThis.__originRoomsSchemaReady = undefined;
       throw error;

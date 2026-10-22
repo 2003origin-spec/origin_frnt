@@ -2,6 +2,7 @@ import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 
 import { metric } from "@/lib/metrics";
+import { isHostedProductionEnv } from "@/lib/required-env";
 import { getRateLimitMode, isLockdown, rateLimitDivisor, type RateLimitMode } from "@/server/incidents";
 
 type AppRateLimitResult = {
@@ -57,13 +58,7 @@ const redis =
     : null;
 
 function isHostedProduction(): boolean {
-  return (
-    process.env.VERCEL_ENV === "production" ||
-    Boolean(process.env.RENDER_SERVICE_ID) ||
-    process.env.RAILWAY_ENVIRONMENT === "production" ||
-    Boolean(process.env.FLY_APP_NAME) ||
-    process.env.ORIGIN_DEPLOYMENT_ENV === "production"
-  );
+  return isHostedProductionEnv(process.env);
 }
 
 let hasWarnedMissingRedis = false;

@@ -15,6 +15,7 @@
 import type { PoolClient } from "pg";
 
 import { getUserPostgresPool, isUserPostgresConfigured } from "@/server/user-postgres";
+import { withSchemaLock } from "@/server/schema-lock";
 
 declare global {
   var __originDeviceTokensEnsured: boolean | undefined;
@@ -46,8 +47,7 @@ export async function ensureDeviceTokensSchema(): Promise<void> {
   if (globalThis.__originDeviceTokensEnsured) return;
   if (!globalThis.__originDeviceTokensPromise) {
     globalThis.__originDeviceTokensPromise = (async () => {
-      const client = await pool().connect();
-      try {
+      await withSchemaLock(pool(), async (client) => {
         await client.query("CREATE SCHEMA IF NOT EXISTS notif");
         await client.query(`
           CREATE TABLE IF NOT EXISTS notif.device_tokens (
@@ -66,10 +66,8 @@ export async function ensureDeviceTokensSchema(): Promise<void> {
             WHERE revoked_at IS NULL
         `);
         await recordMigration(client);
-        globalThis.__originDeviceTokensEnsured = true;
-      } finally {
-        client.release();
-      }
+      });
+      globalThis.__originDeviceTokensEnsured = true;
     })().catch((error) => {
       globalThis.__originDeviceTokensPromise = undefined;
       throw error;

@@ -13,6 +13,7 @@
 
 import { createId } from "@/server/store";
 import { getUserPostgresPool, isUserPostgresConfigured } from "@/server/user-postgres";
+import { withSchemaLock } from "@/server/schema-lock";
 
 declare global {
   var __originNotificationsSchemaReady: Promise<void> | undefined;
@@ -49,8 +50,7 @@ async function ensureNotificationsSchema(): Promise<void> {
   const pool = getUserPostgresPool();
   if (!pool) return;
   if (!globalThis.__originNotificationsSchemaReady) {
-    globalThis.__originNotificationsSchemaReady = pool
-      .query(SCHEMA_SQL)
+    globalThis.__originNotificationsSchemaReady = withSchemaLock(pool, (client) => client.query(SCHEMA_SQL))
       .then(() => undefined)
       .catch((error) => {
         globalThis.__originNotificationsSchemaReady = undefined;

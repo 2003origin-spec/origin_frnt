@@ -232,7 +232,11 @@ function isNotificationOnly(kind: string): boolean {
  * alongside them in the same transaction is what the student sees.
  */
 function isActionOnly(kind: string): boolean {
-  return kind === "institute_enrollment" || kind === "duplicate_capture_refund";
+  return (
+    kind === "institute_enrollment" ||
+    kind === "institute_enrollment_revoke" ||
+    kind === "duplicate_capture_refund"
+  );
 }
 
 /**
@@ -320,6 +324,17 @@ async function runDuplicateCaptureRefund(payload: LoosePayload, deps: DuplicateR
  */
 async function runOutboxAction(kind: string, payload: LoosePayload, deps: DuplicateRefundDeps = {}): Promise<void> {
   if (kind === "duplicate_capture_refund") return runDuplicateCaptureRefund(payload, deps);
+  if (kind === "institute_enrollment_revoke") {
+    const enrollmentOrderId = firstText(payload, "enrollmentOrderId", "enrollment_order_id");
+    const workspaceId = firstText(payload, "workspaceId", "workspace_id");
+    const razorpayRefundId = firstText(payload, "refundId", "refund_id", "razorpayRefundId");
+    if (!enrollmentOrderId || !workspaceId || !razorpayRefundId) {
+      throw new Error("institute_enrollment_revoke outbox row is missing its order reference");
+    }
+    const { revokeInstituteEnrollmentForRefund } = await import("./institute-orders");
+    await revokeInstituteEnrollmentForRefund({ enrollmentOrderId, workspaceId, razorpayRefundId });
+    return;
+  }
   if (kind !== "institute_enrollment") throw new Error(`No action for payment outbox kind: ${kind}`);
   const enrollmentOrderId = firstText(payload, "enrollmentOrderId", "enrollment_order_id");
   const workspaceId = firstText(payload, "workspaceId", "workspace_id");

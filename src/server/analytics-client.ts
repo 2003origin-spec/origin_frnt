@@ -134,6 +134,8 @@ export interface AnalyticsTestAnalysisRequest {
     negative_marking_mode?: string;
   };
   is_malpractice?: boolean;
+  /** Persisted result id; ODG applies mastery once per id (set by analysis-jobs). */
+  attempt_id?: string | null;
 }
 
 export interface AnalyticsTestAnalysisResponse {
@@ -169,6 +171,8 @@ export interface AnalyticsDppAttemptRequest {
   // Null/omitted for pure OG Code DPPs — analytics skips teacher crediting.
   workspace_id?: string | null;
   teacher_id?: string | null;
+  /** Persisted DPP-attempt id; ODG applies mastery once per id (set by analysis-jobs). */
+  attempt_id?: string | null;
 }
 
 export interface AnalyticsDppAttemptResponse {

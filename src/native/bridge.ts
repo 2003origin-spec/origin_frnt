@@ -8,6 +8,7 @@
  * throwing when the bridge (or a capability) is missing.
  */
 
+import { createCapabilityCache } from "@/native/capability-cache";
 import { isNativeApp } from "@/native/is-native-app";
 import type { NativeCapability, OriginNativeCapabilities, OriginNativePlugin } from "@/native/types";
 
@@ -16,24 +17,20 @@ export function getOriginNative(): OriginNativePlugin | null {
   return window.Capacitor?.Plugins?.OriginNative ?? null;
 }
 
-let capabilitiesPromise: Promise<OriginNativeCapabilities | null> | null = null;
-
-/** Memoized capability handshake. Null in browsers or when the call fails. */
-export function getNativeCapabilities(): Promise<OriginNativeCapabilities | null> {
-  if (!capabilitiesPromise) {
-    capabilitiesPromise = (async () => {
-      if (!isNativeApp()) return null;
+/**
+ * Capability handshake. Null in browsers, or when the shell's bridge is not
+ * injected yet / the call fails; a null inside the shell is not cached, so a
+ * call that raced bridge injection is retried by the next caller.
+ */
+export const getNativeCapabilities: () => Promise<OriginNativeCapabilities | null> =
+  createCapabilityCache<OriginNativeCapabilities>({
+    isNative: isNativeApp,
+    getHandshake: () => {
       const plugin = getOriginNative();
-      if (!plugin) return null;
-      try {
-        return await plugin.getCapabilities();
-      } catch {
-        return null;
-      }
-    })();
-  }
-  return capabilitiesPromise;
-}
+      return plugin ? () => plugin.getCapabilities() : null;
+    },
+    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  });
 
 export async function hasNativeCapability(capability: NativeCapability): Promise<boolean> {
   const capabilities = await getNativeCapabilities();

@@ -8,9 +8,9 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import type { NextRequest } from "next/server";
+import { NextRequest } from "next/server";
 
-import { GET, POST } from "@/app/api/mobile/[...slug]/route";
+import { POST } from "@/app/api/mobile/[...slug]/route";
 import {
   ACCESS_COOKIE_NAME,
   ACCESS_FINGERPRINT_COOKIE_NAME,
@@ -51,15 +51,23 @@ async function issueLinkOut(user: StoredUser): Promise<Response> {
   return POST(request as NextRequest, routeContext(["link-out"]));
 }
 
+/**
+ * Consumes through the explicit same-origin POST confirm (A4, fix/auth-redirects):
+ * the GET consume is now only a no-cookie 303 to the /auth/handoff page.
+ */
 async function consume(url: string): Promise<Response> {
   const token = new URL(url).searchParams.get("token") ?? "";
-  const request = new Request(
-    `https://www.o3origin.com/api/mobile/link-out/consume?token=${encodeURIComponent(token)}`,
-    { headers: { "user-agent": "Mozilla/5.0 (Linux; Android 14) Chrome/126.0" } },
-  );
-  // The handler reads request.nextUrl; a plain Request is enough once it is given one.
-  Object.defineProperty(request, "nextUrl", { value: new URL(request.url) });
-  return GET(request as unknown as NextRequest, routeContext(["link-out", "consume"]));
+  const request = new NextRequest("https://www.o3origin.com/api/mobile/link-out/consume", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+      "user-agent": "Mozilla/5.0 (Linux; Android 14) Chrome/126.0",
+      origin: "https://www.o3origin.com",
+      "sec-fetch-site": "same-origin",
+    },
+    body: new URLSearchParams({ token }).toString(),
+  });
+  return POST(request, routeContext(["link-out", "consume"]));
 }
 
 function cookieNames(response: Response): string[] {

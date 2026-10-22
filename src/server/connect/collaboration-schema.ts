@@ -13,6 +13,7 @@ import type { PoolClient } from "pg";
 
 import { getUserPostgresPool, isUserPostgresConfigured } from "@/server/user-postgres";
 import { ensureWorkspaceSchema } from "@/server/workspaces/schema";
+import { lockSchemaDdl } from "@/server/schema-lock";
 
 declare global {
   var __originCollaborationSchemaEnsured: boolean | undefined;
@@ -45,6 +46,7 @@ export async function ensureCollaborationSchema(): Promise<void> {
       const client = await pool().connect();
       try {
         await client.query("BEGIN");
+        await lockSchemaDdl(client);
 
         await client.query(`
           CREATE TABLE IF NOT EXISTS app.origin_collaborations (

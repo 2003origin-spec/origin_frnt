@@ -30,7 +30,7 @@ import { countTestResultsForUser } from "@/server/analytics-store";
 import { normalizeSoundPreferences } from "@/lib/sound-preferences";
 import { normalizeStudyMode } from "@/lib/study-mode";
 import type { AccountStatus, AppStore, StoredTask, StoredUser } from "@/server/store";
-import { createId, readStoreAsync, withStoreAsync, withStoreAsyncScoped, withStoredUserDefaults } from "@/server/store";
+import { createId, readStoreAsync, ScopedWritePlan, withStoreAsyncScoped, withStoredUserDefaults } from "@/server/store";
 import { persistUserCollections } from "@/server/store-postgres";
 
 type UserPayload = Record<string, unknown>;
@@ -65,6 +65,32 @@ function asStringArray(value: unknown): string[] | null {
     return null;
   }
   return value.map((item) => String(item)).filter((item) => item.trim().length > 0);
+}
+
+/*
+ * Store writes in this file are SCOPED (bug-hunt 10 / N3): each handler names
+ * exactly the acting user's collections it mutated, via withStoreAsyncScoped.
+ * The old withStoreAsync re-wrote every app.* table (and origin_auth_sessions)
+ * from one instance's snapshot, erasing concurrent writes from other instances.
+ *
+ * Two deliberate non-writes:
+ * - Lazily-created gamification defaults (serializeUser / buildPointsSummary /
+ *   buildUserStatsSnapshot call getOrCreateStreak / getOrCreateUserScore) are
+ *   NOT persisted by read paths. They are all-zero rows recreated identically on
+ *   the next read, and upserting them could overwrite a real row another
+ *   instance wrote after this snapshot.
+ * - Auth sessions are written by their own targeted writer
+ *   (dbCreateAuthSession), never by the store persist.
+ */
+
+/**
+ * updateUserStreak mirrors the streak onto `user.streak`. Persist just that
+ * column with the targeted dbUpdateUser (UPDATE origin_users SET streak) rather
+ * than a whole-row snapshot upsert. No-op without Postgres (dev store).
+ */
+async function persistUserStreakColumn(user: StoredUser, streakBefore: number): Promise<void> {
+  if (user.streak === streakBefore || !isUserPostgresConfigured()) return;
+  await dbUpdateUser(user.id, { streak: user.streak });
 }
 
 /**
@@ -263,7 +289,7 @@ export type UserStatsSnapshot = {
 // is invalidated automatically on the next mutation. First call per store pays
 // the cost once; the rest reuse it.
 
-type GlobalRankCache = {
+export type GlobalRankCache = {
   rankByUser: Map<string, number>;
   solvedCountByUser: Map<string, number>;
 };
@@ -284,7 +310,7 @@ function getQuestionById(store: AppStore): Map<string, AppStore["questions"][num
   return map;
 }
 
-function getGlobalSolvedRanking(store: AppStore): GlobalRankCache {
+export function getGlobalSolvedRanking(store: AppStore): GlobalRankCache {
   const cached = globalRankCache.get(store);
   if (cached) return cached;
 
@@ -319,7 +345,14 @@ function getGlobalSolvedRanking(store: AppStore): GlobalRankCache {
   return result;
 }
 
-export async function buildUserStatsSnapshot(store: AppStore, user: StoredUser): Promise<UserStatsSnapshot> {
+export async function buildUserStatsSnapshot(
+  store: AppStore,
+  user: StoredUser,
+  options: {
+    /** A pre-computed (e.g. TTL-cached) global ranking to reuse instead of re-ranking. */
+    globalRanking?: GlobalRankCache;
+  } = {},
+): Promise<UserStatsSnapshot> {
   // The primary test-submit path persists to analytics.test_results (a targeted
   // writer), NOT the KV store collection, so count tests from the real source
   // when Postgres is configured. Falls back to the store count otherwise.
@@ -374,7 +407,7 @@ export async function buildUserStatsSnapshot(store: AppStore, user: StoredUser):
 
   // Global rank by distinct solved questions — computed once per store object
   // and reused across users (was rebuilt over every user's attempts each call).
-  const { rankByUser, solvedCountByUser } = getGlobalSolvedRanking(store);
+  const { rankByUser, solvedCountByUser } = options.globalRanking ?? getGlobalSolvedRanking(store);
   const mySolvedCount = solvedCountByUser.get(user.id) ?? 0;
   const globalRank = mySolvedCount > 0 ? (rankByUser.get(user.id) ?? null) : null;
 
@@ -495,7 +528,9 @@ export async function handleLogin(payload: UserPayload) {
     return badRequest("Invalid email or password.");
   }
 
-  return withStoreAsync(async (store) => {
+  // Reached only without user Postgres (the DB path above always returns), so
+  // there is nothing to persist: the session lives in the in-memory store.
+  return withStoreAsyncScoped(async (store) => {
     const emailMatches = store.users.filter((entry) => entry.email.toLowerCase() === email);
     const matchingUsers = emailMatches.filter((entry) => bcrypt.compareSync(password, entry.password));
     const eligibleUsers = role
@@ -517,7 +552,7 @@ export async function handleLogin(payload: UserPayload) {
     if (!userData) return notFound("User not found.");
 
     return ok({ user: userData, refresh: session.refreshToken, access: session.accessToken, accessFingerprint: session.accessFingerprint, clientKind });
-  });
+  }, null);
 }
 
 const DEFAULT_MAIN_ADMIN_EMAILS = [
@@ -557,7 +592,10 @@ export async function handleLoginWithOtp(payload: UserPayload) {
     return unauthorized("Email verification required.");
   }
 
-  return withStoreAsync(async (store) => {
+  // Scoped persist: null. The session is written by its own targeted writer
+  // (createAuthSessionAsync → dbCreateAuthSession) and an auto-provisioned
+  // admin row is flushed explicitly below; nothing else in the store changes.
+  return withStoreAsyncScoped(async (store) => {
 
     let user = store.users.find((entry) => entry.email.toLowerCase() === email && (role ? entry.role === role : true));
     if (!user) {
@@ -590,13 +628,12 @@ export async function handleLoginWithOtp(payload: UserPayload) {
         });
         store.users.push(user);
         // Flush the new admin row to origin_users *before* creating the session.
-        // The legacy store otherwise only persists new users at the END of
-        // withStoreAsync (persistStoreToPostgres), but createAuthSessionAsync below
-        // writes the session straight to Postgres, and origin_auth_sessions.user_id is
-        // NOT NULL REFERENCES origin_users(id). Without this the session INSERT hits an
-        // FK violation against the not-yet-persisted admin row and the whole login throws
-        // ("Authentication is temporarily unavailable"). Idempotent — the final
-        // persistStoreToPostgres re-upserts the same row.
+        // createAuthSessionAsync below writes the session straight to Postgres, and
+        // origin_auth_sessions.user_id is NOT NULL REFERENCES origin_users(id).
+        // Without this the session INSERT hits an FK violation against the
+        // not-yet-persisted admin row and the whole login throws ("Authentication is
+        // temporarily unavailable"). This is the ONLY durable write for the new
+        // admin row (the scoped persist of this call is null).
         await persistUserCollections(store, user.id, [], { persistUser: true });
       } else {
         return notFound("User not found.");
@@ -615,7 +652,7 @@ export async function handleLoginWithOtp(payload: UserPayload) {
     await deleteOtp(email).catch(() => {});
 
     return ok({ user: userData, refresh: session.refreshToken, access: session.accessToken, accessFingerprint: session.accessFingerprint, clientKind });
-  });
+  }, null);
 }
 
 const REGISTRATION_LIMIT = 51000;
@@ -640,12 +677,13 @@ export async function getRegistrationStatus(role?: string | null) {
     }
   }
 
-  return withStoreAsync(async (store) => {
+  // Read-only count: nothing to persist.
+  return withStoreAsyncScoped(async (store) => {
     const count = role === "teacher"
       ? store.users.filter((u) => u.role === "teacher").length
       : store.users.length;
     return { count, limit, seatsLeft: Math.max(0, limit - count) };
-  });
+  }, null);
 }
 
 /** Normalize to a 10-digit Indian mobile (strips a leading +91/91); null if invalid. */
@@ -730,7 +768,10 @@ export async function handleRegister(payload: UserPayload) {
     }
   }
 
-  return withStoreAsync(async (store) => {
+  // Reached only without user Postgres (the DB path above always returns). The
+  // plan still names the one row this creates, so the write stays scoped.
+  const registerPlan = new ScopedWritePlan();
+  return withStoreAsyncScoped(async (store) => {
     if (store.users.some((entry) => entry.email.toLowerCase() === email)) {
       return badRequest("A user with this email already exists.");
     }
@@ -763,6 +804,7 @@ export async function handleRegister(payload: UserPayload) {
       subjects: [],
       studentCapacity: null,
     }));
+    registerPlan.forUser(userId).touchUser();
 
     const session = await createAuthSessionAsync(store, userId, clientKind);
     const userData = serializeUser(store, userId);
@@ -777,7 +819,7 @@ export async function handleRegister(payload: UserPayload) {
       accessFingerprint: session.accessFingerprint,
       clientKind,
     });
-  });
+  }, registerPlan.toPersist);
 }
 
 /**
@@ -867,7 +909,9 @@ export async function handleGoogleLogin(payload: UserPayload) {
       }
     }
 
-    return withStoreAsync(async (store) => {
+    // Reached only without user Postgres (the DB path above always returns).
+    const googleLoginPlan = new ScopedWritePlan();
+    return withStoreAsyncScoped(async (store) => {
       const user = store.users.find((entry) => entry.email.toLowerCase() === email.toLowerCase() && entry.role === role);
       if (!user) {
         // No account yet → signal the Google-signup details step (see DB path).
@@ -877,6 +921,7 @@ export async function handleGoogleLogin(payload: UserPayload) {
         );
       } else if (!user.avatar && avatar) {
         user.avatar = avatar;
+        googleLoginPlan.forUser(user.id).touchUser();
       }
 
       const blocked = accountStatusBlock(user);
@@ -884,7 +929,7 @@ export async function handleGoogleLogin(payload: UserPayload) {
       const session = await createAuthSessionAsync(store, user.id, clientKind);
       const userData = serializeUser(store, user.id);
       return ok({ user: userData, refresh: session.refreshToken, access: session.accessToken, accessFingerprint: session.accessFingerprint, clientKind });
-    });
+    }, googleLoginPlan.toPersist);
   } catch (e: any) {
     console.error("Google Auth processing error:", e);
     return unauthorized("Failed to process Google login");
@@ -996,7 +1041,9 @@ export async function handleGoogleSignup(payload: UserPayload) {
       }
     }
 
-    return withStoreAsync(async (store) => {
+    // Reached only without user Postgres (the DB path above always returns).
+    const googleSignupPlan = new ScopedWritePlan();
+    return withStoreAsyncScoped(async (store) => {
       let user = store.users.find((entry) => entry.email.toLowerCase() === email.toLowerCase() && entry.role === role);
       if (!user) {
         if (await isDeletedIdentityBlocked(email, mobile)) {
@@ -1016,6 +1063,7 @@ export async function handleGoogleSignup(payload: UserPayload) {
           subjects: [], studentCapacity: null,
         });
         store.users.push(user);
+        googleSignupPlan.forUser(userId).touchUser();
       }
 
       const blocked = accountStatusBlock(user);
@@ -1030,7 +1078,7 @@ export async function handleGoogleSignup(payload: UserPayload) {
         accessFingerprint: session.accessFingerprint,
         clientKind,
       });
-    });
+    }, googleSignupPlan.toPersist);
   } catch (e: any) {
     console.error("Google signup processing error:", e);
     return unauthorized("Failed to process Google sign-up");
@@ -1113,11 +1161,15 @@ async function handleMeGet(request: Request) {
 }
 
 async function handleMePatch(request: Request, payload: UserPayload) {
-  return withStoreAsync(async (store) => {
+  // The only durable change is the user's own profile columns, written with the
+  // targeted dbUpdateUser (UPDATE origin_users SET <changed columns> WHERE id).
+  // No store collection changes, so the scoped persist is null.
+  return withStoreAsyncScoped(async (store) => {
     const user = await requireUserFromRequest(store, request);
     if (!user) {
       return unauthorized();
     }
+    const patch: Partial<StoredUser> = {};
 
     const updates: Array<[keyof typeof user, unknown]> = [
       ["name", payload.name],
@@ -1133,27 +1185,36 @@ async function handleMePatch(request: Request, payload: UserPayload) {
     const studentClass = asString(payload.studentClass ?? payload.student_class ?? payload.class);
     if (studentClass !== null) {
       user.studentClass = studentClass;
+      patch.studentClass = studentClass;
     }
 
     const isOnboarded = asBoolean(payload.isOnboarded ?? payload.is_onboarded);
     if (isOnboarded !== null) {
       user.isOnboarded = isOnboarded;
+      patch.isOnboarded = isOnboarded;
     }
 
     const isDropper = asBoolean(payload.isDropper ?? payload.is_dropper);
     if (isDropper !== null) {
       user.isDropper = isDropper;
+      patch.isDropper = isDropper;
     }
 
     const subjects = asStringArray(payload.subjects);
     if (subjects) {
       user.subjects = subjects;
+      patch.subjects = subjects;
     }
 
     for (const [field, value] of updates) {
       if (typeof value === "string") {
         (user[field] as unknown) = value;
+        (patch as Record<string, unknown>)[field] = value;
       }
+    }
+
+    if (isUserPostgresConfigured() && Object.keys(patch).length > 0) {
+      await dbUpdateUser(user.id, patch);
     }
 
     const serialized = serializeUser(store, user.id);
@@ -1161,32 +1222,34 @@ async function handleMePatch(request: Request, payload: UserPayload) {
       return notFound("User not found.");
     }
     return ok(serialized);
-  });
+  }, null);
 }
 
 async function handlePointsGet(request: Request) {
-  return withStoreAsync(async (store) => {
+  // Read (fresh snapshot, nothing persisted — see the note at the top).
+  return withStoreAsyncScoped(async (store) => {
     const user = await requireUserFromRequest(store, request);
     if (!user) {
       return unauthorized();
     }
     return ok(buildPointsSummary(store, user.id));
-  });
+  }, null);
 }
 
 async function handleStatsGet(request: Request) {
-  return withStoreAsync(async (store) => {
+  // Read (fresh snapshot, nothing persisted — see the note at the top).
+  return withStoreAsyncScoped(async (store) => {
     const user = await requireUserFromRequest(store, request);
     if (!user) {
       return unauthorized();
     }
 
     return ok(await buildUserStatsSnapshot(store, user));
-  });
+  }, null);
 }
 
 async function handleSearchGet(request: Request) {
-  // Read-only: use readStoreAsync (no persist) rather than withStoreAsync.
+  // Read-only: use readStoreAsync (no persist).
   const store = await readStoreAsync();
   const user = await requireUserFromRequest(store, request);
   if (!user) {
@@ -1228,7 +1291,8 @@ async function handleNotificationsMarkRead(request: Request, payload: UserPayloa
 
 async function handleTimePost(request: Request, payload: UserPayload) {
   try {
-    return withStoreAsync(async (store) => {
+    const plan = new ScopedWritePlan();
+    return withStoreAsyncScoped(async (store) => {
       const user = await requireUserFromRequest(store, request);
       if (!user) {
         return unauthorized();
@@ -1254,14 +1318,24 @@ async function handleTimePost(request: Request, payload: UserPayload) {
         return badRequest("Invalid payload", { time_spent: "Expected positive integer seconds" });
       }
 
+      const streakBefore = user.streak;
       const result = recordTime(store, user.id, timeType, Math.floor(timeSpent), subject);
+      // recordTime always bumps today's activity; a subject adds a per-subject
+      // row; the first entry of the day also awards consistency points and
+      // advances the streak (streak record + the user.streak column).
+      plan.forUser(user.id).touch("dailyActivities");
+      if (subject) plan.touch("dailySubjectActivities");
+      if (result.createdToday) {
+        plan.touch("userScores", "pointLogs", "streaks");
+        await persistUserStreakColumn(user, streakBefore);
+      }
 
       return ok({
         status: "success",
         recorded_seconds: result.recordedSeconds,
         recordedSeconds: result.recordedSeconds,
       });
-    });
+    }, plan.toPersist);
   } catch (error) {
     console.error("[TimeTrack] Critical Error:", error);
     return badRequest("internal_server_error", { details: String(error) });
@@ -1269,7 +1343,8 @@ async function handleTimePost(request: Request, payload: UserPayload) {
 }
 
 async function handlePomodoroList(request: Request) {
-  return withStoreAsync(async (store) => {
+  // Read: nothing persisted.
+  return withStoreAsyncScoped(async (store) => {
     const user = await requireUserFromRequest(store, request);
     if (!user) {
       return unauthorized();
@@ -1282,11 +1357,12 @@ async function handlePomodoroList(request: Request) {
       .map((entry) => serializePomodoro(entry));
 
     return ok(sessions);
-  });
+  }, null);
 }
 
 async function handlePomodoroCreate(request: Request, payload: UserPayload) {
-  return withStoreAsync(async (store) => {
+  const plan = new ScopedWritePlan();
+  return withStoreAsyncScoped(async (store) => {
     const user = await requireUserFromRequest(store, request);
     if (!user) {
       return unauthorized();
@@ -1319,8 +1395,10 @@ async function handlePomodoroCreate(request: Request, payload: UserPayload) {
     } as const;
 
     store.pomodoroSessions.push({ ...session });
+    plan.forUser(user.id).touch("pomodoroSessions");
 
     if (isCompleted && duration >= 20 * 60) {
+      const streakBefore = user.streak;
       await awardPointsOnce(
         store,
         user.id,
@@ -1330,14 +1408,17 @@ async function handlePomodoroCreate(request: Request, payload: UserPayload) {
         session.id,
       );
       updateUserStreak(store, user.id);
+      plan.touch("userScores", "pointLogs", "streaks");
+      await persistUserStreakColumn(user, streakBefore);
     }
 
     return created(serializePomodoro(session));
-  });
+  }, plan.toPersist);
 }
 
 async function handlePomodoroDetail(request: Request, sessionId: string) {
-  return withStoreAsync(async (store) => {
+  // Read: nothing persisted.
+  return withStoreAsyncScoped(async (store) => {
     const user = await requireUserFromRequest(store, request);
     if (!user) {
       return unauthorized();
@@ -1347,11 +1428,12 @@ async function handlePomodoroDetail(request: Request, sessionId: string) {
       return notFound("Pomodoro session not found.");
     }
     return ok(serializePomodoro(session));
-  });
+  }, null);
 }
 
 async function handlePomodoroUpdate(request: Request, payload: UserPayload, sessionId: string) {
-  return withStoreAsync(async (store) => {
+  const plan = new ScopedWritePlan();
+  return withStoreAsyncScoped(async (store) => {
     const user = await requireUserFromRequest(store, request);
     if (!user) {
       return unauthorized();
@@ -1360,6 +1442,7 @@ async function handlePomodoroUpdate(request: Request, payload: UserPayload, sess
     if (!session) {
       return notFound("Pomodoro session not found.");
     }
+    plan.forUser(user.id).touch("pomodoroSessions");
 
     const wasCompleted = session.isCompleted;
     const modeRaw = asString(payload.mode);
@@ -1401,6 +1484,7 @@ async function handlePomodoroUpdate(request: Request, payload: UserPayload, sess
       session.duration = pomodoroDurationFromStart(session.startTime);
       if (session.duration >= 20 * 60) {
         // Once per session id: a re-sent completion cannot pay out twice.
+        const streakBefore = user.streak;
         await awardPointsOnce(
           store,
           user.id,
@@ -1410,11 +1494,13 @@ async function handlePomodoroUpdate(request: Request, payload: UserPayload, sess
           session.id,
         );
         updateUserStreak(store, user.id);
+        plan.touch("userScores", "pointLogs", "streaks");
+        await persistUserStreakColumn(user, streakBefore);
       }
     }
 
     return ok(serializePomodoro(session));
-  });
+  }, plan.toPersist);
 }
 
 export function serializeTask(task: StoredTask) {
@@ -1442,12 +1528,13 @@ async function handleTaskList(request: Request) {
     }
   }
 
-  return withStoreAsync(async (store) => {
+  // Read: nothing persisted.
+  return withStoreAsyncScoped(async (store) => {
     const tasks = store.tasks
       .filter((t) => t.userId === user.id)
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     return ok(tasks.map(serializeTask));
-  });
+  }, null);
 }
 
 async function handleTaskCreate(request: Request, payload: UserPayload) {
@@ -1467,7 +1554,10 @@ async function handleTaskCreate(request: Request, payload: UserPayload) {
     }
   }
 
-  return withStoreAsync(async (store) => {
+  // Store fallback (no Postgres, or the targeted writer failed): upsert only
+  // this user's tasks — never the old whole-table `DELETE FROM app.tasks`.
+  const createPlan = new ScopedWritePlan().forUser(user.id).touchTasks();
+  return withStoreAsyncScoped(async (store) => {
     const task: StoredTask = {
       id: createId("task"),
       userId: user.id,
@@ -1480,7 +1570,7 @@ async function handleTaskCreate(request: Request, payload: UserPayload) {
     };
     store.tasks.push(task);
     return created(serializeTask(task));
-  });
+  }, createPlan.toPersist);
 }
 
 async function handleTaskUpdate(request: Request, payload: UserPayload, taskId: string) {
@@ -1501,16 +1591,18 @@ async function handleTaskUpdate(request: Request, payload: UserPayload, taskId: 
     }
   }
 
-  return withStoreAsync(async (store) => {
+  const updatePlan = new ScopedWritePlan();
+  return withStoreAsyncScoped(async (store) => {
     const task = store.tasks.find((t) => t.id === taskId && t.userId === user.id);
     if (!task) return notFound("Task not found.");
+    updatePlan.forUser(user.id).touchTasks();
     if (typeof payload.completed === 'boolean') task.completed = payload.completed;
     if (asString(payload.text)?.trim()) task.text = asString(payload.text)!.trim();
     if (asString(payload.due)) task.due = asString(payload.due)!;
     if (asString(payload.category) !== null) task.category = asString(payload.category) ?? undefined;
     if (asString(payload.priority)) task.priority = asString(payload.priority) as StoredTask['priority'];
     return ok(serializeTask(task));
-  });
+  }, updatePlan.toPersist);
 }
 
 async function handleTaskDelete(request: Request, taskId: string) {
@@ -1527,12 +1619,15 @@ async function handleTaskDelete(request: Request, taskId: string) {
     }
   }
 
-  return withStoreAsync(async (store) => {
+  const deletePlan = new ScopedWritePlan();
+  return withStoreAsyncScoped(async (store) => {
     const idx = store.tasks.findIndex((t) => t.id === taskId && t.userId === user.id);
     if (idx === -1) return notFound("Task not found.");
     store.tasks.splice(idx, 1);
+    // Targeted `DELETE FROM app.tasks WHERE user_id = $1 AND id = $2`.
+    deletePlan.forUser(user.id).remove("tasks", taskId);
     return noContent();
-  });
+  }, deletePlan.toPersist);
 }
 
 export async function handleUsersRequest(method: string, slug: string[], request: Request, payload: UserPayload) {

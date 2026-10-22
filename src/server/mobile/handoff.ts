@@ -80,6 +80,35 @@ export async function issueHandoffToken(
   return token;
 }
 
+function parseRecord(raw: string | HandoffRecord | null | undefined): HandoffRecord | null {
+  if (!raw) return null;
+  try {
+    const parsed = typeof raw === "string" ? (JSON.parse(raw) as HandoffRecord) : raw;
+    if (!parsed || typeof parsed.userId !== "string" || !isHandoffPurpose(parsed.purpose)) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Read a token WITHOUT consuming it — only for rendering the /auth/handoff
+ * confirmation page (spec 01-auth.md §A4). Never treat a peek as a login:
+ * the session is minted only by `consumeHandoffToken` on the same-origin POST.
+ */
+export async function peekHandoffToken(token: string): Promise<HandoffRecord | null> {
+  if (!token || token.length > 128) return null;
+
+  if (redis) {
+    return parseRecord(await redis.get<string | HandoffRecord>(`${KEY_PREFIX}${token}`));
+  }
+
+  sweepMemoryStore();
+  return memoryStore.get(token)?.record ?? null;
+}
+
 /** Atomically consume (single-use). Null = unknown, expired, or replayed. */
 export async function consumeHandoffToken(token: string): Promise<HandoffRecord | null> {
   if (!token || token.length > 128) return null;

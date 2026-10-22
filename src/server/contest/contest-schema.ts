@@ -15,6 +15,7 @@ import type { PoolClient } from "pg";
 
 import { ensureUserSchema } from "@/server/db-users";
 import { getUserPostgresPool, isUserPostgresConfigured } from "@/server/user-postgres";
+import { lockSchemaDdl } from "@/server/schema-lock";
 
 declare global {
   var __originContestSchemaEnsured: boolean | undefined;
@@ -469,6 +470,7 @@ export async function ensureContestSchema(): Promise<void> {
       const client = await pool().connect();
       try {
         await client.query("BEGIN");
+        await lockSchemaDdl(client);
         await client.query(CONTEST_SCHEMA_SQL);
         await recordMigration(client);
         await client.query("COMMIT");

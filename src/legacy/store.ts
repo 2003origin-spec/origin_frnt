@@ -16,11 +16,14 @@ import {
   mockNotes,
 } from "@/data/mockData";
 import { ncertBooksData } from "@/data/ncertBooks";
+import { isUserPostgresConfigured } from "@/server/user-postgres";
 import {
   hydrateStoreFromPostgres,
   persistStoreToPostgres,
   persistUserCollections,
   type MutableCollectionKey,
+  type ScopedReplaceableCollection,
+  type ScopedRowDeletion,
 } from "@/server/store-postgres";
 import { withPointAwardClaimRollback } from "@/server/point-award-scope";
 import { getUserPostgresPool } from "@/server/user-postgres";
@@ -1199,7 +1202,52 @@ export async function readStoreAsync(forceFresh = false): Promise<AppStore> {
 
 const storeMutex = new Mutex();
 
+function isHostedProduction(): boolean {
+  return (
+    process.env.VERCEL_ENV === "production" ||
+    Boolean(process.env.RENDER_SERVICE_ID) ||
+    process.env.RAILWAY_ENVIRONMENT === "production" ||
+    Boolean(process.env.FLY_APP_NAME) ||
+    process.env.ORIGIN_DEPLOYMENT_ENV === "production"
+  );
+}
+
+/** Thrown by withStoreAsync where a whole-store rewrite would hit a shared database. */
+export class WholeStoreRewriteForbiddenError extends Error {
+  constructor() {
+    super(
+      "withStoreAsync (whole-store rewrite) is forbidden in hosted production: it DELETEs and " +
+        "re-inserts every app.* table from one instance's snapshot, wiping concurrent writes. " +
+        "Use withStoreAsyncScoped with the collections the handler mutates, or readStoreAsync.",
+    );
+    this.name = "WholeStoreRewriteForbiddenError";
+  }
+}
+
+/**
+ * LEGACY whole-store rewrite: hydrates everything, runs `mutate`, then
+ * `persistStoreToPostgres` DELETEs and re-inserts EVERY `app.*` collection (and
+ * `origin_auth_sessions`) from this instance's snapshot. The mutex is per
+ * process, so on a multi-instance deployment any call can erase rows another
+ * instance wrote after this snapshot was taken (bug-hunt 10 / N3).
+ *
+ * There are no callers left in src/ (tests/unit/store-no-whole-rewrite.test.ts
+ * enforces that). It still works where it is harmless — no user Postgres (the
+ * dev/seed store, where the persist is a no-op) and local development — but it
+ * throws in hosted production with Postgres configured, so a new caller cannot
+ * quietly reintroduce the bug. Use withStoreAsyncScoped / readStoreAsync.
+ */
 export async function withStoreAsync<T>(mutate: (store: AppStore) => Promise<T> | T): Promise<T> {
+  if (isUserPostgresConfigured()) {
+    console.error("[store] withStoreAsync whole-store rewrite invoked", {
+      metric: "store.whole_rewrite",
+      hostedProduction: isHostedProduction(),
+      stack: new Error().stack?.split("\n").slice(2, 6).join(" | "),
+    });
+    if (isHostedProduction()) {
+      throw new WholeStoreRewriteForbiddenError();
+    }
+  }
   return storeMutex.runExclusive(() =>
     // A point-award claim won inside mutate is released if mutate or the
     // persist throws, so the award can be earned again (point-award-scope.ts).
@@ -1221,7 +1269,100 @@ export type ScopedStorePersist = {
   collections: MutableCollectionKey[];
   /** Persist the user's row in `origin_users` too (e.g. streak/study-time updates). */
   persistUser?: boolean;
+  /**
+   * Rows of THIS user removed from the store during `mutate` (notes, bookmarks,
+   * saved books, doubt sessions). The scoped upsert never deletes, so these are
+   * removed with targeted `DELETE … WHERE user_id = $1 AND id = $2` statements
+   * in the same transaction.
+   */
+  deletions?: ScopedRowDeletion[];
+  /**
+   * Collections THIS user's rows of which were rebuilt wholesale during `mutate`
+   * (e.g. Ori reminders): `DELETE … WHERE user_id = $1`, then upsert.
+   */
+  replaceUserRows?: ScopedReplaceableCollection[];
+  /** Upsert this user's `app.tasks` rows (tasks are not a MutableCollectionKey). */
+  persistTasks?: boolean;
 };
+
+/**
+ * Builder for a scoped persist whose details are only known INSIDE `mutate`
+ * (the acting user comes from the request, removed row ids from the handler).
+ * Pass `plan.toPersist` as withStoreAsyncScoped's `persist`: it is evaluated
+ * after `mutate`, and yields null (no write at all) when the handler bailed out
+ * before naming a user or touched nothing.
+ */
+export class ScopedWritePlan {
+  private userId: string | null = null;
+  private readonly collections = new Set<MutableCollectionKey>();
+  private readonly deletions: ScopedRowDeletion[] = [];
+  private readonly replaced = new Set<ScopedReplaceableCollection>();
+  private persistUser = false;
+  private persistTasks = false;
+
+  /** Binds the plan to the acting user. A plan can only ever write one user. */
+  forUser(userId: string): this {
+    if (this.userId && this.userId !== userId) {
+      throw new Error("ScopedWritePlan is bound to a different user.");
+    }
+    this.userId = userId;
+    return this;
+  }
+
+  /** Upsert the acting user's rows of these collections. */
+  touch(...collections: MutableCollectionKey[]): this {
+    for (const collection of collections) this.collections.add(collection);
+    return this;
+  }
+
+  /** Delete ONE of the acting user's rows (`WHERE user_id = $1 AND id = $2`). */
+  remove(collection: ScopedRowDeletion["collection"], id: string): this {
+    this.deletions.push({ collection, id });
+    return this;
+  }
+
+  /** Also upsert the acting user's `origin_users` row. */
+  touchUser(): this {
+    this.persistUser = true;
+    return this;
+  }
+
+  /**
+   * The acting user's rows of this collection were rebuilt wholesale: clear
+   * them (`WHERE user_id = $1`) and upsert the current set.
+   */
+  replaceAll(collection: ScopedReplaceableCollection): this {
+    this.replaced.add(collection);
+    return this;
+  }
+
+  /** Upsert the acting user's `app.tasks` rows. */
+  touchTasks(): this {
+    this.persistTasks = true;
+    return this;
+  }
+
+  readonly toPersist = (): ScopedStorePersist | null => {
+    if (!this.userId) return null;
+    if (
+      this.collections.size === 0 &&
+      this.deletions.length === 0 &&
+      this.replaced.size === 0 &&
+      !this.persistUser &&
+      !this.persistTasks
+    ) {
+      return null;
+    }
+    return {
+      userId: this.userId,
+      collections: [...this.collections],
+      persistUser: this.persistUser || undefined,
+      deletions: this.deletions.length > 0 ? [...this.deletions] : undefined,
+      replaceUserRows: this.replaced.size > 0 ? [...this.replaced] : undefined,
+      persistTasks: this.persistTasks || undefined,
+    };
+  };
+}
 
 // Collections mutated by a graded-assessment submit's post-grading side-effects
 // (updateUserStreak / awardPoints / daily activity / study time). Shared by
@@ -1254,17 +1395,26 @@ export const PRACTICE_SUBMIT_PERSIST_COLLECTIONS: MutableCollectionKey[] = [
 // `persist` is null). Use this for per-user hot paths whose durable records are
 // already written by targeted writers, so write cost no longer grows with total
 // database size.
+//
+// `persist` may also be a function: it is called AFTER `mutate` resolves, so a
+// caller that only learns the acting user / removed row ids inside `mutate`
+// (request-authenticated handlers) can describe the write precisely, or return
+// null when nothing changed (unauthorized, not found, read-only).
 export async function withStoreAsyncScoped<T>(
   mutate: (store: AppStore) => Promise<T> | T,
-  persist: ScopedStorePersist | null,
+  persist: ScopedStorePersist | null | ((result: T) => ScopedStorePersist | null),
 ): Promise<T> {
   return storeMutex.runExclusive(() =>
     withPointAwardClaimRollback(async () => {
       const store = await readStoreAsync(true);
       const result = await mutate(store);
-      if (persist) {
-        await persistUserCollections(store, persist.userId, persist.collections, {
-          persistUser: persist.persistUser,
+      const plan = typeof persist === "function" ? persist(result) : persist;
+      if (plan) {
+        await persistUserCollections(store, plan.userId, plan.collections, {
+          persistUser: plan.persistUser,
+          deletions: plan.deletions,
+          replaceUserRows: plan.replaceUserRows,
+          persistTasks: plan.persistTasks,
         });
       }
       cachedStore = store;

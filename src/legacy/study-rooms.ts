@@ -1355,6 +1355,58 @@ export async function finishRoomParticipant(
   });
 }
 
+/** Grace after the room deadline, shared with finishRoomParticipant / autoFinishExpiredRoom. */
+const ROOM_TIMER_GRACE_SECONDS = 10;
+
+/** Pure: has the room timer run past `duration + grace`? Untimed rooms never expire. */
+export function roomTimerExpired(
+  startedAt: string | Date | null,
+  durationSeconds: number | null,
+  nowMs = Date.now(),
+): boolean {
+  if (!startedAt || !durationSeconds) return false;
+  const elapsedSeconds = Math.max(0, Math.ceil((nowMs - new Date(startedAt).getTime()) / 1000));
+  return elapsedSeconds > durationSeconds + ROOM_TIMER_GRACE_SECONDS;
+}
+
+/**
+ * Re-reads the room timer immediately before a result is written, and throws
+ * the same 409 finishRoomParticipant would. Checked BEFORE submitTest so an
+ * expired submit never leaves an analytics.test_results row behind that the
+ * room then refuses to attach.
+ */
+async function assertRoomTimerOpen(roomId: string): Promise<void> {
+  const room = await withClient(async (client) => {
+    const result = await client.query(`SELECT started_at, duration_seconds FROM rooms.rooms WHERE id = $1`, [roomId]);
+    return result.rows[0] as { started_at: unknown; duration_seconds: unknown } | undefined;
+  });
+  if (!room) throw new StudyRoomError(404, "Study room was not found.");
+  const startedAt = toIso(room.started_at);
+  const duration = toNumber(room.duration_seconds);
+  if (roomTimerExpired(startedAt, duration)) {
+    throw new StudyRoomError(409, "The room timer has expired.");
+  }
+}
+
+/**
+ * finishRoomParticipant for a caller that has ALREADY persisted a result. The
+ * timer can run out between the pre-check and this call (submitTest is not
+ * instant); throwing then would orphan the stored result and tell the student
+ * their submit failed. Instead the attempt is recorded as auto-submitted.
+ */
+export async function finishRoomParticipantAfterResult(
+  roomId: string,
+  userId: string,
+  input: { testResultId: string | null; score: number | null; timeTakenSeconds?: number | null },
+) {
+  try {
+    return await finishRoomParticipant(roomId, userId, input);
+  } catch (error) {
+    if (!(error instanceof StudyRoomError) || error.status !== 409) throw error;
+    return finishRoomParticipant(roomId, userId, { ...input, autoSubmitted: true });
+  }
+}
+
 export async function submitRoomTest(
   store: AppStore,
   user: StoredUser,
@@ -1375,6 +1427,9 @@ export async function submitRoomTest(
     throw new StudyRoomError(409, "You have already submitted this test.");
   }
 
+  // Timer first: nothing may be written for an expired room (C6).
+  await assertRoomTimerOpen(roomId);
+
   const result = await submitTest(store, user, testId, payload, {
     allowRoomParticipant: true,
     sourceType: "room_test",
@@ -1387,7 +1442,8 @@ export async function submitRoomTest(
       : null,
   });
   const testResultId = (result as { id?: string }).id ?? null;
-  const finish = await finishRoomParticipant(roomId, user.id, {
+  // The result is persisted: from here on degrade, never reject.
+  const finish = await finishRoomParticipantAfterResult(roomId, user.id, {
     testResultId,
     score: Number((result as { score?: number }).score ?? 0),
     timeTakenSeconds: payload.timeTaken ?? payload.time_taken ?? null,

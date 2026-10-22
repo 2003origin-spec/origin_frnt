@@ -21,6 +21,7 @@ import {
   dbIncrementAuthTokenVersionAndRevokeSessions,
   dbUpdateUser,
 } from "@/server/db-users";
+import { withSchemaLock } from "@/server/schema-lock";
 
 declare global {
   var __originPasswordResetSchemaReady: Promise<void> | undefined;
@@ -55,8 +56,7 @@ async function ensureSchema(): Promise<void> {
   const p = getUserPostgresPool();
   if (!p) return;
   if (!globalThis.__originPasswordResetSchemaReady) {
-    globalThis.__originPasswordResetSchemaReady = p
-      .query(CREATE_TABLE_SQL)
+    globalThis.__originPasswordResetSchemaReady = withSchemaLock(p, (client) => client.query(CREATE_TABLE_SQL))
       .then(() => undefined)
       .catch((error) => {
         globalThis.__originPasswordResetSchemaReady = undefined;
