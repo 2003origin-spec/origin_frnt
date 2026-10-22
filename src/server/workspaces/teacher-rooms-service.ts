@@ -7,6 +7,8 @@ import { AuthzError } from "@/server/authz";
 import { deleteRoom, startRoomTest } from "@/server/study-rooms";
 
 import { recordAuditEvent } from "./audit";
+import { listBatches } from "./batches";
+import { assertBatchesBelongToWorkspace } from "./tenant-scoping";
 import {
   createTeacherRoom,
   extendRoomDuration,
@@ -41,6 +43,13 @@ export async function createRoom(
     if (test.status !== "published" && test.status !== "scheduled" && test.status !== "draft") {
       throw new AuthzError(400, "Test must be published, scheduled, or in draft to use in a room.");
     }
+  }
+
+  if (input.batchId) {
+    // N9 — the room's batch must be one of this workspace's own batches, or
+    // another institute's students would see it under "My institutes".
+    const ownedBatches = await listBatches(input.workspaceId, { status: "active" });
+    assertBatchesBelongToWorkspace([input.batchId], ownedBatches.map((batch) => batch.id));
   }
 
   const room = await createTeacherRoom({

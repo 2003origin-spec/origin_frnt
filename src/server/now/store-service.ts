@@ -402,7 +402,7 @@ export async function createPaperUpload(itemId: string, input: { mimeType: strin
   if (!item || item.kind !== "digital") throw new NowError(404, "not_found", "Digital item not found.");
   if (!isPaperUpload(input.mimeType, input.sizeBytes)) throw new NowError(400, "invalid_file", "Upload a PDF of 50 MB or less.");
   const objectKey = paperObjectKey(itemId, randomBytes(8).toString("hex"));
-  const signed = createPresignedR2PutUrl({ objectKey, method: "PUT", expiresSeconds: 900 });
+  const signed = createPresignedR2PutUrl({ objectKey, method: "PUT", expiresSeconds: 900, contentType: "application/pdf", contentLength: input.sizeBytes });
   return { uploadUrl: signed.url, objectKey, method: "PUT", contentType: "application/pdf" };
 }
 

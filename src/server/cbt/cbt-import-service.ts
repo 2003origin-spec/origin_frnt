@@ -95,8 +95,9 @@ export async function createCbtImportJob(input: {
   userId: string;
   /** Small files: bytes uploaded through the server. */
   file?: { buffer: Buffer; fileName: string; mimeType: string };
-  /** Large files: already uploaded to R2 by the browser (presigned PUT). */
-  r2Object?: { objectKey: string; bucket: string; fileName: string; mimeType: string; sizeBytes?: number };
+  /** Large files: already uploaded to the private R2 bucket by the browser (presigned PUT).
+   * `uploadToken` is the presign route's proof that the key was issued to this user. */
+  r2Object?: { objectKey: string; uploadToken: string; fileName: string; mimeType: string; sizeBytes?: number };
 }): Promise<DocumentImportJob> {
   const workspaceId = await ensureImportWorkspace(input.teacher, input.userId);
   if (input.r2Object) {
@@ -107,7 +108,7 @@ export async function createCbtImportJob(input: {
       fileName: input.r2Object.fileName,
       mimeType: input.r2Object.mimeType,
       targetSurface: "question_bag",
-      sourceR2: { objectKey: input.r2Object.objectKey, bucket: input.r2Object.bucket, sizeBytes: input.r2Object.sizeBytes },
+      sourceR2: { objectKey: input.r2Object.objectKey, uploadToken: input.r2Object.uploadToken, sizeBytes: input.r2Object.sizeBytes },
       triggerPipeline: true,
     });
   }
@@ -184,7 +185,7 @@ export async function getCbtImportJob(
   if (!teacher.importWorkspaceId) return null;
   const job = await getJobWithProgress(teacher.importWorkspaceId, jobId);
   if (!job) return null;
-  const questions = await getJobQuestions(jobId, { status: "all" });
+  const questions = await getJobQuestions(teacher.importWorkspaceId, jobId, { status: "all" });
   return { job, questions };
 }
 
@@ -339,7 +340,7 @@ export async function publishImportQuestionToCbt(input: {
   const job = await getImportJob(workspaceId, input.jobId);
   if (!job) throw cbtError(404, "Import job not found.");
 
-  const questions = await getJobQuestions(input.jobId, { status: "all" });
+  const questions = await getJobQuestions(workspaceId, input.jobId, { status: "all" });
   const iq = questions.find((q) => q.id === input.questionId);
   if (!iq) throw cbtError(404, "Import question not found.");
 
@@ -348,7 +349,7 @@ export async function publishImportQuestionToCbt(input: {
     source: "imported",
     importJobId: input.jobId,
   });
-  await updateQuestionStatus(input.jobId, input.questionId, "published", {
+  await updateQuestionStatus(workspaceId, input.jobId, input.questionId, "published", {
     questionBagQuestionId: created.id,
   });
 
@@ -385,7 +386,7 @@ export async function commitImportJobToBank(input: {
   const job = await getImportJob(workspaceId, input.jobId);
   if (!job) throw cbtError(404, "Import job not found.");
 
-  const accepted = await getJobQuestions(input.jobId, { status: "accepted" });
+  const accepted = await getJobQuestions(workspaceId, input.jobId, { status: "accepted" });
   let published = 0;
   let failed = 0;
   for (const iq of accepted) {
@@ -394,7 +395,7 @@ export async function commitImportJobToBank(input: {
         source: "imported",
         importJobId: input.jobId,
       });
-      await updateQuestionStatus(input.jobId, iq.id, "published", {
+      await updateQuestionStatus(workspaceId, input.jobId, iq.id, "published", {
         questionBagQuestionId: created.id,
       });
       published += 1;
@@ -563,7 +564,7 @@ export async function rejectImportQuestion(input: {
   if (!workspaceId) throw cbtError(404, "Import job not found.");
   const job = await getImportJob(workspaceId, input.jobId);
   if (!job) throw cbtError(404, "Import job not found.");
-  await updateQuestionStatus(input.jobId, input.questionId, "rejected", {
+  await updateQuestionStatus(workspaceId, input.jobId, input.questionId, "rejected", {
     rejectionReason: input.reason ?? null,
   });
 }

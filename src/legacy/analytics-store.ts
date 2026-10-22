@@ -585,11 +585,18 @@ function mapPersistedCustomTestRow(row: any): PersistedCustomTestRecord {
   };
 }
 
+/**
+ * Ensure the `analytics.*` schema exists. Memoised per process via
+ * `globalThis.__originAnalyticsSchemaReady`.
+ *
+ * The `client` argument is accepted for backwards compatibility only: the DDL
+ * (38 ALTER TABLE / CREATE INDEX statements) is never run on a caller-supplied
+ * transaction client — that took ACCESS EXCLUSIVE locks on every analytics
+ * table inside every room/test transaction. A call with a client awaits the
+ * memoised pool-level ensure instead, which still runs the DDL once per process.
+ */
 export async function ensureAnalyticsSchema(client?: PoolClient): Promise<void> {
-  if (client) {
-    await client.query(ANALYTICS_SCHEMA_SQL);
-    return;
-  }
+  void client;
   if (!globalThis.__originAnalyticsSchemaReady) {
     globalThis.__originAnalyticsSchemaReady = getPoolOrThrow()
       .query(ANALYTICS_SCHEMA_SQL)

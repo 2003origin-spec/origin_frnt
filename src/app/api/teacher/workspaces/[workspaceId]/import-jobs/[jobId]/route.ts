@@ -16,6 +16,7 @@ import {
   reviewQuestion,
   updateImportQuestion,
 } from "@/server/workspaces/document-import-service";
+import { getImportJob } from "@/server/workspaces/document-import-store";
 
 import {
   getWorkspaceId,
@@ -64,11 +65,18 @@ export async function GET(
     requireFeatureEnabled("documentImport");
     const { workspaceId, jobId } = await context.params;
     await requireWorkspaceMember(request, workspaceId);
+    // U6 — membership proves the workspace in the URL, not that the job is in
+    // it. Resolve the job through the workspace first; 404 (not 403) so a job
+    // id's existence elsewhere is not revealed.
+    const job = await getImportJob(workspaceId, jobId);
+    if (!job) {
+      return teacherJson({ detail: "Import job not found." }, { status: 404 });
+    }
     const url = new URL(request.url);
     const type = url.searchParams.get("type");
 
     if (type === "pages") {
-      const pages = await getJobPages(jobId);
+      const pages = await getJobPages(workspaceId, jobId);
       return teacherJson({ pages });
     }
 
@@ -79,18 +87,18 @@ export async function GET(
         ? (rawStatus as (typeof allowed)[number])
         : undefined;
       const limit = parseInt(url.searchParams.get("limit") ?? "100", 10);
-      const questions = await getJobQuestions(jobId, {
+      const questions = await getJobQuestions(workspaceId, jobId, {
         status: status === "all" ? "all" : status,
         limit: Math.min(limit, 200),
       });
       return teacherJson({ questions });
     }
 
-    const job = await getJobWithProgress(workspaceId, jobId);
-    if (!job) {
+    const jobWithProgress = await getJobWithProgress(workspaceId, jobId);
+    if (!jobWithProgress) {
       return teacherJson({ detail: "Import job not found." }, { status: 404 });
     }
-    return teacherJson({ job });
+    return teacherJson({ job: jobWithProgress });
   } catch (error) {
     return handleTeacherError(error);
   }

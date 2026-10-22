@@ -103,8 +103,9 @@ export async function createContestImportJob(input: {
   userId: string;
   /** Small files: bytes uploaded through the server. */
   file?: { buffer: Buffer; fileName: string; mimeType: string };
-  /** Large files: already uploaded to R2 by the browser (presigned PUT). */
-  r2Object?: { objectKey: string; bucket: string; fileName: string; mimeType: string; sizeBytes?: number };
+  /** Large files: already uploaded to the private R2 bucket by the browser (presigned PUT).
+   * `uploadToken` is the presign route's proof that the key was issued to this user. */
+  r2Object?: { objectKey: string; uploadToken: string; fileName: string; mimeType: string; sizeBytes?: number };
 }): Promise<DocumentImportJob> {
   const workspaceId = await ensureContestImportWorkspace(input.userId);
   if (input.r2Object) {
@@ -115,7 +116,7 @@ export async function createContestImportJob(input: {
       fileName: input.r2Object.fileName,
       mimeType: input.r2Object.mimeType,
       targetSurface: "question_bag",
-      sourceR2: { objectKey: input.r2Object.objectKey, bucket: input.r2Object.bucket, sizeBytes: input.r2Object.sizeBytes },
+      sourceR2: { objectKey: input.r2Object.objectKey, uploadToken: input.r2Object.uploadToken, sizeBytes: input.r2Object.sizeBytes },
       triggerPipeline: true,
     });
   }
@@ -146,7 +147,7 @@ export async function getContestImportJob(
   if (!workspaceId) return null;
   const job = await getJobWithProgress(workspaceId, jobId);
   if (!job) return null;
-  const questions = await getJobQuestions(jobId, { status: "all" });
+  const questions = await getJobQuestions(workspaceId, jobId, { status: "all" });
   return { job, questions };
 }
 
@@ -334,7 +335,7 @@ export async function publishContestImportQuestion(input: {
   const job = await getImportJob(workspaceId, input.jobId);
   if (!job) throw contestImportError(404, "Import job not found.");
 
-  const questions = await getJobQuestions(input.jobId, { status: "all" });
+  const questions = await getJobQuestions(workspaceId, input.jobId, { status: "all" });
   const iq = questions.find((q) => q.id === input.questionId);
   if (!iq) throw contestImportError(404, "Import question not found.");
 
@@ -349,7 +350,7 @@ export async function publishContestImportQuestion(input: {
   });
 
   await upsertContributedCatalogQuestion(catalogInput);
-  await updateQuestionStatus(input.jobId, input.questionId, "published", {
+  await updateQuestionStatus(workspaceId, input.jobId, input.questionId, "published", {
     questionBagQuestionId: catalogInput.id,
   });
   return { catalogId: catalogInput.id };
@@ -366,7 +367,7 @@ export async function rejectContestImportQuestion(input: {
   if (!workspaceId) throw contestImportError(404, "Import job not found.");
   const job = await getImportJob(workspaceId, input.jobId);
   if (!job) throw contestImportError(404, "Import job not found.");
-  await updateQuestionStatus(input.jobId, input.questionId, "rejected", {
+  await updateQuestionStatus(workspaceId, input.jobId, input.questionId, "rejected", {
     rejectionReason: input.reason ?? null,
   });
 }
@@ -388,7 +389,7 @@ export async function commitContestImportJob(input: {
   const job = await getImportJob(workspaceId, input.jobId);
   if (!job) throw contestImportError(404, "Import job not found.");
 
-  const accepted = await getJobQuestions(input.jobId, { status: "accepted" });
+  const accepted = await getJobQuestions(workspaceId, input.jobId, { status: "accepted" });
   let published = 0;
   let skipped = 0;
   let failed = 0;

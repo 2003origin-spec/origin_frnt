@@ -4,6 +4,7 @@ import { cookies, headers } from 'next/headers';
 import { revalidatePath } from 'next/cache';
 
 import { emailSendLimiter, otpVerifyLimiter, refreshLimiter, isWithinLimit } from '@/lib/rate-limit';
+import { loginAccountKey, loginGate, otpLoginKey, shouldCountLoginFailure } from '@/server/auth-login-gate';
 
 import { handleGoogleLogin, handleGoogleSignup, handleLogin, handleRegister, handleRefresh, serializeUser, handleLoginWithOtp } from '@/server/users';
 import { readStoreAsync } from '@/server/store';
@@ -189,6 +190,12 @@ export async function loginAction(input: {
     if (await loginBlockedForRole(input.role)) {
       return { ok: false, status: 403, message: LOGIN_DISABLED_MESSAGE };
     }
+    // Server Actions bypass middleware, so the brute-force gate lives here:
+    // per-IP + per-account lockouts, checked BEFORE the password.
+    const ip = await clientIp();
+    const accountKey = loginAccountKey(input.email);
+    const limited = await loginGate.gate(ip, accountKey);
+    if (limited) return limited;
     const clientKind = await clientKindFromRequest();
     const response = await handleLogin({
       email: input.email,
@@ -200,6 +207,8 @@ export async function loginAction(input: {
     if (parsed.ok) {
       await setSessionCookies(parsed.access, parsed.refresh, parsed.accessFingerprint, clientKind);
       revalidatePath('/', 'layout');
+    } else if (shouldCountLoginFailure(parsed)) {
+      await loginGate.recordFailure(ip, accountKey);
     }
     return toPublicAuthResult(parsed);
   } catch (error) {
@@ -222,6 +231,13 @@ export async function loginWithOtpAction(input: {
     if (await loginBlockedForRole(input.role)) {
       return { ok: false, status: 403, message: LOGIN_DISABLED_MESSAGE };
     }
+    // Same gate as loginAction but its OWN account budget: wrong passwords
+    // must not block the owner's emailed-code sign-in. A "code not verified"
+    // reply counts as a failure, which closes the isEmailVerified() probe.
+    const ip = await clientIp();
+    const accountKey = otpLoginKey(input.email);
+    const limited = await loginGate.gate(ip, accountKey, 'otp');
+    if (limited) return limited;
     const clientKind = await clientKindFromRequest();
     const response = await handleLoginWithOtp({
       email: input.email,
@@ -232,6 +248,8 @@ export async function loginWithOtpAction(input: {
     if (parsed.ok) {
       await setSessionCookies(parsed.access, parsed.refresh, parsed.accessFingerprint, clientKind);
       revalidatePath('/', 'layout');
+    } else if (shouldCountLoginFailure(parsed)) {
+      await loginGate.recordFailure(ip, accountKey, 'otp');
     }
     return toPublicAuthResult(parsed);
   } catch (error) {
@@ -298,6 +316,13 @@ export async function googleLoginAction(input: { credential: string; role?: 'stu
     if (await loginBlockedForRole(input.role)) {
       return { ok: false, status: 403, message: LOGIN_DISABLED_MESSAGE };
     }
+    // Per-IP throughput only. A rejected Google ID token is not a guess (it
+    // is signature- and audience-verified), so Google failures spend no
+    // failure budget — counting them per IP let one school NAT's rejected
+    // tokens lock the whole school out of every sign-in method.
+    const ip = await clientIp();
+    const limited = await loginGate.gate(ip, `google:${ip}`, 'google');
+    if (limited) return limited;
     const clientKind = await clientKindFromRequest();
     const response = await handleGoogleLogin({ credential: input.credential, role: input.role ?? null, clientKind });
     const parsed = await parseAuthResponse(response);
@@ -492,6 +517,12 @@ export async function resetPasswordAction(input: {
     const result = await verifyAndResetPassword(email, normalizeResetRole(input.role), code, newPassword);
     switch (result) {
       case 'ok':
+        // The code proved inbox control: lift any login lockout on the account
+        // so "reset your password" is a real way out of it.
+        await Promise.all([
+          loginGate.clearAccount(ip, loginAccountKey(email)),
+          loginGate.clearAccount(ip, otpLoginKey(email)),
+        ]);
         return { ok: true };
       case 'invalid':
         return { ok: false, error: 'Incorrect code. Please try again.' };
