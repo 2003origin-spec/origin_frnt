@@ -66,7 +66,8 @@ export async function getContestAnalytics(limit = 26): Promise<ContestAnalytics>
         WHERE started_at IS NOT NULL
      )
      SELECT o.id, o.name, o.start_at,
-       (SELECT COUNT(*) FROM contest.registrations r WHERE r.contest_id = o.id) AS registered,
+       (SELECT COUNT(*) FROM contest.registrations r
+          WHERE r.contest_id = o.id AND r.status = 'registered') AS registered,
        (SELECT COUNT(*) FROM players p WHERE p.contest_id = o.id) AS played,
        (SELECT COUNT(*) FROM contest.attempts a
           WHERE a.contest_id = o.id AND a.finished_at IS NOT NULL) AS submitted,

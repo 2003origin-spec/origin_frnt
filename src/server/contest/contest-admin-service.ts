@@ -23,6 +23,7 @@ import type { ContestStatus } from "@/lib/contest/contest-state";
 import { getUserPostgresPool } from "@/server/user-postgres";
 
 import { ensureContestSchema } from "./contest-schema";
+import { invalidateContestWindow } from "./contest-window-cache";
 
 function pool() {
   const p = getUserPostgresPool();
@@ -267,6 +268,7 @@ export async function updateContest(id: string, patch: UpdateContestInput): Prom
     `UPDATE contest.contests SET ${sets.join(", ")}, updated_at = NOW() WHERE id = $${i}`,
     vals,
   );
+  await invalidateContestWindow(id);
   const updated = await getContest(id);
   if (!updated) throw contestError(500, "Failed to update contest.");
   return updated;
@@ -360,6 +362,7 @@ export async function publishContest(
     client.release();
   }
 
+  await invalidateContestWindow(id);
   const published = await getContest(id);
   if (!published) throw contestError(500, "Failed to publish contest.");
   // Pre-warm the immutable paper cache so the start_at read burst is served
@@ -414,6 +417,7 @@ export async function rescheduleContest(id: string, input: RescheduleInput): Pro
      WHERE id = $1 AND status = 'scheduled'`,
     [id, input.regOpen, input.regClose, input.startAt, input.endAt, duration],
   );
+  await invalidateContestWindow(id);
   const updated = await getContest(id);
   if (!updated) throw contestError(500, "Failed to reschedule contest.");
   return updated;
@@ -440,6 +444,7 @@ export async function cancelContest(id: string): Promise<ContestRecord> {
      WHERE id = $1 AND status IN ('draft','scheduled')`,
     [id],
   );
+  await invalidateContestWindow(id);
   const updated = await getContest(id);
   if (!updated) throw contestError(500, "Failed to cancel contest.");
   return updated;
@@ -476,6 +481,7 @@ export async function extendContest(id: string, addMinutes: number): Promise<Con
     [id, String(addMinutes), addMinutes * 60],
   );
   if (res.rowCount === 0) throw contestError(409, "The contest just ended; extend is no longer possible.");
+  await invalidateContestWindow(id);
   const updated = await getContest(id);
   if (!updated) throw contestError(500, "Failed to extend contest.");
   return updated;

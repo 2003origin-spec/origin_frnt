@@ -203,7 +203,7 @@ export function ContestPlayer({ contestId, proctoringEnabled = false }: { contes
           const answered = answers[String(q.position)] != null;
           return (
             <button
-              key={q.questionId}
+              key={q.position}
               type="button"
               onClick={() => setIndex(i)}
               aria-label={`Question ${i + 1}${answered ? ', answered' : ''}`}
