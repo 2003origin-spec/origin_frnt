@@ -12,6 +12,7 @@ import { randomBytes } from "node:crypto";
 import { getUserPostgresPool } from "@/server/user-postgres";
 import { getEntitledSubjects } from "@/server/entitlements";
 
+import { cacheRegistration } from "./contest-registered-set";
 import { ensureContestSchema } from "./contest-schema";
 
 export type ContestAccessMode = "open" | "code" | "premium";
@@ -174,14 +175,17 @@ export async function promoteFromWaitlist(contestId: string, cap: number | null)
   );
   const free = cap - (res.rows[0]?.n ?? 0);
   if (free <= 0) return 0;
-  const promoted = await pool().query(
+  const promoted = await pool().query<{ user_id: string }>(
     `UPDATE contest.registrations SET status = 'registered'
       WHERE (contest_id, user_id) IN (
         SELECT contest_id, user_id FROM contest.registrations
          WHERE contest_id = $1 AND status = 'waitlisted'
          ORDER BY registered_at ASC LIMIT $2
-      )`,
+      )
+      RETURNING user_id`,
     [contestId, free],
   );
+  // Newly confirmed seats join the paper-gate cache (best-effort).
+  for (const row of promoted.rows) void cacheRegistration(contestId, row.user_id);
   return promoted.rowCount ?? 0;
 }

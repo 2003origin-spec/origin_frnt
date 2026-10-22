@@ -100,6 +100,11 @@ ALTER TABLE contest.registrations ADD COLUMN IF NOT EXISTS status TEXT NOT NULL 
   CHECK (status IN ('registered','waitlisted'));
 CREATE INDEX IF NOT EXISTS idx_registrations_waitlist
   ON contest.registrations(contest_id, status, registered_at);
+-- Confirmed seats only (C5): the attempt-start JOIN, the paper gate and the
+-- reminder sweep all filter on status = 'registered'; a waitlisted row must
+-- never satisfy them. Mirrors 20261021_contest_registrations_confirmed_idx.sql.
+CREATE INDEX IF NOT EXISTS idx_registrations_confirmed
+  ON contest.registrations(contest_id, user_id) WHERE status = 'registered';
 
 -- Per-contest access codes (access_mode = 'code'). Single-use: redeemed_by is
 -- stamped on redemption; a code is valid only while unredeemed.

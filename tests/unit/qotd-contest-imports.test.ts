@@ -46,20 +46,23 @@ test("the bag draw excludes contest imports", async () => {
 });
 
 test("by-id load hides contest imports only when asked", async () => {
+  // One visibility option (fix/contest-answer-key): "ogcode" hides every
+  // contest import; the default "all" adds no clause.
   pool.reset();
-  await catalog.getOgcodeCatalogQuestionById("og_1", { excludeContestImports: true });
+  await catalog.getOgcodeCatalogQuestionById("og_1", { visibility: "ogcode" });
   await catalog.getOgcodeCatalogQuestionById("og_2");
   const loads = pool.matching("WHERE id = $1");
   assert.equal(loads.length, 2);
-  assert.match(loads[0].sql, /\(\$2::boolean IS FALSE OR is_contest_import = FALSE\)/);
-  assert.deepEqual(loads[0].params, ["og_1", true]);
+  assert.match(loads[0].sql, /WHERE id = \$1 AND is_contest_import = FALSE/);
+  assert.deepEqual(loads[0].params, ["og_1"]);
   // Contest/admin callers keep loading imports by id.
-  assert.deepEqual(loads[1].params, ["og_2", false]);
+  assert.doesNotMatch(loads[1].sql, /is_contest_import/);
+  assert.deepEqual(loads[1].params, ["og_2"]);
 });
 
 test("getChallengeOfTheDay loads the day's pick with contest imports hidden", () => {
   const src = readFileSync(new URL("../../src/legacy/assessments.ts", import.meta.url), "utf8");
   const fn = src.slice(src.indexOf("export async function getChallengeOfTheDay"));
   const body = fn.slice(0, fn.indexOf("\nexport "));
-  assert.match(body, /getOgcodeCatalogQuestionById\(questionId, \{ excludeContestImports: true \}\)/);
+  assert.match(body, /getOgcodeCatalogQuestionById\(questionId, \{ visibility: "ogcode" \}\)/);
 });
