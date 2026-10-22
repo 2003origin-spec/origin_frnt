@@ -142,7 +142,7 @@ export async function getUserAiContexts(
      LEFT JOIN LATERAL (
        SELECT array_agg(m.batch_id) AS batch_ids
        FROM app.batch_members m
-       JOIN app.batches b ON b.id = m.batch_id
+       JOIN app.batches b ON b.id = m.batch_id AND b.workspace_id = m.workspace_id
        WHERE m.student_id = u.id
          AND m.status = 'active'
          AND b.status IN ('draft','active')

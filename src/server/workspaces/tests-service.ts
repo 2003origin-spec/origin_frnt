@@ -6,6 +6,8 @@
 import { AuthzError } from "@/server/authz";
 
 import { recordAuditEvent } from "./audit";
+import { listBatches } from "./batches";
+import { assertBatchesBelongToWorkspace } from "./tenant-scoping";
 import {
   addQuestionsToTest,
   createTest,
@@ -294,6 +296,11 @@ export async function assignTestToBatches(input: {
   if (test.status !== "published" && test.status !== "scheduled") {
     throw new AuthzError(400, "Test must be published or scheduled before assignment.");
   }
+
+  // N9 — a batch id from another workspace must never be assignable (mirrors
+  // shareTestAsDpp); otherwise another institute's students would see this test.
+  const ownedBatches = await listBatches(input.workspaceId, { status: "active" });
+  assertBatchesBelongToWorkspace(input.batchIds, ownedBatches.map((batch) => batch.id));
 
   const assignments: TestAssignment[] = [];
   for (const batchId of input.batchIds) {

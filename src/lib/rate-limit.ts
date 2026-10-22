@@ -11,11 +11,34 @@ type AppRateLimitResult = {
   reset: number;
 };
 
-type AppRateLimiter = {
+export type AppRateLimiter = {
   limit(identifier: string): Promise<AppRateLimitResult>;
+  /** Budget left for `identifier` WITHOUT consuming a hit (lockout checks). */
+  remaining(identifier: string): Promise<number>;
+  /** Forget every hit recorded for `identifier` (e.g. clear a lockout after a password reset). */
+  reset(identifier: string): Promise<void>;
+  /**
+   * When true, a limiter-backend failure DENIES the request instead of
+   * allowing it. Reserved for credential-guessing surfaces (login, OTP,
+   * code / coupon failure counters): there an outage must not turn into an
+   * unthrottled brute force. Everything else stays fail-open so an Upstash
+   * blip never logs real users out or blocks reads.
+   */
+  failClosed: boolean;
 };
 
 type SlidingWindowDuration = Parameters<typeof Ratelimit.slidingWindow>[1];
+
+type LimiterOptions = { failClosed?: boolean };
+
+/** `"60 s"` / `"10 m"` / `"1 h"` / `"1 d"` → milliseconds. */
+export function windowToMs(window: SlidingWindowDuration): number {
+  const match = /^(\d+)\s*(ms|s|m|h|d)$/.exec(String(window).trim());
+  if (!match) throw new Error(`[rate-limit] unsupported window "${window}"`);
+  const n = Number(match[1]);
+  const unit = match[2];
+  return unit === "ms" ? n : unit === "s" ? n * 1000 : unit === "m" ? n * 60_000 : unit === "h" ? n * 3_600_000 : n * 86_400_000;
+}
 
 const redisUrl = process.env.UPSTASH_REDIS_REST_URL?.trim();
 const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN?.trim();
@@ -27,8 +50,6 @@ const redis =
       })
     : null;
 
-let hasWarnedMissingRedis = false;
-
 function isHostedProduction(): boolean {
   return (
     process.env.VERCEL_ENV === "production" ||
@@ -39,22 +60,50 @@ function isHostedProduction(): boolean {
   );
 }
 
-function createNoopLimiter(limit: number): AppRateLimiter {
-  if (isHostedProduction() && !hasWarnedMissingRedis) {
-    hasWarnedMissingRedis = true;
-    const message = "[rate-limit] UPSTASH_REDIS_REST_URL/TOKEN are not set. Using degraded no-op limiter.";
-    console.error(message);
-    metric("origin.rate_limit.degraded", { reason: "missing_redis" });
-  }
+let hasWarnedMissingRedis = false;
 
+function warnMissingRedisOnce(): void {
+  if (!isHostedProduction() || hasWarnedMissingRedis) return;
+  hasWarnedMissingRedis = true;
+  console.error(
+    "[rate-limit] UPSTASH_REDIS_REST_URL/TOKEN are not set. Falling back to a per-instance in-memory limiter.",
+  );
+  metric("origin.rate_limit.degraded", { reason: "missing_redis" });
+}
+
+/**
+ * Per-instance sliding-window limiter used when Upstash is not configured.
+ * It replaces the old no-op (which allowed everything, so a deploy that lost
+ * the two env vars shipped with zero rate limiting). Counters live in this
+ * process only — on a serverless fleet that is a weaker guard than Redis,
+ * never no guard. Bounded: the map is cleared past 10k identifiers.
+ */
+export function createMemoryLimiter(
+  limit: number,
+  windowMs: number,
+  options: LimiterOptions = {},
+  now: () => number = Date.now,
+): AppRateLimiter {
+  const hits = new Map<string, number[]>();
+  const live = (identifier: string): number[] => {
+    const cutoff = now() - windowMs;
+    return (hits.get(identifier) ?? []).filter((t) => t > cutoff);
+  };
   return {
-    async limit() {
-      return {
-        success: true,
-        limit,
-        remaining: limit,
-        reset: Date.now() + 60_000,
-      };
+    failClosed: Boolean(options.failClosed),
+    async limit(identifier) {
+      const arr = live(identifier);
+      const success = arr.length < limit;
+      if (success) arr.push(now());
+      if (hits.size >= 10_000 && !hits.has(identifier)) hits.clear();
+      hits.set(identifier, arr);
+      return { success, limit, remaining: Math.max(0, limit - arr.length), reset: now() + windowMs };
+    },
+    async remaining(identifier) {
+      return Math.max(0, limit - live(identifier).length);
+    },
+    async reset(identifier) {
+      hits.delete(identifier);
     },
   };
 }
@@ -63,19 +112,65 @@ function createLimiter(
   limit: number,
   prefix: string,
   window: SlidingWindowDuration = "60 s",
+  options: LimiterOptions = {},
 ): AppRateLimiter {
   if (!redis) {
-    return createNoopLimiter(limit);
+    warnMissingRedisOnce();
+    return createMemoryLimiter(limit, windowToMs(window), options);
   }
 
-  return new Ratelimit({
+  const windowMs = windowToMs(window);
+  // Owned here (instead of the library's default) so `reset` can drop the
+  // in-process "blocked until" entry for exactly one identifier.
+  const ephemeralCache = new Map<string, number>();
+  const upstash = new Ratelimit({
     redis,
     limiter: Ratelimit.slidingWindow(limit, window),
     prefix,
+    ephemeralCache,
   });
+  return {
+    failClosed: Boolean(options.failClosed),
+    limit: (identifier) => upstash.limit(identifier),
+    remaining: async (identifier) => (await upstash.getRemaining(identifier)).remaining,
+    // NOT upstash.resetUsedTokens: in @upstash/ratelimit 2.0.8 that runs a Lua
+    // `SCAN ... MATCH <prefix>:<identifier>:*` over the WHOLE keyspace (blocking
+    // Redis), with the identifier (an email) unescaped as a glob. A sliding
+    // window only ever lives in `<prefix>:<identifier>:<windowIndex>` for the
+    // current and previous window, so delete exactly those (plus the next one,
+    // for an instance whose clock is a little ahead) — no pattern at all.
+    reset: async (identifier) => {
+      const base = `${prefix}:${identifier}`;
+      const current = Math.floor(Date.now() / windowMs);
+      ephemeralCache.delete(base);
+      await redis.del(`${base}:${current - 1}`, `${base}:${current}`, `${base}:${current + 1}`);
+    },
+  };
 }
 
-export const authLimiter = createLimiter(5, "rl:auth");
+// REST login (/api/users/login) and account deletion. Credential surface →
+// fail closed.
+export const authLimiter = createLimiter(5, "rl:auth", "60 s", { failClosed: true });
+
+// Logins (the Server Actions and REST /api/users/login) go through
+// `loginGate` (src/server/auth-login-gate.ts). Four layers, all fail-closed:
+//  - per-IP THROUGHPUT, counted on every attempt. Loose on purpose: a coaching
+//    centre / school NAT or a mobile CGNAT pool is one address, and a class
+//    signing in together must not hit it;
+//  - per-IP FAILURES, across all accounts (credential stuffing from one IP).
+//    A backstop only, so it is loose (200 / 10 min): a school NAT or CGNAT IP
+//    is one address, and 30 let one class's typos lock everyone behind it out
+//    of every sign-in method. Password and OTP count on separate IP keys, and
+//    Google sign-in never counts (a rejected Google token is not a guess);
+//  - per account + client IP prefix (/24, /48) FAILURES — the brute-force
+//    guard. Keyed with the prefix so a stranger who knows someone's email
+//    cannot lock them out from elsewhere;
+//  - per account FAILURES from anywhere, a looser backstop against guessing
+//    spread over many prefixes.
+export const loginIpLimiter = createLimiter(120, "rl:login-ip", "10 m", { failClosed: true });
+export const loginIpFailureLimiter = createLimiter(200, "rl:login-ip-fail", "10 m", { failClosed: true });
+export const loginFailureLimiter = createLimiter(8, "rl:login-fail", "15 m", { failClosed: true });
+export const loginAccountFailureLimiter = createLimiter(50, "rl:login-acct-fail", "1 h", { failClosed: true });
 
 // Outbound-email + OTP abuse guards. Server Actions bypass middleware, so the
 // email-send / OTP-verify actions self-limit per IP (and per email at the call
@@ -88,8 +183,8 @@ export const authLimiter = createLimiter(5, "rl:auth");
 // loose backstop against a single IP blasting thousands of different addresses.
 export const emailSendLimiter = createLimiter(6, "rl:email-send", "10 m"); // per email
 export const emailSendIpLimiter = createLimiter(60, "rl:email-send-ip", "10 m"); // per IP (classroom-friendly)
-export const otpVerifyEmailLimiter = createLimiter(10, "rl:otp-verify-email", "10 m"); // per email (brute-force guard)
-export const otpVerifyLimiter = createLimiter(100, "rl:otp-verify", "10 m"); // per IP (loose backstop)
+export const otpVerifyEmailLimiter = createLimiter(10, "rl:otp-verify-email", "10 m", { failClosed: true }); // per email (brute-force guard)
+export const otpVerifyLimiter = createLimiter(100, "rl:otp-verify", "10 m", { failClosed: true }); // per IP (loose backstop)
 
 // Token-refresh flood guard. Generous on purpose: a single client can burst
 // refreshes across tabs, and CGNAT pools share one Vercel-resolved IP, so this
@@ -143,7 +238,7 @@ export const studyModeLimiter = createLimiter(20, "rl:study-mode", "1 h");
 // CBT surface limiters. OTP is checked in the CBT auth server actions (which
 // bypass middleware); the rest are applied in-handler on the public student
 // surface. Keyed per-email/per-ip/per-room/per-participant by the caller.
-export const cbtOtpLimiter = createLimiter(5, "rl:cbt-otp", "15 m");
+export const cbtOtpLimiter = createLimiter(5, "rl:cbt-otp", "15 m", { failClosed: true });
 
 // CBT student surface (in-handler; keyed per ip+room / ip+code / participant).
 // Join throughput, keyed by (ip, room slug). A computer lab shares one NAT IP,
@@ -152,7 +247,11 @@ export const cbtOtpLimiter = createLimiter(5, "rl:cbt-otp", "15 m");
 // force is guarded by cbtJoinFailureLimiter below, which only counts *wrong*
 // room codes, so the real secret stays as protected as it was.
 export const cbtJoinLimiter = createLimiter(120, "rl:cbt-join", "10 m");
-export const cbtJoinFailureLimiter = createLimiter(10, "rl:cbt-join-fail", "1 h");
+// Counted on a 403 by withRoomCodeGuard; once spent, further WRONG codes get
+// 429 but a correct code still gets in (one student must not lock a whole lab
+// out). The guessing cap is cbtJoinLimiter's throughput above against a
+// 6-character code from a 32-letter alphabet (~10^9), which stays out of reach.
+export const cbtJoinFailureLimiter = createLimiter(30, "rl:cbt-join-fail", "1 h", { failClosed: true });
 // Identity recovery: reclaiming an idle attempt by name, and the probe that
 // offers it. Bounded so names can't be enumerated cheaply.
 export const cbtReclaimLimiter = createLimiter(20, "rl:cbt-reclaim", "15 m");
@@ -165,7 +264,7 @@ export const cbtExportLimiter = createLimiter(6, "rl:cbt-export", "1 h");
 // opening the same link shares one NAT IP, and each of them will legitimately
 // re-open the page (print, share, come back later).
 export const cbtReportUnlockLimiter = createLimiter(60, "rl:cbt-report", "15 m");
-export const cbtReportFailureLimiter = createLimiter(10, "rl:cbt-report-fail", "1 h");
+export const cbtReportFailureLimiter = createLimiter(10, "rl:cbt-report-fail", "1 h", { failClosed: true });
 
 // ── Payments (V1/RAZORPAY_PAYMENTS_PLAN.md E12, E10) ─────────────────────────
 // Applied in-handler on /api/payments/*, keyed per user and per IP.
@@ -186,7 +285,7 @@ export const paymentsCheckoutIpLimiter = createLimiter(60, "rl:pay-checkout-ip",
 // re-checks never trip, plus a tight FAILURE cap that only counts codes that
 // did not resolve, which is what actually makes enumeration impractical.
 export const paymentsCouponLimiter = createLimiter(30, "rl:pay-coupon", "10 m");
-export const paymentsCouponFailureLimiter = createLimiter(12, "rl:pay-coupon-fail", "1 h");
+export const paymentsCouponFailureLimiter = createLimiter(12, "rl:pay-coupon-fail", "1 h", { failClosed: true });
 
 // Client-side payment verification (the post-checkout fast path). Generous —
 // it is signature-verified and idempotent, and a student legitimately retries
@@ -194,20 +293,53 @@ export const paymentsCouponFailureLimiter = createLimiter(12, "rl:pay-coupon-fai
 export const paymentsVerifyLimiter = createLimiter(30, "rl:pay-verify", "60 s");
 
 /**
- * Fail-open per-key check for Server Actions, which need a boolean rather than
- * the Response that `checkRateLimit` returns. Never throws: a limiter backend
- * error allows the request, matching `checkRateLimit`'s degraded mode — a brief
- * Upstash blip must not (e.g.) block token refresh and log users out. Returns
- * true when the request may proceed. Does not consult incident mode.
+ * Per-key check for Server Actions, which need a boolean rather than the
+ * Response that `checkRateLimit` returns. Never throws. On a limiter-backend
+ * error the request is ALLOWED unless the limiter (or `opts`) is fail-closed:
+ * a brief Upstash blip must not block token refresh and log users out, but it
+ * must not open a credential-guessing surface either. Returns true when the
+ * request may proceed. Does not consult incident mode.
  */
-export async function isWithinLimit(limiter: AppRateLimiter, identifier: string): Promise<boolean> {
+export async function isWithinLimit(
+  limiter: AppRateLimiter,
+  identifier: string,
+  opts?: { failClosed?: boolean },
+): Promise<boolean> {
   try {
     const { success } = await limiter.limit(identifier);
     return success;
   } catch (error) {
-    console.error("[rate-limit] limiter backend failed; allowing request in degraded mode", error);
+    const failClosed = opts?.failClosed ?? limiter.failClosed;
+    console.error(
+      `[rate-limit] limiter backend failed; ${failClosed ? "DENYING" : "allowing"} request in degraded mode`,
+      error,
+    );
     metric("origin.rate_limit.degraded", { reason: "backend_error" });
-    return true;
+    return !failClosed;
+  }
+}
+
+/**
+ * True when `identifier` has exhausted its budget on `limiter`, WITHOUT
+ * consuming a hit. Used for failure-counting limiters (login lockout), where
+ * the gate must not itself eat the budget. Read-only, so a backend error
+ * reports "not locked"; the companion `isWithinLimit` gate is what fails closed.
+ */
+export async function isLockedOut(limiter: AppRateLimiter, identifier: string): Promise<boolean> {
+  try {
+    return (await limiter.remaining(identifier)) <= 0;
+  } catch (error) {
+    console.error("[rate-limit] lockout read failed; treating as not locked", error);
+    return false;
+  }
+}
+
+/** Clears `identifier`'s counter on `limiter`. Never throws (a failed clear only leaves the window to expire). */
+export async function resetLimit(limiter: AppRateLimiter, identifier: string): Promise<void> {
+  try {
+    await limiter.reset(identifier);
+  } catch (error) {
+    console.error("[rate-limit] counter reset failed", error);
   }
 }
 
@@ -245,9 +377,19 @@ export async function checkRateLimit(
   try {
     result = await limiter.limit(identifier);
   } catch (error) {
-    console.error("[rate-limit] limiter backend failed; allowing request in degraded mode", error);
+    console.error(
+      `[rate-limit] limiter backend failed; ${limiter.failClosed ? "DENYING" : "allowing"} request in degraded mode`,
+      error,
+    );
     metric("origin.rate_limit.degraded", { reason: "backend_error" });
-    return null;
+    if (!limiter.failClosed) return null;
+    return new Response(
+      JSON.stringify({ error: "This check is temporarily unavailable. Please try again shortly." }),
+      {
+        status: 503,
+        headers: { "Content-Type": "application/json", "Retry-After": "30" },
+      },
+    );
   }
 
   const { success, limit, remaining, reset } = result;

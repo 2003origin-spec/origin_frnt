@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { requireUserFromRequest } from "@/server/auth";
 import { renderStudyModeKey } from "@/server/study-scope";
-import { studyModeSubjects } from "@/lib/study-mode";
+import type { StudyMode } from "@/lib/study-mode";
 import {
   commitOriginAiVoiceTurn,
   getOriginAiSnapshot,
@@ -46,6 +46,8 @@ async function studyModeForUser(user: StoredUser) {
 
 import { aiLimiter, voiceLimiter, generalLimiter, checkRateLimit } from "@/lib/rate-limit";
 import { readRequiredServiceToken, ServiceAuthConfigurationError } from "@/server/service-auth";
+import { mintOriginAiWsTicket } from "@/server/origin-ai-ws-ticket";
+import { buildOriginAiServiceHeaders } from "@/server/origin-ai-proxy-headers";
 import { getAuthContext } from "@/server/authz";
 import { isFeatureEnabled } from "@/lib/feature-flags";
 import { getEntitledSubjects } from "@/server/entitlements";
@@ -237,9 +239,22 @@ function toPageContext(input?: PageContextLike): OriginAiPageContextInput {
  * TypeScript implementation otherwise.
  * ----------------------------------------------------------------------- */
 
-// We pass a dummy proxyUser since bootstrap doesn't need to record proxy-side DB usage
-// (it doesn't use tokens/minutes), and the Python service validates auth itself.
-const dummyUser = { id: "bootstrap", name: "User", email: "" } as StoredUser;
+/**
+ * Header allowlist lives in src/server/origin-ai-proxy-headers.ts (pure, unit
+ * tested): only `x-origin-ai-session-id` and `accept-language` cross the proxy;
+ * the client's Authorization/Cookie never do, and the service bearer is set
+ * last so nothing can override it (bug U3).
+ */
+function serviceHeaders(
+  request: NextRequest,
+  user: StoredUser,
+  serviceToken: string,
+  requestId: string,
+  studyMode: StudyMode,
+  extra: Record<string, string> = {},
+): Headers {
+  return buildOriginAiServiceHeaders(request.headers, user, serviceToken, requestId, studyMode, extra);
+}
 
 async function proxyToMicroservice(
   method: string,
@@ -252,7 +267,6 @@ async function proxyToMicroservice(
     return null; // fallback to in-app implementation
   }
 
-  const browserSessionId = request.headers.get("X-Origin-AI-Session-Id") ?? "";
   const requestId = getRequestId(request.headers);
   let serviceToken: string;
   try {
@@ -290,26 +304,7 @@ async function proxyToMicroservice(
       method,
       cache: "no-store",
       signal: controller.signal,
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${serviceToken}`,
-        [REQUEST_ID_HEADER]: requestId,
-        "X-Origin-AI-Session-Id": browserSessionId,
-        "X-Origin-User-Id": user.id,
-        "X-Origin-User-Name": user.name || "",
-        "X-Origin-User-Email": user.email || "",
-        "X-Origin-User-Role": user.role || "student",
-        "X-Origin-User-Streak": String(user.streak || 0),
-        "X-Origin-User-Student-Class": user.studentClass ?? "",
-        "X-Origin-User-Selected-Course": user.selectedCourse ?? "",
-        // Study Mode — which subjects this student is actually working in, so
-        // the model stops volunteering off-mode examples. Additive: the Python
-        // service ignores unknown headers, so this is safe to ship ahead of it.
-        "X-Origin-User-Study-Mode": studyMode,
-        "X-Origin-User-Mode-Subjects": studyModeSubjects(studyMode).join(","),
-        // Forward the caller's auth header to Python so it can do its own authentication.
-        ...(request.headers.has("Authorization") ? { "Authorization": request.headers.get("Authorization")! } : {}),
-      },
+      headers: serviceHeaders(request, user, serviceToken, requestId, studyMode),
       body: body ? JSON.stringify(body) : undefined,
     });
 
@@ -409,7 +404,6 @@ async function proxyToMicroserviceStream(
     return null;
   }
 
-  const browserSessionId = request.headers.get("X-Origin-AI-Session-Id") ?? "";
   const requestId = getRequestId(request.headers);
   let serviceToken: string;
   try {
@@ -436,27 +430,9 @@ async function proxyToMicroserviceStream(
       method,
       cache: "no-store",
       signal: controller.signal,
-      headers: {
-        "Content-Type": "application/json",
+      headers: serviceHeaders(request, user, serviceToken, requestId, studyMode, {
         Accept: "text/event-stream",
-        Authorization: `Bearer ${serviceToken}`,
-        [REQUEST_ID_HEADER]: requestId,
-        "X-Origin-AI-Session-Id": browserSessionId,
-        "X-Origin-User-Id": user.id,
-        "X-Origin-User-Name": user.name || "",
-        "X-Origin-User-Email": user.email || "",
-        "X-Origin-User-Role": user.role || "student",
-        "X-Origin-User-Streak": String(user.streak || 0),
-        "X-Origin-User-Student-Class": user.studentClass ?? "",
-        "X-Origin-User-Selected-Course": user.selectedCourse ?? "",
-        // Study Mode — which subjects this student is actually working in, so
-        // the model stops volunteering off-mode examples. Additive: the Python
-        // service ignores unknown headers, so this is safe to ship ahead of it.
-        "X-Origin-User-Study-Mode": studyMode,
-        "X-Origin-User-Mode-Subjects": studyModeSubjects(studyMode).join(","),
-        // Forward the caller's auth header to Python so it can do its own authentication.
-        ...(request.headers.has("Authorization") ? { "Authorization": request.headers.get("Authorization")! } : {}),
-      },
+      }),
       body: body ? JSON.stringify(body) : undefined,
     });
 
@@ -829,11 +805,36 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
   const uid = userIdentifier(request);
 
-  const isVoiceSessionStart = slug.length === 2 && slug[0] === "voice" && (slug[1] === "bootstrap" || slug[1] === "token");
+  const isVoiceSessionStart = slug.length === 2 && slug[0] === "voice" && (slug[1] === "bootstrap" || slug[1] === "ws-ticket");
   const isMessage = slug.length === 2 && slug[0] === "session" && slug[1] === "message";
   const limiter = isMessage ? aiLimiter : isVoiceSessionStart ? voiceLimiter : generalLimiter;
   const limited = await checkRateLimit(limiter, uid);
   if (limited) return limited;
+
+  // POST /origin-ai/voice/ws-ticket — mint a 60 s signed ticket the browser
+  // appends to the origin-ai voice WebSocket URL (bug U2). Session-only: the
+  // ticket carries the resolved user id, so there is nothing to take from the
+  // body and no body is required.
+  if (slug.length === 2 && slug[0] === "voice" && slug[1] === "ws-ticket") {
+    const proxyUser = await resolveProxyUser(request);
+    if (!proxyUser) return unauthorized();
+    try {
+      const minted = mintOriginAiWsTicket(proxyUser.id);
+      return ok({ ticket: minted.ticket, expiresAt: minted.expiresAt });
+    } catch (error) {
+      const message = error instanceof ServiceAuthConfigurationError
+        ? error.message
+        : "Ori voice is not configured.";
+      console.error("[origin-ai voice] ws-ticket mint failed", {
+        requestId: getRequestId(request.headers),
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return new Response(JSON.stringify({ detail: message }), {
+        status: 503,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+  }
 
   // POST /origin-ai/threads — create a named thread (body { title?, subject? }).
   if (slug.length === 1 && slug[0] === "threads") {
@@ -1144,9 +1145,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
       }
 
       if (ORIGIN_AI_SERVICE_URL) {
-        // Fast path: don't await DB user resolution here. The python service authenticates
-        // the request itself via Depends(get_current_user).
-        const proxyResp = await proxyToMicroservice("POST", "/api/v1/voice/bootstrap", parsedBody.data, request, dummyUser);
+        // The Python side mints the LiveKit identity / hydrates memory for
+        // whichever X-Origin-User-Id we forward, so this MUST be the real
+        // session user — a placeholder pooled every student's voice memory
+        // into one pseudo-user (finding N14).
+        const proxyUser = await resolveProxyUser(request);
+        if (!proxyUser) return unauthorized();
+        const proxyResp = await proxyToMicroservice("POST", "/api/v1/voice/bootstrap", parsedBody.data, request, proxyUser);
         if (proxyResp) return proxyResp;
       }
 
@@ -1539,11 +1544,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
         voiceMinutesUsedToday: usage.voiceMinutesUsedToday,
         tokensUsedToday: usage.tokensUsedToday,
       });
-    }
-
-    if (slug.length === 2 && slug[0] === "voice" && slug[1] === "token") {
-      // The client no longer uses this fallback token endpoint, but we keep it fast just in case.
-      return ok({ transport: "server_voice" });
     }
 
     return notFound();

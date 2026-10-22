@@ -118,15 +118,20 @@ import { getGlobalPointsLeaderboard } from "@/server/leaderboard-points";
 import { buildTestClassificationFields } from "@/server/test-classification";
 import { getStudentGate, type StudentGate } from "@/server/entitlements";
 import {
+  allowedSubjectsForPremiumSurface,
+  assertTestSubjectsOpenable,
+  clampSubjectsTo,
   clampSubjectsToScope,
   getStudentScope,
   narrowingSubjectsFilter,
   subjectVisibleUnderMode,
   subjectVisibleUnderScope,
   throwOutOfModeForbidden,
+  throwPremiumRequired,
   type StudentScope,
 } from "@/server/study-scope";
-import { FREE_SAMPLE_POOL_SIZE, normalizeSubject as canonicalSubject, type Subject } from "@/lib/entitlements";
+import { getExamBlueprint, isExamPresetId } from "@/lib/exam-blueprints";
+import { ALL_SUBJECTS, FREE_SAMPLE_POOL_SIZE, normalizeSubject as canonicalSubject, type Subject } from "@/lib/entitlements";
 import {
   clampSecondsPerQuestion,
   clampSubjectCounts,
@@ -2669,9 +2674,13 @@ async function createCustomTestFallback(
   payload: CustomTestPayload,
 ) {
   const scope = await getStudentScope(user.id, user.role);
+  // Tests are premium. Checked here as well as in createCustomTest because the
+  // fallback is also reached from that function's catch-all, and a free
+  // student must never get a paper out of the degraded path either.
+  if (scope.premiumLocked) throwPremiumRequired(scope);
   const { selected, subject, chapter, difficulty, durationMinutes } = await selectCustomTestQuestions(
     payload,
-    scope.enforced ? scope.subjects : null,
+    allowedSubjectsForPremiumSurface(scope),
   );
 
   if (!selected.length) {
@@ -3584,14 +3593,43 @@ function teacherTestForbiddenError(): Error {
   return err;
 }
 
+/**
+ * Tests are premium: refuse to open a seeded or student-owned test the student
+ * is not entitled to — UNLESS they have already submitted an attempt, because
+ * their own history must stay readable after a subscription lapses (mirrors
+ * the attempted-before carve-out in getPracticeQuestionDetail).
+ *
+ * Teacher-assigned tests never come through here: batch membership is the
+ * entitlement, and `getRoomTestDetail` is likewise untouched.
+ */
+async function assertTestOpenableUnderScope(
+  store: AppStore,
+  user: StoredUser,
+  test: { id: string; subject: string; examPreset?: string | null; attemptCount?: number },
+): Promise<void> {
+  const attempted =
+    (test.attemptCount ?? 0) > 0 ||
+    store.testResults.some((result) => result.userId === user.id && result.testId === test.id);
+  if (attempted) return;
+
+  // A full-length mock is all-or-nothing (D2): every subject of its blueprint
+  // must be entitled, not just the `subject` column the row was filed under.
+  // Owned-but-hidden-by-mode gets the "switch mode?" 403 on both paths.
+  const presetSubjects =
+    test.examPreset && isExamPresetId(test.examPreset) ? getExamBlueprint(test.examPreset).subjects : null;
+  assertTestSubjectsOpenable(await getStudentScope(user.id, user.role), { subject: test.subject, presetSubjects });
+}
+
 export async function getTestDetail(store: AppStore, user: StoredUser, testId: string) {
   const seeded = store.tests.find((entry) => entry.id === testId);
   if (seeded) {
+    await assertTestOpenableUnderScope(store, user, seeded);
     return serializeTest(store, user.id, seeded);
   }
 
   const persisted = await getPersistedCustomTest(testId, user.id);
   if (persisted) {
+    await assertTestOpenableUnderScope(store, user, persisted);
     return serializePersistedCustomTest(store, user.id, persisted);
   }
 
@@ -3642,6 +3680,14 @@ export async function createCustomTest(
   // Study Mode + entitlements. Resolved up front so BOTH the analytics-service
   // path and the local fallback build from the same allowed subject set.
   const scope = await getStudentScope(user.id, user.role);
+  // Tests are premium: a zero-purchase student is refused before any question
+  // is selected — and before the try/catch below, whose catch-all would
+  // otherwise route the refusal into the fallback builder.
+  if (scope.premiumLocked) throwPremiumRequired(scope);
+  // The honest draw set (entitlements ∩ mode), or null when nothing narrows.
+  // `scope.subjects` is deliberately NOT used here: it stays populated for a
+  // free student so the OG Code sample pool keeps rendering.
+  const allowed = allowedSubjectsForPremiumSurface(scope);
   try {
     const difficultyValue = (payload.difficulty ?? "medium").toLowerCase();
     const difficulty = difficultyValue === "all" ? null : normalizeDifficulty(difficultyValue);
@@ -3658,13 +3704,13 @@ export async function createCustomTest(
       : (payload.subject && payload.subject !== "mixed" && payload.subject !== "all" ? [payload.subject] : []))
       .map((s) => String(s ?? "").trim().toLowerCase())
       .filter(Boolean);
-    // Clamp the request to the scope. An explicit pick that survives nothing is
-    // a user-visible error rather than a silently-widened "mixed" test.
-    const subjects = scope.enforced
-      ? (clampSubjectsToScope(requestedSubjects, scope) ?? [])
+    // Clamp the request to the entitled set. An explicit pick that survives
+    // nothing is a user-visible error rather than a silently-widened "mixed" test.
+    const subjects = allowed != null
+      ? (clampSubjectsTo(requestedSubjects, allowed) ?? [])
       : requestedSubjects;
-    if (scope.enforced && requestedSubjects.length > 0 && subjects.length === 0) {
-      const err = new Error("Those subjects aren't part of your current study mode.");
+    if (allowed != null && requestedSubjects.length > 0 && subjects.length === 0) {
+      const err = new Error("Those subjects aren't part of your subscription or current study mode.");
       (err as { status?: number }).status = 400;
       throw err;
     }
@@ -3684,10 +3730,10 @@ export async function createCustomTest(
     // pick that survives nothing is the same user-visible 400 as the single case.
     const requestedSubjectCounts = clampSubjectCounts(payload.subject_question_counts ?? null);
     if (Object.keys(requestedSubjectCounts).length > 0) {
-      if (scope.enforced) {
-        const allowed = clampSubjectsToScope(Object.keys(requestedSubjectCounts), scope) ?? [];
-        if (allowed.length === 0) {
-          const err = new Error("Those subjects aren't part of your current study mode.");
+      if (allowed != null) {
+        const survivors = clampSubjectsTo(Object.keys(requestedSubjectCounts), allowed) ?? [];
+        if (survivors.length === 0) {
+          const err = new Error("Those subjects aren't part of your subscription or current study mode.");
           (err as { status?: number }).status = 400;
           throw err;
         }
@@ -3706,7 +3752,7 @@ export async function createCustomTest(
     // parameter is a single value — sending "mixed" would let it draw from every
     // subject, so a JEE-mode mixed test could contain Biology. The local path
     // union-matches the allowed set instead.
-    if (subjects.length === 0 && narrowingSubjectsFilter(scope) != null) {
+    if (subjects.length === 0 && allowed != null && allowed.length < ALL_SUBJECTS.length) {
       return createCustomTestFallback(store, user, payload);
     }
 
@@ -3737,7 +3783,7 @@ export async function createCustomTest(
     // anything it returns is about to be persisted as this student's test — so
     // verify every id against the scope before writing. If the check itself
     // fails (catalog unreachable) we fall back rather than persist unverified.
-    if (scope.enforced && serviceResponse.question_ids.length) {
+    if (allowed != null && serviceResponse.question_ids.length) {
       let verifiedIds: string[];
       try {
         const map = await getOgcodeCatalogQuestionMap(serviceResponse.question_ids);
