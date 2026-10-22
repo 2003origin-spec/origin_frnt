@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 
 import { CSRF_COOKIE_NAME, REFRESH_COOKIE_NAME, verifyRequestAccessJwt } from "@/server/auth-jwt";
 import { checkRateLimit, mutationLimiter } from "@/lib/rate-limit";
+import { safeNext } from "@/lib/safe-next";
 import { findKillSwitchForPath } from "@/server/incidents";
 import { getApiRoutePolicy, getAppRoutePolicy, loginPathForTarget, normalizePathname, type RoutePolicy } from "@/server/route-policy";
 import { isBearerTokenAuthorized } from "@/server/service-auth";
@@ -35,6 +36,10 @@ const CSRF_EXEMPT_API_PATHS = new Set([
   "/api/users/register",
   "/api/users/google-login",
   "/api/users/token/refresh",
+  // Browser link-out handoff confirm (POST from /auth/handoff): the browser has
+  // no session or origin_csrf cookie yet. The handler enforces same-origin
+  // (`Origin` + `Sec-Fetch-Site`) and the single-use token is the credential.
+  "/api/mobile/link-out/consume",
   // Phase 13 drain receiver: signed by Vercel's drain HMAC, not a
   // session cookie, so the CSRF check would always fail.
   "/api/internal/observability/drain",
@@ -121,16 +126,12 @@ function hasRefreshCookie(request: NextRequest): boolean {
   return Boolean(request.cookies.get(REFRESH_COOKIE_NAME)?.value);
 }
 
-function isSafeAppNext(value: string | null | undefined): value is string {
-  return typeof value === "string" && value.startsWith("/") && !value.startsWith("//") && !value.startsWith("/api/");
-}
-
 function redirectToRefresh(request: NextRequest, requestId: string, nextOverride?: string | null): NextResponse {
   const url = request.nextUrl.clone();
   const currentPath = `${normalizePathname(request.nextUrl.pathname)}${request.nextUrl.search}`;
   url.pathname = "/auth/refresh";
   url.search = "";
-  url.searchParams.set("next", isSafeAppNext(nextOverride) ? nextOverride : currentPath);
+  url.searchParams.set("next", safeNext(nextOverride ?? currentPath, currentPath));
   const response = NextResponse.redirect(url);
   response.headers.set("X-Robots-Tag", "noindex, nofollow");
   return withRequestId(response, requestId);
@@ -248,9 +249,8 @@ export async function middleware(request: NextRequest) {
       try {
         const claims = await verifyRequestAccessJwt(request);
         const next = request.nextUrl.searchParams.get("next");
-        const url = request.nextUrl.clone();
-        url.pathname = next && next.startsWith("/") ? next : homePathForRole(claims.role);
-        url.search = "";
+        const target = safeNext(next, homePathForRole(claims.role));
+        const url = new URL(target, request.nextUrl.origin);
         return withRequestId(NextResponse.redirect(url), requestId);
       } catch {
         if (hasRefreshCookie(request)) {

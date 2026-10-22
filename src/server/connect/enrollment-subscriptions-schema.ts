@@ -12,6 +12,7 @@ import type { PoolClient } from "pg";
 
 import { getUserPostgresPool, isUserPostgresConfigured } from "@/server/user-postgres";
 import { ensureCommerceSchema } from "@/server/workspaces/commerce-schema";
+import { lockSchemaDdl } from "@/server/schema-lock";
 
 declare global {
   var __originEnrollmentSubscriptionsSchemaEnsured: boolean | undefined;
@@ -44,6 +45,7 @@ export async function ensureEnrollmentSubscriptionsSchema(): Promise<void> {
       const client = await pool().connect();
       try {
         await client.query("BEGIN");
+        await lockSchemaDdl(client);
 
         await client.query(`
           ALTER TABLE commerce.workspace_offerings

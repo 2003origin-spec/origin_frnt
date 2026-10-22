@@ -29,6 +29,13 @@ import {
 import { ensurePaymentsAndGrantSchema } from "./payments-schema";
 import { getRazorpayClient } from "./razorpay-client";
 import {
+  applyRefundLifecycle,
+  refundPhaseOf,
+  settleRefundIntents,
+  type RazorpayRefundAdapter,
+  type RefundIntentSettleResult,
+} from "./refunds-service";
+import {
   decideReconciliationAction,
   deterministicDunningOutboxId,
   expiryWarningDays,
@@ -68,11 +75,33 @@ export type RazorpayPaymentSnapshot = {
   created_at?: number;
 };
 
+export type RazorpayRefundSnapshot = {
+  id?: string;
+  payment_id?: string;
+  amount?: number;
+  status?: string;
+  created_at?: number;
+};
+
 export type RazorpayReconciliationAdapter = {
   orders: {
     fetch(orderId: string): Promise<RazorpayOrderSnapshot>;
     fetchPayments(orderId: string): Promise<{ items?: RazorpayPaymentSnapshot[] } | RazorpayPaymentSnapshot[]>;
   };
+  /** Optional so older stubs still type-check; the real SDK always has it. */
+  refunds?: {
+    fetch(refundId: string): Promise<RazorpayRefundSnapshot>;
+  };
+};
+
+/** A refund still `pending` this long after creation is asked about directly. */
+export const PENDING_REFUND_SETTLE_AFTER_MS = 24 * 60 * 60 * 1000;
+
+export type PendingRefundSettleResult = {
+  inspected: number;
+  settled: number;
+  stillPending: number;
+  errors: number;
 };
 
 function pool() {
@@ -169,6 +198,59 @@ async function reconcileOrders(input: {
       result.errors += 1;
       metric("origin.payments.reconcile.order_error", {
         orderId: order.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+  return result;
+}
+
+/**
+ * Backstop for a lost `refund.processed` / `refund.failed` webhook: a refund
+ * that is still `pending` after 24 h is fetched from Razorpay and run through
+ * the same `applyRefundLifecycle` path the webhook uses. A refund Razorpay
+ * still reports pending is left alone for the next pass.
+ */
+export async function settlePendingRefunds(input: {
+  now: Date;
+  limit: number;
+  adapter: RazorpayReconciliationAdapter;
+  apply?: typeof applyRefundLifecycle;
+}): Promise<PendingRefundSettleResult> {
+  const result: PendingRefundSettleResult = { inspected: 0, settled: 0, stillPending: 0, errors: 0 };
+  const fetchRefund = input.adapter.refunds?.fetch?.bind(input.adapter.refunds);
+  if (!fetchRefund) return result;
+  const apply = input.apply ?? applyRefundLifecycle;
+  const rows = await pool().query(
+    `SELECT razorpay_refund_id, razorpay_payment_id, amount_minor
+       FROM payments.refunds
+      WHERE status = 'pending' AND created_at <= $1
+      ORDER BY created_at ASC, razorpay_refund_id ASC
+      LIMIT $2`,
+    [new Date(input.now.getTime() - PENDING_REFUND_SETTLE_AFTER_MS), Math.min(Math.max(input.limit, 1), 200)],
+  );
+  result.inspected = rows.rows.length;
+  for (const row of rows.rows) {
+    const refundId = String(row.razorpay_refund_id);
+    try {
+      const external = await fetchRefund(refundId);
+      if (refundPhaseOf(external.status) === "pending") {
+        result.stillPending += 1;
+        continue;
+      }
+      await apply({
+        razorpayRefundId: refundId,
+        razorpayPaymentId: String(row.razorpay_payment_id),
+        amountMinor: asInteger(external.amount) ?? Number(row.amount_minor),
+        status: external.status ?? null,
+        raw: { origin: "reconciliation", refund: external },
+        createdAt: epochDate(external.created_at),
+      });
+      result.settled += 1;
+    } catch (error) {
+      result.errors += 1;
+      metric("origin.payments.reconcile.refund_error", {
+        refundId,
         error: error instanceof Error ? error.message : String(error),
       });
     }
@@ -310,6 +392,8 @@ async function releaseStaleReservations(now: Date, limit: number): Promise<numbe
 
 export type ReconciliationResult = {
   orders: Awaited<ReturnType<typeof reconcileOrders>>;
+  refunds: PendingRefundSettleResult;
+  refundIntents: RefundIntentSettleResult;
   subscriptionsExpired: number;
   connectSubscriptionsExpired: number;
   connectTornDown: number;
@@ -326,6 +410,8 @@ export async function reconcilePayments(input: {
   if (!isUserPostgresConfigured()) {
     return {
       orders: { inspected: 0, captured: 0, expired: 0, waiting: 0, errors: 0 },
+      refunds: { inspected: 0, settled: 0, stillPending: 0, errors: 0 },
+      refundIntents: { inspected: 0, refundFound: 0, dropped: 0, settling: 0, unresolved: 0 },
       subscriptionsExpired: 0,
       connectSubscriptionsExpired: 0,
       connectTornDown: 0,
@@ -338,6 +424,25 @@ export async function reconcilePayments(input: {
   await ensurePaymentsAndGrantSchema();
   const adapter = input.adapter ?? (getRazorpayClient() as unknown as RazorpayReconciliationAdapter);
   const orders = await reconcileOrders({ now, limit, adapter });
+  let refunds: PendingRefundSettleResult = { inspected: 0, settled: 0, stillPending: 0, errors: 0 };
+  try {
+    refunds = await settlePendingRefunds({ now, limit, adapter });
+  } catch (error) {
+    metric("origin.payments.reconcile.refund_error", { error: error instanceof Error ? error.message : String(error) });
+  }
+  // Refund intents left `unknown` by an ambiguous Razorpay answer keep being
+  // re-checked here until a refund is found or the settle window has passed.
+  let refundIntents: RefundIntentSettleResult = { inspected: 0, refundFound: 0, dropped: 0, settling: 0, unresolved: 0 };
+  try {
+    refundIntents = await settleRefundIntents({
+      limit,
+      razorpayClient: input.adapter as unknown as RazorpayRefundAdapter | undefined,
+    });
+  } catch (error) {
+    metric("origin.payments.reconcile.refund_intent_error", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 
   const expired = await expireLapsedSubscriptions(now);
   for (const userId of expired.userIds) await recomputeUserPremiumFlags(userId);
@@ -359,6 +464,8 @@ export async function reconcilePayments(input: {
   });
   return {
     orders,
+    refunds,
+    refundIntents,
     subscriptionsExpired: expired.subscriptions.length,
     connectSubscriptionsExpired: connectTornDown,
     connectTornDown,

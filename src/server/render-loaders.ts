@@ -24,6 +24,12 @@ import {
 } from "@/server/assessments";
 import { dbGetTasks } from "@/server/db-users";
 import { buildPointsSummary } from "@/server/gamification";
+import {
+  clampLeaderboardLimit,
+  getPointsRowForUser,
+  getTopPointsRows,
+  mergeTopWithViewer,
+} from "@/server/leaderboard-points";
 import { readStoreAsync } from "@/server/store";
 import { isUserPostgresConfigured } from "@/server/user-postgres";
 import { buildUserStatsSnapshot, serializeTask } from "@/server/users";
@@ -223,14 +229,49 @@ export const getPracticeQuestionDetailForRender = unstable_cache(
   { revalidate: 60, tags: ["ogcode"] },
 );
 
-export const getOgcodeLeaderboardForRender = unstable_cache(
-  async (mode: StudyMode, userId: string, subject: string | null, limit?: number | null) => {
+// Global points board: ONE cache entry per [mode, subject, limit] shared by
+// every viewer (the rows are viewer-agnostic). `mode` stays in the key so the
+// key shape matches the other mode-aware loaders even though the overall board
+// is mode-agnostic. The viewer's own row is fetched separately (one indexed
+// SQL row, uncached) so a student's rank is fresh without a per-user entry.
+const getGlobalPointsTopRowsCached = unstable_cache(
+  async (_mode: StudyMode, _subject: null, limit: number) => getTopPointsRows(limit),
+  ["rl:ogcode-leaderboard-global"],
+  { revalidate: 60, tags: ["leaderboard"] },
+);
+
+// Subject "arena" boards are scoped by the viewer's own Study Mode/premium
+// gate and computed in JS from two pools, so they keep a per-viewer entry.
+const getSubjectOgcodeLeaderboardCached = unstable_cache(
+  async (mode: StudyMode, userId: string, subject: string, limit: number) => {
     const { store, user } = await requireStoredUser(userId);
     return getOgcodeLeaderboard(store, user, subject, null, limit);
   },
   ["rl:ogcode-leaderboard"],
   { revalidate: 60, tags: ["leaderboard"] },
 );
+
+export async function getOgcodeLeaderboardForRender(
+  mode: StudyMode,
+  userId: string,
+  subject: string | null,
+  limit?: number | null,
+) {
+  const topN = clampLeaderboardLimit(limit);
+  if (!subject && isUserPostgresConfigured()) {
+    const [topRows, meRow] = await Promise.all([
+      getGlobalPointsTopRowsCached(mode, null, topN),
+      getPointsRowForUser(userId),
+    ]);
+    return mergeTopWithViewer(topRows, meRow, userId, topN);
+  }
+  if (!subject) {
+    // No Postgres (local/in-memory dev): the store-backed path is cheap.
+    const { store, user } = await requireStoredUser(userId);
+    return getOgcodeLeaderboard(store, user, null, null, topN);
+  }
+  return getSubjectOgcodeLeaderboardCached(mode, userId, subject, topN);
+}
 
 export const getOgcodeUserStatsForRender = unstable_cache(
   async (userId: string) => {

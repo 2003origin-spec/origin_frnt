@@ -4,6 +4,7 @@ import zlib from "node:zlib";
 
 import pg from "pg";
 
+import { checkDestructiveTarget, withoutGuardFlags } from "./lib/destructive-db-guard.mjs";
 import {
   CREATE_VECTOR_TABLES_SQL,
   DEFAULT_EMBEDDING_DIMENSIONS,
@@ -29,6 +30,9 @@ function printUsage() {
 Environment:
   ORIGIN_AI_DATABASE_URL, OGCODE_DATABASE_URL, POSTGRES_URL, or DATABASE_URL
   Defaults to ${DEFAULT_DATABASE_URL}
+
+--replace TRUNCATEs both vector tables and refuses any non-local host unless
+--i-know-this-is-prod is passed AND CONFIRM_DESTRUCTIVE_DB_HOST=<that hostname> is set.
 `);
 }
 
@@ -212,6 +216,17 @@ async function importVectors(filePath, options) {
   const payload = readSeedFile(filePath);
   assertSeedPayload(payload);
 
+  if (options.replace) {
+    const guard = checkDestructiveTarget({
+      connectionString: getConnectionString(),
+      argv: options.argv,
+      env: process.env,
+      action: "origin-ai:vectors:import --replace",
+    });
+    if (!guard.allowed) throw new Error(guard.reason);
+    if (!guard.local) console.warn(guard.reason);
+  }
+
   const client = await getClient();
   try {
     await client.query("BEGIN");
@@ -238,7 +253,8 @@ async function importVectors(filePath, options) {
 }
 
 async function main() {
-  const args = parseArgs(process.argv.slice(2));
+  const argv = process.argv.slice(2);
+  const args = parseArgs(withoutGuardFlags(argv));
   if (args.command === "help" || !args.command) {
     printUsage();
     return;
@@ -248,7 +264,7 @@ async function main() {
     return;
   }
   if (args.command === "import") {
-    await importVectors(args.file, { replace: args.replace });
+    await importVectors(args.file, { replace: args.replace, argv });
     return;
   }
   throw new Error(`Unknown command: ${args.command}`);

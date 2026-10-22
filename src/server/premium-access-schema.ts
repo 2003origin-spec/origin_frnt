@@ -14,6 +14,7 @@ import type { PoolClient } from "pg";
 
 import { getUserPostgresPool, isUserPostgresConfigured } from "@/server/user-postgres";
 import { ensureEnrollmentSchema } from "@/server/workspaces/enrollment-schema";
+import { lockSchemaDdl } from "@/server/schema-lock";
 
 declare global {
   var __originPremiumEventModeEnsured: boolean | undefined;
@@ -46,6 +47,7 @@ export async function ensurePremiumEventModeSchema(): Promise<void> {
       const client = await pool().connect();
       try {
         await client.query("BEGIN");
+        await lockSchemaDdl(client);
 
         await client.query(`
           CREATE TABLE IF NOT EXISTS app.premium_event_mode (

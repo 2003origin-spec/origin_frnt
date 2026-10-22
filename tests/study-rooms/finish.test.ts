@@ -35,12 +35,22 @@ function createFakePool(rowsFor: RowsFor) {
     const rows = rowsFor(text, values);
     return { rows, rowCount: rows.length };
   };
-  const client = {
-    async query(text: string, values?: unknown[]) {
-      clientCalls.push({ text, values });
-      return answer(text, values);
-    },
-    release() {},
+  // Every checkout is its own connection. A checkout that takes the shared
+  // schema-DDL advisory lock is a pool-level ensure (`withSchemaLock` runs the
+  // DDL on its own connection and transaction), so its calls are logged as
+  // pool calls; any other checkout is a caller's client (e.g. transaction()).
+  const newClient = () => {
+    const calls: QueryCall[] = [];
+    return {
+      async query(text: string, values?: unknown[]) {
+        calls.push({ text, values });
+        return answer(text, values);
+      },
+      release() {
+        const isSchemaEnsure = calls.some((call) => /pg_advisory_xact_lock/.test(call.text));
+        (isSchemaEnsure ? poolCalls : clientCalls).push(...calls.splice(0));
+      },
+    };
   };
   const pool = {
     async query(text: string, values?: unknown[]) {
@@ -48,10 +58,10 @@ function createFakePool(rowsFor: RowsFor) {
       return answer(text, values);
     },
     async connect() {
-      return client;
+      return newClient();
     },
   };
-  return { pool: pool as unknown as Pool, client, poolCalls, clientCalls };
+  return { pool: pool as unknown as Pool, poolCalls, clientCalls };
 }
 
 const ROOM_ID = "room_finish_test";
@@ -199,8 +209,10 @@ test("ensureRoomsSchema(client) and ensureAnalyticsSchema(client) never query th
   await ensureRoomsSchema();
 
   const spy = createFakePool(() => []);
-  await ensureRoomsSchema(spy.client as never);
-  await ensureAnalyticsSchema(spy.client as never);
+  const spyClient = await spy.pool.connect();
+  await ensureRoomsSchema(spyClient);
+  await ensureAnalyticsSchema(spyClient);
+  spyClient.release();
   assert.deepEqual(spy.clientCalls, []);
   assert.deepEqual(spy.poolCalls, []);
 });

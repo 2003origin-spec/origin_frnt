@@ -5,7 +5,7 @@ import { revalidateTag } from 'next/cache';
 import { getServerUser } from '@/lib/auth-server';
 import { isUserPostgresConfigured } from '@/server/user-postgres';
 import { dbCreateTask, dbDeleteTask, dbGetTasks, dbUpdateTask } from '@/server/db-users';
-import { createId, withStoreAsync } from '@/server/store';
+import { createId, ScopedWritePlan, withStoreAsyncScoped } from '@/server/store';
 import type { StoredTask } from '@/server/store';
 import { serializeTask } from '@/server/users';
 
@@ -16,6 +16,10 @@ type SerializedTask = ReturnType<typeof serializeTask>;
  * round-trip. Callers receive the serialized task (or void for delete) and the
  * server invalidates only the task-tagged render loaders used by dashboard/task
  * surfaces, rather than broad route-level path caches.
+ *
+ * The store fallbacks below (no Postgres, or the targeted db* writer threw) are
+ * SCOPED to this user's tasks (bug-hunt 10 / N3): the old withStoreAsync
+ * rewrite issued `DELETE FROM app.tasks` + every other app.* table.
  */
 
 async function requireUserId(): Promise<string> {
@@ -41,12 +45,12 @@ export async function listTasksAction(): Promise<SerializedTask[]> {
     }
   }
 
-  return withStoreAsync(async (store) => {
+  return withStoreAsyncScoped(async (store) => {
     return store.tasks
       .filter((t) => t.userId === userId)
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       .map(serializeTask);
-  });
+  }, null);
 }
 
 export async function addTaskAction(input: {
@@ -69,7 +73,7 @@ export async function addTaskAction(input: {
     }
   }
 
-  const created = await withStoreAsync(async (store) => {
+  const created = await withStoreAsyncScoped(async (store) => {
     const task: StoredTask = {
       id: createId('task'),
       userId,
@@ -82,7 +86,7 @@ export async function addTaskAction(input: {
     };
     store.tasks.push(task);
     return serializeTask(task);
-  });
+  }, new ScopedWritePlan().forUser(userId).touchTasks().toPersist);
   revalidateTaskSurfaces(userId);
   return created;
 }
@@ -101,12 +105,13 @@ export async function toggleTaskAction(id: string, completed: boolean): Promise<
     }
   }
 
-  const updated = await withStoreAsync(async (store) => {
+  // A missing task throws inside mutate, so nothing is persisted.
+  const updated = await withStoreAsyncScoped(async (store) => {
     const task = store.tasks.find((t) => t.id === id && t.userId === userId);
     if (!task) throw new Error('Task not found.');
     task.completed = completed;
     return serializeTask(task);
-  });
+  }, new ScopedWritePlan().forUser(userId).touchTasks().toPersist);
   revalidateTaskSurfaces(userId);
   return updated;
 }
@@ -127,12 +132,12 @@ export async function editTaskAction(id: string, text: string): Promise<Serializ
     }
   }
 
-  const updated = await withStoreAsync(async (store) => {
+  const updated = await withStoreAsyncScoped(async (store) => {
     const task = store.tasks.find((t) => t.id === id && t.userId === userId);
     if (!task) throw new Error('Task not found.');
     task.text = trimmed;
     return serializeTask(task);
-  });
+  }, new ScopedWritePlan().forUser(userId).touchTasks().toPersist);
   revalidateTaskSurfaces(userId);
   return updated;
 }
@@ -151,10 +156,11 @@ export async function removeTaskAction(id: string): Promise<void> {
     }
   }
 
-  await withStoreAsync(async (store) => {
+  // Targeted `DELETE FROM app.tasks WHERE user_id = $1 AND id = $2`.
+  await withStoreAsyncScoped(async (store) => {
     const idx = store.tasks.findIndex((t) => t.id === id && t.userId === userId);
     if (idx === -1) throw new Error('Task not found.');
     store.tasks.splice(idx, 1);
-  });
+  }, new ScopedWritePlan().forUser(userId).remove('tasks', id).toPersist);
   revalidateTaskSurfaces(userId);
 }

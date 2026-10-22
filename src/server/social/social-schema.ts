@@ -12,6 +12,7 @@ import type { PoolClient } from "pg";
 
 import { getUserPostgresPool, isUserPostgresConfigured } from "@/server/user-postgres";
 import { ensureUserSchema } from "@/server/db-users";
+import { lockSchemaDdl, withSchemaLock } from "@/server/schema-lock";
 
 declare global {
   var __originSocialSchemaEnsured: boolean | undefined;
@@ -40,13 +41,15 @@ async function recordMigration(client: PoolClient): Promise<void> {
  */
 async function ensureTrigramIndexes(): Promise<void> {
   try {
-    await pool().query("CREATE EXTENSION IF NOT EXISTS pg_trgm;");
-    await pool().query(
-      "CREATE INDEX IF NOT EXISTS idx_origin_users_username_trgm ON origin_users USING gin (LOWER(username) gin_trgm_ops);",
-    );
-    await pool().query(
-      "CREATE INDEX IF NOT EXISTS idx_origin_users_name_trgm ON origin_users USING gin (LOWER(name) gin_trgm_ops);",
-    );
+    await withSchemaLock(pool(), async (client) => {
+      await client.query("CREATE EXTENSION IF NOT EXISTS pg_trgm;");
+      await client.query(
+        "CREATE INDEX IF NOT EXISTS idx_origin_users_username_trgm ON origin_users USING gin (LOWER(username) gin_trgm_ops);",
+      );
+      await client.query(
+        "CREATE INDEX IF NOT EXISTS idx_origin_users_name_trgm ON origin_users USING gin (LOWER(name) gin_trgm_ops);",
+      );
+    });
   } catch (error) {
     console.warn("[social-schema] pg_trgm search indexes unavailable; falling back to ILIKE:", error);
   }
@@ -62,6 +65,7 @@ export async function ensureSocialSchema(): Promise<void> {
       const client = await pool().connect();
       try {
         await client.query("BEGIN");
+        await lockSchemaDdl(client);
 
         // 1. Identity + privacy columns.
         await client.query(`ALTER TABLE origin_users ADD COLUMN IF NOT EXISTS username TEXT;`);

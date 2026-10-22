@@ -324,7 +324,7 @@ export async function processSubscriptionWebhook(
   // Idempotency: a re-delivered event id is acknowledged without reprocessing.
   const isNew = await recordWebhookEvent(eventId, eventType);
   if (!isNew) {
-    if (mirrored.isNew) await settleSubscriptionEvent(eventId, "ignored", { error: "Duplicate of an event already processed by the subscriptions ledger." });
+    if (mirrored.isNew) await settleSubscriptionEvent(eventId, "ignored", { mirrorIsNew: mirrored.isNew, error: "Duplicate of an event already processed by the subscriptions ledger." });
     return { processed: false, reason: "duplicate" };
   }
 
@@ -334,7 +334,7 @@ export async function processSubscriptionWebhook(
     const status = eventType ? statusForEvent(eventType) : null;
     const razorpaySubscriptionId = parsed.razorpaySubscriptionId;
     if (!eventType || !status || !razorpaySubscriptionId) {
-      await settleSubscriptionEvent(eventId, "ignored");
+      await settleSubscriptionEvent(eventId, "ignored", { mirrorIsNew: mirrored.isNew });
       return { processed: false, reason: "ignored" };
     }
 
@@ -363,7 +363,7 @@ export async function processSubscriptionWebhook(
           raw: body as Record<string, unknown>,
         });
       }
-      await settleSubscriptionEvent(eventId, "orphaned", {
+      await settleSubscriptionEvent(eventId, "orphaned", { mirrorIsNew: mirrored.isNew,
         error: `No local subscription for ${razorpaySubscriptionId}`,
       });
       return { processed: false, reason: "unknown_subscription" };
@@ -393,14 +393,14 @@ export async function processSubscriptionWebhook(
     }
 
     if (transition.outcome === "stale") {
-      await settleSubscriptionEvent(eventId, "ignored", {
+      await settleSubscriptionEvent(eventId, "ignored", { mirrorIsNew: mirrored.isNew,
         error: "Superseded by a newer subscription event.",
       });
       return { processed: false, reason: "stale" };
     }
 
     await recomputeUserPremiumFlags(subscription.userId);
-    await settleSubscriptionEvent(eventId, "processed");
+    await settleSubscriptionEvent(eventId, "processed", { mirrorIsNew: mirrored.isNew });
 
     return {
       processed: true,
@@ -411,7 +411,7 @@ export async function processSubscriptionWebhook(
     };
   } catch (error) {
     await deleteWebhookEvent(eventId).catch(() => undefined);
-    await settleSubscriptionEvent(eventId, "failed", {
+    await settleSubscriptionEvent(eventId, "failed", { mirrorIsNew: mirrored.isNew,
       error: error instanceof Error ? error.message : String(error),
       retryInSeconds: 60,
     });

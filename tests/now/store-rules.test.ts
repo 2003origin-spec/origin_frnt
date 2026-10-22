@@ -36,3 +36,14 @@ test("papers are PDFs up to 50 MB under the item's own folder", () => {
   assert.equal(isPaperUpload("application/pdf", 0), false);
   assert.equal(paperObjectKey("sitem_1", "abc"), "origin-now/store/sitem_1/abc.pdf");
 });
+
+test("premium redemption takes the per-user lock BEFORE postTransfers locks the wallet row (canonical order)", async () => {
+  const { readFileSync } = await import("node:fs");
+  const src = readFileSync(new URL("../../src/server/now/store-service.ts", import.meta.url), "utf8");
+  const buy = src.slice(src.indexOf("export async function buyStoreItem"));
+  const lock = buy.indexOf('pg_advisory_xact_lock(hashtext($1))", [userId])');
+  const wallet = buy.indexOf("await postTransfers(");
+  assert.ok(lock > 0 && wallet > 0, "both calls are present");
+  assert.ok(lock < wallet, "user lock first, then now.accounts — a coin-pack refund takes them in that order");
+  assert.equal(buy.split("pg_advisory_xact_lock").length - 1, 1, "taken once, not again after the wallet debit");
+});

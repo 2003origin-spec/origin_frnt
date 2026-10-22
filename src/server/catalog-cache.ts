@@ -3,9 +3,11 @@ import type { PoolClient } from "pg";
 import { metric } from "@/lib/metrics";
 import { getOgcodePostgresPool } from "@/server/postgres";
 import { readRequiredServiceToken } from "@/server/service-auth";
+import { lockSchemaDdl, withSchemaLock } from "@/server/schema-lock";
 
 declare global {
   var __originCatalogCacheSchemaReady: Promise<void> | undefined;
+  var __originCatalogCacheSchemaApplied: boolean | undefined;
 }
 
 export const ORIGIN_AI_CHAPTER_SUBJECTS = ["math", "phy", "chem", "bio"] as const;
@@ -43,14 +45,20 @@ async function ensureCatalogCacheSchema(client?: PoolClient): Promise<boolean> {
   }
 
   if (client) {
+    // The caller is inside its own transaction. Once this process has applied
+    // the schema (its callers always run the pool path first) there is nothing
+    // to do; otherwise take the shared DDL lock in the caller's transaction.
+    if (globalThis.__originCatalogCacheSchemaApplied) return true;
+    await lockSchemaDdl(client);
     await client.query(CATALOG_CACHE_SCHEMA_SQL);
     return true;
   }
 
   if (!globalThis.__originCatalogCacheSchemaReady) {
-    globalThis.__originCatalogCacheSchemaReady = pool
-      .query(CATALOG_CACHE_SCHEMA_SQL)
-      .then(() => undefined)
+    globalThis.__originCatalogCacheSchemaReady = withSchemaLock(pool, (c) => c.query(CATALOG_CACHE_SCHEMA_SQL))
+      .then(() => {
+        globalThis.__originCatalogCacheSchemaApplied = true;
+      })
       .catch((error) => {
         globalThis.__originCatalogCacheSchemaReady = undefined;
         throw error;

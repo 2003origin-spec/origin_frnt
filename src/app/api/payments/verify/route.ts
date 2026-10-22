@@ -8,12 +8,14 @@ import { checkRateLimit, paymentsVerifyLimiter } from "@/lib/rate-limit";
 import { parseAppVersionFromUserAgent } from "@/native/is-native-app";
 import { parseJsonBody } from "@/server/http";
 import { requireRole } from "@/server/authz";
-import { handleTeacherError, teacherJson } from "@/app/api/teacher/_utils";
+import { teacherJson } from "@/app/api/teacher/_utils";
 import { getOrderByRazorpayId } from "@/server/payments/payments-store";
 import {
   applyPaymentSuccess,
 } from "@/server/payments/orders-service";
 import { verifyRazorpayPaymentSignature } from "@/server/payments/razorpay-client";
+
+import { paymentsErrorResponse, verifyApplyErrorResponse } from "../_errors";
 
 const VerifySchema = z.object({
   razorpayOrderId: z.string().trim().min(1).max(120),
@@ -51,13 +53,25 @@ export async function POST(request: NextRequest) {
       return teacherJson({ detail: "Payment order not found." }, { status: 404 });
     }
 
-    const result = await applyPaymentSuccess({
-      orderId: order.id,
-      razorpayOrderId: parsed.data.razorpayOrderId,
-      razorpayPaymentId: parsed.data.razorpayPaymentId,
-    });
-    return teacherJson({ ok: true, ...result });
+    // The signature proves Razorpay charged this student. From here a failure
+    // is either a definitive domain rejection (4xx) or transient (503 +
+    // pending) — never a 400 that tells a charged student their payment failed.
+    try {
+      const result = await applyPaymentSuccess({
+        orderId: order.id,
+        razorpayOrderId: parsed.data.razorpayOrderId,
+        razorpayPaymentId: parsed.data.razorpayPaymentId,
+      });
+      return teacherJson({
+        ok: true,
+        ...result,
+        orderId: order.id,
+        status: result.order.status,
+      });
+    } catch (error) {
+      return verifyApplyErrorResponse(error, order.id);
+    }
   } catch (error) {
-    return handleTeacherError(error);
+    return paymentsErrorResponse(error);
   }
 }

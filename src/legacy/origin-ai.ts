@@ -11,6 +11,7 @@ import { getOriginAiAnalyticsSnapshot, type OriginAiAnalyticsSnapshot } from "@/
 import { awardPoints } from "@/server/gamification";
 import {
   createId,
+  type ScopedWritePlan,
   type AppStore,
   type StoredChatMessage,
   type StoredOriginAiProfileMemory,
@@ -522,7 +523,7 @@ export function deleteThread(store: AppStore, userId: string, threadId: string):
   return store.originAiSessions.length !== originalLength;
 }
 
-function buildReminders(
+export function buildReminders(
   store: AppStore,
   user: StoredUser,
   latestResult: StoredTestResult | null,
@@ -534,7 +535,7 @@ function buildReminders(
   const pendingDpps = store.dpps.filter((entry) => entry.userId === user.id && !entry.completed);
   for (const dpp of pendingDpps.slice(0, 3)) {
     reminders.push({
-      id: `reminder_dpp_${dpp.id}`,
+      id: `reminder_dpp_${user.id}_${dpp.id}`,
       userId: user.id,
       kind: "dpp",
       title: `Finish ${dpp.title}`,
@@ -548,7 +549,7 @@ function buildReminders(
   if (pendingDpps.length === 0 && analyticsSnapshot?.pendingDppCount) {
     for (const topic of analyticsSnapshot.pendingDppFocusTopics.slice(0, 3)) {
       reminders.push({
-        id: `reminder_dpp_focus_${topic.replace(/\s+/g, "_").toLowerCase()}`,
+        id: `reminder_dpp_focus_${user.id}_${topic.replace(/\s+/g, "_").toLowerCase()}`,
         userId: user.id,
         kind: "dpp",
         title: `Practice ${topic}`,
@@ -566,7 +567,7 @@ function buildReminders(
       : (latestResult?.weakAreas ?? []);
   for (const weak of revisionTopics.slice(0, 3)) {
       reminders.push({
-        id: `reminder_revision_${weak.topic.replace(/\s+/g, "_").toLowerCase()}`,
+        id: `reminder_revision_${user.id}_${weak.topic.replace(/\s+/g, "_").toLowerCase()}`,
         userId: user.id,
         kind: "revision",
         title: `Revise ${weak.topic}`,
@@ -580,7 +581,7 @@ function buildReminders(
   const pendingAssignments = store.assignments.filter((entry) => entry.userId === user.id && !entry.completed);
   for (const assignment of pendingAssignments.slice(0, 2)) {
     reminders.push({
-      id: `reminder_assignment_${assignment.id}`,
+      id: `reminder_assignment_${user.id}_${assignment.id}`,
       userId: user.id,
       kind: "assignment",
       title: `Assignment pending: ${assignment.title}`,
@@ -663,6 +664,26 @@ interface OriginAiRuntimeState {
   memoryPayload: OriginAiMemoryPayload;
   reminders: StoredOriginAiReminder[];
   session: StoredOriginAiSession;
+}
+
+/**
+ * Names, on a scoped write plan, exactly what prepareOriginAiRuntime (and the
+ * handlers built on it) mutate for the acting user — keep in lockstep with it:
+ * - originAiProfiles: getOrCreateProfileMemory + syncProfileMemory / pinned facts
+ * - originAiSessions: getOrCreateMentorSession (page context, welcome turn, messages)
+ * - originAiReminders: the user's reminder set is rebuilt wholesale (ids differ
+ *   over time), so it is cleared `WHERE user_id = $1` and re-upserted
+ * - userScores + pointLogs when the call can award Ori check-in points
+ *   (maybeAwardOriginAiPoints, i.e. a message / voice turn was committed).
+ */
+export function planOriginAiRuntimeWrite(
+  plan: ScopedWritePlan,
+  userId: string,
+  options: { awardsPoints?: boolean } = {},
+): ScopedWritePlan {
+  plan.forUser(userId).touch("originAiProfiles", "originAiSessions").replaceAll("originAiReminders");
+  if (options.awardsPoints) plan.touch("userScores", "pointLogs");
+  return plan;
 }
 
 async function prepareOriginAiRuntime(

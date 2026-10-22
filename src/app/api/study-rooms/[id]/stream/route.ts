@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 
 import { xreadRoomEvents } from "@/server/rooms-pubsub";
+import { streamStartCursor } from "@/server/redis-streams";
 import { requireRoomMembership } from "@/server/study-rooms";
 import {
   getRoomId,
@@ -22,7 +23,7 @@ export async function GET(request: NextRequest, context: IdRouteContext) {
     const roomId = await getRoomId(context);
     await requireRoomMembership(roomId, user.id);
 
-    const initialCursor = request.headers.get("last-event-id") ?? "$";
+    const initialCursor = streamStartCursor(request.headers.get("last-event-id"));
     const signal = request.signal;
 
     const stream = new ReadableStream<Uint8Array>({

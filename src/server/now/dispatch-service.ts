@@ -22,7 +22,7 @@ import { getUserPostgresPool } from "@/server/user-postgres";
 
 import { loadPriceTable } from "./admin-store";
 import { PLATFORM_ACCOUNTS, sessionHold, sessionRelease, userAccount, type Transfer } from "./ledger-rules";
-import { getWalletBalance, InsufficientCoinsError, postTransfers, withNowTransaction } from "./ledger-store";
+import { getWalletBalance, InsufficientCoinsError, loadHeldCoinSlices, postTransfers, withNowTransaction } from "./ledger-store";
 import {
   botRuleForSubject,
   decideDispatch,
@@ -150,10 +150,30 @@ export async function applyTransition(
   return result.to;
 }
 
+/**
+ * Gives `coins` of a request's hold back to the student, each coin with the
+ * expiry it had when the hold took it (promo coins stay promo coins).
+ * `keySuffix` distinguishes a partial release from the final one.
+ */
+export async function releaseHeldCoins(
+  client: PoolClient,
+  request: Pick<RequestRow, "id" | "student_id">,
+  coins: number,
+  options: { keySuffix?: string; now?: Date } = {},
+): Promise<void> {
+  if (coins <= 0) return;
+  const now = options.now ?? new Date();
+  const slices = await loadHeldCoinSlices(client, request.student_id, request.id, now);
+  await postTransfers(sessionRelease(request.student_id, request.id, coins, { slices, keySuffix: options.keySuffix }), {
+    client,
+    now,
+  });
+}
+
 /** Releases whatever is still held for a request back to the student. */
 export async function releaseHold(client: PoolClient, request: RequestRow): Promise<void> {
   if (request.held_coins <= 0) return;
-  await postTransfers(sessionRelease(request.student_id, request.id, request.held_coins), { client });
+  await releaseHeldCoins(client, request, request.held_coins);
   await client.query(`UPDATE now.requests SET held_coins = 0 WHERE id = $1`, [request.id]);
   request.held_coins = 0;
 }
@@ -555,19 +575,7 @@ export async function dispatchRequest(requestId: string, now: Date = new Date())
               { client, now },
             );
           } else if (delta < 0) {
-            await postTransfers(
-              [
-                {
-                  kind: "session_release",
-                  from: PLATFORM_ACCOUNTS.escrow,
-                  to: userAccount(request.student_id),
-                  amount: -delta,
-                  requestId: request.id,
-                  idempotencyKey: `release:${request.id}:bot`,
-                } satisfies Transfer,
-              ],
-              { client, now },
-            );
+            await releaseHeldCoins(client, request, -delta, { keySuffix: "bot", now });
           }
           await applyTransition(client, request, "bot_assigned", {
             helper_id: BOT_HELPER_ID,
@@ -632,7 +640,7 @@ export async function dispatchRequest(requestId: string, now: Date = new Date())
   return decision;
 }
 
-async function closeNoHelper(client: PoolClient, request: RequestRow, detail: ClosedDetail, effects: Effect[]): Promise<void> {
+export async function closeNoHelper(client: PoolClient, request: RequestRow, detail: ClosedDetail, effects: Effect[]): Promise<void> {
   await applyTransition(client, request, "give_up", {
     closed_reason: "no_helper",
     closed_detail: detail,

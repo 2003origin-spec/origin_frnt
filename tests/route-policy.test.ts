@@ -195,6 +195,12 @@ test("auth refresh page route is public for expired access-cookie recovery", () 
   assert.ok((PUBLIC_APP_PATHS as readonly string[]).includes("/auth/refresh"));
 });
 
+test("link-out handoff confirmation page is public (spec 01-auth.md A4)", () => {
+  assert.equal(getAppRoutePolicy("/auth/handoff").kind, "public");
+  assert.ok((PUBLIC_APP_PATHS as readonly string[]).includes("/auth/handoff"));
+  assert.ok(isKnownAppPageFile("/repo/new-frontend/src/app/auth/handoff/page.tsx"));
+});
+
 test("service-worker script and offline fallback are public (offline layer, plan §6)", () => {
   // The worker registers pre-auth for every visitor, and /offline.html is
   // fetched at SW install with no session — an auth redirect would corrupt

@@ -6,6 +6,7 @@ import {
   checkExtension,
   holdAdjustmentForFallback,
   lookupPrice,
+  repriceForRequeue,
   sessionLengthMinutes,
   splitSessionPrice,
   validatePriceTable,
@@ -65,4 +66,13 @@ test("falling back to a bot at a different price moves the hold by the differenc
   assert.equal(holdAdjustmentForFallback(60, 60), 0);
   assert.equal(holdAdjustmentForFallback(60, 40), -20);
   assert.equal(holdAdjustmentForFallback(40, 60), 20);
+});
+
+test("NOW-4: a bot no-show requeue re-prices to the human price; a human no-show keeps its price", () => {
+  // Bot (40) failed to show; a human (60) will pick it up: hold 20 more.
+  assert.deepEqual(repriceForRequeue(40, "bot", 60), { priceCoins: 60, holdDelta: 20 });
+  // A dearer bot gives the difference back.
+  assert.deepEqual(repriceForRequeue(80, "bot", 60), { priceCoins: 60, holdDelta: -20 });
+  assert.deepEqual(repriceForRequeue(60, "bot", 60), { priceCoins: 60, holdDelta: 0 });
+  assert.equal(repriceForRequeue(60, "human", 60), null);
 });

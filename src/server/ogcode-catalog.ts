@@ -4,6 +4,7 @@ import { toAbsoluteMediaUrl } from "@/lib/media-url";
 
 import { getOgcodePostgresPool, isOgcodePostgresConfigured } from "@/server/postgres";
 import { studyModeSubjects } from "@/lib/study-mode";
+import { withSchemaLock } from "@/server/schema-lock";
 
 declare global {
   var __originOgcodeCatalogSchemaReady: Promise<void> | undefined;
@@ -358,7 +359,7 @@ async function ensureCatalogSchema(): Promise<void> {
   }
 
   if (!globalThis.__originOgcodeCatalogSchemaReady) {
-    globalThis.__originOgcodeCatalogSchemaReady = pool.query(CREATE_TABLE_SQL).then(() => undefined).catch((error) => {
+    globalThis.__originOgcodeCatalogSchemaReady = withSchemaLock(pool, (client) => client.query(CREATE_TABLE_SQL)).then(() => undefined).catch((error) => {
       globalThis.__originOgcodeCatalogSchemaReady = undefined;
       throw error;
     });

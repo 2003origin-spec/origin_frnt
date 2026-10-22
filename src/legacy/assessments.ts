@@ -123,7 +123,7 @@ import type {
 } from "@/server/store";
 import { createId } from "@/server/store";
 import { isOgcodePostgresConfigured, getOgcodePostgresPool } from "@/server/postgres";
-import { getGlobalPointsLeaderboard } from "@/server/leaderboard-points";
+import { clampLeaderboardLimit, getGlobalPointsLeaderboard } from "@/server/leaderboard-points";
 import { buildTestClassificationFields } from "@/server/test-classification";
 import { getStudentGate, type StudentGate } from "@/server/entitlements";
 import {
@@ -6082,9 +6082,9 @@ async function buildLeaderboardEntriesFromDb(user: StoredUser, subject: string |
 }
 
 export async function getOgcodeLeaderboard(store: AppStore, user: StoredUser, subject: string | null, location?: string | null, limit?: number | null) {
-  // Top-N cap chosen by the user (20/50/100/1000/all). Clamp to a sane range;
-  // "all" arrives as a large number from the caller.
-  const topN = Math.max(1, Math.min(100_000, Math.trunc(Number(limit ?? 100)) || 100));
+  // Top-N cap chosen by the user (20/50/100/1000/all). Clamped to 1..1000
+  // ("all" is capped at 1000 by the caller).
+  const topN = clampLeaderboardLimit(limit);
   // Overall / regional Hall-of-Fame + the "national AIR" now rank by prestige
   // points (Phase 2) so OG-Code solves actually count toward rank, matching the
   // scoring modal. Subject "arena" boards keep their efficiency ranking below.

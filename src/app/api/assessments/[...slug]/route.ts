@@ -44,12 +44,13 @@ import { badRequest, created, forbidden, getSlugSegments, json, methodNotAllowed
 import { isTestWindowError } from "@/lib/assessments/test-window";
 import {
   readStoreAsync,
-  withStoreAsync,
+  ScopedWritePlan,
   withStoreAsyncScoped,
   TEST_SUBMIT_PERSIST_COLLECTIONS,
   PRACTICE_SUBMIT_PERSIST_COLLECTIONS,
 } from "@/server/store";
 import { getOgcodeLeaderboardForRender } from "@/server/render-loaders";
+import { clampLeaderboardLimit } from "@/server/leaderboard-points";
 import { getChampionshipSnapshot } from "@/server/leaderboard-points";
 
 function revalidateUserProgress(userId: string) {
@@ -287,12 +288,13 @@ export async function GET(request: NextRequest, context: RouteContext) {
       const url = new URL(request.url);
       const subject = url.searchParams.get("subject");
       const location = url.searchParams.get("location");
-      // Top-N: 20/50/100/1000 or "all". "all" maps to a large cap.
-      const limitRaw = url.searchParams.get("limit");
-      const limit = limitRaw === "all" ? 100_000 : Math.max(1, Math.min(100_000, Number(limitRaw) || 100));
+      // Top-N: 20/50/100/1000 or "all". Capped at 1000 ("all" → 1000) so a
+      // single request can never pull the whole student population.
+      const limit = clampLeaderboardLimit(url.searchParams.get("limit"));
       // The common (no-location) view goes through the cached loader
-      // (60s revalidate, tag:"leaderboard") so it isn't recomputed on every
-      // client mount. The regional view stays live — it's not part of the cache.
+      // (60s revalidate, tag:"leaderboard", one global entry per
+      // [mode, subject, limit]; the viewer's own row is fetched separately).
+      // The regional view stays live — it's not part of the cache.
       if (!location) {
         return ok(await getOgcodeLeaderboardForRender(await renderStudyModeKey(user), user.id, subject, limit));
       }
@@ -428,13 +430,15 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     if (root === "dpps" && first && second === "check") {
       const body = await parseJsonBody<DppQuestionCheckPayload>(request);
-      const response = await withStoreAsync(async (store) => {
+      // The graded answer is written by its own targeted writer
+      // (recordDppQuestionResult); the store is only read, so persist nothing.
+      const response = await withStoreAsyncScoped(async (store) => {
         const user = await requireUserFromRequest(store, request);
         if (!user) {
           throw new Error("Authentication credentials were not provided.");
         }
         return checkGeneratedDppQuestion(store, user, first, body);
-      });
+      }, null);
       // A retry writes nothing, so there is nothing to invalidate.
       if (response.scored) {
         revalidateDppMutation(auth.user.id);
@@ -462,13 +466,17 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     if (root === "ogcode" && first === "location") {
       const body = await parseJsonBody<UpdateOgcodeLocationPayload>(request);
-      const response = await withStoreAsync(async (store) => {
+      // Only this user's subject-rank row (location fields) changes.
+      const plan = new ScopedWritePlan();
+      const response = await withStoreAsyncScoped(async (store) => {
         const user = await requireUserFromRequest(store, request);
         if (!user) {
           throw new Error("Authentication credentials were not provided.");
         }
-        return updateOgcodeLocation(store, user, body);
-      });
+        const result = updateOgcodeLocation(store, user, body);
+        plan.forUser(user.id).touch("subjectRanks");
+        return result;
+      }, plan.toPersist);
       revalidateTag("leaderboard", "max");
       revalidateTag(`progress-user:${auth.user.id}`, "max");
       return ok(response);

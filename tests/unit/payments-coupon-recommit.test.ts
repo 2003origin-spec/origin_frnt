@@ -460,9 +460,14 @@ test("stale-hold sweep: order-backed holds are released only when the order is f
 
 test("source contract: markOrderFailed is only reachable from checkout creation", () => {
   const source = readFileSync(new URL("../../src/server/payments/orders-service.ts", import.meta.url), "utf8");
-  const failedBranch = source.slice(source.indexOf('event === "payment.failed"'), source.indexOf('event === "order.paid"'));
-  assert.match(failedBranch, /markPaymentAttemptFailed\(/);
-  assert.doesNotMatch(failedBranch, /markOrderFailed\(/);
+  // The webhook routing lives in event-router.ts (P4); orders-service binds the handlers.
+  const router = readFileSync(new URL("../../src/server/payments/event-router.ts", import.meta.url), "utf8");
+  const failedBranch = router.slice(router.indexOf('event === "payment.failed"'), router.indexOf('event === "order.paid"'));
+  assert.match(failedBranch, /handlers\.markPaymentAttemptFailed\(/);
+  assert.doesNotMatch(failedBranch, /markOrderFailed/);
+  const processBody = source.slice(source.indexOf("export async function processPaymentEvent"));
+  assert.match(processBody, /routePaymentEvent\(input, \{[^}]*\bmarkPaymentAttemptFailed,/);
+  assert.doesNotMatch(processBody, /markOrderFailed/);
   const createBody = source.slice(source.indexOf("export async function createCheckoutOrder"), source.indexOf("function safeKeyId"));
   assert.equal((createBody.match(/await markOrderFailed\(/g) ?? []).length, 3, "coupon reserve, zero-amount settle, Razorpay create");
   assert.equal((source.match(/await markOrderFailed\(/g) ?? []).length, 3);

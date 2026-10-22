@@ -4,10 +4,22 @@ import { createAuditEventId } from "./ids";
 import { ensureWorkspaceSchema } from "./schema";
 import type { AuditEventInput } from "./types";
 
-export async function recordAuditEvent(input: AuditEventInput): Promise<void> {
-  if (!isUserPostgresConfigured()) return;
-  await ensureWorkspaceSchema();
-  const p = getUserPostgresPool();
+/** Anything that can run the insert: the pool, or a transaction's client. */
+export type AuditQueryable = { query(text: string, values?: unknown[]): Promise<unknown> };
+
+/**
+ * Writes one audit event. Pass `opts.client` (a client inside an open
+ * transaction) to make the audit row part of that transaction: it then commits
+ * or rolls back with the change it records. Without it the insert runs on its
+ * own pool connection.
+ */
+export async function recordAuditEvent(
+  input: AuditEventInput,
+  opts: { client?: AuditQueryable } = {},
+): Promise<void> {
+  if (!opts.client && !isUserPostgresConfigured()) return;
+  if (isUserPostgresConfigured()) await ensureWorkspaceSchema();
+  const p: AuditQueryable | null = opts.client ?? getUserPostgresPool();
   if (!p) return;
   await p.query(
     `INSERT INTO app.audit_events (
