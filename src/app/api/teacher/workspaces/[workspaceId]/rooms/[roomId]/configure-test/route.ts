@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { z } from "zod";
 
 import { parseJsonBody } from "@/server/http";
-import { requireFeatureEnabled } from "@/lib/feature-flags";
+import { requireFeatureEnabledRuntime } from "@/server/feature-flags-runtime";
 import { requireWorkspaceMember } from "@/server/workspaces/authz";
 import { configureRoomTest } from "@/server/workspaces/teacher-rooms-service";
 
@@ -19,7 +19,7 @@ export async function POST(
   context: WorkspaceIdRouteContext & { params: Promise<{ workspaceId: string; roomId: string }> },
 ) {
   try {
-    requireFeatureEnabled("teacherRooms");
+    await requireFeatureEnabledRuntime("teacherRooms");
     const workspaceId = await getWorkspaceId(context);
     const ctx = await requireWorkspaceMember(request, workspaceId, [
       "owner", "admin", "teacher",

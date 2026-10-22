@@ -1,7 +1,7 @@
 // Legacy user implementation kept behind the public server/users barrel.
 import bcrypt from "bcryptjs";
 import { requireUserFromRequest, resolveTokenToUser, refreshAccessToken, createAuthSessionAsync, extractAccessToken, extractRefreshTokenCookie } from "@/server/auth";
-import { isAuthServiceUnavailableError } from "@/server/auth-errors";
+import { isAccountBlockedError, isAuthServiceUnavailableError, type AccountBlockedError } from "@/server/auth-errors";
 import { extractAccessFingerprint, verifyRequestAccessJwt } from "@/server/auth-jwt";
 import { normalizeAuthClientKind, resolveAuthClientKind, type AuthClientKind } from "@/server/auth-client-kind";
 import { isUserPostgresConfigured } from "@/server/user-postgres";
@@ -11,15 +11,16 @@ import { isIdentityBlocked } from "@/server/user-lifecycle-store";
 import { getAllowDeletedIdentityResignup } from "@/server/platform-settings";
 import { resolveGoogleCredential } from "@/server/google-credential";
 import {
-  awardPoints,
   buildContributionData,
   buildPointsSummary,
   buildTimeAnalytics,
   getOrCreateStreak,
   getOrCreateUserScore,
+  pomodoroDurationFromStart,
   recordTime,
   updateUserStreak,
 } from "@/server/gamification";
+import { awardPointsOnce } from "@/server/point-awards";
 import { badRequest, created, json, noContent, notFound, ok, serviceUnavailable, unauthorized } from "@/server/http";
 import { searchAll, type SearchScope } from "@/server/search/search-service";
 import { listNotifications, markNotificationsRead } from "@/server/notifications";
@@ -91,6 +92,18 @@ function accountStatusBlock(user: { accountStatus?: AccountStatus }): ReturnType
     );
   }
   return null;
+}
+
+/**
+ * `dbCreateAuthSession` now refuses to mint a session for a revoked/deleted
+ * account (throws AccountBlockedError) — map that to the same precise 403 the
+ * pre-checks above produce, never to the generic 503 the DB catch blocks use.
+ */
+function accountBlockedResponse(error: AccountBlockedError): ReturnType<typeof json> {
+  if (error.reason === "revoked" || error.reason === "deleted") {
+    return accountStatusBlock({ accountStatus: error.reason }) ?? unauthorized(error.message);
+  }
+  return unauthorized(error.message);
 }
 
 /**
@@ -470,10 +483,12 @@ export async function handleLogin(payload: UserPayload) {
           refresh: dbResult.session.refreshToken,
           access: dbResult.session.accessToken,
           accessFingerprint: dbResult.session.accessFingerprint,
+          clientKind,
         });
       }
       // No matching DB user — fall through to seeded users.
     } catch (err) {
+      if (isAccountBlockedError(err)) return accountBlockedResponse(err);
       console.error('[users] DB login failed', err instanceof Error ? err.message : err);
       return serviceUnavailable("Login is temporarily unavailable. Please retry in a moment.");
     }
@@ -501,7 +516,7 @@ export async function handleLogin(payload: UserPayload) {
     const userData = serializeUser(store, user.id);
     if (!userData) return notFound("User not found.");
 
-    return ok({ user: userData, refresh: session.refreshToken, access: session.accessToken, accessFingerprint: session.accessFingerprint });
+    return ok({ user: userData, refresh: session.refreshToken, access: session.accessToken, accessFingerprint: session.accessFingerprint, clientKind });
   });
 }
 
@@ -599,7 +614,7 @@ export async function handleLoginWithOtp(payload: UserPayload) {
     // is returned, which would leave the code verified until it expires.
     await deleteOtp(email).catch(() => {});
 
-    return ok({ user: userData, refresh: session.refreshToken, access: session.accessToken, accessFingerprint: session.accessFingerprint });
+    return ok({ user: userData, refresh: session.refreshToken, access: session.accessToken, accessFingerprint: session.accessFingerprint, clientKind });
   });
 }
 
@@ -704,6 +719,7 @@ export async function handleRegister(payload: UserPayload) {
         refresh: session.refreshToken,
         access: session.accessToken,
         accessFingerprint: session.accessFingerprint,
+        clientKind,
       });
     } catch (err) {
       if (err instanceof Error && err.message.includes("already exists")) {
@@ -759,6 +775,7 @@ export async function handleRegister(payload: UserPayload) {
       refresh: session.refreshToken,
       access: session.accessToken,
       accessFingerprint: session.accessFingerprint,
+      clientKind,
     });
   });
 }
@@ -841,8 +858,10 @@ export async function handleGoogleLogin(payload: UserPayload) {
           refresh: session.refreshToken,
           access: session.accessToken,
           accessFingerprint: session.accessFingerprint,
+          clientKind,
         });
       } catch (err) {
+        if (isAccountBlockedError(err)) return accountBlockedResponse(err);
         console.error('[users] DB google login failed', err instanceof Error ? err.message : err);
         return serviceUnavailable("Google login is temporarily unavailable. Please retry in a moment.");
       }
@@ -864,7 +883,7 @@ export async function handleGoogleLogin(payload: UserPayload) {
       if (blocked) return blocked;
       const session = await createAuthSessionAsync(store, user.id, clientKind);
       const userData = serializeUser(store, user.id);
-      return ok({ user: userData, refresh: session.refreshToken, access: session.accessToken, accessFingerprint: session.accessFingerprint });
+      return ok({ user: userData, refresh: session.refreshToken, access: session.accessToken, accessFingerprint: session.accessFingerprint, clientKind });
     });
   } catch (e: any) {
     console.error("Google Auth processing error:", e);
@@ -968,8 +987,10 @@ export async function handleGoogleSignup(payload: UserPayload) {
           refresh: session.refreshToken,
           access: session.accessToken,
           accessFingerprint: session.accessFingerprint,
+          clientKind,
         });
       } catch (err) {
+        if (isAccountBlockedError(err)) return accountBlockedResponse(err);
         console.error('[users] DB google signup failed', err instanceof Error ? err.message : err);
         return serviceUnavailable("Google sign-up is temporarily unavailable. Please retry in a moment.");
       }
@@ -1007,6 +1028,7 @@ export async function handleGoogleSignup(payload: UserPayload) {
         refresh: session.refreshToken,
         access: session.accessToken,
         accessFingerprint: session.accessFingerprint,
+        clientKind,
       });
     });
   } catch (e: any) {
@@ -1272,16 +1294,23 @@ async function handlePomodoroCreate(request: Request, payload: UserPayload) {
 
     const modeRaw = asString(payload.mode) ?? "focus";
     const mode = modeRaw === "shortBreak" || modeRaw === "longBreak" ? modeRaw : "focus";
-    const duration = Math.max(0, Math.floor(asNumber(payload.duration) ?? 0));
     const isCompleted = asBoolean(payload.is_completed ?? payload.isCompleted) ?? false;
     const breakReason = asString(payload.break_reason ?? payload.breakReason);
     const interruptionCount = Math.max(0, Math.floor(asNumber(payload.interruption_count ?? payload.interruptionCount) ?? 0));
 
+    const startTime = new Date().toISOString();
+    // Server-timed (bug N4): a session created already-complete has lasted 0 s
+    // as far as the server knows, so it can never reach the 20-minute reward.
+    // The client's `duration` is kept only as a progress hint for open sessions.
+    const duration = isCompleted
+      ? pomodoroDurationFromStart(startTime)
+      : Math.max(0, Math.floor(asNumber(payload.duration) ?? 0));
+
     const session = {
       id: createId("pomodoro"),
       userId: user.id,
-      startTime: new Date().toISOString(),
-      endTime: isCompleted ? new Date().toISOString() : null,
+      startTime,
+      endTime: isCompleted ? startTime : null,
       duration,
       mode,
       breakReason,
@@ -1292,7 +1321,7 @@ async function handlePomodoroCreate(request: Request, payload: UserPayload) {
     store.pomodoroSessions.push({ ...session });
 
     if (isCompleted && duration >= 20 * 60) {
-      awardPoints(
+      await awardPointsOnce(
         store,
         user.id,
         20,
@@ -1366,16 +1395,22 @@ async function handlePomodoroUpdate(request: Request, payload: UserPayload, sess
       }
     }
 
-    if (!wasCompleted && session.isCompleted && session.duration >= 20 * 60) {
-      awardPoints(
-        store,
-        user.id,
-        20,
-        "pomodoro",
-        `Completed ${session.mode} session (${Math.floor(session.duration / 60)} mins)`,
-        session.id,
-      );
-      updateUserStreak(store, user.id);
+    if (!wasCompleted && session.isCompleted) {
+      // Server-timed (bug N4): the credited length is the time since the
+      // stored startTime (capped at 2 h), never the client-sent `duration`.
+      session.duration = pomodoroDurationFromStart(session.startTime);
+      if (session.duration >= 20 * 60) {
+        // Once per session id: a re-sent completion cannot pay out twice.
+        await awardPointsOnce(
+          store,
+          user.id,
+          20,
+          "pomodoro",
+          `Completed ${session.mode} session (${Math.floor(session.duration / 60)} mins)`,
+          session.id,
+        );
+        updateUserStreak(store, user.id);
+      }
     }
 
     return ok(serializePomodoro(session));

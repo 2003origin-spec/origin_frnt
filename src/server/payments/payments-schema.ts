@@ -131,6 +131,12 @@ CREATE INDEX IF NOT EXISTS idx_payments_payments_dispute
   ON payments.payments(disputed_at) WHERE disputed_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_payments_orders_reconcile
   ON payments.orders(status, created_at) WHERE status IN ('created', 'attempted');
+-- Bug-fix P5: one open money order per commerce enrolment order, and the
+-- duplicate-capture lookup on a second capture. Canonical SQL:
+-- src/db/migrations/20261021_payments_open_institute_orders.sql
+CREATE INDEX IF NOT EXISTS idx_payments_orders_enrollment_open
+  ON payments.orders((notes->>'enrollment_order_id'))
+  WHERE kind = 'institute_offering' AND status IN ('created', 'attempted', 'paid', 'partially_refunded');
 
 CREATE TABLE IF NOT EXISTS payments.refunds (
   razorpay_refund_id  TEXT PRIMARY KEY,

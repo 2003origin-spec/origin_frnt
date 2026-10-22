@@ -12,9 +12,10 @@ import "server-only";
 
 import { AuthzError, requireRole, type AuthContext } from "@/server/authz";
 import { getUserPostgresPool, isUserPostgresConfigured } from "@/server/user-postgres";
-import { ensureUserSchema } from "@/server/db-users";
+import { dbIncrementAuthTokenVersionAndRevokeSessions, ensureUserSchema } from "@/server/db-users";
 import { createPrefixedId } from "@/server/workspaces/ids";
 import { invalidateStoreCache } from "@/server/store";
+import { removeSubAdmin, type SubAdminRow } from "@/server/admin/sub-admin-removal";
 
 const DEFAULT_MAIN_ADMIN_EMAILS = [
   "adminoffice@o3origin.com",
@@ -121,24 +122,34 @@ export async function createSubAdmin(input: { name: string; email: string }): Pr
   return rowToAdmin(res.rows[0]);
 }
 
-/** Unassigns / deletes a sub-admin. The main admin cannot be removed. */
+/**
+ * Unassigns / deletes a sub-admin. The main admin cannot be removed. On both
+ * the delete and the FK-fallback demote path the person's auth_token_version
+ * is bumped and their sessions revoked, so the removal takes effect on their
+ * next admin API call instead of when their access JWT expires.
+ */
 export async function deleteSubAdmin(id: string): Promise<void> {
   await ensureUserSchema();
-  const res = await pool().query<{ email: string; is_main_admin: boolean; role: string }>(
-    `SELECT email, is_main_admin, role FROM origin_users WHERE id = $1`,
-    [id],
+  await removeSubAdmin(
+    {
+      findAdmin: async (adminId) => {
+        const res = await pool().query<SubAdminRow>(
+          `SELECT email, is_main_admin, role FROM origin_users WHERE id = $1`,
+          [adminId],
+        );
+        return res.rows[0] ?? null;
+      },
+      deleteUser: async (adminId) => {
+        await pool().query(`DELETE FROM origin_users WHERE id = $1`, [adminId]);
+      },
+      demoteToStudent: async (adminId) => {
+        await pool().query(`UPDATE origin_users SET role = 'student' WHERE id = $1`, [adminId]);
+      },
+      revokeAllSessions: dbIncrementAuthTokenVersionAndRevokeSessions,
+    },
+    id,
+    isConfiguredMainAdminEmail,
   );
-  const row = res.rows[0];
-  if (!row || row.role !== "admin") throw new AuthzError(404, "Admin not found.");
-  if (row.is_main_admin || isConfiguredMainAdminEmail(String(row.email))) {
-    throw new AuthzError(403, "The main admin cannot be removed.");
-  }
-  try {
-    await pool().query(`DELETE FROM origin_users WHERE id = $1`, [id]);
-  } catch {
-    // FK-referenced (audit/created_by) — demote to student instead of leaving admin.
-    await pool().query(`UPDATE origin_users SET role = 'student' WHERE id = $1`, [id]);
-  }
   // Drop the legacy store cache so the next read re-hydrates from Postgres and a
   // stale cached store can't re-persist this row via upsertUsers on the next write.
   invalidateStoreCache();

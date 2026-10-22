@@ -227,7 +227,7 @@ test("wrong amount is rejected before a grant and leaves the order unpaid", opts
   assert.equal(grants.rows[0].n, 0);
 });
 
-test("payment failure marks an order failed; a later valid capture can still converge", opts, async () => {
+test("a failed payment attempt keeps the order open; a later valid capture converges", opts, async () => {
   const order = await createAttachedOrder();
   const failed = await processPaymentEvent({
     event: "payment.failed",
@@ -242,7 +242,10 @@ test("payment failure marks an order failed; a later valid capture can still con
     },
   });
   assert.ok(failed && "status" in failed);
-  assert.equal((failed as { status: string }).status, "failed");
+  // Bug-fix P2: the Razorpay order is still payable after a failed attempt, so
+  // the local order stays open (`attempted`) and keeps its coupon hold.
+  assert.equal((failed as { status: string }).status, "attempted");
+  assert.equal((failed as { failureReason: string | null }).failureReason, "insufficient funds");
 
   const captured = await applyPaymentSuccess({
     orderId: order.id,

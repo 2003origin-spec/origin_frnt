@@ -36,6 +36,7 @@ import {
   updateOrderStatus,
   type CreateEnrollmentOrderInput,
   type CreateOfferingInput,
+  type PublicInstituteFilter,
   type UpdateOfferingPatch,
 } from "./marketplace-store";
 import { getActiveMembership, getWorkspaceById } from "./store";
@@ -397,7 +398,7 @@ export async function getInstituteProfileService(workspaceId: string): Promise<I
 }
 
 export async function listPublicInstitutesService(
-  filter?: { subject?: string; city?: string; limit?: number },
+  filter?: PublicInstituteFilter,
 ): Promise<InstitutePublicProfile[]> {
   const institutes = await listPublicInstitutes(filter);
 

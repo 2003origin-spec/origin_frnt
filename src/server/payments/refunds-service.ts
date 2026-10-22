@@ -7,7 +7,9 @@ import { recomputeUserPremiumFlags } from "@/server/entitlements";
 import { reverseCoinPackOnRefund } from "@/server/now/coin-pack-payments";
 import { getUserPostgresPool } from "@/server/user-postgres";
 
+import { enqueueAdminAlerts } from "./admin-alerts";
 import { rebasePaidGrantExpiriesForSubject } from "./grants";
+import { lockUserPaymentsForPayment } from "./user-payment-lock";
 import {
   enqueueOutbox,
   getPaymentById,
@@ -161,34 +163,6 @@ async function recipient(client: PoolClient, userId: string | null) {
   };
 }
 
-async function enqueueAdminAlerts(
-  client: PoolClient,
-  input: { idPrefix: string; title: string; message: string; href?: string },
-): Promise<string[]> {
-  const admins = await client.query(`SELECT id FROM origin_users WHERE role = 'admin' ORDER BY id`);
-  const ids: string[] = [];
-  for (const row of admins.rows) {
-    const adminId = String(row.id);
-    const id = `${input.idPrefix}_${adminId}`;
-    await enqueueOutbox(
-      {
-        id,
-        kind: "notification",
-        payload: {
-          userId: adminId,
-          notificationTitle: input.title,
-          notificationMessage: input.message,
-          href: input.href ?? "/admin/financials",
-          type: "warning",
-        },
-      },
-      client,
-    );
-    ids.push(id);
-  }
-  return ids;
-}
-
 async function applyRefundInTransaction(
   input: RefundLifecycleInput,
   client: PoolClient,
@@ -199,6 +173,11 @@ async function applyRefundInTransaction(
     throw new PaymentLifecycleError(400, "Refund amount must be a positive integer in paise.");
   }
 
+  // Canonical lock order (user-payment-lock.ts): the owner's user lock FIRST,
+  // then the payment / order rows. The grant rebase below takes the same lock,
+  // so taking it only there (after the row locks) could deadlock against a
+  // capture or checkout for the same student (bug-fix F5).
+  await lockUserPaymentsForPayment(client, input.razorpayPaymentId);
   const paymentResult = await client.query(
     `SELECT * FROM payments.payments WHERE razorpay_payment_id = $1 FOR UPDATE`,
     [input.razorpayPaymentId],
@@ -400,6 +379,10 @@ export async function initiateRefund(input: {
   let windowEndsAt = "";
   try {
     await client.query("BEGIN");
+    // User lock before the payment row (canonical order, user-payment-lock.ts);
+    // applyRefundInTransaction below re-takes it as a no-op. Both are held
+    // across the Razorpay refund call, as the row lock already was.
+    await lockUserPaymentsForPayment(client, input.razorpayPaymentId);
     const row = await client.query(
       `SELECT * FROM payments.payments WHERE razorpay_payment_id = $1 FOR UPDATE`,
       [input.razorpayPaymentId],

@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 
-import { requireFeatureEnabled } from "@/lib/feature-flags";
+import { requireFeatureEnabledRuntime } from "@/server/feature-flags-runtime";
 import { isAllowedStudyMaterialMimeType, uploadStudyMaterialToR2 } from "@/server/media-storage";
 import { requireWorkspaceMember } from "@/server/workspaces/authz";
 import {
@@ -30,7 +30,7 @@ function fileMaterialType(mimeType: string): StudyMaterialType {
 
 export async function GET(request: NextRequest, context: Context) {
   try {
-    requireFeatureEnabled("studyMaterials");
+    await requireFeatureEnabledRuntime("studyMaterials");
     const { workspaceId, batchId } = await context.params;
     await requireWorkspaceMember(request, workspaceId);
     const materials = await getMaterialsVisibleToBatch(workspaceId, batchId);
@@ -42,7 +42,7 @@ export async function GET(request: NextRequest, context: Context) {
 
 export async function POST(request: NextRequest, context: Context) {
   try {
-    requireFeatureEnabled("studyMaterials");
+    await requireFeatureEnabledRuntime("studyMaterials");
     const { workspaceId, batchId } = await context.params;
     const ctx = await requireWorkspaceMember(request, workspaceId, ["owner", "admin", "teacher"]);
     const userId = ctx.auth.userId;

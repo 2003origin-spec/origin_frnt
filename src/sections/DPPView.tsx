@@ -445,6 +445,14 @@ export default function DPPView({ onBack, initialDpps, user }: DPPViewProps) {
     questionStartedAtRef.current = Date.now();
   }, [selectedDppId, currentDpp?.questions?.length]);
 
+  // G7: record the attempt start server-side once the DPP's questions are on
+  // screen, so submit times the attempt itself. Best-effort — the server
+  // clamps the client value when no start was recorded.
+  useEffect(() => {
+    if (!selectedDppId || !currentDpp?.questions?.length) return;
+    apiCall(`/assessments/dpps/${selectedDppId}/start/`, { method: 'POST' }).catch(() => {});
+  }, [selectedDppId, currentDpp?.questions?.length]);
+
   useEffect(() => {
     if (!selectedDppId || submissionAnalysisStatus !== 'pending') {
       return;

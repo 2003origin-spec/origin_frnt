@@ -349,6 +349,8 @@ export interface PersistedTestResultRecord {
     degraded?: boolean;
     degradedReason?: string | null;
     degraded_reason?: string | null;
+    /** G7 audit: "server" = timed from analytics.attempt_starts, "client" = clamped client value. */
+    time_taken_source?: "server" | "client";
   };
   subjectStats: Record<
     string,

@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { z } from "zod";
 
 import { requireFeatureEnabled } from "@/lib/feature-flags";
+import { requireFeatureEnabledRuntime } from "@/server/feature-flags-runtime";
 import { checkRateLimit, mutationLimiter } from "@/lib/rate-limit";
 import { parseAppVersionFromUserAgent } from "@/native/is-native-app";
 import { requireAuth } from "@/server/authz";
@@ -517,7 +518,7 @@ function match(
 
 async function dispatch(method: Method, request: NextRequest, context: RouteContext): Promise<Response> {
   try {
-    requireFeatureEnabled("originNow");
+    await requireFeatureEnabledRuntime("originNow");
     const segments = getSlugSegments(await context.params);
     const found = match(method, segments);
     if (!found) throw new NowError(404, "not_found", "Not found.");

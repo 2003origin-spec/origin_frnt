@@ -35,6 +35,7 @@ import { isLivemode } from "@/server/payments/razorpay-client";
 
 import { assertActiveCollaborator } from "./collaboration-service";
 import { enqueueConnectJob } from "./connect-jobs";
+import { revokeConnectGrantsForEnrollment } from "./grant-revocation";
 import {
   applyEnrollmentSubscriptionTransition,
   createEnrollmentSubscription,
@@ -124,7 +125,7 @@ export async function createConnectCheckout(input: {
   if (!offering) throw new AuthzError(404, "Offering not found.");
 
   // Guard chain (closes the Phase-12 batch gap; also back-ported into markOrderPaidService).
-  await assertActiveCollaborator(input.workspaceId);
+  await assertActiveCollaborator(input.workspaceId, "flow2");
   if (offering.status !== "active") {
     throw new AuthzError(400, `Offering is ${offering.status}; not available for enrollment.`);
   }
@@ -422,6 +423,14 @@ export async function reconcileEnrollmentSubscriptions(): Promise<{ tornDown: nu
       });
     }
     await setEnrollmentStatus(sub.workspaceId, sub.studentId, "suspended");
+    // A suspended student also loses any free Flow-1 subject from this
+    // institute (before the sub is marked expired, so a failure is retried).
+    await revokeConnectGrantsForEnrollment({
+      studentId: sub.studentId,
+      workspaceId: sub.workspaceId,
+      actorUserId: null,
+      reason: "subscription_lapsed",
+    });
     await markEnrollmentSubscriptionExpired(sub.id);
     // Subject entitlements (if any add-on lapsed) are mirrored separately.
     await recomputeUserPremiumFlags(sub.studentId);

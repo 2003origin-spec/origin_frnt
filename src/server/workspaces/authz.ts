@@ -9,7 +9,14 @@
  * suspended workspaces become read-only for non-admins.
  */
 
-import { AuthzError, type AuthContext, requireAuth } from "@/server/authz";
+import {
+  assertFreshPrincipal,
+  AuthzError,
+  FRESHNESS_CHECKED_ROLES,
+  type AuthContext,
+  type FreshPrincipalLookup,
+  requireAuth,
+} from "@/server/authz";
 
 import { getActiveMembership, getWorkspaceById } from "./store";
 import type {
@@ -38,9 +45,25 @@ export type WorkspaceAuthContext = {
   effectiveRole: WorkspaceMemberRole | "platform_admin";
 };
 
+/**
+ * Reads the JWT role. Safe only AFTER `loadWorkspaceContext` has run
+ * `assertFreshPrincipal` for admin/teacher tokens — that is what guarantees a
+ * removed or demoted sub-admin cannot keep platform-admin on workspace routes
+ * for the remaining life of their access token.
+ */
 export function isPlatformAdmin(auth: AuthContext): boolean {
   return auth.role === "admin";
 }
+
+/** Store + principal lookups behind `loadWorkspaceContext`; injectable so the
+ * freshness rule can be unit-tested without Postgres. */
+export type WorkspaceContextDeps = {
+  getWorkspaceById: typeof getWorkspaceById;
+  getActiveMembership: typeof getActiveMembership;
+  lookupPrincipal?: FreshPrincipalLookup;
+};
+
+const defaultDeps: WorkspaceContextDeps = { getWorkspaceById, getActiveMembership };
 
 function hasMinimumRole(role: WorkspaceMemberRole, allowed: WorkspaceMemberRole[]): boolean {
   if (allowed.length === 0) return true;
@@ -81,14 +104,23 @@ export function evaluateWorkspaceAccess(input: {
 export async function loadWorkspaceContext(
   request: Request,
   workspaceId: string,
+  deps: WorkspaceContextDeps = defaultDeps,
 ): Promise<WorkspaceAuthContext> {
   const auth = await requireAuth(request);
-  const workspace = await getWorkspaceById(workspaceId);
+  // Same rule as `requireRole` on /api/admin/**: an admin or teacher token is
+  // re-checked against the user row (status, auth_token_version, role) on every
+  // request, so a revoked teacher or a removed/demoted sub-admin loses
+  // workspace access immediately instead of when the JWT expires. Students
+  // stay JWT-only (hot path). A lookup failure is a 503 via handleTeacherError.
+  if (FRESHNESS_CHECKED_ROLES.has(auth.role)) {
+    await assertFreshPrincipal(auth, deps.lookupPrincipal);
+  }
+  const workspace = await deps.getWorkspaceById(workspaceId);
   if (!workspace) {
     throw new AuthzError(403, "Workspace not found or access denied.");
   }
   const platformAdmin = isPlatformAdmin(auth);
-  const membership = await getActiveMembership(workspaceId, auth.userId);
+  const membership = await deps.getActiveMembership(workspaceId, auth.userId);
 
   if (!platformAdmin && (!membership || membership.status !== "active")) {
     throw new AuthzError(403, "You are not a member of this workspace.");
@@ -107,8 +139,9 @@ export async function requireWorkspaceMember(
   request: Request,
   workspaceId: string,
   allowedRoles: WorkspaceMemberRole[] = [],
+  deps: WorkspaceContextDeps = defaultDeps,
 ): Promise<WorkspaceAuthContext> {
-  const context = await loadWorkspaceContext(request, workspaceId);
+  const context = await loadWorkspaceContext(request, workspaceId, deps);
 
   if (!context.isPlatformAdmin) {
     if (!OPERATIONAL_STATUSES.includes(context.workspace.status)) {

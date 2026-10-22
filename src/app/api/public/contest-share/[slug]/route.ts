@@ -7,14 +7,14 @@
 
 import type { NextRequest } from "next/server";
 
-import { requireFeatureEnabled } from "@/lib/feature-flags";
+import { requireFeatureEnabledRuntime } from "@/server/feature-flags-runtime";
 import { getPublicShareCard } from "@/server/contest/contest-share-service";
 
 import { handleTeacherError, teacherJson } from "@/app/api/teacher/_utils";
 
 export async function GET(_request: NextRequest, context: { params: Promise<{ slug: string }> }) {
   try {
-    requireFeatureEnabled("contest");
+    await requireFeatureEnabledRuntime("contest");
     const { slug } = await context.params;
     const card = await getPublicShareCard(slug);
     if (!card) return teacherJson({ detail: "Not found." }, { status: 404 });

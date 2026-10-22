@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { parseJsonBody } from "@/server/http";
 import { requireAuth } from "@/server/authz";
-import { requireFeatureEnabled } from "@/lib/feature-flags";
+import { requireFeatureEnabledRuntime } from "@/server/feature-flags-runtime";
 import {
   onboardInstitute,
   onboardPersonalTeacher,
@@ -41,7 +41,7 @@ const onboardingSchema = z.discriminatedUnion("workspaceType", [
 
 export async function POST(request: NextRequest) {
   try {
-    requireFeatureEnabled("workspaces");
+    await requireFeatureEnabledRuntime("workspaces");
     const auth = await requireAuth(request);
     if (auth.role !== "teacher" && auth.role !== "admin") {
       return teacherJson(

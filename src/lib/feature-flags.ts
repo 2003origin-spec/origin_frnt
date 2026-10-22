@@ -7,9 +7,15 @@
  * After all 13 phases shipped to production, defaults are flipped on
  * for both dev and prod so the launch surfaces are visible by default.
  * Individual flags can still be flipped off per-environment via the
- * `TEACHER_LAUNCH_<SUFFIX>` env var or via the runtime kill-switch in
- * /admin/incidents (which calls setFlagOverride and overrides the
- * default at request time).
+ * `TEACHER_LAUNCH_<SUFFIX>` env var.
+ *
+ * NOTE: `isFeatureEnabled` / `requireFeatureEnabled` below read the env ONLY.
+ * They never consult the runtime kill-switch set in /admin/incidents. That
+ * override is honoured in two places: the middleware (`findKillSwitchForPath`
+ * over `FLAG_KILL_PREFIXES`, every API method) and the async
+ * `requireFeatureEnabledRuntime` / `isFeatureEnabledRuntime` helpers in
+ * `src/server/feature-flags-runtime.ts`, which API handlers should prefer.
+ * This module stays env-only so it remains importable from client code.
  */
 
 const FLAG_ENV_PREFIX = "TEACHER_LAUNCH_";

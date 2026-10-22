@@ -9,7 +9,7 @@
 import type { NextRequest } from "next/server";
 import { z } from "zod";
 
-import { requireFeatureEnabled } from "@/lib/feature-flags";
+import { requireFeatureEnabledRuntime } from "@/server/feature-flags-runtime";
 import { parseJsonBody } from "@/server/http";
 import { requireAuth } from "@/server/authz";
 import { registerForContest } from "@/server/contest/contest-registration-service";
@@ -20,7 +20,7 @@ const RegisterSchema = z.object({ contestId: z.string().min(1), code: z.string()
 
 export async function POST(request: NextRequest) {
   try {
-    requireFeatureEnabled("contest");
+    await requireFeatureEnabledRuntime("contest");
     const ctx = await requireAuth(request);
     const parsed = RegisterSchema.safeParse(await parseJsonBody(request));
     if (!parsed.success) return teacherJson({ detail: parsed.error.message }, { status: 400 });

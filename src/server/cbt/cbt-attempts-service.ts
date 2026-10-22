@@ -8,12 +8,16 @@
 import { getUserPostgresPool } from "@/server/user-postgres";
 import { toAbsoluteMediaUrl } from "@/lib/media-url";
 import { normalizeCbtOptions } from "@/lib/cbt/options";
+import { cbtNumberText } from "@/lib/cbt/answer-format";
+import { gradeMatrixPairs } from "@/lib/assessments/matrix-grade";
+import { numbersMatch, resolveNumericTolerance } from "@/lib/assessments/numeric-tolerance";
+import { parseStrictNumber } from "@/lib/assessments/parse-strict-number";
 import {
   gradeAssessmentBatchWithService,
   type AssessmentBatchGradeItem,
   type GraderScoringPolicy,
 } from "@/server/grader-client";
-import type { StoredQuestion, StoredUserAnswer } from "@/server/store";
+import type { StoredAnswerSpec, StoredQuestion, StoredUserAnswer } from "@/server/store";
 import type { CbtParticipant, CbtRoom } from "@/lib/cbt/room-model";
 import type { CbtQuestionAnswer, CbtQuestionType } from "@/lib/cbt/question-model";
 import {
@@ -326,12 +330,6 @@ export async function saveAnswers(
 
 type GradeOutcome = { marksAwarded: number; isCorrect: boolean; needsReview: boolean };
 
-function firstNumber(text: string | null | undefined): number | null {
-  if (typeof text !== "string") return null;
-  const match = text.replace(/,/g, "").match(/-?\d+(\.\d+)?([eE]-?\d+)?/);
-  return match ? Number(match[0]) : null;
-}
-
 function normalizeExpr(text: string | null | undefined): string {
   return String(text ?? "").toLowerCase().replace(/\s+/g, "").replace(/\*/g, "");
 }
@@ -340,6 +338,56 @@ function scoreObjective(correct: boolean, answered: boolean, marks: number, nega
   if (correct) return marks;
   if (answered) return negativeMarks;
   return 0;
+}
+
+/**
+ * P6: CBT's numeric rule is the grader's (G1): the stored tolerance (0 ⇒
+ * exact); with none (legacy NULL rows) an integer key is exact and a decimal key
+ * is exact after rounding the answer to the key's decimal places, never a 1%
+ * default. `keyText` / `submittedText` are the numbers as typed (cbtNumberText).
+ */
+export function cbtNumbersMatch(
+  keyText: string,
+  submittedText: string | null,
+  tolerance: number | null | undefined,
+): boolean {
+  const expected = parseStrictNumber(keyText);
+  const submitted = submittedText === null ? null : parseStrictNumber(submittedText);
+  if (expected === null || submitted === null) return false;
+  const rule = resolveNumericTolerance({ tolerance: tolerance ?? null }, keyText);
+  return numbersMatch(expected, submitted, rule.tolerance, keyText, rule.kind, submittedText);
+}
+
+function isCbtNumericType(questionType: CbtQuestionType): boolean {
+  return questionType === "numerical" || questionType === "numerical_with_units";
+}
+
+/**
+ * M3 — what the grader service is sent for a CBT numerical /
+ * numerical_with_units question, so it applies CBT's rule exactly as
+ * gradeCbtLocal does whether or not the service is up:
+ *  - the unit is a display label: key and student are reduced to their one
+ *    strictly parsed number ("5 cm" → "5"); an answer that is not exactly one
+ *    number is sent as typed and fails the service's strict parse, as locally;
+ *  - the key and the answer keep their typed digits ("9.80"), and the stored
+ *    tolerance is sent as is: with none, the service's integer / decimal-exact
+ *    rule applies, which is exactly what gradeCbtLocal does (P6);
+ *  - an explicit `numerical` answer spec is attached, so neither the derived
+ *    units mode nor a stored grader.answer_specs row (keyed by question id,
+ *    possibly saved with the unit inside the number) is used.
+ */
+export function cbtNumericGraderView(
+  answer: CbtQuestionAnswer,
+  student: CbtStudentAnswer,
+): { answerText: string | null; tolerance: number | null; answerSpec: StoredAnswerSpec; studentAnswerText: string | null } {
+  const expectedText = cbtNumberText(answer.answerText) ?? answer.answerText ?? null;
+  const tolerance = answer.tolerance ?? null;
+  return {
+    answerText: expectedText,
+    tolerance,
+    answerSpec: { gradingMode: "numerical", expectedValue: expectedText, tolerance },
+    studentAnswerText: cbtNumberText(student.answerText) ?? student.answerText ?? null,
+  };
 }
 
 export function gradeCbtLocal(
@@ -367,22 +415,27 @@ export function gradeCbtLocal(
     }
     case "numerical":
     case "numerical_with_units": {
-      const expected = firstNumber(answer.answerText);
-      const submitted = firstNumber(student.answerText);
-      const tolerance = answer.tolerance ?? Math.max(Math.abs(expected ?? 0) * 0.01, 0.001);
-      const correct =
-        expected !== null && submitted !== null && Math.abs(submitted - expected) <= tolerance;
+      // Bug-fix G2: ONE strictly parsed number per side (fractions, ×10^n, e/E,
+      // unicode minus, thousands); "2 3" / "2 or 3" are wrong, never "first
+      // number wins". The unit stays a display label (not compared) and the
+      // tolerance rule is the grader's (P6, see cbtNumbersMatch).
+      const keyText = cbtNumberText(answer.answerText);
+      if (keyText === null) {
+        // Unparseable answer key: a tooling gap, not the student's fault.
+        return { marksAwarded: 0, isCorrect: false, needsReview: answered };
+      }
+      const correct = cbtNumbersMatch(keyText, cbtNumberText(student.answerText), answer.tolerance);
       return { marksAwarded: scoreObjective(correct, answered, marks, negativeMarks), isCorrect: correct, needsReview: false };
     }
     case "matrix_match": {
-      const expected = [...((answer.matrixData?.correct_pairs as number[][]) ?? [])].map((p) => p.join(":")).sort();
-      const submitted = [...(student.matrixPairs ?? [])].map((p) => p.join(":")).sort();
-      const correct = expected.length > 0 && JSON.stringify(expected) === JSON.stringify(submitted);
-      const set = new Set(expected);
-      const matched = submitted.filter((p) => set.has(p)).length;
-      const credit = correct ? 1 : expected.length > 0 ? matched / expected.length : 0;
-      const marksAwarded = credit > 0 ? Number((credit * marks).toFixed(3)) : answered ? negativeMarks : 0;
-      return { marksAwarded, isCorrect: correct, needsReview: false };
+      // Bug-fix G3: any wrong pair ⇒ wrong (negative); partial credit only for
+      // a subset, per fully-correct row. Ticking every cell used to score full.
+      // M4 (P7): only a wrong pair is negative; correct pairs with no complete
+      // row score 0, as the grader service does.
+      const matrix = gradeMatrixPairs(answer.matrixData?.correct_pairs as number[][] | undefined, student.matrixPairs, "fractional");
+      const credit = matrix.creditAwarded;
+      const marksAwarded = credit > 0 ? Number((credit * marks).toFixed(3)) : matrix.hasWrongPair && answered ? negativeMarks : 0;
+      return { marksAwarded, isCorrect: matrix.isCorrect, needsReview: false };
     }
     case "symbolic_expression":
     case "equation": {
@@ -399,6 +452,19 @@ export function gradeCbtLocal(
 }
 
 function toStoredQuestion(q: TestQuestionRow): StoredQuestion {
+  const base = toPlainStoredQuestion(q);
+  if (!isCbtNumericType(q.questionType)) return base;
+  const view = cbtNumericGraderView(q.answer, {});
+  return {
+    ...base,
+    questionType: "numerical",
+    answerText: view.answerText,
+    tolerance: view.tolerance,
+    answerSpec: view.answerSpec,
+  } as StoredQuestion;
+}
+
+function toPlainStoredQuestion(q: TestQuestionRow): StoredQuestion {
   return {
     id: q.questionId,
     questionType: q.questionType,
@@ -427,6 +493,26 @@ function toStoredAnswer(student: CbtStudentAnswer): StoredUserAnswer {
   } as unknown as StoredUserAnswer;
 }
 
+/** One grader-service batch item for a CBT question (numeric ones normalised, see cbtNumericGraderView). */
+export function buildCbtGraderItem(q: TestQuestionRow, student: CbtStudentAnswer): AssessmentBatchGradeItem {
+  const scoringPolicy: GraderScoringPolicy = {
+    correctMarks: q.marks,
+    incorrectMarks: q.negativeMarks,
+    unattemptedMarks: 0,
+    partialCreditPolicy: "fractional",
+    negativeMarkingMode: "answered_only",
+  };
+  const answer = isCbtNumericType(q.questionType)
+    ? { ...student, answerText: cbtNumericGraderView(q.answer, student).studentAnswerText }
+    : student;
+  return {
+    question: toStoredQuestion(q),
+    answer: toStoredAnswer(answer),
+    attemptRef: String(q.position),
+    scoringPolicy,
+  };
+}
+
 async function gradeAll(
   roomId: string,
   participantId: string,
@@ -436,21 +522,7 @@ async function gradeAll(
   // Try the remote grader for the whole batch; fall back locally on null.
   let remote: Awaited<ReturnType<typeof gradeAssessmentBatchWithService>> = null;
   try {
-    const items: AssessmentBatchGradeItem[] = questions.map((q) => {
-      const scoringPolicy: GraderScoringPolicy = {
-        correctMarks: q.marks,
-        incorrectMarks: q.negativeMarks,
-        unattemptedMarks: 0,
-        partialCreditPolicy: "fractional",
-        negativeMarkingMode: "answered_only",
-      };
-      return {
-        question: toStoredQuestion(q),
-        answer: toStoredAnswer(answers[q.position] ?? {}),
-        attemptRef: String(q.position),
-        scoringPolicy,
-      };
-    });
+    const items: AssessmentBatchGradeItem[] = questions.map((q) => buildCbtGraderItem(q, answers[q.position] ?? {}));
     remote = await gradeAssessmentBatchWithService({
       userId: participantId,
       assessmentId: roomId,

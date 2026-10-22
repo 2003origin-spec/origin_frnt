@@ -3,7 +3,12 @@ import { z } from "zod";
 
 import { requireFeatureEnabled } from "@/lib/feature-flags";
 import { requireWorkspaceMember } from "@/server/workspaces/authz";
-import { publishTeacherTest, scheduleTeacherTest } from "@/server/workspaces/tests-service";
+import {
+  archiveTeacherTest,
+  closeTeacherTest,
+  publishTeacherTest,
+  scheduleTeacherTest,
+} from "@/server/workspaces/tests-service";
 
 import {
   getWorkspaceId,
@@ -49,8 +54,22 @@ export async function POST(
         scheduledEndAt,
         requestId: requestIdOf(request),
       });
+    } else if (action === "close" || action === "archive") {
+      // Lifecycle verbs folded into this existing route (Next-16 new-route-404
+      // incident): close ends a live test; archive retires one whose attempts
+      // must be kept (delete is refused for those).
+      const run = action === "close" ? closeTeacherTest : archiveTeacherTest;
+      test = await run({
+        actorUserId: ctx.auth.userId,
+        workspaceId,
+        testId,
+        requestId: requestIdOf(request),
+      });
     } else {
-      return teacherJson({ detail: "Invalid action. Use ?action=publish or ?action=schedule" }, { status: 400 });
+      return teacherJson(
+        { detail: "Invalid action. Use ?action=publish, schedule, close or archive" },
+        { status: 400 },
+      );
     }
 
     return teacherJson({ test });
