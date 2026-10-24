@@ -18,6 +18,12 @@ export type MyFileKind = "typed" | NotesFileKind;
 
 /** Typed notes: 200 KB of text (plan §8 table). */
 export const TYPED_NOTE_MAX_BYTES = 200 * 1024;
+/**
+ * …and at most 200,000 characters: the database's CHECK (char_length(body_md)
+ * <= 200000). Mostly-ASCII notes of 200,001–204,800 chars passed the byte check
+ * and then failed the insert as a generic 500.
+ */
+export const TYPED_NOTE_MAX_CHARS = 200_000;
 export const MY_FOLDER_MAX_DEPTH = 8;
 export const VOICE_MAX_SECONDS = 15 * 60;
 /** Photos are shrunk on the phone to this long side before upload. */
@@ -190,3 +196,8 @@ export function binExpiresAt(deletedAt: Date, binDays: number): Date {
 }
 
 export const STORAGE_FULL_MESSAGE = "Storage full: delete something, empty the Bin, or ask for more space.";
+
+/** True when a typed note is over either limit (bytes, or the database's character cap). */
+export function typedNoteTooLong(body: string): boolean {
+  return body.length > TYPED_NOTE_MAX_CHARS || typedNoteBytes(body) > TYPED_NOTE_MAX_BYTES;
+}

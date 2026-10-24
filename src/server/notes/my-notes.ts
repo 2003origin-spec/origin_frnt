@@ -33,8 +33,7 @@ import {
   MAX_MY_FILES,
   MAX_MY_FOLDERS,
   MY_FOLDER_MAX_DEPTH,
-  TYPED_NOTE_MAX_BYTES,
-  typedNoteBytes,
+  typedNoteTooLong,
   type MyFileKind,
 } from "@/lib/notes/storage-rules";
 
@@ -329,7 +328,7 @@ export async function createMyTypedNote(
 ): Promise<MyFileCard> {
   const title = cleanTitle(input.title);
   if (!title.ok) throw new NotesError(400, "invalid_title", title.error);
-  if (typedNoteBytes(input.bodyMd) > TYPED_NOTE_MAX_BYTES) throw new NotesError(413, "too_long", "This note is too long. Split it into two notes.");
+  if (typedNoteTooLong(input.bodyMd)) throw new NotesError(413, "too_long", "This note is too long. Split it into two notes.");
   const bytes = billedTypedNoteBytes(input.bodyMd);
   const { limitBytes } = await getStudentLimits(viewer.userId);
   return withNotesTransaction(async (client) => {
@@ -375,7 +374,7 @@ export async function updateMyFile(
       if (input.baseVersion !== undefined && input.baseVersion !== toNumber(row.version)) {
         throw new NotesError(409, "edit_conflict", "This note was changed somewhere else (another phone or tab). Reload it, then make your change again.");
       }
-      if (typedNoteBytes(input.bodyMd) > TYPED_NOTE_MAX_BYTES) throw new NotesError(413, "too_long", "This note is too long. Split it into two notes.");
+      if (typedNoteTooLong(input.bodyMd)) throw new NotesError(413, "too_long", "This note is too long. Split it into two notes.");
       const bytes = billedTypedNoteBytes(input.bodyMd);
       await adjustUsedBytes(client, viewer.userId, bytes - (toNumber(row.bytes) ?? 0), limitBytes);
       await client.query(

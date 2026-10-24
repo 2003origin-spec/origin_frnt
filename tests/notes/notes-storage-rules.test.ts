@@ -113,3 +113,12 @@ test("every typed note costs at least 1 KB, so empty notes aren't free", () => {
   assert.equal(billedTypedNoteBytes(""), 1024);
   assert.equal(billedTypedNoteBytes("x".repeat(5000)), 5000);
 });
+
+test("typed notes stop at the database's 200,000 characters as well as 200 KB", async () => {
+  const { typedNoteTooLong, TYPED_NOTE_MAX_CHARS } = await import("../../src/lib/notes/storage-rules");
+  assert.equal(typedNoteTooLong("a".repeat(TYPED_NOTE_MAX_CHARS)), false);
+  // 200,001 ASCII chars is under 200 KB but over char_length ≤ 200000 (used to be a 500).
+  assert.equal(typedNoteTooLong("a".repeat(TYPED_NOTE_MAX_CHARS + 1)), true);
+  // Multi-byte text hits the byte limit first.
+  assert.equal(typedNoteTooLong("अ".repeat(70_000)), true);
+});
