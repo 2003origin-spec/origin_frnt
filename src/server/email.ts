@@ -192,7 +192,11 @@ async function sendViaChannel(
 }
 
 export const sendEmail = async ({ to, subject, text, html }: SendEmailInput): Promise<SendEmailResult> => {
-  const channels = configuredChannels();
+  // Database test runs load .env.local, which may hold a real SMTP login;
+  // EMAIL_DELIVERY=off keeps them on the dev mock. Ignored in production so it
+  // can never silence real mail.
+  const deliveryOff = process.env.EMAIL_DELIVERY === 'off' && process.env.NODE_ENV !== 'production';
+  const channels = deliveryOff ? [] : configuredChannels();
 
   if (channels.length === 0) {
     if (process.env.NODE_ENV === 'production') {
