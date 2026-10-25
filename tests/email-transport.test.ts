@@ -83,6 +83,53 @@ test("email: dev mock is opt-in via missing SMTP creds and reports success with 
   mod.__resetEmailForTests();
 });
 
+test("email: EMAIL_DELIVERY=off keeps a test run on the dev mock even with a real SMTP login", async () => {
+  const mod = await import("../src/server/email");
+  mod.__resetEmailForTests();
+
+  await withEnv(
+    {
+      NODE_ENV: "development",
+      EMAIL_DELIVERY: "off",
+      SMTP_HOST: "smtp.invalid",
+      SMTP_USER: "someone@example.com",
+      SMTP_PASS: "not-a-real-password",
+    },
+    async () => {
+      const result = await mod.sendEmail({ to: "guardian@example.com", subject: "x", text: "x" });
+      assert.equal(result.success, true);
+      assert.match((result as { messageId: string }).messageId, /^dev-mock-/);
+    },
+  );
+
+  mod.__resetEmailForTests();
+});
+
+test("email: EMAIL_DELIVERY=off is ignored in production (it can never silence real mail)", async () => {
+  const mod = await import("../src/server/email");
+  mod.__resetEmailForTests();
+
+  await withEnv(
+    {
+      NODE_ENV: "production",
+      EMAIL_DELIVERY: "off",
+      SMTP_HOST: "smtp.invalid",
+      SMTP_USER: "someone@example.com",
+      SMTP_PASS: "not-a-real-password",
+    },
+    async () => {
+      // The configured channel is still tried (and fails on the .invalid host)
+      // rather than being skipped as if no channel were set.
+      const result = await mod.sendEmail({ to: "test@example.com", subject: "x", text: "x" });
+      assert.equal(result.success, false);
+      const error = (result as { error: unknown }).error;
+      assert.doesNotMatch(String(error), /No mail channel configured/);
+    },
+  );
+
+  mod.__resetEmailForTests();
+});
+
 test("email: lazy construction — transporter is not built until first send", async () => {
   // Import side-effects matter: importing the module must NOT throw even
   // when env is misconfigured. Only the first sendEmail call should fail.

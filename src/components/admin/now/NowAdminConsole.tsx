@@ -10,8 +10,11 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 
 import { ApplicationsPanel } from './ApplicationsPanel';
+import { GroupsPanel } from './GroupsPanel';
+import { LaterPanel } from './LaterPanel';
 import { OverviewPanel } from './OverviewPanel';
 import { PeoplePanel } from './PeoplePanel';
+import { ReadinessPanel } from './ReadinessPanel';
 import { ReportsPanel } from './ReportsPanel';
 import { RosterPanel } from './RosterPanel';
 import { ScorecardPanel } from './ScorecardPanel';
@@ -22,9 +25,12 @@ import { StorePanel } from './StorePanel';
 
 const TABS = [
   { id: 'overview', label: 'Live monitor' },
+  { id: 'readiness', label: 'Launch check' },
   { id: 'reports', label: 'Reports' },
   { id: 'applications', label: 'Applications' },
   { id: 'sessions', label: 'Sessions' },
+  { id: 'later', label: 'Ask later' },
+  { id: 'groups', label: 'Group sessions' },
   { id: 'roster', label: 'Roster' },
   { id: 'solvers', label: 'Solvers & metrics' },
   { id: 'scorecard', label: 'Pilot scorecard' },
@@ -58,9 +64,12 @@ export function NowAdminConsole() {
         ))}
       </nav>
       {tab === 'overview' && <OverviewPanel />}
+      {tab === 'readiness' && <ReadinessPanel />}
       {tab === 'reports' && <ReportsPanel />}
       {tab === 'applications' && <ApplicationsPanel />}
       {tab === 'sessions' && <SessionsPanel sessionId={params.get('id')} />}
+      {tab === 'later' && <LaterPanel />}
+      {tab === 'groups' && <GroupsPanel />}
       {tab === 'roster' && <RosterPanel />}
       {tab === 'solvers' && <SolversPanel />}
       {tab === 'scorecard' && <ScorecardPanel />}

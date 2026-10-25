@@ -93,7 +93,7 @@ type LegRow = {
   expires_at: Date | null;
 };
 
-async function loadLegs(client: Pick<PoolClient, "query">, account: string): Promise<LedgerLeg[]> {
+export async function loadLegs(client: Pick<PoolClient, "query">, account: string): Promise<LedgerLeg[]> {
   const res = await client.query<LegRow>(
     `SELECT direction, amount, kind, created_at, available_at, expires_at
        FROM now.ledger_entries WHERE account_id = $1 ORDER BY created_at, id`,

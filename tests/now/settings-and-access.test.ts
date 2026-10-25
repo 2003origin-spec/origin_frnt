@@ -1,11 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { acceptTimeText } from "@/lib/now-format";
 import { ageInYears, decideAccess, isMinorOn } from "@/server/now/now-access";
 import {
   DEFAULT_NOW_SETTINGS,
   isWithinOpenHours,
   parseBotRule,
+  parseFeatures,
   parseOpenHours,
   parseQuiz,
   parseTransfers,
@@ -72,4 +74,25 @@ test("access needs the flag, a pilot invite, and guardian consent for minors", (
   assert.equal(decideAccess({ ...base, inCohort: false }).blockedReason, "not_invited");
   assert.equal(decideAccess({ ...base, isMinor: true }).blockedReason, "needs_guardian_consent");
   assert.equal(decideAccess({ ...base, isMinor: true, hasStudentConsent: true }).canRequest, true);
+});
+
+test("extra parts (B89–B95) are off by default and only `true` switches one on", () => {
+  const d = DEFAULT_NOW_SETTINGS;
+  assert.deepEqual(d.features, { board: false, askLater: false, groups: false, merch: false, rupeePrices: false });
+  assert.deepEqual(parseFeatures(null), d.features);
+  assert.deepEqual(parseFeatures("{oops"), d.features);
+  assert.deepEqual(parseFeatures(JSON.stringify({ board: true, merch: "yes", hack: true })), { ...d.features, board: true });
+  const saved = prepareSettingsUpdate({ features: { ...d.features, groups: true } });
+  assert.ok(saved.ok);
+  assert.deepEqual(saved.pairs, [["now_features", JSON.stringify({ ...d.features, groups: true })]]);
+});
+
+test("accept time reads as rounded plain text (B90)", () => {
+  assert.equal(acceptTimeText(null), null);
+  assert.equal(acceptTimeText(0), "accepts in about 5 s");
+  assert.equal(acceptTimeText(13), "accepts in about 15 s");
+  assert.equal(acceptTimeText(56), "accepts in about 55 s");
+  assert.equal(acceptTimeText(59), "accepts in about 1 min");
+  assert.equal(acceptTimeText(150), "accepts in about 3 min");
+  assert.equal(acceptTimeText(-1), null);
 });

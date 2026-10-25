@@ -521,6 +521,159 @@ END $$;`,
 CREATE INDEX IF NOT EXISTS idx_roster_day ON now.roster(day, subject);`,
     ],
   },
+  {
+    // Web push for solver offers (decision B85): one row per browser that turned alerts on.
+    id: "20261019_origin_now_web_push",
+    name: "origin now: browser push subscriptions for solver offers",
+    ddl: [
+      `CREATE TABLE IF NOT EXISTS now.push_subscriptions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES origin_users(id) ON DELETE CASCADE,
+  endpoint TEXT NOT NULL UNIQUE,
+  p256dh TEXT,
+  auth TEXT,
+  user_agent TEXT,
+  failures INTEGER NOT NULL DEFAULT 0,
+  last_success_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user ON now.push_subscriptions(user_id);`,
+    ],
+  },
+  {
+    // Shared board in human calls (decision B89): the latest board the solver's screen saved.
+    id: "20261020_origin_now_session_boards",
+    name: "origin now: shared board of a call",
+    ddl: [
+      `CREATE TABLE IF NOT EXISTS now.session_boards (
+  session_id TEXT PRIMARY KEY REFERENCES now.sessions(id) ON DELETE CASCADE,
+  board JSONB NOT NULL,
+  bytes INTEGER NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);`,
+    ],
+  },
+  {
+    // Merch with delivery (decision B91): sizes, delivery address, shipping states.
+    id: "20261020_origin_now_store_merch",
+    name: "origin now: merch with delivery in the store",
+    ddl: [
+      `ALTER TABLE store.items ADD COLUMN IF NOT EXISTS size_stock JSONB;
+ALTER TABLE store.orders ADD COLUMN IF NOT EXISTS size TEXT;
+ALTER TABLE store.orders ADD COLUMN IF NOT EXISTS delivery JSONB;
+ALTER TABLE store.orders ADD COLUMN IF NOT EXISTS ship_status TEXT
+  CHECK (ship_status IS NULL OR ship_status IN ('to_pack', 'packed', 'shipped', 'delivered', 'cancelled'));
+ALTER TABLE store.orders ADD COLUMN IF NOT EXISTS courier TEXT;
+ALTER TABLE store.orders ADD COLUMN IF NOT EXISTS tracking_no TEXT;
+ALTER TABLE store.orders ADD COLUMN IF NOT EXISTS shipped_at TIMESTAMPTZ;
+ALTER TABLE store.orders ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMPTZ;
+ALTER TABLE store.orders ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ;
+ALTER TABLE store.orders ADD COLUMN IF NOT EXISTS cancel_reason TEXT;
+ALTER TABLE store.orders ADD COLUMN IF NOT EXISTS address_purged_at TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS idx_store_orders_ship ON store.orders(ship_status, created_at) WHERE ship_status IS NOT NULL;`,
+    ],
+  },
+  {
+    // Rupee prices in the store (decision B92): the payment order behind a store order.
+    id: "20261020_origin_now_store_rupee",
+    name: "origin now: store orders paid partly in rupees",
+    ddl: [
+      `ALTER TABLE store.orders ADD COLUMN IF NOT EXISTS payment_order_id TEXT;
+CREATE INDEX IF NOT EXISTS idx_store_orders_payment ON store.orders(payment_order_id) WHERE payment_order_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_store_orders_placed ON store.orders(created_at) WHERE status = 'placed';`,
+    ],
+  },
+  {
+    // Ask later (decision B94): doubts answered in writing; reports can point at one.
+    id: "20261020_origin_now_ask_later",
+    name: "origin now: ask later (written answers)",
+    ddl: [
+      `CREATE TABLE IF NOT EXISTS now.later_requests (
+  id TEXT PRIMARY KEY,
+  student_id TEXT NOT NULL REFERENCES origin_users(id) ON DELETE CASCADE,
+  question_id TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  chapter TEXT,
+  difficulty TEXT NOT NULL,
+  context_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  note TEXT,
+  photo_keys TEXT[] NOT NULL DEFAULT '{}',
+  price_coins INTEGER NOT NULL CHECK (price_coins > 0),
+  status TEXT NOT NULL DEFAULT 'open'
+    CHECK (status IN ('open', 'claimed', 'answered', 'accepted', 'disputed', 'expired', 'cancelled')),
+  helper_id TEXT REFERENCES now.helpers(id) ON DELETE SET NULL,
+  claimed_at TIMESTAMPTZ,
+  claim_expires_at TIMESTAMPTZ,
+  answer_text TEXT,
+  answer_photo_keys TEXT[] NOT NULL DEFAULT '{}',
+  answered_at TIMESTAMPTZ,
+  stars INTEGER CHECK (stars IS NULL OR stars BETWEEN 1 AND 5),
+  tip_coins INTEGER NOT NULL DEFAULT 0 CHECK (tip_coins >= 0),
+  settled_at TIMESTAMPTZ,
+  settle_outcome TEXT CHECK (settle_outcome IS NULL OR settle_outcome IN ('paid', 'refunded')),
+  expires_at TIMESTAMPTZ NOT NULL,
+  idempotency_key TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_later_requests_queue ON now.later_requests(status, subject, created_at);
+CREATE INDEX IF NOT EXISTS idx_later_requests_student ON now.later_requests(student_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_later_requests_helper ON now.later_requests(helper_id, status);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_later_requests_idempotency ON now.later_requests(student_id, idempotency_key)
+  WHERE idempotency_key IS NOT NULL;
+ALTER TABLE now.reports ADD COLUMN IF NOT EXISTS later_request_id TEXT REFERENCES now.later_requests(id) ON DELETE SET NULL;`,
+    ],
+  },
+  {
+    // Group sessions (decision B95): scheduled sessions, booked seats, reports about them.
+    id: "20261020_origin_now_group_sessions",
+    name: "origin now: group sessions",
+    ddl: [
+      `CREATE TABLE IF NOT EXISTS now.group_sessions (
+  id TEXT PRIMARY KEY,
+  helper_id TEXT NOT NULL REFERENCES now.helpers(id),
+  subject TEXT NOT NULL,
+  chapter TEXT NOT NULL,
+  title TEXT NOT NULL,
+  description TEXT,
+  starts_at TIMESTAMPTZ NOT NULL,
+  minutes INTEGER NOT NULL CHECK (minutes BETWEEN 20 AND 45),
+  seats INTEGER NOT NULL CHECK (seats BETWEEN 2 AND 15),
+  price_coins INTEGER NOT NULL CHECK (price_coins > 0),
+  status TEXT NOT NULL DEFAULT 'scheduled' CHECK (status IN ('scheduled', 'live', 'ended', 'cancelled')),
+  solver_joined_at TIMESTAMPTZ,
+  started_at TIMESTAMPTZ,
+  ended_at TIMESTAMPTZ,
+  ended_by TEXT,
+  mic_seat_id TEXT,
+  settled_at TIMESTAMPTZ,
+  settle_outcome TEXT CHECK (settle_outcome IS NULL OR settle_outcome IN ('paid', 'refunded')),
+  cancel_reason TEXT,
+  recording_key TEXT,
+  recording_egress_id TEXT,
+  recording_deleted_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_group_sessions_upcoming ON now.group_sessions(status, starts_at);
+CREATE INDEX IF NOT EXISTS idx_group_sessions_helper ON now.group_sessions(helper_id, starts_at);
+CREATE TABLE IF NOT EXISTS now.group_seats (
+  id TEXT PRIMARY KEY,
+  group_id TEXT NOT NULL REFERENCES now.group_sessions(id) ON DELETE CASCADE,
+  student_id TEXT NOT NULL REFERENCES origin_users(id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'booked' CHECK (status IN ('booked', 'cancelled', 'paid', 'refunded')),
+  price_coins INTEGER NOT NULL CHECK (price_coins > 0),
+  joined_at TIMESTAMPTZ,
+  stars INTEGER CHECK (stars IS NULL OR stars BETWEEN 1 AND 5),
+  booked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  cancelled_at TIMESTAMPTZ
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_group_seats_active ON now.group_seats(group_id, student_id) WHERE status <> 'cancelled';
+CREATE INDEX IF NOT EXISTS idx_group_seats_student ON now.group_seats(student_id, booked_at DESC);
+ALTER TABLE now.reports ADD COLUMN IF NOT EXISTS group_session_id TEXT REFERENCES now.group_sessions(id) ON DELETE SET NULL;`,
+    ],
+  },
 ];
 
 function pool() {

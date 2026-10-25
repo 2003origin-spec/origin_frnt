@@ -212,6 +212,7 @@ const KIND_LABELS: Record<string, string> = {
   subject_subscription: "Subject subscription",
   batch_subscription: "Batch subscription",
   coin_pack: "Ori Coins pack",
+  store_item: "Origin Store item",
 };
 
 /**
@@ -235,6 +236,7 @@ export function revenueBucket(input: {
     return { key: "institute", label: "Institute / batch" };
   }
   if (input.kind === "coin_pack") return { key: "coins", label: "Ori Coins packs" };
+  if (input.kind === "store_item") return { key: "store", label: "Origin Store" };
   if (subject) return { key: subject, label: SUBJECT_LABELS[subject] ?? subject };
   return { key: "unattributed", label: "Unattributed" };
 }

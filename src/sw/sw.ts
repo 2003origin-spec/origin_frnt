@@ -37,6 +37,7 @@ import {
   SW_MESSAGE,
   type SwRequestClass,
 } from "./policy";
+import { installNowPushHandlers } from "./now-push";
 
 declare const self: ServiceWorkerGlobalScope;
 /** Injected by scripts/build-sw.mjs — Vercel commit SHA (or a dev stamp).
@@ -153,3 +154,6 @@ const serwist = new Serwist({
 });
 
 serwist.addEventListeners();
+
+// Origin NOW offer alerts (decision B85).
+installNowPushHandlers(self);

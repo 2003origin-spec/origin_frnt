@@ -25,6 +25,10 @@ import {
 } from "./dispatch-service";
 import { findUnbalancedTransfers, sessionCapture, sessionHold } from "./ledger-rules";
 import { getWalletBalance, loadAllLegsForAudit, postTransfers, withNowTransaction } from "./ledger-store";
+import { runAskLaterSweep } from "./ask-later-service";
+import { purgeGroupRecordings, runGroupSweep } from "./group-service";
+import { purgeOldDeliveryAddresses } from "./merch-service";
+import { releaseUnpaidStoreOrders } from "./store-checkout";
 import { NowError } from "./now-http";
 import { ensureNowSchema } from "./now-schema";
 import { helperStreamId, publishNowEvent, requestStreamId, scheduleNowTimer, type NowTimer } from "./now-realtime";
@@ -574,7 +578,7 @@ async function safely<T>(what: string, id: string, work: () => Promise<T>): Prom
 /** Every minute: re-does anything a missed or late QStash timer left behind. */
 export async function runNowSweep(now: Date = new Date()) {
   const pool = await db();
-  const counts = { offersExpired: 0, dispatched: 0, noShows: 0, ended: 0, settled: 0 };
+  const counts = { offersExpired: 0, dispatched: 0, noShows: 0, ended: 0, settled: 0, storeCheckoutsReleased: 0, askLater: { claimsReleased: 0, expired: 0, autoAccepted: 0 }, groups: { noShows: 0, ended: 0 } };
 
   const offers = await pool.query<{ id: string }>(
     `SELECT id FROM now.offers WHERE response IS NULL AND expires_at <= $1 ORDER BY expires_at LIMIT ${SWEEP_BATCH}`,
@@ -612,6 +616,24 @@ export async function runNowSweep(now: Date = new Date()) {
     [new Date(now.getTime() - RATING_WINDOW_MS)],
   );
   for (const { id } of unsettled.rows) if (await safely("settle", id, () => settleSession(id, now))) counts.settled += 1;
+
+  // Store checkouts with a rupee price that were never paid: coins and stock back (B92).
+  counts.storeCheckoutsReleased = await releaseUnpaidStoreOrders(now).catch((error) => {
+    console.error("[origin-now] store checkout release failed", error instanceof Error ? error.message : error);
+    return 0;
+  });
+
+  // Ask later (B94): expired claims, unanswered doubts, answers left without a response.
+  counts.askLater = await runAskLaterSweep(now).catch((error) => {
+    console.error("[origin-now] ask-later sweep failed", error instanceof Error ? error.message : error);
+    return counts.askLater;
+  });
+
+  // Group sessions (B95): solver no-shows refunded, sessions past their end settled.
+  counts.groups = await runGroupSweep(now).catch((error) => {
+    console.error("[origin-now] group sweep failed", error instanceof Error ? error.message : error);
+    return counts.groups;
+  });
 
   return counts;
 }
@@ -675,11 +697,19 @@ export async function runNowNightly(now: Date = new Date()) {
   }
   await pool.query(`DELETE FROM now.presence_minutes WHERE minute < $1`, [new Date(now.getTime() - 90 * 24 * 60 * 60_000)]);
   const recordings = await purgeExpiredRecordings(now);
+  const groupRecordingsDeleted = await purgeGroupRecordings(now).catch(() => 0);
+  // Merch delivery addresses, 90 days after delivery or cancellation (B91).
+  const addressesWiped = await purgeOldDeliveryAddresses(now).catch((error) => {
+    console.error("[origin-now] address purge failed", error instanceof Error ? error.message : error);
+    return 0;
+  });
   return {
     ratingWindowsClosed,
     unbalancedTransfers: unbalanced.length,
     recordingsDeleted: recordings.deleted,
     recordingDeletesFailed: recordings.failed,
+    addressesWiped,
+    groupRecordingsDeleted,
     eveningBonus,
   };
 }

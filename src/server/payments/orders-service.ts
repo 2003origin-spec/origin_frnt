@@ -29,6 +29,15 @@ import {
   type ResolvedCoinPack,
 } from "@/server/now/coin-pack-payments";
 import { ensureNowSchema } from "@/server/now/now-schema";
+import {
+  completeStoreItemPayment,
+  ensureStoreItemOrderKind,
+  resolveStoreOrderAmount,
+  storeOrderNotes,
+  type ResolvedStoreOrder,
+  type StorePaymentOutcome,
+} from "@/server/now/store-payments";
+import { ensureCoinRedemptionGrantSource } from "@/server/now/store-service";
 
 import {
   attachRazorpayOrderId,
@@ -118,13 +127,15 @@ export class PaymentGatewayError extends Error {
 /** Every product Rail A can price. `institute_offering` landed with plan G16. */
 export type RailAOrderKind = Extract<
   OrderKind,
-  "subject_term" | "bundle_term" | "institute_offering" | "coin_pack"
+  "subject_term" | "bundle_term" | "institute_offering" | "coin_pack" | "store_item"
 >;
 
 export type ResolveOrderAmountInput = {
   kind?: RailAOrderKind;
   /** coin_pack only (Origin NOW). */
   packId?: string | null;
+  /** store_item only (Origin Store, B92): the placed store order being paid. */
+  storeOrderId?: string | null;
   subject?: Subject | string | null;
   bundleId?: string | null;
   /** institute_offering only. */
@@ -156,6 +167,8 @@ export type ResolvedOrderAmount = {
   term: TermOption;
   /** coin_pack only: the frozen pack + bonus written into the order notes. */
   coinPack?: ResolvedCoinPack | null;
+  /** store_item only: the store order and its frozen rupee price. */
+  storeOrder?: ResolvedStoreOrder | null;
 };
 
 export type CreateCheckoutOrderInput = {
@@ -169,6 +182,8 @@ export type CreateCheckoutOrderInput = {
   offeringId?: string | null;
   /** coin_pack only (Origin NOW). */
   packId?: string | null;
+  /** store_item only (Origin Store, B92). */
+  storeOrderId?: string | null;
   kind?: RailAOrderKind;
   couponCode?: string | null;
   idempotencyKey?: string | null;
@@ -328,6 +343,33 @@ export async function resolveOrderAmount(input: ResolveOrderAmountInput): Promis
     };
   }
 
+  // An Origin Store item with a rupee price (B92): the store order was placed
+  // first (coins taken, stock reserved) and froze the rupee amount; no term
+  // ladder, no coupons.
+  if (kind === "store_item") {
+    if (!input.storeOrderId || !input.userId) throw new Error("storeOrderId and userId are required for a store item");
+    if (input.couponCode?.trim()) throw new Error("Coupons do not apply to store items");
+    const storeOrder = await resolveStoreOrderAmount({ storeOrderId: input.storeOrderId, userId: input.userId });
+    return {
+      kind,
+      subject: null,
+      bundleId: null,
+      bundleSubjects: [],
+      workspaceId: null,
+      offeringId: null,
+      offeringTitle: storeOrder.title,
+      termMonths: 1,
+      baseMinor: storeOrder.amountMinor,
+      discountMinor: 0,
+      amountMinor: storeOrder.amountMinor,
+      currency: CURRENCY,
+      couponCode: null,
+      monthlyMinor: storeOrder.amountMinor,
+      term: { termMonths: 1, label: "One-time", discountPercent: 0 },
+      storeOrder,
+    };
+  }
+
   // An institute offering is a one-time enrolment fee set by the institute, not
   // a platform subscription: the term ladder and platform coupons do not apply
   // to it, and its price comes from commerce.workspace_offerings (plan G16).
@@ -454,11 +496,13 @@ export async function createCheckoutOrder(input: CreateCheckoutOrderInput): Prom
     workspaceId: input.workspaceId,
     offeringId: input.offeringId,
     packId: input.packId,
+    storeOrderId: input.storeOrderId,
     termMonths: input.termMonths,
     couponCode: input.couponCode,
     userId: input.userId,
   });
   if (resolved.kind === "coin_pack") await ensureCoinPackOrderKind();
+  if (resolved.kind === "store_item") await ensureStoreItemOrderKind();
 
   // The DB unique index remains the final arbiter under a race. This lookup
   // gives direct callers the same replay semantics as the route idempotency
@@ -529,6 +573,7 @@ export async function createCheckoutOrder(input: CreateCheckoutOrderInput): Prom
       ...(enrollmentOrderId ? { enrollment_order_id: enrollmentOrderId } : {}),
       ...(resolved.offeringTitle ? { offering_title: resolved.offeringTitle } : {}),
       ...(resolved.coinPack ? coinPackNotes(resolved.coinPack) : {}),
+      ...(resolved.storeOrder ? storeOrderNotes(resolved.storeOrder) : {}),
     },
     expiresAt: new Date(now.getTime() + DEFAULT_ORDER_EXPIRY_MS),
   });
@@ -683,13 +728,20 @@ export async function applyPaymentSuccess(input: PaymentSuccessInput): Promise<P
     orderBefore.kind !== "subject_term" &&
     orderBefore.kind !== "bundle_term" &&
     orderBefore.kind !== "institute_offering" &&
-    orderBefore.kind !== "coin_pack"
+    orderBefore.kind !== "coin_pack" &&
+    orderBefore.kind !== "store_item"
   ) {
     throw new Error("Payment order is not a Rail A order");
   }
   // Coin credits are written in this function's transaction; make sure the
   // now.* tables exist before it opens (DDL must not run inside it).
   if (orderBefore.kind === "coin_pack") await ensureNowSchema();
+  // A store item may grant coin premium in this transaction (B92): the grant source DDL runs first.
+  if (orderBefore.kind === "store_item") {
+    await ensureNowSchema();
+    await ensureCoinRedemptionGrantSource();
+  }
+  let storeOutcome: StorePaymentOutcome | null = null;
 
   const client = await dbPool().connect();
   let result: PaymentSuccessResult;
@@ -812,6 +864,15 @@ export async function applyPaymentSuccess(input: PaymentSuccessInput): Promise<P
       if (order.kind === "coin_pack") {
         await creditCoinPackOrder(client, { id: order.id, userId: order.userId, notes: order.notes });
       }
+      if (order.kind === "store_item") {
+        storeOutcome = await completeStoreItemPayment(client, {
+          notes: order.notes,
+          userId: order.userId,
+          paymentOrderId: order.id,
+          amountMinor,
+          now: capturedAt,
+        });
+      }
       if (order.kind === "subject_term" || order.kind === "bundle_term") {
         const subjects = order.kind === "subject_term"
           ? [order.subject as Subject]
@@ -893,13 +954,27 @@ export async function applyPaymentSuccess(input: PaymentSuccessInput): Promise<P
             paidAt: updated.paidAt,
             expiresAt: latestGrantExpiry(grants),
             href:
-              order.kind === "institute_offering" ? "/connect" : order.kind === "coin_pack" ? "/now/wallet" : "/premium",
+              order.kind === "institute_offering"
+                ? "/connect"
+                : order.kind === "coin_pack"
+                  ? "/now/wallet"
+                  : order.kind === "store_item"
+                    ? "/now/store"
+                    : "/premium",
             ...(order.kind === "institute_offering"
               ? {
                   notificationTitle: "Payment received",
                   notificationMessage: `Your payment for ${
                     typeof order.notes.offering_title === "string" ? order.notes.offering_title : "your enrolment"
                   } was received. Your enrolment is being set up.`,
+                }
+              : {}),
+            ...(order.kind === "store_item"
+              ? {
+                  notificationTitle: "Order confirmed",
+                  notificationMessage: `Your payment for ${
+                    typeof order.notes.offering_title === "string" ? order.notes.offering_title : "your store order"
+                  } was received. See it in My orders.`,
                 }
               : {}),
             ...(order.kind === "coin_pack"
@@ -919,6 +994,7 @@ export async function applyPaymentSuccess(input: PaymentSuccessInput): Promise<P
       // connection and must never observe an uncommitted grant. An institute
       // order grants no subject entitlement, so there is nothing to recompute.
       if (order.kind === "subject_term" || order.kind === "bundle_term") await recomputeUserPremiumFlags(order.userId);
+      if (order.kind === "store_item" && storeOutcome?.premiumGranted) await recomputeUserPremiumFlags(order.userId);
       if (order.kind === "institute_offering") {
         await publishOutbox(`institute_enrollment_${input.razorpayPaymentId}`).catch(() => undefined);
       }

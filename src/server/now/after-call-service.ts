@@ -32,6 +32,7 @@ import {
   validateRating,
   type ReportReason,
 } from "./after-call-rules";
+import { settleDisputedLater } from "./ask-later-service";
 import { applyTransition, lockRequest, logEvent, type RequestRow } from "./dispatch-service";
 import { PLATFORM_ACCOUNTS, tip as tipTransfer, userAccount, type Transfer } from "./ledger-rules";
 import { getWalletBalance, postTransfers, withNowTransaction } from "./ledger-store";
@@ -520,6 +521,7 @@ export async function resolveReport(
   const effects: Effect[] = [];
   let helperToReview: string | null = null;
   let sessionToSettle: string | null = null;
+  let laterToSettle: string | null = null;
   await withNowTransaction(async (client) => {
     const res = await client.query(`SELECT * FROM now.reports WHERE id = $1 FOR UPDATE`, [reportId]);
     const report = res.rows[0];
@@ -532,6 +534,8 @@ export async function resolveReport(
       [reportId, outcome, adminId, now, note.trim().slice(0, 1000)],
     );
     if (report.session_id && report.reporter_role === "student") sessionToSettle = report.session_id;
+    // A report about an ask-later answer (B94) decides where its held coins go.
+    if (report.later_request_id) laterToSettle = report.later_request_id;
     // The reported side's rating on this session stops waiting.
     if (report.reporter_role === "solver" && report.session_id && report.reported_user_id) {
       const after = ratingAfterCase(outcome);
@@ -604,6 +608,11 @@ export async function resolveReport(
   if (sessionToSettle) {
     await settleSession(sessionToSettle, now).catch((error) =>
       console.error("[origin-now] settle after case failed", sessionToSettle, error instanceof Error ? error.message : error),
+    );
+  }
+  if (laterToSettle) {
+    await settleDisputedLater(laterToSettle, outcome, now).catch((error) =>
+      console.error("[origin-now] ask-later settle after case failed", laterToSettle, error instanceof Error ? error.message : error),
     );
   }
   return { reportId, status: outcome };
