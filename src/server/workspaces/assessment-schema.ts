@@ -8,6 +8,7 @@ import type { PoolClient } from "pg";
 import { getUserPostgresPool, isUserPostgresConfigured } from "@/server/user-postgres";
 
 import { ensureContentSchema } from "./content-schema";
+import { lockSchemaDdl } from "@/server/schema-lock";
 
 declare global {
   var __originAssessmentSchemaEnsured: boolean | undefined;
@@ -38,6 +39,7 @@ export async function ensureAssessmentSchema(): Promise<void> {
       const client = await pool().connect();
       try {
         await client.query("BEGIN");
+        await lockSchemaDdl(client);
 
         await client.query(`CREATE SCHEMA IF NOT EXISTS assessment;`);
 

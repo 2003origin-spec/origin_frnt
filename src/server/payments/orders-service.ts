@@ -51,6 +51,7 @@ import {
 } from "./payments-store";
 import { enqueueAdminAlerts } from "./admin-alerts";
 import { ensurePaymentsAndGrantSchema, ensurePaymentsSchema } from "./payments-schema";
+import { PaymentDomainError } from "./errors";
 import {
   openInstituteEnrollmentOrder,
   resolveInstituteOffering,
@@ -60,12 +61,8 @@ import { getRazorpayClient, getRazorpayKeyId, isLivemode } from "./razorpay-clie
 import { grantPaidTerm, type PaidTermGrant } from "./grants";
 import { lockUserPayments } from "./user-payment-lock";
 import { publishOutbox } from "./qstash";
-import {
-  applyDisputeCreated,
-  applyRefundLifecycle,
-  disputeInputFromEvent,
-  refundInputFromEvent,
-} from "./refunds-service";
+import { applyDisputeCreated, applyRefundLifecycle } from "./refunds-service";
+import { routePaymentEvent, type PaymentEventInput } from "./event-router";
 
 const CURRENCY = "INR";
 const DEFAULT_ORDER_EXPIRY_MS = 30 * 60 * 1000;
@@ -154,6 +151,8 @@ export type RazorpayOrdersClient = {
     }): Promise<RazorpayOrder>;
   };
 };
+
+export { PaymentDomainError } from "./errors";
 
 /** A retryable gateway failure (routes map this to HTTP 503). */
 export class PaymentGatewayError extends Error {
@@ -823,17 +822,17 @@ async function findOrder(input: PaymentSuccessInput | MarkOrderFailedInput): Pro
  * twice.
  */
 export async function applyPaymentSuccess(input: PaymentSuccessInput): Promise<PaymentSuccessResult> {
-  if (!input.razorpayPaymentId) throw new Error("razorpayPaymentId is required");
+  if (!input.razorpayPaymentId) throw new PaymentDomainError(422, "razorpayPaymentId is required");
   await ensurePaymentsAndGrantSchema();
   const orderBefore = await findOrder(input);
-  if (!orderBefore) throw new Error("Payment refers to an unknown order");
+  if (!orderBefore) throw new PaymentDomainError(404, "Payment refers to an unknown order");
   if (
     orderBefore.kind !== "subject_term" &&
     orderBefore.kind !== "bundle_term" &&
     orderBefore.kind !== "institute_offering" &&
     orderBefore.kind !== "coin_pack"
   ) {
-    throw new Error("Payment order is not a Rail A order");
+    throw new PaymentDomainError(409, "Payment order is not a Rail A order");
   }
   // Coin credits are written in this function's transaction; make sure the
   // now.* tables exist before it opens (DDL must not run inside it).
@@ -856,12 +855,12 @@ export async function applyPaymentSuccess(input: PaymentSuccessInput): Promise<P
       [orderBefore.id],
     );
     const row = lockedOrderResult.rows[0] as Record<string, unknown> | undefined;
-    if (!row) throw new Error("Payment refers to an unknown order");
+    if (!row) throw new PaymentDomainError(404, "Payment refers to an unknown order");
     const order = (await getOrderById(String(row.id), client)) as PaymentOrder;
     if (order.userId !== orderBefore.userId) throw new Error("Payment order owner changed under the lock");
 
     if (input.razorpayOrderId && order.razorpayOrderId !== input.razorpayOrderId) {
-      throw new Error("Payment order id does not match the local order");
+      throw new PaymentDomainError(409, "Payment order id does not match the local order");
     }
 
     const existingPayment = await client.query(
@@ -873,9 +872,9 @@ export async function applyPaymentSuccess(input: PaymentSuccessInput): Promise<P
     const rawData = paymentDataFromRaw(raw);
     const amountMinor = input.amountMinor ?? rawData.amountMinor ?? order.amountMinor;
     const currency = (input.currency ?? rawData.currency ?? CURRENCY).toUpperCase();
-    if (currency !== CURRENCY) throw new Error("Only INR payments are accepted");
+    if (currency !== CURRENCY) throw new PaymentDomainError(409, "Only INR payments are accepted");
     if (amountMinor !== order.amountMinor) {
-      throw new Error("Captured amount does not match the order amount");
+      throw new PaymentDomainError(409, "Captured amount does not match the order amount");
     }
 
     // A second payment id must never extend an already-paid order. This can
@@ -899,7 +898,7 @@ export async function applyPaymentSuccess(input: PaymentSuccessInput): Promise<P
       }
     } else if (existing && String(existing.status) === "refunded") {
       if (existing.order_id && String(existing.order_id) !== order.id) {
-        throw new Error("Payment id is already linked to a different order");
+        throw new PaymentDomainError(409, "Payment id is already linked to a different order");
       }
       // Razorpay may redeliver the original capture after a full refund. The
       // refund is terminal for this payment/order pair: acknowledge the stale
@@ -911,7 +910,7 @@ export async function applyPaymentSuccess(input: PaymentSuccessInput): Promise<P
       result = { order: current, payment, grants: [], alreadyApplied: true };
     } else if (existing && String(existing.status) === "captured") {
       if (existing.order_id && String(existing.order_id) !== order.id) {
-        throw new Error("Payment id is already linked to a different order");
+        throw new PaymentDomainError(409, "Payment id is already linked to a different order");
       }
       const capturedAt = dateOrNow(input.now);
       const payment = await upsertPayment(
@@ -936,7 +935,7 @@ export async function applyPaymentSuccess(input: PaymentSuccessInput): Promise<P
       result = { order: current, payment, grants: [], alreadyApplied: true };
     } else {
       if (existing?.order_id && String(existing.order_id) !== order.id) {
-        throw new Error("Payment id is already linked to a different order");
+        throw new PaymentDomainError(409, "Payment id is already linked to a different order");
       }
       const capturedAt = dateOrNow(input.now);
       const payment = await upsertPayment(
@@ -1312,59 +1311,14 @@ export async function markPaymentAttemptFailed(input: MarkOrderFailedInput): Pro
   }
 }
 
-export type PaymentEventInput = {
-  event?: string | null;
-  payload?: Record<string, unknown>;
-  livemode?: boolean;
-};
+export type { PaymentEventInput } from "./event-router";
 
-/** Applies the supported Rail A webhook event shapes. */
+/** Applies the supported Rail A webhook event shapes (routing: ./event-router). */
 export async function processPaymentEvent(input: PaymentEventInput | Record<string, unknown>) {
-  const body = (input.payload ?? input) as Record<string, unknown>;
-  const event = String(input.event ?? body.event ?? "");
-  const payload = (body.payload as Record<string, unknown> | undefined) ?? body;
-  const payment = (payload.payment as Record<string, unknown> | undefined) ?? {};
-  const paymentEntity = (payment.entity as Record<string, unknown> | undefined) ?? payment;
-  const order = (payload.order as Record<string, unknown> | undefined) ?? {};
-  const orderEntity = (order.entity as Record<string, unknown> | undefined) ?? order;
-  const rzpOrderId = String(
-    paymentEntity.order_id ?? orderEntity.id ?? payload.order_id ?? "",
-  ) || null;
-  const paymentId = String(paymentEntity.id ?? payload.payment_id ?? "") || null;
-
-  if (event === "refund.created" || event === "refund.processed") {
-    return applyRefundLifecycle(refundInputFromEvent(body));
-  }
-  if (event === "payment.dispute.created") {
-    return applyDisputeCreated(disputeInputFromEvent(body));
-  }
-
-  if (event === "payment.failed" || event.endsWith(".failed")) {
-    // A failed attempt keeps the order open and the coupon hold reserved (P2):
-    // the Razorpay order is still payable and the student usually retries.
-    const failed = await markPaymentAttemptFailed({
-      razorpayOrderId: rzpOrderId,
-      razorpayPaymentId: paymentId,
-      reason: String(paymentEntity.error_description ?? paymentEntity.error_reason ?? "payment_failed"),
-      payment: paymentEntity,
-    });
-    // A failure can arrive before the local checkout transaction commits. Keep
-    // the durable event retryable rather than incorrectly marking it ignored.
-    if (!failed) throw new Error("Payment failure refers to an unknown order");
-    return failed;
-  }
-  if (event === "order.paid" || event === "payment.captured" || event.endsWith(".captured")) {
-    if (!paymentId) throw new Error("Captured payment event has no payment id");
-    return applyPaymentSuccess({
-      razorpayOrderId: rzpOrderId,
-      razorpayPaymentId: paymentId,
-      amountMinor: asMinor(paymentEntity.amount),
-      currency: paymentEntity.currency == null ? null : String(paymentEntity.currency),
-      method: paymentEntity.method == null ? null : String(paymentEntity.method),
-      feeMinor: asMinor(paymentEntity.fee),
-      taxMinor: asMinor(paymentEntity.tax),
-      raw: body,
-    });
-  }
-  return null;
+  return routePaymentEvent(input, {
+    applyRefundLifecycle,
+    applyDisputeCreated,
+    markPaymentAttemptFailed,
+    applyPaymentSuccess,
+  });
 }

@@ -5,7 +5,7 @@ import { revalidateTag } from 'next/cache';
 import { getServerUser } from '@/lib/auth-server';
 import { publishRoomEvent } from '@/server/rooms-pubsub';
 import { submitRoomTest } from '@/server/study-rooms';
-import { withStoreAsync } from '@/server/store';
+import { TEST_SUBMIT_PERSIST_COLLECTIONS, withStoreAsyncScoped } from '@/server/store';
 import type { TestSubmissionPayload } from '@/server/assessments';
 
 async function requireUser() {
@@ -16,7 +16,13 @@ async function requireUser() {
 
 export async function submitRoomTestAction(roomId: string, payload: TestSubmissionPayload) {
   const user = await requireUser();
-  const { result, finish } = await withStoreAsync((store) => submitRoomTest(store, user, roomId, payload));
+  // Same scoped persist as a regular test submit: the result is written by
+  // persistTestAnalysisResult, only the gamification side-effects live in the
+  // store (and the user row for streak/study time).
+  const { result, finish } = await withStoreAsyncScoped(
+    (store) => submitRoomTest(store, user, roomId, payload),
+    { userId: user.id, collections: TEST_SUBMIT_PERSIST_COLLECTIONS, persistUser: true },
+  );
 
   await publishRoomEvent(roomId, {
     type: 'participant_finished',

@@ -151,6 +151,9 @@ const MIGRATIONS = [
   { file: "20261021_payments_open_institute_orders.sql", target: "user" },
   // Contest bookmarks + admin import workspaces (were runtime-ensure only).
   { file: "20261022_contest_bookmarks_import_workspaces.sql", target: "user" },
+  // Refund intents: initiateRefund records one row per payment before the
+  // Razorpay call instead of holding a lock across it. Additive new table.
+  { file: "20261022_payments_refund_intents.sql", target: "user" },
   // Once-per-reference point awards (bug-fixes G6 + N4): app.point_awards
   // claim table, FK to origin_users, so the USER database. Additive and
   // idempotent; ensurePointAwardsSchema() mirrors it at runtime. After the

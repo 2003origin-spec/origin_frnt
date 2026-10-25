@@ -21,6 +21,7 @@ import {
   saveLocalDraft,
 } from "@/lib/cbt/local-attempt";
 import { QuestionTimer, type CbtQuestionTimes } from "@/lib/cbt/question-timing";
+import { classifyCbtSaveFailure, runCbtSubmitFlow, type CbtFlushOutcome } from "@/lib/cbt/submit-flow";
 
 /**
  * CBT test player. A purpose-built fork of the Origin TestInterface: it keeps
@@ -271,9 +272,12 @@ export function CbtTestInterface() {
    * flag: a 413/429/5xx used to clear it silently and those answers were never
    * retried. A 409 `stale_draft` means another device saved something newer —
    * we adopt the server's revision instead of fighting it.
+   *
+   * Reports what happened, so submit() can refuse to grade a server draft that
+   * is behind this device.
    */
-  const flushSave = useCallback(async (): Promise<boolean> => {
-    if (!dirtyRef.current) return true;
+  const flushSave = useCallback(async (): Promise<CbtFlushOutcome> => {
+    if (!dirtyRef.current) return "ok";
     dirtyRef.current = false;
     const snapshot = {
       ...stateRef.current,
@@ -294,14 +298,14 @@ export function CbtTestInterface() {
         const data = (await res.json().catch(() => ({}))) as { rev?: number };
         if (typeof data.rev === "number") revRef.current = Math.max(revRef.current, data.rev);
         setSync("synced");
-        return true;
+        return "ok";
       }
       const data = (await res.json().catch(() => ({}))) as { code?: string; rev?: number };
       if (res.status === 409 && data.code === "stale_draft") {
         revRef.current = Math.max(revRef.current, Number(data.rev ?? 0)) + 1;
         dirtyRef.current = true;
         setSync("pending");
-        return false;
+        return "retry";
       }
       if (data.code === "already_submitted" || data.code === "test_ended") {
         // The server finalized this attempt (deadline sweep, or the teacher)
@@ -311,21 +315,28 @@ export function CbtTestInterface() {
         submittedRef.current = true;
         setPhase("submitted");
         markSubmitted();
-        return false;
+        return "finalized";
       }
       if (res.status === 401) {
         // Kicked, or this attempt was resumed elsewhere. Stop writing; the room
         // context resolves the correct terminal screen on its next refresh.
         setSync("offline");
-        return false;
+        return "unauthorized";
       }
       dirtyRef.current = true;
       setSync("pending");
-      return false;
+      // An explicit validation/size refusal never clears on retry: say so, so
+      // the submit is not blocked by it forever. Anything else (5xx, a bare
+      // 4xx) is retried — giving up would submit a stale draft.
+      if (classifyCbtSaveFailure(res.status, data.code) === "rejected") {
+        console.warn("[cbt] answers save rejected", res.status, data.code);
+        return "rejected";
+      }
+      return "retry";
     } catch {
       dirtyRef.current = true; // retry on the next tick / when we're back online
       setSync(typeof navigator !== "undefined" && navigator.onLine === false ? "offline" : "pending");
-      return false;
+      return "retry";
     }
   }, [markSubmitted]);
 
@@ -474,47 +485,61 @@ export function CbtTestInterface() {
       questionTimerRef.current?.close(Date.now());
       dirtyRef.current = true;
       revRef.current += 1;
-      await flushSave();
 
       const body = JSON.stringify({ auto, malpractice, violations });
       // ~1s, 2s, 4s, 8s, 15s — about half a minute of trying before we hand the
-      // student back their paper with an explanation.
-      const backoffs = [1_000, 2_000, 4_000, 8_000, 15_000];
-      for (let attempt = 0; attempt <= backoffs.length; attempt += 1) {
-        try {
+      // student back their paper with an explanation. Every attempt re-flushes
+      // the answers first: `/submit` grades the server-held draft, so a submit
+      // after a failed flush would grade stale answers. Only a confirmed flush
+      // followed by a confirmed submit clears this device's copy.
+      const outcome = await runCbtSubmitFlow({
+        isDirty: () => dirtyRef.current,
+        flush: flushSave,
+        submit: async () => {
           const res = await fetch("/api/cbt-student/submit", {
             method: "POST",
             headers: { "content-type": "application/json" },
             credentials: "include",
             body,
           });
-          if (res.ok) {
-            if (roomId && participantIdRef.current) clearLocalDraft(roomId, participantIdRef.current);
-            if (document.fullscreenElement) document.exitFullscreen?.().catch(() => undefined);
-            setPhase("submitted");
-            // Promote to the room-level terminal phase so the context unmounts
-            // this player: a submitted student must never re-enter the test
-            // (e.g. via a browser Back / bfcache restore of this frozen view).
-            // Hand off the own-attempt counts so the terminal ThankYou screen
-            // can show a post-submit summary (P1 3.5) after this unmounts.
-            markSubmitted(summaryRef.current);
-            return;
-          }
-          if (res.status === 401) break; // kicked or resumed elsewhere
-        } catch {
-          // network down — fall through to the retry delay
-        }
-        if (attempt < backoffs.length) {
-          setSubmitError("Couldn't reach the server. Your answers are saved — retrying…");
-          await new Promise((resolve) => setTimeout(resolve, backoffs[attempt]));
-        }
-      }
+          if (res.ok) return "ok";
+          return res.status === 401 ? "unauthorized" : "retry";
+        },
+        sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+        backoffs: [1_000, 2_000, 4_000, 8_000, 15_000],
+        onRetry: (stage) =>
+          setSubmitError(
+            stage === "save"
+              ? "Couldn't save your latest answers yet. They are kept on this device — retrying…"
+              : "Couldn't reach the server. Your answers are saved — retrying…",
+          ),
+      });
 
-      // Give the paper back rather than pretending it was submitted.
+      if (outcome === "submitted" || outcome === "submitted_unsaved") {
+        // A permanently rejected final save means the server graded the draft
+        // it held: keep this device's copy so a teacher can recover the rest.
+        if (outcome === "submitted" && roomId && participantIdRef.current) {
+          clearLocalDraft(roomId, participantIdRef.current);
+        }
+        if (document.fullscreenElement) document.exitFullscreen?.().catch(() => undefined);
+        setPhase("submitted");
+        // Promote to the room-level terminal phase so the context unmounts
+        // this player: a submitted student must never re-enter the test
+        // (e.g. via a browser Back / bfcache restore of this frozen view).
+        // Hand off the own-attempt counts so the terminal ThankYou screen
+        // can show a post-submit summary (P1 3.5) after this unmounts.
+        markSubmitted(summaryRef.current);
+        return;
+      }
+      // flushSave already moved to the end screen.
+      if (outcome === "finalized") return;
+
+      // Give the paper back rather than pretending it was submitted. The local
+      // draft is untouched, so a reload replays anything the server missed.
       submittedRef.current = false;
       setPhase("running");
       setSubmitError(
-        "We couldn't submit yet — you're offline. Your answers are saved and will be submitted automatically when the time ends. Keep this page open if you can.",
+        "We couldn't submit yet — you're offline. Your answers are saved on this device and will be sent when the connection returns. Keep this page open if you can.",
       );
     },
     [flushSave, markSubmitted, roomId, violations],

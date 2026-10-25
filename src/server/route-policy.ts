@@ -44,9 +44,12 @@ export const PUBLIC_API_PATHS = [
   // Android shell governance config — fetched pre-auth at app cold start
   // (ANDROID_HYBRID_APP_PLAN.md §5.2); CDN-cached, no session data.
   "/api/mobile/config",
-  // Browser link-out handoff consumption — the one-time token in the query IS
-  // the credential (verified + single-use in the handler); it necessarily runs
-  // in a browser with no session cookie yet (plan §5.4).
+  // Browser link-out handoff — the one-time token IS the credential (verified +
+  // single-use in the handler); it necessarily runs in a browser with no
+  // session cookie yet (plan §5.4). GET only 303s to /auth/handoff; the POST
+  // from that page consumes the token. The POST is also in the middleware's
+  // CSRF_EXEMPT_API_PATHS (this list is path-only and does NOT exempt CSRF) —
+  // the handler enforces same-origin via `Origin` + `Sec-Fetch-Site` instead.
   "/api/mobile/link-out/consume",
 ] as const;
 
@@ -110,6 +113,9 @@ export const PUBLIC_APP_PATHS = [
   "/now/consent",
   "/auth",
   "/auth/refresh",
+  // App → browser link-out confirmation page (spec 01-auth.md §A4): the
+  // browser has no session yet; the page only peeks the one-time token.
+  "/auth/handoff",
   "/role-selection",
   "/explore",
   "/premium",

@@ -5,6 +5,7 @@ import AuthPage from '@/sections/AuthPage';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { GoogleOAuthProvider } from '@react-oauth/google';
+import { isSafeAppNext } from '@/lib/safe-next';
 
 function AuthPageContent() {
   const { user, userRole, login, loginWithOtp, register, googleLogin, pendingGoogleSignup, googleSignup, cancelGoogleSignup, isLoading, authError, sendOtp, verifyOtp } = useAuth();
@@ -15,7 +16,7 @@ function AuthPageContent() {
   const requestedRole = searchParams.get('role');
   const nextParam = searchParams.get('next');
 
-  const isAdminRedirect = nextParam === '/admin' || nextParam?.startsWith('/admin/');
+  const isAdminRedirect = isSafeAppNext(nextParam) && (nextParam === '/admin' || nextParam.startsWith('/admin/'));
 
   // Guard: Redirect authenticated users away from /auth
   useEffect(() => {

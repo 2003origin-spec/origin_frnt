@@ -8,6 +8,7 @@ import type { PoolClient } from "pg";
 
 import { createPrefixedId } from "./ids";
 import { getUserPostgresPool, isUserPostgresConfigured } from "@/server/user-postgres";
+import { lockSchemaDdl } from "@/server/schema-lock";
 
 declare global {
   var __originBatchMessagesSchemaEnsured: boolean | undefined;
@@ -46,6 +47,7 @@ export async function ensureBatchMessagesSchema(): Promise<void> {
       const client: PoolClient = await pool().connect();
       try {
         await client.query("BEGIN");
+        await lockSchemaDdl(client);
         await client.query(`CREATE SCHEMA IF NOT EXISTS content`);
         await client.query(`
           CREATE TABLE IF NOT EXISTS content.batch_messages (

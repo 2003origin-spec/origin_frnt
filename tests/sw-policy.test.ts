@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   classifyRequest,
   isCacheablePageResponse,
+  isExamPagePath,
   LOGOUT_PURGE_CACHE_PREFIX,
   SW_CACHE,
   type ClassifiableRequest,
@@ -47,7 +48,7 @@ test("sw: non-GET and cross-origin requests are never handled", () => {
   assert.equal(classifyRequest(request({ sameOrigin: false, destination: "image", pathname: "/x.png" })), "bypass");
 });
 
-test("sw: page navigations classify as navigation regardless of path", () => {
+test("sw: page navigations classify as navigation (exam pages aside)", () => {
   assert.equal(classifyRequest(request({ mode: "navigate", destination: "document", pathname: "/dashboard" })), "navigation");
   assert.equal(classifyRequest(request({ mode: "navigate", destination: "document", pathname: "/auth" })), "navigation");
 });
@@ -90,4 +91,48 @@ test("sw: logout purge covers exactly the user-data caches", () => {
   }
   // The precache only holds the neutral offline shell → survives logout.
   assert.ok(!SW_CACHE.precache.startsWith(LOGOUT_PURGE_CACHE_PREFIX));
+});
+
+test("sw: exam pages are never cached (a cached render runs the timer late); offline they get the shell", () => {
+  for (const pathname of [
+    "/study-rooms/r1/test",
+    "/tests/t1",
+    "/tests/t1/",
+    "/cbt/r/abc123",
+    "/contest/c1/play",
+  ]) {
+    assert.ok(isExamPagePath(pathname), pathname);
+    // Network-only navigation (sw.ts routes it to NetworkOnly + offline fallback).
+    assert.equal(
+      classifyRequest(request({ mode: "navigate", destination: "document", pathname })),
+      "exam-navigation",
+      pathname,
+    );
+    assert.equal(classifyRequest(request({ pathname, hasRscHeader: true })), "bypass", pathname);
+    assert.ok(!isCacheablePageResponse({ status: 200, redirected: false, pathname }), pathname);
+  }
+  // Their non-exam neighbours keep the offline layer — including the
+  // result/review pages beneath an exam route, which carry no timer.
+  for (const pathname of [
+    "/tests",
+    "/tests/t1/result",
+    "/cbt/r/abc123/report",
+    "/study-rooms",
+    "/study-rooms/r1/lobby",
+    "/study-rooms/r1/leaderboard",
+    "/contest/c1",
+    "/cbt/login-help",
+    "/testsx/1",
+  ]) {
+    assert.ok(!isExamPagePath(pathname), pathname);
+  }
+  for (const pathname of ["/tests/t1/result", "/cbt/r/abc123/report"]) {
+    assert.equal(classifyRequest(request({ mode: "navigate", destination: "document", pathname })), "navigation", pathname);
+    assert.equal(classifyRequest(request({ pathname, hasRscHeader: true })), "rsc", pathname);
+    assert.ok(isCacheablePageResponse({ status: 200, redirected: false, pathname }), pathname);
+  }
+  assert.equal(
+    classifyRequest(request({ mode: "navigate", destination: "document", pathname: "/study-rooms/r1/lobby" })),
+    "navigation",
+  );
 });

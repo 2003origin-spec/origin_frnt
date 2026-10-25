@@ -6,10 +6,11 @@
  * reconnects with `Last-Event-ID` and misses nothing.
  */
 
+import { streamStartCursor } from "@/server/redis-streams";
+
 import { readNowEvents } from "./now-realtime";
 
 const CONNECTION_BUDGET_MS = 50_000;
-const CLOCK_SKEW_MARGIN_MS = 2_000;
 
 function encodeSse(eventId: string | null, eventType: string, payload: unknown): Uint8Array {
   const idLine = eventId ? `id: ${eventId}\n` : "";
@@ -31,9 +32,9 @@ export function nowEventStream(
   // Never "$": with "$" a blocking read only sees entries added while it is
   // blocked, so anything published between two reads is lost (and the dev
   // fallback never returns anything). A concrete id taken BEFORE the snapshot,
-  // with a small margin for clock skew, misses nothing; a repeat only costs the
-  // client one extra refetch.
-  const initialCursor = request.headers.get("last-event-id") ?? `${Date.now() - CLOCK_SKEW_MARGIN_MS}-0`;
+  // with the shared clock-skew margin (STREAM_START_SKEW_MS), misses nothing; a
+  // repeat only costs the client one extra refetch.
+  const initialCursor = streamStartCursor(request.headers.get("last-event-id"));
   const encoder = new TextEncoder();
 
   // Set when the client goes away (cancel) — Next does not always abort

@@ -42,6 +42,11 @@ export type VerifyInput = {
 
 export type VerifyResponse = {
   ok?: boolean;
+  /** Local order id (always present on success and on a 503 `pending`). */
+  orderId?: string;
+  status?: string;
+  /** Set on a 503: money landed, access is being activated in the background. */
+  pending?: boolean;
   alreadyApplied?: boolean;
   order?: PaymentOrder;
   payment?: Record<string, unknown>;
@@ -278,6 +283,80 @@ export async function listPaymentOrders(): Promise<PaymentOrder[]> {
   if (!response.ok) throw new PaymentClientError(await parseError(response), response.status);
   const data = (await response.json()) as { orders?: PaymentOrder[] } | PaymentOrder[];
   return Array.isArray(data) ? data : data.orders ?? [];
+}
+
+export type PaymentOrderStatus = {
+  orderId: string;
+  status: string;
+  paidAt: string | null;
+};
+
+/** Owner-scoped status of one order (`GET /api/payments/orders?orderId=`). */
+export async function getPaymentOrderStatus(
+  orderId: string,
+  options: { signal?: AbortSignal } = {},
+): Promise<PaymentOrderStatus> {
+  const response = await fetch(`/api/payments/orders?orderId=${encodeURIComponent(orderId)}`, {
+    method: "GET",
+    credentials: "include",
+    cache: "no-store",
+    signal: options.signal,
+  });
+  if (!response.ok) throw new PaymentClientError(await parseError(response), response.status);
+  return (await response.json()) as PaymentOrderStatus;
+}
+
+/** Order states from which polling can never reach `paid`. */
+const TERMINAL_UNPAID_STATUSES = new Set(["failed", "expired", "refunded", "partially_refunded"]);
+
+function delay(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
+      return;
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal?.reason ?? new DOMException("Aborted", "AbortError"));
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+/**
+ * Polls an order until the webhook/reconcile has applied the capture. Resolves
+ * true on `paid`, false on timeout or a terminal unpaid state; transient read
+ * errors (network, 429, 5xx) are swallowed and polled through. Rejects only
+ * when `signal` aborts.
+ */
+export async function waitForOrderPaid(
+  orderId: string,
+  options: { timeoutMs?: number; intervalMs?: number; signal?: AbortSignal } = {},
+): Promise<boolean> {
+  const timeoutMs = options.timeoutMs ?? 90_000;
+  const intervalMs = Math.max(options.intervalMs ?? 3_000, 1);
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    if (options.signal?.aborted) {
+      throw options.signal.reason ?? new DOMException("Aborted", "AbortError");
+    }
+    try {
+      const order = await getPaymentOrderStatus(orderId, { signal: options.signal });
+      if (order.status === "paid") return true;
+      if (TERMINAL_UNPAID_STATUSES.has(order.status)) return false;
+    } catch (error) {
+      if (options.signal?.aborted) throw error;
+      // A 404 means the order is not this student's (or does not exist): stop.
+      if (error instanceof PaymentClientError && error.status === 404) return false;
+    }
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) return false;
+    await delay(Math.min(intervalMs, remaining), options.signal);
+  }
 }
 
 /** Preview a coupon. This endpoint never reserves or commits a redemption. */
