@@ -22,6 +22,7 @@ import { z } from "zod";
 
 import { parseJsonBody } from "@/server/http";
 import { isFeatureEnabled, requireFeatureEnabled } from "@/lib/feature-flags";
+import { requireFeatureEnabledRuntime } from "@/server/feature-flags-runtime";
 import { requireRole } from "@/server/authz";
 import { recordAuditEvent } from "@/server/workspaces/audit";
 import { handleTeacherError, requestIdOf, teacherJson } from "@/app/api/teacher/_utils";
@@ -99,7 +100,7 @@ const removeSchema = z
 
 export async function GET(request: NextRequest) {
   try {
-    requireFeatureEnabled("cbtModule");
+    await requireFeatureEnabledRuntime("cbtModule");
     await requireRole(request, ["admin"]);
     const [teachers, stats, quota] = await Promise.all([
       listCbtTeachers(),
@@ -114,7 +115,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    requireFeatureEnabled("cbtModule");
+    await requireFeatureEnabledRuntime("cbtModule");
     const ctx = await requireRole(request, ["admin"]);
     const parsed = addSchema.safeParse(await parseJsonBody(request));
     if (!parsed.success) {
@@ -142,7 +143,7 @@ export async function POST(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    requireFeatureEnabled("cbtModule");
+    await requireFeatureEnabledRuntime("cbtModule");
     const ctx = await requireRole(request, ["admin"]);
     const parsed = patchSchema.safeParse(await parseJsonBody(request));
     if (!parsed.success) {
@@ -210,7 +211,7 @@ export async function PATCH(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    requireFeatureEnabled("cbtModule");
+    await requireFeatureEnabledRuntime("cbtModule");
     const ctx = await requireRole(request, ["admin"]);
     const parsed = removeSchema.safeParse(await parseJsonBody(request));
     if (!parsed.success) {

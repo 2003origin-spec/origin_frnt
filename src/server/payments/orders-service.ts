@@ -11,9 +11,10 @@ import type { Pool } from "pg";
 
 import { ALL_SUBJECTS, isSubject, type Subject } from "@/lib/entitlements";
 import { requireFeatureEnabled } from "@/lib/feature-flags";
+import { metric } from "@/lib/metrics";
 import { getActiveBundle, getSubjectPriceResolved } from "@/server/pricing/pricing-service";
 import {
-  commitCouponReservation,
+  commitOrRecommitCoupon,
   releaseCouponReservation,
   reserveCoupon,
   validateCoupon,
@@ -32,6 +33,8 @@ import { ensureNowSchema } from "@/server/now/now-schema";
 
 import {
   attachRazorpayOrderId,
+  findInFlightInstituteOrder,
+  findOpenInstituteOrder,
   getOrderById,
   getOrderByIdempotencyKey,
   getOrderByRazorpayId,
@@ -41,10 +44,12 @@ import {
   setOrderStatus,
   upsertPayment,
   enqueueOutbox,
+  type InsertOrderInput,
   type PaymentOrder,
   type PaymentRecord,
   type OrderKind,
 } from "./payments-store";
+import { enqueueAdminAlerts } from "./admin-alerts";
 import { ensurePaymentsAndGrantSchema, ensurePaymentsSchema } from "./payments-schema";
 import {
   openInstituteEnrollmentOrder,
@@ -53,6 +58,7 @@ import {
 import { amountForTerm, type TermOption } from "./pricing-cache";
 import { getRazorpayClient, getRazorpayKeyId, isLivemode } from "./razorpay-client";
 import { grantPaidTerm, type PaidTermGrant } from "./grants";
+import { lockUserPayments } from "./user-payment-lock";
 import { publishOutbox } from "./qstash";
 import {
   applyDisputeCreated,
@@ -63,6 +69,51 @@ import {
 
 const CURRENCY = "INR";
 const DEFAULT_ORDER_EXPIRY_MS = 30 * 60 * 1000;
+/** How long a second institute checkout waits for an in-flight sibling (F5). */
+const IN_FLIGHT_CHECKOUT_WAIT_MS = 10_000;
+const IN_FLIGHT_CHECKOUT_POLL_MS = 250;
+
+function checkoutInProgressError(): Error {
+  const err = new Error(
+    "A checkout for this course is already in progress. Please wait a few seconds and try again.",
+  );
+  (err as { status?: number }).status = 409;
+  return err;
+}
+
+/**
+ * Polls a sibling institute order that is still creating its Razorpay order
+ * until it is attached (replayable), leaves `created` (failed / expired), or
+ * the wait runs out. Runs OUTSIDE any transaction: the sibling's own request
+ * attaches without the user lock, so nothing here blocks it.
+ */
+async function waitForInFlightCheckout(orderId: string, waitMs: number): Promise<PaymentOrder | null> {
+  const deadline = Date.now() + Math.max(0, waitMs);
+  for (;;) {
+    const current = await getOrderById(orderId);
+    if (!current || current.status !== "created" || current.razorpayOrderId) return current;
+    if (Date.now() >= deadline) return current;
+    await new Promise((resolve) => setTimeout(resolve, IN_FLIGHT_CHECKOUT_POLL_MS));
+  }
+}
+
+/**
+ * Where a failed-payment email sends the student to try again: the offering's
+ * own checkout for an institute order (it needs the offering + workspace),
+ * the wallet for a coin pack, otherwise the premium plans page.
+ */
+export function failedPaymentRetryHref(
+  order: Pick<PaymentOrder, "kind" | "workspaceId" | "offeringId">,
+): string {
+  if (order.kind === "institute_offering") {
+    if (order.offeringId && order.workspaceId) {
+      return `/connect/checkout/${encodeURIComponent(order.offeringId)}?workspaceId=${encodeURIComponent(order.workspaceId)}`;
+    }
+    return "/connect";
+  }
+  if (order.kind === "coin_pack") return "/now/wallet";
+  return "/premium";
+}
 
 type PaymentRecipient = { email: string | null; name: string | null };
 
@@ -176,6 +227,12 @@ export type CreateCheckoutOrderInput = {
   /** Test seam; production uses the mode-aware client. */
   keyId?: string;
   now?: Date;
+  /**
+   * Test seam: how long a second institute checkout waits for a sibling whose
+   * Razorpay order is still being created (default
+   * `IN_FLIGHT_CHECKOUT_WAIT_MS`).
+   */
+  inFlightWaitMs?: number;
 };
 
 export type CheckoutOrderResult = {
@@ -465,49 +522,13 @@ export async function createCheckoutOrder(input: CreateCheckoutOrderInput): Prom
   // wrapper when a completed order already exists.
   if (input.idempotencyKey) {
     const existing = await getOrderByIdempotencyKey(input.userId, input.idempotencyKey);
-    if (existing) {
-      let replayKeyId: string | null = safeKeyId(input.keyId);
-      if (!replayKeyId && !input.razorpayClient && existing.amountMinor > 0) {
-        try {
-          replayKeyId = getRazorpayKeyId();
-        } catch {
-          replayKeyId = null;
-        }
-      }
-      return {
-        order: existing,
-        orderId: existing.id,
-        razorpayOrderId: existing.razorpayOrderId,
-        amountMinor: existing.amountMinor,
-        currency: existing.currency as typeof CURRENCY,
-        keyId: existing.amountMinor > 0 ? replayKeyId : null,
-        paidWithoutGateway: existing.amountMinor === 0,
-      };
-    }
+    if (existing) return replayResult(existing, input);
   }
 
   const now = dateOrNow(input.now);
   const orderId = newOrderId();
 
-  // An institute purchase pays for a commerce.enrollment_orders row. Open (or
-  // reuse) it BEFORE the money order exists, so a capture always has a target
-  // to enrol against — plan G16.
-  let enrollmentOrderId: string | null = null;
-  if (resolved.kind === "institute_offering") {
-    const commerceOrder = await openInstituteEnrollmentOrder({
-      workspaceId: resolved.workspaceId as string,
-      offeringId: resolved.offeringId as string,
-      studentId: input.userId,
-    });
-    if (commerceOrder.status === "paid") {
-      const err = new Error("This offering has already been purchased.");
-      (err as { status?: number }).status = 409;
-      throw err;
-    }
-    enrollmentOrderId = commerceOrder.id;
-  }
-
-  const order = await insertOrder({
+  const orderRow = (enrollmentOrderId: string | null): InsertOrderInput => ({
     id: orderId,
     userId: input.userId,
     kind: resolved.kind,
@@ -532,6 +553,105 @@ export async function createCheckoutOrder(input: CreateCheckoutOrderInput): Prom
     },
     expiresAt: new Date(now.getTime() + DEFAULT_ORDER_EXPIRY_MS),
   });
+
+  // An institute purchase pays for a commerce.enrollment_orders row. Open (or
+  // reuse) it BEFORE the money order exists, so a capture always has a target
+  // to enrol against — plan G16.
+  //
+  // Bug-fix P5: two clicks (or two tabs) used to mint two payable Razorpay
+  // orders for ONE enrolment order, and both could be captured. The lookup +
+  // insert now run in one transaction under the user's advisory lock, so at
+  // most ONE open money order exists per enrolment order: a second checkout
+  // replays the open one (same razorpayOrderId, so the second sheet pays the
+  // same Razorpay order, which Razorpay itself refuses to capture twice).
+  //
+  // Bug-fix F5: a second click that lands while the first request is still
+  // inside `client.orders.create` used to find no open order (the first row
+  // has no Razorpay id yet) and supersede it, so the first request could not
+  // attach and its Razorpay order was left orphaned and payable. Such an
+  // in-flight sibling is now waited for and replayed instead; only a sibling
+  // older than INSTITUTE_CHECKOUT_IN_FLIGHT_SECONDS (a dead request) is
+  // superseded. A waiter whose sibling is still unattached after the wait
+  // re-checks under the lock: past the window it takes over (supersedes and
+  // mints its own order); still inside it, it gets the 409.
+  let enrollmentOrderId: string | null = null;
+  let order: PaymentOrder | null = null;
+  if (resolved.kind === "institute_offering") {
+    // At most three passes: a later pass runs only after waiting on a sibling
+    // that failed (we mint our own) or is still unattached (re-checked against
+    // the in-flight window; a sibling already waited on is never waited on
+    // twice).
+    let waitedOn: string | null = null;
+    for (let pass = 0; pass < 3 && !order; pass += 1) {
+      let inFlight: PaymentOrder | null = null;
+      const client = await dbPool().connect();
+      try {
+        await client.query("BEGIN");
+        // Canonical lock order (user-payment-lock.ts): the user lock FIRST,
+        // then payments.orders rows.
+        await lockUserPayments(client, input.userId);
+        const commerceOrder = await openInstituteEnrollmentOrder({
+          workspaceId: resolved.workspaceId as string,
+          offeringId: resolved.offeringId as string,
+          studentId: input.userId,
+        });
+        if (commerceOrder.status === "paid") {
+          const err = new Error("This offering has already been purchased.");
+          (err as { status?: number }).status = 409;
+          throw err;
+        }
+        const lookup = { userId: input.userId, enrollmentOrderId: commerceOrder.id };
+        const open = await findOpenInstituteOrder(lookup, client);
+        if (open) {
+          await client.query("COMMIT");
+          return replayResult(open, input);
+        }
+        inFlight = await findInFlightInstituteOrder(lookup, client);
+        if (!inFlight) {
+          // Stale siblings (expired, or a dead request's row that never got a
+          // Razorpay id) are closed here so the invariant above holds without
+          // a separate sweep.
+          await client.query(
+            `UPDATE payments.orders
+                SET status = 'expired', failure_reason = COALESCE(failure_reason, 'superseded'),
+                    idempotency_key = NULL, updated_at = NOW()
+              WHERE user_id = $1 AND kind = 'institute_offering'
+                AND notes->>'enrollment_order_id' = $2
+                AND status IN ('created', 'attempted')`,
+            [input.userId, commerceOrder.id],
+          );
+          enrollmentOrderId = commerceOrder.id;
+          order = await insertOrder(orderRow(enrollmentOrderId), client);
+        }
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK").catch(() => undefined);
+        throw error;
+      } finally {
+        client.release();
+      }
+      if (order || !inFlight) break;
+      // Already waited on this sibling and it is still inside the window.
+      if (waitedOn === inFlight.id) throw checkoutInProgressError();
+
+      // Wait (lock released) for the in-flight sibling to finish.
+      waitedOn = inFlight.id;
+      const settled = await waitForInFlightCheckout(
+        inFlight.id,
+        input.inFlightWaitMs ?? IN_FLIGHT_CHECKOUT_WAIT_MS,
+      );
+      const replayable =
+        settled?.status === "paid" ||
+        ((settled?.status === "created" || settled?.status === "attempted") && Boolean(settled.razorpayOrderId));
+      if (settled && replayable) return replayResult(settled, input);
+      // The sibling failed / expired without a payable order (next pass mints
+      // ours), or is still unattached (next pass takes over once it is past
+      // the in-flight window, else 409).
+    }
+    if (!order) throw checkoutInProgressError();
+  } else {
+    order = await insertOrder(orderRow(null));
+  }
 
   if (resolved.couponCode) {
     try {
@@ -641,6 +761,34 @@ function safeKeyId(keyId?: string): string | null {
   return keyId?.trim() || null;
 }
 
+/**
+ * The checkout response for an order that already exists (idempotency replay,
+ * or the open institute order reused by P5). A paid replay carries the same
+ * `keyId` / `razorpayOrderId` the first response did, so the sheet can reopen.
+ */
+function replayResult(
+  existing: PaymentOrder,
+  input: Pick<CreateCheckoutOrderInput, "keyId" | "razorpayClient">,
+): CheckoutOrderResult {
+  let replayKeyId: string | null = safeKeyId(input.keyId);
+  if (!replayKeyId && !input.razorpayClient && existing.amountMinor > 0) {
+    try {
+      replayKeyId = getRazorpayKeyId();
+    } catch {
+      replayKeyId = null;
+    }
+  }
+  return {
+    order: existing,
+    orderId: existing.id,
+    razorpayOrderId: existing.razorpayOrderId,
+    amountMinor: existing.amountMinor,
+    currency: existing.currency as typeof CURRENCY,
+    keyId: existing.amountMinor > 0 ? replayKeyId : null,
+    paidWithoutGateway: existing.amountMinor === 0,
+  };
+}
+
 function paymentDataFromRaw(raw: Record<string, unknown> | undefined): {
   amountMinor: number | null;
   currency: string | null;
@@ -695,6 +843,12 @@ export async function applyPaymentSuccess(input: PaymentSuccessInput): Promise<P
   let result: PaymentSuccessResult;
   try {
     await client.query("BEGIN");
+    // Canonical lock order (user-payment-lock.ts): the user lock FIRST, then
+    // the order row. Taking the row first and the lock second deadlocked
+    // (40P01) against an institute checkout for the same student, which
+    // holds the lock and then locks the open order rows (bug-fix F5).
+    // `orders.user_id` never changes, so the unlocked read above is safe.
+    await lockUserPayments(client, orderBefore.userId);
     const lockedOrderResult = await client.query(
       `SELECT * FROM payments.orders
         WHERE id = $1
@@ -704,7 +858,7 @@ export async function applyPaymentSuccess(input: PaymentSuccessInput): Promise<P
     const row = lockedOrderResult.rows[0] as Record<string, unknown> | undefined;
     if (!row) throw new Error("Payment refers to an unknown order");
     const order = (await getOrderById(String(row.id), client)) as PaymentOrder;
-    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [order.userId]);
+    if (order.userId !== orderBefore.userId) throw new Error("Payment order owner changed under the lock");
 
     if (input.razorpayOrderId && order.razorpayOrderId !== input.razorpayOrderId) {
       throw new Error("Payment order id does not match the local order");
@@ -838,44 +992,122 @@ export async function applyPaymentSuccess(input: PaymentSuccessInput): Promise<P
       // happened to be processed rather than by when they were paid.
       const updated = await setOrderStatus(order.id, "paid", { paidAt: capturedAt }, client);
       if (!updated) throw new Error("Order could not be marked paid");
+      // Outbox rows enqueued below that are NOT the receipt/enrolment pair are
+      // published after COMMIT, like the receipt.
+      const extraOutboxIds: string[] = [];
+      let notesChanged = false;
       if (order.couponCode) {
-        await commitCouponReservation(
-          { code: order.couponCode, userId: order.userId, orderId: order.id },
+        // Bug-fix P2: the hold may have lapsed (reconcile expiry, create-time
+        // failure) while the Razorpay order stayed payable. The discount is
+        // already baked into the captured amount, so the redemption is always
+        // recorded; past the cap it is honoured, flagged and alerted.
+        const outcome = await commitOrRecommitCoupon(
+          {
+            code: order.couponCode,
+            userId: order.userId,
+            orderId: order.id,
+            subject: order.subject,
+            targetKind: order.kind === "bundle_term" ? "bundle" : "subject",
+            amountDiscountedMinor: order.discountMinor,
+          },
           client,
         );
+        if (outcome === "overrun") {
+          await client.query(
+            `UPDATE payments.orders SET notes = notes || '{"coupon_overrun":true}'::jsonb WHERE id = $1`,
+            [order.id],
+          );
+          notesChanged = true;
+          extraOutboxIds.push(
+            ...(await enqueueAdminAlerts(client, {
+              idPrefix: `coupon_overrun_${input.razorpayPaymentId}`,
+              title: "Coupon cap exceeded",
+              message: `${order.couponCode} was honoured on ${order.id} after its hold lapsed; cap is now oversold by one.`,
+            })),
+          );
+          metric("origin.payments.coupon.overrun", { code: order.couponCode });
+        }
       }
       // Institute purchases enrol the student. Doing that inside this
       // transaction would drag enrollments, batches and the audit log into the
       // money commit; the outbox gives durability without that coupling, and
       // markOrderPaidService is idempotent so a retry cannot double-enrol.
+      let duplicateOf: string | null = null;
       if (order.kind === "institute_offering") {
         const enrollmentOrderId =
           typeof order.notes.enrollment_order_id === "string" ? order.notes.enrollment_order_id : null;
         if (!enrollmentOrderId || !order.workspaceId) {
           throw new Error("Institute order is missing its enrollment order reference");
         }
-        await enqueueOutbox(
-          {
-            id: `institute_enrollment_${input.razorpayPaymentId}`,
-            kind: "institute_enrollment",
-            payload: {
-              userId: order.userId,
-              orderId: order.id,
-              enrollmentOrderId,
-              workspaceId: order.workspaceId,
-              offeringId: order.offeringId,
-              paymentId: input.razorpayPaymentId,
-            },
-          },
-          client,
+        // Bug-fix P5: a second money order for the SAME enrolment order that
+        // already landed means the student paid twice. Keep this order `paid`
+        // (the refund path needs a captured ledger row), link it to the first,
+        // queue the refund and tell admins — but never enrol or receipt twice.
+        const dup = await client.query(
+          `SELECT id FROM payments.orders
+            WHERE id <> $1 AND user_id = $2 AND kind = 'institute_offering'
+              AND notes->>'enrollment_order_id' = $3
+              AND status IN ('paid', 'partially_refunded')
+            ORDER BY paid_at ASC NULLS LAST, created_at ASC
+            LIMIT 1`,
+          [order.id, order.userId, enrollmentOrderId],
         );
+        duplicateOf = dup.rows[0]?.id ? String(dup.rows[0].id) : null;
+        if (duplicateOf) {
+          await client.query(
+            `UPDATE payments.orders SET notes = notes || jsonb_build_object('duplicate_of', $2::text) WHERE id = $1`,
+            [order.id, duplicateOf],
+          );
+          notesChanged = true;
+          const refundOutboxId = `duplicate_capture_refund_${input.razorpayPaymentId}`;
+          await enqueueOutbox(
+            {
+              id: refundOutboxId,
+              kind: "duplicate_capture_refund",
+              payload: {
+                userId: order.userId,
+                orderId: order.id,
+                razorpayPaymentId: input.razorpayPaymentId,
+                amountMinor,
+                reason: "duplicate_institute_capture",
+              },
+            },
+            client,
+          );
+          extraOutboxIds.push(refundOutboxId);
+          extraOutboxIds.push(
+            ...(await enqueueAdminAlerts(client, {
+              idPrefix: `duplicate_capture_${input.razorpayPaymentId}`,
+              title: "Duplicate institute payment",
+              message: `${input.razorpayPaymentId} paid ${order.id} twice for enrolment ${enrollmentOrderId}; auto-refund queued.`,
+            })),
+          );
+          metric("origin.payments.duplicate_capture", { orderId: order.id, duplicateOf });
+        } else {
+          await enqueueOutbox(
+            {
+              id: `institute_enrollment_${input.razorpayPaymentId}`,
+              kind: "institute_enrollment",
+              payload: {
+                userId: order.userId,
+                orderId: order.id,
+                enrollmentOrderId,
+                workspaceId: order.workspaceId,
+                offeringId: order.offeringId,
+                paymentId: input.razorpayPaymentId,
+              },
+            },
+            client,
+          );
+        }
       }
 
       const recipient = await paymentRecipient(client, order.userId);
       // The row id is derived from the Razorpay payment id.  This makes the
       // receipt enqueue idempotent across verify/webhook convergence while the
       // insert still lives in the same transaction as the grant and payment.
-      await enqueueOutbox(
+      // A duplicate capture gets no receipt: the refund notice is its message.
+      if (!duplicateOf) await enqueueOutbox(
         {
           id: `payment_receipt_${input.razorpayPaymentId}`,
           kind: "receipt_email",
@@ -914,16 +1146,18 @@ export async function applyPaymentSuccess(input: PaymentSuccessInput): Promise<P
         },
         client,
       );
+      const finalOrder = notesChanged ? ((await getOrderById(order.id, client)) ?? updated) : updated;
       await client.query("COMMIT");
       // Recompute after commit: the entitlement union uses a separate pool
       // connection and must never observe an uncommitted grant. An institute
       // order grants no subject entitlement, so there is nothing to recompute.
       if (order.kind === "subject_term" || order.kind === "bundle_term") await recomputeUserPremiumFlags(order.userId);
-      if (order.kind === "institute_offering") {
+      if (order.kind === "institute_offering" && !duplicateOf) {
         await publishOutbox(`institute_enrollment_${input.razorpayPaymentId}`).catch(() => undefined);
       }
-      await publishOutbox(`payment_receipt_${input.razorpayPaymentId}`).catch(() => undefined);
-      result = { order: updated, payment, grants, alreadyApplied: false };
+      if (!duplicateOf) await publishOutbox(`payment_receipt_${input.razorpayPaymentId}`).catch(() => undefined);
+      await Promise.all(extraOutboxIds.map((id) => publishOutbox(id).catch(() => undefined)));
+      result = { order: finalOrder, payment, grants, alreadyApplied: false };
     }
   } catch (error) {
     await client.query("ROLLBACK").catch(() => undefined);
@@ -934,7 +1168,15 @@ export async function applyPaymentSuccess(input: PaymentSuccessInput): Promise<P
   return result;
 }
 
-/** Marks a checkout failed; guarded store semantics prevent paid -> failed. */
+/**
+ * Marks a checkout failed and releases its coupon hold. Guarded store
+ * semantics prevent paid -> failed.
+ *
+ * Only for CREATE-TIME failures (coupon reservation, zero-amount settlement,
+ * Razorpay order creation) where no payable Razorpay order exists. A failed
+ * payment attempt against a live Razorpay order goes through
+ * `markPaymentAttemptFailed` instead, which keeps the order and its hold open.
+ */
 export async function markOrderFailed(input: MarkOrderFailedInput): Promise<PaymentOrder | null> {
   // Failure events only touch the payments ledger; avoid making a webhook for
   // an unknown/early order wait on the entitlement/pricing DDL ensures.
@@ -982,8 +1224,8 @@ export async function markOrderFailed(input: MarkOrderFailedInput): Promise<Paym
             subject: locked.subject,
             termMonths: locked.termMonths,
             failureReason: input.reason ?? "payment_failed",
-            retryHref: "/premium",
-            href: "/premium",
+            retryHref: failedPaymentRetryHref(locked),
+            href: failedPaymentRetryHref(locked),
           },
         },
         client,
@@ -1002,6 +1244,73 @@ export async function markOrderFailed(input: MarkOrderFailedInput): Promise<Paym
 
 /** Existing route naming convention compatibility. */
 export const markOrderFailedService = markOrderFailed;
+
+/**
+ * Records a failed payment ATTEMPT (wrong OTP, UPI timeout) without closing
+ * the order — bug-fix P2.
+ *
+ * The Razorpay order stays payable after a failed attempt and the student
+ * usually retries in the same sheet, so the local order must stay open and its
+ * coupon hold must stay reserved. Before this, `payment.failed` walked the
+ * order to `failed` and released the hold; the retry then captured at the
+ * discounted amount with no redemption recorded. The order only becomes
+ * terminal through the reconcile `expire` action (or a create-time failure via
+ * `markOrderFailed`), which is also the one place order-backed holds are freed.
+ */
+export async function markPaymentAttemptFailed(input: MarkOrderFailedInput): Promise<PaymentOrder | null> {
+  await ensurePaymentsSchema();
+  const order = await findOrder(input);
+  if (!order) return null;
+  const client = await dbPool().connect();
+  try {
+    await client.query("BEGIN");
+    const locked = await getOrderById(order.id, client);
+    if (!locked) {
+      await client.query("COMMIT");
+      return null;
+    }
+    // Only an open order records an attempt. A paid/refunded order ignores the
+    // stale failure (setOrderStatus would too); a failed/expired one must not
+    // be reopened by a late attempt event.
+    if (locked.status !== "created" && locked.status !== "attempted") {
+      await client.query("COMMIT");
+      return locked;
+    }
+    const reason = (input.reason ?? "payment_failed").slice(0, 2000);
+    const updated = await setOrderStatus(locked.id, "attempted", { failureReason: reason }, client);
+    const recipient = await paymentRecipient(client, locked.userId);
+    await enqueueOutbox(
+      {
+        id: `payment_failed_${locked.id}`,
+        kind: "payment_failed_email",
+        payload: {
+          userId: locked.userId,
+          to: recipient.email,
+          studentName: recipient.name,
+          orderId: locked.id,
+          paymentId: input.razorpayPaymentId ?? null,
+          amountMinor: locked.amountMinor,
+          currency: locked.currency,
+          kind: locked.kind,
+          subject: locked.subject,
+          termMonths: locked.termMonths,
+          failureReason: input.reason ?? "payment_failed",
+          retryHref: failedPaymentRetryHref(locked),
+          href: failedPaymentRetryHref(locked),
+        },
+      },
+      client,
+    );
+    await client.query("COMMIT");
+    await publishOutbox(`payment_failed_${locked.id}`).catch(() => undefined);
+    return updated ?? locked;
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
 
 export type PaymentEventInput = {
   event?: string | null;
@@ -1031,7 +1340,9 @@ export async function processPaymentEvent(input: PaymentEventInput | Record<stri
   }
 
   if (event === "payment.failed" || event.endsWith(".failed")) {
-    const failed = await markOrderFailed({
+    // A failed attempt keeps the order open and the coupon hold reserved (P2):
+    // the Razorpay order is still payable and the student usually retries.
+    const failed = await markPaymentAttemptFailed({
       razorpayOrderId: rzpOrderId,
       razorpayPaymentId: paymentId,
       reason: String(paymentEntity.error_description ?? paymentEntity.error_reason ?? "payment_failed"),

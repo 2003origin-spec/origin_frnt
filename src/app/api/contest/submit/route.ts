@@ -10,7 +10,7 @@
 import type { NextRequest } from "next/server";
 import { z } from "zod";
 
-import { requireFeatureEnabled } from "@/lib/feature-flags";
+import { requireFeatureEnabledRuntime } from "@/server/feature-flags-runtime";
 import { parseJsonBody } from "@/server/http";
 import { requireAuth } from "@/server/authz";
 import { submitAttempt } from "@/server/contest/contest-submit-service";
@@ -25,7 +25,7 @@ const SubmitSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    requireFeatureEnabled("contest");
+    await requireFeatureEnabledRuntime("contest");
     const ctx = await requireAuth(request);
     const parsed = SubmitSchema.safeParse(await parseJsonBody(request));
     if (!parsed.success) return teacherJson({ detail: parsed.error.message }, { status: 400 });

@@ -21,12 +21,10 @@ import {
 } from "@/server/store";
 import {
   createOriginAiLiveBootstrap,
-  generateOriginAiProviderReply,
   normalizeVoiceTranscriptForChat,
   synthesizeOriginAiVoiceAudioSegments,
   transcribeOriginAiVoiceAudio,
   type OriginAiLiveBootstrapResponse,
-  type OriginAiProviderRequest,
   type OriginAiVoiceSynthesisResponse,
 } from "@/server/origin-ai-provider";
 import { solveWithKnowledgeBase } from "@/server/ai-solver-kb";
@@ -1489,7 +1487,13 @@ function maybeUpdatePinnedFacts(memory: StoredOriginAiProfileMemory, userMessage
   }
 }
 
-async function generateAssistantReply(
+/**
+ * In-app fallback reply for when the Ori microservice is not configured or is
+ * unreachable (connection-level failure in the proxy). There is no text model
+ * on this path: guardrails, the OGCode index router, the local KB, then the
+ * local context mentor. Nothing here is a generation, so nothing is billed.
+ */
+async function generateLocalFallbackReply(
   user: StoredUser,
   session: StoredOriginAiSession,
   memory: OriginAiMemoryPayload,
@@ -1497,7 +1501,6 @@ async function generateAssistantReply(
   pageContext: OriginAiResolvedPageContext,
   pagePolicy: OriginAiPolicy,
   userMessage: string,
-  transport: "text_chat" | "voice_mode" = "text_chat",
 ): Promise<{ content: string; provider: string; model: string; metadata: Record<string, unknown> }> {
   if (pagePolicy.mode === "answer_blocked") {
     return {
@@ -1532,9 +1535,8 @@ async function generateAssistantReply(
   // Doubt Solver named threads are subject-scoped academic Q&A — route through
   // the local KB first. This is the brain that actually answers "explain
   // Carnot Cycle", and it doesn't burn LLM tokens. Falls through to the
-  // provider/local-mentor when the KB isn't confident (kbResolved === false),
-  // so non-academic questions like "what are my weaknesses" still get a real
-  // mentor reply instead of the KB clarifier ("I need exact subject + concept…").
+  // KB clarifier, then the local mentor, when the KB isn't confident
+  // (kbResolved === false).
   if (session.threadId && pageContext.pageKind === "doubt_solver") {
     try {
       const kbReply = solveWithKnowledgeBase({
@@ -1563,34 +1565,13 @@ async function generateAssistantReply(
         kbFallbackReply = kbReply;
       }
     } catch (err) {
-      console.error("[origin-ai] KB lookup failed, falling through to provider", err);
+      console.error("[origin-ai] KB lookup failed, falling through to local mentor", err);
     }
   }
 
-  const history = session.messages.slice(-10).map((message) => ({
-    role: message.role,
-    content: message.content,
-  }));
-
-  const providerRequest: OriginAiProviderRequest = {
-    requestId: createId("origin_ai_req"),
-    systemInstruction: buildSystemInstruction(user, memory, reminders, pageContext, pagePolicy, {
-      transport,
-    }),
-    conversation: [...history, { role: "user", content: userMessage }],
-    maxOutputTokens: transport === "voice_mode" ? 1100 : 700,
-  };
-
-  const providerReply = await generateOriginAiProviderReply(providerRequest);
-  if (providerReply?.content.trim()) {
-    return {
-      content: providerReply.content.trim(),
-      provider: providerReply.provider,
-      model: providerReply.model,
-      metadata: providerReply.metadata ?? {},
-    };
-  }
-
+  // No text provider here: the old `/v1/origin-ai/respond` client pointed at
+  // a path the Python service never exposed, so it always 404'd. "No service"
+  // is explicitly the KB clarifier, then the local context mentor.
   if (kbFallbackReply?.content.trim()) {
     return {
       content: kbFallbackReply.content.trim(),
@@ -1997,7 +1978,7 @@ export async function sendOriginAiMessage(
   };
   runtime.session.messages.push(userMessage);
 
-  const assistantTurn = await generateAssistantReply(
+  const assistantTurn = await generateLocalFallbackReply(
     user,
     runtime.session,
     runtime.memoryPayload,
@@ -2005,7 +1986,6 @@ export async function sendOriginAiMessage(
     runtime.pageContext,
     runtime.pagePolicy,
     trimmed,
-    options?.transport ?? "text_chat",
   );
 
   const aiMessage: StoredChatMessage = {

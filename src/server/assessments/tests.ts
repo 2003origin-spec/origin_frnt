@@ -2,10 +2,12 @@ export type {
   CustomTestPayload,
   OgcodeAutoSelection,
   QuestionAnswerPayload,
+  TeacherTestSitting,
   TestSubmissionPayload,
 } from "@/legacy/assessments";
 
 export {
+  beginTeacherTestSitting,
   createCustomTest,
   generateOgcodeSelectionForWorkspace,
   getChallengeOfTheDay,
@@ -17,6 +19,7 @@ export {
   listTestPreviews,
   listTestResults,
   listTests,
+  openTeacherTestSitting,
   serializeQuestion,
   serializeResult,
   serializeTest,

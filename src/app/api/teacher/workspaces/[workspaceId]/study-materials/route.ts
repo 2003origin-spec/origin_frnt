@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { z } from "zod";
 
 import { parseJsonBody } from "@/server/http";
-import { requireFeatureEnabled } from "@/lib/feature-flags";
+import { requireFeatureEnabledRuntime } from "@/server/feature-flags-runtime";
 import { recordAuditEvent } from "@/server/workspaces/audit";
 import { requireWorkspaceMember } from "@/server/workspaces/authz";
 import { createMaterial, listMaterials } from "@/server/workspaces/study-materials-service";
@@ -26,7 +26,7 @@ const createSchema = z.object({
 
 export async function GET(request: NextRequest, context: WorkspaceIdRouteContext) {
   try {
-    requireFeatureEnabled("studyMaterials");
+    await requireFeatureEnabledRuntime("studyMaterials");
     const workspaceId = await getWorkspaceId(context);
     await requireWorkspaceMember(request, workspaceId);
     const url = new URL(request.url);
@@ -48,7 +48,7 @@ export async function GET(request: NextRequest, context: WorkspaceIdRouteContext
 
 export async function POST(request: NextRequest, context: WorkspaceIdRouteContext) {
   try {
-    requireFeatureEnabled("studyMaterials");
+    await requireFeatureEnabledRuntime("studyMaterials");
     const workspaceId = await getWorkspaceId(context);
     const ctx = await requireWorkspaceMember(request, workspaceId, [
       "owner",

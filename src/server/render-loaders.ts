@@ -1,5 +1,6 @@
 import { unstable_cache } from "next/cache";
 
+import { isTestWindowError } from "@/lib/assessments/test-window";
 import type { StudyMode } from "@/lib/study-mode";
 
 import {
@@ -17,7 +18,9 @@ import {
   listOgcodeQuestions,
   listTestPreviews,
   listTestResults,
+  openTeacherTestSitting,
   type OgcodeQuestionListFilters,
+  type TeacherTestSitting,
 } from "@/server/assessments";
 import { dbGetTasks } from "@/server/db-users";
 import { buildPointsSummary } from "@/server/gamification";
@@ -66,6 +69,31 @@ export const getTestDetailForRender = unstable_cache(
   ["rl:test-detail"],
   { revalidate: 60, tags: ["tests"] },
 );
+
+/**
+ * NOT cached, on purpose: the teacher-test window gate and the attempt-start
+ * record must run on every load. `getTestDetailForRender` above only runs them
+ * on a cache miss (and its stale-while-revalidate entry can outlive the window).
+ * Call this BEFORE serving the cached paper. Throws a TestWindowError outside
+ * the window; null for any test that is not a teacher-assigned one.
+ */
+export async function openTeacherTestSittingForRender(
+  userId: string,
+  testId: string,
+): Promise<TeacherTestSitting | null> {
+  try {
+    return await openTeacherTestSitting(userId, testId);
+  } catch (error) {
+    if (isTestWindowError(error)) throw error;
+    // A lookup failure must not 404 a seeded/custom test that never needed it;
+    // a teacher test's cached loader still gates on a miss, and submit always does.
+    console.warn("[render-loaders] teacher-test sitting lookup failed", {
+      testId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
 
 export const listTestResultsForRender = unstable_cache(
   async (userId: string, testId: string) => {

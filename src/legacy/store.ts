@@ -22,6 +22,8 @@ import {
   persistUserCollections,
   type MutableCollectionKey,
 } from "@/server/store-postgres";
+import { withPointAwardClaimRollback } from "@/server/point-award-scope";
+import { getUserPostgresPool } from "@/server/user-postgres";
 
 export type UserRole = "student" | "teacher" | "admin" | "cbt_teacher";
 export type QuestionType = "mcq" | "msq" | "numerical" | "matrix_match" | "subjective" | "range";
@@ -1198,14 +1200,18 @@ export async function readStoreAsync(forceFresh = false): Promise<AppStore> {
 const storeMutex = new Mutex();
 
 export async function withStoreAsync<T>(mutate: (store: AppStore) => Promise<T> | T): Promise<T> {
-  return storeMutex.runExclusive(async () => {
-    const store = await readStoreAsync(true);
-    const result = await mutate(store);
-    await persistStoreToPostgres(store);
-    cachedStore = store;
-    lastHydratedAt = Date.now();
-    return result;
-  });
+  return storeMutex.runExclusive(() =>
+    // A point-award claim won inside mutate is released if mutate or the
+    // persist throws, so the award can be earned again (point-award-scope.ts).
+    withPointAwardClaimRollback(async () => {
+      const store = await readStoreAsync(true);
+      const result = await mutate(store);
+      await persistStoreToPostgres(store);
+      cachedStore = store;
+      lastHydratedAt = Date.now();
+      return result;
+    }, getUserPostgresPool),
+  );
 }
 
 export type ScopedStorePersist = {
@@ -1252,18 +1258,20 @@ export async function withStoreAsyncScoped<T>(
   mutate: (store: AppStore) => Promise<T> | T,
   persist: ScopedStorePersist | null,
 ): Promise<T> {
-  return storeMutex.runExclusive(async () => {
-    const store = await readStoreAsync(true);
-    const result = await mutate(store);
-    if (persist) {
-      await persistUserCollections(store, persist.userId, persist.collections, {
-        persistUser: persist.persistUser,
-      });
-    }
-    cachedStore = store;
-    lastHydratedAt = Date.now();
-    return result;
-  });
+  return storeMutex.runExclusive(() =>
+    withPointAwardClaimRollback(async () => {
+      const store = await readStoreAsync(true);
+      const result = await mutate(store);
+      if (persist) {
+        await persistUserCollections(store, persist.userId, persist.collections, {
+          persistUser: persist.persistUser,
+        });
+      }
+      cachedStore = store;
+      lastHydratedAt = Date.now();
+      return result;
+    }, getUserPostgresPool),
+  );
 }
 
 export function resetStore(): AppStore {

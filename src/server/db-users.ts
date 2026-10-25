@@ -28,6 +28,7 @@ import {
   type AuthClientKind,
 } from "@/server/auth-client-kind";
 import type { UserImagePurpose } from "@/server/media-storage";
+import { AccountBlockedError } from "@/server/auth-errors";
 
 export const REFRESH_TOKEN_ROTATION_INTERVAL_MS = 24 * 60 * 60 * 1000;
 // Keep the immediately previous refresh hash valid for the session lifetime.
@@ -705,14 +706,39 @@ export async function dbListAuthSessions(): Promise<StoredAuthSession[]> {
   return result.rows.map(rowToSession);
 }
 
+export type DbCreateAuthSessionOptions = {
+  /**
+   * The `auth_token_version` the caller believes is current (e.g. from the JWT
+   * that authorised a link-out handoff). A mismatch means a revoke/delete/role
+   * change happened in between, so no new session may be minted from it.
+   */
+  expectedTokenVersion?: number;
+};
+
 export async function dbCreateAuthSession(
   userId: string,
   clientKind: AuthClientKind = DEFAULT_AUTH_CLIENT_KIND,
+  options: DbCreateAuthSessionOptions = {},
 ): Promise<StoredAuthSession> {
   await ensureUserSchema();
   const user = await dbFindUserById(userId);
   if (!user) {
     throw new Error("Cannot create auth session for missing user.");
+  }
+  // A revoked/deleted account must never mint a session, whichever login or
+  // handoff path asked for one. Revoke anything still live while we are here —
+  // the status flip and the session sweep are separate statements upstream, so
+  // a session created in that window would otherwise survive.
+  const accountStatus = user.accountStatus ?? "active";
+  if (accountStatus !== "active") {
+    await dbClearUserSessions(userId);
+    throw new AccountBlockedError(accountStatus);
+  }
+  if (
+    options.expectedTokenVersion !== undefined &&
+    (user.authTokenVersion ?? 0) !== options.expectedTokenVersion
+  ) {
+    throw new AccountBlockedError("stale");
   }
   const sessionId = createSessionId();
   const now = new Date();
@@ -807,6 +833,19 @@ export async function dbRotateAccessToken(refreshToken: string): Promise<StoredA
       return null;
     }
     const user = rowToUser(userResult.rows[0]);
+    // Revocation is enforced here, not only by the `dbClearUserSessions` sweep
+    // that runs when an admin flips the status: a session minted in the race
+    // window (or one the sweep missed) must not keep refreshing. Returning
+    // null lets `handleRefresh` answer with the precise account_revoked /
+    // account_deleted 403 and the route clear the cookies.
+    if ((user.accountStatus ?? "active") !== "active") {
+      await client.query(
+        "UPDATE origin_auth_sessions SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL",
+        [user.id],
+      );
+      await client.query("COMMIT");
+      return null;
+    }
     const access = await issueAccessTokenForUser(user, parsed.sessionId);
     // Authoritative source for the lifetime: the stored row, never a re-read of
     // the request User-Agent. A session cannot change kind after it is minted.

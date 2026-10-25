@@ -152,6 +152,25 @@ it("phase 15: mixed OG Code + Question Bag test persists and resolves both banks
       (e) => (e as { status?: number }).status === 400,
     );
 
+    // While the assignment window is open (no window = always open) the test is
+    // live: replacing its questions is refused.
+    const replaceToOg = {
+      actorUserId: fx.ownerId,
+      workspaceId: fx.workspaceId,
+      testId: teacherTest.id,
+      patch: {},
+      questions: [{ position: 1, sourceBank: "ogcode" as const, ogcodeQuestionId: ogId, marks: 4, negativeMarks: 1 }],
+    };
+    await assert.rejects(
+      () => updateTeacherTest(replaceToOg),
+      (e) => (e as { code?: string }).code === "test_live",
+    );
+    // Once the window is over (and nobody attempted it) the edit goes through.
+    await rawPool().query(
+      `UPDATE assessment.test_assignments SET scheduled_end_at = NOW() - INTERVAL '1 hour' WHERE test_id = $1`,
+      [teacherTest.id],
+    );
+
     // Edit: replacing the question set updates the test (resume-a-draft path).
     await updateTeacherTest({
       actorUserId: fx.ownerId,

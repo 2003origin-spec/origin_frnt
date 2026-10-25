@@ -101,11 +101,21 @@ export async function registerDeviceToken(input: DeviceTokenInput): Promise<void
   );
 }
 
-/** Revoke one token (explicit unregister from the shell). */
-export async function revokeDeviceToken(token: string): Promise<void> {
-  if (!isUserPostgresConfigured()) return;
+/**
+ * Revoke one token (explicit unregister from the shell) — ONLY if it belongs
+ * to `userId`. Revoking by token value alone let anyone who obtained another
+ * user's FCM token (a shared/resold device, a log, a screenshot) silence that
+ * user's push. Returns whether a row was revoked; a token that is not the
+ * caller's is a silent no-op (no existence oracle).
+ */
+export async function revokeDeviceToken(token: string, userId: string): Promise<boolean> {
+  if (!isUserPostgresConfigured()) return false;
   await ensureDeviceTokensSchema();
-  await pool().query("UPDATE notif.device_tokens SET revoked_at = now() WHERE token = $1", [token]);
+  const result = await pool().query(
+    "UPDATE notif.device_tokens SET revoked_at = now() WHERE token = $1 AND user_id = $2 AND revoked_at IS NULL",
+    [token, userId],
+  );
+  return (result.rowCount ?? 0) > 0;
 }
 
 /** Revoke every token bound to a user (logout / account deletion). */

@@ -127,7 +127,10 @@ test("coupon lifecycle is locked, guarded, and coupled to Rail-A terminal transi
   assert.match(coupons, /state = 'released'/);
   assert.match(coupons, /expires_at <= NOW\(\)/);
   assert.match(coupons, /allowLegacyWithoutIdentity/);
-  assert.match(orders, /commitCouponReservation/);
+  // Bug-fix P2: capture commits through commitOrRecommitCoupon, which wraps
+  // commitCouponReservation and re-commits a lapsed hold under the coupon lock.
+  assert.match(orders, /commitOrRecommitCoupon/);
+  assert.match(coupons, /export async function commitOrRecommitCoupon[\s\S]*commitCouponReservation\(/);
   assert.match(orders, /releaseCouponReservation/);
   assert.match(orders, /Coupon settlement failed/);
 });

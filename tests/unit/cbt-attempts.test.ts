@@ -6,6 +6,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import { gradeCbtLocal, sanitizeQuestionForStudent, type TestQuestionRow } from "@/server/cbt/cbt-attempts-service";
 import type { CbtQuestionAnswer } from "@/lib/cbt/question-model";
@@ -117,4 +118,140 @@ test("Phase 8: subjective is flagged for review, never auto-scored", () => {
   const out = gradeCbtLocal("subjective", { answerText: "an essay" } as CbtQuestionAnswer, { answerText: "my essay" }, 4, 0);
   assert.equal(out.marksAwarded, 0);
   assert.equal(out.needsReview, true);
+});
+
+// --- Bug fixes G2/G3 for the CBT local grader (docs/bug-fixes/03-grading-points.md) ---
+
+test("G2: CBT numerical reads ONE strict number — fractions/scientific accepted, multi-number wrong", () => {
+  const grade = (expected: string, submitted: string, tolerance: number | null = 0) =>
+    gradeCbtLocal("numerical", { answerText: expected, tolerance } as CbtQuestionAnswer, { answerText: submitted }, 4, -1);
+  // Used to grade as 3, 1 and 2 ("first number wins").
+  assert.equal(grade("3", "3/4").marksAwarded, -1);
+  assert.equal(grade("1", "1×10^-3").marksAwarded, -1);
+  assert.equal(grade("2", "2 3").marksAwarded, -1);
+  assert.equal(grade("2", "2 or 3").marksAwarded, -1);
+  assert.equal(grade("2", "2,3").marksAwarded, -1);
+  // The same notations now read as their real value.
+  assert.equal(grade("0.75", "3/4").marksAwarded, 4);
+  assert.equal(grade("0.001", "1×10^-3").marksAwarded, 4);
+  assert.equal(grade("0.001", "1x10^-3").marksAwarded, 4);
+  assert.equal(grade("0.001", "1E-3").marksAwarded, 4);
+  assert.equal(grade("-5", "−5").marksAwarded, 4);
+  assert.equal(grade("1000", "1,000").marksAwarded, 4);
+  assert.equal(grade("100000", "1,00,000").marksAwarded, 4);
+  // Plain numbers are unchanged.
+  assert.equal(grade("42", "42").marksAwarded, 4);
+  assert.equal(grade("9.8", "9.80").marksAwarded, 4);
+  assert.equal(grade("-2500", "-2.5e3").marksAwarded, 4);
+  assert.equal(grade("42", "41").marksAwarded, -1);
+  assert.equal(grade("42", "").marksAwarded, 0);
+  assert.equal(grade("42", "abc").marksAwarded, -1);
+});
+
+test("G2: CBT keeps its unit handling (label only) and its tolerance rule", () => {
+  const units: CbtQuestionAnswer = { answerText: "9.8", units: "m/s^2", tolerance: 0 };
+  assert.equal(gradeCbtLocal("numerical_with_units", units, { answerText: "9.8 m/s^2" }, 4, -1).marksAwarded, 4);
+  assert.equal(gradeCbtLocal("numerical_with_units", units, { answerText: "9.8" }, 4, -1).marksAwarded, 4);
+  assert.equal(gradeCbtLocal("numerical_with_units", units, { answerText: "9.8 m/s^2 or 10 m/s^2" }, 4, -1).marksAwarded, -1);
+  const farad: CbtQuestionAnswer = { answerText: "0.0015", units: "F", tolerance: 0 };
+  assert.equal(gradeCbtLocal("numerical_with_units", farad, { answerText: "1.5×10^-3 F" }, 4, -1).marksAwarded, 4);
+  // P6: no stored tolerance ⇒ the grader's rule, not 1%: an integer key is exact
+  // and a decimal key is exact after rounding to the key's decimal places.
+  const integerKey: CbtQuestionAnswer = { answerText: "250" };
+  assert.equal(gradeCbtLocal("numerical", integerKey, { answerText: "250" }, 4, -1).marksAwarded, 4);
+  assert.equal(gradeCbtLocal("numerical", integerKey, { answerText: "252" }, 4, -1).marksAwarded, -1);
+  const decimalKey: CbtQuestionAnswer = { answerText: "9.80 m/s^2" };
+  assert.equal(gradeCbtLocal("numerical", decimalKey, { answerText: "9.8" }, 4, -1).marksAwarded, 4);
+  assert.equal(gradeCbtLocal("numerical", decimalKey, { answerText: "9.804" }, 4, -1).marksAwarded, 4);
+  assert.equal(gradeCbtLocal("numerical", decimalKey, { answerText: "9.81" }, 4, -1).marksAwarded, -1);
+  // Float noise at the tolerance edge no longer flips the result.
+  assert.equal(gradeCbtLocal("numerical", { answerText: "9.8", tolerance: 0.1 }, { answerText: "9.9" }, 4, -1).marksAwarded, 4);
+  // An unparseable answer key is held for review with no marks.
+  const broken = gradeCbtLocal("numerical", { answerText: "about five" }, { answerText: "5" }, 4, -1);
+  assert.deepEqual(broken, { marksAwarded: 0, isCorrect: false, needsReview: true });
+});
+
+test("G3: CBT matrix-match — every cell ticked is wrong; partial credit per complete row", () => {
+  const answer = { matrixData: { rows: ["A", "B"], cols: ["1", "2"], correct_pairs: [[0, 1], [1, 0]] } } as CbtQuestionAnswer;
+  assert.equal(gradeCbtLocal("matrix_match", answer, { matrixPairs: [[1, 0], [0, 1]] }, 4, -1).marksAwarded, 4);
+  assert.equal(gradeCbtLocal("matrix_match", answer, { matrixPairs: [[0, 0], [0, 1], [1, 0], [1, 1]] }, 4, -1).marksAwarded, -1);
+  assert.equal(gradeCbtLocal("matrix_match", answer, { matrixPairs: [[0, 1]] }, 4, -1).marksAwarded, 2);
+  assert.equal(gradeCbtLocal("matrix_match", answer, { matrixPairs: [[0, 1], [1, 1]] }, 4, -1).marksAwarded, -1);
+  assert.equal(gradeCbtLocal("matrix_match", answer, {}, 4, -1).marksAwarded, 0);
+  // M4 (P7): correct pairs only, no complete row ⇒ 0 (the grader's rule), never negative.
+  const twoCells = { matrixData: { rows: ["A", "B"], cols: ["1", "2"], correct_pairs: [[0, 0], [0, 1], [1, 0]] } } as CbtQuestionAnswer;
+  assert.equal(gradeCbtLocal("matrix_match", twoCells, { matrixPairs: [[0, 1]] }, 4, -1).marksAwarded, 0);
+  assert.equal(gradeCbtLocal("matrix_match", twoCells, { matrixPairs: [[0, 1], [1, 1]] }, 4, -1).marksAwarded, -1);
+});
+
+// Shared grading-parity fixture (the file grader-service also runs): the parse
+// table and every numeric/matrix case whose expectation does not depend on the
+// G1 tolerance (P6): CBT uses the grader's rule — stored tolerance, else integer keys exact and
+// decimal keys exact after rounding to the key's decimals.
+type ParityCase = {
+  id: string;
+  question: { answerText?: string | null; tolerance?: number | null; matrixData?: Record<string, unknown> | null };
+  answer: { answerText?: string | null; matrixPairs?: number[][] | null };
+  expect: { isCorrect: boolean; marksAwarded: number; needsReview: boolean };
+};
+const parity = JSON.parse(readFileSync(new URL("../fixtures/grading-parity.json", import.meta.url), "utf8")) as {
+  parseStrictNumber: [string | null, number | null][];
+  cases: ParityCase[];
+};
+
+test("parity fixture: CBT number parsing matches parseStrictNumber's table", () => {
+  for (const [raw, value] of parity.parseStrictNumber) {
+    const graded = gradeCbtLocal("numerical", { answerText: String(value ?? 0), tolerance: 0 }, { answerText: raw }, 4, -1);
+    assert.equal(graded.isCorrect, value !== null, `${JSON.stringify(raw)} → ${value}`);
+  }
+});
+
+const CBT_PARITY_CASES: Record<string, "fixture"> = {
+  "G1-tolerance-zero-is-exact": "fixture",
+  "G1-explicit-0.1-accepts-9.75": "fixture",
+  "G2-fraction-is-right": "fixture",
+  "G2-times-ten-power-is-right": "fixture",
+  "G2-upper-E-is-right": "fixture",
+  "G2-two-numbers-is-wrong": "fixture",
+  "G2-two-or-three-is-wrong": "fixture",
+  "G2-expected-not-numeric-holds-for-review": "fixture",
+  "G2-units-same-unit-is-right": "fixture",
+  "G2-units-wrong-magnitude-is-wrong": "fixture",
+  // CBT never compares units: a bare magnitude is compared with the key's (M1).
+  "M1-units-bare-number-is-right": "fixture",
+  // P6: a NULL tolerance follows the grader's integer / decimal-exact rule, not 1%.
+  "G1-250-vs-252-is-wrong": "fixture",
+  "G1-250-vs-250-is-right": "fixture",
+  "G1-decimal-rounds-to-expected-places": "fixture",
+  "G1-decimal-9.74-is-wrong": "fixture",
+  "F7-fraction-key-three-decimals-is-right": "fixture",
+  "F7-fraction-key-one-decimal-is-wrong": "fixture",
+  "F7-terminating-fraction-key-rounded-is-wrong": "fixture",
+  "F7-terminating-fraction-key-3-4-is-right": "fixture",
+  // P7 / M4: correct pairs with no complete row are 0, not negative.
+  "M4-one-correct-pair-no-complete-row-is-zero": "fixture",
+  "G3-all-cells-ticked-is-negative": "fixture",
+  "G3-one-row-complete-is-half": "fixture",
+  "G3-subset-plus-wrong-pair-is-negative": "fixture",
+  "G3-half-marked-row-earns-nothing-for-that-row": "fixture",
+  "G3-exact-match": "fixture",
+  "G3-unattempted": "fixture",
+};
+
+test("parity fixture: the applicable numeric + matrix cases grade the same in CBT", () => {
+  const byId = new Map(parity.cases.map((c) => [c.id, c]));
+  for (const id of Object.keys(CBT_PARITY_CASES)) {
+    const c = byId.get(id);
+    assert.ok(c, `fixture case ${id} exists`);
+    const type = c.question.matrixData ? "matrix_match" : "numerical";
+    const answer = {
+      answerText: c.question.answerText ?? undefined,
+      tolerance: c.question.tolerance ?? null,
+      matrixData: c.question.matrixData ?? undefined,
+    } as CbtQuestionAnswer;
+    const out = gradeCbtLocal(type, answer, { answerText: c.answer.answerText, matrixPairs: c.answer.matrixPairs }, 4, -1);
+    assert.equal(out.isCorrect, c.expect.isCorrect, `${id} isCorrect`);
+    assert.equal(out.marksAwarded, c.expect.marksAwarded, `${id} marks`);
+    assert.equal(out.needsReview, c.expect.needsReview, `${id} needsReview`);
+  }
 });

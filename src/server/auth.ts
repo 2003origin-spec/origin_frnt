@@ -8,7 +8,7 @@ import {
   dbRevokeAuthSessionByRefreshToken,
   dbRotateAccessToken,
 } from "@/server/db-users";
-import { AuthServiceUnavailableError } from "@/server/auth-errors";
+import { AuthServiceUnavailableError, isAccountBlockedError } from "@/server/auth-errors";
 import {
   DEFAULT_AUTH_CLIENT_KIND,
   normalizeAuthClientKind,
@@ -202,6 +202,9 @@ export async function createAuthSessionAsync(
       store.authSessions.push(session);
       return session;
     } catch (err) {
+      // A blocked account is a policy answer, not an outage — let the caller
+      // turn it into the precise 403 instead of the 503 below.
+      if (isAccountBlockedError(err)) throw err;
       console.error("[auth] DB session creation failed", err instanceof Error ? err.message : err);
       throw new AuthServiceUnavailableError();
     }

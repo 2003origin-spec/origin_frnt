@@ -897,7 +897,19 @@ export async function listOgcodeCatalogFacets(params: {
   return raw;
 }
 
-export async function getOgcodeCatalogQuestionById(questionId: string): Promise<StoredQuestion | null> {
+export type OgcodeQuestionByIdOptions = {
+  /**
+   * Hide contest document imports (`is_contest_import = TRUE`) — the default
+   * visibility of every general OGCode surface. Off by default here because
+   * contest/admin callers load imports by id on purpose.
+   */
+  excludeContestImports?: boolean;
+};
+
+export async function getOgcodeCatalogQuestionById(
+  questionId: string,
+  options: OgcodeQuestionByIdOptions = {},
+): Promise<StoredQuestion | null> {
   const pool = getOgcodePostgresPool();
   if (!pool) {
     return null;
@@ -940,9 +952,10 @@ export async function getOgcodeCatalogQuestionById(questionId: string): Promise<
         previous_year_question
       FROM ogcode_questions
       WHERE id = $1
+        AND ($2::boolean IS FALSE OR is_contest_import = FALSE)
       LIMIT 1
     `,
-    [questionId],
+    [questionId, options.excludeContestImports === true],
   );
 
   return result.rows[0] ? mapCatalogRow(result.rows[0]) : null;
@@ -1116,8 +1129,8 @@ export type OgcodeBagDrawResult = {
  * student resolves to a band that currently matches no rows, so there is nothing
  * to draw and no card to show.
  *
- * Eligibility is the pre-existing challenge predicate — an answerable MCQ — so a
- * Question of the Day is always solvable in one tap. Widening it to numerical
+ * Eligibility is the pre-existing challenge predicate — an answerable MCQ that is
+ * not a contest import — so a Question of the Day is always solvable in one tap. Widening it to numerical
  * questions later is a change to this WHERE clause alone.
  *
  * Cost against the live 6 232-row bank: ~4.5 ms. It runs four times a day.
@@ -1144,6 +1157,10 @@ export async function drawOgcodeBagQuestion(
            AND (class = ANY($2::int[]) OR ($3::boolean AND class IS NULL))
            AND question_type = 'mcq'
            AND correct_option IS NOT NULL
+           -- Same default as every general OGCode surface (buildFilterClause):
+           -- an imported contest paper must never become a Question of the Day
+           -- (with its post-answer reveal) before the contest runs.
+           AND is_contest_import = FALSE
       ),
       unserved AS (
         SELECT id FROM bag WHERE NOT (id = ANY($4::text[]))
