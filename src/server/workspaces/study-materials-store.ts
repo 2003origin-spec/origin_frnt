@@ -409,6 +409,13 @@ export async function getMaterialsForStudent(
          ))
        )
        AND asn.revoked_at IS NULL
+       -- N11: workspace-wide materials are for enrolled students only; the
+       -- workspace id is public (marketplace), the enrolment is not.
+       AND EXISTS (
+         SELECT 1 FROM app.workspace_student_enrollments e
+         WHERE e.workspace_id = $1 AND e.student_id = $2
+           AND e.status IN ('active', 'unassigned')
+       )
      GROUP BY m.id
      ORDER BY m.created_at DESC`,
     [workspaceId, studentId],

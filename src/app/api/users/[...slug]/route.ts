@@ -16,6 +16,7 @@ import {
   REFRESH_COOKIE_NAME,
 } from "@/server/auth-cookies";
 import { authLimiter, generalLimiter, refreshLimiter, checkRateLimit } from "@/lib/rate-limit";
+import { loginAccountKey, loginGate, shouldCountLoginFailure } from "@/server/auth-login-gate";
 
 type RouteContext = {
   params: Promise<{ slug?: string[] }>;
@@ -134,7 +135,21 @@ async function dispatch(method: string, request: NextRequest, context: RouteCont
     }
   }
 
+  // REST password login shares the Server Actions' brute-force gate, so the
+  // per-account lockout cannot be sidestepped by calling this route instead.
+  const isPasswordLogin = method === "POST" && slug.length === 1 && slug[0] === "login";
+  const gateIp = ip.split(",")[0]?.trim() || "unknown";
+  const gateAccountKey = isPasswordLogin ? loginAccountKey(payload.email) : "";
+  if (isPasswordLogin) {
+    const gated = await loginGate.gate(gateIp, gateAccountKey);
+    if (gated) return NextResponse.json({ detail: gated.message }, { status: gated.status });
+  }
+
   const response = await handleUsersRequest(method, slug, request, payload);
+
+  if (isPasswordLogin && shouldCountLoginFailure({ ok: response.ok, status: response.status })) {
+    await loginGate.recordFailure(gateIp, gateAccountKey);
+  }
 
   // Auth endpoints: mirror tokens into HttpOnly cookies
   const isLogin = method === "POST" && slug[0] === "login";

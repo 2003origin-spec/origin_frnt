@@ -1,7 +1,9 @@
 /**
  * POST /api/contest/proctor
- *   { contestId, action: 'presign' }        → { uploadUrl, r2Key }
+ *   { contestId, action: 'presign', size }  → { uploadUrl, uploadHeaders, r2Key }
  *   { contestId, action: 'register', r2Key } → records the uploaded snapshot
+ *
+ * The upload URL is signed for image/jpeg and exactly `size` bytes.
  *
  * Self-hosted webcam-snapshot proctoring. Authenticated student prefix; gated by
  * the contestProctoring flag. The user id comes from the session.
@@ -19,6 +21,7 @@ const Schema = z.object({
   contestId: z.string().min(1),
   action: z.enum(["presign", "register"]),
   r2Key: z.string().max(512).optional(),
+  size: z.number().optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -30,7 +33,8 @@ export async function POST(request: NextRequest) {
     if (!parsed.success) return teacherJson({ detail: parsed.error.message }, { status: 400 });
 
     if (parsed.data.action === "presign") {
-      const p = presignProctorSnapshot(parsed.data.contestId, ctx.userId);
+      if (parsed.data.size === undefined) return teacherJson({ detail: "size is required." }, { status: 400 });
+      const p = presignProctorSnapshot(parsed.data.contestId, ctx.userId, parsed.data.size);
       return teacherJson(p);
     }
     if (!parsed.data.r2Key) return teacherJson({ detail: "r2Key is required." }, { status: 400 });

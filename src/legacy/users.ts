@@ -9,7 +9,7 @@ import { deleteOtp, isEmailVerified } from "@/server/otp-store";
 import { dbLoginUser, dbRegisterUser, dbGetTasks, dbCreateTask, dbUpdateTask, dbDeleteTask, dbFindUserByEmail, dbFindUserById, dbCreateUser, dbUpdateUser, dbCreateAuthSession, dbGetUserCount, dbGetUserCountByRole, dbMobileInUse, dbClearUserSessions } from "@/server/db-users";
 import { isIdentityBlocked } from "@/server/user-lifecycle-store";
 import { getAllowDeletedIdentityResignup } from "@/server/platform-settings";
-import { OAuth2Client } from "google-auth-library";
+import { resolveGoogleCredential } from "@/server/google-credential";
 import {
   awardPoints,
   buildContributionData,
@@ -764,78 +764,15 @@ export async function handleRegister(payload: UserPayload) {
 }
 
 /**
- * Resolve a Google credential (a JWT ID token or an OAuth access token) to a
- * verified identity, or null when the token is invalid.
- *
- * This is the ONLY trust anchor for the Google flows. handleGoogleSignup must
- * always re-run this on its own credential rather than trusting a client-sent
+ * Google credential → verified identity lives in src/server/google-credential.ts.
+ * It is the ONLY trust anchor for the Google flows: handleGoogleSignup must
+ * always re-run it on its own credential rather than trusting a client-sent
  * email — otherwise anyone could mint accounts for arbitrary addresses.
  *
- * Audit fix R-1.4 (A-07) — `useGoogleLogin` and `<GoogleLogin>` from
- * @react-oauth/google return *different* shapes:
- *   - `<GoogleLogin>` (id_token flow) → a JWT `header.payload.signature`,
- *     verified against Google's keys.
- *   - `useGoogleLogin({ flow: 'implicit' })` (default) → an OAuth access_token
- *     (e.g. "ya29.a0Af...") that is NOT a JWT — exchanged at the userinfo
- *     endpoint. Routing on segment count (a JWT has exactly 3) sends access
- *     tokens straight there: one network round-trip.
+ * Both token shapes (@react-oauth implicit-flow access token on the web, a
+ * Credential Manager ID token in the Android shell) are checked against OUR
+ * OAuth client ids before the email is trusted (A1 in BUG_FIX_PLAN.md).
  */
-async function resolveGoogleCredential(
-  credential: string,
-): Promise<{ email: string; name: string; avatar: string | null } | null> {
-  const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "YOUR_GOOGLE_CLIENT_ID";
-  let email: string | undefined;
-  let name: string = "Google User";
-  let avatar: string | null = null;
-
-  if (credential.split('.').length === 3) {
-    try {
-      const client = new OAuth2Client(clientId);
-      // The Android shell's Credential Manager flow mints its ID token with
-      // serverClientId = the web client id, so `aud` normally equals
-      // `clientId` already; GOOGLE_ANDROID_CLIENT_ID is accepted as a
-      // belt-and-braces audience for tokens minted against the Android
-      // OAuth client directly (ANDROID_HYBRID_APP_PLAN.md §5.3).
-      const androidClientId = process.env.GOOGLE_ANDROID_CLIENT_ID?.trim();
-      const ticket = await client.verifyIdToken({
-        idToken: credential,
-        audience: androidClientId ? [clientId, androidClientId] : clientId,
-      });
-      const googlePayload = ticket.getPayload();
-      if (googlePayload) {
-        email = googlePayload.email;
-        name = googlePayload.name ?? "Google User";
-        avatar = googlePayload.picture ?? null;
-      }
-    } catch (e) {
-      console.warn("[GoogleAuth] ID Token verification failed, checking if it is an access token instead", e);
-    }
-  }
-
-  // If ID token verification didn't work (or skipped), fetch user info with it
-  // as an access token. Bounded by an 8s timeout so a slow/hung network fails
-  // fast instead of blocking the login.
-  if (!email) {
-    try {
-      const res = await fetch(`https://www.googleapis.com/oauth2/v3/userinfo?access_token=${credential}`, {
-        signal: AbortSignal.timeout(8000),
-      });
-      if (!res.ok) {
-        throw new Error(`Google userinfo status: ${res.status}`);
-      }
-      const data = await res.json();
-      email = data.email;
-      name = data.name ?? "Google User";
-      avatar = data.picture ?? null;
-    } catch (e) {
-      console.error("[GoogleAuth] Access Token verification failed:", e);
-      return null;
-    }
-  }
-
-  if (!email) return null;
-  return { email, name, avatar };
-}
 
 export async function handleGoogleLogin(payload: UserPayload) {
   const clientKind = payloadClientKind(payload);
