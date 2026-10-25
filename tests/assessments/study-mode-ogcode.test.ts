@@ -51,6 +51,10 @@ function scopeFor(
     canChooseMode: false,
     subjects,
     starved: enforced && subjects.length === 0,
+    entitledSubjects: gate.enforced
+      ? ALL_SUBJECTS.filter((s) => modeSubjects.includes(s) && gate.subjects.includes(s))
+      : [...modeSubjects],
+    premiumLocked: gate.enforced && !gate.anyPremium,
   };
 }
 

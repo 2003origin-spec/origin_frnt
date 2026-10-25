@@ -161,7 +161,7 @@ export async function getStudentBatchContext(
   const result = await pool().query(
     `SELECT b.workspace_id, b.name, b.subject
      FROM app.batch_members m
-     INNER JOIN app.batches b ON b.id = m.batch_id
+     INNER JOIN app.batches b ON b.id = m.batch_id AND b.workspace_id = m.workspace_id
      WHERE m.batch_id = $1 AND m.student_id = $2 AND m.status = 'active'
      LIMIT 1`,
     [batchId, studentId],

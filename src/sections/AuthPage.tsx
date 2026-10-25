@@ -177,6 +177,10 @@ export default function AuthPage({
   }, [resendCooldown]);
 
   const handleGoogleAuth = useGoogleLogin({
+    // The server now proves the access token was minted for our client via
+    // Google's tokeninfo endpoint, which only reports `email` when the token
+    // carries the email scope — so request it explicitly.
+    scope: 'openid email profile',
     onSuccess: (res) => { if (onGoogleLogin && res.access_token) onGoogleLogin(res.access_token, userRole); },
     onError: (e) => console.error('Google Login Failed:', e),
   });

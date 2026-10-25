@@ -36,7 +36,7 @@ import {
   publishPrivateQuestion,
 } from "@/server/workspaces/questions-service";
 
-import { cleanup, closePool, dbConfigured, makeId, rawPool, seedFixtures } from "./_db";
+import { cleanup, closePool, dbConfigured, enrollFixtureStudent, makeId, rawPool, seedFixtures } from "./_db";
 
 const SKIP = !dbConfigured();
 const it = test;
@@ -110,6 +110,7 @@ it("phase 15: mixed OG Code + Question Bag test persists and resolves both banks
       batchId: fx.batchId,
       assignedBy: fx.ownerId,
     });
+    await enrollFixtureStudent(fx);
     await addStudentsToBatches({
       workspaceId: fx.workspaceId,
       batchIds: [fx.batchId],

@@ -3,7 +3,13 @@
  */
 
 import { AuthzError } from "@/server/authz";
-import { deleteR2Object, uploadImportDocumentToR2 } from "@/server/media-storage";
+import {
+  deleteR2Object,
+  isImportUploadObjectKey,
+  verifyImportUploadToken,
+  privateR2BucketName,
+  uploadImportDocumentToR2,
+} from "@/server/media-storage";
 
 import { recordAuditEvent } from "./audit";
 import {
@@ -89,13 +95,25 @@ export async function createImportJob(input: {
   sourceFile?: { buffer: Buffer; fileName: string; mimeType: string };
   /** Alternative to sourceFile: the file was ALREADY uploaded to R2 directly by
    * the browser (presigned PUT, to bypass the serverless body limit). We just
-   * point the job at that object — the worker fetches the bytes from R2. */
-  sourceR2?: { objectKey: string; bucket: string; sizeBytes?: number };
+   * point the job at that object — the worker fetches the bytes from R2. The
+   * bucket is always the private one; the browser never chooses it. The
+   * uploadToken is the presign route's HMAC over (userId, objectKey, expiry):
+   * only the user the key was presigned for can register a job on it. */
+  sourceR2?: { objectKey: string; sizeBytes?: number; uploadToken: string };
   /** When true, fire-and-forget kicks off the FastAPI worker after the
    * job row is committed. Defaults to true — set false in tests to keep
    * the pipeline call out of the request. */
   triggerPipeline?: boolean;
 }): Promise<DocumentImportJob> {
+  // The key comes back from the browser: only accept one our presign route made,
+  // so the worker can't be pointed at some other private object.
+  if (input.sourceR2 && !isImportUploadObjectKey(input.sourceR2.objectKey)) {
+    throw new Error("That file was not uploaded through the import upload link. Please upload it again.");
+  }
+  // ...and only by the user it was presigned for, while the upload link is alive.
+  if (input.sourceR2 && !verifyImportUploadToken(input.sourceR2.uploadToken, input.userId, input.sourceR2.objectKey)) {
+    throw new AuthzError(403, "That upload was not issued to you or has expired. Please upload the file again.");
+  }
   const membership = await getActiveMembership(input.workspaceId, input.userId);
   if (!membership || !["owner", "admin", "teacher", "content_manager"].includes(membership.role)) {
     throw new AuthzError(403, "Insufficient permissions to create import jobs.");
@@ -128,7 +146,7 @@ export async function createImportJob(input: {
     // worker reads the bytes from R2. sha256 is left "pending-upload" (the
     // Next server never saw the bytes).
     sourceR2ObjectKey = input.sourceR2.objectKey;
-    sourceR2Bucket = input.sourceR2.bucket;
+    sourceR2Bucket = privateR2BucketName();
     sourceSizeBytes = input.sourceR2.sizeBytes;
   }
 
@@ -204,11 +222,12 @@ export async function getJobWithProgress(workspaceId: string, jobId: string): Pr
   return storeGetJobWithProgress(workspaceId, jobId);
 }
 
-export async function getJobPages(jobId: string, filter?: { status?: ImportPageStatus }) {
-  return storeGetJobPages(jobId, filter);
+export async function getJobPages(workspaceId: string, jobId: string, filter?: { status?: ImportPageStatus }) {
+  return storeGetJobPages(workspaceId, jobId, filter);
 }
 
 export async function getJobQuestions(
+  workspaceId: string,
   jobId: string,
   filter?: { status?: ImportQuestionStatus | "all"; limit?: number },
 ) {
@@ -217,7 +236,7 @@ export async function getJobQuestions(
     filter?.status && filter.status !== "all"
       ? { status: filter.status as ImportQuestionStatus, limit: filter.limit }
       : { limit: filter?.limit };
-  return storeGetJobQuestions(jobId, storeFilter);
+  return storeGetJobQuestions(workspaceId, jobId, storeFilter);
 }
 
 export async function updateJobStatusService(input: {
@@ -382,7 +401,7 @@ export async function publishImportQuestionToBag(input: {
     // Already published in an earlier pass. Re-accepting flips the import row
     // back to 'accepted'; restore the 'published' status so state stays honest.
     if (question.status !== "published") {
-      await updateQuestionStatus(input.jobId, question.id, "published", {
+      await updateQuestionStatus(input.workspaceId, input.jobId, question.id, "published", {
         questionBagQuestionId: question.questionBagQuestionId,
       });
     }
@@ -435,7 +454,7 @@ export async function publishImportQuestionToBag(input: {
 
   // Mark it ready so it's usable in the test builder + DPP selection.
   await updateQuestion(created.id, { status: "ready" });
-  await updateQuestionStatus(input.jobId, question.id, "published", {
+  await updateQuestionStatus(input.workspaceId, input.jobId, question.id, "published", {
     questionBagQuestionId: created.id,
   });
   return created.id;
@@ -512,7 +531,7 @@ export async function bulkAcceptReviewQuestions(input: {
   }
   let accepted = 0;
   for (const questionId of input.questionIds) {
-    const updated = await updateQuestionStatus(input.jobId, questionId, "accepted");
+    const updated = await updateQuestionStatus(input.workspaceId, input.jobId, questionId, "accepted");
     if (updated) {
       accepted += 1;
       await recordAuditEvent({
@@ -562,7 +581,7 @@ export async function createDraftTestFromImportJob(input: {
   const job = await getImportJob(input.workspaceId, input.jobId);
   if (!job) throw new AuthzError(404, "Import job not found.");
 
-  const all = await storeGetJobQuestions(input.jobId, { limit: 500 });
+  const all = await storeGetJobQuestions(input.workspaceId, input.jobId, { limit: 500 });
   const eligible = all.filter((q) => q.status !== "rejected");
 
   const contentIds: string[] = [];
@@ -646,7 +665,7 @@ export async function createClusterFromImportJob(input: {
   const job = await getImportJob(input.workspaceId, input.jobId);
   if (!job) throw new AuthzError(404, "Import job not found.");
 
-  const all = await storeGetJobQuestions(input.jobId, { limit: 500 });
+  const all = await storeGetJobQuestions(input.workspaceId, input.jobId, { limit: 500 });
   const wanted = input.questionIds?.length ? new Set(input.questionIds) : null;
   const eligible = all.filter((q) => q.status !== "rejected" && (!wanted || wanted.has(q.id)));
 
@@ -713,7 +732,7 @@ export async function reviewQuestionService(input: {
   if (!membership || !["owner", "admin", "teacher"].includes(membership.role)) {
     throw new AuthzError(403, "Insufficient permissions to review questions.");
   }
-  let updated = await updateQuestionStatus(input.jobId, input.questionId, input.status, {
+  let updated = await updateQuestionStatus(input.workspaceId, input.jobId, input.questionId, input.status, {
     reviewNotes: input.reviewNotes, rejectionReason: input.rejectionReason,
   });
   if (updated) {

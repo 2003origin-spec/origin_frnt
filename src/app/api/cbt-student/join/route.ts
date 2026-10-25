@@ -17,6 +17,7 @@ import type { NextRequest, NextResponse } from "next/server";
 import { cbtJoinFailureLimiter, cbtJoinLimiter, cbtReclaimLimiter, checkRateLimit } from "@/lib/rate-limit";
 import { CBT_PARTICIPANT_COOKIE, CBT_PARTICIPANT_COOKIE_OPTS } from "@/lib/cbt/participant-token";
 import { joinRoom, reclaimParticipant } from "@/server/cbt/cbt-rooms-service";
+import { ROOM_CODE_LOCKED_DETAIL, withRoomCodeGuard } from "@/server/cbt/room-code-guard";
 
 import {
   cbtEnabled,
@@ -38,27 +39,38 @@ export async function POST(request: NextRequest) {
       reclaimParticipantId?: string;
       forceNew?: boolean;
     };
-    if (!body.slug || !body.code || !body.displayName) {
+    const { slug, code, displayName, reclaimParticipantId } = body;
+    if (!slug || !code || !displayName) {
       return studentJson({ detail: "Room code and your name are required." }, { status: 400 });
     }
 
-    const ipKey = `${clientIpOf(request)}:${body.slug}`;
+    const ipKey = `${clientIpOf(request)}:${slug}`;
     // Throughput limiter: a whole computer lab shares one NAT IP and every
     // crash-rejoin costs another slot, so this has to fit a full room. The old
     // 10-per-hour ceiling locked out the 11th student of the hour entirely.
     const limited = await checkRateLimit(cbtJoinLimiter, ipKey);
     if (limited) return limited as unknown as NextResponse;
 
-    if (body.reclaimParticipantId) {
+    // Brute-force guard on the room code: every path below checks the code.
+    // A correct code always gets in; only a 403 (incorrect code) spends the
+    // (ip, room) budget, and once it is spent further wrong codes get 429.
+    const lockedOut = () =>
+      studentJson({ detail: ROOM_CODE_LOCKED_DETAIL }, { status: 429, headers: { "Retry-After": "600" } });
+
+    if (reclaimParticipantId) {
       const reclaimLimited = await checkRateLimit(cbtReclaimLimiter, ipKey);
       if (reclaimLimited) return reclaimLimited as unknown as NextResponse;
 
-      const resumed = await reclaimParticipant({
-        slug: body.slug,
-        code: body.code,
-        displayName: body.displayName,
-        participantId: body.reclaimParticipantId,
-      });
+      const reclaimed = await withRoomCodeGuard(cbtJoinFailureLimiter, ipKey, () =>
+        reclaimParticipant({
+          slug,
+          code,
+          displayName,
+          participantId: reclaimParticipantId,
+        }),
+      );
+      if (reclaimed.locked) return lockedOut();
+      const resumed = reclaimed.value;
       const res = studentJson({
         resumed: true,
         studentCode: resumed.studentCode,
@@ -69,21 +81,16 @@ export async function POST(request: NextRequest) {
       return res;
     }
 
-    let result;
-    try {
-      result = await joinRoom({
-        slug: body.slug,
-        code: body.code,
-        displayName: body.displayName,
+    const joined = await withRoomCodeGuard(cbtJoinFailureLimiter, ipKey, () =>
+      joinRoom({
+        slug,
+        code,
+        displayName,
         forceNew: body.forceNew === true,
-      });
-    } catch (error) {
-      // A wrong room code is what the strict limiter actually needs to guard.
-      if ((error as { status?: number })?.status === 403) {
-        await checkRateLimit(cbtJoinFailureLimiter, ipKey);
-      }
-      throw error;
-    }
+      }),
+    );
+    if (joined.locked) return lockedOut();
+    const result = joined.value;
 
     if (result.kind === "reclaim_available") {
       const reclaimLimited = await checkRateLimit(cbtReclaimLimiter, ipKey);

@@ -278,7 +278,7 @@ export async function createDocumentUpload(
   }
   const objectKey = `${KYC_PREFIX}/${userId}/${input.kind}-${randomUUID()}.${EXTENSIONS[input.mimeType]}`;
   try {
-    const signed = createPresignedR2PutUrl({ objectKey, expiresSeconds: 600, method: "PUT" });
+    const signed = createPresignedR2PutUrl({ objectKey, expiresSeconds: 600, method: "PUT", contentType: input.mimeType, contentLength: input.sizeBytes });
     return { uploadUrl: signed.url, objectKey, expiresInSeconds: 600 };
   } catch {
     throw new NowError(503, "storage_unavailable", "Uploads are not available right now. Please try later.");

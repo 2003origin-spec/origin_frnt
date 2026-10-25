@@ -582,7 +582,8 @@ export async function listAssignedTestPreviewsForStudent(studentId: string): Pro
        FROM assessment.test_assignments a
        INNER JOIN assessment.tests t ON t.id = a.test_id
        LEFT JOIN app.batch_members bm
-         ON bm.batch_id = a.batch_id AND bm.status = 'active' AND bm.student_id = $1
+         ON bm.batch_id = a.batch_id AND bm.workspace_id = a.workspace_id
+        AND bm.status = 'active' AND bm.student_id = $1
       WHERE ${ASSIGNED_TEST_WHERE}
       ORDER BY t.id, a.scheduled_start_at DESC NULLS LAST`,
     [studentId],
@@ -620,7 +621,8 @@ export async function getAssignedTestForStudent(
        FROM assessment.test_assignments a
        INNER JOIN assessment.tests t ON t.id = a.test_id
        LEFT JOIN app.batch_members bm
-         ON bm.batch_id = a.batch_id AND bm.status = 'active' AND bm.student_id = $1
+         ON bm.batch_id = a.batch_id AND bm.workspace_id = a.workspace_id
+        AND bm.status = 'active' AND bm.student_id = $1
       WHERE t.id = $2 AND ${ASSIGNED_TEST_WHERE}
       ORDER BY t.id, a.scheduled_start_at DESC NULLS LAST`,
     [studentId, testId],

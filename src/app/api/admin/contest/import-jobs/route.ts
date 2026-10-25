@@ -14,8 +14,7 @@ import { handleTeacherError, teacherJson } from "@/app/api/teacher/_utils";
 import { requireFeatureEnabled } from "@/lib/feature-flags";
 import { requireRole } from "@/server/authz";
 import { createContestImportJob, listContestImportJobs } from "@/server/contest/contest-import-service";
-
-const MAX_UPLOAD_BYTES = 25 * 1024 * 1024; // 25 MB
+import { MAX_IMPORT_DOCUMENT_BYTES } from "@/server/media-storage";
 
 export async function GET(request: NextRequest) {
   try {
@@ -34,18 +33,26 @@ export async function POST(request: NextRequest) {
     const ctx = await requireRole(request, ["admin"]);
 
     // JSON path: the browser already PUT the file to R2 via a presigned URL.
+    // The bucket is always the server's private bucket — a `bucket` the
+    // browser sends is ignored — and the key must come with the uploadToken
+    // the presign route issued to this admin.
     if (request.headers.get("content-type")?.includes("application/json")) {
       const body = (await request.json().catch(() => ({}))) as {
-        objectKey?: string; bucket?: string; fileName?: string; mimeType?: string; size?: number;
+        objectKey?: string; uploadToken?: string; fileName?: string; mimeType?: string; size?: number;
       };
-      if (!body.objectKey || !body.bucket) {
-        return teacherJson({ detail: "objectKey and bucket are required." }, { status: 400 });
+      if (!body.objectKey) {
+        return teacherJson({ detail: "objectKey is required." }, { status: 400 });
+      }
+      // Issued by the presign route for this user and key; a tab opened before
+      // tokens existed sends none and is asked to upload again.
+      if (typeof body.uploadToken !== "string" || !body.uploadToken) {
+        return teacherJson({ detail: "uploadToken is required. Please upload the file again." }, { status: 400 });
       }
       const job = await createContestImportJob({
         userId: ctx.userId,
         r2Object: {
           objectKey: body.objectKey,
-          bucket: body.bucket,
+          uploadToken: body.uploadToken,
           fileName: body.fileName || "upload",
           mimeType: body.mimeType || "application/octet-stream",
           sizeBytes: typeof body.size === "number" ? body.size : undefined,
@@ -61,7 +68,7 @@ export async function POST(request: NextRequest) {
       return teacherJson({ detail: "A file is required." }, { status: 400 });
     }
     if (file.size === 0) return teacherJson({ detail: "The file is empty." }, { status: 400 });
-    if (file.size > MAX_UPLOAD_BYTES) {
+    if (file.size > MAX_IMPORT_DOCUMENT_BYTES) {
       return teacherJson({ detail: "File is too large (max 25 MB)." }, { status: 400 });
     }
     const buffer = Buffer.from(await file.arrayBuffer());

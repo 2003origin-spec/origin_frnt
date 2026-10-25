@@ -20,7 +20,7 @@ import {
   listAssignedTestPreviewsForStudent,
 } from "@/server/workspaces/tests-store";
 
-import { cleanup, closePool, dbConfigured, makeId, rawPool, seedFixtures } from "./_db";
+import { cleanup, closePool, dbConfigured, enrollFixtureStudent, makeId, rawPool, seedFixtures } from "./_db";
 
 const SKIP = !dbConfigured();
 const it = test;
@@ -36,6 +36,7 @@ it("phase 14: enrolled students see assigned teacher tests; non-members are gate
 
   try {
     // The fixture student joins the batch; the outsider does not.
+    await enrollFixtureStudent(fx);
     await addStudentsToBatches({
       workspaceId: fx.workspaceId,
       batchIds: [fx.batchId],

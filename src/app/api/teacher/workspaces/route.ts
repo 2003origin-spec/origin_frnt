@@ -5,6 +5,7 @@ import { parseJsonBody } from "@/server/http";
 import { requireAuth } from "@/server/authz";
 import { requireFeatureEnabled } from "@/lib/feature-flags";
 import { createTeacherWorkspace, listAccessibleWorkspaces } from "@/server/workspaces/service";
+import { evaluateWorkspaceCreate } from "@/server/workspaces/tenant-scoping";
 
 import { handleTeacherError, requestIdOf, teacherJson } from "@/app/api/teacher/_utils";
 
@@ -34,6 +35,15 @@ export async function POST(request: NextRequest) {
   try {
     requireFeatureEnabled("workspaces");
     const auth = await requireAuth(request);
+    // N12 — same role rule as /api/teacher/onboarding, plus a per-owner cap so
+    // one account cannot mint workspaces in a loop.
+    const roleRefusal = evaluateWorkspaceCreate({ role: auth.role, ownedWorkspaceCount: 0 });
+    if (roleRefusal) throw roleRefusal;
+    const ownedWorkspaceCount = (await listAccessibleWorkspaces(auth.userId)).filter(
+      (workspace) => workspace.ownerUserId === auth.userId && workspace.status !== "closed",
+    ).length;
+    const capRefusal = evaluateWorkspaceCreate({ role: auth.role, ownedWorkspaceCount });
+    if (capRefusal) throw capRefusal;
     const body = await parseJsonBody(request);
     const parsed = createSchema.parse(body);
     const workspace = await createTeacherWorkspace({
