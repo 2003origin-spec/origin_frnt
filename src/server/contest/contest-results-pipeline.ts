@@ -17,6 +17,7 @@ import { awardContestRewards } from "./contest-reward-service";
 import { applyContestGamification } from "./contest-gamification-service";
 import { sendContestReminder } from "./contest-reminders-service";
 import { ensureContestSchema } from "./contest-schema";
+import { invalidateContestWindow } from "./contest-window-cache";
 
 function pool() {
   const p = getUserPostgresPool();
@@ -59,6 +60,7 @@ export async function processEndedContests(limit = 20): Promise<PublishResult> {
     try {
       // Move to result_processing (marker for observers), rank, then publish.
       await p.query(`UPDATE contest.contests SET status = 'result_processing', updated_at = NOW() WHERE id = $1 AND status = 'scheduled'`, [c.id]);
+      await invalidateContestWindow(c.id);
       processed.push(c.id);
       await rankContest(c.id);
       // ORBIT rating batch over the ranked field (idempotent; before publish so
@@ -69,6 +71,7 @@ export async function processEndedContests(limit = 20): Promise<PublishResult> {
       await applyContestGamification(c.id);
       await awardContestRewards(c.id);
       await p.query(`UPDATE contest.contests SET status = 'result_published', updated_at = NOW() WHERE id = $1 AND status = 'result_processing'`, [c.id]);
+      await invalidateContestWindow(c.id);
       published.push(c.id);
       // "results published" reminder (best-effort, batched, idempotent).
       void sendContestReminder(c.id, c.name, "results").catch(() => undefined);

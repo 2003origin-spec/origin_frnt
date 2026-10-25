@@ -11,9 +11,12 @@
 
 import { Redis } from "@upstash/redis";
 
+import { areResultsPublished, resolveContestState, type ContestState } from "@/lib/contest/contest-state";
 import { getUserPostgresReplicaPool } from "@/server/user-postgres";
 
+import { isRegisteredForContest } from "./contest-registration-service";
 import { ensureContestSchema } from "./contest-schema";
+import { getContestWindow, toContestWindow } from "./contest-window-cache";
 
 const redisUrl = process.env.UPSTASH_REDIS_REST_URL?.trim();
 const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN?.trim();
@@ -25,10 +28,15 @@ function canUseLocalFallback(): boolean {
   return process.env.NODE_ENV !== "production";
 }
 
-/** A single question as the STUDENT sees it — no answer key, no explanation. */
+/**
+ * A single question as the STUDENT sees it — no answer key, no explanation, and
+ * NO bank question id: the raw `ogcode_questions.id` let a student look the key
+ * up through other endpoints (bug-fix C1). Answers and grading are keyed by
+ * `position`; `contest.contest_questions(contest_id, position)` is the
+ * server-side mapping back to the bank id.
+ */
 export interface PaperQuestion {
   position: number;
-  questionId: string;
   subject: string | null;
   sectionId: string | null;
   text: unknown;
@@ -38,6 +46,17 @@ export interface PaperQuestion {
   optionImages: unknown;
   marks: number | null;
   negativeMarks: number | null;
+  /**
+   * Matrix-match only: the two column texts (List I / List II), in the same
+   * shape as `StoredQuestion.matrixData` minus `correct_pairs`. Null for every
+   * other type. Answers are `[rowIndex, colIndex]` pairs (grade.ts matrixPairs).
+   */
+  matrix: PaperMatrixColumns | null;
+}
+
+export interface PaperMatrixColumns {
+  column_a: string[];
+  column_b: string[];
 }
 
 export interface ContestPaper {
@@ -46,7 +65,9 @@ export interface ContestPaper {
 }
 
 function paperKey(contestId: string): string {
-  return `contest:${contestId}:paper`;
+  // v2: the payload no longer carries `questionId`. Bumped so a pre-warmed v1
+  // payload (which still has the bank ids) is never served.
+  return `contest:${contestId}:paper:v2`;
 }
 function paperLockKey(contestId: string): string {
   return `contest:${contestId}:paper:lock`;
@@ -68,12 +89,25 @@ function pool() {
 }
 
 /**
+ * Copy ONLY the column texts out of a matrix snapshot — never `correct_pairs`
+ * (the answer key) or any other field on it. Built field by field so a new key
+ * on matrixData can't ride along.
+ */
+function sanitizeMatrixColumns(questionType: unknown, matrixData: unknown): PaperMatrixColumns | null {
+  if (String(questionType ?? "").trim().toLowerCase() !== "matrix_match") return null;
+  if (!matrixData || typeof matrixData !== "object" || Array.isArray(matrixData)) return null;
+  const m = matrixData as { column_a?: unknown; column_b?: unknown };
+  if (!Array.isArray(m.column_a) || !Array.isArray(m.column_b)) return null;
+  return { column_a: m.column_a.map((v) => String(v ?? "")), column_b: m.column_b.map((v) => String(v ?? "")) };
+}
+
+/**
  * The ONLY sanitization boundary: strip answer keys/explanations from a frozen
  * snapshot down to the renderable student fields. If a new answer-bearing field
  * is ever added to the snapshot, it stays hidden unless explicitly whitelisted
  * here.
  */
-function sanitizeQuestion(row: {
+export function sanitizeQuestion(row: {
   position: number;
   question_id: string;
   subject: string | null;
@@ -85,7 +119,6 @@ function sanitizeQuestion(row: {
   const s = row.snapshot ?? {};
   return {
     position: row.position,
-    questionId: row.question_id,
     subject: row.subject,
     sectionId: row.section_id,
     text: s.text,
@@ -96,8 +129,11 @@ function sanitizeQuestion(row: {
     optionImages: s.optionImages ?? null,
     marks: row.marks,
     negativeMarks: row.negative_marks,
-    // DELIBERATELY OMITTED: correctOption, correctOptions, answerText, tolerance,
-    // explanation — the answer key never reaches the student paper.
+    matrix: sanitizeMatrixColumns(s.questionType, s.matrixData),
+    // DELIBERATELY OMITTED: question_id (bank id), correctOption, correctOptions,
+    // answerText, tolerance, answerSpec, explanation, matrixData.correct_pairs —
+    // the answer key never reaches the student paper, and neither does a handle
+    // to look it up elsewhere.
   };
 }
 
@@ -179,4 +215,47 @@ export async function getContestPaper(contestId: string): Promise<ContestPaper> 
 /** Test-only: reset the in-process cache. */
 export function __resetPaperCacheForTests(): void {
   localPaperCache.clear();
+}
+
+export type PaperAccess = { ok: true } | { ok: false; status: number; detail: string };
+
+/**
+ * Who may read the paper, and when (bug-fix C2). The paper is only served while
+ * the contest is LIVE (or once results are published, for review) and only to
+ * a CONFIRMED registration — never before start_at, never to a waitlisted user.
+ * The window comes from the cached window (no Neon hit on the start_at burst);
+ * `/start` stays SQL-gated on DB NOW(), so lambda clock skew can only delay the
+ * paper by seconds, never leak it early beyond that skew.
+ */
+/** Why the paper can't be served in a non-LIVE state (review L6: not always "not started"). */
+export function paperUnavailableDetail(state: ContestState): string {
+  switch (state) {
+    case "ENDED":
+    case "RESULT_PROCESSING":
+      return "This contest has ended. Any open attempt is submitted automatically, and results are published soon.";
+    case "CANCELLED":
+      return "This contest was cancelled.";
+    case "ARCHIVED":
+      return "This contest is archived.";
+    default:
+      return "The paper is available once the contest starts.";
+  }
+}
+
+export async function checkPaperAccess(
+  contestId: string,
+  userId: string,
+  now: Date = new Date(),
+): Promise<PaperAccess> {
+  const cached = await getContestWindow(contestId);
+  if (!cached) return { ok: false, status: 404, detail: "Contest not found." };
+  const window = toContestWindow(cached);
+  const state = resolveContestState(window, now);
+  if (state !== "LIVE" && !areResultsPublished(window)) {
+    return { ok: false, status: 409, detail: paperUnavailableDetail(state) };
+  }
+  if (!(await isRegisteredForContest(contestId, userId))) {
+    return { ok: false, status: 403, detail: "You are not registered for this contest." };
+  }
+  return { ok: true };
 }

@@ -234,7 +234,8 @@ export async function createRequest(studentId: string, input: CreateRequestInput
   }
   await ensureWelcomeGrant(studentId);
 
-  const question = await getOgcodeCatalogQuestionById(input.questionId);
+  // NOW help is for OGCode questions only; a hidden contest import is a 404.
+  const question = await getOgcodeCatalogQuestionById(input.questionId, { visibility: "ogcode" });
   if (!question) throw new NowError(404, "question_not_found", "Question not found.");
   const subject = String(question.subject ?? "").trim().toLowerCase();
   const difficulty = normalizeDifficulty(question.difficulty);
@@ -1079,7 +1080,7 @@ export async function quoteLiveHelp(studentId: string, questionId: string, now: 
     openRequestId: null,
   };
   if (!access.inCohort) return empty;
-  const question = await getOgcodeCatalogQuestionById(questionId);
+  const question = await getOgcodeCatalogQuestionById(questionId, { visibility: "ogcode" });
   const subject = String(question?.subject ?? "").trim().toLowerCase();
   const difficulty = normalizeDifficulty(question?.difficulty);
   if (!question || !isNowSubject(subject) || !difficulty) return { ...empty, blockedReason: "question_not_supported" };

@@ -897,18 +897,28 @@ export async function listOgcodeCatalogFacets(params: {
   return raw;
 }
 
-export type OgcodeQuestionByIdOptions = {
-  /**
-   * Hide contest document imports (`is_contest_import = TRUE`) — the default
-   * visibility of every general OGCode surface. Off by default here because
-   * contest/admin callers load imports by id on purpose.
-   */
-  excludeContestImports?: boolean;
-};
+/**
+ * Contest-import visibility for a single-question lookup (mirrors the listing's
+ * `buildFilterClause`):
+ * - `"all"`      — no clause (admin tools, contest paper resolver, NOW bot
+ *                  metadata for an already-gated request). The DEFAULT, so any
+ *                  NEW student-facing caller must pass a narrower value.
+ * - `"ogcode"`   — hide every contest import (OGCode practice detail/submit,
+ *                  challenge of the day, friend challenge, reveal, NOW).
+ * - `"practice"` — OGCode questions + practice-eligible contest imports
+ *                  (contest DPP grading).
+ */
+export type OgcodeQuestionVisibility = "all" | "ogcode" | "practice";
+
+function visibilityClause(visibility: OgcodeQuestionVisibility): string {
+  if (visibility === "ogcode") return " AND is_contest_import = FALSE";
+  if (visibility === "practice") return " AND (is_contest_import = FALSE OR contest_practice_eligible = TRUE)";
+  return "";
+}
 
 export async function getOgcodeCatalogQuestionById(
   questionId: string,
-  options: OgcodeQuestionByIdOptions = {},
+  opts: { visibility?: OgcodeQuestionVisibility } = {},
 ): Promise<StoredQuestion | null> {
   const pool = getOgcodePostgresPool();
   if (!pool) {
@@ -951,11 +961,10 @@ export async function getOgcodeCatalogQuestionById(
         class,
         previous_year_question
       FROM ogcode_questions
-      WHERE id = $1
-        AND ($2::boolean IS FALSE OR is_contest_import = FALSE)
+      WHERE id = $1${visibilityClause(opts.visibility ?? "all")}
       LIMIT 1
     `,
-    [questionId, options.excludeContestImports === true],
+    [questionId],
   );
 
   return result.rows[0] ? mapCatalogRow(result.rows[0]) : null;

@@ -1690,7 +1690,10 @@ async function resolvePracticeQuestion(store: AppStore, questionId: string): Pro
     return { question: fromStore, source: "store" };
   }
 
-  const fromCatalog = await getOgcodeCatalogQuestionById(questionId);
+  // Student practice detail + submit: contest imports never resolve here by id
+  // (the OGCode listing hides them too), so a hidden import can't be read or
+  // graded — no answer-key reveal — through the practice surface.
+  const fromCatalog = await getOgcodeCatalogQuestionById(questionId, { visibility: "ogcode" });
   if (fromCatalog) {
     return { question: fromCatalog, source: "catalog" };
   }
@@ -6302,9 +6305,7 @@ export async function getChallengeOfTheDay(store: AppStore, user: StoredUser) {
     const questionId = await getDailyQuestionId({ band, subject }, dateKey);
     // Contest imports stay hidden even if one was drawn before the draw
     // excluded them (the day's pick is persisted).
-    challenge = questionId
-      ? await getOgcodeCatalogQuestionById(questionId, { excludeContestImports: true })
-      : null;
+    challenge = questionId ? await getOgcodeCatalogQuestionById(questionId, { visibility: "ogcode" }) : null;
   } catch {
     challenge = null;
   }

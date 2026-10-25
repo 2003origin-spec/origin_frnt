@@ -48,7 +48,7 @@ function readinessColor(readiness: number): string {
 
 export function ContestPractice({ contestId }: { contestId: string }) {
   const router = useRouter();
-  const [status, setStatus] = useState<'loading' | 'ok' | 'locked' | 'error'>('loading');
+  const [status, setStatus] = useState<'loading' | 'ok' | 'locked' | 'closed' | 'error'>('loading');
   const [questions, setQuestions] = useState<PracticeQuestion[]>([]);
   const [index, setIndex] = useState(0);
   const [metrics, setMetrics] = useState<Metrics | null>(null);
@@ -80,6 +80,11 @@ export function ContestPractice({ contestId }: { contestId: string }) {
         const res = await fetch(url, { credentials: 'include' });
         if (res.status === 403) {
           setStatus('locked');
+          return;
+        }
+        // Practice is closed while the contest runs (until results are out).
+        if (res.status === 409) {
+          setStatus('closed');
           return;
         }
         if (!res.ok) throw new Error('failed');
@@ -152,6 +157,9 @@ export function ContestPractice({ contestId }: { contestId: string }) {
 
   if (status === 'loading') return <Centered>Loading practice…</Centered>;
   if (status === 'error') return <Centered>Couldn't load practice. Try again.</Centered>;
+  if (status === 'closed') {
+    return <Centered>Practice is closed while the contest is running. It reopens once results are out.</Centered>;
+  }
   if (status === 'locked') {
     return (
       <Centered>

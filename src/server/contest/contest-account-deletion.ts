@@ -11,12 +11,14 @@
  * must not shift because someone later deleted their account).
  *
  * The one thing that SHOULD be purged is transient live state: an in-progress
- * answer draft. A deleted account must not leave a draft that a finalize sweep
- * could later auto-submit. That is what this hook removes.
+ * answer draft (a deleted account must not leave a draft that a finalize sweep
+ * could later auto-submit) and its entry in the Redis registered-set cache for
+ * any contest that has not finished. That is what this hook removes.
  */
 
 import { getUserPostgresPool, isUserPostgresConfigured } from "@/server/user-postgres";
 
+import { uncacheRegistration } from "./contest-registered-set";
 import { ensureContestSchema } from "./contest-schema";
 
 /**
@@ -35,4 +37,16 @@ export async function purgeLiveContestStateForUser(userId: string): Promise<void
   // orbit_history, reward_ledger, leaderboard_snapshot, streaks, badges,
   // personal_bests are deliberately retained (no PII; competitive integrity).
   await pool.query(`DELETE FROM contest.answer_drafts WHERE user_id = $1`, [userId]);
+
+  // The registration ROWS are retained, but a deleted account must lose its
+  // paper-gate cache entry for any contest that has not finished yet.
+  const open = await pool.query<{ contest_id: string }>(
+    `SELECT r.contest_id
+       FROM contest.registrations r
+       JOIN contest.contests c ON c.id = r.contest_id
+      WHERE r.user_id = $1 AND c.status = 'scheduled'
+        AND (c.end_at IS NULL OR c.end_at > NOW())`,
+    [userId],
+  );
+  for (const row of open.rows) await uncacheRegistration(row.contest_id, userId);
 }
