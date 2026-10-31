@@ -8,6 +8,7 @@
  * sees them.
  */
 
+import { randomInt } from "node:crypto";
 import type { PoolClient } from "pg";
 
 import { recordAuditEvent } from "./audit";
@@ -126,11 +127,20 @@ export async function checkCodeAvailability(rawDisplay: string): Promise<CodeAva
   return { available: true, normalizedCode: normalized, displayCode: rawDisplay.trim() };
 }
 
-function randomSuffix(length = 4): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+/**
+ * Unambiguous alphabet (no I/O/0/1) — 32 symbols, so each character is 5 bits.
+ * A generated code is `<public display-name slug>-<suffix>`, and the slug is
+ * public (marketplace), so the suffix is the WHOLE secret: it gates a free
+ * Flow-1 subject. 8 characters from crypto.randomInt = 2^40 per institute.
+ * (It used to be 4 characters from Math.random — ~2^20, enumerable in hours.)
+ */
+export const CODE_SUFFIX_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+export const CODE_SUFFIX_LENGTH = 8;
+
+export function randomCodeSuffix(length = CODE_SUFFIX_LENGTH): string {
   let out = "";
   for (let i = 0; i < length; i++) {
-    out += chars[Math.floor(Math.random() * chars.length)];
+    out += CODE_SUFFIX_ALPHABET[randomInt(CODE_SUFFIX_ALPHABET.length)];
   }
   return out;
 }
@@ -138,13 +148,13 @@ function randomSuffix(length = 4): string {
 export function generateDefaultPersonalCode(displayName: string): { display: string; normalized: string } {
   const slug = normalizeCode(displayName).slice(0, 12) || "TEACHER";
   for (let attempt = 0; attempt < 6; attempt++) {
-    const candidate = `${slug}-${randomSuffix(4)}`;
+    const candidate = `${slug}-${randomCodeSuffix()}`;
     const normalized = normalizeCode(candidate);
     if (normalized.length >= MIN_LENGTH && normalized.length <= MAX_LENGTH) {
       return { display: candidate, normalized };
     }
   }
-  const fallback = `TEACHER-${randomSuffix(6)}`;
+  const fallback = `TEACHER-${randomCodeSuffix()}`;
   return { display: fallback, normalized: normalizeCode(fallback) };
 }
 
@@ -222,7 +232,7 @@ export async function rotateActiveCode(input: RotateCodeInput): Promise<Workspac
   }
   const display = input.newRawDisplay
     ? input.newRawDisplay
-    : `${normalizeCode(current?.displayCode ?? "TEACHER").slice(0, 12) || "TEACHER"}-${randomSuffix(4)}`;
+    : `${normalizeCode(current?.displayCode ?? "TEACHER").slice(0, 12) || "TEACHER"}-${randomCodeSuffix()}`;
   return createCode({
     workspaceId: input.workspaceId,
     createdBy: input.actorUserId,

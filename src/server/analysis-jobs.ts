@@ -16,9 +16,11 @@ import {
 import { getOgcodePostgresPool } from "@/server/postgres";
 import { createId } from "@/server/store";
 import { metric } from "@/lib/metrics";
+import { lockSchemaDdl, withSchemaLock } from "@/server/schema-lock";
 
 declare global {
   var __originAnalysisJobsSchemaReady: Promise<void> | undefined;
+  var __originAnalysisJobsSchemaApplied: boolean | undefined;
 }
 
 const MAX_ANALYSIS_ATTEMPTS = 5;
@@ -91,14 +93,20 @@ function getPoolOrThrow() {
 
 async function ensureAnalysisJobsSchema(client?: PoolClient): Promise<void> {
   if (client) {
+    // The caller is inside its own transaction. Once this process has applied
+    // the schema (its callers always run the pool path first) there is nothing
+    // to do; otherwise take the shared DDL lock in the caller's transaction.
+    if (globalThis.__originAnalysisJobsSchemaApplied) return;
+    await lockSchemaDdl(client);
     await client.query(ANALYSIS_JOBS_SCHEMA_SQL);
     return;
   }
 
   if (!globalThis.__originAnalysisJobsSchemaReady) {
-    globalThis.__originAnalysisJobsSchemaReady = getPoolOrThrow()
-      .query(ANALYSIS_JOBS_SCHEMA_SQL)
-      .then(() => undefined)
+    globalThis.__originAnalysisJobsSchemaReady = withSchemaLock(getPoolOrThrow(), (c) => c.query(ANALYSIS_JOBS_SCHEMA_SQL))
+      .then(() => {
+        globalThis.__originAnalysisJobsSchemaApplied = true;
+      })
       .catch((error) => {
         globalThis.__originAnalysisJobsSchemaReady = undefined;
         throw error;
@@ -143,6 +151,17 @@ function toDppJobPayload(payload: AnalysisJobPayload): DppAnalysisJobPayload {
     return payload as DppAnalysisJobPayload;
   }
   throw new Error("Invalid DPP analysis job payload.");
+}
+
+/**
+ * Tags the analysis request with its persisted result / DPP-attempt id. ODG
+ * applies mastery once per id: every retry of this job sends the same id,
+ * and a retake (a new result row) a new one — so a retake with identical
+ * answers and time still counts (round-3 R3-10). Done here, not at enqueue,
+ * so jobs queued before this field existed carry it too.
+ */
+export function withAttemptId<T extends { attempt_id?: string | null }>(request: T, attemptId: string): T {
+  return { ...request, attempt_id: request.attempt_id || attemptId };
 }
 
 export async function enqueueAnalysisJob(input: EnqueueAnalysisJobInput): Promise<string> {
@@ -266,7 +285,7 @@ async function retryOrFailAnalysisJob(job: AnalysisJobRow, error: unknown): Prom
 
 async function processTestAnalysisJob(job: AnalysisJobRow): Promise<Record<string, unknown>> {
   const payload = toTestJobPayload(job.payload);
-  const response = await analyzeSubmittedTestWithService(payload.request);
+  const response = await analyzeSubmittedTestWithService(withAttemptId(payload.request, payload.resultId));
   if (!response) {
     throw new Error("Analytics service is not configured.");
   }
@@ -329,7 +348,7 @@ async function maybePopulateCohortAnalytics(payload: TestAnalysisJobPayload): Pr
 
 async function processDppAnalysisJob(job: AnalysisJobRow): Promise<Record<string, unknown>> {
   const payload = toDppJobPayload(job.payload);
-  const response = await analyzeDppAttemptWithService(payload.request);
+  const response = await analyzeDppAttemptWithService(withAttemptId(payload.request, payload.attemptId));
   if (!response) {
     throw new Error("Analytics service is not configured.");
   }

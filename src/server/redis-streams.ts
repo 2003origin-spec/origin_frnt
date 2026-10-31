@@ -16,7 +16,7 @@ type StreamEnvelope<E> = {
 const redisUrl = process.env.UPSTASH_REDIS_REST_URL?.trim();
 const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN?.trim();
 
-const redis: Redis | null =
+const sharedRedis: Redis | null =
   redisUrl && redisToken
     ? new Redis({
         url: redisUrl,
@@ -29,6 +29,14 @@ const redis: Redis | null =
 const localCodes = new Map<string, { value: string; expiresAt: number }>();
 const localStreams = new Map<string, StreamEnvelope<unknown>[]>();
 let localStreamSequence = 0;
+
+/**
+ * Stream keys are MAXLEN-trimmed but were never expired, so every room that was
+ * abandoned (never finished/closed, so never `deleteStream`ed) kept up to ~500
+ * entries in Upstash forever. Every append refreshes this TTL, so a live room
+ * never loses its stream; one idle for a week is reclaimed.
+ */
+export const STREAM_TTL_SECONDS = 7 * 24 * 3600;
 
 function canUseLocalFallback(): boolean {
   return process.env.NODE_ENV !== "production";
@@ -59,10 +67,33 @@ function getLocal(key: string): string | null {
   return current.value;
 }
 
-function cursorToNumber(cursor: string): number {
-  if (cursor === "$") return Date.now() * 1000;
-  const [milliseconds, sequence] = cursor.split("-").map((part) => Number(part));
-  return milliseconds * 1000 + (sequence || 0);
+/** Margin subtracted from "now" when an SSE connection picks its start id. */
+export const STREAM_START_SKEW_MS = 2_000;
+
+/**
+ * Where an SSE connection should start reading. Never "$": with XREAD BLOCK,
+ * "$" only returns entries added while that one read is blocked, so an event
+ * published between two reads (e.g. after a keepalive timeout, or between the
+ * client's snapshot fetch and the first read) is silently lost. A concrete id
+ * a little in the past is stable across reads; the replayed overlap is
+ * harmless because every consumer applies events idempotently.
+ */
+export function streamStartCursor(lastEventId: string | null | undefined, now = Date.now()): string {
+  const resumeFrom = lastEventId?.trim();
+  if (resumeFrom) return resumeFrom;
+  return `${now - STREAM_START_SKEW_MS}-0`;
+}
+
+function parseStreamId(id: string): [number, number] {
+  const [milliseconds, sequence] = id.split("-").map((part) => Number(part));
+  return [milliseconds || 0, sequence || 0];
+}
+
+/** Orders stream ids as (ms, seq) pairs, the way Redis does. */
+function compareStreamIds(a: string, b: string): number {
+  const [aMs, aSeq] = parseStreamId(a);
+  const [bMs, bSeq] = parseStreamId(b);
+  return aMs - bMs || aSeq - bSeq;
 }
 
 function parseRedisFields(fields: unknown): Record<string, string> {
@@ -127,8 +158,11 @@ export function createRedisStreamNamespace<E>(config: {
   codeKey: (code: string) => string;
   activeCodeKey: (id: string) => string;
   streamKey: (id: string) => string;
+  /** Test seam: a Redis client (or null for the local fallback). Defaults to the shared Upstash client. */
+  client?: Redis | null;
 }): RedisStreamNamespace<E> {
   const { label, codeKey, activeCodeKey, streamKey } = config;
+  const redis = config.client === undefined ? sharedRedis : config.client;
   let warnedLocalFallback = false;
 
   function maybeWarnLocalFallback() {
@@ -160,12 +194,14 @@ export function createRedisStreamNamespace<E>(config: {
     maybeWarnLocalFallback();
     const key = streamKey(id);
     const deadline = Date.now() + blockMs;
-    const cursorValue = cursorToNumber(cursor);
+    // Like Redis, "$" means "after the newest entry at the moment this read
+    // starts", so it only sees entries appended while this call is waiting.
+    const after = cursor === "$" ? (localStreams.get(key)?.at(-1)?.id ?? "0-0") : cursor;
 
     while (!signal?.aborted) {
       const stream = localStreams.get(key) ?? [];
       const events = stream
-        .filter((entry) => (cursor === "$" ? false : cursorToNumber(entry.id) > cursorValue))
+        .filter((entry) => compareStreamIds(entry.id, after) > 0)
         .slice(0, count) as StreamEnvelope<E>[];
       if (events.length > 0 || Date.now() >= deadline) {
         return events;
@@ -259,12 +295,20 @@ export function createRedisStreamNamespace<E>(config: {
         return entryId;
       }
       const payload = JSON.stringify(event);
+      const key = streamKey(id);
       const entryId = await redis.xadd(
-        streamKey(id),
+        key,
         "*",
         { type: (event as { type?: string })?.type ?? "event", payload },
         { trim: { type: "MAXLEN", comparison: "~", threshold: 500 } },
       );
+      try {
+        await redis.expire(key, STREAM_TTL_SECONDS);
+      } catch (error) {
+        // The event is already published; a missed TTL refresh is retried by
+        // the next append, so don't fail the caller over it.
+        console.warn(`[${label}] failed to refresh stream TTL for ${key}:`, error);
+      }
       return entryId;
     },
 

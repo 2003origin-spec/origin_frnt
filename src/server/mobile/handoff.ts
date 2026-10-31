@@ -38,9 +38,16 @@ export function isHandoffPurpose(value: string): value is HandoffPurpose {
   return Object.prototype.hasOwnProperty.call(HANDOFF_PURPOSES, value);
 }
 
-type HandoffRecord = {
+export type HandoffRecord = {
   userId: string;
   purpose: HandoffPurpose;
+  /**
+   * `auth_token_version` of the session that asked for the handoff. The
+   * consumer compares it with the user row before minting the browser session,
+   * so a revoke / delete / role change in the 60 s window (or a stale JWT that
+   * outlived one) cannot bootstrap a fresh 7-day login.
+   */
+  tokenVersion: number;
 };
 
 const redisUrl = process.env.UPSTASH_REDIS_REST_URL?.trim();
@@ -56,9 +63,13 @@ function sweepMemoryStore(): void {
   }
 }
 
-export async function issueHandoffToken(userId: string, purpose: HandoffPurpose): Promise<string> {
+export async function issueHandoffToken(
+  userId: string,
+  purpose: HandoffPurpose,
+  tokenVersion: number,
+): Promise<string> {
   const token = randomBytes(32).toString("base64url");
-  const record: HandoffRecord = { userId, purpose };
+  const record: HandoffRecord = { userId, purpose, tokenVersion };
 
   if (redis) {
     await redis.set(`${KEY_PREFIX}${token}`, JSON.stringify(record), { ex: HANDOFF_TTL_SECONDS });
@@ -67,6 +78,35 @@ export async function issueHandoffToken(userId: string, purpose: HandoffPurpose)
     memoryStore.set(token, { record, expiresAt: Date.now() + HANDOFF_TTL_SECONDS * 1000 });
   }
   return token;
+}
+
+function parseRecord(raw: string | HandoffRecord | null | undefined): HandoffRecord | null {
+  if (!raw) return null;
+  try {
+    const parsed = typeof raw === "string" ? (JSON.parse(raw) as HandoffRecord) : raw;
+    if (!parsed || typeof parsed.userId !== "string" || !isHandoffPurpose(parsed.purpose)) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Read a token WITHOUT consuming it — only for rendering the /auth/handoff
+ * confirmation page (spec 01-auth.md §A4). Never treat a peek as a login:
+ * the session is minted only by `consumeHandoffToken` on the same-origin POST.
+ */
+export async function peekHandoffToken(token: string): Promise<HandoffRecord | null> {
+  if (!token || token.length > 128) return null;
+
+  if (redis) {
+    return parseRecord(await redis.get<string | HandoffRecord>(`${KEY_PREFIX}${token}`));
+  }
+
+  sweepMemoryStore();
+  return memoryStore.get(token)?.record ?? null;
 }
 
 /** Atomically consume (single-use). Null = unknown, expired, or replayed. */
@@ -78,7 +118,12 @@ export async function consumeHandoffToken(token: string): Promise<HandoffRecord 
     if (!raw) return null;
     try {
       const parsed = typeof raw === "string" ? (JSON.parse(raw) as HandoffRecord) : raw;
-      if (!parsed || typeof parsed.userId !== "string" || !isHandoffPurpose(parsed.purpose)) {
+      if (
+        !parsed ||
+        typeof parsed.userId !== "string" ||
+        !isHandoffPurpose(parsed.purpose) ||
+        !Number.isInteger(parsed.tokenVersion)
+      ) {
         return null;
       }
       return parsed;

@@ -15,7 +15,9 @@ function readCsrfCookie(): string | null {
   return null;
 }
 
-export type ApiResult<T> = { ok: true; data: T } | { ok: false; status: number; detail: string };
+export type ApiResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; status: number; detail: string; code?: string };
 
 const MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
@@ -59,7 +61,11 @@ export async function apiJson<T>(
       (parsed && typeof parsed === "object" && "detail" in parsed
         ? String((parsed as { detail: unknown }).detail)
         : null) ?? response.statusText;
-    return { ok: false, status: response.status, detail };
+    const code =
+      parsed && typeof parsed === "object" && typeof (parsed as { code?: unknown }).code === "string"
+        ? (parsed as { code: string }).code
+        : undefined;
+    return { ok: false, status: response.status, detail, ...(code ? { code } : {}) };
   }
   return { ok: true, data: parsed as T };
 }

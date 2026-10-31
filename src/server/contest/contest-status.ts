@@ -79,7 +79,7 @@ export async function getContestStatus(userId?: string | null): Promise<ContestS
 
   const [registeredCount, isRegistered] = await Promise.all([
     getApproxRegisteredCount(row.id).catch(() => 0),
-    userId ? isRegisteredForContest(row.id, userId).catch(() => false) : Promise.resolve(false),
+    userId ? isRegisteredForContest(row.id, userId, { includeWaitlisted: true }).catch(() => false) : Promise.resolve(false),
   ]);
 
   return {
@@ -135,7 +135,7 @@ export async function getOpenContests(userId?: string | null): Promise<ContestSu
       };
       const [registeredCount, isRegistered] = await Promise.all([
         getApproxRegisteredCount(row.id).catch(() => 0),
-        userId ? isRegisteredForContest(row.id, userId).catch(() => false) : Promise.resolve(false),
+        userId ? isRegisteredForContest(row.id, userId, { includeWaitlisted: true }).catch(() => false) : Promise.resolve(false),
       ]);
       return {
         id: row.id,

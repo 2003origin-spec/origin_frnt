@@ -126,6 +126,148 @@ function toRankedRow(row: RawRankRow): RankedPointsRow {
   };
 }
 
+/** Upper bound for any top-N leaderboard request ("all" maps here too). */
+export const MAX_LEADERBOARD_LIMIT = 1000;
+export const DEFAULT_LEADERBOARD_LIMIT = 100;
+
+/** Clamp a requested top-N to 1..MAX_LEADERBOARD_LIMIT (default 100). */
+export function clampLeaderboardLimit(limit: number | string | null | undefined): number {
+  if (limit === "all") return MAX_LEADERBOARD_LIMIT;
+  const n = Math.trunc(Number(limit ?? DEFAULT_LEADERBOARD_LIMIT));
+  if (!Number.isFinite(n) || n <= 0) return DEFAULT_LEADERBOARD_LIMIT;
+  return Math.min(MAX_LEADERBOARD_LIMIT, n);
+}
+
+type RankedQuery =
+  /** Top-N rows (strict position order) plus, optionally, the viewer's own row. */
+  | { kind: "top"; topN: number; userId: string | null }
+  /** Only the viewer's row (rank still computed over the whole population). */
+  | { kind: "user"; userId: string };
+
+const POINTS_EXPR = `COALESCE((s.data->>'totalPoints')::numeric, 0)`;
+
+/**
+ * Builds the ranked SQL. Ranking (DENSE_RANK) and paging (ROW_NUMBER + LIMIT)
+ * both happen in Postgres so at most `topN + 1` rows cross the wire instead of
+ * the whole student population.
+ */
+export function buildRankedPointsSql(
+  query: RankedQuery,
+  location: string | null,
+  hasLocationColumn: boolean,
+): { text: string; values: unknown[] } {
+  const values: unknown[] = [];
+  const locationFilter = location ? `AND u.location = $${values.push(location)}` : "";
+  const ranked = `
+    WITH ranked AS (
+      SELECT
+        s.user_id,
+        u.name,
+        u.username,
+        u.avatar,
+        ${hasLocationColumn ? "u.location," : "NULL::text AS location,"}
+        ${POINTS_EXPR} AS points,
+        u.total_study_time,
+        u.streak,
+        DENSE_RANK() OVER (ORDER BY ${POINTS_EXPR} DESC) AS rank,
+        ROW_NUMBER() OVER (ORDER BY ${POINTS_EXPR} DESC, s.user_id) AS rownum
+      FROM app.user_scores s
+      JOIN origin_users u ON u.id = s.user_id
+      WHERE u.role = 'student' ${locationFilter}
+    )`;
+
+  if (query.kind === "user") {
+    const userParam = `$${values.push(query.userId)}`;
+    return {
+      text: `${ranked}
+    SELECT user_id, name, username, avatar, location, points, total_study_time, streak, rank
+    FROM ranked WHERE user_id = ${userParam} LIMIT 1`,
+      values,
+    };
+  }
+
+  const topParam = `$${values.push(Math.max(1, Math.trunc(query.topN)))}`;
+  const userClause = query.userId ? ` OR user_id = $${values.push(query.userId)}` : "";
+  return {
+    text: `${ranked}
+    SELECT user_id, name, username, avatar, location, points, total_study_time, streak, rank
+    FROM ranked
+    WHERE rownum <= ${topParam}::int${userClause}
+    ORDER BY rownum
+    LIMIT ${topParam}::int + 1`,
+    values,
+  };
+}
+
+/**
+ * Runs a ranked query, retrying without the `location` column on older DBs.
+ * Returns null when the pool is missing or the query fails.
+ */
+async function runRankedQuery(query: RankedQuery, location: string | null): Promise<RankedPointsRow[] | null> {
+  const pool = getUserPostgresPool();
+  if (!pool) return null;
+
+  try {
+    const sql = buildRankedPointsSql(query, location, true);
+    const result = await pool.query<RawRankRow>(sql.text, sql.values);
+    return result.rows.map(toRankedRow);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    // Older DBs may not have the `location` column — retry without it, unless
+    // a regional board was explicitly requested (then it's genuinely empty).
+    if (message.includes('column "location"') || message.includes("location does not exist")) {
+      if (location) return [];
+      try {
+        const sql = buildRankedPointsSql(query, null, false);
+        const result = await pool.query<RawRankRow>(sql.text, sql.values);
+        return result.rows.map(toRankedRow);
+      } catch (retryError) {
+        console.error(
+          "[leaderboard-points] query failed:",
+          retryError instanceof Error ? retryError.message : String(retryError),
+        );
+        return null;
+      }
+    }
+    console.error("[leaderboard-points] query failed:", message);
+    return null;
+  }
+}
+
+/**
+ * Viewer-agnostic top-N rows of the global (or regional) points board. Safe to
+ * cache globally — nothing in it depends on who is asking.
+ */
+export async function getTopPointsRows(topN: number, location?: string | null): Promise<RankedPointsRow[]> {
+  return (await runRankedQuery({ kind: "top", topN: clampLeaderboardLimit(topN), userId: null }, location ?? null)) ?? [];
+}
+
+/** The viewer's own ranked row (rank over the whole population), or null. */
+export async function getPointsRowForUser(userId: string, location?: string | null): Promise<RankedPointsRow | null> {
+  const rows = await runRankedQuery({ kind: "user", userId }, location ?? null);
+  return rows?.[0] ?? null;
+}
+
+/**
+ * Merges a (possibly cached) viewer-agnostic top-N with the viewer's own fresh
+ * row into the leaderboard payload.
+ */
+export function mergeTopWithViewer(
+  topRows: readonly RankedPointsRow[],
+  meRow: RankedPointsRow | null,
+  meId: string,
+  topN: number,
+): PointsLeaderboardResult {
+  const top = topRows.slice(0, Math.max(0, topN));
+  if (!meRow) return buildPointsLeaderboardResult(top, meId, topN);
+  // Inside the (cached) top-N → swap in the fresh row in place; otherwise it is
+  // appended after the top-N by buildPointsLeaderboardResult.
+  const rows = top.some((row) => row.userId === meRow.userId)
+    ? top.map((row) => (row.userId === meRow.userId ? meRow : row))
+    : [...top, meRow];
+  return buildPointsLeaderboardResult(rows, meId, topN);
+}
+
 /**
  * Global (or regional, when `location` is set) leaderboard ranked by total
  * prestige points. Students with no `user_scores` row (zero activity) are
@@ -134,53 +276,12 @@ function toRankedRow(row: RawRankRow): RankedPointsRow {
 export async function getGlobalPointsLeaderboard(
   userId: string,
   location?: string | null,
-  topN = 100,
+  topN = DEFAULT_LEADERBOARD_LIMIT,
 ): Promise<PointsLeaderboardResult> {
-  const pool = getUserPostgresPool();
-  if (!pool) return { ...EMPTY_RESULT };
-
-  const points = `COALESCE((s.data->>'totalPoints')::numeric, 0)`;
-  const baseSelect = `
-    SELECT
-      s.user_id,
-      u.name,
-      u.username,
-      u.avatar,
-      #LOCATION_COL#
-      ${points} AS points,
-      u.total_study_time,
-      u.streak,
-      DENSE_RANK() OVER (ORDER BY ${points} DESC) AS rank
-    FROM app.user_scores s
-    JOIN origin_users u ON u.id = s.user_id
-    WHERE u.role = 'student'
-  `;
-
-  const withLocationCol = (hasLocation: boolean) =>
-    baseSelect.replace("#LOCATION_COL#", hasLocation ? "u.location," : "NULL::text AS location,");
-
-  let rows: RawRankRow[];
-  try {
-    const sql = location
-      ? `${withLocationCol(true)} AND u.location = $1`
-      : withLocationCol(true);
-    const result = await pool.query<RawRankRow>(sql, location ? [location] : []);
-    rows = result.rows;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    // Older DBs may not have the `location` column — retry without it, unless
-    // a regional board was explicitly requested (then it's genuinely empty).
-    if (message.includes('column "location"') || message.includes("location does not exist")) {
-      if (location) return { ...EMPTY_RESULT };
-      const result = await pool.query<RawRankRow>(withLocationCol(false));
-      rows = result.rows;
-    } else {
-      console.error("[getGlobalPointsLeaderboard] query failed:", message);
-      return { ...EMPTY_RESULT };
-    }
-  }
-
-  return buildPointsLeaderboardResult(rows.map(toRankedRow), userId, topN);
+  const limit = clampLeaderboardLimit(topN);
+  const rows = await runRankedQuery({ kind: "top", topN: limit, userId }, location ?? null);
+  if (!rows) return { ...EMPTY_RESULT };
+  return buildPointsLeaderboardResult(rows, userId, limit);
 }
 
 // ── Championship snapshot (home banner) ─────────────────────────────────────

@@ -13,10 +13,14 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 import {
   FLAG_KILL_PREFIXES,
+  KILL_SWITCH_EXEMPT_PREFIXES,
   findKillSwitchForPath,
+  isKillSwitchExemptPath,
   getFlagOverride,
   getIncidentSnapshot,
   getRateLimitMode,
@@ -26,6 +30,8 @@ import {
   setRateLimitMode,
   type RateLimitMode,
 } from "../../src/server/incidents";
+
+const root = new URL("../..", import.meta.url).pathname;
 
 test("Phase 13: setFlagOverride('off') is read back as false", async () => {
   await setFlagOverride("teacherTests", "off");
@@ -142,6 +148,91 @@ test("Phase 9: contest kill-switch scopes to student surfaces only", async () =>
   assert.equal(await findKillSwitchForPath("/api/admin/contest"), null);
   assert.equal(await findKillSwitchForPath("/api/admin/contest/c_x/cancel"), null);
   await setFlagOverride("contest", "clear");
+});
+
+// N13 (docs/bug-fixes/13-new-infra-android.md finding 2): the matcher already
+// listed /api/cbt-student, but the middleware returned on the `public` policy
+// branch before ever consulting it. The matcher is asserted here; the ordering
+// is asserted end-to-end in tests/middleware-kill-switch-csrf.test.ts.
+test("N13: cbtModule kill-switch reaches the anonymous /api/cbt-student surface and the admin allowlist", async () => {
+  await setFlagOverride("cbtModule", "off");
+  try {
+    for (const p of [
+      "/api/cbt-student/join",
+      "/api/cbt-student/state",
+      "/api/cbt-student/answers",
+      "/api/cbt/rooms",
+      "/api/admin/cbt/teachers",
+    ]) {
+      assert.equal(await findKillSwitchForPath(p), "cbtModule", `expected kill for ${p}`);
+    }
+    // The shared drain keeps auto-submitting stranded attempts during an incident.
+    assert.equal(await findKillSwitchForPath("/api/internal/cbt/drain"), null);
+  } finally {
+    await setFlagOverride("cbtModule", "clear");
+  }
+});
+
+// Ops hazard: `adminControlCenter: ["/api/admin"]` also matched
+// /api/admin/incidents/*, so killing it 503'd the un-kill POST and the
+// operator was locked out until Redis was edited by hand.
+test("adminControlCenter kill leaves the incidents endpoints (the un-kill POST) and launch reachable", async () => {
+  await setFlagOverride("adminControlCenter", "off");
+  try {
+    for (const p of ["/api/admin/users", "/api/admin/ogcode/publish", "/api/admin/import-jobs", "/api/admin/cbt/teachers"]) {
+      assert.equal(await findKillSwitchForPath(p), "adminControlCenter", `expected kill for ${p}`);
+    }
+    for (const p of [
+      "/api/admin/incidents",
+      "/api/admin/incidents/kill_switch",
+      "/api/admin/incidents/rate_limit",
+      "/api/admin/incidents/force_logout",
+      "/api/admin/launch",
+    ]) {
+      assert.equal(await findKillSwitchForPath(p), null, `${p} must survive its own kill switch`);
+    }
+    // A sibling that merely shares the prefix string is still killed.
+    assert.equal(await findKillSwitchForPath("/api/admin/incidents-archive"), "adminControlCenter");
+    assert.equal(await findKillSwitchForPath("/api/admin/launchpad"), "adminControlCenter");
+  } finally {
+    await setFlagOverride("adminControlCenter", "clear");
+  }
+});
+
+test("no kill-switch matcher can ever refuse the incidents endpoints, even with every flag killed", async () => {
+  const flags = Object.keys(FLAG_KILL_PREFIXES) as Array<keyof typeof FLAG_KILL_PREFIXES>;
+  try {
+    for (const flag of flags) await setFlagOverride(flag, "off");
+    for (const p of ["/api/admin/incidents", "/api/admin/incidents/kill_switch", "/api/admin/launch"]) {
+      assert.equal(await findKillSwitchForPath(p), null, p);
+      assert.equal(isKillSwitchExemptPath(p), true, p);
+    }
+    // The un-kill itself still works while everything is killed.
+    await setFlagOverride("adminControlCenter", "clear");
+    assert.equal(await findKillSwitchForPath("/api/admin/users"), null);
+  } finally {
+    for (const flag of flags) await setFlagOverride(flag, "clear");
+  }
+  assert.deepEqual([...KILL_SWITCH_EXEMPT_PREFIXES], ["/api/admin/incidents", "/api/admin/launch"]);
+  assert.equal(isKillSwitchExemptPath("/api/admin/incidents-archive"), false);
+  assert.equal(isKillSwitchExemptPath("/api/admin"), false);
+});
+
+test("N13: every flag with a kill-switch matcher is selectable from the /admin/incidents action route", () => {
+  // The runbook says "/admin/incidents → contest → off"; until N13 the zod enum
+  // in the action route did not list `contest` (or `cbtModule`/`originNow`), so
+  // the documented lever was a 400 at the API. Pin the two lists together.
+  const source = readFileSync(
+    join(root, "src/app/api/admin/incidents/[action]/route.ts"),
+    "utf8",
+  );
+  const enumBlock = source.match(/const FLAG_KEYS = \[([\s\S]*?)\] as const;/);
+  assert.ok(enumBlock, "FLAG_KEYS enum not found");
+  const selectable = new Set(
+    [...enumBlock![1].matchAll(/"([A-Za-z]+)"/g)].map((m) => m[1]),
+  );
+  const missing = Object.keys(FLAG_KILL_PREFIXES).filter((flag) => !selectable.has(flag));
+  assert.deepEqual(missing, [], "add these flags to FLAG_KEYS in the incidents action route");
 });
 
 test("Phase 13: rate-limit mode round-trips", async () => {

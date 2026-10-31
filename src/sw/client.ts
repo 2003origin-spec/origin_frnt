@@ -2,7 +2,8 @@
  * Page-side service-worker lifecycle helpers (ANDROID_HYBRID_APP_PLAN.md §6).
  *
  * Used by ServiceWorkerManager (register/unregister + deploy-skew recovery)
- * and AuthContext.logout (runtime-cache purge on shared devices — ledger
+ * and AuthContext / DeleteAccountCard (runtime-cache purge on logout, every
+ * sign-in, session expiry and account deletion: shared devices — ledger
  * #18). Everything is best-effort: offline UX must never break auth or
  * navigation, so failures resolve silently.
  */

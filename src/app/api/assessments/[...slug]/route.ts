@@ -26,6 +26,7 @@ import {
   getSingleResultAnalysis,
   getSingleResult,
   getTestDetail,
+  beginTeacherTestSitting,
   listTestPreviews,
   listPracticeQuestions,
   listTestResults,
@@ -35,18 +36,21 @@ import {
   submitPracticeQuestion,
   type TestSubmissionPayload,
   submitTest,
+  startAssessmentAttempt,
   type UpdateOgcodeLocationPayload,
   updateOgcodeLocation,
 } from "@/server/assessments";
-import { badRequest, created, forbidden, getSlugSegments, methodNotAllowed, notFound, ok, parseJsonBody, unauthorized } from "@/server/http";
+import { badRequest, created, forbidden, getSlugSegments, json, methodNotAllowed, notFound, ok, parseJsonBody, unauthorized } from "@/server/http";
+import { isTestWindowError } from "@/lib/assessments/test-window";
 import {
   readStoreAsync,
-  withStoreAsync,
+  ScopedWritePlan,
   withStoreAsyncScoped,
   TEST_SUBMIT_PERSIST_COLLECTIONS,
   PRACTICE_SUBMIT_PERSIST_COLLECTIONS,
 } from "@/server/store";
 import { getOgcodeLeaderboardForRender } from "@/server/render-loaders";
+import { clampLeaderboardLimit } from "@/server/leaderboard-points";
 import { getChampionshipSnapshot } from "@/server/leaderboard-points";
 
 function revalidateUserProgress(userId: string) {
@@ -90,6 +94,19 @@ function revalidateOgcodeMutation(userId: string, questionId?: string) {
   }
 }
 
+/**
+ * A teacher-assigned test refused by its assignment window: 403
+ * `test_not_started` / 409 `test_ended`, with the window so the client can say
+ * when it opens or that it has closed. Null for every other error.
+ */
+function testWindowErrorResponse(error: unknown) {
+  if (!isTestWindowError(error)) return null;
+  return json(
+    { detail: error.message, code: error.code, startsAt: error.startsAt, endsAt: error.endsAt },
+    { status: error.status },
+  );
+}
+
 async function authUser(request: Request) {
   const store = await readStoreAsync();
   const user = await requireUserFromRequest(store, request);
@@ -123,7 +140,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     }
 
     if (root === "tests" && first && !second) {
-      return ok(await getTestDetail(store, user, first));
+      return ok(await getTestDetail(store, user, first, { startAttempt: true }));
     }
 
     if (root === "tests" && first && second === "results") {
@@ -271,12 +288,13 @@ export async function GET(request: NextRequest, context: RouteContext) {
       const url = new URL(request.url);
       const subject = url.searchParams.get("subject");
       const location = url.searchParams.get("location");
-      // Top-N: 20/50/100/1000 or "all". "all" maps to a large cap.
-      const limitRaw = url.searchParams.get("limit");
-      const limit = limitRaw === "all" ? 100_000 : Math.max(1, Math.min(100_000, Number(limitRaw) || 100));
+      // Top-N: 20/50/100/1000 or "all". Capped at 1000 ("all" → 1000) so a
+      // single request can never pull the whole student population.
+      const limit = clampLeaderboardLimit(url.searchParams.get("limit"));
       // The common (no-location) view goes through the cached loader
-      // (60s revalidate, tag:"leaderboard") so it isn't recomputed on every
-      // client mount. The regional view stays live — it's not part of the cache.
+      // (60s revalidate, tag:"leaderboard", one global entry per
+      // [mode, subject, limit]; the viewer's own row is fetched separately).
+      // The regional view stays live — it's not part of the cache.
       if (!location) {
         return ok(await getOgcodeLeaderboardForRender(await renderStudyModeKey(user), user.id, subject, limit));
       }
@@ -293,6 +311,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
       return ok(await getFocusAreas(store, user));
     }
   } catch (error) {
+    const windowResponse = testWindowErrorResponse(error);
+    if (windowResponse) return windowResponse;
     if ((error as { status?: number })?.status === 403) {
       return forbidden(error instanceof Error ? error.message : "Forbidden.");
     }
@@ -358,6 +378,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
       return created(response);
     }
 
+    // G7: record when the student opened a self test / DPP so submit can time
+    // the attempt server-side. Idempotent while the attempt is open.
+    if ((root === "tests" || root === "dpps") && first && second === "start") {
+      const response = await startAssessmentAttempt(auth.store, auth.user, root === "tests" ? "test" : "dpp", first);
+      return ok(response);
+    }
+
     if (root === "tests" && first && second === "submit") {
       const body = await parseJsonBody<TestSubmissionPayload>(request);
       const response = await withStoreAsyncScoped(
@@ -372,6 +399,14 @@ export async function POST(request: NextRequest, context: RouteContext) {
       );
       revalidateTestMutation(auth.user.id, first);
       return created(response);
+    }
+
+    if (root === "tests" && first && second === "begin") {
+      // The student pressed Start on a teacher-assigned test: the sitting's
+      // server clock starts now (capped at the window end). Returns the window,
+      // the DB clock and `attemptEndsAt` for the timer; 404 for any other test.
+      const sitting = await beginTeacherTestSitting(auth.user.id, first);
+      return sitting ? ok(sitting) : notFound("Not a teacher-assigned test.");
     }
 
     if (root === "dpps" && first && second === "submit") {
@@ -395,13 +430,15 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     if (root === "dpps" && first && second === "check") {
       const body = await parseJsonBody<DppQuestionCheckPayload>(request);
-      const response = await withStoreAsync(async (store) => {
+      // The graded answer is written by its own targeted writer
+      // (recordDppQuestionResult); the store is only read, so persist nothing.
+      const response = await withStoreAsyncScoped(async (store) => {
         const user = await requireUserFromRequest(store, request);
         if (!user) {
           throw new Error("Authentication credentials were not provided.");
         }
         return checkGeneratedDppQuestion(store, user, first, body);
-      });
+      }, null);
       // A retry writes nothing, so there is nothing to invalidate.
       if (response.scored) {
         revalidateDppMutation(auth.user.id);
@@ -429,13 +466,17 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     if (root === "ogcode" && first === "location") {
       const body = await parseJsonBody<UpdateOgcodeLocationPayload>(request);
-      const response = await withStoreAsync(async (store) => {
+      // Only this user's subject-rank row (location fields) changes.
+      const plan = new ScopedWritePlan();
+      const response = await withStoreAsyncScoped(async (store) => {
         const user = await requireUserFromRequest(store, request);
         if (!user) {
           throw new Error("Authentication credentials were not provided.");
         }
-        return updateOgcodeLocation(store, user, body);
-      });
+        const result = updateOgcodeLocation(store, user, body);
+        plan.forUser(user.id).touch("subjectRanks");
+        return result;
+      }, plan.toPersist);
       revalidateTag("leaderboard", "max");
       revalidateTag(`progress-user:${auth.user.id}`, "max");
       return ok(response);
@@ -444,6 +485,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
     if (error instanceof Error && error.message.includes("not provided")) {
       return unauthorized(error.message);
     }
+    const windowResponse = testWindowErrorResponse(error);
+    if (windowResponse) return windowResponse;
     if ((error as { status?: number })?.status === 403) {
       return forbidden(error instanceof Error ? error.message : "Forbidden.");
     }

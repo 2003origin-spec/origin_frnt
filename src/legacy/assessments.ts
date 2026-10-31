@@ -11,6 +11,7 @@ import {
   awardPoints,
   applyOgcodeScoreDelta,
 } from "@/server/gamification";
+import { assessmentAwardKey, claimPointAward } from "@/server/point-awards";
 import {
   getOgcodeQuestionProgress,
   getOgcodeQuestionProgressMap,
@@ -26,6 +27,12 @@ import {
 } from "@/server/ogcode-option-stats";
 import { completeOgcodeChallengesForAttempt } from "@/server/ogcode-challenges";
 import { toAbsoluteMediaUrl } from "@/lib/media-url";
+import { gradeNumericText } from "@/lib/assessments/numeric-tolerance";
+import { isNoPenalty, isReviewHold } from "@/lib/assessments/review-hold";
+import { symbolicGuardReason, symbolicSpecFor } from "@/lib/assessments/symbolic-guard";
+import { parseStrictNumber } from "@/lib/assessments/parse-strict-number";
+import { gradeMatrixPairs } from "@/lib/assessments/matrix-grade";
+import { semanticBand as getSemanticBand, semanticCreditAwarded } from "@/lib/assessments/semantic-credit";
 import { createNotification } from "@/server/notifications";
 import {
   OGCODE_ATTEMPT_CAPS,
@@ -46,6 +53,8 @@ import { istDateKey, istEpochDay } from "@/lib/ist-day";
 import { eligibleClassBand } from "@/lib/qotd-eligibility";
 import { subjectForDay } from "@/lib/qotd-rotation";
 import { policyOverridesFromPersistedTest } from "@/server/assessments/full-test-builder";
+import { consumeAttemptStartQuietly, resolveAttemptTimeTaken } from "@/server/attempt-starts";
+import { minutesToSeconds } from "@/server/attempt-timing";
 import { getUserPostgresPool, isUserPostgresConfigured } from "@/server/user-postgres";
 import {
   GraderContractError,
@@ -114,7 +123,7 @@ import type {
 } from "@/server/store";
 import { createId } from "@/server/store";
 import { isOgcodePostgresConfigured, getOgcodePostgresPool } from "@/server/postgres";
-import { getGlobalPointsLeaderboard } from "@/server/leaderboard-points";
+import { clampLeaderboardLimit, getGlobalPointsLeaderboard } from "@/server/leaderboard-points";
 import { buildTestClassificationFields } from "@/server/test-classification";
 import { getStudentGate, type StudentGate } from "@/server/entitlements";
 import {
@@ -143,8 +152,17 @@ import {
   getTeacherTestForRoom,
   getTestById as getTeacherTestById,
   listAssignedTestPreviewsForStudent,
+  beginTeacherTestAttempt,
+  markTeacherTestAttemptSubmitted,
+  recordTeacherTestAttemptStart,
   type AssignedTestForStudent,
 } from "@/server/workspaces/tests-store";
+import {
+  TEST_WINDOW_SUBMIT_GRACE_SECONDS,
+  TestWindowError,
+  canContinueTeacherTest,
+  type TestWindowPhase,
+} from "@/lib/assessments/test-window";
 import { getContentQuestionStoredMap } from "@/server/workspaces/test-question-resolver";
 import { getWorkspaceById } from "@/server/workspaces/store";
 import {
@@ -158,6 +176,8 @@ import {
 import {
   buildTeacherDppScoringOverrides,
   safePercentage,
+  teacherDppPlatformPoints,
+  teacherTestPlatformPoints,
 } from "@/server/teacher-dpp-scoring";
 import { getTeacherDppScoringSnapshot } from "@/server/workspaces/teacher-dpp-store";
 import {
@@ -806,19 +826,8 @@ function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value));
 }
 
-function getSemanticBand(score: number, threshold: number): "strong_match" | "accepted_match" | "near_match" | "weak_match" {
-  if (score >= threshold + 0.12) {
-    return "strong_match";
-  }
-  if (score >= threshold) {
-    return "accepted_match";
-  }
-  if (score >= threshold - 0.08) {
-    return "near_match";
-  }
-  return "weak_match";
-}
-
+// Free-text matcher helper only (compareNumericSignals): graded numerical /
+// range answers go through parseStrictNumber (G2), never "first number wins".
 function extractNumericValues(value: string | null | undefined): number[] {
   const matches = normalizeFreeText(value)
     .replace(/,/g, "")
@@ -830,13 +839,16 @@ function extractNumericValues(value: string | null | undefined): number[] {
 }
 
 // Range answers are encoded "from|to" (see OGCodeWorkspace.tsx). Pipe-delimited
-// rather than comma-delimited because extractNumericValues() strips commas
-// before parsing, which would corrupt a comma-joined "3.5,4.2" into [3.54, 0.2].
+// because a comma inside a bound is a thousands separator / ambiguity for the
+// strict parser, not a delimiter. Each side must be exactly one strict number.
 function parseRangeAnswer(value: string | null | undefined): { from: number; to: number } | null {
-  const [rawFrom, rawTo] = (value ?? "").split("|");
-  const from = extractNumericValues(rawFrom)[0];
-  const to = extractNumericValues(rawTo)[0];
-  if (!Number.isFinite(from) || !Number.isFinite(to)) {
+  const parts = (value ?? "").split("|");
+  if (parts.length !== 2) {
+    return null;
+  }
+  const from = parseStrictNumber(parts[0]);
+  const to = parseStrictNumber(parts[1]);
+  if (from === null || to === null) {
     return null;
   }
   return { from, to };
@@ -1408,11 +1420,17 @@ function hasResponse(answer: StoredUserAnswer): boolean {
 /**
  * How many units full credit is made of, for policies that award marks per unit
  * rather than as a fraction (JEE Advanced multiple-correct: +1 per correct
- * option chosen). Only MSQ has such units; every other type is all-or-nothing,
- * so 0 tells `computeMarksFromCredit` to stay on the fractional path.
+ * option chosen; matrix-match: +N per fully-correct row). Every other type is
+ * all-or-nothing, so 0 tells `computeMarksFromCredit` to stay on the fractional path.
  */
 function partialUnitsForQuestion(question: StoredQuestion): number {
-  return question.questionType === "msq" ? (question.correctOptions?.length ?? 0) : 0;
+  if (question.questionType === "msq") {
+    return question.correctOptions?.length ?? 0;
+  }
+  if (question.questionType === "matrix_match") {
+    return new Set((question.matrixData?.correct_pairs ?? []).map((pair) => pair[0])).size;
+  }
+  return 0;
 }
 
 function withLocalScoring(
@@ -1423,19 +1441,22 @@ function withLocalScoring(
 ): GradeResult {
   const policy = scoringPolicyForQuestion(question, sourceType);
   const creditAwarded = grade.creditAwarded ?? (grade.isCorrect ? 1 : 0);
+  const needsReview = Boolean(grade.info.needsReview ?? grade.info.needs_review);
   const marksAwarded = computeMarksFromCredit({
     answered: hasResponse(answer),
     isCorrect: grade.isCorrect,
     creditAwarded,
     policy,
     partialUnits: partialUnitsForQuestion(question),
+    reviewHold: isReviewHold(grade),
+    noPenalty: isNoPenalty(grade),
   });
   return {
     ...grade,
     creditAwarded,
     marksAwarded,
     maxMarks: policy.correctMarks,
-    needsReview: Boolean(grade.info.needsReview ?? grade.info.needs_review),
+    needsReview,
     evaluationSource: "local_fallback",
     info: {
       ...grade.info,
@@ -1451,7 +1472,12 @@ function withLocalScoring(
   };
 }
 
-function gradeAnswer(question: StoredQuestion, answer: StoredUserAnswer, sourceType: AssessmentSourceType = "test"): GradeResult {
+/**
+ * Local-fallback grader (used when grader-service is down / circuit-open).
+ * Exported for tests/unit/grading-parity.test.ts, which pins it to the Python
+ * engine through tests/fixtures/grading-parity.json.
+ */
+export function gradeAnswer(question: StoredQuestion, answer: StoredUserAnswer, sourceType: AssessmentSourceType = "test"): GradeResult {
   if (question.questionType === "mcq") {
     const isCorrect =
       question.correctOption !== null &&
@@ -1499,23 +1525,30 @@ function gradeAnswer(question: StoredQuestion, answer: StoredUserAnswer, sourceT
   }
 
   if (question.questionType === "numerical") {
-    const submitted = extractNumericValues(answer.answerText)[0];
-    const expected = extractNumericValues(question.answerText)[0];
-    const tolerance = question.tolerance ?? Math.max(Math.abs(expected ?? 0) * 0.01, 0.001);
-    const isCorrect =
-      Number.isFinite(submitted) &&
-      Number.isFinite(expected) &&
-      Math.abs((submitted ?? 0) - (expected ?? 0)) <= tolerance;
+    // G1 + G2 (mirror of grader-service compare_numeric / compare_quantities):
+    // one strictly parsed number on each side; tolerance is the teacher's
+    // explicit value (0 ⇒ exact) or the stated precision of the expected
+    // answer — never a 1% default.
+    const numeric = gradeNumericText({
+      expectedText: question.answerSpec?.expectedValue ?? question.answerText,
+      submittedText: answer.answerText,
+      question,
+    });
+    const reviewHold = numeric.reviewHold && hasResponse(answer);
     return withLocalScoring(
       question,
       answer,
       {
-        isCorrect,
+        isCorrect: numeric.isCorrect,
         info: {
           correctAnswerText: question.answerText,
           correct_answer_text: question.answerText,
-          tolerance: question.tolerance,
+          tolerance: numeric.tolerance,
+          toleranceKind: numeric.kind,
           explanation: question.explanation,
+          reasonCodes: numeric.reasonCodes,
+          needsReview: reviewHold,
+          reviewHold,
         },
       },
       sourceType,
@@ -1524,12 +1557,13 @@ function gradeAnswer(question: StoredQuestion, answer: StoredUserAnswer, sourceT
 
   if (question.questionType === "range") {
     const range = parseRangeAnswer(answer.answerText);
-    const expected = extractNumericValues(question.answerText)[0];
+    const expected = parseStrictNumber(question.answerSpec?.expectedValue ?? question.answerText);
     const isCorrect =
       range !== null &&
-      Number.isFinite(expected) &&
+      expected !== null &&
       expected >= Math.min(range.from, range.to) &&
       expected <= Math.max(range.from, range.to);
+    const expectedNotNumeric = expected === null && hasResponse(answer);
     return withLocalScoring(
       question,
       answer,
@@ -1539,6 +1573,9 @@ function gradeAnswer(question: StoredQuestion, answer: StoredUserAnswer, sourceT
           correctAnswerText: question.answerText,
           correct_answer_text: question.answerText,
           explanation: question.explanation,
+          reasonCodes: expectedNotNumeric ? ["expected_not_numeric"] : range === null ? ["range_parse_error"] : ["range_compare"],
+          needsReview: expectedNotNumeric,
+          reviewHold: expectedNotNumeric,
         },
       },
       sourceType,
@@ -1546,26 +1583,44 @@ function gradeAnswer(question: StoredQuestion, answer: StoredUserAnswer, sourceT
   }
 
   if (question.questionType === "matrix_match") {
-    const expected = [...(question.matrixData?.correct_pairs ?? [])]
-      .map((pair) => pair.join(":"))
-      .sort();
-    const submitted = [...(answer.matrixPairs ?? [])]
-      .map((pair) => pair.join(":"))
-      .sort();
-    const isCorrect = JSON.stringify(submitted) === JSON.stringify(expected);
-    const correctPairSet = new Set(expected);
-    const partialMatches = submitted.filter((pair) => correctPairSet.has(pair)).length;
-    const creditAwarded = isCorrect ? 1 : expected.length > 0 ? Number((partialMatches / expected.length).toFixed(3)) : 0;
+    // G3: submitted ⊆ expected or the question is wrong; partial = complete rows / rows.
+    const policy = scoringPolicyForQuestion(question, sourceType);
+    const matrix = gradeMatrixPairs(question.matrixData?.correct_pairs, answer.matrixPairs, policy.partialCreditPolicy ?? "fractional");
     return withLocalScoring(
       question,
       answer,
       {
-        isCorrect,
-        creditAwarded,
+        isCorrect: matrix.isCorrect,
+        creditAwarded: matrix.creditAwarded,
         info: {
           correctPairs: question.matrixData?.correct_pairs ?? [],
           correct_pairs: question.matrixData?.correct_pairs ?? [],
           explanation: question.explanation,
+          reasonCodes: [matrix.reason],
+        },
+      },
+      sourceType,
+    );
+  }
+
+  // G5 (mirror of grader-service symbolic_precheck): a symbolic answer too costly
+  // to evaluate is held for review (0 marks) and never compared at all.
+  const symbolicSpec = symbolicSpecFor(question);
+  const symbolicGuard = symbolicSpec && hasResponse(answer) ? symbolicGuardReason(answer.answerText, symbolicSpec) : null;
+  if (symbolicGuard) {
+    return withLocalScoring(
+      question,
+      answer,
+      {
+        isCorrect: false,
+        creditAwarded: 0,
+        info: {
+          correctAnswerText: question.answerText,
+          correct_answer_text: question.answerText,
+          explanation: question.explanation,
+          reasonCodes: [symbolicGuard],
+          needsReview: true,
+          reviewHold: true,
         },
       },
       sourceType,
@@ -1574,20 +1629,8 @@ function gradeAnswer(question: StoredQuestion, answer: StoredUserAnswer, sourceT
 
   const semanticMatch = answersMatchAsText(question, answer.answerText);
   const semanticBand = getSemanticBand(semanticMatch.score, semanticMatch.threshold);
-  const normalizedSemanticRatio = clamp01(
-    semanticMatch.threshold > 0 ? semanticMatch.score / semanticMatch.threshold : semanticMatch.score,
-  );
-  const creditAwarded = semanticMatch.isCorrect
-    ? 1
-    : Number(
-        (
-          semanticBand === "near_match"
-            ? normalizedSemanticRatio * 0.4
-            : semanticBand === "weak_match"
-              ? normalizedSemanticRatio * 0.15
-              : 0
-        ).toFixed(3),
-      );
+  // G4: near_match ⇒ 0.4·ratio, weak_match ⇒ 0 (routes to incorrectMarks).
+  const creditAwarded = semanticCreditAwarded(semanticMatch.score, semanticMatch.threshold, semanticMatch.isCorrect);
   return withLocalScoring(
     question,
     answer,
@@ -1647,7 +1690,10 @@ async function resolvePracticeQuestion(store: AppStore, questionId: string): Pro
     return { question: fromStore, source: "store" };
   }
 
-  const fromCatalog = await getOgcodeCatalogQuestionById(questionId);
+  // Student practice detail + submit: contest imports never resolve here by id
+  // (the OGCode listing hides them too), so a hidden import can't be read or
+  // graded — no answer-key reveal — through the practice surface.
+  const fromCatalog = await getOgcodeCatalogQuestionById(questionId, { visibility: "ogcode" });
   if (fromCatalog) {
     return { question: fromCatalog, source: "catalog" };
   }
@@ -2943,11 +2989,10 @@ function submitTestFallback(store: AppStore, user: StoredUser, testId: string, p
   updateUserStudyTime(user, result.timeTaken);
   const dailyActivity = getOrCreateDailyActivity(store, user.id);
   dailyActivity.questionsPracticed += correctAnswers + wrongAnswers;
-  if (score > 0) {
-    awardPoints(store, user.id, score, "practice", `Completed test: ${test.title}`, result.id);
-  }
+  // No Postgres ⇒ no durable first-attempt claim ⇒ no points (bug G6). The
+  // result, streak and study time are still recorded.
 
-  return serializeResult(result);
+  return { ...serializeResult(result), pointsAwarded: 0, points_awarded: 0, alreadyRewarded: false, already_rewarded: false };
 }
 
 function listTestResultsFallback(store: AppStore, user: StoredUser, testId: string) {
@@ -3073,14 +3118,20 @@ async function buildAnalyticsAttempts(
     // against the platform default, so under a teacher mark scheme it must be
     // recomputed locally from the credit it returned.
     const partialUnits = partialUnitsForQuestion(question);
+    // A review hold (unparseable expected value / notation) is never negative,
+    // even under a teacher mark scheme.
+    const reviewHold = isReviewHold(grade);
+    const noPenalty = isNoPenalty(grade);
     const marksAwarded = policyOverrides?.has(question.id)
-      ? computeMarksFromCredit({ answered, isCorrect, creditAwarded: grade.creditAwarded, policy, partialUnits })
+      ? computeMarksFromCredit({ answered, isCorrect, creditAwarded: grade.creditAwarded, policy, partialUnits, reviewHold, noPenalty })
       : grade.marksAwarded ?? computeMarksFromCredit({
           answered,
           isCorrect,
           creditAwarded: grade.creditAwarded,
           policy,
           partialUnits,
+          reviewHold,
+          noPenalty,
         });
     const creditAwarded = grade.creditAwarded ?? (isCorrect ? 1 : 0);
 
@@ -3407,11 +3458,10 @@ function buildLocalSubmittedTestResult(input: {
   updateUserStudyTime(input.user, result.timeTaken);
   const dailyActivity = getOrCreateDailyActivity(input.store, input.user.id);
   dailyActivity.questionsPracticed += input.analytics.correctAnswers + input.analytics.wrongAnswers;
-  if (input.analytics.score > 0) {
-    awardPoints(input.store, input.user.id, input.analytics.score, "practice", `Completed test: ${input.title}`, result.id);
-  }
+  // Degraded/local path: the attempt was not persisted, so there is no durable
+  // first-attempt claim and therefore no points (bug G6).
 
-  return serializeResult(result);
+  return { ...serializeResult(result), pointsAwarded: 0, points_awarded: 0, alreadyRewarded: false, already_rewarded: false };
 }
 
 export async function listTests(store: AppStore, user: StoredUser) {
@@ -3522,6 +3572,7 @@ async function withAssignedTeacherTests(
         assignmentId: a.assignmentId,
         workspaceId: a.workspaceId ?? undefined,
         source: "teacher_assigned",
+        windowStartsAt: a.windowStartsAt,
         windowEndsAt: a.windowEndsAt,
       });
     }
@@ -3620,7 +3671,152 @@ async function assertTestOpenableUnderScope(
   assertTestSubjectsOpenable(await getStudentScope(user.id, user.role), { subject: test.subject, presetSubjects });
 }
 
-export async function getTestDetail(store: AppStore, user: StoredUser, testId: string) {
+/**
+ * The assignment-window gate for a teacher-assigned test, judged on the DATABASE
+ * clock (`assigned.serverNow`). Throws a {@link TestWindowError} — 403
+ * `test_not_started` before the window, 409 `test_ended` after it unless the
+ * student's unsubmitted sitting (`windowAttempt` — judged by when it STARTED,
+ * not by its stored deadline, R4-1) began inside the window and the request is
+ * within the submit grace. Returns the phase. Rules: src/lib/assessments/test-window.ts.
+ */
+function assertTeacherTestWindow(assigned: AssignedTestForStudent): TestWindowPhase {
+  const window = { startsAt: assigned.windowStartsAt, endsAt: assigned.windowEndsAt };
+  const decision = canContinueTeacherTest({
+    window,
+    attemptStartedAt: assigned.windowAttempt?.startedAt ?? null,
+    now: assigned.serverNow,
+  });
+  if (!decision.ok) throw new TestWindowError(decision.code, window);
+  return decision.phase;
+}
+
+/**
+ * Serving the paper IS the start of an attempt: record it so a submit that lands
+ * just after the window closes can prove it began inside the window, and so the
+ * teacher side can see who is mid-test. Best-effort — a failure here must not
+ * stop a student from sitting an open test (they simply lose the post-end grace).
+ */
+async function recordAssignedAttemptStart(userId: string, assigned: AssignedTestForStudent): Promise<void> {
+  try {
+    await recordTeacherTestAttemptStart({
+      testId: assigned.test.id,
+      studentId: userId,
+      assignmentId: assigned.assignmentId || null,
+      workspaceId: assigned.workspaceId,
+      batchId: assigned.batchId,
+      durationMinutes: assigned.test.durationMinutes,
+      windowEndsAt: assigned.windowEndsAt,
+      graceSeconds: TEST_WINDOW_SUBMIT_GRACE_SECONDS,
+    });
+  } catch (error) {
+    console.warn("[assessments] could not record teacher-test attempt start", {
+      testId: assigned.test.id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+/**
+ * The per-request window facts the taker needs to cap its timer (R3-1): it
+ * stops at min(window end, `attemptEndsAt`). `attemptEndsAt` is the server's
+ * own end for this sitting, known once the student has pressed Start
+ * ({@link beginTeacherTestSitting}); null before that.
+ */
+export type TeacherTestSitting = {
+  windowStartsAt: string | null;
+  windowEndsAt: string | null;
+  serverNow: string;
+  attemptEndsAt: string | null;
+};
+
+function teacherTestSittingOf(assigned: AssignedTestForStudent): TeacherTestSitting {
+  return {
+    windowStartsAt: assigned.windowStartsAt,
+    windowEndsAt: assigned.windowEndsAt,
+    serverNow: assigned.serverNow,
+    attemptEndsAt: assigned.windowAttempt?.attemptEndsAt ?? null,
+  };
+}
+
+/**
+ * Opens a sitting of a teacher-assigned test, OUTSIDE any render cache: the
+ * window gate (throws {@link TestWindowError}) and the attempt-start record must
+ * run on every page load, not only when `getTestDetailForRender` misses its
+ * cache — a paper cached at 10:59:50 must not be served at 11:05, and a retake
+ * served from cache must still record its attempt. Returns the window + DB
+ * clock for the taker's timer, or null when `testId` is not a teacher test
+ * assigned to this student (seeded, custom, or not theirs).
+ */
+export async function openTeacherTestSitting(userId: string, testId: string): Promise<TeacherTestSitting | null> {
+  if (!isFeatureEnabled("teacherConnect")) return null;
+  const assigned = await getAssignedTestForStudent(userId, testId);
+  if (!assigned) return null;
+  const phase = assertTeacherTestWindow(assigned);
+  // Only an OPEN window starts a sitting. In the post-end grace the student is
+  // finishing the one they have; a new row there would start after the end and
+  // forfeit that sitting's grace.
+  if (phase === "open" && !assigned.activeAttempt) await recordAssignedAttemptStart(userId, assigned);
+  return teacherTestSittingOf(assigned);
+}
+
+/**
+ * The student pressed Start on a teacher-assigned test. The attempt row was
+ * opened when the paper was served (its deadline counts from page load); Start
+ * re-anchors the clock to Start, but no later than load + the reading
+ * allowance ({@link beginTeacherTestAttempt}), so a delayed Start can buy at
+ * most that allowance and never past the window end. The R4-1 bell-time
+ * submit is also protected by the window gate (`windowAttempt`), not only by the
+ * deadline. Once per attempt. Opens the attempt first if none is active
+ * (the load-time record failed, or Start came long after the load). Returns the
+ * sitting with `attemptEndsAt`, the authoritative end the taker caps its timer
+ * at, or null when `testId` is not a teacher test assigned to this student.
+ */
+export async function beginTeacherTestSitting(userId: string, testId: string): Promise<TeacherTestSitting | null> {
+  if (!isFeatureEnabled("teacherConnect")) return null;
+  const assigned = await getAssignedTestForStudent(userId, testId);
+  if (!assigned) return null;
+  const phase = assertTeacherTestWindow(assigned);
+  const sitting = teacherTestSittingOf(assigned);
+  if (phase !== "open") return sitting;
+
+  let attemptId = assigned.activeAttempt?.id ?? null;
+  if (!attemptId) {
+    const opened = await recordTeacherTestAttemptStart({
+      testId: assigned.test.id,
+      studentId: userId,
+      assignmentId: assigned.assignmentId || null,
+      workspaceId: assigned.workspaceId,
+      batchId: assigned.batchId,
+      durationMinutes: assigned.test.durationMinutes,
+      windowEndsAt: assigned.windowEndsAt,
+      graceSeconds: TEST_WINDOW_SUBMIT_GRACE_SECONDS,
+    });
+    attemptId = opened.id;
+  }
+  const begun = await beginTeacherTestAttempt({
+    attemptId,
+    durationMinutes: assigned.test.durationMinutes,
+    windowEndsAt: assigned.windowEndsAt,
+    graceSeconds: TEST_WINDOW_SUBMIT_GRACE_SECONDS,
+  });
+  return { ...sitting, attemptEndsAt: begun?.attemptEndsAt ?? sitting.attemptEndsAt };
+}
+
+export async function getTestDetail(
+  store: AppStore,
+  user: StoredUser,
+  testId: string,
+  options: {
+    /**
+     * The caller is serving the paper for the student to SIT, uncached (the API
+     * twin of /tests/[id]), so a teacher-assigned test records the attempt's
+     * start and carries its window + DB clock. Context readers (e.g. Origin AI's
+     * page context) and the cached render loader leave it off; the /tests/[id]
+     * page opens the sitting itself via {@link openTeacherTestSitting}.
+     */
+    startAttempt?: boolean;
+  } = {},
+) {
   const seeded = store.tests.find((entry) => entry.id === testId);
   if (seeded) {
     await assertTestOpenableUnderScope(store, user, seeded);
@@ -3637,7 +3833,17 @@ export async function getTestDetail(store: AppStore, user: StoredUser, testId: s
   if (isFeatureEnabled("teacherConnect")) {
     const assigned = await getAssignedTestForStudent(user.id, testId);
     if (assigned) {
-      return serializePersistedCustomTest(store, user.id, assignedTeacherTestToRecord(user.id, assigned));
+      // Window gate BEFORE any question is serialised: an upcoming test must not
+      // leak its paper, and an ended one must not open a new attempt.
+      const phase = assertTeacherTestWindow(assigned);
+      const serialized = await serializePersistedCustomTest(store, user.id, assignedTeacherTestToRecord(user.id, assigned));
+      if (!options.startAttempt) return serialized;
+      // An uncached sitting (the API twin): record the start and hand the taker
+      // the window + DB clock so its timer stops at the window end. Never added
+      // on the cached render path — `serverNow` would go stale there. No new
+      // attempt in the post-end grace (see openTeacherTestSitting).
+      if (phase === "open" && !assigned.activeAttempt) await recordAssignedAttemptStart(user.id, assigned);
+      return { ...serialized, ...teacherTestSittingOf(assigned) };
     }
     const teacherTest = await getTeacherTestById(testId);
     if (teacherTest) throw teacherTestForbiddenError();
@@ -3944,6 +4150,8 @@ export async function submitTest(
   // Phase 14: teacher-assigned test — membership re-verified server-side, then
   // routed through the same persisted path with cohort tags carried to analytics.
   let teacherCohort: { workspaceId: string | null; batchId: string | null; assignmentId: string | null } | null = null;
+  // The in-progress assessment.test_attempts row this submit closes (assigned tests only).
+  let teacherAttemptId: string | null = null;
 
   // Phase 14 (rooms): a teacher_room submission resolves the assessment.tests id
   // backing the room (no assignment — room membership is the entitlement) and tags
@@ -3964,6 +4172,10 @@ export async function submitTest(
   if (!seededTest && !persistedTest && isFeatureEnabled("teacherConnect")) {
     const assigned = await getAssignedTestForStudent(user.id, testId);
     if (assigned) {
+      // Window gate: no submit before the window, none after it except the
+      // grace for an attempt that began inside it (src/lib/assessments/test-window.ts).
+      assertTeacherTestWindow(assigned);
+      teacherAttemptId = assigned.windowAttempt?.id ?? null;
       persistedTest = assignedTeacherTestToRecord(user.id, assigned);
       teacherCohort = {
         workspaceId: assigned.workspaceId,
@@ -4046,7 +4258,18 @@ export async function submitTest(
     analytics.correctAnswers > questionCount / 2
       ? "Good attempt!"
       : "Needs improvement.";
-  const timeTakenSeconds = payload.timeTaken ?? payload.time_taken ?? 0;
+  // G7: never trust the client's timeTaken — time from the server-recorded
+  // start (POST tests/:id/start); old clients get their value clamped to
+  // [0, duration]. Room submissions carry the room engine's own clock.
+  const timing = await resolveAttemptTimeTaken({
+    userId: user.id,
+    kind: "test",
+    assessmentId: testId,
+    durationSeconds: minutesToSeconds(seededTest ? seededTest.duration : persistedTest!.durationMinutes),
+    clientSeconds: payload.timeTaken ?? payload.time_taken,
+    skipStartLookup: Boolean(options.allowRoomParticipant),
+  });
+  const timeTakenSeconds = timing.seconds;
   const { strongAreas, weakAreas } = buildTopicAccuracyFromAttempts(analytics.gradedAttempts);
   const { weakTopics, strongTopics } = buildLocalTopicSignals(analytics.gradedAttempts);
   const localSummaryBase =
@@ -4092,6 +4315,7 @@ export async function submitTest(
       degraded: resolution.degraded,
       degradedReason: resolution.degradedReason,
       degraded_reason: resolution.degradedReason,
+      time_taken_source: timing.source,
     },
     recommendations: localRecommendations,
     analyticsContext: buildPendingAnalyticsContext(localSummary, weakAreas, strongAreas),
@@ -4133,8 +4357,26 @@ export async function submitTest(
     is_malpractice: isMalpractice,
   };
 
+  if (teacherAttemptId) {
+    // Best-effort: the result itself lives in analytics.test_results; this only
+    // closes the sitting so it stops counting as in progress.
+    await markTeacherTestAttemptSubmitted({
+      attemptId: teacherAttemptId,
+      score: analytics.score,
+      totalMarks,
+      percentage,
+      timeTakenSeconds,
+    }).catch((error: unknown) => {
+      console.warn("[assessments] could not close teacher-test attempt", {
+        testId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+  }
+
   try {
     let persistedResult = await persistTestAnalysisResult(persistInput);
+    await consumeAttemptStartQuietly(timing.startId, persistedResult.id);
 
     try {
       await enqueueAnalysisJob({
@@ -4169,11 +4411,38 @@ export async function submitTest(
     updateUserStudyTime(user, timeTakenSeconds);
     const dailyActivity = getOrCreateDailyActivity(store, user.id);
     dailyActivity.questionsPracticed += analytics.correctAnswers + analytics.wrongAnswers;
-    if (analytics.score > 0) {
-      awardPoints(store, user.id, analytics.score, "practice", `Completed test: ${title}`, persistedResult.id);
+    // Points only on the FIRST completed attempt per (user, test) — bug G6.
+    // The claim row is the cross-instance guard; a lost claim means no points,
+    // never a duplicate award. Later attempts still keep result/streak/time.
+    // A teacher-assigned test scores on the teacher's own marks; those are
+    // never paid out 1:1 as platform points (see teacherTestPlatformPoints).
+    const platformPoints = teacherCohort
+      ? teacherTestPlatformPoints(analytics.score, analytics.totalMarks, questionCount)
+      : analytics.score;
+    let pointsAwarded = 0;
+    let alreadyRewarded = false;
+    if (platformPoints > 0) {
+      const claim = await claimPointAward(
+        user.id,
+        assessmentAwardKey("test", testId),
+        platformPoints,
+        persistedResult.id,
+      );
+      if (claim) {
+        awardPoints(store, user.id, platformPoints, "practice", `Completed test: ${title}`, persistedResult.id);
+        pointsAwarded = platformPoints;
+      } else {
+        alreadyRewarded = true;
+      }
     }
 
-    return serializePersistedResult(persistedResult);
+    return {
+      ...serializePersistedResult(persistedResult),
+      pointsAwarded,
+      points_awarded: pointsAwarded,
+      alreadyRewarded,
+      already_rewarded: alreadyRewarded,
+    };
   } catch (err) {
     recordAnalyticsFallback({
       scope: "submitTest",
@@ -4187,7 +4456,7 @@ export async function submitTest(
       testId,
       title,
       questionCount,
-      payload,
+      payload: { ...payload, timeTaken: timeTakenSeconds, time_taken: timeTakenSeconds },
       analytics,
       isMalpractice,
       degraded: true,
@@ -4466,6 +4735,9 @@ export async function checkGeneratedDppQuestion(
           isCorrect: grade.isCorrect,
           creditAwarded: grade.creditAwarded,
           policy,
+          partialUnits: partialUnitsForQuestion(question),
+          reviewHold: isReviewHold(grade),
+          noPenalty: isNoPenalty(grade),
         })
       : grade.marksAwarded;
 
@@ -4608,7 +4880,19 @@ export async function submitGeneratedDpp(
     "dpp",
     scoringOverrides,
   );
-  const timeTakenSeconds = payload.timeTaken ?? payload.time_taken ?? 0;
+  // G7: server-timed from the recorded start (POST dpps/:id/start); old
+  // clients get their value clamped to [0, duration].
+  const timing = await resolveAttemptTimeTaken({
+    userId: user.id,
+    kind: "dpp",
+    assessmentId: dppId,
+    durationSeconds: minutesToSeconds(plan.durationMinutes),
+    clientSeconds: payload.timeTaken ?? payload.time_taken,
+  });
+  const timeTakenSeconds = timing.seconds;
+  if (timing.source === "client") {
+    console.warn("[dpp] time_taken_source=client (no recorded start)", { dppId });
+  }
   const progressScore =
     plan.questionIds.length > 0
       ? Math.max(0, Math.round((analytics.correctAnswers / plan.questionIds.length) * 100))
@@ -4717,6 +5001,7 @@ export async function submitGeneratedDpp(
   };
 
   let persistedAttempt = await persistDppAttemptResult(persistInput);
+  await consumeAttemptStartQuietly(timing.startId, persistedAttempt.id);
 
   try {
     await enqueueAnalysisJob({
@@ -4751,14 +5036,37 @@ export async function submitGeneratedDpp(
   updateUserStudyTime(user, timeTakenSeconds);
   const dailyActivity = getOrCreateDailyActivity(store, user.id);
   dailyActivity.questionsPracticed += analytics.correctAnswers + analytics.wrongAnswers;
-  if (analytics.score > 0) {
-    awardPoints(store, user.id, analytics.score, "dpp", `Completed DPP: ${plan.title}`, persistedAttempt.id);
+  // Points only on the FIRST completed attempt per (user, dpp) — bug G6.
+  // Teacher-shared DPPs score at the teacher's own marks; those are never paid
+  // out 1:1 as platform points (see teacherDppPlatformPoints).
+  const platformPoints = scoringOverrides
+    ? teacherDppPlatformPoints(analytics.score, analytics.totalMarks)
+    : analytics.score;
+  let pointsAwarded = 0;
+  let alreadyRewarded = false;
+  if (platformPoints > 0) {
+    const claim = await claimPointAward(
+      user.id,
+      assessmentAwardKey("dpp", dppId),
+      platformPoints,
+      persistedAttempt.id,
+    );
+    if (claim) {
+      awardPoints(store, user.id, platformPoints, "dpp", `Completed DPP: ${plan.title}`, persistedAttempt.id);
+      pointsAwarded = platformPoints;
+    } else {
+      alreadyRewarded = true;
+    }
   }
 
   const result = {
     id: persistedAttempt.id,
     dppId: dppId,
     dpp_id: dppId,
+    pointsAwarded,
+    points_awarded: pointsAwarded,
+    alreadyRewarded,
+    already_rewarded: alreadyRewarded,
     summary: persistedAttempt.summary,
     recommendations: persistedAttempt.recommendations,
     resolvedTopics: persistedAttempt.resolvedTopics,
@@ -5774,9 +6082,9 @@ async function buildLeaderboardEntriesFromDb(user: StoredUser, subject: string |
 }
 
 export async function getOgcodeLeaderboard(store: AppStore, user: StoredUser, subject: string | null, location?: string | null, limit?: number | null) {
-  // Top-N cap chosen by the user (20/50/100/1000/all). Clamp to a sane range;
-  // "all" arrives as a large number from the caller.
-  const topN = Math.max(1, Math.min(100_000, Math.trunc(Number(limit ?? 100)) || 100));
+  // Top-N cap chosen by the user (20/50/100/1000/all). Clamped to 1..1000
+  // ("all" is capped at 1000 by the caller).
+  const topN = clampLeaderboardLimit(limit);
   // Overall / regional Hall-of-Fame + the "national AIR" now rank by prestige
   // points (Phase 2) so OG-Code solves actually count toward rank, matching the
   // scoring modal. Subject "arena" boards keep their efficiency ranking below.
@@ -5995,7 +6303,9 @@ export async function getChallengeOfTheDay(store: AppStore, user: StoredUser) {
   let challenge: StoredQuestion | null = null;
   try {
     const questionId = await getDailyQuestionId({ band, subject }, dateKey);
-    challenge = questionId ? await getOgcodeCatalogQuestionById(questionId) : null;
+    // Contest imports stay hidden even if one was drawn before the draw
+    // excluded them (the day's pick is persisted).
+    challenge = questionId ? await getOgcodeCatalogQuestionById(questionId, { visibility: "ogcode" }) : null;
   } catch {
     challenge = null;
   }

@@ -7,7 +7,8 @@
  *   2. skips any transfer whose idempotency key already exists (a retried
  *      request is a no-op, never a double charge),
  *   3. refuses a user debit that would take the spendable balance below zero
- *      or that comes from a frozen account,
+ *      or that comes from a frozen account (a coin-pack refund is exempt from
+ *      the frozen check: plan rule B10),
  *   4. writes one transfer row and exactly two legs (debit + credit).
  *
  * The arithmetic (balances, pending, promo expiry) lives in ledger-rules.ts.
@@ -20,9 +21,12 @@ import { getUserPostgresPool } from "@/server/user-postgres";
 
 import {
   assertValidTransfer,
+  bypassesFrozenCheck,
   computeWalletBalance,
+  heldCoinSlices,
   isUserAccount,
   userAccount,
+  type CoinSlice,
   type LedgerLeg,
   type Transfer,
   type TransferKind,
@@ -109,6 +113,36 @@ async function loadLegs(client: Pick<PoolClient, "query">, account: string): Pro
   }));
 }
 
+/**
+ * What a request's escrow still holds of the student's coins, by expiry (see
+ * heldCoinSlices). Call inside the transaction that holds the request lock.
+ */
+export async function loadHeldCoinSlices(
+  client: Pick<PoolClient, "query">,
+  studentId: string,
+  requestId: string,
+  now: Date = new Date(),
+): Promise<CoinSlice[]> {
+  const res = await client.query<LegRow & { request_id: string | null }>(
+    `SELECT e.direction, e.amount, e.kind, e.created_at, e.available_at, e.expires_at, t.request_id
+       FROM now.ledger_entries e
+       JOIN now.ledger_transfers t ON t.id = e.transfer_id
+      WHERE e.account_id = $1
+      ORDER BY e.created_at, e.id`,
+    [userAccount(studentId)],
+  );
+  const legs: LedgerLeg[] = res.rows.map((row) => ({
+    direction: row.direction,
+    amount: row.amount,
+    kind: row.kind,
+    createdAt: row.created_at,
+    availableAt: row.available_at,
+    expiresAt: row.expires_at,
+    requestId: row.request_id,
+  }));
+  return heldCoinSlices(legs, requestId, now);
+}
+
 export type PostResult = { posted: string[]; skipped: string[] };
 
 /**
@@ -143,12 +177,16 @@ export async function postTransfers(
     const fresh = transfers.filter((t) => !already.has(t.idempotencyKey));
 
     // Spendable check per debited user, against everything this batch takes.
+    // A frozen wallet refuses every debit except the exempt kinds (pack_refund).
     const needByAccount = new Map<string, number>();
+    const frozenBlocked = new Set<string>();
     for (const t of fresh) {
-      if (isUserAccount(t.from)) needByAccount.set(t.from, (needByAccount.get(t.from) ?? 0) + t.amount);
+      if (!isUserAccount(t.from)) continue;
+      needByAccount.set(t.from, (needByAccount.get(t.from) ?? 0) + t.amount);
+      if (!bypassesFrozenCheck(t.kind)) frozenBlocked.add(t.from);
     }
     for (const [account, needed] of needByAccount) {
-      if (frozen.has(account)) throw new FrozenAccountError(account);
+      if (frozen.has(account) && frozenBlocked.has(account)) throw new FrozenAccountError(account);
       const balance = computeWalletBalance(await loadLegs(client, account), now);
       if (balance.available < needed) throw new InsufficientCoinsError(balance.available, needed);
     }
@@ -185,6 +223,27 @@ export async function postTransfers(
   };
   if (options.client) return run(options.client);
   return withNowTransaction(run);
+}
+
+/**
+ * Locks the student's wallet row (the same `FOR UPDATE` postTransfers takes)
+ * and reads its balance and frozen flag on the caller's transaction, so a
+ * decision based on them cannot race a concurrent spend before the caller
+ * posts its own transfer.
+ */
+export async function lockWalletForSpend(
+  client: PoolClient,
+  userId: string,
+  now: Date = new Date(),
+): Promise<{ balance: WalletBalance; frozen: boolean }> {
+  const account = userAccount(userId);
+  await ensureAccounts(client, [account]);
+  const res = await client.query<{ frozen: boolean }>(
+    `SELECT frozen FROM now.accounts WHERE id = $1 FOR UPDATE`,
+    [account],
+  );
+  const balance = computeWalletBalance(await loadLegs(client, account), now);
+  return { balance, frozen: Boolean(res.rows[0]?.frozen) };
 }
 
 export async function getWalletBalance(userId: string, now: Date = new Date()): Promise<WalletBalance> {

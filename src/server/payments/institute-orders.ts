@@ -116,3 +116,26 @@ export async function applyInstituteEnrollment(
     providerPaymentId: input.razorpayPaymentId,
   });
 }
+
+export type RevokeInstituteEnrollmentInput = {
+  enrollmentOrderId: string;
+  workspaceId: string;
+  razorpayRefundId: string;
+};
+
+/**
+ * Executed by the transactional outbox (`institute_enrollment_revoke`) after a
+ * FULL refund of an institute order is processed by Razorpay — the mirror of
+ * `applyInstituteEnrollment`. Marks the commerce order refunded and tears down
+ * the paid enrolment + batch seat it bought. Idempotent on re-entry.
+ */
+export async function revokeInstituteEnrollmentForRefund(
+  input: RevokeInstituteEnrollmentInput,
+): Promise<EnrollmentOrder> {
+  const { applyEnrollmentOrderRefundBySystem } = await import("@/server/workspaces/marketplace-service");
+  return applyEnrollmentOrderRefundBySystem({
+    orderId: input.enrollmentOrderId,
+    workspaceId: input.workspaceId,
+    reason: `razorpay_refund:${input.razorpayRefundId}`,
+  });
+}

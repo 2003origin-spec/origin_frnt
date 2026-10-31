@@ -9,14 +9,13 @@
  * registration (reuse isRegisteredForContest, fail-closed).
  */
 
-import {
-  getOgcodeCatalogQuestionById,
-  listOgcodeCatalogQuestionPage,
-} from "@/server/ogcode-catalog";
+import { listOgcodeCatalogQuestionPage } from "@/server/ogcode-catalog";
+import type { StoredQuestion } from "@/server/store";
 import { getUserPostgresPool } from "@/server/user-postgres";
 
+import { resolveContestState, type ContestWindow } from "@/lib/contest/contest-state";
 import { computePracticeMetrics, type PracticeMetrics } from "@/lib/contest/practice-score";
-import { getContest } from "./contest-admin-service";
+import { getContest, type ContestRecord } from "./contest-admin-service";
 import { isRegisteredForContest } from "./contest-registration-service";
 import { ensureContestSchema } from "./contest-schema";
 
@@ -33,9 +32,95 @@ function practiceError(status: number, message: string): Error & { status: numbe
 }
 
 async function requireRegistered(contestId: string, userId: string): Promise<void> {
-  if (!(await isRegisteredForContest(contestId, userId))) {
+  // A waitlisted user may warm up too (they can still be promoted); practice
+  // never touches the rated attempt and never serves paper questions.
+  if (!(await isRegisteredForContest(contestId, userId, { includeWaitlisted: true }))) {
     throw practiceError(403, "Register for the contest to unlock practice.");
   }
+}
+
+/** The catalog filter that DEFINES the practice set (listing and grading share it). */
+export function practiceFilter(contest: Pick<ContestRecord, "subjects" | "topics">, subject?: string | null) {
+  // Scope to the contest's subjects (optionally one) and their admin-chosen
+  // chapters (topics). An empty topics list for a subject = the whole subject.
+  const subjects = subject ? [subject] : contest.subjects;
+  const chapters = subjects.flatMap((s) => contest.topics?.[s] ?? []);
+  return {
+    subjects,
+    chapters: chapters.length ? chapters : null,
+    // Practice renders single-select MCQ only — match the contest paper.
+    type: "mcq" as const,
+    // OGCode questions AND practice-eligible admin imports; hidden contest
+    // imports (contest_practice_eligible = FALSE) are never in the set.
+    contestPracticePool: true,
+  };
+}
+
+function toWindow(contest: Pick<ContestRecord, "status" | "regOpen" | "regClose" | "startAt" | "endAt">): ContestWindow {
+  const d = (v: string | null) => (v ? new Date(v) : null);
+  return {
+    status: contest.status,
+    regOpen: d(contest.regOpen),
+    regClose: d(contest.regClose),
+    startAt: d(contest.startAt),
+    endAt: d(contest.endAt),
+  };
+}
+
+/**
+ * Practice is closed while the contest runs and until its results are out
+ * (LIVE / ENDED / RESULT_PROCESSING → 409): graded practice feedback during the
+ * contest is an answer oracle.
+ */
+export function assertPracticeOpen(
+  contest: Pick<ContestRecord, "status" | "regOpen" | "regClose" | "startAt" | "endAt">,
+  now: Date = new Date(),
+): void {
+  const state = resolveContestState(toWindow(contest), now);
+  if (state === "LIVE" || state === "ENDED" || state === "RESULT_PROCESSING") {
+    throw practiceError(409, "Practice is closed while the contest is running.");
+  }
+}
+
+/**
+ * Bank ids on ANY contest paper whose results are not yet out (scheduled —
+ * upcoming, live or awaiting the pipeline — or result_processing). These must
+ * never be graded through practice. Cheap: contest_questions is small.
+ */
+const UNRELEASED_PAPER_SQL = `
+  SELECT DISTINCT cq.question_id
+    FROM contest.contest_questions cq
+    JOIN contest.contests c ON c.id = cq.contest_id
+   WHERE c.status IN ('scheduled', 'result_processing')`;
+
+export async function unreleasedPaperQuestionIds(): Promise<string[]> {
+  await ensureContestSchema();
+  const res = await pool().query<{ question_id: string }>(UNRELEASED_PAPER_SQL);
+  return res.rows.map((r) => r.question_id);
+}
+
+export async function isOnUnreleasedPaper(questionId: string): Promise<boolean> {
+  await ensureContestSchema();
+  const res = await pool().query(
+    `SELECT 1 FROM (${UNRELEASED_PAPER_SQL}) p WHERE p.question_id = $1 LIMIT 1`,
+    [questionId],
+  );
+  return (res.rowCount ?? 0) > 0;
+}
+
+/**
+ * Resolve a question ONLY through the practice-set filter, so an id outside the
+ * set (a hidden contest import, another subject, a non-MCQ) is a 404 — never a
+ * graded answer key.
+ */
+async function loadPracticeQuestion(contest: ContestRecord, questionId: string): Promise<StoredQuestion | null> {
+  const page = await listOgcodeCatalogQuestionPage({
+    ...practiceFilter(contest),
+    includeIds: [questionId],
+    limit: 1,
+    offset: 0,
+  });
+  return page.items[0] ?? null;
 }
 
 /** A practice question as the student sees it — no answer key. */
@@ -63,20 +148,15 @@ export async function getPracticeQuestions(
   await requireRegistered(contestId, userId);
   const contest = await getContest(contestId);
   if (!contest) throw practiceError(404, "Contest not found.");
+  assertPracticeOpen(contest);
 
-  // Scope to the contest's subjects (optionally one) and their admin-chosen
-  // chapters (topics). An empty topics list for a subject = the whole subject.
-  const subjects = opts.subject ? [opts.subject] : contest.subjects;
-  if (subjects.length === 0) return { items: [], total: 0 };
-  const chapters = subjects.flatMap((s) => contest.topics?.[s] ?? []);
+  const filter = practiceFilter(contest, opts.subject);
+  if (filter.subjects.length === 0) return { items: [], total: 0 };
 
   const page = await listOgcodeCatalogQuestionPage({
-    subjects,
-    chapters: chapters.length ? chapters : null,
-    // Practice renders single-select MCQ only — match the contest paper.
-    type: "mcq",
-    // Suggest OGCode questions AND practice-eligible admin-imported questions.
-    contestPracticePool: true,
+    ...filter,
+    // Never suggest a question that sits on a not-yet-released contest paper.
+    excludeIds: await unreleasedPaperQuestionIds(),
     limit: Math.min(50, Math.max(1, opts.limit ?? 20)),
     offset: Math.max(0, opts.offset ?? 0),
   });
@@ -116,7 +196,9 @@ export interface PracticeAttemptResult {
 /**
  * Record a graded practice attempt and return the per-question feedback
  * (correct/wrong + the right option + explanation) plus the updated metrics.
- * Grades the MCQ server-side (authoritative). Requires registration.
+ * Grades the MCQ server-side (authoritative). Requires registration; closed
+ * while the contest runs (409); refuses paper questions (403); resolves the
+ * question only through the practice-set filter (404 outside it).
  */
 export async function recordPracticeAttempt(
   contestId: string,
@@ -127,7 +209,13 @@ export async function recordPracticeAttempt(
   await requireRegistered(contestId, userId);
   const contest = await getContest(contestId);
   if (!contest) throw practiceError(404, "Contest not found.");
-  const question = await getOgcodeCatalogQuestionById(questionId);
+  assertPracticeOpen(contest);
+  // A paper question must never be graded here (that returned the live paper's
+  // answer key to any registrant — bug-fix C1).
+  if (await isOnUnreleasedPaper(questionId)) {
+    throw practiceError(403, "This question is part of a contest paper.");
+  }
+  const question = await loadPracticeQuestion(contest, questionId);
   if (!question) throw practiceError(404, "Question not found.");
 
   const isCorrect = gradeMcq(question, selectedOption);

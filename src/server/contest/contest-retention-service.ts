@@ -28,6 +28,7 @@
 import { getUserPostgresPool } from "@/server/user-postgres";
 
 import { ensureContestSchema } from "./contest-schema";
+import { invalidateContestWindow } from "./contest-window-cache";
 
 function pool() {
   const p = getUserPostgresPool();
@@ -126,6 +127,7 @@ export async function archiveOldContests(limit = 20): Promise<{ archived: string
       `UPDATE contest.contests SET status = 'archived', archived_at = NOW(), updated_at = NOW() WHERE id = $1`,
       [id],
     );
+    await invalidateContestWindow(id);
     archived.push(id);
   }
   return { archived, skipped };

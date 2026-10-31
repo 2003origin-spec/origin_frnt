@@ -11,6 +11,7 @@ import { getOriginAiAnalyticsSnapshot, type OriginAiAnalyticsSnapshot } from "@/
 import { awardPoints } from "@/server/gamification";
 import {
   createId,
+  type ScopedWritePlan,
   type AppStore,
   type StoredChatMessage,
   type StoredOriginAiProfileMemory,
@@ -21,12 +22,10 @@ import {
 } from "@/server/store";
 import {
   createOriginAiLiveBootstrap,
-  generateOriginAiProviderReply,
   normalizeVoiceTranscriptForChat,
   synthesizeOriginAiVoiceAudioSegments,
   transcribeOriginAiVoiceAudio,
   type OriginAiLiveBootstrapResponse,
-  type OriginAiProviderRequest,
   type OriginAiVoiceSynthesisResponse,
 } from "@/server/origin-ai-provider";
 import { solveWithKnowledgeBase } from "@/server/ai-solver-kb";
@@ -524,7 +523,7 @@ export function deleteThread(store: AppStore, userId: string, threadId: string):
   return store.originAiSessions.length !== originalLength;
 }
 
-function buildReminders(
+export function buildReminders(
   store: AppStore,
   user: StoredUser,
   latestResult: StoredTestResult | null,
@@ -536,7 +535,7 @@ function buildReminders(
   const pendingDpps = store.dpps.filter((entry) => entry.userId === user.id && !entry.completed);
   for (const dpp of pendingDpps.slice(0, 3)) {
     reminders.push({
-      id: `reminder_dpp_${dpp.id}`,
+      id: `reminder_dpp_${user.id}_${dpp.id}`,
       userId: user.id,
       kind: "dpp",
       title: `Finish ${dpp.title}`,
@@ -550,7 +549,7 @@ function buildReminders(
   if (pendingDpps.length === 0 && analyticsSnapshot?.pendingDppCount) {
     for (const topic of analyticsSnapshot.pendingDppFocusTopics.slice(0, 3)) {
       reminders.push({
-        id: `reminder_dpp_focus_${topic.replace(/\s+/g, "_").toLowerCase()}`,
+        id: `reminder_dpp_focus_${user.id}_${topic.replace(/\s+/g, "_").toLowerCase()}`,
         userId: user.id,
         kind: "dpp",
         title: `Practice ${topic}`,
@@ -568,7 +567,7 @@ function buildReminders(
       : (latestResult?.weakAreas ?? []);
   for (const weak of revisionTopics.slice(0, 3)) {
       reminders.push({
-        id: `reminder_revision_${weak.topic.replace(/\s+/g, "_").toLowerCase()}`,
+        id: `reminder_revision_${user.id}_${weak.topic.replace(/\s+/g, "_").toLowerCase()}`,
         userId: user.id,
         kind: "revision",
         title: `Revise ${weak.topic}`,
@@ -582,7 +581,7 @@ function buildReminders(
   const pendingAssignments = store.assignments.filter((entry) => entry.userId === user.id && !entry.completed);
   for (const assignment of pendingAssignments.slice(0, 2)) {
     reminders.push({
-      id: `reminder_assignment_${assignment.id}`,
+      id: `reminder_assignment_${user.id}_${assignment.id}`,
       userId: user.id,
       kind: "assignment",
       title: `Assignment pending: ${assignment.title}`,
@@ -665,6 +664,26 @@ interface OriginAiRuntimeState {
   memoryPayload: OriginAiMemoryPayload;
   reminders: StoredOriginAiReminder[];
   session: StoredOriginAiSession;
+}
+
+/**
+ * Names, on a scoped write plan, exactly what prepareOriginAiRuntime (and the
+ * handlers built on it) mutate for the acting user — keep in lockstep with it:
+ * - originAiProfiles: getOrCreateProfileMemory + syncProfileMemory / pinned facts
+ * - originAiSessions: getOrCreateMentorSession (page context, welcome turn, messages)
+ * - originAiReminders: the user's reminder set is rebuilt wholesale (ids differ
+ *   over time), so it is cleared `WHERE user_id = $1` and re-upserted
+ * - userScores + pointLogs when the call can award Ori check-in points
+ *   (maybeAwardOriginAiPoints, i.e. a message / voice turn was committed).
+ */
+export function planOriginAiRuntimeWrite(
+  plan: ScopedWritePlan,
+  userId: string,
+  options: { awardsPoints?: boolean } = {},
+): ScopedWritePlan {
+  plan.forUser(userId).touch("originAiProfiles", "originAiSessions").replaceAll("originAiReminders");
+  if (options.awardsPoints) plan.touch("userScores", "pointLogs");
+  return plan;
 }
 
 async function prepareOriginAiRuntime(
@@ -1489,7 +1508,13 @@ function maybeUpdatePinnedFacts(memory: StoredOriginAiProfileMemory, userMessage
   }
 }
 
-async function generateAssistantReply(
+/**
+ * In-app fallback reply for when the Ori microservice is not configured or is
+ * unreachable (connection-level failure in the proxy). There is no text model
+ * on this path: guardrails, the OGCode index router, the local KB, then the
+ * local context mentor. Nothing here is a generation, so nothing is billed.
+ */
+async function generateLocalFallbackReply(
   user: StoredUser,
   session: StoredOriginAiSession,
   memory: OriginAiMemoryPayload,
@@ -1497,7 +1522,6 @@ async function generateAssistantReply(
   pageContext: OriginAiResolvedPageContext,
   pagePolicy: OriginAiPolicy,
   userMessage: string,
-  transport: "text_chat" | "voice_mode" = "text_chat",
 ): Promise<{ content: string; provider: string; model: string; metadata: Record<string, unknown> }> {
   if (pagePolicy.mode === "answer_blocked") {
     return {
@@ -1532,9 +1556,8 @@ async function generateAssistantReply(
   // Doubt Solver named threads are subject-scoped academic Q&A — route through
   // the local KB first. This is the brain that actually answers "explain
   // Carnot Cycle", and it doesn't burn LLM tokens. Falls through to the
-  // provider/local-mentor when the KB isn't confident (kbResolved === false),
-  // so non-academic questions like "what are my weaknesses" still get a real
-  // mentor reply instead of the KB clarifier ("I need exact subject + concept…").
+  // KB clarifier, then the local mentor, when the KB isn't confident
+  // (kbResolved === false).
   if (session.threadId && pageContext.pageKind === "doubt_solver") {
     try {
       const kbReply = solveWithKnowledgeBase({
@@ -1563,34 +1586,13 @@ async function generateAssistantReply(
         kbFallbackReply = kbReply;
       }
     } catch (err) {
-      console.error("[origin-ai] KB lookup failed, falling through to provider", err);
+      console.error("[origin-ai] KB lookup failed, falling through to local mentor", err);
     }
   }
 
-  const history = session.messages.slice(-10).map((message) => ({
-    role: message.role,
-    content: message.content,
-  }));
-
-  const providerRequest: OriginAiProviderRequest = {
-    requestId: createId("origin_ai_req"),
-    systemInstruction: buildSystemInstruction(user, memory, reminders, pageContext, pagePolicy, {
-      transport,
-    }),
-    conversation: [...history, { role: "user", content: userMessage }],
-    maxOutputTokens: transport === "voice_mode" ? 1100 : 700,
-  };
-
-  const providerReply = await generateOriginAiProviderReply(providerRequest);
-  if (providerReply?.content.trim()) {
-    return {
-      content: providerReply.content.trim(),
-      provider: providerReply.provider,
-      model: providerReply.model,
-      metadata: providerReply.metadata ?? {},
-    };
-  }
-
+  // No text provider here: the old `/v1/origin-ai/respond` client pointed at
+  // a path the Python service never exposed, so it always 404'd. "No service"
+  // is explicitly the KB clarifier, then the local context mentor.
   if (kbFallbackReply?.content.trim()) {
     return {
       content: kbFallbackReply.content.trim(),
@@ -1997,7 +1999,7 @@ export async function sendOriginAiMessage(
   };
   runtime.session.messages.push(userMessage);
 
-  const assistantTurn = await generateAssistantReply(
+  const assistantTurn = await generateLocalFallbackReply(
     user,
     runtime.session,
     runtime.memoryPayload,
@@ -2005,7 +2007,6 @@ export async function sendOriginAiMessage(
     runtime.pageContext,
     runtime.pagePolicy,
     trimmed,
-    options?.transport ?? "text_chat",
   );
 
   const aiMessage: StoredChatMessage = {

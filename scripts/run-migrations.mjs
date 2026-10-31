@@ -138,6 +138,27 @@ const MIGRATIONS = [
   { file: "20260823_contest_share_links.sql", target: "user" },
   // Recurring contest schedules (auto-scheduling).
   { file: "20260823_contest_schedules.sql", target: "user" },
+  // Partial index on CONFIRMED contest registrations (status = 'registered'):
+  // the attempt-start JOIN, the paper gate, reminders and analytics all filter
+  // on it so a waitlisted row never starts a rated attempt or reads the paper.
+  { file: "20261021_contest_registrations_confirmed_idx.sql", target: "user" },
+  // Bug-fix P2: `overrun` flag on pricing.coupon_redemptions for a late capture
+  // that re-commits a lapsed hold past the cap. Additive, to_regclass-guarded.
+  // Spec: V1/docs/bug-fixes/05-payments-entitlements.md §P2.
+  { file: "20261021_coupon_redemption_overrun.sql", target: "user" },
+  // Bug-fix P5: partial index behind the one-open-order-per-enrolment checkout
+  // reuse and the duplicate-capture lookup. Additive, IF NOT EXISTS. §P5.
+  { file: "20261021_payments_open_institute_orders.sql", target: "user" },
+  // Contest bookmarks + admin import workspaces (were runtime-ensure only).
+  { file: "20261022_contest_bookmarks_import_workspaces.sql", target: "user" },
+  // Refund intents: initiateRefund records one row per payment before the
+  // Razorpay call instead of holding a lock across it. Additive new table.
+  { file: "20261022_payments_refund_intents.sql", target: "user" },
+  // Once-per-reference point awards (bug-fixes G6 + N4): app.point_awards
+  // claim table, FK to origin_users, so the USER database. Additive and
+  // idempotent; ensurePointAwardsSchema() mirrors it at runtime. After the
+  // first prod apply, run scripts/backfill-point-awards.ts (dry-run first).
+  { file: "20261022_point_awards.sql", target: "user" },
 ];
 
 const TARGET_ENV = {

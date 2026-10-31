@@ -75,3 +75,46 @@ export function safePercentage(score: number, totalMarks: number): number | null
   if (!Number.isFinite(score) || !Number.isFinite(totalMarks) || totalMarks <= 0) return null;
   return Math.round((score / totalMarks) * 10000) / 100;
 }
+
+/**
+ * Platform points (AIR, Hall of Fame, championship) are NOT the teacher's marks.
+ *
+ * A teacher-shared DPP scores at whatever marks the teacher typed, and those
+ * used to be paid out 1:1 as platform points — so a self-registered teacher
+ * could set `marks: 1e9` on one question, share it to a batch holding their own
+ * alt account, and top every leaderboard (every new share is a new award key).
+ *
+ * The platform pays a teacher DPP on the same scale as the DPP it would have
+ * generated itself: an auto DPP is 10 questions at the flat +4 default, so it
+ * can pay at most 40 points. A teacher DPP pays that same ceiling scaled by the
+ * student's percentage on the teacher's paper. The teacher's own weighting
+ * still decides the DPP's score, percentage and the teacher's practice board;
+ * it just cannot mint platform points beyond what a full-marks auto DPP earns.
+ */
+export const TEACHER_DPP_POINTS_CAP = 10 * DEFAULT_TEST_SCORING_POLICY.correctMarks;
+
+export function teacherDppPlatformPoints(score: number, totalMarks: number): number {
+  return scaledPlatformPoints(score, totalMarks, TEACHER_DPP_POINTS_CAP);
+}
+
+/**
+ * Same rule for a teacher-ASSIGNED test (batch assignment or teacher room).
+ *
+ * Its score is graded on the teacher's own `questionMarking`, so paying
+ * `analytics.score` 1:1 — as a platform-authored test does — let a 50-question
+ * paper at 100 marks each mint 5 000 points per new test (25× the +4 default),
+ * every new test being a new award key. A platform test of the same length can
+ * pay at most `questionCount × correctMarks`; a teacher test pays that same
+ * ceiling scaled by the student's percentage on the teacher's paper. Platform-
+ * authored tests are unchanged.
+ */
+export function teacherTestPlatformPoints(score: number, totalMarks: number, questionCount: number): number {
+  const count = Number.isFinite(questionCount) ? Math.max(0, Math.floor(questionCount)) : 0;
+  return scaledPlatformPoints(score, totalMarks, count * DEFAULT_TEST_SCORING_POLICY.correctMarks);
+}
+
+function scaledPlatformPoints(score: number, totalMarks: number, cap: number): number {
+  const percentage = safePercentage(score, totalMarks);
+  if (percentage === null || percentage <= 0 || !(cap > 0)) return 0;
+  return Math.round((Math.min(100, percentage) / 100) * cap);
+}

@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { z } from "zod";
 
 import { parseJsonBody } from "@/server/http";
-import { requireFeatureEnabled } from "@/lib/feature-flags";
+import { requireFeatureEnabledRuntime } from "@/server/feature-flags-runtime";
 import { requireWorkspaceMember } from "@/server/workspaces/authz";
 import {
   archiveMaterial,
@@ -55,7 +55,7 @@ export async function GET(
   context: WorkspaceIdRouteContext & { params: Promise<{ workspaceId: string; materialId: string }> },
 ) {
   try {
-    requireFeatureEnabled("studyMaterials");
+    await requireFeatureEnabledRuntime("studyMaterials");
     const { workspaceId, materialId } = await context.params;
     await requireWorkspaceMember(request, workspaceId);
     const material = await getMaterialWithAssets(workspaceId, materialId);
@@ -73,7 +73,7 @@ export async function PATCH(
   context: WorkspaceIdRouteContext & { params: Promise<{ workspaceId: string; materialId: string }> },
 ) {
   try {
-    requireFeatureEnabled("studyMaterials");
+    await requireFeatureEnabledRuntime("studyMaterials");
     const { workspaceId, materialId } = await context.params;
     const ctx = await requireWorkspaceMember(request, workspaceId, [
       "owner",
@@ -101,7 +101,7 @@ export async function DELETE(
   context: WorkspaceIdRouteContext & { params: Promise<{ workspaceId: string; materialId: string }> },
 ) {
   try {
-    requireFeatureEnabled("studyMaterials");
+    await requireFeatureEnabledRuntime("studyMaterials");
     const { workspaceId, materialId } = await context.params;
     const ctx = await requireWorkspaceMember(request, workspaceId, ["owner", "admin", "teacher"]);
     const deleted = await removeMaterial({
@@ -126,7 +126,7 @@ export async function POST(
   context: WorkspaceIdRouteContext & { params: Promise<{ workspaceId: string; materialId: string }> },
 ) {
   try {
-    requireFeatureEnabled("studyMaterials");
+    await requireFeatureEnabledRuntime("studyMaterials");
     const { workspaceId, materialId } = await context.params;
     const ctx = await requireWorkspaceMember(request, workspaceId, [
       "owner",

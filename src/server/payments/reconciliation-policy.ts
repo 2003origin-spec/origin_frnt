@@ -48,6 +48,24 @@ export function failedMandateDunningDays(updatedAt: Date | string, now = new Dat
   return days === 0 || days === 3 ? days as 0 | 3 : null;
 }
 
+/**
+ * WHERE-clause for the stale coupon-hold sweep (bug-fix P2). `$1` is `now`.
+ *
+ * An order-backed hold lives exactly as long as its order: it is released only
+ * once the order is terminal (`failed`/`expired`), never on the hold's own
+ * `expires_at`, because a Razorpay order stays payable after our 30-minute
+ * TTL and a late capture must still find its hold. The reconcile `expire`
+ * action is therefore the single TTL for order holds. Subscription/legacy
+ * holds (no order) keep the `expires_at` sweep; a hold whose order row has
+ * vanished is released 30 minutes after it was taken.
+ */
+export const STALE_COUPON_HOLD_WHERE_SQL = `r.state = 'reserved'
+        AND (
+          (r.order_id IS NULL AND r.expires_at <= $1)
+          OR o.status IN ('failed', 'expired')
+          OR (o.id IS NULL AND r.order_id IS NOT NULL AND r.redeemed_at <= $1 - INTERVAL '30 minutes')
+        )`;
+
 export function deterministicDunningOutboxId(input: {
   kind: "expiry_warning" | "mandate_failed";
   sourceId: string;

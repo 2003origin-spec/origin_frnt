@@ -171,23 +171,36 @@ export type InsertTeacherCodeGrantInput = {
 };
 
 /**
- * Inserts an active `teacher_code` grant. Idempotent: if an active grant for the
- * (user, subject, workspace) tuple already exists, it is returned unchanged
- * (matching the uq_subject_grants_active_workspace partial-unique index).
+ * Inserts an active `teacher_code` grant, at most ONE per (user, workspace).
+ *
+ * Race-safe: the insert is `ON CONFLICT DO NOTHING` against the partial unique
+ * indexes (uq_subject_grants_one_teacher_code = one active teacher_code grant
+ * per institute; uq_subject_grants_active_workspace = per subject). When it
+ * loses — a grant already exists, or a parallel request inserted first — the
+ * winning row is re-read and returned with `created: false`.
+ *
+ * NOTE the returned grant may be for a DIFFERENT subject than requested (the
+ * student already picked one for this institute). Callers must compare
+ * `grant.subject` and refuse; see grantConnectSubject. `grant` is null only when
+ * the conflicting row vanished between the insert and the re-read (it was
+ * revoked concurrently) — treat that as a retryable conflict.
  */
+export type InsertTeacherCodeGrantResult =
+  | { grant: SubjectGrant; created: true }
+  | { grant: SubjectGrant | null; created: false };
+
 export async function insertTeacherCodeGrant(
   input: InsertTeacherCodeGrantInput,
-): Promise<{ grant: SubjectGrant; created: boolean }> {
+): Promise<InsertTeacherCodeGrantResult> {
   await ensureSubjectGrantsSchema();
   const runner = input.client ?? pool();
-  const existing = await getActiveTeacherCodeGrant(input.userId, input.subject, input.workspaceId);
-  if (existing) return { grant: existing, created: false };
 
   const id = createSubjectGrantId();
   const res = await runner.query(
     `INSERT INTO entitlements.subject_grants
        (id, user_id, subject, source, workspace_id, enrollment_id, status, expires_at, granted_by)
      VALUES ($1, $2, $3, 'teacher_code', $4, $5, 'active', $6, $7)
+     ON CONFLICT DO NOTHING
      RETURNING *`,
     [
       id,
@@ -199,7 +212,19 @@ export async function insertTeacherCodeGrant(
       input.grantedBy ?? null,
     ],
   );
-  return { grant: rowToGrant(res.rows[0]), created: true };
+  if (res.rows[0]) return { grant: rowToGrant(res.rows[0]), created: true };
+
+  // Lost the insert. Prefer the exact (subject) match so a same-subject re-pick
+  // stays idempotent even on a database that predates the one-per-institute
+  // index; otherwise return the institute's existing pick.
+  const reread = await runner.query(
+    `SELECT * FROM entitlements.subject_grants
+      WHERE user_id = $1 AND workspace_id = $2 AND source = 'teacher_code' AND status = 'active'
+      ORDER BY (subject = $3) DESC, created_at ASC
+      LIMIT 1`,
+    [input.userId, input.workspaceId, input.subject],
+  );
+  return { grant: reread.rows[0] ? rowToGrant(reread.rows[0]) : null, created: false };
 }
 
 /**
@@ -220,6 +245,52 @@ export async function revokeTeacherCodeGrant(input: {
     [input.userId, input.subject, input.workspaceId],
   );
   return res.rows[0] ? rowToGrant(res.rows[0]) : null;
+}
+
+/**
+ * Revokes EVERY active `teacher_code` grant a student holds at one institute —
+ * the bulk counterpart of revokeTeacherCodeGrant, for when the reason for the
+ * free subject goes away (the enrollment is left/suspended). Returns the rows
+ * revoked (empty when there were none). Caller recomputes the premium mirror.
+ */
+export async function revokeTeacherCodeGrantsForEnrollment(input: {
+  userId: string;
+  workspaceId: string;
+}): Promise<SubjectGrant[]> {
+  await ensureSubjectGrantsSchema();
+  const res = await pool().query(
+    `UPDATE entitlements.subject_grants
+        SET status = 'revoked', updated_at = NOW()
+      WHERE user_id = $1 AND workspace_id = $2
+        AND source = 'teacher_code' AND status = 'active'
+      RETURNING *`,
+    [input.userId, input.workspaceId],
+  );
+  return res.rows.map(rowToGrant);
+}
+
+/**
+ * Revokes every active `teacher_code` grant issued through these institutes —
+ * for when the institute itself stops being a partner (collaboration
+ * terminated, workspace suspended/closed). Set-based: one UPDATE, never a
+ * per-student loop. Only `teacher_code` rows: paid_order / admin_comp grants
+ * and Razorpay subscriptions are never touched. Caller recomputes the mirror.
+ */
+export async function revokeTeacherCodeGrantsForWorkspaces(
+  workspaceIds: string[],
+): Promise<Array<{ userId: string; workspaceId: string }>> {
+  await ensureSubjectGrantsSchema();
+  const ids = distinct(workspaceIds);
+  if (ids.length === 0) return [];
+  const res = await pool().query<{ user_id: string; workspace_id: string }>(
+    `UPDATE entitlements.subject_grants
+        SET status = 'revoked', updated_at = NOW()
+      WHERE workspace_id = ANY($1::text[])
+        AND source = 'teacher_code' AND status = 'active'
+      RETURNING user_id, workspace_id`,
+    [ids],
+  );
+  return res.rows.map((r) => ({ userId: r.user_id, workspaceId: r.workspace_id }));
 }
 
 /**

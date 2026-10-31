@@ -1,26 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
 
-export type ServerAnchoredTimerSource = {
-  startedAt: string;
-  durationSeconds: number;
-  skewMs?: number;
-};
+import { computeRemainingSeconds, type ServerAnchoredTimerSource } from "@/lib/server-clock";
 
-function computeRemainingSeconds(source: ServerAnchoredTimerSource): number {
-  const startedAtMs = new Date(source.startedAt).getTime();
-  const correctedNowMs = Date.now() - (source.skewMs ?? 0);
-  const remainingMs = source.durationSeconds * 1000 - (correctedNowMs - startedAtMs);
-  return Math.max(0, Math.ceil(remainingMs / 1000));
-}
+export type { ServerAnchoredTimerSource };
+
+const remainingNow = (source: ServerAnchoredTimerSource) => computeRemainingSeconds(source, Date.now());
 
 export function useServerAnchoredTimer(source: ServerAnchoredTimerSource | undefined, active: boolean) {
-  const initial = useMemo(() => (source ? computeRemainingSeconds(source) : 0), [source]);
+  const initial = useMemo(() => (source ? remainingNow(source) : 0), [source]);
   const [remainingSeconds, setRemainingSeconds] = useState(initial);
 
   useEffect(() => {
     if (!source || !active) return;
     const interval = window.setInterval(() => {
-      setRemainingSeconds(computeRemainingSeconds(source));
+      setRemainingSeconds(remainingNow(source));
     }, 250);
     return () => window.clearInterval(interval);
   }, [active, source]);

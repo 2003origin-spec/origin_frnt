@@ -28,6 +28,10 @@ type LeaderboardRow = {
   violationCount?: number;
   /** Per-subject marks, keyed by canonical subject. Empty until graded. */
   sectionScores?: Record<string, { label: string; score: number; maxScore: number }>;
+  /** 'pending' = submitted, score still being worked out; 'failed' = needs a retry. */
+  gradingStatus?: "pending" | "done" | "failed";
+  /** 'failed', or 'pending' for over a minute: the Retry action is offered. */
+  gradingRetryable?: boolean;
 };
 
 type LeaderboardSection = { key: string; label: string; maxScore: number };
@@ -134,6 +138,26 @@ export function CbtLiveRoomDashboard({
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { detail?: string };
         setActionError(data.detail ?? `Could not submit (${res.status}).`);
+        return;
+      }
+      setRefreshTick((t) => t + 1);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Re-run grading for an attempt that failed, or has been stuck grading for over a minute. */
+  async function retryGrading(row: LeaderboardRow) {
+    setActionError(null);
+    setBusy(true);
+    try {
+      const res = await mutateJson(`/api/cbt/rooms/${roomId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ action: "retry_grading", participantId: row.participantId }),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { detail?: string };
+        setActionError(data.detail ?? `Could not retry grading (${res.status}).`);
         return;
       }
       setRefreshTick((t) => t + 1);
@@ -314,7 +338,41 @@ export function CbtLiveRoomDashboard({
                   </td>
                   {showScores ? (
                     <td className="px-3 py-2 text-right tabular-nums">
-                      {r.score != null ? `${r.score}/${r.maxScore ?? board?.maxScore ?? "—"}` : "—"}
+                      {r.score != null ? (
+                        `${r.score}/${r.maxScore ?? board?.maxScore ?? "—"}`
+                      ) : r.gradingStatus === "failed" ? (
+                        <span className="inline-flex items-center gap-1 text-destructive">
+                          Grading failed
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={busy}
+                            onClick={() => void retryGrading(r)}
+                            title="Grade this submission again from the answers saved on the server"
+                          >
+                            Retry
+                          </Button>
+                        </span>
+                      ) : r.gradingStatus === "pending" && r.finishedAt && r.gradingRetryable ? (
+                        <span className="inline-flex items-center gap-1 text-muted-foreground">
+                          Still grading
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={busy}
+                            onClick={() => void retryGrading(r)}
+                            title="Grading has taken over a minute. Grade this submission again from the answers saved on the server"
+                          >
+                            Retry
+                          </Button>
+                        </span>
+                      ) : r.gradingStatus === "pending" && r.finishedAt ? (
+                        <span className="text-muted-foreground" title="Submitted; the score is still being calculated">
+                          Grading…
+                        </span>
+                      ) : (
+                        "—"
+                      )}
                     </td>
                   ) : null}
                   {showScores

@@ -35,6 +35,7 @@ import { isLivemode } from "@/server/payments/razorpay-client";
 
 import { assertActiveCollaborator } from "./collaboration-service";
 import { enqueueConnectJob } from "./connect-jobs";
+import { revokeConnectGrantsForEnrollment } from "./grant-revocation";
 import {
   applyEnrollmentSubscriptionTransition,
   createEnrollmentSubscription,
@@ -124,7 +125,7 @@ export async function createConnectCheckout(input: {
   if (!offering) throw new AuthzError(404, "Offering not found.");
 
   // Guard chain (closes the Phase-12 batch gap; also back-ported into markOrderPaidService).
-  await assertActiveCollaborator(input.workspaceId);
+  await assertActiveCollaborator(input.workspaceId, "flow2");
   if (offering.status !== "active") {
     throw new AuthzError(400, `Offering is ${offering.status}; not available for enrollment.`);
   }
@@ -258,7 +259,7 @@ export async function intakeConnectWebhook(
   const isNew = await recordConnectWebhookEvent(eventId, eventType);
   if (!isNew) {
     if (mirrored.isNew) {
-      await settleSubscriptionEvent(eventId, "ignored", {
+      await settleSubscriptionEvent(eventId, "ignored", { mirrorIsNew: mirrored.isNew,
         error: "Duplicate of an event already processed by the connect ledger.",
       });
     }
@@ -269,7 +270,7 @@ export async function intakeConnectWebhook(
     const status = eventType ? statusForEvent(eventType) : null;
     const razorpaySubscriptionId = parsed.razorpaySubscriptionId;
     if (!eventType || !status || !razorpaySubscriptionId) {
-      await settleSubscriptionEvent(eventId, "ignored");
+      await settleSubscriptionEvent(eventId, "ignored", { mirrorIsNew: mirrored.isNew });
       return { processed: true, enqueued: false };
     }
 
@@ -294,12 +295,12 @@ export async function intakeConnectWebhook(
     // The connect job queue owns the retry from here (it has its own attempt
     // cap and backoff), so the mirrored event is terminal rather than pending —
     // the Rail-A events drain must never claim a subscription event.
-    await settleSubscriptionEvent(eventId, "processed");
+    await settleSubscriptionEvent(eventId, "processed", { mirrorIsNew: mirrored.isNew });
     return { processed: true, enqueued: true };
   } catch (error) {
     // Roll back the ledger row so Razorpay's retry reprocesses instead of skipping.
     await deleteConnectWebhookEvent(eventId).catch(() => undefined);
-    await settleSubscriptionEvent(eventId, "failed", {
+    await settleSubscriptionEvent(eventId, "failed", { mirrorIsNew: mirrored.isNew,
       error: error instanceof Error ? error.message : String(error),
       retryInSeconds: 60,
     });
@@ -422,6 +423,14 @@ export async function reconcileEnrollmentSubscriptions(): Promise<{ tornDown: nu
       });
     }
     await setEnrollmentStatus(sub.workspaceId, sub.studentId, "suspended");
+    // A suspended student also loses any free Flow-1 subject from this
+    // institute (before the sub is marked expired, so a failure is retried).
+    await revokeConnectGrantsForEnrollment({
+      studentId: sub.studentId,
+      workspaceId: sub.workspaceId,
+      actorUserId: null,
+      reason: "subscription_lapsed",
+    });
     await markEnrollmentSubscriptionExpired(sub.id);
     // Subject entitlements (if any add-on lapsed) are mirrored separately.
     await recomputeUserPremiumFlags(sub.studentId);

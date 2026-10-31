@@ -9,9 +9,12 @@ import {
   isHandoffPurpose,
   issueHandoffToken,
   type HandoffPurpose,
+  type HandoffRecord,
 } from "@/server/mobile/handoff";
 import { registerDeviceToken, revokeDeviceToken } from "@/server/push/device-tokens";
-import { createAuthSessionAsync } from "@/server/auth";
+import { createAuthSessionAsync, revokeRefreshSession } from "@/server/auth";
+import { isAccountBlockedError } from "@/server/auth-errors";
+import { authzErrorResponse, requireAuth } from "@/server/authz";
 import {
   ACCESS_COOKIE_NAME,
   ACCESS_FINGERPRINT_COOKIE_NAME,
@@ -25,7 +28,7 @@ import {
 } from "@/server/auth-cookies";
 import { dbCreateAuthSession, dbFindUserById } from "@/server/db-users";
 import { isUserPostgresConfigured } from "@/server/user-postgres";
-import { withStoreAsync } from "@/server/store";
+import { withStoreAsyncScoped } from "@/server/store";
 import { getCanonicalSiteUrl } from "@/lib/site-url";
 import { authLimiter, checkRateLimit, mutationLimiter } from "@/lib/rate-limit";
 import { parseAppVersionFromUserAgent } from "@/native/is-native-app";
@@ -46,7 +49,8 @@ import { parseAppVersionFromUserAgent } from "@/native/is-native-app";
  *
  *   GET    /api/mobile/config            → shell governance config (public)
  *   POST   /api/mobile/link-out          → issue one-time browser handoff URL
- *   GET    /api/mobile/link-out/consume  → bootstrap browser session (public)
+ *   GET    /api/mobile/link-out/consume  → 303 to /auth/handoff confirm page (public, no cookies)
+ *   POST   /api/mobile/link-out/consume  → same-origin confirm: consume token, set session (public)
  *   POST   /api/mobile/push-tokens       → register FCM device token
  *   DELETE /api/mobile/push-tokens       → revoke FCM device token
  */
@@ -74,8 +78,16 @@ function handleConfig(): NextResponse {
 }
 
 async function handleLinkOutIssue(request: NextRequest): Promise<Response> {
-  const userId = requesterUserId(request);
-  if (!userId) return unauthorized();
+  // Re-verify the JWT here rather than trusting the middleware header alone:
+  // the handoff must carry the token version it was issued under, so the
+  // consumer can refuse to mint a browser session for a since-revoked user.
+  let auth: Awaited<ReturnType<typeof requireAuth>>;
+  try {
+    auth = await requireAuth(request);
+  } catch (error) {
+    return authzErrorResponse(error);
+  }
+  const userId = auth.userId;
 
   const limited = await checkRateLimit(mutationLimiter, `linkout:${userId}`);
   if (limited) return limited;
@@ -91,7 +103,7 @@ async function handleLinkOutIssue(request: NextRequest): Promise<Response> {
   const purpose: HandoffPurpose = rawPurpose;
 
   try {
-    const token = await issueHandoffToken(userId, purpose);
+    const token = await issueHandoffToken(userId, purpose, auth.tokenVersion);
     const url = new URL("/api/mobile/link-out/consume", getCanonicalSiteUrl());
     url.searchParams.set("token", token);
     return ok({ url: url.toString(), expiresInSeconds: 60 });
@@ -123,39 +135,116 @@ function toSessionTokens(session: {
  * one. The consuming request's User-Agent is the browser's anyway; pinning the
  * value here keeps that from being an accident of UA sniffing.
  */
-async function createSessionForUser(userId: string): Promise<AuthSessionTokens | null> {
+async function createSessionForUser(record: HandoffRecord): Promise<AuthSessionTokens | null> {
+  // The handoff token only proves "this user asked 60 s ago". Before minting a
+  // brand-new browser session, re-check the user row: a revoke/delete flips
+  // account_status and bumps auth_token_version, and either must refuse here
+  // even though the app's JWT that issued the handoff was still valid.
+  const isCurrent = (user: { accountStatus?: string; authTokenVersion?: number }) =>
+    (user.accountStatus ?? "active") === "active" &&
+    (user.authTokenVersion ?? 0) === record.tokenVersion;
+
   if (isUserPostgresConfigured()) {
-    const user = await dbFindUserById(userId);
-    if (!user) return null;
-    return toSessionTokens(await dbCreateAuthSession(user.id, "web"));
+    const user = await dbFindUserById(record.userId);
+    if (!user || !isCurrent(user)) return null;
+    try {
+      return toSessionTokens(
+        await dbCreateAuthSession(user.id, "web", { expectedTokenVersion: record.tokenVersion }),
+      );
+    } catch (error) {
+      if (isAccountBlockedError(error)) return null;
+      throw error;
+    }
   }
-  return withStoreAsync(async (store) => {
-    const user = store.users.find((entry) => entry.id === userId);
-    if (!user) return null;
+  // No user Postgres here (the branch above returns), so the session lives only
+  // in the in-memory store and there is nothing to persist.
+  return withStoreAsyncScoped(async (store) => {
+    const user = store.users.find((entry) => entry.id === record.userId);
+    if (!user || !isCurrent(user)) return null;
     return toSessionTokens(await createAuthSessionAsync(store, user.id, "web"));
-  });
+  }, null);
 }
 
-async function handleLinkOutConsume(request: NextRequest): Promise<Response> {
+function handoffExpired(request: NextRequest): NextResponse {
+  return NextResponse.redirect(new URL("/auth?handoff=expired", request.url), 303);
+}
+
+async function limitHandoff(request: NextRequest): Promise<Response | null> {
   // Public path: the one-time token IS the credential. Rate-limited under a
   // namespaced key so it never eats into the login limiter's budget.
   const ip = request.headers.get("x-forwarded-for") ?? "unknown";
-  const limited = await checkRateLimit(authLimiter, `handoff:${ip}`);
+  return checkRateLimit(authLimiter, `handoff:${ip}`);
+}
+
+/**
+ * GET never logs anyone in (spec 01-auth.md §A4 — login CSRF). Anything that
+ * can make a browser open this URL (a link, an <img>, a redirect) only lands
+ * the visitor on the /auth/handoff confirmation page; the session is minted by
+ * the explicit same-origin POST below.
+ */
+async function handleLinkOutConsume(request: NextRequest): Promise<Response> {
+  const limited = await limitHandoff(request);
   if (limited) return limited;
 
-  const expired = () => NextResponse.redirect(new URL("/auth?handoff=expired", request.url), 303);
+  const url = new URL("/auth/handoff", request.url);
+  const token = request.nextUrl.searchParams.get("token");
+  if (token) url.searchParams.set("token", token);
+  const response = NextResponse.redirect(url, 303);
+  response.headers.set("Cache-Control", "no-store");
+  response.headers.set("Referrer-Policy", "no-referrer");
+  return response;
+}
 
-  const token = request.nextUrl.searchParams.get("token") ?? "";
+/**
+ * The confirm POST is CSRF-token-exempt at the edge (the browser has no
+ * origin_csrf cookie yet), so it must prove it came from our own page:
+ * `Origin` must be this site, and `Sec-Fetch-Site` — when the browser sends
+ * it — must not be cross-site / same-site. Very old browsers without
+ * Sec-Fetch-* still send `Origin` on form POSTs.
+ */
+function isSameOriginConfirm(request: NextRequest): boolean {
+  const fetchSite = request.headers.get("sec-fetch-site");
+  if (fetchSite && fetchSite !== "same-origin" && fetchSite !== "none") return false;
+  const origin = request.headers.get("origin");
+  if (!origin) return false;
+  return origin === request.nextUrl.origin || origin === new URL(getCanonicalSiteUrl()).origin;
+}
+
+async function readFormToken(request: NextRequest): Promise<string> {
+  try {
+    const value = (await request.formData()).get("token");
+    return typeof value === "string" ? value : "";
+  } catch {
+    return "";
+  }
+}
+
+async function handleLinkOutConfirm(request: NextRequest): Promise<Response> {
+  if (!isSameOriginConfirm(request)) {
+    return NextResponse.json({ detail: "Cross-site handoff confirmation is not allowed." }, { status: 403 });
+  }
+  const limited = await limitHandoff(request);
+  if (limited) return limited;
+
+  const token = await readFormToken(request);
   const record = await consumeHandoffToken(token).catch(() => null);
-  if (!record) return expired();
+  if (!record) return handoffExpired(request);
 
   let session: AuthSessionTokens | null = null;
   try {
-    session = await createSessionForUser(record.userId);
+    session = await createSessionForUser(record);
   } catch (error) {
     console.error("[mobile] handoff session bootstrap failed", error instanceof Error ? error.message : error);
   }
-  if (!session) return expired();
+  if (!session) return handoffExpired(request);
+
+  // The cookies below replace whatever session this browser had; revoke it
+  // server-side too so a switched-out account's refresh token stops working.
+  try {
+    await revokeRefreshSession(request.cookies.get(REFRESH_COOKIE_NAME)?.value);
+  } catch (error) {
+    console.error("[mobile] handoff previous-session revoke failed", error instanceof Error ? error.message : error);
+  }
 
   const target = HANDOFF_PURPOSES[record.purpose];
   const response = NextResponse.redirect(new URL(target, request.url), 303);
@@ -214,7 +303,8 @@ async function handlePushTokenRevoke(request: NextRequest): Promise<Response> {
   if (!token) return badRequest("Missing FCM token.");
 
   try {
-    await revokeDeviceToken(token);
+    // Scoped to the caller: you can only unregister your own device token.
+    await revokeDeviceToken(token, userId);
     return ok({ revoked: true });
   } catch (error) {
     console.error("[mobile] push token revoke failed", error instanceof Error ? error.message : error);
@@ -234,6 +324,9 @@ async function dispatch(method: string, request: NextRequest, context: RouteCont
   }
   if (method === "GET" && slug.length === 2 && slug[0] === "link-out" && slug[1] === "consume") {
     return handleLinkOutConsume(request);
+  }
+  if (method === "POST" && slug.length === 2 && slug[0] === "link-out" && slug[1] === "consume") {
+    return handleLinkOutConfirm(request);
   }
   if (method === "POST" && slug.length === 1 && slug[0] === "push-tokens") {
     return handlePushTokenRegister(request);

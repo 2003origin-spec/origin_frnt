@@ -78,6 +78,17 @@ export type Transfer = {
   idempotencyKey: string;
 };
 
+/**
+ * Debits that must post even from a frozen wallet. A coin-pack refund only
+ * takes back coins Razorpay has already refunded in money; refusing it would
+ * fail the refund webhook forever (plan rule B10).
+ */
+const FROZEN_EXEMPT_KINDS: ReadonlySet<TransferKind> = new Set<TransferKind>(["pack_refund"]);
+
+export function bypassesFrozenCheck(kind: TransferKind): boolean {
+  return FROZEN_EXEMPT_KINDS.has(kind);
+}
+
 export function assertValidTransfer(t: Transfer): void {
   if (!Number.isInteger(t.amount) || t.amount <= 0) {
     throw new Error(`Transfer ${t.kind} must move a positive whole number of coins (got ${t.amount}).`);
@@ -187,18 +198,72 @@ export function sessionCapture(input: {
   return out;
 }
 
-export function sessionRelease(studentId: string, requestId: string, heldCoins: number): Transfer[] {
+/** Coins of one expiry: `expiresAt` null means permanent coins. */
+export type CoinSlice = { amount: number; expiresAt: Date | null };
+
+/**
+ * Gives held coins back to the student. When `slices` (from heldCoinSlices)
+ * are passed, each slice comes back with the expiry the hold took it from, so
+ * a cancelled session never turns expiring promo coins into permanent ones.
+ * Without slices (or past their total) the coins come back permanent.
+ */
+export function sessionRelease(
+  studentId: string,
+  requestId: string,
+  heldCoins: number,
+  options: { slices?: readonly CoinSlice[]; keySuffix?: string } = {},
+): Transfer[] {
   if (heldCoins <= 0) return [];
-  return [
-    {
-      kind: "session_release",
-      from: PLATFORM_ACCOUNTS.escrow,
-      to: userAccount(studentId),
-      amount: heldCoins,
-      requestId,
-      idempotencyKey: `release:${requestId}`,
-    },
-  ];
+  const baseKey = options.keySuffix ? `release:${requestId}:${options.keySuffix}` : `release:${requestId}`;
+  const parts = pickReleaseSlices(options.slices ?? [], heldCoins);
+  return parts.map((part, index) => ({
+    kind: "session_release" as const,
+    from: PLATFORM_ACCOUNTS.escrow,
+    to: userAccount(studentId),
+    amount: part.amount,
+    expiresAt: part.expiresAt,
+    requestId,
+    // The first part keeps the historical key, so a retry stays a no-op.
+    idempotencyKey: index === 0 ? baseKey : `${baseKey}:${index}`,
+  }));
+}
+
+/**
+ * Chooses which held coins a release of `amount` gives back. Spending takes the
+ * soonest-expiring coins first, so a partial release (the bot price-difference)
+ * hands back the latest-expiring ones first: permanent coins, then promo coins
+ * by expiry, newest first. Any amount beyond the slices comes back permanent.
+ */
+export function pickReleaseSlices(slices: readonly CoinSlice[], amount: number): CoinSlice[] {
+  const ordered = slices
+    .filter((s) => s.amount > 0)
+    .map((s) => ({ ...s }))
+    .sort((a, b) => expiryRank(b.expiresAt) - expiryRank(a.expiresAt));
+  const out: CoinSlice[] = [];
+  let left = amount;
+  for (const slice of ordered) {
+    if (left === 0) break;
+    const take = Math.min(slice.amount, left);
+    out.push({ amount: take, expiresAt: slice.expiresAt });
+    left -= take;
+  }
+  if (left > 0) out.push({ amount: left, expiresAt: null });
+  return mergeSlices(out);
+}
+
+function expiryRank(expiresAt: Date | null): number {
+  return expiresAt ? expiresAt.getTime() : Number.POSITIVE_INFINITY;
+}
+
+function mergeSlices(slices: readonly CoinSlice[]): CoinSlice[] {
+  const byExpiry = new Map<number, CoinSlice>();
+  for (const slice of slices) {
+    const key = expiryRank(slice.expiresAt);
+    const existing = byExpiry.get(key);
+    if (existing) existing.amount += slice.amount;
+    else byExpiry.set(key, { amount: slice.amount, expiresAt: slice.expiresAt });
+  }
+  return [...byExpiry.values()].filter((s) => s.amount > 0);
 }
 
 export function tip(studentId: string, solverUserId: string, requestId: string, coins: number, now: Date): Transfer {
@@ -277,6 +342,8 @@ export type LedgerLeg = {
   availableAt?: Date | null;
   expiresAt?: Date | null;
   kind: TransferKind;
+  /** The transfer's request (session holds and releases); optional elsewhere. */
+  requestId?: string | null;
 };
 
 export type WalletBalance = {
@@ -290,14 +357,19 @@ export type WalletBalance = {
 
 type Bucket = { remaining: number; expiresAt: number | null };
 
+type Replay = { live: number; pending: number; expiredTotal: number; postedExpiry: number; overdraft: number };
+
 /**
  * Replays an account's legs in time order. Each credit becomes a bucket once it
  * is available; each debit drains the buckets that expire soonest first
  * (non-expiring coins last); a bucket that passes its expiry stops counting.
- * Posted `expiry` debits are subtracted from the expired total so the nightly
- * job writes each expired coin off exactly once.
+ * `onDrain` sees every slice a debit takes, with that bucket's expiry.
  */
-export function computeWalletBalance(legs: readonly LedgerLeg[], now: Date): WalletBalance {
+function replayLegs(
+  legs: readonly LedgerLeg[],
+  now: Date,
+  onDrain?: (leg: LedgerLeg, take: number, expiresAt: number | null) => void,
+): Replay {
   const nowMs = now.getTime();
   type Event = { at: number; order: number; leg: LedgerLeg };
   const events: Event[] = [];
@@ -353,17 +425,62 @@ export function computeWalletBalance(legs: readonly LedgerLeg[], now: Date): Wal
       const take = Math.min(bucket.remaining, toDrain);
       bucket.remaining -= take;
       toDrain -= take;
+      onDrain?.(leg, take, bucket.expiresAt);
     }
     overdraft += toDrain;
   }
   expireUpTo(nowMs);
 
   const live = buckets.reduce((sum, b) => sum + b.remaining, 0);
+  return { live, pending, expiredTotal, postedExpiry, overdraft };
+}
+
+/**
+ * Balance from the replay. Posted `expiry` debits are subtracted from the
+ * expired total so the nightly job writes each expired coin off exactly once.
+ */
+export function computeWalletBalance(legs: readonly LedgerLeg[], now: Date): WalletBalance {
+  const r = replayLegs(legs, now);
   return {
-    available: live - overdraft,
-    pending,
-    expiredUnposted: Math.max(0, expiredTotal - postedExpiry),
+    available: r.live - r.overdraft,
+    pending: r.pending,
+    expiredUnposted: Math.max(0, r.expiredTotal - r.postedExpiry),
   };
+}
+
+/**
+ * The coins still held in escrow for a request, by the expiry they had when
+ * the hold (and any extension) took them out of the student's wallet, net of
+ * what earlier releases for the request already gave back. Feed the result to
+ * sessionRelease so a release restores promo expiry instead of minting
+ * permanent coins.
+ */
+export function heldCoinSlices(legs: readonly LedgerLeg[], requestId: string, now: Date): CoinSlice[] {
+  const taken: CoinSlice[] = [];
+  replayLegs(legs, now, (leg, take, expiresAt) => {
+    if (leg.requestId !== requestId) return;
+    if (leg.kind !== "session_hold" && leg.kind !== "extension") return;
+    taken.push({ amount: take, expiresAt: expiresAt === null ? null : new Date(expiresAt) });
+  });
+  const remaining = mergeSlices(taken);
+  for (const leg of legs) {
+    if (leg.direction !== "credit" || leg.kind !== "session_release" || leg.requestId !== requestId) continue;
+    // Take the returned coins off the slice they came from, else latest expiry first.
+    let left = leg.amount;
+    const key = expiryRank(leg.expiresAt ?? null);
+    const order = [...remaining].sort((a, b) => {
+      const exactA = expiryRank(a.expiresAt) === key ? 0 : 1;
+      const exactB = expiryRank(b.expiresAt) === key ? 0 : 1;
+      return exactA - exactB || expiryRank(b.expiresAt) - expiryRank(a.expiresAt);
+    });
+    for (const slice of order) {
+      if (left === 0) break;
+      const take = Math.min(slice.amount, left);
+      slice.amount -= take;
+      left -= take;
+    }
+  }
+  return remaining.filter((s) => s.amount > 0);
 }
 
 /**

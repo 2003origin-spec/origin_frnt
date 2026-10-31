@@ -22,6 +22,12 @@ export type SwRequestClass =
   | "navigation"
   /** App Router RSC payload fetches (client nav / prefetch). NetworkFirst. */
   | "rsc"
+  /**
+   * Full-page navigations to an exam page. NetworkOnly — never cached, never
+   * served from a cache — but offline they still get /offline.html rather
+   * than the raw browser/WebView error.
+   */
+  | "exam-navigation"
   /** Everything else: untouched by the service worker. */
   | "bypass";
 
@@ -41,12 +47,38 @@ export type ClassifiableRequest = {
   hasRscHeader: boolean;
 };
 
+/**
+ * Exam pages: a study-room test, a mock test, the CBT player and a contest
+ * attempt. Their render carries live timer state (the server's clock, the room
+ * status, the attempt), so a cached copy served after the network timeout
+ * would run the timer late and auto-submit after the real deadline. They are
+ * never cached and never served from the cache; offline a navigation to one
+ * gets the offline shell.
+ *
+ * Each pattern is anchored to the exact exam route, listed explicitly:
+ * the result/review pages beneath them (/tests/[id]/result,
+ * /cbt/r/[slug]/report) carry no timer and stay readable offline.
+ */
+const EXAM_PAGE_PATTERNS: readonly RegExp[] = [
+  /^\/study-rooms\/[^/]+\/test\/?$/, // study-room test
+  /^\/tests\/[^/]+\/?$/, // mock / teacher-assigned test player
+  /^\/cbt\/r\/[^/]+\/?$/, // CBT room player
+  /^\/contest\/[^/]+\/play\/?$/, // contest attempt
+];
+
+export function isExamPagePath(pathname: string): boolean {
+  return EXAM_PAGE_PATTERNS.some((pattern) => pattern.test(pathname));
+}
+
 export function classifyRequest(request: ClassifiableRequest): SwRequestClass {
   if (request.method.toUpperCase() !== "GET") return "bypass";
   if (!request.sameOrigin) return "bypass";
   // All API traffic bypasses the worker: auth, mutations, and — critically —
   // SSE/AI streams (CBT rooms, study rooms) which must never be buffered.
   if (request.pathname.startsWith("/api/")) return "bypass";
+  // Exam pages go straight to the network: navigations network-only (with the
+  // offline shell as fallback), RSC fetches untouched.
+  if (isExamPagePath(request.pathname)) return request.mode === "navigate" ? "exam-navigation" : "bypass";
 
   if (request.mode === "navigate") return "navigation";
   if (request.pathname.startsWith("/_next/static/")) return "static";
@@ -73,6 +105,7 @@ export function isCacheablePageResponse(response: {
 }): boolean {
   if (response.status !== 200) return false;
   if (response.redirected) return false;
+  if (isExamPagePath(response.pathname)) return false;
   return !NEVER_CACHE_PAGE_PREFIXES.some(
     (prefix) => response.pathname === prefix || response.pathname.startsWith(`${prefix}/`),
   );
