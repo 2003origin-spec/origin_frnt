@@ -27,6 +27,7 @@ import {
     Rocket,
     KeyRound,
     Trophy,
+    NotebookPen,
     Headphones,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -56,6 +57,7 @@ const navItems = [
     { id: 'ogcode-analytics', label: 'OG-Code Analytics', icon: Activity, path: '/admin/ogcode/analytics' },
     { id: 'moderation', label: 'Moderation', icon: ShieldCheck, path: '/admin/moderation' },
     { id: 'content', label: 'Content & LMS', icon: BookOpen, path: '/admin/content' },
+    { id: 'notes', label: 'Notes', icon: NotebookPen, path: '/admin/notes' },
     { id: 'import-jobs', label: 'Imports', icon: FileUp, path: '/admin/import-jobs' },
     { id: 'financials', label: 'Financials', icon: CreditCard, path: '/admin/financials' },
     { id: 'pricing', label: 'Pricing', icon: IndianRupee, path: '/admin/pricing' },

@@ -8,6 +8,7 @@ export default function ExplorePage() {
       socialEnabled={isFeatureEnabled('studentSocial')}
       connectEnabled={isFeatureEnabled('teacherConnect')}
       contestEnabled={isFeatureEnabled('contest')}
+      notesEnabled={isFeatureEnabled('notes')}
     />
   );
 }

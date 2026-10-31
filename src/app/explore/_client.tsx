@@ -19,16 +19,19 @@ const ROUTES: Record<string, string> = {
   'dpp': '/dpp',
   'profile': '/profile',
   'contest': '/contest',
+  'notes': '/notes',
 };
 
 export default function ExploreClient({
   socialEnabled = false,
   connectEnabled = false,
   contestEnabled = false,
+  notesEnabled = false,
 }: {
   socialEnabled?: boolean;
   connectEnabled?: boolean;
   contestEnabled?: boolean;
+  notesEnabled?: boolean;
 }) {
   const router = useRouter();
   const { aiExplainer } = useAiAccess();
@@ -39,6 +42,7 @@ export default function ExploreClient({
       socialEnabled={socialEnabled}
       connectEnabled={connectEnabled}
       contestEnabled={contestEnabled}
+      notesEnabled={notesEnabled}
     />
   );
 }
