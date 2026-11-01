@@ -19,5 +19,9 @@ export default async function PublicProfilePage({
   const profile = await getPublicProfile(viewer.id, username);
   if (!profile) notFound();
 
-  return <PublicProfile initialProfile={profile} />;
+  // "Message" next to Follow: students only, and only while messaging is on.
+  const messagingEnabled =
+    viewer.role === 'student' && isFeatureEnabled('studentMessaging');
+
+  return <PublicProfile initialProfile={profile} messagingEnabled={messagingEnabled} />;
 }
