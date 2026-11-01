@@ -73,7 +73,14 @@ export type PaymentRecord = {
   razorpayInvoiceId: string | null;
   userId: string | null;
   amountMinor: number;
+  /** Money Razorpay has actually returned (`processed` refunds only). */
   amountRefundedMinor: number;
+  /**
+   * Refunds initiated but not yet processed by Razorpay. Not money returned —
+   * access stays active — but counted by the refund guard so an admin cannot
+   * double-initiate while one is in flight. Only `getPaymentById` fills it.
+   */
+  pendingRefundMinor: number;
   currency: string;
   method: string | null;
   status: string;
@@ -196,6 +203,7 @@ function rowToPayment(row: Record<string, unknown>): PaymentRecord {
     userId: (row.user_id as string | null) ?? null,
     amountMinor: num(row.amount_minor),
     amountRefundedMinor: num(row.amount_refunded_minor),
+    pendingRefundMinor: num(row.pending_refund_minor),
     currency: (row.currency as string) ?? "INR",
     method: (row.method as string | null) ?? null,
     status: row.status as string,
@@ -454,6 +462,66 @@ export async function listOpenOrdersForUser(userId: string, exec?: Executor): Pr
   return result.rows.map(rowToOrder);
 }
 
+/**
+ * The one open (payable) Rail-A order for a commerce enrolment order, if any
+ * (bug-fix P5). Locked FOR UPDATE so the caller's checkout transaction is the
+ * only one deciding whether to reuse or supersede it. Only rows that already
+ * carry a Razorpay order id count: a row without one cannot be paid.
+ */
+export async function findOpenInstituteOrder(
+  input: { userId: string; enrollmentOrderId: string },
+  exec?: Executor,
+): Promise<PaymentOrder | null> {
+  if (!exec) await ensurePaymentsSchema();
+  const db = exec ?? pool();
+  const res = await db.query(
+    `SELECT * FROM payments.orders
+      WHERE user_id = $1 AND kind = 'institute_offering'
+        AND notes->>'enrollment_order_id' = $2
+        AND status IN ('created', 'attempted') AND razorpay_order_id IS NOT NULL
+        AND (expires_at IS NULL OR expires_at > NOW())
+      ORDER BY created_at DESC
+      LIMIT 1
+      FOR UPDATE`,
+    [input.userId, input.enrollmentOrderId],
+  );
+  return res.rows[0] ? rowToOrder(res.rows[0]) : null;
+}
+
+/**
+ * How long a money order without a Razorpay id counts as "a checkout still
+ * creating its Razorpay order" (bug-fix F5). Razorpay's order create returns
+ * in about a second; a row older than this belongs to a request that died, and
+ * the next checkout (or one already waiting on it) supersedes it. Kept short
+ * so a dead request blocks the student's retries for under a minute.
+ */
+export const INSTITUTE_CHECKOUT_IN_FLIGHT_SECONDS = 45;
+
+/**
+ * A sibling institute checkout that is still between `insertOrder` and
+ * `attachRazorpayOrderId` (its Razorpay create is in flight). Superseding it
+ * would orphan the payable Razorpay order it is about to receive, so the
+ * caller waits for it instead. Caller holds the user payments lock.
+ */
+export async function findInFlightInstituteOrder(
+  input: { userId: string; enrollmentOrderId: string },
+  exec?: Executor,
+): Promise<PaymentOrder | null> {
+  if (!exec) await ensurePaymentsSchema();
+  const db = exec ?? pool();
+  const res = await db.query(
+    `SELECT * FROM payments.orders
+      WHERE user_id = $1 AND kind = 'institute_offering'
+        AND notes->>'enrollment_order_id' = $2
+        AND status = 'created' AND razorpay_order_id IS NULL
+        AND created_at > NOW() - make_interval(secs => $3)
+      ORDER BY created_at DESC
+      LIMIT 1`,
+    [input.userId, input.enrollmentOrderId, INSTITUTE_CHECKOUT_IN_FLIGHT_SECONDS],
+  );
+  return res.rows[0] ? rowToOrder(res.rows[0]) : null;
+}
+
 /** Marks one unpaid order expired. The caller handles coupon release in its transaction. */
 export async function expireOrder(
   orderId: string,
@@ -557,9 +625,13 @@ export async function getPaymentById(
 ): Promise<PaymentRecord | null> {
   if (!exec) await ensurePaymentsSchema();
   const db = exec ?? pool();
-  const res = await db.query(`SELECT * FROM payments.payments WHERE razorpay_payment_id = $1`, [
-    razorpayPaymentId,
-  ]);
+  const res = await db.query(
+    `SELECT p.*,
+            (SELECT COALESCE(SUM(r.amount_minor), 0)::bigint FROM payments.refunds r
+              WHERE r.razorpay_payment_id = p.razorpay_payment_id AND r.status = 'pending') AS pending_refund_minor
+       FROM payments.payments p WHERE p.razorpay_payment_id = $1`,
+    [razorpayPaymentId],
+  );
   return res.rows[0] ? rowToPayment(res.rows[0]) : null;
 }
 
@@ -658,7 +730,15 @@ export async function insertRefund(
        (razorpay_refund_id, razorpay_payment_id, amount_minor, is_full, status, reason, initiated_by, livemode, raw)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)
      ON CONFLICT (razorpay_refund_id) DO UPDATE SET
-       status       = EXCLUDED.status,
+       -- Ledger statuses are pending | processed | failed. 'processed' is money
+       -- returned and never regresses; an out-of-order 'pending' never
+       -- overrides a terminal 'failed'.
+       status       = CASE
+                        WHEN payments.refunds.status = 'processed' THEN payments.refunds.status
+                        WHEN payments.refunds.status = 'failed' AND EXCLUDED.status <> 'processed'
+                          THEN payments.refunds.status
+                        ELSE EXCLUDED.status
+                      END,
        is_full      = payments.refunds.is_full OR EXCLUDED.is_full,
        reason       = COALESCE(payments.refunds.reason, EXCLUDED.reason),
        initiated_by = COALESCE(payments.refunds.initiated_by, EXCLUDED.initiated_by),
@@ -678,15 +758,18 @@ export async function insertRefund(
   );
   const inserted = Boolean(res.rows[0]?.inserted);
   if (inserted) {
+    // Only PROCESSED refunds are money returned. GREATEST keeps the column
+    // monotonic: rows written before refunds were status-aware counted
+    // pending refunds too, and a recompute must never shrink landed history.
     await db.query(
       `UPDATE payments.payments
-          SET amount_refunded_minor = LEAST(
+          SET amount_refunded_minor = GREATEST(amount_refunded_minor, LEAST(
                 amount_minor,
                 COALESCE((
                   SELECT SUM(amount_minor) FROM payments.refunds
-                   WHERE razorpay_payment_id = $1
+                   WHERE razorpay_payment_id = $1 AND status = 'processed'
                 ), 0)
-              )
+              ))
         WHERE razorpay_payment_id = $1`,
       [input.razorpayPaymentId],
     );
@@ -739,7 +822,17 @@ export async function getEvent(eventId: string, exec?: Executor): Promise<Paymen
 export async function setEventStatus(
   eventId: string,
   status: EventStatus,
-  opts?: { error?: string | null; retryInSeconds?: number },
+  opts?: {
+    error?: string | null;
+    retryInSeconds?: number;
+    /**
+     * Only touch a row that is still open (`pending`/`failed`). Used when the
+     * caller did not create the row — e.g. a second subscription rail that
+     * received the same Razorpay event id must not overwrite the first rail's
+     * terminal status.
+     */
+    onlyIfOpen?: boolean;
+  },
   exec?: Executor,
 ): Promise<void> {
   if (!exec) await ensurePaymentsSchema();
@@ -750,8 +843,9 @@ export async function setEventStatus(
             error           = $3,
             processed_at    = CASE WHEN $2 IN ('processed','ignored','orphaned') THEN NOW() ELSE processed_at END,
             next_attempt_at = NOW() + make_interval(secs => $4)
-      WHERE event_id = $1`,
-    [eventId, status, opts?.error ?? null, opts?.retryInSeconds ?? 0],
+      WHERE event_id = $1
+        AND (NOT $5::boolean OR status IN ('pending', 'failed'))`,
+    [eventId, status, opts?.error ?? null, opts?.retryInSeconds ?? 0, opts?.onlyIfOpen === true],
   );
 }
 
@@ -927,6 +1021,31 @@ export async function markOutboxFailed(
             next_attempt_at = NOW() + make_interval(secs => $3)
       WHERE id = $1`,
     [id, error.slice(0, 2000), retryInSeconds, MAX_OUTBOX_ATTEMPTS],
+  );
+}
+
+/**
+ * Returns a claimed row to `pending` WITHOUT spending the attempt the claim
+ * took, for a failure the action knows is transient (e.g. a refund intent
+ * still settling). The caller bounds how long a row may keep deferring.
+ */
+export async function deferOutboxRow(
+  id: string,
+  error: string,
+  retryInSeconds: number,
+  exec?: Executor,
+): Promise<void> {
+  if (!exec) await ensurePaymentsSchema();
+  const db = exec ?? pool();
+  await db.query(
+    `UPDATE payments.outbox
+        SET status          = 'pending',
+            attempts        = GREATEST(attempts - 1, 0),
+            error           = $2,
+            next_attempt_at = NOW() + make_interval(secs => $3)
+      WHERE id = $1
+        AND status = 'processing'`,
+    [id, error.slice(0, 2000), retryInSeconds],
   );
 }
 

@@ -39,6 +39,7 @@ import {
 } from "@/lib/qotd-eligibility";
 import { drawOgcodeBagQuestion } from "@/server/ogcode-catalog";
 import { getOgcodePostgresPool } from "@/server/postgres";
+import { withSchemaLock } from "@/server/schema-lock";
 
 declare global {
   var __originOgcodeDailyQuestionSchemaReady: Promise<void> | undefined;
@@ -79,8 +80,7 @@ async function ensureSchema(): Promise<void> {
   const pool = getOgcodePostgresPool();
   if (!pool) return;
   if (!globalThis.__originOgcodeDailyQuestionSchemaReady) {
-    globalThis.__originOgcodeDailyQuestionSchemaReady = pool
-      .query(CREATE_TABLE_SQL)
+    globalThis.__originOgcodeDailyQuestionSchemaReady = withSchemaLock(pool, (client) => client.query(CREATE_TABLE_SQL))
       .then(() => undefined)
       .catch((error) => {
         globalThis.__originOgcodeDailyQuestionSchemaReady = undefined;

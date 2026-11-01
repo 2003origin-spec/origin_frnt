@@ -356,7 +356,7 @@ export async function getPaymentsSummary(input: {
                 SUM(r.amount_minor)::bigint AS refunded_minor,
                 COUNT(*)::int               AS refunds
            FROM payments.refunds r
-          WHERE r.livemode = $1
+          WHERE r.livemode = $1 AND r.status <> 'failed'
             AND r.created_at >= $2::timestamptz AND r.created_at < $3::timestamptz
           GROUP BY 1`,
         [...window],
@@ -405,10 +405,10 @@ export async function getPaymentsSummary(input: {
              WHERE p.status = 'captured' AND p.livemode = $1 AND p.user_id IS NOT NULL
                AND ${REVENUE_AT} >= $2::timestamptz AND ${REVENUE_AT} < $3::timestamptz) AS paying_users,
            (SELECT COALESCE(SUM(r.amount_minor), 0)::bigint FROM payments.refunds r
-             WHERE r.livemode = $1
+             WHERE r.livemode = $1 AND r.status <> 'failed'
                AND r.created_at >= $2::timestamptz AND r.created_at < $3::timestamptz) AS refunded_minor,
            (SELECT COUNT(*)::int FROM payments.refunds r
-             WHERE r.livemode = $1
+             WHERE r.livemode = $1 AND r.status <> 'failed'
                AND r.created_at >= $2::timestamptz AND r.created_at < $3::timestamptz) AS refunds,
            (SELECT COUNT(*)::int FROM payments.payments p
              WHERE p.livemode = $1 AND p.disputed_at IS NOT NULL

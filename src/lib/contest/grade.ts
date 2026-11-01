@@ -10,6 +10,8 @@
  */
 
 import type { ContestScoringConfig } from "./contest-config";
+import { gradeMatrixPairs } from "@/lib/assessments/matrix-grade";
+import { gradeNumericText } from "@/lib/assessments/numeric-tolerance";
 
 /** The frozen per-question data needed to grade (from contest_questions.snapshot). */
 export interface GradableQuestion {
@@ -21,11 +23,44 @@ export interface GradableQuestion {
   correctOptions: number[] | null;
   answerText: string | null;
   tolerance: number | null;
+  /** Frozen answer spec; its `tolerance` (teacher-set, 0 ⇒ exact) wins over `tolerance` (G1). */
+  answerSpec?: { tolerance?: number | null } | null;
   /** Correct matrix pairs for matrix_match (array of [row, col] index pairs). */
   matrixData?: number[][] | null;
   /** Per-question marks override; null ⇒ use the scoring config. */
   marks: number | null;
   negativeMarks: number | null;
+}
+
+/**
+ * Correct [row, col] pairs from a frozen snapshot's `matrixData`.
+ *
+ * The snapshot freezes the OGCode catalog's `matrix_data` as-is
+ * (contest-question-selection.ts `freezeSnapshot`), i.e. the
+ * `StoredMatrixData` OBJECT `{ column_a, column_b, correct_pairs }` — never a
+ * bare pairs array, so reading it with `Array.isArray` made every contest
+ * matrix question unscorable. Also tolerates a JSON-string column, camelCase
+ * `correctPairs` and a legacy bare `number[][]`.
+ */
+export function snapshotMatrixPairs(raw: unknown): number[][] | null {
+  let value = raw;
+  if (typeof value === "string") {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      return null;
+    }
+  }
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const record = value as Record<string, unknown>;
+    value = record.correct_pairs ?? record.correctPairs;
+  }
+  if (!Array.isArray(value)) return null;
+  const pairs = value
+    .filter((pair): pair is unknown[] => Array.isArray(pair) && pair.length >= 2)
+    .map((pair) => [Number(pair[0]), Number(pair[1])])
+    .filter((pair) => pair.every((n) => Number.isInteger(n) && n >= 0));
+  return pairs.length > 0 ? pairs : null;
 }
 
 /** A student's submitted answer for one position (from the draft's `answers`). */
@@ -62,12 +97,6 @@ function isAnswered(a: SubmittedAnswer | undefined): boolean {
   return false;
 }
 
-function firstNumber(s: string | null | undefined): number | null {
-  if (s == null) return null;
-  const m = String(s).match(/-?\d+(\.\d+)?/);
-  return m ? Number(m[0]) : null;
-}
-
 function gradeOne(q: GradableQuestion, a: SubmittedAnswer | undefined): { correct: boolean; answered: boolean } {
   const answered = isAnswered(a);
   switch (q.questionType) {
@@ -80,26 +109,34 @@ function gradeOne(q: GradableQuestion, a: SubmittedAnswer | undefined): { correc
     }
     case "numerical":
     case "numerical_with_units": {
-      const expected = firstNumber(q.answerText);
-      const submitted = firstNumber(a?.answerText);
-      const tol = q.tolerance ?? Math.max(Math.abs(expected ?? 0) * 0.01, 0.001);
+      // G1 + G2 (same rules as grader-service compare_numeric): one strictly
+      // parsed number per side, exact unless the snapshot carries a tolerance.
+      // A unit in the snapshot answer ("9.8 m/s^2") is matched by text — the
+      // player says "include units if asked", so a bare number is compared by
+      // magnitude; a common SI unit is converted ("5 cm" = "50 mm"); any other
+      // different unit is wrong (contests have no review hold).
       return {
-        correct: expected !== null && submitted !== null && Math.abs(submitted - expected) <= tol,
+        correct: gradeNumericText({
+          expectedText: q.answerText,
+          submittedText: a?.answerText,
+          question: { tolerance: q.tolerance, answerSpec: q.answerSpec },
+          unitless: "compare_magnitude",
+          unitMismatch: "incorrect",
+        }).isCorrect,
         answered,
       };
     }
     case "matrix_match": {
-      // Order-independent set comparison of [row, col] pairs.
-      const norm = (pairs: number[][] | null | undefined) =>
-        JSON.stringify([...(pairs ?? [])].map((p) => [Number(p[0]), Number(p[1])]).sort((a, b) => a[0] - b[0] || a[1] - b[1]));
-      const expected = norm(q.matrixData);
-      const submitted = norm(a?.matrixPairs);
-      return { correct: (q.matrixData?.length ?? 0) > 0 && expected === submitted, answered };
+      // Exact set match only (contests award no partial credit); the shared
+      // helper also rejects supersets (G3).
+      return { correct: gradeMatrixPairs(q.matrixData, a?.matrixPairs, "none").isCorrect, answered };
     }
     default:
       // Unknown/symbolic/subjective types: treat as ungraded (not correct); still
       // counted. (Symbolic needs the async grader-service, kept out of the
       // game-day-safe local finalize path; not offered in the contest builder.)
+      // G5: the answer text is never parsed or evaluated here, so no symbolic
+      // guard is needed (see lib/assessments/symbolic-guard.ts for the fallback's).
       return { correct: false, answered };
   }
 }

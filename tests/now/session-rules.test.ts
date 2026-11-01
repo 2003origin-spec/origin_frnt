@@ -10,6 +10,7 @@ import {
   isShortSession,
   noShowSide,
   sessionEndsAt,
+  unsettledSessionsSql,
 } from "@/server/now/session-rules";
 import { NO_SHOW_WINDOW_MS } from "@/server/now/types";
 
@@ -76,4 +77,11 @@ test("only the student's reports touch the solver's pay: open defers, upheld blo
     "defer",
     "wait for every open case",
   );
+});
+
+test("NOW-3: the settle sweep drains oldest first and skips sessions with an open student report", () => {
+  const sql = unsettledSessionsSql(50).replace(/\s+/g, " ");
+  assert.match(sql, /ORDER BY s\.ended_at ASC LIMIT 50$/);
+  assert.match(sql, /NOT EXISTS \( SELECT 1 FROM now\.reports rp WHERE rp\.session_id = s\.id AND rp\.reporter_role = 'student' AND rp\.status = 'open' \)/);
+  assert.match(sql, /s\.ended_at <= \$1/);
 });

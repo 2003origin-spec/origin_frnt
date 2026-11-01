@@ -1,8 +1,8 @@
 import { requireUserFromRequest } from "@/server/auth";
-import { awardPoints } from "@/server/gamification";
+import { awardPointsOnce } from "@/server/point-awards";
 import { badRequest, created, noContent, notFound, ok, unauthorized } from "@/server/http";
-import type { AppStore, StoredBookmark, StoredBook, StoredNote } from "@/server/store";
-import { createId, withStoreAsync } from "@/server/store";
+import type { AppStore, StoredBookmark, StoredBook, StoredNote, StoredUser } from "@/server/store";
+import { createId, ScopedWritePlan, withStoreAsyncScoped } from "@/server/store";
 
 type StudyPayload = Record<string, unknown>;
 
@@ -77,12 +77,33 @@ function findBook(store: AppStore, bookId: string): StoredBook | null {
   return store.books.find((book) => book.id === bookId) ?? null;
 }
 
-async function handleBooksList(request: Request) {
-  return withStoreAsync(async (store) => {
+/**
+ * Runs a study handler under the store mutex with a SCOPED persist. The old
+ * `withStoreAsync` path re-wrote every `app.*` table (`DELETE FROM` + re-insert
+ * from this instance's snapshot) on every note/bookmark call, which erased
+ * concurrent scoped writes made by other instances (e.g. a practice attempt).
+ * Now only what the handler declares on `plan` is written, for the acting user:
+ * upserts for `plan.touch(...)`, targeted single-row deletes for
+ * `plan.remove(...)`. Read-only handlers declare nothing, so nothing is written
+ * (they still read a freshly hydrated store, as before).
+ */
+async function withStudyUser(
+  request: Request,
+  handler: (store: AppStore, user: StoredUser, plan: ScopedWritePlan) => Promise<Response> | Response,
+): Promise<Response> {
+  const plan = new ScopedWritePlan();
+  return withStoreAsyncScoped(async (store) => {
     const user = await requireUserFromRequest(store, request);
     if (!user) {
       return unauthorized();
     }
+    plan.forUser(user.id);
+    return handler(store, user, plan);
+  }, plan.toPersist);
+}
+
+async function handleBooksList(request: Request) {
+  return withStudyUser(request, async (store, user) => {
     const savedBookIds = new Set(
       store.savedBooks.filter((entry) => entry.userId === user.id).map((entry) => entry.bookId),
     );
@@ -91,11 +112,7 @@ async function handleBooksList(request: Request) {
 }
 
 async function handleBookDetail(request: Request, bookId: string) {
-  return withStoreAsync(async (store) => {
-    const user = await requireUserFromRequest(store, request);
-    if (!user) {
-      return unauthorized();
-    }
+  return withStudyUser(request, async (store, user) => {
     const book = findBook(store, bookId);
     if (!book) {
       return notFound("Book not found.");
@@ -106,11 +123,7 @@ async function handleBookDetail(request: Request, bookId: string) {
 }
 
 async function handleToggleSave(request: Request, bookId: string) {
-  return withStoreAsync(async (store) => {
-    const user = await requireUserFromRequest(store, request);
-    if (!user) {
-      return unauthorized();
-    }
+  return withStudyUser(request, async (store, user, plan) => {
 
     const book = findBook(store, bookId);
     if (!book) {
@@ -122,7 +135,8 @@ async function handleToggleSave(request: Request, bookId: string) {
     );
 
     if (existingIndex >= 0) {
-      store.savedBooks.splice(existingIndex, 1);
+      const [removed] = store.savedBooks.splice(existingIndex, 1);
+      plan.remove("savedBooks", removed.id);
       return ok({ status: "unsaved" });
     }
 
@@ -132,17 +146,15 @@ async function handleToggleSave(request: Request, bookId: string) {
       bookId: book.id,
       createdAt: new Date().toISOString(),
     });
-    awardPoints(store, user.id, 10, "study_corner", `Saved book to library: ${book.title}`, book.id);
+    // Once per book (bug N4): save → unsave → save must not pay out again.
+    await awardPointsOnce(store, user.id, 10, "study_corner", `Saved book to library: ${book.title}`, book.id);
+    plan.touch("savedBooks", "userScores", "pointLogs");
     return created({ status: "saved" });
   });
 }
 
 async function handleLibrary(request: Request) {
-  return withStoreAsync(async (store) => {
-    const user = await requireUserFromRequest(store, request);
-    if (!user) {
-      return unauthorized();
-    }
+  return withStudyUser(request, async (store, user) => {
     const savedBookIds = new Set(
       store.savedBooks.filter((entry) => entry.userId === user.id).map((entry) => entry.bookId),
     );
@@ -154,11 +166,7 @@ async function handleLibrary(request: Request) {
 }
 
 async function handleNotesList(request: Request) {
-  return withStoreAsync(async (store) => {
-    const user = await requireUserFromRequest(store, request);
-    if (!user) {
-      return unauthorized();
-    }
+  return withStudyUser(request, async (store, user) => {
     const notes = store.notes
       .filter((note) => note.userId === user.id)
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
@@ -168,11 +176,7 @@ async function handleNotesList(request: Request) {
 }
 
 async function handleNoteCreate(request: Request, payload: StudyPayload) {
-  return withStoreAsync(async (store) => {
-    const user = await requireUserFromRequest(store, request);
-    if (!user) {
-      return unauthorized();
-    }
+  return withStudyUser(request, async (store, user, plan) => {
     const bookId = asString(payload.book ?? payload.bookId ?? payload.book_id);
     const content = asString(payload.content)?.trim();
     if (!bookId || !content) {
@@ -196,16 +200,13 @@ async function handleNoteCreate(request: Request, payload: StudyPayload) {
     };
 
     store.notes.unshift(note);
+    plan.touch("notes");
     return created(serializeNote(note));
   });
 }
 
 async function handleNoteDetail(request: Request, noteId: string) {
-  return withStoreAsync(async (store) => {
-    const user = await requireUserFromRequest(store, request);
-    if (!user) {
-      return unauthorized();
-    }
+  return withStudyUser(request, async (store, user) => {
     const note = store.notes.find((entry) => entry.userId === user.id && entry.id === noteId);
     if (!note) {
       return notFound("Note not found.");
@@ -215,11 +216,7 @@ async function handleNoteDetail(request: Request, noteId: string) {
 }
 
 async function handleNoteUpdate(request: Request, noteId: string, payload: StudyPayload) {
-  return withStoreAsync(async (store) => {
-    const user = await requireUserFromRequest(store, request);
-    if (!user) {
-      return unauthorized();
-    }
+  return withStudyUser(request, async (store, user, plan) => {
     const note = store.notes.find((entry) => entry.userId === user.id && entry.id === noteId);
     if (!note) {
       return notFound("Note not found.");
@@ -244,32 +241,26 @@ async function handleNoteUpdate(request: Request, noteId: string, payload: Study
     if (color !== null) note.color = color;
     if (tags !== null) note.tags = tags;
     note.updatedAt = new Date().toISOString();
+    plan.touch("notes");
 
     return ok(serializeNote(note));
   });
 }
 
 async function handleNoteDelete(request: Request, noteId: string) {
-  return withStoreAsync(async (store) => {
-    const user = await requireUserFromRequest(store, request);
-    if (!user) {
-      return unauthorized();
-    }
+  return withStudyUser(request, async (store, user, plan) => {
     const originalLength = store.notes.length;
     store.notes = store.notes.filter((entry) => !(entry.userId === user.id && entry.id === noteId));
     if (store.notes.length === originalLength) {
       return notFound("Note not found.");
     }
+    plan.remove("notes", noteId);
     return noContent();
   });
 }
 
 async function handleBookmarksList(request: Request) {
-  return withStoreAsync(async (store) => {
-    const user = await requireUserFromRequest(store, request);
-    if (!user) {
-      return unauthorized();
-    }
+  return withStudyUser(request, async (store, user) => {
     return ok(
       store.bookmarks
         .filter((entry) => entry.userId === user.id)
@@ -280,11 +271,7 @@ async function handleBookmarksList(request: Request) {
 }
 
 async function handleBookmarkCreate(request: Request, payload: StudyPayload) {
-  return withStoreAsync(async (store) => {
-    const user = await requireUserFromRequest(store, request);
-    if (!user) {
-      return unauthorized();
-    }
+  return withStudyUser(request, async (store, user, plan) => {
     const bookId = asString(payload.book ?? payload.bookId ?? payload.book_id);
     const pageNumber = asNumber(payload.pageNumber ?? payload.page_number);
     const title = asString(payload.title)?.trim();
@@ -304,16 +291,13 @@ async function handleBookmarkCreate(request: Request, payload: StudyPayload) {
       createdAt: new Date().toISOString(),
     };
     store.bookmarks.unshift(bookmark);
+    plan.touch("bookmarks");
     return created(serializeBookmark(bookmark));
   });
 }
 
 async function handleBookmarkDetail(request: Request, bookmarkId: string) {
-  return withStoreAsync(async (store) => {
-    const user = await requireUserFromRequest(store, request);
-    if (!user) {
-      return unauthorized();
-    }
+  return withStudyUser(request, async (store, user) => {
     const bookmark = store.bookmarks.find((entry) => entry.userId === user.id && entry.id === bookmarkId);
     if (!bookmark) {
       return notFound("Bookmark not found.");
@@ -323,11 +307,7 @@ async function handleBookmarkDetail(request: Request, bookmarkId: string) {
 }
 
 async function handleBookmarkUpdate(request: Request, bookmarkId: string, payload: StudyPayload) {
-  return withStoreAsync(async (store) => {
-    const user = await requireUserFromRequest(store, request);
-    if (!user) {
-      return unauthorized();
-    }
+  return withStudyUser(request, async (store, user, plan) => {
     const bookmark = store.bookmarks.find((entry) => entry.userId === user.id && entry.id === bookmarkId);
     if (!bookmark) {
       return notFound("Bookmark not found.");
@@ -344,21 +324,19 @@ async function handleBookmarkUpdate(request: Request, bookmarkId: string, payloa
     }
     if (title !== null) bookmark.title = title;
     if (pageNumber !== null) bookmark.pageNumber = Math.floor(pageNumber);
+    plan.touch("bookmarks");
     return ok(serializeBookmark(bookmark));
   });
 }
 
 async function handleBookmarkDelete(request: Request, bookmarkId: string) {
-  return withStoreAsync(async (store) => {
-    const user = await requireUserFromRequest(store, request);
-    if (!user) {
-      return unauthorized();
-    }
+  return withStudyUser(request, async (store, user, plan) => {
     const originalLength = store.bookmarks.length;
     store.bookmarks = store.bookmarks.filter((entry) => !(entry.userId === user.id && entry.id === bookmarkId));
     if (store.bookmarks.length === originalLength) {
       return notFound("Bookmark not found.");
     }
+    plan.remove("bookmarks", bookmarkId);
     return noContent();
   });
 }

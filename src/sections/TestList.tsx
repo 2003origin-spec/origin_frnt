@@ -28,11 +28,14 @@ import {
   ArrowRight,
   ChevronDown,
   Check,
-  Info
+  Info,
+  CalendarClock
 } from 'lucide-react';
 import type { Test, TestPreview, User } from '@/types';
 import { cn } from '@/lib/utils';
 import { apiCall } from '@/lib/api';
+import { testWindowPhase } from '@/lib/assessments/test-window';
+import { formatISTDateTimeDMY } from '@/lib/format-time';
 import { createCustomTestAction, createFullLengthTestAction } from '@/server/actions/test-actions';
 import ExamPresetCards, { type ExamPresetCard } from '@/components/test/ExamPresetCards';
 import type { ExamPresetId } from '@/lib/exam-blueprints';
@@ -1399,6 +1402,14 @@ interface TestCardProps {
 
 function TestCard({ test, onStart, onViewAnalysis, user, getDifficultyColor }: TestCardProps) {
   const isLocked = false;
+  // Teacher-assigned window. Display only: the server refuses the paper before
+  // the window (403) and new attempts after it (409) whatever this card shows.
+  // The clock is read once per mount; a stale card is still gated server-side.
+  const [renderedAt] = useState(() => Date.now());
+  const windowPhase =
+    test.source === 'teacher_assigned'
+      ? testWindowPhase({ startsAt: test.windowStartsAt, endsAt: test.windowEndsAt }, renderedAt)
+      : 'open';
 
   return (
     <Card className={`group relative flex flex-col border-0 neu-raised neu-pressable transition-all duration-300 overflow-hidden ${isLocked ? 'grayscale opacity-80' : ''}`}>
@@ -1451,9 +1462,38 @@ function TestCard({ test, onStart, onViewAnalysis, user, getDifficultyColor }: T
           </div>
         </div>
 
+        {test.source === 'teacher_assigned' && (test.windowStartsAt || test.windowEndsAt) ? (
+          <p className="mt-3 flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground">
+            <CalendarClock className="w-3.5 h-3.5 text-primary shrink-0" />
+            {windowPhase === 'upcoming' && test.windowStartsAt
+              ? `Opens ${formatISTDateTimeDMY(test.windowStartsAt)}`
+              : windowPhase === 'ended' && test.windowEndsAt
+                ? `Closed ${formatISTDateTimeDMY(test.windowEndsAt)}`
+                : test.windowEndsAt
+                  ? `Closes ${formatISTDateTimeDMY(test.windowEndsAt)}`
+                  : null}
+          </p>
+        ) : null}
+
         {/* Action */}
         <div className="mt-5 flex flex-col gap-2">
-          {isLocked ? (
+          {windowPhase === 'upcoming' || (windowPhase === 'ended' && !test.attempted) ? (
+            <Button
+              disabled
+              className="w-full h-11 rounded-xl bg-muted text-muted-foreground font-bold uppercase text-[10px] tracking-widest cursor-not-allowed"
+            >
+              <CalendarClock className="w-3.5 h-3.5 mr-2" />
+              {windowPhase === 'upcoming' ? 'Not open yet' : 'Window closed'}
+            </Button>
+          ) : windowPhase === 'ended' ? (
+            <Button
+              onClick={onViewAnalysis}
+              className="w-full h-11 rounded-xl bg-primary text-primary-foreground font-black uppercase text-[11px] tracking-widest transition-all shadow-lg shadow-primary/20 hover:bg-primary/90 group/btn"
+            >
+              <BarChart3 className="w-4 h-4 mr-2 group-hover/btn:scale-110 transition-transform" />
+              View Result
+            </Button>
+          ) : isLocked ? (
             <Button
               disabled
               className="w-full h-11 rounded-xl bg-muted text-muted-foreground font-bold uppercase text-[10px] tracking-widest cursor-not-allowed"

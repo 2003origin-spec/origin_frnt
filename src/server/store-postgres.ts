@@ -26,6 +26,7 @@ import type {
   StoredUserScore,
   StoredAssignment,
 } from "@/server/store";
+import { lockSchemaDdl } from "@/server/schema-lock";
 
 export type MutableCollectionKey =
   | "streaks"
@@ -270,6 +271,7 @@ export async function ensureAppStoreSchema(): Promise<void> {
       const client = await pool().connect();
       try {
         await client.query("BEGIN");
+        await lockSchemaDdl(client);
         await client.query(`
           CREATE SCHEMA IF NOT EXISTS app;
 
@@ -500,6 +502,12 @@ async function loadTasks(): Promise<StoredTask[]> {
 
 async function replaceTasks(client: PoolClient, tasks: StoredTask[]): Promise<void> {
   await client.query("DELETE FROM app.tasks");
+  await upsertTasks(client, tasks);
+}
+
+// Idempotent per-row task upsert. Shared by the legacy full rewrite above and
+// the scoped persist (one user's tasks, never a whole-table delete).
+async function upsertTasks(client: PoolClient, tasks: StoredTask[]): Promise<void> {
   for (const task of tasks) {
     await client.query(
       `INSERT INTO app.tasks (
@@ -685,21 +693,116 @@ export async function persistStoreToPostgres(store: AppStore): Promise<void> {
 // practice submit, etc.) whose only durable side-effects are scoped to the
 // acting user; the primary records for those flows are written through their own
 // targeted writers (e.g. persistTestAnalysisResult).
+// Collections whose rows a scoped write may DELETE (one row of the acting user
+// at a time). persistUserCollections only upserts, so a removal from the
+// in-memory store would otherwise silently survive in Postgres. `tasks` is not
+// a COLLECTION_SPECS entry (it has its own table shape) but deletes the same way.
+export const SCOPED_DELETABLE_COLLECTIONS = [
+  "notes",
+  "bookmarks",
+  "savedBooks",
+  "doubtSessions",
+  "originAiSessions",
+  "tasks",
+] as const;
+export type ScopedDeletableCollection = (typeof SCOPED_DELETABLE_COLLECTIONS)[number];
+
+/** One row to remove — always constrained to the acting user (see below). */
+export type ScopedRowDeletion = { collection: ScopedDeletableCollection; id: string };
+
+// Collections a handler rebuilds wholesale for ONE user (the old rows are
+// filtered out and a fresh set pushed, with ids that need not match). The
+// scoped persist clears just that user's rows (`WHERE user_id = $1`) and then
+// upserts the new set — never a whole-table delete.
+export const SCOPED_REPLACEABLE_COLLECTIONS = ["originAiReminders"] as const;
+export type ScopedReplaceableCollection = (typeof SCOPED_REPLACEABLE_COLLECTIONS)[number];
+
+function scopedTableFor(collection: string): string {
+  if (collection === "tasks") return "tasks";
+  const spec = COLLECTION_SPECS.find((entry) => entry.key === collection);
+  if (!spec) throw new Error(`Unknown collection ${collection}`);
+  return spec.table;
+}
+
+/**
+ * Targeted delete of ONE row owned by `userId`:
+ * `DELETE FROM app.<table> WHERE user_id = $1 AND id = $2`. Never a whole-table
+ * delete, and the user_id predicate means a caller can never remove another
+ * user's row even with a guessed id. Exported for the unit test.
+ */
+export function buildScopedDeleteStatement(
+  collection: ScopedDeletableCollection,
+  userId: string,
+  id: string,
+): { text: string; values: unknown[] } {
+  if (!(SCOPED_DELETABLE_COLLECTIONS as readonly string[]).includes(collection)) {
+    throw new Error(`Scoped delete is not allowed for collection ${String(collection)}`);
+  }
+  if (!userId) throw new Error("Scoped delete requires a userId");
+  return {
+    text: `DELETE FROM app.${scopedTableFor(collection)} WHERE user_id = $1 AND id = $2`,
+    values: [userId, id],
+  };
+}
+
+/**
+ * Clears ALL of one user's rows in a replaceable collection:
+ * `DELETE FROM app.<table> WHERE user_id = $1`. Other users' rows are never
+ * touched. Exported for the unit test.
+ */
+export function buildScopedReplaceStatement(
+  collection: ScopedReplaceableCollection,
+  userId: string,
+): { text: string; values: unknown[] } {
+  if (!(SCOPED_REPLACEABLE_COLLECTIONS as readonly string[]).includes(collection)) {
+    throw new Error(`Scoped replace is not allowed for collection ${String(collection)}`);
+  }
+  if (!userId) throw new Error("Scoped replace requires a userId");
+  return { text: `DELETE FROM app.${scopedTableFor(collection)} WHERE user_id = $1`, values: [userId] };
+}
+
+export type PersistUserCollectionsOptions = {
+  /** Upsert the user's `origin_users` row (whole snapshot, USER_SNAPSHOT_COLUMNS). */
+  persistUser?: boolean;
+  /** Targeted single-row deletes of this user's rows. */
+  deletions?: readonly ScopedRowDeletion[];
+  /** Collections whose rows for this user are cleared, then re-upserted. */
+  replaceUserRows?: readonly ScopedReplaceableCollection[];
+  /** Upsert this user's `app.tasks` rows (tasks are not a COLLECTION_SPECS entry). */
+  persistTasks?: boolean;
+};
+
 export async function persistUserCollections(
   store: AppStore,
   userId: string,
   keys: MutableCollectionKey[],
-  options: { persistUser?: boolean } = {},
+  options: PersistUserCollectionsOptions = {},
 ): Promise<void> {
   if (!isUserPostgresConfigured()) return;
 
-  const specs = COLLECTION_SPECS.filter((spec) => keys.includes(spec.key));
-  if (specs.length === 0 && !options.persistUser) return;
+  const replaced = options.replaceUserRows ?? [];
+  // A replaced collection is always re-upserted after its rows are cleared.
+  const specs = COLLECTION_SPECS.filter(
+    (spec) => keys.includes(spec.key) || (replaced as readonly string[]).includes(spec.key),
+  );
+  const deletions = options.deletions ?? [];
+  if (specs.length === 0 && !options.persistUser && deletions.length === 0 && !options.persistTasks) return;
+  if (!userId) throw new Error("persistUserCollections requires a userId");
 
   await ensureAppStoreSchema();
   const client = await pool().connect();
   try {
     await client.query("BEGIN");
+    // Deletes first: the removed rows are already gone from the store, so the
+    // upserts below can never re-insert them.
+    for (const deletion of deletions) {
+      const statement = buildScopedDeleteStatement(deletion.collection, userId, deletion.id);
+      await client.query(statement.text, statement.values);
+    }
+    for (const collection of replaced) {
+      const statement = buildScopedReplaceStatement(collection, userId);
+      await client.query(statement.text, statement.values);
+    }
     if (options.persistUser) {
       const user = store.users.find((entry) => entry.id === userId);
       if (user) {
@@ -711,6 +814,9 @@ export async function persistUserCollections(
         (item) => spec.userIdOf(item) === userId,
       );
       await upsertCollectionRows(client, spec, rows);
+    }
+    if (options.persistTasks) {
+      await upsertTasks(client, store.tasks.filter((task) => task.userId === userId));
     }
     await client.query("COMMIT");
   } catch (error) {

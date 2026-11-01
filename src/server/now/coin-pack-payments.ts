@@ -20,13 +20,18 @@ import { computeWalletBalance, packPurchase, packRefund, promoBonus, userAccount
 import { postTransfers } from "./ledger-store";
 import { ensureNowSchema } from "./now-schema";
 import { bestPackBonus, type PromotionRow } from "./promotions";
+import { withSchemaLock } from "@/server/schema-lock";
 
 /** Adds `coin_pack` to payments.order_kind. Must run outside any transaction that uses it. */
 export async function ensureCoinPackOrderKind(): Promise<void> {
   const pool = getUserPostgresPool();
   if (!pool) return;
   if (globalThis.__originCoinPackKindEnsured) return;
-  await pool.query(`ALTER TYPE payments.order_kind ADD VALUE IF NOT EXISTS 'coin_pack'`);
+  // Its own short transaction (PG12+ allows ADD VALUE in one); the value is
+  // usable by every transaction that starts after this commits.
+  await withSchemaLock(pool, (client) =>
+    client.query(`ALTER TYPE payments.order_kind ADD VALUE IF NOT EXISTS 'coin_pack'`),
+  );
   globalThis.__originCoinPackKindEnsured = true;
 }
 

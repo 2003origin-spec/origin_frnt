@@ -15,16 +15,18 @@ import { toast } from 'sonner';
 import { track } from '@/lib/analytics';
 import { mutateJson, csrfHeaders } from '@/lib/csrf';
 import { shouldCountViolation } from '@/lib/contest/contest-state';
+import { runFinalSaveThenSubmit } from '@/lib/contest/submit-flow';
 
 export interface PaperQuestion {
   position: number;
-  questionId: string;
   subject: string | null;
   text: string;
   options: string[] | null;
   questionType: string;
   image: string | null;
   optionImages: (string | null)[] | null;
+  /** Matrix-match column texts (no answer key); null for other types. */
+  matrix?: { column_a: string[]; column_b: string[] } | null;
 }
 
 export interface AttemptState {
@@ -64,6 +66,9 @@ export function useContestAttempt(contestId: string) {
   const markedRef = useRef<Set<number>>(new Set());
   const debounceRef = useRef<number | undefined>(undefined);
   const submittingRef = useRef(false);
+  /** Set once /answers says the contest window has closed (409 contest_ended). */
+  const endedRef = useRef(false);
+  const submitRef = useRef<((opts?: { malpractice?: boolean; violationCount?: number }) => Promise<void>) | null>(null);
   answersRef.current = answers;
   markedRef.current = marked;
 
@@ -151,23 +156,56 @@ export function useContestAttempt(contestId: string) {
   }, [loadState, loadPaper]);
 
   // ── autosave (debounce 2s + interval 15s + pagehide beacon) ────────────────
-  const flushSave = useCallback(async () => {
-    if (submittingRef.current) return;
-    revRef.current += 1;
-    try {
-      await mutateJson('/api/contest/answers', {
+  /**
+   * Send the current draft. Cancels any pending debounce (its payload is this
+   * one). `force` bypasses the submitting guard — submit() uses it for the
+   * final save. Resolves with the rev sent; THROWS on a failed save so the
+   * caller can retry. A 409 is not a failure: either a newer rev is already
+   * stored / the session was superseded, or the contest window closed
+   * (contest_ended → endedRef, and the server finalizes from the last draft).
+   */
+  const flushSave = useCallback(
+    async (opts: { force?: boolean } = {}): Promise<number> => {
+      if (submittingRef.current && !opts.force) return revRef.current;
+      if (debounceRef.current) {
+        window.clearTimeout(debounceRef.current);
+        debounceRef.current = undefined;
+      }
+      if (endedRef.current) return revRef.current;
+      revRef.current += 1;
+      const rev = revRef.current;
+      const res = await mutateJson('/api/contest/answers', {
         method: 'POST',
         keepalive: true,
-        body: JSON.stringify({ contestId, answers: answersRef.current, palette: { marked: [...markedRef.current] }, rev: revRef.current }),
+        body: JSON.stringify({ contestId, answers: answersRef.current, palette: { marked: [...markedRef.current] }, rev }),
       });
+      if (res.status === 409) {
+        const detail = (await res.json().catch(() => ({}))).detail;
+        if (detail === 'contest_ended') endedRef.current = true;
+        return rev;
+      }
+      if (!res.ok) throw new Error(`save_failed_${res.status}`);
+      return rev;
+    },
+    [contestId],
+  );
+
+  /** Background autosave (debounce/interval): errors are transient — the next
+   *  save retries. Once the window has closed, stop saving and submit. */
+  const backgroundSave = useCallback(async () => {
+    try {
+      await flushSave();
     } catch {
       /* transient — the next save retries */
     }
-  }, [contestId]);
+    if (endedRef.current && !submittingRef.current) void submitRef.current?.();
+  }, [flushSave]);
 
   useEffect(() => {
     if (phase !== 'running') return;
-    const interval = window.setInterval(() => void flushSave(), 15_000);
+    const interval = window.setInterval(() => {
+      if (!submittingRef.current) void backgroundSave();
+    }, 15_000);
     const onHide = () => {
       revRef.current += 1;
       // sendBeacon can't set the CSRF header (→ 403), so use a keepalive fetch
@@ -185,12 +223,12 @@ export function useContestAttempt(contestId: string) {
       window.clearInterval(interval);
       window.removeEventListener('pagehide', onHide);
     };
-  }, [phase, flushSave, contestId]);
+  }, [phase, backgroundSave, contestId]);
 
   const scheduleSave = useCallback(() => {
     if (debounceRef.current) window.clearTimeout(debounceRef.current);
-    debounceRef.current = window.setTimeout(() => void flushSave(), 2000);
-  }, [flushSave]);
+    debounceRef.current = window.setTimeout(() => void backgroundSave(), 2000);
+  }, [backgroundSave]);
 
   const setAnswer = useCallback(
     (position: number, selectedOption: number) => {
@@ -251,11 +289,25 @@ export function useContestAttempt(contestId: string) {
       if (submittingRef.current) return;
       submittingRef.current = true;
       setPhase('submitting');
-      await flushSave().catch(() => undefined);
       try {
-        const res = await mutateJson('/api/contest/submit', {
-          method: 'POST',
-          body: JSON.stringify({ contestId, ...opts }),
+        // Flush the last autosave FIRST (forced past the submitting guard,
+        // retried on failure), then submit carrying the final draft too — the
+        // server applies it under the same rev CAS before grading.
+        const res = await runFinalSaveThenSubmit({
+          flush: (o) => flushSave(o),
+          bumpRev: () => {
+            revRef.current += 1;
+            return revRef.current;
+          },
+          submit: ({ rev }) =>
+            mutateJson('/api/contest/submit', {
+              method: 'POST',
+              body: JSON.stringify({
+                contestId,
+                ...opts,
+                final: { answers: answersRef.current, palette: { marked: [...markedRef.current] }, rev },
+              }),
+            }),
         });
         if (!res.ok && res.status !== 409) {
           throw new Error((await res.json().catch(() => ({}))).detail || 'Submit failed.');
@@ -270,6 +322,9 @@ export function useContestAttempt(contestId: string) {
     },
     [contestId, flushSave],
   );
+  useEffect(() => {
+    submitRef.current = submit;
+  }, [submit]);
 
   // auto-submit at zero
   useEffect(() => {

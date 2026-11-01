@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 
-import { requireFeatureEnabled } from "@/lib/feature-flags";
+import { requireFeatureEnabledRuntime } from "@/server/feature-flags-runtime";
 import { requireAuth } from "@/server/authz";
 import { getMaterialsVisibleToStudent } from "@/server/workspaces/study-materials-service";
 
@@ -8,7 +8,7 @@ import { handleTeacherError, requestIdOf, teacherJson } from "../teacher/_utils"
 
 export async function GET(request: NextRequest) {
   try {
-    requireFeatureEnabled("studyMaterials");
+    await requireFeatureEnabledRuntime("studyMaterials");
     const auth = await requireAuth(request);
     const url = new URL(request.url);
     const workspaceId = url.searchParams.get("workspaceId");

@@ -16,6 +16,10 @@
       "schedule": "*/5 * * * *"
     },
     {
+      "path": "/api/internal/rooms/drain",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/internal/cron/qotd-rollover",
       "schedule": "30 18 * * *"
     },

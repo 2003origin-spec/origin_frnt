@@ -1,7 +1,9 @@
 import { Redis } from "@upstash/redis";
 import { NextResponse } from "next/server";
 
+import { isFeatureEnabled } from "@/lib/feature-flags";
 import { getRequestId, REQUEST_ID_HEADER } from "@/lib/request-id";
+import { requiredEnvHealth, requiredEnvStatus } from "@/lib/required-env";
 import { getOgcodePostgresPool } from "@/server/postgres";
 import { getUserPostgresPool } from "@/server/user-postgres";
 
@@ -11,6 +13,7 @@ type ComponentHealth = {
   status: ComponentState;
   latencyMs?: number;
   detail?: string;
+  missing?: string[];
 };
 
 const SERVICE_TIMEOUT_MS = 1800;
@@ -136,8 +139,19 @@ export async function GET(request: Request) {
     pingRedis(),
   ]);
 
+  // Missing required env on hosted production → "down" → 503 with the names,
+  // so the deploy check / uptime monitor catches it (register() only logs).
+  const env: ComponentHealth = requiredEnvHealth(
+    requiredEnvStatus(process.env, {
+      cbtModule: isFeatureEnabled("cbtModule"),
+      originNow: isFeatureEnabled("originNow"),
+      contest: isFeatureEnabled("contest"),
+    }),
+  );
+
   const services = {
     frontend: { status: "ok" as const },
+    env,
     grader,
     analytics,
     originAi,

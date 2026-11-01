@@ -175,9 +175,25 @@ export async function mirrorSubscriptionEvent(input: {
 export async function settleSubscriptionEvent(
   eventId: string,
   status: "processed" | "ignored" | "orphaned" | "failed",
-  options: { error?: string | null; retryInSeconds?: number } = {},
+  options: {
+    error?: string | null;
+    retryInSeconds?: number;
+    /**
+     * `mirrorSubscriptionEvent(...).isNew`. Both recurring rails receive the
+     * same Razorpay event id and mirror it into one `payments.events` row; the
+     * rail that did NOT create the row must not overwrite the other rail's
+     * terminal status (each rail orphans the other's subscription ids, so the
+     * second settle used to flip `processed` → `orphaned`). A not-new mirror
+     * may still close a row that is open — a Razorpay redelivery after this
+     * same rail's own failed attempt.
+     */
+    mirrorIsNew?: boolean;
+  } = {},
+  deps: { setEventStatus?: typeof setEventStatus } = {},
 ): Promise<void> {
-  await setEventStatus(eventId, status, options).catch(() => undefined);
+  const { mirrorIsNew, ...rest } = options;
+  const set = deps.setEventStatus ?? setEventStatus;
+  await set(eventId, status, { ...rest, onlyIfOpen: mirrorIsNew === false }).catch(() => undefined);
 }
 
 export type RecordSubscriptionChargeInput = {

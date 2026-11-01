@@ -12,6 +12,7 @@ import type { NextRequest } from "next/server";
 import { z } from "zod";
 
 import { requireFeatureEnabled } from "@/lib/feature-flags";
+import { requireFeatureEnabledRuntime } from "@/server/feature-flags-runtime";
 import { requireAuth } from "@/server/authz";
 import { parseJsonBody } from "@/server/http";
 import { presignProctorSnapshot, registerProctorSnapshot } from "@/server/contest/contest-proctor-service";
@@ -26,7 +27,7 @@ const Schema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    requireFeatureEnabled("contest");
+    await requireFeatureEnabledRuntime("contest");
     requireFeatureEnabled("contestProctoring");
     const ctx = await requireAuth(request);
     const parsed = Schema.safeParse(await parseJsonBody(request));

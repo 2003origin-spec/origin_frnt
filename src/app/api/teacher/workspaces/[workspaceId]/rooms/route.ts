@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { z } from "zod";
 
 import { parseJsonBody } from "@/server/http";
-import { requireFeatureEnabled } from "@/lib/feature-flags";
+import { requireFeatureEnabledRuntime } from "@/server/feature-flags-runtime";
 import { requireWorkspaceMember } from "@/server/workspaces/authz";
 import { createRoom, listTeacherRooms } from "@/server/workspaces/teacher-rooms-service";
 
@@ -23,7 +23,7 @@ const createSchema = z.object({
 
 export async function GET(request: NextRequest, context: WorkspaceIdRouteContext) {
   try {
-    requireFeatureEnabled("teacherRooms");
+    await requireFeatureEnabledRuntime("teacherRooms");
     const workspaceId = await getWorkspaceId(context);
     await requireWorkspaceMember(request, workspaceId);
     const url = new URL(request.url);
@@ -39,7 +39,7 @@ export async function GET(request: NextRequest, context: WorkspaceIdRouteContext
 
 export async function POST(request: NextRequest, context: WorkspaceIdRouteContext) {
   try {
-    requireFeatureEnabled("teacherRooms");
+    await requireFeatureEnabledRuntime("teacherRooms");
     const workspaceId = await getWorkspaceId(context);
     const ctx = await requireWorkspaceMember(request, workspaceId, [
       "owner", "admin", "teacher",

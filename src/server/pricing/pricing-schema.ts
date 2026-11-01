@@ -204,7 +204,22 @@ async function ensure(client: PoolClient): Promise<void> {
           ADD CONSTRAINT coupon_redemptions_state_check
           CHECK (state IN ('reserved', 'committed', 'released'));
       END IF;
+
+      -- Bug-fix P2: a late capture that re-commits a lapsed hold past the cap
+      -- is honoured and flagged. Canonical SQL:
+      -- src/db/migrations/20261021_coupon_redemption_overrun.sql
+      IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                      WHERE table_schema='pricing' AND table_name='coupon_redemptions'
+                        AND column_name='overrun') THEN
+        ALTER TABLE pricing.coupon_redemptions
+          ADD COLUMN overrun BOOLEAN NOT NULL DEFAULT FALSE;
+      END IF;
     END $$;
+  `);
+
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS idx_coupon_redemptions_overrun
+      ON pricing.coupon_redemptions(code) WHERE overrun;
   `);
 }
 

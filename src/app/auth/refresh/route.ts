@@ -14,21 +14,12 @@ import {
   REFRESH_COOKIE_NAME,
   refreshCookieOptions,
 } from "@/server/auth-cookies";
+import { safeNext } from "@/lib/safe-next";
 
 const REQUEST_ID_HEADER = "X-Request-Id";
 
 function requestIdFor(request: NextRequest): string {
   return request.headers.get(REQUEST_ID_HEADER) ?? crypto.randomUUID();
-}
-
-function safeNext(rawNext: string | null): string {
-  if (!rawNext || !rawNext.startsWith("/") || rawNext.startsWith("//") || rawNext.startsWith("/api/")) {
-    return "/dashboard";
-  }
-  if (rawNext === "/auth" || rawNext.startsWith("/auth/refresh")) {
-    return "/dashboard";
-  }
-  return rawNext;
 }
 
 function withResponseHeaders(response: NextResponse, requestId: string): NextResponse {
@@ -85,7 +76,11 @@ export async function GET(request: NextRequest) {
     return redirectToAuth(request, requestId, next);
   }
 
-  const response = withResponseHeaders(NextResponse.redirect(new URL(next, request.url)), requestId);
+  // Belt and braces: `safeNext` already returns a path-only value, but never
+  // let a redirect leave this origin even if that contract regresses.
+  let target = new URL(next, request.url);
+  if (target.origin !== request.nextUrl.origin) target = new URL("/dashboard", request.url);
+  const response = withResponseHeaders(NextResponse.redirect(target), requestId);
   response.cookies.set(ACCESS_COOKIE_NAME, tokens.accessToken, COOKIE_OPTS_ACCESS);
   response.cookies.set(ACCESS_FINGERPRINT_COOKIE_NAME, tokens.accessFingerprint, COOKIE_OPTS_ACCESS_FINGERPRINT);
   if (tokens.refreshToken) {

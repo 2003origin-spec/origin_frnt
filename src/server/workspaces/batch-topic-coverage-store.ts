@@ -10,6 +10,7 @@
 import type { Pool } from "pg";
 
 import { getUserPostgresPool, isUserPostgresConfigured } from "@/server/user-postgres";
+import { withSchemaLock } from "@/server/schema-lock";
 
 declare global {
   var __originBatchCoverageSchemaEnsured: boolean | undefined;
@@ -32,7 +33,7 @@ export async function ensureBatchTopicCoverageSchema(): Promise<void> {
   if (globalThis.__originBatchCoverageSchemaEnsured) return;
   if (!globalThis.__originBatchCoverageSchemaPromise) {
     globalThis.__originBatchCoverageSchemaPromise = (async () => {
-      await pool().query(`
+      await withSchemaLock(pool(), (client) => client.query(`
         CREATE TABLE IF NOT EXISTS app.batch_topic_coverage (
           id BIGSERIAL PRIMARY KEY,
           workspace_id TEXT NOT NULL REFERENCES app.teacher_workspaces(id) ON DELETE CASCADE,
@@ -48,7 +49,7 @@ export async function ensureBatchTopicCoverageSchema(): Promise<void> {
         );
         CREATE INDEX IF NOT EXISTS idx_batch_topic_coverage_batch
           ON app.batch_topic_coverage(workspace_id, batch_id);
-      `);
+      `));
       globalThis.__originBatchCoverageSchemaEnsured = true;
     })().catch((error) => {
       globalThis.__originBatchCoverageSchemaPromise = undefined;

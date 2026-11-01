@@ -11,6 +11,7 @@ import type {
 import { selectDppQuestionsWithBagPreference, type DppBagOverride } from "@/server/dpp-question-bank";
 import { getOgcodePostgresPool } from "@/server/postgres";
 import { createId, type StoredUserAnswer } from "@/server/store";
+import { withSchemaLock } from "@/server/schema-lock";
 
 declare global {
   var __originAnalyticsSchemaReady: Promise<void> | undefined;
@@ -349,6 +350,8 @@ export interface PersistedTestResultRecord {
     degraded?: boolean;
     degradedReason?: string | null;
     degraded_reason?: string | null;
+    /** G7 audit: "server" = timed from analytics.attempt_starts, "client" = clamped client value. */
+    time_taken_source?: "server" | "client";
   };
   subjectStats: Record<
     string,
@@ -598,8 +601,7 @@ function mapPersistedCustomTestRow(row: any): PersistedCustomTestRecord {
 export async function ensureAnalyticsSchema(client?: PoolClient): Promise<void> {
   void client;
   if (!globalThis.__originAnalyticsSchemaReady) {
-    globalThis.__originAnalyticsSchemaReady = getPoolOrThrow()
-      .query(ANALYTICS_SCHEMA_SQL)
+    globalThis.__originAnalyticsSchemaReady = withSchemaLock(getPoolOrThrow(), (c) => c.query(ANALYTICS_SCHEMA_SQL))
       .then(() => undefined)
       .catch((error) => {
         globalThis.__originAnalyticsSchemaReady = undefined;

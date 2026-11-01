@@ -84,6 +84,17 @@ export function computeMarksFromCredit(input: {
    * degrades to ordinary fractional partial credit rather than mis-scoring.
    */
   partialUnits?: number | null;
+  /**
+   * The grader could not parse the EXPECTED answer or the submitted notation
+   * (a tooling gap, not the student's mistake): hold for review with no credit
+   * and no negative marks. Mirrors `REVIEW_HOLD_REASONS` in grader-service.
+   */
+  reviewHold?: boolean;
+  /**
+   * M4: the answer has no wrong part (matrix subset), so it is never negative:
+   * partial credit if any, else 0. Mirrors `NO_PENALTY_REASONS` in grader-service.
+   */
+  noPenalty?: boolean;
 }) {
   const credit = Math.max(0, Math.min(1, Number(input.creditAwarded ?? (input.isCorrect ? 1 : 0))));
   if (!input.answered) {
@@ -91,6 +102,9 @@ export function computeMarksFromCredit(input: {
   }
   if (input.isCorrect) {
     return input.policy.correctMarks;
+  }
+  if (input.reviewHold) {
+    return 0;
   }
   if (credit > 0 && input.policy.partialCreditPolicy !== "none") {
     // JEE Advanced multiple-correct: +N per correct option chosen, not a
@@ -102,6 +116,9 @@ export function computeMarksFromCredit(input: {
       return Number((chosen * (input.policy.partialUnitMarks ?? 1)).toFixed(3));
     }
     return Number((input.policy.correctMarks * credit).toFixed(3));
+  }
+  if (input.noPenalty) {
+    return Math.max(0, input.policy.incorrectMarks);
   }
   if (input.policy.negativeMarkingMode === "none" || input.policy.negativeMarkingMode === "no_negative") {
     return Math.max(0, input.policy.incorrectMarks);

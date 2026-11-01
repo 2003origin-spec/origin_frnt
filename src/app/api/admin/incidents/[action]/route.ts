@@ -40,6 +40,13 @@ const FLAG_KEYS = [
   "documentImport",
   "adminControlCenter",
   "paidEnrollment",
+  // Every flag with a FLAG_KILL_PREFIXES entry must be selectable here, or the
+  // runbook step "/admin/incidents → contest → off" is a 400. cbtModule also
+  // covers the anonymous /api/cbt-student surface now that the middleware
+  // evaluates the kill-switch before the public policy branch.
+  "cbtModule",
+  "contest",
+  "originNow",
 ] as const;
 
 const RATE_LIMIT_MODES = ["relaxed", "normal", "strict", "lockdown"] as const;

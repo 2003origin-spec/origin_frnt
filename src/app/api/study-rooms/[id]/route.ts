@@ -19,7 +19,10 @@ export async function GET(request: NextRequest, context: IdRouteContext) {
     const limited = await checkRateLimit(generalLimiter, user.id);
     if (limited) return limited;
     const roomId = await getRoomId(context);
-    return studyRoomJson(await getRoomState(roomId, user.id));
+    const state = await getRoomState(roomId, user.id);
+    // Server clock at response time: the room test measures its clock offset
+    // from this uncached poll (a page-rendered time may be a cached render).
+    return studyRoomJson({ ...state, server_now_ms: Date.now() });
   } catch (error) {
     return handleStudyRoomError(error);
   }

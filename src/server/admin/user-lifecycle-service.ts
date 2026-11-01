@@ -26,6 +26,7 @@ import { revokeDeviceTokensForUser } from "@/server/push/device-tokens";
 import { recordAuditEvent } from "@/server/workspaces/audit";
 import { getUserPostgresPool } from "@/server/user-postgres";
 import { listCodesForWorkspace, revokeWorkspaceCode, updateWorkspace } from "@/server/workspaces/store";
+import { revokeConnectGrantsForWorkspaces } from "@/server/connect/grant-revocation";
 import type { StoredUser } from "@/server/store";
 
 export class UserLifecycleError extends Error {
@@ -109,17 +110,22 @@ export async function unrevokeUser(input: { actorId: string; userId: string }): 
   });
 }
 
-/** Suspends the user's owned teacher workspaces + revokes their codes (best-effort). */
-async function suspendOwnedWorkspaces(userId: string): Promise<void> {
+/**
+ * Suspends the user's owned teacher workspaces + revokes their codes and the
+ * free Flow-1 subjects those institutes issued (best-effort).
+ */
+async function suspendOwnedWorkspaces(userId: string, actorId: string): Promise<void> {
   const pool = getUserPostgresPool();
   if (!pool) return;
   const res = await pool.query(
     "SELECT id FROM app.teacher_workspaces WHERE owner_user_id = $1 AND status NOT IN ('suspended','closed')",
     [userId],
   );
+  const suspendedIds: string[] = [];
   for (const row of res.rows) {
     const wsId = row.id as string;
     await updateWorkspace(wsId, { status: "suspended" });
+    suspendedIds.push(wsId);
     const codes = await listCodesForWorkspace(wsId, "student_join");
     for (const code of codes) {
       if (code.status === "active" || code.status === "reserved") {
@@ -127,6 +133,11 @@ async function suspendOwnedWorkspaces(userId: string): Promise<void> {
       }
     }
   }
+  await revokeConnectGrantsForWorkspaces({
+    workspaceIds: suspendedIds,
+    actorUserId: actorId,
+    reason: "workspace_suspended",
+  });
 }
 
 export async function adminDeleteUser(input: {
@@ -164,7 +175,7 @@ export async function adminDeleteUser(input: {
 
   // If the user owns teacher workspaces, suspend them + revoke their codes.
   try {
-    await suspendOwnedWorkspaces(input.userId);
+    await suspendOwnedWorkspaces(input.userId, input.actorId);
   } catch (error) {
     console.error("[user-lifecycle] workspace suspend failed", error instanceof Error ? error.message : error);
     warnings.push("Could not fully suspend the user's institutes — check /admin/workspaces.");

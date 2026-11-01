@@ -60,13 +60,6 @@ const NOT_SCHEDULED: Record<string, string> = {
     "QStash-delayed per Origin NOW timer; the 1-minute now/sweep is its cron backstop.",
   "/api/internal/refresh-catalog":
     "Manual/ops cache refresh, run after a catalog import.",
-  // Honest status, not an endorsement: this one's own docstring says "Schedule
-  // it like the other internal drains", and it is not scheduled. It belongs to
-  // Teacher Live Rooms, not to the payments plan, so Phase 9 records it here
-  // and leaves the decision (and the GET handler it would also need) to that
-  // feature's owner rather than changing an unrelated surface.
-  "/api/internal/rooms/drain":
-    "KNOWN GAP, owned by Teacher Live Rooms: a lazy read-path sweep already handles the common case, so the missing schedule only affects fully-disconnected rooms.",
 };
 
 test("every scheduled path resolves to a real route handler", () => {
@@ -131,6 +124,11 @@ test("the payments plan's three crons are scheduled at their stated cadences", (
   assert.equal(bySchedule.get("/api/internal/payments/reconcile"), "*/15 * * * *");
   // G9.
   assert.equal(bySchedule.get("/api/internal/connect-jobs/drain"), "*/2 * * * *");
+});
+
+test("the study-room safety-net sweep is scheduled (N21: it was POST-only and never in vercel.json)", () => {
+  const bySchedule = new Map(crons.map((cron) => [cron.path, cron.schedule]));
+  assert.equal(bySchedule.get("/api/internal/rooms/drain"), "*/5 * * * *");
 });
 
 test("every internal route is either scheduled or declared unscheduled with a reason", () => {

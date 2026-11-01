@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 
 import { getServerUser } from '@/lib/auth-server';
 import { getRoomState, getRoomTestForUser, StudyRoomError, type RoomState } from '@/server/study-rooms';
-import { withStoreAsync } from '@/server/store';
+import { readStoreAsync } from '@/server/store';
 import type { Test } from '@/types';
 import RoomTestClient from './_client';
 
@@ -31,6 +31,15 @@ export default async function StudyRoomTestPage({ params }: { params: Promise<{ 
   const me = state.participants.find((participant) => participant.user_id === user.id);
   if (me?.finished_at) redirect(`/study-rooms/${id}/leaderboard`);
 
-  const { test } = await withStoreAsync((store) => getRoomTestForUser(store, user, id));
-  return <RoomTestClient room={state.room} roomId={id} initialTest={test as unknown as Test} />;
+  // Pure READ of the room test — the old withStoreAsync re-wrote every app.*
+  // table on each page open (and could erase other users' concurrent writes).
+  const { test } = await getRoomTestForUser(await readStoreAsync(), user, id);
+  return (
+    <RoomTestClient
+      room={state.room}
+      roomId={id}
+      initialTest={test as unknown as Test}
+      serverNow={Date.now()}
+    />
+  );
 }

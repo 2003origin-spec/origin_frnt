@@ -140,6 +140,14 @@ export interface Test {
   examPreset?: string | null;
   blueprint?: TestBlueprint | null;
   questionMarking?: TestQuestionMarking[];
+  // ── Teacher-assigned tests only, read per request (never from a cache).
+  /** Assignment window (null bound = unbounded). The server enforces it. */
+  windowStartsAt?: string | null;
+  windowEndsAt?: string | null;
+  /** The database clock when the window was read, so the client can cap its timer. */
+  serverNow?: string;
+  /** The server's end for this sitting, once Start was pressed (null before). */
+  attemptEndsAt?: string | null;
 }
 
 export interface TestPreview {
@@ -168,6 +176,8 @@ export interface TestPreview {
   assignmentId?: string;
   workspaceId?: string;
   source?: "self" | "teacher_assigned";
+  /** Teacher-assigned window (IST display only — the server enforces it). */
+  windowStartsAt?: string | null;
   windowEndsAt?: string | null;
 }
 

@@ -10,6 +10,7 @@ import { getUserPostgresPool, isUserPostgresConfigured } from "@/server/user-pos
 import { ensureRoomsSchema, getRoomsPostgresPoolOrThrow } from "@/server/rooms-postgres";
 
 import { ensureAssessmentSchema } from "./assessment-schema";
+import { lockSchemaDdl, withSchemaLock } from "@/server/schema-lock";
 
 declare global {
   var __originTeacherRoomsSchemaEnsured: boolean | undefined;
@@ -47,7 +48,7 @@ export async function ensureTeacherRoomsSchema(): Promise<void> {
       // SCHEMA IF NOT EXISTS does nothing when the schema already exists.
       const roomsPool = getRoomsPostgresPoolOrThrow();
       try {
-        await roomsPool.query("CREATE SCHEMA IF NOT EXISTS rooms");
+        await withSchemaLock(roomsPool, (c) => c.query("CREATE SCHEMA IF NOT EXISTS rooms"));
       } catch (error) {
         // Surface the underlying failure rather than silently masking it.
         console.error("[teacher-rooms] CREATE SCHEMA rooms failed:", error);
@@ -70,6 +71,7 @@ export async function ensureTeacherRoomsSchema(): Promise<void> {
       const roomsClient = await roomsPool.connect();
       try {
         await roomsClient.query("BEGIN");
+        await lockSchemaDdl(roomsClient);
         await roomsClient.query(`
           ALTER TABLE rooms.rooms
             ADD COLUMN IF NOT EXISTS workspace_id TEXT,
@@ -98,7 +100,7 @@ export async function ensureTeacherRoomsSchema(): Promise<void> {
       // requirement would break deployments that route the two pools to
       // different DBs.
       try {
-        await roomsPool.query(`
+        await withSchemaLock(roomsPool, (c) => c.query(`
           DO $$ BEGIN
             ALTER TABLE rooms.rooms
               ADD CONSTRAINT fk_rooms_workspace
@@ -123,7 +125,7 @@ export async function ensureTeacherRoomsSchema(): Promise<void> {
             WHEN duplicate_object THEN NULL;
             WHEN undefined_table THEN NULL;
           END $$;
-        `);
+        `));
       } catch (error) {
         console.warn("[teacher-rooms] cross-schema FK setup skipped:", error);
       }

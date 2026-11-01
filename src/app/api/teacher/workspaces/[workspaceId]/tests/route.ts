@@ -1,6 +1,8 @@
 import type { NextRequest } from "next/server";
 import { z } from "zod";
 
+import { TEACHER_MARKS_SCHEMA, TEACHER_NEGATIVE_MARKS_SCHEMA } from "@/lib/assessments/teacher-marks";
+
 import { parseJsonBody } from "@/server/http";
 import { requireFeatureEnabled } from "@/lib/feature-flags";
 import { requireWorkspaceMember } from "@/server/workspaces/authz";
@@ -39,8 +41,8 @@ const questionInputSchema = z.object({
   ogcodeQuestionId: z.string().nullish(),
   contentQuestionId: z.string().nullish(),
   contentQuestionVersionId: z.string().nullish(),
-  marks: z.number().optional().default(4),
-  negativeMarks: z.number().optional().default(-1),
+  marks: TEACHER_MARKS_SCHEMA.optional().default(4),
+  negativeMarks: TEACHER_NEGATIVE_MARKS_SCHEMA.optional().default(-1),
   /** Blueprint section, when the paper is a full-mock draft (plan D6). */
   sectionId: z.string().min(1).nullish(),
 });
@@ -52,8 +54,8 @@ const questionInputSchema = z.object({
 const sourceInputSchema = z.object({
   kind: z.enum(["import_job", "bag_topic", "test", "cluster"]),
   id: z.string().min(1),
-  marks: z.number().optional(),
-  negativeMarks: z.number().optional(),
+  marks: TEACHER_MARKS_SCHEMA.optional(),
+  negativeMarks: TEACHER_NEGATIVE_MARKS_SCHEMA.optional(),
 });
 
 const previewSourcesSchema = z.object({

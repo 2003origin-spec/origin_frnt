@@ -20,7 +20,7 @@ import {
   parseJsonBody,
   unauthorized,
 } from "@/server/http";
-import { readStoreAsync, withStoreAsync } from "@/server/store";
+import { readStoreAsync, ScopedWritePlan, withStoreAsyncScoped } from "@/server/store";
 
 type RouteContext = {
   params: Promise<{ slug?: string[] }>;
@@ -94,14 +94,18 @@ export async function POST(request: NextRequest, context: RouteContext) {
     } catch {
       return badRequest("Invalid JSON payload.");
     }
-    const result = await withStoreAsync(async (store) => {
+    // Scoped persist (only this user's doubt sessions) — the old full-store
+    // rewrite could erase other users' concurrent writes.
+    const plan = new ScopedWritePlan();
+    const result = await withStoreAsyncScoped(async (store) => {
       const user = await requireUserFromRequest(store, request);
       if (!user) {
         return { status: "unauthorized" as const };
       }
       const session = createDoubtSession(store, user.id, payload);
+      plan.forUser(user.id).touch("doubtSessions");
       return { status: "created" as const, session };
-    });
+    }, plan.toPersist);
 
     if (result.status === "unauthorized") {
       return unauthorized();
@@ -117,14 +121,21 @@ export async function POST(request: NextRequest, context: RouteContext) {
       return badRequest("Invalid JSON payload.");
     }
     try {
-      const result = await withStoreAsync(async (store) => {
+      const plan = new ScopedWritePlan();
+      const result = await withStoreAsyncScoped(async (store) => {
         const user = await requireUserFromRequest(store, request);
         if (!user) {
           return { status: "unauthorized" as const };
         }
         const reply = await addSessionMessage(store, user, slug[1], payload);
+        // The session gains two messages; awardPoints may add a point log and
+        // bump the score. Nothing is written when the session was not found or
+        // the payload was rejected (no store mutation happened).
+        if (reply && !("error" in reply)) {
+          plan.forUser(user.id).touch("doubtSessions", "userScores", "pointLogs");
+        }
         return { status: "ok" as const, reply };
-      });
+      }, plan.toPersist);
 
       if (result.status === "unauthorized") {
         return unauthorized();
@@ -158,7 +169,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
   try {
     const payload = await parseJsonBody<{ title?: string; subject?: string }>(request);
-    const result = await withStoreAsync(async (store) => {
+    const plan = new ScopedWritePlan();
+    const result = await withStoreAsyncScoped(async (store) => {
       const user = await requireUserFromRequest(store, request);
       if (!user) {
         return { status: "unauthorized" as const };
@@ -167,8 +179,9 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       if (!session) {
         return { status: "not_found" as const };
       }
+      plan.forUser(user.id).touch("doubtSessions");
       return { status: "ok" as const, session };
-    });
+    }, plan.toPersist);
 
     if (result.status === "unauthorized") {
       return unauthorized();
@@ -191,14 +204,17 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
   const limited = await checkRateLimit(generalLimiter, sessionIdentifier(request));
   if (limited) return limited;
 
-  const result = await withStoreAsync(async (store) => {
+  const plan = new ScopedWritePlan();
+  const result = await withStoreAsyncScoped(async (store) => {
     const user = await requireUserFromRequest(store, request);
     if (!user) {
       return { status: "unauthorized" as const };
     }
     const removed = deleteDoubtSession(store, user.id, slug[1]);
+    // Targeted `DELETE … WHERE user_id = $1 AND id = $2` (upserts never delete).
+    if (removed) plan.forUser(user.id).remove("doubtSessions", slug[1]);
     return { status: removed ? ("deleted" as const) : ("not_found" as const) };
-  });
+  }, plan.toPersist);
 
   if (result.status === "unauthorized") {
     return unauthorized();

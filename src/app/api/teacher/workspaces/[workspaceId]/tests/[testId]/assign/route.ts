@@ -46,6 +46,14 @@ const assignSchema = z.object({
   batchIds: z.array(z.string()).min(1),
   scheduledStartAt: z.string().datetime().optional(),
   scheduledEndAt: z.string().datetime().optional(),
+  /**
+   * The teacher edited an existing assignment's window on purpose. Without it a
+   * batch that already holds an overlapping assignment keeps its window (the
+   * wizard re-runs Deliver on every save; R4-3) — never a duplicate either way.
+   */
+  replaceWindow: z.boolean().optional(),
+  /** The assignment whose window was edited (the edit page pre-fills it). */
+  assignmentId: z.string().min(1).optional(),
 });
 
 const shareDppSchema = z.object({
@@ -90,6 +98,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
       batchIds: parsed.batchIds,
       scheduledStartAt: parsed.scheduledStartAt ?? null,
       scheduledEndAt: parsed.scheduledEndAt ?? null,
+      replaceWindow: parsed.replaceWindow ?? false,
+      assignmentId: parsed.assignmentId ?? null,
       requestId: requestIdOf(request),
     });
 

@@ -27,6 +27,7 @@
 import type { Pool } from "pg";
 
 import { getUserPostgresPool, isUserPostgresConfigured } from "@/server/user-postgres";
+import { withSchemaLock } from "@/server/schema-lock";
 
 declare global {
   var __originOtpSchemaEnsured: boolean | undefined;
@@ -61,7 +62,7 @@ export async function ensureOtpSchema(): Promise<void> {
   if (globalThis.__originOtpSchemaEnsured) return;
   if (!globalThis.__originOtpSchemaPromise) {
     globalThis.__originOtpSchemaPromise = (async () => {
-      await pool().query(`
+      await withSchemaLock(pool(), (client) => client.query(`
         CREATE TABLE IF NOT EXISTS app.otps (
           id TEXT PRIMARY KEY,
           user_id TEXT,
@@ -72,7 +73,7 @@ export async function ensureOtpSchema(): Promise<void> {
           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
-      `);
+      `));
       globalThis.__originOtpSchemaEnsured = true;
     })().catch((error) => {
       globalThis.__originOtpSchemaPromise = undefined;

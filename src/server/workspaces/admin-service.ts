@@ -8,6 +8,7 @@ import { recordAuditEvent } from "./audit";
 import { closeWorkspace, getImportJobAdmin, listAllImportJobs, listAuditEvents, searchUsers, searchWorkspaces, suspendWorkspace, unsuspendWorkspace, type UserPlanFilter } from "./admin-store";
 import { getWorkspaceById, revokeWorkspaceCode, setWorkspaceType, updateWorkspace, type UpdateWorkspaceInput } from "./store";
 import { upsertCollaborationRequest } from "../connect/collaboration-store";
+import { revokeConnectGrantsForWorkspaces } from "../connect/grant-revocation";
 import type { AdminAuditEvent, AdminUserSearchResult, DocumentImportJob, ImportJobStatus, TeacherWorkspace, WorkspaceAdminSummary, WorkspaceCode, WorkspaceSuspensionReason } from "./types";
 
 export async function searchWorkspacesService(query: string, filter?: { workspaceType?: "personal" | "institute"; status?: "active" | "suspended" | "all" }, limit?: number): Promise<WorkspaceAdminSummary[]> {
@@ -19,7 +20,11 @@ export async function suspendWorkspaceService(input: { workspaceId: string; reas
   if (!workspace) throw new AuthzError(403, "Workspace not found.");
   if (workspace.status === "suspended") throw new Error("Workspace is already suspended.");
   const suspended = await suspendWorkspace(input.workspaceId, input.reason, input.notes);
-  if (suspended) await recordAuditEvent({ actorUserId: input.adminUserId, workspaceId: input.workspaceId, entityType: "teacher_workspace", entityId: input.workspaceId, action: "workspace.suspended", before: workspace, after: { ...workspace, status: "suspended" }, requestId: input.requestId });
+  if (suspended) {
+    await recordAuditEvent({ actorUserId: input.adminUserId, workspaceId: input.workspaceId, entityType: "teacher_workspace", entityId: input.workspaceId, action: "workspace.suspended", before: workspace, after: { ...workspace, status: "suspended" }, requestId: input.requestId });
+    // A suspended institute's free Flow-1 subjects end with it.
+    await revokeConnectGrantsForWorkspaces({ workspaceIds: [input.workspaceId], actorUserId: input.adminUserId, reason: "workspace_suspended", requestId: input.requestId });
+  }
   return suspended;
 }
 
@@ -36,7 +41,10 @@ export async function closeWorkspaceService(input: { workspaceId: string; adminU
   const workspace = await getWorkspaceById(input.workspaceId);
   if (!workspace) throw new AuthzError(403, "Workspace not found.");
   const closed = await closeWorkspace(input.workspaceId);
-  if (closed) await recordAuditEvent({ actorUserId: input.adminUserId, workspaceId: input.workspaceId, entityType: "teacher_workspace", entityId: input.workspaceId, action: "workspace.closed", before: workspace, after: { ...workspace, status: "closed" }, requestId: input.requestId });
+  if (closed) {
+    await recordAuditEvent({ actorUserId: input.adminUserId, workspaceId: input.workspaceId, entityType: "teacher_workspace", entityId: input.workspaceId, action: "workspace.closed", before: workspace, after: { ...workspace, status: "closed" }, requestId: input.requestId });
+    await revokeConnectGrantsForWorkspaces({ workspaceIds: [input.workspaceId], actorUserId: input.adminUserId, reason: "workspace_closed", requestId: input.requestId });
+  }
   return closed;
 }
 

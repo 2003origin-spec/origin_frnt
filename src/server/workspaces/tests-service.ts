@@ -11,24 +11,41 @@ import { assertBatchesBelongToWorkspace } from "./tenant-scoping";
 import {
   addQuestionsToTest,
   createTest,
-  createAssignment,
+  assignTestToBatchOnce,
   getTestById,
   getTestWithQuestions,
   listTests,
   updateTest,
-  clearTestQuestions,
   deleteTest,
+  getTestAssessmentActivity,
+  listTestQuestions,
+  replaceTestQuestions,
   listAttemptResults,
-  getTestLeaderboard,
   type CreateTestInput,
 } from "./tests-store";
 import { getQuestionWithVersion } from "./questions";
 import { filterExistingOgcodeQuestionIds } from "@/server/ogcode-catalog";
 import {
+  archiveRefusal,
+  deleteRefusal,
+  editRefusal,
+  enforce,
+  gradingPatchChanged,
+  questionReplacementRefusal,
+  questionSetChanged,
+  scheduleRefusal,
+  windowRefusal,
+  windowReplacementRefusal,
+  type TeacherTestActivity,
+} from "./test-lifecycle-guards";
+import {
+  countTestResults,
   getTestAttemptCohort,
+  getTestLeaderboardFromResults,
   getTestTopicWeakness,
   getCohortResultOwner,
   type TestCohortAttempt,
+  type TestLeaderboardEntry,
   type TestTopicWeakness,
 } from "./test-cohort-store";
 import { getSingleResultForRender } from "@/server/render-loaders";
@@ -117,23 +134,50 @@ async function applyTestQuestions(
     resolved.push({ ...q, contentQuestionVersionId });
   }
 
-  // Commit: replace existing rows only after validation succeeds. Written in one
-  // statement — a generated full-length paper is up to 180 questions, and a
-  // round trip per row is the whole creation budget spent on latency.
-  if (opts?.replace) await clearTestQuestions(testId);
-  await addQuestionsToTest(
-    testId,
-    resolved.map((q) => ({
-      position: q.position,
-      sourceBank: q.sourceBank,
-      ogcodeQuestionId: q.ogcodeQuestionId ?? null,
-      contentQuestionId: q.contentQuestionId ?? null,
-      contentQuestionVersionId: q.contentQuestionVersionId,
-      marks: q.marks ?? 4,
-      negativeMarks: q.negativeMarks ?? -1,
-      metadata: q.metadata,
-    })),
-  );
+  // Commit only after validation succeeds. Written in one statement — a
+  // generated full-length paper is up to 180 questions, and a round trip per row
+  // is the whole creation budget spent on latency.
+  const rows = resolved.map((q) => ({
+    position: q.position,
+    sourceBank: q.sourceBank,
+    ogcodeQuestionId: q.ogcodeQuestionId ?? null,
+    contentQuestionId: q.contentQuestionId ?? null,
+    contentQuestionVersionId: q.contentQuestionVersionId,
+    marks: q.marks ?? 4,
+    negativeMarks: q.negativeMarks ?? -1,
+    metadata: q.metadata,
+  }));
+  if (opts?.replace) {
+    // Clear + insert in ONE transaction with the test row locked, refused if a
+    // student is mid-attempt (re-checked under the lock, so an attempt that
+    // started after the caller's pre-check still blocks it).
+    await replaceTestQuestions(testId, rows, ({ inProgressAttemptCount }) =>
+      enforce(questionReplacementRefusal(inProgressAttemptCount)),
+    );
+    return;
+  }
+  await addQuestionsToTest(testId, rows);
+}
+
+/**
+ * Everything the lifecycle guards look at (see test-lifecycle-guards.ts).
+ * Attempts = the larger of the assessment.test_attempts sittings that hold
+ * student work (submitted, or with a saved answer) and the persisted results in
+ * analytics.test_results (older submissions exist only there). Throws if either count cannot be read: a guard must fail closed.
+ */
+async function loadTestActivity(testId: string): Promise<TeacherTestActivity & { questionCount: number }> {
+  const [assessment, resultCount] = await Promise.all([
+    getTestAssessmentActivity(testId),
+    countTestResults(testId),
+  ]);
+  if (!assessment) throw new AuthzError(404, "Test not found.");
+  return {
+    status: assessment.status,
+    attemptCount: Math.max(assessment.attemptCount, resultCount),
+    inProgressAttemptCount: assessment.inProgressAttemptCount,
+    hasOpenWindow: assessment.hasOpenWindow,
+    questionCount: assessment.questionCount,
+  };
 }
 
 export async function createTeacherTest(input: CreateTeacherTestInput): Promise<TestWithQuestions> {
@@ -189,18 +233,31 @@ export async function updateTeacherTest(input: {
   const existing = await getTestById(input.testId);
   if (!existing) throw new AuthzError(404, "Test not found.");
   if (existing.workspaceId !== input.workspaceId) throw new AuthzError(403, "Access denied.");
-  if (existing.status === "live" || existing.status === "closed" || existing.status === "archived") {
-    throw new AuthzError(400, "Cannot edit a live, closed, or archived test.");
-  }
+  // The editor resends the whole question list on every save; only a list that
+  // actually differs is a replacement (and only that can corrupt attempts).
+  const questionsChanged = input.questions
+    ? questionSetChanged(await listTestQuestions(input.testId), input.questions)
+    : false;
+  // "Live" is derived (published AND attempted-or-window-open): nothing ever
+  // sets status `live`, so the old status check never fired. A live test
+  // refuses only grading changes (questions, marks, duration); metadata passes.
+  enforce(
+    editRefusal(await loadTestActivity(input.testId), {
+      replacingQuestions: Boolean(input.questions),
+      questionCount: input.questions?.length ?? 0,
+      changesGrading: questionsChanged || gradingPatchChanged(existing, input.patch),
+    }),
+  );
 
-  // Replace questions first (validates before clearing) so totalQuestions matches.
-  if (input.questions) {
+  // Replace questions first (validates, then clears + inserts in one
+  // transaction) so totalQuestions matches. An unchanged list is left alone.
+  if (input.questions && questionsChanged) {
     await applyTestQuestions(input.testId, input.workspaceId, input.questions, { replace: true });
   }
 
   const patch: Partial<CreateTestInput> = {
     ...input.patch,
-    ...(input.questions ? { totalQuestions: input.questions.length } : {}),
+    ...(input.questions && questionsChanged ? { totalQuestions: input.questions.length } : {}),
   };
   const updated = await updateTest(input.testId, patch);
   if (!updated) throw new Error("Failed to update test.");
@@ -264,6 +321,15 @@ export async function scheduleTeacherTest(input: {
   if (existing.status !== "draft") {
     throw new AuthzError(400, "Only draft tests can be scheduled.");
   }
+  // Same rule as publish: a zero-question draft must not become assignable.
+  const activity = await loadTestActivity(input.testId);
+  enforce(
+    scheduleRefusal({
+      questionCount: activity.questionCount,
+      scheduledStartAt: input.scheduledStartAt,
+      scheduledEndAt: input.scheduledEndAt,
+    }),
+  );
 
   const updated = await updateTest(input.testId, { status: "scheduled" });
   if (!updated) throw new Error("Failed to schedule test.");
@@ -288,6 +354,10 @@ export async function assignTestToBatches(input: {
   batchIds: string[];
   scheduledStartAt?: string | null;
   scheduledEndAt?: string | null;
+  /** The teacher changed an existing assignment's window on purpose: replace it. */
+  replaceWindow?: boolean;
+  /** The assignment whose window the teacher edited (the edit page's pre-fill). */
+  assignmentId?: string | null;
   requestId?: string | null;
 }): Promise<TestAssignment[]> {
   const test = await getTestById(input.testId);
@@ -296,29 +366,48 @@ export async function assignTestToBatches(input: {
   if (test.status !== "published" && test.status !== "scheduled") {
     throw new AuthzError(400, "Test must be published or scheduled before assignment.");
   }
+  enforce(windowRefusal(input.scheduledStartAt, input.scheduledEndAt));
 
   // N9 — a batch id from another workspace must never be assignable (mirrors
   // shareTestAsDpp); otherwise another institute's students would see this test.
   const ownedBatches = await listBatches(input.workspaceId, { status: "active" });
   assertBatchesBelongToWorkspace(input.batchIds, ownedBatches.map((batch) => batch.id));
 
+  // Idempotent per batch (R4-3): the wizard re-runs this step on every save of
+  // an existing test, so a batch that already holds an overlapping assignment
+  // never gets a second one, and its window changes only on an explicit
+  // `replaceWindow` (the teacher edited the pre-filled window) — which updates
+  // that assignment even when the new dates do not overlap the old, and is
+  // refused if it would cut off students who are mid-sitting.
   const assignments: TestAssignment[] = [];
-  for (const batchId of input.batchIds) {
-    const assignment = await createAssignment({
+  for (const batchId of [...new Set(input.batchIds)]) {
+    const { assignment, outcome, before } = await assignTestToBatchOnce({
       testId: input.testId,
       workspaceId: input.workspaceId,
       batchId,
       scheduledStartAt: input.scheduledStartAt ?? null,
       scheduledEndAt: input.scheduledEndAt ?? null,
       assignedBy: input.actorUserId,
+      replaceWindow: input.replaceWindow ?? false,
+      assignmentId: input.assignmentId ?? null,
+      guard: ({ before, inProgressAttemptCount }) =>
+        enforce(
+          windowReplacementRefusal({
+            inProgressAttemptCount,
+            before,
+            after: { scheduledStartAt: input.scheduledStartAt ?? null, scheduledEndAt: input.scheduledEndAt ?? null },
+          }),
+        ),
     });
     assignments.push(assignment);
+    if (outcome === "unchanged") continue;
     await recordAuditEvent({
       actorUserId: input.actorUserId,
       workspaceId: input.workspaceId,
       entityType: "test_assignment",
       entityId: assignment.id,
-      action: "test.assigned",
+      action: outcome === "created" ? "test.assigned" : "test.assignment_window_changed",
+      before: before ?? undefined,
       after: assignment,
       requestId: input.requestId,
     });
@@ -348,11 +437,13 @@ export async function getTeacherTestLeaderboard(
   workspaceId: string,
   testId: string,
   limit = 20,
-): Promise<Array<TestAttempt & { rank: number }>> {
+): Promise<TestLeaderboardEntry[]> {
   const test = await getTestById(testId);
   if (!test) throw new AuthzError(404, "Test not found.");
   if (test.workspaceId !== workspaceId) throw new AuthzError(403, "Access denied.");
-  return getTestLeaderboard(testId, limit);
+  // Best submission per student from the persisted results (with names), not
+  // the raw sittings in assessment.test_attempts.
+  return getTestLeaderboardFromResults(workspaceId, testId, limit);
 }
 
 export async function getTeacherTestResults(
@@ -409,10 +500,9 @@ export async function deleteTeacherTest(input: {
   const test = await getTestById(input.testId);
   if (!test) throw new AuthzError(404, "Test not found.");
   if (test.workspaceId !== input.workspaceId) throw new AuthzError(403, "Access denied.");
-  // A live test may have in-flight attempts — make the teacher close it first.
-  if (test.status === "live") {
-    throw new AuthzError(400, "Cannot delete a live test. Close it first.");
-  }
+  // Delete CASCADES to assignments, attempts and answers: refused once students
+  // have attempted it (archive instead), and while its window is open.
+  enforce(deleteRefusal(await loadTestActivity(input.testId)));
 
   const deleted = await deleteTest(input.workspaceId, input.testId);
   if (!deleted) throw new Error("Failed to delete test.");
@@ -450,6 +540,42 @@ export async function closeTeacherTest(input: {
     entityType: "assessment_test",
     entityId: input.testId,
     action: "test.closed",
+    after: updated,
+    requestId: input.requestId,
+  });
+
+  return updated;
+}
+
+/**
+ * Archive: the non-destructive way to retire a test students have attempted
+ * (delete is refused for those). Hidden from students' lists like a closed
+ * test; every attempt and result is kept. Refused while someone is mid-attempt.
+ */
+export async function archiveTeacherTest(input: {
+  actorUserId: string;
+  workspaceId: string;
+  testId: string;
+  requestId?: string | null;
+}): Promise<AssessmentTest> {
+  const test = await getTestById(input.testId);
+  if (!test) throw new AuthzError(404, "Test not found.");
+  if (test.workspaceId !== input.workspaceId) throw new AuthzError(403, "Access denied.");
+  if (test.status === "archived") {
+    throw new AuthzError(400, "Test is already archived.");
+  }
+  enforce(archiveRefusal(await loadTestActivity(input.testId)));
+
+  const updated = await updateTest(input.testId, { status: "archived" });
+  if (!updated) throw new Error("Failed to archive test.");
+
+  await recordAuditEvent({
+    actorUserId: input.actorUserId,
+    workspaceId: input.workspaceId,
+    entityType: "assessment_test",
+    entityId: input.testId,
+    action: "test.archived",
+    before: test,
     after: updated,
     requestId: input.requestId,
   });

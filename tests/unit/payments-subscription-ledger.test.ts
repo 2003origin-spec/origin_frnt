@@ -14,6 +14,7 @@ import {
   epochSecondsToDate,
   parseSubscriptionEvent,
   serializeCharge,
+  settleSubscriptionEvent,
 } from "@/server/payments/subscription-ledger";
 
 const CHARGED_BODY = {
@@ -106,4 +107,40 @@ test("deserializeCharge refuses a payload with no payment id or amount", () => {
   assert.equal(deserializeCharge({ amountMinor: 100 }), null);
   assert.equal(deserializeCharge({ razorpayPaymentId: "pay_1" }), null);
   assert.equal(deserializeCharge(null), null);
+});
+
+// ─── P7 item 3b: two rails, one mirrored event ────────────────────────────────
+
+function recordingSet() {
+  const calls: Array<{ eventId: string; status: string; opts: Record<string, unknown> | undefined }> = [];
+  const set = (async (eventId: string, status: string, opts?: Record<string, unknown>) => {
+    calls.push({ eventId, status, opts });
+  }) as never;
+  return { calls, set };
+}
+
+test("settleSubscriptionEvent writes unconditionally when this rail created the mirror row", async () => {
+  const { calls, set } = recordingSet();
+  await settleSubscriptionEvent("evt_1", "processed", { mirrorIsNew: true }, { setEventStatus: set });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].status, "processed");
+  assert.equal(calls[0].opts?.onlyIfOpen, false);
+  assert.equal("mirrorIsNew" in (calls[0].opts ?? {}), false, "the rail flag is not leaked into the store call");
+});
+
+test("settleSubscriptionEvent is skipped for a terminal row when the mirror was not new", async () => {
+  // The second rail to receive the same Razorpay event id must not flip the
+  // first rail's `processed` to `orphaned`; only a still-open row is touched.
+  const { calls, set } = recordingSet();
+  await settleSubscriptionEvent("evt_1", "orphaned", { mirrorIsNew: false, error: "No local subscription" }, { setEventStatus: set });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].opts?.onlyIfOpen, true);
+  assert.equal(calls[0].opts?.error, "No local subscription");
+});
+
+test("settleSubscriptionEvent swallows a store failure (the rail's own ledger is authoritative)", async () => {
+  const failing = (async () => {
+    throw new Error("pool exhausted");
+  }) as never;
+  await settleSubscriptionEvent("evt_1", "processed", { mirrorIsNew: true }, { setEventStatus: failing });
 });

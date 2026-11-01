@@ -10,6 +10,7 @@ import {
   drainPaymentEvents,
   eventRetryDelaySeconds,
 } from "@/server/payments/events-drain";
+import { routePaymentEvent, type PaymentEventInput } from "@/server/payments/event-router";
 import { MAX_EVENT_ATTEMPTS, type PaymentEvent } from "@/server/payments/payments-store";
 
 function event(overrides: Partial<PaymentEvent> = {}): PaymentEvent {
@@ -163,4 +164,111 @@ test("the batch size is clamped so a cron tick cannot run unbounded", async () =
     await drainPaymentEvents(limit, { claim, process: (async () => null) as never, mark: (async () => {}) as never });
   }
   assert.deepEqual(seen, [1, 1, 1, 25, 100]);
+});
+
+// ─── routing through the real event router (P4 / P7) ──────────────────────────
+// `processPaymentEvent` is `routePaymentEvent` bound to the real handlers; here
+// the handlers are stubs that record which one each stored event reached.
+
+function routedProcess() {
+  const calls: string[] = [];
+  const seen: Record<string, unknown>[] = [];
+  const handlers = {
+    applyRefundLifecycle: async (input: Record<string, unknown>) => {
+      calls.push("refund");
+      seen.push(input);
+      return { refund: true };
+    },
+    applyDisputeCreated: async () => {
+      calls.push("dispute");
+      return { dispute: true };
+    },
+    markPaymentAttemptFailed: async () => {
+      calls.push("failed");
+      return { failed: true };
+    },
+    applyPaymentSuccess: async () => {
+      calls.push("captured");
+      return { captured: true };
+    },
+  };
+  const process = ((input: PaymentEventInput) => routePaymentEvent(input, handlers as never)) as never;
+  return { calls, seen, process };
+}
+
+const refundPayload = (event: string, status?: string) => ({
+  event,
+  payload: {
+    refund: { entity: { id: "rfnd_1", payment_id: "pay_1", amount: 49900, ...(status ? { status } : {}) } },
+  },
+});
+
+test("refund.failed reaches the refund lifecycle as `failed`, never markOrderFailed", async () => {
+  const { calls, seen, process } = routedProcess();
+  const { marks, mark } = recorder();
+  const result = await drainPaymentEvents(10, {
+    claim: (async () => [
+      event({ eventId: "evt_rf", eventType: "refund.failed", payload: refundPayload("refund.failed", "failed") }),
+    ]) as never,
+    process,
+    mark,
+  });
+  assert.deepEqual(calls, ["refund"]);
+  assert.equal(seen[0].status, "failed");
+  assert.equal(result.processed, 1);
+  assert.equal(marks[0].status, "processed");
+});
+
+test("refund.created is applied as pending and refund.processed as processed", async () => {
+  const { calls, seen, process } = routedProcess();
+  const { mark } = recorder();
+  await drainPaymentEvents(10, {
+    claim: (async () => [
+      // The stored body may lack `event`; the drain passes the type separately.
+      event({ eventId: "evt_c", eventType: "refund.created", payload: { payload: refundPayload("x").payload } }),
+      event({ eventId: "evt_p", eventType: "refund.processed", payload: refundPayload("refund.processed", "processed") }),
+    ]) as never,
+    process,
+    mark,
+  });
+  assert.deepEqual(calls, ["refund", "refund"]);
+  assert.deepEqual(seen.map((input) => input.status), ["pending", "processed"]);
+});
+
+test("a subscription-invoice capture on the payments URL is ignored, not retried", async () => {
+  const { calls, process } = routedProcess();
+  const { marks, mark } = recorder();
+  const invoiceCapture = (type: string) => event({
+    eventId: `evt_${type}`,
+    eventType: type,
+    payload: {
+      event: type,
+      payload: {
+        payment: { entity: { id: "pay_sub", order_id: "order_sub", amount: 49900, invoice_id: "inv_1", status: "captured" } },
+      },
+    },
+  });
+  const result = await drainPaymentEvents(10, {
+    claim: (async () => [invoiceCapture("payment.captured"), invoiceCapture("order.paid"), invoiceCapture("payment.failed")]) as never,
+    process,
+    mark,
+  });
+  assert.deepEqual(calls, [], "no Rail-A handler is invoked for a subscription charge");
+  assert.equal(result.ignored, 3);
+  assert.equal(result.retrying, 0);
+  assert.deepEqual(marks.map((m) => m.status), ["ignored", "ignored", "ignored"]);
+});
+
+test("a Rail-A capture without an invoice id still reaches applyPaymentSuccess", async () => {
+  const { calls, process } = routedProcess();
+  const { mark } = recorder();
+  const result = await drainPaymentEvents(10, {
+    claim: (async () => [event({
+      payload: { event: "payment.captured", payload: { payment: { entity: { id: "pay_1", order_id: "order_1", amount: 49900 } } } },
+    })]) as never,
+    process,
+    mark,
+  });
+  assert.deepEqual(calls, ["captured"]);
+  assert.equal(result.processed, 1);
 });

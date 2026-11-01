@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { z } from "zod";
 
 import { parseJsonBody } from "@/server/http";
-import { requireFeatureEnabled } from "@/lib/feature-flags";
+import { requireFeatureEnabledRuntime } from "@/server/feature-flags-runtime";
 import { requireWorkspaceOwnerOrAdmin } from "@/server/workspaces/authz";
 import { recordAuditEvent } from "@/server/workspaces/audit";
 import {
@@ -37,7 +37,7 @@ const updateSchema = z
 /** POST — invite an existing Origin teacher account as workspace staff. */
 export async function POST(request: NextRequest, context: Context) {
   try {
-    requireFeatureEnabled("workspaces");
+    await requireFeatureEnabledRuntime("workspaces");
     const { workspaceId } = await context.params;
     const ctx = await requireWorkspaceOwnerOrAdmin(request, workspaceId);
     const body = await parseJsonBody(request);
@@ -63,7 +63,7 @@ export async function POST(request: NextRequest, context: Context) {
 /** PATCH — change a staff member's role and/or active status. */
 export async function PATCH(request: NextRequest, context: Context) {
   try {
-    requireFeatureEnabled("workspaces");
+    await requireFeatureEnabledRuntime("workspaces");
     const { workspaceId } = await context.params;
     const ctx = await requireWorkspaceOwnerOrAdmin(request, workspaceId);
     const body = await parseJsonBody(request);

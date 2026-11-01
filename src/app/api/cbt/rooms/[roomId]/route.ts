@@ -1,8 +1,8 @@
 /**
  * GET    /api/cbt/rooms/[roomId]  — room + participants
  * PATCH  /api/cbt/rooms/[roomId]  — { action: "close" | "finalize" |
- *                                     "finalize_participant" | "rejoin_policy" |
- *                                     "report_share" }
+ *                                     "finalize_participant" | "retry_grading" |
+ *                                     "rejoin_policy" | "report_share" }
  * DELETE /api/cbt/rooms/[roomId]  — delete a room
  *
  * The finalize actions live here as `action` values rather than in new child
@@ -23,7 +23,11 @@ import {
   setRoomRejoinPolicy,
   setRoomReportShare,
 } from "@/server/cbt/cbt-rooms-service";
-import { finalizeParticipantNow, finalizeRoomNow } from "@/server/cbt/cbt-attempts-service";
+import {
+  finalizeParticipantNow,
+  finalizeRoomNow,
+  retryParticipantGrading,
+} from "@/server/cbt/cbt-attempts-service";
 import { recordAuditEvent } from "@/server/workspaces/audit";
 
 type RouteContext = { params: Promise<{ roomId: string }> };
@@ -115,6 +119,27 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       if (!result.finalized && !result.alreadySubmitted) {
         return teacherJson({ detail: "Participant not found." }, { status: 404 });
       }
+      return teacherJson({ ok: true, ...result });
+    }
+
+    // An attempt whose grading failed GRADING_MAX_ATTEMPTS times is parked as
+    // 'failed' (shown as "Grading failed — retry"); one stuck in 'pending' for
+    // over a minute is shown as "Still grading — retry". This resets its retry
+    // budget and grades it now; another failure leaves it 'pending' for the sweep.
+    if (body.action === "retry_grading") {
+      if (!body.participantId) return teacherJson({ detail: "participantId is required." }, { status: 400 });
+      const room = await getRoomForTeacher(ctx.cbtTeacherId, roomId);
+      if (!room) return teacherJson({ detail: "Room not found." }, { status: 404 });
+      const result = await retryParticipantGrading(roomId, body.participantId);
+      if (!result.found) return teacherJson({ detail: "Participant not found." }, { status: 404 });
+      await recordAuditEvent({
+        actorUserId: ctx.userId,
+        workspaceId: null,
+        entityType: "cbt_room",
+        entityId: roomId,
+        action: "cbt.grading_retried",
+        requestId: requestIdOf(request),
+      });
       return teacherJson({ ok: true, ...result });
     }
 

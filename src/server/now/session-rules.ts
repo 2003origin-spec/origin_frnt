@@ -52,6 +52,25 @@ export function settlementReportState(
   return "clear";
 }
 
+/**
+ * The sweep's "ended but not settled" batch. Oldest first, so a backlog drains
+ * in order, and never a session with an open student report: those are
+ * deferred until the case closes (settlementReportState), and with a plain
+ * LIMIT they would fill every batch and stall settlement for everyone else.
+ * $1 = the rating-window cutoff.
+ */
+export function unsettledSessionsSql(limit: number): string {
+  return `SELECT s.id FROM now.sessions s
+      WHERE s.ended_at IS NOT NULL AND s.settled_at IS NULL
+        AND (s.solver_kind = 'bot' OR s.outcome IS NOT NULL OR s.ended_at <= $1)
+        AND NOT EXISTS (
+          SELECT 1 FROM now.reports rp
+           WHERE rp.session_id = s.id AND rp.reporter_role = 'student' AND rp.status = 'open'
+        )
+      ORDER BY s.ended_at ASC
+      LIMIT ${Math.max(1, Math.floor(limit))}`;
+}
+
 /** Who failed to show up once the join window has passed, if anyone. */
 export function noShowSide(input: {
   acceptedAt: Date;

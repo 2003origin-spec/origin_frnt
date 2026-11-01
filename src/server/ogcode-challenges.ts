@@ -14,6 +14,7 @@
 
 import { getOgcodePostgresPool, isOgcodePostgresConfigured } from "@/server/postgres";
 import { createId } from "@/server/store";
+import { withSchemaLock } from "@/server/schema-lock";
 
 declare global {
   var __originOgcodeChallengesSchemaReady: Promise<void> | undefined;
@@ -86,7 +87,7 @@ async function ensureChallengesSchema(): Promise<void> {
   const pool = getOgcodePostgresPool();
   if (!pool) return;
   if (!globalThis.__originOgcodeChallengesSchemaReady) {
-    globalThis.__originOgcodeChallengesSchemaReady = pool.query(CREATE_TABLE_SQL).then(() => undefined).catch((error) => {
+    globalThis.__originOgcodeChallengesSchemaReady = withSchemaLock(pool, (client) => client.query(CREATE_TABLE_SQL)).then(() => undefined).catch((error) => {
       globalThis.__originOgcodeChallengesSchemaReady = undefined;
       throw error;
     });

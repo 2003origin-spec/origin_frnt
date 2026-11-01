@@ -359,6 +359,20 @@ export function awardPoints(
     return null;
   }
 
+  // Once per reference (bug N4): a book save / pomodoro / question that was
+  // already rewarded under this activity type must not pay out again. The
+  // durable cross-instance guard is the app.point_awards claim table
+  // (src/server/point-awards.ts); this is the in-process backstop over the
+  // hydrated point log.
+  if (
+    referenceId !== null &&
+    store.pointLogs.some(
+      (entry) => entry.userId === userId && entry.activityType === activityType && entry.referenceId === referenceId,
+    )
+  ) {
+    return null;
+  }
+
   const score = getOrCreateUserScore(store, userId);
   const prevPoints = score.totalPoints;
   score.totalPoints += points;
@@ -428,6 +442,23 @@ export function applyOgcodeScoreDelta(
   };
   store.pointLogs.unshift(log);
   return log;
+}
+
+/** Longest pomodoro the server will credit, in seconds (2 h). */
+export const POMODORO_MAX_DURATION_SECONDS = 2 * 60 * 60;
+
+/**
+ * Server-timed pomodoro length: seconds elapsed since the stored `startTime`,
+ * floored at 0 and capped at 2 h. The client-sent `duration` is never trusted
+ * for the reward (bug N4: `{duration: 1200, is_completed: true}` 60×/min).
+ */
+export function pomodoroDurationFromStart(startTime: string, nowMs: number = Date.now()): number {
+  const startedMs = Date.parse(startTime);
+  if (!Number.isFinite(startedMs)) {
+    return 0;
+  }
+  const elapsed = Math.floor((nowMs - startedMs) / 1000);
+  return Math.min(Math.max(0, elapsed), POMODORO_MAX_DURATION_SECONDS);
 }
 
 export function recordTime(

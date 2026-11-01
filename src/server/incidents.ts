@@ -213,10 +213,12 @@ export function isLockdown(mode: RateLimitMode): boolean {
  * lets us scope it to just the `/import-jobs` segment. */
 export type FlagKillMatcher = string[] | ((path: string) => boolean);
 
-/** Map of FlagKey → matcher describing API surfaces 404'd when the
- * flag is killed via /admin/incidents. Only flags that gate user-facing
- * mutation surfaces are enumerated; killing a flag without an entry
- * here only affects callers that consult getFlagOverride() directly. */
+/** Map of FlagKey → matcher describing API surfaces refused (503) by the
+ * middleware when the flag is killed via /admin/incidents. The middleware
+ * evaluates this for EVERY /api request — all methods, public/anonymous
+ * prefixes included — before any policy branch. Killing a flag without an
+ * entry here only affects handlers that call requireFeatureEnabledRuntime()
+ * (src/server/feature-flags-runtime.ts) or getFlagOverride() directly. */
 export const FLAG_KILL_PREFIXES: Partial<Record<FlagKey, FlagKillMatcher>> = {
   workspaces: ["/api/teacher/workspaces"],
   orgCodes: ["/api/teacher/codes", "/api/teacher/workspaces"],
@@ -234,28 +236,48 @@ export const FLAG_KILL_PREFIXES: Partial<Record<FlagKey, FlagKillMatcher>> = {
   documentImport: (path) =>
     /^\/api\/teacher\/workspaces\/[^/]+\/import-jobs(?:\/|$)/.test(path) ||
     /^\/api\/admin\/import-jobs(?:\/|$)/.test(path),
+  // Matches every admin API except the exempt operator surfaces
+  // (KILL_SWITCH_EXEMPT_PREFIXES): /api/admin/incidents/* must survive its
+  // own kill so the switch can be turned back off.
   adminControlCenter: ["/api/admin"],
   paidEnrollment: ["/api/enrollments"],
-  // Killing cbtModule 404s every CBT API surface. "/api/cbt" also covers
-  // "/api/cbt-student" (startsWith), but both are listed for clarity; the admin
-  // allowlist routes live under "/api/admin/cbt".
+  // Killing cbtModule refuses every CBT API surface, including the anonymous
+  // student one: /api/cbt-student is `public` in the route policy, which is
+  // why the middleware runs this check before the public branch returns.
+  // "/api/cbt" already matches "/api/cbt-student" (startsWith), but both are
+  // listed for clarity; the admin allowlist routes live under "/api/admin/cbt".
   cbtModule: ["/api/cbt", "/api/cbt-student", "/api/admin/cbt"],
-  // Killing `contest` 404s every STUDENT contest surface (register / paper /
-  // start / submit / answers / state / result / leaderboard / practice / dpp).
+  // Killing `contest` refuses (503) every STUDENT contest surface, reads
+  // included (register / paper / start / submit / answers / state / result /
+  // leaderboard / practice / dpp).
   // Deliberately scoped so it does NOT match `/api/internal/contest/*` — the
   // drain/finalize/publish-results/reminders crons must keep running during an
   // incident so buffered answers still persist to Neon and don't expire in
   // Redis. It also leaves `/api/admin/contest/*` alive so an admin can still
   // cancel/reschedule the live contest to stop the bleeding.
   contest: ["/api/contest"],
-  // Killing `originNow` refuses every student/helper Origin NOW mutation
-  // (requests, offers, joins, ratings, wallet, store). It deliberately leaves
+  // Killing `originNow` refuses (503) every student/helper Origin NOW call,
+  // reads included (requests, offers, joins, ratings, wallet, store). It deliberately leaves
   // /api/internal/now/* running so timers still end live sessions and release
   // coin holds, and /api/admin/now/* alive so an admin can still act. The
   // LiveKit token route is a POST (/api/now/sessions/:id/token) precisely so
   // this edge switch covers it; calls already live are ended by the timers.
   originNow: ["/api/now"],
 };
+
+/**
+ * API surfaces that no kill switch may ever refuse, whatever the matcher
+ * says. `/api/admin/incidents/*` carries the un-kill POST itself: with
+ * `adminControlCenter: ["/api/admin"]` killed, the operator's
+ * `kill_switch { value: "clear" }` answered 503 and the only way back was
+ * editing Redis by hand. `/api/admin/launch` is the other operator control
+ * surface (login/signup/cover toggles) and stays reachable for the same reason.
+ */
+export const KILL_SWITCH_EXEMPT_PREFIXES: readonly string[] = ["/api/admin/incidents", "/api/admin/launch"];
+
+export function isKillSwitchExemptPath(pathname: string): boolean {
+  return KILL_SWITCH_EXEMPT_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+}
 
 function matchKillSwitch(matcher: FlagKillMatcher, pathname: string): boolean {
   if (typeof matcher === "function") return matcher(pathname);
@@ -266,6 +288,7 @@ function matchKillSwitch(matcher: FlagKillMatcher, pathname: string): boolean {
  * applies to the given API path, or null when none. Used by middleware
  * to refuse traffic with 503 + a structured payload. */
 export async function findKillSwitchForPath(pathname: string): Promise<FlagKey | null> {
+  if (isKillSwitchExemptPath(pathname)) return null;
   const s = await loadSnapshot();
   for (const [flag, killed] of s.flagOverrides) {
     if (killed !== false) continue;

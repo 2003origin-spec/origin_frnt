@@ -38,6 +38,7 @@ import { ALL_SUBJECTS, normalizeSubject, type Subject } from "@/lib/entitlements
 import { isFeatureEnabled } from "@/lib/feature-flags";
 
 import { assertActiveCollaborator } from "./collaboration-service";
+import { ensureCollaborationSchema } from "./collaboration-schema";
 import { listActiveCollaborationWorkspaceIds } from "./collaboration-store";
 import {
   getActiveWorkspaceTeacherCodeGrant,
@@ -51,20 +52,29 @@ const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
 
 // ─── Browse ─────────────────────────────────────────────────────────────────
 
-/** Active collaborators, as public institute profiles (verified-then-recent). */
-export async function listActiveCollaborators(filter?: {
+export type BrowseFilter = {
   subject?: string;
   city?: string;
   limit?: number;
-}): Promise<InstitutePublicProfile[]> {
-  const activeIds = new Set(await listActiveCollaborationWorkspaceIds());
-  if (activeIds.size === 0) return [];
-  const institutes = await listPublicInstitutesService({
+  offset?: number;
+};
+
+/**
+ * Active collaborators, as public institute profiles (verified-then-recent).
+ * The collaborator filter runs IN SQL, so `limit`/`offset` page over approved
+ * partners. (It used to fetch the newest `limit` institutes of any status and
+ * filter in memory, so once more than `limit` institutes existed, older
+ * approved partners silently vanished from Browse.)
+ */
+export async function listActiveCollaborators(filter?: BrowseFilter): Promise<InstitutePublicProfile[]> {
+  await ensureCollaborationSchema();
+  return listPublicInstitutesService({
     subject: filter?.subject,
     city: filter?.city,
     limit: filter?.limit ?? 60,
+    offset: filter?.offset,
+    activeCollaboratorsOnly: true,
   });
-  return institutes.filter((i) => activeIds.has(i.workspaceId));
 }
 
 /** A collaborator's full public profile (active-collaboration gate; null otherwise). */
@@ -83,11 +93,7 @@ export async function getCollaboratorProfile(
  * pre-#201 behaviour: ALL active institute-type workspaces (students still join
  * non-collaborators via a join code; paid Flow-2 stays gated at checkout).
  */
-export async function listBrowsableInstitutes(filter?: {
-  subject?: string;
-  city?: string;
-  limit?: number;
-}): Promise<InstitutePublicProfile[]> {
+export async function listBrowsableInstitutes(filter?: BrowseFilter): Promise<InstitutePublicProfile[]> {
   if (isFeatureEnabled("instituteApprovalGate")) {
     return listActiveCollaborators(filter);
   }
@@ -95,6 +101,7 @@ export async function listBrowsableInstitutes(filter?: {
     subject: filter?.subject,
     city: filter?.city,
     limit: filter?.limit ?? 60,
+    offset: filter?.offset,
   });
 }
 
@@ -227,7 +234,7 @@ export async function redeemConnectCode(input: {
   const hit = await findWorkspaceByActiveStudentJoinCode(normalized);
   if (!hit) throw new JoinCodeError(404, "We could not find an active workspace for that code.");
 
-  await assertActiveCollaborator(hit.workspace.id);
+  await assertActiveCollaborator(hit.workspace.id, "flow1");
 
   const result = await joinByCode({
     studentId: input.studentId,
@@ -261,24 +268,21 @@ export async function grantConnectSubject(input: {
   const subject = normalizeSubject(input.subject);
   if (!subject) throw new AuthzError(400, "Pick one of physics, chemistry, mathematics or biology.");
 
-  await assertActiveCollaborator(input.workspaceId);
+  await assertActiveCollaborator(input.workspaceId, "flow1");
 
   const enrollment = await getEnrollment(input.workspaceId, input.studentId);
   if (!enrollment || enrollment.status === "left" || enrollment.status === "suspended") {
     throw new AuthzError(403, "Redeem the institute code before picking a subject.");
   }
 
+  // Fast path for the common re-pick / second-pick. NOT the guard: two parallel
+  // picks both pass this read. The guard is the one-per-institute unique index
+  // behind insertTeacherCodeGrant's ON CONFLICT DO NOTHING (below).
   const existing = await getActiveWorkspaceTeacherCodeGrant(input.studentId, input.workspaceId);
-  if (existing) {
-    if (existing.subject === subject) return existing; // idempotent re-pick
-    throw new AuthzError(
-      409,
-      "You have already unlocked a subject for this institute. Contact the institute to change it.",
-    );
-  }
+  if (existing) return assertSameSubjectPick(existing, subject);
 
   const expiresAt = new Date(Date.now() + ONE_YEAR_MS).toISOString();
-  const { grant } = await insertTeacherCodeGrant({
+  const { grant, created } = await insertTeacherCodeGrant({
     userId: input.studentId,
     subject,
     workspaceId: input.workspaceId,
@@ -286,6 +290,11 @@ export async function grantConnectSubject(input: {
     expiresAt,
     grantedBy: null,
   });
+  if (!created) {
+    // Lost a race to a parallel pick (or the row was revoked mid-flight).
+    if (!grant) throw new AuthzError(409, "Your subject pick is already being processed. Refresh and try again.");
+    return assertSameSubjectPick(grant, subject);
+  }
 
   // Entitlement changed → refresh the derived mirror + invalidate user caches.
   await recomputeUserPremiumFlags(input.studentId);
@@ -301,6 +310,15 @@ export async function grantConnectSubject(input: {
   });
 
   return grant;
+}
+
+/** Same subject → idempotent re-pick; a different one → 409 (one free subject per institute). */
+function assertSameSubjectPick(existing: SubjectGrant, subject: Subject): SubjectGrant {
+  if (existing.subject === subject) return existing;
+  throw new AuthzError(
+    409,
+    "You have already unlocked a subject for this institute. Contact the institute to change it.",
+  );
 }
 
 /**

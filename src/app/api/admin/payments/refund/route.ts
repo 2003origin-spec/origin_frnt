@@ -1,4 +1,13 @@
-/** POST /api/admin/payments/refund — initiate an audited Razorpay refund. */
+/**
+ * /api/admin/payments/refund
+ *
+ * POST — initiate an audited Razorpay refund.
+ * POST `{ action: "abandon_intent", razorpayPaymentId }` — admin escape for a
+ *   refund attempt whose Razorpay outcome stayed unknown: re-checks Razorpay,
+ *   records the refund if it did go out, and otherwise (only after the settle
+ *   window) marks the attempt abandoned with an audit event.
+ * GET — the open and abandoned refund attempts (refund intents).
+ */
 
 import type { NextRequest } from "next/server";
 import { z } from "zod";
@@ -7,7 +16,12 @@ import { requireFeatureEnabled } from "@/lib/feature-flags";
 import { parseJsonBody } from "@/server/http";
 import { requireRole } from "@/server/authz";
 import { normalizeIdempotencyKey, withIdempotency } from "@/server/payments/idempotency";
-import { initiateRefund, PaymentLifecycleError } from "@/server/payments/refunds-service";
+import {
+  abandonRefundIntent,
+  initiateRefund,
+  listRefundIntents,
+  PaymentLifecycleError,
+} from "@/server/payments/refunds-service";
 import { recordAuditEvent } from "@/server/workspaces/audit";
 
 import { handleTeacherError, teacherJson } from "@/app/api/teacher/_utils";
@@ -23,11 +37,39 @@ const RefundSchema = z.object({
   path: ["razorpayPaymentId"],
 });
 
+const AbandonIntentSchema = z.object({
+  action: z.literal("abandon_intent"),
+  razorpayPaymentId: z.string().trim().min(1).max(120),
+});
+
+export async function GET(request: NextRequest) {
+  try {
+    requireFeatureEnabled("payments");
+    await requireRole(request, ["admin"]);
+    const limit = Number(request.nextUrl.searchParams.get("limit")) || undefined;
+    return teacherJson({ intents: await listRefundIntents({ limit }) }, { status: 200 });
+  } catch (error) {
+    return handleTeacherError(error);
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     requireFeatureEnabled("payments");
     const ctx = await requireRole(request, ["admin"]);
-    const parsed = RefundSchema.safeParse(await parseJsonBody(request));
+    const body = await parseJsonBody(request);
+    if ((body as { action?: unknown } | null)?.action === "abandon_intent") {
+      const abandon = AbandonIntentSchema.safeParse(body);
+      if (!abandon.success) return teacherJson({ detail: abandon.error.message }, { status: 400 });
+      const result = await abandonRefundIntent({
+        razorpayPaymentId: abandon.data.razorpayPaymentId,
+        actorUserId: ctx.userId,
+        requestId: request.headers.get("x-request-id"),
+        audit: recordAuditEvent,
+      });
+      return teacherJson(result, { status: 200 });
+    }
+    const parsed = RefundSchema.safeParse(body);
     if (!parsed.success) return teacherJson({ detail: parsed.error.message }, { status: 400 });
 
     const razorpayPaymentId = parsed.data.razorpayPaymentId ?? parsed.data.paymentId!;

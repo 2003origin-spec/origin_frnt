@@ -5,7 +5,7 @@
 import type { NextRequest } from "next/server";
 import { z } from "zod";
 
-import { requireFeatureEnabled } from "@/lib/feature-flags";
+import { requireFeatureEnabledRuntime } from "@/server/feature-flags-runtime";
 import { requireAuth } from "@/server/authz";
 import { parseJsonBody } from "@/server/http";
 import { getUserPostgresPool } from "@/server/user-postgres";
@@ -16,7 +16,7 @@ const Schema = z.object({ contestId: z.string().min(1), position: z.number().int
 
 export async function POST(request: NextRequest) {
   try {
-    requireFeatureEnabled("contest");
+    await requireFeatureEnabledRuntime("contest");
     const ctx = await requireAuth(request);
     const parsed = Schema.safeParse(await parseJsonBody(request));
     if (!parsed.success) return teacherJson({ detail: parsed.error.message }, { status: 400 });

@@ -1,0 +1,819 @@
+{
+  "$comment": "Shared grading-parity fixture (bug fixes G1-G5, M1, M2, M4, F2, F3, F7). Source of truth lives at grader-service/tests/fixtures/grading-parity.json; new-frontend/tests/fixtures/grading-parity.json is a byte-for-byte copy. Exercised by grader-service/tests/test_grading_parity.py and new-frontend/tests/unit/grading-parity.test.ts so engine.py, legacy/assessments.ts gradeAnswer and lib/contest/grade.ts agree.",
+  "policy": {
+    "correctMarks": 4,
+    "incorrectMarks": -1,
+    "unattemptedMarks": 0,
+    "partialCreditPolicy": "fractional",
+    "negativeMarkingMode": "answered_only"
+  },
+  "parseStrictNumber": [
+    ["3/4", 0.75],
+    ["1×10^-3", 0.001],
+    ["1x10^-3", 0.001],
+    ["1*10^-3", 0.001],
+    ["1E-3", 0.001],
+    ["1e-3", 0.001],
+    ["2.5 e 3", 2500],
+    ["1 × 10 ^ -3", 0.001],
+    ["−5", -5],
+    ["- 5", -5],
+    ["1,000", 1000],
+    ["1,00,000", 100000],
+    ["1,234.56", 1234.56],
+    ["10^3", 1000],
+    ["10^(-2)", 0.01],
+    [".5", 0.5],
+    ["250", 250],
+    ["Ans: 5", 5],
+    ["answer = 7", 7],
+    ["2 or 3", null],
+    ["2,3", null],
+    ["2, 3", null],
+    ["2 3", null],
+    ["x=2", null],
+    ["1/0", null],
+    ["1e400", null],
+    ["9e-400", 0],
+    ["5 (approx)", null],
+    ["", null],
+    [null, null]
+  ],
+  "numericTolerance": [
+    { "id": "integer-exact-rejects-252", "expected": "250", "submitted": "252", "tolerance": null, "answerSpecTolerance": null, "kind": "integer_exact", "match": false },
+    { "id": "integer-exact-accepts-250", "expected": "250", "submitted": "250", "tolerance": null, "answerSpecTolerance": null, "kind": "integer_exact", "match": true },
+    { "id": "integer-exact-accepts-grouped", "expected": "1000", "submitted": "1,000", "tolerance": null, "answerSpecTolerance": null, "kind": "integer_exact", "match": true },
+    { "id": "decimal-rounds-9.75-to-9.8", "expected": "9.8", "submitted": "9.75", "tolerance": null, "answerSpecTolerance": null, "kind": "decimal_exact", "match": true },
+    { "id": "decimal-rejects-9.74", "expected": "9.8", "submitted": "9.74", "tolerance": null, "answerSpecTolerance": null, "kind": "decimal_exact", "match": false },
+    { "id": "decimal-two-places", "expected": "3.14", "submitted": "3.141", "tolerance": null, "answerSpecTolerance": null, "kind": "decimal_exact", "match": true },
+    { "id": "decimal-two-places-rejects", "expected": "3.14", "submitted": "3.15", "tolerance": null, "answerSpecTolerance": null, "kind": "decimal_exact", "match": false },
+    { "id": "explicit-zero-is-exact", "expected": "7", "submitted": "7.4", "tolerance": 0, "answerSpecTolerance": null, "kind": "explicit", "match": false },
+    { "id": "explicit-zero-accepts-equal", "expected": "7", "submitted": "7.0", "tolerance": 0, "answerSpecTolerance": null, "kind": "explicit", "match": true },
+    { "id": "explicit-0.1-accepts-9.75", "expected": "9.8", "submitted": "9.75", "tolerance": 0.1, "answerSpecTolerance": null, "kind": "explicit", "match": true },
+    { "id": "explicit-0.1-rejects-9.6", "expected": "9.8", "submitted": "9.6", "tolerance": 0.1, "answerSpecTolerance": null, "kind": "explicit", "match": false },
+    { "id": "answer-spec-zero-beats-question-null", "expected": "9.8", "submitted": "9.75", "tolerance": null, "answerSpecTolerance": 0, "kind": "explicit", "match": false },
+    { "id": "question-tolerance-used-when-spec-null", "expected": "9.8", "submitted": "9.4", "tolerance": 0.5, "answerSpecTolerance": null, "kind": "explicit", "match": true },
+    { "id": "fraction-vs-decimal", "expected": "0.75", "submitted": "3/4", "tolerance": null, "answerSpecTolerance": null, "kind": "decimal_exact", "match": true },
+    { "id": "sci-times-pow", "expected": "0.001", "submitted": "1×10^-3", "tolerance": null, "answerSpecTolerance": null, "kind": "decimal_exact", "match": true },
+    { "id": "sci-upper-e", "expected": "0.001", "submitted": "1E-3", "tolerance": null, "answerSpecTolerance": null, "kind": "decimal_exact", "match": true },
+    { "id": "sci-expected-text", "expected": "1.5e-3", "submitted": "0.0015", "tolerance": null, "answerSpecTolerance": null, "kind": "decimal_exact", "match": true },
+    { "id": "sci-expected-text-rejects", "expected": "1.5e-3", "submitted": "0.0016", "tolerance": null, "answerSpecTolerance": null, "kind": "decimal_exact", "match": false },
+    { "id": "decimal-half-up-on-typed-digits", "expected": "1.01", "submitted": "1.005", "tolerance": null, "answerSpecTolerance": null, "kind": "decimal_exact", "match": true },
+    { "id": "decimal-half-up-2.675", "expected": "2.68", "submitted": "2.675", "tolerance": null, "answerSpecTolerance": null, "kind": "decimal_exact", "match": true },
+    { "id": "decimal-half-up-negative", "expected": "-1.01", "submitted": "-1.005", "tolerance": null, "answerSpecTolerance": null, "kind": "decimal_exact", "match": true },
+    { "id": "negative-integer", "expected": "-5", "submitted": "−5", "tolerance": null, "answerSpecTolerance": null, "kind": "integer_exact", "match": true },
+    { "id": "F7-fraction-key-student-3dp", "expected": "2/3", "submitted": "0.667", "tolerance": null, "answerSpecTolerance": null, "kind": "decimal_exact", "match": true },
+    { "id": "F7-fraction-key-student-4dp", "expected": "2/3", "submitted": "0.6667", "tolerance": null, "answerSpecTolerance": null, "kind": "decimal_exact", "match": true },
+    { "id": "F7-fraction-key-student-2dp", "expected": "2/3", "submitted": "0.67", "tolerance": null, "answerSpecTolerance": null, "kind": "decimal_exact", "match": true },
+    { "id": "F7-fraction-key-1dp-is-too-coarse", "expected": "2/3", "submitted": "0.7", "tolerance": null, "answerSpecTolerance": null, "kind": "decimal_exact", "match": false },
+    { "id": "F7-fraction-key-truncated-is-wrong", "expected": "2/3", "submitted": "0.666", "tolerance": null, "answerSpecTolerance": null, "kind": "decimal_exact", "match": false },
+    { "id": "F7-fraction-key-typed-trailing-zero-counts", "expected": "2/3", "submitted": "0.670", "tolerance": null, "answerSpecTolerance": null, "kind": "decimal_exact", "match": false },
+    { "id": "F7-fraction-key-fraction-answer", "expected": "2/3", "submitted": "4/6", "tolerance": null, "answerSpecTolerance": null, "kind": "decimal_exact", "match": true },
+    { "id": "F7-terminating-fraction-key-2dp", "expected": "3/4", "submitted": "0.75", "tolerance": null, "answerSpecTolerance": null, "kind": "decimal_exact", "match": true },
+    { "id": "F7-small-fraction-key-needs-2-sig-figs", "expected": "1/3000", "submitted": "0.00033", "tolerance": null, "answerSpecTolerance": null, "kind": "decimal_exact", "match": true },
+    { "id": "F7-small-fraction-key-zero-is-wrong", "expected": "1/3000", "submitted": "0", "tolerance": null, "answerSpecTolerance": null, "kind": "decimal_exact", "match": false },
+    { "id": "F7-sci-key-precision-as-typed", "expected": "1.50e-3", "submitted": "0.00151", "tolerance": null, "answerSpecTolerance": null, "kind": "decimal_exact", "match": false },
+    { "id": "F7-sci-key-precision-as-typed-accepts", "expected": "1.50e-3", "submitted": "0.0015", "tolerance": null, "answerSpecTolerance": null, "kind": "decimal_exact", "match": true },
+    { "id": "F7-terminating-fraction-exact-decimal", "expected": "1/8", "submitted": "0.125", "tolerance": null, "answerSpecTolerance": null, "kind": "decimal_exact", "match": true },
+    { "id": "F7-terminating-fraction-rounded-is-wrong", "expected": "1/8", "submitted": "0.13", "tolerance": null, "answerSpecTolerance": null, "kind": "decimal_exact", "match": false },
+    { "id": "F7-terminating-fraction-truncated-is-wrong", "expected": "1/8", "submitted": "0.12", "tolerance": null, "answerSpecTolerance": null, "kind": "decimal_exact", "match": false },
+    { "id": "F7-terminating-fraction-3-4-exact", "expected": "3/4", "submitted": "0.75", "tolerance": null, "answerSpecTolerance": null, "kind": "decimal_exact", "match": true },
+    { "id": "F7-terminating-fraction-3-4-rounded-is-wrong", "expected": "3/4", "submitted": "0.8", "tolerance": null, "answerSpecTolerance": null, "kind": "decimal_exact", "match": false },
+    { "id": "F7-terminating-decimal-fraction-key", "expected": "1.5/4", "submitted": "0.375", "tolerance": null, "answerSpecTolerance": null, "kind": "decimal_exact", "match": true },
+    { "id": "F7-terminating-decimal-fraction-key-rounded-is-wrong", "expected": "1.5/4", "submitted": "0.38", "tolerance": null, "answerSpecTolerance": null, "kind": "decimal_exact", "match": false },
+    { "id": "F7-repeating-fraction-two-decimals-still-right", "expected": "2/3", "submitted": "0.67", "tolerance": null, "answerSpecTolerance": null, "kind": "decimal_exact", "match": true }
+  ],
+  "matrix": [
+    { "id": "all-cells-ticked-is-wrong", "expected": [[0, 1], [1, 0]], "submitted": [[0, 0], [0, 1], [1, 0], [1, 1]], "partialCreditPolicy": "fractional", "isCorrect": false, "credit": 0, "marks": -1, "reason": "matrix_wrong_pair" },
+    { "id": "exact-match", "expected": [[0, 1], [1, 0]], "submitted": [[1, 0], [0, 1]], "partialCreditPolicy": "fractional", "isCorrect": true, "credit": 1, "marks": 4, "reason": "matrix_exact_match" },
+    { "id": "one-complete-row-of-two", "expected": [[0, 1], [1, 0]], "submitted": [[0, 1]], "partialCreditPolicy": "fractional", "isCorrect": false, "credit": 0.5, "marks": 2, "reason": "matrix_partial_rows" },
+    { "id": "subset-plus-wrong-pair", "expected": [[0, 1], [1, 0]], "submitted": [[0, 1], [1, 1]], "partialCreditPolicy": "fractional", "isCorrect": false, "credit": 0, "marks": -1, "reason": "matrix_wrong_pair" },
+    { "id": "row-with-two-correct-cells-half-marked", "expected": [[0, 1], [0, 2], [1, 0]], "submitted": [[0, 1], [1, 0]], "partialCreditPolicy": "fractional", "isCorrect": false, "credit": 0.5, "marks": 2, "reason": "matrix_partial_rows" },
+    { "id": "M4-policy-none-subset-is-zero-not-negative", "expected": [[0, 1], [1, 0]], "submitted": [[0, 1]], "partialCreditPolicy": "none", "isCorrect": false, "credit": 0, "marks": 0, "reason": "matrix_mismatch" },
+    { "id": "M4-one-correct-pair-no-complete-row-is-zero", "expected": [[0, 0], [0, 1], [1, 1], [2, 2], [3, 3]], "submitted": [[0, 1]], "partialCreditPolicy": "fractional", "isCorrect": false, "credit": 0, "marks": 0, "reason": "matrix_partial_rows" },
+    { "id": "M4-correct-pairs-plus-one-wrong-is-negative", "expected": [[0, 0], [0, 1], [1, 1], [2, 2], [3, 3]], "submitted": [[0, 1], [1, 0]], "partialCreditPolicy": "fractional", "isCorrect": false, "credit": 0, "marks": -1, "reason": "matrix_wrong_pair" },
+    { "id": "unattempted", "expected": [[0, 1], [1, 0]], "submitted": [], "partialCreditPolicy": "fractional", "isCorrect": false, "credit": 0, "marks": 0, "reason": "unattempted" }
+  ],
+  "semanticCredit": [
+    { "score": 0.9, "threshold": 0.82, "isCorrect": true, "credit": 1 },
+    { "score": 0.82, "threshold": 0.82, "isCorrect": true, "credit": 1 },
+    { "score": 0.8, "threshold": 0.82, "isCorrect": false, "credit": 0.39 },
+    { "score": 0.76, "threshold": 0.82, "isCorrect": false, "credit": 0.371 },
+    { "score": 0.74, "threshold": 0.82, "isCorrect": false, "credit": 0.361 },
+    { "score": 0.7399, "threshold": 0.82, "isCorrect": false, "credit": 0 },
+    { "score": 0.6, "threshold": 0.82, "isCorrect": false, "credit": 0 },
+    { "score": 0.3, "threshold": 0.82, "isCorrect": false, "credit": 0 },
+    { "score": 0.2, "threshold": 0.68, "isCorrect": false, "credit": 0 },
+    { "score": 0, "threshold": 0.82, "isCorrect": false, "credit": 0 }
+  ],
+  "cases": [
+    {
+      "id": "G1-250-vs-252-is-wrong",
+      "question": { "questionType": "numerical", "answerText": "250", "tolerance": null },
+      "answer": { "answerText": "252" },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": -1, "needsReview": false, "reasonCodes": ["numeric_compare", "tolerance_integer_exact"] }
+    },
+    {
+      "id": "G1-250-vs-250-is-right",
+      "question": { "questionType": "numerical", "answerText": "250", "tolerance": null },
+      "answer": { "answerText": "250" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false }
+    },
+    {
+      "id": "G1-tolerance-zero-is-exact",
+      "question": { "questionType": "numerical", "answerText": "7", "tolerance": 0 },
+      "answer": { "answerText": "7.4" },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": -1, "needsReview": false, "reasonCodes": ["numeric_compare", "tolerance_explicit"] }
+    },
+    {
+      "id": "G1-decimal-rounds-to-expected-places",
+      "question": { "questionType": "numerical", "answerText": "9.8", "tolerance": null },
+      "answer": { "answerText": "9.75" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false }
+    },
+    {
+      "id": "G1-decimal-9.74-is-wrong",
+      "question": { "questionType": "numerical", "answerText": "9.8", "tolerance": null },
+      "answer": { "answerText": "9.74" },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": -1, "needsReview": false }
+    },
+    {
+      "id": "G1-explicit-0.1-accepts-9.75",
+      "question": { "questionType": "numerical", "answerText": "9.8", "tolerance": 0.1, "answerSpec": { "gradingMode": "numerical", "expectedValue": "9.8", "tolerance": 0.1 } },
+      "answer": { "answerText": "9.75" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false }
+    },
+    {
+      "id": "G1-answer-spec-zero-beats-question-null",
+      "question": { "questionType": "numerical", "answerText": "9.8", "tolerance": null, "answerSpec": { "gradingMode": "numerical", "expectedValue": "9.8", "tolerance": 0 } },
+      "answer": { "answerText": "9.75" },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": -1, "needsReview": false }
+    },
+    {
+      "id": "G1-inline-spec-null-tolerance-uses-question",
+      "question": { "questionType": "numerical", "answerText": "9.8", "tolerance": 0.5, "answerSpec": { "gradingMode": "numerical", "expectedValue": "9.8", "tolerance": null } },
+      "answer": { "answerText": "9.4" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false }
+    },
+    {
+      "id": "G2-fraction-is-right",
+      "question": { "questionType": "numerical", "answerText": "0.75", "tolerance": null },
+      "answer": { "answerText": "3/4" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false }
+    },
+    {
+      "id": "G2-times-ten-power-is-right",
+      "question": { "questionType": "numerical", "answerText": "0.001", "tolerance": null },
+      "answer": { "answerText": "1×10^-3" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false }
+    },
+    {
+      "id": "G2-upper-E-is-right",
+      "question": { "questionType": "numerical", "answerText": "0.001", "tolerance": null },
+      "answer": { "answerText": "1E-3" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false }
+    },
+    {
+      "id": "G2-two-numbers-is-wrong",
+      "question": { "questionType": "numerical", "answerText": "2", "tolerance": null },
+      "answer": { "answerText": "2 3" },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": -1, "needsReview": false, "reasonCodes": ["numeric_parse_error"] }
+    },
+    {
+      "id": "G2-two-or-three-is-wrong",
+      "question": { "questionType": "numerical", "answerText": "2", "tolerance": null },
+      "answer": { "answerText": "2 or 3" },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": -1, "needsReview": false, "reasonCodes": ["numeric_parse_error"] }
+    },
+    {
+      "id": "G2-expected-not-numeric-holds-for-review",
+      "question": { "questionType": "numerical", "answerText": "about five", "tolerance": null },
+      "answer": { "answerText": "5" },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": 0, "needsReview": true, "reasonCodes": ["expected_not_numeric"] }
+    },
+    {
+      "id": "G2-units-same-unit-is-right",
+      "question": { "questionType": "numerical", "answerText": "9.8 m/s^2", "tolerance": null },
+      "answer": { "answerText": "9.8 m/s^2" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false, "reasonCodes": ["unit_compare", "tolerance_decimal_exact"] }
+    },
+    {
+      "id": "G2-units-wrong-magnitude-is-wrong",
+      "question": { "questionType": "numerical", "answerText": "9.8 m/s^2", "tolerance": null },
+      "answer": { "answerText": "9.9 m/s^2" },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": -1, "needsReview": false }
+    },
+    {
+      "id": "M1-units-bare-number-is-right",
+      "$comment": "Phone keypads cannot type units: a bare number is compared with the key's magnitude (same rule as contest).",
+      "question": { "questionType": "numerical", "answerText": "9.8 m/s^2", "tolerance": null },
+      "answer": { "answerText": "9.8" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false, "reasonCodes": ["unit_compare", "unitless_magnitude"] }
+    },
+    {
+      "id": "G2-units-converted-by-pint",
+      "$comment": "pint in the grader; the TS fallback's unit parser (numeric-tolerance.ts parseUnitExpression) converts the same.",
+      "question": { "questionType": "numerical", "answerText": "1.5×10^-3 m", "tolerance": null },
+      "answer": { "answerText": "1.5 mm" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false }
+    },
+    {
+      "id": "G2-range-with-fractions",
+      "question": { "questionType": "range", "answerText": "0.6", "tolerance": null },
+      "answer": { "answerText": "1/2|3/4" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false }
+    },
+    {
+      "id": "G2-range-outside",
+      "question": { "questionType": "range", "answerText": "10", "tolerance": null },
+      "answer": { "answerText": "3|7" },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": -1, "needsReview": false }
+    },
+    {
+      "id": "G3-all-cells-ticked-is-negative",
+      "question": { "questionType": "matrix_match", "matrixData": { "column_a": ["P", "Q"], "column_b": ["1", "2"], "correct_pairs": [[0, 1], [1, 0]] } },
+      "answer": { "matrixPairs": [[0, 0], [0, 1], [1, 0], [1, 1]] },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": -1, "needsReview": false, "reasonCodes": ["matrix_wrong_pair"] }
+    },
+    {
+      "id": "G3-one-row-complete-is-half",
+      "question": { "questionType": "matrix_match", "matrixData": { "column_a": ["P", "Q"], "column_b": ["1", "2"], "correct_pairs": [[0, 1], [1, 0]] } },
+      "answer": { "matrixPairs": [[0, 1]] },
+      "expect": { "isCorrect": false, "creditAwarded": 0.5, "marksAwarded": 2, "needsReview": false, "reasonCodes": ["matrix_partial_rows"] }
+    },
+    {
+      "id": "G3-subset-plus-wrong-pair-is-negative",
+      "question": { "questionType": "matrix_match", "matrixData": { "column_a": ["P", "Q"], "column_b": ["1", "2"], "correct_pairs": [[0, 1], [1, 0]] } },
+      "answer": { "matrixPairs": [[0, 1], [1, 1]] },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": -1, "needsReview": false, "reasonCodes": ["matrix_wrong_pair"] }
+    },
+    {
+      "id": "G3-half-marked-row-earns-nothing-for-that-row",
+      "question": { "questionType": "matrix_match", "matrixData": { "column_a": ["P", "Q"], "column_b": ["1", "2", "3"], "correct_pairs": [[0, 1], [0, 2], [1, 0]] } },
+      "answer": { "matrixPairs": [[0, 1], [1, 0]] },
+      "expect": { "isCorrect": false, "creditAwarded": 0.5, "marksAwarded": 2, "needsReview": false, "reasonCodes": ["matrix_partial_rows"] }
+    },
+    {
+      "id": "G3-exact-match",
+      "question": { "questionType": "matrix_match", "matrixData": { "column_a": ["P", "Q"], "column_b": ["1", "2"], "correct_pairs": [[0, 1], [1, 0]] } },
+      "answer": { "matrixPairs": [[1, 0], [0, 1]] },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false, "reasonCodes": ["matrix_exact_match"] }
+    },
+    {
+      "id": "G3-unattempted",
+      "question": { "questionType": "matrix_match", "matrixData": { "column_a": ["P", "Q"], "column_b": ["1", "2"], "correct_pairs": [[0, 1], [1, 0]] } },
+      "answer": { "matrixPairs": [] },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": 0, "needsReview": false }
+    },
+    {
+      "id": "G4-symbolic-mismatch-is-negative",
+      "pythonOnly": true,
+      "question": { "questionType": "numerical", "answerText": "x^2 + 2*x + 1", "answerSpec": { "gradingMode": "symbolic_expression", "expectedValue": "x^2 + 2*x + 1", "acceptedForms": ["x^2 + 2*x + 1"] } },
+      "answer": { "answerText": "x^2 + 2*x + 2" },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": -1, "needsReview": false, "semanticBand": "weak_match", "reasonCodes": ["symbolic_mismatch"] }
+    },
+    {
+      "id": "G4-equation-wrong-rhs-is-negative",
+      "pythonOnly": true,
+      "question": { "questionType": "numerical", "answerText": "y = 2*x + 1", "answerSpec": { "gradingMode": "equation", "expectedValue": "y = 2*x + 1", "acceptedForms": ["y = 2*x + 1"], "targetVariable": "y", "allowRhsOnly": true } },
+      "answer": { "answerText": "y = 2*x + 3" },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": -1, "needsReview": false, "reasonCodes": ["symbolic_mismatch"] }
+    },
+    {
+      "id": "G4-symbolic-parse-error-holds-for-review",
+      "pythonOnly": true,
+      "question": { "questionType": "numerical", "answerText": "x^2 + 2*x + 1", "answerSpec": { "gradingMode": "symbolic_expression", "expectedValue": "x^2 + 2*x + 1", "acceptedForms": ["x^2 + 2*x + 1"] } },
+      "answer": { "answerText": "x ≥ 2" },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": 0, "needsReview": true, "reasonCodes": ["parse_error"] }
+    },
+    {
+      "id": "G4-text-near-match-earns-0.4-ratio",
+      "pythonOnly": true,
+      "question": { "questionType": "subjective", "answerText": "velocity momentum energy force torque" },
+      "answer": { "answerText": "velocity momentum energy force" },
+      "expect": { "isCorrect": false, "creditAwarded": 0.39, "marksAwarded": 1.56, "needsReview": true, "semanticBand": "near_match" }
+    },
+    {
+      "id": "G4-text-weak-match-is-negative-but-reviewed",
+      "pythonOnly": true,
+      "question": { "questionType": "subjective", "answerText": "velocity momentum energy force torque" },
+      "answer": { "answerText": "velocity momentum energy" },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": -1, "needsReview": true, "semanticBand": "weak_match" }
+    },
+    {
+      "id": "G4-text-very-weak-is-negative-no-review",
+      "pythonOnly": true,
+      "question": { "questionType": "subjective", "answerText": "velocity momentum energy force torque" },
+      "answer": { "answerText": "velocity" },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": -1, "needsReview": false, "semanticBand": "weak_match" }
+    },
+    {
+      "id": "G4-numeric-wrong-is-credit-zero-not-0.15x",
+      "question": { "questionType": "numerical", "answerText": "100", "tolerance": null },
+      "answer": { "answerText": "99" },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": -1, "needsReview": false }
+    },
+    {
+      "id": "M1-units-bare-wrong-number-is-wrong",
+      "question": { "questionType": "numerical", "answerText": "9.8 m/s^2", "tolerance": null },
+      "answer": { "answerText": "9.7" },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": -1, "needsReview": false, "reasonCodes": ["unitless_magnitude"] }
+    },
+    {
+      "id": "M1-unparseable-key-unit-bare-number-is-right",
+      "question": { "questionType": "numerical", "answerText": "9.8 m/s2", "tolerance": null },
+      "answer": { "answerText": "9.8" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false, "reasonCodes": ["unitless_magnitude"] }
+    },
+    {
+      "id": "M1-unparseable-key-unit-same-text-is-right",
+      "question": { "questionType": "numerical", "answerText": "9.8 m/s2", "tolerance": null },
+      "answer": { "answerText": "9.8 m/s2" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false, "reasonCodes": ["unit_compare"] }
+    },
+    {
+      "id": "M2-degree-suffix-on-unitless-key-is-right",
+      "question": { "questionType": "numerical", "answerText": "30", "tolerance": null },
+      "answer": { "answerText": "30°" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false, "reasonCodes": ["numeric_compare", "unit_ignored"] }
+    },
+    {
+      "id": "M2-percent-suffix-on-unitless-key-is-right",
+      "question": { "questionType": "numerical", "answerText": "50", "tolerance": null },
+      "answer": { "answerText": "50%" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false, "reasonCodes": ["unit_ignored"] }
+    },
+    {
+      "id": "M2-unit-suffix-on-unitless-key-is-right",
+      "question": { "questionType": "numerical", "answerText": "5", "tolerance": null },
+      "answer": { "answerText": "5 cm" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false, "reasonCodes": ["unit_ignored"] }
+    },
+    {
+      "id": "M2-word-unit-on-unitless-key-is-right",
+      "question": { "questionType": "numerical", "answerText": "25", "tolerance": null },
+      "answer": { "answerText": "25 units" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false, "reasonCodes": ["unit_ignored"] }
+    },
+    {
+      "id": "L1-units-cm-equals-mm",
+      "$comment": "Equal quantities in different units agree in Python (pint) and the TS fallback (parseUnitExpression).",
+      "question": { "questionType": "numerical", "answerText": "5 cm", "tolerance": null },
+      "answer": { "answerText": "50 mm" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false, "reasonCodes": ["unit_compare", "tolerance_integer_exact"] }
+    },
+    {
+      "id": "L1-units-cm-vs-wrong-mm",
+      "question": { "questionType": "numerical", "answerText": "5 cm", "tolerance": null },
+      "answer": { "answerText": "5 mm" },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": -1, "needsReview": false, "reasonCodes": ["unit_compare"] }
+    },
+    {
+      "id": "L1-units-kmh-equals-ms",
+      "question": { "questionType": "numerical", "answerText": "72 km/h", "tolerance": null },
+      "answer": { "answerText": "20 m/s" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false, "reasonCodes": ["unit_compare"] }
+    },
+    {
+      "id": "L1-units-acceleration-cm",
+      "question": { "questionType": "numerical", "answerText": "9.8 m/s^2", "tolerance": null },
+      "answer": { "answerText": "980 cm/s^2" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false, "reasonCodes": ["unit_compare"] }
+    },
+    {
+      "id": "L1-units-kj-equals-j",
+      "question": { "questionType": "numerical", "answerText": "1 kJ", "tolerance": null },
+      "answer": { "answerText": "1000 J" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false, "reasonCodes": ["unit_compare"] }
+    },
+    {
+      "id": "L1-units-hours-equals-minutes",
+      "question": { "questionType": "numerical", "answerText": "2 h", "tolerance": null },
+      "answer": { "answerText": "120 min" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false, "reasonCodes": ["unit_compare"] }
+    },
+    {
+      "id": "L1-units-kg-equals-g",
+      "question": { "questionType": "numerical", "answerText": "1 kg", "tolerance": null },
+      "answer": { "answerText": "1000 g" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false, "reasonCodes": ["unit_compare"] }
+    },
+    {
+      "id": "L1-units-kpa-equals-pa",
+      "question": { "questionType": "numerical", "answerText": "1 kPa", "tolerance": null },
+      "answer": { "answerText": "1000 Pa" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false, "reasonCodes": ["unit_compare"] }
+    },
+    {
+      "id": "L1-units-kn-equals-n",
+      "question": { "questionType": "numerical", "answerText": "2 kN", "tolerance": null },
+      "answer": { "answerText": "2000 N" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false, "reasonCodes": ["unit_compare"] }
+    },
+    {
+      "id": "L1-units-dimension-mismatch-is-wrong",
+      "question": { "questionType": "numerical", "answerText": "5 m", "tolerance": null },
+      "answer": { "answerText": "5 kg" },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": -1, "needsReview": false, "reasonCodes": ["dimension_mismatch"] }
+    },
+    {
+      "id": "L1-unparseable-key-unit-other-unit-is-held",
+      "$comment": "The key's unit cannot be read (pint) or converted (TS): held for a human at 0 on both sides.",
+      "question": { "questionType": "numerical", "answerText": "9.8 m/s2", "tolerance": null },
+      "answer": { "answerText": "9.8 km" },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": 0, "needsReview": true }
+    },
+    {
+      "id": "M2-suffix-does-not-rescue-a-wrong-number",
+      "question": { "questionType": "numerical", "answerText": "30", "tolerance": null },
+      "answer": { "answerText": "31°" },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": -1, "needsReview": false }
+    },
+    {
+      "id": "M2-two-numbers-with-x-still-wrong",
+      "question": { "questionType": "numerical", "answerText": "2", "tolerance": null },
+      "answer": { "answerText": "2 x 3" },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": -1, "needsReview": false, "reasonCodes": ["numeric_parse_error"] }
+    },
+    {
+      "id": "M2-parenthetical-still-wrong",
+      "question": { "questionType": "numerical", "answerText": "5", "tolerance": null },
+      "answer": { "answerText": "5 (approx)" },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": -1, "needsReview": false, "reasonCodes": ["numeric_parse_error"] }
+    },
+    {
+      "id": "M2-equation-still-wrong",
+      "question": { "questionType": "numerical", "answerText": "2", "tolerance": null },
+      "answer": { "answerText": "x=2" },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": -1, "needsReview": false, "reasonCodes": ["numeric_parse_error"] }
+    },
+    {
+      "id": "M4-one-correct-pair-no-complete-row-is-zero",
+      "question": { "questionType": "matrix_match", "matrixData": { "column_a": ["P", "Q", "R", "S"], "column_b": ["1", "2", "3", "4"], "correct_pairs": [[0, 0], [0, 1], [1, 1], [2, 2], [3, 3]] } },
+      "answer": { "matrixPairs": [[0, 1]] },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": 0, "needsReview": false, "reasonCodes": ["matrix_partial_rows"] }
+    },
+    {
+      "id": "F2-key-alternatives-bare-other-value-is-held",
+      "$comment": "The key suffix (or 4) is not a unit: the key lists alternatives, so a bare answer is held for a human, not compared with the first number.",
+      "question": { "questionType": "numerical", "answerText": "3 or 4", "tolerance": null },
+      "answer": { "answerText": "4" },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": 0, "needsReview": true, "reasonCodes": ["expected_unit_parse_error"] }
+    },
+    {
+      "id": "F2-key-alternatives-bare-first-value-is-held",
+      "question": { "questionType": "numerical", "answerText": "3 or 4", "tolerance": null },
+      "answer": { "answerText": "3" },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": 0, "needsReview": true, "reasonCodes": ["expected_unit_parse_error"] }
+    },
+    {
+      "id": "F2-key-alternatives-with-units-is-held",
+      "question": { "questionType": "numerical", "answerText": "2 cm or 20 mm", "tolerance": null },
+      "answer": { "answerText": "20" },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": 0, "needsReview": true, "reasonCodes": ["expected_unit_parse_error"] }
+    },
+    {
+      "id": "F2-key-unit-with-bare-digit-exponent-still-compares",
+      "question": { "questionType": "numerical", "answerText": "5 cm²", "tolerance": null },
+      "answer": { "answerText": "5" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false, "reasonCodes": ["unitless_magnitude"] }
+    },
+    {
+      "id": "F3-percent-key-fraction-answer-is-right",
+      "question": { "questionType": "numerical", "answerText": "50 %", "tolerance": null },
+      "answer": { "answerText": "0.5" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false, "reasonCodes": ["percent_converted"] }
+    },
+    {
+      "id": "F3-percent-key-wrong-fraction-is-wrong",
+      "question": { "questionType": "numerical", "answerText": "50 %", "tolerance": null },
+      "answer": { "answerText": "0.05" },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": -1, "needsReview": false }
+    },
+    {
+      "id": "F3-percent-key-bare-percent-number-is-right",
+      "question": { "questionType": "numerical", "answerText": "50 %", "tolerance": null },
+      "answer": { "answerText": "50" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false, "reasonCodes": ["unitless_magnitude"] }
+    },
+    {
+      "id": "F3-fraction-key-percent-answer-is-right",
+      "question": { "questionType": "numerical", "answerText": "0.5", "tolerance": null },
+      "answer": { "answerText": "50%" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false, "reasonCodes": ["unit_ignored", "percent_converted"] }
+    },
+    {
+      "id": "F3-fraction-key-wrong-percent-is-wrong",
+      "question": { "questionType": "numerical", "answerText": "0.5", "tolerance": null },
+      "answer": { "answerText": "5%" },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": -1, "needsReview": false }
+    },
+    {
+      "id": "F7-fraction-key-three-decimals-is-right",
+      "question": { "questionType": "numerical", "answerText": "2/3", "tolerance": null },
+      "answer": { "answerText": "0.667" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false, "reasonCodes": ["tolerance_decimal_exact"] }
+    },
+    {
+      "id": "F7-fraction-key-one-decimal-is-wrong",
+      "question": { "questionType": "numerical", "answerText": "2/3", "tolerance": null },
+      "answer": { "answerText": "0.7" },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": -1, "needsReview": false }
+    },
+    {
+      "id": "F7-fraction-key-truncated-is-wrong",
+      "question": { "questionType": "numerical", "answerText": "2/3", "tolerance": null },
+      "answer": { "answerText": "0.666" },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": -1, "needsReview": false }
+    },
+    {
+      "id": "F7-fraction-key-with-unit-same-unit",
+      "question": { "questionType": "numerical", "answerText": "2/3 m", "tolerance": null },
+      "answer": { "answerText": "0.667 m" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false }
+    },
+    {
+      "id": "F7-fraction-key-with-unit-converted",
+      "question": { "questionType": "numerical", "answerText": "2/3 m", "tolerance": null },
+      "answer": { "answerText": "66.7 cm" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false }
+    },
+    {
+      "id": "F7-terminating-fraction-key-exact-decimal-is-right",
+      "$comment": "1/8 terminates (0.125), so the exact decimal is required; only repeating fractions such as 2/3 use the student's precision.",
+      "question": { "questionType": "numerical", "answerText": "1/8", "tolerance": null },
+      "answer": { "answerText": "0.125" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false, "reasonCodes": ["tolerance_decimal_exact"] }
+    },
+    {
+      "id": "F7-terminating-fraction-key-rounded-is-wrong",
+      "question": { "questionType": "numerical", "answerText": "1/8", "tolerance": null },
+      "answer": { "answerText": "0.13" },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": -1, "needsReview": false, "reasonCodes": ["tolerance_decimal_exact"] }
+    },
+    {
+      "id": "F7-terminating-fraction-key-truncated-is-wrong",
+      "question": { "questionType": "numerical", "answerText": "1/8", "tolerance": null },
+      "answer": { "answerText": "0.12" },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": -1, "needsReview": false, "reasonCodes": ["tolerance_decimal_exact"] }
+    },
+    {
+      "id": "F7-terminating-fraction-key-3-4-is-right",
+      "question": { "questionType": "numerical", "answerText": "3/4", "tolerance": null },
+      "answer": { "answerText": "0.75" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false, "reasonCodes": ["tolerance_decimal_exact"] }
+    },
+    {
+      "id": "F7-terminating-fraction-key-3-4-rounded-is-wrong",
+      "question": { "questionType": "numerical", "answerText": "3/4", "tolerance": null },
+      "answer": { "answerText": "0.8" },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": -1, "needsReview": false, "reasonCodes": ["tolerance_decimal_exact"] }
+    },
+    {
+      "id": "F7-repeating-fraction-key-two-decimals-is-right",
+      "question": { "questionType": "numerical", "answerText": "2/3", "tolerance": null },
+      "answer": { "answerText": "0.67" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false, "reasonCodes": ["tolerance_decimal_exact"] }
+    },
+    {
+      "id": "R3-5-key-unit-with-spaces-bare-number-is-right",
+      "$comment": "Unit words joined by spaces or a middle dot are a unit (a product), so the bare number is compared (M1).",
+      "question": { "questionType": "numerical", "answerText": "9.8 m s^-1", "tolerance": null },
+      "answer": { "answerText": "9.8" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false, "reasonCodes": ["unit_compare", "unitless_magnitude"] }
+    },
+    {
+      "id": "R3-5-key-unit-newton-metre-bare-number-is-right",
+      "question": { "questionType": "numerical", "answerText": "5 N m", "tolerance": null },
+      "answer": { "answerText": "5" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false, "reasonCodes": ["unitless_magnitude"] }
+    },
+    {
+      "id": "R3-5-key-unit-middle-dot-bare-number-is-right",
+      "question": { "questionType": "numerical", "answerText": "2 kg·m/s²", "tolerance": null },
+      "answer": { "answerText": "2" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false, "reasonCodes": ["unitless_magnitude"] }
+    },
+    {
+      "id": "R3-5-key-unit-with-spaces-wrong-bare-number-is-wrong",
+      "question": { "questionType": "numerical", "answerText": "8.314 J mol^-1 K^-1", "tolerance": null },
+      "answer": { "answerText": "8.3" },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": -1, "needsReview": false, "reasonCodes": ["unitless_magnitude"] }
+    },
+    {
+      "id": "R3-5-key-range-prose-is-still-held",
+      "question": { "questionType": "numerical", "answerText": "5 to 6", "tolerance": null },
+      "answer": { "answerText": "5" },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": 0, "needsReview": true, "reasonCodes": ["expected_unit_parse_error"] }
+    },
+    {
+      "id": "R3-9-fraction-key-percent-answer-is-converted-not-ignored",
+      "$comment": "0.67% is 0.0067: a fraction key is a ratio, so the % sign is never just dropped.",
+      "question": { "questionType": "numerical", "answerText": "2/3", "tolerance": null },
+      "answer": { "answerText": "0.67%" },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": -1, "needsReview": false, "reasonCodes": ["unit_ignored"] }
+    },
+    {
+      "id": "R3-9-fraction-key-converted-percent-is-right",
+      "question": { "questionType": "numerical", "answerText": "2/3", "tolerance": null },
+      "answer": { "answerText": "66.67%" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false, "reasonCodes": ["unit_ignored", "percent_converted"] }
+    },
+    {
+      "id": "R3-9-terminating-fraction-key-percent-answer-is-converted",
+      "question": { "questionType": "numerical", "answerText": "1/8", "tolerance": null },
+      "answer": { "answerText": "0.125%" },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": -1, "needsReview": false }
+    },
+    {
+      "id": "G5-symbolic-huge-exponent-is-held",
+      "question": { "questionType": "subjective", "answerText": "x^2 + 2*x + 1", "answerSpec": { "gradingMode": "symbolic_expression", "expectedValue": "x^2 + 2*x + 1", "acceptedForms": ["x^2 + 2*x + 1"] } },
+      "answer": { "answerText": "2^1000" },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": 0, "needsReview": true, "reasonCodes": ["exponent_too_large"] }
+    },
+    {
+      "id": "G5-symbolic-deep-nesting-is-held",
+      "question": { "questionType": "subjective", "answerText": "x^2 + 2*x + 1", "answerSpec": { "gradingMode": "symbolic_expression", "expectedValue": "x^2 + 2*x + 1", "acceptedForms": ["x^2 + 2*x + 1"] } },
+      "answer": { "answerText": "sin(sin(sin(sin(sin(sin(sin(sin(sin(sin(sin(sin(sin(sin(sin(sin(sin(sin(sin(sin(x))))))))))))))))))))" },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": 0, "needsReview": true, "reasonCodes": ["nesting_too_deep"] }
+    },
+    {
+      "id": "G5-symbolic-too-long-is-held",
+      "question": { "questionType": "subjective", "answerText": "x^2 + 2*x + 1", "answerSpec": { "gradingMode": "symbolic_expression", "expectedValue": "x^2 + 2*x + 1", "acceptedForms": ["x^2 + 2*x + 1"] } },
+      "answer": { "answerText": "x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x" },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": 0, "needsReview": true, "reasonCodes": ["input_too_long"] }
+    },
+    {
+      "id": "G5-symbolic-long-literal-is-held",
+      "question": { "questionType": "subjective", "answerText": "x^2 + 2*x + 1", "answerSpec": { "gradingMode": "symbolic_expression", "expectedValue": "x^2 + 2*x + 1", "acceptedForms": ["x^2 + 2*x + 1"] } },
+      "answer": { "answerText": "1234567890123*x" },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": 0, "needsReview": true, "reasonCodes": ["literal_too_long"] }
+    },
+    {
+      "id": "G5-derived-formula-key-huge-exponent-is-held",
+      "question": { "questionType": "subjective", "answerText": "(x+1)^2" },
+      "answer": { "answerText": "(x+1)^100" },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": 0, "needsReview": true, "reasonCodes": ["exponent_too_large"] }
+    },
+    {
+      "id": "G5-symbolic-exponent-tower-is-held",
+      "pythonOnly": true,
+      "question": { "questionType": "subjective", "answerText": "x^2 + 2*x + 1", "answerSpec": { "gradingMode": "symbolic_expression", "expectedValue": "x^2 + 2*x + 1", "acceptedForms": ["x^2 + 2*x + 1"] } },
+      "answer": { "answerText": "9^9^9^9" },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": 0, "needsReview": true, "reasonCodes": ["exponent_tower"] }
+    },
+    {
+      "id": "G5-symbolic-power-of-ten-exponent-is-held",
+      "pythonOnly": true,
+      "question": { "questionType": "subjective", "answerText": "x^2 + 2*x + 1", "answerSpec": { "gradingMode": "symbolic_expression", "expectedValue": "x^2 + 2*x + 1", "acceptedForms": ["x^2 + 2*x + 1"] } },
+      "answer": { "answerText": "x^(10^10)" },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": 0, "needsReview": true, "reasonCodes": ["exponent_too_large"] }
+    },
+    {
+      "id": "U1-unit-space-vs-middle-dot-is-right",
+      "$comment": "A space, \u00b7, \u22c5 or * between unit words is a product (pint); the TS fallback and contests read units the same way.",
+      "question": { "questionType": "numerical", "answerText": "9.8 m s^-1", "tolerance": null },
+      "answer": { "answerText": "9.8 m·s^-1" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false, "reasonCodes": ["unit_compare"] }
+    },
+    {
+      "id": "U1-unit-middle-dot-vs-space-is-right",
+      "question": { "questionType": "numerical", "answerText": "9.8 m·s^-1", "tolerance": null },
+      "answer": { "answerText": "9.8 m s^-1" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false, "reasonCodes": ["unit_compare"] }
+    },
+    {
+      "id": "U1-unit-newton-metre-space-vs-dot-is-right",
+      "question": { "questionType": "numerical", "answerText": "5 N m", "tolerance": null },
+      "answer": { "answerText": "5 N·m" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false, "reasonCodes": ["unit_compare"] }
+    },
+    {
+      "id": "U1-unit-spaced-velocity-vs-slash-is-right",
+      "question": { "questionType": "numerical", "answerText": "9.8 m s^-1", "tolerance": null },
+      "answer": { "answerText": "9.8 m/s" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false, "reasonCodes": ["unit_compare"] }
+    },
+    {
+      "id": "U1-unit-per-millisecond-is-not-per-second",
+      "question": { "questionType": "numerical", "answerText": "5 m s^-1", "tolerance": null },
+      "answer": { "answerText": "5 ms^-1" },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": -1, "needsReview": false, "reasonCodes": ["dimension_mismatch"] }
+    },
+    {
+      "id": "U2-joule-equals-newton-metre",
+      "$comment": "Derived SI units convert in the TS fallback and contests like pint: J = N\u00b7m = kg\u00b7m\u00b2/s\u00b2, W = J/s, Pa = N/m\u00b2, N = kg\u00b7m/s\u00b2, V = W/A, \u03a9 = V/A.",
+      "question": { "questionType": "numerical", "answerText": "5 J", "tolerance": null },
+      "answer": { "answerText": "5 N m" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false, "reasonCodes": ["unit_compare"] }
+    },
+    {
+      "id": "U2-joule-equals-base-units-with-superscripts",
+      "question": { "questionType": "numerical", "answerText": "5 J", "tolerance": null },
+      "answer": { "answerText": "5 kg·m²/s²" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false, "reasonCodes": ["unit_compare"] }
+    },
+    {
+      "id": "U2-watt-equals-joule-per-second",
+      "question": { "questionType": "numerical", "answerText": "5 W", "tolerance": null },
+      "answer": { "answerText": "5 J/s" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false, "reasonCodes": ["unit_compare"] }
+    },
+    {
+      "id": "U2-pascal-equals-newton-per-square-metre",
+      "question": { "questionType": "numerical", "answerText": "5 Pa", "tolerance": null },
+      "answer": { "answerText": "5 N/m^2" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false, "reasonCodes": ["unit_compare"] }
+    },
+    {
+      "id": "U2-newton-equals-kg-m-per-s2",
+      "question": { "questionType": "numerical", "answerText": "5 N", "tolerance": null },
+      "answer": { "answerText": "5 kg m/s^2" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false, "reasonCodes": ["unit_compare"] }
+    },
+    {
+      "id": "U2-volt-equals-watt-per-ampere",
+      "question": { "questionType": "numerical", "answerText": "5 V", "tolerance": null },
+      "answer": { "answerText": "5 W/A" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false, "reasonCodes": ["unit_compare"] }
+    },
+    {
+      "id": "U2-ohm-equals-volt-per-ampere",
+      "question": { "questionType": "numerical", "answerText": "5 Ω", "tolerance": null },
+      "answer": { "answerText": "5 V/A" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false, "reasonCodes": ["unit_compare"] }
+    },
+    {
+      "id": "U2-kilowatt-hour-in-joules",
+      "question": { "questionType": "numerical", "answerText": "5 kWh", "tolerance": null },
+      "answer": { "answerText": "18000000 J" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false, "reasonCodes": ["unit_compare"] }
+    },
+    {
+      "id": "U2-joule-is-not-newton",
+      "question": { "questionType": "numerical", "answerText": "5 J", "tolerance": null },
+      "answer": { "answerText": "5 N" },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": -1, "needsReview": false, "reasonCodes": ["dimension_mismatch"] }
+    },
+    {
+      "id": "U2-wrong-magnitude-in-equivalent-unit-is-wrong",
+      "question": { "questionType": "numerical", "answerText": "5 J", "tolerance": null },
+      "answer": { "answerText": "6 N m" },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": -1, "needsReview": false, "reasonCodes": ["unit_compare"] }
+    },
+    {
+      "id": "U3-superscript-exponent-is-a-power",
+      "question": { "questionType": "numerical", "answerText": "1.5×10⁻³ m", "tolerance": null },
+      "answer": { "answerText": "1.5 mm" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false, "reasonCodes": ["unit_compare"] }
+    },
+    {
+      "id": "P4-tolerance-only-spec-correct-answer-is-right",
+      "$comment": "The teacher editor writes answerSpec = {tolerance} only: an overlay on the question's own answer, not a full spec.",
+      "question": { "questionType": "numerical", "answerText": "250", "tolerance": null, "answerSpec": { "tolerance": 0 } },
+      "answer": { "answerText": "250" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false, "reasonCodes": ["tolerance_explicit"] }
+    },
+    {
+      "id": "P4-tolerance-only-spec-zero-is-exact",
+      "question": { "questionType": "numerical", "answerText": "250", "tolerance": null, "answerSpec": { "tolerance": 0 } },
+      "answer": { "answerText": "252" },
+      "expect": { "isCorrect": false, "creditAwarded": 0, "marksAwarded": -1, "needsReview": false, "reasonCodes": ["tolerance_explicit"] }
+    },
+    {
+      "id": "P4-tolerance-only-spec-tolerance-is-honoured",
+      "question": { "questionType": "numerical", "answerText": "250", "tolerance": null, "answerSpec": { "tolerance": 5 } },
+      "answer": { "answerText": "252" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false, "reasonCodes": ["tolerance_explicit"] }
+    },
+    {
+      "id": "P4-tolerance-only-spec-with-units-is-right",
+      "question": { "questionType": "numerical", "answerText": "9.8 m/s^2", "tolerance": null, "answerSpec": { "tolerance": 0.1 } },
+      "answer": { "answerText": "9.7 m/s^2" },
+      "expect": { "isCorrect": true, "creditAwarded": 1, "marksAwarded": 4, "needsReview": false, "reasonCodes": ["unit_compare"] }
+    }
+  ],
+  "cbtNumeric": [
+    {"id":"key-5-student-5cm","questionType":"numerical","answerText":"5","tolerance":null,"student":"5 cm","graderRequest":{"question":{"questionType":"numerical","answerText":"5","tolerance":null,"answerSpec":{"gradingMode":"numerical","expectedValue":"5","tolerance":null}},"answer":{"answerText":"5"}},"expect":{"isCorrect":true,"marksAwarded":4,"needsReview":false}},
+    {"id":"key-5cm-student-bare-5","questionType":"numerical","answerText":"5 cm","tolerance":null,"student":"5","graderRequest":{"question":{"questionType":"numerical","answerText":"5","tolerance":null,"answerSpec":{"gradingMode":"numerical","expectedValue":"5","tolerance":null}},"answer":{"answerText":"5"}},"expect":{"isCorrect":true,"marksAwarded":4,"needsReview":false}},
+    {"id":"key-5cm-student-5cm","questionType":"numerical","answerText":"5 cm","tolerance":null,"student":"5 cm","graderRequest":{"question":{"questionType":"numerical","answerText":"5","tolerance":null,"answerSpec":{"gradingMode":"numerical","expectedValue":"5","tolerance":null}},"answer":{"answerText":"5"}},"expect":{"isCorrect":true,"marksAwarded":4,"needsReview":false}},
+    {"id":"key-accel-unit-student-bare","questionType":"numerical","answerText":"9.8 m/s^2","tolerance":null,"student":"9.8","graderRequest":{"question":{"questionType":"numerical","answerText":"9.8","tolerance":null,"answerSpec":{"gradingMode":"numerical","expectedValue":"9.8","tolerance":null}},"answer":{"answerText":"9.8"}},"expect":{"isCorrect":true,"marksAwarded":4,"needsReview":false}},
+    {"id":"null-tolerance-decimal-rounds-to-key-places","questionType":"numerical","answerText":"9.8","tolerance":null,"student":"9.75","graderRequest":{"question":{"questionType":"numerical","answerText":"9.8","tolerance":null,"answerSpec":{"gradingMode":"numerical","expectedValue":"9.8","tolerance":null}},"answer":{"answerText":"9.75"}},"expect":{"isCorrect":true,"marksAwarded":4,"needsReview":false}},
+    {"id":"null-tolerance-decimal-beyond-rounding-is-wrong","questionType":"numerical","answerText":"9.8","tolerance":null,"student":"9.85","graderRequest":{"question":{"questionType":"numerical","answerText":"9.8","tolerance":null,"answerSpec":{"gradingMode":"numerical","expectedValue":"9.8","tolerance":null}},"answer":{"answerText":"9.85"}},"expect":{"isCorrect":false,"marksAwarded":-1,"needsReview":false}},
+    {"id":"null-tolerance-far-off-is-wrong","questionType":"numerical","answerText":"9.8","tolerance":null,"student":"12","graderRequest":{"question":{"questionType":"numerical","answerText":"9.8","tolerance":null,"answerSpec":{"gradingMode":"numerical","expectedValue":"9.8","tolerance":null}},"answer":{"answerText":"12"}},"expect":{"isCorrect":false,"marksAwarded":-1,"needsReview":false}},
+    {"id":"null-tolerance-integer-key-is-exact","questionType":"numerical","answerText":"250","tolerance":null,"student":"252","graderRequest":{"question":{"questionType":"numerical","answerText":"250","tolerance":null,"answerSpec":{"gradingMode":"numerical","expectedValue":"250","tolerance":null}},"answer":{"answerText":"252"}},"expect":{"isCorrect":false,"marksAwarded":-1,"needsReview":false}},
+    {"id":"null-tolerance-integer-key-right","questionType":"numerical","answerText":"250","tolerance":null,"student":"250","graderRequest":{"question":{"questionType":"numerical","answerText":"250","tolerance":null,"answerSpec":{"gradingMode":"numerical","expectedValue":"250","tolerance":null}},"answer":{"answerText":"250"}},"expect":{"isCorrect":true,"marksAwarded":4,"needsReview":false}},
+    {"id":"null-tolerance-key-typed-precision-is-kept","questionType":"numerical","answerText":"9.80","tolerance":null,"student":"9.8","graderRequest":{"question":{"questionType":"numerical","answerText":"9.80","tolerance":null,"answerSpec":{"gradingMode":"numerical","expectedValue":"9.80","tolerance":null}},"answer":{"answerText":"9.8"}},"expect":{"isCorrect":true,"marksAwarded":4,"needsReview":false}},
+    {"id":"null-tolerance-key-typed-precision-rejects-9.81","questionType":"numerical","answerText":"9.80","tolerance":null,"student":"9.81","graderRequest":{"question":{"questionType":"numerical","answerText":"9.80","tolerance":null,"answerSpec":{"gradingMode":"numerical","expectedValue":"9.80","tolerance":null}},"answer":{"answerText":"9.81"}},"expect":{"isCorrect":false,"marksAwarded":-1,"needsReview":false}},
+    {"id":"explicit-zero-tolerance-is-exact","questionType":"numerical","answerText":"250","tolerance":0,"student":"252","graderRequest":{"question":{"questionType":"numerical","answerText":"250","tolerance":0,"answerSpec":{"gradingMode":"numerical","expectedValue":"250","tolerance":0}},"answer":{"answerText":"252"}},"expect":{"isCorrect":false,"marksAwarded":-1,"needsReview":false}},
+    {"id":"explicit-tolerance-is-honoured","questionType":"numerical","answerText":"9.8","tolerance":0.1,"student":"9.9","graderRequest":{"question":{"questionType":"numerical","answerText":"9.8","tolerance":0.1,"answerSpec":{"gradingMode":"numerical","expectedValue":"9.8","tolerance":0.1}},"answer":{"answerText":"9.9"}},"expect":{"isCorrect":true,"marksAwarded":4,"needsReview":false}},
+    {"id":"fraction-key","questionType":"numerical","answerText":"3/4","tolerance":null,"student":"0.75","graderRequest":{"question":{"questionType":"numerical","answerText":"3/4","tolerance":null,"answerSpec":{"gradingMode":"numerical","expectedValue":"3/4","tolerance":null}},"answer":{"answerText":"0.75"}},"expect":{"isCorrect":true,"marksAwarded":4,"needsReview":false}},
+    {"id":"repeating-fraction-key-student-precision","questionType":"numerical","answerText":"2/3","tolerance":null,"student":"0.667","graderRequest":{"question":{"questionType":"numerical","answerText":"2/3","tolerance":null,"answerSpec":{"gradingMode":"numerical","expectedValue":"2/3","tolerance":null}},"answer":{"answerText":"0.667"}},"expect":{"isCorrect":true,"marksAwarded":4,"needsReview":false}},
+    {"id":"two-numbers-is-wrong","questionType":"numerical","answerText":"5","tolerance":null,"student":"2 or 3","graderRequest":{"question":{"questionType":"numerical","answerText":"5","tolerance":null,"answerSpec":{"gradingMode":"numerical","expectedValue":"5","tolerance":null}},"answer":{"answerText":"2 or 3"}},"expect":{"isCorrect":false,"marksAwarded":-1,"needsReview":false}},
+    {"id":"unattempted","questionType":"numerical","answerText":"5","tolerance":null,"student":"","graderRequest":{"question":{"questionType":"numerical","answerText":"5","tolerance":null,"answerSpec":{"gradingMode":"numerical","expectedValue":"5","tolerance":null}},"answer":{"answerText":""}},"expect":{"isCorrect":false,"marksAwarded":0,"needsReview":false}},
+    {"id":"non-numeric-key-is-held","questionType":"numerical","answerText":"approx five","tolerance":null,"student":"5","graderRequest":{"question":{"questionType":"numerical","answerText":"approx five","tolerance":null,"answerSpec":{"gradingMode":"numerical","expectedValue":"approx five","tolerance":null}},"answer":{"answerText":"5"}},"expect":{"isCorrect":false,"marksAwarded":0,"needsReview":true}},
+    {"id":"scientific-key-with-unit","questionType":"numerical","answerText":"1×10^-3 m","tolerance":null,"student":"1e-3","graderRequest":{"question":{"questionType":"numerical","answerText":"1×10^-3","tolerance":null,"answerSpec":{"gradingMode":"numerical","expectedValue":"1×10^-3","tolerance":null}},"answer":{"answerText":"1e-3"}},"expect":{"isCorrect":true,"marksAwarded":4,"needsReview":false}},
+    {"id":"with-units-type-bare-number","questionType":"numerical_with_units","answerText":"3 F","tolerance":null,"student":"3","graderRequest":{"question":{"questionType":"numerical","answerText":"3","tolerance":null,"answerSpec":{"gradingMode":"numerical","expectedValue":"3","tolerance":null}},"answer":{"answerText":"3"}},"expect":{"isCorrect":true,"marksAwarded":4,"needsReview":false}},
+    {"id":"with-units-type-other-unit-magnitude-only","questionType":"numerical_with_units","answerText":"5 m","tolerance":null,"student":"500 mm","graderRequest":{"question":{"questionType":"numerical","answerText":"5","tolerance":null,"answerSpec":{"gradingMode":"numerical","expectedValue":"5","tolerance":null}},"answer":{"answerText":"500"}},"expect":{"isCorrect":false,"marksAwarded":-1,"needsReview":false}}
+  ]
+}

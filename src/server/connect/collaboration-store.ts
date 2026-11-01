@@ -174,11 +174,23 @@ export async function listCollaborations(filter?: {
   }));
 }
 
+/** The two enrollment flows a collaboration can switch on or off independently. */
+export type CollaborationFlow = "flow1" | "flow2";
+
 /**
  * True iff the workspace is a live collaborator: its collaboration row is
  * `active` AND the workspace is an `institute` with workspace `status` = `active`.
+ *
+ * With `flow`, the admin's per-flow toggle must ALSO be on: `flow1` (code
+ * redeem + free subject pick) needs `flow1_enabled`, `flow2` (paid checkout)
+ * needs `flow2_enabled`. Without it the toggles were stored and editable in
+ * /admin/collaborations but enforced nowhere, so switching Flow 1 off for a
+ * bad institute did not stop its free grants.
  */
-export async function isActiveCollaboration(workspaceId: string): Promise<boolean> {
+export async function isActiveCollaboration(
+  workspaceId: string,
+  flow?: CollaborationFlow,
+): Promise<boolean> {
   await ensureCollaborationSchema();
   const res = await pool().query(
     `SELECT 1
@@ -188,8 +200,11 @@ export async function isActiveCollaboration(workspaceId: string): Promise<boolea
         AND c.status = 'active'
         AND w.status = 'active'
         AND w.workspace_type = 'institute'
+        AND ($2::text IS NULL
+             OR ($2::text = 'flow1' AND c.flow1_enabled)
+             OR ($2::text = 'flow2' AND c.flow2_enabled))
       LIMIT 1`,
-    [workspaceId],
+    [workspaceId, flow ?? null],
   );
   return (res.rowCount ?? 0) > 0;
 }

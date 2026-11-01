@@ -17,6 +17,7 @@ import { sendEmail, type SendEmailInput, type SendEmailResult } from "@/server/e
 import {
   claimDueOutboxRows,
   claimOutboxRow,
+  deferOutboxRow,
   markOutboxDone,
   markOutboxFailed,
   type OutboxRow,
@@ -41,7 +42,7 @@ export type OutboxDispatchResult =
   | { status: "done"; id: string; result: OutboxDeliveryResult }
   | { status: "skipped"; id: string; reason: "not_due_or_already_claimed" };
 
-export type OutboxDispatchDeps = {
+export type OutboxDispatchDeps = DuplicateRefundDeps & {
   sendEmail?: (input: SendEmailInput) => Promise<SendEmailResult>;
   createNotification?: (
     id: string,
@@ -52,6 +53,7 @@ export type OutboxDispatchDeps = {
   claimDueOutboxRows?: typeof claimDueOutboxRows;
   markOutboxDone?: typeof markOutboxDone;
   markOutboxFailed?: typeof markOutboxFailed;
+  deferOutboxRow?: typeof deferOutboxRow;
 };
 
 export type OutboxDrainResult = {
@@ -230,15 +232,109 @@ function isNotificationOnly(kind: string): boolean {
  * alongside them in the same transaction is what the student sees.
  */
 function isActionOnly(kind: string): boolean {
-  return kind === "institute_enrollment";
+  return (
+    kind === "institute_enrollment" ||
+    kind === "institute_enrollment_revoke" ||
+    kind === "duplicate_capture_refund"
+  );
+}
+
+/**
+ * Thrown by an action whose failure is a known transient state (not a fault):
+ * the row goes back to `pending` after `retryInSeconds` without spending one
+ * of its MAX_OUTBOX_ATTEMPTS, for up to OUTBOX_DEFER_MAX_AGE_MS from creation.
+ */
+export class OutboxRetryLaterError extends Error {
+  readonly retryInSeconds: number;
+  constructor(message: string, retryInSeconds: number) {
+    super(message);
+    this.name = "OutboxRetryLaterError";
+    this.retryInSeconds = retryInSeconds;
+  }
+}
+
+/** A row stops deferring (and fails normally) once it is this old. */
+export const OUTBOX_DEFER_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+/** Re-check interval while a refund intent for the payment is still settling. */
+export const REFUND_INTENT_RETRY_SECONDS = 180;
+
+/**
+ * The refund-intent 409s (refund-lifecycle): an earlier attempt for this
+ * payment is in flight or its outcome is still being confirmed. They clear on
+ * their own once the intent settles, so they must not burn outbox attempts.
+ */
+const REFUND_INTENT_IN_FLIGHT =
+  /already being sent|unknown outcome|still being confirmed|changed while it was being checked/i;
+
+/** The refund seam the duplicate-capture action calls (test-injectable). */
+export type DuplicateRefundDeps = {
+  initiateRefund?: (input: {
+    razorpayPaymentId: string;
+    amountMinor?: number | null;
+    reason?: string | null;
+    initiatedBy: string;
+  }) => Promise<unknown>;
+  getPaymentById?: (razorpayPaymentId: string) => Promise<{ status: string; amountMinor: number; amountRefundedMinor: number } | null>;
+};
+
+/**
+ * Bug-fix P5: a second capture against one commerce enrolment order is marked
+ * `duplicate_of` by applyPaymentSuccess and refunded here, outside the money
+ * transaction. The row id is derived from the payment id, so the refund is
+ * attempted at most once per duplicate payment; a 409 "nothing left to refund"
+ * (an admin or a retry already refunded it) counts as done. A 409 saying an
+ * earlier refund intent is still in flight or settling is retried later
+ * without spending an attempt (OutboxRetryLaterError). Any other failure
+ * (window elapsed, gateway down) parks the row for a human — it never loops.
+ */
+async function runDuplicateCaptureRefund(payload: LoosePayload, deps: DuplicateRefundDeps): Promise<void> {
+  const razorpayPaymentId = firstText(payload, "razorpayPaymentId", "paymentId", "payment_id", "razorpay_payment_id");
+  if (!razorpayPaymentId) throw new Error("duplicate_capture_refund outbox row is missing its payment id");
+  const amountMinor = firstNumber(payload, "amountMinor", "amount_minor");
+  const reason = firstText(payload, "reason") ?? "duplicate_institute_capture";
+
+  const readPayment = deps.getPaymentById ?? (await import("./payments-store")).getPaymentById;
+  const ledger = await readPayment(razorpayPaymentId);
+  if (ledger && (ledger.status === "refunded" || ledger.amountRefundedMinor >= ledger.amountMinor)) return;
+
+  const refund = deps.initiateRefund ?? (await import("./refunds-service")).initiateRefund;
+  try {
+    await refund({
+      razorpayPaymentId,
+      amountMinor: amountMinor && amountMinor > 0 ? amountMinor : null,
+      reason,
+      initiatedBy: "system:duplicate",
+    });
+  } catch (error) {
+    const status = (error as { status?: unknown } | null)?.status;
+    const message = error instanceof Error ? error.message : String(error);
+    if (status === 409 && /no refundable amount|Only captured payments/i.test(message)) return;
+    if (status === 409 && REFUND_INTENT_IN_FLIGHT.test(message)) {
+      throw new OutboxRetryLaterError(message, REFUND_INTENT_RETRY_SECONDS);
+    }
+    throw error;
+  }
 }
 
 /**
  * Runs the side effect for an action-only row. Dynamically imported so the
- * outbox keeps no static dependency on the marketplace/enrolment services,
- * which reach back into payments through applyPaymentSuccess.
+ * outbox keeps no static dependency on the marketplace/enrolment/refund
+ * services, which reach back into payments through applyPaymentSuccess.
  */
-async function runOutboxAction(kind: string, payload: LoosePayload): Promise<void> {
+async function runOutboxAction(kind: string, payload: LoosePayload, deps: DuplicateRefundDeps = {}): Promise<void> {
+  if (kind === "duplicate_capture_refund") return runDuplicateCaptureRefund(payload, deps);
+  if (kind === "institute_enrollment_revoke") {
+    const enrollmentOrderId = firstText(payload, "enrollmentOrderId", "enrollment_order_id");
+    const workspaceId = firstText(payload, "workspaceId", "workspace_id");
+    const razorpayRefundId = firstText(payload, "refundId", "refund_id", "razorpayRefundId");
+    if (!enrollmentOrderId || !workspaceId || !razorpayRefundId) {
+      throw new Error("institute_enrollment_revoke outbox row is missing its order reference");
+    }
+    const { revokeInstituteEnrollmentForRefund } = await import("./institute-orders");
+    await revokeInstituteEnrollmentForRefund({ enrollmentOrderId, workspaceId, razorpayRefundId });
+    return;
+  }
   if (kind !== "institute_enrollment") throw new Error(`No action for payment outbox kind: ${kind}`);
   const enrollmentOrderId = firstText(payload, "enrollmentOrderId", "enrollment_order_id");
   const workspaceId = firstText(payload, "workspaceId", "workspace_id");
@@ -257,7 +353,7 @@ function isKnownKind(kind: string): boolean {
 /** Execute side effects for one already-claimed row; does not mutate outbox status. */
 export async function dispatchOutboxRow(
   row: OutboxRow,
-  deps: Pick<OutboxDispatchDeps, "sendEmail" | "createNotification"> = {},
+  deps: Pick<OutboxDispatchDeps, "sendEmail" | "createNotification" | "initiateRefund" | "getPaymentById"> = {},
 ): Promise<OutboxDeliveryResult> {
   const kind = row.kind.trim().toLowerCase();
   if (!isKnownKind(kind)) throw new Error(`Unsupported payment outbox kind: ${row.kind}`);
@@ -273,7 +369,7 @@ export async function dispatchOutboxRow(
   // Action-only rows carry no message: their companion receipt row does the
   // mailing, so notifying here would double up in the student's inbox/bell.
   if (isActionOnly(kind)) {
-    await runOutboxAction(kind, row.payload as LoosePayload);
+    await runOutboxAction(kind, row.payload as LoosePayload, deps);
     return { email: emailResult, notification: notificationResult };
   }
 
@@ -306,6 +402,21 @@ function retryDelaySeconds(attempts: number): number {
   return Math.min(30 * 60, 60 * 2 ** Math.max(0, Math.min(attempts - 1, 5)));
 }
 
+function rowAgeMs(row: OutboxRow, nowMs: number): number {
+  const created = Date.parse(row.createdAt);
+  return Number.isFinite(created) ? nowMs - created : Number.POSITIVE_INFINITY;
+}
+
+/** Return a failed row to its retry state: deferred (no attempt spent) or failed. */
+async function recordOutboxFailure(row: OutboxRow, error: unknown, deps: OutboxDispatchDeps): Promise<void> {
+  const message = error instanceof Error ? error.message : String(error);
+  if (error instanceof OutboxRetryLaterError && rowAgeMs(row, Date.now()) < OUTBOX_DEFER_MAX_AGE_MS) {
+    await (deps.deferOutboxRow ?? deferOutboxRow)(row.id, message, error.retryInSeconds);
+    return;
+  }
+  await (deps.markOutboxFailed ?? markOutboxFailed)(row.id, message, retryDelaySeconds(row.attempts));
+}
+
 /** Claim, execute, and terminally mark one row (QStash or direct invocation). */
 export async function dispatchOutbox(
   id: string,
@@ -320,8 +431,7 @@ export async function dispatchOutbox(
     await (deps.markOutboxDone ?? markOutboxDone)(row.id, via);
     return { status: "done", id: row.id, result };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    await (deps.markOutboxFailed ?? markOutboxFailed)(row.id, message, retryDelaySeconds(row.attempts));
+    await recordOutboxFailure(row, error, deps);
     throw error;
   }
 }
@@ -337,8 +447,7 @@ export async function drainOutbox(limit = 25, deps: OutboxDispatchDeps = {}): Pr
       await (deps.markOutboxDone ?? markOutboxDone)(row.id, "cron");
       result.done += 1;
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      await (deps.markOutboxFailed ?? markOutboxFailed)(row.id, message, retryDelaySeconds(row.attempts));
+      await recordOutboxFailure(row, error, deps);
       result.failed += 1;
     }
   }

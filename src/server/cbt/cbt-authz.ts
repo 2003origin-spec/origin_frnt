@@ -10,7 +10,7 @@
  */
 
 import { AuthzError, requireRole, type AuthContext } from "@/server/authz";
-import { requireFeatureEnabled } from "@/lib/feature-flags";
+import { requireFeatureEnabledRuntime } from "@/server/feature-flags-runtime";
 
 import { findActiveCbtTeacherByUserId, type CbtTeacher } from "./cbt-teachers-service";
 
@@ -22,7 +22,7 @@ export type CbtTeacherContext = AuthContext & {
 };
 
 export async function requireCbtTeacher(request: Request): Promise<CbtTeacherContext> {
-  requireFeatureEnabled("cbtModule");
+  await requireFeatureEnabledRuntime("cbtModule");
   const ctx = await requireRole(request, ["cbt_teacher"]);
   const teacher = await findActiveCbtTeacherByUserId(ctx.userId);
   if (!teacher) {

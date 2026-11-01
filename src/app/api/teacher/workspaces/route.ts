@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { parseJsonBody } from "@/server/http";
 import { requireAuth } from "@/server/authz";
-import { requireFeatureEnabled } from "@/lib/feature-flags";
+import { requireFeatureEnabledRuntime } from "@/server/feature-flags-runtime";
 import { createTeacherWorkspace, listAccessibleWorkspaces } from "@/server/workspaces/service";
 import { evaluateWorkspaceCreate } from "@/server/workspaces/tenant-scoping";
 
@@ -22,7 +22,7 @@ const createSchema = z.object({
 
 export async function GET(request: NextRequest) {
   try {
-    requireFeatureEnabled("workspaces");
+    await requireFeatureEnabledRuntime("workspaces");
     const auth = await requireAuth(request);
     const workspaces = await listAccessibleWorkspaces(auth.userId);
     return teacherJson({ workspaces });
@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    requireFeatureEnabled("workspaces");
+    await requireFeatureEnabledRuntime("workspaces");
     const auth = await requireAuth(request);
     // N12 — same role rule as /api/teacher/onboarding, plus a per-owner cap so
     // one account cannot mint workspaces in a loop.

@@ -9,6 +9,7 @@ import { setSoundPreferences, playCategory } from '@/lib/sound-manager';
 import { AUTH_EXPIRED_EVENT, attemptTokenRefresh, consumeAuthExpiredReason } from '@/lib/api';
 import { flushNativeCookies, notifyNativeLogout } from '@/native/bridge';
 import { purgeUserCachesForLogout } from '@/sw/client';
+import { clearUserLocalCaches } from '@/lib/user-scoped-storage';
 import {
   addTaskAction,
   editTaskAction,
@@ -33,6 +34,27 @@ import {
 } from '@/server/actions/study-mode-actions';
 import { DEFAULT_STUDY_MODE, normalizeStudyMode, type StudyMode } from '@/lib/study-mode';
 import { track } from '@/lib/analytics';
+
+/**
+ * Every successful sign-in starts from a clean device: the service worker's
+ * runtime page/RSC caches (which embed the previous viewer's `initialUser`)
+ * are dropped even when the previous session ended without an explicit
+ * logout (expiry, revocation, account deletion), and the Origin AI browser
+ * session is reset. Must run BEFORE setUser, whose redirect would otherwise be
+ * answered from those caches on a slow network.
+ */
+function safeLocalStorage(): Storage | null {
+  try {
+    return typeof window === 'undefined' ? null : window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+async function startFreshSession(): Promise<void> {
+  clearOriginAiBrowserSession();
+  await purgeUserCachesForLogout();
+}
 
 interface AuthContextType {
   user: User | null;
@@ -141,6 +163,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
   const tasksFetched = useRef(false);
   const lastSessionRefreshAt = useRef(Date.now());
   const authExpiredRecovery = useRef<Promise<void> | null>(null);
+  // Who is signed in, for handlers registered once (auth-expired) that must
+  // clear that user's on-device caches.
+  const userIdRef = useRef<string | null>(initialUser?.id ?? null);
+  useEffect(() => {
+    if (user?.id) userIdRef.current = user.id;
+  }, [user?.id]);
   const router = useRouter();
   const pathname = usePathname();
 
@@ -405,6 +433,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
         setTasks([]);
         tasksFetched.current = false;
         clearOriginAiBrowserSession();
+        clearUserLocalCaches(safeLocalStorage(), userIdRef.current);
+        // The ended session's cached pages/RSC payloads carry its user's data;
+        // drop them before the next person on this device signs in.
+        await purgeUserCachesForLogout();
         // The server has cleared the auth cookies on this hard refresh failure,
         // so land on the login page (not home) to avoid the edge /auth→home loop.
         // Carry a precise revoke/delete notice across the full reload; /auth shows
@@ -492,7 +524,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
         return;
       }
 
-      clearOriginAiBrowserSession();
+      await startFreshSession();
 
       setAuthRecoveryBlocked(false);
       setUser(result.user);
@@ -536,7 +568,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
         return;
       }
 
-      clearOriginAiBrowserSession();
+      await startFreshSession();
 
       setAuthRecoveryBlocked(false);
       setUser(result.user);
@@ -576,7 +608,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
         return;
       }
 
-      clearOriginAiBrowserSession();
+      await startFreshSession();
 
       setAuthRecoveryBlocked(false);
       setUser(result.user);
@@ -654,7 +686,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
 
   /** Shared post-auth success path for Google login AND Google signup. */
   const completeGoogleAuth = async (authedUser: User): Promise<void> => {
-    clearOriginAiBrowserSession();
+    await startFreshSession();
     // Android shell: persist the fresh session cookies to disk immediately
     // (plan ledger #14) — no-op in browsers.
     void flushNativeCookies();
@@ -753,6 +785,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
   const logout = async () => {
     // 1. Clear client state immediately
     clearOriginAiBrowserSession();
+    clearUserLocalCaches(safeLocalStorage(), user?.id ?? userIdRef.current);
     setTasks([]);
     tasksFetched.current = false;
 

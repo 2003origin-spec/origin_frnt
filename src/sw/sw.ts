@@ -22,6 +22,7 @@ import {
   CacheableResponsePlugin,
   ExpirationPlugin,
   NetworkFirst,
+  NetworkOnly,
   Serwist,
   StaleWhileRevalidate,
   type RouteMatchCallback,
@@ -125,6 +126,13 @@ const serwist = new Serwist({
           new ExpirationPlugin({ ...SW_LIMITS.rsc, maxAgeFrom: "last-used", purgeOnQuotaError: true }),
         ],
       }),
+    },
+    {
+      // Exam pages: always the network, never a cache (a cached render runs
+      // the timer late). Routed — not bypassed — only so that offline the
+      // `fallbacks` entry below serves /offline.html instead of a raw error.
+      matcher: matches("exam-navigation"),
+      handler: new NetworkOnly(),
     },
     {
       // "Recently visited pages readable offline" (D2 tier 1, ledger #1/#5).

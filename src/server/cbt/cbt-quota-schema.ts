@@ -13,6 +13,7 @@ import type { PoolClient } from "pg";
 import { getUserPostgresPool, isUserPostgresConfigured } from "@/server/user-postgres";
 
 import { ensureCbtSchema } from "./cbt-schema";
+import { lockSchemaDdl } from "@/server/schema-lock";
 
 declare global {
   var __originCbtQuotaSchemaEnsured: boolean | undefined;
@@ -44,6 +45,7 @@ export async function ensureCbtQuotaSchema(): Promise<void> {
       const client = await pool().connect();
       try {
         await client.query("BEGIN");
+        await lockSchemaDdl(client);
 
         await client.query(`
           -- Append-only participation meter. No FK to cbt.rooms /

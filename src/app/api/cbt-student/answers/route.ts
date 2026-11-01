@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
     try {
       body = raw ? JSON.parse(raw) : {};
     } catch {
-      return studentJson({ detail: "Invalid body." }, { status: 400 });
+      return studentJson({ detail: "Invalid body.", code: "invalid_body" }, { status: 400 });
     }
 
     // `rev` is the browser's monotonic draft counter — a save from a stale tab

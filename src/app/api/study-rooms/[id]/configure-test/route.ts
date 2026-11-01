@@ -5,7 +5,7 @@ import { parseJsonBody } from "@/server/http";
 import { publishRoomEvent } from "@/server/rooms-pubsub";
 import type { CustomTestPayload } from "@/server/assessments";
 import { createCustomTestForRoom } from "@/server/study-rooms";
-import { withStoreAsync } from "@/server/store";
+import { withStoreAsyncScoped } from "@/server/store";
 import {
   getRoomId,
   handleStudyRoomError,
@@ -24,7 +24,10 @@ export async function POST(request: NextRequest, context: IdRouteContext) {
     if (limited) return limited;
     const roomId = await getRoomId(context);
     const body = await parseJsonBody<CustomTestPayload>(request);
-    const test = await withStoreAsync((store) => createCustomTestForRoom(store, user, roomId, body));
+    // createCustomTest persists the test through its own targeted writer
+    // (persistGeneratedCustomTest / ensureRoomCustomTestIsPersisted) and the room
+    // row via SQL — no store collection changes, so no store persist at all.
+    const test = await withStoreAsyncScoped((store) => createCustomTestForRoom(store, user, roomId, body), null);
     await publishRoomEvent(roomId, { type: "test_configured", custom_test_id: (test as { id: string }).id });
     revalidateStudyRoomSurfaces(user.id, roomId);
     return studyRoomJson({ test }, { status: 201 });

@@ -6,6 +6,7 @@ import { handleTeacherError, teacherJson } from "@/app/api/teacher/_utils";
 import { requireCbtTeacher } from "@/server/cbt/cbt-authz";
 import { getRoomForTeacher } from "@/server/cbt/cbt-rooms-service";
 import { readCbtRoomEvents } from "@/server/cbt/cbt-redis";
+import { streamStartCursor } from "@/server/redis-streams";
 
 export const maxDuration = 60;
 
@@ -20,7 +21,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ roo
     const room = await getRoomForTeacher(ctx.cbtTeacherId, roomId);
     if (!room) return teacherJson({ detail: "Room not found." }, { status: 404 });
 
-    const initialCursor = request.headers.get("last-event-id") ?? "$";
+    const initialCursor = streamStartCursor(request.headers.get("last-event-id"));
     const signal = request.signal;
 
     const stream = new ReadableStream<Uint8Array>({

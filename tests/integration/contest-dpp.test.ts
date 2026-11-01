@@ -111,3 +111,111 @@ maybe("custom DPP gates on publish/registration/premium, then excludes contest i
     await pool.query(`DELETE FROM ogcode_questions WHERE chapter = $1`, [CHAPTER]);
   }
 });
+
+// P10: /api/contest/dpp/answer must not be an answer oracle — it grades only
+// questions from the student's OWN DPP, refuses any unreleased paper question,
+// and is closed (409) while the contest runs.
+const ORACLE_CHAPTER = "DppOracleChapter";
+const OTHER_CHAPTER = "DppOracleOtherChapter";
+
+maybe("DPP answer grades only the student's own DPP questions", async () => {
+  const pool = rawPool();
+  const contestId = makeId("contest_dpp_oracle");
+  const otherContestId = makeId("contest_dpp_live");
+  const userId = makeId("u_dpp_oracle");
+  const contestQId = makeId("q_oracle_contest");
+  const freshId = makeId("q_oracle_fresh");
+  const offDppId = makeId("q_oracle_off_dpp");
+  const otherPaperId = makeId("q_oracle_other_paper");
+
+  async function seedOgcode(id: string, srcIdx: number, chapter: string) {
+    await pool.query(
+      `INSERT INTO ogcode_questions
+         (id, source_index, text, explanation, subject, chapter, concept, difficulty,
+          question_type, options, correct_option, class)
+       VALUES ($1, $2, 'Q', 'why', 'physics', $3, 'C', 'medium', 'mcq', $4::jsonb, 1, 11)
+       ON CONFLICT (id) DO NOTHING`,
+      [id, srcIdx, chapter, JSON.stringify(["A", "B", "C", "D"])],
+    );
+  }
+
+  try {
+    await pool.query(
+      `INSERT INTO origin_users (id, name, email, role, password_hash)
+         VALUES ($1, 'D', $2, 'student', 'x') ON CONFLICT (id) DO NOTHING`,
+      [userId, `${userId}@test.local`],
+    );
+    await pool.query(`INSERT INTO contest.contests (id, name, status) VALUES ($1, 'DPP', 'result_published')`, [contestId]);
+    await seedOgcode(contestQId, 991001, ORACLE_CHAPTER);
+    await pool.query(
+      `INSERT INTO contest.contest_questions (contest_id, position, question_id, subject, snapshot)
+       VALUES ($1, 0, $2, 'physics', $3::jsonb)`,
+      [contestId, contestQId, JSON.stringify({ questionType: "mcq", chapter: ORACLE_CHAPTER })],
+    );
+    await pool.query(
+      `INSERT INTO contest.submission_answers (contest_id, user_id, position, question_id, question_snapshot, is_correct)
+       VALUES ($1, $2, 0, $3, $4::jsonb, false)`,
+      [contestId, userId, contestQId, JSON.stringify({ chapter: ORACLE_CHAPTER })],
+    );
+    await pool.query(`INSERT INTO contest.registrations (contest_id, user_id) VALUES ($1, $2)`, [contestId, userId]);
+    await pool.query(
+      `INSERT INTO entitlements.subject_grants (id, user_id, subject, source, status)
+       VALUES ($1, $2, 'physics', 'admin_comp', 'active')`,
+      [makeId("grant"), userId],
+    );
+    await seedOgcode(freshId, 991002, ORACLE_CHAPTER);
+    // Practice-eligible, but on a chapter the student did not get wrong → not in their DPP.
+    await seedOgcode(offDppId, 991003, OTHER_CHAPTER);
+    // On the weak chapter, but on ANOTHER contest's unreleased (scheduled) paper.
+    await seedOgcode(otherPaperId, 991004, ORACLE_CHAPTER);
+    await pool.query(`INSERT INTO contest.contests (id, name, status) VALUES ($1, 'Live', 'scheduled')`, [otherContestId]);
+    await pool.query(
+      `INSERT INTO contest.contest_questions (contest_id, position, question_id, subject, snapshot)
+       VALUES ($1, 0, $2, 'physics', $3::jsonb)`,
+      [otherContestId, otherPaperId, JSON.stringify({ questionType: "mcq", chapter: ORACLE_CHAPTER })],
+    );
+
+    const r = await getContestMistakeDpp(contestId, userId);
+    assert.equal(r.locked, false);
+    if (r.locked) return;
+    const ids = r.questions.map((q) => q.id);
+    assert.ok(ids.includes(freshId), "own DPP question is listed");
+    assert.ok(!ids.includes(otherPaperId), "another contest's unreleased paper question is excluded from the DPP");
+    assert.ok(!ids.includes(offDppId));
+
+    // Own DPP question → graded with the reveal.
+    const graded = await gradeContestDppAnswer(contestId, userId, freshId, 1);
+    assert.equal(graded.isCorrect, true);
+    assert.equal(graded.explanation, "why");
+
+    // Any other practice-eligible bank id → 404, never graded.
+    await assert.rejects(
+      () => gradeContestDppAnswer(contestId, userId, offDppId, 1),
+      (e) => (e as { status?: number }).status === 404,
+    );
+    // A question on an unreleased paper → 403.
+    await assert.rejects(
+      () => gradeContestDppAnswer(contestId, userId, otherPaperId, 1),
+      (e) => (e as { status?: number }).status === 403 && /contest paper/i.test(String(e)),
+    );
+
+    // While the contest runs → 409.
+    await pool.query(
+      `UPDATE contest.contests SET status = 'scheduled', start_at = NOW() - INTERVAL '1 hour',
+              end_at = NOW() + INTERVAL '1 hour' WHERE id = $1`,
+      [contestId],
+    );
+    await assert.rejects(
+      () => gradeContestDppAnswer(contestId, userId, freshId, 1),
+      (e) => (e as { status?: number }).status === 409,
+    );
+  } finally {
+    await pool.query(`DELETE FROM entitlements.subject_grants WHERE user_id = $1`, [userId]);
+    await pool.query(`DELETE FROM contest.submission_answers WHERE contest_id = $1`, [contestId]);
+    await pool.query(`DELETE FROM contest.contest_questions WHERE contest_id = ANY($1::text[])`, [[contestId, otherContestId]]);
+    await pool.query(`DELETE FROM contest.registrations WHERE contest_id = $1`, [contestId]);
+    await pool.query(`DELETE FROM contest.contests WHERE id = ANY($1::text[])`, [[contestId, otherContestId]]);
+    await pool.query(`DELETE FROM origin_users WHERE id = $1`, [userId]);
+    await pool.query(`DELETE FROM ogcode_questions WHERE chapter = ANY($1::text[])`, [[ORACLE_CHAPTER, OTHER_CHAPTER]]);
+  }
+});

@@ -273,6 +273,18 @@ export async function buyStoreItem(
     // After the ownership check: an owner tapping Buy again hears "you own it", not "sold out".
     if (item.stock !== null && item.stock <= 0) throw new NowError(409, "sold_out", "That item is sold out.");
 
+    // Premium redemption writes a subject grant, so it takes the per-user
+    // payments lock — and takes it FIRST, before postTransfers row-locks
+    // now.accounts. That is the canonical order (user lock, then rows): a
+    // coin-pack refund holds the user lock and then locks now.accounts in
+    // reverseCoinPackOnRefund, so taking the user lock after the wallet row
+    // (as this used to) made a lock cycle and Postgres aborted one side with
+    // 40P01. The same lock also serialises grant stacking with the paid-grant
+    // writer. Digital items write no grant and need no user lock.
+    if (item.kind === "premium") {
+      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [userId]);
+    }
+
     orderId = createPrefixedId("sord");
     await client.query(
       `INSERT INTO store.orders (id, user_id, item_id, coins_spent, paise_paid, status, idempotency_key, created_at)
@@ -286,8 +298,7 @@ export async function buyStoreItem(
     let grantId: string | null = null;
     let premiumEnd: Date | null = null;
     if (item.kind === "premium") {
-      // Same per-user lock the paid-grant writer uses, so stacking cannot race.
-      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [userId]);
+      // The per-user lock is already held (taken above, before the wallet row).
       const latest = await client.query<{ until: Date | null }>(
         `SELECT max(expires_at) AS until FROM entitlements.subject_grants
           WHERE user_id = $1 AND subject = $2 AND source = 'coin_redemption' AND status = 'active'`,

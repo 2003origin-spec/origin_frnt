@@ -16,6 +16,7 @@ import {
   deleteThread,
   getThreadById,
   listThreads,
+  planOriginAiRuntimeWrite,
   updateThread,
   type OriginAiPageContextInput,
 } from "@/server/origin-ai";
@@ -30,7 +31,7 @@ import {
   parseJsonBody,
   unauthorized,
 } from "@/server/http";
-import { withStoreAsync, type StoredUser } from "@/server/store";
+import { ScopedWritePlan, withStoreAsyncScoped, type StoredUser } from "@/server/store";
 import { dbUpdateUsageMetrics } from "@/server/db-users";
 import {
   getCachedChapters,
@@ -38,6 +39,14 @@ import {
   upsertCachedChapters,
 } from "@/server/catalog-cache";
 import { getRequestId, REQUEST_ID_HEADER } from "@/lib/request-id";
+import {
+  classifyProxyError,
+  createUsageRecordingTransform,
+  dailyBudgetRefusalResponse,
+  isUpstreamDailyBudgetRefusal,
+  proxyFailureResponse,
+  proxyTimeoutResponse,
+} from "@/server/origin-ai-proxy-utils";
 
 /** The mode to advertise to the Python service. Constant when the flag is off. */
 async function studyModeForUser(user: StoredUser) {
@@ -346,50 +355,49 @@ async function proxyToMicroservice(
       }
     }
 
+    // The Python service enforces its own daily token budget (HTTP 429);
+    // surface it in the same shape as the in-app quota check so the client
+    // shows the same message.
+    if (isUpstreamDailyBudgetRefusal(resp.status, data)) {
+      return dailyBudgetRefusalResponse();
+    }
+
     return new Response(JSON.stringify(data ?? {}), {
       status: resp.status,
       headers: { "Content-Type": "application/json" },
     });
   } catch (err) {
-    if (err instanceof Error && err.name === 'AbortError') {
+    // A timeout is NOT "service down": the Python side has usually already
+    // generated, billed and persisted the answer. Returning null here used to
+    // route the turn to the legacy in-app path, which stored a different
+    // reply and never charged the tokens. Only a connection-level failure
+    // (nothing listening / DNS) falls back.
+    const kind = classifyProxyError(err);
+    if (kind === "timeout") {
       console.error("[origin-ai proxy] microservice call timed out", {
         requestId,
         timeoutMs,
         path,
       });
-    } else {
-      console.error("[origin-ai proxy] microservice call failed, falling back:", {
+      return proxyTimeoutResponse(requestId);
+    }
+    if (kind === "connection") {
+      console.error("[origin-ai proxy] microservice unreachable, falling back:", {
         requestId,
         error: err instanceof Error ? err.message : String(err),
         path,
       });
+      return null; // fallback to in-app implementation
     }
-    return null; // fallback to in-app implementation
+    console.error("[origin-ai proxy] microservice call failed:", {
+      requestId,
+      error: err instanceof Error ? err.message : String(err),
+      path,
+    });
+    return proxyFailureResponse(requestId);
   } finally {
     clearTimeout(timeoutId);
   }
-}
-
-function extractSseFinalPayload(buffer: string): unknown | null {
-  const events = buffer.split("\n\n");
-  for (let index = events.length - 1; index >= 0; index -= 1) {
-    const event = events[index]?.trim();
-    if (!event) continue;
-    for (const line of event.split("\n")) {
-      if (!line.startsWith("data:")) continue;
-      const raw = line.slice(5).trim();
-      if (!raw) continue;
-      try {
-        const parsed = JSON.parse(raw) as { type?: string };
-        if (parsed?.type === "final") {
-          return parsed;
-        }
-      } catch {
-        // Ignore malformed intermediate frames; usage is best-effort.
-      }
-    }
-  }
-  return null;
 }
 
 async function proxyToMicroserviceStream(
@@ -447,34 +455,26 @@ async function proxyToMicroserviceStream(
           data = { error: text.trim() || `Ori service error (${resp.status})` };
         }
       }
+      if (isUpstreamDailyBudgetRefusal(resp.status, data)) {
+        return dailyBudgetRefusalResponse();
+      }
       return new Response(JSON.stringify(data ?? { error: `Ori service error (${resp.status})` }), {
         status: resp.status,
         headers: { "Content-Type": "application/json" },
       });
     }
 
-    const decoder = new TextDecoder();
-    let sseBuffer = "";
-    let recordedUsage = false;
-
+    // Usage is debited from the `final` frame on flush() AND cancel(): a
+    // client that disconnects after the last text delta has still consumed
+    // the full (already billed, already persisted) generation.
     const responseStream = resp.body.pipeThrough(
-      new TransformStream<Uint8Array, Uint8Array>({
-        transform(chunk, streamController) {
-          sseBuffer += decoder.decode(chunk, { stream: true });
-          streamController.enqueue(chunk);
-        },
-        async flush() {
-          clearTimeout(timeoutId);
-          sseBuffer += decoder.decode();
-          if (recordedUsage) return;
-          const finalPayload = extractSseFinalPayload(sseBuffer);
-          if (finalPayload) {
-            recordedUsage = true;
-            await recordOriginAiProxyUsage(user.id, finalPayload, {
-              voiceText: usageOptions.voiceText ?? extractVoiceText(finalPayload),
-              voiceMinutes: usageOptions.voiceMinutes,
-            });
-          }
+      createUsageRecordingTransform({
+        onSettle: () => clearTimeout(timeoutId),
+        onFinal: async (finalPayload) => {
+          await recordOriginAiProxyUsage(user.id, finalPayload, {
+            voiceText: usageOptions.voiceText ?? extractVoiceText(finalPayload),
+            voiceMinutes: usageOptions.voiceMinutes,
+          });
         },
       }),
     );
@@ -491,25 +491,39 @@ async function proxyToMicroserviceStream(
     });
   } catch (err) {
     clearTimeout(timeoutId);
-    if (err instanceof Error && err.name === "AbortError") {
+    const kind = classifyProxyError(err);
+    if (kind === "timeout") {
       console.error("[origin-ai proxy] microservice stream timed out", {
         requestId,
         timeoutMs: PROXY_STREAM_TIMEOUT_MS,
         path,
       });
-    } else {
-      console.error("[origin-ai proxy] microservice stream failed:", {
+      return proxyTimeoutResponse(requestId);
+    }
+    if (kind === "connection") {
+      console.error("[origin-ai proxy] microservice stream unreachable:", {
         requestId,
         error: err instanceof Error ? err.message : String(err),
         path,
       });
+      return null;
     }
-    return null;
+    console.error("[origin-ai proxy] microservice stream failed:", {
+      requestId,
+      error: err instanceof Error ? err.message : String(err),
+      path,
+    });
+    return proxyFailureResponse(requestId);
   }
 }
 
+// Store access in this route is SCOPED (bug-hunt 10 / N3): the old
+// withStoreAsync re-wrote every app.* table from one instance's snapshot on
+// EVERY Ori request (resolveProxyUser runs on all of them), erasing concurrent
+// writes made by other instances. Reads pass `null` (fresh snapshot, nothing
+// persisted); writes name only the acting user's Ori collections.
 async function resolveProxyUser(request: NextRequest): Promise<StoredUser | null> {
-  return withStoreAsync(async (store) => requireUserFromRequest(store, request));
+  return withStoreAsyncScoped(async (store) => requireUserFromRequest(store, request), null);
 }
 
 /**
@@ -694,11 +708,11 @@ export async function GET(request: NextRequest, context: RouteContext) {
       if (proxyResp) return proxyResp;
     }
 
-    const result = await withStoreAsync(async (store) => {
+    const result = await withStoreAsyncScoped(async (store) => {
       const user = await requireUserFromRequest(store, request);
       if (!user) return { status: "unauthorized" as const };
       return { status: "ok" as const, threads: listThreads(store, user.id).map(serializeThread) };
-    });
+    }, null);
 
     if (result.status === "unauthorized") return unauthorized();
     return ok({ threads: result.threads });
@@ -722,12 +736,16 @@ export async function GET(request: NextRequest, context: RouteContext) {
       if (proxyResp) return proxyResp;
     }
 
-    const result = await withStoreAsync(async (store) => {
+    // getOriginAiSnapshot prepares the Ori runtime, which mutates this user's
+    // profile memory, session and reminder set.
+    const plan = new ScopedWritePlan();
+    const result = await withStoreAsyncScoped(async (store) => {
       const user = await requireUserFromRequest(store, request);
       if (!user) return { status: "unauthorized" as const };
       const snapshot = await getOriginAiSnapshot(store, user, request, toPageContext({}), slug[1]);
+      planOriginAiRuntimeWrite(plan, user.id);
       return { status: "ok" as const, snapshot };
-    });
+    }, plan.toPersist);
 
     if (result.status === "unauthorized") return unauthorized();
     return ok(result.snapshot);
@@ -760,7 +778,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     }
     const proxyResp = await proxyToMicroservice(
       "GET",
-      `/api/v1/chat/session?browserSessionId=${request.headers.get("X-Origin-AI-Session-Id") || ""}&pageKind=${parsedQuery.data.pageKind || "unknown"}${parsedQuery.data.questionId ? `&questionId=${encodeURIComponent(parsedQuery.data.questionId)}` : ""}${parsedQuery.data.questionAttempted ? `&questionAttempted=${parsedQuery.data.questionAttempted}` : ""}${parsedQuery.data.questionSolved ? `&questionSolved=${parsedQuery.data.questionSolved}` : ""}`,
+      `/api/v1/chat/session?browserSessionId=${encodeURIComponent(request.headers.get("X-Origin-AI-Session-Id") || "")}&pageKind=${encodeURIComponent(parsedQuery.data.pageKind || "unknown")}${parsedQuery.data.questionId ? `&questionId=${encodeURIComponent(parsedQuery.data.questionId)}` : ""}${parsedQuery.data.questionAttempted ? `&questionAttempted=${parsedQuery.data.questionAttempted}` : ""}${parsedQuery.data.questionSolved ? `&questionSolved=${parsedQuery.data.questionSolved}` : ""}`,
       null,
       request,
       proxyUser,
@@ -769,7 +787,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
   }
 
   // Fallback to in-app implementation
-  const result = await withStoreAsync(async (store) => {
+  const sessionPlan = new ScopedWritePlan();
+  const result = await withStoreAsyncScoped(async (store) => {
     const user = await requireUserFromRequest(store, request);
     if (!user) {
       return { status: "unauthorized" as const };
@@ -784,8 +803,9 @@ export async function GET(request: NextRequest, context: RouteContext) {
         questionSolved: toBooleanFlag(parsedQuery.data.questionSolved),
       }),
     );
+    planOriginAiRuntimeWrite(sessionPlan, user.id);
     return { status: "ok" as const, snapshot };
-  });
+  }, sessionPlan.toPersist);
 
   if (result.status === "unauthorized") {
     return unauthorized();
@@ -866,7 +886,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
       }
     }
 
-    const result = await withStoreAsync(async (store) => {
+    const plan = new ScopedWritePlan();
+    const result = await withStoreAsyncScoped(async (store) => {
       const user = await requireUserFromRequest(store, request);
       if (!user) return { status: "unauthorized" as const };
       const browserSessionId = request.headers.get("X-Origin-AI-Session-Id") ?? `legacy-origin-ai-session-${user.id}`;
@@ -874,8 +895,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
         title: parsed.data.title,
         subject: parsed.data.subject ?? null,
       });
+      plan.forUser(user.id).touch("originAiSessions");
       return { status: "created" as const, thread: serializeThread(session) };
-    });
+    }, plan.toPersist);
     if (result.status === "unauthorized") return unauthorized();
     return created({ thread: result.thread });
   }
@@ -954,10 +976,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
       let threadSubject: string | null = null;
       if (parsedBody.data.threadId) {
-        threadSubject = await withStoreAsync(async (store) => {
+        threadSubject = await withStoreAsyncScoped(async (store) => {
           const thread = getThreadById(store, proxyUser.id, parsedBody.data.threadId!);
           return thread?.subject ?? null;
-        });
+        }, null);
       }
       const enrichedPayload = {
         ...parsedBody.data,
@@ -1006,10 +1028,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
       let threadSubject: string | null = null;
       if (parsedBody.data.threadId) {
-        threadSubject = await withStoreAsync(async (store) => {
+        threadSubject = await withStoreAsyncScoped(async (store) => {
           const thread = getThreadById(store, proxyUser.id, parsedBody.data.threadId!);
           return thread?.subject ?? null;
-        });
+        }, null);
       }
       const enrichedPayload = {
         ...parsedBody.data,
@@ -1060,10 +1082,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
         // mapping, so we read it here before forwarding.
         let threadSubject: string | null = null;
         if (parsedBody.data.threadId) {
-          threadSubject = await withStoreAsync(async (store) => {
+          threadSubject = await withStoreAsyncScoped(async (store) => {
             const thread = getThreadById(store, proxyUser.id, parsedBody.data.threadId!);
             return thread?.subject ?? null;
-          });
+          }, null);
         }
         const enrichedPayload = {
           ...parsedBody.data,
@@ -1092,7 +1114,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
       if (process.env.NODE_ENV !== "production") {
         console.warn("[origin-ai proxy] microservice unavailable; using in-app fallback");
       }
-      const result = await withStoreAsync(async (store) => {
+      // An error reply (empty message, daily limit) returns before the runtime is
+      // touched, so only a delivered reply persists — runtime + check-in points.
+      const plan = new ScopedWritePlan();
+      const result = await withStoreAsyncScoped(async (store) => {
         const user = await requireUserFromRequest(store, request);
         if (!user) {
           return { status: "unauthorized" as const };
@@ -1120,8 +1145,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
           return { status: "error" as const, error: reply.error };
         }
 
+        planOriginAiRuntimeWrite(plan, user.id, { awardsPoints: true });
         return { status: "created" as const, reply };
-      });
+      }, plan.toPersist);
 
       if (result.status === "unauthorized") {
         return unauthorized();
@@ -1155,8 +1181,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
         if (proxyResp) return proxyResp;
       }
 
-      // Fallback
-      const result = await withStoreAsync(async (store) => {
+      // Fallback. The runtime is prepared (and mutated) before the live
+      // bootstrap can fail, so it is persisted either way — as before.
+      const plan = new ScopedWritePlan();
+      const result = await withStoreAsyncScoped(async (store) => {
         const user = await requireUserFromRequest(store, request);
         if (!user) {
           return { status: "unauthorized" as const };
@@ -1168,13 +1196,14 @@ export async function POST(request: NextRequest, context: RouteContext) {
           request,
           toPageContext(parsedBody.data.pageContext),
         );
+        planOriginAiRuntimeWrite(plan, user.id);
 
         if ("error" in bootstrap) {
           return { status: "error" as const, error: bootstrap.error };
         }
 
         return { status: "ok" as const, bootstrap };
-      });
+      }, plan.toPersist);
 
       if (result.status === "unauthorized") {
         return unauthorized();
@@ -1220,8 +1249,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
         }
       }
 
-      // Fallback
-      const result = await withStoreAsync(async (store) => {
+      // Fallback. Transcript errors return before the runtime is touched.
+      const plan = new ScopedWritePlan();
+      const result = await withStoreAsyncScoped(async (store) => {
         const user = await requireUserFromRequest(store, request);
         if (!user) {
           return { status: "unauthorized" as const };
@@ -1252,8 +1282,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
           return { status: "error" as const, error: reply.error };
         }
 
+        planOriginAiRuntimeWrite(plan, user.id, { awardsPoints: true });
         return { status: "created" as const, reply };
-      });
+      }, plan.toPersist);
 
       if (result.status === "unauthorized") {
         return unauthorized();
@@ -1334,8 +1365,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
         }
       }
 
-      // Fallback
-      const result = await withStoreAsync(async (store) => {
+      // Fallback. Transcription / limit errors return before the runtime is
+      // touched; a delivered reply persists the runtime + check-in points.
+      const plan = new ScopedWritePlan();
+      const result = await withStoreAsyncScoped(async (store) => {
         const user = await requireUserFromRequest(store, request);
         if (!user) {
           return { status: "unauthorized" as const };
@@ -1363,8 +1396,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
           return { status: "error" as const, error: reply.error };
         }
 
+        planOriginAiRuntimeWrite(plan, user.id, { awardsPoints: true });
         return { status: "created" as const, reply };
-      });
+      }, plan.toPersist);
 
       if (result.status === "unauthorized") {
         return unauthorized();
@@ -1411,8 +1445,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
         }
       }
 
-      // Fallback
-      const result = await withStoreAsync(async (store) => {
+      // Fallback. No store mutation (usage goes through dbUpdateUsageMetrics).
+      const result = await withStoreAsyncScoped(async (store) => {
         const user = await requireUserFromRequest(store, request);
         if (!user) {
           return { status: "unauthorized" as const };
@@ -1430,7 +1464,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         }
 
         return { status: "ok" as const, reply };
-      });
+      }, null);
 
       if (result.status === "unauthorized") {
         return unauthorized();
@@ -1590,7 +1624,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     }
   }
 
-  const result = await withStoreAsync(async (store) => {
+  const plan = new ScopedWritePlan();
+  const result = await withStoreAsyncScoped(async (store) => {
     const user = await requireUserFromRequest(store, request);
     if (!user) return { status: "unauthorized" as const };
     const session = updateThread(store, user.id, slug[1], {
@@ -1598,8 +1633,9 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       subject: parsed.data.subject ?? undefined,
     });
     if (!session) return { status: "not_found" as const };
+    plan.forUser(user.id).touch("originAiSessions");
     return { status: "ok" as const, thread: serializeThread(session) };
-  });
+  }, plan.toPersist);
 
   if (result.status === "unauthorized") return unauthorized();
   if (result.status === "not_found") return notFound("Thread not found.");
@@ -1632,12 +1668,22 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     if (proxyResp) return proxyResp;
   }
 
-  const result = await withStoreAsync(async (store) => {
+  const plan = new ScopedWritePlan();
+  const result = await withStoreAsyncScoped(async (store) => {
     const user = await requireUserFromRequest(store, request);
     if (!user) return { status: "unauthorized" as const };
+    // deleteThread drops every session row of this user carrying the thread id;
+    // remove exactly those rows (by session id) with targeted user-scoped deletes.
+    const removedIds = store.originAiSessions
+      .filter((entry) => entry.userId === user.id && entry.threadId === slug[1])
+      .map((entry) => entry.id);
     const removed = deleteThread(store, user.id, slug[1]);
+    if (removed) {
+      plan.forUser(user.id);
+      for (const id of removedIds) plan.remove("originAiSessions", id);
+    }
     return { status: removed ? ("ok" as const) : ("not_found" as const) };
-  });
+  }, plan.toPersist);
 
   if (result.status === "unauthorized") return unauthorized();
   if (result.status === "not_found") return notFound("Thread not found.");

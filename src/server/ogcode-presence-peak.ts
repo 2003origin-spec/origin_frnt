@@ -9,6 +9,7 @@
  */
 
 import { getOgcodePostgresPool, isOgcodePostgresConfigured } from "@/server/postgres";
+import { withSchemaLock } from "@/server/schema-lock";
 
 declare global {
   var __originOgcodePresencePeakSchemaReady: Promise<void> | undefined;
@@ -29,8 +30,7 @@ async function ensurePeakSchema(): Promise<void> {
   const pool = getOgcodePostgresPool();
   if (!pool) return;
   if (!globalThis.__originOgcodePresencePeakSchemaReady) {
-    globalThis.__originOgcodePresencePeakSchemaReady = pool
-      .query(CREATE_TABLE_SQL)
+    globalThis.__originOgcodePresencePeakSchemaReady = withSchemaLock(pool, (client) => client.query(CREATE_TABLE_SQL))
       .then(() => undefined)
       .catch((error) => {
         globalThis.__originOgcodePresencePeakSchemaReady = undefined;

@@ -25,6 +25,7 @@ import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext';
 import { isSubjectInMode } from '@/lib/study-mode';
 import { formatPoints, formatPointsDelta } from '@/lib/format-points';
+import { createSingleInterval, type SingleInterval } from '@/lib/single-interval';
 
 const SUBJECT_META: Record<string, { label: string; emoji: string; param: string }> = {
     phy:  { label: 'Physics',     emoji: '⚛️', param: 'subject=phy'  },
@@ -419,7 +420,8 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
     const [imgError, setImgError] = useState(false);
 
     const [elapsed, setElapsed] = useState(0);
-    const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    // One solve stopwatch at most: a second interval double-counts timeSpent.
+    const [stopwatch] = useState<SingleInterval>(() => createSingleInterval());
     const hasFetched = useRef(Boolean(initialQuestion));
 
     // ── OGCode Scoring V2 client state ─────────────────────────────────────────
@@ -875,14 +877,14 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
     useEffect(() => {
         if (isLoading || result) return;
 
-        timerRef.current = setInterval(() => {
+        stopwatch.start(() => {
             setElapsed(e => e + 1);
         }, 1000);
 
         return () => {
-            if (timerRef.current) clearInterval(timerRef.current);
+            stopwatch.stop();
         };
-    }, [isLoading, !!result]);
+    }, [isLoading, !!result, stopwatch]);
 
     // 3. SUBMIT: Updated to show result immediately below
     const doSubmit = useCallback(async () => {
@@ -932,7 +934,7 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
                 return;
             }
 
-            if (timerRef.current) clearInterval(timerRef.current);
+            stopwatch.stop();
             setV2WrongFlash(false);
             setResult(res); // This triggers the result UI
             toast.success(res.isCorrect ? "Brilliant! Correct Answer" : "Not quite right. Try again?");
@@ -947,16 +949,14 @@ export default function OGCodeWorkspace({ questionId, onBack, onRefreshUser, set
         } finally {
             setIsSubmitting(false);
         }
-    }, [question, result, isSubmitting, elapsed, selectedOption, selectedOptions, matrixPairs, answerInput, rangeFrom, rangeTo, unlockAudio, v2AttemptsUsed]);
+    }, [question, result, isSubmitting, elapsed, selectedOption, selectedOptions, matrixPairs, answerInput, rangeFrom, rangeTo, unlockAudio, v2AttemptsUsed, stopwatch]);
 
     const handleTryAgain = () => {
+        // Clearing the result resumes the stopwatch through the effect above;
+        // starting another interval here used to double-count the solve time.
         setResult(null);
         setShowHint(false);
         setShowSolution(false);
-        // Resume timer
-        timerRef.current = setInterval(() => {
-            setElapsed(e => e + 1);
-        }, 1000);
     };
 
     useEffect(() => {

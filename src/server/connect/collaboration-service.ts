@@ -12,6 +12,7 @@ import { AuthzError } from "@/server/authz";
 import { recordAuditEvent } from "@/server/workspaces/audit";
 import { getActiveMembership, getWorkspaceById } from "@/server/workspaces/store";
 
+import { revokeConnectGrantsForWorkspaces } from "./grant-revocation";
 import {
   getCollaborationByWorkspace,
   isActiveCollaboration,
@@ -19,6 +20,7 @@ import {
   setCollaborationStatus,
   upsertCollaborationRequest,
   type Collaboration,
+  type CollaborationFlow,
   type CollaborationStatus,
   type CollaborationWithWorkspace,
 } from "./collaboration-store";
@@ -37,16 +39,76 @@ function isConnectAutoApproveEnabled(): boolean {
   return raw === "1" || raw === "true" || raw === "on" || raw === "yes";
 }
 
-/** True iff the workspace is a live collaborator (status active + institute + active workspace). */
-export async function isActiveCollaborator(workspaceId: string): Promise<boolean> {
-  return isActiveCollaboration(workspaceId);
+/**
+ * Deployed production (not a preview, not local dev). Same signals as
+ * src/lib/rate-limit.ts and /api/health use.
+ */
+function isHostedProduction(): boolean {
+  return (
+    process.env.VERCEL_ENV === "production" ||
+    Boolean(process.env.RENDER_SERVICE_ID) ||
+    process.env.RAILWAY_ENVIRONMENT === "production" ||
+    Boolean(process.env.FLY_APP_NAME) ||
+    process.env.ORIGIN_DEPLOYMENT_ENV === "production"
+  );
 }
 
-/** Throws 403 unless the workspace is a live collaborator. */
-export async function assertActiveCollaborator(workspaceId: string): Promise<void> {
-  if (!(await isActiveCollaborator(workspaceId))) {
-    throw new AuthzError(403, "This institute is not an active ORIGIN collaborator.");
+const AUTO_APPROVE_PROD_WARNING =
+  "[connect] CONNECT_AUTO_APPROVE is ON in hosted production: any self-registered teacher's " +
+  "institute becomes an ACTIVE collaborator (Flow 1 + Flow 2 enabled) the moment they click " +
+  "Request, with no admin review — every student who redeems its join code gets a free subject. " +
+  "This is a business decision; unset CONNECT_AUTO_APPROVE to require approval in /admin/collaborations.";
+
+/**
+ * Loud, non-blocking warning when auto-approve is on in hosted production.
+ * Behaviour is unchanged (it is a business decision); this only makes sure it
+ * is a visible one. Logged once per server process at module load ("boot"),
+ * and again on every auto-approval it actually performs.
+ */
+export function warnIfAutoApproveInProduction(): boolean {
+  if (!isConnectAutoApproveEnabled() || !isHostedProduction()) return false;
+  console.warn(AUTO_APPROVE_PROD_WARNING);
+  return true;
+}
+
+declare global {
+  var __originConnectAutoApproveWarned: boolean | undefined;
+}
+if (!globalThis.__originConnectAutoApproveWarned) {
+  globalThis.__originConnectAutoApproveWarned = true;
+  warnIfAutoApproveInProduction();
+}
+
+/**
+ * True iff the workspace is a live collaborator (status active + institute +
+ * active workspace) and, when `flow` is given, that flow's admin toggle is on.
+ */
+export async function isActiveCollaborator(
+  workspaceId: string,
+  flow?: CollaborationFlow,
+): Promise<boolean> {
+  return isActiveCollaboration(workspaceId, flow);
+}
+
+/**
+ * Throws 403 unless the workspace is a live collaborator — and, with `flow`,
+ * unless that enrollment flow is enabled for it. Flow 1 = code redeem + free
+ * subject pick; Flow 2 = paid batch checkout.
+ */
+export async function assertActiveCollaborator(
+  workspaceId: string,
+  flow?: CollaborationFlow,
+): Promise<void> {
+  if (await isActiveCollaborator(workspaceId, flow)) return;
+  if (flow && (await isActiveCollaborator(workspaceId))) {
+    throw new AuthzError(
+      403,
+      flow === "flow1"
+        ? "This institute is not accepting ORIGIN code redemptions right now."
+        : "This institute is not accepting paid enrollments through ORIGIN right now.",
+    );
   }
+  throw new AuthzError(403, "This institute is not an active ORIGIN collaborator.");
 }
 
 /**
@@ -92,6 +154,7 @@ export async function requestCollaboration(input: {
   // pause/terminate. Only acts on a freshly-`pending` row so it never reopens a
   // paused/terminated lifecycle.
   if (collaboration.status === "pending" && isConnectAutoApproveEnabled()) {
+    warnIfAutoApproveInProduction();
     return setCollaborationStatusService({
       workspaceId: input.workspaceId,
       status: "active",
@@ -154,6 +217,18 @@ export async function setCollaborationStatusService(input: {
     after: updated,
     requestId: input.requestId,
   });
+
+  // Ending the partnership ends the free Flow-1 subjects it issued. `paused`
+  // is reversible and keeps them (new grants are refused while paused, since
+  // the active-collaboration gate fails); terminated/rejected are final.
+  if (input.status === "terminated" || input.status === "rejected") {
+    await revokeConnectGrantsForWorkspaces({
+      workspaceIds: [input.workspaceId],
+      actorUserId: input.adminUserId,
+      reason: input.status === "terminated" ? "collaboration_terminated" : "collaboration_rejected",
+      requestId: input.requestId,
+    });
+  }
 
   return updated;
 }

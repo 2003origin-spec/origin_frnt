@@ -6,6 +6,7 @@
 import type { PoolClient } from "pg";
 
 import { getUserPostgresPool, isUserPostgresConfigured } from "@/server/user-postgres";
+import { lockSchemaDdl } from "@/server/schema-lock";
 
 declare global {
   var __originDocumentImportSchemaEnsured: boolean | undefined;
@@ -35,6 +36,7 @@ export async function ensureDocumentImportSchema(): Promise<void> {
       const client = await pool().connect();
       try {
         await client.query("BEGIN");
+        await lockSchemaDdl(client);
         await client.query(`CREATE SCHEMA IF NOT EXISTS import`);
 
         await client.query(`

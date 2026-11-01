@@ -60,7 +60,7 @@ export async function sendContestReminder(
           FROM contest.registrations r
           LEFT JOIN contest.reminders_sent s
             ON s.contest_id = r.contest_id AND s.user_id = r.user_id AND s.reminder_kind = $2
-         WHERE r.contest_id = $1 AND s.user_id IS NULL
+         WHERE r.contest_id = $1 AND r.status = 'registered' AND s.user_id IS NULL
          LIMIT $3
       ), ins AS (
         INSERT INTO contest.reminders_sent (contest_id, user_id, reminder_kind)

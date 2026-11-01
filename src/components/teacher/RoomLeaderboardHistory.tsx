@@ -31,15 +31,16 @@ type LeaderboardRow = {
   auto_submitted: boolean;
 };
 
+/** One row per student — their best submission (server: getTestLeaderboardFromResults). */
 type TestLeaderboardEntry = {
   rank: number;
   studentId: string;
   studentName: string;
-  studentEmail: string;
   score: number;
   totalScore: number;
   scorePercentage: number;
   attemptedAt: string;
+  attemptCount: number;
 };
 
 type Props = {
@@ -168,7 +169,7 @@ export function RoomLeaderboardHistory({ workspaceId, room }: Props) {
             <ol className="divide-y rounded-md border">
               {history.map((entry) => (
                 <li
-                  key={`${entry.studentId}-${entry.attemptedAt}`}
+                  key={entry.studentId}
                   className="grid grid-cols-[2rem_1fr_5rem_4rem] items-center gap-3 px-3 py-2 text-sm"
                 >
                   <span className="font-mono text-xs text-muted-foreground">
@@ -176,6 +177,11 @@ export function RoomLeaderboardHistory({ workspaceId, room }: Props) {
                   </span>
                   <span className="truncate font-medium">
                     {entry.studentName}
+                    {entry.attemptCount > 1 ? (
+                      <span className="ml-1 text-xs font-normal text-muted-foreground">
+                        (best of {entry.attemptCount})
+                      </span>
+                    ) : null}
                   </span>
                   <span className="text-right">
                     {entry.score}/{entry.totalScore}

@@ -23,6 +23,7 @@ import {
   PaymentClientError,
   verifyPayment,
   validatePaymentCoupon,
+  waitForOrderPaid,
   type CheckoutInput,
   type PaymentOrderKind,
   type RazorpayCheckout,
@@ -47,7 +48,13 @@ export type OrderCheckoutProps = {
   onChanged?: () => void | Promise<void>;
 };
 
-type CheckoutState = "idle" | "loading" | "opening" | "success" | "error";
+/**
+ * `activating`: Razorpay charged the student but the fast-path verify could not
+ * apply it (transient 503, network, or a 409 "another capture landed"). The
+ * order is polled until the webhook/reconcile marks it paid. No retry and no
+ * "start another checkout" while activating — never invite a second charge.
+ */
+type CheckoutState = "idle" | "loading" | "opening" | "activating" | "success" | "error";
 
 function formatRupees(minor: number): string {
   return Math.round(minor / 100).toLocaleString("en-IN");
@@ -83,6 +90,10 @@ export function OrderCheckout({
   const outcomeRef = useRef<"success" | "failed" | null>(null);
   const idempotencyKeyRef = useRef<string | null>(null);
   const intentFingerprintRef = useRef<string | null>(null);
+  const orderIdRef = useRef<string | null>(null);
+
+  // Stop an in-flight activation poll when the card unmounts.
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -131,7 +142,7 @@ export function OrderCheckout({
   }, []);
 
   const startCheckout = useCallback(async () => {
-    if (state === "loading" || state === "opening") return;
+    if (state === "loading" || state === "opening" || state === "activating") return;
     setState("loading");
     setError(null);
     const controller = new AbortController();
@@ -150,6 +161,7 @@ export function OrderCheckout({
       });
       if (controller.signal.aborted) return;
       setChargedMinor(result.amountMinor);
+      orderIdRef.current = result.orderId ?? null;
 
       // A zero-amount order is already paid server-side (for example, a fully
       // discounted coupon). There is no Razorpay widget to open in that case.
@@ -239,15 +251,33 @@ export function OrderCheckout({
             }
             // The webhook is authoritative and may still unlock the account even
             // when this best-effort fast path fails. Razorpay has already called
-            // the success handler, so never invite a second charge here.
+            // the success handler, so never invite a second charge here: poll
+            // the order until the webhook/reconcile has applied the capture.
             idempotencyKeyRef.current = null;
             intentFingerprintRef.current = null;
             outcomeRef.current = "success";
-            setState("success");
-            setError("Payment received. We are confirming it in the background.");
-            toast.info("Payment received — confirmation is still processing.");
-            await onChanged?.();
+            setState("activating");
+            setError("Payment received — activating your access…");
             void verifyError;
+            let paid = false;
+            const localOrderId = orderIdRef.current;
+            if (localOrderId) {
+              try {
+                paid = await waitForOrderPaid(localOrderId, { signal: controller.signal });
+              } catch {
+                if (controller.signal.aborted) return;
+              }
+            }
+            if (controller.signal.aborted) return;
+            setState("success");
+            if (paid) {
+              setError(null);
+              toast.success("Access unlocked.");
+            } else {
+              setError("Payment received. Access will appear within a few minutes — you can keep using Origin.");
+              toast.info("Payment received — your access is still activating.");
+            }
+            await onChanged?.();
           } finally {
             checkoutRef.current = null;
             abortRef.current = null;
@@ -295,6 +325,20 @@ export function OrderCheckout({
 
   const displayMinor = chargedMinor ?? couponPreviewMinor ?? amountMinor ?? 0;
   const isBusy = state === "loading" || state === "opening";
+
+  if (state === "activating") {
+    return (
+      <div className={cn("space-y-2", className)} role="status" aria-live="polite">
+        <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Activating your access…
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {error ?? "Payment received — activating your access…"}
+        </p>
+      </div>
+    );
+  }
 
   if (state === "success") {
     return (

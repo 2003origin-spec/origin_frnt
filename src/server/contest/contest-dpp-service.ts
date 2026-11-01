@@ -12,10 +12,13 @@
  * show "Subscribe to unlock".
  */
 
-import { listOgcodeCatalogQuestionPage, getOgcodeCatalogQuestionById } from "@/server/ogcode-catalog";
+import { listOgcodeCatalogQuestionPage } from "@/server/ogcode-catalog";
 import { getEntitledSubjects } from "@/server/entitlements";
+import type { StoredQuestion } from "@/server/store";
 import { getUserPostgresPool } from "@/server/user-postgres";
 
+import { getContest } from "./contest-admin-service";
+import { assertPracticeOpen, isOnUnreleasedPaper, unreleasedPaperQuestionIds } from "./contest-practice-service";
 import { isRegisteredForContest } from "./contest-registration-service";
 import { ensureContestSchema } from "./contest-schema";
 
@@ -43,9 +46,18 @@ export interface DppQuestion {
   optionImages: (string | null)[] | null;
 }
 
+type ContestDppLocked = {
+  locked: true;
+  reason: "not_registered" | "not_premium" | "not_published";
+  entitledSubjects?: string[];
+};
+
 export type ContestDppResult =
-  | { locked: true; reason: "not_registered" | "not_premium" | "not_published"; entitledSubjects?: string[] }
+  | ContestDppLocked
   | { locked: false; weakChapters: string[]; questions: DppQuestion[] };
+
+/** The DPP with its full bank rows (incl. the answer key) — server-internal only. */
+type ContestDppItems = ContestDppLocked | { locked: false; weakChapters: string[]; items: StoredQuestion[] };
 
 /**
  * Build the custom DPP for a user's contest mistakes. Returns a locked marker
@@ -53,6 +65,22 @@ export type ContestDppResult =
  * gates, so the surface can render the "Subscribe to unlock" state.
  */
 export async function getContestMistakeDpp(contestId: string, userId: string): Promise<ContestDppResult> {
+  const dpp = await loadContestMistakeDpp(contestId, userId);
+  if (dpp.locked) return dpp;
+  const questions: DppQuestion[] = dpp.items.map((q) => ({
+    id: q.id,
+    text: q.text,
+    options: q.options,
+    subject: q.subject,
+    chapter: q.chapter,
+    questionType: q.questionType,
+    image: q.image ?? null,
+    optionImages: q.optionImages ?? null,
+  }));
+  return { locked: false, weakChapters: dpp.weakChapters, questions };
+}
+
+async function loadContestMistakeDpp(contestId: string, userId: string): Promise<ContestDppItems> {
   await ensureContestSchema();
   const p = pool();
 
@@ -89,16 +117,20 @@ export async function getContestMistakeDpp(contestId: string, userId: string): P
     ),
   );
 
-  // The exact contest question ids to EXCLUDE (so the DPP is fresh practice).
+  if (weakChapters.length === 0) {
+    return { locked: false, weakChapters: [], items: [] };
+  }
+
+  // EXCLUDE this contest's own question ids (so the DPP is fresh practice) AND
+  // every question on any unreleased paper (scheduled / result_processing) —
+  // the DPP grades answers, so it must never carry another contest's paper.
   const contestIds = await p.query<{ question_id: string }>(
     `SELECT question_id FROM contest.contest_questions WHERE contest_id = $1`,
     [contestId],
   );
-  const excludeIds = contestIds.rows.map((r) => r.question_id);
-
-  if (weakChapters.length === 0) {
-    return { locked: false, weakChapters: [], questions: [] };
-  }
+  const excludeIds = [
+    ...new Set([...contestIds.rows.map((r) => r.question_id), ...(await unreleasedPaperQuestionIds())]),
+  ];
 
   // Fresh questions on the weak chapters, scoped to the user's entitled subjects.
   const page = await listOgcodeCatalogQuestionPage({
@@ -111,18 +143,7 @@ export async function getContestMistakeDpp(contestId: string, userId: string): P
     limit: 20,
     offset: 0,
   });
-  const questions: DppQuestion[] = page.items.map((q) => ({
-    id: q.id,
-    text: q.text,
-    options: q.options,
-    subject: q.subject,
-    chapter: q.chapter,
-    questionType: q.questionType,
-    image: q.image ?? null,
-    optionImages: q.optionImages ?? null,
-  }));
-
-  return { locked: false, weakChapters, questions };
+  return { locked: false, weakChapters, items: page.items };
 }
 
 /** Feedback for one DPP answer (no tally — the DPP is pure extra practice). */
@@ -137,6 +158,11 @@ export interface DppAnswerResult {
  * Grade a single DPP answer server-side and return the reveal (correct option +
  * explanation). Gated exactly like the DPP itself — published + registered +
  * premium — so the answer key is never exposed to a non-entitled caller.
+ *
+ * Not an answer oracle: 409 while the contest runs (LIVE / ENDED /
+ * RESULT_PROCESSING, same rule as practice), 403 for any question on an
+ * unreleased paper, and the question resolves ONLY through this student's own
+ * DPP item list — any other bank id is a 404, never graded.
  */
 export async function gradeContestDppAnswer(
   contestId: string,
@@ -144,11 +170,20 @@ export async function gradeContestDppAnswer(
   questionId: string,
   selectedOption: number,
 ): Promise<DppAnswerResult> {
-  // Reuse the same gate as the DPP fetch (fail-closed).
-  const gate = await getContestMistakeDpp(contestId, userId);
-  if (gate.locked) throw dppError(403, "This DPP is locked.", gate.reason);
+  await ensureContestSchema();
+  const contest = await getContest(contestId);
+  if (!contest) throw dppError(404, "Contest not found.");
+  assertPracticeOpen(contest);
 
-  const question = await getOgcodeCatalogQuestionById(questionId);
+  // Reuse the same gate as the DPP fetch (fail-closed).
+  const dpp = await loadContestMistakeDpp(contestId, userId);
+  if (dpp.locked) throw dppError(403, "This DPP is locked.", dpp.reason);
+
+  if (await isOnUnreleasedPaper(questionId)) {
+    throw dppError(403, "This question is part of a contest paper.");
+  }
+
+  const question = dpp.items.find((q) => q.id === questionId);
   if (!question) throw dppError(404, "Question not found.");
   const isCorrect =
     Array.isArray(question.correctOptions) && question.correctOptions.length > 0
