@@ -17,7 +17,7 @@ import { getAfterCall, rateSession, reportSession, resolveReport } from "@/serve
 import { getLiveMonitor, getNowMetrics, getSessionReview } from "@/server/now/admin-insights-service";
 import { confirmConsent, startGuardianConsent } from "@/server/now/consent-service";
 import { getSolverDashboard, getStudentDashboard } from "@/server/now/dashboard-service";
-import { createRequest, getCurrentOffer, heartbeatHelper, quoteLiveHelp, respondToOffer } from "@/server/now/dispatch-service";
+import { createRequest, getCurrentOffer, getRequestView, heartbeatHelper, quoteLiveHelp, respondToOffer } from "@/server/now/dispatch-service";
 import { getWalletBalance } from "@/server/now/ledger-store";
 import { getNowAccess } from "@/server/now/now-access";
 import { clearPresence } from "@/server/now/now-realtime";
@@ -109,7 +109,10 @@ test("one pilot journey, end to end", { skip: NOW_SKIP }, async () => {
   await joinSession(student, sessionId!);
   assert.equal((await joinSession(solver.userId, sessionId!)).live, true);
 
-  // 5. More time: the student asks, the solver agrees, the student pays.
+  // 5. More time: the student sees the price first, asks, the solver agrees, the student pays.
+  const live = await getRequestView(request.id, { viewerUserId: student });
+  assert.equal(live.session?.extension?.coins, EASY_EXTENSION);
+  assert.equal((await getRequestView(request.id, { viewerUserId: solver.userId })).session?.extension, null, "only the student sees the price");
   await requestExtension(student, sessionId!);
   await confirmExtension({ helperUserId: solver.userId }, sessionId!);
 

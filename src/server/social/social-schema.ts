@@ -74,13 +74,17 @@ export async function ensureSocialSchema(): Promise<void> {
         );
 
         // 2. Backfill a unique handle for users that lack one (slug + unique id suffix).
+        //    The suffix is everything after the id's first "_" (for "user_ab12" that's "ab12",
+        //    as before). Only the second segment collided for ids like "x_y_<random>", and
+        //    one collision failed this whole ensure, so every social call 500'd. Matches idSuffix().
         await client.query(`
           UPDATE origin_users
           SET username = LEFT(LOWER(REGEXP_REPLACE(COALESCE(name, ''), '[^a-zA-Z0-9]+', '', 'g')), 15)
-                         || '_' || split_part(id, '_', 2)
+                         || '_' || LOWER(SUBSTRING(id FROM POSITION('_' IN id) + 1))
           WHERE username IS NULL
             AND LEFT(LOWER(REGEXP_REPLACE(COALESCE(name, ''), '[^a-zA-Z0-9]+', '', 'g')), 15) <> ''
-            AND split_part(id, '_', 2) <> '';
+            AND POSITION('_' IN id) > 0
+            AND SUBSTRING(id FROM POSITION('_' IN id) + 1) <> '';
         `);
         await client.query(`
           UPDATE origin_users

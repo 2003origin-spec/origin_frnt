@@ -906,6 +906,8 @@ export type RequestView = {
     endedAt: string | null;
     extensionsUsed: number;
     extensionRequestedAt: string | null;
+    /** Live sessions, for the student: what "more time" costs and how many are left (null when none). */
+    extension: { minutes: number; coins: number; left: number } | null;
   } | null;
   /** True when calls are recorded (LiveKit + recording storage configured); the room says so. */
   recorded: boolean;
@@ -955,6 +957,12 @@ export async function getRequestView(requestId: string, viewer: { viewerUserId: 
   const isSolver = Boolean(row?.helper_user_id) && row?.helper_user_id === viewer.viewerUserId;
   if (!row || (!isStudent && !isSolver)) throw new NowError(404, "not_found", "Request not found.");
   const question = (row.context_json?.question ?? null) as RequestView["question"];
+  let extension: { minutes: number; coins: number; left: number } | null = null;
+  if (isStudent && row.status === "live" && row.session_id) {
+    const price = lookupPrice((await loadPriceTable()).rows, row.difficulty, row.session_solver_kind ?? "human");
+    const left = price ? price.maxExtensions - (row.extensions_used ?? 0) : 0;
+    if (price && left > 0) extension = { minutes: price.extensionMinutes, coins: price.extensionCoins, left };
+  }
   return {
     id: row.id,
     status: row.status,
@@ -984,6 +992,7 @@ export async function getRequestView(requestId: string, viewer: { viewerUserId: 
           endedAt: row.ended_at ? row.ended_at.toISOString() : null,
           extensionsUsed: row.extensions_used ?? 0,
           extensionRequestedAt: row.extension_requested_at ? row.extension_requested_at.toISOString() : null,
+          extension,
         }
       : null,
     recorded: getLiveKitConfig() !== null && getRecordingStorage() !== null,
@@ -1059,6 +1068,8 @@ export type LiveHelpQuote = {
   blockedReason: string | null;
   priceCoins: number | null;
   botPriceCoins: number | null;
+  /** What asking holds now: always the human price (the bot difference comes back after). */
+  holdCoins: number | null;
   minutes: number | null;
   balance: number;
   canAfford: boolean;
@@ -1078,6 +1089,7 @@ export async function quoteLiveHelp(studentId: string, questionId: string, now: 
     blockedReason: access.blockedReason,
     priceCoins: null,
     botPriceCoins: null,
+    holdCoins: null,
     minutes: null,
     balance: 0,
     canAfford: false,
@@ -1114,6 +1126,7 @@ export async function quoteLiveHelp(studentId: string, questionId: string, now: 
     blockedReason: access.canRequest ? (attempted ? null : "attempt_first") : access.blockedReason,
     priceCoins: price?.priceCoins ?? null,
     botPriceCoins: bot?.priceCoins ?? null,
+    holdCoins: human?.priceCoins ?? null,
     minutes: price?.minutes ?? null,
     balance: balance.available,
     canAfford: Boolean(human) && balance.available >= (human?.priceCoins ?? Infinity),

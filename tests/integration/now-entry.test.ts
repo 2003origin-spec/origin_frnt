@@ -53,6 +53,7 @@ test("the quote behind the Need human help button", { skip: NOW_SKIP }, async ()
   assert.equal(botQuote.humansLikely, false);
   assert.equal(botQuote.botOn, true);
   assert.equal(botQuote.priceCoins, EASY_HUMAN);
+  assert.equal(botQuote.holdCoins, EASY_HUMAN, "asking always holds the human price");
   assert.equal(botQuote.balance, WELCOME, "the quote grants the welcome coins on first sight");
   assert.equal(botQuote.canAfford, true);
 
@@ -67,6 +68,7 @@ test("the quote behind the Need human help button", { skip: NOW_SKIP }, async ()
   await savePriceTable(table, admin);
   const short = await quoteLiveHelp(student, attempted);
   assert.equal(short.priceCoins, WELCOME + 1);
+  assert.equal(short.holdCoins, WELCOME + 1);
   assert.equal(short.canAfford, false);
   await rawPool().query(`DELETE FROM now.prices`);
 

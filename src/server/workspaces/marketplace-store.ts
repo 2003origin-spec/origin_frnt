@@ -335,6 +335,19 @@ export type PublicInstituteFilter = {
   activeCollaboratorsOnly?: boolean;
 };
 
+const MATHS_NAMES = ["mathematics", "maths", "math"];
+
+/** Lower-cased names a subject filter matches ("Maths" ⇄ "mathematics"). */
+export function subjectFilterNames(subject: string | undefined): string[] {
+  const s = subject?.trim().toLowerCase();
+  if (!s) return [];
+  return MATHS_NAMES.includes(s) ? MATHS_NAMES : [s];
+}
+
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, (c) => `\\${c}`);
+}
+
 export async function listPublicInstitutes(
   filter?: PublicInstituteFilter,
 ): Promise<InstitutePublicProfile[]> {
@@ -347,13 +360,17 @@ export async function listPublicInstitutes(
                 WHERE c.workspace_id = w.id AND c.status = 'active')`,
     );
   }
-  if (filter?.subject) {
-    params.push(filter.subject);
-    conditions.push(`$${params.length} = ANY(w.subjects)`);
+  // Teachers type subjects and cities freely ("Physics", "Maths", "Kota"), so
+  // match without case, treat maths/mathematics as one, and let a city prefix match.
+  const subjectNames = subjectFilterNames(filter?.subject);
+  if (subjectNames.length > 0) {
+    params.push(subjectNames);
+    conditions.push(`EXISTS (SELECT 1 FROM unnest(w.subjects) s WHERE LOWER(TRIM(s)) = ANY($${params.length}::text[]))`);
   }
-  if (filter?.city) {
-    params.push(filter.city);
-    conditions.push(`w.city = $${params.length}`);
+  const city = filter?.city?.trim();
+  if (city) {
+    params.push(`${escapeLike(city.toLowerCase())}%`);
+    conditions.push(`LOWER(w.city) LIKE $${params.length} ESCAPE '\\'`);
   }
   const where = `WHERE ${conditions.join(" AND ")}`;
   const limit = filter?.limit ?? 20;

@@ -51,7 +51,8 @@ test("collaborator filter + LIMIT/OFFSET run in one SQL query", async () => {
   const [query] = pool.matching("FROM app.teacher_workspaces w");
   assert.match(query.sql, /EXISTS \(SELECT 1 FROM app\.origin_collaborations c\s+WHERE c\.workspace_id = w\.id AND c\.status = 'active'\)/);
   assert.match(query.sql, /LIMIT \$2 OFFSET \$3/);
-  assert.deepEqual(query.params, ["physics", 2, 2]);
+  // Subject names match case-insensitively (maths ⇄ mathematics), so the filter is a list.
+  assert.deepEqual(query.params, [["physics"], 2, 2]);
   // No separate "all active collaborator ids" fetch + in-memory filter any more.
   assert.equal(pool.ran("SELECT c.workspace_id"), false);
 });

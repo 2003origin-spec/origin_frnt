@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-import { CSRF_COOKIE_NAME, REFRESH_COOKIE_NAME, verifyRequestAccessJwt } from "@/server/auth-jwt";
+import { CSRF_COOKIE_NAME, isBearerOnlyRequest, REFRESH_COOKIE_NAME, verifyRequestAccessJwt } from "@/server/auth-jwt";
 import { checkRateLimit, mutationLimiter } from "@/lib/rate-limit";
 import { safeNext } from "@/lib/safe-next";
 import { findKillSwitchForPath } from "@/server/incidents";
@@ -20,6 +20,9 @@ const RATE_LIMITED_MUTATION_PREFIXES = [
   "/api/contest/",
   // Origin NOW. Plan: V1/ORIGIN_NOW_PLAN.md.
   "/api/now/",
+  // Native app endpoints (V1/NATIVE_APP_API_PLAN.md). Only authenticated paths
+  // reach this limiter; /api/mobile/auth/* rate-limits in its handler.
+  "/api/mobile/",
 ];
 
 const REQUEST_ID_HEADER = "X-Request-Id";
@@ -207,7 +210,12 @@ export async function middleware(request: NextRequest) {
     // /api/cbt-student/* is the anonymous student surface: no Origin session
     // cookie, protected instead by the participant token + SameSite=Lax +
     // JSON content-type requirement enforced in-handler.
-    !pathname.startsWith('/api/cbt-student/')
+    !pathname.startsWith('/api/cbt-student/') &&
+    // Native-app session endpoints: no session exists yet, and the handler
+    // refuses any browser request (NATIVE_APP_API_PLAN.md §2.1).
+    !pathname.startsWith('/api/mobile/auth/') &&
+    // Native app calls: bearer token, no cookies — not a CSRF vector (§2.3).
+    !isBearerOnlyRequest(request)
   ) {
     const csrfCookie = request.cookies.get(CSRF_COOKIE_NAME)?.value;
     const csrfHeader = request.headers.get("x-csrf-token");

@@ -2,6 +2,8 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { badRequest, notFound, ok, parseJsonBody, serviceUnavailable, unauthorized } from "@/server/http";
 import { getSlugSegments } from "@/server/http";
+import { handleAppApi } from "@/server/mobile/app-api";
+import { handleAppAuth } from "@/server/mobile/app-auth";
 import { buildMobileConfig } from "@/server/mobile/config";
 import {
   consumeHandoffToken,
@@ -48,11 +50,24 @@ import { parseAppVersionFromUserAgent } from "@/native/is-native-app";
  * authenticated handler runs.
  *
  *   GET    /api/mobile/config            → shell governance config (public)
- *   POST   /api/mobile/link-out          → issue one-time browser handoff URL
+ *   POST   /api/mobile/link-out          → issue one-time browser handoff URL (404 unless MOBILE_LINK_OUT_ENABLED)
  *   GET    /api/mobile/link-out/consume  → 303 to /auth/handoff confirm page (public, no cookies)
  *   POST   /api/mobile/link-out/consume  → same-origin confirm: consume token, set session (public)
  *   POST   /api/mobile/push-tokens       → register FCM device token
  *   DELETE /api/mobile/push-tokens       → revoke FCM device token
+ *   POST   /api/mobile/auth/*            → native-app sessions, tokens in the
+ *                                          body (public; V1/NATIVE_APP_API_PLAN.md)
+ *   GET    /api/mobile/home | contests   → dashboard data / contest status
+ *   GET    /api/mobile/contests/:id      → one contest for the lobby
+ *   GET    /api/mobile/books             → NCERT books for Study Corner (chapter PDF paths)
+ *   GET    /api/mobile/teacher/me        → teacher's workspaces (+ role) and NOW tutor flag
+ *   GET    /api/mobile/teacher/workspaces/:id/home → teacher Today screen for one workspace
+ *   GET    /api/mobile/teacher/workspaces/:id/members → staff with names (owner/admin)
+ *   GET    /api/mobile/study-rooms/:id/test → the room's test paper (no keys)
+ *   POST   /api/mobile/onboarding | study-mode | avatar
+ *   PATCH  /api/mobile/profile
+ *   POST   /api/mobile/contests/:id/register · ogcode/:id/reveal · ogcode/:id/like · ogcode/:id/report
+ *   POST   /api/mobile/study-rooms/:id/submit → submit the room test
  */
 
 type RouteContext = {
@@ -88,6 +103,11 @@ async function handleLinkOutIssue(request: NextRequest): Promise<Response> {
     return authzErrorResponse(error);
   }
   const userId = auth.userId;
+  // The consume step signs the browser in as whoever issued the link, so a link
+  // minted by an attacker and opened by a victim swaps the victim's web session
+  // (login CSRF). Only hand links out while purchase link-out is switched on
+  // (MOBILE_LINK_OUT_ENABLED; off for India), not just hidden in the app's UI.
+  if (!buildMobileConfig().linkOutEnabled) return notFound();
 
   const limited = await checkRateLimit(mutationLimiter, `linkout:${userId}`);
   if (limited) return limited;
@@ -316,6 +336,9 @@ async function dispatch(method: string, request: NextRequest, context: RouteCont
   const params = await context.params;
   const slug = getSlugSegments(params);
 
+  if (method === "POST" && slug[0] === "auth" && slug.length > 1) {
+    return handleAppAuth(request, slug.slice(1));
+  }
   if (method === "GET" && slug.length === 1 && slug[0] === "config") {
     return handleConfig();
   }
@@ -334,7 +357,8 @@ async function dispatch(method: string, request: NextRequest, context: RouteCont
   if (method === "DELETE" && slug.length === 1 && slug[0] === "push-tokens") {
     return handlePushTokenRevoke(request);
   }
-  return notFound();
+  // Native-app REST endpoints for the former Server-Action-only flows.
+  return (await handleAppApi(method, request, slug)) ?? notFound();
 }
 
 export async function GET(request: NextRequest, context: RouteContext) {
@@ -345,4 +369,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 }
 export async function DELETE(request: NextRequest, context: RouteContext) {
   return dispatch("DELETE", request, context);
+}
+export async function PATCH(request: NextRequest, context: RouteContext) {
+  return dispatch("PATCH", request, context);
 }

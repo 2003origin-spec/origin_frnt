@@ -98,7 +98,10 @@ export const MEMBERSHIP_API_PREFIXES = ["/api/study-rooms/[id]"] as const;
 // room-bound participant JWT. Checked before role/authenticated prefixes.
 // Contest share read: unauthenticated, returns only SANITIZED result data for a
 // revocable opt-in slug (no answers/PII) — the growth-loop referral surface.
-export const PUBLIC_API_PREFIXES = ["/api/cbt-student", "/api/public/contest-share"] as const;
+// Native-app session endpoints (login/OTP/refresh/logout): no session exists
+// yet; each handler rate-limits and refuses browser requests
+// (V1/NATIVE_APP_API_PLAN.md §2.1).
+export const PUBLIC_API_PREFIXES = ["/api/cbt-student", "/api/public/contest-share", "/api/mobile/auth"] as const;
 
 // CBT teacher surface: role-gated to cbt_teacher. Checked before the
 // authenticated prefixes (there is no `authenticated` policy on any CBT

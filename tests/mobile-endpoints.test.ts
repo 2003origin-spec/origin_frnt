@@ -64,6 +64,8 @@ test("handoff consumption rejects unknown and oversized tokens", async () => {
 
 test("handoff purposes are an allowlist (no open-redirect surface)", () => {
   assert.ok(isHandoffPurpose("premium"));
+  assert.ok(isHandoffPurpose("connect"));
+  assert.ok(!isHandoffPurpose("connect/collaborators"));
   assert.ok(!isHandoffPurpose("https://evil.example"));
   assert.ok(!isHandoffPurpose("__proto__"));
 });
@@ -73,6 +75,43 @@ test("shell versionCode parses from the app UA suffix only", () => {
   assert.equal(parseAppVersionFromUserAgent("Mozilla/5.0 (Linux; Android 14) Chrome/126.0"), null);
   assert.equal(parseAppVersionFromUserAgent(null), null);
   assert.equal(parseAppVersionFromUserAgent("OriginApp/notanumber"), null);
+});
+
+test("link-out hand-off links are refused while MOBILE_LINK_OUT_ENABLED is off (login CSRF)", async () => {
+  const { NextRequest } = await import("next/server");
+  const { POST } = await import("@/app/api/mobile/[...slug]/route");
+  const { issueAccessTokenForUser } = await import("@/server/auth-jwt");
+  const { readStoreAsync } = await import("@/server/store");
+  await withSeedStore(async (userId) => {
+    const user = (await readStoreAsync()).users.find((entry) => entry.id === userId)!;
+    // The app's own credentials: bearer JWT + fingerprint header (link-out re-verifies them).
+    const { accessToken, accessFingerprint } = await issueAccessTokenForUser(user, "sess_linkout");
+    const issue = () =>
+      POST(
+        new NextRequest(new URL("/api/mobile/link-out", "https://www.o3origin.com"), {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${accessToken}`,
+            "x-origin-access-fgp": accessFingerprint,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ purpose: "connect" }),
+        }),
+        { params: Promise.resolve({ slug: ["link-out"] }) },
+      );
+    const before = process.env.MOBILE_LINK_OUT_ENABLED;
+    try {
+      delete process.env.MOBILE_LINK_OUT_ENABLED;
+      assert.equal((await issue()).status, 404);
+      process.env.MOBILE_LINK_OUT_ENABLED = "true";
+      const res = await issue();
+      assert.equal(res.status, 200);
+      assert.match(String(((await res.json()) as { url?: string }).url), /\/api\/mobile\/link-out\/consume\?token=/);
+    } finally {
+      if (before === undefined) delete process.env.MOBILE_LINK_OUT_ENABLED;
+      else process.env.MOBILE_LINK_OUT_ENABLED = before;
+    }
+  });
 });
 
 // ── Link-out consume: GET is a no-cookie redirect, POST is a same-origin confirm
