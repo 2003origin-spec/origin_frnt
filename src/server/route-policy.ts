@@ -203,6 +203,9 @@ export const AUTHENTICATED_APP_PREFIXES = [
   // Origin NOW pages (wallet, store, solver shift screen + dashboard, live
   // room). Plan: V1/ORIGIN_NOW_PLAN.md.
   "/now",
+  // Student messaging (inbox + threads). The pages redirect while the
+  // studentMessaging flag is off.
+  "/messages",
 ] as const;
 
 export const ROLE_APP_PREFIXES = [
