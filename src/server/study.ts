@@ -345,14 +345,15 @@ export async function handleStudyRequest(method: string, slug: string[], request
   if (slug.length === 1 && slug[0] === "books" && method === "GET") {
     return handleBooksList(request);
   }
+  // Before books/:id, which would otherwise take "library" as a book id (404).
+  if (slug.length === 2 && slug[0] === "books" && slug[1] === "library" && method === "GET") {
+    return handleLibrary(request);
+  }
   if (slug.length === 2 && slug[0] === "books" && method === "GET") {
     return handleBookDetail(request, slug[1]);
   }
   if (slug.length === 3 && slug[0] === "books" && slug[2] === "toggle_save" && method === "POST") {
     return handleToggleSave(request, slug[1]);
-  }
-  if (slug.length === 2 && slug[0] === "books" && slug[1] === "library" && method === "GET") {
-    return handleLibrary(request);
   }
 
   if (slug.length === 1 && slug[0] === "notes" && method === "GET") {
