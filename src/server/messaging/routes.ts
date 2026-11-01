@@ -1,10 +1,14 @@
 /**
- * Student messaging routes for the native app, under `/api/mobile/messages*`
- * (dispatched from handleAppApi in src/server/mobile/app-api.ts; the middleware
- * has already verified the bearer access JWT).
+ * Student messaging routes, served twice with the same shapes:
+ *   - `/api/mobile/messages*` for the native app (dispatched from handleAppApi
+ *     in src/server/mobile/app-api.ts; bearer access JWT);
+ *   - `/api/messages*` for the website (src/app/api/messages/[[...slug]]/route.ts;
+ *     cookie session, CSRF checked by the middleware on writes).
  *
  *   GET  messages?box=inbox|requests      → { conversations, requestCount, usage }
  *   GET  messages/usage                   → { usage }
+ *   GET  messages/blocked                 → { people: { person, blockedAt, conversationId }[] }
+ *   POST messages/unblock { userId }      → { ok: true }
  *   GET  messages/:id?before=&limit=      → { conversation, messages, hasMore, usage }
  *   POST messages/start  { username? | userId?, text } → { conversation, message, usage }
  *   POST messages/:id    { text }         → { message, usage }
@@ -29,12 +33,14 @@ import { isReportReason, MessagingError, normalizeMessageText, REPORT_REASONS, t
 import {
   getConversation,
   getUsage,
+  listBlocked,
   listConversations,
   markConversationRead,
   reportConversation,
   respondToConversation,
   sendMessage,
   startConversation,
+  unblockStudent,
   type Viewer,
 } from "./service";
 
@@ -81,6 +87,7 @@ async function route(method: string, request: NextRequest, rest: string[], viewe
       return NextResponse.json(await listConversations(viewer, box));
     }
     if (rest.length === 1 && first === "usage") return NextResponse.json({ usage: await getUsage(viewer) });
+    if (rest.length === 1 && first === "blocked") return NextResponse.json(await listBlocked(viewer));
     if (rest.length === 1) {
       const params = new URL(request.url).searchParams;
       const limit = params.get("limit");
@@ -101,6 +108,14 @@ async function route(method: string, request: NextRequest, rest: string[], viewe
     if (!username && !userId) throw new MessagingError(400, "no_recipient", "Choose who to message.");
     await requireSendBudget(viewer.id);
     return NextResponse.json(await startConversation(viewer, { username, userId, text }));
+  }
+
+  if (rest.length === 1 && first === "unblock") {
+    const body = await readBody(request);
+    const userId = str(body.userId);
+    if (!userId) throw new MessagingError(400, "no_user", "Choose who to unblock.");
+    await unblockStudent(viewer, userId);
+    return NextResponse.json({ ok: true });
   }
 
   if (rest.length === 1) {
@@ -132,8 +147,9 @@ async function route(method: string, request: NextRequest, rest: string[], viewe
 }
 
 /**
- * Handle `/api/mobile/messages[/...]`. `slug[0]` is "messages". Returns null
- * for an unknown path or method (the catch-all then answers 404).
+ * Handle `/api/mobile/messages[/...]` and `/api/messages[/...]`. `slug[0]` is
+ * "messages". Returns null for an unknown path or method (the caller then
+ * answers 404).
  */
 export async function handleMessagesApi(method: string, request: NextRequest, slug: string[]): Promise<Response | null> {
   if (!(await messagingEnabled())) return NextResponse.json(OFF, { status: 404 });

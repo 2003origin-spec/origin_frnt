@@ -16,7 +16,12 @@
  *   daily_usage   — units used per student per IST day; the cap is ONE
  *                   conditional UPDATE here, so parallel sends can't pass it.
  *   blocks        — who blocked whom.
- *   reports       — reason + note, for admins.
+ *   reports       — reason + note, for admins; resolution (dismiss / warn /
+ *                   suspend) + admin note once resolved.
+ *   suspensions   — admin pauses on starting/sending messages (reads stay).
+ *
+ * The addendum columns (02/11/2026) are `ALTER TABLE … ADD COLUMN IF NOT
+ * EXISTS`, so a database that already ran the first version picks them up.
  */
 
 import { ensureUserSchema } from "@/server/db-users";
@@ -29,7 +34,7 @@ declare global {
 }
 
 export const MESSAGING_MIGRATION_ID = "20261101_student_messaging";
-export const MESSAGING_MIGRATION_NAME = "student messaging — requests, messages, daily units, blocks, reports";
+export const MESSAGING_MIGRATION_NAME = "student messaging — requests, messages, daily units, blocks, reports, suspensions";
 
 export const MESSAGING_SCHEMA_DDL: readonly string[] = [
   `CREATE SCHEMA IF NOT EXISTS messaging`,
@@ -100,6 +105,26 @@ export const MESSAGING_SCHEMA_DDL: readonly string[] = [
   reviewed_by     TEXT REFERENCES origin_users(id) ON DELETE SET NULL
 )`,
   `CREATE INDEX IF NOT EXISTS messaging_reports_status_idx ON messaging.reports (status, created_at DESC)`,
+  // Addendum 02/11/2026: unblock restores the status a block replaced.
+  `ALTER TABLE messaging.conversations ADD COLUMN IF NOT EXISTS status_before_block TEXT
+  CHECK (status_before_block IN ('pending','accepted','declined'))`,
+  // Addendum 02/11/2026: an admin resolves a report with dismiss / warn / suspend.
+  `ALTER TABLE messaging.reports ADD COLUMN IF NOT EXISTS resolution TEXT
+  CHECK (resolution IN ('dismiss','warn','suspend'))`,
+  `ALTER TABLE messaging.reports ADD COLUMN IF NOT EXISTS resolution_note TEXT
+  CHECK (resolution_note IS NULL OR char_length(resolution_note) <= 1000)`,
+  `CREATE TABLE IF NOT EXISTS messaging.suspensions (
+  id         TEXT PRIMARY KEY,
+  user_id    TEXT NOT NULL REFERENCES origin_users(id) ON DELETE CASCADE,
+  report_id  TEXT REFERENCES messaging.reports(id) ON DELETE SET NULL,
+  starts_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  ends_at    TIMESTAMPTZ NOT NULL,
+  note       TEXT CHECK (note IS NULL OR char_length(note) <= 1000),
+  created_by TEXT REFERENCES origin_users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (ends_at > starts_at)
+)`,
+  `CREATE INDEX IF NOT EXISTS messaging_suspensions_user_idx ON messaging.suspensions (user_id, ends_at DESC)`,
 ];
 
 function pool() {

@@ -94,6 +94,12 @@ export const AUTHENTICATED_API_PREFIXES = [
   // login role). /api/admin/now/* is covered by "/api/admin" and QStash/cron
   // callbacks live under /api/internal/now/*. Plan: V1/ORIGIN_NOW_PLAN.md.
   "/api/now",
+  // Student messaging for the website — the same handler and shapes as
+  // /api/mobile/messages* (src/server/messaging/routes.ts). Cookie session;
+  // CSRF + mutation limiter on writes here at the edge; the studentMessaging +
+  // studentSocial flags and the student role are checked in the handler.
+  // /api/admin/messaging/* is covered by "/api/admin".
+  "/api/messages",
 ] as const;
 
 export const MEMBERSHIP_API_PREFIXES = ["/api/study-rooms/[id]"] as const;

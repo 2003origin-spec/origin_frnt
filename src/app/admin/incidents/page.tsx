@@ -46,7 +46,7 @@ const FLAG_DESCRIPTIONS: Record<string, string> = {
   cbtModule: "CBT teacher + anonymous student surfaces (/api/cbt, /api/cbt-student, /api/admin/cbt).",
   contest: "Student contest surfaces (/api/contest/*). Internal crons and /api/admin/contest stay up — see V1/CONTEST_INCIDENT_RUNBOOK.md.",
   originNow: "Origin NOW student/helper surfaces (/api/now/*). Internal timers and /api/admin/now stay up.",
-  studentMessaging: "Student-to-student messages in the app (/api/mobile/messages*).",
+  studentMessaging: "Student-to-student messages in the app and on the website (/api/mobile/messages*, /api/messages*). Admin reports stay up.",
 };
 
 export default async function AdminIncidentsPage() {

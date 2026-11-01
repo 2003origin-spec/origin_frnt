@@ -9,9 +9,14 @@
  *   - a conversation the viewer blocked, or one they are not part of, answers
  *     404 exactly like an id that never existed.
  *
- * Notifications are sent after COMMIT and are best-effort (createNotification
- * never throws). New-message notifications are deduped per conversation with
- * messaging.members.notice_pending: set when one is sent, cleared on read.
+ * Notifications (in-app + FCM push, ./push.ts) are sent after COMMIT and are
+ * best-effort (neither ever throws). New-message notifications are deduped per
+ * conversation with messaging.members.notice_pending: set when one is sent,
+ * cleared on read.
+ *
+ * Addendum 02/11/2026: unblock (restores the status the block replaced, kept
+ * in conversations.status_before_block), the blocked list, `blockedByMe`, and
+ * admin suspensions (start / send refused with 403 `suspended`; reads stay).
  */
 
 import type { PoolClient } from "pg";
@@ -33,12 +38,15 @@ import {
   orderedPair,
   REPORT_NOTE_MAX_CHARS,
   sendDecision,
+  statusAfterUnblock,
+  suspendedError,
   usageWindow,
   type ConversationAction,
   type ConversationStatus,
   type ReportReason,
   type Usage,
 } from "./rules";
+import { sendMessagingPush } from "./push";
 import { ensureMessagingSchema } from "./schema";
 
 // ── Types (the API contract) ────────────────────────────────────────────────
@@ -54,12 +62,16 @@ export type Conversation = {
   other: Person;
   status: ConversationStatus;
   requestedByMe: boolean;
+  /** True only when status is `blocked` and I am (one of) the blocker(s): the app offers "Unblock". */
+  blockedByMe: boolean;
   lastMessage: { text: string; at: string; fromMe: boolean } | null;
   unread: number;
   updatedAt: string;
 };
 
 export type Box = "inbox" | "requests";
+
+export type BlockedPerson = { person: Person; blockedAt: string; conversationId: string | null };
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -140,6 +152,25 @@ async function spendUnits(client: PoolClient, userId: string, units: number, pre
   return buildUsage(Number(spent.rows[0].units), premium, now);
 }
 
+// ── Suspensions ─────────────────────────────────────────────────────────────
+
+/** When the student's messaging suspension ends, or null if none is active now. */
+export async function activeSuspensionEnd(db: Pick<PoolClient, "query">, userId: string, now: number = Date.now()): Promise<Date | null> {
+  const result = await db.query(
+    `SELECT MAX(ends_at) AS ends_at FROM messaging.suspensions
+      WHERE user_id = $1 AND starts_at <= $2::timestamptz AND ends_at > $2::timestamptz`,
+    [userId, new Date(now).toISOString()],
+  );
+  const endsAt = result.rows[0]?.ends_at;
+  return endsAt ? new Date(endsAt instanceof Date ? endsAt.getTime() : String(endsAt)) : null;
+}
+
+/** 403 `suspended` while an admin suspension is active. Reading is never blocked. */
+async function assertNotSuspended(userId: string, now: number): Promise<void> {
+  const endsAt = await activeSuspensionEnd(pool(), userId, now);
+  if (endsAt) throw suspendedError(endsAt);
+}
+
 // ── Reading conversations ───────────────────────────────────────────────────
 
 /**
@@ -149,6 +180,7 @@ async function spendUnits(client: PoolClient, userId: string, units: number, pre
  */
 const VIEW_BASE_SQL = `
   SELECT c.id, c.status, c.requested_by, c.updated_at,
+         EXISTS (SELECT 1 FROM messaging.blocks bm WHERE bm.blocker_id = $1 AND bm.blocked_id = u.id) AS blocked_by_me,
          u.id AS other_id, u.username AS other_username, u.name AS other_name, u.avatar AS other_avatar,
          lm.body AS last_body, lm.created_at AS last_at, lm.sender_id AS last_sender,
          (SELECT COUNT(*)::int FROM messaging.messages x
@@ -184,6 +216,7 @@ function mapConversation(row: Record<string, unknown>, viewerId: string): Conver
     },
     status: row.status as ConversationStatus,
     requestedByMe: row.requested_by === viewerId,
+    blockedByMe: row.status === "blocked" && row.blocked_by_me === true,
     lastMessage:
       row.last_body == null
         ? null
@@ -313,6 +346,7 @@ export async function startConversation(
   now: number = Date.now(),
 ): Promise<{ conversation: Conversation; message: Message; usage: Usage }> {
   await ensureMessagingSchema();
+  await assertNotSuspended(viewer.id, now);
   const target = await findStudent(input);
   if (!target || target.accountStatus !== "active") throw noStudent();
   if (target.id === viewer.id) throw new MessagingError(409, "self", "You can't message yourself.");
@@ -358,6 +392,7 @@ export async function startConversation(
     message: `${viewer.name} wants to message you.`,
     href: "/messages?box=requests",
   });
+  await sendMessagingPush(target.id, "message_request", { name: viewer.name, conversationId: outcome.conversationId, text: input.text });
   const conversation = await viewConversation(pool(), viewer.id, outcome.conversationId);
   if (!conversation) throw notFound();
   return { conversation, message: mapMessage(outcome.message, viewer.id), usage: outcome.usage };
@@ -396,6 +431,7 @@ export async function sendMessage(
   now: number = Date.now(),
 ): Promise<{ message: Message; usage: Usage }> {
   await ensureMessagingSchema();
+  await assertNotSuspended(viewer.id, now);
   const units = messageUnits(text);
   const premium = await isPremiumStudent(viewer.id);
   const at = new Date(now).toISOString();
@@ -436,6 +472,7 @@ export async function sendMessage(
       message: `${viewer.name} accepted your message request.`,
       href: conversationHref(id),
     });
+    await sendMessagingPush(outcome.otherId, "message_accepted", { name: viewer.name, conversationId: id });
   }
   if (outcome.notify) {
     await createNotification(outcome.otherId, {
@@ -444,6 +481,7 @@ export async function sendMessage(
       message: `${viewer.name} sent you a message.`,
       href: conversationHref(id),
     });
+    await sendMessagingPush(outcome.otherId, "message", { name: viewer.name, conversationId: id, text });
   }
   return { message: mapMessage(outcome.message, viewer.id), usage: outcome.usage };
 }
@@ -464,7 +502,8 @@ export async function respondToConversation(viewer: Viewer, id: string, action: 
       );
       await client.query(
         `UPDATE messaging.conversations
-            SET status = 'blocked', blocked_by = COALESCE(blocked_by, $2), blocked_at = COALESCE(blocked_at, $3::timestamptz)
+            SET status_before_block = CASE WHEN status = 'blocked' THEN status_before_block ELSE status END,
+                status = 'blocked', blocked_by = COALESCE(blocked_by, $2), blocked_at = COALESCE(blocked_at, $3::timestamptz)
           WHERE id = $1`,
         [id, viewer.id, at],
       );
@@ -498,6 +537,7 @@ export async function respondToConversation(viewer: Viewer, id: string, action: 
       message: `${viewer.name} accepted your message request.`,
       href: conversationHref(id),
     });
+    await sendMessagingPush(outcome.otherId, "message_accepted", { name: viewer.name, conversationId: id });
   }
   return outcome.conversation;
 }
@@ -541,4 +581,79 @@ export async function reportConversation(viewer: Viewer, id: string, reason: Rep
      VALUES ($1, $2, $3, $4, $5, $6)`,
     [createPrefixedId("mrep"), id, viewer.id, String(row.rows[0].other_id), reason, cleanNote],
   );
+}
+
+// ── Unblock and the blocked list ────────────────────────────────────────────
+
+const BLOCKED_LIST_LIMIT = 200;
+
+/** The students I blocked, newest first, with our conversation (if any). */
+export async function listBlocked(viewer: Viewer): Promise<{ people: BlockedPerson[] }> {
+  await ensureMessagingSchema();
+  const result = await pool().query(
+    `SELECT b.created_at AS blocked_at, u.id, u.username, u.name, u.avatar, c.id AS conversation_id
+       FROM messaging.blocks b
+       JOIN origin_users u ON u.id = b.blocked_id
+       LEFT JOIN messaging.conversations c
+         ON (c.user_a = b.blocker_id AND c.user_b = b.blocked_id) OR (c.user_a = b.blocked_id AND c.user_b = b.blocker_id)
+      WHERE b.blocker_id = $1
+      ORDER BY b.created_at DESC
+      LIMIT ${BLOCKED_LIST_LIMIT}`,
+    [viewer.id],
+  );
+  return {
+    people: result.rows.map((row) => ({
+      person: {
+        id: String(row.id),
+        username: (row.username as string | null) ?? null,
+        name: String(row.name ?? "Student"),
+        avatar: (row.avatar as string | null) ?? null,
+      },
+      blockedAt: iso(row.blocked_at),
+      conversationId: row.conversation_id == null ? null : String(row.conversation_id),
+    })),
+  };
+}
+
+/**
+ * Lift my block on `otherId`. Our conversation goes back to the status the
+ * block replaced (accepted or pending), or `declined` when nothing was saved;
+ * it stays `blocked` while the other student still blocks me. Idempotent:
+ * unblocking someone who isn't blocked is a no-op.
+ */
+export async function unblockStudent(viewer: Viewer, otherId: string): Promise<void> {
+  await ensureMessagingSchema();
+  await withTransaction(async (client) => {
+    // Lock the pair's conversation first, so a block racing this unblock queues behind it.
+    const conversation = await client.query(
+      `SELECT id, status, status_before_block FROM messaging.conversations
+        WHERE (user_a = $1 AND user_b = $2) OR (user_a = $2 AND user_b = $1)
+        FOR UPDATE`,
+      [viewer.id, otherId],
+    );
+    const removed = await client.query(
+      `DELETE FROM messaging.blocks WHERE blocker_id = $1 AND blocked_id = $2 RETURNING blocker_id`,
+      [viewer.id, otherId],
+    );
+    const row = conversation.rows[0];
+    if (removed.rows.length === 0 || !row) return;
+    const otherStillBlocks = await client.query(
+      `SELECT 1 FROM messaging.blocks WHERE blocker_id = $1 AND blocked_id = $2`,
+      [otherId, viewer.id],
+    );
+    const current = row.status as ConversationStatus;
+    const remembered = (row.status_before_block as ConversationStatus | null) ?? null;
+    const status = statusAfterUnblock(current, remembered, otherStillBlocks.rows.length > 0);
+    if (status === "blocked") {
+      // Still blocked, now only by the other student.
+      await client.query(`UPDATE messaging.conversations SET blocked_by = $2 WHERE id = $1`, [row.id, otherId]);
+      return;
+    }
+    await client.query(
+      `UPDATE messaging.conversations
+          SET status = $2, status_before_block = NULL, blocked_by = NULL, blocked_at = NULL
+        WHERE id = $1`,
+      [row.id, status],
+    );
+  });
 }

@@ -87,6 +87,31 @@ CREATE TABLE IF NOT EXISTS messaging.reports (
 
 CREATE INDEX IF NOT EXISTS messaging_reports_status_idx ON messaging.reports (status, created_at DESC);
 
+-- Addendum 02/11/2026: unblock restores the status a block replaced; admins
+-- resolve reports (dismiss / warn / suspend); suspensions pause sending.
+ALTER TABLE messaging.conversations ADD COLUMN IF NOT EXISTS status_before_block TEXT
+  CHECK (status_before_block IN ('pending','accepted','declined'));
+
+ALTER TABLE messaging.reports ADD COLUMN IF NOT EXISTS resolution TEXT
+  CHECK (resolution IN ('dismiss','warn','suspend'));
+
+ALTER TABLE messaging.reports ADD COLUMN IF NOT EXISTS resolution_note TEXT
+  CHECK (resolution_note IS NULL OR char_length(resolution_note) <= 1000);
+
+CREATE TABLE IF NOT EXISTS messaging.suspensions (
+  id         TEXT PRIMARY KEY,
+  user_id    TEXT NOT NULL REFERENCES origin_users(id) ON DELETE CASCADE,
+  report_id  TEXT REFERENCES messaging.reports(id) ON DELETE SET NULL,
+  starts_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  ends_at    TIMESTAMPTZ NOT NULL,
+  note       TEXT CHECK (note IS NULL OR char_length(note) <= 1000),
+  created_by TEXT REFERENCES origin_users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (ends_at > starts_at)
+);
+
+CREATE INDEX IF NOT EXISTS messaging_suspensions_user_idx ON messaging.suspensions (user_id, ends_at DESC);
+
 CREATE SCHEMA IF NOT EXISTS app;
 CREATE TABLE IF NOT EXISTS app.migrations (
   id TEXT PRIMARY KEY,
@@ -94,5 +119,5 @@ CREATE TABLE IF NOT EXISTS app.migrations (
   applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 INSERT INTO app.migrations (id, name)
-  VALUES ('20261101_student_messaging', 'student messaging — requests, messages, daily units, blocks, reports')
+  VALUES ('20261101_student_messaging', 'student messaging — requests, messages, daily units, blocks, reports, suspensions')
   ON CONFLICT (id) DO NOTHING;

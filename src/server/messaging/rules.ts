@@ -5,9 +5,12 @@
  * deterministic so it can be unit tested on its own:
  *   - text checks and "units" (each message costs max(1, ceil(words / 10)));
  *   - the daily unit cap by IST day (free / premium, env-configurable);
- *   - the message-request state machine (who may send, accept, decline, block).
+ *   - the message-request state machine (who may send, accept, decline, block),
+ *     and what an unblock restores;
+ *   - admin suspensions (the 403 text) and report resolutions.
  */
 
+import { formatISTDayDMY } from "@/lib/format-time";
 import { istDayStartMs, istDateKeyFromMs, istEpochDayFromMs } from "@/lib/ist-day";
 
 export const MESSAGE_MAX_CHARS = 500;
@@ -172,4 +175,65 @@ export function nextStatus(
 /** Pair key: the two ids in a fixed order, so one pair has one conversation. */
 export function orderedPair(a: string, b: string): [string, string] {
   return a < b ? [a, b] : [b, a];
+}
+
+// ── Block / unblock ─────────────────────────────────────────────────────────
+
+/** The status to remember when a block replaces `current` (a second block keeps the first one's memory). */
+export function statusToRemember(current: ConversationStatus, remembered: ConversationStatus | null): ConversationStatus | null {
+  return current === "blocked" ? remembered : current;
+}
+
+/**
+ * The status after one student lifts their block. While the other student
+ * still blocks them it stays `blocked`; otherwise it goes back to what the
+ * block replaced (accepted or pending), or `declined` when nothing was saved.
+ */
+export function statusAfterUnblock(
+  current: ConversationStatus,
+  remembered: ConversationStatus | null,
+  otherStillBlocks: boolean,
+): ConversationStatus {
+  if (otherStillBlocks) return "blocked";
+  if (current !== "blocked") return current;
+  return remembered && remembered !== "blocked" ? remembered : "declined";
+}
+
+// ── Admin: suspensions and report resolutions ───────────────────────────────
+
+export const SUSPEND_DAYS_MIN = 1;
+export const SUSPEND_DAYS_MAX = 90;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+export const REPORT_ACTIONS = ["dismiss", "warn", "suspend"] as const;
+export type ReportAction = (typeof REPORT_ACTIONS)[number];
+
+export function isReportAction(value: unknown): value is ReportAction {
+  return typeof value === "string" && (REPORT_ACTIONS as readonly string[]).includes(value);
+}
+
+/** Whole days 1..90, or null. */
+export function parseSuspendDays(value: unknown): number | null {
+  const days = typeof value === "string" && value.trim() ? Number(value) : value;
+  return typeof days === "number" && Number.isInteger(days) && days >= SUSPEND_DAYS_MIN && days <= SUSPEND_DAYS_MAX ? days : null;
+}
+
+/** When a suspension of `days` starting at `nowMs` ends. */
+export function suspensionEndsAt(nowMs: number, days: number): Date {
+  return new Date(nowMs + days * DAY_MS);
+}
+
+/** "Messaging is paused on your account until 05/11/2026." (the IST calendar day it ends). */
+export function suspensionDetail(endsAt: Date | string): string {
+  return `Messaging is paused on your account until ${formatISTDayDMY(endsAt)}.`;
+}
+
+/** The 403 a suspended student gets on start / send. */
+export function suspendedError(endsAt: Date | string): MessagingError {
+  return new MessagingError(403, "suspended", suspensionDetail(endsAt));
+}
+
+/** Stored report status for a resolution (the API shows open | resolved). */
+export function storedReportStatus(action: ReportAction): "dismissed" | "reviewed" {
+  return action === "dismiss" ? "dismissed" : "reviewed";
 }
