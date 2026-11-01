@@ -135,6 +135,8 @@ export async function updateProfileAction(input: UpdateProfileInput): Promise<Us
       if (input.referralSource !== undefined) patch.referralSource = input.referralSource;
       if (input.avatar !== undefined) patch.avatar = input.avatar;
       if (input.selectedCourse !== undefined) patch.selectedCourse = input.selectedCourse;
+      // Written directly too, so a later whole-row sync from an older cached copy can't undo it.
+      if (Array.isArray(input.subjects)) patch.subjects = input.subjects;
       if (input.yearsOfExperience !== undefined) patch.yearsOfExperience = input.yearsOfExperience;
       if (input.studentCapacity !== undefined) patch.studentCapacity = input.studentCapacity;
       if (input.location !== undefined) patch.location = input.location;

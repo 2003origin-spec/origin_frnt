@@ -542,7 +542,9 @@ export function buildPointsSummary(store: AppStore, userId: string) {
 }
 
 export function buildTimeAnalytics(store: AppStore, userId: string) {
-  const today = new Date();
+  // Activities are keyed by IST day (todayString), so the 7-day window must be
+  // too: with a UTC "today", 00:00-05:30 IST showed today's bar as 0.
+  const today = istNow();
   const dates = lastSevenDays(today);
   return dates.map((date) => {
     const activity = store.dailyActivities.find((entry) => entry.userId === userId && entry.date === date);
