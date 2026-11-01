@@ -17,6 +17,8 @@ const RATE_LIMITED_MUTATION_PREFIXES = [
   "/api/admin/",
   "/api/enrollments/",
   "/api/cbt/",
+  // Origin Notes student writes (stars, mistake reports). V1/NOTES_PLAN.md §10.
+  "/api/notes/",
   "/api/contest/",
   // Origin NOW. Plan: V1/ORIGIN_NOW_PLAN.md.
   "/api/now/",

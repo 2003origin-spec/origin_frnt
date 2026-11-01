@@ -316,6 +316,12 @@ export const codeCheckFailureIpLimiter = createLimiter(200, "rl:code-check-fail-
 // it if the first call races the page unload.
 export const paymentsVerifyLimiter = createLimiter(30, "rl:pay-verify", "60 s");
 
+// Origin Notes (V1/NOTES_PLAN.md §10). Mistake reports are per student per
+// hour; upload tickets per uploader per hour (admins now, students in Phase 3).
+export const notesReportLimiter = createLimiter(20, "rl:notes-report", "1 h");
+export const notesUploadLimiter = createLimiter(120, "rl:notes-upload", "1 h");
+export const notesShareLimiter = createLimiter(60, "rl:notes-share", "1 h");
+
 /**
  * Per-key check for Server Actions, which need a boolean rather than the
  * Response that `checkRateLimit` returns. Never throws. On a limiter-backend

@@ -15,6 +15,7 @@ import {
     UserPlus,
     Building2,
     LineChart,
+    NotebookPen,
 } from 'lucide-react';
 import type { ComponentType } from 'react';
 import type { ViewState } from '@/types';
@@ -26,6 +27,7 @@ interface ExploreProps {
     socialEnabled?: boolean;
     connectEnabled?: boolean;
     contestEnabled?: boolean;
+    notesEnabled?: boolean;
 }
 
 type ExploreCard = {
@@ -169,6 +171,15 @@ const CONNECT_CARD: ExploreCard = {
     accentBg: 'bg-cyan-500/10 dark:bg-cyan-500/15',
     stat: 'Institute',
 };
+const NOTES_CARD: ExploreCard = {
+    title: 'Notes',
+    description: 'Chapter-wise short notes and formula sheets for quick revision, for JEE and NEET.',
+    icon: NotebookPen,
+    view: 'notes' as ViewState,
+    accent: 'text-primary',
+    accentBg: 'bg-primary/10 dark:bg-primary/15',
+    stat: 'Revise fast',
+};
 const CONTEST_CARD: ExploreCard = {
     title: 'Weekly Contest',
     description: 'Compete in a timed test, climb the leaderboard, and earn an ORBIT rating.',
@@ -179,8 +190,9 @@ const CONTEST_CARD: ExploreCard = {
     stat: 'ORBIT Rated',
 };
 
-export default function Explore({ onNavigate, aiExplainer = false, socialEnabled = false, connectEnabled = false, contestEnabled = false }: ExploreProps) {
+export default function Explore({ onNavigate, aiExplainer = false, socialEnabled = false, connectEnabled = false, contestEnabled = false, notesEnabled = false }: ExploreProps) {
     const cards: ExploreCard[] = [
+        ...(notesEnabled ? [NOTES_CARD] : []),
         ...(contestEnabled ? [CONTEST_CARD] : []),
         ...CARDS,
         ...(aiExplainer ? [AI_EXPLAINER_CARD] : []),

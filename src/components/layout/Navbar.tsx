@@ -34,6 +34,7 @@ import {
     Trophy,
     ArrowRight,
     Menu,
+    NotebookPen,
     X
 } from 'lucide-react';
 import { NotificationBell } from './NotificationBell';
@@ -55,6 +56,8 @@ interface NavbarProps {
     socialEnabled?: boolean;
     /** Contest/ORBIT is flag-dark in prod; when off the Orbit tab shows Coming Soon. */
     contestEnabled?: boolean;
+    /** Origin Notes (TEACHER_LAUNCH_NOTES); hidden everywhere while off. */
+    notesEnabled?: boolean;
     leftOffset?: number;
     expanded?: boolean;
     onToggleExpanded?: () => void;
@@ -63,7 +66,7 @@ interface NavbarProps {
     oriActive?: boolean;
 }
 
-export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLogout, theme, setTheme, connectEnabled, premiumEnabled, socialEnabled, contestEnabled, leftOffset = 0, expanded = false, onToggleExpanded, onOpenOri, oriActive }: NavbarProps) {
+export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLogout, theme, setTheme, connectEnabled, premiumEnabled, socialEnabled, contestEnabled, notesEnabled, leftOffset = 0, expanded = false, onToggleExpanded, onOpenOri, oriActive }: NavbarProps) {
     const { unreadCount } = useNotifications();
     const [showProfileMenu, setShowProfileMenu] = useState(false);
     const [showExploreMenu, setShowExploreMenu] = useState(false);
@@ -123,6 +126,7 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
     // Orbit is the contest surface and ships dark in production, so it points at
     // its Coming Soon screen until the flag is on rather than dead-ending.
     const moreExtras = isTeacher ? [] : [
+        ...(notesEnabled ? [{ label: 'Notes', icon: NotebookPen, view: 'notes' as ViewState }] : []),
         { label: 'Snap & Solve', icon: Camera, view: 'snap-solve' as ViewState },
         { label: 'Orbit', icon: Trophy, view: (contestEnabled ? 'contest' : 'snap-solve') as ViewState },
         { label: 'Leaderboard', icon: BarChart3, view: 'leaderboard' as ViewState },
@@ -377,6 +381,7 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                                                     }}
                                                 >
                                                     {[
+                                                        ...(notesEnabled ? [{ label: 'Notes', icon: NotebookPen, view: 'notes', desc: 'Short notes & formulas', color: 'text-primary' }] : []),
                                                         { label: 'Study Corner', icon: BookOpen, view: 'study-corner', desc: 'NCERT & Materials', color: 'text-primary' },
                                                         { label: 'Pomodoro', icon: Timer, view: 'pomodoro', desc: 'Focus timer', color: 'text-primary' },
                                                         { label: 'Leaderboard', icon: Trophy, view: 'leaderboard', desc: 'Global rankings', color: 'text-amber-500' }

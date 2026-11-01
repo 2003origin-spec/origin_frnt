@@ -8,7 +8,10 @@ export type UserImagePurpose =
   | "cbt_institute_logo"
   | "cbt_question_image"
   | "championship_prize"
-  | "workspace_question_image";
+  | "workspace_question_image"
+  // Diagrams inside Origin Notes typed notes — public like question images
+  // (nothing private in them). Note FILES go to the private notes bucket.
+  | "notes_diagram";
 
 export type R2UploadInput = {
   userId: string;
