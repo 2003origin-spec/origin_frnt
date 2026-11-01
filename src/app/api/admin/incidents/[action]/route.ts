@@ -47,6 +47,7 @@ const FLAG_KEYS = [
   "cbtModule",
   "contest",
   "originNow",
+  "studentMessaging",
 ] as const;
 
 const RATE_LIMIT_MODES = ["relaxed", "normal", "strict", "lockdown"] as const;

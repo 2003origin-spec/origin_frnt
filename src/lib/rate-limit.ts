@@ -321,6 +321,10 @@ export const paymentsVerifyLimiter = createLimiter(30, "rl:pay-verify", "60 s");
 export const notesReportLimiter = createLimiter(20, "rl:notes-report", "1 h");
 export const notesUploadLimiter = createLimiter(120, "rl:notes-upload", "1 h");
 export const notesShareLimiter = createLimiter(60, "rl:notes-share", "1 h");
+// Student messaging: an abuse ceiling on sends (start + reply) on top of the
+// daily unit cap, and reports per student per hour.
+export const messagingSendLimiter = createLimiter(30, "rl:msg-send", "60 s");
+export const messagingReportLimiter = createLimiter(20, "rl:msg-report", "1 h");
 
 /**
  * Per-key check for Server Actions, which need a boolean rather than the

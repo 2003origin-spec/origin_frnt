@@ -26,6 +26,7 @@ import { teacherHome, teacherMe, teacherMembers } from "@/server/mobile/teacher"
 import { appBooks } from "@/server/mobile/books";
 import { isOgcodeReportReason, OGCODE_REPORT_REASONS } from "@/server/ogcode-reports";
 import { getResumeChapter } from "@/server/ogcode-progress";
+import { handleMessagesApi } from "@/server/messaging/routes";
 import { getChallengeOfTheDayForRender } from "@/server/render-loaders";
 import { getStudentAnalytics, summarizeActivity } from "@/server/mobile/student-analytics";
 import { getPopularStudents } from "@/server/social/social-service";
@@ -278,6 +279,8 @@ async function tasks(method: string, id: string | undefined, request: NextReques
 export async function handleAppApi(method: string, request: NextRequest, slug: string[]): Promise<Response | null> {
   const [head, id, action] = slug;
   try {
+    // Student messaging has its own flag gate, auth and error codes (src/server/messaging/routes.ts).
+    if (head === "messages") return await handleMessagesApi(method, request, slug);
     if (method === "GET" && slug.length === 1 && head === "home") return await home();
     if (head === "tasks" && slug.length <= 2) {
       const handled = await tasks(method, id, request);

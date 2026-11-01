@@ -68,6 +68,7 @@ import { parseAppVersionFromUserAgent } from "@/native/is-native-app";
  *   PATCH  /api/mobile/profile
  *   POST   /api/mobile/contests/:id/register · ogcode/:id/reveal · ogcode/:id/like · ogcode/:id/report
  *   POST   /api/mobile/study-rooms/:id/submit → submit the room test
+ *   GET|POST /api/mobile/messages*       → student messaging (src/server/messaging/routes.ts)
  */
 
 type RouteContext = {
