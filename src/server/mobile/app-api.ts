@@ -12,7 +12,7 @@ import {
   sendOgcodeChallengeAction,
   toggleOgcodeQuestionLikeAction,
 } from "@/server/actions/ogcode-actions";
-import { completeOnboardingAction, updateProfileAction, uploadUserImageAction } from "@/server/actions/profile-actions";
+import { completeAccountSetupAction, completeOnboardingAction, updateProfileAction, uploadUserImageAction } from "@/server/actions/profile-actions";
 import { updateSocialSettingsAction } from "@/server/actions/social-actions";
 import { setStudyModeAction } from "@/server/actions/study-mode-actions";
 import { submitRoomTestAction } from "@/server/actions/study-room-actions";
@@ -312,6 +312,15 @@ export async function handleAppApi(method: string, request: NextRequest, slug: s
 
       if (method === "POST" && slug.length === 1 && head === "onboarding") {
         return NextResponse.json({ user: await completeOnboardingAction(body) });
+      }
+      // The website's onboarding step 5: a mobile for accounts without one, and a
+      // password for Google sign-ups (passwordSet === false). Same action, same rules.
+      if (method === "POST" && slug.length === 1 && head === "account-setup") {
+        const result = await completeAccountSetupAction({
+          mobile: typeof body.mobile === "string" ? body.mobile : "",
+          password: typeof body.password === "string" ? body.password : undefined,
+        });
+        return NextResponse.json(result, { status: result.ok ? 200 : 400 });
       }
       if (method === "PATCH" && slug.length === 1 && head === "profile") {
         return NextResponse.json({ user: await updateProfileAction(body) });

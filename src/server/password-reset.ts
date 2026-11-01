@@ -189,7 +189,8 @@ export async function verifyAndResetPassword(
   const user = await dbFindUserByEmail(to, role);
   if (!user) return "not_found";
   const hashed = bcrypt.hashSync(newPassword, 10);
-  await dbUpdateUser(user.id, { password: hashed });
+  // A reset sets a real password, so a Google sign-up isn't asked to set one again.
+  await dbUpdateUser(user.id, { password: hashed, passwordSet: true });
 
   // A password reset is the recovery path for a compromised account, so it must
   // end every session that already exists — otherwise whoever prompted the reset

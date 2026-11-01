@@ -44,3 +44,12 @@ test("task paths that don't exist fall through to the catch-all's 404", async ()
   assert.equal(await call("PATCH", "tasks", { completed: true }), null);
   assert.equal(await call("GET", "tasks/t1/extra"), null);
 });
+
+test("account setup (the website's onboarding step 5) is a real app route", async () => {
+  // Signed out in a unit test, so it stops at the session check, but it must reach
+  // completeAccountSetupAction instead of falling through to the catch-all's 404.
+  const res = await call("POST", "account-setup", { mobile: "9876543210", password: "longenough" });
+  assert.notEqual(res, null);
+  assert.ok(res && res.status >= 400 && res.status !== 404, `status ${res?.status}`);
+  assert.equal(await call("GET", "account-setup"), null);
+});
