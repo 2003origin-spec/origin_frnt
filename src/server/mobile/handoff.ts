@@ -30,6 +30,8 @@ const KEY_PREFIX = "mobile:handoff:";
 /** Allowed link-out purposes → the app-internal path the browser lands on. */
 export const HANDOFF_PURPOSES = {
   premium: "/premium",
+  // The native app's institute pages: batch fees are paid on the website's Connect hub.
+  connect: "/connect",
 } as const;
 
 export type HandoffPurpose = keyof typeof HANDOFF_PURPOSES;

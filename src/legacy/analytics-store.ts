@@ -1177,6 +1177,16 @@ export async function persistTestAnalysisResult(input: PersistTestAnalysisInput)
   };
 }
 
+/**
+ * Postgres hands timestamptz back as a Date; String(date) is the local
+ * "Sat Oct 24 2026 20:19:40 GMT+0530 (India Standard Time)" form, which
+ * clients (Hermes in the native app) can't reliably parse. Always send ISO.
+ */
+export function isoTimestamp(value: unknown): string {
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? "" : value.toISOString();
+  return value == null ? "" : String(value);
+}
+
 function mapPersistedResultRow(row: Record<string, unknown>): PersistedTestResultRecord {
   const aiAnalysis = fromJsonObject<PersistedTestResultRecord["aiAnalysis"]>(row.ai_analysis, {
     summary: String(row.summary ?? ""),
@@ -1209,7 +1219,7 @@ function mapPersistedResultRow(row: Record<string, unknown>): PersistedTestResul
       (row.analysis_error ? String(row.analysis_error) : null),
     analysisStatus: String(row.analysis_status ?? "complete") as PersistedTestResultRecord["analysisStatus"],
     analysisError: row.analysis_error ? String(row.analysis_error) : null,
-    createdAt: String(row.created_at),
+    createdAt: isoTimestamp(row.created_at),
     answers: fromJsonArray<StoredUserAnswer>(row.answers),
   };
 }
@@ -1278,7 +1288,7 @@ function mapPersistedDppRow(row: Record<string, unknown>): PersistedDppPlanRecor
     targetQuestionCount: Number(row.target_question_count ?? 10),
     sequence: Number(row.sequence ?? 1),
     completed: Boolean(row.completed),
-    createdAt: String(row.created_at),
+    createdAt: isoTimestamp(row.created_at),
     questionIds: fromJsonArray<string>(row.question_ids),
     latestAttemptId: row.latest_attempt_id ? String(row.latest_attempt_id) : null,
     latestProgressScore: row.latest_progress_score === null || row.latest_progress_score === undefined ? null : Number(row.latest_progress_score),
@@ -1800,7 +1810,7 @@ function mapPersistedDppAttemptRow(row: Record<string, unknown>): PersistedDppAt
     completed: Boolean(row.completed),
     analysisStatus: String(row.analysis_status ?? "complete") as PersistedDppAttemptRecord["analysisStatus"],
     analysisError: row.analysis_error ? String(row.analysis_error) : null,
-    createdAt: String(row.created_at),
+    createdAt: isoTimestamp(row.created_at),
     answers: fromJsonArray<StoredUserAnswer>(row.answers),
   };
 }

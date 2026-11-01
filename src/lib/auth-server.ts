@@ -7,9 +7,10 @@
  */
 
 import { unstable_cache } from "next/cache";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { cache } from "react";
 
+import { ACCESS_FINGERPRINT_HEADER } from "@/server/auth-jwt";
 import { getAuthenticatedUser } from "@/server/authz";
 import { withEntitledSubjects } from "@/server/entitlements";
 import { readStoreAsync } from "@/server/store";
@@ -17,19 +18,38 @@ import { serializeUser } from "@/server/users";
 import type { StoredUser } from "@/server/store";
 import type { User } from "@/types";
 
-async function cookieBackedRequest(): Promise<Request> {
+/**
+ * Rebuild the caller's credentials as a Request for getAuthenticatedUser.
+ * Browsers authenticate with cookies. The native app's REST endpoints
+ * (`/api/mobile/*`, V1/NATIVE_APP_API_PLAN.md §3) call the same action code
+ * from a route handler, where the credentials are `Authorization: Bearer` plus
+ * the fingerprint header, so those are forwarded too. Browsers never send
+ * either header, and the fingerprint header only counts alongside a bearer token.
+ */
+async function credentialRequest(): Promise<Request> {
   const cookieStore = await cookies();
   const cookieHeader = cookieStore
     .getAll()
     .map((cookie) => `${cookie.name}=${encodeURIComponent(cookie.value)}`)
     .join("; ");
-  return new Request("http://origin.local", {
-    headers: cookieHeader ? { cookie: cookieHeader } : undefined,
-  });
+  return buildCredentialRequest(cookieHeader, await headers());
+}
+
+/** Pure part of credentialRequest, exported for tests. */
+export function buildCredentialRequest(cookieHeader: string, incoming: Pick<Headers, "get">): Request {
+  const forwarded: Record<string, string> = {};
+  if (cookieHeader) forwarded.cookie = cookieHeader;
+  const authorization = incoming.get("authorization");
+  if (authorization) {
+    forwarded.authorization = authorization;
+    const fingerprint = incoming.get(ACCESS_FINGERPRINT_HEADER);
+    if (fingerprint) forwarded[ACCESS_FINGERPRINT_HEADER] = fingerprint;
+  }
+  return new Request("http://origin.local", { headers: forwarded });
 }
 
 export const getServerUser = cache(async function getServerUser(): Promise<StoredUser | null> {
-  return getAuthenticatedUser(await cookieBackedRequest());
+  return getAuthenticatedUser(await credentialRequest());
 });
 
 // Cache the expensive store-read + entitlement computation per userId.

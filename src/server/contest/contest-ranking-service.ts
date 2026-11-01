@@ -88,9 +88,16 @@ export async function rankContest(contestId: string): Promise<RankResult> {
 export interface LeaderboardRow {
   rank: number;
   userId: string;
+  /** First name only, like the toppers list (never the full name or email). */
+  name: string;
   score: number;
   timeTakenSeconds: number | null;
   percentile: number;
+}
+
+/** Public display name on contest boards: first name only, "Anonymous" if unset. */
+export function firstName(name: string | null | undefined): string {
+  return (name || "").trim().split(/\s+/)[0] || "Anonymous";
 }
 
 /** Keyset-paged leaderboard page (rank > cursor). Reads via the replica. */
@@ -106,10 +113,11 @@ export async function getLeaderboardPage(
   // Fetch one extra row to tell whether a further page exists, so the last full
   // page doesn't hand back a phantom cursor that resolves to an empty page.
   const res = await pool.query(
-    `SELECT rank, user_id, score, time_taken_seconds, percentile
-       FROM contest.leaderboard_snapshot
-      WHERE contest_id = $1 AND rank > $2
-      ORDER BY rank ASC
+    `SELECT l.rank, l.user_id, l.score, l.time_taken_seconds, l.percentile, u.name
+       FROM contest.leaderboard_snapshot l
+       LEFT JOIN origin_users u ON u.id = l.user_id
+      WHERE l.contest_id = $1 AND l.rank > $2
+      ORDER BY l.rank ASC
       LIMIT $3`,
     [contestId, cursor, capped + 1],
   );
@@ -118,6 +126,7 @@ export async function getLeaderboardPage(
   const rows: LeaderboardRow[] = pageRows.map((r) => ({
     rank: r.rank,
     userId: r.user_id,
+    name: firstName(r.name),
     score: Number(r.score),
     timeTakenSeconds: r.time_taken_seconds,
     percentile: Number(r.percentile),
@@ -176,7 +185,7 @@ export async function getContestToppers(
   );
   return res.rows.map((r) => ({
     rank: r.rank,
-    name: (r.name || "Anonymous").trim().split(/\s+/)[0],
+    name: firstName(r.name),
     score: Number(r.score),
   }));
 }

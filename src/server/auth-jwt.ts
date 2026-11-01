@@ -346,8 +346,30 @@ export function extractAccessToken(request: Request): string | null {
   return extractBearerToken(request) ?? readCookie(request, ACCESS_COOKIE_NAME);
 }
 
+/**
+ * Native clients (NATIVE_APP_API_PLAN.md §2.2) have no cookie jar, so a
+ * bearer-authenticated request carries the fingerprint in this header. Browser
+ * requests never use bearer auth, so for them only the cookie counts.
+ */
+export const ACCESS_FINGERPRINT_HEADER = "x-origin-access-fgp";
+
 export function extractAccessFingerprint(request: Request): string | null {
+  if (extractBearerToken(request)) {
+    const header = request.headers.get(ACCESS_FINGERPRINT_HEADER)?.trim();
+    if (header) return header;
+  }
   return readCookie(request, ACCESS_FINGERPRINT_COOKIE_NAME);
+}
+
+/**
+ * True for a native-app request: bearer auth and no Origin auth cookies.
+ * The CSRF double-submit check exists because browsers attach cookies to
+ * forged cross-site requests; they never attach an Authorization header, so
+ * a request authenticated only by bearer cannot be a CSRF vector.
+ */
+export function isBearerOnlyRequest(request: Request): boolean {
+  if (!extractBearerToken(request)) return false;
+  return !readCookie(request, ACCESS_COOKIE_NAME) && !readCookie(request, REFRESH_COOKIE_NAME);
 }
 
 export function extractRefreshToken(request: Request): string | null {

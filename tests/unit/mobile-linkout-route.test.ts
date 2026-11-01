@@ -37,6 +37,19 @@ function routeContext(slug: string[]) {
 }
 
 async function issueLinkOut(user: StoredUser): Promise<Response> {
+  // Links are only handed out while link-out is switched on (off for India);
+  // these tests are about what happens once one exists.
+  const previousLinkOut = process.env.MOBILE_LINK_OUT_ENABLED;
+  process.env.MOBILE_LINK_OUT_ENABLED = "true";
+  try {
+    return await issueLinkOutEnabled(user);
+  } finally {
+    if (previousLinkOut === undefined) delete process.env.MOBILE_LINK_OUT_ENABLED;
+    else process.env.MOBILE_LINK_OUT_ENABLED = previousLinkOut;
+  }
+}
+
+async function issueLinkOutEnabled(user: StoredUser): Promise<Response> {
   const issued = await issueAccessTokenForUser(user, "sess_app");
   const request = new Request("https://www.o3origin.com/api/mobile/link-out", {
     method: "POST",

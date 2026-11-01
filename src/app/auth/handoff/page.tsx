@@ -39,6 +39,7 @@ type Identity = { id: string; email: string; name: string };
 
 const PURPOSE_LABELS: Record<keyof typeof HANDOFF_PURPOSES, string> = {
   premium: "Origin Premium",
+  connect: "Institutes",
 };
 
 function maskEmail(email: string): string {
