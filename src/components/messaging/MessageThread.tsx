@@ -460,14 +460,18 @@ export default function MessageThread({ conversationId }: { conversationId: stri
                 </Button>
               </div>
               <div id="message-composer-hint" className="flex items-center justify-between gap-2 px-1 text-[11px]" aria-live="polite">
-                <span className={cn(composer.warn ? 'font-semibold text-destructive' : 'text-muted-foreground')}>
-                  {composer.hint}
-                </span>
+                {!usage.premium && composer.empty ? (
+                  // Empty box: the usage line (with the Premium hint) is the hint, shown once.
+                  <UsageLine usage={usage} className="text-[11px]" />
+                ) : (
+                  <span className={cn(composer.warn ? 'font-semibold text-destructive' : 'text-muted-foreground')}>
+                    {composer.hint}
+                  </span>
+                )}
                 <span className={cn('shrink-0 tabular-nums', composer.tooLong ? 'font-bold text-destructive' : 'text-muted-foreground')}>
                   {composer.length}/{MESSAGE_MAX_CHARS}
                 </span>
               </div>
-              {!usage.premium && composer.empty ? <UsageLine usage={usage} className="px-1 text-[11px]" /> : null}
             </form>
           )
         ) : null}
