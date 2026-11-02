@@ -42,7 +42,7 @@ function pool() {
  * so that the grace-to-period-end behaviour (plan Risk #2) is actually honoured
  * while still recording the precise Razorpay status. See PLAN Phase 1.1/1.3.
  */
-const ENTITLED_CLAUSE = `(
+export const ENTITLED_CLAUSE = `(
   (status = 'active' AND (current_period_end IS NULL OR current_period_end > NOW()))
   OR (status IN ('pending', 'halted', 'cancelled')
       AND current_period_end IS NOT NULL AND current_period_end > NOW())
