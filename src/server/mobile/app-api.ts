@@ -68,6 +68,18 @@ const CHALLENGE_ERRORS: Record<string, { status: number; detail: string }> = {
   already_pending: { status: 409, detail: "They already have a pending challenge for this question." },
 };
 
+/**
+ * True for messages written for people: short prose, not a JSON or
+ * validation dump from another service (a grader 422 once reached a student
+ * as `{"detail":[{"type":"dict_type",...}]}`).
+ */
+export function isStudentReadable(message: string): boolean {
+  const text = message.trim();
+  if (!text || text.length > 300) return false;
+  if (/^[[{]/.test(text) || /"(detail|loc|type|msg)"\s*:/.test(text)) return false;
+  return !/(Traceback|Exception|Error:|stack|undefined|null\b)/.test(text);
+}
+
 export function errorResponse(scope: string, error: unknown): NextResponse {
   const message = error instanceof Error ? error.message : "";
   if (message === "Not authenticated.") {
@@ -83,7 +95,9 @@ export function errorResponse(scope: string, error: unknown): NextResponse {
   // not eligible, window closed) are written for students; pass them through.
   const status = (error as { status?: unknown } | null)?.status;
   if (typeof status === "number" && status >= 400 && status < 500 && message) {
-    return NextResponse.json({ detail: message }, { status });
+    if (isStudentReadable(message)) return NextResponse.json({ detail: message }, { status });
+    console.error(`[mobile-api] ${scope} failed with an unreadable ${status}:`, message.slice(0, 2000));
+    return NextResponse.json({ detail: "Something went wrong. Please try again." }, { status });
   }
   console.error(`[mobile-api] ${scope} failed:`, message || error);
   return NextResponse.json({ detail: "Something went wrong. Please try again." }, { status: 500 });
@@ -315,6 +329,21 @@ export async function handleAppApi(method: string, request: NextRequest, slug: s
       }
       // The website's onboarding step 5: a mobile for accounts without one, and a
       // password for Google sign-ups (passwordSet === false). Same action, same rules.
+      // The app reports errors it hid from the student (raw server text, crashes in
+      // a screen) so they reach our logs. Logged only, never stored or echoed back.
+      if (method === "POST" && slug.length === 1 && head === "client-errors") {
+        const user = await getServerUser();
+        const clip = (value: unknown, max: number) => (typeof value === "string" ? value.slice(0, max) : null);
+        console.warn("[mobile-client-error]", {
+          userId: user?.id ?? null,
+          where: clip(body.where, 120),
+          path: clip(body.path, 300),
+          status: typeof body.status === "number" ? body.status : null,
+          message: clip(body.message, 2000),
+          appVersion: clip(body.appVersion, 40),
+        });
+        return new NextResponse(null, { status: 204 });
+      }
       if (method === "POST" && slug.length === 1 && head === "account-setup") {
         const result = await completeAccountSetupAction({
           mobile: typeof body.mobile === "string" ? body.mobile : "",
