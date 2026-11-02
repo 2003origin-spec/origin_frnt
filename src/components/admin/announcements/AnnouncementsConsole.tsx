@@ -174,6 +174,7 @@ export function AnnouncementsConsole() {
   const [confirming, setConfirming] = useState<{ reach: Reach; pushConfigured: boolean } | null>(null);
   const [busy, setBusy] = useState<null | 'reach' | 'test' | 'send'>(null);
   const [result, setResult] = useState<Announcement | null>(null);
+  const [sendError, setSendError] = useState<string | null>(null);
   const [historyKey, setHistoryKey] = useState(0);
 
   const checked = useMemo(() => validateAnnouncementDraft({ title, body, link }), [title, body, link]);
@@ -185,6 +186,7 @@ export function AnnouncementsConsole() {
     setAudience((a) => ({ ...a, ...next }));
     setReach(null);
     setConfirming(null);
+    setSendError(null);
   };
 
   const checkReach = async () => {
@@ -202,6 +204,7 @@ export function AnnouncementsConsole() {
     if (!checked.ok) return;
     const isTest = to.kind === 'me';
     setBusy(isTest ? 'test' : 'send');
+    setSendError(null);
     try {
       const { announcement } = await postJson<{ announcement: Announcement }>('/send', { ...checked.draft, audience: to });
       setResult(announcement);
@@ -209,7 +212,10 @@ export function AnnouncementsConsole() {
       setHistoryKey((k) => k + 1);
       toast.success(isTest ? 'Test sent to you.' : `Sent to ${students(announcement.recipients)}.`);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed.');
+      // Inline as well as the toast, so an older "Sent" line can't be mistaken for this attempt.
+      const message = err instanceof Error ? err.message : 'Failed.';
+      setSendError(message);
+      toast.error(message);
     } finally {
       setBusy(null);
     }
@@ -219,6 +225,7 @@ export function AnnouncementsConsole() {
   const askToSend = async () => {
     if (!checked.ok) return;
     setBusy('reach');
+    setSendError(null);
     try {
       const fresh = await postJson<{ reach: Reach; pushConfigured: boolean }>('/preview', { audience });
       setReach(fresh);
@@ -288,6 +295,8 @@ export function AnnouncementsConsole() {
                     type="button"
                     className={`rounded-full border px-2.5 py-0.5 text-xs ${link === q.path ? 'border-emerald-500 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : ''}`}
                     title={q.app === 'screen' ? 'Opens an app screen in the app' : 'In the app, opens the website page'}
+                    aria-label={`${q.label} (${q.path})`}
+                    aria-pressed={link === q.path}
                     onClick={() => setLink(q.path)}
                   >
                     {q.label}
@@ -381,11 +390,24 @@ export function AnnouncementsConsole() {
               </div>
             )}
 
-            {result && (
-              <p className="rounded-lg border p-3 text-sm" role="status">
-                <strong>{result.test ? 'Test sent' : 'Sent'}</strong> to {students(result.recipients)}. Phone notifications:{' '}
-                {result.pushDelivered.toLocaleString('en-IN')} delivered of {result.pushAttempted.toLocaleString('en-IN')} tried.
+            {sendError ? (
+              <p className="rounded-lg border border-red-300 p-3 text-sm text-red-700 dark:text-red-400" role="alert">
+                {sendError}
               </p>
+            ) : (
+              result && (
+                <p className="rounded-lg border p-3 text-sm" role="status">
+                  {result.test ? (
+                    <strong>Test sent to you.</strong>
+                  ) : (
+                    <>
+                      <strong>Sent</strong> to {students(result.recipients)}.
+                    </>
+                  )}{' '}
+                  Phone notifications: {result.pushDelivered.toLocaleString('en-IN')} delivered of{' '}
+                  {result.pushAttempted.toLocaleString('en-IN')} tried.
+                </p>
+              )
             )}
           </div>
         </Section>
