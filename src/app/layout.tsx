@@ -121,6 +121,8 @@ export default async function RootLayout({
   // (HOME_REDESIGN_PLAN.md §5) — contest ships dark in production.
   const contestEnabled = isFeatureEnabled("contest");
   const notesEnabled = isFeatureEnabled("notes");
+  // Student messaging needs Social too (same rule as the API and the app config).
+  const messagingEnabled = socialEnabled && isFeatureEnabled("studentMessaging");
   // Pre-launch cover: server-computed so there is no flash of the real site.
   const launch = await getLaunchSettings().catch(() => null);
   const coverActive = launch ? isCoverActive(launch) : false;
@@ -149,7 +151,7 @@ export default async function RootLayout({
               <NotificationProvider>
                 <QuotaProvider>
                   <AiAccessProvider initial={{ originAi: initialAiAccess.originAi, aiExplainer: initialAiAccess.aiExplainer }}>
-                    <ClientShell connectEnabled={connectEnabled} premiumEnabled={premiumEnabled} socialEnabled={socialEnabled} contestEnabled={contestEnabled} notesEnabled={notesEnabled} coverActive={coverActive} launchAt={launchAt}>{children}</ClientShell>
+                    <ClientShell connectEnabled={connectEnabled} premiumEnabled={premiumEnabled} socialEnabled={socialEnabled} contestEnabled={contestEnabled} notesEnabled={notesEnabled} messagingEnabled={messagingEnabled} coverActive={coverActive} launchAt={launchAt}>{children}</ClientShell>
                   </AiAccessProvider>
                 </QuotaProvider>
               </NotificationProvider>

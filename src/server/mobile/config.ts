@@ -71,10 +71,15 @@ const APP_FLAG_KEYS = [
   "studyModes",
   "fullLengthMocks",
   "dppQuestionBank",
+  "studentMessaging",
 ] as const satisfies readonly FlagKey[];
 
 function appFlags(): Record<string, boolean> {
-  return Object.fromEntries(APP_FLAG_KEYS.map((key) => [key, isFeatureEnabled(key)]));
+  const flags: Record<string, boolean> = Object.fromEntries(APP_FLAG_KEYS.map((key) => [key, isFeatureEnabled(key)]));
+  // Messaging also needs Student Social; send the effective value so the app
+  // never shows a surface whose every route answers 404.
+  flags.studentMessaging = flags.studentMessaging && flags.studentSocial;
+  return flags;
 }
 
 /** Teachers may sign in to the app (remote switch: MOBILE_TEACHER_ENABLED, on by default). */

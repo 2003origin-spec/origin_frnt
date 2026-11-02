@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AdminModerationDashboard } from "@/components/admin/AdminModerationDashboard";
 import { getServerUser } from "@/lib/auth-server";
@@ -23,6 +24,12 @@ export default async function AdminModerationPage() {
         <h1 className="text-2xl font-bold tracking-tight">Platform Administration Cockpit</h1>
         <p className="text-muted-foreground text-sm mt-1">
           Review workspace organizations, moderate community OGCode questions, and deploy rate limits or kill-switches.
+        </p>
+        <p className="text-sm mt-2">
+          <Link className="underline" href="/admin/moderation/messages">
+            Message reports
+          </Link>{" "}
+          <span className="text-muted-foreground">— reports students made about student messages.</span>
         </p>
       </div>
 

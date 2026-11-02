@@ -516,7 +516,9 @@ export type ViewState =
   | 'contest'
   | 'mindmaps'
   // Origin Notes — V1/NOTES_PLAN.md.
-  | 'notes';
+  | 'notes'
+  // Student messaging (studentMessaging flag).
+  | 'messages';
 
 export type OriginAiPageKind =
   | 'dashboard'

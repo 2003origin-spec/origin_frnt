@@ -69,7 +69,8 @@ type FlagKey =
   | "notes"
   | "notesUploads"
   | "notesSharing"
-  | "originNow";
+  | "originNow"
+  | "studentMessaging";
 
 type FlagSpec = {
   envSuffix: string;
@@ -334,6 +335,11 @@ const FLAG_SPECS: Record<FlagKey, FlagSpec> = {
   // nothing should appear until TEACHER_LAUNCH_ORIGIN_NOW=1 is set on purpose.
   // Plan: V1/ORIGIN_NOW_PLAN.md
   originNow: { envSuffix: "ORIGIN_NOW", defaultDev: false, defaultProd: false },
+  // Student-to-student messaging (text only, Instagram-style message requests,
+  // a daily "units" cap: free 10 / premium 40 per IST day). Needs
+  // `studentSocial` too. Ships DARK in prod: most students are under 18, so the
+  // founders sign it off first. Native app only for now (/api/mobile/messages*).
+  studentMessaging: { envSuffix: "STUDENT_MESSAGING", defaultDev: true, defaultProd: false },
 };
 
 /** Every feature-flag key, in declaration order (admin System Config view). */

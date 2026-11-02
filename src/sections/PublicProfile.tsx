@@ -25,12 +25,15 @@ import DailyTracker from '@/components/dashboard/DailyTracker';
 import { MilestoneCabinet } from '@/components/badges/MilestoneCabinet';
 import { StreakCabinet } from '@/components/badges/StreakCabinet';
 import FollowButton from '@/components/social/FollowButton';
+import MessageButton from '@/components/messaging/MessageButton';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 interface PublicProfileProps {
   initialProfile: PublicProfileData;
+  /** Show "Message" next to Follow (studentMessaging on and the viewer is a student). */
+  messagingEnabled?: boolean;
 }
 
 const ACHIEVEMENT_META = [
@@ -59,7 +62,7 @@ function formatActivityDate(iso: string): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-export default function PublicProfile({ initialProfile }: PublicProfileProps) {
+export default function PublicProfile({ initialProfile, messagingEnabled = false }: PublicProfileProps) {
   const profile = initialProfile;
   const stats = profile.stats;
   const [followerCount, setFollowerCount] = useState(profile.followerCount);
@@ -152,18 +155,21 @@ export default function PublicProfile({ initialProfile }: PublicProfileProps) {
               </div>
             </div>
 
-            <div className="shrink-0">
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
               {profile.isMe ? (
                 <Button asChild variant="outline" className="font-bold">
                   <Link href="/profile">Edit profile</Link>
                 </Button>
               ) : (
-                <FollowButton
-                  username={profile.username}
-                  initialFollowing={profile.isFollowedByMe}
-                  followsMe={profile.followsMe}
-                  onCountChange={setFollowerCount}
-                />
+                <>
+                  <FollowButton
+                    username={profile.username}
+                    initialFollowing={profile.isFollowedByMe}
+                    followsMe={profile.followsMe}
+                    onCountChange={setFollowerCount}
+                  />
+                  {messagingEnabled ? <MessageButton userId={profile.id} name={profile.name} /> : null}
+                </>
               )}
             </div>
           </div>

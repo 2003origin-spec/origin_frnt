@@ -263,6 +263,10 @@ export const FLAG_KILL_PREFIXES: Partial<Record<FlagKey, FlagKillMatcher>> = {
   // LiveKit token route is a POST (/api/now/sessions/:id/token) precisely so
   // this edge switch covers it; calls already live are ended by the timers.
   originNow: ["/api/now"],
+  // Killing `studentMessaging` refuses (503) every messaging call from the app
+  // and the website, reads included. Nothing else lives under these prefixes.
+  // /api/admin/messaging/* stays up so admins can still work the reports.
+  studentMessaging: ["/api/mobile/messages", "/api/messages"],
 };
 
 /**
