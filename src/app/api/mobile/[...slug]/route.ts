@@ -33,6 +33,7 @@ import { isUserPostgresConfigured } from "@/server/user-postgres";
 import { withStoreAsyncScoped } from "@/server/store";
 import { getCanonicalSiteUrl } from "@/lib/site-url";
 import { authLimiter, checkRateLimit, mutationLimiter } from "@/lib/rate-limit";
+import { checkSharedMutationLimit } from "@/server/shared-mutation-limit";
 import { parseAppVersionFromUserAgent } from "@/native/is-native-app";
 
 /**
@@ -336,6 +337,11 @@ async function handlePushTokenRevoke(request: NextRequest): Promise<Response> {
 async function dispatch(method: string, request: NextRequest, context: RouteContext): Promise<Response> {
   const params = await context.params;
   const slug = getSlugSegments(params);
+
+  // The shared per-user write budget, charged here rather than at the edge
+  // (src/server/shared-mutation-limit.ts). Skips reads and the public paths.
+  const limited = await checkSharedMutationLimit(request, requesterUserId(request));
+  if (limited) return limited;
 
   if (method === "POST" && slug[0] === "auth" && slug.length > 1) {
     return handleAppAuth(request, slug.slice(1));

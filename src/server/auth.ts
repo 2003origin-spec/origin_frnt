@@ -1,5 +1,5 @@
 import type { AppStore, StoredAuthSession, StoredUser } from "@/server/store";
-import { readStoreAsync } from "@/server/store";
+import { foldUserIntoStore, readStoreAsync } from "@/server/store";
 import { isUserPostgresConfigured } from "@/server/user-postgres";
 import {
   dbClearUserSessions,
@@ -151,6 +151,25 @@ export async function resolveTokenToUser(request: Request): Promise<StoredUser |
 
   const store = await readStoreAsync();
   return store.users.find((entry) => entry.id === context.userId && (entry.authTokenVersion ?? 0) === context.tokenVersion) ?? null;
+}
+
+/**
+ * requireUserFromRequest for a CACHED store snapshot (readStoreAsync(), up to
+ * 5 minutes old per instance): the caller is checked against their fresh row
+ * (resolveTokenToUser), not the snapshot, so an account created on another
+ * instance a minute ago, or a token minted after an auth_token_version bump
+ * elsewhere, is not refused. The fresh row is folded into the snapshot (as
+ * serializeDbUser does) so handlers that look the caller up in `store.users`
+ * find them. Returns the snapshot's copy of the user; null when unauthorized.
+ * Throws AuthServiceUnavailableError when the database lookup fails.
+ */
+export async function withFreshUserInStore(store: AppStore, request: Request): Promise<StoredUser | null> {
+  if (!isUserPostgresConfigured()) {
+    return requireUserFromRequest(store, request);
+  }
+  const fresh = await resolveTokenToUser(request);
+  if (!fresh) return null;
+  return foldUserIntoStore(store, fresh);
 }
 
 export async function refreshAccessToken(refreshToken: string): Promise<{

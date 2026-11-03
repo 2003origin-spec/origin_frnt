@@ -1,3 +1,4 @@
+import { after } from "next/server";
 import type { PoolClient } from "pg";
 
 import {
@@ -75,6 +76,35 @@ export type EnqueueAnalysisJobInput = {
   kind: AnalysisJobKind;
   payload: AnalysisJobPayload;
 };
+
+/**
+ * Which pending job a drain may claim. Empty: the oldest of anyone's (the
+ * worker route). `jobId`: that one job only. `userId`: that user's oldest.
+ */
+export type AnalysisJobFilter = { jobId?: string; userId?: string };
+
+/** The claim query for a filter (exported for the unit test). */
+export function buildClaimAnalysisJobQuery(filter: AnalysisJobFilter = {}): { text: string; values: unknown[] } {
+  const values: unknown[] = [MAX_ANALYSIS_ATTEMPTS];
+  const conditions = ["status = 'pending'", "attempts < $1"];
+  if (filter.jobId) {
+    values.push(filter.jobId);
+    conditions.push(`id = $${values.length}`);
+  }
+  if (filter.userId) {
+    values.push(filter.userId);
+    conditions.push(`user_id = $${values.length}`);
+  }
+  return {
+    text: `SELECT id, user_id, kind, payload, attempts
+         FROM app.analysis_jobs
+        WHERE ${conditions.join(" AND ")}
+        ORDER BY created_at ASC
+        LIMIT 1
+        FOR UPDATE SKIP LOCKED`,
+    values,
+  };
+}
 
 export type AnalysisWorkerResult = {
   claimed: number;
@@ -186,22 +216,15 @@ export async function enqueueAnalysisJob(input: EnqueueAnalysisJobInput): Promis
   return id;
 }
 
-async function claimNextAnalysisJob(): Promise<AnalysisJobRow | null> {
+async function claimNextAnalysisJob(filter: AnalysisJobFilter = {}): Promise<AnalysisJobRow | null> {
   const pool = getPoolOrThrow();
   await ensureAnalysisJobsSchema();
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
     await ensureAnalysisJobsSchema(client);
-    const claimed = await client.query(
-      `SELECT id, user_id, kind, payload, attempts
-         FROM app.analysis_jobs
-        WHERE status = 'pending' AND attempts < $1
-        ORDER BY created_at ASC
-        LIMIT 1
-        FOR UPDATE SKIP LOCKED`,
-      [MAX_ANALYSIS_ATTEMPTS],
-    );
+    const claim = buildClaimAnalysisJobQuery(filter);
+    const claimed = await client.query(claim.text, claim.values);
 
     const row = claimed.rows[0];
     if (!row) {
@@ -377,7 +400,7 @@ async function processAnalysisJob(job: AnalysisJobRow): Promise<Record<string, u
   throw new Error(`Unsupported analysis job kind: ${job.kind}`);
 }
 
-export async function drainAnalysisJobs(limit = 5): Promise<AnalysisWorkerResult> {
+export async function drainAnalysisJobs(limit = 5, filter: AnalysisJobFilter = {}): Promise<AnalysisWorkerResult> {
   const result: AnalysisWorkerResult = {
     claimed: 0,
     completed: 0,
@@ -387,7 +410,7 @@ export async function drainAnalysisJobs(limit = 5): Promise<AnalysisWorkerResult
   const jobLimit = Math.max(1, Math.min(25, Math.trunc(limit)));
 
   for (let index = 0; index < jobLimit; index += 1) {
-    const job = await claimNextAnalysisJob();
+    const job = await claimNextAnalysisJob(filter);
     if (!job) {
       break;
     }
@@ -411,15 +434,27 @@ export async function drainAnalysisJobs(limit = 5): Promise<AnalysisWorkerResult
   return result;
 }
 
-export async function drainOneAnalysisJobWithTimeout(timeoutMs = 3500): Promise<AnalysisWorkerResult | null> {
-  if (process.env.ORIGIN_ANALYSIS_OPPORTUNISTIC_DRAIN === "false") {
+function opportunisticDrainDisabled(): boolean {
+  return process.env.ORIGIN_ANALYSIS_OPPORTUNISTIC_DRAIN === "false";
+}
+
+/**
+ * Drain one pending job, giving up waiting after `timeoutMs` (the drain itself
+ * keeps going). With a `filter` only the caller's own job(s) can be claimed,
+ * so a student opening their DPPs never waits on someone else's analysis.
+ */
+export async function drainOneAnalysisJobWithTimeout(
+  timeoutMs = 3500,
+  filter: AnalysisJobFilter = {},
+): Promise<AnalysisWorkerResult | null> {
+  if (opportunisticDrainDisabled()) {
     return null;
   }
 
   let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
   try {
     return await Promise.race([
-      drainAnalysisJobs(1),
+      drainAnalysisJobs(1, filter),
       new Promise<null>((resolve) => {
         timeoutHandle = setTimeout(() => resolve(null), Math.max(250, timeoutMs));
       }),
@@ -430,5 +465,74 @@ export async function drainOneAnalysisJobWithTimeout(timeoutMs = 3500): Promise<
     if (timeoutHandle) {
       clearTimeout(timeoutHandle);
     }
+  }
+}
+
+const SETTLE_POLL_MS = 250;
+
+async function analysisJobStatus(jobId: string): Promise<string | null> {
+  const result = await getPoolOrThrow().query("SELECT status FROM app.analysis_jobs WHERE id = $1", [jobId]);
+  const status = result.rows[0]?.status;
+  return typeof status === "string" ? status : null;
+}
+
+/**
+ * Bring ONE job to an end within `timeoutMs`: claim and process it if it is
+ * still pending, or, if another request is already processing it (the
+ * after-submit kick), wait for that to finish. Used by the result GET, which
+ * used to claim the OLDEST pending job of ANY user and so could make a student
+ * wait on someone else's analysis while their own stayed pending. Returns once
+ * the job is no longer pending/running, or at the deadline; never throws.
+ */
+export async function settleAnalysisJobWithTimeout(jobId: string, timeoutMs = 3500): Promise<void> {
+  if (opportunisticDrainDisabled()) return;
+  const deadline = Date.now() + Math.max(250, timeoutMs);
+  const work = (async () => {
+    const drained = await drainAnalysisJobs(1, { jobId });
+    if (drained.claimed > 0) return;
+    while (Date.now() < deadline) {
+      const status = await analysisJobStatus(jobId);
+      if (status !== "running") return;
+      await new Promise((resolve) => setTimeout(resolve, SETTLE_POLL_MS));
+    }
+  })();
+  let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+  try {
+    await Promise.race([
+      work,
+      new Promise<void>((resolve) => {
+        timeoutHandle = setTimeout(resolve, Math.max(0, deadline - Date.now()));
+      }),
+    ]);
+  } catch {
+    // Best effort: the caller reads whatever state the result is in.
+  } finally {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
+  }
+  work.catch(() => undefined);
+}
+
+/**
+ * Start processing a just-enqueued job right after the submit response is sent
+ * (next/server `after`), instead of waiting for the student's next GET to
+ * drain it. Also drains one more pending job of anyone, so the queue keeps
+ * moving now that the read paths only drain their own user's jobs. Returns
+ * false outside a request scope (scripts, unit tests), where nothing is
+ * scheduled and the jobs wait for a drain as before.
+ */
+export function kickAnalysisJobAfterResponse(jobId: string): boolean {
+  if (opportunisticDrainDisabled()) return false;
+  try {
+    after(async () => {
+      try {
+        await drainAnalysisJobs(1, { jobId });
+        await drainAnalysisJobs(1);
+      } catch (error) {
+        console.warn("[analysis-jobs] after-submit drain failed", errorMessage(error));
+      }
+    });
+    return true;
+  } catch {
+    return false;
   }
 }

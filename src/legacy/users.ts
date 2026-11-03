@@ -1,6 +1,8 @@
 // Legacy user implementation kept behind the public server/users barrel.
 import bcrypt from "bcryptjs";
-import { requireUserFromRequest, resolveTokenToUser, refreshAccessToken, createAuthSessionAsync, extractAccessToken, extractRefreshTokenCookie } from "@/server/auth";
+import { requireUserFromRequest, resolveTokenToUser, refreshAccessToken, createAuthSessionAsync, extractAccessToken, extractRefreshTokenCookie, withFreshUserInStore } from "@/server/auth";
+import { getAuthContext } from "@/server/authz";
+import { istDateKey } from "@/lib/ist-day";
 import { isAccountBlockedError, isAuthServiceUnavailableError, type AccountBlockedError } from "@/server/auth-errors";
 import { extractAccessFingerprint, verifyRequestAccessJwt } from "@/server/auth-jwt";
 import { normalizeAuthClientKind, resolveAuthClientKind, type AuthClientKind } from "@/server/auth-client-kind";
@@ -30,8 +32,17 @@ import { countTestResultsForUser } from "@/server/analytics-store";
 import { normalizeSoundPreferences } from "@/lib/sound-preferences";
 import { normalizeStudyMode } from "@/lib/study-mode";
 import type { AccountStatus, AppStore, StoredTask, StoredUser } from "@/server/store";
-import { createId, readStoreAsync, ScopedWritePlan, withStoreAsyncScoped, withStoredUserDefaults } from "@/server/store";
-import { persistUserCollections } from "@/server/store-postgres";
+import {
+  createId,
+  readStoreAsync,
+  readUserStoreScoped,
+  ScopedWritePlan,
+  withStoreAsyncScoped,
+  withStoredUserDefaults,
+  withUserStoreScoped,
+} from "@/server/store";
+import type { MutableCollectionKey } from "@/server/store-postgres";
+import { dbGlobalSolvedRank, dbHasDailyActivity, persistUserCollections } from "@/server/store-postgres";
 
 type UserPayload = Record<string, unknown>;
 
@@ -91,6 +102,16 @@ function asStringArray(value: unknown): string[] | null {
 async function persistUserStreakColumn(user: StoredUser, streakBefore: number): Promise<void> {
   if (user.streak === streakBefore || !isUserPostgresConfigured()) return;
   await dbUpdateUser(user.id, { streak: user.streak });
+}
+
+/**
+ * The caller's user id from the access JWT alone (no lookup), so a per-user
+ * handler can load just that user's rows. The handler still calls
+ * requireUserFromRequest on the loaded store, which re-checks the token
+ * version against the freshly read user row.
+ */
+async function requestUserId(request: Request): Promise<string | null> {
+  return (await getAuthContext(request))?.userId ?? null;
 }
 
 /**
@@ -343,6 +364,23 @@ export function getGlobalSolvedRanking(store: AppStore): GlobalRankCache {
   const result = { rankByUser, solvedCountByUser };
   globalRankCache.set(store, result);
   return result;
+}
+
+/**
+ * A GlobalRankCache holding just one user's entry (from dbGlobalSolvedRank),
+ * which is all buildUserStatsSnapshot reads from it. Exported for tests.
+ */
+export function globalRankingForOneUser(
+  userId: string,
+  entry: { solved: number; rank: number } | null,
+): GlobalRankCache {
+  const rankByUser = new Map<string, number>();
+  const solvedCountByUser = new Map<string, number>();
+  if (entry) {
+    rankByUser.set(userId, entry.rank);
+    solvedCountByUser.set(userId, entry.solved);
+  }
+  return { rankByUser, solvedCountByUser };
 }
 
 export async function buildUserStatsSnapshot(
@@ -1148,16 +1186,24 @@ export async function handleRefresh(request: Request | null, payload: UserPayloa
 }
 
 async function handleMeGet(request: Request) {
-  const store = await readStoreAsync();
-  const user = await requireUserFromRequest(store, request);
-  if (!user) {
+  // The caller's own row and rows only, fresh: a 5-minute store snapshot
+  // answered 401 to a user who signed up on another instance, and showed old
+  // streak/points (serializeUser reads only these three collections).
+  const userId = await requestUserId(request);
+  if (!userId) {
     return unauthorized();
   }
-  const serialized = serializeUser(store, user.id);
-  if (!serialized) {
-    return notFound("User not found.");
-  }
-  return ok(await withEntitledSubjects(serialized, user.id));
+  return readUserStoreScoped(userId, { streaks: true, userScores: true, dailyActivities: true }, async (store) => {
+    const user = await requireUserFromRequest(store, request);
+    if (!user) {
+      return unauthorized();
+    }
+    const serialized = serializeUser(store, user.id);
+    if (!serialized) {
+      return notFound("User not found.");
+    }
+    return ok(await withEntitledSubjects(serialized, user.id));
+  });
 }
 
 async function handleMePatch(request: Request, payload: UserPayload) {
@@ -1226,32 +1272,60 @@ async function handleMePatch(request: Request, payload: UserPayload) {
 }
 
 async function handlePointsGet(request: Request) {
-  // Read (fresh snapshot, nothing persisted — see the note at the top).
-  return withStoreAsyncScoped(async (store) => {
+  // Read (fresh, nothing persisted — see the note at the top). Only the
+  // caller's score and newest 10 point logs: all buildPointsSummary reads.
+  const userId = await requestUserId(request);
+  if (!userId) {
+    return unauthorized();
+  }
+  return readUserStoreScoped(userId, { userScores: true, pointLogs: { limit: 10 } }, async (store) => {
     const user = await requireUserFromRequest(store, request);
     if (!user) {
       return unauthorized();
     }
     return ok(buildPointsSummary(store, user.id));
-  }, null);
+  });
 }
 
+/** Collections buildUserStatsSnapshot reads for its user. */
+const STATS_LOADS = { testResults: true, practiceAttempts: true, doubtSessions: true, streaks: true } as const;
+
 async function handleStatsGet(request: Request) {
-  // Read (fresh snapshot, nothing persisted — see the note at the top).
-  return withStoreAsyncScoped(async (store) => {
+  // Read (fresh, nothing persisted — see the note at the top). The caller's
+  // own rows come from a per-user load; the global rank is the one cross-user
+  // input, so it is ranked in SQL over every user's attempts (same order as
+  // getGlobalSolvedRanking) rather than over the one-user store.
+  const userId = await requestUserId(request);
+  if (!userId) {
+    return unauthorized();
+  }
+  const rank = isUserPostgresConfigured()
+    ? dbGlobalSolvedRank(userId).then(
+        (value) => ({ value }),
+        (error: unknown) => ({ error }),
+      )
+    : null;
+  return readUserStoreScoped(userId, STATS_LOADS, async (store) => {
     const user = await requireUserFromRequest(store, request);
     if (!user) {
       return unauthorized();
     }
-
-    return ok(await buildUserStatsSnapshot(store, user));
-  }, null);
+    let globalRanking: GlobalRankCache | undefined;
+    if (rank) {
+      const settled = await rank;
+      if ("error" in settled) throw settled.error;
+      globalRanking = globalRankingForOneUser(user.id, settled.value);
+    }
+    return ok(await buildUserStatsSnapshot(store, user, { globalRanking }));
+  });
 }
 
 async function handleSearchGet(request: Request) {
-  // Read-only: use readStoreAsync (no persist).
+  // Read-only: search runs over the cached store (it looks across users), but
+  // the caller is checked against their fresh row, so a brand-new account is
+  // not a 401 for the first five minutes on another instance.
   const store = await readStoreAsync();
-  const user = await requireUserFromRequest(store, request);
+  const user = await withFreshUserInStore(store, request);
   if (!user) {
     return unauthorized();
   }
@@ -1268,8 +1342,8 @@ async function handleSearchGet(request: Request) {
 }
 
 async function handleNotificationsList(request: Request) {
-  const store = await readStoreAsync();
-  const user = await requireUserFromRequest(store, request);
+  // Only the caller's id is needed: one fresh row lookup, no store snapshot.
+  const user = await resolveTokenToUser(request);
   if (!user) {
     return unauthorized();
   }
@@ -1279,8 +1353,7 @@ async function handleNotificationsList(request: Request) {
 }
 
 async function handleNotificationsMarkRead(request: Request, payload: UserPayload) {
-  const store = await readStoreAsync();
-  const user = await requireUserFromRequest(store, request);
+  const user = await resolveTokenToUser(request);
   if (!user) {
     return unauthorized();
   }
@@ -1289,10 +1362,42 @@ async function handleNotificationsMarkRead(request: Request, payload: UserPayloa
   return ok({ ok: true });
 }
 
+/** Every time ping: today's activity row (+ a per-subject row). */
+const TIME_POST_LIGHT_COLLECTIONS: MutableCollectionKey[] = ["dailyActivities", "dailySubjectActivities"];
+/** First ping of the IST day also awards points and advances the streak. */
+const TIME_POST_FIRST_OF_DAY_COLLECTIONS: MutableCollectionKey[] = [
+  ...TIME_POST_LIGHT_COLLECTIONS,
+  "userScores",
+  "pointLogs",
+  "streaks",
+];
+
+/** The light load found no row for today (the IST day rolled over): reload in full. */
+class TimePostNeedsFullLoad extends Error {}
+
 async function handleTimePost(request: Request, payload: UserPayload) {
+  // Sent by every open app every 60 s, so it loads only the caller's rows
+  // (withUserStoreScoped), and only today's-activity collections except on the
+  // first ping of the day, which also pays points and advances the streak.
+  const userId = await requestUserId(request);
+  if (!userId) {
+    return unauthorized();
+  }
+  let fullLoad = !isUserPostgresConfigured() || !(await dbHasDailyActivity(userId, istDateKey()));
+  try {
+    return await recordTimeEntry(request, payload, userId, fullLoad);
+  } catch (error) {
+    if (!(error instanceof TimePostNeedsFullLoad)) throw error;
+    fullLoad = true;
+    return recordTimeEntry(request, payload, userId, fullLoad);
+  }
+}
+
+async function recordTimeEntry(request: Request, payload: UserPayload, userId: string, fullLoad: boolean) {
+  const collections = fullLoad ? TIME_POST_FIRST_OF_DAY_COLLECTIONS : TIME_POST_LIGHT_COLLECTIONS;
   try {
     const plan = new ScopedWritePlan();
-    return withStoreAsyncScoped(async (store) => {
+    return withUserStoreScoped(userId, collections, async (store) => {
       const user = await requireUserFromRequest(store, request);
       if (!user) {
         return unauthorized();
@@ -1316,6 +1421,14 @@ async function handleTimePost(request: Request, payload: UserPayload) {
       }
       if (timeSpent === null || timeSpent <= 0) {
         return badRequest("Invalid payload", { time_spent: "Expected positive integer seconds" });
+      }
+
+      if (
+        !fullLoad &&
+        !store.dailyActivities.some((entry) => entry.userId === user.id && entry.date === istDateKey())
+      ) {
+        // Nothing has been changed yet, so retrying is safe.
+        throw new TimePostNeedsFullLoad();
       }
 
       const streakBefore = user.streak;
@@ -1343,8 +1456,12 @@ async function handleTimePost(request: Request, payload: UserPayload) {
 }
 
 async function handlePomodoroList(request: Request) {
-  // Read: nothing persisted.
-  return withStoreAsyncScoped(async (store) => {
+  // Read: nothing persisted; only the caller's sessions are loaded.
+  const userId = await requestUserId(request);
+  if (!userId) {
+    return unauthorized();
+  }
+  return readUserStoreScoped(userId, { pomodoroSessions: true }, async (store) => {
     const user = await requireUserFromRequest(store, request);
     if (!user) {
       return unauthorized();
@@ -1357,7 +1474,7 @@ async function handlePomodoroList(request: Request) {
       .map((entry) => serializePomodoro(entry));
 
     return ok(sessions);
-  }, null);
+  });
 }
 
 async function handlePomodoroCreate(request: Request, payload: UserPayload) {
@@ -1417,8 +1534,12 @@ async function handlePomodoroCreate(request: Request, payload: UserPayload) {
 }
 
 async function handlePomodoroDetail(request: Request, sessionId: string) {
-  // Read: nothing persisted.
-  return withStoreAsyncScoped(async (store) => {
+  // Read: nothing persisted; only the caller's sessions are loaded.
+  const userId = await requestUserId(request);
+  if (!userId) {
+    return unauthorized();
+  }
+  return readUserStoreScoped(userId, { pomodoroSessions: true }, async (store) => {
     const user = await requireUserFromRequest(store, request);
     if (!user) {
       return unauthorized();
@@ -1428,7 +1549,7 @@ async function handlePomodoroDetail(request: Request, sessionId: string) {
       return notFound("Pomodoro session not found.");
     }
     return ok(serializePomodoro(session));
-  }, null);
+  });
 }
 
 async function handlePomodoroUpdate(request: Request, payload: UserPayload, sessionId: string) {

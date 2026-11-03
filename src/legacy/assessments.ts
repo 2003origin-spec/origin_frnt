@@ -108,7 +108,12 @@ import {
   type PersistDppAttemptInput,
   type PersistTestAnalysisInput,
 } from "@/server/analytics-store";
-import { drainOneAnalysisJobWithTimeout, enqueueAnalysisJob } from "@/server/analysis-jobs";
+import {
+  drainOneAnalysisJobWithTimeout,
+  enqueueAnalysisJob,
+  kickAnalysisJobAfterResponse,
+  settleAnalysisJobWithTimeout,
+} from "@/server/analysis-jobs";
 import type { PracticeQuestion, TestPreview } from "@/types";
 import { metric } from "@/lib/metrics";
 import type {
@@ -4379,7 +4384,7 @@ export async function submitTest(
     await consumeAttemptStartQuietly(timing.startId, persistedResult.id);
 
     try {
-      await enqueueAnalysisJob({
+      const jobId = await enqueueAnalysisJob({
         id: `analysis_${persistedResult.id}`,
         userId: user.id,
         kind: "test",
@@ -4392,6 +4397,9 @@ export async function submitTest(
           request: analysisRequest,
         },
       });
+      // Analyse right after the response, so the result screen finds it done
+      // (or under way) instead of draining it on its own GET.
+      kickAnalysisJobAfterResponse(jobId);
     } catch (enqueueError) {
       const fallback = recordAnalyticsFallback({
         scope: "submitTest",
@@ -4481,7 +4489,8 @@ export async function getSingleResult(store: AppStore, user: StoredUser, resultI
   try {
     let persisted = await getPersistedResultById(user.id, resultId);
     if (persisted?.analysisStatus === "pending") {
-      await drainOneAnalysisJobWithTimeout();
+      // Only this result's own job (submitTest enqueues it as analysis_<id>).
+      await settleAnalysisJobWithTimeout(`analysis_${persisted.id}`);
       persisted = (await getPersistedResultById(user.id, resultId)) ?? persisted;
     }
     if (persisted) {
@@ -4501,7 +4510,9 @@ export async function listGeneratedDpps(store: AppStore, user: StoredUser) {
   if (!isOgcodePostgresConfigured()) {
     return [];
   }
-  await drainOneAnalysisJobWithTimeout();
+  // The caller's own pending analysis only (it may add DPP plans to this
+  // list); another student's queued job never holds up this read.
+  await drainOneAnalysisJobWithTimeout(undefined, { userId: user.id });
   // Teacher test → batch DPP: reconcile the student's materialized teacher DPPs
   // with what they are eligible for right now, before reading the list. Never
   // throws — a failure here leaves the student's own DPPs untouched.
@@ -4645,7 +4656,7 @@ export async function getGeneratedDppDetail(store: AppStore, user: StoredUser, d
   if (!isOgcodePostgresConfigured()) {
     throw new Error("DPP analytics database is not configured.");
   }
-  await drainOneAnalysisJobWithTimeout();
+  await drainOneAnalysisJobWithTimeout(undefined, { userId: user.id });
   const plan = await getDppPlanDetail(user.id, dppId);
   if (!plan) {
     throw new Error(`DPP ${dppId} was not found.`);
@@ -5004,7 +5015,7 @@ export async function submitGeneratedDpp(
   await consumeAttemptStartQuietly(timing.startId, persistedAttempt.id);
 
   try {
-    await enqueueAnalysisJob({
+    const jobId = await enqueueAnalysisJob({
       id: `analysis_${persistedAttempt.id}`,
       userId: user.id,
       kind: "dpp",
@@ -5017,6 +5028,7 @@ export async function submitGeneratedDpp(
         request: analysisRequest,
       },
     });
+    kickAnalysisJobAfterResponse(jobId);
   } catch (enqueueError) {
     const fallback = recordAnalyticsFallback({
       scope: "submitDpp",
@@ -5789,6 +5801,9 @@ export async function submitPracticeQuestion(
     createdAt: new Date().toISOString(),
   });
 
+  // Awaited at the end, alongside the option distribution: the two write
+  // different tables and the response reads neither's result.
+  let catalogStats: Promise<void> = Promise.resolve();
   if (resolved.source === "store") {
     question.frequency += 1;
     if (isCorrect) {
@@ -5796,16 +5811,14 @@ export async function submitPracticeQuestion(
     }
     question.acceptanceRate = question.frequency > 0 ? (question.totalCorrect / question.frequency) * 100 : 0;
   } else {
-    try {
-      // §9 warm-up: record time-to-correct + histogram in the legacy path too,
-      // so the distribution has data before the flag flips. First-attempt
-      // counters are V2-only (they need the progress row), so omitted here.
-      await incrementOgcodeCatalogQuestionStats(question.id, isCorrect, {
-        timeSpentSeconds: answer.timeSpent,
-      });
-    } catch {
+    // §9 warm-up: record time-to-correct + histogram in the legacy path too,
+    // so the distribution has data before the flag flips. First-attempt
+    // counters are V2-only (they need the progress row), so omitted here.
+    catalogStats = incrementOgcodeCatalogQuestionStats(question.id, isCorrect, {
+      timeSpentSeconds: answer.timeSpent,
+    }).catch(() => {
       // Keep the attempt flow working even when the catalog DB is temporarily unavailable.
-    }
+    });
   }
 
   const dailyActivity = getOrCreateDailyActivity(store, user.id);
@@ -5856,12 +5869,17 @@ export async function submitPracticeQuestion(
   // Prod ships with the flag OFF, so catalog questions reach this legacy path —
   // record + attach the option distribution here too so it works either way.
   if (resolved.source === "catalog") {
-    await attachOgcodeOptionDistribution(
-      legacyResult as unknown as Record<string, unknown>,
-      question,
-      answer,
-      prepared.displayOrder,
-    );
+    await Promise.all([
+      catalogStats,
+      attachOgcodeOptionDistribution(
+        legacyResult as unknown as Record<string, unknown>,
+        question,
+        answer,
+        prepared.displayOrder,
+      ),
+    ]);
+  } else {
+    await catalogStats;
   }
 
   return legacyResult;

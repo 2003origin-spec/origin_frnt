@@ -3,7 +3,8 @@
  *
  * Provides:
  *  - kill-switch for any FeatureKey (overrides env flag, takes effect
- *    within the cache TTL — default 5s);
+ *    within the cache TTL — default 5 s on Node handlers, 30 s plus one
+ *    Redis read in the Edge middleware);
  *  - rate-limit mode (`relaxed | normal | strict | lockdown`) that the
  *    mutation limiter middleware reads;
  *  - force-logout-user via dbIncrementAuthTokenVersionAndRevokeSessions;
@@ -16,6 +17,21 @@
  *  - `incident:flag:<flagKey>` → "on" | "off" (string) — null = no override
  *  - `incident:rate-limit-mode` → one of RateLimitMode (string)
  *
+ * Two readers share one per-process snapshot:
+ *  - Node callers (admin pages, route handlers) use the blocking loader —
+ *    Redis is a few ms away from iad1, so they keep the short TTL;
+ *  - the Edge middleware (bom1, far from Upstash) uses
+ *    `getIncidentStateNonBlocking`: it serves the cached snapshot right away
+ *    and refreshes it in the background (stale-while-revalidate), so no
+ *    student request waits on a Mumbai → US round trip for it.
+ * Either way at most one refresh runs per process at a time, and it is
+ * time-limited, so a hung Upstash call can never pin it.
+ *
+ * The read is ONE MGET of every known flag key plus the mode key — no KEYS
+ * scan (which walks the whole keyspace, rate-limit keys included) and no
+ * second dependent round trip when a flag is set. Every writer goes through
+ * `setFlagOverride(flag: FlagKey)`, so the known keys are all there is.
+ *
  * Falls back to in-memory state when Redis is not configured (dev/CI).
  * In production, missing Redis means incidents do not propagate across
  * pods — flagged on first read with a one-shot console error.
@@ -24,7 +40,7 @@
 import { unstable_rethrow } from "next/navigation";
 import { Redis } from "@upstash/redis";
 
-import type { FlagKey } from "@/lib/feature-flags";
+import { ALL_FLAG_KEYS, type FlagKey } from "@/lib/feature-flags";
 import { metric } from "@/lib/metrics";
 
 const FLAG_KEY_PREFIX = "incident:flag:";
@@ -47,16 +63,62 @@ type Snapshot = {
   fetchedAt: number;
 };
 
-const SNAPSHOT_TTL_MS = (() => {
-  const raw = process.env.INCIDENT_SNAPSHOT_TTL_MS?.trim();
+function envMs(name: string, fallback: number): number {
+  const raw = process.env[name]?.trim();
   const parsed = raw ? Number.parseInt(raw, 10) : NaN;
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 5_000;
-})();
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+/** Freshness window for the blocking (Node) readers: admin pages,
+ * requireFeatureEnabledRuntime, the handler-side lockdown gate. Redis is a
+ * few ms away from iad1, so these keep the short TTL. */
+const SNAPSHOT_TTL_MS = envMs("INCIDENT_SNAPSHOT_TTL_MS", 5_000);
+
+/** Freshness window for the Edge middleware's stale-while-revalidate read.
+ * Longer, because there a refresh is a Mumbai → US round trip; a stale
+ * snapshot is still served while the refresh runs in the background. */
+const EDGE_SNAPSHOT_TTL_MS = envMs("INCIDENT_EDGE_SNAPSHOT_TTL_MS", 30_000);
+
+/** Past this age the Edge reader no longer serves the stale snapshot right
+ * away (an isolate that sat idle for minutes): it waits for the refresh like
+ * a cold isolate, up to `coldWaitMs`, and only then falls back to it. */
+const EDGE_MAX_STALE_MS = 4 * EDGE_SNAPSHOT_TTL_MS;
+
+/** How long the Edge reader waits for a Redis read when it has no snapshot
+ * (brand-new isolate) or only a too-old one. The read is one MGET, ~200 ms
+ * from bom1, but a fresh isolate also opens the TLS connection first (one or
+ * two more round trips), so 700 ms lets cold isolates get the real state —
+ * including an active kill — while capping a slow or hung Redis. When it
+ * times out the refresh keeps running in the background. */
+const COLD_SNAPSHOT_WAIT_MS = 700;
+
+/** Upper bound for one snapshot refresh. Past it the refresh counts as a
+ * Redis error (last known state kept) and the shared in-flight slot clears,
+ * so the next refresh can start once Redis recovers. */
+const SNAPSHOT_READ_TIMEOUT_MS = 2_000;
+
+/** Upper bound for any single Upstash command issued here, retries
+ * included: @upstash/redis has no default timeout (5 retries, and fetch can
+ * wait minutes on headers), so a hung call is aborted instead of lingering. */
+const REDIS_REQUEST_TIMEOUT_MS = 5_000;
+
+/** The Redis calls this module makes (structural, so tests can inject a fake). */
+type IncidentRedis = {
+  mget<TData extends unknown[]>(...keys: string[]): Promise<TData>;
+  set(key: string, value: string): Promise<unknown>;
+  del(...keys: string[]): Promise<number>;
+};
 
 const redisUrl = process.env.UPSTASH_REDIS_REST_URL?.trim();
 const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN?.trim();
-const redis: Redis | null =
-  redisUrl && redisToken ? new Redis({ url: redisUrl, token: redisToken }) : null;
+let redis: IncidentRedis | null =
+  redisUrl && redisToken
+    ? new Redis({ url: redisUrl, token: redisToken, signal: () => AbortSignal.timeout(REDIS_REQUEST_TIMEOUT_MS) })
+    : null;
+let readTimeoutMs = SNAPSHOT_READ_TIMEOUT_MS;
+
+/** Every key the snapshot reads, in one MGET: the flag keys, then the mode. */
+const SNAPSHOT_KEYS = [...ALL_FLAG_KEYS.map((flag) => `${FLAG_KEY_PREFIX}${flag}`), RATE_LIMIT_KEY];
 
 const memory = {
   flagOverrides: new Map<FlagKey, boolean>(),
@@ -64,6 +126,11 @@ const memory = {
 };
 
 let snapshot: Snapshot | null = null;
+/** The one refresh running in this process, shared by every caller. */
+let inflight: Promise<Snapshot> | null = null;
+/** Bumped by every local write: a refresh that started before the write must
+ * not overwrite the state the writer just invalidated. */
+let generation = 0;
 let warnedMissingRedis = false;
 
 function warnRedisMissingOnce() {
@@ -80,62 +147,154 @@ function parseRateLimitMode(raw: unknown): RateLimitMode {
   return RATE_LIMIT_MODES.includes(raw as RateLimitMode) ? (raw as RateLimitMode) : "normal";
 }
 
-async function loadSnapshot(): Promise<Snapshot> {
-  if (snapshot && Date.now() - snapshot.fetchedAt < SNAPSHOT_TTL_MS) {
-    return snapshot;
-  }
+function emptySnapshot(fetchedAt: number): Snapshot {
+  return { flagOverrides: new Map(), rateLimitMode: "normal", fetchedAt };
+}
+
+function ageOf(s: Snapshot): number {
+  return Date.now() - s.fetchedAt;
+}
+
+async function fetchSnapshot(): Promise<Snapshot> {
   if (!redis) {
     warnRedisMissingOnce();
-    snapshot = {
+    return {
       flagOverrides: new Map(memory.flagOverrides),
       rateLimitMode: memory.rateLimitMode,
       fetchedAt: Date.now(),
     };
-    return snapshot;
   }
+  // One round trip whether or not a flag is set (see the header comment).
+  const values = await redis.mget<unknown[]>(...SNAPSHOT_KEYS);
+  const overrides = new Map<FlagKey, boolean>();
+  ALL_FLAG_KEYS.forEach((flag, i) => {
+    const v = values?.[i];
+    if (v === "on") overrides.set(flag, true);
+    else if (v === "off") overrides.set(flag, false);
+  });
+  return {
+    flagOverrides: overrides,
+    rateLimitMode: parseRateLimitMode(values?.[ALL_FLAG_KEYS.length]),
+    fetchedAt: Date.now(),
+  };
+}
+
+/** Rejects when `promise` has not settled within `ms`. The timer is always
+ * cleared, so nothing keeps the process (or the Edge isolate) alive. */
+async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`incident snapshot read timed out after ${ms} ms`)), ms);
+  });
   try {
-    const keys = await redis.keys(`${FLAG_KEY_PREFIX}*`);
-    const overrides = new Map<FlagKey, boolean>();
-    if (keys.length > 0) {
-      const values = await redis.mget<(string | null)[]>(...keys);
-      keys.forEach((key, i) => {
-        const flag = key.slice(FLAG_KEY_PREFIX.length) as FlagKey;
-        const v = values?.[i];
-        if (v === "on") overrides.set(flag, true);
-        else if (v === "off") overrides.set(flag, false);
-      });
-    }
-    const modeRaw = await redis.get(RATE_LIMIT_KEY);
-    snapshot = {
-      flagOverrides: overrides,
-      rateLimitMode: parseRateLimitMode(modeRaw),
-      fetchedAt: Date.now(),
-    };
-  } catch (err) {
-    // Same reason as launch-settings: a DynamicServerError thrown during static
-    // prerendering is Next.js control flow, not a Redis outage. Counting it as
-    // one also fired a false `origin.incidents.degraded` metric on every build.
-    unstable_rethrow(err);
-    console.error("[incidents] failed to load snapshot from Redis; using last known state", err);
-    metric("origin.incidents.degraded", { reason: "redis_error" });
-    if (!snapshot) {
-      snapshot = {
-        flagOverrides: new Map(),
-        rateLimitMode: "normal",
-        fetchedAt: Date.now(),
-      };
-    } else {
-      snapshot.fetchedAt = Date.now();
-    }
+    return await Promise.race([promise, timeout]);
+  } finally {
+    clearTimeout(timer);
   }
-  return snapshot;
+}
+
+/** Starts a refresh, or joins the one already running. Never leaves the old
+ * snapshot half-updated: on a Redis error or timeout the last known state is
+ * kept (and re-dated, so the next retry waits one TTL instead of hammering
+ * Redis). Always settles within `readTimeoutMs`, so `inflight` always clears. */
+function refreshSnapshot(): Promise<Snapshot> {
+  if (inflight) return inflight;
+  const startedAt = generation;
+  const run = (async (): Promise<Snapshot> => {
+    let next: Snapshot;
+    try {
+      next = await withTimeout(fetchSnapshot(), readTimeoutMs);
+    } catch (err) {
+      // Same reason as launch-settings: a DynamicServerError thrown during static
+      // prerendering is Next.js control flow, not a Redis outage. Counting it as
+      // one also fired a false `origin.incidents.degraded` metric on every build.
+      unstable_rethrow(err);
+      console.error("[incidents] failed to load snapshot from Redis; using last known state", err);
+      metric("origin.incidents.degraded", { reason: "redis_error" });
+      next = snapshot ? { ...snapshot, fetchedAt: Date.now() } : emptySnapshot(Date.now());
+    }
+    if (startedAt === generation) snapshot = next;
+    return next;
+  })();
+  inflight = run;
+  // `finally` on its own would re-reject; the callers handle the rejection.
+  run.then(
+    () => { if (inflight === run) inflight = null; },
+    () => { if (inflight === run) inflight = null; },
+  );
+  return run;
+}
+
+/** Blocking read for Node callers (admin pages, route handlers). */
+async function loadSnapshot(): Promise<Snapshot> {
+  if (snapshot && ageOf(snapshot) < SNAPSHOT_TTL_MS) return snapshot;
+  return refreshSnapshot();
+}
+
+/** What the Edge middleware needs from the snapshot. */
+export type IncidentState = {
+  flagOverrides: ReadonlyMap<FlagKey, boolean>;
+  rateLimitMode: RateLimitMode;
+};
+
+/** Non-blocking read for the Edge middleware (stale-while-revalidate).
+ *
+ *  - fresh snapshot (younger than the edge TTL) → returned as is, no Redis call;
+ *  - stale snapshot → returned as is; one background refresh is started (or
+ *    joined) and handed to `waitUntil` so the isolate stays alive for it;
+ *  - no snapshot yet (brand-new isolate), or one older than
+ *    EDGE_MAX_STALE_MS (the isolate sat idle) → waits up to `coldWaitMs` for
+ *    the read, then answers with what it has: the old snapshot, or for a
+ *    brand-new isolate the default (no overrides, "normal") — the same
+ *    fail-open default a Redis error has always produced — while the read
+ *    finishes in the background.
+ *
+ * Never rejects. */
+export async function getIncidentStateNonBlocking(
+  options: { waitUntil?: (promise: Promise<unknown>) => void; coldWaitMs?: number } = {},
+): Promise<IncidentState> {
+  if (snapshot && ageOf(snapshot) < EDGE_SNAPSHOT_TTL_MS) return snapshot;
+  const settled = refreshSnapshot().catch((err: unknown) => {
+    console.error("[incidents] background snapshot refresh failed", err);
+    return null;
+  });
+  options.waitUntil?.(settled);
+  if (snapshot && ageOf(snapshot) <= EDGE_MAX_STALE_MS) return snapshot;
+
+  const previous = snapshot;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), options.coldWaitMs ?? COLD_SNAPSHOT_WAIT_MS);
+  });
+  const first = await Promise.race([settled, timedOut]);
+  clearTimeout(timer);
+  if (first) return first;
+  // Timed out. Park what we have (the old snapshot, or the default) dated as
+  // stale-but-recent, so the next requests on this isolate do not wait again
+  // while the read is running; the refresh replaces it as soon as Redis
+  // answers, or re-dates it when the read fails or times out.
+  if (snapshot === previous) {
+    snapshot = { ...(previous ?? emptySnapshot(0)), fetchedAt: Date.now() - EDGE_SNAPSHOT_TTL_MS };
+  }
+  return snapshot ?? emptySnapshot(0);
 }
 
 /** Force-refresh the in-process snapshot — called after a mutation so
  * the actor sees their own change immediately, instead of waiting for
  * the cache TTL to expire. */
 function invalidateSnapshot() {
+  generation += 1;
   snapshot = null;
+  inflight = null;
+}
+
+/** Test-only: inject a fake Redis (or `null` for the in-memory path) and drop
+ * the cached snapshot. `readTimeoutMs` overrides the refresh time limit
+ * (back to the default when omitted). */
+export function __setIncidentRedisForTests(fake: IncidentRedis | null, options: { readTimeoutMs?: number } = {}): void {
+  redis = fake;
+  readTimeoutMs = options.readTimeoutMs ?? SNAPSHOT_READ_TIMEOUT_MS;
+  invalidateSnapshot();
 }
 
 export async function getFlagOverride(flag: FlagKey): Promise<boolean | null> {
@@ -170,7 +329,10 @@ export async function getIncidentSnapshot(): Promise<{
   flagOverrides: Record<string, boolean>;
   rateLimitMode: RateLimitMode;
   redisConfigured: boolean;
+  /** Freshness window of the Node (route handler) readers. */
   snapshotTtlMs: number;
+  /** Freshness window of the Edge middleware's stale-while-revalidate read. */
+  edgeSnapshotTtlMs: number;
 }> {
   const s = await loadSnapshot();
   return {
@@ -178,6 +340,7 @@ export async function getIncidentSnapshot(): Promise<{
     rateLimitMode: s.rateLimitMode,
     redisConfigured: redis !== null,
     snapshotTtlMs: SNAPSHOT_TTL_MS,
+    edgeSnapshotTtlMs: EDGE_SNAPSHOT_TTL_MS,
   };
 }
 
@@ -293,8 +456,14 @@ function matchKillSwitch(matcher: FlagKillMatcher, pathname: string): boolean {
  * to refuse traffic with 503 + a structured payload. */
 export async function findKillSwitchForPath(pathname: string): Promise<FlagKey | null> {
   if (isKillSwitchExemptPath(pathname)) return null;
-  const s = await loadSnapshot();
-  for (const [flag, killed] of s.flagOverrides) {
+  return killSwitchForPath(await loadSnapshot(), pathname);
+}
+
+/** `findKillSwitchForPath` against an already-read state (the middleware's
+ * non-blocking snapshot). */
+export function killSwitchForPath(state: IncidentState, pathname: string): FlagKey | null {
+  if (isKillSwitchExemptPath(pathname)) return null;
+  for (const [flag, killed] of state.flagOverrides) {
     if (killed !== false) continue;
     const matcher = FLAG_KILL_PREFIXES[flag as FlagKey];
     if (!matcher) continue;

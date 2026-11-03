@@ -95,8 +95,8 @@ export default async function AdminIncidentsPage() {
           <CardTitle>Feature kill-switches</CardTitle>
           <CardDescription>
             Set a flag to &quot;off&quot; to refuse traffic for that surface with a 503. &quot;clear&quot; restores
-            the env-driven default. Snapshot TTL: {snapshot.snapshotTtlMs}ms — changes propagate
-            within that window.
+            the env-driven default. Changes reach API handlers within {snapshot.snapshotTtlMs}ms and the
+            edge middleware within roughly {snapshot.edgeSnapshotTtlMs}ms (its cache TTL, plus one Redis read).
           </CardDescription>
         </CardHeader>
         <CardContent>

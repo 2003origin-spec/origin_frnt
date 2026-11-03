@@ -1,30 +1,29 @@
 import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
+import type { NextFetchEvent, NextRequest } from "next/server";
 
 import { CSRF_COOKIE_NAME, isBearerOnlyRequest, REFRESH_COOKIE_NAME, verifyRequestAccessJwt } from "@/server/auth-jwt";
 import { checkRateLimit, mutationLimiter } from "@/lib/rate-limit";
 import { safeNext } from "@/lib/safe-next";
-import { findKillSwitchForPath } from "@/server/incidents";
+import { getIncidentStateNonBlocking, killSwitchForPath, type IncidentState } from "@/server/incidents";
 import { getApiRoutePolicy, getAppRoutePolicy, loginPathForTarget, normalizePathname, type RoutePolicy } from "@/server/route-policy";
 import { isBearerTokenAuthorized } from "@/server/service-auth";
 
 /** Authenticated surfaces whose mutations ride the shared mutation limiter
  * (and the incident rate-limit mode). The /admin/incidents kill-switch is NOT
- * tied to this list any more: `findKillSwitchForPath` runs for every API
- * request, every method, before the policy branches below. */
+ * tied to this list any more: the kill-switch runs for every API request,
+ * every method, before the policy branches below.
+ *
+ * /api/mobile/, /api/notes/ and /api/now/ are deliberately NOT here: their
+ * catch-all route handlers charge the same `u:<userId>` budget themselves
+ * (src/server/shared-mutation-limit.ts). This middleware runs in bom1, far
+ * from Upstash, and the check cost every app write a Mumbai → US round trip;
+ * the handlers run next to Redis. */
 const RATE_LIMITED_MUTATION_PREFIXES = [
   "/api/teacher/",
   "/api/admin/",
   "/api/enrollments/",
   "/api/cbt/",
-  // Origin Notes student writes (stars, mistake reports). V1/NOTES_PLAN.md §10.
-  "/api/notes/",
   "/api/contest/",
-  // Origin NOW. Plan: V1/ORIGIN_NOW_PLAN.md.
-  "/api/now/",
-  // Native app endpoints (V1/NATIVE_APP_API_PLAN.md). Only authenticated paths
-  // reach this limiter; /api/mobile/auth/* rate-limits in its handler.
-  "/api/mobile/",
 ];
 
 const REQUEST_ID_HEADER = "X-Request-Id";
@@ -175,7 +174,7 @@ function clientIdentifierFor(request: NextRequest, claims?: { sub?: string }): s
   return `ip:${ip || "anonymous"}`;
 }
 
-export async function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest, event?: NextFetchEvent) {
   const requestId = requestIdFor(request);
   const canonicalUrl = canonicalHostRedirectUrl(request.nextUrl);
   if (canonicalUrl) {
@@ -233,8 +232,15 @@ export async function middleware(request: NextRequest) {
   // `cbtModule` on the public /api/cbt-student surface could never fire, and
   // no GET was ever refused. FLAG_KILL_PREFIXES deliberately leaves
   // /api/internal/* and the admin management surfaces out of each matcher.
+  //
+  // The incident snapshot is read stale-while-revalidate: a cached snapshot
+  // answers at once and a refresh (at most one per isolate) runs in the
+  // background under `waitUntil`, so a kill or lockdown reaches this isolate
+  // within the snapshot TTL instead of every request waiting on Upstash.
+  let incident: IncidentState | null = null;
   if (isApi) {
-    const killed = await findKillSwitchForPath(pathname);
+    incident = await getIncidentStateNonBlocking({ waitUntil: event ? (p) => event.waitUntil(p) : undefined });
+    const killed = killSwitchForPath(incident, pathname);
     if (killed) {
       return killSwitchResponse(killed, requestId);
     }
@@ -310,7 +316,9 @@ export async function middleware(request: NextRequest) {
   }
 
   if (isApi && isRateLimitedMutationPath(pathname, request.method)) {
-    const limited = await checkRateLimit(mutationLimiter, clientIdentifierFor(request, claims));
+    const limited = await checkRateLimit(mutationLimiter, clientIdentifierFor(request, claims), {
+      incidentMode: incident?.rateLimitMode,
+    });
     if (limited) {
       return withRequestId(limited as unknown as NextResponse, requestId);
     }

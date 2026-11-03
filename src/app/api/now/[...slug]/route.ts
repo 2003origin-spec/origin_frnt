@@ -4,6 +4,7 @@ import { z } from "zod";
 import { requireFeatureEnabled } from "@/lib/feature-flags";
 import { requireFeatureEnabledRuntime } from "@/server/feature-flags-runtime";
 import { checkRateLimit, mutationLimiter } from "@/lib/rate-limit";
+import { checkSharedMutationLimit } from "@/server/shared-mutation-limit";
 import { parseAppVersionFromUserAgent } from "@/native/is-native-app";
 import { requireAuth } from "@/server/authz";
 import { getSlugSegments, parseJsonBody } from "@/server/http";
@@ -524,6 +525,10 @@ async function dispatch(method: Method, request: NextRequest, context: RouteCont
     if (!found) throw new NowError(404, "not_found", "Not found.");
     if (found.isPublic) return await found.handler(request, "", found.params);
     const auth = await requireAuth(request);
+    // The shared per-user write budget, charged here rather than at the edge
+    // (src/server/shared-mutation-limit.ts).
+    const limited = await checkSharedMutationLimit(request, auth.userId);
+    if (limited) return limited;
     return await found.handler(request, auth.userId, found.params);
   } catch (error) {
     return handleNowError(error);
