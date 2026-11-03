@@ -19,17 +19,23 @@ type G = Record<string, unknown>;
 const g = globalThis as unknown as G;
 
 export type FakePoolOptions = {
-  rowsFor?: (sql: string) => unknown[] | undefined;
+  rowsFor?: (sql: string, values?: unknown[]) => unknown[] | undefined;
   failFor?: (sql: string) => boolean;
+  /** Sees every statement with its bind values (the returned log has text only). */
+  onQuery?: (sql: string, values?: unknown[]) => void;
+  /** Awaited before a statement answers: lets a test hold a load open. */
+  holdFor?: (sql: string) => Promise<void> | undefined;
 };
 
 export function installFakeUserPool(options: FakePoolOptions = {}): string[] {
   const sql: string[] = [];
-  const query = async (text: string) => {
+  const query = async (text: string, values?: unknown[]) => {
     const normalized = text.replace(/\s+/g, " ").trim();
     sql.push(normalized);
+    options.onQuery?.(normalized, values);
+    await options.holdFor?.(normalized);
     if (options.failFor?.(normalized)) throw new Error(`fake pool: forced failure for ${normalized}`);
-    const rows = options.rowsFor?.(normalized) ?? [];
+    const rows = options.rowsFor?.(normalized, values) ?? [];
     return { rows, rowCount: rows.length };
   };
   const url = "postgres://fake:fake@127.0.0.1:1/fake_scoped_writes";

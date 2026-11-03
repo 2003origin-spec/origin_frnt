@@ -1,7 +1,7 @@
 // Legacy store implementation kept behind the public server/store barrel.
 import { randomUUID } from "node:crypto";
 import bcrypt from "bcryptjs";
-import { Mutex } from "async-mutex";
+import { after } from "next/server";
 
 import type { AuthClientKind } from "@/server/auth-client-kind";
 import type { SoundPreferences } from "@/lib/sound-preferences";
@@ -19,12 +19,17 @@ import { ncertBooksData } from "@/data/ncertBooks";
 import { isUserPostgresConfigured } from "@/server/user-postgres";
 import {
   hydrateStoreFromPostgres,
+  hydrateUserStoreFromPostgres,
+  idOfCollectionRow,
   persistStoreToPostgres,
   persistUserCollections,
+  userIdOfCollectionRow,
   type MutableCollectionKey,
   type ScopedReplaceableCollection,
   type ScopedRowDeletion,
+  type UserCollectionLoad,
 } from "@/server/store-postgres";
+import { KeyedMutex, SharedExclusiveGate } from "@/server/store-locks";
 import { withPointAwardClaimRollback } from "@/server/point-award-scope";
 import { getUserPostgresPool } from "@/server/user-postgres";
 
@@ -1145,7 +1150,27 @@ let cachedStore: AppStore | null = null;
 let cachedSeedStore: AppStore | null = null;
 let lastHydratedAt = 0;
 const CACHE_TTL_MS = 5 * 60 * 1000; // Cache for 5 minutes (300000ms) to ensure lightning-fast interactions
+// Past the TTL, a snapshot younger than this is still served at once while one
+// background hydration replaces it (stale-while-revalidate), so only a cold
+// instance, or one idle for longer than this, waits for the whole-store load.
+const MAX_STALE_MS = 2 * CACHE_TTL_MS;
 let activeHydrationPromise: Promise<AppStore> | null = null;
+
+/**
+ * One hydration in flight. A user-scoped write that commits while it runs
+ * queues its cache merge here, and the hydration replays the merges onto its
+ * result: its reads may have started before that commit, and caching it as-is
+ * would put the write's old rows back. A whole-store write, an invalidation or
+ * a later-started hydration that already cached marks it superseded instead,
+ * and it then is not cached at all.
+ */
+type HydrationWatch = { seq: number; superseded: boolean; merges: Array<(store: AppStore) => AppStore> };
+const hydrationsInFlight = new Set<HydrationWatch>();
+let hydrationSeq = 0;
+
+function supersedeHydrationsInFlight(): void {
+  for (const watch of hydrationsInFlight) watch.superseded = true;
+}
 
 function getSeedStore(): AppStore {
   if (!cachedSeedStore) {
@@ -1173,11 +1198,70 @@ export function readStore(): AppStore {
 export function invalidateStoreCache(): void {
   cachedStore = null;
   lastHydratedAt = 0;
+  supersedeHydrationsInFlight();
+}
+
+function startHydration(): Promise<AppStore> {
+  const watch: HydrationWatch = { seq: ++hydrationSeq, superseded: false, merges: [] };
+  hydrationsInFlight.add(watch);
+  const promise = (async () => {
+    try {
+      const seed = getSeedStore();
+      let store = await hydrateStoreFromPostgres(seed);
+      if (watch.superseded) return store;
+      try {
+        for (const merge of watch.merges) store = merge(store);
+      } catch (error) {
+        console.error("[store] replaying user writes onto the hydrated store failed; not caching it", error);
+        return store;
+      }
+      cachedStore = store;
+      lastHydratedAt = Date.now();
+      for (const other of hydrationsInFlight) {
+        if (other.seq < watch.seq) other.superseded = true;
+      }
+      return store;
+    } finally {
+      hydrationsInFlight.delete(watch);
+    }
+  })();
+  activeHydrationPromise = promise;
+  // Cleared asynchronously, so always after the assignment above. Only this
+  // hydration's own slot: a forced hydration may have replaced it meanwhile.
+  promise.then(
+    () => {
+      if (activeHydrationPromise === promise) activeHydrationPromise = null;
+    },
+    () => {
+      if (activeHydrationPromise === promise) activeHydrationPromise = null;
+    },
+  );
+  return promise;
+}
+
+/** Keeps a background hydration alive past the response where the platform allows. */
+function refreshInBackground(): void {
+  const promise = startHydration();
+  // Swallowed here: the next request after a failure simply tries again.
+  const settled = promise.then(
+    () => undefined,
+    (error) => console.error("[store] background store refresh failed", error instanceof Error ? error.message : error),
+  );
+  try {
+    after(settled);
+  } catch {
+    // Outside a request scope (scripts, tests): the promise just runs on.
+  }
 }
 
 export async function readStoreAsync(forceFresh = false): Promise<AppStore> {
-  const now = Date.now();
-  if (cachedStore && !forceFresh && (now - lastHydratedAt < CACHE_TTL_MS)) {
+  const age = Date.now() - lastHydratedAt;
+  if (cachedStore && !forceFresh && age < CACHE_TTL_MS) {
+    return cachedStore;
+  }
+
+  if (cachedStore && !forceFresh && age < MAX_STALE_MS) {
+    if (!activeHydrationPromise) refreshInBackground();
     return cachedStore;
   }
 
@@ -1185,22 +1269,13 @@ export async function readStoreAsync(forceFresh = false): Promise<AppStore> {
     return activeHydrationPromise;
   }
 
-  activeHydrationPromise = (async () => {
-    try {
-      const seed = getSeedStore();
-      const store = await hydrateStoreFromPostgres(seed);
-      cachedStore = store;
-      lastHydratedAt = Date.now();
-      return store;
-    } finally {
-      activeHydrationPromise = null;
-    }
-  })();
-
-  return activeHydrationPromise;
+  return startHydration();
 }
 
-const storeMutex = new Mutex();
+// Whole-store paths hold this exclusively (it replaced a plain process-wide
+// mutex); user-scoped writes hold it shared. See src/server/store-locks.ts.
+const storeGate = new SharedExclusiveGate();
+const userStoreMutex = new KeyedMutex();
 
 function isHostedProduction(): boolean {
   return (
@@ -1248,7 +1323,7 @@ export async function withStoreAsync<T>(mutate: (store: AppStore) => Promise<T> 
       throw new WholeStoreRewriteForbiddenError();
     }
   }
-  return storeMutex.runExclusive(() =>
+  return storeGate.runExclusive(() =>
     // A point-award claim won inside mutate is released if mutate or the
     // persist throws, so the award can be earned again (point-award-scope.ts).
     withPointAwardClaimRollback(async () => {
@@ -1257,6 +1332,7 @@ export async function withStoreAsync<T>(mutate: (store: AppStore) => Promise<T> 
       await persistStoreToPostgres(store);
       cachedStore = store;
       lastHydratedAt = Date.now();
+      supersedeHydrationsInFlight();
       return result;
     }, getUserPostgresPool),
   );
@@ -1390,6 +1466,25 @@ export const PRACTICE_SUBMIT_PERSIST_COLLECTIONS: MutableCollectionKey[] = [
   "pointLogs",
 ];
 
+/**
+ * What a practice submit of `questionId` reads, for withUserStoreScoped: the
+ * student's attempts at THIS question (attemptedBefore / solvedBefore), their
+ * point logs referencing it (awardPoints' once-per-question check), and their
+ * whole subject-rank, streak, daily-activity and score rows. Exactly the
+ * PRACTICE_SUBMIT_PERSIST_COLLECTIONS, so the persist never writes a
+ * collection it did not load.
+ */
+export function practiceSubmitLoads(questionId: string): UserStoreLoads {
+  return {
+    practiceAttempts: { where: { field: "questionId", equals: questionId } },
+    pointLogs: { where: { field: "referenceId", equals: questionId } },
+    subjectRanks: true,
+    streaks: true,
+    dailyActivities: true,
+    userScores: true,
+  };
+}
+
 // Like `withStoreAsync`, but instead of rewriting the entire store back to
 // Postgres it persists only the rows touched for a single user (or nothing, when
 // `persist` is null). Use this for per-user hot paths whose durable records are
@@ -1404,7 +1499,7 @@ export async function withStoreAsyncScoped<T>(
   mutate: (store: AppStore) => Promise<T> | T,
   persist: ScopedStorePersist | null | ((result: T) => ScopedStorePersist | null),
 ): Promise<T> {
-  return storeMutex.runExclusive(() =>
+  return storeGate.runExclusive(() =>
     withPointAwardClaimRollback(async () => {
       const store = await readStoreAsync(true);
       const result = await mutate(store);
@@ -1419,9 +1514,255 @@ export async function withStoreAsyncScoped<T>(
       }
       cachedStore = store;
       lastHydratedAt = Date.now();
+      supersedeHydrationsInFlight();
       return result;
     }, getUserPostgresPool),
   );
+}
+
+/** One user's collections to load for a user-scoped store call. */
+export type UserStoreLoads = Partial<Record<MutableCollectionKey, UserCollectionLoad | true>>;
+
+function isCollectionList(value: readonly MutableCollectionKey[] | UserStoreLoads): value is readonly MutableCollectionKey[] {
+  return Array.isArray(value);
+}
+
+function loadsOf(collections: readonly MutableCollectionKey[]): UserStoreLoads {
+  return Object.fromEntries(collections.map((key) => [key, true])) as UserStoreLoads;
+}
+
+/**
+ * Throws when a plan would write something the user-scoped load did not read:
+ * another user, a collection that was not loaded (its rows are empty in the
+ * scoped store, so a lazily-created default could overwrite the real row) or
+ * tasks. A streak write also needs the daily activities, because
+ * updateWeeklyData rebuilds the streak's week from them. Exported for tests.
+ */
+export function assertPlanFitsUserStore(
+  plan: ScopedStorePersist,
+  userId: string,
+  loaded: readonly MutableCollectionKey[],
+): void {
+  if (plan.userId !== userId) {
+    throw new Error("A user-scoped store can only persist its own user.");
+  }
+  const written = [...plan.collections, ...(plan.replaceUserRows ?? [])];
+  const missing = written.filter((key) => !loaded.includes(key));
+  if (missing.length > 0) {
+    throw new Error(`A user-scoped store cannot persist collections it did not load: ${missing.join(", ")}.`);
+  }
+  if (plan.persistTasks) {
+    throw new Error("A user-scoped store does not load tasks.");
+  }
+  if (written.includes("streaks") && !loaded.includes("dailyActivities")) {
+    throw new Error("A user-scoped streak write must also load dailyActivities.");
+  }
+}
+
+/**
+ * After a committed user-scoped write, swaps the user's fresh rows into the
+ * whole-store cache (a NEW store object, so per-store memos such as the global
+ * ranking are rebuilt). The old whole-store write did `cachedStore = store`,
+ * which kept cached readers on this instance in step with the write; this keeps
+ * that, without ever caching the one-user store itself. Other users' rows and
+ * the cache age are untouched. Exported for tests.
+ */
+export function mergeUserSliceIntoStore(
+  target: AppStore,
+  scoped: AppStore,
+  userId: string,
+  plan: ScopedStorePersist,
+): AppStore {
+  const next: AppStore = { ...target };
+  const removed = new Map<string, Set<string>>();
+  for (const deletion of plan.deletions ?? []) {
+    if (!removed.has(deletion.collection)) removed.set(deletion.collection, new Set());
+    removed.get(deletion.collection)!.add(deletion.id);
+  }
+
+  const keys = new Set<MutableCollectionKey>([...plan.collections, ...(plan.replaceUserRows ?? [])]);
+  for (const key of keys) {
+    type Row = AppStore[MutableCollectionKey][number];
+    const fresh = scoped[key] as Row[];
+    const freshById = new Map(fresh.map((row) => [idOfCollectionRow(key, row), row]));
+    const current = target[key] as Row[];
+    const seen = new Set<string>();
+    const merged: Row[] = [];
+    const replacedWholesale = (plan.replaceUserRows ?? []).includes(key as ScopedReplaceableCollection);
+    for (const row of current) {
+      if (userIdOfCollectionRow(key, row) !== userId) {
+        merged.push(row);
+        continue;
+      }
+      const id = idOfCollectionRow(key, row);
+      const replacement = freshById.get(id);
+      if (replacement) {
+        merged.push(replacement);
+        seen.add(id);
+      } else if (!replacedWholesale) {
+        // Not loaded (a trimmed load) or written elsewhere: keep it. Only a
+        // replaced collection drops the user's old rows.
+        merged.push(row);
+      }
+    }
+    // New rows go where the handler put them: rows before the first row the
+    // cache already had were unshifted (newest first), the rest were pushed.
+    const firstKnown = fresh.findIndex((row) => seen.has(idOfCollectionRow(key, row)));
+    const front: Row[] = [];
+    const back: Row[] = [];
+    fresh.forEach((row, index) => {
+      if (seen.has(idOfCollectionRow(key, row))) return;
+      if (firstKnown === -1 || index < firstKnown) front.push(row);
+      else back.push(row);
+    });
+    (next[key] as Row[]) = [...front, ...merged, ...back];
+  }
+
+  for (const [collection, ids] of removed) {
+    if (collection === "tasks") {
+      next.tasks = next.tasks.filter((task) => !(task.userId === userId && ids.has(task.id)));
+      continue;
+    }
+    const key = collection as MutableCollectionKey;
+    type Row = AppStore[MutableCollectionKey][number];
+    (next[key] as Row[]) = (next[key] as Row[]).filter(
+      (row) => !(userIdOfCollectionRow(key, row) === userId && ids.has(idOfCollectionRow(key, row))),
+    );
+  }
+
+  const freshUser = scoped.users.find((entry) => entry.id === userId);
+  if (freshUser) {
+    const index = target.users.findIndex((entry) => entry.id === userId);
+    next.users = index === -1 ? [...target.users, freshUser] : target.users.map((entry, i) => (i === index ? freshUser : entry));
+  }
+  return next;
+}
+
+/**
+ * Per-user hot-path version of withStoreAsyncScoped. Instead of hydrating
+ * EVERY user's rows of every app.* table under the process-wide lock, it loads
+ * only `userId`'s row and their rows of `collections` (parallel indexed reads),
+ * runs `mutate`, and persists the plan with only the rows that changed.
+ *
+ * `mutate` sees a store with ONE user: use it only for handlers that read the
+ * acting user's own rows (no ranks, leaderboards or other users). The plan may
+ * only name `userId` and loaded collections (assertPlanFitsUserStore).
+ * `collections` is a list (all of the user's rows of each) or per-collection
+ * loads; trim one only as UserCollectionLoad allows.
+ *
+ * Locking: same-user calls on this instance run one at a time, and none of
+ * them overlaps a whole-store write here; other users run in parallel.
+ * Without user Postgres (dev seed store) this is exactly withStoreAsyncScoped.
+ */
+export async function withUserStoreScoped<T>(
+  userId: string,
+  collections: readonly MutableCollectionKey[] | UserStoreLoads,
+  mutate: (store: AppStore) => Promise<T> | T,
+  persist: ScopedStorePersist | null | ((result: T) => ScopedStorePersist | null),
+): Promise<T> {
+  if (!isUserPostgresConfigured()) {
+    return withStoreAsyncScoped(mutate, persist);
+  }
+  const loads = isCollectionList(collections) ? loadsOf(collections) : collections;
+  const loaded = Object.keys(loads) as MutableCollectionKey[];
+  return userStoreMutex.runExclusive(userId, () =>
+    storeGate.runShared(() =>
+      withPointAwardClaimRollback(async () => {
+        const { store, baseline } = await hydrateUserStoreFromPostgres(getSeedStore(), userId, loads);
+        const result = await mutate(store);
+        const plan = typeof persist === "function" ? persist(result) : persist;
+        if (plan) {
+          assertPlanFitsUserStore(plan, userId, loaded);
+          await persistUserCollections(store, plan.userId, plan.collections, {
+            persistUser: plan.persistUser,
+            deletions: plan.deletions,
+            replaceUserRows: plan.replaceUserRows,
+            baseline,
+          });
+          const merge = (target: AppStore) => mergeUserSliceIntoStore(target, store, userId, plan);
+          for (const watch of hydrationsInFlight) watch.merges.push(merge);
+          if (cachedStore) {
+            // The write is committed: a failure here must not fail the request
+            // (that would release point-award claims for points already saved).
+            try {
+              cachedStore = merge(cachedStore);
+            } catch (error) {
+              console.error("[store] user slice cache merge failed; dropping the cache", error);
+              invalidateStoreCache();
+            }
+          }
+        }
+        return result;
+      }, getUserPostgresPool),
+    ),
+  );
+}
+
+/**
+ * Read-only per-user load: `userId`'s row and their rows of `loads` (each may
+ * be trimmed with `limit` / `createdSince`), fresh from Postgres, no lock and
+ * no write. Same one-user caveat as withUserStoreScoped. Without user Postgres
+ * it is withStoreAsyncScoped(read, null), as the read handlers used before.
+ */
+export async function readUserStoreScoped<T>(
+  userId: string,
+  loads: UserStoreLoads,
+  read: (store: AppStore) => Promise<T> | T,
+): Promise<T> {
+  if (!isUserPostgresConfigured()) {
+    return withStoreAsyncScoped(read, null);
+  }
+  const { store } = await hydrateUserStoreFromPostgres(getSeedStore(), userId, loads);
+  return read(store);
+}
+
+/**
+ * Folds a fresh `origin_users` row into a cached snapshot in place (the
+ * snapshot's copy is updated, or the row is added for an account the snapshot
+ * predates), so code that looks the user up in `store.users` finds them. The
+ * store object stays the same, so its per-store memos survive. Returns the
+ * snapshot's copy.
+ */
+export function foldUserIntoStore(store: AppStore, fresh: StoredUser): StoredUser {
+  const existing = store.users.find((entry) => entry.id === fresh.id);
+  if (existing) {
+    Object.assign(existing, fresh);
+    return existing;
+  }
+  store.users.push(fresh);
+  return fresh;
+}
+
+/** The caller's own practice attempts: their solved / attempted status. */
+export const OWN_PRACTICE_PROGRESS_LOADS: UserStoreLoads = { practiceAttempts: true };
+/** The caller's own attempts and streak: their OGCode stats card. */
+export const OWN_OGCODE_STATS_LOADS: UserStoreLoads = { practiceAttempts: true, streaks: true };
+
+/**
+ * The cached snapshot (readStoreAsync) with `userId`'s own row and their rows
+ * of `loads` read fresh from Postgres: for read handlers that show the caller
+ * their own progress from the snapshot (solved / unsolved status, user stats).
+ * The snapshot can lag a write this user made through another instance by up
+ * to the TTL; this indexed read closes that for the caller. The overlay is a
+ * per-request copy and is never cached. If the fresh read fails, the plain
+ * snapshot is returned. Without user Postgres it is the snapshot itself.
+ */
+export async function readStoreWithFreshUserRows(userId: string, loads: UserStoreLoads): Promise<AppStore> {
+  if (!isUserPostgresConfigured()) {
+    return readStoreAsync();
+  }
+  const [snapshot, fresh] = await Promise.all([
+    readStoreAsync(),
+    hydrateUserStoreFromPostgres(getSeedStore(), userId, loads).catch((error: unknown) => {
+      console.error("[store] fresh user rows for a snapshot read failed", error instanceof Error ? error.message : error);
+      return null;
+    }),
+  ]);
+  if (!fresh) return snapshot;
+  return mergeUserSliceIntoStore(snapshot, fresh.store, userId, {
+    userId,
+    collections: Object.keys(loads) as MutableCollectionKey[],
+  });
 }
 
 export function resetStore(): AppStore {

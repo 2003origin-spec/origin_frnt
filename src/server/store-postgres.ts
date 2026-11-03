@@ -1,6 +1,6 @@
 import type { PoolClient } from "pg";
 
-import { dbListAuthSessions, dbListUsers, ensureUserSchema } from "@/server/db-users";
+import { dbFindUserById, dbListAuthSessions, dbListUsers, ensureUserSchema } from "@/server/db-users";
 import { getUserPostgresPool, isUserPostgresConfigured } from "@/server/user-postgres";
 import type {
   AppStore,
@@ -26,7 +26,13 @@ import type {
   StoredUserScore,
   StoredAssignment,
 } from "@/server/store";
-import { lockSchemaDdl } from "@/server/schema-lock";
+import {
+  isRuntimeDdlApplied,
+  isRuntimeDdlAppliedInTransaction,
+  lockSchemaDdl,
+  recordRuntimeDdlApplied,
+  runtimeDdlVersionId,
+} from "@/server/schema-lock";
 
 export type MutableCollectionKey =
   | "streaks"
@@ -262,43 +268,37 @@ async function applyAppStoreMigration(client: PoolClient): Promise<void> {
   );
 }
 
-export async function ensureAppStoreSchema(): Promise<void> {
-  if (!isUserPostgresConfigured()) return;
-  if (globalThis.__originAppStoreSchemaEnsured) return;
-  if (!globalThis.__originAppStoreSchemaPromise) {
-    globalThis.__originAppStoreSchemaPromise = (async () => {
-      await ensureUserSchema();
-      const client = await pool().connect();
-      try {
-        await client.query("BEGIN");
-        await lockSchemaDdl(client);
-        await client.query(`
+/**
+ * ensureAppStoreSchema's DDL as ONE multi-statement query (it was ~40
+ * sequential round trips). Built from COLLECTION_SPECS, so adding a collection
+ * changes the text and therefore the version id below.
+ */
+export function appStoreSchemaDdl(): string {
+  const collections = COLLECTION_SPECS.map(
+    (spec) => `
+          CREATE TABLE IF NOT EXISTS app.${spec.table} (
+            id TEXT PRIMARY KEY,
+            user_id TEXT REFERENCES origin_users(id) ON DELETE CASCADE,
+            activity_date DATE,
+            subject TEXT,
+            completed BOOLEAN,
+            data JSONB NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          );
+          CREATE INDEX IF NOT EXISTS idx_${spec.table}_user_created ON app.${spec.table} (user_id, created_at DESC);`,
+  );
+  return [
+    `
           CREATE SCHEMA IF NOT EXISTS app;
 
           CREATE TABLE IF NOT EXISTS app.migrations (
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
             applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-          );
-        `);
-
-        for (const spec of COLLECTION_SPECS) {
-          await client.query(`
-            CREATE TABLE IF NOT EXISTS app.${spec.table} (
-              id TEXT PRIMARY KEY,
-              user_id TEXT REFERENCES origin_users(id) ON DELETE CASCADE,
-              activity_date DATE,
-              subject TEXT,
-              completed BOOLEAN,
-              data JSONB NOT NULL,
-              created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-              updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-            );
-          `);
-          await client.query(`CREATE INDEX IF NOT EXISTS idx_${spec.table}_user_created ON app.${spec.table} (user_id, created_at DESC)`);
-        }
-
-        await client.query(`
+          );`,
+    ...collections,
+    `
           CREATE TABLE IF NOT EXISTS app.tasks (
             id TEXT PRIMARY KEY,
             user_id TEXT NOT NULL REFERENCES origin_users(id) ON DELETE CASCADE,
@@ -316,10 +316,42 @@ export async function ensureAppStoreSchema(): Promise<void> {
           CREATE INDEX IF NOT EXISTS idx_daily_activities_user_date ON app.daily_activities (user_id, activity_date);
           CREATE INDEX IF NOT EXISTS idx_daily_subject_activities_user_date ON app.daily_subject_activities (user_id, activity_date);
           CREATE INDEX IF NOT EXISTS idx_pomodoro_sessions_user_date ON app.pomodoro_sessions (user_id, activity_date);
-          CREATE UNIQUE INDEX IF NOT EXISTS idx_subject_ranks_user_subject ON app.subject_ranks (user_id, subject);
-        `);
+          CREATE UNIQUE INDEX IF NOT EXISTS idx_subject_ranks_user_subject ON app.subject_ranks (user_id, subject);`,
+  ].join("\n");
+}
 
-        await applyAppStoreMigration(client);
+let appStoreSchemaVersion: string | undefined;
+
+/** Recorded in app.migrations once appStoreSchemaDdl() has run (see runtimeDdlVersionId). */
+export function appStoreSchemaVersionId(): string {
+  appStoreSchemaVersion ??= runtimeDdlVersionId("app_store", appStoreSchemaDdl());
+  return appStoreSchemaVersion;
+}
+
+export async function ensureAppStoreSchema(): Promise<void> {
+  if (!isUserPostgresConfigured()) return;
+  if (globalThis.__originAppStoreSchemaEnsured) return;
+  if (!globalThis.__originAppStoreSchemaPromise) {
+    globalThis.__originAppStoreSchemaPromise = (async () => {
+      await ensureUserSchema();
+      const version = appStoreSchemaVersionId();
+      // Up-to-date database: one lock-free SELECT instead of the locked DDL
+      // transaction (CREATE INDEX IF NOT EXISTS takes a SHARE lock on each table
+      // even when the index exists, blocking writes from other instances).
+      if (await isRuntimeDdlApplied(pool(), version)) {
+        globalThis.__originAppStoreSchemaEnsured = true;
+        return;
+      }
+      const client = await pool().connect();
+      try {
+        await client.query("BEGIN");
+        await lockSchemaDdl(client);
+        // Another instance may have applied it while we waited for the lock.
+        if (!(await isRuntimeDdlAppliedInTransaction(client, version))) {
+          await client.query(appStoreSchemaDdl());
+          await applyAppStoreMigration(client);
+          await recordRuntimeDdlApplied(client, version, "app store runtime schema");
+        }
         await client.query("COMMIT");
         globalThis.__originAppStoreSchemaEnsured = true;
       } catch (error) {
@@ -541,6 +573,189 @@ async function loadCollection<T extends MutableCollectionValue>(spec: Collection
   return result.rows.map((row) => row.data as T);
 }
 
+/**
+ * How to load ONE user's rows of a collection (default: all of them). Trim a
+ * load only when the caller provably reads no other row of that collection:
+ * e.g. a practice submit reads the attempts and point logs of the ONE question
+ * it grades, but awardPoints' once-per-reference check needs every log with
+ * that reference, so a `limit` there would be wrong.
+ */
+export type UserCollectionLoad = {
+  /** Newest N rows only (same `created_at DESC` order as the full hydration). */
+  limit?: number;
+  /** Only rows with `created_at >= createdSince` (ISO timestamp). */
+  createdSince?: string;
+  /** Only rows whose top-level JSON field `field` equals `equals` (`data->>field`). */
+  where?: { field: string; equals: string };
+};
+
+/**
+ * `SELECT data FROM app.<table> WHERE user_id = $1 … ORDER BY created_at DESC`:
+ * one user's rows, in the same order the full hydration returns them, served
+ * by the `idx_<table>_user_created` index. Exported for the unit test.
+ */
+export function buildUserCollectionQuery(
+  key: MutableCollectionKey,
+  userId: string,
+  load: UserCollectionLoad = {},
+): { text: string; values: unknown[] } {
+  const spec = COLLECTION_SPECS.find((entry) => entry.key === key);
+  if (!spec) throw new Error(`Unknown collection ${key}`);
+  if (!userId) throw new Error("A user-scoped load requires a userId");
+  const values: unknown[] = [userId];
+  let text = `SELECT data FROM app.${spec.table} WHERE user_id = $1`;
+  if (load.createdSince) {
+    values.push(load.createdSince);
+    text += ` AND created_at >= $${values.length}`;
+  }
+  if (load.where) {
+    values.push(load.where.field, load.where.equals);
+    text += ` AND data->>($${values.length - 1}::text) = $${values.length}`;
+  }
+  text += " ORDER BY created_at DESC";
+  if (load.limit !== undefined) {
+    values.push(Math.max(0, Math.floor(load.limit)));
+    text += ` LIMIT $${values.length}`;
+  }
+  return { text, values };
+}
+
+/**
+ * Each loaded row's serialized form, keyed by collection then row id. A scoped
+ * persist given this skips the rows that are byte-for-byte unchanged since the
+ * load, so a deck answer writes the new attempt and the touched rows, not the
+ * student's whole history (and never writes an unchanged, possibly outdated
+ * copy over a row another instance updated in the meantime).
+ */
+export type UserStoreBaseline = Map<MutableCollectionKey, Map<string, string>>;
+
+function serializeCollectionRow<T extends MutableCollectionValue>(item: T): string {
+  return JSON.stringify(normalizeJson(item));
+}
+
+export type UserScopedStoreLoad = {
+  store: AppStore;
+  baseline: UserStoreBaseline;
+  /** Whether origin_users had the row (false: seed user or no such user). */
+  userFound: boolean;
+};
+
+/**
+ * Loads a store holding ONE user: their `origin_users` row and their rows of
+ * `loads` only, read in parallel by indexed `WHERE user_id = $1` queries. Every
+ * other collection is EMPTY, and there are no other users and no auth
+ * sessions, so this store must only reach code that reads the acting user's own
+ * rows — never ranks, leaderboards or another user's data — and must never be
+ * cached as the whole store.
+ *
+ * `seed` supplies the static content (questions, books, tests) exactly as the
+ * full hydration does. One difference from the full hydration: a table that is
+ * empty for EVERY user does not fall back to the seed rows (only a fresh dev
+ * database has such tables, and only the seed demo users own seed rows).
+ */
+export async function hydrateUserStoreFromPostgres(
+  seed: AppStore,
+  userId: string,
+  loads: Partial<Record<MutableCollectionKey, UserCollectionLoad | true>>,
+): Promise<UserScopedStoreLoad> {
+  if (!userId) throw new Error("hydrateUserStoreFromPostgres requires a userId");
+  await ensureAppStoreSchema();
+
+  const specs = COLLECTION_SPECS.filter((spec) => loads[spec.key] !== undefined);
+  const [user, ...collectionRows] = await Promise.all([
+    dbFindUserById(userId),
+    ...specs.map(async (spec) => {
+      const load = loads[spec.key];
+      const statement = buildUserCollectionQuery(spec.key, userId, load === true ? {} : load);
+      const result = await pool().query(statement.text, statement.values);
+      return result.rows.map((row) => row.data as MutableCollectionValue);
+    }),
+  ]);
+
+  const store = seed;
+  const seedUser = store.users.find((entry) => entry.id === userId);
+  store.users = user ? [user as StoredUser] : seedUser ? [seedUser] : [];
+  store.authSessions = [];
+  store.tasks = [];
+  const baseline: UserStoreBaseline = new Map();
+  for (const spec of COLLECTION_SPECS) {
+    (store[spec.key] as MutableCollectionValue[]) = [];
+  }
+  specs.forEach((spec, index) => {
+    const rows = collectionRows[index] as MutableCollectionValue[];
+    (store[spec.key] as MutableCollectionValue[]) = rows;
+    baseline.set(spec.key, new Map(rows.map((row) => [spec.idOf(row), serializeCollectionRow(row)])));
+  });
+
+  return { store, baseline, userFound: Boolean(user) };
+}
+
+/** The user a collection row belongs to (for the cache merge in store.ts). */
+export function userIdOfCollectionRow(key: MutableCollectionKey, item: MutableCollectionValue): string | null {
+  const spec = COLLECTION_SPECS.find((entry) => entry.key === key);
+  if (!spec) throw new Error(`Unknown collection ${key}`);
+  return spec.userIdOf(item);
+}
+
+/** A row's id as the scoped persist keys it (for the cache merge in store.ts). */
+export function idOfCollectionRow(key: MutableCollectionKey, item: MutableCollectionValue): string {
+  const spec = COLLECTION_SPECS.find((entry) => entry.key === key);
+  if (!spec) throw new Error(`Unknown collection ${key}`);
+  return spec.idOf(item);
+}
+
+/**
+ * The acting user's rank by distinct correctly-solved practice questions, the
+ * same ranking getGlobalSolvedRanking builds over the whole hydrated store:
+ * more distinct solved questions rank higher, and on a tie the user whose
+ * latest correct attempt is newer ranks higher (the hydrated store lists
+ * attempts `created_at DESC`, and the ranking keeps first-seen order on ties).
+ * Null when the user has solved nothing.
+ */
+export const GLOBAL_SOLVED_RANK_SQL = `
+WITH solved AS (
+  SELECT user_id,
+         COUNT(DISTINCT data->>'questionId') AS solved,
+         MAX(created_at) AS last_solved_at
+    FROM app.practice_attempts
+   WHERE data->>'isCorrect' = 'true'
+   GROUP BY user_id
+)
+SELECT me.solved::int AS solved,
+       1 + (
+         SELECT COUNT(*)::int FROM solved other
+          WHERE other.solved > me.solved
+             OR (other.solved = me.solved AND other.last_solved_at > me.last_solved_at)
+       ) AS rank
+  FROM solved me
+ WHERE me.user_id = $1
+`;
+
+export async function dbGlobalSolvedRank(userId: string): Promise<{ solved: number; rank: number } | null> {
+  await ensureAppStoreSchema();
+  const result = await pool().query(GLOBAL_SOLVED_RANK_SQL, [userId]);
+  const row = result.rows[0];
+  if (!row) return null;
+  const solved = Number(row.solved);
+  const rank = Number(row.rank);
+  if (!Number.isFinite(solved) || solved <= 0 || !Number.isFinite(rank)) return null;
+  return { solved, rank };
+}
+
+/**
+ * True when the user already has a `daily_activities` row for `date` (an IST
+ * day key). Lets the 60-second time ping skip loading the point log, scores and
+ * streak on every call but the first of the day.
+ */
+export async function dbHasDailyActivity(userId: string, date: string): Promise<boolean> {
+  await ensureAppStoreSchema();
+  const result = await pool().query(
+    "SELECT 1 FROM app.daily_activities WHERE user_id = $1 AND activity_date = $2 LIMIT 1",
+    [userId, date],
+  );
+  return result.rows.length > 0;
+}
+
 // One row maps to 8 columns; Postgres caps a statement at 65535 bind params, so
 // keep each multi-row INSERT well under that with a conservative chunk size.
 const COLLECTION_INSERT_COLUMNS = 8;
@@ -607,10 +822,27 @@ async function upsertCollectionRows<T extends MutableCollectionValue>(
   spec: CollectionSpec<T>,
   items: T[],
 ): Promise<void> {
-  const rows = items.map((item) => collectionRowParams(spec, item));
-  for (const chunk of buildCollectionInsertChunks(spec.table, rows)) {
+  await upsertPreparedRows(client, spec.table, items.map((item) => collectionRowParams(spec, item)));
+}
+
+async function upsertPreparedRows(client: PoolClient, table: string, rows: unknown[][]): Promise<void> {
+  for (const chunk of buildCollectionInsertChunks(table, rows)) {
     await client.query(chunk.text, chunk.values);
   }
+}
+
+// Column positions in collectionRowParams.
+const ROW_ID_COLUMN = 0;
+const ROW_DATA_COLUMN = 5;
+
+/**
+ * The prepared rows a scoped persist must write: all of them without a
+ * baseline, otherwise only rows that are new or whose serialized data changed
+ * since the load. Exported for the unit test.
+ */
+export function changedRowsSinceLoad(rows: unknown[][], baseline: Map<string, string> | undefined): unknown[][] {
+  if (!baseline) return rows;
+  return rows.filter((row) => baseline.get(String(row[ROW_ID_COLUMN])) !== row[ROW_DATA_COLUMN]);
 }
 
 async function replaceCollection<T extends MutableCollectionValue>(
@@ -770,6 +1002,11 @@ export type PersistUserCollectionsOptions = {
   replaceUserRows?: readonly ScopedReplaceableCollection[];
   /** Upsert this user's `app.tasks` rows (tasks are not a COLLECTION_SPECS entry). */
   persistTasks?: boolean;
+  /**
+   * From hydrateUserStoreFromPostgres: skip rows unchanged since the load.
+   * Never applied to a replaced collection (its rows were all cleared first).
+   */
+  baseline?: UserStoreBaseline;
 };
 
 export async function persistUserCollections(
@@ -788,6 +1025,22 @@ export async function persistUserCollections(
   const deletions = options.deletions ?? [];
   if (specs.length === 0 && !options.persistUser && deletions.length === 0 && !options.persistTasks) return;
   if (!userId) throw new Error("persistUserCollections requires a userId");
+
+  const writes = specs
+    .map((spec) => {
+      const prepared = (store[spec.key] as MutableCollectionValue[])
+        .filter((item) => spec.userIdOf(item) === userId)
+        .map((item) => collectionRowParams(spec, item));
+      const isReplaced = (replaced as readonly string[]).includes(spec.key);
+      return {
+        table: spec.table,
+        rows: isReplaced ? prepared : changedRowsSinceLoad(prepared, options.baseline?.get(spec.key)),
+        always: isReplaced,
+      };
+    })
+    .filter((write) => write.always || write.rows.length > 0);
+  // Nothing changed (e.g. a second login touch on the same day): no transaction.
+  if (writes.length === 0 && !options.persistUser && deletions.length === 0 && !options.persistTasks) return;
 
   await ensureAppStoreSchema();
   const client = await pool().connect();
@@ -809,11 +1062,8 @@ export async function persistUserCollections(
         await upsertUsers(client, [user]);
       }
     }
-    for (const spec of specs) {
-      const rows = (store[spec.key] as MutableCollectionValue[]).filter(
-        (item) => spec.userIdOf(item) === userId,
-      );
-      await upsertCollectionRows(client, spec, rows);
+    for (const write of writes) {
+      await upsertPreparedRows(client, write.table, write.rows);
     }
     if (options.persistTasks) {
       await upsertTasks(client, store.tasks.filter((task) => task.userId === userId));

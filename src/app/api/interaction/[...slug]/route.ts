@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 
-import { requireUserFromRequest } from "@/server/auth";
+import { requireUserFromRequest, withFreshUserInStore } from "@/server/auth";
+import { isAuthServiceUnavailableError } from "@/server/auth-errors";
 import { generalLimiter, checkRateLimit } from "@/lib/rate-limit";
 import {
   addSessionMessage,
@@ -18,6 +19,7 @@ import {
   notFound,
   ok,
   parseJsonBody,
+  serviceUnavailable,
   unauthorized,
 } from "@/server/http";
 import { readStoreAsync, ScopedWritePlan, withStoreAsyncScoped } from "@/server/store";
@@ -58,7 +60,15 @@ export async function GET(request: NextRequest, context: RouteContext) {
   if (limited) return limited;
 
   const store = await readStoreAsync();
-  const user = await requireUserFromRequest(store, request);
+  // Checked against the caller's fresh row, not the snapshot, so an account
+  // made on another instance since this one hydrated is not refused.
+  let user;
+  try {
+    user = await withFreshUserInStore(store, request);
+  } catch (error) {
+    if (isAuthServiceUnavailableError(error)) return serviceUnavailable(error.message);
+    throw error;
+  }
   if (!user) {
     return unauthorized();
   }

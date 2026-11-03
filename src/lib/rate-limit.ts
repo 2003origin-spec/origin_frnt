@@ -214,9 +214,11 @@ const generalCap = (() => {
 export const generalLimiter = createLimiter(generalCap, "rl:general");
 
 /** Catch-all limiter for teacher/admin/enrollment mutation endpoints
- * applied in middleware. Per-route limiters (auth, ai, voice, submit,
- * room*) take precedence — this is the floor that catches everything
- * else. Tunable via ORIGIN_MUTATION_RATE_LIMIT (default 60/min). */
+ * applied in middleware (and, for /api/mobile, /api/notes and /api/now, in
+ * their route handlers — src/server/shared-mutation-limit.ts). Per-route
+ * limiters (auth, ai, voice, submit, room*) take precedence — this is the
+ * floor that catches everything else. Tunable via ORIGIN_MUTATION_RATE_LIMIT
+ * (default 60/min). */
 const mutationCap = (() => {
   const raw = process.env.ORIGIN_MUTATION_RATE_LIMIT?.trim();
   const parsed = raw ? Number.parseInt(raw, 10) : NaN;
@@ -380,12 +382,17 @@ export async function resetLimit(limiter: AppRateLimiter, identifier: string): P
 export async function checkRateLimit(
   limiter: AppRateLimiter,
   identifier: string,
-  options?: { honorIncidentMode?: boolean },
+  options?: {
+    honorIncidentMode?: boolean;
+    /** Incident mode the caller already read (the Edge middleware passes its
+     * non-blocking snapshot), so this does not block on a fresh Redis read. */
+    incidentMode?: RateLimitMode;
+  },
 ): Promise<Response | null> {
   let mode: RateLimitMode = "normal";
   if (options?.honorIncidentMode !== false) {
     try {
-      mode = await getRateLimitMode();
+      mode = options?.incidentMode ?? (await getRateLimitMode());
     } catch (error) {
       console.error("[rate-limit] failed to read incident mode; defaulting to 'normal'", error);
     }

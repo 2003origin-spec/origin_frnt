@@ -5,6 +5,7 @@ import { requireFeatureEnabled } from "@/lib/feature-flags";
 import { checkRateLimit, generalLimiter, mutationLimiter, notesReportLimiter, notesShareLimiter, notesUploadLimiter } from "@/lib/rate-limit";
 import { NOTES_REPORT_REASONS, SHARED_REPORT_REASONS, type NotesSubject } from "@/lib/notes/types";
 import { requireRole, type AuthContext } from "@/server/authz";
+import { checkSharedMutationLimit } from "@/server/shared-mutation-limit";
 import { dbFindUserById } from "@/server/db-users";
 import { getSlugSegments, parseJsonBody } from "@/server/http";
 import { getStudentScope } from "@/server/study-scope";
@@ -498,6 +499,10 @@ async function dispatch(method: string, request: NextRequest, context: RouteCont
   try {
     requireFeatureEnabled("notes");
     const auth = await requireRole(request, ["student"]);
+    // The shared per-user write budget, charged here rather than at the edge
+    // (src/server/shared-mutation-limit.ts). `notes:` below is a separate budget.
+    const shared = await checkSharedMutationLimit(request, auth.userId);
+    if (shared) return shared;
     const slug = getSlugSegments(await context.params);
     const found = findRoute(ROUTES, method, slug);
     if (!found.route) {

@@ -4,7 +4,8 @@ import { revalidateTag } from "next/cache";
 import { listOgcodeCatalogFacets } from "@/server/ogcode-catalog";
 import { requireFeatureEnabled } from "@/lib/feature-flags";
 import { isExamPresetId } from "@/lib/exam-blueprints";
-import { requireUserFromRequest } from "@/server/auth";
+import { requireUserFromRequest, resolveTokenToUser, withFreshUserInStore } from "@/server/auth";
+import { isAuthServiceUnavailableError } from "@/server/auth-errors";
 import { getStudentScope, renderStudyModeKey } from "@/server/study-scope";
 import { submitLimiter, generalLimiter, checkRateLimit } from "@/lib/rate-limit";
 import {
@@ -40,14 +41,20 @@ import {
   type UpdateOgcodeLocationPayload,
   updateOgcodeLocation,
 } from "@/server/assessments";
-import { badRequest, created, forbidden, getSlugSegments, json, methodNotAllowed, notFound, ok, parseJsonBody, unauthorized } from "@/server/http";
+import { badRequest, created, forbidden, getSlugSegments, json, methodNotAllowed, notFound, ok, parseJsonBody, serviceUnavailable, unauthorized } from "@/server/http";
 import { isTestWindowError } from "@/lib/assessments/test-window";
 import {
   readStoreAsync,
+  readStoreWithFreshUserRows,
+  OWN_OGCODE_STATS_LOADS,
+  OWN_PRACTICE_PROGRESS_LOADS,
   ScopedWritePlan,
   withStoreAsyncScoped,
+  withUserStoreScoped,
   TEST_SUBMIT_PERSIST_COLLECTIONS,
+  practiceSubmitLoads,
   PRACTICE_SUBMIT_PERSIST_COLLECTIONS,
+  type UserStoreLoads,
 } from "@/server/store";
 import { getOgcodeLeaderboardForRender } from "@/server/render-loaders";
 import { clampLeaderboardLimit } from "@/server/leaderboard-points";
@@ -107,13 +114,55 @@ function testWindowErrorResponse(error: unknown) {
   );
 }
 
+/**
+ * The caller (checked against their fresh row, not the 5-minute snapshot, so
+ * a new account is not refused on an instance that hydrated before it
+ * existed) and the cached store the read handlers work from. A 503 Response
+ * when the user lookup itself failed.
+ */
 async function authUser(request: Request) {
   const store = await readStoreAsync();
-  const user = await requireUserFromRequest(store, request);
+  let user;
+  try {
+    user = await withFreshUserInStore(store, request);
+  } catch (error) {
+    if (isAuthServiceUnavailableError(error)) return serviceUnavailable(error.message);
+    throw error;
+  }
   if (!user) {
     return null;
   }
   return { store, user };
+}
+
+/**
+ * The caller alone, from their fresh row, for POST: the write branches load
+ * their own store (or none), so waiting for the whole-store snapshot here
+ * (a full hydration on a cold instance) would only delay a deck answer. A 503
+ * Response when the user lookup itself failed.
+ */
+async function authCaller(request: Request) {
+  let user;
+  try {
+    user = await resolveTokenToUser(request);
+  } catch (error) {
+    if (isAuthServiceUnavailableError(error)) return serviceUnavailable(error.message);
+    throw error;
+  }
+  return user ? { user } : null;
+}
+
+/**
+ * The caller's own rows a GET shows them from the snapshot (solved / attempted
+ * status, their stats). These are re-read fresh, so an answer saved through
+ * another instance shows at once instead of after the snapshot's TTL. Null for
+ * every other GET.
+ */
+function ownProgressLoads(root?: string, first?: string, second?: string): UserStoreLoads | null {
+  if (root === "practice" && !second) return OWN_PRACTICE_PROGRESS_LOADS;
+  if (root === "ogcode" && (first === "questions" || first === "challenge")) return OWN_PRACTICE_PROGRESS_LOADS;
+  if (root === "ogcode" && first === "user-stats") return OWN_OGCODE_STATS_LOADS;
+  return null;
 }
 
 type RouteContext = {
@@ -125,14 +174,17 @@ export async function GET(request: NextRequest, context: RouteContext) {
   if (!auth) {
     return unauthorized();
   }
+  if (auth instanceof Response) return auth;
 
   const limited = await checkRateLimit(generalLimiter, auth.user.id);
   if (limited) return limited;
 
-  const { store, user } = auth;
+  const { user } = auth;
   const params = await context.params;
   const slug = getSlugSegments(params);
   const [root, first, second] = slug;
+  const freshLoads = ownProgressLoads(root, first, second);
+  const store = freshLoads ? await readStoreWithFreshUserRows(user.id, freshLoads) : auth.store;
 
   try {
     if (root === "tests" && !first) {
@@ -327,10 +379,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
   const slug = getSlugSegments(params);
   const [root, first, second] = slug;
 
-  const auth = await authUser(request);
+  const auth = await authCaller(request);
   if (!auth) {
     return unauthorized();
   }
+  if (auth instanceof Response) return auth;
 
   const isSubmit = second === "submit" || (root === "ogcode" && first === "location");
   const limited = await checkRateLimit(isSubmit ? submitLimiter : generalLimiter, auth.user.id);
@@ -381,7 +434,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     // G7: record when the student opened a self test / DPP so submit can time
     // the attempt server-side. Idempotent while the attempt is open.
     if ((root === "tests" || root === "dpps") && first && second === "start") {
-      const response = await startAssessmentAttempt(auth.store, auth.user, root === "tests" ? "test" : "dpp", first);
+      const response = await startAssessmentAttempt(await readStoreAsync(), auth.user, root === "tests" ? "test" : "dpp", first);
       return ok(response);
     }
 
@@ -449,8 +502,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
     if (root === "practice" && first && second === "submit") {
       const body = await parseJsonBody<PracticeSubmissionPayload>(request);
       // Practice submit's attempt + subject-rank live only in the store (no
-      // targeted writer), so they are included in the scoped persist set.
-      const response = await withStoreAsyncScoped(
+      // targeted writer), so they are included in the scoped persist set. It
+      // reads only this student's rows (for this question), so it loads just
+      // those instead of hydrating every user's store under the global lock.
+      const response = await withUserStoreScoped(
+        auth.user.id,
+        practiceSubmitLoads(first),
         async (store) => {
           const user = await requireUserFromRequest(store, request);
           if (!user) {

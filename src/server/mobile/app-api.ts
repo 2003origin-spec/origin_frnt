@@ -20,7 +20,7 @@ import { addTaskAction, editTaskAction, listTasksAction, removeTaskAction, toggl
 import { getContestDetail, getContestStatus } from "@/server/contest/contest-status";
 import { buildPointsSummary } from "@/server/gamification";
 import { parseJsonBody } from "@/server/http";
-import { readStoreAsync } from "@/server/store";
+import { readStoreAsync, readUserStoreScoped } from "@/server/store";
 import { getRoomState, getRoomTestForUser } from "@/server/study-rooms";
 import { teacherHome, teacherMe, teacherMembers } from "@/server/mobile/teacher";
 import { appBooks } from "@/server/mobile/books";
@@ -112,6 +112,17 @@ async function jsonBody(request: NextRequest): Promise<Body | NextResponse> {
   }
 }
 
+const HOME_ACTIVITY_WINDOW_MS = 15 * 24 * 60 * 60 * 1000;
+
+/** summarizeActivity looks back 14 IST days; one spare day covers the IST offset. */
+export function homeStoreLoads(now: number = Date.now()) {
+  return {
+    userScores: true,
+    pointLogs: { limit: 10 },
+    practiceAttempts: { createdSince: new Date(now - HOME_ACTIVITY_WINDOW_MS).toISOString() },
+  } as const;
+}
+
 /**
  * Everything the dashboard renders, in one call. Mirrors
  * src/app/dashboard/page.tsx, including the daily login streak touch (first
@@ -124,9 +135,12 @@ async function home(): Promise<Response> {
   // Tasks, points and activity are read fresh, unlike the web's cached render
   // loaders: the app refetches home right after a change (task ticked, deck
   // finished), and a cached loader serves the old value on exactly that read.
+  // Points and activity come from this student's own rows only: their score,
+  // newest 10 point logs and the last ~2 weeks of attempts, which is all
+  // buildPointsSummary and summarizeActivity read.
   const [tasks, store, challenge, contest, streak, resume] = await Promise.allSettled([
     listTasksAction(),
-    readStoreAsync(),
+    readUserStoreScoped(user.id, homeStoreLoads(), (loaded) => loaded),
     getChallengeOfTheDayForRender(istDateKey(), user.id),
     getContestStatus(user.id),
     streakEnabled ? recordDailyLoginStreak(user.id) : Promise.resolve(null),

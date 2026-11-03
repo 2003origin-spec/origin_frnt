@@ -8,7 +8,14 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { SCHEMA_DDL_LOCK_ID, SCHEMA_DDL_LOCK_SQL } from "@/server/schema-lock";
+import {
+  isRuntimeDdlApplied,
+  isRuntimeDdlAppliedInTransaction,
+  recordRuntimeDdlApplied,
+  runtimeDdlVersionId,
+  SCHEMA_DDL_LOCK_ID,
+  SCHEMA_DDL_LOCK_SQL,
+} from "@/server/schema-lock";
 import bcrypt from "bcryptjs";
 import type { Pool } from "pg";
 import { withStoredUserDefaults, type StoredAuthSession, type StoredTask, type StoredUser, type StoredUserWithOptionalDefaults } from "@/server/store";
@@ -63,17 +70,8 @@ function pool(): Pool {
   return p;
 }
 
-export async function ensureUserSchema(): Promise<void> {
-  if (globalThis.__originUserSchemaEnsured) return;
-  if (!globalThis.__originUserSchemaPromise) {
-    globalThis.__originUserSchemaPromise = (async () => {
-      const client = await pool().connect();
-      try {
-        await client.query("BEGIN");
-        // Transaction-scoped so COMMIT/ROLLBACK releases it on Neon PgBouncer
-        // (transaction-mode pooler cannot safely hold session advisory locks).
-        await client.query(SCHEMA_DDL_LOCK_SQL, [SCHEMA_DDL_LOCK_ID]);
-        await client.query(`
+/** ensureUserSchema's DDL (one multi-statement query). Its text sets the version id. */
+const USER_SCHEMA_DDL = `
           CREATE TABLE IF NOT EXISTS origin_users (
             id                  TEXT PRIMARY KEY,
             name                TEXT NOT NULL,
@@ -292,7 +290,32 @@ export async function ensureUserSchema(): Promise<void> {
 
           CREATE INDEX IF NOT EXISTS idx_media_assets_user_purpose_created
             ON origin_media_assets (user_id, purpose, created_at DESC);
-        `);
+`;
+
+/** Recorded in app.migrations once USER_SCHEMA_DDL has run (see runtimeDdlVersionId). */
+export const USER_SCHEMA_DDL_VERSION = runtimeDdlVersionId("origin_users", USER_SCHEMA_DDL);
+
+export async function ensureUserSchema(): Promise<void> {
+  if (globalThis.__originUserSchemaEnsured) return;
+  if (!globalThis.__originUserSchemaPromise) {
+    globalThis.__originUserSchemaPromise = (async () => {
+      // Up-to-date database: one lock-free SELECT, no ALTER TABLE (each of
+      // which takes ACCESS EXCLUSIVE on origin_users even as a no-op).
+      if (await isRuntimeDdlApplied(pool(), USER_SCHEMA_DDL_VERSION)) {
+        globalThis.__originUserSchemaEnsured = true;
+        return;
+      }
+      const client = await pool().connect();
+      try {
+        await client.query("BEGIN");
+        // Transaction-scoped so COMMIT/ROLLBACK releases it on Neon PgBouncer
+        // (transaction-mode pooler cannot safely hold session advisory locks).
+        await client.query(SCHEMA_DDL_LOCK_SQL, [SCHEMA_DDL_LOCK_ID]);
+        // Another instance may have applied it while we waited for the lock.
+        if (!(await isRuntimeDdlAppliedInTransaction(client, USER_SCHEMA_DDL_VERSION))) {
+          await client.query(USER_SCHEMA_DDL);
+          await recordRuntimeDdlApplied(client, USER_SCHEMA_DDL_VERSION, "origin_users runtime schema");
+        }
         await client.query("COMMIT");
         globalThis.__originUserSchemaEnsured = true;
       } catch (error) {
