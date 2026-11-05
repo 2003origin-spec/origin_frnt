@@ -134,6 +134,8 @@ const messageBodySchema = z.object({
   pageContext: pageContextSchema.optional(),
   highlightedText: z.string().nullable().optional(),
   threadId: z.string().trim().min(1).nullable().optional(),
+  // false = text only: the native app's chat never plays the per-sentence speech.
+  speech: z.boolean().optional(),
 });
 
 const imageSolveBodySchema = z.object({
