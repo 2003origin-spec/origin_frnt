@@ -20,6 +20,7 @@ import type { PoolClient } from "pg";
 import { getUserPostgresPool, isUserPostgresConfigured } from "@/server/user-postgres";
 import { ensureUserSchema } from "@/server/db-users";
 import { lockSchemaDdl } from "@/server/schema-lock";
+import { isAppIconId, type AppIconId } from "@/lib/app-icons";
 
 declare global {
   var __originPlatformSettingsEnsured: boolean | undefined;
@@ -32,6 +33,8 @@ export const SETTING_TEACHER_CODE_SUPPORT_PHONE = "teacher_code_support_phone";
 export const SETTING_ALLOW_DELETED_IDENTITY_RESIGNUP = "allow_deleted_identity_resignup";
 export const SETTING_CHAMPIONSHIP_PRIZE_IMAGE_URL = "championship_prize_image_url";
 export const SETTING_CHAMPIONSHIP_PRIZE_LABEL = "championship_prize_label";
+/** Launcher icon the native app shows (an id from src/lib/app-icons.ts); unset = the app keeps its own. */
+export const SETTING_APP_ICON = "app_icon";
 
 function pool() {
   const p = getUserPostgresPool();
@@ -193,4 +196,14 @@ export async function setChampionshipPrizeImageUrl(url: string | null, updatedBy
 
 export async function setChampionshipPrizeLabel(label: string | null, updatedBy: string | null): Promise<void> {
   await setSetting(SETTING_CHAMPIONSHIP_PRIZE_LABEL, label && label.trim() ? label.trim() : null, updatedBy);
+}
+
+/** The native app's launcher icon, or null when none was chosen (or the stored id is no longer known). */
+export async function getAppIcon(): Promise<AppIconId | null> {
+  const stored = await getSetting(SETTING_APP_ICON);
+  return isAppIconId(stored) ? stored : null;
+}
+
+export async function setAppIcon(id: AppIconId, updatedBy: string | null): Promise<void> {
+  await setSetting(SETTING_APP_ICON, id, updatedBy);
 }
