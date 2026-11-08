@@ -37,6 +37,11 @@ export type MobileConfig = {
   /** Server clock, ISO — clients use it for skew estimation, never trust local time. */
   serverTime: string;
   flags: Record<string, boolean>;
+  /**
+   * Launcher icon the app should show (/admin/app-icon), added by the route from the
+   * platform settings; null = leave the app's icon alone (also when the database is down).
+   */
+  appIcon?: string | null;
 };
 
 function envInt(name: string, fallback: number): number {

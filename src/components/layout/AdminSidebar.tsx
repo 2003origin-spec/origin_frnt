@@ -31,6 +31,7 @@ import {
     Headphones,
     MessageSquareWarning,
     Megaphone,
+    Smartphone,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { usePathname, useRouter } from 'next/navigation';
@@ -75,6 +76,8 @@ const navItems = [
     { id: 'analytics', label: 'Global Analytics', icon: BarChart3, path: '/admin/analytics' },
     { id: 'launch', label: 'Launch Controls', icon: Rocket, path: '/admin/launch' },
     { id: 'championship', label: 'Championship', icon: Trophy, path: '/admin/championship' },
+    // Native app launcher icon (festival editions).
+    { id: 'app-icon', label: 'App Icon', icon: Smartphone, path: '/admin/app-icon' },
     // Audit fix R-5 (A-15): incidents + audit log had no sidebar entry.
     { id: 'incidents', label: 'Incidents', icon: Siren, path: '/admin/incidents' },
     { id: 'audit-events', label: 'Audit Log', icon: FileText, path: '/admin/audit-events' },

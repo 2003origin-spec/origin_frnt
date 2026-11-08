@@ -244,3 +244,19 @@ test("same-origin POST link-out/consume refuses a handoff minted before a token-
     assert.equal(response.headers.get("set-cookie"), null);
   });
 });
+
+test("mobile config carries the admin's app icon, and still answers (appIcon null) without a database", async () => {
+  const saved = process.env.USER_DATABASE_URL;
+  delete process.env.USER_DATABASE_URL;
+  try {
+    const { GET } = await import("@/app/api/mobile/[...slug]/route");
+    const res = await GET(new NextRequest("http://localhost/api/mobile/config"), { params: Promise.resolve({ slug: ["config"] }) });
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as { appIcon?: unknown; killSwitch?: unknown };
+    assert.equal(body.appIcon, null);
+    assert.equal(body.killSwitch, false);
+    assert.match(res.headers.get("cache-control") ?? "", /s-maxage=60/);
+  } finally {
+    if (saved !== undefined) process.env.USER_DATABASE_URL = saved;
+  }
+});

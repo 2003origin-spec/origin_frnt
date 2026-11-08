@@ -5,6 +5,7 @@ import { getSlugSegments } from "@/server/http";
 import { handleAppApi } from "@/server/mobile/app-api";
 import { handleAppAuth } from "@/server/mobile/app-auth";
 import { buildMobileConfig } from "@/server/mobile/config";
+import { getAppIcon } from "@/server/platform-settings";
 import {
   consumeHandoffToken,
   HANDOFF_PURPOSES,
@@ -86,10 +87,12 @@ function requesterUserId(request: NextRequest): string | null {
   return request.headers.get("x-origin-user-id");
 }
 
-function handleConfig(): NextResponse {
-  const response = NextResponse.json(buildMobileConfig());
-  // CDN-cacheable: flipping a value is a Vercel env edit + redeploy; 60 s of
-  // staleness is acceptable for every field served here.
+async function handleConfig(): Promise<NextResponse> {
+  // The launcher icon is an admin setting (Postgres); config must still answer without it.
+  const appIcon = await getAppIcon().catch(() => null);
+  const response = NextResponse.json({ ...buildMobileConfig(), appIcon });
+  // CDN-cacheable: flipping a value is a Vercel env edit + redeploy (the icon: an admin
+  // change); 60 s of staleness is acceptable for every field served here.
   response.headers.set("Cache-Control", "public, max-age=60, s-maxage=60");
   return response;
 }
