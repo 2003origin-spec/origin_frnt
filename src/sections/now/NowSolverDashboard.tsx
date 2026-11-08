@@ -18,8 +18,12 @@ import { FormattedMessage } from '@/components/origin-ai/FormattedMessage';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { apiCall } from '@/lib/api';
-import { dayKeyToDMY } from '@/lib/format-time';
+import { dayKeyToDMY, formatISTDayDMY } from '@/lib/format-time';
+import { acceptTimeText } from '@/lib/now-format';
 
+import { NowGroupHost } from './NowGroupHost';
+import { NowLaterQueue } from './NowLaterQueue';
+import { NowOfferAlerts } from './NowOfferAlerts';
 import { NowRosterCard } from './NowRosterCard';
 
 type Dashboard = {
@@ -36,11 +40,20 @@ type Dashboard = {
   };
   bySubject: { subject: string; chapter: string | null; solved: number; resolutionRate: number | null; averageStars: number | null }[];
   byDifficulty: { difficulty: string; solved: number; acceptRate: number | null }[];
-  earnings: { daily: { day: string; sessions: number; tips: number }[]; thisMonth: { sessions: number; tips: number }; balance: number; pending: number; storeSpendThisMonth: number };
+  earnings: {
+    daily: { day: string; sessions: number; tips: number }[];
+    thisMonth: { sessions: number; tips: number };
+    balance: number;
+    pending: number;
+    storeSpendThisMonth: number;
+    /** Last 12 weeks, keyed by the Monday (IST). */
+    weekly: { week: string; sessions: number; tips: number }[];
+    recentSessions: { sessionId: string; endedAt: string | null; subject: string; difficulty: string; coins: number; tip: number; pending: boolean }[];
+  };
   feedback: { tags: { tag: string; n: number }[]; recentComments: { comment: string; stars: number; studentFirstName: string; at: string | null }[] };
   activity: { day: string; hoursOnline: number; sessions: number }[];
   standing: { levels: { subject: string; level: string }[]; warnings: { limit: string; detail: string }[] };
-  publicCard: { name: string; subjects: string[]; averageStars: number | null; sessions: number };
+  publicCard: { name: string; subjects: string[]; averageStars: number | null; sessions: number; medianAcceptSeconds: number | null };
 };
 
 type Offer = {
@@ -150,11 +163,17 @@ function ShiftPanel({ dashboard, onChanged }: { dashboard: Dashboard; onChanged:
   const timerRef = useRef<number | null>(null);
   const chosenRef = useRef(chosen);
   chosenRef.current = chosen;
+  // With offer alerts on, the shift keeps running from a background tab (decision B85).
+  const [alertsOn, setAlertsOn] = useState(false);
+  const alertsRef = useRef(false);
+  alertsRef.current = alertsOn;
 
   const heartbeat = useCallback(async () => {
-    if (document.hidden) return; // pilot rule: online only while this screen is in front
+    const background = document.hidden;
+    // Pilot rule: without offer alerts, online only while this screen is in front.
+    if (background && !alertsRef.current) return;
     try {
-      const res = await apiCall('/now/helper/presence', { method: 'POST', body: JSON.stringify({ subjects: chosenRef.current }) });
+      const res = await apiCall('/now/helper/presence', { method: 'POST', body: JSON.stringify({ subjects: chosenRef.current, background }) });
       if (res.offer) setOffer(res.offer as Offer);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'Could not stay online.');
@@ -245,8 +264,15 @@ function ShiftPanel({ dashboard, onChanged }: { dashboard: Dashboard; onChanged:
           <div>
             <p className="font-semibold">{online ? 'You are online' : 'You are offline'}</p>
             <p className="text-xs text-muted-foreground">
-              {online ? 'Keep this screen open and in front; offers arrive here with a sound.' : 'Go online to receive doubts in your subjects.'}
+              {online
+                ? alertsOn
+                  ? 'Offers arrive here with a sound, and as an alert while this tab is in the background.'
+                  : 'Keep this screen open and in front; offers arrive here with a sound.'
+                : 'Go online to receive doubts in your subjects.'}
             </p>
+            <div className="mt-2">
+              <NowOfferAlerts onChange={setAlertsOn} />
+            </div>
           </div>
           <div className="flex flex-wrap items-center gap-3 text-sm">
             {subjects.map((s) => (
@@ -269,6 +295,61 @@ function ShiftPanel({ dashboard, onChanged }: { dashboard: Dashboard; onChanged:
       {message && <p className="text-sm text-muted-foreground" role="status">{message}</p>}
       {offer && <OfferCard offer={offer} busy={busy} onAccept={() => respond('accept')} onDecline={(r) => respond('decline', r)} />}
     </div>
+  );
+}
+
+/** Earnings history (B90): weekly totals for 12 weeks and the last 20 paid sessions. */
+function EarningsHistory({ earnings }: { earnings: Dashboard['earnings'] }) {
+  return (
+    <Card>
+      <CardHeader className="pb-2"><CardTitle className="text-base">Earnings history</CardTitle></CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        {earnings.weekly.length > 0 && (
+          <div className="h-40 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={earnings.weekly}>
+                <XAxis dataKey="week" tickFormatter={(d: string) => dayKeyToDMY(d).slice(0, 5)} fontSize={11} />
+                <YAxis fontSize={11} width={36} />
+                <Tooltip labelFormatter={(d) => `Week of ${dayKeyToDMY(String(d))}`} />
+                <Bar dataKey="sessions" stackId="w" name="Sessions" fill="hsl(var(--primary))" />
+                <Bar dataKey="tips" stackId="w" name="Tips" fill="#f59e0b" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+        {earnings.recentSessions.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Paid sessions show up here with the coins and tips each one earned.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs text-muted-foreground">
+                  <th className="py-1">Date</th>
+                  <th>Doubt</th>
+                  <th className="text-right">Coins</th>
+                  <th className="text-right">Tip</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {earnings.recentSessions.map((r) => (
+                  <tr key={r.sessionId} className="border-t">
+                    <td className="py-1 whitespace-nowrap">{r.endedAt ? formatISTDayDMY(r.endedAt) : '—'}</td>
+                    <td className="capitalize">{r.subject} · {r.difficulty}</td>
+                    <td className="text-right tabular-nums">{r.coins}</td>
+                    <td className="text-right tabular-nums">{r.tip || '—'}</td>
+                    <td className="pl-2 text-xs text-muted-foreground">{r.pending ? 'pending' : ''}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <p className="text-xs text-muted-foreground">
+          Coins are paid in Ori Coins only, never in rupees. Each session&apos;s coins wait 24 hours (the rating window) before you can spend them.
+        </p>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -316,6 +397,8 @@ export default function NowSolverDashboard() {
       <ShiftPanel dashboard={data} onChanged={load} />
 
       <NowRosterCard />
+      <NowLaterQueue />
+      <NowGroupHost subjects={data.publicCard.subjects} />
 
       {data.standing.warnings.map((w) => (
         <p key={w.limit} className="flex items-center gap-2 rounded-md border border-amber-500 bg-amber-500/10 p-2 text-sm text-amber-800">
@@ -355,6 +438,8 @@ export default function NowSolverDashboard() {
           <p className="mt-2 text-xs text-muted-foreground">This month: {data.earnings.thisMonth.sessions} from sessions, {data.earnings.thisMonth.tips} in tips, {data.earnings.storeSpendThisMonth} spent in the store.</p>
         </CardContent>
       </Card>
+
+      <EarningsHistory earnings={data.earnings} />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
@@ -432,6 +517,9 @@ export default function NowSolverDashboard() {
             <p className="flex items-center gap-1 text-xs">
               <Star className="h-3 w-3 fill-amber-400 text-amber-400" /> {data.publicCard.averageStars?.toFixed(1) ?? 'new'} · {data.publicCard.sessions} sessions
             </p>
+            {acceptTimeText(data.publicCard.medianAcceptSeconds) && (
+              <p className="text-xs text-muted-foreground">Usually {acceptTimeText(data.publicCard.medianAcceptSeconds)}</p>
+            )}
             <p className="mt-1 text-[11px] text-muted-foreground">Your age, school and contact details are never shown.</p>
           </div>
         </CardContent>

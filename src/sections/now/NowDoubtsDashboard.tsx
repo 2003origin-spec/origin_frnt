@@ -12,13 +12,25 @@ import { Heart, Loader2 } from 'lucide-react';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { apiCall } from '@/lib/api';
+import { acceptTimeText } from '@/lib/now-format';
+
+import { NowExtraLinks } from './NowExtraLinks';
 import { formatISTDayDMY } from '@/lib/format-time';
 
 type Dashboard = {
   summary: { asked: number; resolved: number; partial: number; unresolved: number; minutes: number; coinsSpentThisMonth: number; balance: number };
   bySubject: { subject: string; chapter: string | null; doubts: number; resolvedShare: number | null }[];
   weakSpots: { subject: string; chapter: string | null; concept: string | null; doubts: number; commonRootCause: string | null }[];
-  mySolvers: { helperId: string; name: string; subjects: string[]; sessionsTogether: number; myAverageStars: number | null; favourite: boolean; online: boolean }[];
+  mySolvers: {
+    helperId: string;
+    name: string;
+    subjects: string[];
+    sessionsTogether: number;
+    myAverageStars: number | null;
+    medianAcceptSeconds?: number | null;
+    favourite: boolean;
+    online: boolean;
+  }[];
   history: {
     requestId: string;
     questionId: string;
@@ -117,9 +129,12 @@ export default function NowDoubtsDashboard() {
   const s = data.summary;
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-5 px-4 py-6">
-      <header>
-        <h1 className="text-xl font-semibold">My doubts</h1>
-        <p className="text-sm text-muted-foreground">Your live help sessions, what they covered and what to practise next.</p>
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold">My doubts</h1>
+          <p className="text-sm text-muted-foreground">Your live help sessions, what they covered and what to practise next.</p>
+        </div>
+        <NowExtraLinks />
       </header>
       {error && <p className="text-sm text-red-600" role="alert">{error}</p>}
 
@@ -171,6 +186,7 @@ export default function NowDoubtsDashboard() {
                     <span className="text-xs capitalize text-muted-foreground">
                       {m.subjects.join(', ')} · {m.sessionsTogether} session{m.sessionsTogether === 1 ? '' : 's'}
                       {m.myAverageStars ? ` · you rated ${m.myAverageStars.toFixed(1)}★` : ''}
+                      {acceptTimeText(m.medianAcceptSeconds) ? ` · ${acceptTimeText(m.medianAcceptSeconds)}` : ''}
                     </span>
                   </span>
                   <button

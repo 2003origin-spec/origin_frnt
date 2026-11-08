@@ -6,6 +6,9 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
+import { BoardCanvas } from '@/components/now/NowBoard';
+import { isBoardEmpty, type BoardState } from '@/lib/now-board';
+
 import { adminSend, fmtDate, useAdminData } from './admin-now-api';
 import { ErrorLine, Section, Table, Td, buttonClass, ghostButtonClass, inputClass } from './ui';
 
@@ -34,7 +37,7 @@ type Review = {
   concept: string | null;
   difficulty: string;
   questionId: string;
-  question: { text: string; options: string[] };
+  question: { text: string; options: string[]; image?: string | null };
   priceCoins: number;
   solverKind: string;
   solverName: string;
@@ -55,6 +58,7 @@ type Review = {
   ratings: { stars: number; tags: string[]; comment: string | null; tip_coins: number; counted: boolean; held_until_case_closes: boolean }[];
   reports: { id: string; reason: string; status: string; reporter_role: string }[];
   ledger: { kind: string; amount: number; created_at: string }[];
+  board: BoardState | null;
 };
 
 function SessionReview({ id }: { id: string }) {
@@ -99,6 +103,18 @@ function SessionReview({ id }: { id: string }) {
           <p className="text-sm text-muted-foreground">{s.recordingDeletedAt ? `Deleted after retention on ${fmtDate(s.recordingDeletedAt)}.` : 'No recording for this session.'}</p>
         )}
       </Section>
+      {s.board && !isBoardEmpty(s.board) && (
+        <Section title={`Board (${s.board.pages.length} ${s.board.pages.length === 1 ? 'page' : 'pages'})`}>
+          <div className="grid gap-3 md:grid-cols-2">
+            {s.board.pages.map((_, i) => (
+              <div key={i} className="flex flex-col gap-1">
+                <span className="text-xs text-muted-foreground">Page {i + 1}</span>
+                <BoardCanvas state={{ ...s.board!, page: i }} figureUrl={s.question.image ?? null} />
+              </div>
+            ))}
+          </div>
+        </Section>
+      )}
       <div className="grid gap-4 lg:grid-cols-2">
         <Section title="Offers">
           <Table head={['Solver', 'Response', 'Reason', 'At']} empty={s.offers.length === 0}>

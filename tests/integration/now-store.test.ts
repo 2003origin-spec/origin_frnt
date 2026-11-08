@@ -27,6 +27,8 @@ test.before(() => {
   process.env.R2_ENDPOINT = "https://acct.r2.cloudflarestorage.invalid";
   process.env.R2_ACCESS_KEY_ID = "app-key";
   process.env.R2_SECRET_ACCESS_KEY = "app-secret";
+  process.env.R2_BUCKET_NAME = "origin";
+  process.env.R2_PRIVATE_BUCKET = "origin-private";
 });
 
 test.after(async () => {
@@ -90,6 +92,7 @@ test("papers: off until uploaded, bought once, downloaded only by the owner; sto
   await assert.rejects(createPaperUpload(paper.id, { mimeType: "image/png", sizeBytes: 100 }), /PDF/);
   const upload = await createPaperUpload(paper.id, { mimeType: "application/pdf", sizeBytes: 2048 });
   assert.match(upload.uploadUrl, /X-Amz-Signature=/);
+  assert.match(upload.uploadUrl, /\/origin-private\/origin-now\/store\//, "papers go to the private bucket (B96)");
   await assert.rejects(confirmPaperUpload(paper.id, "origin-now/store/other/x.pdf"), /does not belong/);
   await confirmPaperUpload(paper.id, upload.objectKey);
   await upsertStoreItem({ id: paper.id, kind: "digital", title: "JEE Main 2025 Shift 1", priceCoins: 20, active: true, stock: 1 });
@@ -105,6 +108,7 @@ test("papers: off until uploaded, bought once, downloaded only by the owner; sto
 
   const link = await getPaperDownload(buyer, bought.order.id);
   assert.match(link.url, new RegExp(upload.objectKey.replace(/[.]/g, "\\.")));
+  assert.match(link.url, /\/origin-private\//);
   const someoneElse = await seedStudent();
   await assert.rejects(getPaperDownload(someoneElse, bought.order.id), /not found/i);
   await (await import("@/server/now/wallet-service")).ensureWelcomeGrant(someoneElse);
@@ -115,13 +119,27 @@ test("papers: off until uploaded, bought once, downloaded only by the owner; sto
   await assertLedgerBalanced();
 });
 
-test("the store is for pilot members; admins cannot list merch or rupee prices yet", { skip: NOW_SKIP }, async () => {
+test("the store is for pilot members; merch and rupee prices need their switches", { skip: NOW_SKIP }, async () => {
   await setup();
   const outsider = await seedUser("Not Invited");
   await assert.rejects(listStoreItems(outsider), /pilot members/);
-  await assert.rejects(upsertStoreItem({ kind: "merch", title: "Hoodie", priceCoins: 900 }), /premium time and digital papers only/);
+  await assert.rejects(upsertStoreItem({ kind: "merch", title: "Hoodie", priceCoins: 900 }), /Switch on "Merch in the store"/);
   await assert.rejects(
     upsertStoreItem({ kind: "premium", title: "Mixed", priceCoins: 10, pricePaise: 100, premiumSubject: "physics", premiumDays: 7 }),
-    /after the pilot/,
+    /Rupee prices in the store/,
   );
+});
+
+test("paid papers never use the public bucket: no private bucket, or the public one named, refuses uploads (B96)", { skip: NOW_SKIP }, async () => {
+  await setup();
+  const paper = await upsertStoreItem({ kind: "digital", title: "Bucket check", priceCoins: 5, active: false });
+  const saved = process.env.R2_PRIVATE_BUCKET;
+  try {
+    delete process.env.R2_PRIVATE_BUCKET;
+    await assert.rejects(createPaperUpload(paper.id, { mimeType: "application/pdf", sizeBytes: 10 }), (e: { code?: string }) => e.code === "storage_unavailable");
+    process.env.R2_PRIVATE_BUCKET = "ORIGIN";
+    await assert.rejects(createPaperUpload(paper.id, { mimeType: "application/pdf", sizeBytes: 10 }), (e: { code?: string }) => e.code === "storage_unavailable");
+  } finally {
+    process.env.R2_PRIVATE_BUCKET = saved;
+  }
 });

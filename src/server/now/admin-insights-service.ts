@@ -9,6 +9,7 @@
 
 import { getUserPostgresPool } from "@/server/user-postgres";
 
+import { getSessionBoardForAdmin } from "./board-service";
 import { isLowAcceptRate, istDayKey } from "./matching";
 import { listOnlineHelpers } from "./now-realtime";
 import { ensureNowSchema } from "./now-schema";
@@ -204,7 +205,7 @@ export async function getSessionReview(sessionId: string) {
   );
   const row = s.rows[0];
   if (!row) return null;
-  const [offers, events, ratings, reports, ledger] = await Promise.all([
+  const [offers, events, ratings, reports, ledger, board] = await Promise.all([
     pool.query(
       `SELECT o.id, o.rank, o.offered_at, o.expires_at, o.response, o.decline_reason, o.responded_at, h.display_name
          FROM now.offers o JOIN now.helpers h ON h.id = o.helper_id WHERE o.request_id = $1 ORDER BY o.offered_at`,
@@ -220,8 +221,9 @@ export async function getSessionReview(sessionId: string) {
       `SELECT t.kind, t.amount, t.idempotency_key, t.created_at FROM now.ledger_transfers t WHERE t.request_id = $1 ORDER BY t.created_at`,
       [row.request_id],
     ),
+    getSessionBoardForAdmin(sessionId),
   ]);
-  const question = (row.context_json?.question ?? {}) as { text?: string; options?: string[] };
+  const question = (row.context_json?.question ?? {}) as { text?: string; options?: string[]; image?: string | null };
   return {
     sessionId,
     requestId: row.request_id,
@@ -232,7 +234,7 @@ export async function getSessionReview(sessionId: string) {
     difficulty: row.difficulty,
     language: row.language,
     questionId: row.question_id,
-    question: { text: question.text ?? "", options: question.options ?? [] },
+    question: { text: question.text ?? "", options: question.options ?? [], image: question.image ?? null },
     priceCoins: row.price_coins,
     solverKind: row.solver_kind,
     solverName: row.solver_name,
@@ -260,6 +262,8 @@ export async function getSessionReview(sessionId: string) {
     ratings: ratings.rows,
     reports: reports.rows,
     ledger: ledger.rows,
+    /** The shared board (B89), when the solver wrote on one. */
+    board,
   };
 }
 

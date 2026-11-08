@@ -7,6 +7,7 @@ import type { PoolClient } from "pg";
 import { metric } from "@/lib/metrics";
 import { recomputeUserPremiumFlags } from "@/server/entitlements";
 import { reverseCoinPackOnRefund } from "@/server/now/coin-pack-payments";
+import { onStoreItemRefunded } from "@/server/now/store-payments";
 import { getUserPostgresPool } from "@/server/user-postgres";
 import type { AuditEventInput } from "@/server/workspaces/types";
 
@@ -374,6 +375,10 @@ export async function applyRefundInTransaction(
         // shortfall freezes the wallet for review instead of failing the refund.
         if (orderKind === "coin_pack" && userId) {
           await reverseCoinPackOnRefund(client, { id: orderId, userId, notes });
+        }
+        // Origin Store (B92): the item may already be in use or shipped, so an admin decides; logged.
+        if (orderKind === "store_item") {
+          await onStoreItemRefunded(client, { paymentOrderId: orderId, notes });
         }
         const revoked = await client.query(
           `UPDATE entitlements.subject_grants

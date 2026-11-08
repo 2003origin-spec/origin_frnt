@@ -6,6 +6,7 @@
 
 import assert from "node:assert/strict";
 
+import { createRequest, getCurrentOffer, heartbeatHelper, respondToOffer } from "@/server/now/dispatch-service";
 import { findUnbalancedTransfers } from "@/server/now/ledger-rules";
 import { loadAllLegsForAudit } from "@/server/now/ledger-store";
 import { clearPresence } from "@/server/now/now-realtime";
@@ -35,6 +36,8 @@ export async function setup(): Promise<void> {
     null,
   );
   await rawPool().query(`DELETE FROM now.prices`);
+  // The parts after the pilot scope (B88–B95) start off; a test switches on what it needs.
+  await setSetting("now_features", "{}", null);
   // A request an earlier test left waiting would be offered to this test's
   // fresh solver on its first heartbeat (correct behaviour, wrong test), so
   // every test starts with nothing waiting.
@@ -91,6 +94,29 @@ export async function seedAttemptedQuestion(studentId: string, subject: string):
     [studentId, id],
   );
   return id;
+}
+
+/** A fresh student and physics solver with an accepted human session between them. */
+export async function acceptedHumanSession(): Promise<{
+  student: string;
+  solver: { userId: string; helperId: string };
+  requestId: string;
+  sessionId: string;
+}> {
+  await setup();
+  for (const id of helpersMade) await clearPresence(id); // earlier tests' solvers must not take the offer
+  const student = await seedStudent();
+  const solver = await seedHelper("physics");
+  await heartbeatHelper(solver.userId, null);
+  const request = await createRequest(student, { questionId: await seedAttemptedQuestion(student, "physics") });
+  const offer = (await getCurrentOffer(solver.userId))!;
+  const { sessionId } = await respondToOffer(solver.userId, offer.offerId, "accept", null);
+  return { student, solver, requestId: request.id, sessionId: sessionId! };
+}
+
+/** Switches on some of the parts after the pilot scope (Settings → Extra parts). */
+export async function setFeatures(on: Partial<Record<"board" | "askLater" | "groups" | "merch" | "rupeePrices", boolean>>): Promise<void> {
+  await setSetting("now_features", JSON.stringify(on), null);
 }
 
 export async function status(requestId: string): Promise<string> {

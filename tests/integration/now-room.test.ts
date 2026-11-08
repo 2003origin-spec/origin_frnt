@@ -189,3 +189,62 @@ test("retention: old recordings are deleted unless a report is open; admin opens
   assert.ok(row.rows[0].recording_deleted_at);
   await assert.rejects(getRecordingLinkForAdmin(admin, sessionId, "Looking again later"), /no recording/i);
 });
+
+test("no private bucket (B87): calls go unrecorded, old recordings are kept and cannot be opened", { skip: NOW_SKIP }, async () => {
+  // A recording made while the bucket was set.
+  const { student, solver, sessionId } = await acceptedHumanSession();
+  await joinSession(student, sessionId);
+  await joinSession(solver.userId, sessionId);
+  await endSession({ userId: solver.userId }, sessionId, { outcome: "resolved" });
+  const admin = await seedUser("Admin Person");
+  const r2: string[] = [];
+  const realFetch = globalThis.fetch;
+  const stubR2 = () => {
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      r2.push(`${init?.method ?? "GET"} ${String(input)}`);
+      return new Response(null, { status: 204 });
+    }) as typeof fetch;
+  };
+  try {
+    // The bucket names the public image bucket: a new call carries on, unrecorded, and says so.
+    process.env.R2_BUCKET_NAME = "origin-public-test";
+    process.env.NOW_RECORDING_R2_BUCKET = "origin-public-test";
+    const next = await acceptedHumanSession();
+    assert.equal((await issueRoomTicket(next.student, next.sessionId)).recorded, false);
+    await joinSession(next.student, next.sessionId);
+    await joinSession(next.solver.userId, next.sessionId);
+    assert.equal(callsFor("StartRoomCompositeEgress", `now-${next.sessionId}`).length, 0, "no egress into the public bucket");
+    const unavailable = await rawPool().query(
+      `SELECT payload FROM now.events WHERE session_id = $1 AND type = 'recording.unavailable'`,
+      [next.sessionId],
+    );
+    assert.equal(unavailable.rows[0]?.payload.reason, "bucket_is_public");
+    await endSession({ userId: next.solver.userId }, next.sessionId, { outcome: "resolved" });
+
+    // The bucket is not set at all: the nightly purge deletes nothing. The old
+    // code sent the delete to the public bucket and marked the recording gone.
+    delete process.env.NOW_RECORDING_R2_BUCKET;
+    delete process.env.R2_PRIVATE_BUCKET;
+    const later = new Date(Date.now() + 31 * 24 * 60 * 60_000);
+    stubR2();
+    const result = await purgeExpiredRecordings(later);
+    assert.equal(r2.length, 0, "nothing sent to R2");
+    assert.ok(result.failed >= 1, "due recordings are reported as not deleted");
+    const kept = await rawPool().query(`SELECT recording_key, recording_deleted_at FROM now.sessions WHERE id = $1`, [sessionId]);
+    assert.equal(kept.rows[0].recording_key, `origin-now/recordings/${sessionId}.ogg`);
+    assert.equal(kept.rows[0].recording_deleted_at, null);
+    await assert.rejects(getRecordingLinkForAdmin(admin, sessionId, "Checking a complaint"), /not set up/);
+    const accessed = await rawPool().query(`SELECT 1 FROM now.events WHERE session_id = $1 AND type = 'recording.accessed'`, [sessionId]);
+    assert.equal(accessed.rows.length, 0, "a refused open is not logged as an access");
+
+    // With the bucket back, the next night deletes it from that bucket.
+    process.env.NOW_RECORDING_R2_BUCKET = "origin-recordings";
+    await purgeExpiredRecordings(later);
+    assert.match(r2.find((d) => d.includes(sessionId)) ?? "", /^DELETE .*origin-recordings/);
+  } finally {
+    globalThis.fetch = realFetch;
+    process.env.NOW_RECORDING_R2_BUCKET = "origin-recordings";
+    if (savedEnv.R2_BUCKET_NAME === undefined) delete process.env.R2_BUCKET_NAME;
+    else process.env.R2_BUCKET_NAME = savedEnv.R2_BUCKET_NAME;
+  }
+});

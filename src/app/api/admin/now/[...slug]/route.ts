@@ -35,6 +35,7 @@ import {
   searchPeople,
 } from "@/server/now/admin-insights-service";
 import { parseScorecardPeriod } from "@/server/now/pilot-scorecard-rules";
+import { getLaunchReadiness } from "@/server/now/launch-check-service";
 import { getRosterForAdmin } from "@/server/now/roster-service";
 import { getSolverDashboard, getStudentDashboard } from "@/server/now/dashboard-service";
 import {
@@ -44,9 +45,15 @@ import {
   listStoreOrdersForAdmin,
   upsertStoreItem,
 } from "@/server/now/store-service";
+import { confirmMerchImage, createMerchImageUpload, listMerchOrdersForAdmin, updateMerchShipment } from "@/server/now/merch-service";
+import { SHIP_STATUSES } from "@/server/now/store-rules";
+import { listLaterForAdmin } from "@/server/now/ask-later-service";
+import { endGroup, listGroupsForAdmin } from "@/server/now/group-service";
 import { APPLICATION_STATUSES, DIFFICULTIES, SOLVER_KINDS } from "@/server/now/types";
 import { adminAdjustWallet, listCoinPacks, upsertCoinPack } from "@/server/now/wallet-service";
 import { recordAuditEvent } from "@/server/workspaces/audit";
+
+const LATER_STATUSES = ["open", "claimed", "answered", "accepted", "disputed", "expired", "cancelled"] as const;
 
 /**
  * Origin NOW admin API (plan: V1/ORIGIN_NOW_PLAN.md, "Admin controls").
@@ -71,7 +78,12 @@ import { recordAuditEvent } from "@/server/workspaces/audit";
  *   GET|POST /api/admin/now/store/items          PUT  /api/admin/now/store/items/:id
  *   POST /api/admin/now/store/items/:id/file     POST /api/admin/now/store/items/:id/file/confirm
  *   GET  /api/admin/now/store/orders
+ *   GET  /api/admin/now/groups               POST /api/admin/now/groups/:id/cancel { reason }   (group sessions, B95; seats refunded)
+ *   GET  /api/admin/now/later?status=        ask-later doubts (B94; reports about answers go to the reports queue)
+ *   GET  /api/admin/now/store/merch-orders?status=   POST /api/admin/now/store/orders/:id/shipment { action, courier, trackingNo, reason }
+ *   POST /api/admin/now/store/items/:id/image        POST /api/admin/now/store/items/:id/image/confirm   (merch photos, B91)
  *   GET  /api/admin/now/monitor                  GET  /api/admin/now/metrics
+ *   GET  /api/admin/now/readiness                (launch check: read-only, env vars only as set / not set)
  *   GET  /api/admin/now/roster                   (last 7 + next 14 evenings: cover per subject, minutes online)
  *   GET  /api/admin/now/scorecard?from=YYYY-MM-DD&to=YYYY-MM-DD (IST days, inclusive; default: pilot start → now)
  *   GET  /api/admin/now/sessions?status=&kind=   GET  /api/admin/now/sessions/:id
@@ -112,15 +124,23 @@ const ResolveSchema = z.object({ outcome: z.enum(["upheld", "dismissed"]), note:
 const NoteSchema = z.object({ note: z.string().trim().min(5).max(500) });
 const FreezeSchema = z.object({ frozen: z.boolean(), reason: z.string().trim().min(5).max(300) });
 const StoreItemSchema = z.object({
-  kind: z.enum(["premium", "digital"]),
+  kind: z.enum(["premium", "digital", "merch"]),
   title: z.string().max(120),
   description: z.string().max(2000).nullable().optional(),
   priceCoins: z.number().int(),
+  pricePaise: z.number().int().optional(),
   stock: z.number().int().nullable().optional(),
   premiumSubject: z.string().nullable().optional(),
   premiumDays: z.number().int().nullable().optional(),
   featured: z.boolean().optional(),
   active: z.boolean().optional(),
+  sizeStock: z.record(z.string(), z.number()).nullable().optional(),
+});
+const ShipmentSchema = z.object({
+  action: z.enum(["pack", "ship", "deliver", "cancel"]),
+  courier: z.string().max(60).nullable().optional(),
+  trackingNo: z.string().max(60).nullable().optional(),
+  reason: z.string().max(300).nullable().optional(),
 });
 const PaperUploadSchema = z.object({ mimeType: z.string().max(100), sizeBytes: z.number().int() });
 const PaperConfirmSchema = z.object({ objectKey: z.string().max(300) });
@@ -295,6 +315,7 @@ const ROUTES: { method: Method; pattern: string[]; handler: Handler }[] = [
   { method: "GET", pattern: ["monitor"], handler: async () => nowJson(await getLiveMonitor()) },
   { method: "GET", pattern: ["metrics"], handler: async () => nowJson(await getNowMetrics()) },
   { method: "GET", pattern: ["roster"], handler: async () => nowJson(await getRosterForAdmin()) },
+  { method: "GET", pattern: ["readiness"], handler: async () => nowJson(await getLaunchReadiness()) },
   {
     method: "GET",
     pattern: ["scorecard"],
@@ -376,6 +397,59 @@ const ROUTES: { method: Method; pattern: string[]; handler: Handler }[] = [
     },
   },
   { method: "GET", pattern: ["store", "orders"], handler: async () => nowJson({ orders: await listStoreOrdersForAdmin() }) },
+  { method: "GET", pattern: ["groups"], handler: async () => nowJson({ groups: await listGroupsForAdmin() }, { headers: { "Cache-Control": "no-store" } }) },
+  {
+    method: "POST",
+    pattern: ["groups", ":id", "cancel"],
+    handler: async (request, adminId, [id]) => {
+      const { reason } = z.object({ reason: z.string().trim().min(5).max(300) }).parse(await parseJsonBody(request));
+      const group = await endGroup({ system: "admin" }, id, new Date(), `Cancelled by Origin: ${reason}`);
+      await audit(adminId, "now.group.cancel", { groupId: id });
+      return nowJson({ group });
+    },
+  },
+  {
+    method: "GET",
+    pattern: ["later"],
+    handler: async (request) => {
+      const status = request.nextUrl.searchParams.get("status");
+      const valid = LATER_STATUSES.find((s) => s === status) ?? null;
+      return nowJson({ items: await listLaterForAdmin(valid) }, { headers: { "Cache-Control": "no-store" } });
+    },
+  },
+  {
+    method: "GET",
+    pattern: ["store", "merch-orders"],
+    handler: async (request) => {
+      const status = request.nextUrl.searchParams.get("status");
+      const valid = SHIP_STATUSES.find((s) => s === status) ?? null;
+      return nowJson({ orders: await listMerchOrdersForAdmin(valid) }, { headers: { "Cache-Control": "no-store" } });
+    },
+  },
+  {
+    method: "POST",
+    pattern: ["store", "orders", ":id", "shipment"],
+    handler: async (request, adminId, [id]) => {
+      const body = ShipmentSchema.parse(await parseJsonBody(request));
+      const order = await updateMerchShipment(adminId, id, body.action, body);
+      await audit(adminId, `now.store.merch.${body.action}`, { orderId: id });
+      return nowJson({ order });
+    },
+  },
+  {
+    method: "POST",
+    pattern: ["store", "items", ":id", "image"],
+    handler: async (request, _adminId, [id]) => nowJson(await createMerchImageUpload(id, PaperUploadSchema.parse(await parseJsonBody(request)))),
+  },
+  {
+    method: "POST",
+    pattern: ["store", "items", ":id", "image", "confirm"],
+    handler: async (request, adminId, [id]) => {
+      const result = await confirmMerchImage(id, PaperConfirmSchema.parse(await parseJsonBody(request)).objectKey);
+      await audit(adminId, "now.store.item.image", { itemId: id });
+      return nowJson(result);
+    },
+  },
   {
     method: "POST",
     pattern: ["wallets", ":id", "freeze"],

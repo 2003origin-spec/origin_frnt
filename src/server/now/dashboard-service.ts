@@ -8,6 +8,7 @@
  * sees only their own history.
  */
 
+import { ACCEPT_TIME_WINDOW_DAYS } from "@/lib/now-format";
 import { getUserPostgresPool } from "@/server/user-postgres";
 
 import { istDayStart, istMonthStart } from "./admin-insights-service";
@@ -30,6 +31,8 @@ async function db() {
 
 const iso = (d: Date | null | undefined) => (d ? d.toISOString() : null);
 const ratio = (a: number, b: number) => (b > 0 ? a / b : null);
+const seconds = (v: number | string | null) => (v === null ? null : Math.round(Number(v)));
+const acceptWindowStart = (now: Date) => new Date(now.getTime() - ACCEPT_TIME_WINDOW_DAYS * 24 * 60 * 60_000);
 
 async function onlineHelperIds(): Promise<Set<string>> {
   const ids = new Set<string>();
@@ -80,7 +83,15 @@ export async function getStudentDashboard(studentId: string, options: { page?: n
         GROUP BY r.subject, r.chapter, r.concept ORDER BY doubts DESC LIMIT 5`,
       [studentId],
     ),
-    pool.query<{ helper_id: string; display_name: string; sessions: number; my_avg: number | null; favourite: boolean; subjects: string[] }>(
+    pool.query<{
+      helper_id: string;
+      display_name: string;
+      sessions: number;
+      my_avg: number | null;
+      favourite: boolean;
+      subjects: string[];
+      median_accept_s: number | null;
+    }>(
       `WITH together AS (
          SELECT s.helper_id, count(*)::int AS sessions
            FROM now.sessions s WHERE s.student_id = $1 AND s.solver_kind = 'human' AND s.started_at IS NOT NULL
@@ -89,12 +100,14 @@ export async function getStudentDashboard(studentId: string, options: { page?: n
        SELECT h.id AS helper_id, h.display_name, COALESCE(t.sessions, 0) AS sessions,
               (SELECT avg(stars)::float FROM now.ratings rt WHERE rt.helper_id = h.id AND rt.rater_id = $1) AS my_avg,
               (h.id IN (SELECT helper_id FROM favs)) AS favourite,
-              ARRAY(SELECT DISTINCT subject FROM now.helper_expertise e WHERE e.helper_id = h.id) AS subjects
+              ARRAY(SELECT DISTINCT subject FROM now.helper_expertise e WHERE e.helper_id = h.id) AS subjects,
+              (SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM (o.responded_at - o.offered_at)))
+                 FROM now.offers o WHERE o.helper_id = h.id AND o.response = 'accepted' AND o.offered_at >= $2)::float AS median_accept_s
          FROM now.helpers h LEFT JOIN together t ON t.helper_id = h.id
         WHERE (h.id IN (SELECT helper_id FROM together) OR h.id IN (SELECT helper_id FROM favs))
           AND h.verification_status = 'verified'
           AND NOT EXISTS (SELECT 1 FROM now.blocks b WHERE b.blocker_id = $1 AND b.blocked_id = h.user_id)`,
-      [studentId],
+      [studentId, acceptWindowStart(now)],
     ),
     pool.query(
       `SELECT r.id, r.question_id, r.subject, r.chapter, r.difficulty, r.status, r.created_at, r.context_json->'question'->>'text' AS question_text,
@@ -127,6 +140,7 @@ export async function getStudentDashboard(studentId: string, options: { page?: n
       subjects: r.subjects,
       sessionsTogether: r.sessions,
       myAverageStars: r.my_avg === null ? null : Number(r.my_avg),
+      medianAcceptSeconds: seconds(r.median_accept_s),
       favourite: r.favourite,
       online: online.has(r.helper_id),
     }))
@@ -232,8 +246,25 @@ export async function getSolverDashboard(solverUserId: string, now: Date = new D
   const fourteen = new Date(dayStart.getTime() - 13 * 24 * 60 * 60_000);
   const account = userAccount(solverUserId);
 
-  const [counts, offers, bySubject, byDifficulty, earningsDaily, earningsMonth, storeSpend, feedback, comments, recentStars, activity, sessionsDaily, expertise, reportsRecent] =
-    await Promise.all([
+  const [
+    counts,
+    offers,
+    bySubject,
+    byDifficulty,
+    earningsDaily,
+    earningsMonth,
+    storeSpend,
+    feedback,
+    comments,
+    recentStars,
+    activity,
+    sessionsDaily,
+    expertise,
+    reportsRecent,
+    earningsWeekly,
+    paidSessions,
+    recentAccept,
+  ] = await Promise.all([
       pool.query<{ today: number; week: number; month: number; all_time: number; resolved: number; with_outcome: number }>(
         `SELECT count(*) FILTER (WHERE started_at >= $2)::int AS today, count(*) FILTER (WHERE started_at >= $3)::int AS week,
                 count(*) FILTER (WHERE started_at >= $4)::int AS month, count(*)::int AS all_time,
@@ -327,6 +358,35 @@ export async function getSolverDashboard(solverUserId: string, now: Date = new D
         `SELECT count(*)::int AS n FROM now.reports WHERE reported_helper_id = $1 AND status IN ('open', 'upheld') AND created_at >= $2`,
         [helper.id, new Date(now.getTime() - 30 * 24 * 60 * 60_000)],
       ),
+      // Earnings history (B90): the last 12 weeks (Monday to Sunday, IST) and the last 20 paid sessions.
+      pool.query<{ week: string; sessions: number; tips: number }>(
+        `SELECT to_char(date_trunc('week', e.created_at AT TIME ZONE 'Asia/Kolkata'), 'YYYY-MM-DD') AS week,
+                COALESCE(sum(e.amount) FILTER (WHERE t.kind = 'session_capture'), 0)::int AS sessions,
+                COALESCE(sum(e.amount) FILTER (WHERE t.kind = 'tip'), 0)::int AS tips
+           FROM now.ledger_entries e JOIN now.ledger_transfers t ON t.id = e.transfer_id
+          WHERE e.account_id = $1 AND e.direction = 'credit' AND t.kind IN ('session_capture', 'tip') AND e.created_at >= $2
+          GROUP BY 1 ORDER BY 1`,
+        [account, new Date(dayStart.getTime() - 12 * 7 * 24 * 60 * 60_000)],
+      ),
+      pool.query<{ session_id: string; ended_at: Date; subject: string; difficulty: string; coins: number; tip: number; available_at: Date | null }>(
+        `SELECT s.id AS session_id, s.ended_at, r.subject, r.difficulty,
+                COALESCE(sum(e.amount) FILTER (WHERE t.kind = 'session_capture'), 0)::int AS coins,
+                COALESCE(sum(e.amount) FILTER (WHERE t.kind = 'tip'), 0)::int AS tip,
+                max(e.available_at) AS available_at
+           FROM now.sessions s
+           JOIN now.requests r ON r.id = s.request_id
+           JOIN now.ledger_transfers t ON t.request_id = s.request_id AND t.kind IN ('session_capture', 'tip')
+           JOIN now.ledger_entries e ON e.transfer_id = t.id AND e.account_id = $2 AND e.direction = 'credit'
+          WHERE s.helper_id = $1 AND s.ended_at IS NOT NULL
+          GROUP BY s.id, s.ended_at, r.subject, r.difficulty
+          ORDER BY s.ended_at DESC LIMIT 20`,
+        [helper.id, account],
+      ),
+      pool.query<{ median_s: number | null }>(
+        `SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY extract(epoch FROM (responded_at - offered_at)))::float AS median_s
+           FROM now.offers WHERE helper_id = $1 AND response = 'accepted' AND offered_at >= $2`,
+        [helper.id, acceptWindowStart(now)],
+      ),
     ]);
 
   const c = counts.rows[0];
@@ -373,6 +433,16 @@ export async function getSolverDashboard(solverUserId: string, now: Date = new D
       balance: balance.available,
       pending: balance.pending,
       storeSpendThisMonth: storeSpend.rows[0].spent,
+      weekly: earningsWeekly.rows,
+      recentSessions: paidSessions.rows.map((r) => ({
+        sessionId: r.session_id,
+        endedAt: iso(r.ended_at),
+        subject: r.subject,
+        difficulty: r.difficulty,
+        coins: r.coins,
+        tip: r.tip,
+        pending: r.available_at !== null && r.available_at.getTime() > now.getTime(),
+      })),
     },
     feedback: {
       tags: feedback.rows,
@@ -398,6 +468,8 @@ export async function getSolverDashboard(solverUserId: string, now: Date = new D
       subjects: expertise.rows.map((e) => e.subject),
       averageStars: avgStars,
       sessions: c.all_time,
+      /** Median time to accept an offer over the last 90 days (PRD §6 "Response"). */
+      medianAcceptSeconds: seconds(recentAccept.rows[0]?.median_s ?? null),
     },
   };
 }

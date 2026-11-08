@@ -28,6 +28,12 @@ export type PushMessage = {
   route?: string;
   /** Extra string data — FCM data payloads are string→string. */
   data?: Record<string, string>;
+  /**
+   * Android delivery for time-critical messages (Origin NOW offers, B88):
+   * the shell's notification channel, HIGH priority so it pierces Doze, and
+   * a TTL so a message that can no longer be acted on is never delivered.
+   */
+  android?: { channelId?: string; urgent?: boolean; ttlSeconds?: number };
 };
 
 export type PushSendResult = {
@@ -60,7 +66,8 @@ function getJwtClient(): JWT | null {
   return jwtClient;
 }
 
-function buildFcmPayload(token: string, message: PushMessage) {
+export function buildFcmPayload(token: string, message: PushMessage) {
+  const android = message.android;
   return {
     message: {
       token,
@@ -70,9 +77,11 @@ function buildFcmPayload(token: string, message: PushMessage) {
         ...(message.route ? { route: message.route } : {}),
       },
       android: {
-        // Default priority; bump per-category later if a class of message
-        // genuinely needs Doze-piercing delivery (ledger #43).
-        priority: "NORMAL" as const,
+        // Default priority; only a message that must arrive within seconds
+        // asks for Doze-piercing delivery (ledger #43; Origin NOW offers, B88).
+        priority: android?.urgent ? ("HIGH" as const) : ("NORMAL" as const),
+        ...(android?.ttlSeconds !== undefined ? { ttl: `${Math.max(0, Math.round(android.ttlSeconds))}s` } : {}),
+        ...(android?.channelId ? { notification: { channel_id: android.channelId } } : {}),
       },
     },
   };

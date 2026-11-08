@@ -60,7 +60,8 @@ export type TransferKind =
   | "store_spend"
   | "expiry"
   | "admin_adjustment"
-  | "pack_refund";
+  | "pack_refund"
+  | "store_refund";
 
 /** One movement of coins from `from` to `to`. */
 export type Transfer = {
@@ -289,6 +290,18 @@ export function storeSpend(userId: string, coins: number, orderId: string): Tran
   };
 }
 
+/** Gives the coins back for a store order that was cancelled before it shipped (merch, B91). */
+export function storeRefund(userId: string, coins: number, orderId: string): Transfer {
+  return {
+    kind: "store_refund",
+    from: PLATFORM_ACCOUNTS.store,
+    to: userAccount(userId),
+    amount: coins,
+    orderRef: orderId,
+    idempotencyKey: `store-refund:${orderId}`,
+  };
+}
+
 export function adminCredit(userId: string, coins: number, adjustmentId: string): Transfer {
   return {
     kind: "admin_adjustment",
@@ -355,9 +368,16 @@ export type WalletBalance = {
   expiredUnposted: number;
 };
 
-type Bucket = { remaining: number; expiresAt: number | null };
+type Bucket = { remaining: number; expiresAt: number | null; giftable: boolean };
 
-type Replay = { live: number; pending: number; expiredTotal: number; postedExpiry: number; overdraft: number };
+/**
+ * Coins a user may gift (B93): only coins they bought or earned. Welcome,
+ * promotion, admin and gifted coins never move on, and nor do coins that
+ * came back from a hold or a cancelled order (their origin is not tracked).
+ */
+export const GIFTABLE_CREDIT_KINDS: readonly TransferKind[] = ["pack_purchase", "session_capture", "tip"];
+
+type Replay = { live: number; pending: number; expiredTotal: number; postedExpiry: number; overdraft: number; giftable: number };
 
 /**
  * Replays an account's legs in time order. Each credit becomes a bucket once it
@@ -408,7 +428,11 @@ function replayLegs(
     expireUpTo(event.at);
     const { leg } = event;
     if (leg.direction === "credit") {
-      buckets.push({ remaining: leg.amount, expiresAt: leg.expiresAt ? leg.expiresAt.getTime() : null });
+      buckets.push({
+        remaining: leg.amount,
+        expiresAt: leg.expiresAt ? leg.expiresAt.getTime() : null,
+        giftable: !leg.expiresAt && GIFTABLE_CREDIT_KINDS.includes(leg.kind),
+      });
       continue;
     }
     if (leg.kind === "expiry") {
@@ -417,9 +441,17 @@ function replayLegs(
       continue;
     }
     let toDrain = leg.amount;
+    // A gift (B93) is drawn from bought or earned coins only. Every other spend: soonest-
+    // expiring first, and among coins that never expire, free coins before bought or earned
+    // ones, so what can be gifted lasts longest (the total is the same either way).
+    const isGift = leg.kind === "transfer";
     const order = buckets
       .filter((b) => b.remaining > 0)
-      .sort((a, b) => (a.expiresAt ?? Number.POSITIVE_INFINITY) - (b.expiresAt ?? Number.POSITIVE_INFINITY));
+      .sort((a, b) =>
+        isGift
+          ? Number(b.giftable) - Number(a.giftable)
+          : (a.expiresAt ?? Number.POSITIVE_INFINITY) - (b.expiresAt ?? Number.POSITIVE_INFINITY) || Number(a.giftable) - Number(b.giftable),
+      );
     for (const bucket of order) {
       if (toDrain === 0) break;
       const take = Math.min(bucket.remaining, toDrain);
@@ -432,7 +464,8 @@ function replayLegs(
   expireUpTo(nowMs);
 
   const live = buckets.reduce((sum, b) => sum + b.remaining, 0);
-  return { live, pending, expiredTotal, postedExpiry, overdraft };
+  const giftable = buckets.reduce((sum, b) => sum + (b.giftable ? b.remaining : 0), 0);
+  return { live, pending, expiredTotal, postedExpiry, overdraft, giftable };
 }
 
 /**
@@ -446,6 +479,15 @@ export function computeWalletBalance(legs: readonly LedgerLeg[], now: Date): Wal
     pending: r.pending,
     expiredUnposted: Math.max(0, r.expiredTotal - r.postedExpiry),
   };
+}
+
+/**
+ * How many of the spendable coins may be gifted (B93): what is left of the
+ * bought and earned coins, never more than the spendable balance.
+ */
+export function computeGiftableCoins(legs: readonly LedgerLeg[], now: Date): number {
+  const r = replayLegs(legs, now);
+  return Math.max(0, Math.min(r.live - r.overdraft, r.giftable));
 }
 
 /**
