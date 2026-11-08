@@ -14,7 +14,7 @@ import type { PoolClient } from "pg";
 
 import { sendEmail } from "@/server/email";
 import { detailsCard, paragraph, renderEmail } from "@/server/email/layout";
-import { createPresignedR2PutUrl } from "@/server/media-storage";
+import { createPresignedR2PutUrl, publicR2BucketName } from "@/server/media-storage";
 import { getUserPostgresPool } from "@/server/user-postgres";
 
 import { logEvent } from "./dispatch-service";
@@ -255,7 +255,8 @@ export async function createMerchImageUpload(itemId: string, input: { mimeType: 
   if (!objectKey || input.sizeBytes <= 0 || input.sizeBytes > MERCH_IMAGE_MAX_BYTES) {
     throw new NowError(400, "invalid_file", "Upload a JPG, PNG or WebP photo of 5 MB or less.");
   }
-  const signed = createPresignedR2PutUrl({ objectKey, method: "PUT", expiresSeconds: 900 });
+  // Public bucket on purpose (named: an upload with no bucket goes to the private one).
+  const signed = createPresignedR2PutUrl({ objectKey, bucket: publicR2BucketName(), method: "PUT", expiresSeconds: 900, contentType: input.mimeType, contentLength: input.sizeBytes });
   return { uploadUrl: signed.url, objectKey, method: "PUT", contentType: input.mimeType };
 }
 

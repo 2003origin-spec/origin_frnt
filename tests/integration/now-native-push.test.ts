@@ -58,7 +58,7 @@ test("a solver's registered phone lets the shift run in the background, only whi
     await assert.rejects(heartbeatHelper(solver.userId, null, new Date(), { background: true }), alertsOff);
 
     setFcm(true);
-    await revokeDeviceToken(token);
+    await revokeDeviceToken(token, solver.userId);
     assert.equal(await canAlertInBackground(solver.userId), false, "signed out on the phone");
   } finally {
     setFcm(false);

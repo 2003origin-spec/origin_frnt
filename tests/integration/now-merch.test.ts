@@ -58,6 +58,8 @@ test("merch: sizes, address, cancel with coins back, pack / ship / deliver, addr
 
   const upload = await createMerchImageUpload(tee.id, { mimeType: "image/png", sizeBytes: 2048 });
   assert.match(upload.objectKey, new RegExp(`^origin-now/store-images/${tee.id}/`));
+  // Product photos are public: the link must name the public bucket, never fall back to the private one.
+  assert.match(upload.uploadUrl, /\/origin\/origin-now\/store-images\//, "signed for the public bucket");
   assert.match((await confirmMerchImage(tee.id, upload.objectKey)).imageUrl ?? "", /^https:\/\/media\.example\.invalid\/origin-now\/store-images\//);
 
   const a = await buyer();

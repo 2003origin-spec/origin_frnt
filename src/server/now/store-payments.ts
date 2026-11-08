@@ -10,6 +10,7 @@
 
 import type { PoolClient } from "pg";
 
+import { withSchemaLock } from "@/server/schema-lock";
 import { getUserPostgresPool } from "@/server/user-postgres";
 
 import { ensureNowSchema } from "./now-schema";
@@ -19,7 +20,10 @@ import { fulfilStoreOrderLocked, type ItemRow } from "./store-service";
 export async function ensureStoreItemOrderKind(): Promise<void> {
   const pool = getUserPostgresPool();
   if (!pool || globalThis.__originStoreItemKindEnsured) return;
-  await pool.query(`ALTER TYPE payments.order_kind ADD VALUE IF NOT EXISTS 'store_item'`);
+  // Its own short transaction under the shared DDL lock, like ensureCoinPackOrderKind.
+  await withSchemaLock(pool, (client) =>
+    client.query(`ALTER TYPE payments.order_kind ADD VALUE IF NOT EXISTS 'store_item'`),
+  );
   globalThis.__originStoreItemKindEnsured = true;
 }
 

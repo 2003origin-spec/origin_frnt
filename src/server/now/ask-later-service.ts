@@ -203,7 +203,7 @@ export async function createLaterPhotoUpload(
     prefix = `origin-now/ask-later/answer/${input.laterId}/`;
   }
   const objectKey = `${prefix}${randomBytes(8).toString("hex")}.${ext}`;
-  const signed = createPresignedR2PutUrl({ objectKey, bucket: requirePrivateFilesBucket(), method: "PUT", expiresSeconds: 900 });
+  const signed = createPresignedR2PutUrl({ objectKey, bucket: requirePrivateFilesBucket(), method: "PUT", expiresSeconds: 900, contentType: input.mimeType, contentLength: input.sizeBytes });
   return { uploadUrl: signed.url, objectKey, contentType: input.mimeType };
 }
 
