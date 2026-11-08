@@ -5,7 +5,7 @@
 import type { Pool } from "pg";
 
 import { getUserPostgresPool } from "@/server/user-postgres";
-import { importR2BucketName } from "@/server/media-storage";
+import { privateR2BucketName } from "@/server/media-storage";
 
 import { createDocumentImportJobId, createImportJobPageId, createImportJobQuestionId } from "./ids";
 import { ensureDocumentImportSchema } from "./document-import-schema";
@@ -119,7 +119,7 @@ export async function createImportJob(input: {
   await ensureDocumentImportSchema();
   const id = input.id ?? createDocumentImportJobId();
   const r2Key = input.sourceR2ObjectKey ?? `imports/${id}/${input.fileName}`;
-  const r2Bucket = input.sourceR2Bucket ?? importR2BucketName();
+  const r2Bucket = input.sourceR2Bucket ?? privateR2BucketName();
   const result = await pool().query(
     `INSERT INTO import.document_import_jobs (
        id, workspace_id, source_type, source_file_name,
@@ -206,26 +206,35 @@ export async function countActiveImportJobs(workspaceId: string): Promise<number
   return Number(result.rows[0]?.n ?? 0);
 }
 
-export async function getJobPages(jobId: string, filter?: { status?: ImportPageStatus }): Promise<ImportJobPage[]> {
+/**
+ * U6 — pages and questions carry no workspace_id of their own, so every
+ * reader joins the parent job and filters on its workspace. A job id from
+ * another workspace simply yields no rows.
+ */
+export async function getJobPages(workspaceId: string, jobId: string, filter?: { status?: ImportPageStatus }): Promise<ImportJobPage[]> {
   await ensureDocumentImportSchema();
-  const params: unknown[] = [jobId];
-  let where = "job_id = $1";
-  if (filter?.status) { params.push(filter.status); where += ` AND status = $${params.length}`; }
+  const params: unknown[] = [jobId, workspaceId];
+  let where = "p.job_id = $1 AND j.workspace_id = $2";
+  if (filter?.status) { params.push(filter.status); where += ` AND p.status = $${params.length}`; }
   const result = await pool().query(
-    `SELECT * FROM import.import_job_pages WHERE ${where} ORDER BY page_number`,
+    `SELECT p.* FROM import.import_job_pages p
+       JOIN import.document_import_jobs j ON j.id = p.job_id
+      WHERE ${where} ORDER BY p.page_number`,
     params,
   );
   return result.rows.map(rowToPage);
 }
 
-export async function getJobQuestions(jobId: string, filter?: { status?: ImportQuestionStatus; limit?: number }): Promise<ImportJobQuestion[]> {
+export async function getJobQuestions(workspaceId: string, jobId: string, filter?: { status?: ImportQuestionStatus; limit?: number }): Promise<ImportJobQuestion[]> {
   await ensureDocumentImportSchema();
-  const params: unknown[] = [jobId];
-  let where = "job_id = $1";
-  if (filter?.status) { params.push(filter.status); where += ` AND status = $${params.length}`; }
+  const params: unknown[] = [jobId, workspaceId];
+  let where = "q.job_id = $1 AND j.workspace_id = $2";
+  if (filter?.status) { params.push(filter.status); where += ` AND q.status = $${params.length}`; }
   const limit = filter?.limit ?? 100;
   const result = await pool().query(
-    `SELECT * FROM import.import_job_questions WHERE ${where} ORDER BY question_number NULLS FIRST LIMIT $${params.length + 1}`,
+    `SELECT q.* FROM import.import_job_questions q
+       JOIN import.document_import_jobs j ON j.id = q.job_id
+      WHERE ${where} ORDER BY q.question_number NULLS FIRST LIMIT $${params.length + 1}`,
     [...params, limit],
   );
   return result.rows.map(rowToQuestion);
@@ -299,7 +308,7 @@ export async function addJobQuestion(jobId: string, pageId: string | null, extra
   return rowToQuestion(result.rows[0]);
 }
 
-export async function updateQuestionStatus(jobId: string, questionId: string, status: ImportQuestionStatus, extra?: {
+export async function updateQuestionStatus(workspaceId: string, jobId: string, questionId: string, status: ImportQuestionStatus, extra?: {
   reviewNotes?: string | null; rejectionReason?: string | null; questionBagQuestionId?: string | null;
 }): Promise<ImportJobQuestion | null> {
   await ensureDocumentImportSchema();
@@ -310,10 +319,19 @@ export async function updateQuestionStatus(jobId: string, questionId: string, st
   if (extra?.rejectionReason !== undefined) { fields.push(`rejection_reason = $${i++}`); params.push(extra.rejectionReason); }
   if (extra?.questionBagQuestionId !== undefined) { fields.push(`question_bag_question_id = $${i++}`); params.push(extra.questionBagQuestionId); }
   const idPlaceholder = i++;
-  const jobPlaceholder = i;
-  params.push(questionId, jobId);
+  const jobPlaceholder = i++;
+  const wsPlaceholder = i;
+  params.push(questionId, jobId, workspaceId);
+  // U6 — the write is scoped to the job's workspace as well, so a job id
+  // guessed from another workspace can never be flipped from here.
   const result = await pool().query(
-    `UPDATE import.import_job_questions SET ${fields.join(", ")} WHERE id = $${idPlaceholder} AND job_id = $${jobPlaceholder} RETURNING *`,
+    `UPDATE import.import_job_questions q SET ${fields.join(", ")}
+      WHERE q.id = $${idPlaceholder} AND q.job_id = $${jobPlaceholder}
+        AND EXISTS (
+          SELECT 1 FROM import.document_import_jobs j
+          WHERE j.id = q.job_id AND j.workspace_id = $${wsPlaceholder}
+        )
+      RETURNING q.*`,
     params,
   );
   return result.rows[0] ? rowToQuestion(result.rows[0]) : null;
@@ -366,7 +384,7 @@ export async function getJobWithProgress(workspaceId: string, jobId: string): Pr
   await ensureDocumentImportSchema();
   const job = await getImportJob(workspaceId, jobId);
   if (!job) return null;
-  const questions = await getJobQuestions(jobId, { limit: 20 });
+  const questions = await getJobQuestions(workspaceId, jobId, { limit: 20 });
   const progressPercent = job.totalPages ? Math.round((job.processedPages / job.totalPages) * 100) : 0;
   return { ...job, progressPercent, questionsPreview: questions };
 }

@@ -3,15 +3,30 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { Camera, AlertTriangle, ShieldCheck, CheckCircle2, Loader2, Play, Info, X, ZoomIn } from 'lucide-react';
 import type { Test, TestResult, UserAnswer } from '@/types';
 import { FormattedMessage } from '@/components/origin-ai/FormattedMessage';
-import { submitTestAction } from '@/server/actions/test-actions';
+import { beginTestSittingAction, startTestAttemptAction, submitTestAction } from '@/server/actions/test-actions';
 import { playCategory } from '@/lib/sound-manager';
 import type { TestSubmissionPayload } from '@/server/assessments';
 import { useServerAnchoredTimer, type ServerAnchoredTimerSource } from '@/hooks/useServerAnchoredTimer';
 import { useSecureExamScreen } from '@/native/screen';
+import { subscribeNativeBackButton } from '@/native/back-button';
+import {
+  browserDraftStorage,
+  classifyRestoredDraft,
+  clearTestDraft,
+  countAnswered,
+  loadTestDraft,
+  remainingSecondsFrom,
+  saveTestDraft,
+  TEST_MAX_VIOLATIONS,
+  testDraftKey,
+  type TestDraft,
+} from '@/lib/tests/test-draft';
 import { useAuth } from '@/context/AuthContext';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { shouldSubmitTestAnswer } from '@/lib/tests/time-stats';
+import { cappedSittingSeconds, earliestDeadline, windowDeadlineOnClientClock } from '@/lib/assessments/test-window';
+import { formatISTTime } from '@/lib/format-time';
 
 const renderQuestionText = (text: string, idPrefix: string) => {
     return <FormattedMessage content={text} isAssistant={true} className="text-slate-900 !prose-slate" />;
@@ -44,6 +59,34 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
   const [answers, setAnswers] = useState<UserAnswer[]>([]);
   const durationSeconds = timerSource?.durationSeconds ?? test.duration * 60;
   const [timeRemaining, setTimeRemaining] = useState(durationSeconds);
+  // Teacher-assigned test: the server refuses submits past the window end (+60 s
+  // grace), so the sitting is capped at min(duration, time left in the window)
+  // and auto-submits there. The window end is moved onto this device's clock
+  // using the DB clock the page was rendered with. Null = no window end.
+  // Also capped at the server's own end for this sitting (`attemptEndsAt`) once
+  // known: on a reload after Start, or from the Start call (R4-1). A ref, so the
+  // running timer sees an update from Start without restarting.
+  const [initialDeadlineMs] = useState(() => {
+    if (timerSource) return null;
+    const clientNow = Date.now();
+    return earliestDeadline(
+      windowDeadlineOnClientClock({ windowEndsAt: test.windowEndsAt, serverNow: test.serverNow, clientNow }),
+      windowDeadlineOnClientClock({ windowEndsAt: test.attemptEndsAt, serverNow: test.serverNow, clientNow }),
+    );
+  });
+  const deadlineMsRef = useRef<number | null>(initialDeadlineMs);
+  // The seconds this sitting was actually given (≤ duration), for timeTaken.
+  const sittingSecondsRef = useRef(durationSeconds);
+  /** Self-timed seconds the attempt begun at `startedAtMs` had: min(duration, time to the deadline then). */
+  const sittingSecondsFrom = (startedAtMs: number) =>
+    cappedSittingSeconds({ durationSeconds, deadlineMs: deadlineMsRef.current, nowMs: startedAtMs });
+  /** Self-timed seconds left: the duration from `startedAtMs`, capped at min(window end, server end). */
+  const selfTimedSecondsLeft = (startedAtMs: number, nowMs: number) =>
+    cappedSittingSeconds({
+      durationSeconds: remainingSecondsFrom(startedAtMs, durationSeconds, nowMs),
+      deadlineMs: deadlineMsRef.current,
+      nowMs,
+    });
   const [showSubmitModal, setShowSubmitModal] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const previewVideoRef = useRef<HTMLVideoElement>(null);
@@ -72,6 +115,19 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
   const questionStartedAtRef = useRef<number>(Date.now());
   // Always holds the latest finalSubmit so timer callbacks never use a stale closure
   const finalSubmitRef = useRef<((opts?: { malpractice?: boolean }) => Promise<void>) | null>(null);
+  // On-device draft (answers, review marks, position, start time) so Back,
+  // refresh or a WebView crash never throws the attempt away. Keyed per user,
+  // paper and sitting (a study-room run is scoped by its server start time).
+  const draftKey = user?.id
+    ? testDraftKey(user.id, test.id, timerSource ? `room-${timerSource.startedAt}` : 'self')
+    : null;
+  /** Wall-clock start of this attempt; restored from the draft on resume. */
+  const examStartedAtRef = useRef<number | null>(null);
+  /** A self-timed draft whose time ran out while away: the student chooses. */
+  const [expiredDraft, setExpiredDraft] = useState<TestDraft | null>(null);
+  /** The restored attempt had been ended for malpractice; Start submits it. */
+  const restoredTerminatedRef = useRef(false);
+  const [showLeaveModal, setShowLeaveModal] = useState(false);
 
   // Force light theme for the exam — remove dark class from <html> while mounted
   useEffect(() => {
@@ -253,7 +309,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (isExamStarted && !allowSubmittedNavigationRef.current) {
         e.preventDefault();
-        e.returnValue = "Refreshing the page will automatically SUBMIT your exam. Are you sure?";
+        e.returnValue = "Leave the exam? Your answers are saved on this device and the timer keeps running.";
         return e.returnValue;
       }
     };
@@ -304,6 +360,49 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
     }
   };
 
+  // Track if a question has been visited at all
+  const [visitedStats, setVisitedStats] = useState<boolean[]>(new Array(test.questions.length).fill(false));
+
+  /** Puts a saved attempt back: answers, marks, position, clock and strikes. */
+  const applyDraft = (draft: TestDraft) => {
+    setAnswers(draft.answers);
+    setVisitedStats(draft.visited.map((v, i) => v || i === draft.currentIndex));
+    setCurrentQuestionIndex(draft.currentIndex);
+    examStartedAtRef.current = draft.startedAtMs;
+    if (!timerSource) {
+      // The restored clock respects the window cap too (a draft never outlives it).
+      sittingSecondsRef.current = sittingSecondsFrom(draft.startedAtMs);
+      setTimeRemaining(selfTimedSecondsLeft(draft.startedAtMs, Date.now()));
+    }
+    setViolations(draft.violations);
+  };
+
+  /** Expired draft → "Resume": restore it and start; the spent clock submits it. */
+  const resumeExpiredDraft = () => {
+    if (!expiredDraft) return;
+    applyDraft(expiredDraft);
+    setExpiredDraft(null);
+    setIsExamStarted(true);
+    questionStartedAtRef.current = Date.now();
+  };
+
+  /** Expired draft → "Start fresh": discard it; the paper starts blank. */
+  const discardExpiredDraft = () => {
+    if (draftKey) clearTestDraft(browserDraftStorage(), draftKey);
+    setExpiredDraft(null);
+    toast.info('Previous attempt discarded. You are starting fresh.');
+  };
+
+  // A restored attempt that had already been ended for malpractice is
+  // submitted as such once the student starts (no fresh strike counter).
+  useEffect(() => {
+    if (!isExamStarted || !restoredTerminatedRef.current) return;
+    restoredTerminatedRef.current = false;
+    setIsMalpracticeTerminated(true);
+    stopCamera();
+    setTimeout(() => finalSubmitRef.current?.({ malpractice: true }), 0);
+  }, [isExamStarted]);
+
   // Initialize tracking
   useEffect(() => {
     const initialAnswers = test.questions.map((q) => ({
@@ -316,19 +415,84 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
       timeSpent: 0,
       isMarkedForReview: false,
     }));
-    setAnswers(initialAnswers);
-
-    // Visit first question
-    setVisitedStats(prev => {
-      const next = [...prev];
-      next[0] = true;
-      return next;
-    });
+    const questionIds = test.questions.map((q) => q.id);
+    const draft = draftKey ? loadTestDraft(browserDraftStorage(), draftKey, questionIds, Date.now()) : null;
+    const kind = draft ? classifyRestoredDraft(draft, { selfTimed: !timerSource, nowMs: Date.now() }) : null;
+    restoredTerminatedRef.current = kind === 'terminated';
+    setExpiredDraft(kind === 'expired' ? draft : null);
+    if (draft && kind !== 'expired') {
+      applyDraft(draft);
+      const restored = countAnswered(draft.answers);
+      if (kind === 'terminated') {
+        toast.error('Your unfinished attempt was ended for leaving the test screen. Starting will submit it as flagged.');
+      } else {
+        const strikes = draft.violations > 0 ? ` Warnings so far: ${draft.violations}/${TEST_MAX_VIOLATIONS}.` : '';
+        toast.info(
+          (restored > 0
+            ? `Restored ${restored} saved answer${restored === 1 ? '' : 's'} from your unfinished attempt. The timer kept running.`
+            : 'Resuming your unfinished attempt. The timer kept running.') + strikes,
+        );
+      }
+    } else {
+      examStartedAtRef.current = null;
+      setViolations(0);
+      setAnswers(initialAnswers);
+      // Visit first question
+      setVisitedStats(prev => {
+        const next = [...prev];
+        next[0] = true;
+        return next;
+      });
+    }
     questionStartedAtRef.current = Date.now();
-  }, [test.questions]);
+  }, [test.questions, draftKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Track if a question has been visited at all
-  const [visitedStats, setVisitedStats] = useState<boolean[]>(new Array(test.questions.length).fill(false));
+  // Mirror the attempt to this device on every change once the exam is live.
+  useEffect(() => {
+    if (!isExamStarted || !draftKey || allowSubmittedNavigationRef.current) return;
+    if (answers.length !== test.questions.length) return;
+    if (examStartedAtRef.current === null) examStartedAtRef.current = Date.now();
+    saveTestDraft(
+      browserDraftStorage(),
+      draftKey,
+      {
+        questionIds: test.questions.map((q) => q.id),
+        answers,
+        visited: visitedStats,
+        currentIndex: currentQuestionIndex,
+        startedAtMs: examStartedAtRef.current,
+        durationSeconds,
+        violations,
+        terminated: isMalpracticeTerminated,
+      },
+      Date.now(),
+    );
+  }, [answers, visitedStats, currentQuestionIndex, isExamStarted, draftKey, durationSeconds, test.questions, violations, isMalpracticeTerminated]);
+
+  // Back guard. A browser Back (or the Android shell's goBack) is a soft
+  // navigation that unmounts the exam without `beforeunload`, so keep a
+  // sentinel history entry and ask first. In the Android shell a native
+  // `backButton` listener replaces the WebView's default goBack entirely.
+  useEffect(() => {
+    if (!isExamStarted) return;
+    const ask = () => {
+      if (allowSubmittedNavigationRef.current) return;
+      setShowLeaveModal(true);
+    };
+    window.history.pushState(window.history.state, '', window.location.href);
+    const onPopState = () => {
+      if (allowSubmittedNavigationRef.current) return;
+      window.history.pushState(window.history.state, '', window.location.href);
+      ask();
+    };
+    window.addEventListener('popstate', onPopState);
+    const unsubscribeNative = subscribeNativeBackButton(ask);
+    return () => {
+      window.removeEventListener('popstate', onPopState);
+      unsubscribeNative();
+    };
+  }, [isExamStarted]);
+
 
   const markVisited = (index: number) => {
     setVisitedStats(prev => {
@@ -351,20 +515,58 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
   useEffect(() => {
     if (timerSource) return;
     if (!isExamStarted) return;
-    const timer = setInterval(() => {
-      setTimeRemaining((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          // Schedule outside the state updater so it never fires twice in Strict Mode
-          // and always uses the latest finalSubmit (via ref) with current answers
-          setTimeout(() => finalSubmitRef.current?.(), 0);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
+    if (examStartedAtRef.current === null) examStartedAtRef.current = Date.now();
+    const startedAtMs = examStartedAtRef.current;
+    // Derived from the wall-clock start rather than decremented, so a resumed
+    // attempt (and a throttled background tab) keeps true time — and capped at
+    // min(window end, the server's end for this sitting), re-read every tick (Start
+    // may move it), so it stops there too.
+    const tick = () => {
+      const left = selfTimedSecondsLeft(startedAtMs, Date.now());
+      setTimeRemaining(left);
+      if (left <= 0) {
+        clearInterval(timer);
+        // Schedule outside the state updater so it never fires twice in Strict Mode
+        // and always uses the latest finalSubmit (via ref) with current answers
+        setTimeout(() => finalSubmitRef.current?.(), 0);
+      }
+    };
+    const timer = setInterval(tick, 1000);
+    tick();
     return () => clearInterval(timer);
   }, [isExamStarted, timerSource]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const startExam = () => {
+    if (!timerSource) {
+      // A fresh sitting starts now; a restored one keeps its original start.
+      const now = Date.now();
+      if (examStartedAtRef.current === null) examStartedAtRef.current = now;
+      const startedAtMs = examStartedAtRef.current;
+      sittingSecondsRef.current = sittingSecondsFrom(startedAtMs);
+      setTimeRemaining(selfTimedSecondsLeft(startedAtMs, now));
+    }
+    if (!timerSource && !submitHandler && test.serverNow) {
+      // Teacher-assigned test: tell the server the sitting has started and
+      // adopt the end it returns (Start re-anchors the clock within the reading
+      // allowance and the window end caps it, so the timer stops
+      // before the server's deadline). Best-effort — the submit gate does not
+      // depend on it.
+      void beginTestSittingAction(test.id)
+        .then((sitting) => {
+          if (!sitting?.attemptEndsAt) return;
+          const serverEnd = windowDeadlineOnClientClock({
+            windowEndsAt: sitting.attemptEndsAt,
+            serverNow: sitting.serverNow,
+            clientNow: Date.now(),
+          });
+          deadlineMsRef.current = earliestDeadline(deadlineMsRef.current, serverEnd);
+        })
+        .catch(() => undefined);
+    }
+    setIsExamStarted(true);
+    questionStartedAtRef.current = Date.now();
+    enterFullscreen();
+  };
 
   const formatTime = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
@@ -471,6 +673,19 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
   }, [sectionModel.keys]);
   const currentLocalNumber = sectionLocalNumbers[currentQuestionIndex] ?? currentQuestionIndex + 1;
   const currentSectionTotal = sectionModel.keys.filter((key) => key === activeSection).length;
+
+  // G7: tell the server the attempt has started so it times the submission
+  // itself rather than trusting the client clock. Rooms (submitHandler) carry
+  // their own server-side start. Best-effort: an old/failed start falls back to
+  // the clamped client value on submit.
+  const attemptStartSentRef = useRef(false);
+  useEffect(() => {
+    if (!isExamStarted || submitHandler || attemptStartSentRef.current) return;
+    attemptStartSentRef.current = true;
+    startTestAttemptAction(test.id).catch((error) => {
+      console.warn('Could not record the test start:', error);
+    });
+  }, [isExamStarted, submitHandler, test.id]);
 
   // Reset image view state when moving to a new question
   useEffect(() => {
@@ -637,7 +852,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
 
       const payload = {
         answers: formattedAnswers,
-        timeTaken: Math.max(0, durationSeconds - effectiveTimeRemaining),
+        timeTaken: Math.max(0, (timerSource ? durationSeconds : sittingSecondsRef.current) - effectiveTimeRemaining),
         isMalpractice: isMalpractice
       };
 
@@ -645,7 +860,19 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
         ? await submitHandler(payload)
         : await submitTestAction(test.id, payload);
 
+      if (result && typeof result === 'object' && 'testWindowError' in result) {
+        // A teacher test whose window has closed (or not opened): the server
+        // refused the submit, so retrying cannot help — say why instead.
+        const refusal = (result as { testWindowError: { detail?: string } }).testWindowError;
+        isSubmittingRef.current = false;
+        setIsSubmitting(false);
+        toast.dismiss(submissionToastId);
+        toast.error(refusal?.detail || 'This test is no longer accepting submissions.');
+        return;
+      }
+
       allowSubmittedNavigationRef.current = true;
+      if (draftKey) clearTestDraft(browserDraftStorage(), draftKey);
       toast.dismiss(submissionToastId);
       await Promise.resolve(onComplete(result as TestResult));
     } catch (error: any) {
@@ -717,6 +944,12 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
                     <ul className="space-y-3 list-disc pl-5 font-medium">
                       <li>The total duration of the examination is <span className="font-bold text-primary">{test.duration} minutes</span>.</li>
+                      {test.windowEndsAt ? (
+                        <li>
+                          This test closes at <span className="font-bold text-red-600">{formatISTTime(test.windowEndsAt)} IST</span>. If you start late, your timer
+                          stops at the closing time and your answers are submitted automatically.
+                        </li>
+                      ) : null}
                       <li>The clock will be set at the server. The countdown timer at the top right corner of the screen will display the remaining time available for you to complete the examination.</li>
                       <li>The Question Palette displayed on the right side of the screen will show the status of each question using one of the following symbols:</li>
                     </ul>
@@ -801,6 +1034,30 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
                   </div>
                 </label>
 
+                {expiredDraft && (
+                  <div className="rounded-xl border border-orange-300 bg-orange-50 p-4 text-left">
+                    <p className="text-sm font-bold text-orange-900">Your unfinished attempt ran out of time.</p>
+                    <p className="mt-1 text-xs font-medium text-orange-800">
+                      {countAnswered(expiredDraft.answers)} answer{countAnswered(expiredDraft.answers) === 1 ? ' is' : 's are'} saved on this device.
+                      Submit them as that attempt, or discard them and start this test again.
+                    </p>
+                    <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                      <button
+                        onClick={resumeExpiredDraft}
+                        className="rounded-lg bg-orange-600 px-4 py-2 text-xs font-black uppercase tracking-tight text-white hover:bg-orange-700"
+                      >
+                        Resume and submit saved answers
+                      </button>
+                      <button
+                        onClick={discardExpiredDraft}
+                        className="rounded-lg border border-orange-400 px-4 py-2 text-xs font-black uppercase tracking-tight text-orange-800 hover:bg-orange-100"
+                      >
+                        Start fresh
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
                   <label className="flex items-center gap-3 cursor-pointer group">
                     <input
@@ -821,18 +1078,16 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
                       Exit
                     </button>
                     <button
-                      disabled={!hasAcceptedRules}
+                      disabled={!hasAcceptedRules || expiredDraft !== null}
                       onClick={() => {
                         if (cameraEnabled) {
                           setVerificationStep('proctoring');
                         } else {
-                          setIsExamStarted(true);
-                          questionStartedAtRef.current = Date.now();
-                          enterFullscreen();
+                          startExam();
                         }
                       }}
                       className={`flex items-center gap-2 px-10 py-3 rounded-xl font-black uppercase tracking-tight transition-all
-                        ${hasAcceptedRules
+                        ${hasAcceptedRules && expiredDraft === null
                           ? 'bg-primary text-white shadow-lg hover:bg-primary/90 hover:scale-[1.02] active:scale-95'
                           : 'bg-gray-300 text-gray-500 cursor-not-allowed'}
                       `}
@@ -940,11 +1195,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
                 <div className="mt-auto pt-4 flex flex-col gap-4">
                   <button
                     disabled={!isCameraActive || !isFaceDetected}
-                    onClick={() => {
-                      setIsExamStarted(true);
-                      questionStartedAtRef.current = Date.now();
-                      enterFullscreen();
-                    }}
+                    onClick={startExam}
                     className={`w-full group relative flex items-center justify-center gap-3 py-4 rounded-2xl font-black text-lg transition-all
                       ${(isCameraActive && isFaceDetected) 
                         ? 'bg-primary hover:bg-rose-500 text-white shadow-[0_0_30px_rgba(225,29,72,0.4)] hover:scale-[1.02] active:scale-95' 
@@ -967,7 +1218,10 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
       {/* 1. Top Header */}
       <header className="shrink-0 flex flex-col sm:flex-row items-center justify-between px-3 sm:px-6 py-2 border-b border-gray-300 gap-3 sm:gap-0">
         <div className="flex items-center justify-between w-full sm:w-auto gap-3">
-          <div className="w-9 h-9 sm:w-12 sm:h-12 shrink-0 bg-green-600 rounded-full flex items-center justify-center cursor-pointer" onClick={() => { stopCamera(); onExit(); }}>
+          <div className="w-9 h-9 sm:w-12 sm:h-12 shrink-0 bg-green-600 rounded-full flex items-center justify-center cursor-pointer" onClick={() => {
+            if (isExamStarted && !allowSubmittedNavigationRef.current) { setShowLeaveModal(true); return; }
+            stopCamera(); onExit();
+          }}>
             <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-white flex items-center justify-center">
               <div className="w-4 h-4 sm:w-6 sm:h-6 bg-orange-500 rounded-tr-xl rounded-bl-xl" style={{ clipPath: 'polygon(0% 100%, 100% 100%, 100% 0%)' }}></div>
             </div>
@@ -1563,6 +1817,39 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
           </p>
         </div>
       )}
+      {showLeaveModal && !isSubmitting && (
+        <div className="fixed inset-0 z-[250] flex items-center justify-center bg-black/70 backdrop-blur-md p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 text-center border-t-8 border-orange-500">
+            <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-6">
+              <AlertTriangle className="w-8 h-8 text-orange-600" />
+            </div>
+            <h2 className="text-2xl font-black text-gray-900 mb-2 tracking-tight">Leave the exam?</h2>
+            <p className="text-gray-600 mb-8 font-medium">
+              Your answers are saved on this device and restored when you reopen this test, but the timer keeps running
+              while you are away. Nothing is submitted until you press Submit.
+            </p>
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={() => setShowLeaveModal(false)}
+                className="w-full py-3 bg-primary text-white font-bold rounded-xl hover:bg-primary/90 transition-colors uppercase tracking-wide"
+              >
+                Continue Exam
+              </button>
+              <button
+                onClick={() => {
+                  setShowLeaveModal(false);
+                  allowSubmittedNavigationRef.current = true;
+                  stopCamera();
+                  onExit();
+                }}
+                className="w-full py-3 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200 transition-colors uppercase tracking-wide"
+              >
+                Leave for Now
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {showRefreshWarning && (
         <div className="fixed inset-0 z-[250] flex items-center justify-center bg-black/70 backdrop-blur-md p-4">
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 text-center border-t-8 border-orange-500">
@@ -1571,8 +1858,8 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
             </div>
             <h2 className="text-2xl font-black text-gray-900 mb-2 tracking-tight">Reload Detected</h2>
             <p className="text-gray-600 mb-8 font-medium">
-              Refreshing the page will cause your exam to be <span className="text-red-600 font-bold">AUTOMATICALLY SUBMITTED</span>. 
-              Do you want to submit and reload?
+              Reloading is blocked during the exam. Your answers are saved on this device, and the timer keeps running.
+              Do you want to submit the exam now?
             </p>
             <div className="flex flex-col gap-3">
               <button
@@ -1582,7 +1869,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
                 }}
                 className="w-full py-3 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 transition-colors uppercase tracking-wide"
               >
-                Yes, Submit and Reload
+                Yes, Submit Exam
               </button>
               <button
                 onClick={() => setShowRefreshWarning(false)}

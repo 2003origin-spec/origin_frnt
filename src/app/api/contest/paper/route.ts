@@ -4,33 +4,32 @@
  * single-flight); the per-user shuffle is applied client-side from a userId
  * seed, so this payload is identical for everyone and CDN/edge-cacheable.
  *
- * Registration + LIVE-state gating is enforced on the ATTEMPT/answer path; the
- * paper itself carries no answers, so exposing it to a registered viewer is
- * safe. Authenticated + contest-flag gated.
+ * Gated on contest state (LIVE, or results published) AND a CONFIRMED
+ * registration via `checkPaperAccess` — the paper is never served before
+ * start_at or to a waitlisted user. The payload carries no answer keys and no
+ * bank question ids. Authenticated + contest-flag gated.
  *
  * Plan: V1/CONTEST_ORBIT_IMPLEMENTATION_PLAN.md Phase 1/3.
  */
 
 import type { NextRequest } from "next/server";
 
-import { requireFeatureEnabled } from "@/lib/feature-flags";
+import { requireFeatureEnabledRuntime } from "@/server/feature-flags-runtime";
 import { requireAuth } from "@/server/authz";
-import { getContestPaper } from "@/server/contest/contest-paper-cache";
-import { isRegisteredForContest } from "@/server/contest/contest-registration-service";
+import { checkPaperAccess, getContestPaper } from "@/server/contest/contest-paper-cache";
 
 import { handleTeacherError, teacherJson } from "@/app/api/teacher/_utils";
 
 export async function GET(request: NextRequest) {
   try {
-    requireFeatureEnabled("contest");
+    await requireFeatureEnabledRuntime("contest");
     const ctx = await requireAuth(request);
     const contestId = new URL(request.url).searchParams.get("contestId");
     if (!contestId) return teacherJson({ detail: "contestId is required." }, { status: 400 });
 
-    // Only registered users may pull the paper.
-    if (!(await isRegisteredForContest(contestId, ctx.userId))) {
-      return teacherJson({ detail: "You are not registered for this contest." }, { status: 403 });
-    }
+    // Only confirmed registrants, and only once the contest is LIVE.
+    const access = await checkPaperAccess(contestId, ctx.userId);
+    if (!access.ok) return teacherJson({ detail: access.detail }, { status: access.status });
 
     const paper = await getContestPaper(contestId);
     // The paper is immutable once published and carries no answer keys, so a

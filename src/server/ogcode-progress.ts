@@ -11,6 +11,7 @@
  */
 
 import { getOgcodePostgresPool, isOgcodePostgresConfigured } from "@/server/postgres";
+import { withSchemaLock } from "@/server/schema-lock";
 
 declare global {
   var __originOgcodeProgressSchemaReady: Promise<void> | undefined;
@@ -98,7 +99,7 @@ async function ensureProgressSchema(): Promise<void> {
   }
 
   if (!globalThis.__originOgcodeProgressSchemaReady) {
-    globalThis.__originOgcodeProgressSchemaReady = pool.query(CREATE_TABLE_SQL).then(() => undefined).catch((error) => {
+    globalThis.__originOgcodeProgressSchemaReady = withSchemaLock(pool, (client) => client.query(CREATE_TABLE_SQL)).then(() => undefined).catch((error) => {
       globalThis.__originOgcodeProgressSchemaReady = undefined;
       throw error;
     });

@@ -14,6 +14,11 @@ import { invalidateUserAiContext } from "@/server/ai-access";
 import { ensureEnrollmentSchema } from "./enrollment-schema";
 import { setEnrollmentStatus } from "./enrollments";
 import { createBatchId } from "./ids";
+import {
+  assertBatchesBelongToWorkspace,
+  assertStudentsEnrolled,
+  batchAssignableStudentIds,
+} from "./tenant-scoping";
 import type {
   Batch,
   BatchMember,
@@ -219,6 +224,31 @@ export async function addStudentsToBatches(input: {
   const created: BatchMember[] = [];
   try {
     await client.query("BEGIN");
+    // N9 — every targeted batch must belong to the acting workspace. The route
+    // passes the URL's batch id straight through, so without this a teacher of
+    // institute A could insert (batch_id = B's batch, workspace_id = A) and
+    // their student would read/post in B's batch chat and see B's materials.
+    const owned = await client.query(
+      `SELECT id FROM app.batches WHERE workspace_id = $1 AND id = ANY($2::text[])`,
+      [input.workspaceId, input.batchIds],
+    );
+    assertBatchesBelongToWorkspace(
+      input.batchIds,
+      (owned.rows as Array<{ id: string }>).map((row) => row.id),
+    );
+    // N10 — only students enrolled in this workspace can be placed in its
+    // batches. Without this any platform user id could be attached and their
+    // name + email read back. Every status except `left` qualifies: a
+    // suspended student who re-subscribes / pays is revived through here.
+    const enrolled = await client.query(
+      `SELECT student_id, status FROM app.workspace_student_enrollments
+       WHERE workspace_id = $1 AND student_id = ANY($2::text[])`,
+      [input.workspaceId, input.studentIds],
+    );
+    assertStudentsEnrolled(
+      input.studentIds,
+      batchAssignableStudentIds(enrolled.rows as Array<{ student_id: string; status: string }>),
+    );
     for (const batchId of input.batchIds) {
       for (const studentId of input.studentIds) {
         const result = await client.query(
@@ -232,7 +262,7 @@ export async function addStudentsToBatches(input: {
         created.push(rowToBatchMember(result.rows[0]));
       }
     }
-    // Flip enrollment to active for any students that were previously unassigned.
+    // Flip enrollment to active for any students that were unassigned or suspended.
     for (const studentId of input.studentIds) {
       await setEnrollmentStatus(input.workspaceId, studentId, "active");
     }
@@ -297,7 +327,7 @@ export async function listStudentBatches(
   const result = await pool().query(
     `SELECT b.*
      FROM app.batches b
-     INNER JOIN app.batch_members m ON m.batch_id = b.id
+     INNER JOIN app.batch_members m ON m.batch_id = b.id AND m.workspace_id = b.workspace_id
      WHERE m.workspace_id = $1 AND m.student_id = $2 AND m.status = 'active'
      ORDER BY b.created_at DESC`,
     [workspaceId, studentId],
@@ -317,7 +347,7 @@ export async function listStudentBatchesAcrossWorkspaces(
   const result = await pool().query(
     `SELECT b.*
      FROM app.batches b
-     INNER JOIN app.batch_members m ON m.batch_id = b.id
+     INNER JOIN app.batch_members m ON m.batch_id = b.id AND m.workspace_id = b.workspace_id
      WHERE m.student_id = $1 AND m.status = 'active'
      ORDER BY b.created_at DESC`,
     [studentId],

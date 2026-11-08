@@ -107,3 +107,20 @@ export function checkExtension(row: PriceRow, extensionsUsed: number, availableC
 export function holdAdjustmentForFallback(heldCoins: number, botPriceCoins: number): number {
   return botPriceCoins - heldCoins;
 }
+
+/**
+ * A request requeued after a solver no-show goes back to the human queue with
+ * `solver_kind` cleared (a later bot fallback re-prices itself). When the
+ * no-show was the bot, the request still carries the bot price, so a human
+ * who picks it up would be paid the bot price: re-price it to the human price
+ * and move the hold by the difference (positive = hold more, negative = give
+ * back). A human no-show keeps its price (the solver kind does not change).
+ */
+export function repriceForRequeue(
+  heldCoins: number,
+  previousSolverKind: SolverKind | null,
+  humanPriceCoins: number,
+): { priceCoins: number; holdDelta: number } | null {
+  if (previousSolverKind === "human") return null;
+  return { priceCoins: humanPriceCoins, holdDelta: humanPriceCoins - heldCoins };
+}

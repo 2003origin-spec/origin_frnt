@@ -22,7 +22,7 @@ import { AuthzError } from "@/server/authz";
 import { isFeatureEnabled } from "@/lib/feature-flags";
 
 import { recordAuditEvent } from "./audit";
-import { addStudentsToBatches, getBatch } from "./batches";
+import { addStudentsToBatches, getBatch, removeStudentFromBatch } from "./batches";
 import {
   createEnrollmentOrder as storeCreateEnrollmentOrder,
   createOffering as storeCreateOffering,
@@ -36,12 +36,17 @@ import {
   updateOrderStatus,
   type CreateEnrollmentOrderInput,
   type CreateOfferingInput,
+  type PublicInstituteFilter,
   type UpdateOfferingPatch,
 } from "./marketplace-store";
 import { getActiveMembership, getWorkspaceById } from "./store";
-import { enrollStudent } from "./enrollments";
+import { enrollStudent, getEnrollment, setEnrollmentStatus } from "./enrollments";
+import { listStudentEnrollmentSubscriptions } from "@/server/connect/enrollment-subscriptions-store";
+import { revokeTeacherCodeGrantsForEnrollment } from "@/server/connect/grant-revocation";
 import type {
   EnrollmentOrder,
+  EnrollmentSource,
+  EnrollmentSubscriptionStatus,
   InstitutePublicProfile,
   OfferingStatus,
   WorkspaceOffering,
@@ -372,16 +377,192 @@ export async function refundOrderService(input: {
   if (order.status !== "paid") {
     throw new AuthzError(409, `Order is ${order.status}; only paid orders can be refunded.`);
   }
-  const updated = await updateOrderStatus(input.orderId, input.workspaceId, "refunded");
-  if (!updated) throw new Error("Failed to update order to refunded.");
-  await recordAuditEvent({
+  return applyEnrollmentOrderRefundBySystem({
+    orderId: input.orderId,
+    workspaceId: input.workspaceId,
+    reason: input.reason,
     actorUserId: input.actorUserId,
+  });
+}
+
+/** Subscription states that still give the student a live paid seat. */
+const LIVE_ENROLLMENT_SUBSCRIPTION_STATUSES: ReadonlySet<EnrollmentSubscriptionStatus> = new Set([
+  "active",
+  "authenticated",
+  "pending",
+  "halted",
+]);
+
+/**
+ * Pure teardown guard for a refunded enrolment order. Only an enrolment THIS
+ * purchase created (`paid_app`) is torn down, and only when no other live paid
+ * source keeps the student in the workspace — a second paid order or a live
+ * Flow-2 subscription. Teacher-added / code / import enrolments are never
+ * touched by a refund.
+ */
+export function shouldTearDownPaidEnrollment(input: {
+  enrollmentSource: EnrollmentSource | null;
+  enrollmentStatus?: string | null;
+  hasOtherPaidOrder: boolean;
+  hasLiveSubscription: boolean;
+}): boolean {
+  if (input.enrollmentSource !== "paid_app") return false;
+  if (input.enrollmentStatus === "left") return false;
+  return !input.hasOtherPaidOrder && !input.hasLiveSubscription;
+}
+
+/**
+ * Store calls `runEnrollmentOrderRefund` needs. Injected so the ordering and
+ * retry behaviour can be unit-tested without a database; production passes
+ * `ENROLLMENT_REFUND_DEPS` (the real stores).
+ */
+export type EnrollmentRefundDeps = {
+  getOrder: typeof getOrder;
+  getOffering: typeof getOffering;
+  getEnrollment: typeof getEnrollment;
+  listStudentOrders: typeof listStudentOrders;
+  listStudentEnrollmentSubscriptions: typeof listStudentEnrollmentSubscriptions;
+  removeStudentFromBatch: typeof removeStudentFromBatch;
+  setEnrollmentStatus: typeof setEnrollmentStatus;
+  revokeTeacherCodeGrantsForEnrollment: typeof revokeTeacherCodeGrantsForEnrollment;
+  updateOrderStatus: typeof updateOrderStatus;
+  recordAuditEvent: typeof recordAuditEvent;
+};
+
+const ENROLLMENT_REFUND_DEPS: EnrollmentRefundDeps = {
+  getOrder,
+  getOffering,
+  getEnrollment,
+  listStudentOrders,
+  listStudentEnrollmentSubscriptions,
+  removeStudentFromBatch,
+  setEnrollmentStatus,
+  revokeTeacherCodeGrantsForEnrollment,
+  updateOrderStatus,
+  recordAuditEvent,
+};
+
+/**
+ * Marks a paid enrolment order refunded and removes the access it bought.
+ *
+ * The system path behind a processed Razorpay refund (outbox kind
+ * `institute_enrollment_revoke`) and the body of the admin `refundOrderService`
+ * after its authz check. `commerce.enrollment_orders.status='refunded'` is the
+ * "is this paid for" marker; `status='left'` on the enrolment is the access
+ * revocation (`enrollStudent` revives `left` rows on a re-purchase).
+ *
+ * ORDER MATTERS. The steps are not one transaction (each store call has its
+ * own pool query + schema ensure), so the teardown runs FIRST and the status
+ * flip runs LAST:
+ *   1. remove the batch seat   (idempotent: only `status='active'` rows change)
+ *   2. set the enrolment `left` (idempotent: `shouldTearDownPaidEnrollment`
+ *      skips an enrolment that is already `left`)
+ *   3. revoke the institute's free Flow-1 `teacher_code` subject, which only
+ *      lives while the enrolment does (idempotent: a second call revokes 0)
+ *   4. flip the order to `refunded`
+ * A transient error at any step throws, the outbox retries, and the retry
+ * re-runs whatever is left. Flipping the status first (the old order) let a
+ * retry exit early on `refunded` while the student kept the seat.
+ *
+ * Re-entry on an order that is ALREADY `refunded` still re-checks the
+ * enrolment and finishes the teardown if it is not done, which also repairs
+ * orders left half-done by the old ordering. A fully torn-down refunded order
+ * is a no-op (no writes, no second audit event).
+ */
+export async function applyEnrollmentOrderRefundBySystem(input: {
+  orderId: string;
+  workspaceId: string;
+  reason: string;
+  actorUserId?: string | null;
+}): Promise<EnrollmentOrder> {
+  return runEnrollmentOrderRefund(input, ENROLLMENT_REFUND_DEPS);
+}
+
+/** Body of `applyEnrollmentOrderRefundBySystem` with its stores injected. */
+export async function runEnrollmentOrderRefund(
+  input: { orderId: string; workspaceId: string; reason: string; actorUserId?: string | null },
+  deps: EnrollmentRefundDeps,
+): Promise<EnrollmentOrder> {
+  const order = await deps.getOrder(input.workspaceId, input.orderId);
+  if (!order) throw new AuthzError(404, "Order not found.");
+  const alreadyRefunded = order.status === "refunded";
+  if (!alreadyRefunded && order.status !== "paid") {
+    // Not yet paid locally (its institute_enrollment row has not run): throw so
+    // the outbox retries after the enrolment lands, then tears it down.
+    throw new AuthzError(409, `Order is ${order.status}; only paid orders can be refunded.`);
+  }
+
+  const [offering, enrollment, studentOrders, subscriptions] = await Promise.all([
+    deps.getOffering(input.workspaceId, order.offeringId),
+    deps.getEnrollment(input.workspaceId, order.studentId),
+    deps.listStudentOrders(order.studentId),
+    deps.listStudentEnrollmentSubscriptions(order.studentId),
+  ]);
+  const tearDown = shouldTearDownPaidEnrollment({
+    enrollmentSource: enrollment?.source ?? null,
+    enrollmentStatus: enrollment?.status ?? null,
+    // Excludes THIS order, which is still `paid` until step 3 below.
+    hasOtherPaidOrder: studentOrders.some(
+      (other) => other.id !== order.id && other.workspaceId === input.workspaceId && other.status === "paid",
+    ),
+    hasLiveSubscription: subscriptions.some(
+      (sub) => sub.workspaceId === input.workspaceId && LIVE_ENROLLMENT_SUBSCRIPTION_STATUSES.has(sub.status),
+    ),
+  });
+
+  // Fully done already (outbox retry after success): nothing to write.
+  if (alreadyRefunded && !tearDown) return order;
+
+  if (tearDown) {
+    // Batch seat before the enrolment: if this throws, the enrolment is still
+    // active, so the retry decides to tear down again and redoes both.
+    if (offering?.targetBatchId) {
+      await deps.removeStudentFromBatch({
+        workspaceId: input.workspaceId,
+        batchId: offering.targetBatchId,
+        studentId: order.studentId,
+      });
+    }
+    await deps.setEnrollmentStatus(input.workspaceId, order.studentId, "left", { notes: input.reason });
+  }
+
+  // "left => free Flow-1 subject revoked" (connect-grants F13). Also on a retry
+  // whose earlier attempt set the enrolment `left` and then failed here: that
+  // retry no longer tears down (the enrolment is already `left`), but the order
+  // is still `paid`, so the revoke must run again before the flip below.
+  const paidEnrollmentLeft = enrollment?.source === "paid_app" && enrollment.status === "left";
+  if (tearDown || paidEnrollmentLeft) {
+    await deps.revokeTeacherCodeGrantsForEnrollment({
+      studentId: order.studentId,
+      workspaceId: input.workspaceId,
+      status: "left",
+      actorUserId: input.actorUserId ?? null,
+      reason: "enrollment_refunded",
+      requestId: input.reason,
+    });
+  }
+
+  let updated = order;
+  if (!alreadyRefunded) {
+    const flipped = await deps.updateOrderStatus(input.orderId, input.workspaceId, "refunded");
+    if (!flipped) throw new Error("Failed to update order to refunded.");
+    updated = flipped;
+  }
+
+  await deps.recordAuditEvent({
+    actorUserId: input.actorUserId ?? order.studentId,
     workspaceId: input.workspaceId,
     entityType: "enrollment_order",
     entityId: order.id,
-    action: "order.refunded",
+    action: alreadyRefunded ? "order.refund_teardown_completed" : "order.refunded",
     before: order,
-    after: { ...updated, refundReason: input.reason },
+    after: {
+      ...updated,
+      refundReason: input.reason,
+      enrollmentTornDown: tearDown,
+      // True when an earlier, interrupted attempt already removed the seat.
+      enrollmentAlreadyLeft: enrollment?.source === "paid_app" && enrollment.status === "left",
+    },
   });
   return updated;
 }
@@ -397,7 +578,7 @@ export async function getInstituteProfileService(workspaceId: string): Promise<I
 }
 
 export async function listPublicInstitutesService(
-  filter?: { subject?: string; city?: string; limit?: number },
+  filter?: PublicInstituteFilter,
 ): Promise<InstitutePublicProfile[]> {
   const institutes = await listPublicInstitutes(filter);
 

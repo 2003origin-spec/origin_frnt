@@ -1,0 +1,235 @@
+/*
+ * Origin Notes reading styles (V1/NOTES_PLAN.md Appendix B).
+ *
+ * "Notebook": ruled paper, a handwriting face for text, highlighter formula
+ * cards and sticky-note boxes; in dark mode a dark chalkboard page. "Clean":
+ * plain UI type on the normal surface. Maths always stays in KaTeX's own font.
+ *
+ * The handwriting face is a deliberate exception to DESIGN_LANGUAGE.md, scoped
+ * to the note body only (logged in DESIGN_REVIEW_QUEUE.md).
+ */
+
+.note {
+  --box-text: #1f2937;
+  /* Nothing in a note (a raised or huge formula, a negative kern) may paint
+     outside it, over the app's own buttons. */
+  contain: paint;
+  isolation: isolate;
+  color: hsl(var(--foreground));
+  font-size: 1rem;
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.note > :first-child {
+  margin-top: 0;
+}
+
+.note h1,
+.note h2,
+.note h3,
+.note h4 {
+  font-weight: 700;
+  line-height: 1.3;
+  margin: 1.4em 0 0.5em;
+  letter-spacing: -0.005em;
+}
+.note h1 { font-size: 1.6em; }
+.note h2 { font-size: 1.35em; }
+.note h3 { font-size: 1.15em; }
+.note h4 { font-size: 1em; }
+
+.note p { margin: 0.6em 0; }
+.note ul,
+.note ol { margin: 0.6em 0; padding-left: 1.4em; }
+.note ul { list-style: disc; }
+.note ol { list-style: decimal; }
+.note li { margin: 0.25em 0; }
+.note li > p { margin: 0.2em 0; }
+.note strong { font-weight: 700; }
+.note hr { border: 0; border-top: 1px dashed hsl(var(--border)); margin: 1.5em 0; }
+.note a { color: hsl(var(--primary)); text-decoration: underline; text-underline-offset: 2px; }
+.note blockquote { border-left: 3px solid hsl(var(--border)); padding-left: 0.9em; color: hsl(var(--muted-foreground)); }
+.note code { font-family: var(--font-mono, ui-monospace, monospace); font-size: 0.9em; background: hsl(var(--muted) / 0.6); padding: 0.1em 0.35em; border-radius: 6px; }
+.note img { display: block; max-width: 100%; max-height: 70vh; height: auto; margin: 1em auto; border-radius: 12px; background: #fff; }
+
+.tableWrap { overflow-x: auto; margin: 1em 0; -webkit-overflow-scrolling: touch; }
+.note table { border-collapse: collapse; min-width: 100%; font-size: 0.95em; }
+.note th,
+.note td { border: 1px solid hsl(var(--border)); padding: 0.45em 0.6em; text-align: left; vertical-align: top; }
+.note th { font-weight: 700; background: hsl(var(--muted) / 0.5); }
+
+.note :global(.katex) { font-size: 1.08em; }
+.note :global(.katex-display) {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.35em 0.1em;
+  margin: 0.6em 0;
+  -webkit-overflow-scrolling: touch;
+}
+.note :global(.katex-error) { color: #dc2626; }
+
+/* ── Notebook ─────────────────────────────────────────────────────────────── */
+
+.notebook {
+  --paper: #fffdf5;
+  --ink: #1d2733;
+  --rule: rgba(80, 140, 200, 0.22);
+  --margin-line: rgba(220, 70, 70, 0.35);
+  --line: 1.9rem;
+  --margin-x: 2.6rem;
+  color: var(--ink);
+  background-color: var(--paper);
+  background-image:
+    linear-gradient(to right, transparent var(--margin-x), var(--margin-line) var(--margin-x), var(--margin-line) calc(var(--margin-x) + 1.5px), transparent calc(var(--margin-x) + 1.5px)),
+    repeating-linear-gradient(to bottom, transparent 0, transparent calc(var(--line) - 1px), var(--rule) calc(var(--line) - 1px), var(--rule) var(--line));
+  background-attachment: local;
+  font-family: var(--font-notes-hand), "Segoe Print", "Bradley Hand", cursive;
+  font-size: 1.12rem;
+  line-height: var(--line);
+  padding: 1.1rem 1rem 2rem calc(var(--margin-x) + 0.7rem);
+  border-radius: 18px;
+}
+
+.notebook h1,
+.notebook h2,
+.notebook h3,
+.notebook h4 {
+  color: #0b4f8a;
+  line-height: var(--line);
+}
+.notebook h2 { text-decoration: underline; text-decoration-color: rgba(11, 79, 138, 0.35); text-underline-offset: 6px; }
+.notebook strong { color: #8a1c1c; }
+.notebook img { background: #fff; }
+/* The handwriting face draws "1" like "I"; digits use the UI font instead
+   (wrapped by rehypeNoteDigits, src/lib/notes/note-digits.ts). */
+.notebook :global(.note-num) {
+  font-family: var(--font-ui, Inter, system-ui, sans-serif);
+  font-size: 0.9em;
+  letter-spacing: 0.01em;
+}
+
+:global(.dark) .notebook {
+  --paper: #0f1416;
+  --ink: #e9eef2;
+  --rule: rgba(160, 190, 210, 0.1);
+  --margin-line: rgba(240, 110, 110, 0.28);
+  --box-text: #e9eef2;
+}
+:global(.dark) .notebook h1,
+:global(.dark) .notebook h2,
+:global(.dark) .notebook h3,
+:global(.dark) .notebook h4 { color: #8fd3ff; }
+:global(.dark) .notebook h2 { text-decoration-color: rgba(143, 211, 255, 0.35); }
+:global(.dark) .notebook strong { color: #ffb4a8; }
+
+/* ── Clean ────────────────────────────────────────────────────────────────── */
+
+.clean {
+  font-family: var(--font-ui, Inter, system-ui, sans-serif);
+  padding: 0.25rem 0 2rem;
+}
+:global(.dark) .clean { --box-text: hsl(var(--foreground)); }
+
+/* ── Boxes ────────────────────────────────────────────────────────────────── */
+
+.box {
+  position: relative;
+  margin: 1.1em 0;
+  padding: 0.7rem 0.85rem 0.75rem;
+  border-radius: 12px;
+  border-left: 4px solid;
+  color: var(--box-text);
+  line-height: 1.7;
+}
+.box > :last-child { margin-bottom: 0; }
+
+.boxHead {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  font-weight: 700;
+  font-size: 0.95em;
+  margin-bottom: 0.2rem;
+  /* Wrap the title between words, never inside "Practice". */
+  overflow-wrap: break-word;
+}
+.boxHead svg { width: 1.05em; height: 1.05em; flex-shrink: 0; margin-top: 0.35em; }
+.boxText { flex: 1 1 auto; min-width: 0; }
+.boxLabel { opacity: 0.85; white-space: nowrap; }
+.boxTitle { font-weight: 700; }
+.examChip {
+  flex-shrink: 0;
+  align-self: flex-start;
+  margin-top: 0.2em;
+  white-space: nowrap;
+  margin-left: auto;
+  font-family: var(--font-ui, Inter, system-ui, sans-serif);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.formula { background: #fff4b8; border-color: #c99a06; }
+.formula :global(.katex-display) { font-size: 1.12em; }
+.remember { background: #dcebff; border-color: #2f6fd6; }
+.trap { background: #ffe0dd; border-color: #d93a2b; }
+.tip { background: #d9f7e1; border-color: #1f9d4c; }
+.example { background: rgba(255, 255, 255, 0.55); border: 1px dashed #7c8794; border-left: 4px solid #7c8794; }
+.question { background: #eef3f8; border-color: #0b6fb0; }
+.unknown { background: rgba(0, 0, 0, 0.04); border-color: #9aa3ad; }
+
+:global(.dark) .formula { background: rgba(234, 179, 8, 0.14); border-color: #e3b20a; }
+:global(.dark) .remember { background: rgba(80, 140, 240, 0.15); border-color: #6aa6ff; }
+:global(.dark) .trap { background: rgba(240, 90, 80, 0.15); border-color: #ff7b6e; }
+:global(.dark) .tip { background: rgba(60, 200, 110, 0.13); border-color: #4fd17d; }
+:global(.dark) .example { background: rgba(255, 255, 255, 0.03); border-color: #6b7580; }
+:global(.dark) .question { background: rgba(79, 195, 247, 0.1); border-color: #4fc3f7; }
+:global(.dark) .unknown { background: rgba(255, 255, 255, 0.04); }
+:global(.dark) .examChip { background: rgba(255, 255, 255, 0.12); }
+
+.clean .box { line-height: 1.65; }
+
+/* Phones: every pixel of width goes to the formulas. The ruled margin, box
+   padding and formula size shrink so a typical formula fits a 360 px screen
+   without sideways scrolling. */
+@media (max-width: 480px) {
+  .notebook {
+    --margin-x: 1.25rem;
+    font-size: 1.06rem;
+    padding: 0.9rem 0.6rem 1.75rem calc(var(--margin-x) + 0.5rem);
+  }
+  .box { padding: 0.55rem 0.6rem 0.6rem; }
+  .note :global(.katex-display),
+  .formula :global(.katex-display) { font-size: 0.92em; }
+}
+
+/* Hidden answers */
+.answerToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 44px;
+  margin-top: 0.4rem;
+  padding: 0 0.9rem;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  font-family: var(--font-ui, Inter, system-ui, sans-serif);
+  font-size: 0.85rem;
+  font-weight: 600;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.answerToggle:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+.answer {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed rgba(0, 0, 0, 0.2);
+}
+:global(.dark) .answer { border-top-color: rgba(255, 255, 255, 0.2); }

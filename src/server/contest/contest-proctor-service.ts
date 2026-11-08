@@ -1,15 +1,19 @@
 /**
  * Webcam-snapshot proctoring (Phase 3B, self-hosted). Presigns a short-lived R2
  * PUT for a captured frame and records the object key for admin review. No third
- * party — frames live in our own R2 bucket. Gated by the contestProctoring flag
- * + the student's camera consent (client-side).
+ * party — frames live in our own PRIVATE R2 bucket (R2_PRIVATE_BUCKET, the presign
+ * helper's default) and admins view them through short-lived signed GETs. Gated by
+ * the contestProctoring flag + the student's camera consent (client-side).
  */
 
 import { getUserPostgresPool } from "@/server/user-postgres";
 import { createId } from "@/legacy/store";
-import { createPresignedR2PutUrl, importR2BucketName } from "@/server/media-storage";
+import { createPresignedR2PutUrl, isUploadSize } from "@/server/media-storage";
 
 import { ensureContestSchema } from "./contest-schema";
+
+/** Largest frame accepted. A 320×240 JPEG at quality 0.6 is tens of KB (a busy test frame: 31 KB); its raw pixels are 225 KB. */
+export const MAX_PROCTOR_SNAPSHOT_BYTES = 256 * 1024;
 
 function pool() {
   const p = getUserPostgresPool();
@@ -17,11 +21,26 @@ function pool() {
   return p;
 }
 
-/** Presign a JPEG upload for one snapshot; the key is namespaced per user/contest. */
-export function presignProctorSnapshot(contestId: string, userId: string): { uploadUrl: string; r2Key: string; bucket: string } {
+/**
+ * Presign a JPEG upload of exactly `sizeBytes` for one snapshot; the key is
+ * namespaced per user/contest. R2 refuses any other type or size.
+ */
+export function presignProctorSnapshot(
+  contestId: string,
+  userId: string,
+  sizeBytes: number,
+): { uploadUrl: string; uploadHeaders: Record<string, string>; r2Key: string; bucket: string } {
+  if (!isUploadSize(sizeBytes, MAX_PROCTOR_SNAPSHOT_BYTES)) {
+    throw new Error("A proctor photo must be between 1 byte and 256 KB.");
+  }
   const r2Key = `contest-proctor/${contestId}/${userId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
-  const presigned = createPresignedR2PutUrl({ objectKey: r2Key, expiresSeconds: 300 });
-  return { uploadUrl: presigned.url, r2Key: presigned.objectKey, bucket: presigned.bucket ?? importR2BucketName() };
+  const presigned = createPresignedR2PutUrl({
+    objectKey: r2Key,
+    expiresSeconds: 300,
+    contentType: "image/jpeg",
+    contentLength: sizeBytes,
+  });
+  return { uploadUrl: presigned.url, uploadHeaders: presigned.headers, r2Key: presigned.objectKey, bucket: presigned.bucket };
 }
 
 /** Record a captured snapshot's key after the browser PUT it to R2. */

@@ -7,9 +7,15 @@
  * After all 13 phases shipped to production, defaults are flipped on
  * for both dev and prod so the launch surfaces are visible by default.
  * Individual flags can still be flipped off per-environment via the
- * `TEACHER_LAUNCH_<SUFFIX>` env var or via the runtime kill-switch in
- * /admin/incidents (which calls setFlagOverride and overrides the
- * default at request time).
+ * `TEACHER_LAUNCH_<SUFFIX>` env var.
+ *
+ * NOTE: `isFeatureEnabled` / `requireFeatureEnabled` below read the env ONLY.
+ * They never consult the runtime kill-switch set in /admin/incidents. That
+ * override is honoured in two places: the middleware (`findKillSwitchForPath`
+ * over `FLAG_KILL_PREFIXES`, every API method) and the async
+ * `requireFeatureEnabledRuntime` / `isFeatureEnabledRuntime` helpers in
+ * `src/server/feature-flags-runtime.ts`, which API handlers should prefer.
+ * This module stays env-only so it remains importable from client code.
  */
 
 const FLAG_ENV_PREFIX = "TEACHER_LAUNCH_";
@@ -60,7 +66,11 @@ type FlagKey =
   | "contestProctoring"
   | "payments"
   | "loginStreakCelebration"
-  | "originNow";
+  | "notes"
+  | "notesUploads"
+  | "notesSharing"
+  | "originNow"
+  | "studentMessaging";
 
 type FlagSpec = {
   envSuffix: string;
@@ -305,11 +315,31 @@ const FLAG_SPECS: Record<FlagKey, FlagSpec> = {
   // First-login-of-the-day streak flame celebration on the student dashboard.
   // Ships dark (off in prod) until the overlay UI is signed off.
   loginStreakCelebration: { envSuffix: "LOGIN_STREAK", defaultDev: true, defaultProd: false },
+  // Origin Notes — the student Notes page, its Explore card and nav entries,
+  // and /api/notes/*. Ships DARK: on in dev, OFF in prod until the library has
+  // reviewed notes in it. The admin Notes page (/admin/notes) is NOT behind
+  // this flag on purpose: admins build and review the library before students
+  // can see it. Plan: V1/NOTES_PLAN.md §11.
+  notes: { envSuffix: "NOTES", defaultDev: true, defaultProd: false },
+  // Origin Notes — My Notes (personal folders, uploads, typed notes, Bin and
+  // the storage meter). Needs `notes` on too. Ships DARK like `notes`, so the
+  // library can launch first. Plan: V1/NOTES_PLAN.md §11.
+  notesUploads: { envSuffix: "NOTES_UPLOADS", defaultDev: true, defaultProd: false },
+  // Origin Notes — sharing My Notes with mutual friends (both follow each
+  // other in Origin Social; needs `studentSocial` and `notesUploads` too).
+  // Ships DARK: the founders check it against the children's privacy policy
+  // first (most students are under 18). Plan: V1/NOTES_PLAN.md §9, §11.
+  notesSharing: { envSuffix: "NOTES_SHARING", defaultDev: true, defaultProd: false },
   // Origin NOW — live human/bot doubt solving paid in Ori Coins. Ships DARK in
   // dev AND prod: the pilot is invite-only and gated by legal sign-off, so
   // nothing should appear until TEACHER_LAUNCH_ORIGIN_NOW=1 is set on purpose.
   // Plan: V1/ORIGIN_NOW_PLAN.md
   originNow: { envSuffix: "ORIGIN_NOW", defaultDev: false, defaultProd: false },
+  // Student-to-student messaging (text only, Instagram-style message requests,
+  // a daily "units" cap: free 10 / premium 40 per IST day). Needs
+  // `studentSocial` too. Ships DARK in prod: most students are under 18, so the
+  // founders sign it off first. Native app only for now (/api/mobile/messages*).
+  studentMessaging: { envSuffix: "STUDENT_MESSAGING", defaultDev: true, defaultProd: false },
 };
 
 /** Every feature-flag key, in declaration order (admin System Config view). */

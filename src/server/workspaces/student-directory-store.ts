@@ -229,7 +229,7 @@ async function attachBatchChips(
   const result = await pool().query(
     `SELECT m.student_id, b.id AS batch_id, b.name AS batch_name
        FROM app.batch_members m
-       INNER JOIN app.batches b ON b.id = m.batch_id
+       INNER JOIN app.batches b ON b.id = m.batch_id AND b.workspace_id = m.workspace_id
       WHERE m.workspace_id = $1
         AND m.student_id = ANY($2::text[])
         AND m.status = 'active'

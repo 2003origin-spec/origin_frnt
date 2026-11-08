@@ -14,11 +14,12 @@
 import type { NextRequest } from "next/server";
 import { z } from "zod";
 
-import { requireFeatureEnabled } from "@/lib/feature-flags";
+import { requireFeatureEnabledRuntime } from "@/server/feature-flags-runtime";
 import { parseJsonBody } from "@/server/http";
 import { requireAuth } from "@/server/authz";
 import { saveContestDraft } from "@/server/contest/contest-draft-store";
 import { isActiveSession } from "@/server/contest/contest-session-registry";
+import { isContestWriteWindowOpenCached } from "@/server/contest/contest-submit-service";
 
 import { handleTeacherError, teacherJson } from "@/app/api/teacher/_utils";
 
@@ -32,7 +33,7 @@ const AnswersSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    requireFeatureEnabled("contest");
+    await requireFeatureEnabledRuntime("contest");
     const ctx = await requireAuth(request);
     const parsed = AnswersSchema.safeParse(await parseJsonBody(request));
     if (!parsed.success) return teacherJson({ detail: parsed.error.message }, { status: 400 });
@@ -43,6 +44,15 @@ export async function POST(request: NextRequest) {
     // a newer one is evicted here (409) so two tabs can't clobber each other.
     if (!(await isActiveSession(contestId, ctx.userId, ctx.sessionId))) {
       return teacherJson({ detail: "session_superseded" }, { status: 409 });
+    }
+
+    // Deadline: no autosave lands after end_at + CONTEST_END_GRACE_SECONDS. The
+    // end_at is cached in-process (no Neon read per autosave); a "closed"
+    // verdict is confirmed on the DB clock first. The client stops autosaving
+    // and submits on this 409; the sweep finalizes from the last accepted draft
+    // otherwise.
+    if (!(await isContestWriteWindowOpenCached(contestId))) {
+      return teacherJson({ detail: "contest_ended" }, { status: 409 });
     }
 
     const result = await saveContestDraft(contestId, ctx.userId, { answers, palette, times, rev });

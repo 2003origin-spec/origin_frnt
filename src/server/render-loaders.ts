@@ -1,5 +1,6 @@
 import { unstable_cache } from "next/cache";
 
+import { isTestWindowError } from "@/lib/assessments/test-window";
 import type { StudyMode } from "@/lib/study-mode";
 
 import {
@@ -17,16 +18,54 @@ import {
   listOgcodeQuestions,
   listTestPreviews,
   listTestResults,
+  openTeacherTestSitting,
   type OgcodeQuestionListFilters,
+  type TeacherTestSitting,
 } from "@/server/assessments";
-import { dbGetTasks } from "@/server/db-users";
+import { dbFindUserById, dbGetTasks } from "@/server/db-users";
 import { buildPointsSummary } from "@/server/gamification";
-import { readStoreAsync } from "@/server/store";
+import {
+  clampLeaderboardLimit,
+  getPointsRowForUser,
+  getTopPointsRows,
+  mergeTopWithViewer,
+} from "@/server/leaderboard-points";
+import {
+  foldUserIntoStore,
+  OWN_OGCODE_STATS_LOADS,
+  OWN_PRACTICE_PROGRESS_LOADS,
+  readStoreAsync,
+  readStoreWithFreshUserRows,
+  type AppStore,
+  type UserStoreLoads,
+} from "@/server/store";
 import { isUserPostgresConfigured } from "@/server/user-postgres";
 import { buildUserStatsSnapshot, serializeTask } from "@/server/users";
 
-async function requireStoredUser(userId: string) {
-  const store = await readStoreAsync();
+/**
+ * The cached store snapshot and the user, from their fresh row (the snapshot
+ * can predate the account by up to its TTL). With `ownRows`, the user's rows of
+ * those collections are read fresh too, on a per-call copy of the snapshot
+ * (readStoreWithFreshUserRows), for loaders that show the user their own
+ * progress. A failed fresh read falls back to the snapshot.
+ */
+async function requireStoredUser(userId: string, ownRows?: UserStoreLoads) {
+  let store: AppStore;
+  if (ownRows) {
+    store = await readStoreWithFreshUserRows(userId, ownRows);
+  } else {
+    const [snapshot, fresh] = await Promise.all([
+      readStoreAsync(),
+      isUserPostgresConfigured()
+        ? dbFindUserById(userId).catch((error: unknown) => {
+            console.error("[render-loaders] fresh user read failed", error instanceof Error ? error.message : error);
+            return null;
+          })
+        : Promise.resolve(null),
+    ]);
+    store = snapshot;
+    if (fresh) foldUserIntoStore(store, fresh);
+  }
   const user = store.users.find((entry) => entry.id === userId);
   if (!user) {
     throw new Error(`Stored user ${userId} was not found.`);
@@ -66,6 +105,31 @@ export const getTestDetailForRender = unstable_cache(
   ["rl:test-detail"],
   { revalidate: 60, tags: ["tests"] },
 );
+
+/**
+ * NOT cached, on purpose: the teacher-test window gate and the attempt-start
+ * record must run on every load. `getTestDetailForRender` above only runs them
+ * on a cache miss (and its stale-while-revalidate entry can outlive the window).
+ * Call this BEFORE serving the cached paper. Throws a TestWindowError outside
+ * the window; null for any test that is not a teacher-assigned one.
+ */
+export async function openTeacherTestSittingForRender(
+  userId: string,
+  testId: string,
+): Promise<TeacherTestSitting | null> {
+  try {
+    return await openTeacherTestSitting(userId, testId);
+  } catch (error) {
+    if (isTestWindowError(error)) throw error;
+    // A lookup failure must not 404 a seeded/custom test that never needed it;
+    // a teacher test's cached loader still gates on a miss, and submit always does.
+    console.warn("[render-loaders] teacher-test sitting lookup failed", {
+      testId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
 
 export const listTestResultsForRender = unstable_cache(
   async (userId: string, testId: string) => {
@@ -136,7 +200,7 @@ export const getChallengeOfTheDayForRender = unstable_cache(
   // 00:00 IST: the cache key changes, so the next render is a miss rather than
   // a 5-minute-stale hit. Pass istDateKey() at the call site.
   async (dateKey: string, userId: string) => {
-    const { store, user } = await requireStoredUser(userId);
+    const { store, user } = await requireStoredUser(userId, OWN_PRACTICE_PROGRESS_LOADS);
     return getChallengeOfTheDay(store, user);
   },
   ["rl:challenge-of-day"],
@@ -161,7 +225,7 @@ export const listOgcodeQuestionsForRender = unstable_cache(
     userId: string,
     filters: { subject?: string | null; difficulty?: string | null; type?: string | null },
   ) => {
-    const { store, user } = await requireStoredUser(userId);
+    const { store, user } = await requireStoredUser(userId, OWN_PRACTICE_PROGRESS_LOADS);
     return listOgcodeQuestions(store, user, filters);
   },
   ["rl:ogcode-questions"],
@@ -170,7 +234,7 @@ export const listOgcodeQuestionsForRender = unstable_cache(
 
 export const listOgcodeQuestionPageForRender = unstable_cache(
   async (mode: StudyMode, userId: string, filters: OgcodeQuestionListFilters) => {
-    const { store, user } = await requireStoredUser(userId);
+    const { store, user } = await requireStoredUser(userId, OWN_PRACTICE_PROGRESS_LOADS);
     return listOgcodeQuestionPage(store, user, filters);
   },
   ["rl:ogcode-question-page"],
@@ -179,7 +243,7 @@ export const listOgcodeQuestionPageForRender = unstable_cache(
 
 export const getOgcodeIndexDataForRender = unstable_cache(
   async (mode: StudyMode, userId: string, filters: OgcodeQuestionListFilters) => {
-    const { store, user } = await requireStoredUser(userId);
+    const { store, user } = await requireStoredUser(userId, OWN_OGCODE_STATS_LOADS);
     return getOgcodeIndexData(store, user, filters);
   },
   ["rl:ogcode-index"],
@@ -188,15 +252,28 @@ export const getOgcodeIndexDataForRender = unstable_cache(
 
 export const getPracticeQuestionDetailForRender = unstable_cache(
   async (mode: StudyMode, userId: string, questionId: string) => {
-    const { store, user } = await requireStoredUser(userId);
+    const { store, user } = await requireStoredUser(userId, OWN_PRACTICE_PROGRESS_LOADS);
     return getPracticeQuestionDetail(store, user, questionId);
   },
   ["rl:ogcode-question-detail"],
   { revalidate: 60, tags: ["ogcode"] },
 );
 
-export const getOgcodeLeaderboardForRender = unstable_cache(
-  async (mode: StudyMode, userId: string, subject: string | null, limit?: number | null) => {
+// Global points board: ONE cache entry per [mode, subject, limit] shared by
+// every viewer (the rows are viewer-agnostic). `mode` stays in the key so the
+// key shape matches the other mode-aware loaders even though the overall board
+// is mode-agnostic. The viewer's own row is fetched separately (one indexed
+// SQL row, uncached) so a student's rank is fresh without a per-user entry.
+const getGlobalPointsTopRowsCached = unstable_cache(
+  async (_mode: StudyMode, _subject: null, limit: number) => getTopPointsRows(limit),
+  ["rl:ogcode-leaderboard-global"],
+  { revalidate: 60, tags: ["leaderboard"] },
+);
+
+// Subject "arena" boards are scoped by the viewer's own Study Mode/premium
+// gate and computed in JS from two pools, so they keep a per-viewer entry.
+const getSubjectOgcodeLeaderboardCached = unstable_cache(
+  async (mode: StudyMode, userId: string, subject: string, limit: number) => {
     const { store, user } = await requireStoredUser(userId);
     return getOgcodeLeaderboard(store, user, subject, null, limit);
   },
@@ -204,9 +281,31 @@ export const getOgcodeLeaderboardForRender = unstable_cache(
   { revalidate: 60, tags: ["leaderboard"] },
 );
 
+export async function getOgcodeLeaderboardForRender(
+  mode: StudyMode,
+  userId: string,
+  subject: string | null,
+  limit?: number | null,
+) {
+  const topN = clampLeaderboardLimit(limit);
+  if (!subject && isUserPostgresConfigured()) {
+    const [topRows, meRow] = await Promise.all([
+      getGlobalPointsTopRowsCached(mode, null, topN),
+      getPointsRowForUser(userId),
+    ]);
+    return mergeTopWithViewer(topRows, meRow, userId, topN);
+  }
+  if (!subject) {
+    // No Postgres (local/in-memory dev): the store-backed path is cheap.
+    const { store, user } = await requireStoredUser(userId);
+    return getOgcodeLeaderboard(store, user, null, null, topN);
+  }
+  return getSubjectOgcodeLeaderboardCached(mode, userId, subject, topN);
+}
+
 export const getOgcodeUserStatsForRender = unstable_cache(
   async (userId: string) => {
-    const { store, user } = await requireStoredUser(userId);
+    const { store, user } = await requireStoredUser(userId, OWN_OGCODE_STATS_LOADS);
     return getOgcodeUserStats(store, user);
   },
   ["rl:ogcode-user-stats"],

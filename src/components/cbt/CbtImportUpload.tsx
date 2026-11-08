@@ -64,34 +64,38 @@ export function CbtImportUpload({ initialJobs }: { initialJobs: DocumentImportJo
         let res: Response;
 
         if (file.size > DIRECT_UPLOAD_THRESHOLD) {
-          // 1) ask the server for a presigned R2 PUT URL
+          // 1) ask the server for a presigned R2 PUT URL for this type and size
           const presignRes = await mutateJson("/api/cbt/import-jobs/presign", {
             method: "POST",
-            body: JSON.stringify({ fileName: file.name, mimeType }),
+            body: JSON.stringify({ fileName: file.name, mimeType, size: file.size }),
           });
           const presign = (await presignRes.json().catch(() => ({}))) as {
-            detail?: string; uploadUrl?: string; objectKey?: string; bucket?: string;
+            detail?: string; uploadUrl?: string; uploadHeaders?: Record<string, string>; objectKey?: string; uploadToken?: string;
           };
-          if (!presignRes.ok || !presign.uploadUrl || !presign.objectKey || !presign.bucket) {
+          if (!presignRes.ok || !presign.uploadUrl || !presign.objectKey || !presign.uploadToken) {
             setError(presign.detail ?? `Upload failed (${presignRes.status})`);
             return;
           }
-          // 2) PUT the bytes DIRECTLY to R2 (no server hop → no body-size cap)
+          // 2) PUT the bytes DIRECTLY to R2 (no server hop → no body-size cap).
+          // The URL is signed for exactly these headers and this file's size
+          // (the browser sets Content-Length from the body), so send both as-is.
           const put = await fetch(presign.uploadUrl, {
             method: "PUT",
-            headers: { "Content-Type": mimeType },
+            headers: presign.uploadHeaders ?? { "Content-Type": mimeType },
             body: file,
           });
           if (!put.ok) {
             setError(`Direct upload to storage failed (${put.status}). Please retry.`);
             return;
           }
-          // 3) register the import job against the uploaded object (small JSON)
+          // 3) register the import job against the uploaded object (small JSON).
+          // The server picks the bucket; uploadToken proves this key was
+          // presigned for this teacher.
           res = await mutateJson("/api/cbt/import-jobs", {
             method: "POST",
             body: JSON.stringify({
               objectKey: presign.objectKey,
-              bucket: presign.bucket,
+              uploadToken: presign.uploadToken,
               fileName: file.name,
               mimeType,
               size: file.size,

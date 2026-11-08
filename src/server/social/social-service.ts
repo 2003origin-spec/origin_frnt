@@ -13,7 +13,12 @@
 
 import { readStoreAsync } from "@/server/store";
 import type { AppStore, StoredUser } from "@/server/store";
-import { buildUserStatsSnapshot, type UserStatsSnapshot } from "@/server/users";
+import {
+  buildUserStatsSnapshot,
+  getGlobalSolvedRanking,
+  type GlobalRankCache,
+  type UserStatsSnapshot,
+} from "@/server/users";
 import { buildContributionData, getOrCreateStreak, getOrCreateUserScore } from "@/server/gamification";
 import { getUserPostgresPool } from "@/server/user-postgres";
 import { ensureSocialSchema } from "@/server/social/social-schema";
@@ -188,8 +193,29 @@ function getRecentActivity(store: AppStore, userId: string, limit = 8): RecentAc
     .slice(0, limit);
 }
 
+// ── Global-rank cache for public profiles ────────────────────────────────────
+// buildUserStatsSnapshot memoises the population-wide solved ranking per store
+// OBJECT, but every store write swaps in a freshly hydrated object, so on a busy
+// instance each `/u/<name>` view re-ranked the whole population. Public profiles
+// reuse one ranking for up to 5 minutes (the store cache TTL) instead.
+export const SOCIAL_RANK_TTL_MS = 5 * 60 * 1000;
+
+declare global {
+  var __originSocialRankCache: { value: GlobalRankCache; expiresAt: number } | undefined;
+}
+
+export function getCachedGlobalRanking(store: AppStore, now: number = Date.now()): GlobalRankCache {
+  const cached = globalThis.__originSocialRankCache;
+  if (cached && cached.expiresAt > now) return cached.value;
+  const value = getGlobalSolvedRanking(store);
+  globalThis.__originSocialRankCache = { value, expiresAt: now + SOCIAL_RANK_TTL_MS };
+  return value;
+}
+
 async function buildStats(store: AppStore, user: StoredUser): Promise<PublicProfileStats> {
-  const snapshot = await buildUserStatsSnapshot(store, user);
+  const snapshot = await buildUserStatsSnapshot(store, user, {
+    globalRanking: getCachedGlobalRanking(store),
+  });
   const streak = getOrCreateStreak(store, user.id);
   const contributionData = buildContributionData(store, user.id);
   const totalSolved = contributionData.reduce((sum, entry) => sum + entry.count, 0);
@@ -462,20 +488,23 @@ const ACTIVE_WINDOW_MS = 14 * 86_400_000;
 
 /**
  * The three "popular students" leaderboards that power the default /social view.
- * Reads the cached store ONCE and derives all three tabs from single-pass
- * aggregations (calling buildUserStatsSnapshot per-user would recompute global
- * rank across the whole population every time). Two SQL round-trips: follower
- * counts (all), then follow-state for the union of the three sliced lists.
+ *
+ * Split in two so the expensive part can be cached for every viewer:
+ *   - buildPopularBoards / loadPopularBoards — VIEWER-AGNOSTIC. Single-pass
+ *     aggregations over the cached store (calling buildUserStatsSnapshot per
+ *     user would recompute global rank across the whole population every time)
+ *     plus one follower-count GROUP BY. Each tab keeps `perTab + 1` cards so
+ *     dropping the viewer still leaves `perTab`. Safe to wrap in unstable_cache.
+ *   - getPopularStudents — removes the viewer and annotates follow state for the
+ *     union of the three sliced lists (one live query, so a fresh follow shows
+ *     immediately even when the boards come from cache).
  */
-export async function getPopularStudents(
-  viewerId: string,
+export function buildPopularBoards(
+  store: AppStore,
+  followerCount: ReadonlyMap<string, number>,
   perTab = 24,
-): Promise<PopularStudents> {
-  await ensureSocialSchema();
-  const store = await readStoreAsync();
-  const p = pool();
-  const now = Date.now();
-
+  now: number = Date.now(),
+): PopularStudents {
   const solved = new Map<string, Set<string>>(); // distinct correct questionIds → rank
   const acc = new Map<string, { correct: number; total: number }>();
   const activity = new Map<string, { recent: number; last: number }>();
@@ -514,18 +543,13 @@ export async function getPopularStudents(
     .sort((a, b) => b.n - a.n)
     .forEach((e, i) => rankOf.set(e.uid, i + 1));
 
-  // Follower counts for everyone (one GROUP BY — the follows table is small).
-  const followerCount = new Map<string, number>();
-  if (p) {
-    const res = await p.query(
-      "SELECT following_id, COUNT(*)::int AS c FROM social.follows GROUP BY following_id",
-    );
-    for (const row of res.rows) followerCount.set(row.following_id, Number(row.c));
+  // O(1) points lookup (was a `store.userScores.find` per user → quadratic).
+  const pointsById = new Map<string, number>();
+  for (const score of store.userScores) {
+    if (!pointsById.has(score.userId)) pointsById.set(score.userId, score.totalPoints);
   }
 
-  const eligible = store.users.filter(
-    (u) => u.role === "student" && u.username && u.id !== viewerId,
-  );
+  const eligible = store.users.filter((u) => u.role === "student" && u.username);
 
   const toCard = (u: StoredUser): PopularUserCard => {
     const ac = acc.get(u.id);
@@ -543,31 +567,80 @@ export async function getPopularStudents(
       tests: tests.get(u.id) ?? 0,
       followerCount: followerCount.get(u.id) ?? 0,
       badge: examBadge(u),
-      points: store.userScores.find((s) => s.userId === u.id)?.totalPoints ?? 0,
+      points: pointsById.get(u.id) ?? 0,
     };
   };
 
   const cards = eligible.map(toCard);
-  const byId = new Map(cards.map((c) => [c.id, c]));
   const RANK_FLOOR = Number.MAX_SAFE_INTEGER;
+  const keep = perTab + 1;
 
   const followed = [...cards]
     .sort((a, b) => b.followerCount - a.followerCount || (a.rank ?? RANK_FLOOR) - (b.rank ?? RANK_FLOOR))
-    .slice(0, perTab);
+    .slice(0, keep);
   const ranked = [...cards]
     .sort((a, b) => (a.rank ?? RANK_FLOOR) - (b.rank ?? RANK_FLOOR) || b.accuracy - a.accuracy)
-    .slice(0, perTab);
+    .slice(0, keep);
   const active = [...cards]
     .sort((a, b) => {
       const aa = activity.get(a.id) ?? { recent: 0, last: 0 };
       const bb = activity.get(b.id) ?? { recent: 0, last: 0 };
       return bb.recent - aa.recent || bb.last - aa.last;
     })
-    .slice(0, perTab);
+    .slice(0, keep);
+
+  return { followed, ranked, active };
+}
+
+/** Viewer-agnostic boards from the cached store + one follower-count query. */
+export async function loadPopularBoards(perTab = 24): Promise<PopularStudents> {
+  await ensureSocialSchema();
+  const store = await readStoreAsync();
+  const p = pool();
+
+  // Follower counts for everyone (one GROUP BY — the follows table is small).
+  const followerCount = new Map<string, number>();
+  if (p) {
+    const res = await p.query(
+      "SELECT following_id, COUNT(*)::int AS c FROM social.follows GROUP BY following_id",
+    );
+    for (const row of res.rows) followerCount.set(row.following_id, Number(row.c));
+  }
+
+  return buildPopularBoards(store, followerCount, perTab);
+}
+
+export async function getPopularStudents(
+  viewerId: string,
+  perTab = 24,
+  loadBoards: (perTab: number) => Promise<PopularStudents> = loadPopularBoards,
+): Promise<PopularStudents> {
+  const boards = await loadBoards(perTab);
+
+  // Fresh card objects per request: the boards may be a shared cached value.
+  const pick = (list: PopularUserCard[]) =>
+    list
+      .filter((c) => c.id !== viewerId)
+      .slice(0, perTab)
+      .map((c) => ({ ...c, isMe: false, isFollowedByMe: false, followsMe: false }));
+  const result: PopularStudents = {
+    followed: pick(boards.followed),
+    ranked: pick(boards.ranked),
+    active: pick(boards.active),
+  };
+
+  const byId = new Map<string, PopularUserCard[]>();
+  for (const card of [...result.followed, ...result.ranked, ...result.active]) {
+    const list = byId.get(card.id);
+    if (list) list.push(card);
+    else byId.set(card.id, [card]);
+  }
 
   // Follow-state only for the union of the three sliced lists (one query).
-  const unionIds = [...new Set([...followed, ...ranked, ...active].map((c) => c.id))];
+  const unionIds = [...byId.keys()];
+  const p = pool();
   if (p && unionIds.length > 0) {
+    await ensureSocialSchema();
     const res = await p.query(
       `SELECT follower_id, following_id FROM social.follows
          WHERE (follower_id = $1 AND following_id = ANY($2))
@@ -576,17 +649,15 @@ export async function getPopularStudents(
     );
     for (const row of res.rows) {
       if (row.follower_id === viewerId) {
-        const c = byId.get(row.following_id);
-        if (c) c.isFollowedByMe = true;
+        for (const c of byId.get(row.following_id) ?? []) c.isFollowedByMe = true;
       }
       if (row.following_id === viewerId) {
-        const c = byId.get(row.follower_id);
-        if (c) c.followsMe = true;
+        for (const c of byId.get(row.follower_id) ?? []) c.followsMe = true;
       }
     }
   }
 
-  return { followed, ranked, active };
+  return result;
 }
 
 /** Student search by @username or display name, annotated with follow state. */

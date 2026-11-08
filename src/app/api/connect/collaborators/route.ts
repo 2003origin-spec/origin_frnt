@@ -24,7 +24,9 @@ export async function GET(request: NextRequest) {
     const city = url.searchParams.get("city") ?? undefined;
     const rawLimit = url.searchParams.get("limit");
     const limit = rawLimit ? Math.min(Math.max(Number(rawLimit) || 0, 1), 100) : undefined;
-    const collaborators = await listBrowsableInstitutes({ subject, city, limit });
+    const rawOffset = url.searchParams.get("offset");
+    const offset = rawOffset ? Math.min(Math.max(Math.trunc(Number(rawOffset)) || 0, 0), 10_000) : undefined;
+    const collaborators = await listBrowsableInstitutes({ subject, city, limit, offset });
     return teacherJson({ collaborators });
   } catch (error) {
     return handleTeacherError(error);

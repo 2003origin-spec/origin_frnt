@@ -23,7 +23,14 @@ export async function GET(request: NextRequest, context: Context) {
   try {
     requireFeatureEnabled("batches");
     const { workspaceId, batchId } = await context.params;
-    await requireWorkspaceMember(request, workspaceId);
+    // Members carry name + email — same role list as /students (N10).
+    await requireWorkspaceMember(request, workspaceId, [
+      "owner",
+      "admin",
+      "teacher",
+      "content_manager",
+      "analyst",
+    ]);
     const students = await listBatchMembers(workspaceId, batchId);
     return teacherJson({ students });
   } catch (error) {

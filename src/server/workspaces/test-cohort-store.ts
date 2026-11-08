@@ -12,8 +12,8 @@
  * `origin_users`, USER pool) are fetched separately and merged in app code — never a
  * cross-database JOIN. In dev both pools point at one DB, so the same code path works.
  *
- * NOTE: the parallel `assessment.test_attempts` table (tests-store startAttempt/
- * submitAttempt) is currently unwired — these readers intentionally do NOT use it.
+ * NOTE: `assessment.test_attempts` records sittings (one row per retake, no
+ * names or totals) — these readers intentionally do NOT use it for results.
  */
 
 import type { Pool } from "pg";
@@ -133,6 +133,77 @@ export async function getTestAttemptCohort(
     analysisStatus: String(row.analysis_status ?? "complete"),
     submittedAt: new Date(row.created_at as string).toISOString(),
   }));
+}
+
+/** One student's best submission of a teacher test, across every session. */
+export type TestLeaderboardEntry = {
+  rank: number;
+  studentId: string;
+  studentName: string;
+  score: number;
+  totalScore: number;
+  scorePercentage: number;
+  timeTakenSeconds: number;
+  /** When the best submission was made. */
+  attemptedAt: string;
+  /** How many (non-malpractice) submissions the student made. */
+  attemptCount: number;
+};
+
+/**
+ * The test-level leaderboard ("all sessions of this test" in the room view):
+ * ONE row per student — their best submission (highest percentage, then the
+ * fastest) — read from analytics.test_results, which every assigned-test and
+ * room submission writes, with display names merged from origin_users.
+ * Not assessment.test_attempts: those rows carry no name or total, and there is
+ * one per retake, which listed blank names and the same student repeatedly.
+ */
+export async function getTestLeaderboardFromResults(
+  workspaceId: string,
+  testId: string,
+  limit = 20,
+): Promise<TestLeaderboardEntry[]> {
+  await ensureAnalyticsTables();
+  const result = await analyticsPool().query(
+    `SELECT * FROM (
+       SELECT DISTINCT ON (user_id)
+              user_id, score, total_marks, percentage, time_taken_seconds, created_at,
+              COUNT(*) OVER (PARTITION BY user_id)::int AS attempt_count
+         FROM analytics.test_results
+        WHERE test_id = $1 AND workspace_id = $2 AND is_malpractice = FALSE
+        ORDER BY user_id, percentage DESC NULLS LAST, time_taken_seconds ASC NULLS LAST, created_at ASC
+     ) best
+     ORDER BY percentage DESC NULLS LAST, time_taken_seconds ASC NULLS LAST, created_at ASC
+     LIMIT $3`,
+    [testId, workspaceId, Math.max(1, Math.trunc(limit) || 20)],
+  );
+  const names = await fetchDisplayNames(result.rows.map((r) => r.user_id as string));
+  return result.rows.map((row, i) => ({
+    rank: i + 1,
+    studentId: row.user_id as string,
+    studentName: names.get(row.user_id as string) ?? "Student",
+    score: Number(row.score) || 0,
+    totalScore: Number(row.total_marks) || 0,
+    scorePercentage: Number(row.percentage) || 0,
+    timeTakenSeconds: Number(row.time_taken_seconds) || 0,
+    attemptedAt: new Date(row.created_at as string).toISOString(),
+    attemptCount: Number(row.attempt_count) || 1,
+  }));
+}
+
+/**
+ * How many persisted student results exist for a teacher test (every
+ * submission, malpractice included — they are still a student's record). The
+ * delete guard counts these: assessment.test_attempts only began recording
+ * sittings recently, so older submissions exist ONLY here.
+ */
+export async function countTestResults(testId: string): Promise<number> {
+  await ensureAnalyticsTables();
+  const result = await analyticsPool().query(
+    `SELECT COUNT(*)::int AS n FROM analytics.test_results WHERE test_id = $1`,
+    [testId],
+  );
+  return Number(result.rows[0]?.n) || 0;
 }
 
 /**

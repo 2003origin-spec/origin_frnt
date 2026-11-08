@@ -44,9 +44,12 @@ export const PUBLIC_API_PATHS = [
   // Android shell governance config — fetched pre-auth at app cold start
   // (ANDROID_HYBRID_APP_PLAN.md §5.2); CDN-cached, no session data.
   "/api/mobile/config",
-  // Browser link-out handoff consumption — the one-time token in the query IS
-  // the credential (verified + single-use in the handler); it necessarily runs
-  // in a browser with no session cookie yet (plan §5.4).
+  // Browser link-out handoff — the one-time token IS the credential (verified +
+  // single-use in the handler); it necessarily runs in a browser with no
+  // session cookie yet (plan §5.4). GET only 303s to /auth/handoff; the POST
+  // from that page consumes the token. The POST is also in the middleware's
+  // CSRF_EXEMPT_API_PATHS (this list is path-only and does NOT exempt CSRF) —
+  // the handler enforces same-origin via `Origin` + `Sec-Fetch-Site` instead.
   "/api/mobile/link-out/consume",
 ] as const;
 
@@ -81,12 +84,22 @@ export const AUTHENTICATED_API_PREFIXES = [
   // registration/eligibility. /api/admin/contest/* is already covered by
   // "/api/admin". Plan: V1/CONTEST_ORBIT_IMPLEMENTATION_PLAN.md.
   "/api/contest",
+  // Origin Notes — student library reads, stars, reports (single catch-all,
+  // student-only + `notes` flag enforced in the handler). The admin side,
+  // /api/admin/notes/*, is covered by "/api/admin". Plan: V1/NOTES_PLAN.md.
+  "/api/notes",
   // Origin NOW — live doubt solving + Ori Coins wallet + solver registration.
   // Authenticated JWT users; the `originNow` flag, the pilot cohort and the
   // helper row are all checked in-handler (being a helper is a row, not a
   // login role). /api/admin/now/* is covered by "/api/admin" and QStash/cron
   // callbacks live under /api/internal/now/*. Plan: V1/ORIGIN_NOW_PLAN.md.
   "/api/now",
+  // Student messaging for the website — the same handler and shapes as
+  // /api/mobile/messages* (src/server/messaging/routes.ts). Cookie session;
+  // CSRF + mutation limiter on writes here at the edge; the studentMessaging +
+  // studentSocial flags and the student role are checked in the handler.
+  // /api/admin/messaging/* is covered by "/api/admin".
+  "/api/messages",
 ] as const;
 
 export const MEMBERSHIP_API_PREFIXES = ["/api/study-rooms/[id]"] as const;
@@ -95,7 +108,10 @@ export const MEMBERSHIP_API_PREFIXES = ["/api/study-rooms/[id]"] as const;
 // room-bound participant JWT. Checked before role/authenticated prefixes.
 // Contest share read: unauthenticated, returns only SANITIZED result data for a
 // revocable opt-in slug (no answers/PII) — the growth-loop referral surface.
-export const PUBLIC_API_PREFIXES = ["/api/cbt-student", "/api/public/contest-share"] as const;
+// Native-app session endpoints (login/OTP/refresh/logout): no session exists
+// yet; each handler rate-limits and refuses browser requests
+// (V1/NATIVE_APP_API_PLAN.md §2.1).
+export const PUBLIC_API_PREFIXES = ["/api/cbt-student", "/api/public/contest-share", "/api/mobile/auth"] as const;
 
 // CBT teacher surface: role-gated to cbt_teacher. Checked before the
 // authenticated prefixes (there is no `authenticated` policy on any CBT
@@ -110,6 +126,9 @@ export const PUBLIC_APP_PATHS = [
   "/now/consent",
   "/auth",
   "/auth/refresh",
+  // App → browser link-out confirmation page (spec 01-auth.md §A4): the
+  // browser has no session yet; the page only peeks the one-time token.
+  "/auth/handoff",
   "/role-selection",
   "/explore",
   "/premium",
@@ -178,9 +197,15 @@ export const AUTHENTICATED_APP_PREFIXES = [
   // student to /auth. See V1/HOME_REDESIGN_PLAN.md §4.
   "/snap-solve",
   "/mindmaps",
+  // Origin Notes student page (V1/NOTES_PLAN.md). The page itself 404s while
+  // the `notes` flag is off.
+  "/notes",
   // Origin NOW pages (wallet, store, solver shift screen + dashboard, live
   // room). Plan: V1/ORIGIN_NOW_PLAN.md.
   "/now",
+  // Student messaging (inbox + threads). The pages redirect while the
+  // studentMessaging flag is off.
+  "/messages",
 ] as const;
 
 export const ROLE_APP_PREFIXES = [

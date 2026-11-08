@@ -62,6 +62,11 @@ function scopeFor(
     canChooseMode: enforced && availableModes.length > 0,
     subjects,
     starved: enforced && subjects.length === 0,
+    // The honest, gate-only fields premium surfaces read (see getStudentScope).
+    entitledSubjects: gate.enforced
+      ? ALL_SUBJECTS.filter((s) => modeSubjects.includes(s) && gate.subjects.includes(s))
+      : [...modeSubjects],
+    premiumLocked: gate.enforced && !gate.anyPremium,
   };
 }
 

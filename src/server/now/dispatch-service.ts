@@ -25,7 +25,7 @@ import { getUserPostgresPool } from "@/server/user-postgres";
 
 import { loadPriceTable } from "./admin-store";
 import { PLATFORM_ACCOUNTS, sessionHold, sessionRelease, userAccount, type Transfer } from "./ledger-rules";
-import { getWalletBalance, InsufficientCoinsError, postTransfers, withNowTransaction } from "./ledger-store";
+import { getWalletBalance, InsufficientCoinsError, loadHeldCoinSlices, postTransfers, withNowTransaction } from "./ledger-store";
 import {
   botRuleForSubject,
   decideDispatch,
@@ -154,10 +154,30 @@ export async function applyTransition(
   return result.to;
 }
 
+/**
+ * Gives `coins` of a request's hold back to the student, each coin with the
+ * expiry it had when the hold took it (promo coins stay promo coins).
+ * `keySuffix` distinguishes a partial release from the final one.
+ */
+export async function releaseHeldCoins(
+  client: PoolClient,
+  request: Pick<RequestRow, "id" | "student_id">,
+  coins: number,
+  options: { keySuffix?: string; now?: Date } = {},
+): Promise<void> {
+  if (coins <= 0) return;
+  const now = options.now ?? new Date();
+  const slices = await loadHeldCoinSlices(client, request.student_id, request.id, now);
+  await postTransfers(sessionRelease(request.student_id, request.id, coins, { slices, keySuffix: options.keySuffix }), {
+    client,
+    now,
+  });
+}
+
 /** Releases whatever is still held for a request back to the student. */
 export async function releaseHold(client: PoolClient, request: RequestRow): Promise<void> {
   if (request.held_coins <= 0) return;
-  await postTransfers(sessionRelease(request.student_id, request.id, request.held_coins), { client });
+  await releaseHeldCoins(client, request, request.held_coins);
   await client.query(`UPDATE now.requests SET held_coins = 0 WHERE id = $1`, [request.id]);
   request.held_coins = 0;
 }
@@ -249,7 +269,8 @@ export async function createRequest(studentId: string, input: CreateRequestInput
   }
   await ensureWelcomeGrant(studentId);
 
-  const question = await getOgcodeCatalogQuestionById(input.questionId);
+  // NOW help is for OGCode questions only; a hidden contest import is a 404.
+  const question = await getOgcodeCatalogQuestionById(input.questionId, { visibility: "ogcode" });
   if (!question) throw new NowError(404, "question_not_found", "Question not found.");
   const subject = String(question.subject ?? "").trim().toLowerCase();
   const difficulty = normalizeDifficulty(question.difficulty);
@@ -569,19 +590,7 @@ export async function dispatchRequest(requestId: string, now: Date = new Date())
               { client, now },
             );
           } else if (delta < 0) {
-            await postTransfers(
-              [
-                {
-                  kind: "session_release",
-                  from: PLATFORM_ACCOUNTS.escrow,
-                  to: userAccount(request.student_id),
-                  amount: -delta,
-                  requestId: request.id,
-                  idempotencyKey: `release:${request.id}:bot`,
-                } satisfies Transfer,
-              ],
-              { client, now },
-            );
+            await releaseHeldCoins(client, request, -delta, { keySuffix: "bot", now });
           }
           await applyTransition(client, request, "bot_assigned", {
             helper_id: BOT_HELPER_ID,
@@ -646,7 +655,7 @@ export async function dispatchRequest(requestId: string, now: Date = new Date())
   return decision;
 }
 
-async function closeNoHelper(client: PoolClient, request: RequestRow, detail: ClosedDetail, effects: Effect[]): Promise<void> {
+export async function closeNoHelper(client: PoolClient, request: RequestRow, detail: ClosedDetail, effects: Effect[]): Promise<void> {
   await applyTransition(client, request, "give_up", {
     closed_reason: "no_helper",
     closed_detail: detail,
@@ -912,6 +921,8 @@ export type RequestView = {
     endedAt: string | null;
     extensionsUsed: number;
     extensionRequestedAt: string | null;
+    /** Live sessions, for the student: what "more time" costs and how many are left (null when none). */
+    extension: { minutes: number; coins: number; left: number } | null;
   } | null;
   /** True when calls are recorded (LiveKit + recording storage configured); the room says so. */
   recorded: boolean;
@@ -961,6 +972,12 @@ export async function getRequestView(requestId: string, viewer: { viewerUserId: 
   const isSolver = Boolean(row?.helper_user_id) && row?.helper_user_id === viewer.viewerUserId;
   if (!row || (!isStudent && !isSolver)) throw new NowError(404, "not_found", "Request not found.");
   const question = (row.context_json?.question ?? null) as RequestView["question"];
+  let extension: { minutes: number; coins: number; left: number } | null = null;
+  if (isStudent && row.status === "live" && row.session_id) {
+    const price = lookupPrice((await loadPriceTable()).rows, row.difficulty, row.session_solver_kind ?? "human");
+    const left = price ? price.maxExtensions - (row.extensions_used ?? 0) : 0;
+    if (price && left > 0) extension = { minutes: price.extensionMinutes, coins: price.extensionCoins, left };
+  }
   return {
     id: row.id,
     status: row.status,
@@ -990,6 +1007,7 @@ export async function getRequestView(requestId: string, viewer: { viewerUserId: 
           endedAt: row.ended_at ? row.ended_at.toISOString() : null,
           extensionsUsed: row.extensions_used ?? 0,
           extensionRequestedAt: row.extension_requested_at ? row.extension_requested_at.toISOString() : null,
+          extension,
         }
       : null,
     recorded: getLiveKitConfig() !== null && getRecordingStorage() !== null,
@@ -1077,6 +1095,8 @@ export type LiveHelpQuote = {
   blockedReason: string | null;
   priceCoins: number | null;
   botPriceCoins: number | null;
+  /** What asking holds now: always the human price (the bot difference comes back after). */
+  holdCoins: number | null;
   minutes: number | null;
   balance: number;
   canAfford: boolean;
@@ -1096,6 +1116,7 @@ export async function quoteLiveHelp(studentId: string, questionId: string, now: 
     blockedReason: access.blockedReason,
     priceCoins: null,
     botPriceCoins: null,
+    holdCoins: null,
     minutes: null,
     balance: 0,
     canAfford: false,
@@ -1106,7 +1127,7 @@ export async function quoteLiveHelp(studentId: string, questionId: string, now: 
     openRequestId: null,
   };
   if (!access.inCohort) return empty;
-  const question = await getOgcodeCatalogQuestionById(questionId);
+  const question = await getOgcodeCatalogQuestionById(questionId, { visibility: "ogcode" });
   const subject = String(question?.subject ?? "").trim().toLowerCase();
   const difficulty = normalizeDifficulty(question?.difficulty);
   if (!question || !isNowSubject(subject) || !difficulty) return { ...empty, blockedReason: "question_not_supported" };
@@ -1132,6 +1153,7 @@ export async function quoteLiveHelp(studentId: string, questionId: string, now: 
     blockedReason: access.canRequest ? (attempted ? null : "attempt_first") : access.blockedReason,
     priceCoins: price?.priceCoins ?? null,
     botPriceCoins: bot?.priceCoins ?? null,
+    holdCoins: human?.priceCoins ?? null,
     minutes: price?.minutes ?? null,
     balance: balance.available,
     canAfford: Boolean(human) && balance.available >= (human?.priceCoins ?? Infinity),

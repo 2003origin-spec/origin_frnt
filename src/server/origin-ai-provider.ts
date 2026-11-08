@@ -1,16 +1,10 @@
-export interface OriginAiProviderRequest {
- systemInstruction: string;
- conversation: Array<{ role: "user" | "assistant"; content: string }>;
- requestId: string;
- maxOutputTokens?: number;
-}
-
-export interface OriginAiProviderResponse {
- content: string;
- provider: "origin_ai_service" | "local_fallback";
- model: string;
- metadata?: Record<string, unknown>;
-}
+// NOTE: the former `generateOriginAiProviderReply` client targeted
+// `${ORIGIN_AI_SERVICE_URL}/v1/origin-ai/respond`, a path the Python service
+// never exposed (every router is mounted under /api/v1/...). It always 404'd
+// and silently returned null, so the legacy chat path could pretend a
+// fallback reply was a real generation (bug-fix doc 12, finding 5). Real
+// generations go through the proxy in app/api/origin-ai/[...slug]/route.ts;
+// the legacy path now treats "no service" as the explicit KB/local fallback.
 
 export interface OriginAiLiveBootstrapRequest {
  systemInstruction: string;
@@ -159,59 +153,13 @@ function originAiServiceHeaders(requestId: string): HeadersInit {
  };
 }
 
-async function callExternalOriginAiService(
- payload: OriginAiProviderRequest,
-): Promise<OriginAiProviderResponse | null> {
- const endpoint = originAiServiceEndpoint("/v1/origin-ai/respond");
- if (!endpoint) {
- return null;
- }
-
- try {
- const response = await withTimeout(fetch(endpoint, {
- method: "POST",
- headers: originAiServiceHeaders(payload.requestId),
- body: JSON.stringify(payload),
- }), "Ori service text provider timed out.");
-
- if (!response.ok) {
- return null;
- }
-
- const data = (await response.json()) as {
- content?: string;
- reply?: string;
- response?: string;
- model?: string;
- metadata?: Record<string, unknown>;
- };
-
- const content = data.content ?? data.reply ?? data.response ?? "";
- if (!content.trim()) {
- return null;
- }
-
- return {
- content: content.trim(),
- provider: "origin_ai_service",
- model: data.model?.trim() || "external-origin-ai-service",
- metadata: data.metadata ?? {},
- };
- } catch {
- return null;
- }
-}
-
-export async function generateOriginAiProviderReply(
- payload: OriginAiProviderRequest,
-): Promise<OriginAiProviderResponse | null> {
- return callExternalOriginAiService(payload);
-}
-
 export async function normalizeVoiceTranscriptForChat(
  text: string,
  role: "user" | "assistant",
 ): Promise<string> {
+ // The model-backed rewrite used the dead `/v1/origin-ai/respond` client, so
+ // in practice this has always returned the locally cleaned text. Keep that
+ // behaviour explicit; the role only decides which transcripts are flagged.
  const cleaned = text.replace(/\*\*/g, "").trim();
  if (!cleaned) {
  return "";
@@ -219,23 +167,13 @@ export async function normalizeVoiceTranscriptForChat(
 
  const needsRomanization = NON_LATIN_VOICE_SCRIPT_REGEX.test(cleaned);
  const needsAssistantRewrite = role === "assistant" && META_VOICE_TRANSCRIPT_REGEX.test(cleaned);
-
- if (!needsRomanization && !needsAssistantRewrite) {
- return cleaned;
+ if (needsRomanization || needsAssistantRewrite) {
+ console.warn(
+ `[OriginAI voice] transcript (${role}) would need a model rewrite; no text provider is wired, returning cleaned text`,
+ );
  }
 
- const prompt =
- role === "assistant"
- ? "Rewrite this spoken assistant transcript into a clean natural conversational reply. Remove internal planning, headings, meta analysis, and broken partial setup lines. Keep the meaning and guardrails. If the language is Hinglish, write it only in Roman script. Never use any non-Latin script, including Devanagari, Gujarati, Burmese, Thai, Urdu, or Arabic. Return only the cleaned transcript."
- : "Convert this spoken student transcript into natural Roman-script English or Hinglish only. Do not change the meaning. Keep question numbers, formulas, symbols, names, and technical terms intact. Never use any non-Latin script, including Devanagari, Gujarati, Burmese, Thai, Urdu, or Arabic. Return only the cleaned Roman-script transcript.";
-
- const rewritten = await callExternalOriginAiService({
- systemInstruction: prompt,
- conversation: [{ role: "user", content: cleaned }],
- requestId: `voice_transcript_normalize_${role}_${Date.now()}`,
- });
-
- return rewritten?.content.trim() || cleaned;
+ return cleaned;
 }
 
 export async function createOriginAiLiveBootstrap(

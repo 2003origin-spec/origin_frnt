@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 
-import { requireFeatureEnabled } from "@/lib/feature-flags";
+import { requireFeatureEnabledRuntime } from "@/server/feature-flags-runtime";
 import { requireWorkspaceMember } from "@/server/workspaces/authz";
 import { removeAsset } from "@/server/workspaces/study-materials-service";
 
@@ -17,7 +17,7 @@ export async function DELETE(
   context: WorkspaceIdRouteContext & { params: Promise<{ workspaceId: string; materialId: string; assetId: string }> },
 ) {
   try {
-    requireFeatureEnabled("studyMaterials");
+    await requireFeatureEnabledRuntime("studyMaterials");
     const { workspaceId, materialId, assetId } = await context.params;
     const ctx = await requireWorkspaceMember(request, workspaceId, [
       "owner",

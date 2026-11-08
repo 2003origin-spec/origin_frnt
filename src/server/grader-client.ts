@@ -127,14 +127,31 @@ export type AssessmentBatchGradeResult = GradeResult & {
   evaluationSource: "python_grader";
 };
 
+/** What a student sees when the grader refuses a request. The raw reason goes to the server log. */
+export const GRADER_UNAVAILABLE_MESSAGE = "We couldn't check your answer right now. Please try again in a moment.";
+
 export class GraderContractError extends Error {
   status: number;
+  /** The grader's own reason (e.g. a pydantic validation dump). For logs only, never for students. */
+  detail: string | null;
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, detail: string | null = null) {
     super(message);
     this.name = "GraderContractError";
     this.status = status;
+    this.detail = detail;
   }
+}
+
+/**
+ * An answer spec without its null fields, so the grader's defaults apply.
+ * The grader declares e.g. `symbol_assumptions: dict` and rejects `null`
+ * (seen 01/11/2026: a Joule's-law MCQ failed with "Input should be a valid
+ * dictionary" and the raw pydantic dump reached the student).
+ */
+export function compactAnswerSpec(spec: unknown): unknown {
+  if (!spec || typeof spec !== "object" || Array.isArray(spec)) return spec ?? null;
+  return Object.fromEntries(Object.entries(spec as Record<string, unknown>).filter(([, value]) => value !== null && value !== undefined));
 }
 
 const DEFAULT_SCORING_POLICY: GraderScoringPolicy = {
@@ -188,7 +205,7 @@ function toRemoteQuestion(question: StoredQuestion): RemoteQuestionSnapshot {
     explanation: question.explanation ?? null,
     hint: question.hint ?? null,
     tolerance: question.tolerance ?? null,
-    answer_spec: question.answerSpec ?? null,
+    answer_spec: compactAnswerSpec(question.answerSpec),
   };
 }
 
@@ -373,7 +390,14 @@ export async function gradeAssessmentBatchWithService(input: {
     if (!response.ok) {
       const message = await response.text().catch(() => "");
       if (response.status >= 400 && response.status < 500) {
-        throw new GraderContractError(message || "Grader batch contract validation failed.", response.status);
+        console.error("[grader-client] Grader rejected the batch", {
+          requestId,
+          status: response.status,
+          assessmentId: input.assessmentId,
+          questionIds: input.items.map((item) => item.question.id),
+          detail: message.slice(0, 2000),
+        });
+        throw new GraderContractError(GRADER_UNAVAILABLE_MESSAGE, response.status, message || null);
       }
       console.error("[grader-client] Remote grader returned error status", {
         requestId,
@@ -390,7 +414,9 @@ export async function gradeAssessmentBatchWithService(input: {
     return body.items.map((item) => {
       const question = byQuestionId.get(item.question_id);
       if (!question) {
-        throw new GraderContractError(`Unexpected grader response for question ${item.question_id}.`, 422);
+        const detail = `Unexpected grader response for question ${item.question_id}.`;
+        console.error("[grader-client] " + detail, { requestId, assessmentId: input.assessmentId });
+        throw new GraderContractError(GRADER_UNAVAILABLE_MESSAGE, 422, detail);
       }
       const grade = toGradeResult(question, item);
       if (item.error) {

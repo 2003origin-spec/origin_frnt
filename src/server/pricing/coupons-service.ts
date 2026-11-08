@@ -25,7 +25,7 @@ function pool() {
   return p;
 }
 
-type CouponExecutor = Pick<Pool | PoolClient, "query">;
+export type CouponExecutor = Pick<Pool | PoolClient, "query">;
 
 export type CouponKind = "percent" | "flat";
 export type CouponAppliesTo = "subject" | "bundle" | "any";
@@ -431,6 +431,106 @@ export async function commitCouponReservation(input: {
   } finally {
     client.release();
   }
+}
+
+export type LateCommitOutcome = "committed" | "recommitted" | "overrun";
+
+/**
+ * Commits the hold for a paid order, re-reserving it first when the hold has
+ * already lapsed (bug-fix P2).
+ *
+ * Razorpay orders never expire gateway-side, so a capture can land after the
+ * local hold was released (checkout-creation failure, reconcile expiry, or —
+ * before P2 — a failed first attempt). The money has landed at the discounted
+ * amount either way, so the redemption is ALWAYS recorded; what changes is
+ * whether the caps still had room:
+ *
+ *   reserved → committed                 "committed"    (normal path)
+ *   released → committed[overrun=false]  "recommitted"  (caps still free)
+ *   released → committed[overrun=true]   "overrun"      (cap exhausted; honoured, flagged)
+ *
+ * `committed` is terminal. Same lock order as reserve: the coupon row is taken
+ * FOR UPDATE first. Must run inside the caller's transaction.
+ */
+export async function commitOrRecommitCoupon(input: {
+  code: string;
+  userId: string;
+  orderId: string;
+  subject?: string | null;
+  targetKind?: CouponAppliesTo;
+  amountDiscountedMinor: number;
+}, exec: CouponExecutor): Promise<LateCommitOutcome> {
+  const code = normalizeCode(input.code);
+  if (!code || !input.userId || !input.orderId) throw new Error("Coupon code, user and order are required");
+  const locked = await exec.query(`SELECT code FROM pricing.coupons WHERE code = $1 FOR UPDATE`, [code]);
+  // The coupon row is gone (redemptions cascade with it), so there is nothing
+  // to count against. Never fail the capture over it: report it as an overrun
+  // so the caller flags the order and a human looks.
+  if (!locked.rows[0]) return "overrun";
+  if (await commitCouponReservation({ code, userId: input.userId, orderId: input.orderId }, exec)) {
+    return "committed";
+  }
+
+  // Already committed for this order by an earlier late commit: nothing to count
+  // (a backfill re-run or a replayed capture must not bump the counter twice).
+  const already = await exec.query(
+    `SELECT id FROM pricing.coupon_redemptions
+      WHERE code = $1 AND user_id = $2 AND order_id = $3 AND state = 'committed'
+      LIMIT 1`,
+    [code, input.userId, input.orderId],
+  );
+  if (already.rows[0]) return "committed";
+
+  // Row is released/absent: re-check caps under the lock, then commit
+  // regardless (money landed). The per-user count excludes this order so a
+  // retry of the same late commit is idempotent.
+  const perUser = await exec.query<{ n: number; limit: number }>(
+    `SELECT COUNT(*) FILTER (WHERE r.state = 'committed' AND r.order_id IS DISTINCT FROM $3)::int AS n,
+            c.per_user_limit AS "limit"
+       FROM pricing.coupons c
+       LEFT JOIN pricing.coupon_redemptions r ON r.code = c.code AND r.user_id = $2
+      WHERE c.code = $1
+      GROUP BY c.per_user_limit`,
+    [code, input.userId, input.orderId],
+  );
+  const bumped = await exec.query(
+    `UPDATE pricing.coupons
+        SET times_redeemed = times_redeemed + 1
+      WHERE code = $1 AND (max_redemptions IS NULL OR times_redeemed < max_redemptions)
+      RETURNING code`,
+    [code],
+  );
+  const perUserRow = perUser.rows[0];
+  const overrun =
+    !bumped.rows[0] ||
+    Number(perUserRow?.n ?? 0) >= Number(perUserRow?.limit ?? 1);
+  if (!bumped.rows[0]) {
+    // Count the oversell honestly: admins see times_redeemed > max_redemptions.
+    await exec.query(`UPDATE pricing.coupons SET times_redeemed = times_redeemed + 1 WHERE code = $1`, [code]);
+  }
+
+  const discounted = Math.max(0, Math.round(Number(input.amountDiscountedMinor) || 0));
+  // A released row keeps its order identity (and sits outside the partial
+  // unique index), so it is recycled in place rather than left beside a new
+  // committed row for the same order.
+  const recycled = await exec.query(
+    `UPDATE pricing.coupon_redemptions
+        SET state = 'committed', expires_at = NULL, overrun = $4,
+            amount_discounted_minor = $5, subject = COALESCE($6, subject), redeemed_at = NOW()
+      WHERE code = $1 AND user_id = $2 AND order_id = $3 AND state = 'released'
+      RETURNING id`,
+    [code, input.userId, input.orderId, overrun, discounted, input.subject ?? null],
+  );
+  if ((recycled.rowCount ?? 0) === 0) {
+    await exec.query(
+      `INSERT INTO pricing.coupon_redemptions
+         (id, code, user_id, subject, amount_discounted_minor, state, order_id, expires_at, overrun)
+       VALUES ($1,$2,$3,$4,$5,'committed',$6,NULL,$7)
+       ON CONFLICT (code, order_id) WHERE order_id IS NOT NULL AND state IN ('reserved','committed') DO NOTHING`,
+      [createPrefixedId("cpnr"), code, input.userId, input.subject ?? null, discounted, input.orderId, overrun],
+    );
+  }
+  return overrun ? "overrun" : "recommitted";
 }
 
 /** Releases a reservation and returns its slot to the global cap. */

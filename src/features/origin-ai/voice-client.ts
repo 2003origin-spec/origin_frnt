@@ -7,8 +7,41 @@ import {
   type OriginAiClientPageContext,
 } from '@/features/origin-ai/client';
 import { getOriginAiBrowserSessionId } from '@/features/origin-ai/session';
+import { mutateJson } from '@/lib/csrf';
 import type { OriginAiReply, OriginAiVoiceStatus, OriginAiVoiceBootstrap } from '@/types';
 import { Room, RoomEvent, Track } from 'livekit-client';
+
+/**
+ * Public base URL of the origin-ai service for the browser-direct voice
+ * WebSocket. `.env.example` documents `NEXT_PUBLIC_ORIGIN_AI_URL`; the older
+ * `NEXT_PUBLIC_ORIGIN_AI_SERVICE_URL` is still honoured so an environment that
+ * set that name keeps working. Both must be literal `process.env.*` reads so
+ * Next inlines them into the client bundle.
+ */
+function originAiPublicBaseUrl(): string {
+  return (
+    process.env.NEXT_PUBLIC_ORIGIN_AI_URL ||
+    process.env.NEXT_PUBLIC_ORIGIN_AI_SERVICE_URL ||
+    `${window.location.protocol}//${window.location.host}`
+  );
+}
+
+/**
+ * Asks Next for a short-lived (60 s) signed ticket for the current session
+ * user. origin-ai verifies it before accepting the voice WebSocket, so a bare
+ * `?user_id=` can no longer impersonate anyone (bug U2).
+ */
+async function fetchVoiceWsTicket(): Promise<string> {
+  const res = await mutateJson('/api/origin-ai/voice/ws-ticket', { method: 'POST', body: '{}' });
+  if (!res.ok) {
+    throw new Error('voice_ticket_unavailable');
+  }
+  const data = (await res.json().catch(() => null)) as { ticket?: unknown } | null;
+  if (!data || typeof data.ticket !== 'string' || !data.ticket) {
+    throw new Error('voice_ticket_unavailable');
+  }
+  return data.ticket;
+}
 
 export interface OriginAiVoiceCallbacks {
   onStatusChange?: (status: OriginAiVoiceStatus) => void;
@@ -787,13 +820,14 @@ export async function startOriginAiVoiceMode(
       },
     });
 
-    const baseUrl =
-      process.env.NEXT_PUBLIC_ORIGIN_AI_SERVICE_URL ||
-      `${window.location.protocol}//${window.location.host}`;
-    const wsBaseUrl = baseUrl.replace(/^http/, 'ws');
+    // Mint the ticket after the mic grant so the 60 s window is not spent
+    // waiting on the permission prompt.
+    const ticket = await fetchVoiceWsTicket();
+
+    const wsBaseUrl = originAiPublicBaseUrl().replace(/^http/, 'ws');
     const wsUrl = `${wsBaseUrl}/api/v1/voice/ws?browserSessionId=${encodeURIComponent(
       getOriginAiBrowserSessionId(),
-    )}`;
+    )}&ticket=${encodeURIComponent(ticket)}`;
     ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {

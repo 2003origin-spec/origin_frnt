@@ -28,7 +28,7 @@ import { addQuestionToTest, createTest, getTeacherTestForRoom } from "@/server/w
 import { createTeacherRoom, listJoinableRoomsForStudent } from "@/server/workspaces/teacher-rooms";
 import { joinConnectRoomByMembership } from "@/server/connect/connect-rooms-service";
 
-import { cleanup, closePool, dbConfigured, makeId, rawPool, seedFixtures } from "./_db";
+import { cleanup, closePool, dbConfigured, enrollFixtureStudent, makeId, rawPool, seedFixtures } from "./_db";
 
 const SKIP = !dbConfigured();
 const it = test;
@@ -49,6 +49,7 @@ it("phase 14: teacher-room bridge + membership-gated join + joinable listing", {
   );
 
   try {
+    await enrollFixtureStudent(fx);
     await addStudentsToBatches({
       workspaceId: fx.workspaceId,
       batchIds: [fx.batchId],

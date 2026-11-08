@@ -14,8 +14,11 @@ import {
   CSRF_COOKIE_NAME,
   createCsrfToken,
   REFRESH_COOKIE_NAME,
+  refreshCookieOptions,
 } from "@/server/auth-cookies";
+import { normalizeAuthClientKind, resolveAuthClientKind } from "@/server/auth-client-kind";
 import { authLimiter, generalLimiter, refreshLimiter, checkRateLimit } from "@/lib/rate-limit";
+import { loginAccountKey, loginGate, shouldCountLoginFailure } from "@/server/auth-login-gate";
 
 type RouteContext = {
   params: Promise<{ slug?: string[] }>;
@@ -25,8 +28,12 @@ type RouteContext = {
  * Mirror access + refresh tokens from the JSON response body into HttpOnly
  * cookies so that Server Components and proxy can read them without
  * touching localStorage.
+ *
+ * The refresh cookie's maxAge must match the session row's lifetime: the
+ * Android shell's WebView evicts the cookie on its own maxAge, so a 7-day
+ * cookie on a 10-year android row silently logs the app user out on day 8.
  */
-async function withAuthCookies(response: Response): Promise<NextResponse> {
+async function withAuthCookies(response: Response, request: NextRequest): Promise<NextResponse> {
   let data: Record<string, unknown>;
   try {
     data = await response.clone().json();
@@ -40,15 +47,24 @@ async function withAuthCookies(response: Response): Promise<NextResponse> {
 
   if (!access || !accessFingerprint) return response as NextResponse;
 
+  // Session kind: from the handler's body (sourced from the stored row on
+  // refresh, from the UA on login) — fall back to this request's UA only if a
+  // handler forgot to include it.
+  const clientKind =
+    typeof data.clientKind === "string"
+      ? normalizeAuthClientKind(data.clientKind)
+      : resolveAuthClientKind(request.headers.get("user-agent"));
+
   const publicData = { ...data };
   delete publicData.access;
   delete publicData.refresh;
   delete publicData.accessFingerprint;
+  delete publicData.clientKind;
   const cookied = NextResponse.json(publicData, { status: response.status });
   cookied.cookies.set(ACCESS_COOKIE_NAME, access, COOKIE_OPTS_ACCESS);
   cookied.cookies.set(ACCESS_FINGERPRINT_COOKIE_NAME, accessFingerprint, COOKIE_OPTS_ACCESS_FINGERPRINT);
   if (refresh) {
-    cookied.cookies.set(REFRESH_COOKIE_NAME, refresh, COOKIE_OPTS_REFRESH);
+    cookied.cookies.set(REFRESH_COOKIE_NAME, refresh, refreshCookieOptions(clientKind));
   }
   cookied.cookies.set(CSRF_COOKIE_NAME, createCsrfToken(), COOKIE_OPTS_CSRF);
   return cookied;
@@ -134,7 +150,21 @@ async function dispatch(method: string, request: NextRequest, context: RouteCont
     }
   }
 
+  // REST password login shares the Server Actions' brute-force gate, so the
+  // per-account lockout cannot be sidestepped by calling this route instead.
+  const isPasswordLogin = method === "POST" && slug.length === 1 && slug[0] === "login";
+  const gateIp = ip.split(",")[0]?.trim() || "unknown";
+  const gateAccountKey = isPasswordLogin ? loginAccountKey(payload.email) : "";
+  if (isPasswordLogin) {
+    const gated = await loginGate.gate(gateIp, gateAccountKey);
+    if (gated) return NextResponse.json({ detail: gated.message }, { status: gated.status });
+  }
+
   const response = await handleUsersRequest(method, slug, request, payload);
+
+  if (isPasswordLogin && shouldCountLoginFailure({ ok: response.ok, status: response.status })) {
+    await loginGate.recordFailure(gateIp, gateAccountKey);
+  }
 
   // Auth endpoints: mirror tokens into HttpOnly cookies
   const isLogin = method === "POST" && slug[0] === "login";
@@ -143,7 +173,7 @@ async function dispatch(method: string, request: NextRequest, context: RouteCont
   const isRefresh = method === "POST" && slug[0] === "token" && slug[1] === "refresh";
 
   if ((isLogin || isRegister || isGoogleLogin || isRefresh) && response.ok) {
-    return withAuthCookies(response);
+    return withAuthCookies(response, request);
   }
 
   // A hard refresh failure (revoked/deleted account or a dead session) must clear

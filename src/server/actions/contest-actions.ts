@@ -4,7 +4,8 @@ import { getServerUser } from '@/lib/auth-server';
 import { getContestStatus, getOpenContests, type ContestStatus, type ContestSummary } from '@/server/contest/contest-status';
 import { registerForContest, type RegistrationResult } from '@/server/contest/contest-registration-service';
 import { getContestProfile, type ContestProfile } from '@/server/contest/contest-profile-service';
-import { requireFeatureEnabled, isFeatureEnabled } from '@/lib/feature-flags';
+import { isFeatureEnabled } from '@/lib/feature-flags';
+import { requireFeatureEnabledRuntime } from '@/server/feature-flags-runtime';
 
 /**
  * Contest banner status for the (client-only) landing page + any client surface.
@@ -24,7 +25,7 @@ export async function getOpenContestsAction(): Promise<ContestSummary[]> {
 
 /** The current student's contest profile — ORBIT, history, badges, rewards. */
 export async function getContestProfileAction(): Promise<ContestProfile | null> {
-  requireFeatureEnabled('contest');
+  await requireFeatureEnabledRuntime('contest');
   const user = await getServerUser();
   if (!user) return null;
   return getContestProfile(user.id);
@@ -46,7 +47,7 @@ export async function getMyOrbitAction(): Promise<{ rating: number; tier: string
  * Requires auth; window-checked + idempotent server-side.
  */
 export async function registerForContestAction(contestId: string, code?: string): Promise<RegistrationResult> {
-  requireFeatureEnabled('contest');
+  await requireFeatureEnabledRuntime('contest');
   const user = await getServerUser();
   if (!user) throw new Error('Please sign in to register.');
   const result = await registerForContest(contestId, user.id, { code });

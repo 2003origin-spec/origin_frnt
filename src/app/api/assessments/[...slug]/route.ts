@@ -4,7 +4,8 @@ import { revalidateTag } from "next/cache";
 import { listOgcodeCatalogFacets } from "@/server/ogcode-catalog";
 import { requireFeatureEnabled } from "@/lib/feature-flags";
 import { isExamPresetId } from "@/lib/exam-blueprints";
-import { requireUserFromRequest } from "@/server/auth";
+import { requireUserFromRequest, resolveTokenToUser, withFreshUserInStore } from "@/server/auth";
+import { isAuthServiceUnavailableError } from "@/server/auth-errors";
 import { getStudentScope, renderStudyModeKey } from "@/server/study-scope";
 import { submitLimiter, generalLimiter, checkRateLimit } from "@/lib/rate-limit";
 import {
@@ -26,6 +27,7 @@ import {
   getSingleResultAnalysis,
   getSingleResult,
   getTestDetail,
+  beginTeacherTestSitting,
   listTestPreviews,
   listPracticeQuestions,
   listTestResults,
@@ -35,18 +37,27 @@ import {
   submitPracticeQuestion,
   type TestSubmissionPayload,
   submitTest,
+  startAssessmentAttempt,
   type UpdateOgcodeLocationPayload,
   updateOgcodeLocation,
 } from "@/server/assessments";
-import { badRequest, created, forbidden, getSlugSegments, methodNotAllowed, notFound, ok, parseJsonBody, unauthorized } from "@/server/http";
+import { badRequest, created, forbidden, getSlugSegments, json, methodNotAllowed, notFound, ok, parseJsonBody, serviceUnavailable, unauthorized } from "@/server/http";
+import { isTestWindowError } from "@/lib/assessments/test-window";
 import {
   readStoreAsync,
-  withStoreAsync,
+  readStoreWithFreshUserRows,
+  OWN_OGCODE_STATS_LOADS,
+  OWN_PRACTICE_PROGRESS_LOADS,
+  ScopedWritePlan,
   withStoreAsyncScoped,
+  withUserStoreScoped,
   TEST_SUBMIT_PERSIST_COLLECTIONS,
+  practiceSubmitLoads,
   PRACTICE_SUBMIT_PERSIST_COLLECTIONS,
+  type UserStoreLoads,
 } from "@/server/store";
 import { getOgcodeLeaderboardForRender } from "@/server/render-loaders";
+import { clampLeaderboardLimit } from "@/server/leaderboard-points";
 import { getChampionshipSnapshot } from "@/server/leaderboard-points";
 
 function revalidateUserProgress(userId: string) {
@@ -90,13 +101,68 @@ function revalidateOgcodeMutation(userId: string, questionId?: string) {
   }
 }
 
+/**
+ * A teacher-assigned test refused by its assignment window: 403
+ * `test_not_started` / 409 `test_ended`, with the window so the client can say
+ * when it opens or that it has closed. Null for every other error.
+ */
+function testWindowErrorResponse(error: unknown) {
+  if (!isTestWindowError(error)) return null;
+  return json(
+    { detail: error.message, code: error.code, startsAt: error.startsAt, endsAt: error.endsAt },
+    { status: error.status },
+  );
+}
+
+/**
+ * The caller (checked against their fresh row, not the 5-minute snapshot, so
+ * a new account is not refused on an instance that hydrated before it
+ * existed) and the cached store the read handlers work from. A 503 Response
+ * when the user lookup itself failed.
+ */
 async function authUser(request: Request) {
   const store = await readStoreAsync();
-  const user = await requireUserFromRequest(store, request);
+  let user;
+  try {
+    user = await withFreshUserInStore(store, request);
+  } catch (error) {
+    if (isAuthServiceUnavailableError(error)) return serviceUnavailable(error.message);
+    throw error;
+  }
   if (!user) {
     return null;
   }
   return { store, user };
+}
+
+/**
+ * The caller alone, from their fresh row, for POST: the write branches load
+ * their own store (or none), so waiting for the whole-store snapshot here
+ * (a full hydration on a cold instance) would only delay a deck answer. A 503
+ * Response when the user lookup itself failed.
+ */
+async function authCaller(request: Request) {
+  let user;
+  try {
+    user = await resolveTokenToUser(request);
+  } catch (error) {
+    if (isAuthServiceUnavailableError(error)) return serviceUnavailable(error.message);
+    throw error;
+  }
+  return user ? { user } : null;
+}
+
+/**
+ * The caller's own rows a GET shows them from the snapshot (solved / attempted
+ * status, their stats). These are re-read fresh, so an answer saved through
+ * another instance shows at once instead of after the snapshot's TTL. Null for
+ * every other GET.
+ */
+function ownProgressLoads(root?: string, first?: string, second?: string): UserStoreLoads | null {
+  if (root === "practice" && !second) return OWN_PRACTICE_PROGRESS_LOADS;
+  if (root === "ogcode" && (first === "questions" || first === "challenge")) return OWN_PRACTICE_PROGRESS_LOADS;
+  if (root === "ogcode" && first === "user-stats") return OWN_OGCODE_STATS_LOADS;
+  return null;
 }
 
 type RouteContext = {
@@ -108,14 +174,17 @@ export async function GET(request: NextRequest, context: RouteContext) {
   if (!auth) {
     return unauthorized();
   }
+  if (auth instanceof Response) return auth;
 
   const limited = await checkRateLimit(generalLimiter, auth.user.id);
   if (limited) return limited;
 
-  const { store, user } = auth;
+  const { user } = auth;
   const params = await context.params;
   const slug = getSlugSegments(params);
   const [root, first, second] = slug;
+  const freshLoads = ownProgressLoads(root, first, second);
+  const store = freshLoads ? await readStoreWithFreshUserRows(user.id, freshLoads) : auth.store;
 
   try {
     if (root === "tests" && !first) {
@@ -123,7 +192,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     }
 
     if (root === "tests" && first && !second) {
-      return ok(await getTestDetail(store, user, first));
+      return ok(await getTestDetail(store, user, first, { startAttempt: true }));
     }
 
     if (root === "tests" && first && second === "results") {
@@ -210,137 +279,6 @@ export async function GET(request: NextRequest, context: RouteContext) {
       );
     }
 
-    if (root === "ogcode" && first === "seed-temp") {
-      const fs = await import("node:fs");
-      const path = await import("node:path");
-      const { getOgcodePostgresPool } = await import("@/server/postgres");
-
-      const jsonPath = path.resolve(process.cwd(), "data/ogcode/ogcode_questions.json");
-      if (!fs.existsSync(jsonPath)) {
-        return badRequest("ogcode_questions.json file not found");
-      }
-      
-      const raw = fs.readFileSync(jsonPath, "utf8");
-      const questions = JSON.parse(raw);
-
-      const pool = getOgcodePostgresPool();
-      if (!pool) {
-        return badRequest("Postgres pool not available");
-      }
-
-      const CREATE_TABLE_SQL = `
-        CREATE TABLE IF NOT EXISTS ogcode_questions (
-          id TEXT PRIMARY KEY,
-          source_index INTEGER NOT NULL UNIQUE,
-          text TEXT NOT NULL,
-          options JSONB,
-          correct_option INTEGER,
-          correct_options JSONB,
-          answer_text TEXT,
-          answer_spec JSONB,
-          tolerance DOUBLE PRECISION,
-          matrix_data JSONB,
-          explanation TEXT NOT NULL,
-          hint TEXT,
-          subject TEXT NOT NULL,
-          chapter TEXT NOT NULL,
-          concept TEXT NOT NULL,
-          difficulty TEXT NOT NULL,
-          image TEXT,
-          tags JSONB NOT NULL DEFAULT '[]'::jsonb,
-          question_type TEXT NOT NULL,
-          acceptance_rate DOUBLE PRECISION NOT NULL DEFAULT 0,
-          total_correct INTEGER NOT NULL DEFAULT 0,
-          frequency INTEGER NOT NULL DEFAULT 0,
-          is_challenge_of_day BOOLEAN NOT NULL DEFAULT FALSE,
-          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-          contributor_workspace_id TEXT,
-          attribution_name TEXT,
-          attribution_logo_url TEXT,
-          is_contributed BOOLEAN NOT NULL DEFAULT FALSE,
-          occurrence TEXT,
-          class INTEGER,
-          previous_year_question TEXT
-        );
-        CREATE INDEX IF NOT EXISTS ogcode_questions_subject_idx ON ogcode_questions (subject);
-        CREATE INDEX IF NOT EXISTS ogcode_questions_difficulty_idx ON ogcode_questions (difficulty);
-        CREATE INDEX IF NOT EXISTS ogcode_questions_question_type_idx ON ogcode_questions (question_type);
-        CREATE INDEX IF NOT EXISTS ogcode_questions_contributed_idx ON ogcode_questions (is_contributed);
-      `;
-      await pool.query(CREATE_TABLE_SQL);
-      await pool.query("DELETE FROM ogcode_questions");
-
-      const batchSize = 100;
-      let insertedCount = 0;
-
-      for (let i = 0; i < questions.length; i += batchSize) {
-        const batch = questions.slice(i, i + batchSize);
-        const valuesPlaceholder: string[] = [];
-        const valuesArray: any[] = [];
-        let pIndex = 1;
-
-        for (const q of batch) {
-          const rowPlaceholders: string[] = [];
-          const cols = [
-            q.id,
-            q.source_index,
-            q.text,
-            q.options ? JSON.stringify(q.options) : null,
-            q.correct_option,
-            q.correct_options ? JSON.stringify(q.correct_options) : null,
-            q.answer_text,
-            q.answer_spec ? JSON.stringify(q.answer_spec) : null,
-            q.tolerance,
-            q.matrix_data ? JSON.stringify(q.matrix_data) : null,
-            q.explanation,
-            q.hint,
-            q.subject,
-            q.chapter,
-            q.concept,
-            q.difficulty,
-            q.image,
-            q.tags ? JSON.stringify(q.tags) : '[]',
-            q.question_type,
-            q.acceptance_rate ?? 0,
-            q.total_correct ?? 0,
-            q.frequency ?? 0,
-            q.is_challenge_of_day ?? false,
-            q.contributor_workspace_id,
-            q.attribution_name,
-            q.attribution_logo_url,
-            q.is_contributed ?? false,
-            q.occurrence,
-            q.class,
-            q.previous_year_question
-          ];
-
-          for (const val of cols) {
-            rowPlaceholders.push(`$${pIndex++}`);
-            valuesArray.push(val);
-          }
-          valuesPlaceholder.push(`(${rowPlaceholders.join(",")})`);
-        }
-
-        const query = `
-          INSERT INTO ogcode_questions (
-            id, source_index, text, options, correct_option, correct_options, answer_text,
-            answer_spec, tolerance, matrix_data, explanation, hint, subject, chapter, concept,
-            difficulty, image, tags, question_type, acceptance_rate, total_correct, frequency,
-            is_challenge_of_day, contributor_workspace_id, attribution_name, attribution_logo_url,
-            is_contributed, occurrence, class, previous_year_question
-          ) VALUES ${valuesPlaceholder.join(",")}
-          ON CONFLICT (id) DO NOTHING
-        `;
-
-        await pool.query(query, valuesArray);
-        insertedCount += batch.length;
-      }
-
-      revalidateTag("ogcode-catalog", "max");
-      return ok({ success: true, count: insertedCount });
-    }
-
     if (root === "ogcode" && first === "facets") {
       const url = new URL(request.url);
       const level = url.searchParams.get("level");
@@ -402,12 +340,13 @@ export async function GET(request: NextRequest, context: RouteContext) {
       const url = new URL(request.url);
       const subject = url.searchParams.get("subject");
       const location = url.searchParams.get("location");
-      // Top-N: 20/50/100/1000 or "all". "all" maps to a large cap.
-      const limitRaw = url.searchParams.get("limit");
-      const limit = limitRaw === "all" ? 100_000 : Math.max(1, Math.min(100_000, Number(limitRaw) || 100));
+      // Top-N: 20/50/100/1000 or "all". Capped at 1000 ("all" → 1000) so a
+      // single request can never pull the whole student population.
+      const limit = clampLeaderboardLimit(url.searchParams.get("limit"));
       // The common (no-location) view goes through the cached loader
-      // (60s revalidate, tag:"leaderboard") so it isn't recomputed on every
-      // client mount. The regional view stays live — it's not part of the cache.
+      // (60s revalidate, tag:"leaderboard", one global entry per
+      // [mode, subject, limit]; the viewer's own row is fetched separately).
+      // The regional view stays live — it's not part of the cache.
       if (!location) {
         return ok(await getOgcodeLeaderboardForRender(await renderStudyModeKey(user), user.id, subject, limit));
       }
@@ -424,6 +363,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
       return ok(await getFocusAreas(store, user));
     }
   } catch (error) {
+    const windowResponse = testWindowErrorResponse(error);
+    if (windowResponse) return windowResponse;
     if ((error as { status?: number })?.status === 403) {
       return forbidden(error instanceof Error ? error.message : "Forbidden.");
     }
@@ -438,10 +379,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
   const slug = getSlugSegments(params);
   const [root, first, second] = slug;
 
-  const auth = await authUser(request);
+  const auth = await authCaller(request);
   if (!auth) {
     return unauthorized();
   }
+  if (auth instanceof Response) return auth;
 
   const isSubmit = second === "submit" || (root === "ogcode" && first === "location");
   const limited = await checkRateLimit(isSubmit ? submitLimiter : generalLimiter, auth.user.id);
@@ -489,6 +431,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
       return created(response);
     }
 
+    // G7: record when the student opened a self test / DPP so submit can time
+    // the attempt server-side. Idempotent while the attempt is open.
+    if ((root === "tests" || root === "dpps") && first && second === "start") {
+      const response = await startAssessmentAttempt(await readStoreAsync(), auth.user, root === "tests" ? "test" : "dpp", first);
+      return ok(response);
+    }
+
     if (root === "tests" && first && second === "submit") {
       const body = await parseJsonBody<TestSubmissionPayload>(request);
       const response = await withStoreAsyncScoped(
@@ -503,6 +452,14 @@ export async function POST(request: NextRequest, context: RouteContext) {
       );
       revalidateTestMutation(auth.user.id, first);
       return created(response);
+    }
+
+    if (root === "tests" && first && second === "begin") {
+      // The student pressed Start on a teacher-assigned test: the sitting's
+      // server clock starts now (capped at the window end). Returns the window,
+      // the DB clock and `attemptEndsAt` for the timer; 404 for any other test.
+      const sitting = await beginTeacherTestSitting(auth.user.id, first);
+      return sitting ? ok(sitting) : notFound("Not a teacher-assigned test.");
     }
 
     if (root === "dpps" && first && second === "submit") {
@@ -526,13 +483,15 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     if (root === "dpps" && first && second === "check") {
       const body = await parseJsonBody<DppQuestionCheckPayload>(request);
-      const response = await withStoreAsync(async (store) => {
+      // The graded answer is written by its own targeted writer
+      // (recordDppQuestionResult); the store is only read, so persist nothing.
+      const response = await withStoreAsyncScoped(async (store) => {
         const user = await requireUserFromRequest(store, request);
         if (!user) {
           throw new Error("Authentication credentials were not provided.");
         }
         return checkGeneratedDppQuestion(store, user, first, body);
-      });
+      }, null);
       // A retry writes nothing, so there is nothing to invalidate.
       if (response.scored) {
         revalidateDppMutation(auth.user.id);
@@ -543,8 +502,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
     if (root === "practice" && first && second === "submit") {
       const body = await parseJsonBody<PracticeSubmissionPayload>(request);
       // Practice submit's attempt + subject-rank live only in the store (no
-      // targeted writer), so they are included in the scoped persist set.
-      const response = await withStoreAsyncScoped(
+      // targeted writer), so they are included in the scoped persist set. It
+      // reads only this student's rows (for this question), so it loads just
+      // those instead of hydrating every user's store under the global lock.
+      const response = await withUserStoreScoped(
+        auth.user.id,
+        practiceSubmitLoads(first),
         async (store) => {
           const user = await requireUserFromRequest(store, request);
           if (!user) {
@@ -560,13 +523,17 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     if (root === "ogcode" && first === "location") {
       const body = await parseJsonBody<UpdateOgcodeLocationPayload>(request);
-      const response = await withStoreAsync(async (store) => {
+      // Only this user's subject-rank row (location fields) changes.
+      const plan = new ScopedWritePlan();
+      const response = await withStoreAsyncScoped(async (store) => {
         const user = await requireUserFromRequest(store, request);
         if (!user) {
           throw new Error("Authentication credentials were not provided.");
         }
-        return updateOgcodeLocation(store, user, body);
-      });
+        const result = updateOgcodeLocation(store, user, body);
+        plan.forUser(user.id).touch("subjectRanks");
+        return result;
+      }, plan.toPersist);
       revalidateTag("leaderboard", "max");
       revalidateTag(`progress-user:${auth.user.id}`, "max");
       return ok(response);
@@ -575,6 +542,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
     if (error instanceof Error && error.message.includes("not provided")) {
       return unauthorized(error.message);
     }
+    const windowResponse = testWindowErrorResponse(error);
+    if (windowResponse) return windowResponse;
     if ((error as { status?: number })?.status === 403) {
       return forbidden(error instanceof Error ? error.message : "Forbidden.");
     }

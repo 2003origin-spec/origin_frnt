@@ -11,8 +11,10 @@ import assert from "node:assert/strict";
 import {
   PLATFORM_ACCOUNTS,
   assertValidTransfer,
+  bypassesFrozenCheck,
   computeWalletBalance,
   findUnbalancedTransfers,
+  heldCoinSlices,
   sessionCapture,
   sessionHold,
   sessionRelease,
@@ -141,4 +143,66 @@ test("a plain credit committed a moment after the caller's clock is still spenda
   const balance = computeWalletBalance([credit(200, new Date(now.getTime() + 5))], now);
   assert.equal(balance.available, 200);
   assert.equal(balance.pending, 0);
+});
+
+test("NOW-1: only a coin-pack refund may debit a frozen wallet", () => {
+  assert.equal(bypassesFrozenCheck("pack_refund"), true);
+  for (const kind of ["session_hold", "extension", "tip", "store_spend", "transfer", "expiry"] as const) {
+    assert.equal(bypassesFrozenCheck(kind), false, kind);
+  }
+});
+
+test("NOW-2: a released hold keeps the expiry of the promo coins it consumed", () => {
+  const promoExpiry = at(120);
+  const legs: LedgerLeg[] = [
+    credit(100, at(0)),
+    credit(40, at(0), { kind: "promo_bonus", expiresAt: promoExpiry }),
+    debit(60, at(10), { kind: "session_hold", requestId: "r1" }),
+  ];
+  const slices = heldCoinSlices(legs, "r1", at(20));
+  // The hold took the 40 promo coins first, then 20 permanent ones.
+  assert.deepEqual(
+    [...slices].sort((a, b) => a.amount - b.amount),
+    [
+      { amount: 20, expiresAt: null },
+      { amount: 40, expiresAt: promoExpiry },
+    ],
+  );
+
+  const release = sessionRelease("s1", "r1", 60, { slices });
+  assert.equal(release.reduce((sum, t) => sum + t.amount, 0), 60);
+  assert.equal(release[0].idempotencyKey, "release:r1");
+  assert.equal(new Set(release.map((t) => t.idempotencyKey)).size, release.length);
+  assert.equal(release.find((t) => t.expiresAt?.getTime() === promoExpiry.getTime())?.amount, 40);
+
+  // After the cancel the promo coins still expire; the old code minted them permanent.
+  const after = [
+    ...legs,
+    ...release.map((t) => credit(t.amount, at(30), { kind: "session_release", expiresAt: t.expiresAt, requestId: "r1" })),
+  ];
+  assert.deepEqual(computeWalletBalance(after, at(200)), { available: 100, pending: 0, expiredUnposted: 40 });
+});
+
+test("NOW-2: the bot price-difference release gives back permanent coins first, the rest keeps its expiry", () => {
+  const promoExpiry = at(120);
+  const legs: LedgerLeg[] = [
+    credit(100, at(0)),
+    credit(40, at(0), { kind: "promo_bonus", expiresAt: promoExpiry }),
+    debit(60, at(10), { kind: "session_hold", requestId: "r1" }),
+  ];
+  const partial = sessionRelease("s1", "r1", 20, { slices: heldCoinSlices(legs, "r1", at(20)), keySuffix: "bot" });
+  assert.deepEqual(
+    partial.map((t) => [t.idempotencyKey, t.amount, t.expiresAt ?? null]),
+    [["release:r1:bot", 20, null]],
+  );
+  const later = [...legs, credit(20, at(25), { kind: "session_release", requestId: "r1" })];
+  // What escrow still holds for the request is exactly the promo coins.
+  assert.deepEqual(heldCoinSlices(later, "r1", at(30)), [{ amount: 40, expiresAt: promoExpiry }]);
+});
+
+test("NOW-2: without slice data a release still returns permanent coins", () => {
+  const release = sessionRelease("s1", "r1", 60);
+  assert.equal(release.length, 1);
+  assert.equal(release[0].expiresAt, null);
+  assert.equal(release[0].idempotencyKey, "release:r1");
 });

@@ -53,23 +53,29 @@ export function ContestImportUpload({ initialJobs }: { initialJobs: DocumentImpo
         if (file.size > DIRECT_UPLOAD_THRESHOLD) {
           const presignRes = await mutateJson("/api/admin/contest/import-jobs/presign", {
             method: "POST",
-            body: JSON.stringify({ fileName: file.name, mimeType }),
+            body: JSON.stringify({ fileName: file.name, mimeType, size: file.size }),
           });
           const presign = (await presignRes.json().catch(() => ({}))) as {
-            detail?: string; uploadUrl?: string; objectKey?: string; bucket?: string;
+            detail?: string; uploadUrl?: string; uploadHeaders?: Record<string, string>; objectKey?: string; uploadToken?: string;
           };
-          if (!presignRes.ok || !presign.uploadUrl || !presign.objectKey || !presign.bucket) {
+          if (!presignRes.ok || !presign.uploadUrl || !presign.objectKey || !presign.uploadToken) {
             setError(presign.detail ?? `Upload failed (${presignRes.status})`);
             return;
           }
-          const put = await fetch(presign.uploadUrl, { method: "PUT", headers: { "Content-Type": mimeType }, body: file });
+          // Signed for exactly these headers and this file's size: send both as-is.
+          const put = await fetch(presign.uploadUrl, {
+            method: "PUT",
+            headers: presign.uploadHeaders ?? { "Content-Type": mimeType },
+            body: file,
+          });
           if (!put.ok) {
             setError(`Direct upload to storage failed (${put.status}). Please retry.`);
             return;
           }
           res = await mutateJson("/api/admin/contest/import-jobs", {
             method: "POST",
-            body: JSON.stringify({ objectKey: presign.objectKey, bucket: presign.bucket, fileName: file.name, mimeType, size: file.size }),
+            // The server picks the bucket; uploadToken proves this key was presigned for this admin.
+            body: JSON.stringify({ objectKey: presign.objectKey, uploadToken: presign.uploadToken, fileName: file.name, mimeType, size: file.size }),
           });
         } else {
           const form = new FormData();

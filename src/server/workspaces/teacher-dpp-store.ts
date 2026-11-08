@@ -285,6 +285,7 @@ export async function listActiveTeacherDppSharesForStudent(
         AND b.status = 'active'
        JOIN app.batch_members bm
          ON bm.batch_id = sb.batch_id
+        AND bm.workspace_id = b.workspace_id
         AND bm.student_id = $1
         AND bm.status = 'active'
        JOIN app.workspace_student_enrollments e
@@ -338,6 +339,7 @@ export async function isStudentEligibleForTeacherDppShare(
         AND b.status = 'active'
        JOIN app.batch_members bm
          ON bm.batch_id = sb.batch_id
+        AND bm.workspace_id = b.workspace_id
         AND bm.student_id = $2
         AND bm.status = 'active'
        JOIN app.workspace_student_enrollments e

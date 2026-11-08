@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 
 import { gradeContest, type GradableQuestion } from "@/lib/contest/grade";
 import { DEFAULT_CONTEST_SCORING } from "@/lib/contest/contest-config";
+import { isRecognisedKeyUnit } from "@/lib/assessments/parse-strict-number";
 
 function mcq(position: number, correctOption: number, subject = "Physics"): GradableQuestion {
   return {
@@ -98,4 +99,69 @@ test("msq gives full marks only on an exact match", () => {
   };
   assert.equal(gradeContest([q], { "0": { selectedOptions: [0, 2] } }, DEFAULT_CONTEST_SCORING).correct, 1);
   assert.equal(gradeContest([q], { "0": { selectedOptions: [0] } }, DEFAULT_CONTEST_SCORING).correct, 0);
+});
+
+// --- Bug fixes G1-G3 (docs/bug-fixes/03-grading-points.md) ------------------------
+
+function numerical(
+  position: number,
+  answerText: string,
+  tolerance: number | null = null,
+  extra: Partial<GradableQuestion> = {},
+): GradableQuestion {
+  return { ...mcq(position, 0), questionType: "numerical", correctOption: null, answerText, tolerance, ...extra };
+}
+
+function isCorrect(q: GradableQuestion, answerText: string): boolean {
+  return gradeContest([q], { [String(q.position)]: { answerText } }, DEFAULT_CONTEST_SCORING).perQuestion[0].isCorrect;
+}
+
+test("G1: no 1% default — 252 is wrong for 250, tolerance 0 is exact, teacher tolerance honoured", () => {
+  assert.equal(isCorrect(numerical(0, "250"), "252"), false);
+  assert.equal(isCorrect(numerical(0, "250"), "250"), true);
+  assert.equal(isCorrect(numerical(0, "7", 0), "7.4"), false);
+  assert.equal(isCorrect(numerical(0, "9.8"), "9.75"), true); // rounds to the stated 1 dp
+  assert.equal(isCorrect(numerical(0, "9.8"), "9.74"), false);
+  assert.equal(isCorrect(numerical(0, "9.8", 0.5), "9.4"), true);
+  // The frozen answerSpec's tolerance wins; 0 means exact even when `tolerance` is looser.
+  assert.equal(isCorrect(numerical(0, "9.8", 0.5, { answerSpec: { tolerance: 0 } }), "9.75"), false);
+});
+
+test("G2: strict parsing — fractions / scientific / thousands accepted, two numbers rejected", () => {
+  assert.equal(isCorrect(numerical(0, "0.75"), "3/4"), true);
+  assert.equal(isCorrect(numerical(0, "0.001"), "1×10^-3"), true);
+  assert.equal(isCorrect(numerical(0, "0.001"), "1E-3"), true);
+  assert.equal(isCorrect(numerical(0, "100000"), "1,00,000"), true);
+  assert.equal(isCorrect(numerical(0, "2"), "2 3"), false);
+  assert.equal(isCorrect(numerical(0, "2"), "2 or 3"), false);
+  // firstNumber used to read "1×10^-3" as 1.
+  assert.equal(isCorrect(numerical(0, "1"), "1×10^-3"), false);
+});
+
+test("G2: unit answers compare the magnitude; a different unit is wrong", () => {
+  const q = numerical(0, "9.8 m/s^2", null, { questionType: "numerical_with_units" });
+  assert.equal(isCorrect(q, "9.8 m/s^2"), true);
+  assert.equal(isCorrect(q, "9.8"), true); // player: "include units if asked"
+  assert.equal(isCorrect(q, "9.9 m/s^2"), false);
+  assert.equal(isCorrect(q, "9.8 km/s^2"), false);
+});
+
+test("G3: matrix_match — ticking every cell is wrong and costs the negative mark", () => {
+  const q: GradableQuestion = { ...mcq(0, 0), questionType: "matrix_match", correctOption: null, matrixData: [[0, 1], [1, 0]] };
+  const scoring = { ...DEFAULT_CONTEST_SCORING, correctMarks: 4, incorrectMarks: -1 };
+  const all = gradeContest([q], { "0": { matrixPairs: [[0, 0], [0, 1], [1, 0], [1, 1]] } }, scoring);
+  assert.equal(all.correct, 0);
+  assert.equal(all.incorrect, 1);
+  assert.equal(all.score, -1);
+  assert.equal(gradeContest([q], { "0": { matrixPairs: [[1, 0], [0, 1]] } }, scoring).score, 4);
+  assert.equal(gradeContest([q], { "0": { matrixPairs: [[0, 1]] } }, scoring).score, -1); // no partial credit in contests
+});
+
+test("R3-5: key units with spaces / middle dots are units; prose is not (mirror of engine.py)", () => {
+  for (const unit of ["m s^-1", "N m", "N·m", "kg·m/s²", "kg⋅m/s", "J mol^-1 K^-1", "g cm^-3", "Pa s", "m/s2", "cm²"]) {
+    assert.equal(isRecognisedKeyUnit(unit), true, unit);
+  }
+  for (const unit of ["or 4", "cm or 20 mm", "to 6", "m and 5 s", "approx m", "x3", "x 3", "m 2", "(approx)"]) {
+    assert.equal(isRecognisedKeyUnit(unit), false, unit);
+  }
 });

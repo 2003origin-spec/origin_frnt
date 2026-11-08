@@ -8,7 +8,14 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { SCHEMA_DDL_LOCK_ID, SCHEMA_DDL_LOCK_SQL } from "@/server/schema-lock";
+import {
+  isRuntimeDdlApplied,
+  isRuntimeDdlAppliedInTransaction,
+  recordRuntimeDdlApplied,
+  runtimeDdlVersionId,
+  SCHEMA_DDL_LOCK_ID,
+  SCHEMA_DDL_LOCK_SQL,
+} from "@/server/schema-lock";
 import bcrypt from "bcryptjs";
 import type { Pool } from "pg";
 import { withStoredUserDefaults, type StoredAuthSession, type StoredTask, type StoredUser, type StoredUserWithOptionalDefaults } from "@/server/store";
@@ -28,6 +35,7 @@ import {
   type AuthClientKind,
 } from "@/server/auth-client-kind";
 import type { UserImagePurpose } from "@/server/media-storage";
+import { AccountBlockedError } from "@/server/auth-errors";
 
 export const REFRESH_TOKEN_ROTATION_INTERVAL_MS = 24 * 60 * 60 * 1000;
 // Keep the immediately previous refresh hash valid for the session lifetime.
@@ -62,17 +70,8 @@ function pool(): Pool {
   return p;
 }
 
-export async function ensureUserSchema(): Promise<void> {
-  if (globalThis.__originUserSchemaEnsured) return;
-  if (!globalThis.__originUserSchemaPromise) {
-    globalThis.__originUserSchemaPromise = (async () => {
-      const client = await pool().connect();
-      try {
-        await client.query("BEGIN");
-        // Transaction-scoped so COMMIT/ROLLBACK releases it on Neon PgBouncer
-        // (transaction-mode pooler cannot safely hold session advisory locks).
-        await client.query(SCHEMA_DDL_LOCK_SQL, [SCHEMA_DDL_LOCK_ID]);
-        await client.query(`
+/** ensureUserSchema's DDL (one multi-statement query). Its text sets the version id. */
+const USER_SCHEMA_DDL = `
           CREATE TABLE IF NOT EXISTS origin_users (
             id                  TEXT PRIMARY KEY,
             name                TEXT NOT NULL,
@@ -291,7 +290,32 @@ export async function ensureUserSchema(): Promise<void> {
 
           CREATE INDEX IF NOT EXISTS idx_media_assets_user_purpose_created
             ON origin_media_assets (user_id, purpose, created_at DESC);
-        `);
+`;
+
+/** Recorded in app.migrations once USER_SCHEMA_DDL has run (see runtimeDdlVersionId). */
+export const USER_SCHEMA_DDL_VERSION = runtimeDdlVersionId("origin_users", USER_SCHEMA_DDL);
+
+export async function ensureUserSchema(): Promise<void> {
+  if (globalThis.__originUserSchemaEnsured) return;
+  if (!globalThis.__originUserSchemaPromise) {
+    globalThis.__originUserSchemaPromise = (async () => {
+      // Up-to-date database: one lock-free SELECT, no ALTER TABLE (each of
+      // which takes ACCESS EXCLUSIVE on origin_users even as a no-op).
+      if (await isRuntimeDdlApplied(pool(), USER_SCHEMA_DDL_VERSION)) {
+        globalThis.__originUserSchemaEnsured = true;
+        return;
+      }
+      const client = await pool().connect();
+      try {
+        await client.query("BEGIN");
+        // Transaction-scoped so COMMIT/ROLLBACK releases it on Neon PgBouncer
+        // (transaction-mode pooler cannot safely hold session advisory locks).
+        await client.query(SCHEMA_DDL_LOCK_SQL, [SCHEMA_DDL_LOCK_ID]);
+        // Another instance may have applied it while we waited for the lock.
+        if (!(await isRuntimeDdlAppliedInTransaction(client, USER_SCHEMA_DDL_VERSION))) {
+          await client.query(USER_SCHEMA_DDL);
+          await recordRuntimeDdlApplied(client, USER_SCHEMA_DDL_VERSION, "origin_users runtime schema");
+        }
         await client.query("COMMIT");
         globalThis.__originUserSchemaEnsured = true;
       } catch (error) {
@@ -705,14 +729,39 @@ export async function dbListAuthSessions(): Promise<StoredAuthSession[]> {
   return result.rows.map(rowToSession);
 }
 
+export type DbCreateAuthSessionOptions = {
+  /**
+   * The `auth_token_version` the caller believes is current (e.g. from the JWT
+   * that authorised a link-out handoff). A mismatch means a revoke/delete/role
+   * change happened in between, so no new session may be minted from it.
+   */
+  expectedTokenVersion?: number;
+};
+
 export async function dbCreateAuthSession(
   userId: string,
   clientKind: AuthClientKind = DEFAULT_AUTH_CLIENT_KIND,
+  options: DbCreateAuthSessionOptions = {},
 ): Promise<StoredAuthSession> {
   await ensureUserSchema();
   const user = await dbFindUserById(userId);
   if (!user) {
     throw new Error("Cannot create auth session for missing user.");
+  }
+  // A revoked/deleted account must never mint a session, whichever login or
+  // handoff path asked for one. Revoke anything still live while we are here —
+  // the status flip and the session sweep are separate statements upstream, so
+  // a session created in that window would otherwise survive.
+  const accountStatus = user.accountStatus ?? "active";
+  if (accountStatus !== "active") {
+    await dbClearUserSessions(userId);
+    throw new AccountBlockedError(accountStatus);
+  }
+  if (
+    options.expectedTokenVersion !== undefined &&
+    (user.authTokenVersion ?? 0) !== options.expectedTokenVersion
+  ) {
+    throw new AccountBlockedError("stale");
   }
   const sessionId = createSessionId();
   const now = new Date();
@@ -807,6 +856,19 @@ export async function dbRotateAccessToken(refreshToken: string): Promise<StoredA
       return null;
     }
     const user = rowToUser(userResult.rows[0]);
+    // Revocation is enforced here, not only by the `dbClearUserSessions` sweep
+    // that runs when an admin flips the status: a session minted in the race
+    // window (or one the sweep missed) must not keep refreshing. Returning
+    // null lets `handleRefresh` answer with the precise account_revoked /
+    // account_deleted 403 and the route clear the cookies.
+    if ((user.accountStatus ?? "active") !== "active") {
+      await client.query(
+        "UPDATE origin_auth_sessions SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL",
+        [user.id],
+      );
+      await client.query("COMMIT");
+      return null;
+    }
     const access = await issueAccessTokenForUser(user, parsed.sessionId);
     // Authoritative source for the lifetime: the stored row, never a re-read of
     // the request User-Agent. A session cannot change kind after it is minted.

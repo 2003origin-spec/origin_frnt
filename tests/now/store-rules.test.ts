@@ -108,3 +108,18 @@ test("rupee prices only once switched on: ₹1 to ₹1,00,000, coins optional (B
   assert.equal(rupeesText(4_950), "₹49.50");
   assert.equal(rupeesText(10_000_000), "₹1,00,000");
 });
+
+test("premium redemption takes the per-user lock BEFORE postTransfers locks the wallet row (canonical order)", async () => {
+  const { readFileSync } = await import("node:fs");
+  const src = readFileSync(new URL("../../src/server/now/store-service.ts", import.meta.url), "utf8");
+  // Coins are taken in placeStoreOrderLocked, which buyStoreItem and the rupee checkout both call.
+  const start = src.indexOf("export async function placeStoreOrderLocked");
+  const place = src.slice(start, src.indexOf("\nexport async function", start + 1));
+  const lock = place.indexOf('pg_advisory_xact_lock(hashtext($1))", [userId])');
+  const wallet = place.indexOf("await postTransfers(");
+  assert.ok(lock > 0 && wallet > 0, "both calls are present");
+  assert.ok(lock < wallet, "user lock first, then now.accounts — a coin-pack refund takes them in that order");
+  assert.equal(place.split("pg_advisory_xact_lock").length - 1, 1, "taken once, before the wallet debit");
+  const buy = src.slice(src.indexOf("export async function buyStoreItem"));
+  assert.ok(buy.indexOf("placeStoreOrderLocked(") < buy.indexOf("fulfilStoreOrderLocked("), "the lock is held before fulfilment re-enters it");
+});

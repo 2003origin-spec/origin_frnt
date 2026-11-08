@@ -3,6 +3,9 @@ import path from "node:path";
 
 import pg from "pg";
 
+import { checkDestructiveTarget, withoutGuardFlags } from "./lib/destructive-db-guard.mjs";
+import { planBankImport } from "./lib/ogcode-import-plan.mjs";
+
 const { Client } = pg;
 
 const DEFAULT_BANK_DIR = path.resolve(process.cwd(), "data/ogcode");
@@ -59,6 +62,10 @@ const CREATE_TABLE_SQL = `
   ALTER TABLE ogcode_questions ADD COLUMN IF NOT EXISTS previous_year_question TEXT;
   CREATE INDEX IF NOT EXISTS ogcode_questions_class_idx ON ogcode_questions (class);
   CREATE INDEX IF NOT EXISTS ogcode_questions_occurrence_idx ON ogcode_questions (occurrence);
+  -- Mirrors ensureCatalogSchema (src/server/ogcode-catalog.ts). The import reads
+  -- these to tell its own rows from contributed / contest-import rows.
+  ALTER TABLE ogcode_questions ADD COLUMN IF NOT EXISTS is_contributed BOOLEAN NOT NULL DEFAULT FALSE;
+  ALTER TABLE ogcode_questions ADD COLUMN IF NOT EXISTS is_contest_import BOOLEAN NOT NULL DEFAULT FALSE;
 `;
 
 function normalizeSubject(value) {
@@ -769,7 +776,8 @@ function summarizeRows(rows, banks) {
 }
 
 async function main() {
-  const args = parseArgs(process.argv.slice(2));
+  const argv = process.argv.slice(2);
+  const args = parseArgs(withoutGuardFlags(argv));
 
   const rows = [];
   for (const bank of args.banks) {
@@ -801,6 +809,9 @@ async function main() {
     throw new Error("No OGCode questions prepared.");
   }
 
+  // Provisional bank-order numbering for the dry run / --json-out export. The
+  // database write renumbers around rows the import does not own (see
+  // planBankImport).
   rows.forEach((row, index) => {
     row.source_index = index + 1;
     row.is_challenge_of_day = false;
@@ -836,19 +847,74 @@ async function main() {
     throw new Error("Set OGCODE_DATABASE_URL, OGCODE_POSTGRES_URL, POSTGRES_URL, or DATABASE_URL before importing OGCode questions.");
   }
 
+  if (args.replace) {
+    const guard = checkDestructiveTarget({
+      connectionString,
+      argv,
+      env: process.env,
+      action: "ogcode:import --replace",
+    });
+    if (!guard.allowed) throw new Error(guard.reason);
+    if (!guard.local) console.warn(guard.reason);
+  }
+
   const client = new Client(getClientConfig(connectionString));
 
   await client.connect();
   try {
     await client.query("BEGIN");
     await client.query(CREATE_TABLE_SQL);
-    if (args.replace) {
-      await client.query("DELETE FROM ogcode_questions");
+
+    const existing = await client.query(
+      "SELECT id, source_index, is_contributed, is_contest_import FROM ogcode_questions",
+    );
+    const plan = planBankImport({
+      incomingIds: rows.map((row) => row.id),
+      existingRows: existing.rows,
+      replace: args.replace,
+    });
+    if (plan.protectedIds.length) {
+      console.warn(
+        `Skipping ${plan.protectedIds.length} bank id(s) already used by contributed/contest rows: ` +
+          plan.protectedIds.slice(0, 10).join(", ") +
+          (plan.protectedIds.length > 10 ? ", …" : ""),
+      );
     }
 
+    // --replace removes only bank rows that are no longer in the bank. Contributed
+    // and contest-import questions are never touched; the flag re-check in SQL is
+    // a second line of defence on top of planBankImport.
+    if (args.replace && plan.staleOwnedIds.length) {
+      const deleted = await client.query(
+        `DELETE FROM ogcode_questions
+          WHERE id = ANY($1::text[])
+            AND is_contributed = FALSE
+            AND is_contest_import = FALSE`,
+        [plan.staleOwnedIds],
+      );
+      console.log(`Removed ${deleted.rowCount} bank question(s) no longer present in the bank files.`);
+    } else if (plan.staleOwnedIds.length) {
+      console.log(`Kept ${plan.staleOwnedIds.length} bank question(s) not in these files (use --replace to remove).`);
+    }
+
+    // Park existing bank rows on unused negative indices so the renumbering
+    // below cannot hit the UNIQUE(source_index) constraint mid-statement.
+    if (plan.parking.length) {
+      await client.query(
+        `UPDATE ogcode_questions AS q
+            SET source_index = p.source_index
+           FROM jsonb_to_recordset($1::jsonb) AS p(id TEXT, source_index INTEGER)
+          WHERE q.id = p.id`,
+        [JSON.stringify(plan.parking)],
+      );
+    }
+
+    const writable = rows.filter((row) => plan.sourceIndexById.has(row.id));
+    for (const row of writable) row.source_index = plan.sourceIndexById.get(row.id);
+
     const batchSize = 250;
-    for (let start = 0; start < rows.length; start += batchSize) {
-      const batch = rows.slice(start, start + batchSize);
+    for (let start = 0; start < writable.length; start += batchSize) {
+      const batch = writable.slice(start, start + batchSize);
       await client.query(
         `
           INSERT INTO ogcode_questions (
@@ -960,13 +1026,15 @@ async function main() {
             class = EXCLUDED.class,
             previous_year_question = EXCLUDED.previous_year_question,
             updated_at = NOW()
+          WHERE ogcode_questions.is_contributed = FALSE
+            AND ogcode_questions.is_contest_import = FALSE
         `,
         [JSON.stringify(batch)],
       );
     }
 
     await client.query("COMMIT");
-    console.log(`Imported ${rows.length} OGCode questions into ogcode_questions.`);
+    console.log(`Imported ${writable.length} OGCode questions into ogcode_questions.`);
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;

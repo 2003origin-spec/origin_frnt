@@ -10,14 +10,27 @@
  * `celebrate` flag is server-authoritative and fires at most once per IST day.
  */
 
-import { withStoreAsyncScoped } from "@/server/store";
+import { withUserStoreScoped } from "@/server/store";
 import { touchLoginStreak, type StreakTouchResult } from "@/server/gamification";
 
 export type { StreakTouchResult } from "@/server/gamification";
 
 export async function recordDailyLoginStreak(userId: string): Promise<StreakTouchResult | null> {
-  return withStoreAsyncScoped(
-    (store) => touchLoginStreak(store, userId),
-    { userId, collections: ["streaks"], persistUser: true },
+  // Only this user's streak row and daily activities (updateWeeklyData rebuilds
+  // the week from them) are loaded. The scoped persist skips an unchanged
+  // streak row, and the user row is written only when `user.streak` moved, so
+  // every later home load of the day writes nothing.
+  let streakColumnChanged = false;
+  return withUserStoreScoped(
+    userId,
+    ["streaks", "dailyActivities"],
+    (store) => {
+      const user = store.users.find((entry) => entry.id === userId);
+      const before = user?.streak;
+      const result = touchLoginStreak(store, userId);
+      streakColumnChanged = user !== undefined && user.streak !== before;
+      return result;
+    },
+    () => ({ userId, collections: ["streaks"], persistUser: streakColumnChanged || undefined }),
   );
 }

@@ -12,6 +12,7 @@ import type { PoolClient } from "pg";
 
 import { getUserPostgresPool, isUserPostgresConfigured } from "@/server/user-postgres";
 import { ensureUserSchema } from "@/server/db-users";
+import { lockSchemaDdl, withSchemaLock } from "@/server/schema-lock";
 
 declare global {
   var __originSocialSchemaEnsured: boolean | undefined;
@@ -40,13 +41,15 @@ async function recordMigration(client: PoolClient): Promise<void> {
  */
 async function ensureTrigramIndexes(): Promise<void> {
   try {
-    await pool().query("CREATE EXTENSION IF NOT EXISTS pg_trgm;");
-    await pool().query(
-      "CREATE INDEX IF NOT EXISTS idx_origin_users_username_trgm ON origin_users USING gin (LOWER(username) gin_trgm_ops);",
-    );
-    await pool().query(
-      "CREATE INDEX IF NOT EXISTS idx_origin_users_name_trgm ON origin_users USING gin (LOWER(name) gin_trgm_ops);",
-    );
+    await withSchemaLock(pool(), async (client) => {
+      await client.query("CREATE EXTENSION IF NOT EXISTS pg_trgm;");
+      await client.query(
+        "CREATE INDEX IF NOT EXISTS idx_origin_users_username_trgm ON origin_users USING gin (LOWER(username) gin_trgm_ops);",
+      );
+      await client.query(
+        "CREATE INDEX IF NOT EXISTS idx_origin_users_name_trgm ON origin_users USING gin (LOWER(name) gin_trgm_ops);",
+      );
+    });
   } catch (error) {
     console.warn("[social-schema] pg_trgm search indexes unavailable; falling back to ILIKE:", error);
   }
@@ -62,6 +65,7 @@ export async function ensureSocialSchema(): Promise<void> {
       const client = await pool().connect();
       try {
         await client.query("BEGIN");
+        await lockSchemaDdl(client);
 
         // 1. Identity + privacy columns.
         await client.query(`ALTER TABLE origin_users ADD COLUMN IF NOT EXISTS username TEXT;`);
@@ -70,13 +74,17 @@ export async function ensureSocialSchema(): Promise<void> {
         );
 
         // 2. Backfill a unique handle for users that lack one (slug + unique id suffix).
+        //    The suffix is everything after the id's first "_" (for "user_ab12" that's "ab12",
+        //    as before). Only the second segment collided for ids like "x_y_<random>", and
+        //    one collision failed this whole ensure, so every social call 500'd. Matches idSuffix().
         await client.query(`
           UPDATE origin_users
           SET username = LEFT(LOWER(REGEXP_REPLACE(COALESCE(name, ''), '[^a-zA-Z0-9]+', '', 'g')), 15)
-                         || '_' || split_part(id, '_', 2)
+                         || '_' || LOWER(SUBSTRING(id FROM POSITION('_' IN id) + 1))
           WHERE username IS NULL
             AND LEFT(LOWER(REGEXP_REPLACE(COALESCE(name, ''), '[^a-zA-Z0-9]+', '', 'g')), 15) <> ''
-            AND split_part(id, '_', 2) <> '';
+            AND POSITION('_' IN id) > 0
+            AND SUBSTRING(id FROM POSITION('_' IN id) + 1) <> '';
         `);
         await client.query(`
           UPDATE origin_users

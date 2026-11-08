@@ -43,6 +43,10 @@ const FLAG_DESCRIPTIONS: Record<string, string> = {
   documentImport: "Document import worker surfaces.",
   adminControlCenter: "Admin tooling itself — be careful.",
   paidEnrollment: "Marketplace payments + paid enrollments.",
+  cbtModule: "CBT teacher + anonymous student surfaces (/api/cbt, /api/cbt-student, /api/admin/cbt).",
+  contest: "Student contest surfaces (/api/contest/*). Internal crons and /api/admin/contest stay up — see V1/CONTEST_INCIDENT_RUNBOOK.md.",
+  originNow: "Origin NOW student/helper surfaces (/api/now/*). Internal timers and /api/admin/now stay up.",
+  studentMessaging: "Student-to-student messages in the app and on the website (/api/mobile/messages*, /api/messages*). Admin reports stay up.",
 };
 
 export default async function AdminIncidentsPage() {
@@ -91,8 +95,8 @@ export default async function AdminIncidentsPage() {
           <CardTitle>Feature kill-switches</CardTitle>
           <CardDescription>
             Set a flag to &quot;off&quot; to refuse traffic for that surface with a 503. &quot;clear&quot; restores
-            the env-driven default. Snapshot TTL: {snapshot.snapshotTtlMs}ms — changes propagate
-            within that window.
+            the env-driven default. Changes reach API handlers within {snapshot.snapshotTtlMs}ms and the
+            edge middleware within roughly {snapshot.edgeSnapshotTtlMs}ms (its cache TTL, plus one Redis read).
           </CardDescription>
         </CardHeader>
         <CardContent>

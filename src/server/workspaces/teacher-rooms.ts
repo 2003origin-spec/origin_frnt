@@ -163,7 +163,8 @@ export async function listJoinableRoomsForStudent(studentId: string): Promise<Jo
               b.name AS batch_name, w.display_name AS workspace_name
          FROM rooms.rooms r
          JOIN app.batch_members bm
-           ON bm.batch_id = r.batch_id AND bm.student_id = $1 AND bm.status = 'active'
+           ON bm.batch_id = r.batch_id AND bm.workspace_id = r.workspace_id
+          AND bm.student_id = $1 AND bm.status = 'active'
          LEFT JOIN app.batches b ON b.id = r.batch_id
          LEFT JOIN app.teacher_workspaces w ON w.id = r.workspace_id
         WHERE r.room_kind = 'teacher_room'

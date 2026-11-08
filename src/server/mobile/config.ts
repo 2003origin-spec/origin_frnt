@@ -12,6 +12,10 @@
  * plan §10.2), SW on, native Google login on.
  */
 
+import { isFeatureEnabled } from "@/lib/feature-flags";
+
+type FlagKey = Parameters<typeof isFeatureEnabled>[0];
+
 export type MobileConfig = {
   minSupportedVersionCode: number;
   softNudgeVersionCode: number;
@@ -19,6 +23,15 @@ export type MobileConfig = {
   serviceWorkerEnabled: boolean;
   linkOutEnabled: boolean;
   googleNativeLoginEnabled: boolean;
+  /** Teacher accounts may sign in (Student / Teacher choice on the sign-in screen). */
+  teacherLoginEnabled: boolean;
+  /**
+   * Web OAuth client id the native app passes to Credential Manager as
+   * serverClientId, so the ID token's `aud` is the one handleGoogleLogin
+   * verifies. Public by design (NEXT_PUBLIC_*). Empty when unset: the app
+   * then hides its Google button.
+   */
+  googleWebClientId: string;
   offlineGraceDays: number;
   webviewFloor: number;
   /** Server clock, ISO — clients use it for skew estimation, never trust local time. */
@@ -39,6 +52,41 @@ function envBool(name: string, fallback: boolean): boolean {
   return raw === "1" || raw.toLowerCase() === "true";
 }
 
+/**
+ * Student-facing feature switches the native app needs to hide surfaces that
+ * are off (V1/NATIVE_APP_API_PLAN.md §1.5). An allowlist on purpose: this
+ * response is public and CDN-cached, so admin/teacher/internal flags stay out.
+ */
+const APP_FLAG_KEYS = [
+  "contest",
+  "payments",
+  "originNow",
+  "loginStreakCelebration",
+  "liveRooms",
+  "studentSocial",
+  "teacherConnect",
+  "batchHub",
+  "studyMaterials",
+  "premiumSubscriptions",
+  "studyModes",
+  "fullLengthMocks",
+  "dppQuestionBank",
+  "studentMessaging",
+] as const satisfies readonly FlagKey[];
+
+function appFlags(): Record<string, boolean> {
+  const flags: Record<string, boolean> = Object.fromEntries(APP_FLAG_KEYS.map((key) => [key, isFeatureEnabled(key)]));
+  // Messaging also needs Student Social; send the effective value so the app
+  // never shows a surface whose every route answers 404.
+  flags.studentMessaging = flags.studentMessaging && flags.studentSocial;
+  return flags;
+}
+
+/** Teachers may sign in to the app (remote switch: MOBILE_TEACHER_ENABLED, on by default). */
+export function mobileTeacherEnabled(): boolean {
+  return envBool("MOBILE_TEACHER_ENABLED", true);
+}
+
 export function buildMobileConfig(): MobileConfig {
   return {
     minSupportedVersionCode: envInt("MOBILE_MIN_SUPPORTED_VERSION_CODE", 0),
@@ -47,9 +95,11 @@ export function buildMobileConfig(): MobileConfig {
     serviceWorkerEnabled: envBool("MOBILE_SERVICE_WORKER_ENABLED", true),
     linkOutEnabled: envBool("MOBILE_LINK_OUT_ENABLED", false),
     googleNativeLoginEnabled: envBool("MOBILE_GOOGLE_NATIVE_LOGIN_ENABLED", true),
+    teacherLoginEnabled: mobileTeacherEnabled(),
+    googleWebClientId: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID?.trim() ?? "",
     offlineGraceDays: envInt("MOBILE_OFFLINE_GRACE_DAYS", 7),
     webviewFloor: envInt("MOBILE_WEBVIEW_FLOOR", 111),
     serverTime: new Date().toISOString(),
-    flags: {},
+    flags: appFlags(),
   };
 }

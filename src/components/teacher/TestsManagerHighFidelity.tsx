@@ -91,8 +91,28 @@ export function TestsManagerHighFidelity({ workspaceId, initialTests, questions,
       setTests((prev) => prev.filter((t) => t.id !== testId));
       toast.success("Test deleted.");
       router.refresh();
+    } else if (res.code === "test_has_attempts" || res.code === "test_live") {
+      // Students' results would be erased, or the test is open right now — the
+      // server refuses; archive is the way to take it down.
+      if (confirm(`${res.detail}\n\nArchive "${title}" now?`)) await handleArchive(testId);
     } else {
       toast.error(res.detail || "Failed to delete test.");
+    }
+  }
+
+  async function handleArchive(testId: string) {
+    setDeletingId(testId);
+    const res = await apiJson<{ test: AssessmentTest }>(
+      `/api/teacher/workspaces/${workspaceId}/tests/${testId}/schedule?action=archive`,
+      { method: "POST", json: {} },
+    );
+    setDeletingId(null);
+    if (res.ok) {
+      setTests((prev) => prev.map((t) => (t.id === testId ? { ...t, status: "archived" } : t)));
+      toast.success("Test archived. Student results are kept.");
+      router.refresh();
+    } else {
+      toast.error(res.detail || "Failed to archive test.");
     }
   }
 

@@ -7,6 +7,7 @@ import {
   createCheckoutOrder,
   listPaymentOrders,
   verifyPayment,
+  waitForOrderPaid,
 } from "../../src/features/payments/client";
 
 type Captured = { url: string; init?: RequestInit };
@@ -98,3 +99,61 @@ test("order history client normalizes the route's { orders } envelope", async ()
   );
 });
 
+
+// ─── P6: activation poll ───────────────────────────────────────────────────────
+
+test("waitForOrderPaid polls the owner-scoped order read until it is paid", async () => {
+  let call = 0;
+  await withBrowserStubs(
+    () => {
+      call += 1;
+      const status = call < 3 ? "attempted" : "paid";
+      return new Response(JSON.stringify({ orderId: "ord_1", status, paidAt: null }), { status: 200 });
+    },
+    async (captured) => {
+      assert.equal(await waitForOrderPaid("ord_1", { intervalMs: 1, timeoutMs: 5_000 }), true);
+      assert.equal(captured.length, 3);
+      assert.equal(captured[0].url, "/api/payments/orders?orderId=ord_1");
+    },
+  );
+});
+
+test("waitForOrderPaid polls through transient errors and gives up at the timeout", async () => {
+  await withBrowserStubs(
+    () => new Response(JSON.stringify({ detail: "busy" }), { status: 503 }),
+    async (captured) => {
+      assert.equal(await waitForOrderPaid("ord_1", { intervalMs: 5, timeoutMs: 30 }), false);
+      assert.ok(captured.length >= 2, "a 503 is retried, not treated as final");
+    },
+  );
+});
+
+test("waitForOrderPaid stops early on a terminal unpaid state or a 404", async () => {
+  await withBrowserStubs(
+    () => new Response(JSON.stringify({ orderId: "ord_1", status: "expired", paidAt: null }), { status: 200 }),
+    async (captured) => {
+      assert.equal(await waitForOrderPaid("ord_1", { intervalMs: 1, timeoutMs: 5_000 }), false);
+      assert.equal(captured.length, 1);
+    },
+  );
+  await withBrowserStubs(
+    () => new Response(JSON.stringify({ detail: "Payment order not found." }), { status: 404 }),
+    async (captured) => {
+      assert.equal(await waitForOrderPaid("ord_x", { intervalMs: 1, timeoutMs: 5_000 }), false);
+      assert.equal(captured.length, 1);
+    },
+  );
+});
+
+test("waitForOrderPaid rejects when its signal aborts", async () => {
+  const controller = new AbortController();
+  await withBrowserStubs(
+    () => {
+      controller.abort();
+      return new Response(JSON.stringify({ orderId: "ord_1", status: "attempted", paidAt: null }), { status: 200 });
+    },
+    async () => {
+      await assert.rejects(waitForOrderPaid("ord_1", { intervalMs: 10_000, timeoutMs: 60_000, signal: controller.signal }));
+    },
+  );
+});

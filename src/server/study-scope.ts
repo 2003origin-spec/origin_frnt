@@ -70,8 +70,30 @@ export type StudentScope = {
    * EFFECTIVE visible subjects:
    *   modeSubjects ∩ (gate enforced && premium ? gate.subjects : ALL_SUBJECTS)
    * Canonical order, deduped.
+   *
+   * Deliberately NON-EMPTY for a free student (it falls back to the mode's
+   * subjects): OG Code catalog paging, the QOTD cohort and search all key off
+   * it being populated so the free sample pool keeps rendering. It is therefore
+   * NOT an entitlement check — premium surfaces (tests, DPPs) must use
+   * `entitledSubjects` / `premiumLocked` instead.
    */
   subjects: Subject[];
+  /**
+   * The HONEST entitlement set: modeSubjects ∩ gate.subjects whenever the
+   * premium gate is enforced; the mode's subjects when only Study Mode is
+   * enforced; ALL_SUBJECTS only when NEITHER is enforced (flag off / teacher /
+   * admin / local dev). Empty for a free student. Every surface that creates or
+   * opens premium content (custom tests, full-length mocks, test detail) reads
+   * this, never `subjects`.
+   */
+  entitledSubjects: Subject[];
+  /**
+   * `gate.enforced && !gate.anyPremium` — a zero-purchase student under an
+   * enforced premium gate. Every premium surface refuses outright when true.
+   * Equal to `shouldRedirectFreeStudent(user)` for the same student, so the
+   * `/tests` page redirect and the server actions / API routes always agree.
+   */
+  premiumLocked: boolean;
   /**
    * True when the intersection is empty — the chosen mode hides every subject
    * the student owns (e.g. JEE Mode + a Biology-only subscription). Surfaces
@@ -156,6 +178,7 @@ function openScope(
   explicit: boolean,
   gate: StudentGate,
   access: StudyModeAccess,
+  honest: Pick<StudentScope, "entitledSubjects" | "premiumLocked">,
 ): StudentScope {
   return {
     enforced: false,
@@ -170,7 +193,26 @@ function openScope(
     canChooseMode: false,
     subjects: [...ALL_SUBJECTS],
     starved: false,
+    // The premium gate stays live even with Study Mode switched off: flipping
+    // TEACHER_LAUNCH_STUDY_MODES=0 must never open the premium test surfaces.
+    ...honest,
   };
+}
+
+/**
+ * The two gate-derived fields every premium surface reads. Computed from the
+ * gate ALONE (never from `subjects`, which is padded for free students) so a
+ * zero-purchase student is `premiumLocked` with an empty `entitledSubjects`
+ * whether or not Study Mode is enforced.
+ */
+function honestEntitlements(
+  gate: StudentGate,
+  modeSubjects: readonly Subject[],
+): Pick<StudentScope, "entitledSubjects" | "premiumLocked"> {
+  const entitledSubjects = gate.enforced
+    ? ALL_SUBJECTS.filter((s) => modeSubjects.includes(s) && gate.subjects.includes(s))
+    : [...modeSubjects];
+  return { entitledSubjects, premiumLocked: gate.enforced && !gate.anyPremium };
 }
 
 /**
@@ -264,14 +306,18 @@ export async function getStudentScope(
       : false;
   const access = resolveStudyModeAccess({ role, entitledSubjects: gate.subjects, hasGrant });
 
+  const modeSubjects = scoped ? studyModeSubjects(resolved.mode) : [...ALL_SUBJECTS];
+  const honest = honestEntitlements(gate, modeSubjects);
+
   if (!scoped) {
-    return openScope(resolved.mode, resolved.explicit, gate, access);
+    return openScope(resolved.mode, resolved.explicit, gate, access, honest);
   }
 
-  const modeSubjects = studyModeSubjects(resolved.mode);
-  // The premium gate only narrows when it is actually enforced AND the student
-  // owns something; a free student under an enforced gate is handled by the
-  // gate's own predicates (free sample pool), not by intersecting to empty here.
+  // `subjects` only narrows when the premium gate is enforced AND the student
+  // owns something. A free student keeps the mode's subjects here on purpose:
+  // the OG Code sample pool, QOTD and search page over `subjects` and would go
+  // blank otherwise. It is NOT an entitlement check — premium surfaces must
+  // read `entitledSubjects` / `premiumLocked`, which the gate alone decides.
   const entitled = gate.enforced && gate.anyPremium ? gate.subjects : ALL_SUBJECTS;
   const subjects = ALL_SUBJECTS.filter(
     (s) => modeSubjects.includes(s) && entitled.includes(s),
@@ -291,6 +337,7 @@ export async function getStudentScope(
     ...access,
     subjects,
     starved: subjects.length === 0,
+    ...honest,
   };
 }
 
@@ -298,24 +345,27 @@ export async function getStudentScope(
  * Whether a subject-tagged item is visible under a scope.
  *
  * Same contract as the premium-only `subjectVisibleUnderGate` it replaces:
- *  - scope not enforced → always visible;
+ *  - free student under an enforced premium gate → never visible;
+ *  - neither the gate nor Study Mode enforced → always visible;
  *  - `mixed` / `all` / empty / unrecognised subject → always visible;
- *  - otherwise the canonical subject must be in the effective set.
+ *  - otherwise the canonical subject must be in `entitledSubjects`.
  *
- * The premium half of the decision still runs first, so a free student under an
- * enforced gate is treated exactly as before.
+ * The premium gate runs FIRST and is checked on its own, so switching Study
+ * Mode off (`scope.enforced === false`) can never open premium content: with
+ * `TEACHER_LAUNCH_STUDY_MODES=0` and the premium flag on, an unowned subject
+ * is still hidden.
  */
 export function subjectVisibleUnderScope(
   subjectRaw: string | null | undefined,
   scope: StudentScope,
 ): boolean {
-  if (!scope.enforced) return true;
-  if (scope.gate.enforced && !scope.gate.anyPremium) return false;
+  if (scope.premiumLocked) return false;
+  if (!scope.enforced && !scope.gate.enforced) return true;
   const raw = String(subjectRaw ?? "").trim().toLowerCase();
   if (!raw || raw === "mixed" || raw === "all") return true;
   const canonical = normalizeSubject(raw);
   if (!canonical) return true;
-  return scope.subjects.includes(canonical);
+  return scope.entitledSubjects.includes(canonical);
 }
 
 /**
@@ -352,14 +402,36 @@ export function clampSubjectsToScope(
   requested: readonly string[] | null | undefined,
   scope: StudentScope,
 ): Subject[] | null {
+  return clampSubjectsTo(requested, scope.enforced ? scope.subjects : null);
+}
+
+/**
+ * The same null / `[]` contract as `clampSubjectsToScope`, against an explicit
+ * allowed set (`null` = no restriction, picks are only canonicalised). Premium
+ * surfaces call this with `scope.entitledSubjects` so a pick outside the
+ * student's subscription is dropped, not merely outside their study mode.
+ */
+export function clampSubjectsTo(
+  requested: readonly string[] | null | undefined,
+  allowed: readonly Subject[] | null,
+): Subject[] | null {
   if (!requested || requested.length === 0) return null;
   const canonical = requested
     .map((s) => normalizeSubject(s))
     .filter((s): s is Subject => s != null);
-  if (!scope.enforced) {
-    return ALL_SUBJECTS.filter((s) => canonical.includes(s));
-  }
-  return scope.subjects.filter((s) => canonical.includes(s));
+  return ALL_SUBJECTS.filter(
+    (s) => canonical.includes(s) && (allowed == null || allowed.includes(s)),
+  );
+}
+
+/**
+ * The subject set a PREMIUM surface (custom tests, full-length mocks) may draw
+ * from, or `null` when nothing restricts it (neither the premium gate nor Study
+ * Mode is enforced). Always consult `premiumLocked` first — a free student gets
+ * `[]` here, and `[]` must refuse, never silently widen to "mixed".
+ */
+export function allowedSubjectsForPremiumSurface(scope: StudentScope): Subject[] | null {
+  return scope.gate.enforced || scope.enforced ? [...scope.entitledSubjects] : null;
 }
 
 /**
@@ -405,5 +477,59 @@ export function throwOutOfModeForbidden(
   (err as { status?: number }).status = 403;
   (err as { code?: string }).code = "out_of_study_mode";
   (err as { mode?: StudyMode }).mode = scope.mode;
+  throw err;
+}
+
+/**
+ * Refuse a premium surface to a student who owns no subject. Same 403 shape as
+ * `throwOutOfModeForbidden`, with `code: "premium_required"` so clients can
+ * send the student to /premium rather than to the mode switcher.
+ */
+export function throwPremiumRequired(
+  _scope: Pick<StudentScope, "premiumLocked">,
+  what = "Tests",
+): never {
+  const err = new Error(`${what} need a subscription. Unlock a subject to continue.`);
+  (err as { status?: number }).status = 403;
+  (err as { code?: string }).code = "premium_required";
+  throw err;
+}
+
+/**
+ * Throws the right 403 when a student may not open a seeded / own test under
+ * `scope`, or returns when they may:
+ *   - a zero-purchase student → `premium_required`;
+ *   - every subject the test needs is OWNED but the current mode hides one →
+ *     `out_of_study_mode` (the client offers a mode switch);
+ *   - otherwise → "This test is outside your subscription."
+ * A full-length mock passes `presetSubjects` (its blueprint): it is
+ * all-or-nothing, so every one of them must be entitled, and the
+ * owned-but-out-of-mode reply applies only when every hidden one is owned.
+ */
+export function assertTestSubjectsOpenable(
+  scope: StudentScope,
+  test: { subject: string | null | undefined; presetSubjects?: readonly Subject[] | null },
+): void {
+  if (!scope.enforced && !scope.gate.enforced) return;
+  if (scope.premiumLocked) throwPremiumRequired(scope);
+  const owns = (subject: Subject) => !scope.gate.enforced || scope.gate.subjects.includes(subject);
+
+  if (test.presetSubjects) {
+    const hidden = test.presetSubjects.filter((subject) => !scope.entitledSubjects.includes(subject));
+    if (hidden.length === 0) return;
+    if (hidden.every(owns)) throwOutOfModeForbidden(hidden[0], scope);
+    throwOutsideSubscription();
+  }
+
+  if (!subjectVisibleUnderScope(test.subject, scope)) {
+    const canonical = normalizeSubject(test.subject);
+    if (canonical && owns(canonical)) throwOutOfModeForbidden(test.subject, scope);
+    throwOutsideSubscription();
+  }
+}
+
+function throwOutsideSubscription(): never {
+  const err = new Error("This test is outside your subscription.");
+  (err as { status?: number }).status = 403;
   throw err;
 }

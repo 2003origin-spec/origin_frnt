@@ -157,7 +157,7 @@ export async function sendOgcodeChallengeAction(
     if (recipient) {
       const recipientScope = await getStudentScope(recipient.id, recipient.role);
       if (recipientScope.enforced) {
-        const question = await getOgcodeCatalogQuestionById(questionId);
+        const question = await getOgcodeCatalogQuestionById(questionId, { visibility: 'ogcode' });
         if (question && !subjectVisibleUnderMode(question.subject, recipientScope)) {
           return { ok: false, error: 'recipient_out_of_mode' };
         }
@@ -308,7 +308,8 @@ export async function revealOgcodeQuestionAction(
   }
 
   // V2 reveal only covers catalog questions (store fixtures keep legacy behavior).
-  const question = await getOgcodeCatalogQuestionById(questionId);
+  // Contest imports are not OGCode questions: never reveal their answer here.
+  const question = await getOgcodeCatalogQuestionById(questionId, { visibility: 'ogcode' });
   if (!question) {
     return { enabled: false };
   }

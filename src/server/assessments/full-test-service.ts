@@ -25,7 +25,17 @@ import {
   getAttemptedQuestionIdsForUser,
   persistGeneratedCustomTest,
 } from "@/server/analytics-store";
-import type { StudentScope } from "@/server/study-scope";
+import { throwPremiumRequired, type StudentScope } from "@/server/study-scope";
+
+/**
+ * The slice of a scope the preset gate reads. `entitledSubjects` / `premiumLocked`
+ * are the gate-derived fields — NOT `scope.subjects`, which stays populated for
+ * a free student so the OG Code sample pool keeps rendering.
+ */
+export type PresetScope = Pick<
+  StudentScope,
+  "enforced" | "gate" | "entitledSubjects" | "premiumLocked"
+>;
 
 import { buildFullLengthTestSelection, type FullTestSelection } from "./full-test-builder";
 
@@ -70,19 +80,21 @@ function formatList(items: string[]): string {
  * three subjects would be a paper that is not the exam it claims to be, so the
  * card locks and says exactly which subject is missing instead.
  *
- * An unenforced scope (feature flag off, teacher, local dev) unlocks everything,
- * which is the same rule every other subject-gated surface follows.
+ * Reads the honest `entitledSubjects` (premium gate ∩ mode), so a free student
+ * is "missing" every subject and every card locks. Only when NEITHER the
+ * premium gate nor Study Mode is enforced (flag off, teacher, local dev) does
+ * everything unlock — the same rule every other subject-gated surface follows.
  */
 export function missingSubjectsForPreset(
   blueprint: ExamBlueprint,
-  scope: Pick<StudentScope, "enforced" | "subjects">,
+  scope: PresetScope,
 ): Subject[] {
-  if (!scope.enforced) return [];
-  return blueprint.subjects.filter((subject) => !scope.subjects.includes(subject));
+  if (!scope.enforced && !scope.gate.enforced) return [];
+  return blueprint.subjects.filter((subject) => !scope.entitledSubjects.includes(subject));
 }
 
 export function describePresetAvailability(
-  scope: Pick<StudentScope, "enforced" | "subjects">,
+  scope: PresetScope,
   presets: readonly ExamPresetId[],
 ): PresetAvailability[] {
   return presets.map((preset) => {
@@ -169,7 +181,7 @@ function blueprintSnapshot(selection: FullTestSelection): Record<string, unknown
 export type CreateFullLengthTestInput = {
   userId: string;
   preset: ExamPresetId;
-  scope: Pick<StudentScope, "enforced" | "subjects">;
+  scope: PresetScope;
 };
 
 /**
@@ -182,6 +194,12 @@ export async function createFullLengthTest(input: CreateFullLengthTestInput): Pr
   selection: FullTestSelection;
 }> {
   const blueprint = getExamBlueprint(input.preset);
+
+  // A zero-purchase student is refused outright, before the per-subject check,
+  // so the error says "subscribe" rather than listing every subject as missing.
+  if (input.scope.premiumLocked) {
+    throwPremiumRequired(input.scope, "Full-length mocks");
+  }
 
   const missing = missingSubjectsForPreset(blueprint, input.scope);
   if (missing.length > 0) {

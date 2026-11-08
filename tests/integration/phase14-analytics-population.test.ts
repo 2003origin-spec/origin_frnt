@@ -29,7 +29,7 @@ import {
 } from "@/server/workspaces/analytics-store";
 import { populateCohortAnalytics } from "@/server/workspaces/cohort-analytics";
 
-import { cleanup, closePool, dbConfigured, makeId, rawPool, seedFixtures } from "./_db";
+import { cleanup, closePool, dbConfigured, enrollFixtureStudent, makeId, rawPool, seedFixtures } from "./_db";
 
 const SKIP = !dbConfigured();
 const it = test;
@@ -72,6 +72,7 @@ it("phase 14: cohort analytics populate from a tagged result; leaderboard ranks 
   const resultIds: string[] = [];
 
   try {
+    await enrollFixtureStudent(fx);
     await addStudentsToBatches({
       workspaceId: fx.workspaceId,
       batchIds: [fx.batchId],
@@ -143,6 +144,7 @@ it("phase 14: min-2-attempts floor excludes single-attempt students", { skip: SK
   const resultId = makeId("result");
 
   try {
+    await enrollFixtureStudent(fx);
     await addStudentsToBatches({
       workspaceId: fx.workspaceId,
       batchIds: [fx.batchId],

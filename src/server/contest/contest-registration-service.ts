@@ -6,8 +6,6 @@
  * registered-count (display-only, best-effort).
  */
 
-import { Redis } from "@upstash/redis";
-
 import { getUserPostgresPool } from "@/server/user-postgres";
 
 import { recordRegistration } from "./contest-counts";
@@ -17,31 +15,14 @@ import {
   getContestAccessConfig,
   seatStatusForNewRegistration,
 } from "./contest-access-service";
+import {
+  cacheRegistration,
+  hasRegisteredSetCache,
+  isCachedRegistration,
+  uncacheRegistration,
+} from "./contest-registered-set";
 
-const redisUrl = process.env.UPSTASH_REDIS_REST_URL?.trim();
-const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN?.trim();
-const redis: Redis | null =
-  redisUrl && redisToken ? new Redis({ url: redisUrl, token: redisToken }) : null;
-
-const REGISTERED_SET_TTL_SECONDS = 3 * 24 * 60 * 60; // outlives any contest
-
-/** Redis set of registered userIds — a read-through cache for the hot paper gate
- *  (Neon stays authoritative). Offloads the start_at read burst off Postgres. */
-function registeredSetKey(contestId: string): string {
-  return `contest:${contestId}:registered`;
-}
-
-/** Best-effort add to the registered-set cache; never blocks the real write. */
-async function cacheRegistration(contestId: string, userId: string): Promise<void> {
-  if (!redis) return;
-  try {
-    const key = registeredSetKey(contestId);
-    await redis.sadd(key, userId);
-    await redis.expire(key, REGISTERED_SET_TTL_SECONDS);
-  } catch {
-    /* cache is advisory — a miss just falls through to Neon */
-  }
-}
+export { uncacheRegistration };
 
 function pool() {
   const p = getUserPostgresPool();
@@ -112,7 +93,9 @@ export async function registerForContest(
   if (inserted.rows[0]) {
     // best-effort approximate counter + registered-set cache (never block).
     void recordRegistration(contestId, userId);
-    void cacheRegistration(contestId, userId);
+    // Only a CONFIRMED seat enters the registered-set (the paper gate trusts a
+    // hit); a waitlisted row is added on promotion instead.
+    if (inserted.rows[0].status === "registered") void cacheRegistration(contestId, userId);
     return {
       registered: true,
       registeredAt: new Date(inserted.rows[0].registered_at).toISOString(),
@@ -141,29 +124,35 @@ export async function registerForContest(
 
 /**
  * Authoritative "is this user registered for this contest" — an exact row read,
- * fail-closed (used at take-time / DPP-gate, NOT the approximate counter).
+ * fail-closed (used at take-time / paper gate / DPP-gate, NOT the approximate
+ * counter). By default only a CONFIRMED seat (`status = 'registered'`) counts:
+ * a waitlisted user must not read the paper or practise. Pass
+ * `includeWaitlisted` for display surfaces (the status banner) that report
+ * "registered/waitlisted" separately.
  */
-export async function isRegisteredForContest(contestId: string, userId: string): Promise<boolean> {
-  // Hot path (paper gate at the start_at burst): check the Redis registered-set
-  // cache first so 1M reads don't each hit Neon. A HIT is authoritative-enough
-  // (the set is only ever added to, never speculatively). A MISS falls through to
-  // Neon and self-heals the cache, so a non-registered user is never wrongly
-  // admitted and Redis being down just degrades to the DB path.
-  if (redis) {
-    try {
-      const member = await redis.sismember(registeredSetKey(contestId), userId);
-      if (member === 1) return true;
-    } catch {
-      /* fall through to the authoritative DB check */
-    }
+export async function isRegisteredForContest(
+  contestId: string,
+  userId: string,
+  opts: { includeWaitlisted?: boolean } = {},
+): Promise<boolean> {
+  const includeWaitlisted = Boolean(opts.includeWaitlisted);
+  // Hot path (paper gate at the start_at burst): the Redis registered-set holds
+  // CONFIRMED seats only and is SREMed on unregister, so a HIT is trustworthy.
+  // A MISS falls through to Neon and self-heals the cache, so a non-registered
+  // user is never wrongly admitted and Redis being down just degrades to the DB
+  // path. (The waitlist-inclusive variant always reads Neon.)
+  if (!includeWaitlisted && hasRegisteredSetCache()) {
+    if ((await isCachedRegistration(contestId, userId)) === true) return true;
   }
 
   await ensureContestSchema();
   const res = await pool().query(
-    `SELECT 1 FROM contest.registrations WHERE contest_id = $1 AND user_id = $2`,
-    [contestId, userId],
+    `SELECT 1 FROM contest.registrations
+      WHERE contest_id = $1 AND user_id = $2
+        AND ($3::boolean OR status = 'registered')`,
+    [contestId, userId, includeWaitlisted],
   );
   const registered = res.rowCount === 1;
-  if (registered) void cacheRegistration(contestId, userId); // self-heal the cache
+  if (registered && !includeWaitlisted) void cacheRegistration(contestId, userId); // self-heal
   return registered;
 }

@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { requireUserFromRequest } from "@/server/auth";
 import { renderStudyModeKey } from "@/server/study-scope";
-import { studyModeSubjects } from "@/lib/study-mode";
+import type { StudyMode } from "@/lib/study-mode";
 import {
   commitOriginAiVoiceTurn,
   getOriginAiSnapshot,
@@ -14,8 +14,8 @@ import {
   serializeThread,
   createThread,
   deleteThread,
-  getThreadById,
   listThreads,
+  planOriginAiRuntimeWrite,
   updateThread,
   type OriginAiPageContextInput,
 } from "@/server/origin-ai";
@@ -28,16 +28,33 @@ import {
   notFound,
   ok,
   parseJsonBody,
+  serviceUnavailable,
   unauthorized,
 } from "@/server/http";
-import { withStoreAsync, type StoredUser } from "@/server/store";
+import { ScopedWritePlan, withStoreAsyncScoped, type StoredUser } from "@/server/store";
 import { dbUpdateUsageMetrics } from "@/server/db-users";
+import { findLocalThreadSubject } from "@/server/origin-ai-thread-subject";
+import {
+  gatesThenRateLimit,
+  isChapterCatalogFresh,
+  isUsableChapterPayload,
+  runAfterResponse,
+  usageLimitExceeded,
+} from "@/server/origin-ai-route-gates";
 import {
   getCachedChapters,
   isOriginAiChapterSubject,
   upsertCachedChapters,
 } from "@/server/catalog-cache";
 import { getRequestId, REQUEST_ID_HEADER } from "@/lib/request-id";
+import {
+  classifyProxyError,
+  createUsageRecordingTransform,
+  dailyBudgetRefusalResponse,
+  isUpstreamDailyBudgetRefusal,
+  proxyFailureResponse,
+  proxyTimeoutResponse,
+} from "@/server/origin-ai-proxy-utils";
 
 /** The mode to advertise to the Python service. Constant when the flag is off. */
 async function studyModeForUser(user: StoredUser) {
@@ -46,7 +63,10 @@ async function studyModeForUser(user: StoredUser) {
 
 import { aiLimiter, voiceLimiter, generalLimiter, checkRateLimit } from "@/lib/rate-limit";
 import { readRequiredServiceToken, ServiceAuthConfigurationError } from "@/server/service-auth";
-import { getAuthContext } from "@/server/authz";
+import { mintOriginAiWsTicket } from "@/server/origin-ai-ws-ticket";
+import { buildOriginAiServiceHeaders } from "@/server/origin-ai-proxy-headers";
+import { getAuthContext, getAuthenticatedUser } from "@/server/authz";
+import { isAuthServiceUnavailableError } from "@/server/auth-errors";
 import { isFeatureEnabled } from "@/lib/feature-flags";
 import { getEntitledSubjects } from "@/server/entitlements";
 import { requireAiFeature, type AiFeature } from "@/server/ai-access";
@@ -237,9 +257,22 @@ function toPageContext(input?: PageContextLike): OriginAiPageContextInput {
  * TypeScript implementation otherwise.
  * ----------------------------------------------------------------------- */
 
-// We pass a dummy proxyUser since bootstrap doesn't need to record proxy-side DB usage
-// (it doesn't use tokens/minutes), and the Python service validates auth itself.
-const dummyUser = { id: "bootstrap", name: "User", email: "" } as StoredUser;
+/**
+ * Header allowlist lives in src/server/origin-ai-proxy-headers.ts (pure, unit
+ * tested): only `x-origin-ai-session-id` and `accept-language` cross the proxy;
+ * the client's Authorization/Cookie never do, and the service bearer is set
+ * last so nothing can override it (bug U3).
+ */
+function serviceHeaders(
+  request: NextRequest,
+  user: StoredUser,
+  serviceToken: string,
+  requestId: string,
+  studyMode: StudyMode,
+  extra: Record<string, string> = {},
+): Headers {
+  return buildOriginAiServiceHeaders(request.headers, user, serviceToken, requestId, studyMode, extra);
+}
 
 async function proxyToMicroservice(
   method: string,
@@ -252,7 +285,6 @@ async function proxyToMicroservice(
     return null; // fallback to in-app implementation
   }
 
-  const browserSessionId = request.headers.get("X-Origin-AI-Session-Id") ?? "";
   const requestId = getRequestId(request.headers);
   let serviceToken: string;
   try {
@@ -290,26 +322,7 @@ async function proxyToMicroservice(
       method,
       cache: "no-store",
       signal: controller.signal,
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${serviceToken}`,
-        [REQUEST_ID_HEADER]: requestId,
-        "X-Origin-AI-Session-Id": browserSessionId,
-        "X-Origin-User-Id": user.id,
-        "X-Origin-User-Name": user.name || "",
-        "X-Origin-User-Email": user.email || "",
-        "X-Origin-User-Role": user.role || "student",
-        "X-Origin-User-Streak": String(user.streak || 0),
-        "X-Origin-User-Student-Class": user.studentClass ?? "",
-        "X-Origin-User-Selected-Course": user.selectedCourse ?? "",
-        // Study Mode — which subjects this student is actually working in, so
-        // the model stops volunteering off-mode examples. Additive: the Python
-        // service ignores unknown headers, so this is safe to ship ahead of it.
-        "X-Origin-User-Study-Mode": studyMode,
-        "X-Origin-User-Mode-Subjects": studyModeSubjects(studyMode).join(","),
-        // Forward the caller's auth header to Python so it can do its own authentication.
-        ...(request.headers.has("Authorization") ? { "Authorization": request.headers.get("Authorization")! } : {}),
-      },
+      headers: serviceHeaders(request, user, serviceToken, requestId, studyMode),
       body: body ? JSON.stringify(body) : undefined,
     });
 
@@ -351,50 +364,49 @@ async function proxyToMicroservice(
       }
     }
 
+    // The Python service enforces its own daily token budget (HTTP 429);
+    // surface it in the same shape as the in-app quota check so the client
+    // shows the same message.
+    if (isUpstreamDailyBudgetRefusal(resp.status, data)) {
+      return dailyBudgetRefusalResponse();
+    }
+
     return new Response(JSON.stringify(data ?? {}), {
       status: resp.status,
       headers: { "Content-Type": "application/json" },
     });
   } catch (err) {
-    if (err instanceof Error && err.name === 'AbortError') {
+    // A timeout is NOT "service down": the Python side has usually already
+    // generated, billed and persisted the answer. Returning null here used to
+    // route the turn to the legacy in-app path, which stored a different
+    // reply and never charged the tokens. Only a connection-level failure
+    // (nothing listening / DNS) falls back.
+    const kind = classifyProxyError(err);
+    if (kind === "timeout") {
       console.error("[origin-ai proxy] microservice call timed out", {
         requestId,
         timeoutMs,
         path,
       });
-    } else {
-      console.error("[origin-ai proxy] microservice call failed, falling back:", {
+      return proxyTimeoutResponse(requestId);
+    }
+    if (kind === "connection") {
+      console.error("[origin-ai proxy] microservice unreachable, falling back:", {
         requestId,
         error: err instanceof Error ? err.message : String(err),
         path,
       });
+      return null; // fallback to in-app implementation
     }
-    return null; // fallback to in-app implementation
+    console.error("[origin-ai proxy] microservice call failed:", {
+      requestId,
+      error: err instanceof Error ? err.message : String(err),
+      path,
+    });
+    return proxyFailureResponse(requestId);
   } finally {
     clearTimeout(timeoutId);
   }
-}
-
-function extractSseFinalPayload(buffer: string): unknown | null {
-  const events = buffer.split("\n\n");
-  for (let index = events.length - 1; index >= 0; index -= 1) {
-    const event = events[index]?.trim();
-    if (!event) continue;
-    for (const line of event.split("\n")) {
-      if (!line.startsWith("data:")) continue;
-      const raw = line.slice(5).trim();
-      if (!raw) continue;
-      try {
-        const parsed = JSON.parse(raw) as { type?: string };
-        if (parsed?.type === "final") {
-          return parsed;
-        }
-      } catch {
-        // Ignore malformed intermediate frames; usage is best-effort.
-      }
-    }
-  }
-  return null;
 }
 
 async function proxyToMicroserviceStream(
@@ -409,7 +421,6 @@ async function proxyToMicroserviceStream(
     return null;
   }
 
-  const browserSessionId = request.headers.get("X-Origin-AI-Session-Id") ?? "";
   const requestId = getRequestId(request.headers);
   let serviceToken: string;
   try {
@@ -436,27 +447,9 @@ async function proxyToMicroserviceStream(
       method,
       cache: "no-store",
       signal: controller.signal,
-      headers: {
-        "Content-Type": "application/json",
+      headers: serviceHeaders(request, user, serviceToken, requestId, studyMode, {
         Accept: "text/event-stream",
-        Authorization: `Bearer ${serviceToken}`,
-        [REQUEST_ID_HEADER]: requestId,
-        "X-Origin-AI-Session-Id": browserSessionId,
-        "X-Origin-User-Id": user.id,
-        "X-Origin-User-Name": user.name || "",
-        "X-Origin-User-Email": user.email || "",
-        "X-Origin-User-Role": user.role || "student",
-        "X-Origin-User-Streak": String(user.streak || 0),
-        "X-Origin-User-Student-Class": user.studentClass ?? "",
-        "X-Origin-User-Selected-Course": user.selectedCourse ?? "",
-        // Study Mode — which subjects this student is actually working in, so
-        // the model stops volunteering off-mode examples. Additive: the Python
-        // service ignores unknown headers, so this is safe to ship ahead of it.
-        "X-Origin-User-Study-Mode": studyMode,
-        "X-Origin-User-Mode-Subjects": studyModeSubjects(studyMode).join(","),
-        // Forward the caller's auth header to Python so it can do its own authentication.
-        ...(request.headers.has("Authorization") ? { "Authorization": request.headers.get("Authorization")! } : {}),
-      },
+      }),
       body: body ? JSON.stringify(body) : undefined,
     });
 
@@ -471,34 +464,26 @@ async function proxyToMicroserviceStream(
           data = { error: text.trim() || `Ori service error (${resp.status})` };
         }
       }
+      if (isUpstreamDailyBudgetRefusal(resp.status, data)) {
+        return dailyBudgetRefusalResponse();
+      }
       return new Response(JSON.stringify(data ?? { error: `Ori service error (${resp.status})` }), {
         status: resp.status,
         headers: { "Content-Type": "application/json" },
       });
     }
 
-    const decoder = new TextDecoder();
-    let sseBuffer = "";
-    let recordedUsage = false;
-
+    // Usage is debited from the `final` frame on flush() AND cancel(): a
+    // client that disconnects after the last text delta has still consumed
+    // the full (already billed, already persisted) generation.
     const responseStream = resp.body.pipeThrough(
-      new TransformStream<Uint8Array, Uint8Array>({
-        transform(chunk, streamController) {
-          sseBuffer += decoder.decode(chunk, { stream: true });
-          streamController.enqueue(chunk);
-        },
-        async flush() {
-          clearTimeout(timeoutId);
-          sseBuffer += decoder.decode();
-          if (recordedUsage) return;
-          const finalPayload = extractSseFinalPayload(sseBuffer);
-          if (finalPayload) {
-            recordedUsage = true;
-            await recordOriginAiProxyUsage(user.id, finalPayload, {
-              voiceText: usageOptions.voiceText ?? extractVoiceText(finalPayload),
-              voiceMinutes: usageOptions.voiceMinutes,
-            });
-          }
+      createUsageRecordingTransform({
+        onSettle: () => clearTimeout(timeoutId),
+        onFinal: async (finalPayload) => {
+          await recordOriginAiProxyUsage(user.id, finalPayload, {
+            voiceText: usageOptions.voiceText ?? extractVoiceText(finalPayload),
+            voiceMinutes: usageOptions.voiceMinutes,
+          });
         },
       }),
     );
@@ -515,25 +500,81 @@ async function proxyToMicroserviceStream(
     });
   } catch (err) {
     clearTimeout(timeoutId);
-    if (err instanceof Error && err.name === "AbortError") {
+    const kind = classifyProxyError(err);
+    if (kind === "timeout") {
       console.error("[origin-ai proxy] microservice stream timed out", {
         requestId,
         timeoutMs: PROXY_STREAM_TIMEOUT_MS,
         path,
       });
-    } else {
-      console.error("[origin-ai proxy] microservice stream failed:", {
+      return proxyTimeoutResponse(requestId);
+    }
+    if (kind === "connection") {
+      console.error("[origin-ai proxy] microservice stream unreachable:", {
         requestId,
         error: err instanceof Error ? err.message : String(err),
         path,
       });
+      return null;
     }
-    return null;
+    console.error("[origin-ai proxy] microservice stream failed:", {
+      requestId,
+      error: err instanceof Error ? err.message : String(err),
+      path,
+    });
+    return proxyFailureResponse(requestId);
   }
 }
 
-async function resolveProxyUser(request: NextRequest): Promise<StoredUser | null> {
-  return withStoreAsync(async (store) => requireUserFromRequest(store, request));
+// Store access in this route is SCOPED (bug-hunt 10 / N3): the old
+// withStoreAsync re-wrote every app.* table from one instance's snapshot on
+// EVERY Ori request, erasing concurrent writes made by other instances. Reads
+// pass `null` (fresh snapshot, nothing persisted); writes name only the acting
+// user's Ori collections.
+//
+// The proxy paths need only the caller's own user row, so they no longer
+// hydrate the store at all: resolveProxyUser was a forced full-store read (every
+// user, every live session, 18 app.* tables) behind the process-wide store
+// mutex on EVERY Ori request. getAuthenticatedUser is one PK lookup with the
+// same token-version check plus the account-status check. It is memoised per
+// request so the handlers can start it alongside the pre-proxy gates and every
+// branch still awaits the same single lookup. A DB failure throws
+// AuthServiceUnavailableError, which withAuthOutageGuard maps to a 503.
+const proxyUserByRequest = new WeakMap<Request, Promise<StoredUser | null>>();
+
+function resolveProxyUser(request: NextRequest): Promise<StoredUser | null> {
+  let pending = proxyUserByRequest.get(request);
+  if (!pending) {
+    pending = getAuthenticatedUser(request);
+    // A prefetched lookup is never awaited when a gate refuses first; mark the
+    // rejection handled so it cannot surface as an unhandled rejection.
+    pending.catch(() => undefined);
+    proxyUserByRequest.set(request, pending);
+  }
+  return pending;
+}
+
+/** Starts the user lookup early on the proxy paths (it runs alongside the gates). */
+function prefetchProxyUser(request: NextRequest): void {
+  if (ORIGIN_AI_SERVICE_URL) {
+    void resolveProxyUser(request);
+  }
+}
+
+type RouteHandler = (request: NextRequest, context: RouteContext) => Promise<Response>;
+
+/** An auth-DB outage is a 503 (retry), never a 401 that signs the student out. */
+function withAuthOutageGuard(handler: RouteHandler): RouteHandler {
+  return async (request, context) => {
+    try {
+      return await handler(request, context);
+    } catch (error) {
+      if (isAuthServiceUnavailableError(error)) {
+        return serviceUnavailable(error.message);
+      }
+      throw error;
+    }
+  };
 }
 
 /**
@@ -593,15 +634,21 @@ function extractVoiceText(payload: unknown, fallback?: string | null): string {
   return typeof value === "string" ? value : "";
 }
 
-async function checkOriginAiUsageLimit(
+// Read-only: the counters come from the user row resolveProxyUser just loaded
+// (same UTC-midnight reset rule as dbUpdateUsageMetrics). This used to be a
+// zero-increment dbUpdateUsageMetrics — three sequential writes on
+// origin_users / origin_user_daily_usage before every question. The reset and
+// the yesterday snapshot are still written by recordOriginAiProxyUsage after a
+// real answer, and origin-ai enforces its own daily token budget as well.
+function checkOriginAiUsageLimit(
   user: StoredUser,
   input: { voice?: boolean; pageKind?: string | null } = {},
-) {
-  const usage = await dbUpdateUsageMetrics(user.id, { tokens: 0, voiceMinutes: 0 });
-  if (usage.tokensUsedToday >= 200000) {
+): Response | null {
+  const exceeded = usageLimitExceeded(user, input);
+  if (exceeded === "tokens") {
     return forbidden("You've reached your daily AI usage limit (200k tokens). Please try again tomorrow.");
   }
-  if (input.voice && usage.voiceMinutesUsedToday >= 10 && input.pageKind !== "doubt_solver") {
+  if (exceeded === "voice") {
     return forbidden("You've reached your daily voice limit (10 minutes). Please try again tomorrow.");
   }
   return null;
@@ -638,28 +685,59 @@ function featureForAiRequest(request: NextRequest, slug: string[] = []): AiFeatu
   return "originAi";
 }
 
-export async function GET(request: NextRequest, context: RouteContext) {
+// GET routes that draw on the general rate limit (anything else is a 404).
+function isRateLimitedGetRoute(slug: string[]): boolean {
+  if (slug.length === 1) return slug[0] === "chapters" || slug[0] === "threads" || slug[0] === "session";
+  return slug.length === 2 && slug[0] === "threads";
+}
+
+async function handleGET(request: NextRequest, context: RouteContext) {
   const slug = await resolveSlug(context);
 
-  const aiBlock = await requireAiFeature(request, featureForAiRequest(request, slug));
-  if (aiBlock) return aiBlock;
-
-  const premiumBlock = await enforceOriginAiPremium(request);
-  if (premiumBlock) return premiumBlock;
+  // The AI toggle and premium checks are independent reads (Redis /
+  // Postgres), so they run together, with the caller's user lookup alongside
+  // (only for routes that exist; anything else is a 404 and never needs it).
+  // The first refusal in the old order still wins, the rate limit is taken
+  // only after both pass, and nothing is proxied until all of them pass.
+  const knownRoute = isRateLimitedGetRoute(slug);
+  if (knownRoute) prefetchProxyUser(request);
+  const gateRefusal = await gatesThenRateLimit(
+    [requireAiFeature(request, featureForAiRequest(request, slug)), enforceOriginAiPremium(request)],
+    knownRoute ? () => checkRateLimit(generalLimiter, userIdentifier(request)) : null,
+  );
+  if (gateRefusal) return gateRefusal;
 
   // GET /origin-ai/chapters?subject=math — list NCERT chapters for a subject
   if (slug.length === 1 && slug[0] === "chapters") {
-    const limited = await checkRateLimit(generalLimiter, userIdentifier(request));
-    if (limited) return limited;
-
     const subject = request.nextUrl.searchParams.get("subject");
     if (!isOriginAiChapterSubject(subject)) {
       return badRequest("Invalid subject. Must be one of: math, phy, chem, bio");
     }
 
+    // Cache first: the catalog is effectively static, so a fresh cached copy
+    // (read alongside the user lookup) is served without a Cloud Run call. On
+    // a miss or a stale copy the microservice answers and the cache is
+    // rewritten after the response, not before it.
+    let cached: Awaited<ReturnType<typeof getCachedChapters>> | undefined;
     if (ORIGIN_AI_SERVICE_URL) {
-      const proxyUser = await resolveProxyUser(request);
+      const [proxyUser, cachedRow] = await Promise.all([
+        resolveProxyUser(request),
+        getCachedChapters(subject).catch((error) => {
+          console.error("[origin-ai] chapter cache read failed", error instanceof Error ? error.message : error);
+          return null;
+        }),
+      ]);
       if (!proxyUser) return unauthorized();
+      cached = cachedRow;
+      if (cached && isChapterCatalogFresh(cached)) {
+        return ok(cached.payload, {
+          headers: {
+            "X-Origin-AI-Catalog-Cache": "hit",
+            "X-Origin-AI-Catalog-Fetched-At": cached.fetchedAt,
+          },
+        });
+      }
+
       const proxyResp = await proxyToMicroservice(
         "GET",
         `/api/v1/chapters?subject=${encodeURIComponent(subject)}`,
@@ -670,11 +748,12 @@ export async function GET(request: NextRequest, context: RouteContext) {
       if (proxyResp) {
         const data = await proxyResp.json().catch(() => null);
         if (proxyResp.ok) {
-          await upsertCachedChapters(subject, data ?? {});
+          if (isUsableChapterPayload(data)) {
+            runAfterResponse(() => upsertCachedChapters(subject, data), "chapter cache write");
+          }
           return ok(data ?? {}, { headers: { "X-Origin-AI-Catalog-Cache": "refresh" } });
         }
 
-        const cached = await getCachedChapters(subject);
         if (cached) {
           return ok(cached.payload, {
             headers: {
@@ -691,7 +770,9 @@ export async function GET(request: NextRequest, context: RouteContext) {
       }
     }
 
-    const cached = await getCachedChapters(subject);
+    if (cached === undefined) {
+      cached = await getCachedChapters(subject);
+    }
     if (cached) {
       return ok(cached.payload, {
         headers: {
@@ -708,9 +789,6 @@ export async function GET(request: NextRequest, context: RouteContext) {
   // When ORIGIN_AI_SERVICE_URL is set, threads live in Neon (origin_ai.sessions
   // rows with thread_id IS NOT NULL); otherwise we serve from the local store.
   if (slug.length === 1 && slug[0] === "threads") {
-    const limited = await checkRateLimit(generalLimiter, userIdentifier(request));
-    if (limited) return limited;
-
     if (ORIGIN_AI_SERVICE_URL) {
       const proxyUser = await resolveProxyUser(request);
       if (!proxyUser) return unauthorized();
@@ -718,11 +796,11 @@ export async function GET(request: NextRequest, context: RouteContext) {
       if (proxyResp) return proxyResp;
     }
 
-    const result = await withStoreAsync(async (store) => {
+    const result = await withStoreAsyncScoped(async (store) => {
       const user = await requireUserFromRequest(store, request);
       if (!user) return { status: "unauthorized" as const };
       return { status: "ok" as const, threads: listThreads(store, user.id).map(serializeThread) };
-    });
+    }, null);
 
     if (result.status === "unauthorized") return unauthorized();
     return ok({ threads: result.threads });
@@ -730,9 +808,6 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
   // GET /origin-ai/threads/:threadId — fetch a single thread's full snapshot (messages + metadata).
   if (slug.length === 2 && slug[0] === "threads") {
-    const limited = await checkRateLimit(generalLimiter, userIdentifier(request));
-    if (limited) return limited;
-
     if (ORIGIN_AI_SERVICE_URL) {
       const proxyUser = await resolveProxyUser(request);
       if (!proxyUser) return unauthorized();
@@ -746,12 +821,16 @@ export async function GET(request: NextRequest, context: RouteContext) {
       if (proxyResp) return proxyResp;
     }
 
-    const result = await withStoreAsync(async (store) => {
+    // getOriginAiSnapshot prepares the Ori runtime, which mutates this user's
+    // profile memory, session and reminder set.
+    const plan = new ScopedWritePlan();
+    const result = await withStoreAsyncScoped(async (store) => {
       const user = await requireUserFromRequest(store, request);
       if (!user) return { status: "unauthorized" as const };
       const snapshot = await getOriginAiSnapshot(store, user, request, toPageContext({}), slug[1]);
+      planOriginAiRuntimeWrite(plan, user.id);
       return { status: "ok" as const, snapshot };
-    });
+    }, plan.toPersist);
 
     if (result.status === "unauthorized") return unauthorized();
     return ok(result.snapshot);
@@ -760,9 +839,6 @@ export async function GET(request: NextRequest, context: RouteContext) {
   if (slug.length !== 1 || slug[0] !== "session") {
     return notFound();
   }
-
-  const limited = await checkRateLimit(generalLimiter, userIdentifier(request));
-  if (limited) return limited;
 
   const parsedQuery = sessionQuerySchema.safeParse({
     pathname: request.nextUrl.searchParams.get("pathname") ?? undefined,
@@ -784,7 +860,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     }
     const proxyResp = await proxyToMicroservice(
       "GET",
-      `/api/v1/chat/session?browserSessionId=${request.headers.get("X-Origin-AI-Session-Id") || ""}&pageKind=${parsedQuery.data.pageKind || "unknown"}${parsedQuery.data.questionId ? `&questionId=${encodeURIComponent(parsedQuery.data.questionId)}` : ""}${parsedQuery.data.questionAttempted ? `&questionAttempted=${parsedQuery.data.questionAttempted}` : ""}${parsedQuery.data.questionSolved ? `&questionSolved=${parsedQuery.data.questionSolved}` : ""}`,
+      `/api/v1/chat/session?browserSessionId=${encodeURIComponent(request.headers.get("X-Origin-AI-Session-Id") || "")}&pageKind=${encodeURIComponent(parsedQuery.data.pageKind || "unknown")}${parsedQuery.data.questionId ? `&questionId=${encodeURIComponent(parsedQuery.data.questionId)}` : ""}${parsedQuery.data.questionAttempted ? `&questionAttempted=${parsedQuery.data.questionAttempted}` : ""}${parsedQuery.data.questionSolved ? `&questionSolved=${parsedQuery.data.questionSolved}` : ""}`,
       null,
       request,
       proxyUser,
@@ -793,7 +869,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
   }
 
   // Fallback to in-app implementation
-  const result = await withStoreAsync(async (store) => {
+  const sessionPlan = new ScopedWritePlan();
+  const result = await withStoreAsyncScoped(async (store) => {
     const user = await requireUserFromRequest(store, request);
     if (!user) {
       return { status: "unauthorized" as const };
@@ -808,8 +885,9 @@ export async function GET(request: NextRequest, context: RouteContext) {
         questionSolved: toBooleanFlag(parsedQuery.data.questionSolved),
       }),
     );
+    planOriginAiRuntimeWrite(sessionPlan, user.id);
     return { status: "ok" as const, snapshot };
-  });
+  }, sessionPlan.toPersist);
 
   if (result.status === "unauthorized") {
     return unauthorized();
@@ -818,22 +896,47 @@ export async function GET(request: NextRequest, context: RouteContext) {
   return ok(result.snapshot);
 }
 
-export async function POST(request: NextRequest, context: RouteContext) {
+async function handlePOST(request: NextRequest, context: RouteContext) {
   const slug = await resolveSlug(context);
-
-  const aiBlock = await requireAiFeature(request, featureForAiRequest(request, slug));
-  if (aiBlock) return aiBlock;
-
-  const premiumBlock = await enforceOriginAiPremium(request);
-  if (premiumBlock) return premiumBlock;
 
   const uid = userIdentifier(request);
 
-  const isVoiceSessionStart = slug.length === 2 && slug[0] === "voice" && (slug[1] === "bootstrap" || slug[1] === "token");
+  const isVoiceSessionStart = slug.length === 2 && slug[0] === "voice" && (slug[1] === "bootstrap" || slug[1] === "ws-ticket");
   const isMessage = slug.length === 2 && slug[0] === "session" && slug[1] === "message";
   const limiter = isMessage ? aiLimiter : isVoiceSessionStart ? voiceLimiter : generalLimiter;
-  const limited = await checkRateLimit(limiter, uid);
-  if (limited) return limited;
+
+  // Same order as before (AI toggle, premium, then rate limit); see GET.
+  prefetchProxyUser(request);
+  const gateRefusal = await gatesThenRateLimit(
+    [requireAiFeature(request, featureForAiRequest(request, slug)), enforceOriginAiPremium(request)],
+    () => checkRateLimit(limiter, uid),
+  );
+  if (gateRefusal) return gateRefusal;
+
+  // POST /origin-ai/voice/ws-ticket — mint a 60 s signed ticket the browser
+  // appends to the origin-ai voice WebSocket URL (bug U2). Session-only: the
+  // ticket carries the resolved user id, so there is nothing to take from the
+  // body and no body is required.
+  if (slug.length === 2 && slug[0] === "voice" && slug[1] === "ws-ticket") {
+    const proxyUser = await resolveProxyUser(request);
+    if (!proxyUser) return unauthorized();
+    try {
+      const minted = mintOriginAiWsTicket(proxyUser.id);
+      return ok({ ticket: minted.ticket, expiresAt: minted.expiresAt });
+    } catch (error) {
+      const message = error instanceof ServiceAuthConfigurationError
+        ? error.message
+        : "Ori voice is not configured.";
+      console.error("[origin-ai voice] ws-ticket mint failed", {
+        requestId: getRequestId(request.headers),
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return new Response(JSON.stringify({ detail: message }), {
+        status: 503,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+  }
 
   // POST /origin-ai/threads — create a named thread (body { title?, subject? }).
   if (slug.length === 1 && slug[0] === "threads") {
@@ -865,7 +968,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
       }
     }
 
-    const result = await withStoreAsync(async (store) => {
+    const plan = new ScopedWritePlan();
+    const result = await withStoreAsyncScoped(async (store) => {
       const user = await requireUserFromRequest(store, request);
       if (!user) return { status: "unauthorized" as const };
       const browserSessionId = request.headers.get("X-Origin-AI-Session-Id") ?? `legacy-origin-ai-session-${user.id}`;
@@ -873,8 +977,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
         title: parsed.data.title,
         subject: parsed.data.subject ?? null,
       });
+      plan.forUser(user.id).touch("originAiSessions");
       return { status: "created" as const, thread: serializeThread(session) };
-    });
+    }, plan.toPersist);
     if (result.status === "unauthorized") return unauthorized();
     return created({ thread: result.thread });
   }
@@ -903,7 +1008,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       if (!parsedBody.success) {
         return badRequest("Valid image data, MIME type, and thread metadata are required.");
       }
-      const quotaResponse = await checkOriginAiUsageLimit(proxyUser, { pageKind: "doubt_solver" });
+      const quotaResponse = checkOriginAiUsageLimit(proxyUser, { pageKind: "doubt_solver" });
       if (quotaResponse) {
         return quotaResponse;
       }
@@ -944,7 +1049,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       if (!proxyUser) {
         return unauthorized();
       }
-      const quotaResponse = await checkOriginAiUsageLimit(proxyUser, {
+      const quotaResponse = checkOriginAiUsageLimit(proxyUser, {
         pageKind: parsedBody.data.pageContext?.pageKind ?? null,
       });
       if (quotaResponse) {
@@ -953,10 +1058,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
       let threadSubject: string | null = null;
       if (parsedBody.data.threadId) {
-        threadSubject = await withStoreAsync(async (store) => {
-          const thread = getThreadById(store, proxyUser.id, parsedBody.data.threadId!);
-          return thread?.subject ?? null;
-        });
+        threadSubject = await findLocalThreadSubject(proxyUser.id, parsedBody.data.threadId);
       }
       const enrichedPayload = {
         ...parsedBody.data,
@@ -996,7 +1098,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       if (!proxyUser) {
         return unauthorized();
       }
-      const quotaResponse = await checkOriginAiUsageLimit(proxyUser, {
+      const quotaResponse = checkOriginAiUsageLimit(proxyUser, {
         pageKind: "doubt_solver",
       });
       if (quotaResponse) {
@@ -1005,10 +1107,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
       let threadSubject: string | null = null;
       if (parsedBody.data.threadId) {
-        threadSubject = await withStoreAsync(async (store) => {
-          const thread = getThreadById(store, proxyUser.id, parsedBody.data.threadId!);
-          return thread?.subject ?? null;
-        });
+        threadSubject = await findLocalThreadSubject(proxyUser.id, parsedBody.data.threadId);
       }
       const enrichedPayload = {
         ...parsedBody.data,
@@ -1046,7 +1145,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         if (!proxyUser) {
           return unauthorized();
         }
-        const quotaResponse = await checkOriginAiUsageLimit(proxyUser, {
+        const quotaResponse = checkOriginAiUsageLimit(proxyUser, {
           pageKind: parsedBody.data.pageContext?.pageKind ?? null,
         });
         if (quotaResponse) {
@@ -1055,14 +1154,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
         // Enrich the outbound payload with thread metadata the Python service
         // needs: thread_id (so it doesn't write into the floating-avatar
         // session) and subject (so subject_kb scopes its lookup correctly).
-        // The local origin-ai store still holds the canonical thread → subject
-        // mapping, so we read it here before forwarding.
+        // A thread created through the in-app fallback keeps its subject in
+        // app.origin_ai_sessions, so it is read (one indexed query) first.
         let threadSubject: string | null = null;
         if (parsedBody.data.threadId) {
-          threadSubject = await withStoreAsync(async (store) => {
-            const thread = getThreadById(store, proxyUser.id, parsedBody.data.threadId!);
-            return thread?.subject ?? null;
-          });
+          threadSubject = await findLocalThreadSubject(proxyUser.id, parsedBody.data.threadId);
         }
         const enrichedPayload = {
           ...parsedBody.data,
@@ -1091,7 +1187,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
       if (process.env.NODE_ENV !== "production") {
         console.warn("[origin-ai proxy] microservice unavailable; using in-app fallback");
       }
-      const result = await withStoreAsync(async (store) => {
+      // An error reply (empty message, daily limit) returns before the runtime is
+      // touched, so only a delivered reply persists — runtime + check-in points.
+      const plan = new ScopedWritePlan();
+      const result = await withStoreAsyncScoped(async (store) => {
         const user = await requireUserFromRequest(store, request);
         if (!user) {
           return { status: "unauthorized" as const };
@@ -1119,8 +1218,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
           return { status: "error" as const, error: reply.error };
         }
 
+        planOriginAiRuntimeWrite(plan, user.id, { awardsPoints: true });
         return { status: "created" as const, reply };
-      });
+      }, plan.toPersist);
 
       if (result.status === "unauthorized") {
         return unauthorized();
@@ -1144,14 +1244,20 @@ export async function POST(request: NextRequest, context: RouteContext) {
       }
 
       if (ORIGIN_AI_SERVICE_URL) {
-        // Fast path: don't await DB user resolution here. The python service authenticates
-        // the request itself via Depends(get_current_user).
-        const proxyResp = await proxyToMicroservice("POST", "/api/v1/voice/bootstrap", parsedBody.data, request, dummyUser);
+        // The Python side mints the LiveKit identity / hydrates memory for
+        // whichever X-Origin-User-Id we forward, so this MUST be the real
+        // session user — a placeholder pooled every student's voice memory
+        // into one pseudo-user (finding N14).
+        const proxyUser = await resolveProxyUser(request);
+        if (!proxyUser) return unauthorized();
+        const proxyResp = await proxyToMicroservice("POST", "/api/v1/voice/bootstrap", parsedBody.data, request, proxyUser);
         if (proxyResp) return proxyResp;
       }
 
-      // Fallback
-      const result = await withStoreAsync(async (store) => {
+      // Fallback. The runtime is prepared (and mutated) before the live
+      // bootstrap can fail, so it is persisted either way — as before.
+      const plan = new ScopedWritePlan();
+      const result = await withStoreAsyncScoped(async (store) => {
         const user = await requireUserFromRequest(store, request);
         if (!user) {
           return { status: "unauthorized" as const };
@@ -1163,13 +1269,14 @@ export async function POST(request: NextRequest, context: RouteContext) {
           request,
           toPageContext(parsedBody.data.pageContext),
         );
+        planOriginAiRuntimeWrite(plan, user.id);
 
         if ("error" in bootstrap) {
           return { status: "error" as const, error: bootstrap.error };
         }
 
         return { status: "ok" as const, bootstrap };
-      });
+      }, plan.toPersist);
 
       if (result.status === "unauthorized") {
         return unauthorized();
@@ -1193,7 +1300,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         if (!proxyUser) {
           return unauthorized();
         }
-        const quotaResponse = await checkOriginAiUsageLimit(proxyUser, {
+        const quotaResponse = checkOriginAiUsageLimit(proxyUser, {
           voice: true,
           pageKind: parsedBody.data.pageContext?.pageKind ?? null,
         });
@@ -1215,8 +1322,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
         }
       }
 
-      // Fallback
-      const result = await withStoreAsync(async (store) => {
+      // Fallback. Transcript errors return before the runtime is touched.
+      const plan = new ScopedWritePlan();
+      const result = await withStoreAsyncScoped(async (store) => {
         const user = await requireUserFromRequest(store, request);
         if (!user) {
           return { status: "unauthorized" as const };
@@ -1247,8 +1355,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
           return { status: "error" as const, error: reply.error };
         }
 
+        planOriginAiRuntimeWrite(plan, user.id, { awardsPoints: true });
         return { status: "created" as const, reply };
-      });
+      }, plan.toPersist);
 
       if (result.status === "unauthorized") {
         return unauthorized();
@@ -1275,7 +1384,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       if (!proxyUser) {
         return unauthorized();
       }
-      const quotaResponse = await checkOriginAiUsageLimit(proxyUser, {
+      const quotaResponse = checkOriginAiUsageLimit(proxyUser, {
         voice: true,
         pageKind: parsedBody.data.pageContext?.pageKind ?? null,
       });
@@ -1307,7 +1416,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         if (!proxyUser) {
           return unauthorized();
         }
-        const quotaResponse = await checkOriginAiUsageLimit(proxyUser, {
+        const quotaResponse = checkOriginAiUsageLimit(proxyUser, {
           voice: true,
           pageKind: parsedBody.data.pageContext?.pageKind ?? null,
         });
@@ -1329,8 +1438,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
         }
       }
 
-      // Fallback
-      const result = await withStoreAsync(async (store) => {
+      // Fallback. Transcription / limit errors return before the runtime is
+      // touched; a delivered reply persists the runtime + check-in points.
+      const plan = new ScopedWritePlan();
+      const result = await withStoreAsyncScoped(async (store) => {
         const user = await requireUserFromRequest(store, request);
         if (!user) {
           return { status: "unauthorized" as const };
@@ -1358,8 +1469,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
           return { status: "error" as const, error: reply.error };
         }
 
+        planOriginAiRuntimeWrite(plan, user.id, { awardsPoints: true });
         return { status: "created" as const, reply };
-      });
+      }, plan.toPersist);
 
       if (result.status === "unauthorized") {
         return unauthorized();
@@ -1387,7 +1499,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         if (!proxyUser) {
           return unauthorized();
         }
-        const quotaResponse = await checkOriginAiUsageLimit(proxyUser, { voice: true });
+        const quotaResponse = checkOriginAiUsageLimit(proxyUser, { voice: true });
         if (quotaResponse) {
           return quotaResponse;
         }
@@ -1406,8 +1518,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
         }
       }
 
-      // Fallback
-      const result = await withStoreAsync(async (store) => {
+      // Fallback. No store mutation (usage goes through dbUpdateUsageMetrics).
+      const result = await withStoreAsyncScoped(async (store) => {
         const user = await requireUserFromRequest(store, request);
         if (!user) {
           return { status: "unauthorized" as const };
@@ -1425,7 +1537,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         }
 
         return { status: "ok" as const, reply };
-      });
+      }, null);
 
       if (result.status === "unauthorized") {
         return unauthorized();
@@ -1448,7 +1560,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
         // Opt-in Doubt Solver summary speech shares the AI Explainer token budget,
         // not Ori's 10-minute live-voice quota.
-        const quotaResponse = await checkOriginAiUsageLimit(proxyUser, {
+        const quotaResponse = checkOriginAiUsageLimit(proxyUser, {
           pageKind: "doubt_solver",
         });
         if (quotaResponse) {
@@ -1541,27 +1653,25 @@ export async function POST(request: NextRequest, context: RouteContext) {
       });
     }
 
-    if (slug.length === 2 && slug[0] === "voice" && slug[1] === "token") {
-      // The client no longer uses this fallback token endpoint, but we keep it fast just in case.
-      return ok({ transport: "server_voice" });
-    }
-
     return notFound();
-  } catch {
+  } catch (error) {
+    if (isAuthServiceUnavailableError(error)) throw error;
     return badRequest("Invalid JSON payload.");
   }
 }
 
 // PATCH /origin-ai/threads/:threadId — rename / change subject.
-export async function PATCH(request: NextRequest, context: RouteContext) {
+async function handlePATCH(request: NextRequest, context: RouteContext) {
   const slug = await resolveSlug(context);
   if (slug.length !== 2 || slug[0] !== "threads") {
     return notFound();
   }
-  const aiBlock = await requireAiFeature(request, featureForAiRequest(request, slug));
-  if (aiBlock) return aiBlock;
-  const limited = await checkRateLimit(generalLimiter, userIdentifier(request));
-  if (limited) return limited;
+  prefetchProxyUser(request);
+  const gateRefusal = await gatesThenRateLimit(
+    [requireAiFeature(request, featureForAiRequest(request, slug))],
+    () => checkRateLimit(generalLimiter, userIdentifier(request)),
+  );
+  if (gateRefusal) return gateRefusal;
 
   let body: unknown;
   try {
@@ -1590,7 +1700,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     }
   }
 
-  const result = await withStoreAsync(async (store) => {
+  const plan = new ScopedWritePlan();
+  const result = await withStoreAsyncScoped(async (store) => {
     const user = await requireUserFromRequest(store, request);
     if (!user) return { status: "unauthorized" as const };
     const session = updateThread(store, user.id, slug[1], {
@@ -1598,8 +1709,9 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       subject: parsed.data.subject ?? undefined,
     });
     if (!session) return { status: "not_found" as const };
+    plan.forUser(user.id).touch("originAiSessions");
     return { status: "ok" as const, thread: serializeThread(session) };
-  });
+  }, plan.toPersist);
 
   if (result.status === "unauthorized") return unauthorized();
   if (result.status === "not_found") return notFound("Thread not found.");
@@ -1607,15 +1719,17 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 }
 
 // DELETE /origin-ai/threads/:threadId
-export async function DELETE(request: NextRequest, context: RouteContext) {
+async function handleDELETE(request: NextRequest, context: RouteContext) {
   const slug = await resolveSlug(context);
   if (slug.length !== 2 || slug[0] !== "threads") {
     return notFound();
   }
-  const aiBlock = await requireAiFeature(request, featureForAiRequest(request, slug));
-  if (aiBlock) return aiBlock;
-  const limited = await checkRateLimit(generalLimiter, userIdentifier(request));
-  if (limited) return limited;
+  prefetchProxyUser(request);
+  const gateRefusal = await gatesThenRateLimit(
+    [requireAiFeature(request, featureForAiRequest(request, slug))],
+    () => checkRateLimit(generalLimiter, userIdentifier(request)),
+  );
+  if (gateRefusal) return gateRefusal;
 
   if (ORIGIN_AI_SERVICE_URL) {
     const proxyUser = await resolveProxyUser(request);
@@ -1632,14 +1746,29 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     if (proxyResp) return proxyResp;
   }
 
-  const result = await withStoreAsync(async (store) => {
+  const plan = new ScopedWritePlan();
+  const result = await withStoreAsyncScoped(async (store) => {
     const user = await requireUserFromRequest(store, request);
     if (!user) return { status: "unauthorized" as const };
+    // deleteThread drops every session row of this user carrying the thread id;
+    // remove exactly those rows (by session id) with targeted user-scoped deletes.
+    const removedIds = store.originAiSessions
+      .filter((entry) => entry.userId === user.id && entry.threadId === slug[1])
+      .map((entry) => entry.id);
     const removed = deleteThread(store, user.id, slug[1]);
+    if (removed) {
+      plan.forUser(user.id);
+      for (const id of removedIds) plan.remove("originAiSessions", id);
+    }
     return { status: removed ? ("ok" as const) : ("not_found" as const) };
-  });
+  }, plan.toPersist);
 
   if (result.status === "unauthorized") return unauthorized();
   if (result.status === "not_found") return notFound("Thread not found.");
   return noContent();
 }
+
+export const GET = withAuthOutageGuard(handleGET);
+export const POST = withAuthOutageGuard(handlePOST);
+export const PATCH = withAuthOutageGuard(handlePATCH);
+export const DELETE = withAuthOutageGuard(handleDELETE);

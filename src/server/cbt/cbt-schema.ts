@@ -12,6 +12,7 @@ import type { PoolClient } from "pg";
 
 import { getUserPostgresPool, isUserPostgresConfigured } from "@/server/user-postgres";
 import { ensureUserSchema } from "@/server/db-users";
+import { lockSchemaDdl } from "@/server/schema-lock";
 
 declare global {
   var __originCbtSchemaEnsured: boolean | undefined;
@@ -43,6 +44,9 @@ export async function ensureCbtSchema(): Promise<void> {
       const client = await pool().connect();
       try {
         await client.query("BEGIN");
+        // The one shared DDL lock (see schema-lock.ts): concurrent cold starts
+        // must not race each other's CREATE/ALTER, nor another module's ensure.
+        await lockSchemaDdl(client);
 
         // Widen the shared origin_users role CHECK to include 'cbt_teacher'.
         await client.query(`
@@ -205,6 +209,20 @@ export async function ensureCbtSchema(): Promise<void> {
           ALTER TABLE cbt.room_participants
             ADD COLUMN IF NOT EXISTS section_scores JSONB NOT NULL DEFAULT '{}'::jsonb;
 
+          -- Grading status (20261022): grading runs AFTER the finished_at claim
+          -- commits, so a failure there used to strand the attempt with a NULL
+          -- score forever. 'pending' = grading still owed (the CBT sweep retries
+          -- it), 'failed' = gave up after GRADING_MAX_ATTEMPTS (teacher retry).
+          -- Default 'done' so legacy and 'absent' rows are never re-swept.
+          -- grading_next_attempt_at: retry backoff / grading lease (NULL = due).
+          ALTER TABLE cbt.room_participants
+            ADD COLUMN IF NOT EXISTS grading_status   TEXT    NOT NULL DEFAULT 'done',
+            ADD COLUMN IF NOT EXISTS grading_attempts INTEGER NOT NULL DEFAULT 0,
+            ADD COLUMN IF NOT EXISTS grading_error    TEXT,
+            ADD COLUMN IF NOT EXISTS grading_next_attempt_at TIMESTAMPTZ;
+          CREATE INDEX IF NOT EXISTS idx_cbt_participants_grading_pending
+            ON cbt.room_participants (finished_at) WHERE grading_status = 'pending';
+
           CREATE TABLE IF NOT EXISTS cbt.answer_drafts (
             room_id        TEXT NOT NULL REFERENCES cbt.rooms(id) ON DELETE CASCADE,
             participant_id TEXT NOT NULL REFERENCES cbt.room_participants(id) ON DELETE CASCADE,
@@ -292,6 +310,15 @@ export async function ensureCbtSchema(): Promise<void> {
                 CHECK (rejoin_policy IN ('name_or_id', 'id_only')) NOT VALID;
             END IF;
 
+            -- 20261022: grading_status values.
+            IF NOT EXISTS (
+              SELECT 1 FROM pg_constraint WHERE conname = 'cbt_participants_grading_status_check'
+            ) THEN
+              ALTER TABLE cbt.room_participants
+                ADD CONSTRAINT cbt_participants_grading_status_check
+                CHECK (grading_status IN ('pending', 'done', 'failed')) NOT VALID;
+            END IF;
+
             -- 20260808: a quota of 0 would mean "blocked forever" (that is what
             -- disabling the teacher is for); NULL is how "no cap" is expressed.
             IF NOT EXISTS (
@@ -335,6 +362,26 @@ export async function ensureCbtSchema(): Promise<void> {
           "INSERT INTO app.migrations (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING",
           ["20260804_cbt_report_cards", "cbt sectional marking + report cards"],
         );
+        // 20261022 one-off repair: rows stranded by a grading failure before
+        // grading_status existed go back to 'pending' for the regrade sweep. Run
+        // only when this database first records the receipt, so it is a
+        // one-time scan rather than one per cold start. Same predicate as the
+        // migration file (graded reasons only; NULL = pre-20260802 history).
+        const gradingReceipt = await client.query(
+          `INSERT INTO app.migrations (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING RETURNING id`,
+          ["20261022_cbt_grading_status", "cbt grading status + regrade sweep"],
+        );
+        if (gradingReceipt.rows.length > 0) {
+          await client.query(`
+            UPDATE cbt.room_participants
+               SET grading_status = 'pending'
+             WHERE grading_status = 'done'
+               AND finished_at IS NOT NULL
+               AND score IS NULL
+               AND finalize_reason IS NOT NULL
+               AND finalize_reason <> 'absent'
+          `);
+        }
         // Only the cbt.teachers columns of 20260808 are applied here; the two
         // new tables live in ensureCbtQuotaSchema, which records the receipt.
         await client.query("COMMIT");

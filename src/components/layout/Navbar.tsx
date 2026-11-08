@@ -34,6 +34,8 @@ import {
     Trophy,
     ArrowRight,
     Menu,
+    MessageCircle,
+    NotebookPen,
     X
 } from 'lucide-react';
 import { NotificationBell } from './NotificationBell';
@@ -41,6 +43,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import type { User, ViewState } from '@/types';
 import GlobalSearch from './GlobalSearch';
 import { getEntitledSubjects } from '@/lib/entitlements';
+import { useMessagesBadge } from '@/features/messaging/useMessagesBadge';
+import { badgeLabel } from '@/features/messaging/messaging-ui';
 
 interface NavbarProps {
     user: User;
@@ -55,6 +59,10 @@ interface NavbarProps {
     socialEnabled?: boolean;
     /** Contest/ORBIT is flag-dark in prod; when off the Orbit tab shows Coming Soon. */
     contestEnabled?: boolean;
+    /** Origin Notes (TEACHER_LAUNCH_NOTES); hidden everywhere while off. */
+    notesEnabled?: boolean;
+    /** Student messaging (studentMessaging + studentSocial); hidden everywhere while off. */
+    messagingEnabled?: boolean;
     leftOffset?: number;
     expanded?: boolean;
     onToggleExpanded?: () => void;
@@ -63,8 +71,10 @@ interface NavbarProps {
     oriActive?: boolean;
 }
 
-export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLogout, theme, setTheme, connectEnabled, premiumEnabled, socialEnabled, contestEnabled, leftOffset = 0, expanded = false, onToggleExpanded, onOpenOri, oriActive }: NavbarProps) {
+export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLogout, theme, setTheme, connectEnabled, premiumEnabled, socialEnabled, contestEnabled, notesEnabled, messagingEnabled, leftOffset = 0, expanded = false, onToggleExpanded, onOpenOri, oriActive }: NavbarProps) {
     const { unreadCount } = useNotifications();
+    // Unread messages + waiting requests (students only; polls lightly).
+    const messagesBadge = useMessagesBadge(Boolean(messagingEnabled) && user.role?.toLowerCase() === 'student');
     const [showProfileMenu, setShowProfileMenu] = useState(false);
     const [showExploreMenu, setShowExploreMenu] = useState(false);
     const [showMobileMenu, setShowMobileMenu] = useState(false);
@@ -123,6 +133,7 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
     // Orbit is the contest surface and ships dark in production, so it points at
     // its Coming Soon screen until the flag is on rather than dead-ending.
     const moreExtras = isTeacher ? [] : [
+        ...(notesEnabled ? [{ label: 'Notes', icon: NotebookPen, view: 'notes' as ViewState }] : []),
         { label: 'Snap & Solve', icon: Camera, view: 'snap-solve' as ViewState },
         { label: 'Orbit', icon: Trophy, view: (contestEnabled ? 'contest' : 'snap-solve') as ViewState },
         { label: 'Leaderboard', icon: BarChart3, view: 'leaderboard' as ViewState },
@@ -139,6 +150,7 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
         { label: 'Goals', icon: ListTodo, view: 'tasks-goals' as ViewState },
         { label: 'Explore', icon: LayoutGrid, view: 'explore' as ViewState },
         ...(socialEnabled ? [{ label: 'Social', icon: UserPlus, view: 'social' as ViewState }] : []),
+        ...(messagingEnabled ? [{ label: 'Messages', icon: MessageCircle, view: 'messages' as ViewState }] : []),
         ...(connectEnabled ? [{ label: 'Connect', icon: Building2, view: 'connect' as ViewState }] : []),
     ];
 
@@ -146,7 +158,8 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
         const currentViewValue = String(currentView);
         return currentViewValue === item.view ||
             (item.view === 'study-rooms' && currentViewValue.startsWith('study-rooms')) ||
-            (item.view === 'ogcode' && currentView === 'ogcode-workspace');
+            (item.view === 'ogcode' && currentView === 'ogcode-workspace') ||
+            (item.view === 'messages' && currentViewValue.startsWith('messages/'));
     };
 
     const sidebarBg = 'bg-[hsl(var(--neu-bg))] border-r border-primary/10 shadow-[4px_0_14px_hsl(var(--neu-shadow)/35%),-2px_0_6px_hsl(var(--neu-light)/25%)]';
@@ -328,11 +341,19 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                                     {active && (
                                         <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-primary rounded-r-full" />
                                     )}
-                                    <div className="w-5 h-5 flex items-center justify-center shrink-0">
+                                    <div className="relative w-5 h-5 flex items-center justify-center shrink-0">
                                         {typeof item.icon === 'function' && item.icon.toString().includes('img')
                                             ? <Icon />
                                             : <Icon className="w-5 h-5" />
                                         }
+                                        {item.view === 'messages' && messagesBadge > 0 && (
+                                            <span
+                                                className="absolute -right-2 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold tabular-nums text-destructive-foreground"
+                                                aria-label={`${messagesBadge} unread messages and requests`}
+                                            >
+                                                {badgeLabel(messagesBadge)}
+                                            </span>
+                                        )}
                                     </div>
                                     <span className={cn(
                                         'font-bold truncate',
@@ -377,6 +398,7 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                                                     }}
                                                 >
                                                     {[
+                                                        ...(notesEnabled ? [{ label: 'Notes', icon: NotebookPen, view: 'notes', desc: 'Short notes & formulas', color: 'text-primary' }] : []),
                                                         { label: 'Study Corner', icon: BookOpen, view: 'study-corner', desc: 'NCERT & Materials', color: 'text-primary' },
                                                         { label: 'Pomodoro', icon: Timer, view: 'pomodoro', desc: 'Focus timer', color: 'text-primary' },
                                                         { label: 'Leaderboard', icon: Trophy, view: 'leaderboard', desc: 'Global rankings', color: 'text-amber-500' }
@@ -659,8 +681,16 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                                                         : 'border-border bg-surface-2 text-foreground',
                                                 )}
                                             >
-                                                <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-xl', active ? 'bg-primary/20' : 'bg-surface-3')}>
+                                                <span className={cn('relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl', active ? 'bg-primary/20' : 'bg-surface-3')}>
                                                     <Icon className="h-5 w-5" />
+                                                    {item.view === 'messages' && messagesBadge > 0 && (
+                                                        <span
+                                                            className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold tabular-nums text-destructive-foreground"
+                                                            aria-label={`${messagesBadge} unread messages and requests`}
+                                                        >
+                                                            {badgeLabel(messagesBadge)}
+                                                        </span>
+                                                    )}
                                                 </span>
                                                 <span className="min-w-0 truncate text-sm font-bold">{item.label}</span>
                                             </button>
@@ -766,12 +796,13 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                                     )}
                                     {/* Unread rides More again: it is the tab that opens the
                                         sheet holding notifications. */}
-                                    {item.view === null && !item.center && unreadCount > 0 && (
+                                    {/* Messages live in the sheet too, so their count rides along. */}
+                                    {item.view === null && !item.center && unreadCount + messagesBadge > 0 && (
                                         <span
                                             className="absolute right-[22%] top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold tabular-nums text-destructive-foreground"
-                                            aria-label={`${unreadCount} unread notifications`}
+                                            aria-label={`${unreadCount} unread notifications, ${messagesBadge} unread messages and requests`}
                                         >
-                                            {unreadCount > 9 ? '9+' : unreadCount}
+                                            {unreadCount + messagesBadge > 9 ? '9+' : unreadCount + messagesBadge}
                                         </span>
                                     )}
                                     {item.center ? (

@@ -9,6 +9,7 @@ import { listTeacherQuestions } from "@/server/workspaces/questions-service";
 import { loadWorkspaceForRender } from "@/server/workspaces/server-loader";
 import { getContentQuestionStoredMap } from "@/server/workspaces/test-question-resolver";
 import { getTeacherTest } from "@/server/workspaces/tests-service";
+import { listTestAssignments } from "@/server/workspaces/tests-store";
 import { TestEditClient } from "@/components/teacher/TestEditClient";
 import type { WizardInitial } from "@/components/teacher/TestCreatorWizard";
 import { blueprintSectionsOf } from "@/server/workspaces/test-sources-service";
@@ -35,12 +36,16 @@ export default async function EditTestPage({ params }: Props) {
     .map((q) => q.contentQuestionId)
     .filter((id): id is string => Boolean(id));
 
-  const [ogMap, contentMap, questions, batches] = await Promise.all([
+  const [ogMap, contentMap, questions, batches, assignments] = await Promise.all([
     getOgcodeCatalogQuestionMap(ogIds),
     getContentQuestionStoredMap(contentIds),
     listTeacherQuestions(workspaceId, { status: "all" }),
     listBatches(workspaceId, { status: "active" }),
+    listTestAssignments(testId),
   ]);
+  // The most recent active batch assignment pre-fills Deliver (R4-3), so a
+  // metadata save re-sends the same batch + window instead of a re-typed one.
+  const current = assignments.find((a) => a.batchId && (a.status === "assigned" || a.status === "open"));
 
   const selectedQuestions: SelectedQuestion[] = [...test.questions]
     .sort((a, b) => a.position - b.position)
@@ -83,6 +88,14 @@ export default async function EditTestPage({ params }: Props) {
     shuffle: settings.shuffle ?? true,
     autoSubmit: settings.autoSubmit ?? true,
     hideLeaderboard: settings.hideLeaderboard ?? false,
+    delivery: current?.batchId
+      ? {
+          assignmentId: current.id,
+          batchId: current.batchId,
+          startsAt: current.scheduledStartAt,
+          endsAt: current.scheduledEndAt,
+        }
+      : null,
   };
 
   return (

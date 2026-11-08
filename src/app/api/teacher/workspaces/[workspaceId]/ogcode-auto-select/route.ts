@@ -16,7 +16,7 @@ import type { NextRequest } from "next/server";
 import { z } from "zod";
 
 import { parseJsonBody } from "@/server/http";
-import { requireFeatureEnabled } from "@/lib/feature-flags";
+import { requireFeatureEnabledRuntime } from "@/server/feature-flags-runtime";
 import { requireWorkspaceMember } from "@/server/workspaces/authz";
 import { withStoreAsyncScoped } from "@/server/store";
 import { generateOgcodeSelectionForWorkspace, type CustomTestPayload } from "@/server/assessments";
@@ -54,7 +54,7 @@ const Schema = z
 
 export async function POST(request: NextRequest, context: WorkspaceIdRouteContext) {
   try {
-    requireFeatureEnabled("teacherRooms");
+    await requireFeatureEnabledRuntime("teacherRooms");
     const workspaceId = await getWorkspaceId(context);
     const ctx = await requireWorkspaceMember(request, workspaceId, ["owner", "admin", "teacher"]);
     const payload = Schema.parse(await parseJsonBody(request)) satisfies CustomTestPayload;

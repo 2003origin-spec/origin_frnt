@@ -2,6 +2,7 @@ import type { Pool, PoolClient } from "pg";
 
 import { ensureAnalyticsSchema } from "@/server/analytics-store";
 import { getOgcodePostgresPool } from "@/server/postgres";
+import { withSchemaLock } from "@/server/schema-lock";
 
 declare global {
   var __originRoomsSchemaReady: Promise<void> | undefined;
@@ -124,18 +125,25 @@ export function getRoomsPostgresPoolOrThrow(): Pool {
   return pool;
 }
 
+/**
+ * Ensure the `rooms.*` schema exists. Memoised per process via
+ * `globalThis.__originRoomsSchemaReady`.
+ *
+ * The `client` argument is accepted for backwards compatibility only: DDL is
+ * never run on a caller-supplied (transaction) client. `ALTER TABLE … IF NOT
+ * EXISTS` takes an ACCESS EXCLUSIVE lock before evaluating IF NOT EXISTS, so
+ * re-running the DDL inside every `BEGIN` serialised all room traffic behind
+ * lobby polling. A call with a client simply awaits the memoised pool-level
+ * ensure, which still runs the DDL exactly once in a fresh process.
+ */
 export async function ensureRoomsSchema(client?: PoolClient): Promise<void> {
-  if (client) {
-    await ensureAnalyticsSchema(client);
-    await client.query(ROOMS_SCHEMA_SQL);
-    return;
-  }
+  void client;
 
   if (!globalThis.__originRoomsSchemaReady) {
     globalThis.__originRoomsSchemaReady = (async () => {
       const pool = getRoomsPostgresPoolOrThrow();
       await ensureAnalyticsSchema();
-      await pool.query(ROOMS_SCHEMA_SQL);
+      await withSchemaLock(pool, (c) => c.query(ROOMS_SCHEMA_SQL));
     })().catch((error) => {
       globalThis.__originRoomsSchemaReady = undefined;
       throw error;

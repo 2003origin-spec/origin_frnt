@@ -281,7 +281,7 @@ export async function createDocumentUpload(
   // KYC documents never go to the public image bucket (B96).
   const bucket = requirePrivateFilesBucket();
   try {
-    const signed = createPresignedR2PutUrl({ objectKey, bucket, expiresSeconds: 600, method: "PUT" });
+    const signed = createPresignedR2PutUrl({ objectKey, bucket, expiresSeconds: 600, method: "PUT", contentType: input.mimeType, contentLength: input.sizeBytes });
     return { uploadUrl: signed.url, objectKey, expiresInSeconds: 600 };
   } catch {
     throw new NowError(503, "storage_unavailable", "Uploads are not available right now. Please try later.");

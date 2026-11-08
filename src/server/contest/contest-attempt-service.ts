@@ -95,7 +95,10 @@ export async function startAttempt(
     `INSERT INTO contest.attempts (contest_id, user_id, registered_at, started_at)
      SELECT c.id, $2, r.registered_at, NOW()
        FROM contest.contests c
-       JOIN contest.registrations r ON r.contest_id = c.id AND r.user_id = $2
+       -- Only a CONFIRMED seat may start: a waitlisted registration must never
+       -- get a graded, ranked, ORBIT-rated attempt (cap bypass).
+       JOIN contest.registrations r
+         ON r.contest_id = c.id AND r.user_id = $2 AND r.status = 'registered'
       WHERE c.id = $1
         AND c.status = 'scheduled'
         AND c.start_at IS NOT NULL AND c.end_at IS NOT NULL
@@ -114,10 +117,13 @@ export async function startAttempt(
     if (!existing.rows[0]) {
       // Not started and insert didn't fire → not registered or not live.
       const reg = await p.query(
-        `SELECT 1 FROM contest.registrations WHERE contest_id = $1 AND user_id = $2`,
+        `SELECT status FROM contest.registrations WHERE contest_id = $1 AND user_id = $2`,
         [contestId, userId],
       );
       if (reg.rowCount === 0) throw attemptError(403, "Register for the contest first.", "not_registered");
+      if (reg.rows[0]?.status === "waitlisted") {
+        throw attemptError(403, "You are on the waitlist for this contest.", "waitlisted");
+      }
       throw attemptError(409, "The contest is not currently live.", "not_live");
     }
     // else: fall through to state (resume).

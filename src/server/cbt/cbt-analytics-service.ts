@@ -18,6 +18,7 @@ import {
 import { ensureCbtSchema } from "./cbt-schema";
 import { loadSectionScores } from "./cbt-sections-service";
 import { cbtError, finalizeIfExpired } from "./cbt-rooms-service";
+import { TEACHER_RETRYABLE_GRADING_SQL } from "./cbt-attempts-service";
 
 function pool() {
   const p = getUserPostgresPool();
@@ -59,6 +60,13 @@ export type CbtLeaderboardRow = {
   violationCount: number;
   /** Per-subject breakdown, empty for an in-flight or absent attempt. */
   sectionScores: CbtSectionScores;
+  /**
+   * 'pending' = submitted, score still owed (the sweep retries); 'failed' =
+   * gave up after 5 tries, the teacher can retry. 'done' otherwise.
+   */
+  gradingStatus: "pending" | "done" | "failed";
+  /** 'failed', or 'pending' for over a minute (stuck): the teacher can retry it now. */
+  gradingRetryable: boolean;
 };
 
 /** A section column header for the leaderboard table, in paper order. */
@@ -83,7 +91,7 @@ export async function getRoomLeaderboard(teacherId: string, roomId: string): Pro
 
   // Reading results past the deadline finalizes the room first, so a student
   // whose browser died is scored from their draft instead of showing as absent.
-  if (await finalizeIfExpired({ id: roomId, status: roomRes.rows[0].status as CbtRoomStatus })) {
+  if (await finalizeIfExpired({ id: roomId, status: roomRes.rows[0].status as CbtRoomStatus }, { regrade: true })) {
     roomRes = await pool().query(`SELECT id, status, test_id FROM cbt.rooms WHERE id = $1 AND teacher_id = $2`, [
       roomId,
       teacherId,
@@ -112,7 +120,8 @@ export async function getRoomLeaderboard(teacherId: string, roomId: string): Pro
   const parts = await pool().query(
     `SELECT id, display_name, student_code, answered_count, score, max_score, rank,
             time_taken_seconds, finished_at, auto_submitted, last_seen_at, entered_test_at,
-            finalize_reason, rejoin_count, violation_count, section_scores
+            finalize_reason, rejoin_count, violation_count, section_scores, grading_status,
+            (finished_at IS NOT NULL AND ${TEACHER_RETRYABLE_GRADING_SQL}) AS grading_retryable
        FROM cbt.room_participants
       WHERE room_id = $1
       ORDER BY (finished_at IS NULL), rank ASC NULLS LAST, score DESC NULLS LAST,
@@ -155,6 +164,8 @@ export async function getRoomLeaderboard(teacherId: string, roomId: string): Pro
       rejoinCount: Number(r.rejoin_count ?? 0),
       violationCount: Number(r.violation_count ?? 0),
       sectionScores: sectionsByParticipant[String(r.id)] ?? {},
+      gradingStatus: r.grading_status === "pending" || r.grading_status === "failed" ? r.grading_status : "done",
+      gradingRetryable: r.grading_retryable === true,
     })),
   };
 }

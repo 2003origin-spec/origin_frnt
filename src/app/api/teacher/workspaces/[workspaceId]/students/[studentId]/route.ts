@@ -6,6 +6,7 @@ import { requireFeatureEnabled } from "@/lib/feature-flags";
 import { recordAuditEvent } from "@/server/workspaces/audit";
 import { requireWorkspaceOwnerOrAdmin } from "@/server/workspaces/authz";
 import { setEnrollmentStatus, getEnrollment } from "@/server/workspaces/enrollments";
+import { revokeTeacherCodeGrantsForEnrollment } from "@/server/connect/grant-revocation";
 
 import {
   handleTeacherError,
@@ -50,6 +51,15 @@ export async function PATCH(request: NextRequest, context: Context) {
       action: "enrollment.updated",
       before,
       after: updated,
+      requestId: requestIdOf(request),
+    });
+    // A student who left / was suspended loses the institute's free Flow-1
+    // subject; otherwise it stays live for its whole 1-year expiry.
+    await revokeTeacherCodeGrantsForEnrollment({
+      studentId,
+      workspaceId,
+      status: updated.status,
+      actorUserId: ctx.auth.userId,
       requestId: requestIdOf(request),
     });
     return teacherJson({ enrollment: updated });

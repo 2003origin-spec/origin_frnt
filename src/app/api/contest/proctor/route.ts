@@ -1,7 +1,9 @@
 /**
  * POST /api/contest/proctor
- *   { contestId, action: 'presign' }        → { uploadUrl, r2Key }
+ *   { contestId, action: 'presign', size }  → { uploadUrl, uploadHeaders, r2Key }
  *   { contestId, action: 'register', r2Key } → records the uploaded snapshot
+ *
+ * The upload URL is signed for image/jpeg and exactly `size` bytes.
  *
  * Self-hosted webcam-snapshot proctoring. Authenticated student prefix; gated by
  * the contestProctoring flag. The user id comes from the session.
@@ -10,6 +12,7 @@ import type { NextRequest } from "next/server";
 import { z } from "zod";
 
 import { requireFeatureEnabled } from "@/lib/feature-flags";
+import { requireFeatureEnabledRuntime } from "@/server/feature-flags-runtime";
 import { requireAuth } from "@/server/authz";
 import { parseJsonBody } from "@/server/http";
 import { presignProctorSnapshot, registerProctorSnapshot } from "@/server/contest/contest-proctor-service";
@@ -19,18 +22,20 @@ const Schema = z.object({
   contestId: z.string().min(1),
   action: z.enum(["presign", "register"]),
   r2Key: z.string().max(512).optional(),
+  size: z.number().optional(),
 });
 
 export async function POST(request: NextRequest) {
   try {
-    requireFeatureEnabled("contest");
+    await requireFeatureEnabledRuntime("contest");
     requireFeatureEnabled("contestProctoring");
     const ctx = await requireAuth(request);
     const parsed = Schema.safeParse(await parseJsonBody(request));
     if (!parsed.success) return teacherJson({ detail: parsed.error.message }, { status: 400 });
 
     if (parsed.data.action === "presign") {
-      const p = presignProctorSnapshot(parsed.data.contestId, ctx.userId);
+      if (parsed.data.size === undefined) return teacherJson({ detail: "size is required." }, { status: 400 });
+      const p = presignProctorSnapshot(parsed.data.contestId, ctx.userId, parsed.data.size);
       return teacherJson(p);
     }
     if (!parsed.data.r2Key) return teacherJson({ detail: "r2Key is required." }, { status: 400 });

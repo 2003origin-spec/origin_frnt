@@ -10,8 +10,10 @@
  */
 
 import { isFeatureEnabled } from "@/lib/feature-flags";
+import { normalizeScoringConfig } from "@/lib/contest/contest-config";
 import {
   type ContestState,
+  type ContestWindow,
   resolveContestState,
 } from "@/lib/contest/contest-state";
 import { getUserPostgresReplicaPool, isUserPostgresConfigured } from "@/server/user-postgres";
@@ -79,7 +81,7 @@ export async function getContestStatus(userId?: string | null): Promise<ContestS
 
   const [registeredCount, isRegistered] = await Promise.all([
     getApproxRegisteredCount(row.id).catch(() => 0),
-    userId ? isRegisteredForContest(row.id, userId).catch(() => false) : Promise.resolve(false),
+    userId ? isRegisteredForContest(row.id, userId, { includeWaitlisted: true }).catch(() => false) : Promise.resolve(false),
   ]);
 
   return {
@@ -135,7 +137,7 @@ export async function getOpenContests(userId?: string | null): Promise<ContestSu
       };
       const [registeredCount, isRegistered] = await Promise.all([
         getApproxRegisteredCount(row.id).catch(() => 0),
-        userId ? isRegisteredForContest(row.id, userId).catch(() => false) : Promise.resolve(false),
+        userId ? isRegisteredForContest(row.id, userId, { includeWaitlisted: true }).catch(() => false) : Promise.resolve(false),
       ]);
       return {
         id: row.id,
@@ -152,4 +154,74 @@ export async function getOpenContests(userId?: string | null): Promise<ContestSu
       };
     }),
   );
+}
+
+/** One contest for the native app's lobby / result screens (no REST existed for "contest by id"). */
+export interface ContestDetail extends ContestSummary {
+  subjects: string[];
+  durationSeconds: number | null;
+  displayTz: string;
+  /** Marks per correct / wrong / unattempted answer, for the rules card. */
+  scoring: { correctMarks: number; incorrectMarks: number; unattemptedMarks: number };
+  registrationCap: number | null;
+  /** DB clock at read time, so the app can correct its countdown for device clock skew. */
+  serverNow: string;
+}
+
+/**
+ * A single public contest by id (anything but draft). `state` is derived from
+ * the DB clock, like every server-side gate. Null when the flag is off, the
+ * database isn't configured, or the contest doesn't exist / is a draft.
+ */
+export async function getContestDetail(contestId: string, userId?: string | null): Promise<ContestDetail | null> {
+  if (!isFeatureEnabled("contest")) return null;
+  if (!isUserPostgresConfigured()) return null;
+  await ensureContestSchema();
+
+  const pool = getUserPostgresReplicaPool();
+  if (!pool) return null;
+
+  const res = await pool.query(
+    `SELECT id, name, status, start_at, end_at, reg_open, reg_close, banner_url, access_mode,
+            subjects, duration_seconds, display_tz, scoring_config, registration_cap, NOW() AS db_now
+       FROM contest.contests
+      WHERE id = $1 AND status <> 'draft'`,
+    [contestId],
+  );
+  const row = res.rows[0];
+  if (!row) return null;
+
+  const window = {
+    status: row.status as ContestWindow["status"],
+    regOpen: row.reg_open ? new Date(row.reg_open) : null,
+    regClose: row.reg_close ? new Date(row.reg_close) : null,
+    startAt: row.start_at ? new Date(row.start_at) : null,
+    endAt: row.end_at ? new Date(row.end_at) : null,
+  };
+  const dbNow = new Date(row.db_now);
+  const [registeredCount, isRegistered] = await Promise.all([
+    getApproxRegisteredCount(row.id).catch(() => 0),
+    userId ? isRegisteredForContest(row.id, userId).catch(() => false) : Promise.resolve(false),
+  ]);
+  const scoring = normalizeScoringConfig(row.scoring_config);
+
+  return {
+    id: row.id,
+    name: row.name,
+    state: resolveContestState(window, dbNow),
+    startAt: window.startAt?.toISOString() ?? null,
+    endAt: window.endAt?.toISOString() ?? null,
+    regOpen: window.regOpen?.toISOString() ?? null,
+    regClose: window.regClose?.toISOString() ?? null,
+    bannerUrl: row.banner_url ?? null,
+    registeredCount,
+    isRegistered,
+    accessMode: (row.access_mode as ContestSummary["accessMode"]) ?? "open",
+    subjects: Array.isArray(row.subjects) ? row.subjects : [],
+    durationSeconds: row.duration_seconds ?? null,
+    displayTz: row.display_tz ?? "Asia/Kolkata",
+    scoring: { correctMarks: scoring.correctMarks, incorrectMarks: scoring.incorrectMarks, unattemptedMarks: scoring.unattemptedMarks },
+    registrationCap: row.registration_cap ?? null,
+    serverNow: dbNow.toISOString(),
+  };
 }

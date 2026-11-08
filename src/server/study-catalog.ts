@@ -16,6 +16,7 @@
 import { ncertBooksData } from "@/data/ncertBooks";
 import type { NCERTBook } from "@/data/ncertBooks";
 import { getUserPostgresPool, isUserPostgresConfigured } from "@/server/user-postgres";
+import { withSchemaLock } from "@/server/schema-lock";
 
 // ─── Schema ──────────────────────────────────────────────────────────────────
 
@@ -24,7 +25,7 @@ let schemaReady = false;
 async function ensureNcertSchema(): Promise<void> {
   if (schemaReady) return;
   const pool = getUserPostgresPool()!;
-  await pool.query(`
+  await withSchemaLock(pool, (client) => client.query(`
     CREATE TABLE IF NOT EXISTS origin_ncert_books (
       id              TEXT PRIMARY KEY,
       title           TEXT NOT NULL,
@@ -46,7 +47,7 @@ async function ensureNcertSchema(): Promise<void> {
     );
 
     CREATE INDEX IF NOT EXISTS idx_ncert_chapters_book ON origin_ncert_chapters (book_id, sort_order);
-  `);
+  `));
   schemaReady = true;
 }
 

@@ -7,6 +7,7 @@
 import type { NextRequest } from "next/server";
 
 import { readCbtRoomEvents } from "@/server/cbt/cbt-redis";
+import { streamStartCursor } from "@/server/redis-streams";
 import { resolveParticipantFromToken } from "@/server/cbt/cbt-rooms-service";
 import { CBT_PARTICIPANT_COOKIE } from "@/lib/cbt/participant-token";
 
@@ -27,7 +28,7 @@ export async function GET(request: NextRequest) {
 
   const roomId = resolved.room.id;
   const participantId = resolved.participant.id;
-  const initialCursor = request.headers.get("last-event-id") ?? "$";
+  const initialCursor = streamStartCursor(request.headers.get("last-event-id"));
   const signal = request.signal;
 
   const stream = new ReadableStream<Uint8Array>({

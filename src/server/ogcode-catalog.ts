@@ -4,6 +4,7 @@ import { toAbsoluteMediaUrl } from "@/lib/media-url";
 
 import { getOgcodePostgresPool, isOgcodePostgresConfigured } from "@/server/postgres";
 import { studyModeSubjects } from "@/lib/study-mode";
+import { withSchemaLock } from "@/server/schema-lock";
 
 declare global {
   var __originOgcodeCatalogSchemaReady: Promise<void> | undefined;
@@ -358,7 +359,7 @@ async function ensureCatalogSchema(): Promise<void> {
   }
 
   if (!globalThis.__originOgcodeCatalogSchemaReady) {
-    globalThis.__originOgcodeCatalogSchemaReady = pool.query(CREATE_TABLE_SQL).then(() => undefined).catch((error) => {
+    globalThis.__originOgcodeCatalogSchemaReady = withSchemaLock(pool, (client) => client.query(CREATE_TABLE_SQL)).then(() => undefined).catch((error) => {
       globalThis.__originOgcodeCatalogSchemaReady = undefined;
       throw error;
     });
@@ -897,7 +898,29 @@ export async function listOgcodeCatalogFacets(params: {
   return raw;
 }
 
-export async function getOgcodeCatalogQuestionById(questionId: string): Promise<StoredQuestion | null> {
+/**
+ * Contest-import visibility for a single-question lookup (mirrors the listing's
+ * `buildFilterClause`):
+ * - `"all"`      — no clause (admin tools, contest paper resolver, NOW bot
+ *                  metadata for an already-gated request). The DEFAULT, so any
+ *                  NEW student-facing caller must pass a narrower value.
+ * - `"ogcode"`   — hide every contest import (OGCode practice detail/submit,
+ *                  challenge of the day, friend challenge, reveal, NOW).
+ * - `"practice"` — OGCode questions + practice-eligible contest imports
+ *                  (contest DPP grading).
+ */
+export type OgcodeQuestionVisibility = "all" | "ogcode" | "practice";
+
+function visibilityClause(visibility: OgcodeQuestionVisibility): string {
+  if (visibility === "ogcode") return " AND is_contest_import = FALSE";
+  if (visibility === "practice") return " AND (is_contest_import = FALSE OR contest_practice_eligible = TRUE)";
+  return "";
+}
+
+export async function getOgcodeCatalogQuestionById(
+  questionId: string,
+  opts: { visibility?: OgcodeQuestionVisibility } = {},
+): Promise<StoredQuestion | null> {
   const pool = getOgcodePostgresPool();
   if (!pool) {
     return null;
@@ -939,7 +962,7 @@ export async function getOgcodeCatalogQuestionById(questionId: string): Promise<
         class,
         previous_year_question
       FROM ogcode_questions
-      WHERE id = $1
+      WHERE id = $1${visibilityClause(opts.visibility ?? "all")}
       LIMIT 1
     `,
     [questionId],
@@ -1116,8 +1139,8 @@ export type OgcodeBagDrawResult = {
  * student resolves to a band that currently matches no rows, so there is nothing
  * to draw and no card to show.
  *
- * Eligibility is the pre-existing challenge predicate — an answerable MCQ — so a
- * Question of the Day is always solvable in one tap. Widening it to numerical
+ * Eligibility is the pre-existing challenge predicate — an answerable MCQ that is
+ * not a contest import — so a Question of the Day is always solvable in one tap. Widening it to numerical
  * questions later is a change to this WHERE clause alone.
  *
  * Cost against the live 6 232-row bank: ~4.5 ms. It runs four times a day.
@@ -1144,6 +1167,10 @@ export async function drawOgcodeBagQuestion(
            AND (class = ANY($2::int[]) OR ($3::boolean AND class IS NULL))
            AND question_type = 'mcq'
            AND correct_option IS NOT NULL
+           -- Same default as every general OGCode surface (buildFilterClause):
+           -- an imported contest paper must never become a Question of the Day
+           -- (with its post-answer reveal) before the contest runs.
+           AND is_contest_import = FALSE
       ),
       unserved AS (
         SELECT id FROM bag WHERE NOT (id = ANY($4::text[]))

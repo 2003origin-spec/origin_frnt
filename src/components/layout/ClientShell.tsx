@@ -55,6 +55,7 @@ const ROUTES: Record<string, string> = {
   'snap-solve': '/snap-solve',
   'contest': '/contest',
   'mindmaps': '/mindmaps',
+  'notes': '/notes',
   'milestones': '/milestones',
   'prestige-milestones': '/milestones',
 };
@@ -63,7 +64,7 @@ function resolveRoute(view: string) {
   return ROUTES[view] || `/${view}`;
 }
 
-function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnabled, contestEnabled, coverActive, launchAt }: { children: React.ReactNode; connectEnabled?: boolean; premiumEnabled?: boolean; socialEnabled?: boolean; contestEnabled?: boolean; coverActive?: boolean; launchAt?: string | null }) {
+function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnabled, contestEnabled, notesEnabled, messagingEnabled, coverActive, launchAt }: { children: React.ReactNode; connectEnabled?: boolean; premiumEnabled?: boolean; socialEnabled?: boolean; contestEnabled?: boolean; notesEnabled?: boolean; messagingEnabled?: boolean; coverActive?: boolean; launchAt?: string | null }) {
   const { user, logout, isNavigationLocked, refreshUser } = useAuth();
   // Register this screen in the global "active screens" presence set while
   // signed in — feeds the landing "solving right now" counter.
@@ -109,7 +110,10 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnab
   // page scroll (isFullViewportApp stays false) — the player is min-h-dvh and
   // relies on the content wrapper's overflow-y-auto for long questions/images.
   const isSpecialPath = (pathname.startsWith('/tests/') && !isResultPath) || pathname.startsWith('/ogcode/') || isStudyRoomTestPath || isContestAttemptPath;
-  const isFullViewportApp = pathname === '/doubt-solver' || (pathname.startsWith('/tests/') && !isResultPath) || pathname.startsWith('/ogcode/') || isStudyRoomTestPath;
+  // A message thread (/messages/<id>) is a chat: its own list scrolls and the
+  // composer stays pinned above the mobile tab bar.
+  const isMessageThreadPath = /^\/messages\/[^/]+\/?$/.test(pathname);
+  const isFullViewportApp = pathname === '/doubt-solver' || (pathname.startsWith('/tests/') && !isResultPath) || pathname.startsWith('/ogcode/') || isStudyRoomTestPath || isMessageThreadPath;
   const shouldHideOriginAi = isTestsPath || isStudyRoomTestPath || isStudyRoomJoinPath || isCbtPath || isContestAttemptPath;
 
   const { resolvedTheme, setTheme } = useTheme();
@@ -321,6 +325,8 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnab
               premiumEnabled={premiumEnabled}
               socialEnabled={socialEnabled}
               contestEnabled={contestEnabled}
+              notesEnabled={notesEnabled}
+              messagingEnabled={messagingEnabled}
               onOpenOri={shouldShowFloatingOriginAi && !oriHidden ? () => toggleAi() : undefined}
               oriActive={isAiOpen}
               leftOffset={aiSide === 'left' && isAiOpen ? aiWidth : 0}
@@ -431,7 +437,7 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnab
   );
 }
 
-export default function ClientShell({ children, connectEnabled, premiumEnabled, socialEnabled, contestEnabled, coverActive, launchAt }: { children: React.ReactNode; connectEnabled?: boolean; premiumEnabled?: boolean; socialEnabled?: boolean; contestEnabled?: boolean; coverActive?: boolean; launchAt?: string | null }) {
+export default function ClientShell({ children, connectEnabled, premiumEnabled, socialEnabled, contestEnabled, notesEnabled, messagingEnabled, coverActive, launchAt }: { children: React.ReactNode; connectEnabled?: boolean; premiumEnabled?: boolean; socialEnabled?: boolean; contestEnabled?: boolean; notesEnabled?: boolean; messagingEnabled?: boolean; coverActive?: boolean; launchAt?: string | null }) {
   return (
     // reducedMotion="user" makes EVERY framer-motion animation in the app honour
     // the OS "reduce motion" setting. 56 files import framer-motion and almost
@@ -441,7 +447,7 @@ export default function ClientShell({ children, connectEnabled, premiumEnabled, 
     <MotionConfig reducedMotion="user">
       <LayoutProvider>
         <TimeTrackerProvider>
-          <ClientShellInner connectEnabled={connectEnabled} premiumEnabled={premiumEnabled} socialEnabled={socialEnabled} contestEnabled={contestEnabled} coverActive={coverActive} launchAt={launchAt}>{children}</ClientShellInner>
+          <ClientShellInner connectEnabled={connectEnabled} premiumEnabled={premiumEnabled} socialEnabled={socialEnabled} contestEnabled={contestEnabled} notesEnabled={notesEnabled} messagingEnabled={messagingEnabled} coverActive={coverActive} launchAt={launchAt}>{children}</ClientShellInner>
         </TimeTrackerProvider>
       </LayoutProvider>
     </MotionConfig>

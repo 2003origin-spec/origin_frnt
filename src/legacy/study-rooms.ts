@@ -212,7 +212,9 @@ async function transaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T
   return withClient(async (client) => {
     try {
       await client.query("BEGIN");
-      await ensureRoomsSchema(client);
+      // No DDL inside the transaction: withClient() already awaited the memoised
+      // pool-level ensureRoomsSchema(). Re-running `ALTER TABLE … IF NOT EXISTS`
+      // here took ACCESS EXCLUSIVE locks on every poll (see docs/bug-fixes/10, N1).
       const result = await fn(client);
       await client.query("COMMIT");
       return result;
@@ -1228,6 +1230,14 @@ export async function getRoomTestForUser(store: AppStore, user: StoredUser, room
   return { room: state.room, test };
 }
 
+/**
+ * How long after the room deadline (started_at + duration + 10 s) a scored
+ * result may still replace an empty auto-finish. submitRoomTest refuses to
+ * START after the deadline (getRoomState finalises the room first), so only a
+ * submit that was already in flight when the finaliser ran can use this.
+ */
+export const ROOM_SCORED_RESULT_LATE_GRACE_SECONDS = 120;
+
 export async function finishRoomParticipant(
   roomId: string,
   userId: string,
@@ -1248,30 +1258,71 @@ export async function finishRoomParticipant(
        FOR UPDATE`,
       [roomId, userId],
     );
-    if (!participant.rows[0]) {
+    const row = participant.rows[0];
+    if (!row) {
       throw new StudyRoomError(403, "You are not an active participant in this room.");
     }
 
     const elapsedSeconds = Math.max(0, Math.ceil((Date.now() - new Date(room.started_at).getTime()) / 1000));
-    if (!input.autoSubmitted && elapsedSeconds > room.duration_seconds + 10) {
-      throw new StudyRoomError(409, "The room timer has expired.");
+
+    // H1: the expiry finaliser (autoFinishExpiredRoom, or the /finish auto-submit
+    // signal) can mark the participant finished with no result while their
+    // scored submit is still being graded. That empty finish must not win: a
+    // scored result (one with a test_result_id) arriving within the late grace
+    // replaces it, even if the room has since been marked finished. A second
+    // SCORED finish is still a 409 (test_result_id is already set).
+    const replacesEmptyAutoFinish =
+      input.testResultId != null &&
+      Boolean(row.finished_at) &&
+      Boolean(row.auto_submitted) &&
+      row.test_result_id == null &&
+      elapsedSeconds <= room.duration_seconds + 10 + ROOM_SCORED_RESULT_LATE_GRACE_SECONDS;
+
+    if (!replacesEmptyAutoFinish) {
+      // One attempt per participant: a second finish (scored or auto) would
+      // otherwise re-rank them through the COALESCE update below. Checked under
+      // the row lock so concurrent submits cannot both pass.
+      if (row.finished_at) {
+        throw new StudyRoomError(409, "You have already submitted this test.");
+      }
+      if (room.status === "finished") {
+        throw new StudyRoomError(423, "Room test is over.");
+      }
+      if (!input.autoSubmitted && elapsedSeconds > room.duration_seconds + 10) {
+        throw new StudyRoomError(409, "The room timer has expired.");
+      }
     }
 
-    const timeTakenSeconds = Math.min(
-      Math.max(0, Math.round(input.timeTakenSeconds ?? elapsedSeconds)),
-      room.duration_seconds + 10,
-    );
+    // An auto-submit is a "no result" signal: it may land after the deadline,
+    // but only the server-computed elapsed time is trusted for it. The scored
+    // path (submitRoomTest) supplies the submission's own time, bounded below.
+    const reportedSeconds = input.autoSubmitted ? elapsedSeconds : (input.timeTakenSeconds ?? elapsedSeconds);
+    const timeTakenSeconds = Math.min(Math.max(0, Math.round(reportedSeconds)), room.duration_seconds + 10);
 
-    await client.query(
-      `UPDATE rooms.room_participants
-       SET finished_at = COALESCE(finished_at, NOW()),
-           test_result_id = COALESCE($3, test_result_id),
-           score = COALESCE($4, score, 0),
-           time_taken_seconds = COALESCE($5, time_taken_seconds),
-           auto_submitted = auto_submitted OR $6
-       WHERE room_id = $1 AND user_id = $2`,
-      [roomId, userId, input.testResultId, input.score, timeTakenSeconds, Boolean(input.autoSubmitted)],
-    );
+    if (replacesEmptyAutoFinish) {
+      // finished_at stays the finaliser's; the score, result and time are the
+      // submission's. `test_result_id IS NULL` keeps this a one-time upgrade.
+      await client.query(
+        `UPDATE rooms.room_participants
+         SET test_result_id = $3,
+             score = COALESCE($4, 0),
+             time_taken_seconds = $5,
+             auto_submitted = $6
+         WHERE room_id = $1 AND user_id = $2 AND test_result_id IS NULL`,
+        [roomId, userId, input.testResultId, input.score, timeTakenSeconds, Boolean(input.autoSubmitted)],
+      );
+    } else {
+      await client.query(
+        `UPDATE rooms.room_participants
+         SET finished_at = COALESCE(finished_at, NOW()),
+             test_result_id = COALESCE($3, test_result_id),
+             score = COALESCE($4, score, 0),
+             time_taken_seconds = COALESCE($5, time_taken_seconds),
+             auto_submitted = auto_submitted OR $6
+         WHERE room_id = $1 AND user_id = $2`,
+        [roomId, userId, input.testResultId, input.score, timeTakenSeconds, Boolean(input.autoSubmitted)],
+      );
+    }
 
     const unfinished = await client.query(
       `SELECT COUNT(*)::int AS count
@@ -1286,8 +1337,10 @@ export async function finishRoomParticipant(
       [roomId, userId],
     );
 
-    let endedAt: string | null = null;
-    if (Number(unfinished.rows[0]?.count ?? 0) === 0 && room.status !== "finished") {
+    let endedAt: string | null = room.status === "finished" ? room.ended_at : null;
+    // Only an in_test room is flipped here; a finished room reached this point
+    // only through the empty-auto-finish replacement above.
+    if (room.status === "in_test" && Number(unfinished.rows[0]?.count ?? 0) === 0) {
       const finished = await client.query(
         `UPDATE rooms.rooms
          SET status = 'finished', ended_at = COALESCE(ended_at, NOW()), updated_at = NOW()
@@ -1300,6 +1353,58 @@ export async function finishRoomParticipant(
 
     return { rank: rankResult.rows[0]?.rank ?? undefined, ended_at: endedAt };
   });
+}
+
+/** Grace after the room deadline, shared with finishRoomParticipant / autoFinishExpiredRoom. */
+const ROOM_TIMER_GRACE_SECONDS = 10;
+
+/** Pure: has the room timer run past `duration + grace`? Untimed rooms never expire. */
+export function roomTimerExpired(
+  startedAt: string | Date | null,
+  durationSeconds: number | null,
+  nowMs = Date.now(),
+): boolean {
+  if (!startedAt || !durationSeconds) return false;
+  const elapsedSeconds = Math.max(0, Math.ceil((nowMs - new Date(startedAt).getTime()) / 1000));
+  return elapsedSeconds > durationSeconds + ROOM_TIMER_GRACE_SECONDS;
+}
+
+/**
+ * Re-reads the room timer immediately before a result is written, and throws
+ * the same 409 finishRoomParticipant would. Checked BEFORE submitTest so an
+ * expired submit never leaves an analytics.test_results row behind that the
+ * room then refuses to attach.
+ */
+async function assertRoomTimerOpen(roomId: string): Promise<void> {
+  const room = await withClient(async (client) => {
+    const result = await client.query(`SELECT started_at, duration_seconds FROM rooms.rooms WHERE id = $1`, [roomId]);
+    return result.rows[0] as { started_at: unknown; duration_seconds: unknown } | undefined;
+  });
+  if (!room) throw new StudyRoomError(404, "Study room was not found.");
+  const startedAt = toIso(room.started_at);
+  const duration = toNumber(room.duration_seconds);
+  if (roomTimerExpired(startedAt, duration)) {
+    throw new StudyRoomError(409, "The room timer has expired.");
+  }
+}
+
+/**
+ * finishRoomParticipant for a caller that has ALREADY persisted a result. The
+ * timer can run out between the pre-check and this call (submitTest is not
+ * instant); throwing then would orphan the stored result and tell the student
+ * their submit failed. Instead the attempt is recorded as auto-submitted.
+ */
+export async function finishRoomParticipantAfterResult(
+  roomId: string,
+  userId: string,
+  input: { testResultId: string | null; score: number | null; timeTakenSeconds?: number | null },
+) {
+  try {
+    return await finishRoomParticipant(roomId, userId, input);
+  } catch (error) {
+    if (!(error instanceof StudyRoomError) || error.status !== 409) throw error;
+    return finishRoomParticipant(roomId, userId, { ...input, autoSubmitted: true });
+  }
 }
 
 export async function submitRoomTest(
@@ -1322,6 +1427,9 @@ export async function submitRoomTest(
     throw new StudyRoomError(409, "You have already submitted this test.");
   }
 
+  // Timer first: nothing may be written for an expired room (C6).
+  await assertRoomTimerOpen(roomId);
+
   const result = await submitTest(store, user, testId, payload, {
     allowRoomParticipant: true,
     sourceType: "room_test",
@@ -1334,7 +1442,8 @@ export async function submitRoomTest(
       : null,
   });
   const testResultId = (result as { id?: string }).id ?? null;
-  const finish = await finishRoomParticipant(roomId, user.id, {
+  // The result is persisted: from here on degrade, never reject.
+  const finish = await finishRoomParticipantAfterResult(roomId, user.id, {
     testResultId,
     score: Number((result as { score?: number }).score ?? 0),
     timeTakenSeconds: payload.timeTaken ?? payload.time_taken ?? null,

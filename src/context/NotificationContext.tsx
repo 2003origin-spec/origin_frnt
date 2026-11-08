@@ -5,6 +5,11 @@ import { toast } from 'sonner';
 import type { Notification } from '@/types';
 import { apiCall } from '@/lib/api';
 import { playCategory } from '@/lib/sound-manager';
+import {
+  LEGACY_NOTIFICATIONS_KEY,
+  notificationsStorageKey,
+  parseStoredNotifications,
+} from '@/lib/user-scoped-storage';
 
 type ServerNotificationRecord = {
   id: string;
@@ -56,28 +61,50 @@ const NotificationContext = createContext<NotificationContextType | undefined>(u
 import { useAuth } from '@/context/AuthContext';
 import { getUserTitle } from '@/lib/achievements';
 
+const NO_NOTIFICATIONS: Notification[] = [];
+
+type NotificationStore = { owner: string | null; items: Notification[] };
+
+/** Updates the items of whoever owns the store at apply time. */
+const updateItems =
+  (update: (prev: Notification[]) => Notification[]) =>
+  (current: NotificationStore): NotificationStore => ({ owner: current.owner, items: update(current.items) });
+
+function storageSafe<T>(fn: () => T): T | undefined {
+  try {
+    return fn();
+  } catch {
+    return undefined; // blocked storage / quota
+  }
+}
+
 export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [notifications, setNotifications] = useState<Notification[]>([]);
   const { user } = useAuth() || { user: null };
+  const ownerId = user?.id ?? null;
+  // The list is stored WITH the user it belongs to, so a sign-in switch can
+  // never render, merge into, or persist under the wrong account.
+  const [store, setStore] = useState<NotificationStore>({ owner: null, items: [] });
+  const notifications = store.owner === ownerId ? store.items : NO_NOTIFICATIONS;
+  const previousOwnerRef = useRef<string | null>(null);
   // Server notification ids already seen, so polling only toasts genuinely new ones.
   const seenServerIdsRef = useRef<Set<string>>(new Set());
   const seededServerIdsRef = useRef(false);
 
-  // Load from localStorage on mount
+  // Load this user's cache whenever the signed-in user changes. Signing out
+  // drops the previous user's cache from the device; the pre-namespacing
+  // global cache is removed outright (server rows re-hydrate below).
   useEffect(() => {
-    const saved = localStorage.getItem('origin_notifications');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        setNotifications(parsed.map((n: any) => ({
-          ...n,
-          createdAt: new Date(n.createdAt)
-        })));
-      } catch (e) {
-        console.error('Failed to parse notifications', e);
-      }
+    storageSafe(() => localStorage.removeItem(LEGACY_NOTIFICATIONS_KEY));
+    const previous = previousOwnerRef.current;
+    if (previous && previous !== ownerId) {
+      storageSafe(() => localStorage.removeItem(notificationsStorageKey(previous)));
     }
-  }, []);
+    previousOwnerRef.current = ownerId;
+    const items = ownerId
+      ? parseStoredNotifications(storageSafe(() => localStorage.getItem(notificationsStorageKey(ownerId))) ?? null)
+      : [];
+    setStore({ owner: ownerId, items });
+  }, [ownerId]);
 
   // Hydrate from the durable server store on mount + poll, so notifications
   // survive a device change and pick up events emitted while offline (e.g. a
@@ -111,7 +138,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
           }
           for (const n of items) seenServerIdsRef.current.add(n.id);
           seededServerIdsRef.current = true;
-          setNotifications((prev) => mergeNotifications(prev, items));
+          setStore(updateItems((prev) => mergeNotifications(prev, items)));
         }
       } catch {
         // offline / unauthenticated — keep the localStorage cache
@@ -155,12 +182,12 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     }
   }, [user]);
 
-  // Save to localStorage whenever notifications change
+  // Save to this user's key whenever their notifications change
   useEffect(() => {
-    if (notifications.length > 0) {
-      localStorage.setItem('origin_notifications', JSON.stringify(notifications));
-    }
-  }, [notifications]);
+    if (!store.owner || store.items.length === 0) return;
+    const key = notificationsStorageKey(store.owner);
+    storageSafe(() => localStorage.setItem(key, JSON.stringify(store.items)));
+  }, [store]);
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
@@ -171,13 +198,13 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       createdAt: new Date(),
       read: false
     };
-    setNotifications(prev => [newNotification, ...prev]);
+    setStore(updateItems(prev => [newNotification, ...prev]));
   }, []);
 
   const markAsRead = useCallback((id: string) => {
-    setNotifications(prev => prev.map(n =>
+    setStore(updateItems(prev => prev.map(n =>
       n.id === id ? { ...n, read: true } : n
-    ));
+    )));
     if (isServerNotification(id)) {
       apiCall('/users/notifications/', { method: 'POST', body: JSON.stringify({ id }) }).catch(() => {});
     }
@@ -186,17 +213,17 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const markAllAsRead = useCallback(() => {
     // Mark-all on the server (no id ⇒ all); harmless if there are no server rows.
     apiCall('/users/notifications/', { method: 'POST', body: JSON.stringify({}) }).catch(() => {});
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    setStore(updateItems(prev => prev.map(n => ({ ...n, read: true }))));
   }, []);
 
   const removeNotification = useCallback((id: string) => {
-    setNotifications(prev => prev.filter(n => n.id !== id));
+    setStore(updateItems(prev => prev.filter(n => n.id !== id)));
   }, []);
 
   const clearAll = useCallback(() => {
-    setNotifications([]);
-    localStorage.removeItem('origin_notifications');
-  }, []);
+    setStore(updateItems(() => []));
+    if (ownerId) storageSafe(() => localStorage.removeItem(notificationsStorageKey(ownerId)));
+  }, [ownerId]);
 
   return (
     <NotificationContext.Provider value={{

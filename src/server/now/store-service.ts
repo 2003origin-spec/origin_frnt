@@ -330,6 +330,18 @@ export async function placeStoreOrderLocked(
   // After the ownership check: an owner tapping Buy again hears "you own it", not "sold out".
   if (item.stock !== null && item.stock <= 0) throw new NowError(409, "sold_out", "That item is sold out.");
 
+  // Premium redemption writes a subject grant, so it takes the per-user
+  // payments lock — and takes it FIRST, before postTransfers row-locks
+  // now.accounts. That is the canonical order (user lock, then rows): a
+  // coin-pack refund holds the user lock and then locks now.accounts in
+  // reverseCoinPackOnRefund, so taking the user lock after the wallet row
+  // made a lock cycle and Postgres aborted one side with 40P01. The same lock
+  // also serialises grant stacking with the paid-grant writer. Digital and
+  // merch items write no grant and need no user lock.
+  if (item.kind === "premium") {
+    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [userId]);
+  }
+
   const orderId = createPrefixedId("sord");
   await client.query(
     // paise_paid holds the order's rupee price, frozen here; it is paid once the status leaves `placed`.
@@ -380,6 +392,8 @@ export async function fulfilStoreOrderLocked(
   let premiumEnd: Date | null = null;
   if (item.kind === "premium") {
     // Same per-user lock the paid-grant writer uses, so stacking cannot race.
+    // Re-entrant: a coin purchase already took it in placeStoreOrderLocked,
+    // before the wallet row; a rupee capture takes it here, with no wallet lock.
     await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [userId]);
     const latest = await client.query<{ until: Date | null }>(
       `SELECT max(expires_at) AS until FROM entitlements.subject_grants
@@ -563,7 +577,7 @@ export async function createPaperUpload(itemId: string, input: { mimeType: strin
   if (!item || item.kind !== "digital") throw new NowError(404, "not_found", "Digital item not found.");
   if (!isPaperUpload(input.mimeType, input.sizeBytes)) throw new NowError(400, "invalid_file", "Upload a PDF of 50 MB or less.");
   const objectKey = paperObjectKey(itemId, randomBytes(8).toString("hex"));
-  const signed = createPresignedR2PutUrl({ objectKey, bucket: requirePrivateFilesBucket(), method: "PUT", expiresSeconds: 900 });
+  const signed = createPresignedR2PutUrl({ objectKey, bucket: requirePrivateFilesBucket(), method: "PUT", expiresSeconds: 900, contentType: "application/pdf", contentLength: input.sizeBytes });
   return { uploadUrl: signed.url, objectKey, method: "PUT", contentType: "application/pdf" };
 }
 

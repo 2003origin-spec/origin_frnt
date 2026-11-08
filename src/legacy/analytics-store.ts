@@ -11,6 +11,7 @@ import type {
 import { selectDppQuestionsWithBagPreference, type DppBagOverride } from "@/server/dpp-question-bank";
 import { getOgcodePostgresPool } from "@/server/postgres";
 import { createId, type StoredUserAnswer } from "@/server/store";
+import { withSchemaLock } from "@/server/schema-lock";
 
 declare global {
   var __originAnalyticsSchemaReady: Promise<void> | undefined;
@@ -349,6 +350,8 @@ export interface PersistedTestResultRecord {
     degraded?: boolean;
     degradedReason?: string | null;
     degraded_reason?: string | null;
+    /** G7 audit: "server" = timed from analytics.attempt_starts, "client" = clamped client value. */
+    time_taken_source?: "server" | "client";
   };
   subjectStats: Record<
     string,
@@ -585,14 +588,20 @@ function mapPersistedCustomTestRow(row: any): PersistedCustomTestRecord {
   };
 }
 
+/**
+ * Ensure the `analytics.*` schema exists. Memoised per process via
+ * `globalThis.__originAnalyticsSchemaReady`.
+ *
+ * The `client` argument is accepted for backwards compatibility only: the DDL
+ * (38 ALTER TABLE / CREATE INDEX statements) is never run on a caller-supplied
+ * transaction client — that took ACCESS EXCLUSIVE locks on every analytics
+ * table inside every room/test transaction. A call with a client awaits the
+ * memoised pool-level ensure instead, which still runs the DDL once per process.
+ */
 export async function ensureAnalyticsSchema(client?: PoolClient): Promise<void> {
-  if (client) {
-    await client.query(ANALYTICS_SCHEMA_SQL);
-    return;
-  }
+  void client;
   if (!globalThis.__originAnalyticsSchemaReady) {
-    globalThis.__originAnalyticsSchemaReady = getPoolOrThrow()
-      .query(ANALYTICS_SCHEMA_SQL)
+    globalThis.__originAnalyticsSchemaReady = withSchemaLock(getPoolOrThrow(), (c) => c.query(ANALYTICS_SCHEMA_SQL))
       .then(() => undefined)
       .catch((error) => {
         globalThis.__originAnalyticsSchemaReady = undefined;
@@ -1168,6 +1177,16 @@ export async function persistTestAnalysisResult(input: PersistTestAnalysisInput)
   };
 }
 
+/**
+ * Postgres hands timestamptz back as a Date; String(date) is the local
+ * "Sat Oct 24 2026 20:19:40 GMT+0530 (India Standard Time)" form, which
+ * clients (Hermes in the native app) can't reliably parse. Always send ISO.
+ */
+export function isoTimestamp(value: unknown): string {
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? "" : value.toISOString();
+  return value == null ? "" : String(value);
+}
+
 function mapPersistedResultRow(row: Record<string, unknown>): PersistedTestResultRecord {
   const aiAnalysis = fromJsonObject<PersistedTestResultRecord["aiAnalysis"]>(row.ai_analysis, {
     summary: String(row.summary ?? ""),
@@ -1200,7 +1219,7 @@ function mapPersistedResultRow(row: Record<string, unknown>): PersistedTestResul
       (row.analysis_error ? String(row.analysis_error) : null),
     analysisStatus: String(row.analysis_status ?? "complete") as PersistedTestResultRecord["analysisStatus"],
     analysisError: row.analysis_error ? String(row.analysis_error) : null,
-    createdAt: String(row.created_at),
+    createdAt: isoTimestamp(row.created_at),
     answers: fromJsonArray<StoredUserAnswer>(row.answers),
   };
 }
@@ -1269,7 +1288,7 @@ function mapPersistedDppRow(row: Record<string, unknown>): PersistedDppPlanRecor
     targetQuestionCount: Number(row.target_question_count ?? 10),
     sequence: Number(row.sequence ?? 1),
     completed: Boolean(row.completed),
-    createdAt: String(row.created_at),
+    createdAt: isoTimestamp(row.created_at),
     questionIds: fromJsonArray<string>(row.question_ids),
     latestAttemptId: row.latest_attempt_id ? String(row.latest_attempt_id) : null,
     latestProgressScore: row.latest_progress_score === null || row.latest_progress_score === undefined ? null : Number(row.latest_progress_score),
@@ -1791,7 +1810,7 @@ function mapPersistedDppAttemptRow(row: Record<string, unknown>): PersistedDppAt
     completed: Boolean(row.completed),
     analysisStatus: String(row.analysis_status ?? "complete") as PersistedDppAttemptRecord["analysisStatus"],
     analysisError: row.analysis_error ? String(row.analysis_error) : null,
-    createdAt: String(row.created_at),
+    createdAt: isoTimestamp(row.created_at),
     answers: fromJsonArray<StoredUserAnswer>(row.answers),
   };
 }

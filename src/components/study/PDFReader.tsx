@@ -7,6 +7,8 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import { useAuth } from '@/context/AuthContext';
+import { loadPdfNotes, pdfNotesStorageKey } from '@/lib/user-scoped-storage';
 
 interface PDFReaderProps {
     url: string;
@@ -16,31 +18,30 @@ interface PDFReaderProps {
     onBack: () => void;
 }
 
-const NOTES_KEY_PREFIX = 'origin_pdf_notes_';
-
-function getNoteKey(url: string) {
-    // Sanitize the URL to a safe localStorage key
-    return NOTES_KEY_PREFIX + url.replace(/[^a-z0-9]/gi, '_');
-}
-
 export default function PDFReader({ url, name, subject, classNum, onBack }: PDFReaderProps) {
     const [notes, setNotes] = useState('');
     const [saved, setSaved] = useState(true);
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [lastSaved, setLastSaved] = useState<Date | null>(null);
 
-    const noteKey = getNoteKey(url);
+    const { user } = useAuth();
+    // Per user: private notes must not follow the PDF to the next student who
+    // signs in on this device.
+    const noteKey = pdfNotesStorageKey(user?.id, url);
 
-    // Load saved notes from localStorage on mount
+    // Load saved notes from localStorage on mount (notes saved before the
+    // per-user key are claimed by the first signed-in reader).
     useEffect(() => {
-        const stored = localStorage.getItem(noteKey);
+        let storage: Storage | null = null;
+        try { storage = window.localStorage; } catch { /* blocked */ }
+        const stored = loadPdfNotes(storage, user?.id, url);
         if (stored) {
             setNotes(stored);
         } else {
             setNotes(`# Notes — ${name}\n\nStart typing your notes here...\n\n## Key Points\n- \n\n## Questions\n- \n\n## Summary\n`);
         }
         setSaved(true);
-    }, [noteKey, name]);
+    }, [noteKey, name, user?.id, url]);
 
     // Mark unsaved when notes change
     const handleNotesChange = (val: string) => {

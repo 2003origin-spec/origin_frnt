@@ -15,6 +15,7 @@ import { createSubjectGrantId } from "@/server/workspaces/ids";
 import { isSubject, type Subject } from "@/lib/entitlements";
 
 import { ensurePaymentsAndGrantSchema } from "./payments-schema";
+import { lockUserPayments } from "./user-payment-lock";
 
 export type PaidTermGrant = {
   id: string;
@@ -111,7 +112,7 @@ export async function rebasePaidGrantExpiriesForSubject(input: {
 }): Promise<PaidTermGrant[]> {
   const subject = typeof input.subject === "string" ? input.subject.trim().toLowerCase() : input.subject;
   if (!isSubject(subject)) throw new Error("A valid subject is required for a paid grant rebase");
-  await input.client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [input.userId]);
+  await lockUserPayments(input.client, input.userId);
   const rows = await input.client.query(
     `SELECT g.*,
             COALESCE(o.paid_at, p.captured_at, o.created_at, g.created_at) AS paid_at_for_rebase,
@@ -210,7 +211,7 @@ async function writeGrant(input: GrantPaidTermInput, runner: QueryRunner, now: D
   if (!Number.isInteger(input.termMonths) || input.termMonths <= 0) {
     throw new Error("termMonths must be a positive integer");
   }
-  await runner.query("SELECT pg_advisory_xact_lock(hashtext($1))", [input.userId]);
+  await lockUserPayments(runner, input.userId);
 
   const orderId = input.orderId?.trim() || null;
   const paidAt = input.paidAt ?? now;

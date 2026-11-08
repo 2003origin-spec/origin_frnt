@@ -7,6 +7,7 @@
 import type { NextRequest } from "next/server";
 
 import { requireFeatureEnabled } from "@/lib/feature-flags";
+import { requireFeatureEnabledRuntime } from "@/server/feature-flags-runtime";
 import { requireRole } from "@/server/authz";
 import { getStudentBatchContext } from "@/server/workspaces/batch-messages-store";
 import { getMaterialsVisibleToBatch } from "@/server/workspaces/study-materials-service";
@@ -20,7 +21,7 @@ type Context = {
 export async function GET(request: NextRequest, context: Context) {
   try {
     requireFeatureEnabled("teacherConnect");
-    requireFeatureEnabled("studyMaterials");
+    await requireFeatureEnabledRuntime("studyMaterials");
     const { batchId } = await context.params;
     const ctx = await requireRole(request, ["student"]);
     const batch = await getStudentBatchContext(batchId, ctx.userId);

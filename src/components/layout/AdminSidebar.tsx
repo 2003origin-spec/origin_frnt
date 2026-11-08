@@ -27,7 +27,10 @@ import {
     Rocket,
     KeyRound,
     Trophy,
+    NotebookPen,
     Headphones,
+    MessageSquareWarning,
+    Megaphone,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { usePathname, useRouter } from 'next/navigation';
@@ -55,7 +58,12 @@ const navItems = [
     { id: 'ogcode-issues', label: 'OG-Code Issues', icon: Flag, path: '/admin/ogcode/issues' },
     { id: 'ogcode-analytics', label: 'OG-Code Analytics', icon: Activity, path: '/admin/ogcode/analytics' },
     { id: 'moderation', label: 'Moderation', icon: ShieldCheck, path: '/admin/moderation' },
+    // Student messaging reports: dismiss / warn / suspend (contract addendum 02/11/2026).
+    { id: 'message-reports', label: 'Message Reports', icon: MessageSquareWarning, path: '/admin/moderation/messages' },
+    // Announcements to students: in-app notification + phone push.
+    { id: 'announcements', label: 'Announcements', icon: Megaphone, path: '/admin/announcements' },
     { id: 'content', label: 'Content & LMS', icon: BookOpen, path: '/admin/content' },
+    { id: 'notes', label: 'Notes', icon: NotebookPen, path: '/admin/notes' },
     { id: 'import-jobs', label: 'Imports', icon: FileUp, path: '/admin/import-jobs' },
     { id: 'financials', label: 'Financials', icon: CreditCard, path: '/admin/financials' },
     { id: 'pricing', label: 'Pricing', icon: IndianRupee, path: '/admin/pricing' },

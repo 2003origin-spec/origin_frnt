@@ -13,6 +13,7 @@ import { getUserPostgresPool } from "@/server/user-postgres";
 
 import { ensureContestSchema } from "./contest-schema";
 import { getContestAccessConfig, promoteFromWaitlist } from "./contest-access-service";
+import { cacheRegistration, uncacheRegistration } from "./contest-registered-set";
 import { recomputeContest } from "./contest-review-service";
 
 function pool() {
@@ -44,6 +45,7 @@ export async function promoteParticipant(contestId: string, userId?: string | nu
       [contestId, userId],
     );
     if ((res.rowCount ?? 0) === 0) throw actionError(409, "That participant is not on the waitlist.");
+    void cacheRegistration(contestId, userId);
     return { promoted: 1 };
   }
   const access = await getContestAccessConfig(contestId);
@@ -69,6 +71,9 @@ export async function unregisterParticipant(contestId: string, userId: string): 
     [contestId, userId],
   );
   if ((res.rowCount ?? 0) === 0) throw actionError(404, "Registration not found.");
+  // Drop the paper-gate cache entry too, or a warm Redis set would keep
+  // admitting the removed user until its TTL.
+  await uncacheRegistration(contestId, userId);
   const access = await getContestAccessConfig(contestId);
   const promoted = await promoteFromWaitlist(contestId, access?.registrationCap ?? null).catch(() => 0);
   return { promoted };

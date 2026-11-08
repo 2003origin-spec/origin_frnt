@@ -8,6 +8,10 @@
  * leaderboard, export) finalize lazily on their own, so this only has to cover
  * rooms nobody is looking at.
  *
+ * The same sweep re-grades attempts whose grading failed after the submit was
+ * claimed (`grading_status = 'pending'`, up to 5 tries with exponential
+ * backoff — see regradePendingParticipants), whatever the room's status.
+ *
  * GET exists because **Vercel Cron issues GET** — this route was POST-only,
  * which is a large part of why the sweep never actually ran in production. POST
  * is kept for manual triggering.

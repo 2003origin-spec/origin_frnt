@@ -17,6 +17,7 @@ import { ensureWorkspaceSchema } from "@/server/workspaces/schema";
 import { ensureEnrollmentSchema } from "@/server/workspaces/enrollment-schema";
 import { ensureCommerceSchema } from "@/server/workspaces/commerce-schema";
 import { createBatch } from "@/server/workspaces/batches";
+import { enrollStudent } from "@/server/workspaces/enrollments";
 import { createOffering as storeCreateOffering } from "@/server/workspaces/marketplace-store";
 
 export function dbConfigured(): boolean {
@@ -111,6 +112,20 @@ export async function seedFixtures(): Promise<Fixtures> {
     batchId: batch.id,
     offeringId: offering.id,
   };
+}
+
+/**
+ * Give the fixture student an `unassigned` enrolment in the fixture workspace.
+ * `addStudentsToBatches` refuses students without one (bug-fix N10), so call
+ * this before placing the fixture student into the fixture batch.
+ */
+export async function enrollFixtureStudent(fx: Fixtures): Promise<void> {
+  await enrollStudent({
+    workspaceId: fx.workspaceId,
+    studentId: fx.studentId,
+    source: "manual",
+    initialStatus: "unassigned",
+  });
 }
 
 export async function cleanup(fx: Fixtures): Promise<void> {

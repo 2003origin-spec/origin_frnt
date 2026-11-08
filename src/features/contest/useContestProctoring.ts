@@ -41,10 +41,11 @@ export function useContestProctoring(contestId: string, enabled: boolean) {
             canvas.getContext('2d')?.drawImage(v, 0, 0, 320, 240);
             const blob: Blob | null = await new Promise((res) => canvas.toBlob(res, 'image/jpeg', 0.6));
             if (!blob) return;
-            const pres = await mutateJson('/api/contest/proctor', { method: 'POST', body: JSON.stringify({ contestId, action: 'presign' }) });
-            const p = (await pres.json().catch(() => ({}))) as { uploadUrl?: string; r2Key?: string };
+            const pres = await mutateJson('/api/contest/proctor', { method: 'POST', body: JSON.stringify({ contestId, action: 'presign', size: blob.size }) });
+            const p = (await pres.json().catch(() => ({}))) as { uploadUrl?: string; uploadHeaders?: Record<string, string>; r2Key?: string };
             if (!p.uploadUrl || !p.r2Key) return;
-            const put = await fetch(p.uploadUrl, { method: 'PUT', headers: { 'Content-Type': 'image/jpeg' }, body: blob });
+            // Signed for exactly these headers and this blob's size: send both as-is.
+            const put = await fetch(p.uploadUrl, { method: 'PUT', headers: p.uploadHeaders ?? { 'Content-Type': 'image/jpeg' }, body: blob });
             if (!put.ok) return;
             await mutateJson('/api/contest/proctor', { method: 'POST', body: JSON.stringify({ contestId, action: 'register', r2Key: p.r2Key }) });
           } catch { /* non-blocking */ }

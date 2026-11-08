@@ -15,6 +15,7 @@ import type { PoolClient } from "pg";
 
 import { getUserPostgresPool, isUserPostgresConfigured } from "@/server/user-postgres";
 import { ensureWorkspaceSchema } from "./schema";
+import { lockSchemaDdl } from "@/server/schema-lock";
 
 // NOTE: the workspace-level grant columns (code_access_status / student_quota /
 // code_ai_access) live in ensureWorkspaceSchema so every workspace read/insert
@@ -52,6 +53,7 @@ export async function ensureCodeAccessSchema(): Promise<void> {
       const client = await pool().connect();
       try {
         await client.query("BEGIN");
+        await lockSchemaDdl(client);
 
         // Request / approval ledger.
         await client.query(`

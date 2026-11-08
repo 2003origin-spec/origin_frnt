@@ -24,6 +24,9 @@ declare global {
 
 const MIGRATION_ID = "20260604_phase14_subject_grants";
 
+/** One active `teacher_code` grant per (user, workspace) — see 20261022 migration. */
+export const TEACHER_CODE_UNIQUE_INDEX = "uq_subject_grants_one_teacher_code";
+
 function pool() {
   const p = getUserPostgresPool();
   if (!p) throw new Error("USER_DATABASE_URL is not configured");
@@ -142,6 +145,34 @@ export async function ensureSubjectGrantsSchema(): Promise<void> {
 
           CREATE INDEX IF NOT EXISTS idx_subject_grants_order
             ON entitlements.subject_grants(order_id) WHERE order_id IS NOT NULL;
+        `);
+
+        // Flow 1 = exactly ONE free subject per institute, enforced by the DB
+        // (grantConnectSubject's read-then-insert raced: parallel picks of
+        // different subjects all inserted). Guarded so an already-correct
+        // database issues no DDL, and the build is wrapped so pre-existing
+        // duplicates log a warning instead of rolling back this whole ensure
+        // (which would take every entitlement read down with it). Clean the
+        // duplicates with the query in the migration header, then the next cold
+        // start creates the index.
+        // Canonical SQL: src/db/migrations/20261022_teacher_code_grant_unique.sql
+        await client.query(`
+          DO $$
+          BEGIN
+            IF NOT EXISTS (
+              SELECT 1 FROM pg_indexes
+               WHERE schemaname = 'entitlements'
+                 AND indexname = '${TEACHER_CODE_UNIQUE_INDEX}'
+            ) THEN
+              BEGIN
+                CREATE UNIQUE INDEX ${TEACHER_CODE_UNIQUE_INDEX}
+                  ON entitlements.subject_grants(user_id, workspace_id)
+                  WHERE status = 'active' AND source = 'teacher_code' AND workspace_id IS NOT NULL;
+              EXCEPTION WHEN unique_violation THEN
+                RAISE WARNING '${TEACHER_CODE_UNIQUE_INDEX} not created: some users hold more than one active teacher_code grant for one institute. See 20261022_teacher_code_grant_unique.sql.';
+              END;
+            END IF;
+          END $$;
         `);
 
         await recordMigration(client);

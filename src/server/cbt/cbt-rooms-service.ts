@@ -245,7 +245,7 @@ export async function getRoomWithParticipants(
   if (!room) return null;
   // Reading a past-deadline room finalizes it first, so the teacher never sees
   // (or exports) a student left unsubmitted because their browser died.
-  if (await finalizeIfExpired(room)) {
+  if (await finalizeIfExpired(room, { regrade: true })) {
     room = (await getRoomForTeacher(teacherId, roomId)) ?? room;
   }
   const participants = await listParticipants(roomId, room.status);
@@ -254,13 +254,30 @@ export async function getRoomWithParticipants(
 
 /**
  * Lazy deadline finalization. Imported dynamically because the attempts service
- * imports this module — a static edge would be a cycle.
+ * imports this module — a static edge would be a cycle. `regrade` is for
+ * teacher reads only (see finalizeExpiredRoom); student reads leave it off.
+ * A finished/closed room has nothing to finalize, but a teacher read still
+ * runs the same bounded regrade so its pending attempts don't wait for cron.
+ * Returns true only when participants were finalized.
  */
-export async function finalizeIfExpired(room: Pick<CbtRoom, "id" | "status">): Promise<boolean> {
-  if (room.status !== "in_test") return false;
+export async function finalizeIfExpired(
+  room: Pick<CbtRoom, "id" | "status">,
+  opts: { regrade?: boolean } = {},
+): Promise<boolean> {
+  if (room.status !== "in_test") {
+    if (opts.regrade === true && (room.status === "finished" || room.status === "closed")) {
+      try {
+        const { regradeRoomForTeacherRead } = await import("./cbt-attempts-service");
+        await regradeRoomForTeacherRead(room.id);
+      } catch (error) {
+        console.error("[cbt] lazy regrade failed", error);
+      }
+    }
+    return false;
+  }
   try {
     const { finalizeExpiredRoom } = await import("./cbt-attempts-service");
-    return (await finalizeExpiredRoom(room.id)) > 0;
+    return (await finalizeExpiredRoom(room.id, { regrade: opts.regrade === true })) > 0;
   } catch (error) {
     // Never let a finalize failure break a read path; the cron retries.
     console.error("[cbt] lazy finalize failed", error);

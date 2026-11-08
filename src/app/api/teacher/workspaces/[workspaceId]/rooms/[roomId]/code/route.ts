@@ -11,7 +11,7 @@
 
 import type { NextRequest } from "next/server";
 
-import { requireFeatureEnabled } from "@/lib/feature-flags";
+import { requireFeatureEnabledRuntime } from "@/server/feature-flags-runtime";
 import { parseJsonBody } from "@/server/http";
 import { requireWorkspaceMember } from "@/server/workspaces/authz";
 import { recordAuditEvent } from "@/server/workspaces/audit";
@@ -36,7 +36,7 @@ export async function GET(
   context: WorkspaceIdRouteContext & { params: Promise<{ workspaceId: string; roomId: string }> },
 ) {
   try {
-    requireFeatureEnabled("teacherRooms");
+    await requireFeatureEnabledRuntime("teacherRooms");
     const workspaceId = await getWorkspaceId(context);
     const ctx = await requireWorkspaceMember(request, workspaceId);
     const { roomId } = await context.params;
@@ -58,7 +58,7 @@ export async function POST(
   context: WorkspaceIdRouteContext & { params: Promise<{ workspaceId: string; roomId: string }> },
 ) {
   try {
-    requireFeatureEnabled("teacherRooms");
+    await requireFeatureEnabledRuntime("teacherRooms");
     const workspaceId = await getWorkspaceId(context);
     const ctx = await requireWorkspaceMember(request, workspaceId, ["owner", "admin", "teacher"]);
     const { roomId } = await context.params;
