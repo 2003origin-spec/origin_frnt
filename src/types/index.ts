@@ -518,7 +518,9 @@ export type ViewState =
   // Origin Notes — V1/NOTES_PLAN.md.
   | 'notes'
   // Student messaging (studentMessaging flag).
-  | 'messages';
+  | 'messages'
+  // Rank Predictor (rankPredictor flag) — V1/PERCENTILE_PREDICTOR_PLAN.md.
+  | 'rank-predictor';
 
 export type OriginAiPageKind =
   | 'dashboard'

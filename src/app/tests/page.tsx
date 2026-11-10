@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { getServerFrontendUser } from '@/lib/auth-server';
 import { shouldRedirectFreeStudent } from '@/server/entitlements';
 import { isFeatureEnabled } from '@/lib/feature-flags';
+import { isFeatureEnabledRuntime } from '@/server/feature-flags-runtime';
 import { listAssignedTestPreviewsForStudent } from '@/server/workspaces/tests-store';
 import { listTestsForRender } from '@/server/render-loaders';
 import { getStudentScope } from '@/server/study-scope';
@@ -71,5 +72,12 @@ async function TestsContent() {
     examPresets = [];
   }
 
-  return <TestsClient initialTests={initialTests} examPresets={examPresets} ownedSubjects={ownedSubjects} />;
+  return (
+    <TestsClient
+      initialTests={initialTests}
+      examPresets={examPresets}
+      ownedSubjects={ownedSubjects}
+      rankPredictorEnabled={user.role === 'student' && (await isFeatureEnabledRuntime('rankPredictor'))}
+    />
+  );
 }

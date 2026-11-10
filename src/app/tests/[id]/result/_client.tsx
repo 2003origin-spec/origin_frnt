@@ -6,15 +6,18 @@ import { useRouter } from 'next/navigation';
 import { apiCall } from '@/lib/api';
 import type { TestResult } from '@/types';
 import { toast } from 'sonner';
+import MockRankLine from '@/components/rank-predictor/MockRankLine';
 
 interface Props {
   testId: string;
   /** Server-seeded history of results for this test (may be empty). */
   initialHistory: TestResult[];
   requestedResultId?: string | null;
+  /** Rank Predictor flag (server-resolved): the "In the real exam…" line on full mocks. */
+  rankPredictorEnabled?: boolean;
 }
 
-export default function ResultClient({ testId, initialHistory, requestedResultId }: Props) {
+export default function ResultClient({ testId, initialHistory, requestedResultId, rankPredictorEnabled = false }: Props) {
   const router = useRouter();
   // Initialize from SSR-stable data only — no window/sessionStorage access here to
   // avoid a hydration mismatch (server can't read sessionStorage).
@@ -99,6 +102,13 @@ export default function ResultClient({ testId, initialHistory, requestedResultId
   }
 
   return (
+    <>
+    {/* Full mocks cover every subject of the exam; skip the call for 1-2 subject tests. */}
+    {rankPredictorEnabled && testResult.id && Object.keys(testResult.subjectStats ?? {}).length >= 3 ? (
+      <div className="px-4">
+        <MockRankLine resultId={testResult.id} />
+      </div>
+    ) : null}
     <TestResultView
       result={testResult}
       history={testHistory}
@@ -107,5 +117,6 @@ export default function ResultClient({ testId, initialHistory, requestedResultId
       onViewDPP={() => router.push('/dpp')}
       onRetakeTest={() => { window.location.href = `/tests/${testId}`; }}
     />
+    </>
   );
 }
