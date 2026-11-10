@@ -34,6 +34,7 @@ import {
 } from '@/server/actions/study-mode-actions';
 import { DEFAULT_STUDY_MODE, normalizeStudyMode, type StudyMode } from '@/lib/study-mode';
 import { track } from '@/lib/analytics';
+import { homeAfterLogin } from '@/lib/login-return';
 
 /**
  * Every successful sign-in starts from a clean device: the service worker's
@@ -122,7 +123,9 @@ const EMPTY_STREAK: StreakData = {
 const GUEST_ONLY_PATHS = ['/', '/auth', '/role-selection'];
 // '/now/consent' is the Origin NOW guardian-consent landing page: a guardian
 // opens it from an email, logged in to Origin or not (V1/ORIGIN_NOW_PLAN.md).
-const SHARED_PUBLIC_PATHS = ['/terms-and-conditions', '/privacy-policy', '/childrens-policy', '/refund-policy', '/return-policy', '/shipping-policy', '/faq', '/founders', '/now/consent'];
+// '/rank-predictor' is the public Rank Predictor (2 free checks a day for
+// visitors, V1/PERCENTILE_PREDICTOR_PLAN.md §8); the page itself 404s while its flag is off.
+const SHARED_PUBLIC_PATHS = ['/terms-and-conditions', '/privacy-policy', '/childrens-policy', '/refund-policy', '/return-policy', '/shipping-policy', '/faq', '/founders', '/now/consent', '/rank-predictor'];
 
 function normalizeRole(role: User['role'] | undefined): 'student' | 'teacher' | 'admin' | null {
   return role === 'student' || role === 'teacher' || role === 'admin' ? role : null;
@@ -503,12 +506,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
     if (user && isGuestOnlyPath) {
       if (user.role === 'student' && !user.isOnboarded) {
         router.push('/onboarding');
-      } else if (user.role === 'admin') {
-        router.push('/admin');
-      } else if (user.role === 'teacher') {
-        router.push('/teacher');
       } else {
-        router.push('/dashboard');
+        router.push(homeAfterLogin(user.role));
       }
     }
   }, [pathname, user, isLoading, isHydrating, authRecoveryBlocked, router]);
@@ -539,12 +538,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
 
       if (result.user.role === 'student' && !result.user.isOnboarded) {
         router.push('/onboarding');
-      } else if (result.user.role === 'admin') {
-        router.push('/admin');
-      } else if (result.user.role === 'teacher') {
-        router.push('/teacher');
       } else {
-        router.push('/dashboard');
+        router.push(homeAfterLogin(result.user.role));
       }
       track('login', { method: 'password', role: result.user.role });
       toast.success('Welcome back to ORIGIN!');
@@ -581,13 +576,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
       tasksFetched.current = false;
       await fetchTasks();
 
-      if (result.user.role === 'admin') {
-        router.push('/admin');
-      } else if (result.user.role === 'teacher') {
-        router.push('/teacher');
-      } else {
-        router.push('/dashboard');
-      }
+      router.push(homeAfterLogin(result.user.role));
       track('login', { method: 'otp', role: result.user.role });
       toast.success('Welcome back to ORIGIN!');
     } catch (err: any) {
@@ -623,12 +612,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
 
       if (result.user.role === 'student' && !result.user.isOnboarded) {
         router.push('/onboarding');
-      } else if (result.user.role === 'admin') {
-        router.push('/admin');
-      } else if (result.user.role === 'teacher') {
-        router.push('/teacher');
       } else {
-        router.push('/dashboard');
+        router.push(homeAfterLogin(result.user.role));
       }
       track('sign_up', { method: 'password', role: result.user.role });
       toast.success('Registration successful! Welcome to ORIGIN!');
@@ -704,12 +689,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, initialUse
 
     if (authedUser.role === 'student' && !authedUser.isOnboarded) {
       router.push('/onboarding');
-    } else if (authedUser.role === 'admin') {
-      router.push('/admin');
-    } else if (authedUser.role === 'teacher') {
-      router.push('/teacher');
     } else {
-      router.push('/dashboard');
+      router.push(homeAfterLogin(authedUser.role));
     }
     track('login', { method: 'google', role: authedUser.role });
     toast.success('Google login successful! Welcome to ORIGIN!');

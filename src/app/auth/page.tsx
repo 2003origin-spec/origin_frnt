@@ -6,6 +6,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import { isSafeAppNext } from '@/lib/safe-next';
+import { homeAfterLogin } from '@/lib/login-return';
 
 function AuthPageContent() {
   const { user, userRole, login, loginWithOtp, register, googleLogin, pendingGoogleSignup, googleSignup, cancelGoogleSignup, isLoading, authError, sendOtp, verifyOtp } = useAuth();
@@ -23,12 +24,8 @@ function AuthPageContent() {
     if (user && !isLoading) {
       if (user.role === 'student' && !user.isOnboarded) {
         router.push('/onboarding');
-      } else if (user.role === 'admin') {
-        router.push('/admin');
-      } else if (user.role === 'teacher') {
-        router.push('/teacher');
       } else {
-        router.push('/dashboard');
+        router.push(homeAfterLogin(user.role));
       }
     }
   }, [user, isLoading, router]);
@@ -58,6 +55,7 @@ function AuthPageContent() {
       onGoogleSignupCancel={cancelGoogleSignup}
       sendOtp={sendOtp}
       verifyOtp={verifyOtp}
+      initialMode={searchParams.get('mode') === 'signup' && requestedRole !== 'admin' ? 'signup' : 'login'}
       onBack={() => router.push('/')}
       isLoading={isLoading}
       error={authError}
