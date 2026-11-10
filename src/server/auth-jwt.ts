@@ -317,7 +317,7 @@ export async function verifyAccessJwt(accessToken: string, accessFingerprint: st
   throw lastError instanceof Error ? lastError : new Error("Access JWT verification failed.");
 }
 
-function readCookie(request: Request, name: string): string | null {
+export function readCookie(request: Request, name: string): string | null {
   const cookieHeader = request.headers.get("cookie");
   if (!cookieHeader) return null;
   for (const cookie of cookieHeader.split(";")) {

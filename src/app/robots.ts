@@ -41,6 +41,8 @@ export default function robots(): MetadataRoute.Robots {
     "/role-selection",
     "/account",
     "/dev",
+    // Rank Predictor college finder (login required); /rank-predictor itself is crawlable.
+    "/rank-predictor/colleges",
   ];
 
   const allow = ["/"];

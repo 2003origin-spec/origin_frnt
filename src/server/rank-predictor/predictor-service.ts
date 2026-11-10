@@ -20,6 +20,7 @@ import {
 import { DISCLAIMER, roundPercentileRange, roundRankRange } from "@/lib/rank-predictor/format";
 import { jeeMainShiftIds, predict } from "@/lib/rank-predictor/predict";
 import type { DataSource, PredictInput, Prediction, RankBand, RankPredictorExam } from "@/lib/rank-predictor/types";
+import { addMarks, WHAT_IF_DELTAS, type WhatIfBand } from "@/lib/rank-predictor/what-if";
 import { ensureAnalyticsTables } from "@/legacy/analytics-store";
 import { getOgcodePostgresPool } from "@/server/postgres";
 
@@ -74,6 +75,15 @@ export function runPrediction(input: PredictInput): PredictionResponse {
     percentile: raw.percentile ? { ...raw.percentile, ...roundPercentileRange(raw.percentile) } : null,
   };
   return { prediction, sources, checkedOn: file.checkedOn, disclaimer: DISCLAIMER };
+}
+
+/** The "+10 / +20 marks" chips, answered in the same response (no extra request). */
+export function whatIfBands(input: PredictInput): WhatIfBand[] {
+  return WHAT_IF_DELTAS.map((delta) => {
+    const { marks, added } = addMarks(input.exam, input.marks, delta);
+    const air = added > 0 ? runPrediction({ ...input, marks }).prediction.air : null;
+    return { delta, added, air };
+  });
 }
 
 // ─── Fill from my tests ──────────────────────────────────────────────────────

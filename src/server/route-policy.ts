@@ -164,6 +164,10 @@ export const PUBLIC_APP_PATHS = [
   // fallback is fetched at SW install time with no session attached.
   "/sw.js",
   "/offline.html",
+  // Rank Predictor (V1/PERCENTILE_PREDICTOR_PLAN.md §8, §9.1): open to visitors
+  // with 2 free checks a day. Exact path only — /rank-predictor/colleges stays
+  // authenticated. The page 404s while the rankPredictor flag is off.
+  "/rank-predictor",
 ] as const;
 
 // `/cbt/r` = student join/test pages, public at the edge (participant-token
@@ -210,10 +214,9 @@ export const AUTHENTICATED_APP_PREFIXES = [
   // Student messaging (inbox + threads). The pages redirect while the
   // studentMessaging flag is off.
   "/messages",
-  // Rank Predictor page (V1/PERCENTILE_PREDICTOR_PLAN.md §9.1). Authenticated in
-  // Stage 2; Stage 3 moves the exact path to PUBLIC_APP_PATHS. 404s while the
-  // rankPredictor flag is off.
-  "/rank-predictor",
+  // Rank Predictor college finder (plan §9.4, §11.4): login required. Only the
+  // exact /rank-predictor page is public (PUBLIC_APP_PATHS, checked first).
+  "/rank-predictor/colleges",
 ] as const;
 
 export const ROLE_APP_PREFIXES = [

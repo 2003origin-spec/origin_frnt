@@ -21,7 +21,7 @@ import {
   jeeAdvQualifiesFor,
   neetQualifying,
 } from "./eligibility";
-import { categoryLabel, formatIndian, formatPercentileRange, formatRankRange } from "./format";
+import { categoryLabel, formatIndian, formatPercentileRange, formatRankRange, roundRankRange } from "./format";
 import { clamp, lookupRange, tableSpan } from "./interpolate";
 import { NEET_STATE_LIST_CODE, ntaStateName } from "./states";
 import { EXAM_SUBJECTS } from "./subjects";
@@ -345,7 +345,7 @@ export function predictNeet(data: NeetData, input: PredictInput): Prediction {
     percentile = { ...pBand, quality: air.quality };
     spread.push({
       label: "Year spread",
-      text: perYear.map((p) => `${p.year} paper: AIR ${formatRankRange({ low: Math.round(p.lo), high: Math.round(p.hi) })}`).join(" · "),
+      text: perYear.map((p) => `${p.year} paper: AIR ${formatRankRange(roundRankRange({ low: p.lo, high: p.hi }))}`).join(" · "),
     });
     spread.push({
       label: "2027 size",
@@ -759,7 +759,7 @@ export function predictJeeAdvanced(data: JeeAdvancedData, input: PredictInput): 
     spread.push({
       label: "Year spread",
       text: crl.perYear
-        .map((r) => `${r.year} paper: ${r.qualified ? `CRL ${formatRankRange({ low: Math.round(r.lo), high: Math.round(r.hi) })}` : "not on the CRL list"}`)
+        .map((r) => `${r.year} paper: ${r.qualified ? `CRL ${formatRankRange(roundRankRange({ low: r.lo, high: r.hi }))}` : "not on the CRL list"}`)
         .join(" · "),
     });
   } else {
@@ -770,7 +770,7 @@ export function predictJeeAdvanced(data: JeeAdvancedData, input: PredictInput): 
     if (old) {
       spread.push({
         label: "Older papers",
-        text: `In ${older.map((y) => y.year).sort().join("–")} the same marks gave CRL ${formatRankRange({ low: Math.round(old.range.low), high: Math.round(old.range.high) })}. The paper's difficulty changes the rank a lot.`,
+        text: `In ${older.map((y) => y.year).sort().join("–")} the same marks gave CRL ${formatRankRange(roundRankRange({ low: old.range.low, high: old.range.high }))}. The paper's difficulty changes the rank a lot.`,
       });
     }
   }

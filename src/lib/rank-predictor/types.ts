@@ -226,3 +226,11 @@ export type RankPredictorData = {
   "jee-main": JeeMainData;
   "jee-advanced": JeeAdvancedData;
 };
+
+// ─── Public access (plan §8) ─────────────────────────────────────────────────
+
+/** Free checks a logged-out visitor gets per IST day. */
+export const FREE_CHECKS_PER_DAY = 2;
+
+/** `access` in every predictor response: signed in = unlimited (nulls). */
+export type Access = { signedIn: boolean; remainingToday: number | null; limit: number | null };

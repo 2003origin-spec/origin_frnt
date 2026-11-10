@@ -220,12 +220,12 @@ test("T3.10 average of last 3 full mocks with only 2 → uses 2 and says so", as
   assert.ok(fill.notes.some((n: string) => /last 2 full mocks \(you have only 2\)/.test(n)));
 });
 
-test("T3.11 POST /api/public/rank-predictor without a valid JWT → 401", async () => {
+test("T3.11 POST /api/public/rank-predictor without a valid JWT → counted as a visitor (Stage 3 opened it; was 401)", async () => {
   reset();
   currentUser = null;
   const res = await post(NEET_BODY);
-  assert.equal(res.status, 401);
-  assert.equal((await res.json()).code, "login_required");
+  assert.equal(res.status, 200);
+  assert.deepEqual((await res.json()).access, { signedIn: false, remainingToday: 1, limit: 2 });
   assert.equal(getApiRoutePolicy("/api/public/rank-predictor").kind, "public");
 });
 

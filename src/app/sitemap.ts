@@ -1,13 +1,18 @@
 import type { MetadataRoute } from "next";
 
 import { getCanonicalSiteUrl } from "@/lib/site-url";
+import { isFeatureEnabledRuntime } from "@/server/feature-flags-runtime";
+
+// Read per request: the Rank Predictor entry follows the runtime flag (and its
+// kill switch), so it must not be baked in at build time.
+export const dynamic = "force-dynamic";
 
 /**
  * /sitemap.xml — the public, indexable pages only. App/auth pages are omitted
  * here AND disallowed in robots.ts. Keep this list in sync with the public
  * pages in route-policy's PUBLIC_APP_PATHS.
  */
-export default function sitemap(): MetadataRoute.Sitemap {
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const siteUrl = getCanonicalSiteUrl();
 
   const entries: Array<{ path: string; priority: number; changeFrequency: MetadataRoute.Sitemap[number]["changeFrequency"] }> = [
@@ -22,6 +27,10 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { path: "/return-policy", priority: 0.3, changeFrequency: "yearly" },
     { path: "/shipping-policy", priority: 0.3, changeFrequency: "yearly" },
   ];
+  // Public Rank Predictor (plan §9.1): listed only while the flag is on.
+  if (await isFeatureEnabledRuntime("rankPredictor")) {
+    entries.push({ path: "/rank-predictor", priority: 0.9, changeFrequency: "weekly" });
+  }
 
   return entries.map((e) => ({
     url: `${siteUrl}${e.path === "/" ? "" : e.path}`,

@@ -273,3 +273,11 @@ test("unauthenticated /cbt visits redirect to the CBT OTP login, not the passwor
   // A path merely containing "cbt" but not under /cbt must not match.
   assert.equal(loginPathForTarget("/cbtx"), "/auth");
 });
+
+test("Rank Predictor: page public (exact path), college finder authenticated, API public (plan §8, T4.17)", () => {
+  assert.equal(getAppRoutePolicy("/rank-predictor").kind, "public");
+  assert.ok((PUBLIC_APP_PATHS as readonly string[]).includes("/rank-predictor"));
+  assert.equal(getAppRoutePolicy("/rank-predictor/colleges").kind, "authenticated");
+  assert.equal(getAppRoutePolicy("/rank-predictor/anything-else").kind, "unconfigured");
+  assert.equal(getApiRoutePolicy("/api/public/rank-predictor").kind, "public");
+});
