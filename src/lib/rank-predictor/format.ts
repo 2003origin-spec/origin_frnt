@@ -3,7 +3,7 @@
  * Dates in the data files are already dd/mm/yyyy (owner rule).
  */
 
-import type { NumberRange, Quality, RankCategory, RankPredictorExam } from "./types";
+import type { NumberRange, Quality, RankCategory, RankPredictorExam, StateRankStatus } from "./types";
 
 export const EXAM_LABEL: Record<RankPredictorExam, string> = {
   neet: "NEET",
@@ -39,6 +39,20 @@ export const DISCLAIMER =
   "Estimate based on past years' official results and public data. Real ranks depend on your exam's difficulty and how everyone else does. This is guidance, not a promise of a rank or a seat.";
 
 export const NOT_ENOUGH_DATA = "Not enough data for an exact range";
+
+export const NOT_ON_RANK_LIST = "Not on the rank list with these marks in recent years.";
+
+/** Heading of the main rank: JEE Advanced has a common rank list, the others an AIR. */
+export function rankListTitle(exam: RankPredictorExam): string {
+  return exam === "jee-advanced" ? "Common rank list (CRL)" : "All India rank";
+}
+
+/** What the state-rank slot says when there is no state band (page and landing widget). */
+export const STATE_RANK_TEXT: Record<Exclude<StateRankStatus, "ok">, string> = {
+  coming_soon: "Coming soon",
+  not_available: "Not available for your state yet (we only use official state lists).",
+  not_selected: "Pick your home state to see a state rank.",
+};
 
 const indian = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 

@@ -21,6 +21,12 @@ export type PendingForm = {
   shift: string;
   /** True when the visitor had asked for a prediction (re-run it after login). */
   predict: boolean;
+  /**
+   * True when this exact input already got a result today (the landing
+   * widget's "See full details"), so the page re-runs it even for a visitor:
+   * a repeat input never uses a free check (plan §8.3).
+   */
+  alreadyCounted?: boolean;
 };
 
 export function savePending(form: PendingForm, now = Date.now()): void {
@@ -59,6 +65,7 @@ export function takePending(now = Date.now()): PendingForm | null {
       homeState: typeof p.homeState === 'string' && (INDIAN_STATES as string[]).includes(p.homeState) ? p.homeState : '',
       shift: typeof p.shift === 'string' && /^\d{4}-\d{2}-\d{2}-S[12]$/.test(p.shift) ? p.shift : '',
       predict: p.predict === true,
+      alreadyCounted: p.alreadyCounted === true,
     };
   } catch {
     return null;

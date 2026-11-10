@@ -19,14 +19,14 @@ import type { AttemptFill } from '@/lib/rank-predictor/attempt-mapping';
 import { DISCLAIMER, EXAM_LABEL, categoryLabel } from '@/lib/rank-predictor/format';
 import { NEET_STATES_WITH_LIST } from '@/lib/rank-predictor/states';
 import { EXAM_MAX_MARKS, EXAM_SUBJECTS } from '@/lib/rank-predictor/subjects';
-import { FREE_CHECKS_PER_DAY, RANK_CATEGORIES, RANK_PREDICTOR_EXAMS, type PredictInput, type RankCategory, type RankPredictorExam } from '@/lib/rank-predictor/types';
-import { validatePredictRequest } from '@/lib/rank-predictor/validate';
+import { FREE_CHECKS_PER_DAY, RANK_CATEGORIES, RANK_PREDICTOR_EXAMS, type RankCategory, type RankPredictorExam } from '@/lib/rank-predictor/types';
 import { INDIAN_STATES } from '@/lib/constants';
 
 import { fetchAccess, fetchAttemptFill, friendlyError, PredictorError, requestPrediction, type Access, type PredictionResponse } from './api';
 import FillFromTests from './FillFromTests';
+import { buildPredictInput, marksTotal } from './form';
 import LimitSheet from './LimitSheet';
-import { FREE_CHECKS_LABEL, LOGIN_HREF } from './login-links';
+import { freeChecksLine, LOGIN_HREF } from './login-links';
 import { savePending, takePending } from './pending';
 import ResultCard from './ResultCard';
 
@@ -117,10 +117,7 @@ export default function RankPredictor({
 
   const boxes = EXAM_SUBJECTS[exam];
   const examMarks = marks[exam];
-  const total = useMemo(
-    () => boxes.reduce((acc, b) => acc + (Number.parseInt(examMarks[b.id] ?? '', 10) || 0), 0),
-    [boxes, examMarks],
-  );
+  const total = marksTotal(exam, examMarks);
   const source = useMemo(
     () =>
       fill && fill.exam === exam
@@ -130,26 +127,8 @@ export default function RankPredictor({
   );
 
   const buildInput = useCallback(
-    (): { input: PredictInput } | { error: { field: string; message: string } } => {
-      const numeric: Record<string, unknown> = {};
-      for (const b of boxes) {
-        const raw = (examMarks[b.id] ?? '').trim();
-        numeric[b.id] = raw === '' ? Number.NaN : Number(raw);
-      }
-      const body = {
-        exam,
-        marks: numeric,
-        category,
-        pwd,
-        ...(exam === 'neet' && homeState ? { homeState } : {}),
-        ...(exam === 'jee-main' && shift ? { jeeMainShift: shift } : {}),
-        ...(source ? { source } : {}),
-      };
-      const checked = validatePredictRequest(body);
-      if (!checked.ok) return { error: { field: checked.field, message: checked.message } };
-      return { input: checked.value };
-    },
-    [boxes, examMarks, exam, category, pwd, homeState, shift, source],
+    () => buildPredictInput({ exam, marks: examMarks, category, pwd, homeState, shift, source }),
+    [examMarks, exam, category, pwd, homeState, shift, source],
   );
 
   // Visitors: how many free checks are left today (a read; it never uses one).
@@ -248,7 +227,9 @@ export default function RankPredictor({
     setPwd(saved.pwd);
     setHomeState(saved.homeState);
     setShift(saved.shift);
-    if (saved.predict && signedIn) setPendingAuto(true);
+    // Re-run after login, or straight away when this exact input already got a
+    // result today (from the landing widget): a repeat never uses a free check.
+    if (saved.predict && (signedIn || saved.alreadyCounted)) setPendingAuto(true);
   }, [initialAttemptId, signedIn]);
 
   // Opened from a mock result ("See details"): fill from that attempt, then predict once.
@@ -541,13 +522,7 @@ export default function RankPredictor({
           </button>
           {!signedIn ? (
             <p className="flex flex-wrap items-center justify-center gap-x-1 text-center text-[14px] text-muted-foreground" aria-live="polite">
-              <span>
-                {access?.remainingToday === 0
-                  ? 'No free checks left today. They come back at 12:00 am IST.'
-                  : access?.remainingToday === 1
-                    ? '1 free check left today'
-                    : `${FREE_CHECKS_LABEL} today`}
-              </span>
+              <span>{freeChecksLine(access)}</span>
               {access?.remainingToday !== 0 ? (
                 <>
                   <span aria-hidden>·</span>

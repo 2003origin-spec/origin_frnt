@@ -5,9 +5,12 @@ import { AlertTriangle, CheckCircle2, ChevronDown, CircleDot, ExternalLink, Info
 
 import {
   NOT_ENOUGH_DATA,
+  NOT_ON_RANK_LIST,
   QUALITY_LABEL,
+  STATE_RANK_TEXT,
   formatPercentileRange,
   formatRankRange,
+  rankListTitle,
   spokenRange,
 } from '@/lib/rank-predictor/format';
 import type { Quality, RankBand } from '@/lib/rank-predictor/types';
@@ -60,7 +63,7 @@ function RankRow({ title, band, status }: { title: string; band: RankBand | null
 function ComingSoon() {
   return (
     <span className="inline-flex items-center gap-2">
-      <span className="rounded-full bg-surface-3 px-2.5 py-1 text-[12px] font-semibold uppercase tracking-wide text-foreground">Coming soon</span>
+      <span className="rounded-full bg-surface-3 px-2.5 py-1 text-[12px] font-semibold uppercase tracking-wide text-foreground">{STATE_RANK_TEXT.coming_soon}</span>
       <span className="text-[13px] text-muted-foreground">No official state-wise data for JEE yet.</span>
     </span>
   );
@@ -83,7 +86,7 @@ export default function ResultCard({
   onLoginForColleges: () => void;
 }) {
   const p = response.prediction;
-  const airTitle = p.exam === 'jee-advanced' ? 'Common rank list (CRL)' : 'All India rank';
+  const airTitle = rankListTitle(p.exam);
   // Answered in the same response, so a chip never uses up a free check.
   const whatIf = whatIfDelta === null ? null : (response.whatIf ?? []).find((w) => w.delta === whatIfDelta) ?? null;
   const rankWord = p.exam === 'jee-advanced' ? 'CRL' : 'AIR';
@@ -121,7 +124,7 @@ export default function ResultCard({
             {p.air.notEnoughData ? <p className="text-[13px] text-muted-foreground">{NOT_ENOUGH_DATA}</p> : null}
           </>
         ) : (
-          <p className="text-[15px] text-foreground">Not on the rank list with these marks in recent years.</p>
+          <p className="text-[15px] text-foreground">{NOT_ON_RANK_LIST}</p>
         )}
         {p.percentile ? (
           <p className="text-[14px] text-foreground">
@@ -139,9 +142,9 @@ export default function ResultCard({
         ) : p.stateRankStatus === 'ok' ? (
           <RankRow title="State rank" band={p.stateRank} />
         ) : p.stateRankStatus === 'not_available' ? (
-          <RankRow title="State rank" band={null} status="Not available for your state yet (we only use official state lists)." />
+          <RankRow title="State rank" band={null} status={STATE_RANK_TEXT.not_available} />
         ) : (
-          <RankRow title="State rank" band={null} status="Pick your home state to see a state rank." />
+          <RankRow title="State rank" band={null} status={STATE_RANK_TEXT.not_selected} />
         )}
       </div>
 
