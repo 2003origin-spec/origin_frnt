@@ -105,6 +105,9 @@ test("public API allowlist is limited to health, auth entrypoints, the drain rec
     "/api/public/activity-feed",
     "/api/public/demo-solve",
     "/api/public/live-stats",
+    // Rank Predictor: the handler verifies the JWT itself (Stage 2: signed-in
+    // only; Stage 3: 2 free checks a day). V1/PERCENTILE_PREDICTOR_PLAN.md §7.1.
+    "/api/public/rank-predictor",
     "/api/subscriptions/webhook",
     "/api/users/google-login",
     "/api/users/login",

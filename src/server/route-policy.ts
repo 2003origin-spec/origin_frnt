@@ -41,6 +41,10 @@ export const PUBLIC_API_PATHS = [
   "/api/public/live-stats",
   "/api/public/activity-feed",
   "/api/public/demo-solve",
+  // Rank Predictor prediction endpoint (V1/PERCENTILE_PREDICTOR_PLAN.md §7.1).
+  // Public at the edge; the handler verifies the JWT itself (§8.2). Stage 2:
+  // signed-in only (401 otherwise); Stage 3 opens it with the 2/day limit.
+  "/api/public/rank-predictor",
   // Android shell governance config — fetched pre-auth at app cold start
   // (ANDROID_HYBRID_APP_PLAN.md §5.2); CDN-cached, no session data.
   "/api/mobile/config",
@@ -206,6 +210,10 @@ export const AUTHENTICATED_APP_PREFIXES = [
   // Student messaging (inbox + threads). The pages redirect while the
   // studentMessaging flag is off.
   "/messages",
+  // Rank Predictor page (V1/PERCENTILE_PREDICTOR_PLAN.md §9.1). Authenticated in
+  // Stage 2; Stage 3 moves the exact path to PUBLIC_APP_PATHS. 404s while the
+  // rankPredictor flag is off.
+  "/rank-predictor",
 ] as const;
 
 export const ROLE_APP_PREFIXES = [

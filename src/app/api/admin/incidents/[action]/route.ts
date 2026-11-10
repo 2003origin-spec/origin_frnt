@@ -48,6 +48,7 @@ const FLAG_KEYS = [
   "contest",
   "originNow",
   "studentMessaging",
+  "rankPredictor",
 ] as const;
 
 const RATE_LIMIT_MODES = ["relaxed", "normal", "strict", "lockdown"] as const;

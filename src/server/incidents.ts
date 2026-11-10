@@ -430,6 +430,9 @@ export const FLAG_KILL_PREFIXES: Partial<Record<FlagKey, FlagKillMatcher>> = {
   // and the website, reads included. Nothing else lives under these prefixes.
   // /api/admin/messaging/* stays up so admins can still work the reports.
   studentMessaging: ["/api/mobile/messages", "/api/messages"],
+  // Killing `rankPredictor` refuses (503) the prediction endpoint and the
+  // signed-in "fill from my tests" reads. Nothing else lives under these.
+  rankPredictor: ["/api/public/rank-predictor", "/api/assessments/rank-predictor"],
 };
 
 /**

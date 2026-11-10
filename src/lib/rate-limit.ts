@@ -201,6 +201,9 @@ export const voiceLimiter = createLimiter(5, "rl:voice");
 
 export const submitLimiter = createLimiter(20, "rl:submit");
 
+/** Rank Predictor burst limiter for signed-in users (plan §8.3: 60/min/user). */
+export const rankPredictorLimiter = createLimiter(60, "rl:rank-predictor", "60 s");
+
 /** Shared per-user budget for read-only GET endpoints (assessments, study,
  * notifications, ...). One OGCode list mount fires ~9 GETs (5 facet levels +
  * questions + stats + chapters) and a practice loop (list → question → back)
