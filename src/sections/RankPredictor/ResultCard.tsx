@@ -1,6 +1,7 @@
 'use client';
 
-import { AlertTriangle, CheckCircle2, ChevronDown, CircleDot, ExternalLink, Info } from 'lucide-react';
+import Link from 'next/link';
+import { AlertTriangle, CheckCircle2, ChevronDown, CircleDot, ExternalLink, Info, LogIn } from 'lucide-react';
 
 import {
   NOT_ENOUGH_DATA,
@@ -12,6 +13,7 @@ import {
 import type { Quality, RankBand } from '@/lib/rank-predictor/types';
 
 import type { PredictionResponse } from './api';
+import { LOGIN_HREF } from './login-links';
 
 const QUALITY_STYLE: Record<Quality, string> = {
   good_estimate: 'bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200',
@@ -64,21 +66,34 @@ function ComingSoon() {
   );
 }
 
-export type WhatIf = { delta: number; text: string | null; loading: boolean };
-
 export default function ResultCard({
   response,
   examLabel,
-  whatIf,
+  whatIfDelta,
   onWhatIf,
+  signedIn,
+  onLoginForColleges,
 }: {
   response: PredictionResponse;
   examLabel: string;
-  whatIf: WhatIf | null;
+  whatIfDelta: number | null;
   onWhatIf: (delta: number) => void;
+  signedIn: boolean;
+  /** Visitors: keep the form before going to log in. */
+  onLoginForColleges: () => void;
 }) {
   const p = response.prediction;
   const airTitle = p.exam === 'jee-advanced' ? 'Common rank list (CRL)' : 'All India rank';
+  // Answered in the same response, so a chip never uses up a free check.
+  const whatIf = whatIfDelta === null ? null : (response.whatIf ?? []).find((w) => w.delta === whatIfDelta) ?? null;
+  const rankWord = p.exam === 'jee-advanced' ? 'CRL' : 'AIR';
+  const whatIfText = !whatIf
+    ? null
+    : whatIf.added === 0
+      ? 'You are already at full marks.'
+      : whatIf.air
+        ? `With +${whatIf.added} marks: ${rankWord} ${formatRankRange(whatIf.air)}`
+        : `With +${whatIf.added} marks: still not on the rank list.`;
 
   return (
     <section aria-labelledby="rp-result-heading" className="flex flex-col gap-4 rounded-[18px] border border-border bg-card p-4 sm:p-6">
@@ -168,6 +183,7 @@ export default function ResultCard({
       ) : null}
 
       {/* What if */}
+      {response.whatIf?.length ? (
       <div className="flex flex-col gap-2">
         <span className="text-[13px] font-medium text-muted-foreground">What if you score more?</span>
         <div className="flex flex-wrap gap-2">
@@ -176,21 +192,20 @@ export default function ResultCard({
               key={delta}
               type="button"
               onClick={() => onWhatIf(delta)}
-              aria-pressed={whatIf?.delta === delta}
+              aria-pressed={whatIfDelta === delta}
               className={`min-h-12 cursor-pointer rounded-full border px-5 text-[14px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
-                whatIf?.delta === delta ? 'border-primary bg-primary/10 text-foreground' : 'border-border text-foreground hover:bg-surface-2'
+                whatIfDelta === delta ? 'border-primary bg-primary/10 text-foreground' : 'border-border text-foreground hover:bg-surface-2'
               }`}
             >
               +{delta} marks
             </button>
           ))}
         </div>
-        {whatIf ? (
-          <p className="text-[14px] text-foreground" aria-live="polite">
-            {whatIf.loading ? 'Checking…' : whatIf.text}
-          </p>
-        ) : null}
+        <p className="min-h-5 text-[14px] text-foreground" aria-live="polite">
+          {whatIfText}
+        </p>
       </div>
+      ) : null}
 
       {/* What changed the range */}
       <details className="group rounded-[12px] border border-border">
@@ -216,10 +231,23 @@ export default function ResultCard({
         </div>
       </details>
 
-      <p className="flex items-start gap-2 rounded-[12px] bg-surface-2 px-4 py-3 text-[13px] text-muted-foreground">
-        <Info aria-hidden className="mt-0.5 size-4 shrink-0" />
-        <span>College finder for this rank is coming soon.</span>
-      </p>
+      {signedIn ? (
+        <p className="flex items-start gap-2 rounded-[12px] bg-surface-2 px-4 py-3 text-[13px] text-muted-foreground">
+          <Info aria-hidden className="mt-0.5 size-4 shrink-0" />
+          <span>College finder for this rank is coming soon.</span>
+        </p>
+      ) : (
+        <div className="flex flex-col gap-2 rounded-[12px] bg-surface-2 px-4 py-3">
+          <Link
+            href={LOGIN_HREF}
+            onClick={onLoginForColleges}
+            className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-full border border-border bg-card px-5 text-[15px] font-semibold text-foreground hover:bg-surface-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+          >
+            <LogIn aria-hidden className="size-4" /> Log in to see colleges you could get
+          </Link>
+          <span className="text-center text-[13px] text-muted-foreground">The college finder is coming soon, free with an Origin account.</span>
+        </div>
+      )}
 
       {/* Sources + checked date + disclaimer: always under every result (T5.6) */}
       <footer className="flex flex-col gap-2 border-t border-border pt-3 text-[13px] leading-relaxed text-muted-foreground">
@@ -232,7 +260,7 @@ export default function ResultCard({
                 href={s.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex min-h-6 items-center gap-0.5 underline underline-offset-2 hover:text-foreground focus-visible:outline-2 focus-visible:outline-primary"
+                className="inline-flex min-h-12 items-center gap-0.5 underline underline-offset-2 hover:text-foreground focus-visible:outline-2 focus-visible:outline-primary"
               >
                 {s.publisher}
                 {s.official ? ' (official)' : ' (anchor points)'}

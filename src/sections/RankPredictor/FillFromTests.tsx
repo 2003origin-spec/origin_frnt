@@ -11,6 +11,7 @@ import { EXAM_LABEL } from '@/lib/rank-predictor/format';
 import type { RankPredictorExam } from '@/lib/rank-predictor/types';
 
 import { fetchAttemptFill, fetchAttempts, fetchAverageFill, friendlyError } from './api';
+import { SHEET_CLOSE_48 } from './LimitSheet';
 
 const KIND_LABEL: Record<AttemptSummary['kind'], string> = {
   full_mock: 'Full mock',
@@ -70,7 +71,7 @@ export default function FillFromTests({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="max-h-[85dvh] overflow-y-auto rounded-t-[26px] border-border bg-card px-4 pb-6 sm:mx-auto sm:max-w-xl">
+      <SheetContent side="bottom" closeClassName={SHEET_CLOSE_48} className="max-h-[85dvh] overflow-y-auto rounded-t-[26px] border-border bg-card px-4 pb-6 sm:mx-auto sm:max-w-xl">
         <SheetHeader className="px-0">
           <SheetTitle className="font-display text-[21px] font-bold">Fill from my tests</SheetTitle>
           <SheetDescription>

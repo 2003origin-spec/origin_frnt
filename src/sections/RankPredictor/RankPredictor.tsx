@@ -10,19 +10,25 @@
  */
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { Check, ClipboardList, Loader2, RotateCcw } from 'lucide-react';
+import Link from 'next/link';
+import { ArrowLeft, Check, ClipboardList, Loader2, LogIn, RotateCcw } from 'lucide-react';
+
+import { useAuth } from '@/context/AuthContext';
 
 import type { AttemptFill } from '@/lib/rank-predictor/attempt-mapping';
-import { DISCLAIMER, EXAM_LABEL, categoryLabel, formatRankRange } from '@/lib/rank-predictor/format';
+import { DISCLAIMER, EXAM_LABEL, categoryLabel } from '@/lib/rank-predictor/format';
 import { NEET_STATES_WITH_LIST } from '@/lib/rank-predictor/states';
 import { EXAM_MAX_MARKS, EXAM_SUBJECTS } from '@/lib/rank-predictor/subjects';
-import { RANK_CATEGORIES, RANK_PREDICTOR_EXAMS, type PredictInput, type RankCategory, type RankPredictorExam } from '@/lib/rank-predictor/types';
+import { FREE_CHECKS_PER_DAY, RANK_CATEGORIES, RANK_PREDICTOR_EXAMS, type PredictInput, type RankCategory, type RankPredictorExam } from '@/lib/rank-predictor/types';
 import { validatePredictRequest } from '@/lib/rank-predictor/validate';
 import { INDIAN_STATES } from '@/lib/constants';
 
-import { fetchAttemptFill, friendlyError, requestPrediction, type PredictionResponse } from './api';
+import { fetchAccess, fetchAttemptFill, friendlyError, PredictorError, requestPrediction, type Access, type PredictionResponse } from './api';
 import FillFromTests from './FillFromTests';
-import ResultCard, { type WhatIf } from './ResultCard';
+import LimitSheet from './LimitSheet';
+import { FREE_CHECKS_LABEL, LOGIN_HREF } from './login-links';
+import { savePending, takePending } from './pending';
+import ResultCard from './ResultCard';
 
 export type ShiftOption = { id: string; date: string; shift: number };
 
@@ -50,35 +56,24 @@ type MarksState = Record<RankPredictorExam, Record<string, string>>;
 
 const EMPTY_MARKS: MarksState = { neet: {}, 'jee-main': {}, 'jee-advanced': {} };
 
-/** Add `delta` marks, filling the subjects with the most room first (what-if chips). */
-function addMarks(exam: RankPredictorExam, marks: Record<string, number>, delta: number): Record<string, number> {
-  const out = { ...marks };
-  let left = delta;
-  const boxes = [...EXAM_SUBJECTS[exam]].sort((a, b) => b.max - (out[b.id] ?? 0) - (a.max - (out[a.id] ?? 0)));
-  for (const box of boxes) {
-    if (left <= 0) break;
-    const room = box.max - (out[box.id] ?? 0);
-    const add = Math.min(room, left);
-    out[box.id] = (out[box.id] ?? 0) + add;
-    left -= add;
-  }
-  return out;
-}
-
 const fieldFocus = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary';
 
 export default function RankPredictor({
   initialExam,
-  canFillFromTests,
   shiftOptions,
   initialAttemptId,
 }: {
   initialExam: RankPredictorExam;
-  canFillFromTests: boolean;
   shiftOptions: ShiftOption[];
   initialAttemptId: string | null;
 }) {
   const ids = useId();
+  // Seeded from the server render, and it also recovers a session client-side
+  // (expired access token + valid refresh cookie), so it decides who is signed in.
+  const { user: authUser, refreshUser } = useAuth();
+  const signedIn = Boolean(authUser);
+  // "Fill from my tests" reads the caller's own attempts: signed-in students only.
+  const canFill = authUser?.role === 'student';
   const [exam, setExam] = useState<RankPredictorExam>(initialExam);
   const [marks, setMarks] = useState<MarksState>(EMPTY_MARKS);
   const [category, setCategory] = useState<RankCategory>('general');
@@ -92,10 +87,12 @@ export default function RankPredictor({
   const [loading, setLoading] = useState(false);
   const [requestError, setRequestError] = useState<string | null>(null);
   const [result, setResult] = useState<PredictionResponse | null>(null);
-  const [whatIf, setWhatIf] = useState<WhatIf | null>(null);
-  /** The exact request the shown result came from (what-if adds to these marks). */
-  const [lastInput, setLastInput] = useState<PredictInput | null>(null);
+  const [whatIfDelta, setWhatIfDelta] = useState<number | null>(null);
+  /** Logged-out visitors only: free checks left today (null until known). */
+  const [access, setAccess] = useState<Access | null>(null);
+  const [limitOpen, setLimitOpen] = useState(false);
   const resultRef = useRef<HTMLDivElement>(null);
+  const submitRef = useRef<HTMLButtonElement>(null);
   const autoRan = useRef(false);
 
   // Restore remembered details (opt-in only).
@@ -155,6 +152,37 @@ export default function RankPredictor({
     [boxes, examMarks, exam, category, pwd, homeState, shift, source],
   );
 
+  // Visitors: how many free checks are left today (a read; it never uses one).
+  useEffect(() => {
+    if (signedIn) {
+      setAccess(null);
+      return;
+    }
+    let live = true;
+    fetchAccess()
+      .then((a) => {
+        if (!live) return;
+        setAccess(a);
+        // The call refreshed a stale session: let the auth context catch up.
+        if (a.signedIn) void refreshUser();
+      })
+      .catch(() => undefined); // The line under the button just stays generic.
+    return () => {
+      live = false;
+    };
+  }, [signedIn, refreshUser]);
+
+  const outOfChecks = !signedIn && access?.remainingToday === 0;
+
+  /** Keep the form in this tab for the login round-trip (plan §8.4). */
+  const keepForLogin = useCallback(
+    (predictAfter: boolean) => {
+      // A result on screen comes back after login too.
+      savePending({ exam, marks: marks[exam], category, pwd, homeState, shift, predict: predictAfter || result !== null });
+    },
+    [exam, marks, category, pwd, homeState, shift, result],
+  );
+
   const predict = useCallback(async () => {
     const built = buildInput();
     if ('error' in built) {
@@ -166,31 +194,32 @@ export default function RankPredictor({
     setFieldError(null);
     setRequestError(null);
     setLoading(true);
-    setWhatIf(null);
     try {
       const response = await requestPrediction(built.input);
       setResult(response);
-      setLastInput(built.input);
+      setWhatIfDelta(null);
+      setAccess(response.access);
       requestAnimationFrame(() => resultRef.current?.focus());
     } catch (error) {
-      setRequestError(friendlyError(error, 'Something went wrong. Try again.'));
+      if (error instanceof PredictorError && error.code === 'login_required') {
+        setAccess(error.access ?? { signedIn: false, remainingToday: 0, limit: FREE_CHECKS_PER_DAY });
+        setLimitOpen(true);
+      } else {
+        setRequestError(friendlyError(error, 'Something went wrong. Try again.'));
+      }
     } finally {
       setLoading(false);
     }
   }, [buildInput, ids]);
 
-  const runWhatIf = async (delta: number) => {
-    if (!result || !lastInput) return;
-    const input: PredictInput = { ...lastInput, marks: addMarks(lastInput.exam, lastInput.marks, delta) };
-    setWhatIf({ delta, text: null, loading: true });
-    try {
-      const r = await requestPrediction(input);
-      const air = r.prediction.air;
-      const what = input.exam === 'jee-advanced' ? 'CRL' : 'AIR';
-      setWhatIf({ delta, loading: false, text: air ? `With +${delta} marks: ${what} ${formatRankRange(air)}` : `With +${delta} marks: still not on the rank list.` });
-    } catch {
-      setWhatIf({ delta, loading: false, text: 'Could not check that. Try again.' });
+  const onSubmit = () => {
+    // Out of free checks: the button reads "Log in for unlimited checks" and
+    // opens the login sheet; the shown result stays on the page.
+    if (outOfChecks) {
+      setLimitOpen(true);
+      return;
     }
+    void predict();
   };
 
   const applyFill = useCallback((f: AttemptFill) => {
@@ -201,11 +230,28 @@ export default function RankPredictor({
       [f.exam]: { ...prev[f.exam], ...Object.fromEntries(Object.entries(f.marks).map(([id, box]) => [id, String(box.value)])) },
     }));
     setResult(null);
-    setWhatIf(null);
+    setWhatIfDelta(null);
   }, []);
 
-  // Opened from a mock result ("See details"): fill from that attempt, then predict once.
+  // Back from the login prompt: restore the form; re-run the prediction once the
+  // visitor is signed in (plan §8.4). Read once, then deleted.
   const [pendingAuto, setPendingAuto] = useState(false);
+  const restored = useRef(false);
+  useEffect(() => {
+    if (restored.current || initialAttemptId) return;
+    restored.current = true;
+    const saved = takePending();
+    if (!saved) return;
+    setExam(saved.exam);
+    setMarks((prev) => ({ ...prev, [saved.exam]: saved.marks }));
+    setCategory(saved.category);
+    setPwd(saved.pwd);
+    setHomeState(saved.homeState);
+    setShift(saved.shift);
+    if (saved.predict && signedIn) setPendingAuto(true);
+  }, [initialAttemptId, signedIn]);
+
+  // Opened from a mock result ("See details"): fill from that attempt, then predict once.
   useEffect(() => {
     if (!initialAttemptId || autoRan.current) return;
     autoRan.current = true;
@@ -232,7 +278,7 @@ export default function RankPredictor({
   const switchExam = (next: RankPredictorExam) => {
     setExam(next);
     setResult(null);
-    setWhatIf(null);
+    setWhatIfDelta(null);
     setFieldError(null);
     setRequestError(null);
   };
@@ -249,6 +295,20 @@ export default function RankPredictor({
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-col gap-5 px-4 pb-28 pt-6 sm:px-6">
+      {!signedIn ? (
+        <nav aria-label="Origin" className="-mt-2 flex items-center justify-between gap-2">
+          <Link href="/" className={`-ml-3 inline-flex h-12 items-center gap-2 rounded-full px-3 text-[14px] font-semibold text-foreground hover:bg-surface-2 ${fieldFocus}`}>
+            <ArrowLeft aria-hidden className="size-4" /> Origin home
+          </Link>
+          <Link
+            href={LOGIN_HREF}
+            onClick={() => keepForLogin(false)}
+            className={`inline-flex h-12 items-center gap-2 rounded-full border border-border px-4 text-[14px] font-semibold text-foreground hover:bg-surface-2 ${fieldFocus}`}
+          >
+            <LogIn aria-hidden className="size-4" /> Log in
+          </Link>
+        </nav>
+      ) : null}
       <header className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="font-display text-[34px] font-extrabold leading-none text-foreground">Rank Predictor</h1>
@@ -289,7 +349,7 @@ export default function RankPredictor({
         noValidate
         onSubmit={(e) => {
           e.preventDefault();
-          void predict();
+          onSubmit();
         }}
         className="flex flex-col gap-5"
       >
@@ -297,7 +357,7 @@ export default function RankPredictor({
         <fieldset className="flex flex-col gap-4 rounded-[18px] border border-border bg-card p-4 sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <legend className="font-display text-[21px] font-bold text-foreground">Your marks</legend>
-            {canFillFromTests ? (
+            {canFill ? (
               <button
                 type="button"
                 onClick={() => setSheetOpen(true)}
@@ -367,7 +427,8 @@ export default function RankPredictor({
 
         {/* About you */}
         <fieldset className="flex flex-col gap-4 rounded-[18px] border border-border bg-card p-4 sm:p-6">
-          <legend className="font-display text-[21px] font-bold text-foreground">About you</legend>
+          {/* float: keeps the legend inside the card instead of on its border */}
+          <legend className="float-left w-full font-display text-[21px] font-bold text-foreground">About you</legend>
           <div role="radiogroup" aria-labelledby={`${ids}-cat-label`} className="flex flex-col gap-2">
             <span id={`${ids}-cat-label`} className="text-[14px] font-medium text-foreground">
               Category
@@ -469,14 +530,38 @@ export default function RankPredictor({
 
         <div className="flex flex-col gap-2">
           <button
+            ref={submitRef}
             type="submit"
             disabled={loading}
             aria-busy={loading}
             className={`inline-flex h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-primary px-6 text-[16px] font-semibold text-primary-foreground disabled:opacity-70 ${fieldFocus}`}
           >
-            {loading ? <Loader2 aria-hidden className="size-5 motion-safe:animate-spin" /> : null}
-            {loading ? 'Predicting…' : 'Predict my rank'}
+            {loading ? <Loader2 aria-hidden className="size-5 motion-safe:animate-spin" /> : outOfChecks ? <LogIn aria-hidden className="size-5" /> : null}
+            {loading ? 'Predicting…' : outOfChecks ? 'Log in for unlimited checks' : 'Predict my rank'}
           </button>
+          {!signedIn ? (
+            <p className="flex flex-wrap items-center justify-center gap-x-1 text-center text-[14px] text-muted-foreground" aria-live="polite">
+              <span>
+                {access?.remainingToday === 0
+                  ? 'No free checks left today. They come back at 12:00 am IST.'
+                  : access?.remainingToday === 1
+                    ? '1 free check left today'
+                    : `${FREE_CHECKS_LABEL} today`}
+              </span>
+              {access?.remainingToday !== 0 ? (
+                <>
+                  <span aria-hidden>·</span>
+                  <Link
+                    href={LOGIN_HREF}
+                    onClick={() => keepForLogin(false)}
+                    className={`inline-flex min-h-12 items-center rounded-full px-2 font-semibold text-foreground underline underline-offset-4 ${fieldFocus}`}
+                  >
+                    Log in for unlimited
+                  </Link>
+                </>
+              ) : null}
+            </p>
+          ) : null}
           {fieldError && !fieldError.field.startsWith('marks.') ? (
             <p role="alert" className="text-[13px] font-medium text-destructive">
               {fieldError.message}
@@ -500,13 +585,21 @@ export default function RankPredictor({
 
       <div ref={resultRef} tabIndex={-1} aria-live="polite" className="outline-none">
         {result ? (
-          <ResultCard response={result} examLabel={EXAM_LABEL[result.prediction.exam]} whatIf={whatIf} onWhatIf={(d) => void runWhatIf(d)} />
+          <ResultCard
+            response={result}
+            examLabel={EXAM_LABEL[result.prediction.exam]}
+            whatIfDelta={whatIfDelta}
+            onWhatIf={setWhatIfDelta}
+            signedIn={signedIn}
+            onLoginForColleges={() => keepForLogin(true)}
+          />
         ) : (
           <p className="rounded-[18px] bg-surface-2 px-4 py-3 text-[13px] leading-relaxed text-muted-foreground">{DISCLAIMER}</p>
         )}
       </div>
 
-      {canFillFromTests ? <FillFromTests open={sheetOpen} onOpenChange={setSheetOpen} exam={exam} onFill={applyFill} /> : null}
+      {canFill ? <FillFromTests open={sheetOpen} onOpenChange={setSheetOpen} exam={exam} onFill={applyFill} /> : null}
+      {!signedIn ? <LimitSheet open={limitOpen} onOpenChange={setLimitOpen} onLeave={() => keepForLogin(true)} returnFocusTo={submitRef} /> : null}
     </main>
   );
 }
