@@ -20,7 +20,13 @@
 
 import type { NextRequest } from "next/server";
 
-import { isWithinLimit, rankPredictorAnonLimiter, rankPredictorLimiter, rankPredictorStatusLimiter } from "@/lib/rate-limit";
+import {
+  isWithinLimit,
+  rankPredictorAnonLimiter,
+  rankPredictorLimiter,
+  rankPredictorNewDeviceLimiter,
+  rankPredictorStatusLimiter,
+} from "@/lib/rate-limit";
 import { MAX_BODY_BYTES, validatePredictRequest } from "@/lib/rank-predictor/validate";
 import type { Access, PredictInput } from "@/lib/rank-predictor/types";
 import { extractRefreshTokenCookie, resolveTokenToUser } from "@/server/auth";
@@ -164,15 +170,22 @@ export async function POST(request: NextRequest) {
 
   // Logged-out visitor: device cookie + hashed IP (plan §8.3).
   const key = limitKey();
-  let deviceId = deviceIdFromRequest(request, key);
+  const ipHash = hashIp(clientIp(request), key);
+  const knownDevice = deviceIdFromRequest(request, key);
+  // Burst limit BEFORE the body is read or any counter is touched. A valid
+  // cookie is limited per device; no cookie (a new device, or a script that
+  // never keeps one) is limited per IP, so dropping the cookie does not reset it.
+  const burstOk = knownDevice
+    ? await isWithinLimit(rankPredictorAnonLimiter, knownDevice)
+    : await isWithinLimit(rankPredictorNewDeviceLimiter, ipHash);
+  if (!burstOk) return reply(429, SLOW_DOWN);
+
+  let deviceId = knownDevice;
   let setCookie: string | null = null;
   if (!deviceId) {
     deviceId = newDeviceId();
     setCookie = deviceCookieHeader(signDeviceId(deviceId, key), { secure: process.env.NODE_ENV === "production" });
   }
-  const ipHash = hashIp(clientIp(request), key);
-
-  if (!(await isWithinLimit(rankPredictorAnonLimiter, `${deviceId}:${ipHash}`))) return reply(429, SLOW_DOWN, setCookie);
 
   const parsed = await parseBody(request);
   if ("error" in parsed) {

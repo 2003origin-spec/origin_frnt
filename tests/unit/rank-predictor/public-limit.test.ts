@@ -37,6 +37,8 @@ for (const level of ["log", "info", "warn", "error", "debug"] as const) {
 // ─── Fake Redis + fake clock ────────────────────────────────────────────────
 class FakeRedis {
   sets = new Map<string, Set<string>>();
+  /** SADD calls seen (to prove a refused request did no counter work). */
+  writes = 0;
   ttl = new Map<string, number>();
   down = false;
   private check() {
@@ -44,6 +46,7 @@ class FakeRedis {
   }
   async sadd(key: string, member: string) {
     this.check();
+    this.writes += 1;
     const set = this.sets.get(key) ?? new Set<string>();
     this.sets.set(key, set);
     if (set.has(member)) return 0;
@@ -99,6 +102,11 @@ stubModules({
       if (cookie.includes("origin_access_token=valid-token") || auth === "Bearer valid-token") return SIGNED_IN_USER;
       return real.resolveTokenToUser(request);
     },
+  }),
+  // The per-IP "new devices" limiter on the fake clock, so tests can move a minute on.
+  "@/lib/rate-limit": (real: typeof import("@/lib/rate-limit")) => ({
+    ...real,
+    rankPredictorNewDeviceLimiter: real.createMemoryLimiter(20, 60_000, {}, () => fakeNow),
   }),
   "@/server/rank-predictor/public-limit": (real: typeof import("@/server/rank-predictor/public-limit")) => {
     const store = real.createFailOpenStore(real.createRedisCheckStore(redis), real.createMemoryCheckStore(() => fakeNow));
@@ -274,9 +282,15 @@ test("T4.10 x-origin-user-id header without a JWT → ignored (counted as a visi
   assert.equal(third.body.code, "login_required");
 });
 
+/** Move the fake clock on by a minute (same IST day), so the per-IP new-device budget refills. */
+function nextMinute() {
+  fakeNow += 61_000;
+}
+
 test("T4.11 cookie cleared every time, same IP → 31st check of the day is 429 (IP backstop 30)", async () => {
   const ip = freshIp();
   for (let i = 0; i < 30; i += 1) {
+    if (i > 0 && i % 20 === 0) nextMinute();
     const r = await post(client(ip), neet(10 + i));
     assert.equal(r.status, 200, `check ${i + 1}`);
   }
@@ -289,15 +303,51 @@ test("T4.12 40 devices behind one IP (CGNAT / college Wi-Fi): first 30 checks su
   const ip = freshIp();
   const devices = Array.from({ length: 40 }, () => client(ip));
   const results: number[] = [];
-  for (const d of devices) results.push((await post(d, neet(60))).status);
+  for (const [i, d] of devices.entries()) {
+    if (i > 0 && i % 20 === 0) nextMinute(); // devices arrive over a few minutes
+    results.push((await post(d, neet(60))).status);
+  }
   assert.equal(results.filter((s) => s === 200).length, 30);
   assert.ok(results.slice(0, 30).every((s) => s === 200), "the first 30 go through");
   // A device that already checked keeps seeing its own answer (repeat is free).
   assert.equal((await post(devices[0], neet(60))).status, 200);
 });
 
+test("cookie-less flood: 25 POSTs in a minute from one IP → 21st on is 429 slow_down, no counter work, no new cookie", async () => {
+  nextMinute();
+  const ip = freshIp();
+  const statuses: number[] = [];
+  let writesBefore = 0;
+  for (let i = 0; i < 25; i += 1) {
+    if (i === 20) writesBefore = redis.writes;
+    const r = await post(client(ip), neet(90 + i));
+    statuses.push(r.status);
+    if (i >= 20) {
+      assert.equal(r.status, 429, `request ${i + 1}`);
+      assert.equal(r.body.code, "slow_down");
+      assert.equal(r.res.headers.get("retry-after"), "60");
+      assert.equal(r.res.headers.get("set-cookie"), null, "no cookie minted for a refused request");
+    }
+  }
+  assert.ok(statuses.slice(0, 20).every((st) => st === 200));
+  assert.equal(redis.writes, writesBefore, "the free-check store saw no writes for the refused requests");
+});
+
+test("cookie-less limit exhausted on an IP → a device with a valid cookie on the same IP is still served", async () => {
+  nextMinute();
+  const ip = freshIp();
+  const phone = client(ip);
+  assert.equal((await post(phone, neet(30))).status, 200); // gets its cookie (1 of 20)
+  for (let i = 0; i < 19; i += 1) await post(client(ip), neet(31 + i));
+  assert.equal((await post(client(ip), neet(70))).status, 429, "cookie-less budget is spent");
+  const again = await post(phone, neet(71));
+  assert.equal(again.status, 200, "the phone with a cookie is limited per device, not per IP");
+  assert.equal(again.body.access.remainingToday, 0);
+});
+
 test("T4.13 burst: 11 requests in 60 s from one device → the 11th is 429 slow_down", async () => {
   const c = client();
+  assert.equal((await post(c, neet(170))).status, 200); // first visit: cookie-less, counted per IP
   for (let i = 0; i < 10; i += 1) assert.equal((await post(c, neet(170))).status, 200, `request ${i + 1}`);
   const eleventh = await post(c, neet(170));
   assert.equal(eleventh.status, 429);

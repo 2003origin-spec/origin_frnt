@@ -1,4 +1,5 @@
 import type { MetadataRoute } from "next";
+import { unstable_rethrow } from "next/navigation";
 
 import { getCanonicalSiteUrl } from "@/lib/site-url";
 import { isFeatureEnabledRuntime } from "@/server/feature-flags-runtime";
@@ -28,8 +29,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { path: "/shipping-policy", priority: 0.3, changeFrequency: "yearly" },
   ];
   // Public Rank Predictor (plan §9.1): listed only while the flag is on.
-  if (await isFeatureEnabledRuntime("rankPredictor")) {
-    entries.push({ path: "/rank-predictor", priority: 0.9, changeFrequency: "weekly" });
+  // A failed flag read leaves the entry out; it must never break the sitemap.
+  try {
+    if (await isFeatureEnabledRuntime("rankPredictor")) {
+      entries.push({ path: "/rank-predictor", priority: 0.9, changeFrequency: "weekly" });
+    }
+  } catch (err) {
+    unstable_rethrow(err); // Next.js control flow, not a failure
   }
 
   return entries.map((e) => ({
