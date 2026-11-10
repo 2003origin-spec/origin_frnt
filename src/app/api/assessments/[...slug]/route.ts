@@ -170,6 +170,16 @@ type RouteContext = {
 };
 
 export async function GET(request: NextRequest, context: RouteContext) {
+  // Rank Predictor "fill from my tests" reads: their own auth (fresh row, no
+  // whole-store snapshot), flag and student-only checks. Plan §7.2.
+  const earlySlug = getSlugSegments(await context.params);
+  if (earlySlug[0] === "rank-predictor") {
+    // Loaded on demand: the branch pulls the server-only data tables, which the
+    // rest of this route (and its tests) never need.
+    const { handleRankPredictorGet } = await import("@/server/rank-predictor/routes");
+    return handleRankPredictorGet(request, earlySlug);
+  }
+
   const auth = await authUser(request);
   if (!auth) {
     return unauthorized();
