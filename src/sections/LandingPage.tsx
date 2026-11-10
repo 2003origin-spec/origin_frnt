@@ -17,6 +17,12 @@ const OriMascot = dynamic(() => import('@/features/mascot/OriMascot'), { ssr: fa
 import type { MascotState } from '@/features/mascot/mascot-state';
 const TryOriginAI = dynamic(() => import('@/components/landing/TryOriginAI'), { ssr: false });
 const RankPredictor = dynamic(() => import('@/components/landing/RankPredictor'), { ssr: false });
+// Real predictor (plan §9.2), shown only while the `rankPredictor` flag is on.
+// The placeholder keeps the anchor and the space, so /#rank-predictor still lands.
+const RankPredictorWidget = dynamic(() => import('@/components/landing/RankPredictorWidget'), {
+  ssr: false,
+  loading: () => <section id="rank-predictor" aria-hidden className="relative z-10 min-h-[1280px] md:min-h-[1090px]" />,
+});
 const NumbersWall = dynamic(() => import('@/components/landing/NumbersWall'), { ssr: false });
 const StreakPreview = dynamic(() => import('@/components/landing/StreakPreview'), { ssr: false });
 const TeacherFlipCard = dynamic(() => import('@/components/landing/TeacherFlipCard'), { ssr: false });
@@ -37,6 +43,7 @@ import {
   Gamepad2,
 } from 'lucide-react';
 import LandingCTABtn from '@/components/landing/LandingCTABtn';
+import RankPredictorChip from '@/components/landing/RankPredictorChip';
 import { getRegistrationStatusAction } from '@/server/actions/system-actions';
 
 const PhaseStartIcon = ({ className }: { className?: string }) => (
@@ -287,9 +294,11 @@ const ORI_FLOATS = [
 
 interface LandingPageProps {
   onGetStarted: () => void;
+  /** `rankPredictor` flag, resolved on the server (runtime kill switch included). */
+  rankPredictorEnabled?: boolean;
 }
 
-export default function LandingPage({ onGetStarted }: LandingPageProps) {
+export default function LandingPage({ onGetStarted, rankPredictorEnabled = false }: LandingPageProps) {
   const heroRef = useRef<HTMLDivElement>(null);
   const [mascotState, setMascotState] = useState<MascotState>('idle');
   const { theme, setTheme, resolvedTheme } = useTheme();
@@ -776,6 +785,9 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
               <LiveCounter />
             </div>
 
+            {/* Free Rank Predictor chip → the section right under the hero */}
+            {rankPredictorEnabled ? <RankPredictorChip /> : null}
+
             {/* Weekly Contest register banner (client-fetched; self-hides when
                 no contest is scheduled or the flag is off). */}
             <div className="w-full max-w-3xl mx-auto mt-6">
@@ -787,7 +799,8 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.6 }}
-              className="mt-6 sm:mt-10 flex items-center justify-center"
+              // With the Rank Predictor chip above it, a smaller gap keeps the CTA above the fold at 1280×800.
+              className={`${rankPredictorEnabled ? 'mt-6' : 'mt-6 sm:mt-10'} flex items-center justify-center`}
             >
               <div className="inline-flex items-center gap-3 sm:gap-4 neu-raised rounded-full pl-5 pr-4 py-2.5">
                 <span className="text-xs sm:text-sm font-heading font-bold uppercase tracking-[0.22em] text-muted-foreground">
@@ -828,15 +841,24 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
           </div>
         </motion.div>
 
+        {/* Rank Predictor (real, flag on) — right under the hero */}
+        {rankPredictorEnabled ? (
+          <div className="relative z-10" data-mascot-state="curious" data-mascot-side="right">
+            <RankPredictorWidget />
+          </div>
+        ) : null}
+
         {/* Manifesto Reveal — second screen, right after hero */}
         <div data-mascot-state="thinking" data-mascot-side="left">
           <ManifestoReveal onBeginJourney={handleBeginJourney} />
         </div>
 
-        {/* Rank Predictor — immediately after manifesto */}
-        <div className="relative z-10" data-mascot-state="curious" data-mascot-side="right">
-          <RankPredictor />
-        </div>
+        {/* Rank Predictor — immediately after manifesto (old slider, flag off) */}
+        {rankPredictorEnabled ? null : (
+          <div className="relative z-10" data-mascot-state="curious" data-mascot-side="right">
+            <RankPredictor />
+          </div>
+        )}
 
         {/* Features Section - Responsive: Rotating cards on desktop, grid on mobile */}
         <section id="features" data-mascot-state="curious" data-mascot-side="left" className="py-10 sm:py-16 lg:py-20 relative z-10 overflow-x-hidden">

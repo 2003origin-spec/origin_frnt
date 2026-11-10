@@ -4,7 +4,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import LandingPage from '@/sections/LandingPage';
 
-export default function HomeClient() {
+export default function HomeClient({ rankPredictorEnabled }: { rankPredictorEnabled: boolean }) {
   const { user } = useAuth();
   const router = useRouter();
 
@@ -28,7 +28,7 @@ export default function HomeClient() {
   // No intro video / splash gate — render the landing content immediately.
   return (
     <main className="relative min-h-dvh bg-background text-foreground">
-      <LandingPage onGetStarted={handleGetStarted} />
+      <LandingPage onGetStarted={handleGetStarted} rankPredictorEnabled={rankPredictorEnabled} />
     </main>
   );
 }
