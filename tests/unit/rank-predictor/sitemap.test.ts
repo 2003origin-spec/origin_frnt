@@ -1,13 +1,16 @@
-/** The sitemap lists /rank-predictor only while the flag is on, and never breaks because of it. */
+/**
+ * The sitemap lists /rank-predictor and its exam pages only while the flag is
+ * on, the college finder only while both flags are on, and never breaks because of them.
+ */
 
 import test from "node:test";
 import assert from "node:assert/strict";
 
 import { stubModules } from "../_module-stubs";
 
-let flag: () => Promise<boolean> = async () => true;
+let flag: (name: string) => Promise<boolean> = async () => true;
 stubModules({
-  "@/server/feature-flags-runtime": (real: object) => ({ ...real, isFeatureEnabledRuntime: () => flag() }),
+  "@/server/feature-flags-runtime": (real: object) => ({ ...real, isFeatureEnabledRuntime: (name: string) => flag(name) }),
 });
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -32,4 +35,21 @@ test("flag read fails → entry left out, rest of the sitemap intact", async () 
   const list = await urls();
   assert.ok(!list.some((u) => u.includes("rank-predictor")));
   assert.ok(list.length >= 10, "the other public pages are still there");
+});
+
+test("flag on → the three exam pages listed", async () => {
+  flag = async () => true;
+  const list = await urls();
+  for (const slug of ["neet", "jee-main", "jee-advanced"]) assert.ok(list.some((u) => u.endsWith(`/rank-predictor/${slug}`)), slug);
+});
+
+test("college finder listed only while BOTH flags are on", async () => {
+  flag = async () => true;
+  assert.ok((await urls()).some((u) => u.endsWith("/rank-predictor/colleges")));
+  flag = async (name) => name === "rankPredictor";
+  const predictorOnly = await urls();
+  assert.ok(predictorOnly.some((u) => u.endsWith("/rank-predictor")));
+  assert.ok(!predictorOnly.some((u) => u.endsWith("/rank-predictor/colleges")));
+  flag = async (name) => name === "collegeCounselling";
+  assert.ok(!(await urls()).some((u) => u.includes("rank-predictor")));
 });

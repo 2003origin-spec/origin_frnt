@@ -20,3 +20,16 @@ test("anything else keeps today's behaviour (role home): other pages and open re
     assert.equal(loginReturnPath(next), null, String(next));
   }
 });
+
+test("the exam pages are allowed return paths, so login comes back to the same exam page", async () => {
+  const { loginHrefFor, signupHrefFor, LOGIN_HREF, SIGNUP_HREF } = await import("@/sections/RankPredictor/login-links");
+  for (const path of ["/rank-predictor/neet", "/rank-predictor/jee-main", "/rank-predictor/jee-advanced"]) {
+    assert.equal(loginReturnPath(path), path, path);
+    for (const href of [loginHrefFor(path), signupHrefFor(path)]) {
+      assert.equal(loginReturnPath(new URL(href, "https://www.o3origin.com").searchParams.get("next")), path, href);
+    }
+  }
+  // The default links are unchanged.
+  assert.equal(LOGIN_HREF, "/auth?next=%2Frank-predictor");
+  assert.equal(SIGNUP_HREF, "/auth?mode=signup&next=%2Frank-predictor");
+});

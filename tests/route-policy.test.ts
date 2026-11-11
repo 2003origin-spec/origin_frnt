@@ -282,3 +282,12 @@ test("Rank Predictor: page public (exact path), college finder authenticated, AP
   assert.equal(getAppRoutePolicy("/rank-predictor/anything-else").kind, "unconfigured");
   assert.equal(getApiRoutePolicy("/api/public/rank-predictor").kind, "public");
 });
+
+test("Rank Predictor exam pages: exactly the three exam slugs are public", () => {
+  for (const slug of ["neet", "jee-main", "jee-advanced"]) {
+    assert.equal(getAppRoutePolicy(`/rank-predictor/${slug}`).kind, "public", slug);
+    assert.equal(getAppRoutePolicy(`/rank-predictor/${slug}/`).kind, "public", `${slug}/`);
+  }
+  assert.equal(getAppRoutePolicy("/rank-predictor/jee").kind, "unconfigured");
+  assert.equal(getAppRoutePolicy("/rank-predictor/neet/extra").kind, "unconfigured");
+});

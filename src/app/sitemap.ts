@@ -1,6 +1,7 @@
 import type { MetadataRoute } from "next";
 import { unstable_rethrow } from "next/navigation";
 
+import { COLLEGE_FINDER_PATH, EXAM_PAGE_LIST, RANK_PREDICTOR_PATH } from "@/lib/seo/rank-predictor-seo";
 import { getCanonicalSiteUrl } from "@/lib/site-url";
 import { isFeatureEnabledRuntime } from "@/server/feature-flags-runtime";
 
@@ -28,11 +29,18 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { path: "/return-policy", priority: 0.3, changeFrequency: "yearly" },
     { path: "/shipping-policy", priority: 0.3, changeFrequency: "yearly" },
   ];
-  // Public Rank Predictor (plan §9.1): listed only while the flag is on.
-  // A failed flag read leaves the entry out; it must never break the sitemap.
+  // Public Rank Predictor (plan §9.1) and its exam pages: listed only while the
+  // flag is on. The college finder's public page only while BOTH flags are on.
+  // A failed flag read leaves the entries out; it must never break the sitemap.
   try {
-    if (await isFeatureEnabledRuntime("rankPredictor")) {
-      entries.push({ path: "/rank-predictor", priority: 0.9, changeFrequency: "weekly" });
+    const [predictor, counselling] = await Promise.all([
+      isFeatureEnabledRuntime("rankPredictor"),
+      isFeatureEnabledRuntime("collegeCounselling"),
+    ]);
+    if (predictor) {
+      entries.push({ path: RANK_PREDICTOR_PATH, priority: 0.9, changeFrequency: "weekly" });
+      for (const page of EXAM_PAGE_LIST) entries.push({ path: page.path, priority: 0.8, changeFrequency: "weekly" });
+      if (counselling) entries.push({ path: COLLEGE_FINDER_PATH, priority: 0.8, changeFrequency: "weekly" });
     }
   } catch (err) {
     unstable_rethrow(err); // Next.js control flow, not a failure

@@ -9,8 +9,10 @@
  */
 
 import { safeNext } from "./safe-next";
+import { EXAM_PAGE_LIST } from "./seo/rank-predictor-seo";
 
-const LOGIN_RETURN_PATHS: readonly string[] = ["/rank-predictor", "/rank-predictor/colleges"];
+/** The predictor, its exam pages (/rank-predictor/neet …) and the college finder. */
+const LOGIN_RETURN_PATHS: readonly string[] = ["/rank-predictor", ...EXAM_PAGE_LIST.map((page) => page.path), "/rank-predictor/colleges"];
 
 /** The allowed return path from a raw `next` value, or null. */
 export function loginReturnPath(rawNext: string | null | undefined): string | null {
