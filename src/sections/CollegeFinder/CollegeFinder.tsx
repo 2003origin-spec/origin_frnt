@@ -232,13 +232,13 @@ export default function CollegeFinder({ initialExam }: { initialExam: Counsellin
     void run(q, true);
   };
 
-  // A predictor hand-off with ranks runs the first search by itself.
+  // A predictor hand-off with ranks runs the first search by itself (it does not need the filter options).
   useEffect(() => {
-    if (!handoffReady || autoRan.current || !meta) return;
+    if (!handoffReady || autoRan.current) return;
     autoRan.current = true;
     const q = buildQuery();
     if (q) void run(q, false);
-  }, [handoffReady, meta, buildQuery, run]);
+  }, [handoffReady, buildQuery, run]);
 
   const changePage = (page: number) => {
     if (!lastQuery) return;

@@ -27,6 +27,7 @@ import type {
   CounsellingCategory,
   CounsellingRanks,
   CounsellingResultRow,
+  RankBasis,
   RankRange,
   RoundClosing,
 } from "./types";
@@ -128,6 +129,17 @@ export function quotaLabel(quota: string): string {
   return QUOTA_LABEL[quota] ?? quota;
 }
 
+export const NORTH_EAST_STATES: readonly string[] = ["Arunachal Pradesh", "Assam", "Manipur", "Meghalaya", "Mizoram", "Nagaland", "Sikkim", "Tripura"];
+
+/** Home states with CSAB NEUT seats (the North-East and the listed UTs). */
+export const NEUT_HOME_STATES: readonly string[] = [
+  ...NORTH_EAST_STATES,
+  "Andaman and Nicobar Islands",
+  "Dadra and Nagar Haveli and Daman and Diu",
+  "Ladakh",
+  "Lakshadweep",
+];
+
 /** MCC quotas any Indian candidate may fill. */
 const MCC_OPEN_QUOTAS = new Set(["All India", "Open Seat Quota", "Deemed/Paid Seats Quota", "Self-Financed Merit Seat", "B.Sc Nursing All India"]);
 /** MCC domicile quotas → the home state they need. */
@@ -169,7 +181,11 @@ export function quotaEligible(body: CounsellingBody, quota: string, homeState: s
         return false; // DASA-* (foreign nationals) and anything unknown
     }
   }
-  if (body === "csab_neut") return Boolean(home) && canonicalState(quota) === home;
+  if (body === "csab_neut") {
+    if (!home) return false;
+    if (quota === "North East") return NORTH_EAST_STATES.includes(home);
+    return canonicalState(quota) === home;
+  }
   if (body === "mcc_ug") {
     if (MCC_OPEN_QUOTAS.has(quota)) return true;
     const need = MCC_DOMICILE_QUOTAS[quota];
@@ -200,6 +216,48 @@ export function rankFor(cell: Pick<CellRound, "body" | "rankBasis" | "pwd">, kin
     case "state_rank":
       return pick(ranks.neetTnStateRank, "Tamil Nadu state rank");
   }
+}
+
+/** Rank lists each body's rows can use. */
+const BODY_BASES: Record<CounsellingBody, readonly RankBasis[]> = {
+  josaa: ["jee_adv", "jee_main"],
+  csab_special: ["jee_main"],
+  csab_neut: ["jee_main"],
+  mcc_ug: ["neet_air"],
+  state_ka: ["neet_air"],
+  state_tn: ["state_rank"],
+  state_up: ["neet_air"],
+  state_mh: ["neet_air"],
+  state_rj: ["neet_air"],
+  state_gj: ["neet_air"],
+  state_mp: ["neet_air"],
+  state_br: ["neet_air"],
+  state_od: ["neet_air"],
+};
+
+/** One (body, seat type, PwD, rank list) the student can use, with the best rank they would compare. */
+export type CandidateRule = { body: CounsellingBody; seatType: string; pwd: boolean; rankBasis: RankBasis; bound: number };
+
+/**
+ * The database pre-filter: for every seat type / PwD pool / rank list open to
+ * the student, the lowest (best) rank they would compare with it. A cell can
+ * only be Safe / Likely / Reach if its highest closing × 1.15 reaches that rank.
+ */
+export function candidateRules(bodies: readonly CounsellingBody[], input: Pick<MatchInput, "ranks" | "category" | "pwd">): CandidateRule[] {
+  const out: CandidateRule[] = [];
+  for (const body of bodies) {
+    for (const seatType of seatTypesFor(body, input.category)) {
+      const seat = matchSeatType(body, seatType, input.category);
+      if (!seat) continue;
+      for (const pwd of input.pwd ? [false, true] : [false]) {
+        for (const rankBasis of BODY_BASES[body]) {
+          const choice = rankFor({ body, rankBasis, pwd }, seat.kind, input.ranks);
+          if ("range" in choice) out.push({ body, seatType, pwd, rankBasis, bound: choice.range.low });
+        }
+      }
+    }
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -373,6 +431,7 @@ export function matchCells(cells: readonly CellRound[], input: MatchInput, histo
       band,
       body: first.body,
       year: first.year,
+      programId: first.programId,
       institute: first.institute,
       instituteType: first.instituteType,
       state: first.instituteState,
@@ -381,6 +440,7 @@ export function matchCells(cells: readonly CellRound[], input: MatchInput, histo
       quotaLabel: quotaLabel(first.quota),
       seatType: first.seatType,
       pwd: first.pwd,
+      gender: first.gender,
       femaleOnly,
       rankBasis: first.rankBasis,
       rankUsedLabel: choice.label,

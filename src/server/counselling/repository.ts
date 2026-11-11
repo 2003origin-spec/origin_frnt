@@ -8,7 +8,7 @@ import "server-only";
 
 import { getUserPostgresPool } from "@/server/user-postgres";
 import type { CellRound, CounsellingBody, DerivedKind, Gender, RankBasis } from "@/lib/counselling/types";
-import { cellKey } from "@/lib/counselling/match";
+import { cellKey, type CandidateRule } from "@/lib/counselling/match";
 
 import { ensureCounsellingSchema } from "./schema";
 
@@ -81,16 +81,13 @@ export async function listInstituteStates(groups: readonly string[]): Promise<st
 export type CandidateQuery = {
   bodies: CounsellingBody[];
   years: number[];
-  /** Allowed (body, seat_type) pairs. */
-  seatPairs: { body: CounsellingBody; seatType: string }[];
-  includePwd: boolean;
+  /** (body, seat type, PwD, rank list) open to the student, with their best rank for it. */
+  rules: CandidateRule[];
   includeFemale: boolean;
   instituteTypes: string[];
   states: string[];
   /** LIKE pattern (already escaped) or null. */
   branchPattern: string | null;
-  /** Smallest rank the student might use per basis (null = no rank for that basis). */
-  bounds: Record<RankBasis, number | null>;
   reachFactor: number;
 };
 
@@ -122,106 +119,105 @@ type CandidateRow = {
 };
 
 /**
- * Every round of every seat cell that could be Safe / Likely / Reach for the
- * smallest of the student's ranks (coarse filter; the engine decides). Returns
- * `truncated` when the cap was hit.
+ * Every round of every seat cell that could be Safe / Likely / Reach (coarse
+ * filter per seat type / PwD pool / rank list; the engine decides). Cells come
+ * most sought-after first; when the cap is hit the least sought-after cells are
+ * left out whole (never half a cell) and `truncated` is set.
  */
 export async function readCandidateCells(q: CandidateQuery): Promise<{ cells: CellRound[]; truncated: boolean }> {
   await ensureCounsellingSchema();
-  if (!q.bodies.length || !q.years.length || !q.seatPairs.length) return { cells: [], truncated: false };
+  if (!q.bodies.length || !q.years.length || !q.rules.length) return { cells: [], truncated: false };
   const res = await pool().query<CandidateRow>(
-    `WITH base AS (
+    `WITH rules AS (
+       SELECT * FROM unnest($3::text[], $4::text[], $5::boolean[], $6::text[], $7::int[]) AS r(body, seat_type, pwd, basis, bound)
+     ),
+     base AS (
        SELECT d.body, d.year, d.round, d.round_label, d.is_final,
               i.id AS institute_id, i.name AS institute, i.type AS institute_type, i.state AS institute_state, i.home_states,
               p.id AS program_id, p.name AS program,
               c.quota, c.seat_type, c.pwd, c.gender, c.rank_basis, c.opening_rank, c.closing_rank,
-              c.opening_prep, c.closing_prep, c.seats, c.precision_lost, c.derived,
+              c.opening_prep, c.closing_prep, c.seats, c.precision_lost, c.derived, r.bound,
               max(c.closing_rank) OVER w AS cell_max,
               bool_or(c.closing_prep) OVER w AS cell_prep
          FROM counselling.cutoffs c
          JOIN counselling.datasets d ON d.id = c.dataset_id
+         JOIN rules r ON r.body = d.body AND r.seat_type = c.seat_type AND r.pwd = c.pwd AND r.basis = c.rank_basis
          JOIN counselling.programs p ON p.id = c.program_id
          JOIN counselling.institutes i ON i.id = p.institute_id
         WHERE d.body = ANY($1::text[])
           AND d.year = ANY($2::int[])
-          AND (d.body, c.seat_type) IN (SELECT * FROM unnest($3::text[], $4::text[]))
-          AND ($5::boolean OR NOT c.pwd)
-          AND ($6::boolean OR c.gender = 'neutral')
-          AND (cardinality($7::text[]) = 0 OR i.type = ANY($7::text[]))
-          AND (cardinality($8::text[]) = 0 OR i.state = ANY($8::text[]))
-          AND ($9::text IS NULL OR p.name ILIKE $9::text OR i.name ILIKE $9::text)
+          AND ($8::boolean OR c.gender = 'neutral')
+          AND (cardinality($9::text[]) = 0 OR i.type = ANY($9::text[]))
+          AND (cardinality($10::text[]) = 0 OR i.state = ANY($10::text[]))
+          AND ($11::text IS NULL OR p.name ILIKE $11::text OR i.name ILIKE $11::text)
        WINDOW w AS (PARTITION BY d.body, d.year, c.program_id, c.quota, c.seat_type, c.pwd, c.gender)
      )
      SELECT body, year, round, round_label, is_final, institute_id, institute, institute_type, institute_state, home_states,
             program_id, program, quota, seat_type, pwd, gender, rank_basis, opening_rank, closing_rank,
             opening_prep, closing_prep, seats, precision_lost, derived
        FROM base
-      WHERE (CASE rank_basis WHEN 'jee_adv' THEN $10::int WHEN 'jee_main' THEN $11::int
-                             WHEN 'neet_air' THEN $12::int ELSE $13::int END) IS NOT NULL
-        AND (cell_prep OR cell_max * $14::float8 >=
-             (CASE rank_basis WHEN 'jee_adv' THEN $10::int WHEN 'jee_main' THEN $11::int
-                              WHEN 'neet_air' THEN $12::int ELSE $13::int END))
-      ORDER BY body, year, program_id, quota, seat_type, pwd, gender, round
-      LIMIT $15`,
+      WHERE cell_prep OR cell_max * $12::float8 >= bound
+      ORDER BY cell_max, body, year, program_id, quota, seat_type, pwd, gender, round
+      LIMIT $13`,
     [
       q.bodies,
       q.years,
-      q.seatPairs.map((s) => s.body),
-      q.seatPairs.map((s) => s.seatType),
-      q.includePwd,
+      q.rules.map((r) => r.body),
+      q.rules.map((r) => r.seatType),
+      q.rules.map((r) => r.pwd),
+      q.rules.map((r) => r.rankBasis),
+      q.rules.map((r) => r.bound),
       q.includeFemale,
       q.instituteTypes,
       q.states,
       q.branchPattern,
-      q.bounds.jee_adv,
-      q.bounds.jee_main,
-      q.bounds.neet_air,
-      q.bounds.state_rank,
       q.reachFactor,
       MAX_CANDIDATE_ROWS + 1,
     ],
   );
   const truncated = res.rows.length > MAX_CANDIDATE_ROWS;
-  const rows = truncated ? res.rows.slice(0, MAX_CANDIDATE_ROWS) : res.rows;
-  return {
-    truncated,
-    cells: rows.map((r) => {
-      const cell = {
-        body: r.body,
-        year: r.year,
-        round: r.round,
-        roundLabel: r.round_label,
-        isFinal: r.is_final,
-        instituteId: r.institute_id,
-        institute: r.institute,
-        instituteType: r.institute_type,
-        instituteState: r.institute_state,
-        homeStates: r.home_states ?? [],
-        programId: r.program_id,
-        program: r.program,
-        quota: r.quota,
-        seatType: r.seat_type,
-        pwd: r.pwd,
-        gender: r.gender,
-        rankBasis: r.rank_basis,
-        openingRank: r.opening_rank,
-        closingRank: r.closing_rank,
-        openingPrep: r.opening_prep,
-        closingPrep: r.closing_prep,
-        seats: r.seats,
-        precisionLost: r.precision_lost,
-        derived: r.derived,
-      };
-      return { ...cell, cellKey: cellKey(cell) };
-    }),
-  };
+  const cells: CellRound[] = res.rows.map((r) => {
+    const cell = {
+      body: r.body,
+      year: r.year,
+      round: r.round,
+      roundLabel: r.round_label,
+      isFinal: r.is_final,
+      instituteId: r.institute_id,
+      institute: r.institute,
+      instituteType: r.institute_type,
+      instituteState: r.institute_state,
+      homeStates: r.home_states ?? [],
+      programId: r.program_id,
+      program: r.program,
+      quota: r.quota,
+      seatType: r.seat_type,
+      pwd: r.pwd,
+      gender: r.gender,
+      rankBasis: r.rank_basis,
+      openingRank: r.opening_rank,
+      closingRank: r.closing_rank,
+      openingPrep: r.opening_prep,
+      closingPrep: r.closing_prep,
+      seats: r.seats,
+      precisionLost: r.precision_lost,
+      derived: r.derived,
+    };
+    return { ...cell, cellKey: cellKey(cell) };
+  });
+  if (!truncated) return { cells, truncated };
+  // Drop the cell the cap cut through, so no cell is judged on some of its rounds.
+  const lastKey = cells[cells.length - 1].cellKey;
+  return { cells: cells.filter((c) => c.cellKey !== lastKey), truncated };
 }
 
 export type HistoryRow = Pick<CellRound, "body" | "year" | "round" | "isFinal" | "programId" | "quota" | "seatType" | "pwd" | "gender" | "closingRank" | "closingPrep" | "derived" | "roundLabel">;
 
-/** Every year's rounds for these programs (the trend line on the page's rows). */
-export async function readHistory(bodies: readonly CounsellingBody[], programIds: readonly number[]): Promise<HistoryRow[]> {
-  if (!programIds.length) return [];
+export type HistoryKey = Pick<CellRound, "body" | "programId" | "quota" | "seatType" | "pwd" | "gender">;
+
+/** Every year's rounds of exactly these seat cells (the trend line on the page's rows). */
+export async function readHistory(keys: readonly HistoryKey[]): Promise<HistoryRow[]> {
+  if (!keys.length) return [];
   await ensureCounsellingSchema();
   const res = await pool().query<{
     body: CounsellingBody;
@@ -238,12 +234,24 @@ export async function readHistory(bodies: readonly CounsellingBody[], programIds
     closing_prep: boolean;
     derived: DerivedKind;
   }>(
-    `SELECT d.body, d.year, d.round, d.round_label, d.is_final, c.program_id, c.quota, c.seat_type, c.pwd, c.gender,
+    `WITH k AS (
+       SELECT * FROM unnest($1::text[], $2::int[], $3::text[], $4::text[], $5::boolean[], $6::text[])
+         AS k(body, program_id, quota, seat_type, pwd, gender)
+     )
+     SELECT d.body, d.year, d.round, d.round_label, d.is_final, c.program_id, c.quota, c.seat_type, c.pwd, c.gender,
             c.closing_rank, c.closing_prep, c.derived
-       FROM counselling.cutoffs c
-       JOIN counselling.datasets d ON d.id = c.dataset_id
-      WHERE d.body = ANY($1::text[]) AND c.program_id = ANY($2::int[])`,
-    [bodies, programIds],
+       FROM k
+       JOIN counselling.cutoffs c
+         ON c.program_id = k.program_id AND c.quota = k.quota AND c.seat_type = k.seat_type AND c.pwd = k.pwd AND c.gender = k.gender
+       JOIN counselling.datasets d ON d.id = c.dataset_id AND d.body = k.body`,
+    [
+      keys.map((k) => k.body),
+      keys.map((k) => k.programId),
+      keys.map((k) => k.quota),
+      keys.map((k) => k.seatType),
+      keys.map((k) => k.pwd),
+      keys.map((k) => k.gender),
+    ],
   );
   return res.rows.map((r) => ({
     body: r.body,

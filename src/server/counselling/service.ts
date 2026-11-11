@@ -7,7 +7,7 @@ import "server-only";
  */
 
 import { BODY_DATA_NOTE, BODY_LABEL, COUNSELLING_DISCLAIMER, JEE_INSTITUTE_TYPES, NEET_INSTITUTE_TYPES, OFFICIAL_LINKS } from "@/lib/counselling/format";
-import { REACH_FACTOR, matchCells, seatTypesFor, seriesKey, sortRows, summariseCell } from "@/lib/counselling/match";
+import { NEUT_HOME_STATES, REACH_FACTOR, candidateRules, matchCells, sortRows, summariseCell } from "@/lib/counselling/match";
 import { closingTrendHint } from "@/lib/rank-predictor/trend";
 import { STATE_BODY_BY_STATE } from "@/lib/counselling/states";
 import {
@@ -17,11 +17,9 @@ import {
   type ChanceBand,
   type CounsellingBody,
   type CounsellingExam,
-  type CounsellingRanks,
   type CounsellingResultRow,
   type CounsellingSearchInput,
   type InstituteType,
-  type RankBasis,
 } from "@/lib/counselling/types";
 import { likePattern } from "@/lib/counselling/validate";
 
@@ -113,24 +111,12 @@ export async function getCounsellingMeta(exam: CounsellingExam): Promise<Counsel
   };
 }
 
-/** Smallest rank the student could use per basis (the SQL pre-filter); null = no rank for that basis. */
-export function rankBounds(ranks: CounsellingRanks): Record<RankBasis, number | null> {
-  const min = (...r: (CounsellingRanks[keyof CounsellingRanks] | undefined)[]) => {
-    const lows = r.filter((x): x is NonNullable<typeof x> => Boolean(x)).map((x) => x.low);
-    return lows.length ? Math.min(...lows) : null;
-  };
-  return {
-    jee_adv: min(ranks.jeeAdvCrl, ranks.jeeAdvCategory, ranks.jeeAdvPwdCrl, ranks.jeeAdvPwdCategory),
-    jee_main: min(ranks.jeeMainCrl, ranks.jeeMainCategory, ranks.jeeMainPwdCrl, ranks.jeeMainPwdCategory),
-    neet_air: min(ranks.neetAir),
-    state_rank: min(ranks.neetTnStateRank),
-  };
-}
-
 /** Bodies searched when the student picks none: JoSAA + CSAB; MCC + their own state's list. */
 export function defaultBodies(exam: CounsellingExam, homeState: string, available: readonly CounsellingBody[]): CounsellingBody[] {
   const wanted: CounsellingBody[] =
-    exam === "jee" ? ["josaa", "csab_special", "csab_neut"] : ["mcc_ug", ...((STATE_BODY_BY_STATE[homeState] ? [STATE_BODY_BY_STATE[homeState]] : []) as CounsellingBody[])];
+    exam === "jee"
+      ? ["josaa", "csab_special", ...(NEUT_HOME_STATES.includes(homeState) ? (["csab_neut"] as const) : [])]
+      : ["mcc_ug", ...((STATE_BODY_BY_STATE[homeState] ? [STATE_BODY_BY_STATE[homeState]] : []) as CounsellingBody[])];
   return wanted.filter((b) => available.includes(b));
 }
 
@@ -186,13 +172,11 @@ export async function searchCounselling(input: CounsellingSearchInput): Promise<
   const { cells, truncated } = await readCandidateCells({
     bodies: usedBodies,
     years: [...new Set(searched.map((s) => s.year))],
-    seatPairs: usedBodies.flatMap((body) => seatTypesFor(body, input.category).map((seatType) => ({ body, seatType }))),
-    includePwd: input.pwd,
+    rules: candidateRules(usedBodies, input),
     includeFemale: input.gender === "female",
     instituteTypes: input.filters.instituteTypes,
     states: input.filters.states,
     branchPattern: input.filters.branchQuery ? likePattern(input.filters.branchQuery) : null,
-    bounds: rankBounds(input.ranks),
     reachFactor: REACH_FACTOR,
   });
   // A year asked for one body must not leak in from another body's year list.
@@ -213,23 +197,25 @@ export async function searchCounselling(input: CounsellingSearchInput): Promise<
   const start = (input.page - 1) * input.pageSize;
   const page = sorted.slice(start, start + input.pageSize);
 
-  await addTrends(page, usedBodies);
+  await addTrends(page);
   if (input.filters.roundMode === "final") {
     for (const r of page) r.rounds = r.rounds.filter((x) => x.closing === r.finalClosing).slice(-1);
   }
-  if (truncated) notes.push("Too many seats matched: narrow the filters (type, state or branch) to see all of them.");
+  if (truncated) notes.push("Too many seats matched, so the least sought-after ones are left out and the counts are lower than the real total: narrow the filters (type, state or branch) to see all of them.");
 
   return { ...empty, rows: page, total: filtered.length, counts, truncated, missingRanks, notes };
 }
 
 /** "closing rank rose 3 years in a row" for the rows on this page (text only). */
-async function addTrends(rows: CounsellingResultRow[], bodies: CounsellingBody[]): Promise<void> {
+async function addTrends(rows: CounsellingResultRow[]): Promise<void> {
   if (!rows.length) return;
-  const programIds = [...new Set(rows.map((r) => Number(r.key.split("|")[2])))];
-  const history = await readHistory(bodies, programIds);
+  const keyOf = (k: { body: string; programId: number; quota: string; seatType: string; pwd: boolean; gender: string }) =>
+    [k.body, k.programId, k.quota, k.seatType, k.pwd ? 1 : 0, k.gender].join("\u0000");
+  const keys = rows.map((r) => ({ body: r.body, programId: r.programId, quota: r.quota, seatType: r.seatType, pwd: r.pwd, gender: r.gender }));
+  const history = await readHistory(keys);
   const byCellYear = new Map<string, CellRound[]>();
   for (const h of history) {
-    const k = `${seriesKey(h)}#${h.year}`;
+    const k = `${keyOf(h)}#${h.year}`;
     const list = byCellYear.get(k) ?? [];
     list.push({ ...(h as CellRound), cellKey: k });
     byCellYear.set(k, list);
@@ -243,10 +229,8 @@ async function addTrends(rows: CounsellingResultRow[], bodies: CounsellingBody[]
     arr.push({ year: Number(year), closing: sum.final });
     series.set(s, arr);
   }
-  for (const r of rows) {
-    const [body, , programId, quota, seatType, pwd, gender] = r.key.split("|");
-    const key = seriesKey({ body: body as CounsellingBody, programId: Number(programId), quota, seatType, pwd: pwd === "1", gender: gender as "neutral" | "female" });
+  rows.forEach((r, i) => {
     // Only years up to the row's own year count for its trend.
-    r.trend = closingTrendHint((series.get(key) ?? []).filter((p) => p.year <= r.year));
-  }
+    r.trend = closingTrendHint((series.get(keyOf(keys[i])) ?? []).filter((p) => p.year <= r.year));
+  });
 }

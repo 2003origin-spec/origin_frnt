@@ -180,6 +180,7 @@ export type CounsellingResultRow = {
   band: ChanceBand;
   body: CounsellingBody;
   year: number;
+  programId: number;
   institute: string;
   instituteType: string;
   state: string | null;
@@ -188,6 +189,8 @@ export type CounsellingResultRow = {
   quotaLabel: string;
   seatType: string;
   pwd: boolean;
+  /** The cell's gender pool column (MH "(W)" seats are 'neutral' here but femaleOnly). */
+  gender: Gender;
   femaleOnly: boolean;
   rankBasis: RankBasis;
   /** Which of the student's ranks was compared (e.g. "JEE Main category rank"). */

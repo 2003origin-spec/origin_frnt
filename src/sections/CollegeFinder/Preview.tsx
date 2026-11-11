@@ -3,11 +3,10 @@ import { ArrowLeft, Check, LogIn, UserPlus } from 'lucide-react';
 
 import { COUNSELLING_DISCLAIMER, OFFICIAL_LINKS } from '@/lib/counselling/format';
 
+import { COLLEGES_LOGIN_HREF, COLLEGES_SIGNUP_HREF } from '@/sections/RankPredictor/login-links';
+
 import { BandChip } from './ResultRow';
 
-const NEXT = '%2Frank-predictor%2Fcolleges';
-export const COLLEGES_LOGIN_HREF = `/auth?next=${NEXT}`;
-export const COLLEGES_SIGNUP_HREF = `/auth?mode=signup&next=${NEXT}`;
 
 const fieldFocus = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary';
 

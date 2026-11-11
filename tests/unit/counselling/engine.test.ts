@@ -8,6 +8,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  NEUT_HOME_STATES,
+  candidateRules,
   classify,
   expectedNextYear,
   matchCells,
@@ -212,4 +214,22 @@ test("sorting: Safe → Likely → Reach, most competitive first inside a group"
     const b = sorted[i];
     assert.ok(order[a.band] < order[b.band] || (a.band === b.band && a.finalClosing <= b.finalClosing));
   }
+});
+
+test("pre-filter rules: one per seat type / PwD pool / rank list, with the rank the student would compare", () => {
+  const rules = candidateRules(["josaa"], { ranks: { jeeMainCrl: r(9000), jeeMainCategory: r(2000), jeeMainPwdCrl: r(90) }, category: "obc-ncl", pwd: true });
+  const key = (x: { seatType: string; pwd: boolean; rankBasis: string; bound: number }) => `${x.seatType}/${x.pwd}/${x.rankBasis}/${x.bound}`;
+  assert.deepEqual(rules.map(key).sort(), ["OBC-NCL/false/jee_main/2000", "OPEN/false/jee_main/9000", "OPEN/true/jee_main/90"]);
+  // No JEE Advanced rank → no IIT rules; no category PwD rank → no OBC-NCL PwD rule.
+  assert.ok(rules.every((x) => x.rankBasis === "jee_main"));
+  const neet = candidateRules(["mcc_ug", "state_tn"], { ranks: { neetAir: r(5000) }, category: "sc", pwd: false });
+  assert.deepEqual(neet.map((x) => `${x.body}/${x.seatType}/${x.rankBasis}`).sort(), ["mcc_ug/Open/neet_air", "mcc_ug/SC/neet_air"]);
+});
+
+test("CSAB NEUT: state quotas and the 'North East' quota only for those home states", () => {
+  assert.equal(quotaEligible("csab_neut", "North East", "Assam", []), true);
+  assert.equal(quotaEligible("csab_neut", "North East", "Kerala", []), false);
+  assert.equal(quotaEligible("csab_neut", "Daman And Diu", "Dadra and Nagar Haveli and Daman and Diu", []), true);
+  assert.equal(quotaEligible("csab_neut", "Ladakh", "", []), false);
+  assert.ok(NEUT_HOME_STATES.includes("Lakshadweep") && !NEUT_HOME_STATES.includes("Kerala"));
 });

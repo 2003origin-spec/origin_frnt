@@ -19,7 +19,8 @@
  * Idempotent: each dataset (body × year × round) is replaced in one
  * transaction (delete its rows, insert the new ones). A dataset whose content
  * hash matches the stored one is skipped unless --replace, so a second run
- * changes nothing.
+ * changes nothing. --all is the whole truth: it also removes datasets that are
+ * no longer in the CSVs and programs / institutes nothing uses any more.
  */
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
@@ -179,7 +180,7 @@ async function main() {
   await client.connect();
   try {
     await ensureSchema(client);
-    const instituteIds = await upsertInstitutes(client, plan);
+    const instituteIds = await upsertInstitutes(client, plan, args.all);
     const programIds = await upsertPrograms(client, plan, instituteIds);
 
     const existing = await client.query<{ body: string; year: number; round: number; sha256: string; id: number }>(
@@ -199,7 +200,30 @@ async function main() {
       await writeDataset(client, ds, src, programIds);
       written += 1;
     }
-    console.log(`\nDatasets written: ${written}, unchanged (skipped): ${unchanged}.`);
+    let pruned = 0;
+    if (args.all) {
+      // A full run is the whole truth: datasets no longer in the CSVs (a round removed or renumbered) go,
+      // then programs / institutes nothing points at any more.
+      const planned = new Set(plan.datasets.map((d) => `${d.body}|${d.year}|${d.round}`));
+      const stale = existing.rows.filter((r) => !planned.has(`${r.body}|${r.year}|${r.round}`));
+      for (const r of stale) console.log(`  removing stale dataset ${r.body} ${r.year} round ${r.round}`);
+      if (stale.length) await client.query("DELETE FROM counselling.datasets WHERE id = ANY($1::int[])", [stale.map((r) => r.id)]);
+      pruned = stale.length;
+      const orphans = await client.query(
+        `WITH p AS (
+           DELETE FROM counselling.programs p WHERE NOT EXISTS (SELECT 1 FROM counselling.cutoffs c WHERE c.program_id = p.id) RETURNING 1
+         )
+         SELECT count(*)::int AS n FROM p`,
+      );
+      const orphanInstitutes = await client.query(
+        `WITH i AS (
+           DELETE FROM counselling.institutes i WHERE NOT EXISTS (SELECT 1 FROM counselling.programs p WHERE p.institute_id = i.id) RETURNING 1
+         )
+         SELECT count(*)::int AS n FROM i`,
+      );
+      if (orphans.rows[0].n || orphanInstitutes.rows[0].n) console.log(`  removed ${orphans.rows[0].n} unused programs, ${orphanInstitutes.rows[0].n} unused institutes`);
+    }
+    console.log(`\nDatasets written: ${written}, unchanged (skipped): ${unchanged}, removed (no longer in the CSVs): ${pruned}.`);
     const counts = await client.query<{ body: string; year: number; n: string }>(
       `SELECT d.body, d.year, count(c.*)::text AS n
          FROM counselling.datasets d LEFT JOIN counselling.cutoffs c ON c.dataset_id = d.id
@@ -244,16 +268,24 @@ async function ensureSchema(client: pg.Client) {
   }
 }
 
-async function upsertInstitutes(client: pg.Client, plan: ReturnType<typeof buildImportPlan>): Promise<Map<string, number>> {
+const INSTITUTE_UPDATE = `ON CONFLICT (body, name) DO UPDATE
+        SET type = EXCLUDED.type, state = EXCLUDED.state, home_states = EXCLUDED.home_states
+      WHERE (counselling.institutes.type, counselling.institutes.state, counselling.institutes.home_states)
+            IS DISTINCT FROM (EXCLUDED.type, EXCLUDED.state, EXCLUDED.home_states)`;
+
+/**
+ * Type / state / home states are worked out from all the rows of the run
+ * (MCC type depends on every quota a college had). Only a full run (--all)
+ * may change an existing institute; a one-body / one-year run only adds new
+ * ones, so it cannot overwrite what the other years established.
+ */
+async function upsertInstitutes(client: pg.Client, plan: ReturnType<typeof buildImportPlan>, full: boolean): Promise<Map<string, number>> {
   const list = plan.institutes;
   await client.query(
     `INSERT INTO counselling.institutes (body, name, type, state, home_states)
      SELECT b, n, t, s, COALESCE(string_to_array(h, '|'), '{}')
        FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[]) AS x(b, n, t, s, h)
-     ON CONFLICT (body, name) DO UPDATE
-        SET type = EXCLUDED.type, state = EXCLUDED.state, home_states = EXCLUDED.home_states
-      WHERE (counselling.institutes.type, counselling.institutes.state, counselling.institutes.home_states)
-            IS DISTINCT FROM (EXCLUDED.type, EXCLUDED.state, EXCLUDED.home_states)`,
+     ${full ? INSTITUTE_UPDATE : "ON CONFLICT (body, name) DO NOTHING"}`,
     [list.map((i) => i.group), list.map((i) => i.name), list.map((i) => i.type), list.map((i) => i.state), list.map((i) => (i.homeStates.length ? i.homeStates.join("|") : null))],
   );
   const res = await client.query<{ id: number; body: string; name: string }>("SELECT id, body, name FROM counselling.institutes");
@@ -270,7 +302,10 @@ async function upsertPrograms(client: pg.Client, plan: ReturnType<typeof buildIm
   await client.query(
     `INSERT INTO counselling.programs (institute_id, name, degree, duration_years)
      SELECT * FROM unnest($1::int[], $2::text[], $3::text[], $4::smallint[])
-     ON CONFLICT (institute_id, name) DO NOTHING`,
+     ON CONFLICT (institute_id, name) DO UPDATE
+        SET degree = EXCLUDED.degree, duration_years = EXCLUDED.duration_years
+      WHERE (counselling.programs.degree, counselling.programs.duration_years)
+            IS DISTINCT FROM (EXCLUDED.degree, EXCLUDED.duration_years)`,
     [ids, list.map((p) => p.name), list.map((p) => p.degree), list.map((p) => p.durationYears)],
   );
   const res = await client.query<{ id: number; institute_id: number; name: string }>("SELECT id, institute_id, name FROM counselling.programs");

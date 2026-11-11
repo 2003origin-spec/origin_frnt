@@ -64,13 +64,11 @@ stubModules({
         (c) =>
           q.bodies.includes(c.body) &&
           q.years.includes(c.year) &&
-          q.seatPairs.some((s) => s.body === c.body && s.seatType === c.seatType) &&
-          (q.includePwd || !c.pwd) &&
+          q.rules.some((r) => r.body === c.body && r.seatType === c.seatType && r.pwd === c.pwd && r.rankBasis === c.rankBasis) &&
           (q.includeFemale || c.gender === "neutral") &&
           (!q.instituteTypes.length || q.instituteTypes.includes(c.instituteType)) &&
           (!q.states.length || (c.instituteState !== null && q.states.includes(c.instituteState))) &&
-          (!re || re.test(c.program) || re.test(c.institute)) &&
-          q.bounds[c.rankBasis] !== null,
+          (!re || re.test(c.program) || re.test(c.institute)),
       );
       return { cells, truncated: false };
     },

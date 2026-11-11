@@ -86,6 +86,16 @@ test("college finder on the imported data", async (t) => {
     assert.ok(res.rows.some((r) => r.trend), "some NIT cell rose or fell 2+ years in a row");
   });
 
+  await t.test("a female OBC-NCL PwD student with a tiny PwD rank stays under the row cap", async () => {
+    const t0 = Date.now();
+    const res = await searchCounselling(
+      input({ exam: "jee", ranks: { jeeMainCrl: 9000, jeeMainCategory: 2000, jeeMainPwdCrl: 40, jeeAdvCrl: 3000 }, category: "obc-ncl", pwd: true, gender: "female", homeState: "Bihar" }),
+    );
+    assert.equal(res.truncated, false);
+    assert.ok(res.total > 0);
+    assert.ok(Date.now() - t0 < 5000, `took ${Date.now() - t0} ms`);
+  });
+
   await t.test("meta for both exams", async () => {
     const jee = await getCounsellingMeta("jee");
     assert.deepEqual(jee.bodies.map((b) => b.body), ["josaa", "csab_special", "csab_neut"]);
