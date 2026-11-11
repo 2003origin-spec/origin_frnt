@@ -182,10 +182,13 @@ test("T2.14 NEET proportional state rank (Karnataka, AIR 10,000) is rough and �
   assert.equal(p.stateRank, null);
 });
 
-test("T2.15 JEE Advanced 2026 CRL: 300 / 150 / 120 / 100 / 92 → ≈ 25 / 5,701 / 13,501 / 23,701 / 29,401", () => {
+// 2026 uses the official JIC report tables. They jump from rank 1 (330 marks) to
+// rank 101 (274 marks), so 300 marks is read between those two rows (≈ 55).
+test("T2.15 JEE Advanced 2026 CRL: 300 / 150 / 120 / 100 / 92 → ≈ 55 / 5,701 / 13,501 / 23,701 / 29,401", () => {
   const y = year(jeeAdv.years, 2026);
+  assert.equal(y.rankTablesQuality, "official");
   for (const [marks, rank] of [
-    [300, 25],
+    [300, 55],
     [150, 5701],
     [120, 13501],
     [100, 23701],
@@ -194,7 +197,7 @@ test("T2.15 JEE Advanced 2026 CRL: 300 / 150 / 120 / 100 / 92 → ≈ 25 / 5,701
     const each = Math.ceil(marks / 3);
     const r = jeeAdvRankForYear(y, "CRL", [each, each, marks - 2 * each], marks)!;
     assert.ok(r.qualified);
-    contains({ low: r.lo, high: r.hi }, rank, `${marks} marks`);
+    contains({ low: Math.floor(r.lo), high: Math.ceil(r.hi) }, rank, `${marks} marks`);
   }
 });
 
