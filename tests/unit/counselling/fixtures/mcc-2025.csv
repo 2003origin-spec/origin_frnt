@@ -1,0 +1,8 @@
+body,year,round,round_label,is_final,institute,program,quota,seat_type,pwd,gender,rank_basis,opening_rank,closing_rank,opening_prep,closing_prep,seats,precision_lost,derived
+mcc_ug,2025,1,Round 1,false,"Bangalore Medical College and Research Institute,K R ROAD FORT BENGALURU, Karnataka, 560002",MBBS,All India,EWS,false,neutral,neet_air,3671,4514,false,false,4,false,from_allotments
+mcc_ug,2025,1,Round 1,false,"Bangalore Medical College and Research Institute,K R ROAD FORT BENGALURU, Karnataka, 560002",MBBS,All India,OBC,false,neutral,neet_air,1389,3040,false,false,9,false,from_allotments
+mcc_ug,2025,1,Round 1,false,"Bangalore Medical College and Research Institute,K R ROAD FORT BENGALURU, Karnataka, 560002",MBBS,All India,OBC,true,neutral,neet_air,560904,560904,false,false,1,false,from_allotments
+mcc_ug,2025,1,Round 1,false,"Bangalore Medical College and Research Institute,K R ROAD FORT BENGALURU, Karnataka, 560002",MBBS,All India,Open,false,neutral,neet_air,398,1338,false,false,15,false,from_allotments
+mcc_ug,2025,1,Round 1,false,"Bangalore Medical College and Research Institute,K R ROAD FORT BENGALURU, Karnataka, 560002",MBBS,All India,Open,true,neutral,neet_air,175937,175937,false,false,1,false,from_allotments
+mcc_ug,2025,1,Round 1,false,"Bangalore Medical College and Research Institute,K R ROAD FORT BENGALURU, Karnataka, 560002",MBBS,All India,SC,false,neutral,neet_air,11039,23872,false,false,5,false,from_allotments
+mcc_ug,2025,1,Round 1,false,"Bangalore Medical College and Research Institute,K R ROAD FORT BENGALURU, Karnataka, 560002",MBBS,All India,ST,false,neutral,neet_air,13442,39918,false,false,3,false,from_allotments

@@ -179,6 +179,11 @@ export async function GET(request: NextRequest, context: RouteContext) {
     const { handleRankPredictorGet } = await import("@/server/rank-predictor/routes");
     return handleRankPredictorGet(request, earlySlug);
   }
+  // College finder (plan §7.3): its own auth, flag and limiter; loaded on demand.
+  if (earlySlug[0] === "counselling") {
+    const { handleCounsellingGet } = await import("@/server/counselling/routes");
+    return handleCounsellingGet(request, earlySlug);
+  }
 
   const auth = await authUser(request);
   if (!auth) {
@@ -388,6 +393,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
   const params = await context.params;
   const slug = getSlugSegments(params);
   const [root, first, second] = slug;
+
+  // College finder search (plan §7.3): its own auth, flag, limiter and body cap.
+  if (root === "counselling") {
+    const { handleCounsellingPost } = await import("@/server/counselling/routes");
+    return handleCounsellingPost(request, slug);
+  }
 
   const auth = await authCaller(request);
   if (!auth) {

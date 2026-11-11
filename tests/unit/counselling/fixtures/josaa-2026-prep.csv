@@ -1,0 +1,4 @@
+body,year,round,round_label,is_final,institute,program,quota,seat_type,pwd,gender,rank_basis,opening_rank,closing_rank,opening_prep,closing_prep,seats,precision_lost,derived
+josaa,2026,5,Round 5,true,Indian Institute of Technology Bhubaneswar,"Electrical Engineering (4 Years, Bachelor of Technology)",AI,OPEN,true,neutral,jee_adv,260,260,true,true,,false,official
+josaa,2026,5,Round 5,true,Indian Institute of Technology Bhubaneswar,"Mechanical Engineering (4 Years, Bachelor of Technology)",AI,OPEN,true,neutral,jee_adv,354,354,true,true,,false,official
+josaa,2026,5,Round 5,true,Indian Institute of Technology Bombay,"Aerospace Engineering (4 Years, Bachelor of Technology)",AI,SC,true,neutral,jee_adv,14,14,true,true,,false,official

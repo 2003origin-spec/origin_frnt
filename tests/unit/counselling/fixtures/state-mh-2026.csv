@@ -1,0 +1,23 @@
+body,year,round,round_label,is_final,institute,program,quota,seat_type,pwd,gender,rank_basis,opening_rank,closing_rank,opening_prep,closing_prep,seats,precision_lost,derived
+state_mh,2026,1,Round 1,false,AB VAJPAYEE MC PUNE,MBBS,STATE,EMOBC (EMR),false,neutral,neet_air,48535,50004,false,false,5,false,from_allotments
+state_mh,2026,1,Round 1,false,AB VAJPAYEE MC PUNE,MBBS,STATE,EMOBCW (EMR),false,neutral,neet_air,46444,46628,false,false,2,false,from_allotments
+state_mh,2026,1,Round 1,false,AB VAJPAYEE MC PUNE,MBBS,STATE,EMSEBC (EMR),false,neutral,neet_air,46714,48515,false,false,4,false,from_allotments
+state_mh,2026,1,Round 1,false,AB VAJPAYEE MC PUNE,MBBS,STATE,EMSEBCW (EMR),false,neutral,neet_air,46750,46750,false,false,1,false,from_allotments
+state_mh,2026,1,Round 1,false,AB VAJPAYEE MC PUNE,MBBS,STATE,I.Q.,false,neutral,neet_air,48098,96101,false,false,15,false,from_allotments
+state_mh,2026,1,Round 1,false,AB VAJPAYEE MC PUNE,MBBS,STATE,NTB,false,neutral,neet_air,74617,74617,false,false,1,false,from_allotments
+state_mh,2026,1,Round 1,false,AB VAJPAYEE MC PUNE,MBBS,STATE,NTC,false,neutral,neet_air,48539,48539,false,false,1,false,from_allotments
+state_mh,2026,1,Round 1,false,AB VAJPAYEE MC PUNE,MBBS,STATE,NTD,false,neutral,neet_air,48787,48787,false,false,1,false,from_allotments
+state_mh,2026,1,Round 1,false,AB VAJPAYEE MC PUNE,MBBS,STATE,OBC,false,neutral,neet_air,50413,50666,false,false,2,false,from_allotments
+state_mh,2026,1,Round 1,false,AB VAJPAYEE MC PUNE,MBBS,STATE,OBC(W),false,neutral,neet_air,48229,48229,false,false,1,false,from_allotments
+state_mh,2026,1,Round 1,false,AB VAJPAYEE MC PUNE,MBBS,STATE,OPEN,false,neutral,neet_air,13746,46254,false,false,27,false,from_allotments
+state_mh,2026,1,Round 1,false,AB VAJPAYEE MC PUNE,MBBS,STATE,OPEN (EMD),false,neutral,neet_air,38009,45214,false,false,9,false,from_allotments
+state_mh,2026,1,Round 1,false,AB VAJPAYEE MC PUNE,MBBS,STATE,OPEN (W),false,neutral,neet_air,10827,36548,false,false,13,false,from_allotments
+state_mh,2026,1,Round 1,false,AB VAJPAYEE MC PUNE,MBBS,STATE,OPEN (W) (EMD),false,neutral,neet_air,25789,33922,false,false,3,false,from_allotments
+state_mh,2026,1,Round 1,false,AB VAJPAYEE MC PUNE,MBBS,STATE,SC,false,neutral,neet_air,88065,123638,false,false,4,false,from_allotments
+state_mh,2026,1,Round 1,false,AB VAJPAYEE MC PUNE,MBBS,STATE,SC (W),false,neutral,neet_air,67110,113136,false,false,2,false,from_allotments
+state_mh,2026,1,Round 1,false,AB VAJPAYEE MC PUNE,MBBS,STATE,SEBC,false,neutral,neet_air,48622,51698,false,false,3,false,from_allotments
+state_mh,2026,1,Round 1,false,AB VAJPAYEE MC PUNE,MBBS,STATE,SEBC(W),false,neutral,neet_air,47524,47524,false,false,1,false,from_allotments
+state_mh,2026,1,Round 1,false,AB VAJPAYEE MC PUNE,MBBS,STATE,ST,false,neutral,neet_air,284169,314204,false,false,2,false,from_allotments
+state_mh,2026,1,Round 1,false,AB VAJPAYEE MC PUNE,MBBS,STATE,ST (W),false,neutral,neet_air,321142,321142,false,false,1,false,from_allotments
+state_mh,2026,1,Round 1,false,AB VAJPAYEE MC PUNE,MBBS,STATE,VJA,false,neutral,neet_air,66515,66515,false,false,1,false,from_allotments
+state_mh,2026,1,Round 1,false,AB VAJPAYEE MC PUNE,MBBS,STATE,VJA (W),false,neutral,neet_air,90180,90180,false,false,1,false,from_allotments
