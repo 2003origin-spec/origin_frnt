@@ -105,6 +105,9 @@ test("public API allowlist is limited to health, auth entrypoints, the drain rec
     "/api/public/activity-feed",
     "/api/public/demo-solve",
     "/api/public/live-stats",
+    // Rank Predictor: the handler verifies the JWT itself (Stage 2: signed-in
+    // only; Stage 3: 2 free checks a day). V1/PERCENTILE_PREDICTOR_PLAN.md §7.1.
+    "/api/public/rank-predictor",
     "/api/subscriptions/webhook",
     "/api/users/google-login",
     "/api/users/login",
@@ -269,4 +272,13 @@ test("unauthenticated /cbt visits redirect to the CBT OTP login, not the passwor
   assert.equal(loginPathForTarget("/admin"), "/auth");
   // A path merely containing "cbt" but not under /cbt must not match.
   assert.equal(loginPathForTarget("/cbtx"), "/auth");
+});
+
+test("Rank Predictor: page public (exact path), college finder authenticated, API public (plan §8, T4.17)", () => {
+  assert.equal(getAppRoutePolicy("/rank-predictor").kind, "public");
+  assert.ok((PUBLIC_APP_PATHS as readonly string[]).includes("/rank-predictor"));
+  assert.equal(getAppRoutePolicy("/rank-predictor/colleges").kind, "public");
+  assert.equal(getApiRoutePolicy("/api/assessments/counselling/search").kind, "authenticated");
+  assert.equal(getAppRoutePolicy("/rank-predictor/anything-else").kind, "unconfigured");
+  assert.equal(getApiRoutePolicy("/api/public/rank-predictor").kind, "public");
 });

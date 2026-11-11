@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { getServerUser } from '@/lib/auth-server';
 import { getSingleResultForRender, listTestResultsForRender } from '@/server/render-loaders';
 import type { TestResult } from '@/types';
+import { isFeatureEnabledRuntime } from '@/server/feature-flags-runtime';
 import ResultClient from './_client';
 
 type ResultPageProps = {
@@ -53,5 +54,12 @@ async function ResultContent({ params, searchParams }: ResultPageProps) {
     ? [exactResult, ...initialHistory.filter((result) => result.id !== exactResult?.id)]
     : initialHistory;
 
-  return <ResultClient testId={id} initialHistory={history} requestedResultId={requestedResultId} />;
+  return (
+    <ResultClient
+      testId={id}
+      initialHistory={history}
+      requestedResultId={requestedResultId}
+      rankPredictorEnabled={user.role === 'student' && (await isFeatureEnabledRuntime('rankPredictor'))}
+    />
+  );
 }

@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
+import RankPredictorEntryCard from '@/components/rank-predictor/RankPredictorEntryCard';
 import {
   Search,
   Clock,
@@ -150,6 +151,8 @@ interface TestListProps {
    * premium gate being off yields ALL_SUBJECTS server-side anyway).
    */
   ownedSubjects?: string[];
+  /** Rank Predictor flag (server-resolved): shows the "What rank would this score get?" card. */
+  rankPredictorEnabled?: boolean;
 }
 
 function toTestPreview(test: Test | TestPreview): TestPreview {
@@ -171,7 +174,7 @@ function toTestPreview(test: Test | TestPreview): TestPreview {
   };
 }
 
-export default function TestList({ onStartTest, onViewAnalysis, onBack, user, initialTests, examPresets, ownedSubjects }: TestListProps) {
+export default function TestList({ onStartTest, onViewAnalysis, onBack, user, initialTests, examPresets, ownedSubjects, rankPredictorEnabled = false }: TestListProps) {
   const { studyMode } = useAuth();
   const router = useRouter();
   const [tests, setTests] = useState<TestPreview[]>(initialTests ?? []);
@@ -494,6 +497,7 @@ export default function TestList({ onStartTest, onViewAnalysis, onBack, user, in
         ) : (
           <>
             {/* Filters moved to tab */}
+            {rankPredictorEnabled ? <RankPredictorEntryCard /> : null}
 
 
             {/* Tabs */}

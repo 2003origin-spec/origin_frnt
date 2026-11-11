@@ -20,6 +20,7 @@ const ROUTES: Record<string, string> = {
   'profile': '/profile',
   'contest': '/contest',
   'notes': '/notes',
+  'rank-predictor': '/rank-predictor',
 };
 
 export default function ExploreClient({
@@ -27,11 +28,13 @@ export default function ExploreClient({
   connectEnabled = false,
   contestEnabled = false,
   notesEnabled = false,
+  rankPredictorEnabled = false,
 }: {
   socialEnabled?: boolean;
   connectEnabled?: boolean;
   contestEnabled?: boolean;
   notesEnabled?: boolean;
+  rankPredictorEnabled?: boolean;
 }) {
   const router = useRouter();
   const { aiExplainer } = useAiAccess();
@@ -43,6 +46,7 @@ export default function ExploreClient({
       connectEnabled={connectEnabled}
       contestEnabled={contestEnabled}
       notesEnabled={notesEnabled}
+      rankPredictorEnabled={rankPredictorEnabled}
     />
   );
 }

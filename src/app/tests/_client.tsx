@@ -13,9 +13,11 @@ interface TestsClientProps {
   examPresets?: ExamPresetCard[];
   /** Subjects the student is entitled to — the Custom Test Builder unlock set. */
   ownedSubjects?: string[];
+  /** Rank Predictor flag (server-resolved). */
+  rankPredictorEnabled?: boolean;
 }
 
-export default function TestsClient({ initialTests, examPresets, ownedSubjects }: TestsClientProps) {
+export default function TestsClient({ initialTests, examPresets, ownedSubjects, rankPredictorEnabled = false }: TestsClientProps) {
   // AuthProvider is seeded from the server layout, so `user` is non-null on first render.
   const { user } = useAuth();
   const router = useRouter();
@@ -27,6 +29,7 @@ export default function TestsClient({ initialTests, examPresets, ownedSubjects }
       initialTests={initialTests}
       examPresets={examPresets}
       ownedSubjects={ownedSubjects}
+      rankPredictorEnabled={rankPredictorEnabled}
       onStartTest={(test) => router.push(`/tests/${test.id}`)}
       onViewAnalysis={(test) => router.push(`/tests/${test.id}/result`)}
       onBack={goBack}

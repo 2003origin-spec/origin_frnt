@@ -77,6 +77,8 @@ const APP_FLAG_KEYS = [
   "fullLengthMocks",
   "dppQuestionBank",
   "studentMessaging",
+  "rankPredictor",
+  "collegeCounselling",
 ] as const satisfies readonly FlagKey[];
 
 function appFlags(): Record<string, boolean> {

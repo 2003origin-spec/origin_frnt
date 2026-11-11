@@ -70,6 +70,8 @@ type FlagKey =
   | "notesUploads"
   | "notesSharing"
   | "originNow"
+  | "rankPredictor"
+  | "collegeCounselling"
   | "studentMessaging";
 
 type FlagSpec = {
@@ -340,6 +342,17 @@ const FLAG_SPECS: Record<FlagKey, FlagSpec> = {
   // `studentSocial` too. Ships DARK in prod: most students are under 18, so the
   // founders sign it off first. Native app only for now (/api/mobile/messages*).
   studentMessaging: { envSuffix: "STUDENT_MESSAGING", defaultDev: true, defaultProd: false },
+  // Rank Predictor (NEET / JEE Main / JEE Advanced marks → AIR, category and
+  // state rank ranges from past official results). Ships DARK in prod until the
+  // founders' permission emails and legal check are done (plan Q11).
+  // Plan: V1/PERCENTILE_PREDICTOR_PLAN.md §7.4.
+  rankPredictor: { envSuffix: "RANK_PREDICTOR", defaultDev: true, defaultProd: false },
+  // College counselling tool (/rank-predictor/colleges): which JoSAA / CSAB /
+  // MCC / state-quota seats a rank would have got in past years. Signed-in
+  // only. Ships DARK in prod (same permission/legal gate as rankPredictor, plus
+  // the prod migration + data import). The page also needs rankPredictor on.
+  // Plan: V1/PERCENTILE_PREDICTOR_PLAN.md §7.3, §7.4, §11.
+  collegeCounselling: { envSuffix: "COLLEGE_COUNSELLING", defaultDev: true, defaultProd: false },
 };
 
 /** Every feature-flag key, in declaration order (admin System Config view). */

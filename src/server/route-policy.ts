@@ -41,6 +41,10 @@ export const PUBLIC_API_PATHS = [
   "/api/public/live-stats",
   "/api/public/activity-feed",
   "/api/public/demo-solve",
+  // Rank Predictor prediction endpoint (V1/PERCENTILE_PREDICTOR_PLAN.md §7.1).
+  // Public at the edge; the handler verifies the JWT itself (§8.2). Stage 2:
+  // signed-in only (401 otherwise); Stage 3 opens it with the 2/day limit.
+  "/api/public/rank-predictor",
   // Android shell governance config — fetched pre-auth at app cold start
   // (ANDROID_HYBRID_APP_PLAN.md §5.2); CDN-cached, no session data.
   "/api/mobile/config",
@@ -160,6 +164,13 @@ export const PUBLIC_APP_PATHS = [
   // fallback is fetched at SW install time with no session attached.
   "/sw.js",
   "/offline.html",
+  // Rank Predictor (V1/PERCENTILE_PREDICTOR_PLAN.md §8, §9.1): open to visitors
+  // with 2 free checks a day. The page 404s while the rankPredictor flag is off.
+  "/rank-predictor",
+  // College finder (plan §11, Q9): logged-out visitors see a short preview and
+  // "Create a free account / Log in"; the search API itself is signed-in only
+  // (/api/assessments/*). 404s unless rankPredictor and collegeCounselling are on.
+  "/rank-predictor/colleges",
 ] as const;
 
 // `/cbt/r` = student join/test pages, public at the edge (participant-token

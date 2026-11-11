@@ -16,6 +16,7 @@ import {
     Building2,
     LineChart,
     NotebookPen,
+    Gauge,
 } from 'lucide-react';
 import type { ComponentType } from 'react';
 import type { ViewState } from '@/types';
@@ -28,6 +29,7 @@ interface ExploreProps {
     connectEnabled?: boolean;
     contestEnabled?: boolean;
     notesEnabled?: boolean;
+    rankPredictorEnabled?: boolean;
 }
 
 type ExploreCard = {
@@ -180,6 +182,15 @@ const NOTES_CARD: ExploreCard = {
     accentBg: 'bg-primary/10 dark:bg-primary/15',
     stat: 'Revise fast',
 };
+const RANK_PREDICTOR_CARD: ExploreCard = {
+    title: 'Rank Predictor',
+    description: 'Enter your marks and see your NEET or JEE rank range, from past years\' official results.',
+    icon: Gauge,
+    view: 'rank-predictor' as ViewState,
+    accent: 'text-primary',
+    accentBg: 'bg-primary/10 dark:bg-primary/15',
+    stat: 'Free',
+};
 const CONTEST_CARD: ExploreCard = {
     title: 'Weekly Contest',
     description: 'Compete in a timed test, climb the leaderboard, and earn an ORBIT rating.',
@@ -190,8 +201,9 @@ const CONTEST_CARD: ExploreCard = {
     stat: 'ORBIT Rated',
 };
 
-export default function Explore({ onNavigate, aiExplainer = false, socialEnabled = false, connectEnabled = false, contestEnabled = false, notesEnabled = false }: ExploreProps) {
+export default function Explore({ onNavigate, aiExplainer = false, socialEnabled = false, connectEnabled = false, contestEnabled = false, notesEnabled = false, rankPredictorEnabled = false }: ExploreProps) {
     const cards: ExploreCard[] = [
+        ...(rankPredictorEnabled ? [RANK_PREDICTOR_CARD] : []),
         ...(notesEnabled ? [NOTES_CARD] : []),
         ...(contestEnabled ? [CONTEST_CARD] : []),
         ...CARDS,

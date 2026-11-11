@@ -43,6 +43,8 @@ interface AuthPageProps {
   onBack: () => void;
   isLoading: boolean;
   error?: string | null;
+  /** Open on the sign-up tab (`/auth?mode=signup`, e.g. from the Rank Predictor login prompt). */
+  initialMode?: 'login' | 'signup';
 }
 
 /* ── dark-card design tokens ─────────────────────────────────────── */
@@ -142,9 +144,10 @@ export default function AuthPage({
   error,
   sendOtp,
   verifyOtp,
+  initialMode = 'login',
 }: AuthPageProps) {
   const [showPassword, setShowPassword] = useState(false);
-  const [isLogin, setIsLogin] = useState(true);
+  const [isLogin, setIsLogin] = useState(initialMode !== 'signup');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');

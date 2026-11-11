@@ -201,6 +201,16 @@ export const voiceLimiter = createLimiter(5, "rl:voice");
 
 export const submitLimiter = createLimiter(20, "rl:submit");
 
+/** Rank Predictor burst limiter for signed-in users (plan §8.3: 60/min/user). */
+export const rankPredictorLimiter = createLimiter(60, "rl:rank-predictor", "60 s");
+// Logged-out visitors (plan §8.3), on top of the 2-a-day rule: 10/min per device (valid rp_did cookie)…
+export const rankPredictorAnonLimiter = createLimiter(10, "rl:rank-predictor-anon", "60 s");
+// …and 20/min per hashed IP for requests WITHOUT a valid cookie (new devices). A real new device sends
+// one cookie-less request, so college Wi-Fi is fine; a cookie-less script is stopped here.
+export const rankPredictorNewDeviceLimiter = createLimiter(20, "rl:rank-predictor-new-device", "60 s");
+// GET status (checks left today): read-only, per hashed IP.
+export const rankPredictorStatusLimiter = createLimiter(30, "rl:rank-predictor-status", "60 s");
+
 /** Shared per-user budget for read-only GET endpoints (assessments, study,
  * notifications, ...). One OGCode list mount fires ~9 GETs (5 facet levels +
  * questions + stats + chapters) and a practice loop (list → question → back)

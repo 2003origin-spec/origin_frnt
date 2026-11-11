@@ -32,6 +32,10 @@ const ALLOWLIST: Record<string, string> = {
   // transaction block, and a session-level advisory lock is unsafe on the Neon
   // PgBouncer pooler (see schema-lock.ts). It is an online, idempotent backfill.
   "server/cbt/cbt-backfill.ts": "CONCURRENTLY index build, no transaction possible",
+  // DDL string constants only (no imports, so the import script can read them);
+  // both runners take the lock: server/counselling/schema.ts and
+  // scripts/counselling-import.ts (SCHEMA_DDL_LOCK_ID).
+  "server/counselling/schema-ddl.ts": "DDL constants only; runners take the lock",
 };
 
 const DDL = /\b(?:CREATE\s+(?:UNIQUE\s+)?(?:TABLE|INDEX|SCHEMA|EXTENSION|TYPE)|ALTER\s+(?:TABLE|TYPE))\b/;
