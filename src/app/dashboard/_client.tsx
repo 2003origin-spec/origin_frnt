@@ -30,6 +30,8 @@ interface DashboardClientProps {
    *  off or the overlay already fired today). Consumed by the Phase-4 overlay. */
   initialStreakCelebration: StreakTouchResult | null;
   initialResume: ResumeChapter | null;
+  rankPredictorEnabled: boolean;
+  collegeCounsellingEnabled: boolean;
 }
 
 export default function DashboardClient({
@@ -40,6 +42,8 @@ export default function DashboardClient({
   initialContest,
   initialStreakCelebration,
   initialResume,
+  rankPredictorEnabled,
+  collegeCounsellingEnabled,
 }: DashboardClientProps) {
   const { user, tasks, addTask, editTask, toggleTask, removeTask, primeTasks } = useAuth();
   const router = useRouter();
@@ -105,6 +109,8 @@ export default function DashboardClient({
         initialRegStatus={initialRegStatus}
         initialContest={initialContest}
         initialResume={initialResume}
+        rankPredictorEnabled={rankPredictorEnabled}
+        collegeCounsellingEnabled={collegeCounsellingEnabled}
       />
       <AnimatePresence>
         {streak && (

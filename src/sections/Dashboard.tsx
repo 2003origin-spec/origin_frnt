@@ -35,6 +35,7 @@ import {
   ActionGrid,
   PopularTools,
   ImportantDates,
+  RankPredictorHome,
   ContinueLearning,
 } from '@/components/dashboard/HomeSections';
 import type { ResumeChapter } from '@/components/dashboard/HomeSections';
@@ -148,6 +149,9 @@ interface DashboardProps {
   initialRegStatus?: { count: number; limit: number; seatsLeft: number } | null;
   initialContest?: ContestStatus | null;
   initialResume?: ResumeChapter | null;
+  /** Home entry to the Rank Predictor; the dashboard page reads both switches on the server. */
+  rankPredictorEnabled?: boolean;
+  collegeCounsellingEnabled?: boolean;
 }
 
 import { useNotifications } from '@/context/NotificationContext';
@@ -171,6 +175,8 @@ export default function Dashboard({
   initialRegStatus = null,
   initialContest = null,
   initialResume = null,
+  rankPredictorEnabled = false,
+  collegeCounsellingEnabled = false,
 }: DashboardProps) {
   const { addNotification } = useNotifications();
   // P2-12 first-run sequencing: the 12-step tour, the championship banner and the
@@ -675,6 +681,8 @@ export default function Dashboard({
             <span aria-hidden className="font-display text-xl font-bold text-primary">→</span>
           </button>
         </div>
+
+        <RankPredictorHome rankPredictorEnabled={rankPredictorEnabled} collegeCounsellingEnabled={collegeCounsellingEnabled} />
 
         <ContinueLearning resume={initialResume} onResume={() => onNavigate('ogcode')} />
 

@@ -14,6 +14,7 @@
 
 import { useEffect, useState } from 'react';
 import Image from 'next/image';
+import Link from 'next/link';
 import type { LucideIcon } from 'lucide-react';
 import {
   ArrowRight,
@@ -22,6 +23,8 @@ import {
   ChevronRight,
   Code,
   FileText,
+  Gauge,
+  GraduationCap,
   Play,
   Share2,
   Sparkles,
@@ -32,6 +35,7 @@ import {
 } from 'lucide-react';
 
 import { istDayStartMs, istEpochDay } from '@/lib/ist-day';
+import { rankPredictorHomeLinks } from '@/components/dashboard/rank-predictor-home-model';
 import type { ViewState } from '@/types';
 
 type Navigate = (view: ViewState) => void;
@@ -262,6 +266,59 @@ export function ContinueLearning({
           <Play className="h-5 w-5" aria-hidden />
         </span>
       </button>
+    </section>
+  );
+}
+
+/* ── Rank Predictor ──────────────────────────────────────────────────────── */
+
+const RANK_LINK_ICON = { predictor: Gauge, colleges: GraduationCap } as const;
+
+/**
+ * Small home entry to the Rank Predictor (and the college finder when it is
+ * on). Renders nothing while the `rankPredictor` switch is off; the dashboard
+ * page reads the switches on the server. Links, not buttons: both targets are
+ * real pages, so they can be opened in a new tab and are prefetched.
+ */
+export function RankPredictorHome({
+  rankPredictorEnabled,
+  collegeCounsellingEnabled,
+}: {
+  rankPredictorEnabled: boolean;
+  collegeCounsellingEnabled: boolean;
+}) {
+  const links = rankPredictorHomeLinks({ rankPredictor: rankPredictorEnabled, collegeCounselling: collegeCounsellingEnabled });
+  if (links.length === 0) return null;
+
+  return (
+    <section className="flex flex-col gap-3" aria-labelledby="home-rank-predictor">
+      <div className="flex min-h-11 items-center justify-between gap-3">
+        <h2 id="home-rank-predictor" className="font-display text-lg font-bold tracking-tight text-foreground">
+          Rank Predictor
+        </h2>
+        <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-bold text-primary">Free</span>
+      </div>
+      <div className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-surface-2">
+        {links.map(({ id, href, title, blurb }) => {
+          const Icon = RANK_LINK_ICON[id];
+          return (
+            <Link
+              key={id}
+              href={href}
+              className="flex min-h-16 items-center gap-3 p-3 transition-colors hover:bg-surface-3 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
+            >
+              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <Icon className="h-6 w-6" aria-hidden />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-bold text-foreground">{title}</span>
+                <span className="block text-xs leading-snug text-muted-foreground">{blurb}</span>
+              </span>
+              <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden />
+            </Link>
+          );
+        })}
+      </div>
     </section>
   );
 }
